@@ -7,7 +7,7 @@ use gdbstub::arch::Arch;
 use gdbstub_arch::aarch64::AArch64 as GdbArch;
 #[cfg(target_arch = "riscv64")]
 use gdbstub_arch::riscv::Riscv64 as GdbArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use gdbstub_arch::x86::X86_64_SSE as GdbArch;
 use vm_memory::GuestAddress;
 

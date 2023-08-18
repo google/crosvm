@@ -35,7 +35,7 @@ use std::io::prelude::*;
 use std::io::stdin;
 use std::iter;
 use std::mem;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use std::ops::RangeInclusive;
 use std::os::unix::prelude::OpenOptionsExt;
 use std::os::unix::process::ExitStatusExt;
@@ -81,7 +81,7 @@ use devices::virtio;
 use devices::virtio::device_constants::video::VideoDeviceType;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::EventDevice;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::virtio::memory_mapper::MemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
 use devices::virtio::vhost::user::VhostUserListener;
@@ -103,34 +103,34 @@ use devices::CoIommuDev;
 use devices::GeniezoneKernelIrqChip;
 #[cfg(feature = "usb")]
 use devices::HostBackendDeviceProvider;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::HotPlugBus;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::HotPlugKey;
 use devices::IommuDevType;
 use devices::IrqEventIndex;
 use devices::IrqEventSource;
 use devices::KvmKernelIrqChip;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::KvmSplitIrqChip;
 #[cfg(feature = "pci-hotplug")]
 use devices::NetResourceCarrier;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::PciAddress;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::PciBridge;
 use devices::PciDevice;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::PciRoot;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::PciRootCommand;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::PcieDownstreamPort;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::PcieHostPort;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::PcieRootPort;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use devices::PcieUpstreamPort;
 use devices::PvPanicCode;
 use devices::PvPanicPciDevice;
@@ -157,7 +157,7 @@ use hypervisor::kvm::KvmVcpu;
 use hypervisor::kvm::KvmVm;
 #[cfg(target_arch = "riscv64")]
 use hypervisor::CpuConfigRiscv64;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use hypervisor::CpuConfigX86_64;
 use hypervisor::Hypervisor;
 use hypervisor::HypervisorCap;
@@ -192,9 +192,9 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::MemoryPolicy;
 use vm_memory::MemoryRegionOptions;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use x86_64::msr::get_override_msr_list;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use x86_64::X8664arch as Arch;
 
 use crate::crosvm::config::Config;
@@ -206,7 +206,7 @@ use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::gdb::gdb_thread;
 #[cfg(feature = "gdb")]
 use crate::crosvm::gdb::GdbStub;
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+#[cfg(all(target_arch = "x86_64", unix))]
 use crate::crosvm::ratelimit::Ratelimit;
 use crate::crosvm::sys::cmdline::DevicesCommand;
 use crate::crosvm::sys::config::SharedDir;
@@ -219,11 +219,8 @@ const GENIEZONE_PATH: &str = "/dev/gzvm";
 #[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
 static GUNYAH_PATH: &str = "/dev/gunyah";
 
-#[cfg(all(
-    feature = "pci-hotplug",
-    not(any(target_arch = "x86_64", target_arch = "x86"))
-))]
-compile_error!("pci-hotplug is only supported on x86 and x86-64 architecture");
+#[cfg(all(feature = "pci-hotplug", not(target_arch = "x86_64")))]
+compile_error!("pci-hotplug is only supported on x86-64 architecture");
 
 fn create_virtio_devices(
     cfg: &Config,
@@ -965,7 +962,7 @@ fn create_file_backed_mappings(
     Ok(())
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 /// Collection of devices related to PCI hotplug.
 struct HotPlugStub {
     /// Map from bus index to hotplug bus.
@@ -978,7 +975,7 @@ struct HotPlugStub {
     pme_notify_devs: BTreeMap<u8, Arc<Mutex<dyn PmeNotify>>>,
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 impl HotPlugStub {
     /// Constructs empty HotPlugStub.
     fn new() -> Self {
@@ -991,7 +988,7 @@ impl HotPlugStub {
     }
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 /// Creates PCIE root port with only virtual devices.
 ///
 /// user doesn't specify host pcie root port which link to this virtual pcie rp,
@@ -1154,7 +1151,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     }
 
     Ok(VmComponents {
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         ac_adapter: cfg.ac_adapter,
         memory_size: cfg
             .memory
@@ -1204,16 +1201,16 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         gdb: None,
         no_i8042: cfg.no_i8042,
         no_rtc: cfg.no_rtc,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         smbios: cfg.smbios.clone(),
         host_cpu_topology: cfg.host_cpu_topology,
         itmt: cfg.itmt,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         force_s2idle: cfg.force_s2idle,
         pvm_fw: pvm_fw_image,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         pcie_ecam: cfg.pcie_ecam,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         pci_low_start: cfg.pci_low_start,
         dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
     })
@@ -1374,13 +1371,13 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
 
     let vm = KvmVm::new(&kvm, guest_mem, components.hv_cfg).context("failed to create vm")?;
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     if cfg.itmt {
         vm.set_platform_info_read_access(false)
             .context("failed to disable MSR_PLATFORM_INFO read access")?;
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     if !cfg.userspace_msr.is_empty() {
         vm.enable_userspace_msr()
             .context("failed to enable userspace MSR handling, do you have kernel 5.10 or later")?;
@@ -1396,7 +1393,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
     let vm_clone = vm.try_clone().context("failed to clone vm")?;
 
     enum KvmIrqChip {
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         Split(KvmSplitIrqChip),
         Kernel(KvmKernelIrqChip),
     }
@@ -1404,7 +1401,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
     impl KvmIrqChip {
         fn as_mut(&mut self) -> &mut dyn IrqChipArch {
             match self {
-                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                #[cfg(target_arch = "x86_64")]
                 KvmIrqChip::Split(i) => i,
                 KvmIrqChip::Kernel(i) => i,
             }
@@ -1417,9 +1414,9 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
             bail!("KVM userspace irqchip mode not implemented");
         }
         IrqChipKind::Split => {
-            #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+            #[cfg(not(target_arch = "x86_64"))]
             bail!("KVM split irqchip mode only supported on x86 processors");
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(target_arch = "x86_64")]
             {
                 let (host_tube, ioapic_device_tube) =
                     Tube::pair().context("failed to create tube")?;
@@ -1818,7 +1815,7 @@ where
     #[cfg(not(feature = "pci-hotplug"))]
     #[allow(unused_variables)]
     let pci_hotplug_slots: Option<u8> = None;
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     let hp_stub = create_pure_virtual_pcie_root_port(
         &mut sys_allocator,
         &mut irq_control_tubes,
@@ -1879,9 +1876,9 @@ where
         &mut devices,
     )?;
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     let iommu_bus_ranges = hp_stub.iommu_bus_ranges;
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    #[cfg(not(target_arch = "x86_64"))]
     let iommu_bus_ranges = Vec::new();
 
     let iommu_host_tube = if !iommu_attached_endpoints.is_empty()
@@ -1926,7 +1923,7 @@ where
         None
     };
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     for device in devices
         .iter_mut()
         .filter_map(|(dev, _)| dev.as_pci_device_mut())
@@ -1964,7 +1961,7 @@ where
         &mut vcpu_ids,
         cfg.dump_device_tree_blob.clone(),
         simple_jail(&cfg.jail_config, "serial_device")?,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         simple_jail(&cfg.jail_config, "block_device")?,
         #[cfg(feature = "swap")]
         &mut swap_controller,
@@ -1976,16 +1973,13 @@ where
         control_tubes.push(TaggedControlTube::Vm(tube));
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     let (hp_control_tube, hp_worker_tube) = mpsc::channel();
-    #[cfg(all(
-        feature = "pci-hotplug",
-        any(target_arch = "x86", target_arch = "x86_64")
-    ))]
+    #[cfg(all(feature = "pci-hotplug", target_arch = "x86_64"))]
     if let Some(hotplug_manager) = &mut hotplug_manager {
         hotplug_manager.set_rootbus_controller(hp_control_tube.clone())?;
     }
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     let hp_thread = {
         for (bus_num, hp_bus) in hp_stub.hotplug_buses.into_iter() {
             #[cfg(feature = "pci-hotplug")]
@@ -2036,9 +2030,9 @@ where
         gralloc,
         vcpu_ids,
         iommu_host_tube,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         hp_control_tube,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         hp_thread,
         #[cfg(feature = "pci-hotplug")]
         hotplug_manager,
@@ -2058,7 +2052,7 @@ where
 // thread A and waiting for response. However, thread A is blocked on acquiring
 // the lock, so dead lock happens. In order to resolve this issue, we add this
 // worker thread and push all work that locks pci root to this thread.
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn start_pci_root_worker(
     pci_root: Arc<Mutex<PciRoot>>,
     hp_device_tube: mpsc::Receiver<PciRootCommand>,
@@ -2089,7 +2083,7 @@ fn start_pci_root_worker(
     }
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn get_hp_bus<V: VmArch, Vcpu: VcpuArch>(
     linux: &RunnableLinuxVm<V, Vcpu>,
     host_addr: PciAddress,
@@ -2102,7 +2096,7 @@ fn get_hp_bus<V: VmArch, Vcpu: VcpuArch>(
     Err(anyhow!("Failed to find a suitable hotplug bus"))
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
@@ -2330,7 +2324,7 @@ fn handle_hotplug_net_remove<V: VmArch, Vcpu: VcpuArch>(
     }
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn remove_hotplug_bridge<V: VmArch, Vcpu: VcpuArch>(
     linux: &RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
@@ -2365,7 +2359,7 @@ fn remove_hotplug_bridge<V: VmArch, Vcpu: VcpuArch>(
     ))
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn remove_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
@@ -2522,7 +2516,7 @@ pub fn trigger_vm_suspend_and_wait_for_entry(
     }
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
@@ -2588,10 +2582,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     gralloc: RutabagaGralloc,
     vcpu_ids: Vec<usize>,
     iommu_host_tube: Option<Tube>,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_control_tube: mpsc::Sender<
-        PciRootCommand,
-    >,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_thread: std::thread::JoinHandle<()>,
+    #[cfg(target_arch = "x86_64")] hp_control_tube: mpsc::Sender<PciRootCommand>,
+    #[cfg(target_arch = "x86_64")] hp_thread: std::thread::JoinHandle<()>,
     #[cfg(feature = "pci-hotplug")] mut hotplug_manager: Option<PciHotPlugManager>,
     #[allow(unused_mut)] // mut is required x86 only
     #[cfg(feature = "swap")]
@@ -2803,9 +2795,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             Some(f)
         }
     };
-    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+    #[cfg(all(target_arch = "x86_64", unix))]
     let bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>> = Arc::new(Mutex::new(Ratelimit::new()));
-    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+    #[cfg(all(target_arch = "x86_64", unix))]
     if cfg.bus_lock_ratelimit > 0 {
         let bus_lock_ratelimit = cfg.bus_lock_ratelimit;
         if linux.vm.check_capability(VmCap::BusLockDetect) {
@@ -2867,14 +2859,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             None => Default::default(),
         };
 
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         let vcpu_hybrid_type = if !cfg.vcpu_hybrid_type.is_empty() {
             Some(*cfg.vcpu_hybrid_type.get(&cpu_id).unwrap())
         } else {
             None
         };
 
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         let cpu_config = Some(CpuConfigX86_64::new(
             cfg.force_calibrated_tsc_leaf,
             cfg.host_cpu_topology,
@@ -2884,7 +2876,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             cfg.itmt,
             vcpu_hybrid_type,
         ));
-        #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+        #[cfg(all(target_arch = "x86_64", unix))]
         let bus_lock_ratelimit_ctrl = Arc::clone(&bus_lock_ratelimit_ctrl);
 
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -2927,9 +2919,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         .context("failed to clone vcpu cgroup tasks file")?,
                 ),
             },
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(target_arch = "x86_64")]
             cfg.userspace_msr.clone(),
-            #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+            #[cfg(all(target_arch = "x86_64", unix))]
             bus_lock_ratelimit_ctrl,
             run_mode,
         )?;
@@ -3188,11 +3180,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     }
                 }
                 Token::VmControl { id } => {
-                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                    #[cfg(target_arch = "x86_64")]
                     let mut add_tubes = Vec::new();
-                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                    #[cfg(target_arch = "x86_64")]
                     let mut add_irq_control_tubes = Vec::new();
-                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                    #[cfg(target_arch = "x86_64")]
                     let mut add_vm_memory_control_tubes = Vec::new();
                     if let Some(socket) = control_tubes.get(&id) {
                         match socket {
@@ -3202,10 +3194,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     let mut run_mode_opt = None;
                                     let response = match request {
                                         VmRequest::HotPlugVfioCommand { device, add } => {
-                                            #[cfg(any(
-                                                target_arch = "x86",
-                                                target_arch = "x86_64"
-                                            ))]
+                                            #[cfg(target_arch = "x86_64")]
                                             {
                                                 handle_hotplug_command(
                                                     &mut linux,
@@ -3226,10 +3215,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 )
                                             }
 
-                                            #[cfg(not(any(
-                                                target_arch = "x86",
-                                                target_arch = "x86_64"
-                                            )))]
+                                            #[cfg(not(target_arch = "x86_64"))]
                                             {
                                                 // Suppress warnings.
                                                 let _ = (device, add);
@@ -3475,7 +3461,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             },
                         }
                     }
-                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                    #[cfg(target_arch = "x86_64")]
                     for socket in add_tubes {
                         let id = next_control_id;
                         next_control_id += 1;
@@ -3484,13 +3470,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             .context("failed to add hotplug vfio-pci descriptor to wait context")?;
                         control_tubes.insert(id, socket);
                     }
-                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                    #[cfg(target_arch = "x86_64")]
                     if !add_irq_control_tubes.is_empty() {
                         irq_handler_control.send(&IrqHandlerRequest::AddIrqControlTubes(
                             add_irq_control_tubes,
                         ))?;
                     }
-                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                    #[cfg(target_arch = "x86_64")]
                     if !add_vm_memory_control_tubes.is_empty() {
                         vm_memory_handler_control.send(
                             &VmMemoryHandlerRequest::AddControlTubes(add_vm_memory_control_tubes),
@@ -3558,7 +3544,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     }
 
     // Stop pci root worker thread
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     {
         let _ = hp_control_tube.send(PciRootCommand::Kill);
         if let Err(e) = hp_thread.join() {

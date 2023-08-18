@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 #![cfg(unix)]
-#![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#![cfg(target_arch = "x86_64")]
 
 use base::MemoryMappingBuilder;
 use base::SharedMemory;

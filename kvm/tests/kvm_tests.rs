@@ -6,12 +6,7 @@
 
 use base::pagesize;
 use base::Event;
-#[cfg(any(
-    target_arch = "x86",
-    target_arch = "x86_64",
-    target_arch = "arm",
-    target_arch = "aarch64"
-))]
+#[cfg(any(target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64"))]
 use base::FromRawDescriptor;
 use base::MappedRegion;
 use base::MemoryMappingBuilder;
@@ -20,24 +15,24 @@ use kvm::dirty_log_bitmap_size;
 use kvm::Cap;
 use kvm::Datamatch;
 use kvm::IoeventAddress;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use kvm::IrqRoute;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use kvm::IrqSource;
 use kvm::Kvm;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use kvm::PicId;
 use kvm::Vcpu;
 use kvm::Vm;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use kvm_sys::kvm_enable_cap;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use kvm_sys::kvm_msr_entry;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use kvm_sys::KVM_CAP_HYPERV_SYNIC;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use kvm_sys::KVM_IRQCHIP_IOAPIC;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use libc::EINVAL;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -83,7 +78,7 @@ fn check_vm_extension() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn get_supported_cpuid() {
     let kvm = Kvm::new().unwrap();
     let mut cpuid = kvm.get_supported_cpuid().unwrap();
@@ -92,14 +87,14 @@ fn get_supported_cpuid() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn get_emulated_cpuid() {
     let kvm = Kvm::new().unwrap();
     kvm.get_emulated_cpuid().unwrap();
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn get_msr_index_list() {
     let kvm = Kvm::new().unwrap();
     let msr_list = kvm.get_msr_index_list().unwrap();
@@ -180,7 +175,7 @@ fn get_memory() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn clock_handling() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
@@ -191,7 +186,7 @@ fn clock_handling() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn pic_handling() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
@@ -202,7 +197,7 @@ fn pic_handling() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn ioapic_handling() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
@@ -213,7 +208,7 @@ fn ioapic_handling() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn pit_handling() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
@@ -289,12 +284,7 @@ fn unregister_ioevent() {
 }
 
 #[test]
-#[cfg(any(
-    target_arch = "x86",
-    target_arch = "x86_64",
-    target_arch = "arm",
-    target_arch = "aarch64"
-))]
+#[cfg(any(target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64"))]
 fn irqfd_resample() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
@@ -310,7 +300,7 @@ fn irqfd_resample() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn set_gsi_routing() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
@@ -361,7 +351,7 @@ fn create_vcpu() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn debugregs() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
@@ -375,7 +365,7 @@ fn debugregs() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn xcrs() {
     let kvm = Kvm::new().unwrap();
     if !kvm.check_extension(Cap::Xcrs) {
@@ -393,7 +383,7 @@ fn xcrs() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn get_msrs() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
@@ -416,7 +406,7 @@ fn get_msrs() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn get_hyperv_cpuid() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
@@ -433,7 +423,7 @@ fn get_hyperv_cpuid() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn enable_feature() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
@@ -448,7 +438,7 @@ fn enable_feature() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn mp_state() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
@@ -478,7 +468,7 @@ fn vcpu_mmap_size() {
 }
 
 #[test]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn set_identity_map_addr() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();

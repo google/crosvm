@@ -99,7 +99,7 @@ impl Hypervisor for Gunyah {
             HypervisorCap::StaticSwiotlbAllocationRequired => true,
             HypervisorCap::HypervisorInitializedBootContext => true,
             HypervisorCap::S390UserSigp | HypervisorCap::TscDeadlineTimer => false,
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(target_arch = "x86_64")]
             HypervisorCap::Xcrs | HypervisorCap::CalibratedTscLeafRequired => false,
         }
     }
@@ -432,7 +432,7 @@ impl Vm for GunyahVm {
             VmCap::PvClock => false,
             VmCap::Protected => true,
             VmCap::EarlyInitCpuid => false,
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(target_arch = "x86_64")]
             VmCap::BusLockDetect => false,
         }
     }

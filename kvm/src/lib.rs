@@ -70,7 +70,7 @@ use base::Result;
 #[allow(unused_imports)]
 use base::SIGRTMIN;
 use data_model::vec_with_array_field;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use data_model::FlexibleArrayWrapper;
 use kvm_sys::*;
 use libc::open64;
@@ -183,7 +183,7 @@ impl Kvm {
         }
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     fn get_cpuid(&self, kind: IoctlNr) -> Result<CpuId> {
         const MAX_KVM_CPUID_ENTRIES: usize = 256;
         let mut cpuid = CpuId::new(MAX_KVM_CPUID_ENTRIES);
@@ -202,13 +202,13 @@ impl Kvm {
     }
 
     /// X86 specific call to get the system supported CPUID values
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_supported_cpuid(&self) -> Result<CpuId> {
         self.get_cpuid(KVM_GET_SUPPORTED_CPUID())
     }
 
     /// X86 specific call to get the system emulated CPUID values
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_emulated_cpuid(&self) -> Result<CpuId> {
         self.get_cpuid(KVM_GET_EMULATED_CPUID())
     }
@@ -216,7 +216,7 @@ impl Kvm {
     /// X86 specific call to get list of supported MSRS
     ///
     /// See the documentation for KVM_GET_MSR_INDEX_LIST.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_msr_index_list(&self) -> Result<Vec<u32>> {
         const MAX_KVM_MSR_ENTRIES: usize = 256;
 
@@ -247,7 +247,7 @@ impl Kvm {
         Ok(indices.to_vec())
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "riscv64"))]
+    #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
     // The x86 and riscv machine type is always 0
     pub fn get_vm_type(&self) -> c_ulong {
         0
@@ -513,7 +513,7 @@ impl Vm {
     /// Sets the address of a one-page region in the VM's address space.
     ///
     /// See the documentation on the KVM_SET_IDENTITY_MAP_ADDR ioctl.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_identity_map_addr(&self, addr: GuestAddress) -> Result<()> {
         // Safe because we know that our file is a VM fd and we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_IDENTITY_MAP_ADDR(), &addr.offset()) };
@@ -527,7 +527,7 @@ impl Vm {
     /// Retrieves the current timestamp of kvmclock as seen by the current guest.
     ///
     /// See the documentation on the KVM_GET_CLOCK ioctl.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_clock(&self) -> Result<kvm_clock_data> {
         // Safe because we know that our file is a VM fd, we know the kernel will only write
         // correct amount of memory to our pointer, and we verify the return result.
@@ -543,7 +543,7 @@ impl Vm {
     /// Sets the current timestamp of kvmclock to the specified value.
     ///
     /// See the documentation on the KVM_SET_CLOCK ioctl.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_clock(&self, clock_data: &kvm_clock_data) -> Result<()> {
         // Safe because we know that our file is a VM fd, we know the kernel will only read
         // correct amount of memory from our pointer, and we verify the return result.
@@ -558,12 +558,7 @@ impl Vm {
     /// Crates an in kernel interrupt controller.
     ///
     /// See the documentation on the KVM_CREATE_IRQCHIP ioctl.
-    #[cfg(any(
-        target_arch = "x86",
-        target_arch = "x86_64",
-        target_arch = "arm",
-        target_arch = "aarch64"
-    ))]
+    #[cfg(any(target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64"))]
     pub fn create_irq_chip(&self) -> Result<()> {
         // Safe because we know that our file is a VM fd and we verify the return result.
         let ret = unsafe { ioctl(self, KVM_CREATE_IRQCHIP()) };
@@ -577,7 +572,7 @@ impl Vm {
     /// Retrieves the state of given interrupt controller by issuing KVM_GET_IRQCHIP ioctl.
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_pic_state(&self, id: PicId) -> Result<kvm_pic_state> {
         let mut irqchip_state = kvm_irqchip {
             chip_id: id as u32,
@@ -602,7 +597,7 @@ impl Vm {
     /// Sets the state of given interrupt controller by issuing KVM_SET_IRQCHIP ioctl.
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_pic_state(&self, id: PicId, state: &kvm_pic_state) -> Result<()> {
         let mut irqchip_state = kvm_irqchip {
             chip_id: id as u32,
@@ -622,7 +617,7 @@ impl Vm {
     /// Retrieves the state of IOAPIC by issuing KVM_GET_IRQCHIP ioctl.
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_ioapic_state(&self) -> Result<kvm_ioapic_state> {
         let mut irqchip_state = kvm_irqchip {
             chip_id: 2,
@@ -647,7 +642,7 @@ impl Vm {
     /// Sets the state of IOAPIC by issuing KVM_SET_IRQCHIP ioctl.
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_ioapic_state(&self, state: &kvm_ioapic_state) -> Result<()> {
         let mut irqchip_state = kvm_irqchip {
             chip_id: 2,
@@ -665,12 +660,7 @@ impl Vm {
     }
 
     /// Sets the level on the given irq to 1 if `active` is true, and 0 otherwise.
-    #[cfg(any(
-        target_arch = "x86",
-        target_arch = "x86_64",
-        target_arch = "arm",
-        target_arch = "aarch64"
-    ))]
+    #[cfg(any(target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64"))]
     pub fn set_irq_line(&self, irq: u32, active: bool) -> Result<()> {
         let mut irq_level = kvm_irq_level::default();
         irq_level.__bindgen_anon_1.irq = irq;
@@ -689,7 +679,7 @@ impl Vm {
     /// Creates a PIT as per the KVM_CREATE_PIT2 ioctl.
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn create_pit(&self) -> Result<()> {
         let pit_config = kvm_pit_config::default();
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
@@ -705,7 +695,7 @@ impl Vm {
     /// Retrieves the state of PIT by issuing KVM_GET_PIT2 ioctl.
     ///
     /// Note that this call can only succeed after a call to `Vm::create_pit`.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_pit_state(&self) -> Result<kvm_pit_state2> {
         // Safe because we know that our file is a VM fd, we know the kernel will only write
         // correct amount of memory to our pointer, and we verify the return result.
@@ -721,7 +711,7 @@ impl Vm {
     /// Sets the state of PIT by issuing KVM_SET_PIT2 ioctl.
     ///
     /// Note that this call can only succeed after a call to `Vm::create_pit`.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_pit_state(&self, pit_state: &kvm_pit_state2) -> Result<()> {
         // Safe because we know that our file is a VM fd, we know the kernel will only read
         // correct amount of memory from our pointer, and we verify the return result.
@@ -822,12 +812,7 @@ impl Vm {
 
     /// Registers an event that will, when signalled, trigger the `gsi` irq, and `resample_evt` will
     /// get triggered when the irqchip is resampled.
-    #[cfg(any(
-        target_arch = "x86",
-        target_arch = "x86_64",
-        target_arch = "arm",
-        target_arch = "aarch64"
-    ))]
+    #[cfg(any(target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64"))]
     pub fn register_irqfd_resample(
         &self,
         evt: &Event,
@@ -856,12 +841,7 @@ impl Vm {
     ///
     /// The `evt` and `gsi` pair must be the same as the ones passed into
     /// `register_irqfd`/`register_irqfd_resample`.
-    #[cfg(any(
-        target_arch = "x86",
-        target_arch = "x86_64",
-        target_arch = "arm",
-        target_arch = "aarch64"
-    ))]
+    #[cfg(any(target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64"))]
     pub fn unregister_irqfd(&self, evt: &Event, gsi: u32) -> Result<()> {
         let irqfd = kvm_irqfd {
             fd: evt.as_raw_descriptor() as u32,
@@ -881,7 +861,7 @@ impl Vm {
 
     /// Sets the GSI routing table, replacing any table set with previous calls to
     /// `set_gsi_routing`.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_gsi_routing(&self, routes: &[IrqRoute]) -> Result<()> {
         let mut irq_routing =
             vec_with_array_field::<kvm_irq_routing, kvm_irq_routing_entry>(routes.len());
@@ -1202,7 +1182,7 @@ impl Vcpu {
     }
 
     /// Gets the VCPU special registers.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_sregs(&self) -> Result<kvm_sregs> {
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
         // correct amount of memory to our pointer, and we verify the return result.
@@ -1215,7 +1195,7 @@ impl Vcpu {
     }
 
     /// Sets the VCPU special registers.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_sregs(&self, sregs: &kvm_sregs) -> Result<()> {
         // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
@@ -1227,7 +1207,7 @@ impl Vcpu {
     }
 
     /// Gets the VCPU FPU registers.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_fpu(&self) -> Result<kvm_fpu> {
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
         // correct amount of memory to our pointer, and we verify the return result.
@@ -1242,7 +1222,7 @@ impl Vcpu {
     /// X86 specific call to setup the FPU
     ///
     /// See the documentation for KVM_SET_FPU.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_fpu(&self, fpu: &kvm_fpu) -> Result<()> {
         let ret = unsafe {
             // Here we trust the kernel not to read past the end of the kvm_fpu struct.
@@ -1255,7 +1235,7 @@ impl Vcpu {
     }
 
     /// Gets the VCPU debug registers.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_debugregs(&self) -> Result<kvm_debugregs> {
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
         // correct amount of memory to our pointer, and we verify the return result.
@@ -1268,7 +1248,7 @@ impl Vcpu {
     }
 
     /// Sets the VCPU debug registers
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_debugregs(&self, dregs: &kvm_debugregs) -> Result<()> {
         let ret = unsafe {
             // Here we trust the kernel not to read past the end of the kvm_fpu struct.
@@ -1281,7 +1261,7 @@ impl Vcpu {
     }
 
     /// Gets the VCPU extended control registers
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_xcrs(&self) -> Result<kvm_xcrs> {
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
         // correct amount of memory to our pointer, and we verify the return result.
@@ -1294,7 +1274,7 @@ impl Vcpu {
     }
 
     /// Sets the VCPU extended control registers
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_xcrs(&self, xcrs: &kvm_xcrs) -> Result<()> {
         let ret = unsafe {
             // Here we trust the kernel not to read past the end of the kvm_xcrs struct.
@@ -1309,7 +1289,7 @@ impl Vcpu {
     /// X86 specific call to get the MSRS
     ///
     /// See the documentation for KVM_SET_MSRS.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_msrs(&self, msr_entries: &mut Vec<kvm_msr_entry>) -> Result<()> {
         let mut msrs = vec_with_array_field::<kvm_msrs, kvm_msr_entry>(msr_entries.len());
         unsafe {
@@ -1340,7 +1320,7 @@ impl Vcpu {
     /// X86 specific call to setup the MSRS
     ///
     /// See the documentation for KVM_SET_MSRS.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_msrs(&self, msrs: &kvm_msrs) -> Result<()> {
         let ret = unsafe {
             // Here we trust the kernel not to read past the end of the kvm_msrs struct.
@@ -1356,7 +1336,7 @@ impl Vcpu {
     /// X86 specific call to setup the CPUID registers
     ///
     /// See the documentation for KVM_SET_CPUID2.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_cpuid2(&self, cpuid: &CpuId) -> Result<()> {
         let ret = unsafe {
             // Here we trust the kernel not to read past the end of the kvm_msrs struct.
@@ -1369,7 +1349,7 @@ impl Vcpu {
     }
 
     /// X86 specific call to get the system emulated hyper-v CPUID values
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_hyperv_cpuid(&self) -> Result<CpuId> {
         const MAX_KVM_CPUID_ENTRIES: usize = 256;
         let mut cpuid = CpuId::new(MAX_KVM_CPUID_ENTRIES);
@@ -1389,7 +1369,7 @@ impl Vcpu {
     /// X86 specific call to get the state of the "Local Advanced Programmable Interrupt Controller".
     ///
     /// See the documentation for KVM_GET_LAPIC.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_lapic(&self) -> Result<kvm_lapic_state> {
         let mut klapic: kvm_lapic_state = Default::default();
 
@@ -1407,7 +1387,7 @@ impl Vcpu {
     /// X86 specific call to set the state of the "Local Advanced Programmable Interrupt Controller".
     ///
     /// See the documentation for KVM_SET_LAPIC.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_lapic(&self, klapic: &kvm_lapic_state) -> Result<()> {
         let ret = unsafe {
             // The ioctl is safe because the kernel will only read from the klapic struct.
@@ -1426,7 +1406,7 @@ impl Vcpu {
     ///
     /// Note that KVM defines the call for both x86 and s390 but we do not expect anyone
     /// to run crosvm on s390.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_mp_state(&self) -> Result<kvm_mp_state> {
         // Safe because we know that our file is a VCPU fd, we know the kernel will only
         // write correct amount of memory to our pointer, and we verify the return result.
@@ -1445,7 +1425,7 @@ impl Vcpu {
     ///
     /// Note that KVM defines the call for both x86 and s390 but we do not expect anyone
     /// to run crosvm on s390.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_mp_state(&self, state: &kvm_mp_state) -> Result<()> {
         let ret = unsafe {
             // The ioctl is safe because the kernel will only read from the kvm_mp_state struct.
@@ -1461,7 +1441,7 @@ impl Vcpu {
     ///
     /// See the documentation for KVM_GET_VCPU_EVENTS.
     ///
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn get_vcpu_events(&self) -> Result<kvm_vcpu_events> {
         // Safe because we know that our file is a VCPU fd, we know the kernel
         // will only write correct amount of memory to our pointer, and we
@@ -1478,7 +1458,7 @@ impl Vcpu {
     ///
     /// See the documentation for KVM_SET_VCPU_EVENTS.
     ///
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn set_vcpu_events(&self, events: &kvm_vcpu_events) -> Result<()> {
         let ret = unsafe {
             // The ioctl is safe because the kernel will only read from the
@@ -1749,5 +1729,5 @@ impl Drop for RunnableVcpu {
 
 /// Wrapper for kvm_cpuid2 which has a zero length array at the end.
 /// Hides the zero length array behind a bounds check.
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 pub type CpuId = FlexibleArrayWrapper<kvm_cpuid2, kvm_cpuid_entry2>;

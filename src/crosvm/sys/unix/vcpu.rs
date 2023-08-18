@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::Barrier;
 use std::thread;
 use std::thread::JoinHandle;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use std::time::Duration;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -37,18 +37,18 @@ use hypervisor::VcpuSignalHandle;
 use libc::c_int;
 #[cfg(target_arch = "riscv64")]
 use riscv64::Riscv64 as Arch;
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+#[cfg(all(target_arch = "x86_64", unix))]
 use sync::Mutex;
 use vm_control::*;
 #[cfg(feature = "gdb")]
 use vm_memory::GuestMemory;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use x86_64::msr::MsrHandlers;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use x86_64::X8664arch as Arch;
 
 use super::ExitState;
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+#[cfg(all(target_arch = "x86_64", unix))]
 use crate::crosvm::ratelimit::Ratelimit;
 
 fn bus_io_handler(bus: &Bus) -> impl FnMut(IoParams) -> Option<[u8; 8]> + '_ {
@@ -228,9 +228,8 @@ fn vcpu_loop<V>(
     from_main_tube: mpsc::Receiver<VcpuControl>,
     #[cfg(feature = "gdb")] to_gdb_tube: Option<mpsc::Sender<VcpuDebugStatusMessage>>,
     #[cfg(feature = "gdb")] guest_mem: GuestMemory,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] msr_handlers: MsrHandlers,
-    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
-    bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
+    #[cfg(target_arch = "x86_64")] msr_handlers: MsrHandlers,
+    #[cfg(all(target_arch = "x86_64", unix))] bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
 ) -> ExitState
 where
     V: VcpuArch,
@@ -372,13 +371,13 @@ where
                         error!("failed to handle mmio: {}", e);
                     }
                 }
-                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                #[cfg(target_arch = "x86_64")]
                 Ok(VcpuExit::RdMsr { index }) => {
                     if let Some(data) = msr_handlers.read(index) {
                         let _ = vcpu.handle_rdmsr(data);
                     }
                 }
-                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                #[cfg(target_arch = "x86_64")]
                 Ok(VcpuExit::WrMsr { index, data }) => {
                     if msr_handlers.write(index, data).is_some() {
                         vcpu.handle_wrmsr();
@@ -424,7 +423,7 @@ where
 
                     run_mode = VmRunMode::Breakpoint;
                 }
-                #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+                #[cfg(all(target_arch = "x86_64", unix))]
                 Ok(VcpuExit::BusLock) => {
                     let delay_ns: u64 = bus_lock_ratelimit_ctrl.lock().ratelimit_calculate_delay(1);
                     thread::sleep(Duration::from_nanos(delay_ns));
@@ -494,10 +493,8 @@ pub fn run_vcpu<V>(
     enable_per_vm_core_scheduling: bool,
     cpu_config: Option<CpuConfigArch>,
     vcpu_cgroup_tasks_file: Option<File>,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    userspace_msr: std::collections::BTreeMap<u32, arch::MsrConfig>,
-    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
-    bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
+    #[cfg(target_arch = "x86_64")] userspace_msr: std::collections::BTreeMap<u32, arch::MsrConfig>,
+    #[cfg(all(target_arch = "x86_64", unix))] bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
     run_mode: VmRunMode,
 ) -> Result<JoinHandle<()>>
 where
@@ -538,9 +535,9 @@ where
 
                 // Add MSR handlers after CPU affinity setting.
                 // This avoids redundant MSR file fd creation.
-                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                #[cfg(target_arch = "x86_64")]
                 let mut msr_handlers = MsrHandlers::new();
-                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                #[cfg(target_arch = "x86_64")]
                 if !userspace_msr.is_empty() {
                     userspace_msr.iter().for_each(|(index, msr_config)| {
                         if let Err(e) = msr_handlers.add_handler(*index, msr_config.clone(), cpu_id)
@@ -579,9 +576,9 @@ where
                     to_gdb_tube,
                     #[cfg(feature = "gdb")]
                     guest_mem,
-                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                    #[cfg(target_arch = "x86_64")]
                     msr_handlers,
-                    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+                    #[cfg(all(target_arch = "x86_64", unix))]
                     bus_lock_ratelimit_ctrl,
                 );
 

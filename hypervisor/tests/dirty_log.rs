@@ -4,7 +4,7 @@
 
 // TODO(b/237714823): Currently, only kvm is enabled for this test once LUCI can run windows.
 #![cfg(unix)]
-#![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#![cfg(target_arch = "x86_64")]
 #![cfg(any(feature = "whpx", feature = "gvm", feature = "haxm", unix))]
 
 use base::MemoryMappingBuilder;

@@ -51,7 +51,7 @@ use vm_control::VmRequest;
 use vm_control::VmResponse;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use x86_64::X8664arch as CrosvmArch;
 
 pub fn gdb_thread(mut gdbstub: GdbStub, port: u32) {

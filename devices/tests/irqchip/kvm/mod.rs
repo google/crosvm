@@ -16,7 +16,7 @@ use hypervisor::Vm;
 use hypervisor::VmAArch64;
 #[cfg(target_arch = "riscv64")]
 use hypervisor::VmRiscv64;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use hypervisor::VmX86_64;
 use vm_memory::GuestMemory;
 
@@ -52,7 +52,7 @@ fn mp_state() {
 
     let new_mpstate = if cfg!(any(target_arch = "arm", target_arch = "aarch64")) {
         MPState::Stopped
-    } else if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
+    } else if cfg!(target_arch = "x86_64") {
         MPState::Halted
     } else {
         unimplemented!();

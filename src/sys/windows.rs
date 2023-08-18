@@ -199,11 +199,11 @@ use win_util::ProcessType;
 use x86_64::cpuid::adjust_cpuid;
 #[cfg(feature = "whpx")]
 use x86_64::cpuid::CpuIdContext;
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "haxm"))]
+#[cfg(all(target_arch = "x86_64", feature = "haxm"))]
 use x86_64::get_cpu_manufacturer;
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "haxm"))]
+#[cfg(all(target_arch = "x86_64", feature = "haxm"))]
 use x86_64::CpuManufacturer;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use x86_64::X8664arch as Arch;
 
 use crate::crosvm::config::Config;
@@ -1753,7 +1753,7 @@ fn create_haxm_vm(
 }
 
 #[cfg(feature = "whpx")]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn create_whpx_vm(
     whpx: Whpx,
     mem: GuestMemory,
@@ -1813,7 +1813,7 @@ fn create_gvm_irq_chip(vm: &GvmVm, vcpu_count: usize) -> base::Result<GvmIrqChip
 }
 
 #[cfg(feature = "whpx")]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 fn create_whpx_split_irq_chip(
     vm: &WhpxVm,
     ioapic_device_tube: Tube,
@@ -1968,16 +1968,16 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         no_i8042: cfg.no_i8042,
         no_rtc: cfg.no_rtc,
         host_cpu_topology: cfg.host_cpu_topology,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         force_s2idle: cfg.force_s2idle,
         fw_cfg_parameters: cfg.fw_cfg_parameters.clone(),
         itmt: false,
         pvm_fw: None,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         pci_low_start: cfg.pci_low_start,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         pcie_ecam: cfg.pcie_ecam,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         smbios: cfg.smbios.clone(),
         dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
     })

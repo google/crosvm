@@ -1012,7 +1012,7 @@ pub fn create_video_device(
             jail_mount_bind_drm(&mut jail, /* render_node_only= */ true)?;
         }
 
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         {
             // Device nodes used by libdrm through minigbm in libvda on AMD devices.
             let sys_dev_char_path = Path::new("/sys/dev/char");

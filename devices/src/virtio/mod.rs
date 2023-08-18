@@ -14,7 +14,7 @@ pub mod device_constants;
 pub mod input;
 mod interrupt;
 mod iommu;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 pub mod pvclock;
 mod queue;
 mod rng;

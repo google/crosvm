@@ -3,10 +3,7 @@
 // found in the LICENSE file.
 
 // These tests are only implemented for kvm & gvm. Other hypervisors may be added in the future.
-#![cfg(all(
-    any(feature = "gvm", unix),
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#![cfg(all(any(feature = "gvm", unix), target_arch = "x86_64"))]
 
 mod sys;
 

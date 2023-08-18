@@ -65,7 +65,7 @@ use jail::FakeMinijailStub as Minijail;
 #[cfg(unix)]
 use minijail::Minijail;
 use remain::sorted;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use resources::AddressRange;
 use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
@@ -109,7 +109,7 @@ cfg_if::cfg_if! {
         pub use hypervisor::VcpuInitRiscv64 as VcpuInitArch;
         pub use hypervisor::VcpuRiscv64 as VcpuArch;
         pub use hypervisor::VmRiscv64 as VmArch;
-    } else if #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
+    } else if #[cfg(target_arch = "x86_64")] {
         pub use devices::IrqChipX86_64 as IrqChipArch;
         #[cfg(feature = "gdb")]
         pub use gdbstub_arch::x86::X86_64_SSE as GdbArch;
@@ -312,7 +312,7 @@ pub enum VcpuAffinity {
 /// create a `RunnableLinuxVm`.
 #[sorted]
 pub struct VmComponents {
-    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+    #[cfg(all(target_arch = "x86_64", unix))]
     pub ac_adapter: bool,
     pub acpi_sdts: Vec<SDT>,
     pub android_fstab: Option<File>,
@@ -323,7 +323,7 @@ pub struct VmComponents {
     pub delay_rt: bool,
     pub dynamic_power_coefficient: BTreeMap<usize, u32>,
     pub extra_kernel_params: Vec<String>,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub force_s2idle: bool,
     pub fw_cfg_parameters: Vec<FwCfgParameters>,
     #[cfg(feature = "gdb")]
@@ -337,9 +337,9 @@ pub struct VmComponents {
     pub no_i8042: bool,
     pub no_rtc: bool,
     pub no_smt: bool,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub pci_low_start: Option<u64>,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub pcie_ecam: Option<AddressRange>,
     pub pflash_block_size: u32,
     pub pflash_image: Option<File>,
@@ -348,7 +348,7 @@ pub struct VmComponents {
     /// `hv_cfg.protection_type == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<File>,
     pub rt_cpus: CpuSet,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub smbios: SmbiosOptions,
     pub swiotlb: Option<u64>,
     pub vcpu_affinity: Option<VcpuAffinity>,
@@ -454,7 +454,7 @@ pub trait LinuxArch {
         vcpu_ids: &mut Vec<usize>,
         dump_device_tree_blob: Option<PathBuf>,
         debugcon_jail: Option<Minijail>,
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] pflash_jail: Option<Minijail>,
+        #[cfg(target_arch = "x86_64")] pflash_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
         #[cfg(unix)] guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
@@ -763,7 +763,7 @@ pub fn generate_virtio_mmio_bus(
     let mut pid_labels = BTreeMap::new();
 
     // sdts can be updated only on x86 platforms.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     let mut sdts = sdts;
     for dev_value in devices.into_iter() {
         #[cfg(unix)]
@@ -796,7 +796,7 @@ pub fn generate_virtio_mmio_bus(
             keep_rds.push(event.as_raw_descriptor());
         }
 
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         {
             sdts = device
                 .generate_acpi(sdts)

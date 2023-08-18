@@ -227,7 +227,7 @@ impl VirtioDevice for Fs {
 
         // Set up shared memory for DAX.
         // TODO(b/176129399): Remove cfg! once DAX is supported on ARM.
-        if cfg!(any(target_arch = "x86", target_arch = "x86_64")) && use_dax {
+        if cfg!(target_arch = "x86_64") && use_dax {
             // Create the shared memory region now before we start processing requests.
             let request = FsMappingRequest::AllocateSharedMemoryRegion(
                 self.pci_bar.as_ref().cloned().expect("No pci_bar"),

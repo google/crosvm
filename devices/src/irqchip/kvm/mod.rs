@@ -15,7 +15,7 @@ use hypervisor::Vcpu;
 use hypervisor::VmAArch64;
 #[cfg(target_arch = "riscv64")]
 use hypervisor::VmRiscv64;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use hypervisor::VmX86_64;
 use kvm_sys::kvm_mp_state;
 use resources::SystemAllocator;
@@ -25,9 +25,9 @@ use crate::IrqEdgeEvent;
 use crate::IrqEventSource;
 use crate::IrqLevelEvent;
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 mod x86_64;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 pub use x86_64::*;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]

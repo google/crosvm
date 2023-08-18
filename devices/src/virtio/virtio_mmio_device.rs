@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use acpi_tables::sdt::SDT;
 use anyhow::anyhow;
 use anyhow::Context;
@@ -408,7 +408,7 @@ impl VirtioMmioDevice {
         self.device.on_device_sandboxed();
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub fn generate_acpi(&mut self, mut sdts: Vec<SDT>) -> Option<Vec<SDT>> {
         const OEM_REVISION: u32 = 1;
         const SSDT_REVISION: u8 = 0;

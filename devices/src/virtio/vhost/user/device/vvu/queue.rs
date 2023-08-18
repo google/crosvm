@@ -539,7 +539,7 @@ mod test {
     // specify target architecture.
     // TODO(keiichiw): Change the test to mutate queues' internal state to avoid the actual loop.
     #[test]
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     fn test_driver_write_wrapping() {
         // Test the index can be wrapped around when the iteration count exceeds 16bits.
         let queue_size = 256;
@@ -592,7 +592,7 @@ mod test {
     // specify target architecture.
     // TODO(keiichiw): Change the test to mutate queues' internal state to avoid the actual loop.
     #[test]
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     fn test_driver_read_wrapping() {
         // Test the index can be wrapped around when the iteration count exceeds 16bits.
         let queue_size = 256;

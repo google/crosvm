@@ -22,9 +22,9 @@ use devices::PciAddress;
 use devices::PciInterruptPin;
 use devices::PciRootCommand;
 use devices::ResourceCarrier;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use hypervisor::VcpuX86_64 as VcpuArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use hypervisor::VmX86_64 as VmArch;
 use resources::SystemAllocator;
 #[cfg(feature = "swap")]

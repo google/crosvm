@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 use acpi_tables::sdt::SDT;
 use anyhow::Result;
 use base::Event;
@@ -144,7 +144,7 @@ pub trait VirtioDevice: Send {
 
     fn control_notify(&self, _behavior: MsixStatus) {}
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     fn generate_acpi(
         &mut self,
         _pci_address: &Option<PciAddress>,

@@ -25,7 +25,7 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod kvm;
         pub use self::kvm::KvmKernelIrqChip;
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86_64")]
         pub use self::kvm::KvmSplitIrqChip;
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         pub use self::kvm::{AARCH64_GIC_NR_IRQS, AARCH64_GIC_NR_SPIS};
@@ -43,7 +43,7 @@ cfg_if::cfg_if! {
 }
 
 cfg_if::cfg_if! {
-    if #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
+    if #[cfg(target_arch = "x86_64")] {
         mod x86_64;
         pub use x86_64::*;
         mod pic;
@@ -78,7 +78,7 @@ pub use self::geniezone::GeniezoneKernelIrqChip;
 
 pub type IrqEventIndex = usize;
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 struct IrqEvent {
     event: Event,
     gsi: u32,

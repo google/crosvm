@@ -10,7 +10,7 @@ pub use aarch64::*;
 #[cfg(target_arch = "riscv64")]
 mod riscv64;
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 mod x86_64;
 
 use std::cmp::min;
@@ -65,7 +65,7 @@ use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::MemoryRegionInformation;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 pub use x86_64::*;
 
 use crate::BalloonEvent;
@@ -472,7 +472,7 @@ impl KvmVm {
         // it's an unavailable extension and returns 0.
         let ret = unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), capability as c_ulong) };
         match capability {
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(target_arch = "x86_64")]
             KvmCap::BusLockDetect => {
                 if ret > 0 {
                     ret as u32 & KVM_BUS_LOCK_DETECTION_EXIT == KVM_BUS_LOCK_DETECTION_EXIT
@@ -548,14 +548,14 @@ impl Vm for KvmVm {
             VmCap::PvClock => false,
             VmCap::Protected => self.check_raw_capability(KvmCap::ArmProtectedVm),
             VmCap::EarlyInitCpuid => false,
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(target_arch = "x86_64")]
             VmCap::BusLockDetect => self.check_raw_capability(KvmCap::BusLockDetect),
         }
     }
 
     fn enable_capability(&self, c: VmCap, _flags: u32) -> Result<bool> {
         match c {
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(target_arch = "x86_64")]
             VmCap::BusLockDetect => {
                 let args = [KVM_BUS_LOCK_DETECTION_EXIT as u64, 0, 0, 0];
                 Ok(unsafe {
@@ -1197,9 +1197,9 @@ impl TryFrom<HypervisorCap> for KvmCap {
             HypervisorCap::S390UserSigp => Ok(KvmCap::S390UserSigp),
             HypervisorCap::TscDeadlineTimer => Ok(KvmCap::TscDeadlineTimer),
             HypervisorCap::UserMemory => Ok(KvmCap::UserMemory),
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(target_arch = "x86_64")]
             HypervisorCap::Xcrs => Ok(KvmCap::Xcrs),
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(target_arch = "x86_64")]
             HypervisorCap::CalibratedTscLeafRequired => Err(Error::new(libc::EINVAL)),
             HypervisorCap::StaticSwiotlbAllocationRequired => Err(Error::new(libc::EINVAL)),
             HypervisorCap::HypervisorInitializedBootContext => Err(Error::new(libc::EINVAL)),
