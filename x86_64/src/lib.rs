@@ -690,6 +690,7 @@ impl arch::LinuxArch for X8664arch {
         dump_device_tree_blob: Option<PathBuf>,
         debugcon_jail: Option<Minijail>,
         pflash_jail: Option<Minijail>,
+        fw_cfg_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
         #[cfg(unix)] guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
@@ -815,6 +816,9 @@ impl arch::LinuxArch for X8664arch {
                 &io_bus,
                 components.fw_cfg_parameters.clone(),
                 components.bootorder_fw_cfg_blob.clone(),
+                fw_cfg_jail,
+                #[cfg(feature = "swap")]
+                swap_controller,
             )?;
         }
 
@@ -1716,8 +1720,10 @@ impl X8664arch {
         io_bus: &devices::Bus,
         fw_cfg_parameters: Vec<FwCfgParameters>,
         bootorder_fw_cfg_blob: Vec<u8>,
+        fw_cfg_jail: Option<Minijail>,
+        #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
     ) -> Result<()> {
-        match devices::FwCfgDevice::new(FW_CFG_MAX_FILE_SLOTS, fw_cfg_parameters) {
+        let fw_cfg = match devices::FwCfgDevice::new(FW_CFG_MAX_FILE_SLOTS, fw_cfg_parameters) {
             Ok(mut device) => {
                 // this condition will only be true if the user specified at least one bootindex
                 // option on the command line. If none were specified, bootorder_fw_cfg_blob will
@@ -1733,13 +1739,44 @@ impl X8664arch {
                         return Err(Error::CreateFwCfgDevice(err));
                     }
                 }
-                io_bus
-                    .insert(Arc::new(Mutex::new(device)), FW_CFG_BASE_PORT, FW_CFG_WIDTH)
-                    .unwrap();
-                Ok(())
+                device
             }
-            Err(err) => Err(Error::CreateFwCfgDevice(err)),
-        }
+            Err(err) => {
+                return Err(Error::CreateFwCfgDevice(err));
+            }
+        };
+
+        let fw_cfg: Arc<Mutex<dyn BusDevice>> = match fw_cfg_jail.as_ref() {
+            #[cfg(unix)]
+            Some(jail) => {
+                let jail_clone = jail.try_clone().map_err(Error::CloneJail)?;
+                #[cfg(feature = "seccomp_trace")]
+                debug!(
+                    "seccomp_trace {{\"event\": \"minijail_clone\", \"src_jail_addr\": \"0x{:x}\", \"dst_jail_addr\": \"0x{:x}\"}}",
+                    read_jail_addr(jail),
+                    read_jail_addr(&jail_clone)
+                );
+                Arc::new(Mutex::new(
+                    ProxyDevice::new(
+                        fw_cfg,
+                        jail_clone,
+                        Vec::new(),
+                        #[cfg(feature = "swap")]
+                        swap_controller,
+                    )
+                    .map_err(Error::CreateProxyDevice)?,
+                ))
+            }
+            #[cfg(windows)]
+            Some(_) => unreachable!(),
+            None => Arc::new(Mutex::new(fw_cfg)),
+        };
+
+        io_bus
+            .insert(fw_cfg, FW_CFG_BASE_PORT, FW_CFG_WIDTH)
+            .map_err(Error::InsertBus)?;
+
+        Ok(())
     }
 
     /// Sets up the legacy x86 i8042/KBD platform device

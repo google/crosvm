@@ -1963,6 +1963,8 @@ where
         simple_jail(&cfg.jail_config, "serial_device")?,
         #[cfg(target_arch = "x86_64")]
         simple_jail(&cfg.jail_config, "block_device")?,
+        #[cfg(target_arch = "x86_64")]
+        simple_jail(&cfg.jail_config, "fw_cfg_device")?,
         #[cfg(feature = "swap")]
         &mut swap_controller,
         guest_suspended_cvar.clone(),

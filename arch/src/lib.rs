@@ -440,6 +440,7 @@ pub trait LinuxArch {
     /// * `irq_chip` - The IRQ chip implemention for the VM.
     /// * `debugcon_jail` - Jail used for debugcon devices created here.
     /// * `pflash_jail` - Jail used for pflash device created here.
+    /// * `fw_cfg_jail` - Jail used for fw_cfg device created here.
     fn build_vm<V, Vcpu>(
         components: VmComponents,
         vm_evt_wrtube: &SendTube,
@@ -455,6 +456,7 @@ pub trait LinuxArch {
         dump_device_tree_blob: Option<PathBuf>,
         debugcon_jail: Option<Minijail>,
         #[cfg(target_arch = "x86_64")] pflash_jail: Option<Minijail>,
+        #[cfg(target_arch = "x86_64")] fw_cfg_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
         #[cfg(unix)] guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>

@@ -2460,6 +2460,7 @@ where
         cfg.dump_device_tree_blob.clone(),
         /*debugcon_jail=*/ None,
         None,
+        None,
     )
     .exit_context(Exit::BuildVm, "the architecture failed to build the vm")?;
 
