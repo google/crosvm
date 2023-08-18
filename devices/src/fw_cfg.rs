@@ -68,7 +68,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone, Debug, Deserialize, Serialize, FromKeyValues, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct FwCfgParameters {
-    pub name: Option<String>,
+    pub name: String,
     pub string: Option<String>,
     pub path: Option<PathBuf>,
 }
@@ -152,20 +152,18 @@ impl FwCfgDevice {
         };
 
         for param in fw_cfg_parameters {
-            if let Some(_name) = &param.name {
-                let data: Vec<u8> = if let Some(string) = &param.string {
-                    string.as_bytes().to_vec()
-                } else if let Ok(bytes) = fs::read(param.clone().path.unwrap()) {
-                    bytes
-                } else {
-                    return Err(Error::FileOpen(param.path.unwrap()));
-                };
+            let data: Vec<u8> = if let Some(string) = &param.string {
+                string.as_bytes().to_vec()
+            } else if let Ok(bytes) = fs::read(param.clone().path.unwrap()) {
+                bytes
+            } else {
+                return Err(Error::FileOpen(param.path.unwrap()));
+            };
 
-                // The file added from the command line will be a generic item. QEMU does not
-                // give users the option to specify whether the user-specified blob is
-                // arch-specific, so we won't either.
-                device.add_file(&param.name.unwrap(), data, FwCfgItemType::GenericItem)?
-            }
+            // The file added from the command line will be a generic item. QEMU does not
+            // give users the option to specify whether the user-specified blob is
+            // arch-specific, so we won't either.
+            device.add_file(&param.name, data, FwCfgItemType::GenericItem)?
         }
 
         device.add_bytes(FW_CFG_SIGNATURE.to_vec(), FwCfgItemType::Signature);
@@ -404,11 +402,7 @@ mod tests {
     ];
 
     fn default_params() -> Vec<FwCfgParameters> {
-        vec![FwCfgParameters {
-            name: None,
-            string: None,
-            path: None,
-        }]
+        Vec::new()
     }
 
     fn get_contents() -> [Vec<u8>; 6] {
@@ -442,7 +436,7 @@ mod tests {
         Ok(device)
     }
 
-    fn from_serial_arg(options: &str) -> std::result::Result<FwCfgParameters, ParseError> {
+    fn from_fw_cfg_arg(options: &str) -> std::result::Result<FwCfgParameters, ParseError> {
         from_key_values(options)
     }
 
@@ -584,32 +578,23 @@ mod tests {
     #[test]
     // Attempt to build FwCfgParams from key value pairs
     fn params_from_key_values() {
-        let params = from_serial_arg("").unwrap();
-        assert_eq!(
-            params,
-            FwCfgParameters {
-                name: None,
-                string: None,
-                path: None,
-            }
-        );
-        let params = from_serial_arg("name=foo,path=/path/to/input").unwrap();
+        from_fw_cfg_arg("").expect_err("parsing empty string should fail");
 
+        let params = from_fw_cfg_arg("name=foo,path=/path/to/input").unwrap();
         assert_eq!(
             params,
             FwCfgParameters {
-                name: Some("foo".into()),
+                name: "foo".into(),
                 path: Some("/path/to/input".into()),
                 string: None,
             }
         );
 
-        let params = from_serial_arg("name=bar,string=testdata").unwrap();
-
+        let params = from_fw_cfg_arg("name=bar,string=testdata").unwrap();
         assert_eq!(
             params,
             FwCfgParameters {
-                name: Some("bar".into()),
+                name: "bar".into(),
                 string: Some("testdata".into()),
                 path: None,
             }

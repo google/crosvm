@@ -427,13 +427,7 @@ pub fn parse_mmio_address_range(s: &str) -> Result<Vec<AddressRange>, String> {
 }
 
 pub fn validate_fw_cfg_parameters(params: &FwCfgParameters) -> Result<(), String> {
-    if params.name.is_none() && (params.string.is_some() || params.path.is_some()) {
-        return Err("Must give name of data to --fw-cfg".to_string());
-    }
-
-    if params.string.is_some() && params.path.is_some()
-        || params.name.is_some() && params.string.is_none() && params.path.is_none()
-    {
+    if !(params.string.is_some() ^ params.path.is_some()) {
         return Err("Provide exactly one of string or path args to --fw-cfg".to_string());
     }
 
@@ -1813,24 +1807,37 @@ mod tests {
     }
 
     #[test]
-    fn parse_fw_cfg_valid_no_params() {
-        assert!(TryInto::<Config>::try_into(
-            crate::crosvm::cmdline::RunCommand::from_args(&[], &["--fw-cfg", "", "/dev/null"],)
-                .unwrap()
+    fn parse_fw_cfg_valid_path() {
+        let cfg = TryInto::<Config>::try_into(
+            crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--fw-cfg", "name=bar,path=data.bin", "/dev/null"],
+            )
+            .unwrap(),
         )
-        .is_ok());
+        .unwrap();
+
+        assert_eq!(cfg.fw_cfg_parameters.len(), 1);
+        assert_eq!(cfg.fw_cfg_parameters[0].name, "bar".to_string());
+        assert_eq!(cfg.fw_cfg_parameters[0].string, None);
+        assert_eq!(cfg.fw_cfg_parameters[0].path, Some("data.bin".into()));
     }
 
     #[test]
     fn parse_fw_cfg_valid_string() {
-        assert!(TryInto::<Config>::try_into(
+        let cfg = TryInto::<Config>::try_into(
             crate::crosvm::cmdline::RunCommand::from_args(
                 &[],
                 &["--fw-cfg", "name=bar,string=foo", "/dev/null"],
             )
-            .unwrap()
+            .unwrap(),
         )
-        .is_ok());
+        .unwrap();
+
+        assert_eq!(cfg.fw_cfg_parameters.len(), 1);
+        assert_eq!(cfg.fw_cfg_parameters[0].name, "bar".to_string());
+        assert_eq!(cfg.fw_cfg_parameters[0].string, Some("foo".to_string()));
+        assert_eq!(cfg.fw_cfg_parameters[0].path, None);
     }
 
     #[test]
