@@ -128,6 +128,26 @@ pub struct DiskOption {
     pub bootindex: Option<usize>,
 }
 
+impl Default for DiskOption {
+    fn default() -> Self {
+        Self {
+            path: PathBuf::new(),
+            read_only: false,
+            root: false,
+            sparse: block_option_sparse_default(),
+            direct: false,
+            block_size: block_option_block_size_default(),
+            id: None,
+            #[cfg(windows)]
+            io_concurrency: block_option_io_concurrency_default(),
+            multiple_workers: false,
+            async_executor: None,
+            packed_queue: false,
+            bootindex: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_keyvalue::*;
@@ -136,6 +156,16 @@ mod tests {
 
     fn from_block_arg(options: &str) -> Result<DiskOption, ParseError> {
         from_key_values(options)
+    }
+
+    #[test]
+    fn check_default_matches_from_key_values() {
+        let path = "/path/to/disk.img";
+        let disk = DiskOption {
+            path: PathBuf::from(path),
+            ..DiskOption::default()
+        };
+        assert_eq!(disk, from_key_values(path).unwrap());
     }
 
     #[test]

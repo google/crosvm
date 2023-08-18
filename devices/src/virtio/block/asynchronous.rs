@@ -1200,7 +1200,6 @@ impl VirtioDevice for BlockAsync {
 mod tests {
     use std::fs::File;
     use std::mem::size_of_val;
-    use std::path::PathBuf;
     use std::sync::atomic::AtomicU64;
 
     use data_model::Le32;
@@ -1225,21 +1224,7 @@ mod tests {
         f.set_len(0x1000).unwrap();
 
         let features = base_features(ProtectionType::Unprotected);
-        let disk_option = DiskOption {
-            path: PathBuf::new(),
-            read_only: true,
-            root: false,
-            sparse: false,
-            direct: false,
-            block_size: 512,
-            id: None,
-            #[cfg(windows)]
-            io_concurrency: NonZeroU32::new(1).unwrap(),
-            multiple_workers: false,
-            async_executor: None,
-            packed_queue: false,
-            bootindex: None,
-        };
+        let disk_option = DiskOption::default();
         let b = BlockAsync::new(features, Box::new(f), &disk_option, None, None, None).unwrap();
         let mut num_sectors = [0u8; 4];
         b.read_config(0, &mut num_sectors);
@@ -1258,19 +1243,9 @@ mod tests {
 
         let features = base_features(ProtectionType::Unprotected);
         let disk_option = DiskOption {
-            path: PathBuf::new(),
-            read_only: true,
-            root: false,
-            sparse: false,
-            direct: false,
             block_size: 4096,
-            id: None,
-            #[cfg(windows)]
-            io_concurrency: NonZeroU32::new(1).unwrap(),
-            multiple_workers: false,
-            async_executor: None,
-            packed_queue: false,
-            bootindex: None,
+            sparse: false,
+            ..Default::default()
         };
         let b = BlockAsync::new(features, Box::new(f), &disk_option, None, None, None).unwrap();
         let mut blk_size = [0u8; 4];
@@ -1289,21 +1264,7 @@ mod tests {
         {
             let f = File::create(&path).unwrap();
             let features = base_features(ProtectionType::Unprotected);
-            let disk_option = DiskOption {
-                path: PathBuf::new(),
-                read_only: false,
-                root: false,
-                sparse: true,
-                direct: false,
-                block_size: 512,
-                id: None,
-                #[cfg(windows)]
-                io_concurrency: NonZeroU32::new(1).unwrap(),
-                multiple_workers: false,
-                async_executor: None,
-                packed_queue: false,
-                bootindex: None,
-            };
+            let disk_option = DiskOption::default();
             let b = BlockAsync::new(features, Box::new(f), &disk_option, None, None, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
@@ -1316,19 +1277,8 @@ mod tests {
             let f = File::create(&path).unwrap();
             let features = base_features(ProtectionType::Unprotected);
             let disk_option = DiskOption {
-                path: PathBuf::new(),
-                read_only: false,
-                root: false,
                 sparse: false,
-                direct: false,
-                block_size: 512,
-                id: None,
-                #[cfg(windows)]
-                io_concurrency: NonZeroU32::new(1).unwrap(),
-                multiple_workers: false,
-                async_executor: None,
-                packed_queue: false,
-                bootindex: None,
+                ..Default::default()
             };
             let b = BlockAsync::new(features, Box::new(f), &disk_option, None, None, None).unwrap();
             // writable device should set VIRTIO_F_FLUSH + VIRTIO_BLK_F_RO
@@ -1342,19 +1292,8 @@ mod tests {
             let f = File::create(&path).unwrap();
             let features = base_features(ProtectionType::Unprotected);
             let disk_option = DiskOption {
-                path: PathBuf::new(),
                 read_only: true,
-                root: false,
-                sparse: true,
-                direct: false,
-                block_size: 512,
-                id: None,
-                #[cfg(windows)]
-                io_concurrency: NonZeroU32::new(1).unwrap(),
-                multiple_workers: false,
-                async_executor: None,
-                packed_queue: false,
-                bootindex: None,
+                ..Default::default()
             };
             let b = BlockAsync::new(features, Box::new(f), &disk_option, None, None, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_RO
@@ -1373,21 +1312,7 @@ mod tests {
 
         // Default case
         let f = File::create(&path).unwrap();
-        let disk_option = DiskOption {
-            path: PathBuf::new(),
-            read_only: false,
-            root: false,
-            sparse: true,
-            direct: false,
-            block_size: 512,
-            id: None,
-            #[cfg(windows)]
-            io_concurrency: NonZeroU32::new(1).unwrap(),
-            multiple_workers: false,
-            async_executor: None,
-            packed_queue: false,
-            bootindex: None,
-        };
+        let disk_option = DiskOption::default();
         let b = BlockAsync::new(features, Box::new(f), &disk_option, None, None, None).unwrap();
         assert_eq!(
             [DEFAULT_QUEUE_SIZE; DEFAULT_NUM_QUEUES as usize],
@@ -1396,21 +1321,7 @@ mod tests {
 
         // Single queue of size 128
         let f = File::create(&path).unwrap();
-        let disk_option = DiskOption {
-            path: PathBuf::new(),
-            read_only: false,
-            root: false,
-            sparse: false,
-            direct: false,
-            block_size: 512,
-            id: None,
-            #[cfg(windows)]
-            io_concurrency: NonZeroU32::new(1).unwrap(),
-            multiple_workers: false,
-            async_executor: None,
-            packed_queue: false,
-            bootindex: None,
-        };
+        let disk_option = DiskOption::default();
         let b = BlockAsync::new(
             features,
             Box::new(f),
@@ -1666,19 +1577,11 @@ mod tests {
         let features = base_features(ProtectionType::Unprotected);
         let id = b"Block serial number\0";
         let disk_option = DiskOption {
-            path: PathBuf::new(),
             read_only: true,
-            root: false,
-            sparse: false,
-            direct: false,
-            block_size: 512,
             id: Some(*id),
-            #[cfg(windows)]
-            io_concurrency: NonZeroU32::new(1).unwrap(),
+            sparse: false,
             multiple_workers: enables_multiple_workers,
-            async_executor: None,
-            packed_queue: false,
-            bootindex: None,
+            ..Default::default()
         };
         let mut b = BlockAsync::new(
             features,
@@ -1790,19 +1693,8 @@ mod tests {
         // Create a BlockAsync to test
         let features = base_features(ProtectionType::Unprotected);
         let disk_option = DiskOption {
-            path: PathBuf::new(),
-            read_only: false,
-            root: false,
-            sparse: false,
-            direct: false,
-            block_size: 512,
-            id: None,
-            #[cfg(windows)]
-            io_concurrency: NonZeroU32::new(1).unwrap(),
             multiple_workers: enables_multiple_workers,
-            async_executor: None,
-            packed_queue: false,
-            bootindex: None,
+            ..Default::default()
         };
         let mut b = BlockAsync::new(
             features,
@@ -1907,21 +1799,7 @@ mod tests {
 
         // Create a BlockAsync to test with single worker thread
         let features = base_features(ProtectionType::Unprotected);
-        let disk_option = DiskOption {
-            path: PathBuf::new(),
-            read_only: true,
-            root: false,
-            sparse: false,
-            direct: false,
-            block_size: 512,
-            id: None,
-            #[cfg(windows)]
-            io_concurrency: NonZeroU32::new(1).unwrap(),
-            multiple_workers: false,
-            async_executor: None,
-            packed_queue: false,
-            bootindex: None,
-        };
+        let disk_option = DiskOption::default();
         let mut b = BlockAsync::new(
             features,
             disk_image.try_clone().unwrap(),
@@ -1958,19 +1836,10 @@ mod tests {
         // Create a BlockAsync to test with multiple worker threads
         let features = base_features(ProtectionType::Unprotected);
         let disk_option = DiskOption {
-            path: PathBuf::new(),
             read_only: true,
-            root: false,
             sparse: false,
-            direct: false,
-            block_size: 512,
-            id: None,
-            #[cfg(windows)]
-            io_concurrency: NonZeroU32::new(1).unwrap(),
             multiple_workers: true,
-            async_executor: None,
-            packed_queue: false,
-            bootindex: None,
+            ..DiskOption::default()
         };
         let mut b = BlockAsync::new(features, disk_image, &disk_option, None, None, None).unwrap();
 
