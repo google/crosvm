@@ -75,7 +75,6 @@ use crate::crosvm::config::parse_bus_id_addr;
 use crate::crosvm::config::parse_cpu_affinity;
 use crate::crosvm::config::parse_cpu_capacity;
 use crate::crosvm::config::parse_dynamic_power_coefficient;
-use crate::crosvm::config::parse_fw_cfg_options;
 #[cfg(target_arch = "x86_64")]
 use crate::crosvm::config::parse_memory_region;
 use crate::crosvm::config::parse_mmio_address_range;
@@ -1228,11 +1227,7 @@ pub struct RunCommand {
     /// doesn't require one.
     pub force_calibrated_tsc_leaf: Option<bool>,
 
-    #[argh(
-        option,
-        arg_name = "[name=NAME,path=PATH,string=STRING]",
-        from_str_fn(parse_fw_cfg_options)
-    )]
+    #[argh(option, arg_name = "name=NAME,(path=PATH|string=STRING)")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
     /// comma separated key=value pairs to specify data to pass to

@@ -426,22 +426,6 @@ pub fn parse_mmio_address_range(s: &str) -> Result<Vec<AddressRange>, String> {
         .collect()
 }
 
-pub fn validate_fw_cfg_parameters(params: &FwCfgParameters) -> Result<(), String> {
-    if !(params.string.is_some() ^ params.path.is_some()) {
-        return Err("Provide exactly one of string or path args to --fw-cfg".to_string());
-    }
-
-    Ok(())
-}
-
-pub fn parse_fw_cfg_options(s: &str) -> Result<FwCfgParameters, String> {
-    let params: FwCfgParameters = from_key_values(s)?;
-
-    validate_fw_cfg_parameters(&params)?;
-
-    Ok(params)
-}
-
 pub fn validate_serial_parameters(params: &SerialParameters) -> Result<(), String> {
     if params.stdin && params.input.is_some() {
         return Err("Cannot specify both stdin and input options".to_string());
@@ -1838,15 +1822,6 @@ mod tests {
         assert_eq!(cfg.fw_cfg_parameters[0].name, "bar".to_string());
         assert_eq!(cfg.fw_cfg_parameters[0].string, Some("foo".to_string()));
         assert_eq!(cfg.fw_cfg_parameters[0].path, None);
-    }
-
-    #[test]
-    fn parse_fw_cfg_invalid_both_string_and_path() {
-        assert!(crate::crosvm::cmdline::RunCommand::from_args(
-            &[],
-            &["--fw-cfg", "name=bar,string=foo,path=path/to/file",]
-        )
-        .is_err());
     }
 
     #[test]

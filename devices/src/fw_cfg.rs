@@ -59,8 +59,11 @@ pub enum Error {
     #[error("Filename must be less than 55 characters long")]
     FileNameTooLong,
 
-    #[error("Unable to open file {0} for fw_cfg")]
-    FileOpen(PathBuf),
+    #[error("Unable to open file {0} for fw_cfg: {1}")]
+    FileOpen(PathBuf, std::io::Error),
+
+    #[error("fw_cfg parameters must have exactly one of string or path")]
+    StringOrPathRequired,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -152,12 +155,12 @@ impl FwCfgDevice {
         };
 
         for param in fw_cfg_parameters {
-            let data: Vec<u8> = if let Some(string) = &param.string {
-                string.as_bytes().to_vec()
-            } else if let Ok(bytes) = fs::read(param.clone().path.unwrap()) {
-                bytes
-            } else {
-                return Err(Error::FileOpen(param.path.unwrap()));
+            let data = match (&param.string, &param.path) {
+                (Some(string), None) => string.as_bytes().to_vec(),
+                (None, Some(path)) => {
+                    fs::read(path).map_err(|e| Error::FileOpen(path.clone(), e))?
+                }
+                _ => return Err(Error::StringOrPathRequired),
             };
 
             // The file added from the command line will be a generic item. QEMU does not
