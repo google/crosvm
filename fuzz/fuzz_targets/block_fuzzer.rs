@@ -11,10 +11,12 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::mem::size_of;
+use std::path::PathBuf;
 
 use base::Event;
 use crosvm_fuzz::fuzz_target;
 use devices::virtio::base_features;
+use devices::virtio::block::DiskOption;
 use devices::virtio::BlockAsync;
 use devices::virtio::Interrupt;
 use devices::virtio::QueueConfig;
@@ -23,6 +25,9 @@ use devices::IrqLevelEvent;
 use hypervisor::ProtectionType;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+
+#[cfg(windows)]
+use std::num::NonZeroU32;
 
 const MEM_SIZE: u64 = 256 * 1024 * 1024;
 const DESC_SIZE: u64 = 16; // Bytes in one virtio descriptor.
@@ -89,17 +94,25 @@ fuzz_target!(|bytes| {
     let features = base_features(ProtectionType::Unprotected);
 
     let disk_file = tempfile::tempfile().unwrap();
+    let disk_option = DiskOption {
+        path: PathBuf::new(),
+        read_only: false,
+        root: false,
+        sparse: true,
+        direct: false,
+        block_size: 512,
+        id: None,
+        #[cfg(windows)]
+        io_concurrency: NonZeroU32::new(1).unwrap(),
+        multiple_workers: false,
+        async_executor: None,
+        packed_queue: false,
+        bootindex: None,
+    };
     let mut block = BlockAsync::new(
         features,
         Box::new(disk_file),
-        false,
-        true,
-        false,
-        512,
-        false,
-        None,
-        None,
-        None,
+        &disk_option,
         None,
         None,
         None,

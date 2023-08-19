@@ -60,17 +60,10 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let block = Box::new(BlockAsync::new(
         base_features(ProtectionType::Unprotected),
         disk.open()?,
-        disk.read_only,
-        disk.sparse,
-        false,
-        disk.block_size,
-        false,
+        &disk,
         None,
         None,
         None,
-        None,
-        None,
-        disk.bootindex,
     )?);
 
     let listener = VhostUserListener::new_from_socket_or_vfio(

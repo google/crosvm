@@ -251,17 +251,10 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
             virtio::BlockAsync::new(
                 base_features,
                 disk_image,
-                self.disk.read_only,
-                self.disk.sparse,
-                self.disk.packed_queue,
-                self.disk.block_size,
-                self.disk.multiple_workers,
-                self.disk.id,
+                self.disk,
                 self.device_tube,
                 None,
-                self.disk.async_executor,
                 None,
-                self.disk.bootindex,
             )
             .context("failed to create block device")?,
         ))
@@ -279,17 +272,10 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
             virtio::BlockAsync::new(
                 base_features,
                 disk_image,
-                disk.read_only,
-                disk.sparse,
-                disk.packed_queue,
-                disk.block_size,
-                false,
-                disk.id,
+                disk,
                 self.device_tube,
                 None,
-                disk.async_executor,
                 None,
-                self.disk.bootindex,
             )
             .context("failed to create block device")?,
         );
