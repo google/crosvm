@@ -62,6 +62,14 @@ fn default_stream_source() -> StreamSourceEnum {
     StreamSourceEnum::NoopStream
 }
 
+fn parse_stream_source(value: &str) -> Result<StreamSourceEnum, String> {
+    StreamSourceEnum::from_str(value).map_err(|e| e.to_string())
+}
+
+fn parse_format(value: &str) -> Result<SampleFormat, String> {
+    SampleFormat::from_str(value).map_err(|e| e.to_string())
+}
+
 #[derive(Copy, Clone, Debug, FromArgs, Serialize)]
 /// audio_streams_conformance_test
 pub struct Args {
@@ -70,7 +78,7 @@ pub struct Args {
         option,
         short = 'P',
         default = "default_stream_source()",
-        from_str_fn(StreamSourceEnum::from_str)
+        from_str_fn(parse_stream_source)
     )]
     pub stream_source: StreamSourceEnum,
     /// the channel numbers. (default: 2)
@@ -81,7 +89,7 @@ pub struct Args {
         option,
         short = 'f',
         default = "default_sample_format()",
-        from_str_fn(SampleFormat::from_str)
+        from_str_fn(parse_format)
     )]
     pub format: SampleFormat,
     /// sample rate. (default: 48000)
