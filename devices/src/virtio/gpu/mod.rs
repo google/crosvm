@@ -222,7 +222,6 @@ fn build(
     display_params: Vec<GpuDisplayParameters>,
     display_event: Arc<AtomicBool>,
     rutabaga: Rutabaga,
-    event_devices: Vec<EventDevice>,
     mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     external_blob: bool,
     #[cfg(windows)] wndproc_thread: &mut Option<WindowProcedureThread>,
@@ -260,7 +259,6 @@ fn build(
         display_params,
         display_event,
         rutabaga,
-        event_devices,
         mapper,
         external_blob,
         udmabuf,
@@ -856,6 +854,7 @@ struct WorkerReturn {
     #[cfg(unix)]
     gpu_control_tube: Tube,
     resource_bridges: ResourceBridges,
+    event_devices: Vec<EventDevice>,
 }
 
 impl Worker {
@@ -1140,7 +1139,7 @@ pub struct Gpu {
     gpu_control_tube: Option<Tube>,
     mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     resource_bridges: Option<ResourceBridges>,
-    event_devices: Vec<EventDevice>,
+    event_devices: Option<Vec<EventDevice>>,
     // The worker thread + a channel used to activate it.
     // NOTE: The worker thread doesn't respond to `WorkerThread::stop` when in the pre-activate
     // phase. You must drop the channel first. That is also why the channel is first in the tuple
@@ -1254,7 +1253,7 @@ impl Gpu {
             gpu_control_tube: Some(gpu_control_tube),
             mapper: Arc::new(Mutex::new(None)),
             resource_bridges: Some(ResourceBridges::new(resource_bridges)),
-            event_devices,
+            event_devices: Some(event_devices),
             worker_thread: None,
             display_backends,
             display_params,
@@ -1295,14 +1294,11 @@ impl Gpu {
             .map_err(|e| error!("failed to build rutabaga {}", e))
             .ok()?;
 
-        let event_devices = self.event_devices.split_off(0);
-
-        build(
+        let mut virtio_gpu = build(
             &self.display_backends,
             self.display_params.clone(),
             self.display_event.clone(),
             rutabaga,
-            event_devices,
             mapper,
             self.external_blob,
             #[cfg(windows)]
@@ -1312,8 +1308,16 @@ impl Gpu {
             self.gpu_display_wait_descriptor_ctrl_wr
                 .try_clone()
                 .expect("failed to clone wait context control channel"),
-        )
-        .map(|vgpu| Frontend::new(vgpu, fence_state))
+        )?;
+
+        for event_device in self.event_devices.take().expect("missing event_devices") {
+            virtio_gpu
+                .import_event_device(event_device)
+                // We lost the `EventDevice`, so fail hard.
+                .expect("failed to import event device");
+        }
+
+        Some(Frontend::new(virtio_gpu, fence_state))
     }
 
     fn get_config(&self) -> virtio_gpu_config {
@@ -1402,7 +1406,7 @@ impl VirtioDevice for Gpu {
             resource_bridges.append_raw_descriptors(&mut keep_rds);
         }
 
-        for event_device in &self.event_devices {
+        for event_device in self.event_devices.iter().flatten() {
             keep_rds.push(event_device.as_raw_descriptor());
         }
 
@@ -1491,7 +1495,7 @@ impl VirtioDevice for Gpu {
         let display_backends = self.display_backends.clone();
         let display_params = self.display_params.clone();
         let display_event = self.display_event.clone();
-        let event_devices = self.event_devices.split_off(0);
+        let event_devices = self.event_devices.take().expect("missing event_devices");
         let external_blob = self.external_blob;
         let udmabuf = self.udmabuf;
         let fence_state = Arc::new(Mutex::new(Default::default()));
@@ -1546,16 +1550,16 @@ impl VirtioDevice for Gpu {
                             #[cfg(unix)]
                             gpu_control_tube,
                             resource_bridges,
+                            event_devices,
                         };
                     }
                 };
 
-            let virtio_gpu = match build(
+            let mut virtio_gpu = match build(
                 &display_backends,
                 display_params,
                 display_event,
                 rutabaga,
-                event_devices,
                 mapper,
                 external_blob,
                 #[cfg(windows)]
@@ -1571,9 +1575,17 @@ impl VirtioDevice for Gpu {
                         #[cfg(unix)]
                         gpu_control_tube,
                         resource_bridges,
+                        event_devices,
                     }
                 }
             };
+
+            for event_device in event_devices {
+                virtio_gpu
+                    .import_event_device(event_device)
+                    // We lost the `EventDevice`, so fail hard.
+                    .expect("failed to import event device");
+            }
 
             // Tell the parent thread that the init phase is complete.
             let _ = init_finished_tx.send(());
@@ -1587,6 +1599,7 @@ impl VirtioDevice for Gpu {
                         #[cfg(unix)]
                         gpu_control_tube,
                         resource_bridges,
+                        event_devices: virtio_gpu.display().borrow_mut().take_event_devices(),
                     };
                 }
             };
@@ -1615,6 +1628,12 @@ impl VirtioDevice for Gpu {
                 gpu_display_wait_descriptor_ctrl_rd,
             };
             worker.run();
+            let event_devices = worker
+                .state
+                .virtio_gpu
+                .display()
+                .borrow_mut()
+                .take_event_devices();
             // Need to drop `Frontend` for the `Arc::try_unwrap` below to succeed.
             std::mem::drop(worker.state);
             WorkerReturn {
@@ -1628,6 +1647,7 @@ impl VirtioDevice for Gpu {
                 #[cfg(unix)]
                 gpu_control_tube: worker.gpu_control_tube,
                 resource_bridges: worker.resource_bridges,
+                event_devices,
             }
         });
 
@@ -1694,6 +1714,7 @@ impl VirtioDevice for Gpu {
                 #[cfg(unix)]
                 gpu_control_tube,
                 resource_bridges,
+                event_devices,
             } = worker_thread.stop();
 
             self.resource_bridges = Some(resource_bridges);
@@ -1701,6 +1722,7 @@ impl VirtioDevice for Gpu {
             {
                 self.gpu_control_tube = Some(gpu_control_tube);
             }
+            self.event_devices = Some(event_devices);
 
             match queues {
                 Some(queues) => return Ok(Some(queues.into_iter().enumerate().collect())),

@@ -370,6 +370,16 @@ impl GpuDisplay {
         })
     }
 
+    // Leaves the `GpuDisplay` in a undefined state.
+    //
+    // TODO: Would be nice to change receiver from `&mut self` to `self`. Requires some refactoring
+    // elsewhere.
+    pub fn take_event_devices(&mut self) -> Vec<EventDevice> {
+        std::mem::take(&mut self.event_devices)
+            .into_values()
+            .collect()
+    }
+
     fn dispatch_display_events(&mut self) -> GpuDisplayResult<()> {
         self.inner.flush();
         while self.inner.pending_events() {

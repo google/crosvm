@@ -347,7 +347,6 @@ impl VirtioGpu {
         display_params: Vec<GpuDisplayParameters>,
         display_event: Arc<AtomicBool>,
         rutabaga: Rutabaga,
-        event_devices: Vec<EventDevice>,
         mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
         external_blob: bool,
         udmabuf: bool,
@@ -373,7 +372,7 @@ impl VirtioGpu {
             .collect::<Map<_, _>>();
         let cursor_scanout = VirtioGpuScanout::new_cursor();
 
-        let mut virtio_gpu = VirtioGpu {
+        Some(VirtioGpu {
             display: Rc::new(RefCell::new(display)),
             scanouts,
             scanouts_updated: display_event,
@@ -383,16 +382,7 @@ impl VirtioGpu {
             resources: Default::default(),
             external_blob,
             udmabuf_driver,
-        };
-
-        for event_device in event_devices {
-            virtio_gpu
-                .import_event_device(event_device)
-                .map_err(|e| error!("failed to import event device {}", e))
-                .ok()?;
-        }
-
-        Some(virtio_gpu)
+        })
     }
 
     /// Imports the event device
