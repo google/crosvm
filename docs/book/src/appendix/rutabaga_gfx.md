@@ -66,4 +66,5 @@ meson setup build/
 meson install -C build
 ```
 
-Headless Vulkan tests (`deqp-vk`, `vulkaninfo`) should work after that.
+Some headless Vulkan tests (`deqp-vk`, `vulkaninfo`) should work after that, but others may not
+(such as `vulkan-samples`).
