@@ -325,6 +325,7 @@ pub struct VmComponents {
     pub extra_kernel_params: Vec<String>,
     #[cfg(target_arch = "x86_64")]
     pub force_s2idle: bool,
+    pub fw_cfg_enable: bool,
     pub fw_cfg_parameters: Vec<FwCfgParameters>,
     #[cfg(feature = "gdb")]
     pub gdb: Option<(u32, Tube)>, // port and control tube.

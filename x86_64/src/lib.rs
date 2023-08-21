@@ -811,7 +811,7 @@ impl arch::LinuxArch for X8664arch {
         // Event used to notify crosvm that guest OS is trying to suspend.
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
 
-        if !components.fw_cfg_parameters.is_empty() {
+        if components.fw_cfg_enable {
             Self::setup_fw_cfg_device(
                 &io_bus,
                 components.fw_cfg_parameters.clone(),

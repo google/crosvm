@@ -1922,6 +1922,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             .ok_or_else(|| anyhow!("requested memory size too large"))?,
         swiotlb,
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
+        fw_cfg_enable: false,
         bootorder_fw_cfg_blob: Vec::new(),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
         cpu_clusters: cfg.cpu_clusters.clone(),

@@ -1150,6 +1150,9 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         }
     }
 
+    // if --enable-fw-cfg or --fw-cfg was given, we want to enable fw_cfg
+    let fw_cfg_enable = cfg.enable_fw_cfg || !cfg.fw_cfg_parameters.is_empty();
+
     Ok(VmComponents {
         #[cfg(target_arch = "x86_64")]
         ac_adapter: cfg.ac_adapter,
@@ -1159,6 +1162,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             .checked_mul(1024 * 1024)
             .ok_or_else(|| anyhow!("requested memory size too large"))?,
         swiotlb,
+        fw_cfg_enable,
         bootorder_fw_cfg_blob: Vec::new(),
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
@@ -1869,6 +1873,10 @@ where
     bootorder_fw_cfg_blob.push(0);
 
     components.bootorder_fw_cfg_blob = bootorder_fw_cfg_blob;
+
+    // if the bootindex argument was given, we want to make sure that fw_cfg is enabled so the
+    // "bootorder" file can be accessed by the guest.
+    components.fw_cfg_enable |= components.bootorder_fw_cfg_blob.len() > 1;
 
     let (translate_response_senders, request_rx) = setup_virtio_access_platform(
         &mut sys_allocator,

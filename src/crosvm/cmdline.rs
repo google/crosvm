@@ -1181,6 +1181,14 @@ pub struct RunCommand {
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
+    /// enable the fw_cfg device. If enabled, fw_cfg will automatically produce firmware
+    /// configuration files containing such information as bootorder and the memory location of
+    /// rsdp. If --fw-cfg is specified (see below), there is no need for this argument.
+    pub enable_fw_cfg: Option<bool>,
+
+    #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
     /// expose HWP feature to the guest
     pub enable_hwp: Option<bool>,
 
@@ -1244,7 +1252,7 @@ pub struct RunCommand {
     ///      be associated with provided data
     ///     path - Path to data that will be included in
     ///      fw_cfg under name
-    ///     string - Alternative to path, data to be in
+    ///     string - Alternative to path, data to be
     ///      included in fw_cfg under name
     pub fw_cfg: Vec<FwCfgParameters>,
 
@@ -2711,6 +2719,12 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.product_version = cmd.product_version;
         }
         cfg.pstore = cmd.pstore;
+
+        cfg.enable_fw_cfg = if let Some(fw) = cmd.enable_fw_cfg {
+            fw
+        } else {
+            false
+        };
 
         cfg.fw_cfg_parameters = cmd.fw_cfg;
 
