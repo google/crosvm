@@ -6,7 +6,7 @@ use std::sync::Weak;
 
 use anyhow::Result;
 use euclid::Size2D;
-use metrics::Metrics;
+use metrics::sys::windows::Metrics;
 
 use super::window::Window;
 use super::window_message_processor::HandleWindowMessage;

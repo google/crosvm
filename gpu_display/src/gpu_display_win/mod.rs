@@ -28,7 +28,7 @@ use base::SendTube;
 use euclid::size2;
 use euclid::Size2D;
 use math_util::Size2DCheckedCast;
-use metrics::Metrics;
+use metrics::sys::windows::Metrics;
 pub use surface::NoopSurface as Surface;
 use vm_control::gpu::DisplayMode;
 use vm_control::gpu::DisplayParameters;

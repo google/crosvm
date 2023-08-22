@@ -9,7 +9,7 @@ use base::RawDescriptor;
 use base::ReadNotifier;
 use base::SendTube;
 use base::WaitContext;
-use metrics::Metrics;
+use metrics::sys::windows::Metrics;
 
 use crate::gpu_display_win::DisplayProperties;
 use crate::gpu_display_win::DisplayWin;
