@@ -429,6 +429,7 @@ async fn handle_command_tube(
                                 .context("failed to reply to sleep command")?;
                         }
                         Err(e) => {
+                            error!("failed to sleep: {:#}", e);
                             command_tube
                                 .send(VmResponse::ErrString(e.to_string()))
                                 .await
@@ -451,7 +452,7 @@ async fn handle_command_tube(
                         );
                         if let Err(e) = snapshot_handler(path.as_path(), &guest_memory, buses).await
                         {
-                            error!("failed to snapshot: {}", e);
+                            error!("failed to snapshot: {:#}", e);
                             command_tube
                                 .send(VmResponse::ErrString(e.to_string()))
                                 .await
@@ -472,7 +473,7 @@ async fn handle_command_tube(
                             restore_handler(path.as_path(), &guest_memory, &[&*io_bus, &*mmio_bus])
                                 .await
                         {
-                            error!("failed to restore: {}", e);
+                            error!("failed to restore: {:#}", e);
                             command_tube
                                 .send(VmResponse::ErrString(e.to_string()))
                                 .await
