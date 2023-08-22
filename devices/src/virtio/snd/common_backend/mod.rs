@@ -46,6 +46,7 @@ use crate::virtio::device_constants::snd::virtio_snd_config;
 use crate::virtio::snd::common_backend::async_funcs::*;
 use crate::virtio::snd::common_backend::stream_info::StreamInfo;
 use crate::virtio::snd::common_backend::stream_info::StreamInfoBuilder;
+use crate::virtio::snd::common_backend::stream_info::StreamInfoSnapshot;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::file_backend::create_file_stream_source_generators;
 use crate::virtio::snd::file_backend::Error as FileError;
@@ -202,8 +203,9 @@ pub struct VirtioSnd {
     avail_features: u64,
     acked_features: u64,
     queue_sizes: Box<[u16]>,
-    worker_thread: Option<WorkerThread<()>>,
+    worker_thread: Option<WorkerThread<Result<WorkerReturn, String>>>,
     keep_rds: Vec<Descriptor>,
+    streams_state: Option<Vec<StreamInfoSnapshot>>,
 }
 
 impl VirtioSnd {
@@ -225,6 +227,7 @@ impl VirtioSnd {
             queue_sizes: vec![MAX_VRING_LEN; MAX_QUEUE_NUM].into_boxed_slice(),
             worker_thread: None,
             keep_rds: keep_rds.iter().map(|rd| Descriptor(*rd)).collect(),
+            streams_state: None,
         })
     }
 }
@@ -441,17 +444,20 @@ impl VirtioDevice for VirtioSnd {
 
         let snd_data = self.snd_data.clone();
         let stream_info_builders = self.stream_info_builders.to_vec();
-
+        let streams_state = self.streams_state.take();
         self.worker_thread = Some(WorkerThread::start("v_snd_common", move |kill_evt| {
             let _thread_priority_handle = set_audio_thread_priority();
             if let Err(e) = _thread_priority_handle {
                 warn!("Failed to set audio thread to real time: {}", e);
             };
-            if let Err(err_string) =
-                run_worker(interrupt, queues, snd_data, kill_evt, stream_info_builders)
-            {
-                error!("{}", err_string);
-            }
+            run_worker(
+                interrupt,
+                queues,
+                snd_data,
+                kill_evt,
+                stream_info_builders,
+                streams_state,
+            )
         }));
 
         Ok(())
@@ -459,10 +465,38 @@ impl VirtioDevice for VirtioSnd {
 
     fn reset(&mut self) -> bool {
         if let Some(worker_thread) = self.worker_thread.take() {
-            worker_thread.stop();
+            let _ = worker_thread.stop();
         }
 
         true
+    }
+
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let worker = worker_thread.stop().unwrap();
+            self.snd_data = worker.snd_data;
+            self.streams_state = Some(worker.streams_state);
+            return Ok(Some(BTreeMap::from_iter(
+                worker.queues.into_iter().enumerate(),
+            )));
+        }
+        Ok(None)
+    }
+
+    fn virtio_wake(
+        &mut self,
+        device_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
+    ) -> anyhow::Result<()> {
+        match device_state {
+            None => Ok(()),
+            Some((mem, interrupt, queues)) => {
+                // TODO: activate is just what we want at the moment, but we should probably move
+                // it into a "start workers" function to make it obvious that it isn't strictly
+                // used for activate events.
+                self.activate(mem, interrupt, queues)?;
+                Ok(())
+            }
+        }
     }
 }
 
@@ -478,7 +512,8 @@ fn run_worker(
     snd_data: SndData,
     kill_evt: Event,
     stream_info_builders: Vec<StreamInfoBuilder>,
-) -> Result<(), String> {
+    streams_state: Option<Vec<StreamInfoSnapshot>>,
+) -> Result<WorkerReturn, String> {
     let ex = Executor::new().expect("Failed to create an executor");
 
     if snd_data.pcm_info_len() != stream_info_builders.len() {
@@ -488,11 +523,45 @@ fn run_worker(
             stream_info_builders.len(),
         );
     }
-    let streams = stream_info_builders
+    let streams: Vec<AsyncRwLock<StreamInfo>> = stream_info_builders
         .into_iter()
         .map(StreamInfoBuilder::build)
         .map(AsyncRwLock::new)
         .collect();
+
+    let (tx_send, mut tx_recv) = mpsc::unbounded();
+    let (rx_send, mut rx_recv) = mpsc::unbounded();
+    let tx_send_clone = tx_send.clone();
+    let rx_send_clone = rx_send.clone();
+    let restore_task = ex.spawn_local(async move {
+        if let Some(states) = &streams_state {
+            let ex = Executor::new().expect("Failed to create an executor");
+            for (stream, state) in streams.iter().zip(states.iter()) {
+                stream.lock().await.restore(state);
+                if state.state == VIRTIO_SND_R_PCM_START || state.state == VIRTIO_SND_R_PCM_PREPARE
+                {
+                    stream
+                        .lock()
+                        .await
+                        .prepare(&ex, &tx_send_clone, &rx_send_clone)
+                        .await
+                        .expect("failed to prepare PCM");
+                }
+                if state.state == VIRTIO_SND_R_PCM_START {
+                    stream
+                        .lock()
+                        .await
+                        .start()
+                        .await
+                        .expect("failed to start PCM");
+                }
+            }
+        }
+        streams
+    });
+    let streams = ex
+        .run_until(restore_task)
+        .expect("failed to restore streams");
     let streams = Rc::new(AsyncRwLock::new(streams));
 
     let mut queues: Vec<(Queue, EventAsync)> = queues
@@ -514,9 +583,6 @@ fn run_worker(
 
     let tx_queue = Rc::new(AsyncRwLock::new(tx_queue));
     let rx_queue = Rc::new(AsyncRwLock::new(rx_queue));
-
-    let (tx_send, mut tx_recv) = mpsc::unbounded();
-    let (rx_send, mut rx_recv) = mpsc::unbounded();
 
     let f_resample = async_utils::handle_irq_resample(&ex, interrupt.clone()).fuse();
 
@@ -561,8 +627,41 @@ fn run_worker(
             break;
         }
     }
+    let streams_state_task = ex.spawn_local(async move {
+        let mut v = Vec::new();
+        for stream in streams.read_lock().await.iter() {
+            v.push(stream.read_lock().await.snapshot());
+        }
+        v
+    });
+    let streams_state = ex
+        .run_until(streams_state_task)
+        .expect("failed to save streams state");
+    let ctrl_queue = match Rc::try_unwrap(ctrl_queue) {
+        Ok(q) => q.into_inner(),
+        Err(_) => panic!("Too many refs to ctrl_queue"),
+    };
+    let tx_queue = match Rc::try_unwrap(tx_queue) {
+        Ok(q) => q.into_inner(),
+        Err(_) => panic!("Too many refs to tx_queue"),
+    };
+    let rx_queue = match Rc::try_unwrap(rx_queue) {
+        Ok(q) => q.into_inner(),
+        Err(_) => panic!("Too many refs to rx_queue"),
+    };
+    let queues = vec![ctrl_queue, _event_queue, tx_queue, rx_queue];
 
-    Ok(())
+    Ok(WorkerReturn {
+        queues,
+        snd_data,
+        streams_state,
+    })
+}
+
+struct WorkerReturn {
+    queues: Vec<Queue>,
+    snd_data: SndData,
+    streams_state: Vec<StreamInfoSnapshot>,
 }
 
 async fn notify_reset_signal(reset_signal: &(AsyncRwLock<bool>, Condvar)) {

@@ -100,6 +100,18 @@ pub struct StreamInfo {
     ex: Option<Executor>, // Executor provided on `prepare()`. Used on `drop()`.
 }
 
+pub struct StreamInfoSnapshot {
+    pub(crate) channels: u8,
+    pub(crate) format: SampleFormat,
+    pub(crate) frame_rate: u32,
+    buffer_bytes: usize,
+    pub(crate) period_bytes: usize,
+    direction: u8,  // VIRTIO_SND_D_*
+    pub state: u32, // VIRTIO_SND_R_PCM_SET_PARAMS -> VIRTIO_SND_R_PCM_STOP, or 0 (uninitialized)
+    effects: Vec<StreamEffect>,
+    pub just_reset: bool,
+}
+
 impl fmt::Debug for StreamInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("StreamInfo")
@@ -374,6 +386,31 @@ impl StreamInfo {
         }
         self.ex.take(); // Remove ex as the worker is finished
         Ok(())
+    }
+
+    pub fn snapshot(&self) -> StreamInfoSnapshot {
+        StreamInfoSnapshot {
+            channels: self.channels,
+            format: self.format,
+            frame_rate: self.frame_rate,
+            buffer_bytes: self.buffer_bytes,
+            period_bytes: self.period_bytes,
+            direction: self.direction, // VIRTIO_SND_D_*
+            state: self.state, // VIRTIO_SND_R_PCM_SET_PARAMS -> VIRTIO_SND_R_PCM_STOP, or 0 (uninitialized)
+            effects: self.effects.clone(),
+            just_reset: self.just_reset,
+        }
+    }
+
+    pub fn restore(&mut self, state: &StreamInfoSnapshot) {
+        self.channels = state.channels;
+        self.format = state.format;
+        self.frame_rate = state.frame_rate;
+        self.buffer_bytes = state.buffer_bytes;
+        self.period_bytes = state.period_bytes;
+        self.direction = state.direction;
+        self.effects = state.effects.clone();
+        self.just_reset = state.just_reset;
     }
 }
 
