@@ -2128,15 +2128,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "qcow_utils"
-version = "0.1.0"
-dependencies = [
- "base",
- "disk",
- "libc",
-]
-
-[[package]]
 name = "quote"
 version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
