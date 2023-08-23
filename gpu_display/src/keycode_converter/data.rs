@@ -11,6 +11,7 @@ pub struct MapEntry {
 }
 
 // Based on Chromium's chromium/chromium/ui/events/keycodes/dom/keycode_converter_data.inc.
+#[cfg_attr(windows, allow(dead_code))]
 pub const KEYCODE_MAP: [MapEntry; 104] = [
     MapEntry {
         linux_keycode: 30,

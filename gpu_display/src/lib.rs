@@ -26,7 +26,7 @@ mod gpu_display_win;
 mod gpu_display_wl;
 #[cfg(feature = "x")]
 mod gpu_display_x;
-#[cfg(feature = "x")]
+#[cfg(any(windows, feature = "x"))]
 mod keycode_converter;
 mod sys;
 

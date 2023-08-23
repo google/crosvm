@@ -18,10 +18,12 @@ pub enum KeycodeTypes {
 }
 
 /// Translates scancodes of a particular type into Linux keycodes.
+#[cfg_attr(windows, allow(dead_code))]
 pub struct KeycodeTranslator {
     keycode_map: HashMap<u32, MapEntry>,
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 impl KeycodeTranslator {
     /// Create a new KeycodeTranslator that translates from the `from_type` type to Linux keycodes.
     pub fn new(from_type: KeycodeTypes) -> KeycodeTranslator {
