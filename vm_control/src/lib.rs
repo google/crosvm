@@ -26,7 +26,6 @@ use hypervisor::MemRegion;
 #[cfg(feature = "balloon")]
 mod balloon_tube;
 pub mod client;
-pub mod display;
 pub mod sys;
 
 use std::collections::BTreeMap;

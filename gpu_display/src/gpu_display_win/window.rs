@@ -20,7 +20,6 @@ use euclid::point2;
 use euclid::size2;
 use euclid::Box2D;
 use euclid::Size2D;
-use vm_control::display::WindowVisibility;
 use win_util::syscall_bail;
 use win_util::win32_wide_string;
 use winapi::shared::minwindef::DWORD;
@@ -494,16 +493,6 @@ impl Window {
             }
         }
         Ok(false)
-    }
-
-    pub fn get_visibility(&self) -> Result<WindowVisibility> {
-        Ok(if !self.is_visible()? {
-            WindowVisibility::Hidden
-        } else if self.is_minimized() {
-            WindowVisibility::Minimized
-        } else {
-            WindowVisibility::Normal
-        })
     }
 
     /// Calls `GetForegroundWindow()` internally. A foreground window is the window with which the
