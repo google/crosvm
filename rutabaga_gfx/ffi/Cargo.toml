@@ -3,6 +3,7 @@ name = "rutabaga_gfx_ffi"
 version = "0.1.2"
 authors = ["The ChromiumOS Authors + Android Open Source Project"]
 edition = "2021"
+description = "Handling virtio-gpu protocols with C API"
 license-file = "LICENSE"
 
 [lib]
