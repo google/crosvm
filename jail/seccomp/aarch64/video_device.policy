@@ -6,6 +6,7 @@
 
 connect: 1
 newfstatat: 1
+faccessat: 1
 getegid: 1
 geteuid: 1
 getgid: 1
