@@ -762,7 +762,6 @@ impl arch::LinuxArch for AArch64 {
             vcpu_affinity: components.vcpu_affinity,
             no_smt: components.no_smt,
             irq_chip: irq_chip.try_box_clone().map_err(Error::CloneIrqChip)?,
-            has_bios,
             io_bus,
             mmio_bus,
             pid_debug_label_map,
@@ -790,7 +789,6 @@ impl arch::LinuxArch for AArch64 {
         vcpu_init: VcpuInitAArch64,
         _vcpu_id: usize,
         _num_cpus: usize,
-        _has_bios: bool,
         _cpu_config: Option<CpuConfigAArch64>,
     ) -> std::result::Result<(), Self::Error> {
         for (reg, value) in vcpu_init.regs.iter() {

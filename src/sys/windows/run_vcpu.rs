@@ -166,7 +166,6 @@ impl VcpuRunThread {
         run_rt: bool,
         vcpu_affinity: Option<CpuSet>,
         no_smt: bool,
-        has_bios: bool,
         host_cpu_topology: bool,
         force_calibrated_tsc_leaf: bool,
     ) -> Result<RunnableVcpuInfo<V>>
@@ -221,7 +220,6 @@ impl VcpuRunThread {
             vcpu_init,
             cpu_id,
             vcpu_count,
-            has_bios,
             cpu_config,
         )
         .exit_context(Exit::ConfigureVcpu, "failed to configure vcpu")?;
@@ -263,7 +261,6 @@ impl VcpuRunThread {
         no_smt: bool,
         start_barrier: Arc<Barrier>,
         vcpu_create_barrier: Arc<Barrier>,
-        has_bios: bool,
         mut io_bus: devices::Bus,
         mut mmio_bus: devices::Bus,
         vm_evt_wrtube: SendTube,
@@ -295,7 +292,6 @@ impl VcpuRunThread {
                         run_rt && !delay_rt,
                         vcpu_affinity,
                         no_smt,
-                        has_bios,
                         host_cpu_topology,
                         force_calibrated_tsc_leaf,
                     );
@@ -624,7 +620,6 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             guest_os.no_smt,
             start_barrier.clone(),
             vcpu_create_barrier.clone(),
-            guest_os.has_bios,
             (*guest_os.io_bus).clone(),
             (*guest_os.mmio_bus).clone(),
             vm_evt_wrtube

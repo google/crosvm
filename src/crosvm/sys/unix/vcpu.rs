@@ -129,7 +129,6 @@ pub fn runnable_vcpu<V>(
     vm: impl VmArch,
     irq_chip: &mut dyn IrqChipArch,
     vcpu_count: usize,
-    has_bios: bool,
     cpu_config: Option<CpuConfigArch>,
 ) -> Result<V>
 where
@@ -163,7 +162,6 @@ where
         vcpu_init,
         cpu_id,
         vcpu_count,
-        has_bios,
         cpu_config,
     )
     .context("failed to configure vcpu")?;
@@ -483,7 +481,6 @@ pub fn run_vcpu<V>(
     vcpu_affinity: CpuSet,
     delay_rt: bool,
     start_barrier: Arc<Barrier>,
-    has_bios: bool,
     mut io_bus: Bus,
     mut mmio_bus: Bus,
     vm_evt_wrtube: SendTube,
@@ -529,7 +526,6 @@ where
                     vm,
                     irq_chip.as_mut(),
                     vcpu_count,
-                    has_bios,
                     cpu_config,
                 );
 

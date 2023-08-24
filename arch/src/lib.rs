@@ -365,7 +365,6 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub devices_thread: Option<std::thread::JoinHandle<()>>,
     #[cfg(feature = "gdb")]
     pub gdb: Option<(u32, Tube)>,
-    pub has_bios: bool,
     pub hotplug_bus: BTreeMap<u8, Arc<Mutex<dyn HotPlugBus>>>,
     pub io_bus: Arc<Bus>,
     pub irq_chip: Box<dyn IrqChipArch>,
@@ -476,7 +475,6 @@ pub trait LinuxArch {
     /// * `vcpu_init` - The data required to initialize VCPU registers and other state.
     /// * `vcpu_id` - The id of the given `vcpu`.
     /// * `num_cpus` - Number of virtual CPUs the guest will have.
-    /// * `has_bios` - Whether the `VmImage` is a `Bios` image
     /// * `cpu_config` - CPU feature configurations.
     fn configure_vcpu<V: Vm>(
         vm: &V,
@@ -486,7 +484,6 @@ pub trait LinuxArch {
         vcpu_init: VcpuInitArch,
         vcpu_id: usize,
         num_cpus: usize,
-        has_bios: bool,
         cpu_config: Option<CpuConfigArch>,
     ) -> Result<(), Self::Error>;
 

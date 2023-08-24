@@ -1031,7 +1031,6 @@ impl arch::LinuxArch for X8664arch {
             vcpu_init,
             no_smt: components.no_smt,
             irq_chip: irq_chip.try_box_clone().map_err(Error::CloneIrqChip)?,
-            has_bios: matches!(components.vm_image, VmImage::Bios(_)),
             io_bus,
             mmio_bus,
             pid_debug_label_map,
@@ -1060,7 +1059,6 @@ impl arch::LinuxArch for X8664arch {
         vcpu_init: VcpuInitX86_64,
         vcpu_id: usize,
         num_cpus: usize,
-        _has_bios: bool,
         cpu_config: Option<CpuConfigX86_64>,
     ) -> Result<()> {
         let cpu_config = match cpu_config {

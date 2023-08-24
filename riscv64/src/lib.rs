@@ -392,7 +392,6 @@ impl arch::LinuxArch for Riscv64 {
             vcpu_affinity: components.vcpu_affinity,
             no_smt: false,
             irq_chip: irq_chip.try_box_clone().map_err(Error::CloneIrqChip)?,
-            has_bios: false,
             io_bus,
             mmio_bus,
             pid_debug_label_map,
@@ -420,7 +419,6 @@ impl arch::LinuxArch for Riscv64 {
         _vcpu_init: VcpuInitRiscv64,
         vcpu_id: usize,
         _num_cpus: usize,
-        _has_bios: bool,
         cpu_config: Option<CpuConfigRiscv64>,
     ) -> std::result::Result<(), Self::Error> {
         vcpu.set_one_reg(VcpuRegister::Core(CoreRegister::Pc), get_kernel_addr().0)

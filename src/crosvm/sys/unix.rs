@@ -2910,7 +2910,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             vcpu_affinity,
             linux.delay_rt,
             vcpu_thread_barrier.clone(),
-            linux.has_bios,
             (*linux.io_bus).clone(),
             (*linux.mmio_bus).clone(),
             vm_evt_wrtube
