@@ -57,11 +57,6 @@ use acpi_tables::sdt::SDT;
 use anyhow::Context;
 use arch::get_serial_cmdline;
 use arch::GetSerialCmdlineError;
-use arch::MsrAction;
-use arch::MsrConfig;
-use arch::MsrFilter;
-use arch::MsrRWType;
-use arch::MsrValueFrom;
 use arch::RunnableLinuxVm;
 use arch::VmComponents;
 use arch::VmImage;
@@ -152,7 +147,6 @@ use zerocopy::FromBytes;
 
 use crate::bootparam::boot_params;
 use crate::cpuid::EDX_HYBRID_CPU_SHIFT;
-use crate::msr_index::*;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -2191,63 +2185,6 @@ pub enum MsrError {
     CpuUnSupport,
     #[error("msr must be unique: {0}")]
     MsrDuplicate(u32),
-}
-
-fn insert_msr(
-    msr_map: &mut BTreeMap<u32, MsrConfig>,
-    key: u32,
-    msr_config: MsrConfig,
-) -> std::result::Result<(), MsrError> {
-    if msr_map.insert(key, msr_config).is_some() {
-        Err(MsrError::MsrDuplicate(key))
-    } else {
-        Ok(())
-    }
-}
-
-fn insert_msrs(
-    msr_map: &mut BTreeMap<u32, MsrConfig>,
-    msrs: &[(u32, MsrRWType, MsrAction, MsrValueFrom, MsrFilter)],
-) -> std::result::Result<(), MsrError> {
-    for msr in msrs {
-        insert_msr(
-            msr_map,
-            msr.0,
-            MsrConfig {
-                rw_type: msr.1,
-                action: msr.2,
-                from: msr.3,
-                filter: msr.4,
-            },
-        )?;
-    }
-
-    Ok(())
-}
-
-pub fn set_enable_pnp_data_msr_config(
-    msr_map: &mut BTreeMap<u32, MsrConfig>,
-) -> std::result::Result<(), MsrError> {
-    let msrs = vec![
-        (
-            MSR_IA32_APERF,
-            MsrRWType::ReadOnly,
-            MsrAction::MsrPassthrough,
-            MsrValueFrom::RWFromRunningCPU,
-            MsrFilter::Default,
-        ),
-        (
-            MSR_IA32_MPERF,
-            MsrRWType::ReadOnly,
-            MsrAction::MsrPassthrough,
-            MsrValueFrom::RWFromRunningCPU,
-            MsrFilter::Default,
-        ),
-    ];
-
-    insert_msrs(msr_map, &msrs)?;
-
-    Ok(())
 }
 
 #[derive(Error, Debug)]

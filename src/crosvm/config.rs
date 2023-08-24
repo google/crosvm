@@ -64,8 +64,6 @@ use vm_control::BatteryType;
 #[cfg(target_arch = "x86_64")]
 use x86_64::check_host_hybrid_support;
 #[cfg(target_arch = "x86_64")]
-use x86_64::set_enable_pnp_data_msr_config;
-#[cfg(target_arch = "x86_64")]
 use x86_64::CpuIdCall;
 
 pub(crate) use super::sys::HypervisorKind;
@@ -829,7 +827,6 @@ pub struct Config {
     pub dynamic_power_coefficient: BTreeMap<usize, u32>,
     pub enable_fw_cfg: bool,
     pub enable_hwp: bool,
-    pub enable_pnp_data: bool,
     pub executable_path: Option<Executable>,
     #[cfg(windows)]
     pub exit_stats: bool,
@@ -1033,7 +1030,6 @@ impl Default for Config {
             dynamic_power_coefficient: BTreeMap::new(),
             enable_fw_cfg: false,
             enable_hwp: false,
-            enable_pnp_data: false,
             executable_path: None,
             #[cfg(windows)]
             exit_stats: false,
@@ -1294,18 +1290,6 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
     #[cfg(target_arch = "x86_64")]
     if cfg.enable_hwp && !cfg.host_cpu_topology {
         return Err("setting `enable-hwp` requires `host-cpu-topology` is set.".to_string());
-    }
-    if cfg.enable_pnp_data {
-        if !cfg.host_cpu_topology {
-            return Err(
-                "setting `enable_pnp_data` must require `host-cpu-topology` is set previously."
-                    .to_string(),
-            );
-        }
-
-        #[cfg(target_arch = "x86_64")]
-        set_enable_pnp_data_msr_config(&mut cfg.userspace_msr)
-            .map_err(|e| format!("MSR can't be passed through {}", e))?;
     }
     #[cfg(target_arch = "x86_64")]
     if cfg.itmt {

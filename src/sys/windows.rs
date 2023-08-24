@@ -1760,7 +1760,6 @@ fn create_whpx_vm(
         force_calibrated_tsc_leaf,
         false, /* host_cpu_topology */
         false, /* enable_hwp */
-        false, /* enable_pnp_data */
         no_smt,
         false, /* itmt */
         None,  /* hybrid_type */

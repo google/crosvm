@@ -269,9 +269,6 @@ pub struct CpuConfigX86_64 {
     /// whether expose HWP feature to the guest.
     pub enable_hwp: bool,
 
-    /// whether enabling host cpu topology.
-    pub enable_pnp_data: bool,
-
     /// Wheter diabling SMT (Simultaneous Multithreading).
     pub no_smt: bool,
 
@@ -287,7 +284,6 @@ impl CpuConfigX86_64 {
         force_calibrated_tsc_leaf: bool,
         host_cpu_topology: bool,
         enable_hwp: bool,
-        enable_pnp_data: bool,
         no_smt: bool,
         itmt: bool,
         hybrid_type: Option<CpuHybridType>,
@@ -296,7 +292,6 @@ impl CpuConfigX86_64 {
             force_calibrated_tsc_leaf,
             host_cpu_topology,
             enable_hwp,
-            enable_pnp_data,
             no_smt,
             itmt,
             hybrid_type,

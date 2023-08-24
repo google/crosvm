@@ -199,14 +199,6 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
                     entry.cpuid.eax |= result.eax & (1 << EAX_ITMT_SHIFT);
                 }
             }
-
-            if ctx.cpu_config.enable_pnp_data {
-                // Expose core temperature, package temperature
-                // and APEF/MPERF to guest
-                entry.cpuid.eax |= result.eax & (1 << EAX_CORE_TEMP);
-                entry.cpuid.eax |= result.eax & (1 << EAX_PKG_TEMP);
-                entry.cpuid.ecx |= result.ecx & (1 << ECX_HCFC_PERF_SHIFT);
-            }
         }
         7 => {
             if ctx.cpu_config.host_cpu_topology && entry.index == 0 {
@@ -223,11 +215,6 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
             if let Some(tsc_freq) = ctx.tsc_frequency {
                 // A calibrated TSC is required by the hypervisor or was forced by the user.
                 entry.cpuid = devices::tsc::fake_tsc_frequency_cpuid(tsc_freq, ctx.apic_frequency);
-            } else if ctx.cpu_config.enable_pnp_data {
-                // Expose TSC frequency to guest
-                // Safe because we pass 0x15 for this call and the host
-                // supports the `cpuid` instruction
-                entry.cpuid = unsafe { (ctx.cpuid)(entry.function) };
             }
         }
         0x1A => {
@@ -408,7 +395,6 @@ mod tests {
             force_calibrated_tsc_leaf: false,
             host_cpu_topology: true,
             enable_hwp: false,
-            enable_pnp_data: false,
             no_smt: false,
             itmt: false,
             hybrid_type: None,

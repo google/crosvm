@@ -2881,7 +2881,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             cfg.force_calibrated_tsc_leaf,
             cfg.host_cpu_topology,
             cfg.enable_hwp,
-            cfg.enable_pnp_data,
             cfg.no_smt,
             cfg.itmt,
             vcpu_hybrid_type,

@@ -1192,12 +1192,6 @@ pub struct RunCommand {
     /// expose HWP feature to the guest
     pub enable_hwp: Option<bool>,
 
-    #[argh(switch)]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite_option)]
-    /// expose Power and Perfomance (PnP) data to guest and guest can show these PnP data
-    pub enable_pnp_data: Option<bool>,
-
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
@@ -3185,18 +3179,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.dump_device_tree_blob = cmd.dump_device_tree_blob;
 
         cfg.itmt = cmd.itmt.unwrap_or_default();
-
-        #[cfg(target_arch = "x86_64")]
-        if cmd.enable_pnp_data.unwrap_or_default()
-            && cmd.force_calibrated_tsc_leaf.unwrap_or_default()
-        {
-            return Err(
-                "Only one of [enable_pnp_data,force_calibrated_tsc_leaf] can be specified"
-                    .to_string(),
-            );
-        }
-
-        cfg.enable_pnp_data = cmd.enable_pnp_data.unwrap_or_default();
 
         #[cfg(target_arch = "x86_64")]
         {
