@@ -27,9 +27,6 @@ mod msr_index;
 #[allow(clippy::all)]
 mod mpspec;
 
-#[cfg(unix)]
-pub mod msr;
-
 pub mod acpi;
 mod bzimage;
 pub mod cpuid;

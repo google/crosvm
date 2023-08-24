@@ -43,8 +43,6 @@ use vm_control::*;
 #[cfg(feature = "gdb")]
 use vm_memory::GuestMemory;
 #[cfg(target_arch = "x86_64")]
-use x86_64::msr::MsrHandlers;
-#[cfg(target_arch = "x86_64")]
 use x86_64::X8664arch as Arch;
 
 use super::ExitState;
@@ -226,7 +224,6 @@ fn vcpu_loop<V>(
     from_main_tube: mpsc::Receiver<VcpuControl>,
     #[cfg(feature = "gdb")] to_gdb_tube: Option<mpsc::Sender<VcpuDebugStatusMessage>>,
     #[cfg(feature = "gdb")] guest_mem: GuestMemory,
-    #[cfg(target_arch = "x86_64")] msr_handlers: MsrHandlers,
     #[cfg(all(target_arch = "x86_64", unix))] bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
 ) -> ExitState
 where
@@ -369,18 +366,6 @@ where
                         error!("failed to handle mmio: {}", e);
                     }
                 }
-                #[cfg(target_arch = "x86_64")]
-                Ok(VcpuExit::RdMsr { index }) => {
-                    if let Some(data) = msr_handlers.read(index) {
-                        let _ = vcpu.handle_rdmsr(data);
-                    }
-                }
-                #[cfg(target_arch = "x86_64")]
-                Ok(VcpuExit::WrMsr { index, data }) => {
-                    if msr_handlers.write(index, data).is_some() {
-                        vcpu.handle_wrmsr();
-                    }
-                }
                 Ok(VcpuExit::IoapicEoi { vector }) => {
                     if let Err(e) = irq_chip.broadcast_eoi(vector) {
                         error!(
@@ -490,7 +475,6 @@ pub fn run_vcpu<V>(
     enable_per_vm_core_scheduling: bool,
     cpu_config: Option<CpuConfigArch>,
     vcpu_cgroup_tasks_file: Option<File>,
-    #[cfg(target_arch = "x86_64")] userspace_msr: std::collections::BTreeMap<u32, arch::MsrConfig>,
     #[cfg(all(target_arch = "x86_64", unix))] bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
     run_mode: VmRunMode,
 ) -> Result<JoinHandle<()>>
@@ -529,20 +513,6 @@ where
                     cpu_config,
                 );
 
-                // Add MSR handlers after CPU affinity setting.
-                // This avoids redundant MSR file fd creation.
-                #[cfg(target_arch = "x86_64")]
-                let mut msr_handlers = MsrHandlers::new();
-                #[cfg(target_arch = "x86_64")]
-                if !userspace_msr.is_empty() {
-                    userspace_msr.iter().for_each(|(index, msr_config)| {
-                        if let Err(e) = msr_handlers.add_handler(*index, msr_config.clone(), cpu_id)
-                        {
-                            error!("failed to add msr handler {}: {:#}", cpu_id, e);
-                        };
-                    });
-                }
-
                 start_barrier.wait();
 
                 let vcpu = match runnable_vcpu {
@@ -572,8 +542,6 @@ where
                     to_gdb_tube,
                     #[cfg(feature = "gdb")]
                     guest_mem,
-                    #[cfg(target_arch = "x86_64")]
-                    msr_handlers,
                     #[cfg(all(target_arch = "x86_64", unix))]
                     bus_lock_ratelimit_ctrl,
                 );

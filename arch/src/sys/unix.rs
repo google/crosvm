@@ -15,27 +15,12 @@ use devices::IrqChip;
 use devices::IrqEventSource;
 use devices::ProxyDevice;
 use devices::VfioPlatformDevice;
-use libc::sched_getcpu;
 use minijail::Minijail;
 use resources::AllocOptions;
 use resources::SystemAllocator;
 use sync::Mutex;
 
 use crate::DeviceRegistrationError;
-use crate::MsrValueFrom;
-
-impl MsrValueFrom {
-    /// Get the physical(host) CPU id from MsrValueFrom type.
-    pub fn get_cpu_id(&self) -> usize {
-        match self {
-            MsrValueFrom::RWFromCPU0 => 0,
-            MsrValueFrom::RWFromRunningCPU => {
-                // Safe because the host supports this sys call.
-                (unsafe { sched_getcpu() }) as usize
-            }
-        }
-    }
-}
 
 /// Adds goldfish battery and returns the platform needed resources including
 /// its AML data and mmio base address

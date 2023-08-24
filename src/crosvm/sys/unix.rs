@@ -193,8 +193,6 @@ use vm_memory::GuestMemory;
 use vm_memory::MemoryPolicy;
 use vm_memory::MemoryRegionOptions;
 #[cfg(target_arch = "x86_64")]
-use x86_64::msr::get_override_msr_list;
-#[cfg(target_arch = "x86_64")]
 use x86_64::X8664arch as Arch;
 
 use crate::crosvm::config::Config;
@@ -1379,15 +1377,6 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
     if cfg.itmt {
         vm.set_platform_info_read_access(false)
             .context("failed to disable MSR_PLATFORM_INFO read access")?;
-    }
-
-    #[cfg(target_arch = "x86_64")]
-    if !cfg.userspace_msr.is_empty() {
-        vm.enable_userspace_msr()
-            .context("failed to enable userspace MSR handling, do you have kernel 5.10 or later")?;
-        let msr_list = get_override_msr_list(&cfg.userspace_msr);
-        vm.set_msr_filter(msr_list)
-            .context("failed to set msr filter")?;
     }
 
     // Check that the VM was actually created in protected mode as expected.
@@ -2927,8 +2916,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         .context("failed to clone vcpu cgroup tasks file")?,
                 ),
             },
-            #[cfg(target_arch = "x86_64")]
-            cfg.userspace_msr.clone(),
             #[cfg(all(target_arch = "x86_64", unix))]
             bus_lock_ratelimit_ctrl,
             run_mode,

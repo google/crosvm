@@ -13,16 +13,6 @@ use std::str::FromStr;
 
 use arch::set_default_serial_parameters;
 use arch::CpuSet;
-#[cfg(target_arch = "x86_64")]
-use arch::MsrAction;
-#[cfg(target_arch = "x86_64")]
-use arch::MsrConfig;
-#[cfg(target_arch = "x86_64")]
-use arch::MsrFilter;
-#[cfg(target_arch = "x86_64")]
-use arch::MsrRWType;
-#[cfg(target_arch = "x86_64")]
-use arch::MsrValueFrom;
 use arch::Pstore;
 #[cfg(target_arch = "x86_64")]
 use arch::SmbiosOptions;
@@ -434,45 +424,6 @@ pub fn parse_mmio_address_range(s: &str) -> Result<Vec<AddressRange>, String> {
             })
         })
         .collect()
-}
-
-#[cfg(target_arch = "x86_64")]
-#[derive(Deserialize, Serialize, serde_keyvalue::FromKeyValues)]
-#[serde(deny_unknown_fields)]
-struct UserspaceMsrOptions {
-    pub index: u32,
-    #[serde(rename = "type")]
-    pub rw_type: MsrRWType,
-    pub action: MsrAction,
-    #[serde(default = "default_msr_value_from")]
-    pub from: MsrValueFrom,
-    #[serde(default = "default_msr_filter")]
-    pub filter: MsrFilter,
-}
-
-#[cfg(target_arch = "x86_64")]
-fn default_msr_value_from() -> MsrValueFrom {
-    MsrValueFrom::RWFromRunningCPU
-}
-
-#[cfg(target_arch = "x86_64")]
-fn default_msr_filter() -> MsrFilter {
-    MsrFilter::Default
-}
-
-#[cfg(target_arch = "x86_64")]
-pub fn parse_userspace_msr_options(value: &str) -> Result<(u32, MsrConfig), String> {
-    let options: UserspaceMsrOptions = from_key_values(value)?;
-
-    Ok((
-        options.index,
-        MsrConfig {
-            rw_type: options.rw_type,
-            action: options.action,
-            from: options.from,
-            filter: options.filter,
-        },
-    ))
 }
 
 pub fn validate_fw_cfg_parameters(params: &FwCfgParameters) -> Result<(), String> {
@@ -938,8 +889,6 @@ pub struct Config {
     #[cfg(unix)]
     pub unmap_guest_memory_on_fork: bool,
     pub usb: bool,
-    #[cfg(target_arch = "x86_64")]
-    pub userspace_msr: BTreeMap<u32, MsrConfig>,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub vcpu_cgroup_path: Option<PathBuf>,
     pub vcpu_count: Option<usize>,
@@ -1142,8 +1091,6 @@ impl Default for Config {
             #[cfg(unix)]
             unmap_guest_memory_on_fork: false,
             usb: true,
-            #[cfg(target_arch = "x86_64")]
-            userspace_msr: BTreeMap::new(),
             vcpu_affinity: None,
             vcpu_cgroup_path: None,
             vcpu_count: None,
@@ -1248,19 +1195,6 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
                     "`host-cpu-topology` requires not to set `cpu-affinity` at the same time"
                         .to_string(),
                 );
-            }
-        }
-    } else {
-        // TODO(b/215297064): Support generic cpuaffinity if there's a need.
-        #[cfg(target_arch = "x86_64")]
-        if !cfg.userspace_msr.is_empty() {
-            for (_, msr_config) in cfg.userspace_msr.iter() {
-                if msr_config.from == MsrValueFrom::RWFromRunningCPU {
-                    return Err(
-                        "`userspace-msr` must set `cpu0` if `host-cpu-topology` is not set"
-                            .to_string(),
-                    );
-                }
             }
         }
     }
@@ -1914,46 +1848,6 @@ mod tests {
             crate::crosvm::cmdline::RunCommand::from_args(&[], &["--fw-cfg", "string=foo",])
                 .is_err()
         );
-    }
-
-    #[cfg(target_arch = "x86_64")]
-    #[test]
-    fn parse_userspace_msr_options_test() {
-        let (pass_cpu0_index, pass_cpu0_cfg) =
-            parse_userspace_msr_options("0x10,type=w,action=pass,filter=yes").unwrap();
-        assert_eq!(pass_cpu0_index, 0x10);
-        assert_eq!(pass_cpu0_cfg.rw_type, MsrRWType::WriteOnly);
-        assert_eq!(pass_cpu0_cfg.action, MsrAction::MsrPassthrough);
-        assert_eq!(pass_cpu0_cfg.filter, MsrFilter::Override);
-
-        let (pass_cpu0_index, pass_cpu0_cfg) =
-            parse_userspace_msr_options("0x10,type=r,action=pass,from=cpu0").unwrap();
-        assert_eq!(pass_cpu0_index, 0x10);
-        assert_eq!(pass_cpu0_cfg.rw_type, MsrRWType::ReadOnly);
-        assert_eq!(pass_cpu0_cfg.action, MsrAction::MsrPassthrough);
-        assert_eq!(pass_cpu0_cfg.from, MsrValueFrom::RWFromCPU0);
-
-        let (pass_cpus_index, pass_cpus_cfg) =
-            parse_userspace_msr_options("0x10,type=rw,action=pass").unwrap();
-        assert_eq!(pass_cpus_index, 0x10);
-        assert_eq!(pass_cpus_cfg.rw_type, MsrRWType::ReadWrite);
-        assert_eq!(pass_cpus_cfg.action, MsrAction::MsrPassthrough);
-        assert_eq!(pass_cpus_cfg.from, MsrValueFrom::RWFromRunningCPU);
-
-        let (pass_cpus_index, pass_cpus_cfg) =
-            parse_userspace_msr_options("0x10,type=rw,action=emu").unwrap();
-        assert_eq!(pass_cpus_index, 0x10);
-        assert_eq!(pass_cpus_cfg.rw_type, MsrRWType::ReadWrite);
-        assert_eq!(pass_cpus_cfg.action, MsrAction::MsrEmulate);
-        assert_eq!(pass_cpus_cfg.from, MsrValueFrom::RWFromRunningCPU);
-
-        assert!(parse_userspace_msr_options("0x10,action=none").is_err());
-        assert!(parse_userspace_msr_options("0x10,action=pass").is_err());
-        assert!(parse_userspace_msr_options("0x10,type=none").is_err());
-        assert!(parse_userspace_msr_options("0x10,type=rw").is_err());
-        assert!(parse_userspace_msr_options("0x10,type=w,action=pass,from=f").is_err());
-        assert!(parse_userspace_msr_options("0x10").is_err());
-        assert!(parse_userspace_msr_options("hoge").is_err());
     }
 
     #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]

@@ -23,8 +23,6 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use arch::CpuSet;
-#[cfg(target_arch = "x86_64")]
-use arch::MsrConfig;
 use arch::Pstore;
 #[cfg(target_arch = "x86_64")]
 use arch::SmbiosOptions;
@@ -85,8 +83,6 @@ use crate::crosvm::config::parse_pflash_parameters;
 #[cfg(feature = "plugin")]
 use crate::crosvm::config::parse_plugin_mount_option;
 use crate::crosvm::config::parse_serial_options;
-#[cfg(target_arch = "x86_64")]
-use crate::crosvm::config::parse_userspace_msr_options;
 use crate::crosvm::config::BatteryConfig;
 #[cfg(feature = "plugin")]
 use crate::crosvm::config::BindMount;
@@ -2135,24 +2131,6 @@ pub struct RunCommand {
     /// (EXPERIMENTAL/FOR DEBUGGING) Use VM firmware, but allow host access to guest memory
     pub unprotected_vm_with_firmware: Option<PathBuf>,
 
-    #[cfg(target_arch = "x86_64")]
-    #[argh(
-        option,
-        arg_name = "INDEX,type=TYPE,action=ACTION,[from=FROM],[filter=FILTER]",
-        from_str_fn(parse_userspace_msr_options)
-    )]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = append)]
-    /// userspace MSR handling. Takes INDEX of the MSR and how they
-    ///  are handled.
-    ///     type=(r|w|rw|wr) - read/write permission control.
-    ///     action=(pass|emu) - if the control of msr is effective
-    ///        on host.
-    ///     from=(cpu0) - source of msr value. if not set, the
-    ///        source is running CPU.
-    ///     filter=(yes|no) - if the msr is filtered in KVM.
-    pub userspace_msr: Vec<(u32, MsrConfig)>,
-
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -3145,12 +3123,6 @@ impl TryFrom<RunCommand> for super::config::Config {
                     "`--oem-strings` is deprecated; use `--smbios oem-strings=[...]` instead."
                 );
                 cfg.smbios.oem_strings.extend_from_slice(&cmd.oem_strings);
-            }
-
-            for (index, msr_config) in cmd.userspace_msr {
-                if cfg.userspace_msr.insert(index, msr_config).is_some() {
-                    return Err(String::from("msr must be unique"));
-                }
             }
         }
 
