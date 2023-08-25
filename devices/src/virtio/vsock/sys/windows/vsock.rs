@@ -875,8 +875,9 @@ impl Worker {
                             std::io::Error::new(
                                 std::io::ErrorKind::Other,
                                 format!(
-                                    "failed to write correct number of bytes:
+                                    "port {} failed to write correct number of bytes:
                                         (expected: {}, wrote: {})",
+                                    port,
                                     data.len(),
                                     len
                                 ),
@@ -1013,6 +1014,7 @@ impl Worker {
         ex: &Executor,
     ) -> bool {
         let mut is_open = true;
+        let port = PortPair::from_tx_header(&header);
         match header.op.to_native() {
             vsock_op::VIRTIO_VSOCK_OP_INVALID => {
                 error!("vsock: Invalid Operation requested, dropping packet");
@@ -1021,7 +1023,6 @@ impl Worker {
                 let (resp_op, buf_alloc, fwd_cnt) =
                     if self.handle_vsock_connection_request(header).await {
                         let connections = self.connections.read_lock().await;
-                        let port = PortPair::from_tx_header(&header);
 
                         connections.get(&port).map_or_else(
                             || {
@@ -1075,7 +1076,6 @@ impl Worker {
                 // we only support full shutdown.
                 // TODO(b/237811512): Provide an optimal way to notify host of shutdowns
                 // while still maintaining easy reconnections.
-                let port = PortPair::from_tx_header(&header);
                 let mut connections = self.connections.lock().await;
                 if connections.remove(&port).is_some() {
                     let mut response = virtio_vsock_hdr {
@@ -1103,6 +1103,7 @@ impl Worker {
                     self.connection_event
                         .signal()
                         .expect("vsock: failed to write to event");
+                    info!("vsock: port: {}: disconnected by the guest", port);
                 } else {
                     error!("vsock: Attempted to close unopened port: {}", port);
                 }
@@ -1120,13 +1121,16 @@ impl Worker {
                             // buffer size. We skip this if the connection is closed,
                             // which could've happened if we were closed on the other
                             // end.
-                            info!("vsock: Buffer below threshold; sending credit update.");
+                            info!(
+                                "vsock: port {}: Buffer below threshold; sending credit update.",
+                                port
+                            );
                             self.send_vsock_credit_update(send_queue, rx_queue_evt, header)
                                 .await;
                         }
                     }
                     Err(e) => {
-                        error!("vsock: resetting connection: {}", e);
+                        error!("vsock: port {}: resetting connection: {}", port, e);
                         self.send_vsock_reset(send_queue, rx_queue_evt, header)
                             .await;
                         is_open = false;
@@ -1150,7 +1154,7 @@ impl Worker {
             vsock_op::VIRTIO_VSOCK_OP_CREDIT_REQUEST => {
                 info!(
                     "vsock: Got credit request from peer {}; sending credit update.",
-                    PortPair::from_tx_header(&header)
+                    port,
                 );
                 self.send_vsock_credit_update(send_queue, rx_queue_evt, header)
                     .await;
