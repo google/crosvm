@@ -671,11 +671,11 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         Tube::directional_pair().context("failed to create vm event tube")?;
 
     #[cfg(feature = "gpu")]
-    let input_event_split_config = platform_create_input_event_config(&cfg)
+    let mut input_event_split_config = platform_create_input_event_config(&cfg)
         .context("create input event devices for virtio-gpu device")?;
 
     #[cfg(feature = "gpu")]
-    let window_procedure_thread_builder = WindowProcedureThread::builder();
+    let mut window_procedure_thread_builder = Some(WindowProcedureThread::builder());
 
     #[cfg(feature = "gpu")]
     let gpu_cfg = platform_create_gpu(
@@ -692,32 +692,40 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         // Pass both backend and frontend configs to main process.
         cfg.gpu_backend_config = Some(gpu_cfg.0);
         cfg.gpu_vmm_config = Some(gpu_cfg.1);
-        cfg.input_event_split_config = Some(input_event_split_config);
-        cfg.window_procedure_thread_split_config = Some(
-            platform_create_window_procedure_thread_configs(
-                &cfg,
-                window_procedure_thread_builder,
-                main_child.alias_pid,
-                main_child.alias_pid,
-            )
-            .context("Failed to create window procedure thread configs")?,
-        );
         None
     } else {
         Some(start_up_gpu(
             &mut cfg,
             &log_args,
             gpu_cfg,
-            input_event_split_config,
+            &mut input_event_split_config,
             &mut main_child,
             &mut children,
             &mut wait_ctx,
             &mut metric_tubes,
-            window_procedure_thread_builder,
+            window_procedure_thread_builder
+                .take()
+                .ok_or_else(|| anyhow!("window_procedure_thread_builder is missing."))?,
             #[cfg(feature = "process-invariants")]
             &process_invariants,
         )?)
     };
+
+    #[cfg(feature = "gpu")]
+    {
+        cfg.input_event_split_config = Some(input_event_split_config);
+        if let Some(window_procedure_thread_builder) = window_procedure_thread_builder {
+            cfg.window_procedure_thread_split_config = Some(
+                platform_create_window_procedure_thread_configs(
+                    &cfg,
+                    window_procedure_thread_builder,
+                    main_child.alias_pid,
+                    main_child.alias_pid,
+                )
+                .context("Failed to create window procedure thread configs")?,
+            );
+        }
+    }
 
     // Wait until all device processes are spun up so main TubeTransporter will have all the
     // device control and Vhost tubes.
@@ -1750,7 +1758,7 @@ fn start_up_gpu(
     cfg: &mut Config,
     log_args: &LogArgs,
     gpu_cfg: (GpuBackendConfig, GpuVmmConfig),
-    mut input_event_cfg: InputEventSplitConfig,
+    input_event_cfg: &mut InputEventSplitConfig,
     main_child: &mut ChildProcess,
     children: &mut HashMap<u32, ChildCleanup>,
     wait_ctx: &mut WaitContext<Token>,
@@ -1812,7 +1820,6 @@ fn start_up_gpu(
         .backend_config
         .take()
         .context("input event backend config is missing.")?;
-    cfg.input_event_split_config = Some(input_event_cfg);
 
     let startup_args = CommonChildStartupArgs::new(
         log_args,
