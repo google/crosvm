@@ -9,6 +9,8 @@
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
+use serde::Deserialize;
+use serde::Serialize;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
@@ -125,7 +127,9 @@ pub mod gpu {
 pub mod snd {
     use super::*;
 
-    #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
+    #[derive(
+        Copy, Clone, Default, AsBytes, FromBytes, Serialize, Deserialize, PartialEq, Eq, Debug,
+    )]
     #[repr(C, packed)]
     pub struct virtio_snd_config {
         pub jacks: Le32,

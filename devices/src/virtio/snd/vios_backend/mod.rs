@@ -27,6 +27,8 @@ use base::RawDescriptor;
 use base::WorkerThread;
 use data_model::Le32;
 use remain::sorted;
+use serde::Deserialize;
+use serde::Serialize;
 use streams::StreamMsg;
 use sync::Mutex;
 use thiserror::Error as ThisError;
@@ -77,6 +79,13 @@ pub struct Sound {
     virtio_features: u64,
     worker_thread: Option<WorkerThread<anyhow::Result<Worker>>>,
     vios_client: Arc<VioSClient>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SoundSnapshot {
+    config: virtio_snd_config,
+    virtio_features: u64,
+    vios_client: VioSClientSnapshot,
 }
 
 impl VirtioDevice for Sound {
@@ -220,6 +229,33 @@ impl VirtioDevice for Sound {
                 Ok(())
             }
         }
+    }
+
+    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(SoundSnapshot {
+            config: self.config,
+            virtio_features: self.virtio_features,
+            vios_client: self.vios_client.snapshot(),
+        })
+        .context("failed to serialize VioS Client")
+    }
+
+    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let data: SoundSnapshot =
+            serde_json::from_value(data).context("failed to deserialize VioS Client")?;
+        anyhow::ensure!(
+            data.config == self.config,
+            "config doesn't match on restore: expected: {:?}, got: {:?}",
+            data.config,
+            self.config
+        );
+        anyhow::ensure!(
+            data.virtio_features == self.virtio_features,
+            "virtio_features doesn't match on restore: expected: {}, got: {}",
+            data.virtio_features,
+            self.virtio_features
+        );
+        self.vios_client.restore(data.vios_client)
     }
 }
 
