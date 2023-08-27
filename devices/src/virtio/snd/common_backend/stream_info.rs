@@ -14,6 +14,8 @@ use cros_async::Executor;
 use futures::channel::mpsc;
 use futures::Future;
 use futures::TryFutureExt;
+use serde::Deserialize;
+use serde::Serialize;
 
 use super::Error;
 use super::PcmResponse;
@@ -100,6 +102,7 @@ pub struct StreamInfo {
     ex: Option<Executor>, // Executor provided on `prepare()`. Used on `drop()`.
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct StreamInfoSnapshot {
     pub(crate) channels: u8,
     pub(crate) format: SampleFormat,

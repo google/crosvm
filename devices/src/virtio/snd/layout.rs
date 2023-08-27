@@ -4,6 +4,8 @@
 
 use data_model::Le32;
 use data_model::Le64;
+use serde::Deserialize;
+use serde::Serialize;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
@@ -39,13 +41,17 @@ pub struct virtio_snd_query_info {
     pub size: Le32,
 }
 
-#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
+#[derive(
+    Copy, Clone, Default, AsBytes, FromBytes, Serialize, Deserialize, PartialEq, Eq, Debug,
+)]
 #[repr(C)]
 pub struct virtio_snd_info {
     pub hda_fn_nid: Le32,
 }
 
-#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
+#[derive(
+    Copy, Clone, Default, AsBytes, FromBytes, Serialize, Deserialize, PartialEq, Eq, Debug,
+)]
 #[repr(C)]
 pub struct virtio_snd_pcm_info {
     pub hdr: virtio_snd_info,
@@ -101,7 +107,9 @@ impl virtio_snd_pcm_status {
     }
 }
 
-#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
+#[derive(
+    Copy, Clone, Default, AsBytes, FromBytes, Serialize, Deserialize, PartialEq, Eq, Debug,
+)]
 #[repr(C)]
 pub struct virtio_snd_jack_info {
     pub hdr: virtio_snd_info,
@@ -120,7 +128,9 @@ pub struct virtio_snd_jack_remap {
     pub sequence: Le32,
 }
 
-#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
+#[derive(
+    Copy, Clone, Default, AsBytes, FromBytes, Serialize, Deserialize, PartialEq, Eq, Debug,
+)]
 #[repr(C)]
 pub struct virtio_snd_chmap_info {
     pub hdr: virtio_snd_info,

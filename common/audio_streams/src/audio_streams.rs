@@ -65,7 +65,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SampleFormat {
     U8,
     S16LE,

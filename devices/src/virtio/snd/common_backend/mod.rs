@@ -36,6 +36,8 @@ use futures::pin_mut;
 use futures::select;
 use futures::Future;
 use futures::FutureExt;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
@@ -160,7 +162,7 @@ pub enum WorkerStatus {
 }
 
 // Stores constant data
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct SndData {
     pub(crate) jack_info: Vec<virtio_snd_jack_info>,
     pub(crate) pcm_info: Vec<virtio_snd_pcm_info>,
@@ -206,6 +208,15 @@ pub struct VirtioSnd {
     worker_thread: Option<WorkerThread<Result<WorkerReturn, String>>>,
     keep_rds: Vec<Descriptor>,
     streams_state: Option<Vec<StreamInfoSnapshot>>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct VirtioSndSnapshot {
+    avail_features: u64,
+    acked_features: u64,
+    queue_sizes: Vec<u16>,
+    streams_state: Option<Vec<StreamInfoSnapshot>>,
+    snd_data: SndData,
 }
 
 impl VirtioSnd {
@@ -497,6 +508,53 @@ impl VirtioDevice for VirtioSnd {
                 Ok(())
             }
         }
+    }
+
+    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        let streams_state = if let Some(states) = &self.streams_state {
+            let mut state_vec = Vec::new();
+            for state in states {
+                state_vec.push(state.clone());
+            }
+            Some(state_vec)
+        } else {
+            None
+        };
+        serde_json::to_value(VirtioSndSnapshot {
+            avail_features: self.avail_features,
+            acked_features: self.acked_features,
+            queue_sizes: self.queue_sizes.to_vec(),
+            streams_state,
+            snd_data: self.snd_data.clone(),
+        })
+        .context("failed to Serialize Sound device")
+    }
+
+    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let mut deser: VirtioSndSnapshot =
+            serde_json::from_value(data).context("failed to Deserialize Sound device")?;
+        anyhow::ensure!(
+            deser.avail_features == self.avail_features,
+            "avail features doesn't match on restore: expected: {}, got: {}",
+            deser.avail_features,
+            self.avail_features
+        );
+        anyhow::ensure!(
+            deser.queue_sizes == self.queue_sizes.to_vec(),
+            "queue sizes doesn't match on restore: expected: {:?}, got: {:?}",
+            deser.queue_sizes,
+            self.queue_sizes.to_vec()
+        );
+        self.acked_features = deser.acked_features;
+        anyhow::ensure!(
+            deser.snd_data == self.snd_data,
+            "snd data doesn't match on restore: expected: {:?}, got: {:?}",
+            deser.snd_data,
+            self.snd_data
+        );
+        self.acked_features = deser.acked_features;
+        self.streams_state = deser.streams_state.take();
+        Ok(())
     }
 }
 
