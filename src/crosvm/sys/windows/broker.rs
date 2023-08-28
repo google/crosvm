@@ -706,17 +706,18 @@ fn run_internal(mut cfg: Config) -> Result<()> {
     {
         let broker_metrics = metrics_tube_pair(&mut metric_tubes)?;
         metrics::initialize(broker_metrics);
-        let use_vulkan = if cfg!(feature = "gpu") {
-            match &cfg.gpu_parameters {
-                Some(params) => Some(params.use_vulkan),
-                None => {
-                    warn!("No GPU parameters set on crosvm config.");
-                    None
-                }
+
+        #[cfg(feature = "gpu")]
+        let use_vulkan = match &cfg.gpu_parameters {
+            Some(params) => Some(params.use_vulkan),
+            None => {
+                warn!("No GPU parameters set on crosvm config.");
+                None
             }
-        } else {
-            None
         };
+        #[cfg(not(feature = "gpu"))]
+        let use_vulkan = None;
+
         anti_tamper::setup_common_metric_invariants(
             &cfg.product_version,
             &cfg.product_channel,

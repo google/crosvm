@@ -22,6 +22,7 @@ use base::WaitContext;
 use crosvm_cli::sys::windows::exit::Exit;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use devices::virtio;
+#[cfg(feature = "gpu")]
 use devices::virtio::gpu::EventDevice;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::gpu::sys::windows::product::GpuBackendConfig as GpuBackendConfigProduct;
@@ -35,12 +36,16 @@ use devices::virtio::vhost::user::snd::sys::windows::product::SndBackendConfig a
 use devices::virtio::vhost::user::snd::sys::windows::product::SndVmmConfig as SndVmmConfigProduct;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::snd::sys::windows::SndVmmConfig;
+#[cfg(feature = "gpu")]
 use devices::virtio::DisplayBackend;
+#[cfg(feature = "gpu")]
 use devices::virtio::Gpu;
+#[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
 pub(crate) use metrics::log_descriptor;
 pub(crate) use metrics::MetricEventType;
 use sync::Mutex;
+#[cfg(feature = "balloon")]
 use vm_control::BalloonTube;
 use vm_control::PvClockCommand;
 
@@ -165,7 +170,7 @@ pub(super) fn push_triggers<'a>(
 pub(super) fn handle_received_token<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     token: &Token,
     _anti_tamper_main_thread_tube: &Option<ProtoTube>,
-    _balloon_tube: Option<&mut BalloonTube>,
+    #[cfg(feature = "balloon")] _balloon_tube: Option<&mut BalloonTube>,
     _control_tubes: &BTreeMap<usize, SharedTaggedControlTube>,
     _guest_os: &mut RunnableLinuxVm<V, Vcpu>,
     _ipc_main_loop_tube: Option<&Tube>,
@@ -191,6 +196,7 @@ pub(super) fn create_service_vm_state(_memory_size_mb: u64) -> ServiceVmState {
     ServiceVmState {}
 }
 
+#[cfg(feature = "gpu")]
 pub(super) fn create_gpu(
     vm_evt_wrtube: &SendTube,
     resource_bridges: Vec<Tube>,
@@ -273,7 +279,7 @@ pub(crate) fn setup_metrics_reporting() -> Result<()> {
 
 pub(super) fn push_mouse_device(
     cfg: &Config,
-    _gpu_vmm_config: &mut GpuVmmConfig,
+    #[cfg(feature = "gpu")] _gpu_vmm_config: &mut GpuVmmConfig,
     _devs: &mut [VirtioDeviceStub],
 ) -> Result<()> {
     Ok(())

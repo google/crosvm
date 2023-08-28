@@ -21,7 +21,6 @@ use std::arch::x86_64::__cpuid;
 #[cfg(feature = "whpx")]
 use std::arch::x86_64::__cpuid_count;
 use std::cmp::Reverse;
-#[cfg(feature = "gpu")]
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fs::File;
@@ -104,6 +103,7 @@ use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
 use devices::virtio::vhost::user::gpu::sys::windows::product::GpuBackendConfig as GpuBackendConfigProduct;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::snd::sys::windows::product::SndBackendConfig as SndBackendConfigProduct;
+#[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
@@ -180,6 +180,7 @@ use sync::Mutex;
 use tube_transporter::TubeToken;
 use tube_transporter::TubeTransporterReader;
 use vm_control::api::VmMemoryClient;
+#[cfg(feature = "balloon")]
 use vm_control::BalloonControlCommand;
 #[cfg(feature = "balloon")]
 use vm_control::BalloonTube;
@@ -586,6 +587,7 @@ fn create_virtio_devices(
         devs.push(create_vhost_user_net_device(cfg, net_vhost_user_tube)?);
     }
 
+    #[cfg(feature = "balloon")]
     if let (Some(balloon_device_tube), Some(dynamic_mapping_device_tube)) =
         (balloon_device_tube, dynamic_mapping_device_tube)
     {
@@ -1001,6 +1003,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         _ => product::handle_received_token(
             &event.token,
             anti_tamper_main_thread_tube,
+            #[cfg(feature = "balloon")]
             balloon_tube,
             control_tubes,
             guest_os,
