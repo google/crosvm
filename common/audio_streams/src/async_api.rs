@@ -105,14 +105,10 @@ pub mod test {
             std::thread::sleep(dur);
             return Ok(());
         }
+
         #[cfg(windows)]
         unsafe fn async_event(&self, _event: RawHandle) -> Result<Box<dyn EventAsyncWrapper>> {
             unimplemented!("async_event is not yet implemented on windows");
-        }
-
-        #[cfg(any(target_os = "android", target_os = "linux"))]
-        async fn wait_fd_readable(&self, _fd: RawDescriptor) -> Result<()> {
-            panic!("Not Implemented");
         }
     }
 }
