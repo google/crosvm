@@ -38,8 +38,8 @@ impl ArcWake for Waker {
                     &arc_self.0,
                     FUTEX_WAKE_PRIVATE,
                     libc::INT_MAX,                        // val
-                    ptr::null() as *const libc::timespec, // timeout
-                    ptr::null() as *const libc::c_int,    // uaddr2
+                    ptr::null::<*const libc::timespec>(), // timeout
+                    ptr::null::<*const libc::c_int>(),    // uaddr2
                     0_i32,                                // val3
                 )
             };
@@ -79,8 +79,8 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
                         &thread_waker.0,
                         FUTEX_WAIT_PRIVATE,
                         state,
-                        ptr::null() as *const libc::timespec, // timeout
-                        ptr::null() as *const libc::c_int,    // uaddr2
+                        ptr::null::<*const libc::timespec>(), // timeout
+                        ptr::null::<*const libc::c_int>(),    // uaddr2
                         0_i32,                                // val3
                     )
                 };

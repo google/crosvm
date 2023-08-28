@@ -225,12 +225,7 @@ impl NetlinkGenericSocket {
 
         // Safe because we pass a valid, owned socket fd and a valid pointer/size for the buffer.
         let bytes_read = unsafe {
-            let res = libc::recv(
-                self.sock.as_raw_fd(),
-                allocation.as_ptr() as *mut libc::c_void,
-                buf_size,
-                0,
-            );
+            let res = libc::recv(self.sock.as_raw_fd(), allocation.as_ptr(), buf_size, 0);
             if res < 0 {
                 return errno_result();
             }
@@ -297,7 +292,7 @@ impl NetlinkGenericSocket {
         unsafe {
             let res = libc::send(
                 self.sock.as_raw_fd(),
-                allocation.as_ptr() as *mut libc::c_void,
+                allocation.as_ptr(),
                 payload_end + 1,
                 0,
             );

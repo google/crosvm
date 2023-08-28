@@ -56,7 +56,7 @@ unsafe fn add_one_read(
     user_data: UserData,
 ) -> Result<(), Error> {
     uring.add_readv(
-        Pin::from(vec![IoBufMut::from_raw_parts(ptr as *mut u8, len)].into_boxed_slice()),
+        Pin::from(vec![IoBufMut::from_raw_parts(ptr, len)].into_boxed_slice()),
         fd,
         offset,
         user_data,

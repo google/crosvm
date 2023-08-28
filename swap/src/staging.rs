@@ -285,7 +285,7 @@ mod tests {
         }
 
         let page = staging_memory.page_content(0).unwrap().unwrap();
-        let result = unsafe { std::slice::from_raw_parts(page.as_ptr() as *const u8, page.size()) };
+        let result = unsafe { std::slice::from_raw_parts(page.as_ptr(), page.size()) };
         assert_eq!(result, &vec![1; pagesize()]);
     }
 

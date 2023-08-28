@@ -146,7 +146,7 @@ fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> io::
         cmsg.cmsg_type = SCM_RIGHTS;
         unsafe {
             // Safe because cmsg_buffer was allocated to be large enough to contain cmsghdr.
-            write_unaligned(cmsg_buffer.as_mut_ptr() as *mut cmsghdr, cmsg);
+            write_unaligned(cmsg_buffer.as_mut_ptr(), cmsg);
             // Safe because the cmsg_buffer was allocated to be large enough to hold out_fds.len()
             // file descriptors.
             copy_nonoverlapping(

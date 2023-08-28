@@ -748,7 +748,7 @@ impl crosvm_io_event {
     ) -> result::Result<crosvm_io_event, c_int> {
         let datamatch = match length {
             0 => 0,
-            1 => ptr::read_unaligned(datamatch as *const u8) as u64,
+            1 => ptr::read_unaligned(datamatch) as u64,
             2 => ptr::read_unaligned(datamatch as *const u16) as u64,
             4 => ptr::read_unaligned(datamatch as *const u32) as u64,
             8 => ptr::read_unaligned(datamatch as *const u64),

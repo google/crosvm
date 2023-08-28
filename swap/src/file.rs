@@ -374,7 +374,7 @@ mod tests {
         swap_file.write_to_file(0, data).unwrap();
 
         let page = swap_file.page_content(0).unwrap().unwrap();
-        let result = unsafe { slice::from_raw_parts(page.as_ptr() as *const u8, pagesize()) };
+        let result = unsafe { slice::from_raw_parts(page.as_ptr(), pagesize()) };
         assert_eq!(result, data);
     }
 
@@ -392,7 +392,7 @@ mod tests {
 
     fn assert_page_content(swap_file: &SwapFile, idx: usize, data: &[u8]) {
         let page = swap_file.page_content(idx).unwrap().unwrap();
-        let result = unsafe { slice::from_raw_parts(page.as_ptr() as *const u8, pagesize()) };
+        let result = unsafe { slice::from_raw_parts(page.as_ptr(), pagesize()) };
         assert_eq!(result, data);
     }
 
