@@ -4,8 +4,6 @@
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        use std::net;
-
         use base::RawDescriptor;
         use devices::virtio::vhost::user::device::parse_wayland_sock;
 
@@ -42,9 +40,9 @@ use devices::virtio::vsock::VsockConfig;
 use devices::virtio::GpuDisplayParameters;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
-#[cfg(unix)]
+#[cfg(all(unix, feature = "net"))]
 use devices::virtio::NetParameters;
-#[cfg(unix)]
+#[cfg(all(unix, feature = "net"))]
 use devices::virtio::NetParametersMode;
 use devices::FwCfgParameters;
 use devices::PflashParameters;
@@ -534,6 +532,7 @@ pub enum CrossPlatformDevicesCommands {
     Block(device::BlockOptions),
     #[cfg(feature = "gpu")]
     Gpu(device::GpuOptions),
+    #[cfg(feature = "net")]
     Net(device::NetOptions),
     #[cfg(feature = "audio")]
     Snd(device::SndOptions),
@@ -1365,12 +1364,12 @@ pub struct RunCommand {
     /// string representation of the host guid in registry format, for namespacing vsock connections.
     pub host_guid: Option<String>,
 
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "net"))]
     #[argh(option, arg_name = "IP")]
     #[serde(skip)] // Deprecated - use `net` instead.
     #[merge(strategy = overwrite_option)]
     /// IP address to assign to host tap interface
-    pub host_ip: Option<net::Ipv4Addr>,
+    pub host_ip: Option<std::net::Ipv4Addr>,
 
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
@@ -1451,7 +1450,7 @@ pub struct RunCommand {
     /// path to the logs directory used for crosvm processes. Logs will be sent to stderr if unset, and stderr/stdout will be uncaptured
     pub logs_directory: Option<String>,
 
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "net"))]
     #[argh(option, arg_name = "MAC", long = "mac")]
     #[serde(skip)] // Deprecated - use `net` instead.
     #[merge(strategy = overwrite_option)]
@@ -1490,7 +1489,7 @@ pub struct RunCommand {
     /// path to a socket from where to read multi touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280)
     pub multi_touch: Vec<TouchDeviceOption>,
 
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "net"))]
     #[argh(
         option,
         arg_name = "(tap-name=TAP_NAME,mac=MAC_ADDRESS|tap-fd=TAP_FD,mac=MAC_ADDRESS|host-ip=IP,netmask=NETMASK,mac=MAC_ADDRESS),vhost-net=VHOST_NET,vq-pairs=N"
@@ -1537,19 +1536,19 @@ pub struct RunCommand {
     /// netmask and mac must be specified.
     pub net: Vec<NetParameters>,
 
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "net"))]
     #[argh(option, arg_name = "N")]
     #[serde(skip)] // Deprecated - use `net` instead.
     #[merge(strategy = overwrite_option)]
     /// virtio net virtual queue pairs. (default: 1)
     pub net_vq_pairs: Option<u16>,
 
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "net"))]
     #[argh(option, arg_name = "NETMASK")]
     #[serde(skip)] // Deprecated - use `net` instead.
     #[merge(strategy = overwrite_option)]
     /// netmask for VM subnet
-    pub netmask: Option<net::Ipv4Addr>,
+    pub netmask: Option<std::net::Ipv4Addr>,
 
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
@@ -2912,12 +2911,10 @@ impl TryFrom<RunCommand> for super::config::Config {
             }
         }
 
-        #[cfg(unix)]
+        #[cfg(all(unix, feature = "net"))]
         {
             use devices::virtio::VhostNetParameters;
             use devices::virtio::VHOST_NET_DEFAULT_PATH;
-
-            cfg.shared_dirs = cmd.shared_dir;
 
             cfg.net = cmd.net;
 
@@ -3025,6 +3022,11 @@ impl TryFrom<RunCommand> for super::config::Config {
                     }
                 }
             }
+        }
+
+        #[cfg(unix)]
+        {
+            cfg.shared_dirs = cmd.shared_dir;
 
             cfg.coiommu_param = cmd.coiommu;
 

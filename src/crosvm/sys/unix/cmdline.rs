@@ -11,6 +11,7 @@ use devices::virtio::block::DiskOption;
 use devices::virtio::vhost::user::device;
 use devices::virtio::vhost::user::VhostUserParams;
 use devices::virtio::vsock::VsockConfig;
+#[cfg(feature = "net")]
 use devices::virtio::NetParameters;
 use devices::SerialParameters;
 use jail::JailConfig;
@@ -110,6 +111,7 @@ pub struct DevicesCommand {
     ///         use (Linux only). Defaults to /dev/vhost-vsock.
     pub vsock: Vec<VhostUserParams<VsockConfig>>,
 
+    #[cfg(feature = "net")]
     #[argh(option, arg_name = "net options")]
     /// start a network device.
     /// Possible key values:

@@ -28,12 +28,14 @@ pub use self::control_socket::*;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
+        #[cfg(feature = "net")]
         mod net;
         pub mod vsock;
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         pub mod scmi;
         mod worker;
 
+        #[cfg(feature = "net")]
         pub use self::net::Net;
         pub use self::vsock::Vsock;
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]

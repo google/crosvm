@@ -504,6 +504,7 @@ fn create_virtio_devices(
         )?);
     }
 
+    #[cfg(feature = "net")]
     for opt in &cfg.net {
         let dev = opt.create_virtio_device_and_jail(cfg.protection_type, &cfg.jail_config)?;
         devs.push(dev);
@@ -4226,6 +4227,7 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
     }
 
     // Create network devices.
+    #[cfg(feature = "net")]
     for (i, params) in opts.net.iter().enumerate() {
         add_device(i, &params.device, &params.vhost, &jail, &mut devices_jails)?;
     }
