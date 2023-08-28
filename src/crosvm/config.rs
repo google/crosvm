@@ -738,7 +738,7 @@ mod serde_serial_params {
     {
         let params: Vec<((SerialHardware, u8), SerialParameters)> =
             serde::Deserialize::deserialize(de)?;
-        Ok(BTreeMap::from_iter(params.into_iter()))
+        Ok(BTreeMap::from_iter(params))
     }
 }
 

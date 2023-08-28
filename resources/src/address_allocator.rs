@@ -1099,7 +1099,7 @@ mod tests {
                 end: 0xFFFFF,
             },
         ];
-        let pool = AddressAllocator::new_from_list(ranges.into_iter(), None, None).unwrap();
+        let pool = AddressAllocator::new_from_list(ranges, None, None).unwrap();
 
         assert_eq!(pool.get_max_addr(), 0xFFFFF);
     }

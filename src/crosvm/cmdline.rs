@@ -2631,7 +2631,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                 d.disk_option.root = false;
                 d
             }))
-            .chain(cmd.block.into_iter())
+            .chain(cmd.block)
             .collect::<Vec<_>>();
 
         // Sort all our disks by index.

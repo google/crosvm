@@ -1833,7 +1833,7 @@ where
             .fold(Vec::new(), |a, b| {
                 a.into_iter()
                     .chain("/pci@i0cf8/".as_bytes().iter().copied())
-                    .chain(b.0.into_iter())
+                    .chain(b.0)
                     .chain("\n".as_bytes().iter().copied())
                     .collect()
             });

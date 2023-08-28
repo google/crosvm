@@ -1097,7 +1097,7 @@ pub fn generate_pci_root(
             .into_iter()
             .enumerate()
             .partition(|(_, (_, jail))| jail.is_some());
-        sandboxed.into_iter().chain(non_sandboxed.into_iter())
+        sandboxed.into_iter().chain(non_sandboxed)
     };
 
     let mut amls = BTreeMap::new();
