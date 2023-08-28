@@ -250,6 +250,7 @@
     "cmd": [
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
+      "--no-interactive",
       "--verbose",
       "--cros",
       "true"
@@ -264,6 +265,7 @@
     "cmd": [
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
+      "--no-interactive",
       "--verbose",
       "--cros",
       "true"

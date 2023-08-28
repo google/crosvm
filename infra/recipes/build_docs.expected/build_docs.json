@@ -3,6 +3,7 @@
     "cmd": [
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
+      "--no-interactive",
       "--verbose",
       "mdbook",
       "build",
@@ -32,6 +33,7 @@
     "cmd": [
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
+      "--no-interactive",
       "--verbose",
       "./tools/cargo-doc",
       "--target-dir",

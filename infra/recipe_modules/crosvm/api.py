@@ -150,6 +150,7 @@ class CrosvmApi(recipe_api.RecipeApi):
             [
                 "vpython3",
                 self.source_dir.join("tools/dev_container"),
+                "--no-interactive",
                 "--verbose",
             ]
             + (["--cros"] if cros else [])
