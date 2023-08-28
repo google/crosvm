@@ -624,7 +624,7 @@ impl RutabagaComponent for Gfxstream {
                 &resource_create_blob as *const stream_renderer_create_blob,
                 iovec_ptr as *const iovec,
                 num_iovecs,
-                handle_ptr as *const stream_renderer_handle,
+                handle_ptr,
             )
         };
 
