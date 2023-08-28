@@ -200,7 +200,7 @@ mod tests {
         //  - core 1: has an offset of 1000, so TSC offset = 0 - u64::MAX - 1000 = -999
         //  - core 2: has an offset of -1000, so TSC offset = 0 - u64::MAX + 1000 = 1001
         //  - core 3: has an offset of 2000, so TSC offset = 0 - u64::MAX - 2000 = -1999
-        let expected = vec![1, 1u64.wrapping_sub(1000), 1001u64, 1u64.wrapping_sub(2000)];
+        let expected = [1, 1u64.wrapping_sub(1000), 1001u64, 1u64.wrapping_sub(2000)];
 
         for (i, expect) in expected.iter().enumerate() {
             assert_eq!(
@@ -345,7 +345,7 @@ mod tests {
         // 8 vcpus, more than we have cores
         let num_vcpus = 8;
         let mitigations = tsc_sync_mitigations_inner(&state, num_vcpus, fake_rdtsc);
-        let expected_offsets = vec![1, 1, 1u64.wrapping_sub(1000), 1u64.wrapping_sub(2000)];
+        let expected_offsets = [1, 1, 1u64.wrapping_sub(1000), 1u64.wrapping_sub(2000)];
 
         for i in 0..num_vcpus {
             assert_eq!(

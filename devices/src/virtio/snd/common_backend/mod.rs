@@ -960,7 +960,7 @@ mod tests {
         // Check snd_data.pcm_info
         assert_eq!(res.snd_data.pcm_info.len(), 13);
         // Check hda_fn_nid (PCM Device number)
-        let expected_hda_fn_nid = vec![0, 0, 0, 1, 1, 1, 2, 2, 2, 0, 0, 1, 1];
+        let expected_hda_fn_nid = [0, 0, 0, 1, 1, 1, 2, 2, 2, 0, 0, 1, 1];
         for (i, pcm_info) in res.snd_data.pcm_info.iter().enumerate() {
             assert_eq!(
                 pcm_info.hdr.hda_fn_nid.to_native(),
@@ -988,7 +988,7 @@ mod tests {
 
         // Check snd_data.chmap_info
         assert_eq!(res.snd_data.chmap_info.len(), 11);
-        let expected_hda_fn_nid = vec![0, 1, 2, 0, 1, 0, 1, 2, 0, 1, 2];
+        let expected_hda_fn_nid = [0, 1, 2, 0, 1, 0, 1, 2, 0, 1, 2];
         // Check hda_fn_nid (PCM Device number)
         for (i, chmap_info) in res.snd_data.chmap_info.iter().enumerate() {
             assert_eq!(

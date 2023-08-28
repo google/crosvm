@@ -254,7 +254,7 @@ impl HotplugWorker {
                     Some(d) => d.to_vec(),
                     None => device_id,
                 };
-                let new_id = vec![
+                let new_id = [
                     String::from_utf8_lossy(&vendor),
                     String::from_utf8_lossy(&device),
                 ]

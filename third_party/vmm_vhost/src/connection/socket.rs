@@ -293,7 +293,7 @@ mod tests {
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
 
-        let buf1 = vec![0x1, 0x2, 0x3, 0x4];
+        let buf1 = [0x1, 0x2, 0x3, 0x4];
         let mut len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
         assert_eq!(len, 4);
         let (bytes, buf2, _) = slave.recv_into_buf(0x1000).unwrap();
@@ -324,7 +324,7 @@ mod tests {
         write!(fd, "test").unwrap();
 
         // Normal case for sending/receiving file descriptors
-        let buf1 = vec![0x1, 0x2, 0x3, 0x4];
+        let buf1 = [0x1, 0x2, 0x3, 0x4];
         let len = master
             .send_slice(IoSlice::new(&buf1[..]), Some(&[fd.as_raw_descriptor()]))
             .unwrap();

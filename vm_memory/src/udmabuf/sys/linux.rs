@@ -174,7 +174,7 @@ mod tests {
         let start_addr2 = GuestAddress(0x1100);
         let start_addr3 = GuestAddress(0x2100);
 
-        let sg_list = vec![
+        let sg_list = [
             (start_addr1, 0x1000),
             (start_addr2, 0x1000),
             (start_addr3, 0x1000),

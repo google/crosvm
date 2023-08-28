@@ -1302,7 +1302,7 @@ mod tests {
         .expect("create_descriptor_chain failed");
         let reader = &mut chain.reader;
 
-        let mut buf = vec![0u8; 64];
+        let mut buf = [0u8; 64];
         assert_eq!(
             reader.read(&mut buf[..]).expect("failed to read to buffer"),
             48
@@ -1326,7 +1326,7 @@ mod tests {
         .expect("create_descriptor_chain failed");
         let writer = &mut chain.writer;
 
-        let buf = vec![0xdeu8; 64];
+        let buf = [0xdeu8; 64];
         assert_eq!(
             writer.write(&buf[..]).expect("failed to write from buffer"),
             48
