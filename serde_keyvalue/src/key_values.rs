@@ -1126,15 +1126,15 @@ mod tests {
         // Escaped slash at end of string.
         let kv = r#"m="Escaped slash\\""#;
         let res = from_key_values::<SingleStruct<String>>(kv).unwrap();
-        assert_eq!(res.m, r#"Escaped slash\"#.to_string());
+        assert_eq!(res.m, r"Escaped slash\".to_string());
 
         // Characters within single quotes should not be escaped.
         let kv = r#"m='Escaped \" quote'"#;
         let res = from_key_values::<SingleStruct<String>>(kv).unwrap();
         assert_eq!(res.m, r#"Escaped \" quote"#.to_string());
-        let kv = r#"m='Escaped slash\\'"#;
+        let kv = r"m='Escaped slash\\'";
         let res = from_key_values::<SingleStruct<String>>(kv).unwrap();
-        assert_eq!(res.m, r#"Escaped slash\\"#.to_string());
+        assert_eq!(res.m, r"Escaped slash\\".to_string());
     }
 
     #[test]
