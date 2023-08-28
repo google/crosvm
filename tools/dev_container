@@ -200,7 +200,6 @@ def main(argv: List[str]):
     parser.add_argument("--stop", action="store_true")
     parser.add_argument("--clean", action="store_true")
     parser.add_argument("--hermetic", action="store_true")
-    parser.add_argument("--interactive", action="store_true")
     parser.add_argument("--no-interactive", action="store_true")
     parser.add_argument("--use-docker", action="store_true")
     parser.add_argument("--self-test", action="store_true")
@@ -276,18 +275,12 @@ def main(argv: List[str]):
 
     command = args.command
 
-    # If a command is provided run non-interactive unless explicitly asked for.
-    tty_args = []
-    if not args.no_interactive:
-        if not command or args.interactive:
-            if not sys.stdin.isatty():
-                raise Exception(
-                    "Trying to run an interactive session in a non-interactive terminal."
-                )
-            tty_args = ["--interactive", "--tty"]
-        elif sys.stdin.isatty():
-            # Even if run non-interactively, we do want to pass along a tty for proper output.
-            tty_args = ["--tty"]
+    # Default to interactive mode if a tty is present.
+    tty_args: List[str] = []
+    if sys.stdin.isatty():
+        tty_args += ["--tty"]
+        if not args.no_interactive:
+            tty_args += ["--interactive"]
 
     # Start an interactive shell by default
     if args.hermetic:
