@@ -13,8 +13,8 @@ use std::fs;
 use std::str;
 
 use anyhow::Context;
+use base::info;
 use base::pagesize;
-use base::warn;
 use once_cell::sync::Lazy;
 
 const TRANSPARENT_HUGEPAGE_SIZE_PATH: &str = "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size";
@@ -37,8 +37,9 @@ pub static THP_SIZE: Lazy<usize> = Lazy::new(|| {
     match load_transparent_hugepage_size() {
         Ok(transparent_hugepage_size) => transparent_hugepage_size,
         Err(e) => {
-            warn!(
-                "failed to load huge page size: {:?}. fallback to 2MB as hugepage size.",
+            info!(
+                "failed to load huge page size: {:?}, maybe the THP is disabled. \
+                fallback to 2MB as hugepage size.",
                 e
             );
             2 * 1024 * 1024 // = 2MB
