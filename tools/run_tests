@@ -70,13 +70,15 @@ class TestFilter(object):
         yield quoted(self.expression)
 
 
-def configure_cargo(cmd: Command, triple: Triple, features: str, no_default_features: bool):
+def configure_cargo(
+    cmd: Command, triple: Triple, features: Optional[str], no_default_features: bool
+):
     "Configures the provided cmd with cargo arguments and environment needed to build for triple."
     return (
         cmd.with_args(
             "--workspace",
             "--no-default-features" if no_default_features else None,
-            f"--features={features}",
+            f"--features={features}" if features else None,
         )
         .with_color_flag()
         .with_envs(triple.get_cargo_env())
@@ -231,7 +233,7 @@ def main(
 
     test_filter = TestFilter(join_filters(filter_expr, "|"))
 
-    if not features:
+    if not features and not no_default_features:
         features = triple.feature_flag
 
     if no_run:
@@ -262,7 +264,6 @@ def main(
             f"--dut={dut} is not supported. Options are --dut=host or --dut=vm (linux only)"
         )
 
-    features = features if features else triple.feature_flag
     skip_str = "[yellow]skip[/yellow]"
     unit_test_str = "Run on host" if not no_unit_tests else skip_str
     integration_test_str = dut_str if dut else skip_str

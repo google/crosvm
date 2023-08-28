@@ -149,12 +149,15 @@ def check_crosvm_unit_tests(platform: Platform):
     return check
 
 
-def check_crosvm_build(platform: Platform, features: Optional[str]):
+def check_crosvm_build(
+    platform: Platform, features: Optional[str] = None, no_default_features: bool = False
+):
     def check(_: CheckContext):
         return cmd(
             "./tools/run_tests --no-run --verbose --platform",
             platform,
             f"--features={features}" if features is not None else None,
+            "--no-default-features" if no_default_features else None,
         ).with_color_flag()
 
     check.__doc__ = f"Builds crosvm for {platform} with features {features}."
@@ -268,6 +271,17 @@ CHECKS: List[Check] = [
             priority=True,
         )
         for platform in PLATFORMS
+    ),
+    *(
+        Check(
+            check_crosvm_build(platform, features="", no_default_features=True),
+            custom_name=f"crosvm_build_no_default_{platform}",
+            files=["**.rs"],
+            priority=True,
+        )
+        # TODO: b/260607247 crosvm does not compile with no-default-features on mingw64
+        for platform in PLATFORMS
+        if platform != "mingw64"
     ),
     *(
         Check(
@@ -449,7 +463,9 @@ GROUPS: List[Group] = [
                 f"crosvm_tests_{platform}",
                 f"clippy_{platform}",
                 f"crosvm_build_default_{platform}",
-            ],
+            ]
+            # TODO: b/260607247 crosvm does not compile with no-default-features on mingw64
+            + ([f"crosvm_build_no_default_{platform}"] if platform != "mingw64" else []),
         )
         for platform in PLATFORMS
     ),

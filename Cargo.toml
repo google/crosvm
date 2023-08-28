@@ -66,7 +66,6 @@ members = [
     "libcras_stub",
     "linux_input_sys",
     "media/ffmpeg",
-    "media/libvda",
     "metrics",
     "net_sys",
     "net_util",
@@ -105,6 +104,9 @@ exclude = [
     "perfetto",
     "win_audio",
     "win_util",
+
+    # This crate depends on optional features and is compiled via dependencies when enabled.
+    "media/libvda",
 ]
 
 [features]
