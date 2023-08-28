@@ -1383,7 +1383,9 @@ fn phys_addr(mem: &GuestMemory, vaddr: u64, sregs: &Sregs) -> Result<(u64, u64)>
 
     if sregs.efer & MSR_EFER_LMA != 0 {
         // TODO - check LA57
-        if sregs.cr4 & CR4_LA57_MASK != 0 {}
+        if sregs.cr4 & CR4_LA57_MASK != 0 {
+            todo!("handle LA57");
+        }
         let p4_ent = next_pte(mem, sregs.cr3, vaddr, 4)?;
         let p3_ent = next_pte(mem, p4_ent, vaddr, 3)?;
         // TODO check if it's a 1G page with the PSE bit in p2_ent
