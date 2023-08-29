@@ -111,7 +111,7 @@ exclude = [
 
 [features]
 ## Default features of crosvm. This selection is somewhat arbitrary for historical reasons.
-default = ["audio", "balloon", "config-file", "document-features", "gpu", "qcow", "usb", "libvda-stub", "slirp"]
+default = ["audio", "balloon", "config-file", "document-features", "gpu", "qcow", "usb", "libvda-stub", "net", "slirp"]
 
 ## Enables support for the Android [sparse image format](https://android.googlesource.com/platform/system/core/+/HEAD/libsparse/sparse_format.h)
 ## in the block device.
@@ -147,6 +147,9 @@ gdb = [
     "vm_control/gdb",
     "x86_64/gdb",
 ]
+
+## Enables virtio-net and vhost-user-net backend.
+net = ["devices/net"]
 
 ## Enables a panic handler that writes panic info to the `RUST_PANIC_SIG` memfd.
 panic-memfd = []
@@ -323,6 +326,7 @@ all-default = [
     "gfxstream",
     "gfxstream_stub",
     "libvda-stub",
+    "net",
     "panic-memfd",
     "power-monitor-powerd",
     "slirp",
@@ -366,6 +370,7 @@ all-armhf = [
     "default",
     "gdb",
     "libvda-stub",
+    "net",
     "tpm",
 ]
 
@@ -377,6 +382,7 @@ all-mingw64 = [
     "crash_report",
     "gpu",
     "haxm",
+    "net",
     "slirp",
     "stats",
 ]
