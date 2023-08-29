@@ -52,9 +52,10 @@ impl SlaveInternal {
     }
 
     fn wait_for_reply(&mut self, hdr: &VhostUserMsgHeader<SlaveReq>) -> Result<u64> {
-        if hdr.get_code() != SlaveReq::SHMEM_MAP
-            && hdr.get_code() != SlaveReq::SHMEM_UNMAP
-            && hdr.get_code() != SlaveReq::GPU_MAP
+        let code = hdr.get_code().map_err(|_| Error::InvalidMessage)?;
+        if code != SlaveReq::SHMEM_MAP
+            && code != SlaveReq::SHMEM_UNMAP
+            && code != SlaveReq::GPU_MAP
             && !self.reply_ack_negotiated
         {
             return Ok(0);

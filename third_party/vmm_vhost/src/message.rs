@@ -10,7 +10,6 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
-use std::convert::TryInto;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -41,18 +40,22 @@ pub const VHOST_USER_MAX_VRINGS: u64 = 0x8000u64;
 
 /// Used for the payload in Vhost Master messages.
 pub trait Req:
-    Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Into<u32> + Send + Sync
+    Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Into<u32> + TryFrom<u32> + Send + Sync
 {
-    /// Is the entity valid.
-    fn is_valid(&self) -> bool;
+}
+
+/// Error when converting an integer to an enum value.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum ReqError {
+    /// The value does not correspond to a valid message code.
+    #[error("The value {0} does not correspond to a valid message code.")]
+    InvalidValue(u32),
 }
 
 /// Type of requests sending from masters to slaves.
 #[repr(u32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, enumn::N)]
 pub enum MasterReq {
-    /// Null operation.
-    NOOP = 0,
     /// Get from the underlying vhost implementation the features bit mask.
     GET_FEATURES = 1,
     /// Enable features in the underlying vhost implementation using a bit mask.
@@ -148,8 +151,6 @@ pub enum MasterReq {
     SNAPSHOT = 44,
     /// Request to restore state of vhost process.
     RESTORE = 45,
-    /// Upper bound of valid commands.
-    MAX_CMD = 46,
 }
 
 impl From<MasterReq> for u32 {
@@ -158,18 +159,20 @@ impl From<MasterReq> for u32 {
     }
 }
 
-impl Req for MasterReq {
-    fn is_valid(&self) -> bool {
-        (*self > MasterReq::NOOP) && (*self < MasterReq::MAX_CMD)
+impl Req for MasterReq {}
+
+impl TryFrom<u32> for MasterReq {
+    type Error = ReqError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        MasterReq::n(value).ok_or(ReqError::InvalidValue(value))
     }
 }
 
 /// Type of requests sending from slaves to masters.
 #[repr(u32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, enumn::N)]
 pub enum SlaveReq {
-    /// Null operation.
-    NOOP = 0,
     /// Send IOTLB messages with struct vhost_iotlb_msg as payload.
     IOTLB_MSG = 1,
     /// Notify that the virtio device's configuration space has changed.
@@ -194,8 +197,6 @@ pub enum SlaveReq {
     FS_IO = 11,
     /// Indicates a request to map GPU memory into a shared memory region.
     GPU_MAP = 12,
-    /// Upper bound of valid commands.
-    MAX_CMD = 13,
 }
 
 impl From<SlaveReq> for u32 {
@@ -204,9 +205,13 @@ impl From<SlaveReq> for u32 {
     }
 }
 
-impl Req for SlaveReq {
-    fn is_valid(&self) -> bool {
-        (*self > SlaveReq::NOOP) && (*self < SlaveReq::MAX_CMD)
+impl Req for SlaveReq {}
+
+impl TryFrom<u32> for SlaveReq {
+    type Error = ReqError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        SlaveReq::n(value).ok_or(ReqError::InvalidValue(value))
     }
 }
 
@@ -289,9 +294,8 @@ impl<R: Req> VhostUserMsgHeader<R> {
     }
 
     /// Get message type.
-    pub fn get_code(&self) -> R {
-        // It's safe because R is marked as repr(u32).
-        unsafe { std::mem::transmute_copy::<u32, R>(&{ self.request }) }
+    pub fn get_code(&self) -> std::result::Result<R, R::Error> {
+        R::try_from(self.request)
     }
 
     /// Set message type.
@@ -340,7 +344,7 @@ impl<R: Req> VhostUserMsgHeader<R> {
 
     /// Check whether it's the reply message for the request `req`.
     pub fn is_reply_for(&self, req: &VhostUserMsgHeader<R>) -> bool {
-        self.is_reply() && !req.is_reply() && self.get_code() == req.get_code()
+        self.is_reply() && !req.is_reply() && self.request == req.request
     }
 
     /// Get message size.
@@ -365,23 +369,10 @@ impl<R: Req> Default for VhostUserMsgHeader<R> {
     }
 }
 
-impl From<[u8; 12]> for VhostUserMsgHeader<MasterReq> {
-    fn from(buf: [u8; 12]) -> Self {
-        // Convert 4-length slice into [u8; 4]. This must succeed.
-        let req = u32::from_le_bytes(buf[0..4].try_into().unwrap());
-        // Safe because `MasterReq` is defined with `#[repr(u32)]`.
-        let req = unsafe { std::mem::transmute_copy::<u32, MasterReq>(&req) };
-
-        let flags = u32::from_le_bytes(buf[4..8].try_into().unwrap());
-        let size = u32::from_le_bytes(buf[8..12].try_into().unwrap());
-        Self::new(req, flags, size)
-    }
-}
-
 impl<T: Req> VhostUserMsgValidator for VhostUserMsgHeader<T> {
     #[allow(clippy::if_same_then_else)]
     fn is_valid(&self) -> bool {
-        if !self.get_code().is_valid() {
+        if self.get_code().is_err() {
             return false;
         } else if self.get_version() != 0x1 {
             return false;
@@ -1221,38 +1212,30 @@ mod tests {
 
     #[test]
     fn check_master_request_code() {
-        let code = MasterReq::NOOP;
-        assert!(!code.is_valid());
-        let code = MasterReq::MAX_CMD;
-        assert!(!code.is_valid());
-        assert!(code > MasterReq::NOOP);
-        let code = MasterReq::GET_FEATURES;
-        assert!(code.is_valid());
+        MasterReq::try_from(0).expect_err("invalid value");
+        MasterReq::try_from(46).expect_err("invalid value");
+        MasterReq::try_from(10000).expect_err("invalid value");
+
+        let code = MasterReq::try_from(MasterReq::GET_FEATURES as u32).unwrap();
         assert_eq!(code, code.clone());
-        let code: MasterReq = unsafe { std::mem::transmute::<u32, MasterReq>(10000u32) };
-        assert!(!code.is_valid());
     }
 
     #[test]
     fn check_slave_request_code() {
-        let code = SlaveReq::NOOP;
-        assert!(!code.is_valid());
-        let code = SlaveReq::MAX_CMD;
-        assert!(!code.is_valid());
-        assert!(code > SlaveReq::NOOP);
-        let code = SlaveReq::CONFIG_CHANGE_MSG;
-        assert!(code.is_valid());
+        SlaveReq::try_from(0).expect_err("invalid value");
+        SlaveReq::try_from(13).expect_err("invalid value");
+        SlaveReq::try_from(10000).expect_err("invalid value");
+
+        let code = SlaveReq::try_from(SlaveReq::CONFIG_CHANGE_MSG as u32).unwrap();
         assert_eq!(code, code.clone());
-        let code: SlaveReq = unsafe { std::mem::transmute::<u32, SlaveReq>(10000u32) };
-        assert!(!code.is_valid());
     }
 
     #[test]
     fn msg_header_ops() {
         let mut hdr = VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, 0x100);
-        assert_eq!(hdr.get_code(), MasterReq::GET_FEATURES);
+        assert_eq!(hdr.get_code(), Ok(MasterReq::GET_FEATURES));
         hdr.set_code(MasterReq::SET_FEATURES);
-        assert_eq!(hdr.get_code(), MasterReq::SET_FEATURES);
+        assert_eq!(hdr.get_code(), Ok(MasterReq::SET_FEATURES));
 
         assert_eq!(hdr.get_version(), 0x1);
 

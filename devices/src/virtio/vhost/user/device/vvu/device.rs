@@ -533,7 +533,7 @@ impl BackendChannelInner {
     ) -> Result<Vec<u8>> {
         // msg came from a ProtocolReader, so this can't fail.
         let hdr = vhost_header_from_bytes::<SlaveReq>(&msg).expect("framing error");
-        let msg_type = hdr.get_code();
+        let msg_type = hdr.get_code().context("invalid SlaveReq code")?;
 
         match msg_type {
             SlaveReq::SHMEM_MAP => {
@@ -600,7 +600,7 @@ impl BackendChannelInner {
         // msg are provided by ProtocolReader, so this can't fail.
         let hdr = vhost_header_from_bytes::<SlaveReq>(&msg).unwrap();
 
-        if hdr.get_code() == SlaveReq::SHMEM_UNMAP {
+        if hdr.get_code().context("invalid SlaveReq message code")? == SlaveReq::SHMEM_UNMAP {
             let offset = self
                 .pending_unmap
                 .take()

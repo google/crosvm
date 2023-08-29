@@ -185,9 +185,8 @@ impl VirtioVhostUserConfig {
 
 // Checks if the message requires any extra processing by this proxy.
 fn is_action_request(hdr: &VhostUserMsgHeader<MasterReq>) -> bool {
-    SIBLING_ACTION_MESSAGE_TYPES
-        .iter()
-        .any(|&h| h == hdr.get_code())
+    let code = hdr.get_code();
+    SIBLING_ACTION_MESSAGE_TYPES.iter().any(|&h| Ok(h) == code)
 }
 
 // Checks if |files| are sent by the Vhost-user sibling only for specific messages.
@@ -195,7 +194,7 @@ fn check_attached_files(
     hdr: &VhostUserMsgHeader<MasterReq>,
     files: &Option<Vec<File>>,
 ) -> Result<()> {
-    match hdr.get_code() {
+    match hdr.get_code().context("invalid MasterReq code")? {
         MasterReq::SET_MEM_TABLE
         | MasterReq::SET_VRING_CALL
         | MasterReq::SET_VRING_KICK
@@ -373,7 +372,7 @@ impl RxAction for MasterReq {
         if !is_action_request(hdr) {
             return Ok(());
         }
-        match hdr.get_code() {
+        match hdr.get_code().context("invalid MasterReq code")? {
             MasterReq::SET_MEM_TABLE => worker.set_mem_table(payload, files),
             MasterReq::SET_VRING_CALL => worker.set_vring_call(payload, files),
             MasterReq::SET_VRING_KICK => worker.set_vring_kick(wait_ctx, payload, files),
@@ -412,7 +411,7 @@ impl RxAction for SlaveReq {
         if files.is_some() {
             bail!("unexpected fd for {:?}", hdr.get_code());
         }
-        match hdr.get_code() {
+        match hdr.get_code().context("invalid SlaveReq code")? {
             SlaveReq::SHMEM_UNMAP => worker.handle_unmap_reply(payload),
             _ => Ok(()),
         }
@@ -610,7 +609,7 @@ impl Worker {
 
             let bytes_written = {
                 let res = if !R::is_header_valid(&hdr) {
-                    Err(anyhow!("invalid header for {:?}", hdr.get_code()))
+                    Err(anyhow!("invalid header for {:?}", hdr))
                 } else {
                     R::process_message(self, wait_ctx, &hdr, &buf, files)
                 };
@@ -691,7 +690,7 @@ impl Worker {
                     R::handle_failure(self, hdr)?;
                     bail!(
                         "unexpected message length for {:?}: expected={}, got={}",
-                        hdr.get_code(),
+                        hdr,
                         len,
                         rbuf.len(),
                     );
@@ -1002,7 +1001,7 @@ impl Worker {
         // The message was already parsed as a MasterReq, so this can't fail
         let hdr = vhost_header_from_bytes::<SlaveReq>(&msg).unwrap();
 
-        let fd = match hdr.get_code() {
+        let fd = match hdr.get_code().context("invalid SlaveReq code")? {
             SlaveReq::SHMEM_MAP => {
                 let msg = vhost_body_from_message_bytes(&mut msg).context("incomplete message")?;
                 let fd = self
@@ -1143,7 +1142,7 @@ impl Worker {
                     let payload = endpoint.recv_data(hdr.get_size() as usize)?;
                     // This function is only called when the worker is aborting, so
                     // there's nothing to do for other replies - just drop them.
-                    if hdr.get_code() == SlaveReq::SHMEM_UNMAP {
+                    if hdr.get_code() == Ok(SlaveReq::SHMEM_UNMAP) {
                         if let Err(e) = self.handle_unmap_reply(&payload) {
                             error!("failed to unmap: {:?}", e);
                             return Err(VhostError::SlaveInternalError);

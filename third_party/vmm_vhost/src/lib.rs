@@ -30,8 +30,6 @@
 //! that shares its virtqueues. Slave is the consumer of the virtqueues. Master and slave can be
 //! either a client (i.e. connecting) or server (listening) in the socket communication.
 
-#![deny(missing_docs)]
-
 use std::fs::File;
 use std::io::Error as IOError;
 use std::num::TryFromIntError;

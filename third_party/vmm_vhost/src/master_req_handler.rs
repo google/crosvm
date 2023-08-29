@@ -316,52 +316,52 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         let size = buf.len();
 
         let res = match hdr.get_code() {
-            SlaveReq::CONFIG_CHANGE_MSG => {
+            Ok(SlaveReq::CONFIG_CHANGE_MSG) => {
                 self.check_msg_size(&hdr, size, 0)?;
                 self.backend
                     .handle_config_change()
                     .map_err(Error::ReqHandlerError)
             }
-            SlaveReq::SHMEM_MAP => {
+            Ok(SlaveReq::SHMEM_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserShmemMapMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
                     .shmem_map(&msg, &files.unwrap()[0])
                     .map_err(Error::ReqHandlerError)
             }
-            SlaveReq::SHMEM_UNMAP => {
+            Ok(SlaveReq::SHMEM_UNMAP) => {
                 let msg = self.extract_msg_body::<VhostUserShmemUnmapMsg>(&hdr, size, &buf)?;
                 self.backend
                     .shmem_unmap(&msg)
                     .map_err(Error::ReqHandlerError)
             }
-            SlaveReq::FS_MAP => {
+            Ok(SlaveReq::FS_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
                     .fs_slave_map(&msg, &files.unwrap()[0])
                     .map_err(Error::ReqHandlerError)
             }
-            SlaveReq::FS_UNMAP => {
+            Ok(SlaveReq::FS_UNMAP) => {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
                 self.backend
                     .fs_slave_unmap(&msg)
                     .map_err(Error::ReqHandlerError)
             }
-            SlaveReq::FS_SYNC => {
+            Ok(SlaveReq::FS_SYNC) => {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
                 self.backend
                     .fs_slave_sync(&msg)
                     .map_err(Error::ReqHandlerError)
             }
-            SlaveReq::FS_IO => {
+            Ok(SlaveReq::FS_IO) => {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
                     .fs_slave_io(&msg, &files.unwrap()[0])
                     .map_err(Error::ReqHandlerError)
             }
-            SlaveReq::GPU_MAP => {
+            Ok(SlaveReq::GPU_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserGpuMapMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
@@ -397,7 +397,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         hdr: &VhostUserMsgHeader<SlaveReq>,
         files: &Option<Vec<File>>,
     ) -> Result<()> {
-        match hdr.get_code() {
+        match hdr.get_code().map_err(|_| Error::InvalidMessage)? {
             SlaveReq::SHMEM_MAP | SlaveReq::FS_MAP | SlaveReq::FS_IO | SlaveReq::GPU_MAP => {
                 // Expect a single file is passed.
                 match files {
@@ -429,16 +429,17 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         req: &VhostUserMsgHeader<SlaveReq>,
     ) -> Result<VhostUserMsgHeader<SlaveReq>> {
         Ok(VhostUserMsgHeader::new(
-            req.get_code(),
+            req.get_code().map_err(|_| Error::InvalidMessage)?,
             VhostUserHeaderFlag::REPLY.bits(),
             mem::size_of::<T>() as u32,
         ))
     }
 
     fn send_reply(&mut self, req: &VhostUserMsgHeader<SlaveReq>, res: &Result<u64>) -> Result<()> {
-        if req.get_code() == SlaveReq::SHMEM_MAP
-            || req.get_code() == SlaveReq::SHMEM_UNMAP
-            || req.get_code() == SlaveReq::GPU_MAP
+        let code = req.get_code().map_err(|_| Error::InvalidMessage)?;
+        if code == SlaveReq::SHMEM_MAP
+            || code == SlaveReq::SHMEM_UNMAP
+            || code == SlaveReq::GPU_MAP
             || (self.reply_ack_negotiated && req.is_need_reply())
         {
             let hdr = self.new_reply_header::<VhostUserU64>(req)?;

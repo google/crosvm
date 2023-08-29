@@ -2845,6 +2845,7 @@ dependencies = [
  "bitflags 2.3.2",
  "cfg-if",
  "data_model 0.1.1-alpha.1",
+ "enumn",
  "libc",
  "remain",
  "serde",
