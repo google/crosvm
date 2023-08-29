@@ -1278,6 +1278,8 @@ impl Gpu {
     }
 
     /// Initializes the internal device state so that it can begin processing virtqueues.
+    ///
+    /// Only used by vhost-user GPU.
     pub fn initialize_frontend(
         &mut self,
         fence_state: Arc<Mutex<FenceState>>,
@@ -1320,159 +1322,8 @@ impl Gpu {
         Some(Frontend::new(virtio_gpu, fence_state))
     }
 
-    fn get_config(&self) -> virtio_gpu_config {
-        let mut events_read = 0;
-
-        if self.display_event.load(Ordering::Relaxed) {
-            events_read |= VIRTIO_GPU_EVENT_DISPLAY;
-        }
-
-        let num_capsets = match self.capset_mask {
-            0 => {
-                match self.rutabaga_component {
-                    RutabagaComponentType::Rutabaga2D => 0,
-                    _ => {
-                        #[allow(unused_mut)]
-                        let mut num_capsets = 0;
-
-                        // Three capsets for virgl_renderer
-                        #[cfg(feature = "virgl_renderer")]
-                        {
-                            num_capsets += 3;
-                        }
-
-                        // One capset for gfxstream
-                        #[cfg(feature = "gfxstream")]
-                        {
-                            num_capsets += 1;
-                        }
-
-                        num_capsets
-                    }
-                }
-            }
-            _ => self.capset_mask.count_ones(),
-        };
-
-        virtio_gpu_config {
-            events_read: Le32::from(events_read),
-            events_clear: Le32::from(0),
-            num_scanouts: Le32::from(VIRTIO_GPU_MAX_SCANOUTS as u32),
-            num_capsets: Le32::from(num_capsets),
-        }
-    }
-
-    /// Send a request to exit the process to VMM.
-    pub fn send_exit_evt(&self) -> anyhow::Result<()> {
-        self.exit_evt_wrtube
-            .send::<VmEventType>(&VmEventType::Exit)
-            .context("failed to send exit event")
-    }
-}
-
-impl VirtioDevice for Gpu {
-    fn keep_rds(&self) -> Vec<RawDescriptor> {
-        let mut keep_rds = Vec::new();
-
-        // To find the RawDescriptor associated with stdout and stderr on Windows is difficult.
-        // Resource bridges are used only for Wayland displays. There is also no meaningful way
-        // casting the underlying DMA buffer wrapped in File to a copyable RawDescriptor.
-        // TODO(davidriley): Remove once virgl has another path to include
-        // debugging logs.
-        #[cfg(unix)]
-        if cfg!(debug_assertions) {
-            keep_rds.push(libc::STDOUT_FILENO);
-            keep_rds.push(libc::STDERR_FILENO);
-        }
-
-        if let Some(ref mapper) = *self.mapper.lock() {
-            if let Some(descriptor) = mapper.as_raw_descriptor() {
-                keep_rds.push(descriptor);
-            }
-        }
-
-        if let Some(ref rutabaga_server_descriptor) = self.rutabaga_server_descriptor {
-            keep_rds.push(rutabaga_server_descriptor.as_raw_descriptor());
-        }
-
-        keep_rds.push(self.exit_evt_wrtube.as_raw_descriptor());
-
-        #[cfg(unix)]
-        if let Some(gpu_control_tube) = &self.gpu_control_tube {
-            keep_rds.push(gpu_control_tube.as_raw_descriptor());
-        }
-
-        if let Some(resource_bridges) = &self.resource_bridges {
-            resource_bridges.append_raw_descriptors(&mut keep_rds);
-        }
-
-        for event_device in self.event_devices.iter().flatten() {
-            keep_rds.push(event_device.as_raw_descriptor());
-        }
-
-        keep_rds
-    }
-
-    fn device_type(&self) -> DeviceType {
-        DeviceType::Gpu
-    }
-
-    fn queue_max_sizes(&self) -> &[u16] {
-        QUEUE_SIZES
-    }
-
-    fn features(&self) -> u64 {
-        let mut virtio_gpu_features = 1 << VIRTIO_GPU_F_EDID;
-
-        // If a non-2D component is specified, enable 3D features.  It is possible to run display
-        // contexts without 3D backend (i.e, gfxstream / virglrender), so check for that too.
-        if self.rutabaga_component != RutabagaComponentType::Rutabaga2D || self.capset_mask != 0 {
-            virtio_gpu_features |= 1 << VIRTIO_GPU_F_VIRGL
-                | 1 << VIRTIO_GPU_F_RESOURCE_UUID
-                | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
-                | 1 << VIRTIO_GPU_F_CONTEXT_INIT
-                | 1 << VIRTIO_GPU_F_EDID;
-
-            if self.udmabuf {
-                virtio_gpu_features |= 1 << VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
-            }
-
-            // New experimental/unstable feature, not upstreamed.
-            // Safe to enable because guest must explicitly opt-in.
-            virtio_gpu_features |= 1 << VIRTIO_GPU_F_FENCE_PASSING;
-        }
-
-        self.base_features | virtio_gpu_features
-    }
-
-    fn ack_features(&mut self, value: u64) {
-        let _ = value;
-    }
-
-    fn read_config(&self, offset: u64, data: &mut [u8]) {
-        copy_config(data, 0, self.get_config().as_bytes(), offset);
-    }
-
-    fn write_config(&mut self, offset: u64, data: &[u8]) {
-        let mut cfg = self.get_config();
-        copy_config(cfg.as_bytes_mut(), offset, data, 0);
-        if (cfg.events_clear.to_native() & VIRTIO_GPU_EVENT_DISPLAY) != 0 {
-            self.display_event.store(false, Ordering::Relaxed);
-        }
-    }
-
     // This is not invoked when running with vhost-user GPU.
-    fn on_device_sandboxed(&mut self) {
-        // Unlike most Virtio devices which start their worker thread in activate(),
-        // the Gpu's worker thread is started earlier here so that rutabaga and the
-        // underlying render server have a chance to initialize before the guest OS
-        // starts. This is needed because the Virtio GPU kernel module has a timeout
-        // for some calls during initialization and some host GPU drivers have been
-        // observed to be extremely slow to initialize on fresh GCE instances. The
-        // entire worker thread is started here (as opposed to just initializing
-        // rutabaga and the underlying render server) as OpenGL based renderers may
-        // expect to be initialized on the same thread that later processes commands.
-
+    fn start_worker_thread(&mut self) {
         let exit_evt_wrtube = self
             .exit_evt_wrtube
             .try_clone()
@@ -1659,6 +1510,160 @@ impl VirtioDevice for Gpu {
         }
     }
 
+    fn get_config(&self) -> virtio_gpu_config {
+        let mut events_read = 0;
+
+        if self.display_event.load(Ordering::Relaxed) {
+            events_read |= VIRTIO_GPU_EVENT_DISPLAY;
+        }
+
+        let num_capsets = match self.capset_mask {
+            0 => {
+                match self.rutabaga_component {
+                    RutabagaComponentType::Rutabaga2D => 0,
+                    _ => {
+                        #[allow(unused_mut)]
+                        let mut num_capsets = 0;
+
+                        // Three capsets for virgl_renderer
+                        #[cfg(feature = "virgl_renderer")]
+                        {
+                            num_capsets += 3;
+                        }
+
+                        // One capset for gfxstream
+                        #[cfg(feature = "gfxstream")]
+                        {
+                            num_capsets += 1;
+                        }
+
+                        num_capsets
+                    }
+                }
+            }
+            _ => self.capset_mask.count_ones(),
+        };
+
+        virtio_gpu_config {
+            events_read: Le32::from(events_read),
+            events_clear: Le32::from(0),
+            num_scanouts: Le32::from(VIRTIO_GPU_MAX_SCANOUTS as u32),
+            num_capsets: Le32::from(num_capsets),
+        }
+    }
+
+    /// Send a request to exit the process to VMM.
+    pub fn send_exit_evt(&self) -> anyhow::Result<()> {
+        self.exit_evt_wrtube
+            .send::<VmEventType>(&VmEventType::Exit)
+            .context("failed to send exit event")
+    }
+}
+
+impl VirtioDevice for Gpu {
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut keep_rds = Vec::new();
+
+        // To find the RawDescriptor associated with stdout and stderr on Windows is difficult.
+        // Resource bridges are used only for Wayland displays. There is also no meaningful way
+        // casting the underlying DMA buffer wrapped in File to a copyable RawDescriptor.
+        // TODO(davidriley): Remove once virgl has another path to include
+        // debugging logs.
+        #[cfg(unix)]
+        if cfg!(debug_assertions) {
+            keep_rds.push(libc::STDOUT_FILENO);
+            keep_rds.push(libc::STDERR_FILENO);
+        }
+
+        if let Some(ref mapper) = *self.mapper.lock() {
+            if let Some(descriptor) = mapper.as_raw_descriptor() {
+                keep_rds.push(descriptor);
+            }
+        }
+
+        if let Some(ref rutabaga_server_descriptor) = self.rutabaga_server_descriptor {
+            keep_rds.push(rutabaga_server_descriptor.as_raw_descriptor());
+        }
+
+        keep_rds.push(self.exit_evt_wrtube.as_raw_descriptor());
+
+        #[cfg(unix)]
+        if let Some(gpu_control_tube) = &self.gpu_control_tube {
+            keep_rds.push(gpu_control_tube.as_raw_descriptor());
+        }
+
+        if let Some(resource_bridges) = &self.resource_bridges {
+            resource_bridges.append_raw_descriptors(&mut keep_rds);
+        }
+
+        for event_device in self.event_devices.iter().flatten() {
+            keep_rds.push(event_device.as_raw_descriptor());
+        }
+
+        keep_rds
+    }
+
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Gpu
+    }
+
+    fn queue_max_sizes(&self) -> &[u16] {
+        QUEUE_SIZES
+    }
+
+    fn features(&self) -> u64 {
+        let mut virtio_gpu_features = 1 << VIRTIO_GPU_F_EDID;
+
+        // If a non-2D component is specified, enable 3D features.  It is possible to run display
+        // contexts without 3D backend (i.e, gfxstream / virglrender), so check for that too.
+        if self.rutabaga_component != RutabagaComponentType::Rutabaga2D || self.capset_mask != 0 {
+            virtio_gpu_features |= 1 << VIRTIO_GPU_F_VIRGL
+                | 1 << VIRTIO_GPU_F_RESOURCE_UUID
+                | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
+                | 1 << VIRTIO_GPU_F_CONTEXT_INIT
+                | 1 << VIRTIO_GPU_F_EDID;
+
+            if self.udmabuf {
+                virtio_gpu_features |= 1 << VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
+            }
+
+            // New experimental/unstable feature, not upstreamed.
+            // Safe to enable because guest must explicitly opt-in.
+            virtio_gpu_features |= 1 << VIRTIO_GPU_F_FENCE_PASSING;
+        }
+
+        self.base_features | virtio_gpu_features
+    }
+
+    fn ack_features(&mut self, value: u64) {
+        let _ = value;
+    }
+
+    fn read_config(&self, offset: u64, data: &mut [u8]) {
+        copy_config(data, 0, self.get_config().as_bytes(), offset);
+    }
+
+    fn write_config(&mut self, offset: u64, data: &[u8]) {
+        let mut cfg = self.get_config();
+        copy_config(cfg.as_bytes_mut(), offset, data, 0);
+        if (cfg.events_clear.to_native() & VIRTIO_GPU_EVENT_DISPLAY) != 0 {
+            self.display_event.store(false, Ordering::Relaxed);
+        }
+    }
+
+    fn on_device_sandboxed(&mut self) {
+        // Unlike most Virtio devices which start their worker thread in activate(),
+        // the Gpu's worker thread is started earlier here so that rutabaga and the
+        // underlying render server have a chance to initialize before the guest OS
+        // starts. This is needed because the Virtio GPU kernel module has a timeout
+        // for some calls during initialization and some host GPU drivers have been
+        // observed to be extremely slow to initialize on fresh GCE instances. The
+        // entire worker thread is started here (as opposed to just initializing
+        // rutabaga and the underlying render server) as OpenGL based renderers may
+        // expect to be initialized on the same thread that later processes commands.
+        self.start_worker_thread();
+    }
+
     fn activate(
         &mut self,
         mem: GuestMemory,
@@ -1741,7 +1746,7 @@ impl VirtioDevice for Gpu {
             None => Ok(()),
             Some((mem, interrupt, queues)) => {
                 assert!(self.worker_thread.is_none());
-                self.on_device_sandboxed();
+                self.start_worker_thread();
                 // TODO(khei): activate is just what we want at the moment, but we should probably
                 // move it into a "start workers" function to make it obvious that it isn't
                 // strictly used for activate events.
