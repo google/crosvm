@@ -266,3 +266,131 @@ pub trait VirtioDevice: Send {
         None
     }
 }
+
+// General tests that should pass on all suspendables.
+// Do implement device-specific tests to validate the functionality of the device.
+// Those tests are not a replacement for regular tests. Only an extension specific to the trait's
+// basic functionality.
+/// `name` is the name of the test grouping. Can be anything unique within the same crate.
+/// `dev` is a block that returns a created virtio device.
+/// ``num_queues` is the number of queues to be created.
+/// `modfun` is the function name of the function that would modify the device. The function call
+/// should modify the device so that a snapshot taken after the function call would be different
+/// from a snapshot taken before the function call.
+#[macro_export]
+macro_rules! suspendable_virtio_tests {
+    ($name:ident, $dev: expr, $num_queues:literal, $modfun:expr) => {
+        mod $name {
+            use super::*;
+            use $crate::virtio::QueueConfig;
+            use $crate::virtio::VIRTIO_MSI_NO_VECTOR;
+            use $crate::IrqLevelEvent;
+
+            fn memory() -> GuestMemory {
+                GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
+                    .expect("Creating guest memory failed.")
+            }
+
+            fn interrupt() -> Interrupt {
+                Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR)
+            }
+
+            fn create_queues(
+                num_queues: usize,
+                queue_size: u16,
+                mem: &GuestMemory,
+            ) -> BTreeMap<usize, Queue> {
+                let mut queues = BTreeMap::new();
+                for i in 0..num_queues {
+                    // activate with queues of an arbitrary size.
+                    let mut queue = QueueConfig::new(queue_size, 0);
+                    queue.set_ready(true);
+                    let queue = queue
+                        .activate(mem, Event::new().unwrap())
+                        .expect("QueueConfig::activate");
+                    queues.insert(i, queue);
+                }
+                queues
+            }
+
+            #[test]
+            fn test_sleep_snapshot() {
+                let unit = &mut $dev();
+                let mem = memory();
+                let interrupt = interrupt();
+                let queues = create_queues(
+                    $num_queues,
+                    unit.queue_max_sizes()
+                        .first()
+                        .cloned()
+                        .expect("missing queue size"),
+                    &mem,
+                );
+                unit.activate(mem.clone(), interrupt.clone(), queues)
+                    .expect("failed to activate");
+                unit.virtio_sleep()
+                    .expect("failed to sleep")
+                    .expect("missing queues while sleeping");
+                unit.virtio_snapshot().expect("failed to snapshot");
+            }
+
+            #[test]
+            fn test_sleep_snapshot_wake() {
+                let unit = &mut $dev();
+                let mem = memory();
+                let interrupt = interrupt();
+                let queues = create_queues(
+                    $num_queues,
+                    unit.queue_max_sizes()
+                        .first()
+                        .cloned()
+                        .expect("missing queue size"),
+                    &mem,
+                );
+                unit.activate(mem.clone(), interrupt.clone(), queues)
+                    .expect("failed to activate");
+                let sleep_result = unit
+                    .virtio_sleep()
+                    .expect("failed to sleep")
+                    .expect("missing queues while sleeping");
+                unit.virtio_snapshot().expect("failed to snapshot");
+                unit.virtio_wake(Some((mem.clone(), interrupt.clone(), sleep_result)))
+                    .expect("failed to wake");
+            }
+
+            #[test]
+            fn test_suspend_mod_restore() {
+                let unit = &mut $dev();
+                let mem = memory();
+                let interrupt = interrupt();
+                let queues = create_queues(
+                    $num_queues,
+                    unit.queue_max_sizes()
+                        .first()
+                        .cloned()
+                        .expect("missing queue size"),
+                    &mem,
+                );
+                unit.activate(mem.clone(), interrupt.clone(), queues)
+                    .expect("failed to activate");
+                let sleep_result = unit
+                    .virtio_sleep()
+                    .expect("failed to sleep")
+                    .expect("missing queues while sleeping");
+                let snap = unit
+                    .virtio_snapshot()
+                    .expect("failed to take initial snapshot");
+                unit.virtio_wake(Some((mem.clone(), interrupt.clone(), sleep_result)))
+                    .expect("failed to wake");
+                $modfun(unit);
+                let unit = &mut $dev();
+                unit.virtio_restore(snap.clone())
+                    .expect("failed to restore");
+                let snap2 = unit
+                    .virtio_snapshot()
+                    .expect("failed to take snapshot after mod");
+                assert_eq!(snap, snap2);
+            }
+        }
+    };
+}
