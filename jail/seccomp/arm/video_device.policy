@@ -5,6 +5,7 @@
 @include /usr/share/policy/crosvm/common_device.policy
 
 # Syscalls specific to video devices.
+access: 1
 clock_getres: 1
 clock_getres_time64: 1
 connect: 1
