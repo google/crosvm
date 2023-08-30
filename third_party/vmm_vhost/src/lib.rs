@@ -69,12 +69,6 @@ cfg_if::cfg_if! {
     }
 }
 cfg_if::cfg_if! {
-    if #[cfg(all(feature = "device", unix))] {
-        mod slave;
-        pub use self::slave::SlaveListener;
-    }
-}
-cfg_if::cfg_if! {
     if #[cfg(feature = "vmm")] {
         pub use self::master_req_handler::MasterReqHandler;
     }

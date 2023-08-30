@@ -19,7 +19,7 @@ use vmm_vhost::connection::vfio::Listener as VfioListener;
 use vmm_vhost::connection::Endpoint;
 use vmm_vhost::connection::Listener;
 use vmm_vhost::message::MasterReq;
-use vmm_vhost::SlaveListener;
+use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::virtio::vhost::user::device::handler::sys::unix::run_handler;
@@ -129,7 +129,7 @@ impl VhostUserListener {
 /// Attaches to an already bound socket via `listener` and handles incoming messages from the
 /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
 async fn run_with_handler<L>(
-    listener: L,
+    mut listener: L,
     handler: Box<dyn VhostUserSlaveReqHandler>,
     ex: &Executor,
 ) -> anyhow::Result<()>
@@ -137,7 +137,6 @@ where
     L::Endpoint: Endpoint<MasterReq> + AsRawDescriptor,
     L: Listener + AsRawDescriptor,
 {
-    let mut listener = SlaveListener::<L, _>::new(listener, handler)?;
     listener.set_nonblocking(true)?;
 
     loop {
@@ -148,7 +147,10 @@ where
             .accept()
             .context("failed to accept an incoming connection")?
         {
-            Some(req_handler) => return run_handler(req_handler, ex).await,
+            Some(endpoint) => {
+                let req_handler = SlaveReqHandler::new(endpoint, handler);
+                return run_handler(req_handler, ex).await;
+            }
             None => {
                 // Nobody is on the other end yet, wait until we get a connection.
                 let async_waiter = ex

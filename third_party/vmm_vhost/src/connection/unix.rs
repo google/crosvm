@@ -13,7 +13,6 @@ pub(crate) mod tests {
     use crate::connection::Listener;
     use crate::master::Master;
     use crate::message::MasterReq;
-    use crate::slave::SlaveListener;
     use crate::slave_req_handler::SlaveReqHandler;
     use crate::slave_req_handler::VhostUserSlaveReqHandler;
 
@@ -44,10 +43,11 @@ pub(crate) mod tests {
         let dir = Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = SocketListener::new(&path, true).unwrap();
-        let mut slave_listener = SlaveListener::new(listener, backend).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         let master = Master::connect(&path).unwrap();
-        (master, slave_listener.accept().unwrap().unwrap())
+        let endpoint = listener.accept().unwrap().unwrap();
+        let req_handler = SlaveReqHandler::new(endpoint, backend);
+        (master, req_handler)
     }
 
     // Create failures don't happen on using Tubes because there is no "connection". (The channel is
