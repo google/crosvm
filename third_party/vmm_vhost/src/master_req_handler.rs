@@ -242,10 +242,10 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     ///
     /// This opens a pair of connected anonymous sockets to form the slave communication channel.
     /// The socket fd returned by [Self::take_tx_descriptor()] should be sent to the slave by
-    /// [VhostUserMaster::set_slave_request_fd()].
+    /// [Master::set_slave_request_fd()].
     ///
     /// [Self::take_tx_descriptor()]: struct.MasterReqHandler.html#method.take_tx_descriptor
-    /// [VhostUserMaster::set_slave_request_fd()]: trait.VhostUserMaster.html#tymethod.set_slave_request_fd
+    /// [Master::set_slave_request_fd()]: struct.Master.html#method.set_slave_request_fd
     pub fn new(
         backend: Arc<S>,
         serialize_tx: Box<dyn Fn(SystemStream) -> SafeDescriptor + Send>,
@@ -264,9 +264,9 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     /// Get the descriptor for the slave to communication with the master.
     ///
     /// The caller owns the descriptor. The returned descriptor should be sent to the slave by
-    /// [VhostUserMaster::set_slave_request_fd()].
+    /// [Master::set_slave_request_fd()].
     ///
-    /// [VhostUserMaster::set_slave_request_fd()]: trait.VhostUserMaster.html#tymethod.set_slave_request_fd
+    /// [Master::set_slave_request_fd()]: struct.Master.html#method.set_slave_request_fd
     pub fn take_tx_descriptor(&mut self) -> SafeDescriptor {
         (self.serialize_tx)(self.tx_sock.take().expect("tx_sock should have a value"))
     }

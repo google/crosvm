@@ -21,7 +21,6 @@ use vmm_vhost::message::MasterReq;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::Master;
 use vmm_vhost::MasterReqHandler;
-use vmm_vhost::VhostUserMaster;
 
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandler;
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandlerImpl;

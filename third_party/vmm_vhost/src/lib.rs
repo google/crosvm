@@ -51,7 +51,7 @@ pub use sys::*;
 cfg_if::cfg_if! {
     if #[cfg(feature = "vmm")] {
         pub(crate) mod master;
-        pub use self::master::{Master, VhostUserMaster};
+        pub use self::master::Master;
         mod master_req_handler;
         pub use self::master_req_handler::{VhostUserMasterReqHandler,
                                     VhostUserMasterReqHandlerMut};
@@ -248,7 +248,6 @@ mod tests {
     use tempfile::tempfile;
 
     use super::*;
-    use crate::backend::VhostBackend;
     use crate::connection::tests::*;
     use crate::dummy_slave::DummySlaveReqHandler;
     use crate::dummy_slave::VIRTIO_FEATURES;

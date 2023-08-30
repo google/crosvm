@@ -27,8 +27,6 @@ use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 use vmm_vhost::HandlerResult;
 use vmm_vhost::MasterReqHandler;
-use vmm_vhost::VhostBackend;
-use vmm_vhost::VhostUserMaster;
 use vmm_vhost::VhostUserMasterReqHandlerMut;
 use vmm_vhost::VhostUserMemoryRegionInfo;
 use vmm_vhost::VringConfigData;

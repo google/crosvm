@@ -19,7 +19,6 @@ use data_model::zerocopy_from_reader;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
-use crate::backend::VhostBackend;
 use crate::backend::VhostUserMemoryRegionInfo;
 use crate::backend::VringConfigData;
 use crate::connection::Endpoint;
@@ -31,63 +30,7 @@ use crate::Result as VhostUserResult;
 use crate::Result;
 use crate::SystemStream;
 
-/// Trait for vhost-user master to provide extra methods not covered by the VhostBackend yet.
-pub trait VhostUserMaster: VhostBackend {
-    /// Get the protocol feature bitmask from the underlying vhost implementation.
-    fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures>;
-
-    /// Enable protocol features in the underlying vhost implementation.
-    fn set_protocol_features(&mut self, features: VhostUserProtocolFeatures) -> Result<()>;
-
-    /// Query how many queues the backend supports.
-    fn get_queue_num(&self) -> Result<u64>;
-
-    /// Signal slave to enable or disable corresponding vring.
-    ///
-    /// Slave must not pass data to/from the backend until ring is enabled by
-    /// VHOST_USER_SET_VRING_ENABLE with parameter 1, or after it has been
-    /// disabled by VHOST_USER_SET_VRING_ENABLE with parameter 0.
-    fn set_vring_enable(&mut self, queue_index: usize, enable: bool) -> Result<()>;
-
-    /// Fetch the contents of the virtio device configuration space.
-    fn get_config(
-        &mut self,
-        offset: u32,
-        size: u32,
-        flags: VhostUserConfigFlags,
-        buf: &[u8],
-    ) -> Result<(VhostUserConfig, VhostUserConfigPayload)>;
-
-    /// Change the virtio device configuration space. It also can be used for live migration on the
-    /// destination host to set readonly configuration space fields.
-    fn set_config(&mut self, offset: u32, flags: VhostUserConfigFlags, buf: &[u8]) -> Result<()>;
-
-    /// Setup slave communication channel.
-    fn set_slave_request_fd(&mut self, fd: &dyn AsRawDescriptor) -> Result<()>;
-
-    /// Retrieve shared buffer for inflight I/O tracking.
-    fn get_inflight_fd(
-        &mut self,
-        inflight: &VhostUserInflight,
-    ) -> Result<(VhostUserInflight, File)>;
-
-    /// Set shared buffer for inflight I/O tracking.
-    fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawDescriptor) -> Result<()>;
-
-    /// Query the maximum amount of memory slots supported by the backend.
-    fn get_max_mem_slots(&mut self) -> Result<u64>;
-
-    /// Add a new guest memory mapping for vhost to use.
-    fn add_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
-
-    /// Remove a guest memory mapping from vhost.
-    fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
-
-    /// Gets the shared memory regions used by the device.
-    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>>;
-}
-
-/// Struct for the vhost-user master endpoint.
+/// Client for a vhost-user device. The API is a thin abstraction over the vhost-user protocol.
 #[derive(Clone)]
 pub struct Master<E: Endpoint<MasterReq>> {
     node: Arc<Mutex<MasterInternal<E>>>,
@@ -154,11 +97,9 @@ impl<E: Endpoint<MasterReq>> Master<E> {
         let mut node = self.node();
         node.hdr_flags = flags;
     }
-}
 
-impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
-    /// Get from the underlying vhost implementation the feature bitmask.
-    fn get_features(&self) -> Result<u64> {
+    /// Get a bitmask of supported virtio/vhost features.
+    pub fn get_features(&self) -> Result<u64> {
         let mut node = self.node();
         let hdr = node.send_request_header(MasterReq::GET_FEATURES, None)?;
         let val = node.recv_reply::<VhostUserU64>(&hdr)?;
@@ -166,8 +107,9 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         Ok(node.virtio_features)
     }
 
-    /// Enable features in the underlying vhost implementation using a bitmask.
-    fn set_features(&self, features: u64) -> Result<()> {
+    /// Inform the vhost subsystem which features to enable.
+    /// This should be a subset of supported features from get_features().
+    pub fn set_features(&self, features: u64) -> Result<()> {
         let mut node = self.node();
         let val = VhostUserU64::new(features);
         let hdr = node.send_request_with_body(MasterReq::SET_FEATURES, &val, None)?;
@@ -175,8 +117,9 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    /// Set the current Master as an owner of the session.
-    fn set_owner(&self) -> Result<()> {
+    /// Set the current process as the owner of the vhost backend.
+    /// This must be run before any other vhost commands.
+    pub fn set_owner(&self) -> Result<()> {
         // We unwrap() the return value to assert that we are not expecting threads to ever fail
         // while holding the lock.
         let mut node = self.node();
@@ -184,7 +127,9 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    fn reset_owner(&self) -> Result<()> {
+    /// Used to be sent to request disabling all rings
+    /// This is no longer used.
+    pub fn reset_owner(&self) -> Result<()> {
         let mut node = self.node();
         let hdr = node.send_request_header(MasterReq::RESET_OWNER, None)?;
         node.wait_for_ack(&hdr)
@@ -192,7 +137,7 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
 
     /// Set the memory map regions on the slave so it can translate the vring
     /// addresses. In the ancillary data there is an array of file descriptors
-    fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
+    pub fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
         if regions.is_empty() || regions.len() > MAX_ATTACHED_FD_ENTRIES {
             return Err(VhostUserError::InvalidParam);
         }
@@ -225,9 +170,10 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
+    /// Set base address for page modification logging.
     // Clippy doesn't seem to know that if let with && is still experimental
     #[allow(clippy::unnecessary_unwrap)]
-    fn set_log_base(&self, base: u64, fd: Option<RawDescriptor>) -> Result<()> {
+    pub fn set_log_base(&self, base: u64, fd: Option<RawDescriptor>) -> Result<()> {
         let mut node = self.node();
         let val = VhostUserU64::new(base);
 
@@ -242,23 +188,24 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         Ok(())
     }
 
-    fn set_log_fd(&self, fd: RawDescriptor) -> Result<()> {
+    /// Specify an event file descriptor to signal on log write.
+    pub fn set_log_fd(&self, fd: RawDescriptor) -> Result<()> {
         let mut node = self.node();
         let fds = [fd];
         let hdr = node.send_request_header(MasterReq::SET_LOG_FD, Some(&fds))?;
         node.wait_for_ack(&hdr)
     }
 
-    /// Set the size of the queue.
-    fn set_vring_num(&self, queue_index: usize, num: u16) -> Result<()> {
+    /// Set the number of descriptors in the vring.
+    pub fn set_vring_num(&self, queue_index: usize, num: u16) -> Result<()> {
         let mut node = self.node();
         let val = VhostUserVringState::new(queue_index as u32, num.into());
         let hdr = node.send_request_with_body(MasterReq::SET_VRING_NUM, &val, None)?;
         node.wait_for_ack(&hdr)
     }
 
-    /// Sets the addresses of the different aspects of the vring.
-    fn set_vring_addr(&self, queue_index: usize, config_data: &VringConfigData) -> Result<()> {
+    /// Set the addresses for a given vring.
+    pub fn set_vring_addr(&self, queue_index: usize, config_data: &VringConfigData) -> Result<()> {
         let mut node = self.node();
         if config_data.flags & !(VhostUserVringAddrFlags::all().bits()) != 0 {
             return Err(VhostUserError::InvalidParam);
@@ -269,15 +216,16 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    /// Sets the base offset in the available vring.
-    fn set_vring_base(&self, queue_index: usize, base: u16) -> Result<()> {
+    /// Set the first index to look for available descriptors.
+    pub fn set_vring_base(&self, queue_index: usize, base: u16) -> Result<()> {
         let mut node = self.node();
         let val = VhostUserVringState::new(queue_index as u32, base.into());
         let hdr = node.send_request_with_body(MasterReq::SET_VRING_BASE, &val, None)?;
         node.wait_for_ack(&hdr)
     }
 
-    fn get_vring_base(&self, queue_index: usize) -> Result<u32> {
+    /// Get the available vring base offset.
+    pub fn get_vring_base(&self, queue_index: usize) -> Result<u32> {
         let mut node = self.node();
         let req = VhostUserVringState::new(queue_index as u32, 0);
         let hdr = node.send_request_with_body(MasterReq::GET_VRING_BASE, &req, None)?;
@@ -285,11 +233,12 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         Ok(reply.num)
     }
 
-    /// Set the event file descriptor to signal when buffers are used.
+    /// Set the event to trigger when buffers have been used by the host.
+    ///
     /// Bits (0-7) of the payload contain the vring index. Bit 8 is the invalid FD flag. This flag
     /// is set when there is no file descriptor in the ancillary data. This signals that polling
     /// will be used instead of waiting for the call.
-    fn set_vring_call(&self, queue_index: usize, event: &Event) -> Result<()> {
+    pub fn set_vring_call(&self, queue_index: usize, event: &Event) -> Result<()> {
         let mut node = self.node();
         let hdr = node.send_fd_for_vring(
             MasterReq::SET_VRING_CALL,
@@ -299,11 +248,13 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    /// Set the event file descriptor for adding buffers to the vring.
+    /// Set the event that will be signaled by the guest when buffers are available for the host to
+    /// process.
+    ///
     /// Bits (0-7) of the payload contain the vring index. Bit 8 is the invalid FD flag. This flag
     /// is set when there is no file descriptor in the ancillary data. This signals that polling
     /// should be used instead of waiting for a kick.
-    fn set_vring_kick(&self, queue_index: usize, event: &Event) -> Result<()> {
+    pub fn set_vring_kick(&self, queue_index: usize, event: &Event) -> Result<()> {
         let mut node = self.node();
         let hdr = node.send_fd_for_vring(
             MasterReq::SET_VRING_KICK,
@@ -313,10 +264,11 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    /// Set the event file descriptor to signal when error occurs.
+    /// Set the event that will be signaled by the guest when error happens.
+    ///
     /// Bits (0-7) of the payload contain the vring index. Bit 8 is the invalid FD flag. This flag
     /// is set when there is no file descriptor in the ancillary data.
-    fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
+    pub fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
         let mut node = self.node();
         let hdr = node.send_fd_for_vring(
             MasterReq::SET_VRING_ERR,
@@ -326,19 +278,22 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    fn sleep(&self) -> Result<()> {
+    /// Put the device to sleep.
+    pub fn sleep(&self) -> Result<()> {
         let mut node = self.node();
         let hdr = node.send_request_header(MasterReq::SLEEP, None)?;
         node.wait_for_ack(&hdr)
     }
 
-    fn wake(&self) -> Result<()> {
+    /// Wake the device up.
+    pub fn wake(&self) -> Result<()> {
         let mut node = self.node();
         let hdr = node.send_request_header(MasterReq::WAKE, None)?;
         node.wait_for_ack(&hdr)
     }
 
-    fn snapshot(&self) -> Result<Vec<u8>> {
+    /// Snapshot the device and receive serialized state of the device.
+    pub fn snapshot(&self) -> Result<Vec<u8>> {
         let mut node = self.node();
         let hdr = node.send_request_header(MasterReq::SNAPSHOT, None)?;
         let (success_msg, buf_reply, _) = node.recv_reply_with_payload::<VhostUserSuccess>(&hdr)?;
@@ -351,7 +306,8 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         }
     }
 
-    fn restore(&self, data_bytes: &[u8], queue_evts: Option<Vec<Event>>) -> Result<()> {
+    /// Restore the device.
+    pub fn restore(&self, data_bytes: &[u8], queue_evts: Option<Vec<Event>>) -> Result<()> {
         let mut node = self.node();
 
         let body = VhostUserEmptyMsg;
@@ -378,10 +334,9 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
             Ok(())
         }
     }
-}
 
-impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
-    fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures> {
+    /// Get the protocol feature bitmask from the underlying vhost implementation.
+    pub fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures> {
         let mut node = self.node();
         let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         if node.virtio_features & flag == 0 {
@@ -398,7 +353,8 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         }
     }
 
-    fn set_protocol_features(&mut self, features: VhostUserProtocolFeatures) -> Result<()> {
+    /// Enable protocol features in the underlying vhost implementation.
+    pub fn set_protocol_features(&mut self, features: VhostUserProtocolFeatures) -> Result<()> {
         let mut node = self.node();
         let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         if node.virtio_features & flag == 0 {
@@ -418,7 +374,8 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    fn get_queue_num(&self) -> Result<u64> {
+    /// Query how many queues the backend supports.
+    pub fn get_queue_num(&self) -> Result<u64> {
         let mut node = self.node();
         if !node.is_feature_mq_available() {
             return Err(VhostUserError::InvalidOperation);
@@ -432,7 +389,12 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         Ok(val.value)
     }
 
-    fn set_vring_enable(&mut self, queue_index: usize, enable: bool) -> Result<()> {
+    /// Signal slave to enable or disable corresponding vring.
+    ///
+    /// Slave must not pass data to/from the backend until ring is enabled by
+    /// VHOST_USER_SET_VRING_ENABLE with parameter 1, or after it has been
+    /// disabled by VHOST_USER_SET_VRING_ENABLE with parameter 0.
+    pub fn set_vring_enable(&mut self, queue_index: usize, enable: bool) -> Result<()> {
         let mut node = self.node();
         // set_vring_enable() is supported only when PROTOCOL_FEATURES has been enabled.
         if node.acked_virtio_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0 {
@@ -444,7 +406,8 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    fn get_config(
+    /// Fetch the contents of the virtio device configuration space.
+    pub fn get_config(
         &mut self,
         offset: u32,
         size: u32,
@@ -482,7 +445,14 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         Ok((body_reply, buf_reply))
     }
 
-    fn set_config(&mut self, offset: u32, flags: VhostUserConfigFlags, buf: &[u8]) -> Result<()> {
+    /// Change the virtio device configuration space. It also can be used for live migration on the
+    /// destination host to set readonly configuration space fields.
+    pub fn set_config(
+        &mut self,
+        offset: u32,
+        flags: VhostUserConfigFlags,
+        buf: &[u8],
+    ) -> Result<()> {
         let body = VhostUserConfig::new(
             offset,
             buf.len()
@@ -504,7 +474,8 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    fn set_slave_request_fd(&mut self, fd: &dyn AsRawDescriptor) -> Result<()> {
+    /// Setup slave communication channel.
+    pub fn set_slave_request_fd(&mut self, fd: &dyn AsRawDescriptor) -> Result<()> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::SLAVE_REQ.bits() == 0 {
             return Err(VhostUserError::InvalidOperation);
@@ -514,7 +485,8 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    fn get_inflight_fd(
+    /// Retrieve shared buffer for inflight I/O tracking.
+    pub fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,
     ) -> Result<(VhostUserInflight, File)> {
@@ -532,7 +504,12 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         }
     }
 
-    fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawDescriptor) -> Result<()> {
+    /// Set shared buffer for inflight I/O tracking.
+    pub fn set_inflight_fd(
+        &mut self,
+        inflight: &VhostUserInflight,
+        fd: RawDescriptor,
+    ) -> Result<()> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
             return Err(VhostUserError::InvalidOperation);
@@ -550,7 +527,8 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    fn get_max_mem_slots(&mut self) -> Result<u64> {
+    /// Query the maximum amount of memory slots supported by the backend.
+    pub fn get_max_mem_slots(&mut self) -> Result<u64> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
         {
@@ -563,7 +541,8 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         Ok(val.value)
     }
 
-    fn add_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
+    /// Add a new guest memory mapping for vhost to use.
+    pub fn add_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
         {
@@ -585,7 +564,8 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
+    /// Remove a guest memory mapping from vhost.
+    pub fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
         {
@@ -605,7 +585,8 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>> {
+    /// Gets the shared memory regions used by the device.
+    pub fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>> {
         let mut node = self.node();
         let hdr = node.send_request_header(MasterReq::GET_SHARED_MEMORY_REGIONS, None)?;
         let (body_reply, buf_reply, rfds) = node.recv_reply_with_payload::<VhostUserU64>(&hdr)?;
@@ -636,7 +617,7 @@ impl<E: Endpoint<MasterReq> + AsRawDescriptor> AsRawDescriptor for Master<E> {
 }
 
 // TODO(b/221882601): likely need pairs of RDs and/or SharedMemory to represent mmaps on Windows.
-/// Context object to pass guest memory configuration to VhostUserMaster::set_mem_table().
+/// Context object to pass guest memory configuration to Master::set_mem_table().
 struct VhostUserMemoryContext {
     regions: VhostUserMemoryPayload,
     fds: Vec<RawDescriptor>,
