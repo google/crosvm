@@ -93,7 +93,6 @@ pub fn create_gpu_device(
     let is_sandboxed = cfg.jail_config.is_some();
     let mut gpu_params = cfg.gpu_parameters.clone().unwrap();
     gpu_params.external_blob = is_sandboxed;
-    gpu_params.allow_implicit_render_server_exec = !is_sandboxed;
 
     let mut display_backends = vec![
         virtio::DisplayBackend::X(cfg.x_display.clone()),
