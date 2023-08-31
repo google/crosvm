@@ -590,22 +590,41 @@ impl From<&WhpxDebugRegs> for DebugRegs {
 }
 
 /// Registers that store pending interrupts and interrupt state.
+///
+/// There are four critical registers:
+/// * WHvRegisterPendingInterruption (u64; HTLFS page 55): contains
+///   interrupts which are pending, but not yet delivered.
+/// * WHvRegisterInterruptState (u64; HTLFS page 55): contains the
+///   interrupt state for the VCPU (e.g. masking nmis, etc).
+/// * WHvX64RegisterDeliverabilityNotifications (u64; WHPX docs only):
+///   allows us to request a VCPU exit once injection of interrupts is
+///   possible.
+/// * WHvRegisterInternalActivityState (u64; WHPX docs only): this register
+///   is unspecified except for its existence, so we consider it to be
+///   opaque. From experimentation, we believe it contains some kind of
+///   state required by SMP guests, because snapshotting/restoring without
+///   it causes all APs to freeze (the BSP does exit periodically, but also
+///   seems to be very unhappy).
 #[derive(Default)]
 pub(super) struct WhpxInterruptRegs {
-    register_values: [WHV_REGISTER_VALUE; 2],
+    register_values: [WHV_REGISTER_VALUE; 4],
 }
 
 #[derive(Serialize, Deserialize)]
 pub(super) struct SerializedWhpxInterruptRegs {
     pending_interruption: u64,
     interrupt_state: u64,
+    deliverability_notifications: u64,
+    internal_activity_state: u64,
 }
 
 impl WhpxInterruptRegs {
-    pub(super) fn get_register_names() -> &'static [WHV_REGISTER_NAME; 2] {
-        const REG_NAMES: [WHV_REGISTER_NAME; 2] = [
+    pub(super) fn get_register_names() -> &'static [WHV_REGISTER_NAME; 4] {
+        const REG_NAMES: [WHV_REGISTER_NAME; 4] = [
             WHV_REGISTER_NAME_WHvRegisterPendingInterruption,
             WHV_REGISTER_NAME_WHvRegisterInterruptState,
+            WHV_REGISTER_NAME_WHvX64RegisterDeliverabilityNotifications,
+            WHV_REGISTER_NAME_WHvRegisterInternalActivityState,
         ];
         &REG_NAMES
     }
@@ -622,6 +641,12 @@ impl WhpxInterruptRegs {
             pending_interruption: unsafe { self.register_values[0].PendingInterruption.AsUINT64 },
             // SAFETY: This register is a valid u64.
             interrupt_state: unsafe { self.register_values[1].InterruptState.AsUINT64 },
+            // SAFETY: This register is a valid u64.
+            deliverability_notifications: unsafe {
+                self.register_values[2].DeliverabilityNotifications.AsUINT64
+            },
+            // SAFETY: This register is a valid u64.
+            internal_activity_state: unsafe { self.register_values[3].InternalActivity.AsUINT64 },
         }
     }
 
@@ -633,6 +658,12 @@ impl WhpxInterruptRegs {
         whpx_interrupt_regs.register_values[1]
             .InterruptState
             .AsUINT64 = serialized_regs.interrupt_state;
+        whpx_interrupt_regs.register_values[2]
+            .DeliverabilityNotifications
+            .AsUINT64 = serialized_regs.deliverability_notifications;
+        whpx_interrupt_regs.register_values[3]
+            .InternalActivity
+            .AsUINT64 = serialized_regs.internal_activity_state;
         whpx_interrupt_regs
     }
 }
