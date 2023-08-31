@@ -192,8 +192,7 @@ impl<R: Req> EndpointTrait<R> for Endpoint<R> {
         } else {
             vec![]
         };
-        let mut iovs: Vec<_> = bufs.iter_mut().map(|s| IoSliceMut::new(s)).collect();
-        let (bytes, fds) = self.sock.recv_iovecs_with_fds(&mut iovs, &mut fd_array)?;
+        let (bytes, fds) = self.sock.recv_iovecs_with_fds(bufs, &mut fd_array)?;
 
         // 0-bytes indicates that the connection is closed.
         if bytes == 0 {
