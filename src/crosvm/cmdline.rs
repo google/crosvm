@@ -1289,6 +1289,9 @@ pub struct RunCommand {
     ///     cache-size=SIZE - The maximum size of the shader cache.
     ///     pci-bar-size=SIZE - The size for the PCI BAR in bytes
     ///        (default 8gb).
+    ///     implicit-render-server[=true|=false] - If the render
+    ///        server process should be allowed to autostart
+    ///        (ignored when sandboxing is enabled)
     ///
     /// Possible key values for GpuDisplayParameters:
     ///     mode=(borderless_full_screen|windowed[width,height]) -

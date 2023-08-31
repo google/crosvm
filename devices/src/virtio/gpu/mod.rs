@@ -1208,7 +1208,11 @@ impl Gpu {
             GpuMode::ModeGfxstream => RutabagaComponentType::Gfxstream,
         };
 
-        let use_render_server = rutabaga_server_descriptor.is_some();
+        // Only allow virglrenderer to fork its own render server when explicitly requested.
+        // Caller can enforce its own restrictions (e.g. not allowed when sandboxed) and set the
+        // allow flag appropriately.
+        let use_render_server = rutabaga_server_descriptor.is_some()
+            || gpu_parameters.allow_implicit_render_server_exec;
 
         let rutabaga_wsi = match gpu_parameters.wsi {
             Some(GpuWsi::Vulkan) => RutabagaWsi::VulkanSwapchain,

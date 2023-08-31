@@ -94,6 +94,11 @@ pub fn create_gpu_device(
     let mut gpu_params = cfg.gpu_parameters.clone().unwrap();
     gpu_params.external_blob = is_sandboxed;
 
+    // Implicit launch is not allowed when sandboxed. A socket fd from a separate sandboxed
+    // render_server process must be provided instead.
+    gpu_params.allow_implicit_render_server_exec =
+        gpu_params.allow_implicit_render_server_exec && !is_sandboxed;
+
     let mut display_backends = vec![
         virtio::DisplayBackend::X(cfg.x_display.clone()),
         virtio::DisplayBackend::Stub,
