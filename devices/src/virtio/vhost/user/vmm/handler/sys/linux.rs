@@ -13,7 +13,7 @@ use base::AsRawDescriptor;
 use base::SafeDescriptor;
 use cros_async::AsyncWrapper;
 use cros_async::Executor;
-use vmm_vhost::connection::socket::Endpoint as SocketEndpoint;
+use vmm_vhost::connection::socket::SocketEndpoint;
 use vmm_vhost::message::MasterReq;
 use vmm_vhost::Error as VhostError;
 use vmm_vhost::Master;

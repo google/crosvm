@@ -60,7 +60,7 @@ pub mod test_helpers {
     use std::os::unix::net::UnixStream;
 
     use tempfile::TempDir;
-    use vmm_vhost::connection::socket::Endpoint as SocketEndpoint;
+    use vmm_vhost::connection::socket::SocketEndpoint;
     use vmm_vhost::connection::Listener;
     use vmm_vhost::message::MasterReq;
     use vmm_vhost::SlaveReqHandler;

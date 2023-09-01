@@ -73,7 +73,7 @@ impl Listener {
 
 impl ListenerTrait for Listener {
     type Connection = SystemStream;
-    type Endpoint = Endpoint<MasterReq>;
+    type Endpoint = SocketEndpoint<MasterReq>;
 
     /// Accept an incoming connection.
     ///
@@ -85,7 +85,7 @@ impl ListenerTrait for Listener {
         loop {
             match self.fd.accept() {
                 Ok((stream, _addr)) => {
-                    return Ok(Some(Endpoint {
+                    return Ok(Some(SocketEndpoint {
                         sock: stream.try_into()?,
                         _r: PhantomData,
                     }))
@@ -122,12 +122,12 @@ impl AsRawDescriptor for Listener {
 }
 
 /// Unix domain socket endpoint for vhost-user connection.
-pub struct Endpoint<R: Req> {
+pub struct SocketEndpoint<R: Req> {
     sock: ScmSocket<SystemStream>,
     _r: PhantomData<R>,
 }
 
-impl<R: Req> From<SystemStream> for Endpoint<R> {
+impl<R: Req> From<SystemStream> for SocketEndpoint<R> {
     fn from(sock: SystemStream) -> Self {
         Self {
             sock: sock.try_into().unwrap(),
@@ -136,11 +136,11 @@ impl<R: Req> From<SystemStream> for Endpoint<R> {
     }
 }
 
-impl<R: Req> EndpointTrait<R> for Endpoint<R> {
+impl<R: Req> EndpointTrait<R> for SocketEndpoint<R> {
     /// Create a new stream by connecting to server at `str`.
     ///
     /// # Return:
-    /// * - the new Endpoint object on success.
+    /// * - the new SocketEndpoint object on success.
     /// * - SocketConnect: failed to connect to peer.
     fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
         let sock = SystemStream::connect(path).map_err(Error::SocketConnect)?;
@@ -224,17 +224,17 @@ impl<R: Req> EndpointTrait<R> for Endpoint<R> {
         let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
         // Safe because we own the file
         let tube = unsafe { SystemStream::from_raw_descriptor(file.into_raw_descriptor()) };
-        Ok(Box::new(Endpoint::from(tube)))
+        Ok(Box::new(SocketEndpoint::from(tube)))
     }
 }
 
-impl<T: Req> AsRawDescriptor for Endpoint<T> {
+impl<T: Req> AsRawDescriptor for SocketEndpoint<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.sock.as_raw_descriptor()
     }
 }
 
-impl<T: Req> AsMut<SystemStream> for Endpoint<T> {
+impl<T: Req> AsMut<SystemStream> for SocketEndpoint<T> {
     fn as_mut(&mut self) -> &mut SystemStream {
         self.sock.inner_mut()
     }
@@ -290,7 +290,7 @@ mod tests {
         path.push("sock");
         let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
 
         let buf1 = [0x1, 0x2, 0x3, 0x4];
@@ -317,7 +317,7 @@ mod tests {
         path.push("sock");
         let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
 
         let mut fd = tempfile().unwrap();
@@ -489,7 +489,7 @@ mod tests {
         path.push("sock");
         let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
 
         let mut hdr1 =
