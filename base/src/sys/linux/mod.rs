@@ -68,6 +68,7 @@ use std::process::ExitStatus;
 use std::ptr;
 use std::time::Duration;
 
+pub use crate::sys::unix::descriptor::*;
 pub use acpi_event::*;
 pub use capabilities::drop_capabilities;
 pub use descriptor::*;

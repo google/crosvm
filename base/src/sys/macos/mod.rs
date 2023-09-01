@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::sys::unix::RawDescriptor;
+
 pub use crate::descriptor_reflection::deserialize_with_descriptors;
 pub use crate::descriptor_reflection::FileSerdeWrapper;
 pub use crate::descriptor_reflection::SerializeDescriptors;
@@ -155,11 +157,7 @@ pub enum MmapError {
     RemoveMappingIsUnsupported,
 }
 
-pub type RawDescriptor = std::os::unix::io::RawFd;
-
 pub struct StreamChannel {}
-
-pub const INVALID_DESCRIPTOR: RawDescriptor = -1;
 
 #[derive(Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlatformEvent {}
@@ -342,36 +340,6 @@ pub mod syslog {
 
 impl PartialEq for crate::SafeDescriptor {
     fn eq(&self, _other: &Self) -> bool {
-        todo!();
-    }
-}
-
-impl crate::SafeDescriptor {
-    pub fn try_clone(&self) -> crate::errno::Result<crate::SafeDescriptor> {
-        todo!();
-    }
-}
-
-impl crate::IntoRawDescriptor for std::fs::File {
-    fn into_raw_descriptor(self) -> RawDescriptor {
-        todo!();
-    }
-}
-
-impl crate::AsRawDescriptor for std::fs::File {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        todo!();
-    }
-}
-
-impl crate::FromRawDescriptor for std::fs::File {
-    unsafe fn from_raw_descriptor(_descriptor: RawDescriptor) -> Self {
-        todo!();
-    }
-}
-
-impl crate::AsRawDescriptor for std::io::Stderr {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
         todo!();
     }
 }
