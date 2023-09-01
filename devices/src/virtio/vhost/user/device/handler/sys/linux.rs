@@ -9,17 +9,14 @@ use base::AsRawDescriptor;
 use base::SafeDescriptor;
 use cros_async::AsyncWrapper;
 use cros_async::Executor;
-use vmm_vhost::connection::Endpoint;
-use vmm_vhost::message::MasterReq;
 use vmm_vhost::Error as VhostError;
 use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandler;
 
 /// Performs the run loop for an already-constructor request handler.
-pub async fn run_handler<S, E>(mut req_handler: SlaveReqHandler<S, E>, ex: &Executor) -> Result<()>
+pub async fn run_handler<S>(mut req_handler: SlaveReqHandler<S>, ex: &Executor) -> Result<()>
 where
     S: VhostUserSlaveReqHandler,
-    E: Endpoint<MasterReq> + AsRawDescriptor,
 {
     let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
         .map(AsyncWrapper::new)
@@ -60,9 +57,7 @@ pub mod test_helpers {
     use std::os::unix::net::UnixStream;
 
     use tempfile::TempDir;
-    use vmm_vhost::connection::socket::SocketEndpoint;
     use vmm_vhost::connection::Listener;
-    use vmm_vhost::message::MasterReq;
     use vmm_vhost::SlaveReqHandler;
     use vmm_vhost::VhostUserSlaveReqHandler;
 
@@ -87,7 +82,7 @@ pub mod test_helpers {
     pub(crate) fn listen<S: VhostUserSlaveReqHandler>(
         mut listener: vmm_vhost::connection::socket::Listener,
         handler: S,
-    ) -> SlaveReqHandler<S, SocketEndpoint<MasterReq>> {
+    ) -> SlaveReqHandler<S> {
         let endpoint = listener.accept().unwrap().unwrap();
         SlaveReqHandler::new(endpoint, handler)
     }

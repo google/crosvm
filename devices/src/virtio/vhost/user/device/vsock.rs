@@ -398,7 +398,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
         Err(Error::InvalidOperation)
     }
 
-    fn set_slave_req_fd(&mut self, _vu_req: Box<dyn Endpoint<SlaveReq>>) {
+    fn set_slave_req_fd(&mut self, _vu_req: Endpoint<SlaveReq>) {
         // We didn't set VhostUserProtocolFeatures::SLAVE_REQ
         unreachable!("unexpected set_slave_req_fd");
     }

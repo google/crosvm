@@ -21,31 +21,29 @@ use zerocopy::FromBytes;
 
 use crate::backend::VhostUserMemoryRegionInfo;
 use crate::backend::VringConfigData;
-use crate::connection::Endpoint;
-use crate::connection::EndpointExt;
 use crate::message::*;
 use crate::take_single_file;
+use crate::Endpoint;
 use crate::Error as VhostUserError;
+use crate::MasterReq;
 use crate::Result as VhostUserResult;
 use crate::Result;
 use crate::SystemStream;
 
 /// Client for a vhost-user device. The API is a thin abstraction over the vhost-user protocol.
 #[derive(Clone)]
-pub struct Master<E: Endpoint<MasterReq>> {
-    node: Arc<Mutex<MasterInternal<E>>>,
+pub struct Master {
+    node: Arc<Mutex<MasterInternal>>,
 }
 
-impl<E: Endpoint<MasterReq> + From<SystemStream>> Master<E> {
+impl Master {
     /// Create a new instance from a Unix stream socket.
     pub fn from_stream(sock: SystemStream) -> Self {
-        Self::new(E::from(sock))
+        Self::new(Endpoint::from(sock))
     }
-}
 
-impl<E: Endpoint<MasterReq>> Master<E> {
     /// Create a new instance.
-    fn new(ep: E) -> Self {
+    fn new(ep: Endpoint<MasterReq>) -> Self {
         Master {
             node: Arc::new(Mutex::new(MasterInternal {
                 main_sock: ep,
@@ -59,7 +57,7 @@ impl<E: Endpoint<MasterReq>> Master<E> {
         }
     }
 
-    fn node(&self) -> MutexGuard<MasterInternal<E>> {
+    fn node(&self) -> MutexGuard<MasterInternal> {
         self.node.lock().unwrap()
     }
 
@@ -72,7 +70,7 @@ impl<E: Endpoint<MasterReq>> Master<E> {
     pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
         let mut retry_count = 5;
         let endpoint = loop {
-            match E::connect(&path) {
+            match Endpoint::connect(&path) {
                 Ok(endpoint) => break Ok(endpoint),
                 Err(e) => match &e {
                     VhostUserError::SocketConnect(why) => {
@@ -607,7 +605,7 @@ impl<E: Endpoint<MasterReq>> Master<E> {
     }
 }
 
-impl<E: Endpoint<MasterReq> + AsRawDescriptor> AsRawDescriptor for Master<E> {
+impl AsRawDescriptor for Master {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         let node = self.node();
         // TODO(b/221882601): why is this here? The underlying Tube needs to use a read notifier
@@ -639,9 +637,9 @@ impl VhostUserMemoryContext {
     }
 }
 
-struct MasterInternal<E: Endpoint<MasterReq>> {
+struct MasterInternal {
     // Used to send requests to the slave.
-    main_sock: E,
+    main_sock: Endpoint<MasterReq>,
     // Cached virtio features from the slave.
     virtio_features: u64,
     // Cached acked virtio features from the driver.
@@ -656,7 +654,7 @@ struct MasterInternal<E: Endpoint<MasterReq>> {
     hdr_flags: VhostUserHeaderFlag,
 }
 
-impl<E: Endpoint<MasterReq>> MasterInternal<E> {
+impl MasterInternal {
     fn send_request_header(
         &mut self,
         code: MasterReq,
@@ -795,8 +793,6 @@ mod tests {
 
     use super::*;
     use crate::connection::tests::create_pair;
-    use crate::connection::tests::TestEndpoint;
-    use crate::connection::tests::TestMaster;
 
     const BUFFER_SIZE: usize = 0x1001;
 
@@ -951,7 +947,7 @@ mod tests {
             .unwrap_err();
     }
 
-    fn create_pair2() -> (TestMaster, TestEndpoint) {
+    fn create_pair2() -> (Master, Endpoint<MasterReq>) {
         let (master, peer) = create_pair();
         {
             let mut node = master.node();

@@ -15,8 +15,10 @@ cfg_if::cfg_if! {
     }
 }
 
-#[cfg(feature = "device")]
-pub(crate) use platform::MasterReqEndpoint;
-#[cfg(feature = "device")]
-pub(crate) use platform::SlaveReqEndpoint;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "device")] {
+        pub(crate) use platform::PlatformEndpoint;
+    }
+}
+
 pub use platform::SystemStream;

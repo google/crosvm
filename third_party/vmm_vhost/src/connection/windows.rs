@@ -5,25 +5,21 @@
 
 #[cfg(all(test, feature = "vmm"))]
 pub(crate) mod tests {
-    use crate::connection::TubeEndpoint;
     use crate::master::Master;
     use crate::message::MasterReq;
     use crate::slave_req_handler::SlaveReqHandler;
     use crate::slave_req_handler::VhostUserSlaveReqHandler;
+    use crate::Endpoint;
     use crate::SystemStream;
-    pub(crate) type TestEndpoint = TubeEndpoint<MasterReq>;
-    pub(crate) type TestMaster = Master<TestEndpoint>;
 
-    pub(crate) fn create_pair() -> (TestMaster, TestEndpoint) {
+    pub(crate) fn create_pair() -> (Master, Endpoint<MasterReq>) {
         let (master_tube, slave_tube) = SystemStream::pair().unwrap();
         let master = Master::from_stream(master_tube);
-        (master, TubeEndpoint::from(slave_tube))
+        (master, Endpoint::from(slave_tube))
     }
 
     #[cfg(feature = "device")]
-    pub(crate) fn create_master_slave_pair<S>(
-        backend: S,
-    ) -> (TestMaster, SlaveReqHandler<S, TestEndpoint>)
+    pub(crate) fn create_master_slave_pair<S>(backend: S) -> (Master, SlaveReqHandler<S>)
     where
         S: VhostUserSlaveReqHandler,
     {
@@ -31,7 +27,7 @@ pub(crate) mod tests {
         let master = Master::from_stream(master_tube);
         (
             master,
-            SlaveReqHandler::<S, TubeEndpoint<MasterReq>>::from_stream(slave_tube, backend),
+            SlaveReqHandler::<S>::from_stream(slave_tube, backend),
         )
     }
 }

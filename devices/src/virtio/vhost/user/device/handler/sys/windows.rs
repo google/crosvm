@@ -127,7 +127,7 @@ pub mod test_helpers {
     pub(crate) fn listen<S: VhostUserSlaveReqHandler>(
         dev_tube: Tube,
         handler: S,
-    ) -> SlaveReqHandler<S, vmm_vhost::connection::TubeEndpoint<MasterReq>> {
+    ) -> SlaveReqHandler<S> {
         SlaveReqHandler::from_stream(dev_tube, handler)
     }
 }

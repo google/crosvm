@@ -20,10 +20,10 @@ use serde::Deserialize;
 use serde::Serialize;
 use tube_transporter::packed_tube;
 
-use crate::connection::Endpoint;
 use crate::connection::Req;
 use crate::message::SlaveReq;
 use crate::take_single_file;
+use crate::Endpoint;
 use crate::Error;
 use crate::Result;
 
@@ -60,8 +60,8 @@ impl<R: Req> From<Tube> for TubeEndpoint<R> {
     }
 }
 
-impl<R: Req> Endpoint<R> for TubeEndpoint<R> {
-    fn connect<P: AsRef<Path>>(_path: P) -> Result<Self> {
+impl<R: Req> TubeEndpoint<R> {
+    pub fn connect<P: AsRef<Path>>(_path: P) -> Result<Self> {
         unimplemented!("connections not supported on Tubes")
     }
 
@@ -70,7 +70,7 @@ impl<R: Req> Endpoint<R> for TubeEndpoint<R> {
     /// # Return:
     /// * - number of bytes sent on success
     /// * - TubeError: tube related errors.
-    fn send_iovec(&mut self, iovs: &[IoSlice], rds: Option<&[RawDescriptor]>) -> Result<usize> {
+    pub fn send_iovec(&mut self, iovs: &[IoSlice], rds: Option<&[RawDescriptor]>) -> Result<usize> {
         // Gather the iovecs
         let total_bytes = iovs.iter().map(|iov| iov.len()).sum();
         let mut data = Vec::with_capacity(total_bytes);
@@ -102,7 +102,7 @@ impl<R: Req> Endpoint<R> for TubeEndpoint<R> {
     /// * - (number of bytes received, [received files]) on success
     /// * - RecvBufferTooSmall: Input bufs is too small for the received buffer.
     /// * - TubeError: tube related errors.
-    fn recv_into_bufs(
+    pub fn recv_into_bufs(
         &mut self,
         bufs: &mut [IoSliceMut],
         _allow_rds: bool,
@@ -156,14 +156,14 @@ impl<R: Req> Endpoint<R> for TubeEndpoint<R> {
         Ok((bytes_read, files))
     }
 
-    fn create_slave_request_endpoint(
+    pub fn create_slave_request_endpoint(
         &mut self,
         files: Option<Vec<File>>,
-    ) -> Result<Box<dyn Endpoint<SlaveReq>>> {
+    ) -> Result<Endpoint<SlaveReq>> {
         let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
         // Safe because the file represents a packed tube.
         let tube = unsafe { packed_tube::unpack(file.into()).expect("unpacked Tube") };
-        Ok(Box::new(TubeEndpoint::from(tube)))
+        Ok(Endpoint::from(tube))
     }
 }
 
@@ -188,16 +188,15 @@ mod tests {
     use base::Tube;
     use tempfile::tempfile;
 
-    use super::*;
-    use crate::connection::EndpointExt;
     use crate::message::MasterReq;
     use crate::message::VhostUserMsgHeader;
+    use crate::Endpoint;
 
-    fn create_pair() -> (TubeEndpoint<MasterReq>, TubeEndpoint<MasterReq>) {
+    fn create_pair() -> (Endpoint<MasterReq>, Endpoint<MasterReq>) {
         let (master_tube, slave_tube) = Tube::pair().unwrap();
         (
-            TubeEndpoint::<MasterReq>::from(master_tube),
-            TubeEndpoint::<MasterReq>::from(slave_tube),
+            Endpoint::<MasterReq>::from(master_tube),
+            Endpoint::<MasterReq>::from(slave_tube),
         )
     }
 

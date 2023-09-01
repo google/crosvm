@@ -11,18 +11,17 @@ use base::AsRawDescriptor;
 use base::RawDescriptor;
 use zerocopy::AsBytes;
 
-use crate::connection::Endpoint;
-use crate::connection::EndpointExt;
 use crate::message::*;
+use crate::Endpoint;
 use crate::Error;
 use crate::HandlerResult;
 use crate::Result;
-use crate::SlaveReqEndpoint;
+use crate::SlaveReq;
 use crate::SystemStream;
 use crate::VhostUserMasterReqHandler;
 
 struct SlaveInternal {
-    sock: Box<dyn Endpoint<SlaveReq>>,
+    sock: Endpoint<SlaveReq>,
 
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
@@ -89,7 +88,7 @@ pub struct Slave {
 
 impl Slave {
     /// Constructs a new slave proxy from the given endpoint.
-    pub fn new(ep: Box<dyn Endpoint<SlaveReq>>) -> Self {
+    pub fn new(ep: Endpoint<SlaveReq>) -> Self {
         Slave {
             node: Arc::new(Mutex::new(SlaveInternal {
                 sock: ep,
@@ -119,7 +118,7 @@ impl Slave {
 
     /// Create a new instance from a `SystemStream` object.
     pub fn from_stream(sock: SystemStream) -> Self {
-        Self::new(Box::new(SlaveReqEndpoint::from(sock)))
+        Self::new(Endpoint::from(sock))
     }
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.
@@ -205,7 +204,7 @@ mod tests {
     fn test_slave_recv_negative() {
         let (p1, p2) = SystemStream::pair().unwrap();
         let fs_cache = Slave::from_stream(p1);
-        let mut master = SlaveReqEndpoint::from(p2);
+        let mut master = Endpoint::from(p2);
 
         let len = mem::size_of::<VhostUserFSSlaveMsg>();
         let mut hdr = VhostUserMsgHeader::new(

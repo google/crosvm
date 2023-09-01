@@ -11,9 +11,7 @@ pub type SystemStream = Tube;
 cfg_if::cfg_if! {
     if #[cfg(feature = "device")] {
         use crate::connection::TubeEndpoint;
-        use crate::message::{MasterReq, SlaveReq};
 
-        pub(crate) type SlaveReqEndpoint = TubeEndpoint<SlaveReq>;
-        pub(crate) type MasterReqEndpoint = TubeEndpoint<MasterReq>;
+        pub(crate) type PlatformEndpoint<R> = TubeEndpoint<R>;
     }
 }

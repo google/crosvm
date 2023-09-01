@@ -31,14 +31,14 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
 impl<S: VhostUserMasterReqHandler> ReadNotifier for MasterReqHandler<S> {
     /// Used for polling.
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
-        self.sub_sock.get_tube().get_read_notifier()
+        self.sub_sock.0.get_tube().get_read_notifier()
     }
 }
 
 impl<S: VhostUserMasterReqHandler> CloseNotifier for MasterReqHandler<S> {
     /// Used for closing.
     fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
-        self.sub_sock.get_tube().get_close_notifier()
+        self.sub_sock.0.get_tube().get_close_notifier()
     }
 }
 

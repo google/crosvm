@@ -20,65 +20,30 @@ use std::io::IoSliceMut;
 use std::mem;
 use std::path::Path;
 
+use base::AsRawDescriptor;
 use base::RawDescriptor;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use crate::connection::Req;
+use crate::message::MasterReq;
+use crate::message::SlaveReq;
 use crate::message::*;
+use crate::sys::PlatformEndpoint;
 use crate::Error;
 use crate::Result;
+use crate::SystemStream;
 
 /// Listener for accepting connections.
 pub trait Listener: Sized {
     /// Type of an object created when a connection is accepted.
     type Connection;
-    /// Type of endpoint created when a connection is accepted.
-    type Endpoint;
 
     /// Accept an incoming connection.
-    fn accept(&mut self) -> Result<Option<Self::Endpoint>>;
+    fn accept(&mut self) -> Result<Option<Endpoint<MasterReq>>>;
 
     /// Change blocking status on the listener.
     fn set_nonblocking(&self, block: bool) -> Result<()>;
-}
-
-/// Abstracts a vhost-user connection and related operations.
-pub trait Endpoint<R: Req>: Send {
-    /// Create a new stream by connecting to server at `str`.
-    fn connect<P: AsRef<Path>>(path: P) -> Result<Self>
-    where
-        Self: Sized;
-
-    /// Sends bytes from scatter-gather vectors with optional attached file descriptors.
-    ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    fn send_iovec(&mut self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize>;
-
-    /// Reads bytes into the given scatter/gather vectors with optional attached file.
-    ///
-    /// # Arguements
-    /// * `bufs` - A slice of buffers to store received data.
-    /// * `allow_fd` - Indicates whether we can receive FDs.
-    ///
-    /// # Return:
-    /// * - (number of bytes received, [received files]) on success.
-    /// * - `Error::Disconnect` if the client closed.
-    fn recv_into_bufs(
-        &mut self,
-        bufs: &mut [IoSliceMut],
-        allow_fd: bool,
-    ) -> Result<(usize, Option<Vec<File>>)>;
-
-    /// Constructs the slave request endpoint for self.
-    ///
-    /// # Arguments
-    /// * `files` - Files from which to create the endpoint
-    fn create_slave_request_endpoint(
-        &mut self,
-        files: Option<Vec<File>>,
-    ) -> Result<Box<dyn Endpoint<SlaveReq>>>;
 }
 
 // Advance the internal cursor of the slices.
@@ -121,8 +86,57 @@ fn advance_slices_mut(bufs: &mut &mut [&mut [u8]], mut count: usize) {
     }
 }
 
-/// Abstracts VVU message parsing, sending and receiving.
-pub trait EndpointExt<R: Req>: Endpoint<R> {
+/// A vhost-user connection and related operations.
+pub struct Endpoint<R: Req>(pub(crate) PlatformEndpoint<R>);
+
+impl<R: Req> From<SystemStream> for Endpoint<R> {
+    fn from(sock: SystemStream) -> Self {
+        Self(PlatformEndpoint::from(sock))
+    }
+}
+
+impl<R: Req> Endpoint<R> {
+    /// Create a new stream by connecting to server at `path`.
+    pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
+        PlatformEndpoint::connect(path).map(Self)
+    }
+
+    /// Sends bytes from scatter-gather vectors with optional attached file descriptors.
+    ///
+    /// # Return:
+    /// * - number of bytes sent on success
+    pub fn send_iovec(&mut self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize> {
+        self.0.send_iovec(iovs, fds)
+    }
+
+    /// Reads bytes into the given scatter/gather vectors with optional attached file.
+    ///
+    /// # Arguements
+    /// * `bufs` - A slice of buffers to store received data.
+    /// * `allow_fd` - Indicates whether we can receive FDs.
+    ///
+    /// # Return:
+    /// * - (number of bytes received, [received files]) on success.
+    /// * - `Error::Disconnect` if the client closed.
+    pub fn recv_into_bufs(
+        &mut self,
+        bufs: &mut [IoSliceMut],
+        allow_fd: bool,
+    ) -> Result<(usize, Option<Vec<File>>)> {
+        self.0.recv_into_bufs(bufs, allow_fd)
+    }
+
+    /// Constructs the slave request endpoint for self.
+    ///
+    /// # Arguments
+    /// * `files` - Files from which to create the endpoint
+    pub fn create_slave_request_endpoint(
+        &mut self,
+        files: Option<Vec<File>>,
+    ) -> Result<super::Endpoint<SlaveReq>> {
+        self.0.create_slave_request_endpoint(files)
+    }
+
     /// Sends all bytes from scatter-gather vectors with optional attached file descriptors. Will
     /// loop until all data has been transfered.
     ///
@@ -134,7 +148,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// cursor needs to be moved by `advance_slices()`.
     /// Once `IoSlice::advance_slices()` becomes stable, this should be updated.
     /// <https://github.com/rust-lang/rust/issues/62726>.
-    fn send_iovec_all(
+    pub fn send_iovec_all(
         &mut self,
         mut iovs: &mut [&[u8]],
         mut fds: Option<&[RawDescriptor]>,
@@ -145,7 +159,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
         let mut data_sent = 0;
         while !iovs.is_empty() {
             let iovec: Vec<_> = iovs.iter_mut().map(|i| IoSlice::new(i)).collect();
-            match self.send_iovec(&iovec, fds) {
+            match self.0.send_iovec(&iovec, fds) {
                 Ok(0) => {
                     break;
                 }
@@ -168,8 +182,8 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// # Return:
     /// * - number of bytes sent on success
     #[cfg(test)]
-    fn send_slice(&mut self, data: IoSlice, fds: Option<&[RawDescriptor]>) -> Result<usize> {
-        self.send_iovec(&[data], fds)
+    pub fn send_slice(&mut self, data: IoSlice, fds: Option<&[RawDescriptor]>) -> Result<usize> {
+        self.0.send_iovec(&[data], fds)
     }
 
     /// Sends a header-only message with optional attached file descriptors.
@@ -178,7 +192,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - number of bytes sent on success
     /// * - PartialMessage: received a partial message.
     /// * - backend specific errors
-    fn send_header(
+    pub fn send_header(
         &mut self,
         hdr: &VhostUserMsgHeader<R>,
         fds: Option<&[RawDescriptor]>,
@@ -199,7 +213,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - OversizedMsg: message size is too big.
     /// * - PartialMessage: received a partial message.
     /// * - backend specific errors
-    fn send_message<T: Sized + AsBytes>(
+    pub fn send_message<T: Sized + AsBytes>(
         &mut self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,
@@ -224,7 +238,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - PartialMessage: received a partial message.
     /// * - IncorrectFds: wrong number of attached fds.
     /// * - backend specific errors
-    fn send_message_with_payload<T: Sized + AsBytes>(
+    pub fn send_message_with_payload<T: Sized + AsBytes>(
         &mut self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,
@@ -257,10 +271,11 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     ///
     /// # Return:
     /// * - (number of bytes received, buf) on success
-    fn recv_data(&mut self, len: usize) -> Result<Vec<u8>> {
+    pub fn recv_data(&mut self, len: usize) -> Result<Vec<u8>> {
         let mut buf = vec![0u8; len];
-        let (data_len, _) =
-            self.recv_into_bufs(&mut [IoSliceMut::new(&mut buf)], false /* allow_fd */)?;
+        let (data_len, _) = self
+            .0
+            .recv_into_bufs(&mut [IoSliceMut::new(&mut buf)], false /* allow_fd */)?;
         buf.truncate(data_len);
         Ok(buf)
     }
@@ -277,7 +292,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// cursor needs to be moved by `advance_slices_mut()`.
     /// Once `IoSliceMut::advance_slices()` becomes stable, this should be updated.
     /// <https://github.com/rust-lang/rust/issues/62726>.
-    fn recv_into_bufs_all(
+    pub fn recv_into_bufs_all(
         &mut self,
         mut bufs: &mut [&mut [u8]],
     ) -> Result<(usize, Option<Vec<File>>)> {
@@ -287,7 +302,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
 
         while (data_total - data_read) > 0 {
             let mut slices: Vec<IoSliceMut> = bufs.iter_mut().map(|b| IoSliceMut::new(b)).collect();
-            let res = self.recv_into_bufs(&mut slices, true);
+            let res = self.0.recv_into_bufs(&mut slices, true);
             match res {
                 Ok((0, _)) => return Ok((data_read, rfds)),
                 Ok((n, fds)) => {
@@ -313,10 +328,13 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - (number of bytes received, buf, [received files]) on success.
     /// * - backend specific errors
     #[cfg(test)]
-    fn recv_into_buf(&mut self, buf_size: usize) -> Result<(usize, Vec<u8>, Option<Vec<File>>)> {
+    pub fn recv_into_buf(
+        &mut self,
+        buf_size: usize,
+    ) -> Result<(usize, Vec<u8>, Option<Vec<File>>)> {
         let mut buf = vec![0u8; buf_size];
         let mut slices = [IoSliceMut::new(buf.as_mut_slice())];
-        let (bytes, files) = self.recv_into_bufs(&mut slices, true /* allow_fd */)?;
+        let (bytes, files) = self.0.recv_into_bufs(&mut slices, true /* allow_fd */)?;
         Ok((bytes, buf, files))
     }
 
@@ -330,9 +348,9 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - PartialMessage: received a partial message.
     /// * - InvalidMessage: received a invalid message.
     /// * - backend specific errors
-    fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
+    pub fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
-        let (bytes, files) = self.recv_into_bufs(
+        let (bytes, files) = self.0.recv_into_bufs(
             &mut [IoSliceMut::new(hdr.as_bytes_mut())],
             true, /* allow_fd */
         )?;
@@ -355,7 +373,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - PartialMessage: received a partial message.
     /// * - InvalidMessage: received a invalid message.
     /// * - backend specific errors
-    fn recv_body<T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator>(
+    pub fn recv_body<T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator>(
         &mut self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
@@ -386,7 +404,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - InvalidMessage: received a invalid message.
     /// * - backend specific errors
     #[cfg(test)]
-    fn recv_body_into_buf(
+    pub fn recv_body_into_buf(
         &mut self,
         buf: &mut [u8],
     ) -> Result<(VhostUserMsgHeader<R>, usize, Option<Vec<File>>)> {
@@ -413,7 +431,9 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - InvalidMessage: received a invalid message.
     /// * - backend specific errors
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::type_complexity))]
-    fn recv_payload_into_buf<T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator>(
+    pub fn recv_payload_into_buf<
+        T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator,
+    >(
         &mut self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Vec<u8>, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
@@ -441,7 +461,11 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     }
 }
 
-impl<R: Req, E: Endpoint<R> + ?Sized> EndpointExt<R> for E {}
+impl<R: Req> AsRawDescriptor for Endpoint<R> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.0.as_raw_descriptor()
+    }
+}
 
 #[cfg(test)]
 pub(crate) mod tests {

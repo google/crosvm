@@ -15,11 +15,7 @@ pub type SystemStream = UnixStream;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "device")] {
-        use crate::connection::socket::SocketEndpoint;
-        use crate::message::{MasterReq, SlaveReq};
-
-        pub(crate) type SlaveReqEndpoint = SocketEndpoint<SlaveReq>;
-        pub(crate) type MasterReqEndpoint = SocketEndpoint<MasterReq>;
+        pub(crate) use crate::connection::socket::SocketEndpoint as PlatformEndpoint;
     }
 }
 

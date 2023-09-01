@@ -9,20 +9,18 @@ pub(crate) mod tests {
     use tempfile::TempDir;
 
     use crate::connection::socket::Listener as SocketListener;
-    use crate::connection::socket::SocketEndpoint;
     use crate::connection::Listener;
     use crate::master::Master;
     use crate::message::MasterReq;
     use crate::slave_req_handler::SlaveReqHandler;
     use crate::slave_req_handler::VhostUserSlaveReqHandler;
+    use crate::Endpoint;
 
-    pub(crate) type TestMaster = Master<SocketEndpoint<MasterReq>>;
-    pub(crate) type TestEndpoint = SocketEndpoint<MasterReq>;
     pub(crate) fn temp_dir() -> TempDir {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
     }
 
-    pub(crate) fn create_pair() -> (Master<SocketEndpoint<MasterReq>>, SocketEndpoint<MasterReq>) {
+    pub(crate) fn create_pair() -> (Master, Endpoint<MasterReq>) {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
@@ -34,9 +32,7 @@ pub(crate) mod tests {
     }
 
     #[cfg(feature = "device")]
-    pub(crate) fn create_master_slave_pair<S>(
-        backend: S,
-    ) -> (TestMaster, SlaveReqHandler<S, TestEndpoint>)
+    pub(crate) fn create_master_slave_pair<S>(backend: S) -> (Master, SlaveReqHandler<S>)
     where
         S: VhostUserSlaveReqHandler,
     {
@@ -59,13 +55,13 @@ pub(crate) mod tests {
         path.push("sock");
         let _ = SocketListener::new(&path, true).unwrap();
         let _ = SocketListener::new(&path, false).is_err();
-        assert!(Master::<SocketEndpoint<_>>::connect(&path).is_err());
+        assert!(Master::connect(&path).is_err());
 
         let mut listener = SocketListener::new(&path, true).unwrap();
         assert!(SocketListener::new(&path, false).is_err());
         listener.set_nonblocking(true).unwrap();
 
-        let _master = Master::<SocketEndpoint<_>>::connect(&path).unwrap();
+        let _master = Master::connect(&path).unwrap();
         let _slave = listener.accept().unwrap().unwrap();
     }
 }

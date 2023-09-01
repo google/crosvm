@@ -18,12 +18,12 @@ use base::IntoRawDescriptor;
 use base::RawDescriptor;
 use base::ScmSocket;
 
-use crate::connection::Endpoint as EndpointTrait;
 use crate::connection::Listener as ListenerTrait;
 use crate::connection::Req;
 use crate::linux::SystemListener;
 use crate::message::*;
 use crate::take_single_file;
+use crate::Endpoint;
 use crate::Error;
 use crate::Result;
 use crate::SystemStream;
@@ -73,7 +73,6 @@ impl Listener {
 
 impl ListenerTrait for Listener {
     type Connection = SystemStream;
-    type Endpoint = SocketEndpoint<MasterReq>;
 
     /// Accept an incoming connection.
     ///
@@ -81,14 +80,11 @@ impl ListenerTrait for Listener {
     /// * - Some(SystemListener): new SystemListener object if new incoming connection is available.
     /// * - None: no incoming connection available.
     /// * - SocketError: errors from accept().
-    fn accept(&mut self) -> Result<Option<Self::Endpoint>> {
+    fn accept(&mut self) -> Result<Option<Endpoint<MasterReq>>> {
         loop {
             match self.fd.accept() {
                 Ok((stream, _addr)) => {
-                    return Ok(Some(SocketEndpoint {
-                        sock: stream.try_into()?,
-                        _r: PhantomData,
-                    }))
+                    return Ok(Some(Endpoint::from(stream)));
                 }
                 Err(e) => {
                     match e.kind() {
@@ -127,6 +123,7 @@ pub struct SocketEndpoint<R: Req> {
     _r: PhantomData<R>,
 }
 
+// TODO: Switch to TryFrom to avoid the unwrap.
 impl<R: Req> From<SystemStream> for SocketEndpoint<R> {
     fn from(sock: SystemStream) -> Self {
         Self {
@@ -136,13 +133,13 @@ impl<R: Req> From<SystemStream> for SocketEndpoint<R> {
     }
 }
 
-impl<R: Req> EndpointTrait<R> for SocketEndpoint<R> {
+impl<R: Req> SocketEndpoint<R> {
     /// Create a new stream by connecting to server at `str`.
     ///
     /// # Return:
     /// * - the new SocketEndpoint object on success.
     /// * - SocketConnect: failed to connect to peer.
-    fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
         let sock = SystemStream::connect(path).map_err(Error::SocketConnect)?;
         Ok(Self::from(sock))
     }
@@ -155,7 +152,7 @@ impl<R: Req> EndpointTrait<R> for SocketEndpoint<R> {
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
-    fn send_iovec(&mut self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize> {
+    pub fn send_iovec(&mut self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize> {
         let rfds = match fds {
             Some(rfds) => rfds,
             _ => &[],
@@ -182,7 +179,7 @@ impl<R: Req> EndpointTrait<R> for SocketEndpoint<R> {
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
-    fn recv_into_bufs(
+    pub fn recv_into_bufs(
         &mut self,
         bufs: &mut [IoSliceMut],
         allow_fd: bool,
@@ -217,14 +214,14 @@ impl<R: Req> EndpointTrait<R> for SocketEndpoint<R> {
         Ok((bytes, files))
     }
 
-    fn create_slave_request_endpoint(
+    pub fn create_slave_request_endpoint(
         &mut self,
         files: Option<Vec<File>>,
-    ) -> Result<Box<dyn EndpointTrait<SlaveReq>>> {
+    ) -> Result<Endpoint<SlaveReq>> {
         let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
         // Safe because we own the file
         let tube = unsafe { SystemStream::from_raw_descriptor(file.into_raw_descriptor()) };
-        Ok(Box::new(SocketEndpoint::from(tube)))
+        Ok(Endpoint::<SlaveReq>::from(tube))
     }
 }
 
@@ -254,7 +251,6 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::connection::EndpointExt;
 
     fn temp_dir() -> TempDir {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
@@ -290,7 +286,7 @@ mod tests {
         path.push("sock");
         let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
 
         let buf1 = [0x1, 0x2, 0x3, 0x4];
@@ -317,7 +313,7 @@ mod tests {
         path.push("sock");
         let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
 
         let mut fd = tempfile().unwrap();
@@ -489,7 +485,7 @@ mod tests {
         path.push("sock");
         let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
 
         let mut hdr1 =

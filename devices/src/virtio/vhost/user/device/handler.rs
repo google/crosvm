@@ -74,8 +74,6 @@ use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::MemoryRegion;
-use vmm_vhost::connection::Endpoint;
-use vmm_vhost::message::SlaveReq;
 use vmm_vhost::message::VhostSharedMemoryRegion;
 use vmm_vhost::message::VhostUserConfigFlags;
 use vmm_vhost::message::VhostUserGpuMapMsg;
@@ -88,9 +86,11 @@ use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::message::VhostUserSingleMemoryRegion;
 use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
+use vmm_vhost::Endpoint;
 use vmm_vhost::Error as VhostError;
 use vmm_vhost::Result as VhostResult;
 use vmm_vhost::Slave;
+use vmm_vhost::SlaveReq;
 use vmm_vhost::VhostUserMasterReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandlerMut;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
@@ -666,7 +666,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         Ok(())
     }
 
-    fn set_slave_req_fd(&mut self, ep: Box<dyn Endpoint<SlaveReq>>) {
+    fn set_slave_req_fd(&mut self, ep: Endpoint<SlaveReq>) {
         let conn = VhostBackendReqConnection::new(
             Slave::new(ep),
             self.backend.get_shared_memory_region().map(|r| r.id),
@@ -963,7 +963,6 @@ mod tests {
     use anyhow::anyhow;
     use anyhow::bail;
     use base::Event;
-    use vmm_vhost::message::MasterReq;
     use vmm_vhost::SlaveReqHandler;
     use vmm_vhost::VhostUserSlaveReqHandler;
     use zerocopy::AsBytes;
@@ -1177,8 +1176,8 @@ mod tests {
         }
     }
 
-    fn handle_request<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>>(
-        handler: &mut SlaveReqHandler<S, E>,
+    fn handle_request<S: VhostUserSlaveReqHandler>(
+        handler: &mut SlaveReqHandler<S>,
     ) -> Result<(), VhostError> {
         let (hdr, files) = handler.recv_header()?;
         handler.process_message(hdr, files)

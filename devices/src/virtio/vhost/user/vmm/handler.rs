@@ -24,6 +24,7 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserShmemMapMsg;
 use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::HandlerResult;
+use vmm_vhost::Master;
 use vmm_vhost::MasterReqHandler;
 use vmm_vhost::VhostUserMasterReqHandlerMut;
 use vmm_vhost::VhostUserMemoryRegionInfo;
@@ -31,7 +32,6 @@ use vmm_vhost::VringConfigData;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio::vhost::user::vmm::handler::sys::create_backend_req_handler;
-use crate::virtio::vhost::user::vmm::handler::sys::SocketMaster;
 use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Error;
 use crate::virtio::vhost::user::vmm::Result;
@@ -43,7 +43,7 @@ use crate::virtio::SharedMemoryRegion;
 type BackendReqHandler = MasterReqHandler<Mutex<BackendReqHandlerImpl>>;
 
 pub struct VhostUserHandler {
-    vu: SocketMaster,
+    vu: Master,
     pub avail_features: u64,
     acked_features: u64,
     protocol_features: VhostUserProtocolFeatures,
@@ -62,7 +62,7 @@ impl VhostUserHandler {
         #[cfg(windows)]
         let backend_pid = connection.target_pid();
 
-        let mut vu = SocketMaster::from_stream(connection);
+        let mut vu = Master::from_stream(connection);
 
         vu.set_owner().map_err(Error::SetOwner)?;
 

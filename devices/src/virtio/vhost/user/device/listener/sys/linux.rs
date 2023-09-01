@@ -12,9 +12,7 @@ use cros_async::Executor;
 use futures::Future;
 use futures::FutureExt;
 use vmm_vhost::connection::socket::Listener as SocketListener;
-use vmm_vhost::connection::Endpoint;
 use vmm_vhost::connection::Listener;
-use vmm_vhost::message::MasterReq;
 use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandler;
 
@@ -52,7 +50,6 @@ async fn run_with_handler<L>(
     ex: &Executor,
 ) -> anyhow::Result<()>
 where
-    L::Endpoint: Endpoint<MasterReq> + AsRawDescriptor,
     L: Listener + AsRawDescriptor,
 {
     listener.set_nonblocking(true)?;

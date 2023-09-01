@@ -46,6 +46,9 @@ pub use message::VHOST_USER_F_PROTOCOL_FEATURES;
 pub mod connection;
 
 mod sys;
+pub use connection::Endpoint;
+pub use message::MasterReq;
+pub use message::SlaveReq;
 pub use sys::SystemStream;
 pub use sys::*;
 
@@ -260,9 +263,7 @@ mod tests {
     use crate::VringConfigData;
 
     /// Utility function to process a header and a message together.
-    fn handle_request(
-        h: &mut SlaveReqHandler<Mutex<DummySlaveReqHandler>, MasterReqEndpoint>,
-    ) -> Result<()> {
+    fn handle_request(h: &mut SlaveReqHandler<Mutex<DummySlaveReqHandler>>) -> Result<()> {
         // We assume that a header comes together with message body in tests so we don't wait before
         // calling `process_message()`.
         let (hdr, files) = h.recv_header()?;

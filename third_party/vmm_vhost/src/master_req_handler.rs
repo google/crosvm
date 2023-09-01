@@ -17,12 +17,12 @@ use std::sync::Mutex;
 use base::AsRawDescriptor;
 use base::SafeDescriptor;
 
-use crate::connection::EndpointExt;
 use crate::message::*;
+use crate::Endpoint;
 use crate::Error;
 use crate::HandlerResult;
 use crate::Result;
-use crate::SlaveReqEndpoint;
+use crate::SlaveReq;
 use crate::SystemStream;
 
 /// Define services provided by masters for the slave communication channel.
@@ -226,7 +226,7 @@ impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
 /// Server to handle service requests from slaves from the slave communication channel.
 pub struct MasterReqHandler<S: VhostUserMasterReqHandler> {
     // underlying Unix domain socket for communication
-    sub_sock: SlaveReqEndpoint,
+    sub_sock: Endpoint<SlaveReq>,
     tx_sock: Option<SystemStream>,
     // Serializes tx_sock for passing to the backend.
     serialize_tx: Box<dyn Fn(SystemStream) -> SafeDescriptor + Send>,
@@ -253,7 +253,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         let (tx, rx) = SystemStream::pair()?;
 
         Ok(MasterReqHandler {
-            sub_sock: SlaveReqEndpoint::from(rx),
+            sub_sock: Endpoint::from(rx),
             tx_sock: Some(tx),
             serialize_tx,
             reply_ack_negotiated: false,

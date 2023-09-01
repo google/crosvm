@@ -27,11 +27,6 @@ use crate::virtio::vhost::user::vmm::handler::BackendReqHandlerImpl;
 use crate::virtio::vhost::user::vmm::Error;
 use crate::virtio::vhost::user::vmm::Result as VhostResult;
 
-// TODO(rizhang): upstream CL so SocketMaster is renamed to EndpointMaster to make it more cross
-// platform.
-pub(in crate::virtio::vhost::user::vmm::handler) type SocketMaster =
-    Master<TubeEndpoint<MasterReq>>;
-
 pub fn create_backend_req_handler(
     h: BackendReqHandlerImpl,
     backend_pid: Option<u32>,
