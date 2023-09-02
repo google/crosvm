@@ -36,9 +36,6 @@ use crate::SystemStream;
 
 /// Listener for accepting connections.
 pub trait Listener: Sized {
-    /// Type of an object created when a connection is accepted.
-    type Connection;
-
     /// Accept an incoming connection.
     fn accept(&mut self) -> Result<Option<Endpoint<MasterReq>>>;
 

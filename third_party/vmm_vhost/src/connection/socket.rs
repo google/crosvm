@@ -72,8 +72,6 @@ impl SocketListener {
 }
 
 impl Listener for SocketListener {
-    type Connection = SystemStream;
-
     /// Accept an incoming connection.
     ///
     /// # Return:
