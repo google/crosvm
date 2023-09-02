@@ -18,7 +18,7 @@ use base::IntoRawDescriptor;
 use base::RawDescriptor;
 use base::ScmSocket;
 
-use crate::connection::Listener as ListenerTrait;
+use crate::connection::Listener;
 use crate::connection::Req;
 use crate::linux::SystemListener;
 use crate::message::*;
@@ -29,16 +29,16 @@ use crate::Result;
 use crate::SystemStream;
 
 /// Unix domain socket listener for accepting incoming connections.
-pub struct Listener {
+pub struct SocketListener {
     fd: SystemListener,
     drop_path: Option<Box<dyn Any>>,
 }
 
-impl Listener {
+impl SocketListener {
     /// Create a unix domain socket listener.
     ///
     /// # Return:
-    /// * - the new Listener object on success.
+    /// * - the new SocketListener object on success.
     /// * - SocketError: failed to create listener socket.
     pub fn new<P: AsRef<Path>>(path: P, unlink: bool) -> Result<Self> {
         if unlink {
@@ -56,7 +56,7 @@ impl Listener {
             }
         }
 
-        Ok(Listener {
+        Ok(SocketListener {
             fd,
             drop_path: Some(Box::new(DropPath {
                 path: path.as_ref().to_owned(),
@@ -71,7 +71,7 @@ impl Listener {
     }
 }
 
-impl ListenerTrait for Listener {
+impl Listener for SocketListener {
     type Connection = SystemStream;
 
     /// Accept an incoming connection.
@@ -111,7 +111,7 @@ impl ListenerTrait for Listener {
     }
 }
 
-impl AsRawDescriptor for Listener {
+impl AsRawDescriptor for SocketListener {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.fd.as_raw_descriptor()
     }
@@ -261,7 +261,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = SocketListener::new(&path, true).unwrap();
 
         assert!(listener.as_raw_descriptor() > 0);
     }
@@ -271,7 +271,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let mut listener = Listener::new(&path, true).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
 
         // accept on a fd without incoming connection
@@ -284,7 +284,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let mut listener = Listener::new(&path, true).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
@@ -311,7 +311,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let mut listener = Listener::new(&path, true).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
@@ -483,7 +483,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let mut listener = Listener::new(&path, true).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();

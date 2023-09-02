@@ -57,18 +57,19 @@ pub mod test_helpers {
     use std::os::unix::net::UnixStream;
 
     use tempfile::TempDir;
+    use vmm_vhost::connection::socket::SocketListener;
     use vmm_vhost::connection::Listener;
     use vmm_vhost::SlaveReqHandler;
     use vmm_vhost::VhostUserSlaveReqHandler;
 
-    pub(crate) fn setup() -> (vmm_vhost::connection::socket::Listener, TempDir) {
+    pub(crate) fn setup() -> (SocketListener, TempDir) {
         let dir = tempfile::Builder::new()
             .prefix("/tmp/vhost_test")
             .tempdir()
             .unwrap();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = vmm_vhost::connection::socket::Listener::new(&path, true).unwrap();
+        let listener = SocketListener::new(&path, true).unwrap();
 
         (listener, dir)
     }
@@ -80,7 +81,7 @@ pub mod test_helpers {
     }
 
     pub(crate) fn listen<S: VhostUserSlaveReqHandler>(
-        mut listener: vmm_vhost::connection::socket::Listener,
+        mut listener: SocketListener,
         handler: S,
     ) -> SlaveReqHandler<S> {
         let endpoint = listener.accept().unwrap().unwrap();

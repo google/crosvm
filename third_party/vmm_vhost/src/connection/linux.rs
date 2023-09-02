@@ -8,7 +8,7 @@ pub(crate) mod tests {
     use tempfile::Builder;
     use tempfile::TempDir;
 
-    use crate::connection::socket::Listener as SocketListener;
+    use crate::connection::socket::SocketListener;
     use crate::connection::Listener;
     use crate::master::Master;
     use crate::message::MasterReq;
