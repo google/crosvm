@@ -15,6 +15,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
 use argh::FromArgs;
+use base::debug;
 use base::error;
 use base::info;
 use base::syslog;
@@ -688,7 +689,7 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
     };
     let extended_status = args.extended_status;
 
-    info!("CLI arguments parsed.");
+    debug!("CLI arguments parsed.");
 
     let mut log_config = LogConfig {
         log_args: LogArgs {
@@ -835,7 +836,7 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
 
 fn main() {
     syslog::early_init();
-    info!("crosvm started.");
+    debug!("crosvm started.");
     let res = crosvm_main(std::env::args());
 
     let exit_code = match &res {
