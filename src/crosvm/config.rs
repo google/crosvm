@@ -27,6 +27,7 @@ use devices::virtio::block::DiskOption;
 use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
+use devices::virtio::scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 #[cfg(all(windows, feature = "gpu"))]
@@ -829,6 +830,7 @@ pub struct Config {
     pub restore_path: Option<PathBuf>,
     pub rng: bool,
     pub rt_cpus: CpuSet,
+    pub scsis: Vec<ScsiOption>,
     #[serde(with = "serde_serial_params")]
     pub serial_parameters: BTreeMap<(SerialHardware, u8), SerialParameters>,
     #[cfg(windows)]
@@ -1033,6 +1035,7 @@ impl Default for Config {
             rng: true,
             rt_cpus: Default::default(),
             serial_parameters: BTreeMap::new(),
+            scsis: Vec::new(),
             #[cfg(windows)]
             service_pipe_name: None,
             #[cfg(unix)]

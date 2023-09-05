@@ -34,6 +34,7 @@ use devices::virtio::ipc_memory_mapper::create_ipc_mapper;
 use devices::virtio::ipc_memory_mapper::CreateIpcMapperRet;
 use devices::virtio::memory_mapper::BasicMemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
+use devices::virtio::scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vfio_wrapper::VfioWrapper;
@@ -279,6 +280,18 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
         keep_rds.extend(block.keep_rds());
 
         Ok(block)
+    }
+}
+
+impl<'a> VirtioDeviceBuilder for &'a ScsiOption {
+    const NAME: &'static str = "scsi";
+
+    fn create_virtio_device(
+        self,
+        _protection_type: ProtectionType,
+    ) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        // TODO(b/300042376): create a SCSI device.
+        bail!("SCSI device creation is not supported yet.")
     }
 }
 

@@ -354,6 +354,10 @@ fn create_virtio_devices(
         );
     }
 
+    for scsi in &cfg.scsis {
+        devs.push(scsi.create_virtio_device_and_jail(cfg.protection_type, &cfg.jail_config)?);
+    }
+
     for blk in &cfg.vhost_user_blk {
         devs.push(create_vhost_user_block_device(cfg.protection_type, blk)?);
     }

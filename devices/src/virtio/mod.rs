@@ -32,6 +32,7 @@ pub mod console;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 pub mod resource_bridge;
+pub mod scsi;
 #[cfg(feature = "audio")]
 pub mod snd;
 pub mod vhost;

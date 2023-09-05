@@ -33,6 +33,7 @@ use cros_async::ExecutorKind;
 use devices::virtio::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceConfig;
+use devices::virtio::scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
@@ -1844,6 +1845,20 @@ pub struct RunCommand {
     /// routines to perform full guest suspension/resumption
     pub s2idle: Option<bool>,
 
+    #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]")]
+    #[serde(default)]
+    #[merge(strategy = append)]
+    /// parameters for setting up a SCSI disk.
+    /// Valid keys:
+    ///     path=PATH - Path to the disk image. Can be specified
+    ///         without the key as the first argument.
+    ///     block_size=BYTES - Set the reported block size of the
+    ///        disk (default: 512)
+    ///     ro=BOOL - Whether the block should be read-only.
+    ///         (default: false)
+    // TODO(b/300580119): Add O_DIRECT and sparse file support.
+    scsi_block: Vec<ScsiOption>,
+
     #[cfg(unix)]
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
@@ -2631,6 +2646,8 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         // Pass the sorted disks to the VM config.
         cfg.disks = disks.into_iter().map(|d| d.disk_option).collect();
+
+        cfg.scsis = cmd.scsi_block;
 
         for (mut pmem, read_only) in cmd
             .pmem_device
