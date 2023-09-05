@@ -49,7 +49,6 @@ use libc::EOVERFLOW;
 use libc::O_CLOEXEC;
 use libc::O_RDWR;
 use sync::Mutex;
-use vm_memory::MemoryRegionInformation;
 use vm_memory::MemoryRegionPurpose;
 
 pub struct Gunyah {
@@ -205,53 +204,44 @@ impl GunyahVm {
 
         // Safe because we verify that ret is valid and we own the fd.
         let vm_descriptor = unsafe { SafeDescriptor::from_raw_descriptor(ret) };
-        guest_mem.with_regions(
-            |MemoryRegionInformation {
-                 index,
-                 guest_addr,
-                 size,
-                 host_addr,
-                 options,
-                 ..
-             }| {
-                let lend = if cfg.protection_type.isolates_memory() {
-                    match options.purpose {
-                        MemoryRegionPurpose::GuestMemoryRegion => true,
-                        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-                        MemoryRegionPurpose::ProtectedFirmwareRegion => true,
-                        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-                        MemoryRegionPurpose::StaticSwiotlbRegion => false,
-                    }
-                } else {
-                    false
-                };
-                if lend {
-                    unsafe {
-                        // Safe because the guest regions are guarnteed not to overlap.
-                        android_lend_user_memory_region(
-                            &vm_descriptor,
-                            index as MemSlot,
-                            false,
-                            guest_addr.offset(),
-                            size.try_into().unwrap(),
-                            host_addr as *mut u8,
-                        )
-                    }
-                } else {
-                    unsafe {
-                        // Safe because the guest regions are guarnteed not to overlap.
-                        set_user_memory_region(
-                            &vm_descriptor,
-                            index as MemSlot,
-                            false,
-                            guest_addr.offset(),
-                            size.try_into().unwrap(),
-                            host_addr as *mut u8,
-                        )
-                    }
+        for region in guest_mem.regions() {
+            let lend = if cfg.protection_type.isolates_memory() {
+                match region.options.purpose {
+                    MemoryRegionPurpose::GuestMemoryRegion => true,
+                    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                    MemoryRegionPurpose::ProtectedFirmwareRegion => true,
+                    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                    MemoryRegionPurpose::StaticSwiotlbRegion => false,
                 }
-            },
-        )?;
+            } else {
+                false
+            };
+            if lend {
+                unsafe {
+                    // Safe because the guest regions are guarnteed not to overlap.
+                    android_lend_user_memory_region(
+                        &vm_descriptor,
+                        region.index as MemSlot,
+                        false,
+                        region.guest_addr.offset(),
+                        region.size.try_into().unwrap(),
+                        region.host_addr as *mut u8,
+                    )?;
+                }
+            } else {
+                unsafe {
+                    // Safe because the guest regions are guarnteed not to overlap.
+                    set_user_memory_region(
+                        &vm_descriptor,
+                        region.index as MemSlot,
+                        false,
+                        region.guest_addr.offset(),
+                        region.size.try_into().unwrap(),
+                        region.host_addr as *mut u8,
+                    )?;
+                }
+            }
+        }
 
         Ok(GunyahVm {
             gh: gh.try_clone()?,

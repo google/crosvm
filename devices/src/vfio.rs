@@ -46,7 +46,6 @@ use thiserror::Error;
 use vfio_sys::vfio::vfio_acpi_dsm;
 use vfio_sys::vfio::VFIO_IRQ_SET_DATA_BOOL;
 use vfio_sys::*;
-use vm_memory::MemoryRegionInformation;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
@@ -402,24 +401,17 @@ impl VfioContainer {
                     self.init_vfio_iommu(mapping_hint)?;
 
                     if !iommu_enabled {
-                        vm.get_memory().with_regions(
-                            |MemoryRegionInformation {
-                                 guest_addr,
-                                 size,
-                                 host_addr,
-                                 ..
-                             }| {
-                                // Safe because the guest regions are guaranteed not to overlap
-                                unsafe {
-                                    self.vfio_dma_map(
-                                        guest_addr.0,
-                                        size as u64,
-                                        host_addr as u64,
-                                        true,
-                                    )
-                                }
-                            },
-                        )?;
+                        for region in vm.get_memory().regions() {
+                            // Safe because the guest regions are guaranteed not to overlap
+                            unsafe {
+                                self.vfio_dma_map(
+                                    region.guest_addr.0,
+                                    region.size as u64,
+                                    region.host_addr as u64,
+                                    true,
+                                )
+                            }?;
+                        }
                     }
                 }
 

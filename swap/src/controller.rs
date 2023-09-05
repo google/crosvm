@@ -46,7 +46,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
 use vm_memory::GuestMemory;
-use vm_memory::MemoryRegionInformation;
 
 use crate::file_truncator::FileTruncator;
 #[cfg(feature = "log_page_fault")]
@@ -83,27 +82,20 @@ const MAX_TRIM_PAGES: usize = 1024;
 /// Returns count of pages active on the guest memory.
 fn count_resident_pages(guest_memory: &GuestMemory) -> usize {
     let mut pages = 0;
-    if let Err(e) = guest_memory.with_regions::<_, anyhow::Error>(
-        |MemoryRegionInformation {
-             size,
-             shm,
-             shm_offset,
-             ..
-         }| {
-            let file_data = FileDataIterator::new(shm, shm_offset, size as u64);
-            let resident_bytes: u64 = file_data.map(|range| range.end - range.start).sum();
-            let resident_bytes = resident_bytes.try_into()?;
+    for region in guest_memory.regions() {
+        let file_data = FileDataIterator::new(region.shm, region.shm_offset, region.size as u64);
+        let resident_bytes: u64 = file_data.map(|range| range.end - range.start).sum();
+        let resident_bytes = match resident_bytes.try_into() {
+            Ok(n) => n,
+            Err(e) => {
+                error!("failed to load resident pages count: {:?}", e);
+                return 0;
+            }
+        };
 
-            pages += bytes_to_pages(resident_bytes);
-
-            Ok(())
-        },
-    ) {
-        error!("failed to load resident pages count: {:?}", e);
-        0
-    } else {
-        pages
+        pages += bytes_to_pages(resident_bytes);
     }
+    pages
 }
 
 /// Commands used in vmm-swap feature internally sent to the monitor process from the main and other
@@ -508,18 +500,10 @@ impl UffdListToken for Token {
 }
 
 fn regions_from_guest_memory(guest_memory: &GuestMemory) -> Vec<Range<usize>> {
-    let mut regions = Vec::new();
     guest_memory
-        .with_regions::<_, ()>(
-            |MemoryRegionInformation {
-                 size, host_addr, ..
-             }| {
-                regions.push(host_addr..(host_addr + size));
-                Ok(())
-            },
-        )
-        .unwrap(); // the callback never return error.
-    regions
+        .regions()
+        .map(|region| region.host_addr..(region.host_addr + region.size))
+        .collect()
 }
 
 /// The main thread of the monitor process.
@@ -814,23 +798,18 @@ fn move_guest_to_staging(
 
     let mut pages = 0;
 
-    let result = guest_memory.with_regions::<_, anyhow::Error>(
-        |MemoryRegionInformation {
-             host_addr,
-             shm,
-             shm_offset,
-             ..
-         }| {
-            // safe because:
-            // * all the regions are registered to all userfaultfd
-            // * no process access the guest memory
-            // * page fault events are handled by PageHandler
-            // * wait for all the copy completed within _processes_guard
-            pages += unsafe { page_handler.move_to_staging(host_addr, shm, shm_offset) }
-                .context("move to staging")? as u64;
-            Ok(())
-        },
-    );
+    let result = guest_memory.regions().try_for_each(|region| {
+        // safe because:
+        // * all the regions are registered to all userfaultfd
+        // * no process access the guest memory
+        // * page fault events are handled by PageHandler
+        // * wait for all the copy completed within _processes_guard
+        pages += unsafe {
+            page_handler.move_to_staging(region.host_addr, region.shm, region.shm_offset)
+        }
+        .context("move to staging")? as u64;
+        Ok(())
+    });
     worker.channel.wait_complete();
 
     match result {

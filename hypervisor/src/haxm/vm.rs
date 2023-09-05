@@ -35,7 +35,6 @@ use libc::EOVERFLOW;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use vm_memory::MemoryRegionInformation;
 #[cfg(windows)]
 use win_util::win32_wide_string;
 
@@ -85,25 +84,18 @@ impl HaxmVm {
         // Haxm creates additional device paths when VMs are created
         let vm_descriptor = open_haxm_vm_device(USE_GHAXM.load(Ordering::Relaxed), vm_id)?;
 
-        guest_mem.with_regions(
-            |MemoryRegionInformation {
-                 guest_addr,
-                 size,
-                 host_addr,
-                 ..
-             }| {
-                unsafe {
-                    // Safe because the guest regions are guaranteed not to overlap.
-                    set_user_memory_region(
-                        &vm_descriptor,
-                        false,
-                        guest_addr.offset(),
-                        size as u64,
-                        MemoryRegionOp::Add(host_addr as *mut u8 as u64),
-                    )
-                }
-            },
-        )?;
+        for region in guest_mem.regions() {
+            unsafe {
+                // Safe because the guest regions are guaranteed not to overlap.
+                set_user_memory_region(
+                    &vm_descriptor,
+                    false,
+                    region.guest_addr.offset(),
+                    region.size as u64,
+                    MemoryRegionOp::Add(region.host_addr as *mut u8 as u64),
+                )
+            }?;
+        }
 
         Ok(HaxmVm {
             vm_id,

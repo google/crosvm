@@ -85,7 +85,6 @@ use libc::O_RDWR;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use vm_memory::MemoryRegionInformation;
 
 pub use crate::cap::*;
 
@@ -349,28 +348,20 @@ impl Vm {
         if ret >= 0 {
             // Safe because we verify the value of ret and we are the owners of the fd.
             let vm_file = unsafe { File::from_raw_descriptor(ret) };
-            guest_mem.with_regions(
-                |MemoryRegionInformation {
-                     index,
-                     guest_addr,
-                     size,
-                     host_addr,
-                     ..
-                 }| {
-                    unsafe {
-                        // Safe because the guest regions are guaranteed not to overlap.
-                        set_user_memory_region(
-                            &vm_file,
-                            index as u32,
-                            false,
-                            false,
-                            guest_addr.offset(),
-                            size as u64,
-                            host_addr as *mut u8,
-                        )
-                    }
-                },
-            )?;
+            for region in guest_mem.regions() {
+                unsafe {
+                    // Safe because the guest regions are guaranteed not to overlap.
+                    set_user_memory_region(
+                        &vm_file,
+                        region.index as u32,
+                        false,
+                        false,
+                        region.guest_addr.offset(),
+                        region.size as u64,
+                        region.host_addr as *mut u8,
+                    )
+                }?;
+            }
 
             Ok(Vm {
                 vm: vm_file,

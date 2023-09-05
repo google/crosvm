@@ -18,7 +18,6 @@ use base::SafeDescriptor;
 use base::WorkerThread;
 use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
-use vm_memory::MemoryRegionInformation;
 use vmm_vhost::message::VhostUserConfigFlags;
 use vmm_vhost::message::VhostUserGpuMapMsg;
 use vmm_vhost::message::VhostUserProtocolFeatures;
@@ -177,28 +176,16 @@ impl VhostUserHandler {
 
     /// Sets the memory map regions so it can translate the vring addresses.
     pub fn set_mem_table(&mut self, mem: &GuestMemory) -> Result<()> {
-        let mut regions: Vec<VhostUserMemoryRegionInfo> = Vec::new();
-        mem.with_regions::<_, ()>(
-            |MemoryRegionInformation {
-                 guest_addr,
-                 size,
-                 host_addr,
-                 shm,
-                 shm_offset,
-                 ..
-             }| {
-                let region = VhostUserMemoryRegionInfo {
-                    guest_phys_addr: guest_addr.0,
-                    memory_size: size as u64,
-                    userspace_addr: host_addr as u64,
-                    mmap_offset: shm_offset,
-                    mmap_handle: shm.as_raw_descriptor(),
-                };
-                regions.push(region);
-                Ok(())
-            },
-        )
-        .unwrap(); // never fail
+        let regions: Vec<_> = mem
+            .regions()
+            .map(|region| VhostUserMemoryRegionInfo {
+                guest_phys_addr: region.guest_addr.0,
+                memory_size: region.size as u64,
+                userspace_addr: region.host_addr as u64,
+                mmap_offset: region.shm_offset,
+                mmap_handle: region.shm.as_raw_descriptor(),
+            })
+            .collect();
 
         self.vu
             .set_mem_table(regions.as_slice())

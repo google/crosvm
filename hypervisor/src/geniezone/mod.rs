@@ -55,7 +55,6 @@ use libc::O_RDWR;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use vm_memory::MemoryRegionInformation;
 use vm_memory::MemoryRegionPurpose;
 
 use crate::BalloonEvent;
@@ -611,35 +610,26 @@ impl GeniezoneVm {
         }
         // Safe because we verify that ret is valid and we own the fd.
         let vm_descriptor = unsafe { SafeDescriptor::from_raw_descriptor(ret) };
-        guest_mem.with_regions(
-            |MemoryRegionInformation {
-                 index,
-                 guest_addr,
-                 size,
-                 host_addr,
-                 options,
-                 ..
-             }| {
-                let flags = match options.purpose {
-                    MemoryRegionPurpose::GuestMemoryRegion => GZVM_USER_MEM_REGION_GUEST_MEM,
-                    MemoryRegionPurpose::ProtectedFirmwareRegion => GZVM_USER_MEM_REGION_PROTECT_FW,
-                    MemoryRegionPurpose::StaticSwiotlbRegion => GZVM_USER_MEM_REGION_STATIC_SWIOTLB,
-                };
-                unsafe {
-                    // Safe because the guest regions are guaranteed not to overlap.
-                    set_user_memory_region(
-                        &vm_descriptor,
-                        index as MemSlot,
-                        false,
-                        false,
-                        guest_addr.offset(),
-                        size as u64,
-                        host_addr as *mut u8,
-                        flags,
-                    )
-                }
-            },
-        )?;
+        for region in guest_mem.regions() {
+            let flags = match region.options.purpose {
+                MemoryRegionPurpose::GuestMemoryRegion => GZVM_USER_MEM_REGION_GUEST_MEM,
+                MemoryRegionPurpose::ProtectedFirmwareRegion => GZVM_USER_MEM_REGION_PROTECT_FW,
+                MemoryRegionPurpose::StaticSwiotlbRegion => GZVM_USER_MEM_REGION_STATIC_SWIOTLB,
+            };
+            unsafe {
+                // Safe because the guest regions are guaranteed not to overlap.
+                set_user_memory_region(
+                    &vm_descriptor,
+                    region.index as MemSlot,
+                    false,
+                    false,
+                    region.guest_addr.offset(),
+                    region.size as u64,
+                    region.host_addr as *mut u8,
+                    flags,
+                )
+            }?;
+        }
 
         let vm = GeniezoneVm {
             geniezone: geniezone.try_clone()?,

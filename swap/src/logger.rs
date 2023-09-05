@@ -20,7 +20,6 @@ use base::RawDescriptor;
 use serde::Deserialize;
 use serde::Serialize;
 use vm_memory::GuestMemory;
-use vm_memory::MemoryRegionInformation;
 
 /// Logs page fault events into a log file in json format.
 pub struct PageFaultEventLogger {
@@ -100,18 +99,13 @@ struct PageFaultInitialLog {
 }
 
 fn regions_from_guest_memory(guest_memory: &GuestMemory) -> Vec<MemoryRegion> {
-    let mut regions = Vec::new();
     guest_memory
-        .with_regions::<_, ()>(
-            |MemoryRegionInformation {
-                 len, base_address, ..
-             }| {
-                regions.push(MemoryRegion { base_address, len });
-                Ok(())
-            },
-        )
-        .unwrap(); // the call back never return error.
-    regions
+        .regions()
+        .map(|region| MemoryRegion {
+            base_address: region.base_address,
+            len: region.len,
+        })
+        .collect()
 }
 
 #[derive(Serialize, Deserialize, Debug)]

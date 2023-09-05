@@ -8,7 +8,6 @@ use cros_fdt::FdtWriter;
 use libc::ENOENT;
 use libc::ENOTSUP;
 use vm_memory::GuestAddress;
-use vm_memory::MemoryRegionInformation;
 use vm_memory::MemoryRegionPurpose;
 
 use base::error;
@@ -81,35 +80,27 @@ impl VmAArch64 for GunyahVm {
 
         let mut base_set = false;
         let mut firmware_set = false;
-        self.guest_mem.with_regions(
-            |MemoryRegionInformation {
-                 guest_addr,
-                 options,
-                 ..
-             }| {
-                match options.purpose {
-                    MemoryRegionPurpose::GuestMemoryRegion => {
-                        // Assume first GuestMemoryRegion contains the payload
-                        if !base_set {
-                            base_set = true;
-                            fdt.property_u64("base-address", guest_addr.offset())
-                        } else {
-                            Ok(())
-                        }
+        for region in self.guest_mem.regions() {
+            match region.options.purpose {
+                MemoryRegionPurpose::GuestMemoryRegion => {
+                    // Assume first GuestMemoryRegion contains the payload
+                    if !base_set {
+                        base_set = true;
+                        fdt.property_u64("base-address", region.guest_addr.offset())?;
                     }
-                    MemoryRegionPurpose::ProtectedFirmwareRegion => {
-                        if firmware_set {
-                            // Should only have one protected firmware memory region.
-                            error!("Multiple ProtectedFirmwareRegions unexpected.");
-                            unreachable!()
-                        }
-                        firmware_set = true;
-                        fdt.property_u64("firmware-address", guest_addr.offset())
-                    }
-                    _ => Ok(()),
                 }
-            },
-        )?;
+                MemoryRegionPurpose::ProtectedFirmwareRegion => {
+                    if firmware_set {
+                        // Should only have one protected firmware memory region.
+                        error!("Multiple ProtectedFirmwareRegions unexpected.");
+                        unreachable!()
+                    }
+                    firmware_set = true;
+                    fdt.property_u64("firmware-address", region.guest_addr.offset())?;
+                }
+                _ => {}
+            }
+        }
 
         fdt.end_node(memory_node)?;
 
@@ -144,34 +135,25 @@ impl VmAArch64 for GunyahVm {
         }
 
         let mut base_set = false;
-        self.guest_mem.with_regions(
-            |MemoryRegionInformation {
-                 index,
-                 guest_addr,
-                 options,
-                 ..
-             }| {
-                let create_shm_node = match options.purpose {
-                    MemoryRegionPurpose::GuestMemoryRegion => {
-                        // Assume first GuestMemoryRegion contains the payload
-                        // This memory region is described by the "base-address" property
-                        // and doesn't get re-described as a separate shm node.
-                        let ret = base_set;
-                        base_set = true;
-                        ret
-                    }
-                    // Described by the "firmware-address" property
-                    MemoryRegionPurpose::ProtectedFirmwareRegion => false,
-                    MemoryRegionPurpose::StaticSwiotlbRegion => true,
-                };
-
-                if create_shm_node {
-                    fdt_create_shm_device(fdt, index.try_into().unwrap(), guest_addr)?;
+        for region in self.guest_mem.regions() {
+            let create_shm_node = match region.options.purpose {
+                MemoryRegionPurpose::GuestMemoryRegion => {
+                    // Assume first GuestMemoryRegion contains the payload
+                    // This memory region is described by the "base-address" property
+                    // and doesn't get re-described as a separate shm node.
+                    let ret = base_set;
+                    base_set = true;
+                    ret
                 }
+                // Described by the "firmware-address" property
+                MemoryRegionPurpose::ProtectedFirmwareRegion => false,
+                MemoryRegionPurpose::StaticSwiotlbRegion => true,
+            };
 
-                Ok(())
-            },
-        )?;
+            if create_shm_node {
+                fdt_create_shm_device(fdt, region.index.try_into().unwrap(), region.guest_addr)?;
+            }
+        }
 
         fdt.end_node(vdev_node)?;
 
