@@ -95,7 +95,6 @@ pub struct PackedQueue {
     // Internal index counter to keep track of where to poll
     avail_index: PackedQueueIndex,
     use_index: PackedQueueIndex,
-    peeked_index: PackedQueueIndex,
     signalled_used_index: PackedQueueIndex,
 
     // Device feature bits accepted by the driver
@@ -117,7 +116,6 @@ pub struct PackedQueueSnapshot {
     vector: u16,
     avail_index: PackedQueueIndex,
     use_index: PackedQueueIndex,
-    peeked_index: PackedQueueIndex,
     signalled_used_index: PackedQueueIndex,
     features: u64,
     desc_table: GuestAddress,
@@ -164,7 +162,6 @@ impl PackedQueue {
             features: config.acked_features(),
             avail_index: PackedQueueIndex::default(),
             use_index: PackedQueueIndex::default(),
-            peeked_index: PackedQueueIndex::default(),
             signalled_used_index: PackedQueueIndex::default(),
         })
     }
@@ -272,14 +269,7 @@ impl PackedQueue {
         );
 
         match DescriptorChain::new(chain, &self.mem, self.avail_index.index.0) {
-            Ok(descriptor_chain) => {
-                let chain_count = descriptor_chain.count;
-
-                self.peeked_index = self.avail_index;
-                self.peeked_index.add_index(chain_count, self.size());
-
-                Some(descriptor_chain)
-            }
+            Ok(descriptor_chain) => Some(descriptor_chain),
             Err(e) => {
                 error!("{:#}", e);
                 None
@@ -287,9 +277,12 @@ impl PackedQueue {
         }
     }
 
-    /// If a new DescriptorHead is available, returns one and removes it from the queue.
-    pub fn pop_peeked(&mut self) {
-        self.avail_index = self.peeked_index;
+    /// Remove the first available descriptor chain from the queue.
+    /// This function should only be called immediately following `peek` and must be passed a
+    /// reference to the same `DescriptorChain` returned by the most recent `peek`.
+    pub(super) fn pop_peeked(&mut self, descriptor_chain: &DescriptorChain) {
+        self.avail_index
+            .add_index(descriptor_chain.count, self.size());
         if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
             self.set_avail_event(self.avail_index.to_desc());
         }

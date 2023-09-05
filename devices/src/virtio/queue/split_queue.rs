@@ -287,8 +287,9 @@ impl SplitQueue {
     }
 
     /// Remove the first available descriptor chain from the queue.
-    /// This function should only be called immediately following `peek`.
-    pub fn pop_peeked(&mut self) {
+    /// This function should only be called immediately following `peek` and must be passed a
+    /// reference to the same `DescriptorChain` returned by the most recent `peek`.
+    pub(super) fn pop_peeked(&mut self, _descriptor_chain: &DescriptorChain) {
         self.next_avail += Wrapping(1);
         if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
             self.set_avail_event(self.next_avail);

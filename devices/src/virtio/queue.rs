@@ -529,8 +529,8 @@ impl<'q> PeekedDescriptorChain<'q> {
     /// Pop this descriptor chain from the queue.
     pub fn pop(self) -> DescriptorChain {
         match self.queue {
-            Queue::SplitVirtQueue(q) => q.pop_peeked(),
-            Queue::PackedVirtQueue(q) => q.pop_peeked(),
+            Queue::SplitVirtQueue(q) => q.pop_peeked(&self.desc_chain),
+            Queue::PackedVirtQueue(q) => q.pop_peeked(&self.desc_chain),
         }
         self.desc_chain
     }
