@@ -36,8 +36,7 @@ use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
-use crate::usb::host_backend::error::Error as HostBackendProviderError;
-use crate::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
+use crate::usb::backend::error::Error as BackendProviderError;
 use crate::usb::xhci::command_ring_controller::CommandRingController;
 use crate::usb::xhci::command_ring_controller::CommandRingControllerError;
 use crate::usb::xhci::device_slot::DeviceSlots;
@@ -82,7 +81,7 @@ pub enum Error {
     #[error("failed to start event loop: {0}")]
     StartEventLoop(UtilsError),
     #[error("failed to start backend provider: {0}")]
-    StartProvider(HostBackendProviderError),
+    StartProvider(BackendProviderError),
     #[error("failed to start resample handler")]
     StartResampleHandler,
 }
@@ -104,7 +103,7 @@ pub struct Xhci {
     #[allow(dead_code)]
     intr_resample_handler: Arc<IntrResampleHandler>,
     #[allow(dead_code)]
-    device_provider: HostBackendDeviceProvider,
+    device_provider: Box<dyn XhciBackendDeviceProvider>,
 }
 
 impl Xhci {
@@ -112,7 +111,7 @@ impl Xhci {
     pub fn new(
         fail_handle: Arc<dyn FailHandle>,
         mem: GuestMemory,
-        device_provider: HostBackendDeviceProvider,
+        device_provider: Box<dyn XhciBackendDeviceProvider>,
         interrupt_evt: IrqLevelEvent,
         regs: XhciRegs,
     ) -> Result<Arc<Self>> {

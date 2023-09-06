@@ -5,7 +5,7 @@
 use usb_util::DeviceSpeed;
 
 use super::xhci_transfer::XhciTransfer;
-use crate::usb::host_backend::error::Result;
+use crate::usb::backend::error::Result;
 
 /// Address of this usb device, as in Set Address standard usb device request.
 pub type UsbDeviceAddress = u32;

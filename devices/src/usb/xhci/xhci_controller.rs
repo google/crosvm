@@ -30,7 +30,6 @@ use crate::pci::PciProgrammingInterface;
 use crate::pci::PciSerialBusSubClass;
 use crate::register_space::Register;
 use crate::register_space::RegisterSpace;
-use crate::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::usb::xhci::xhci_regs::init_xhci_mmio_space_and_regs;
 use crate::usb::xhci::xhci_regs::XhciRegs;
@@ -95,10 +94,10 @@ impl FailHandle for XhciFailHandle {
 enum XhciControllerState {
     Unknown,
     Created {
-        device_provider: HostBackendDeviceProvider,
+        device_provider: Box<dyn XhciBackendDeviceProvider>,
     },
     IrqAssigned {
-        device_provider: HostBackendDeviceProvider,
+        device_provider: Box<dyn XhciBackendDeviceProvider>,
         irq_evt: IrqLevelEvent,
     },
     Initialized {
@@ -120,7 +119,7 @@ pub struct XhciController {
 
 impl XhciController {
     /// Create new xhci controller.
-    pub fn new(mem: GuestMemory, usb_provider: HostBackendDeviceProvider) -> Self {
+    pub fn new(mem: GuestMemory, usb_provider: Box<dyn XhciBackendDeviceProvider>) -> Self {
         let config_regs = PciConfiguration::new(
             0x01b73, // fresco logic, (google = 0x1ae0)
             0x1000,  // fresco logic pdk. This chip has broken msi. See kernel xhci-pci.c

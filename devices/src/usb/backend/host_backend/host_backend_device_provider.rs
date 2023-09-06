@@ -21,8 +21,8 @@ use vm_control::UsbControlCommand;
 use vm_control::UsbControlResult;
 use vm_control::USB_CONTROL_MAX_PORTS;
 
-use super::error::*;
 use super::host_device::HostDevice;
+use crate::usb::backend::error::*;
 use crate::usb::xhci::usb_hub::UsbHub;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::utils::AsyncJobQueue;

@@ -25,10 +25,10 @@ use usb_util::TransferStatus;
 use usb_util::UsbRequestSetup;
 use zerocopy::AsBytes;
 
-use super::error::*;
 use super::usb_endpoint::UsbEndpoint;
-use super::utils::submit_transfer;
-use super::utils::update_transfer_state;
+use crate::usb::backend::error::*;
+use crate::usb::backend::utils::submit_transfer;
+use crate::usb::backend::utils::update_transfer_state;
 use crate::usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
 use crate::usb::xhci::xhci_backend_device::BackendType;
 use crate::usb::xhci::xhci_backend_device::UsbDeviceAddress;

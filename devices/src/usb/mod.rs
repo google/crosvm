@@ -4,5 +4,5 @@
 
 #[macro_use]
 mod trace;
-pub mod host_backend;
+pub mod backend;
 pub mod xhci;

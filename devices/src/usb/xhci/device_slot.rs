@@ -42,7 +42,7 @@ use super::xhci_regs::valid_slot_id;
 use super::xhci_regs::MAX_PORTS;
 use super::xhci_regs::MAX_SLOTS;
 use crate::register_space::Register;
-use crate::usb::host_backend::error::Error as HostBackendProviderError;
+use crate::usb::backend::error::Error as BackendProviderError;
 use crate::usb::xhci::ring_buffer_stop_cb::fallible_closure;
 use crate::usb::xhci::ring_buffer_stop_cb::RingBufferStopCallback;
 use crate::utils::EventLoop;
@@ -52,7 +52,7 @@ use crate::utils::FailHandle;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("failed to allocate streams: {0}")]
-    AllocStreams(HostBackendProviderError),
+    AllocStreams(BackendProviderError),
     #[error("bad device context: {0}")]
     BadDeviceContextAddr(GuestAddress),
     #[error("bad endpoint context: {0}")]
@@ -70,7 +70,7 @@ pub enum Error {
     #[error("failed to create transfer controller: {0}")]
     CreateTransferController(TransferRingControllerError),
     #[error("failed to free streams: {0}")]
-    FreeStreams(HostBackendProviderError),
+    FreeStreams(BackendProviderError),
     #[error("failed to get endpoint state: {0}")]
     GetEndpointState(BitFieldError),
     #[error("failed to get port: {0}")]
@@ -82,7 +82,7 @@ pub enum Error {
     #[error("failed to read guest memory: {0}")]
     ReadGuestMemory(GuestMemoryError),
     #[error("failed to reset port: {0}")]
-    ResetPort(HostBackendProviderError),
+    ResetPort(BackendProviderError),
     #[error("failed to upgrade weak reference")]
     WeakReferenceUpgrade,
     #[error("failed to write guest memory: {0}")]

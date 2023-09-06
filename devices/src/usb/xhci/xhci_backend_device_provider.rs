@@ -6,13 +6,13 @@ use std::sync::Arc;
 
 use base::RawDescriptor;
 
-use super::super::host_backend::error::Result;
 use super::usb_hub::UsbHub;
+use crate::usb::backend::error::Result;
 use crate::utils::EventLoop;
 use crate::utils::FailHandle;
 
 /// Xhci backend provider will run on an EventLoop and connect new devices to usb ports.
-pub trait XhciBackendDeviceProvider: Send {
+pub trait XhciBackendDeviceProvider: Send + Sync {
     /// Start the provider on EventLoop.
     fn start(
         &mut self,
