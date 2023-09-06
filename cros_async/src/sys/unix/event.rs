@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::Event;
+
 use crate::AsyncError;
 use crate::AsyncResult;
 use crate::EventAsync;
 use crate::Executor;
-use base::Event;
 
 impl EventAsync {
     pub fn new(event: Event, ex: &Executor) -> AsyncResult<EventAsync> {

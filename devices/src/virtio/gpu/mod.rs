@@ -54,6 +54,8 @@ use vm_control::gpu::GpuControlResult;
 pub use vm_control::gpu::DEFAULT_DISPLAY_HEIGHT;
 pub use vm_control::gpu::DEFAULT_DISPLAY_WIDTH;
 pub use vm_control::gpu::DEFAULT_REFRESH_RATE;
+#[cfg(windows)]
+use vm_control::ModifyWaitContext;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
@@ -83,8 +85,6 @@ use super::SharedMemoryMapper;
 use super::SharedMemoryRegion;
 use super::VirtioDevice;
 use super::Writer;
-#[cfg(windows)]
-use vm_control::ModifyWaitContext;
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.

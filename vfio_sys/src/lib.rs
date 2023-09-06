@@ -18,9 +18,6 @@ pub mod vfio;
 use crate::plat::ACPI_EVT_FORWARD_BASE;
 use crate::plat::PLAT_IRQ_FORWARD_BASE;
 use crate::plat::PLAT_IRQ_FORWARD_TYPE;
-use crate::vfio::VFIO_BASE;
-use crate::vfio::VFIO_TYPE;
-
 pub use crate::vfio::vfio_device_feature;
 pub use crate::vfio::vfio_device_info;
 pub use crate::vfio::vfio_device_low_power_entry_with_wakeup;
@@ -40,6 +37,7 @@ pub use crate::vfio::vfio_region_info_cap_type;
 pub use crate::vfio::vfio_region_info_with_cap;
 pub use crate::vfio::vfio_region_sparse_mmap_area;
 pub use crate::vfio::VFIO_TYPE1v2_IOMMU;
+use crate::vfio::VFIO_BASE;
 pub use crate::vfio::VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY;
 pub use crate::vfio::VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY_WITH_WAKEUP;
 pub use crate::vfio::VFIO_DEVICE_FEATURE_LOW_POWER_EXIT;
@@ -73,6 +71,7 @@ pub use crate::vfio::VFIO_REGION_INFO_FLAG_MMAP;
 pub use crate::vfio::VFIO_REGION_INFO_FLAG_WRITE;
 pub use crate::vfio::VFIO_REGION_SUBTYPE_INTEL_IGD_OPREGION;
 pub use crate::vfio::VFIO_REGION_TYPE_PCI_VENDOR_TYPE;
+use crate::vfio::VFIO_TYPE;
 
 ioctl_io_nr!(VFIO_GET_API_VERSION, VFIO_TYPE, VFIO_BASE);
 ioctl_io_nr!(VFIO_CHECK_EXTENSION, VFIO_TYPE, VFIO_BASE + 1);

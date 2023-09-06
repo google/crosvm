@@ -32,9 +32,6 @@ use crate::AARCH64_GIC_DIST_SIZE;
 use crate::AARCH64_GIC_REDIST_SIZE;
 use crate::AARCH64_PMU_IRQ;
 use crate::AARCH64_PROTECTED_VM_FW_START;
-use crate::AARCH64_VIRTFREQ_BASE;
-use crate::AARCH64_VIRTFREQ_SIZE;
-
 // These are RTC related constants
 use crate::AARCH64_RTC_ADDR;
 use crate::AARCH64_RTC_IRQ;
@@ -44,6 +41,8 @@ use crate::AARCH64_SERIAL_1_3_IRQ;
 use crate::AARCH64_SERIAL_2_4_IRQ;
 use crate::AARCH64_SERIAL_SIZE;
 use crate::AARCH64_SERIAL_SPEED;
+use crate::AARCH64_VIRTFREQ_BASE;
+use crate::AARCH64_VIRTFREQ_SIZE;
 
 // This is an arbitrary number to specify the node for the GIC.
 // If we had a more complex interrupt architecture, then we'd need an enum for

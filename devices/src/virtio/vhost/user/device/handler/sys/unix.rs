@@ -62,7 +62,6 @@ mod tests {
 
     use tempfile::Builder;
     use tempfile::TempDir;
-
     use vmm_vhost::connection::Listener;
 
     use super::*;

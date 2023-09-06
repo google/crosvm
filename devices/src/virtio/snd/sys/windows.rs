@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use audio_streams::AsyncPlaybackBuffer;
 use audio_streams::AsyncPlaybackBufferStream;
 use base::error;
+pub(crate) use base::set_audio_thread_priority;
 use base::warn;
 use cros_async::Executor;
 use data_model::Le32;
@@ -39,8 +40,6 @@ use crate::virtio::snd::parameters::Error as ParametersError;
 use crate::virtio::snd::parameters::Parameters;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Reader;
-
-pub(crate) use base::set_audio_thread_priority;
 
 pub(crate) type SysAudioStreamSourceGenerator = Box<dyn WinStreamSourceGenerator>;
 pub(crate) type SysAudioStreamSource = Box<dyn WinAudioServer>;

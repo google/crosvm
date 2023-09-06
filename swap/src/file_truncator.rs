@@ -121,13 +121,13 @@ impl Drop for FileTruncator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Arc;
 
     use base::FakeClock;
     use base::FakeTimer;
-
-    use std::sync::Arc;
     use sync::Mutex;
+
+    use super::*;
 
     fn wait_for_target_length(file: &mut File, len: u64) {
         let mut count = 0;

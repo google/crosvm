@@ -229,9 +229,10 @@ impl ProtoTube {
 #[cfg(all(feature = "proto_tube", test))]
 #[allow(unused_variables)]
 mod tests {
-    use super::*;
     // not testing this proto specifically, just need an existing one to test the ProtoTube.
     use protos::cdisk_spec::ComponentDisk;
+
+    use super::*;
 
     #[test]
     fn tube_serializes_and_deserializes() {

@@ -8,7 +8,8 @@ use std::env;
 use std::io::ErrorKind;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 use std::process::ExitStatus;
 use std::process::Output;

@@ -9,6 +9,7 @@ use base::info;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
+use usb_util::DeviceSpeed;
 
 use super::interrupter::Error as InterrupterError;
 use super::interrupter::Interrupter;
@@ -28,7 +29,6 @@ use super::xhci_regs::USB3_PORTS_END;
 use super::xhci_regs::USB3_PORTS_START;
 use super::xhci_regs::USB_STS_PORT_CHANGE_DETECT;
 use crate::register_space::Register;
-use usb_util::DeviceSpeed;
 
 #[sorted]
 #[derive(Error, Debug)]

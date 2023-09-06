@@ -399,9 +399,8 @@ mod test {
 
     use futures::future::Either;
 
-    use crate::BlockingPool;
-
     use super::*;
+    use crate::BlockingPool;
 
     #[test]
     fn test_it() {

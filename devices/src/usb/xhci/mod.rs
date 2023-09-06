@@ -38,21 +38,21 @@ use vm_memory::GuestMemory;
 
 use crate::usb::host_backend::error::Error as HostBackendProviderError;
 use crate::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
+use crate::usb::xhci::command_ring_controller::CommandRingController;
+use crate::usb::xhci::command_ring_controller::CommandRingControllerError;
+use crate::usb::xhci::device_slot::DeviceSlots;
+use crate::usb::xhci::device_slot::Error as DeviceSlotError;
+use crate::usb::xhci::interrupter::Error as InterrupterError;
+use crate::usb::xhci::interrupter::Interrupter;
+use crate::usb::xhci::intr_resample_handler::IntrResampleHandler;
+use crate::usb::xhci::ring_buffer_stop_cb::RingBufferStopCallback;
+use crate::usb::xhci::usb_hub::UsbHub;
+use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
+use crate::usb::xhci::xhci_regs::*;
 use crate::utils::Error as UtilsError;
 use crate::utils::EventLoop;
 use crate::utils::FailHandle;
 use crate::IrqLevelEvent;
-use command_ring_controller::CommandRingController;
-use command_ring_controller::CommandRingControllerError;
-use device_slot::DeviceSlots;
-use device_slot::Error as DeviceSlotError;
-use interrupter::Error as InterrupterError;
-use interrupter::Interrupter;
-use intr_resample_handler::IntrResampleHandler;
-use ring_buffer_stop_cb::RingBufferStopCallback;
-use usb_hub::UsbHub;
-use xhci_backend_device_provider::XhciBackendDeviceProvider;
-use xhci_regs::*;
 
 #[sorted]
 #[derive(Error, Debug)]

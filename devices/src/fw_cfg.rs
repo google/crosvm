@@ -5,20 +5,22 @@
 //! fw_cfg device implementing QEMU's Firmware Configuration interface
 //! <https://www.qemu.org/docs/master/specs/fw_cfg.html>
 
-use crate::BusAccessInfo;
-use crate::BusDevice;
-use crate::DeviceId;
-use crate::Suspendable;
+use std::collections::HashSet;
+use std::fs;
+use std::iter::repeat;
+use std::path::PathBuf;
+
 #[cfg(windows)]
 use base::error;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
-use std::collections::HashSet;
-use std::fs;
-use std::iter::repeat;
-use std::path::PathBuf;
 use thiserror::Error as ThisError;
+
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
+use crate::Suspendable;
 
 pub const FW_CFG_BASE_PORT: u64 = 0x510;
 pub const FW_CFG_WIDTH: u64 = 0x4;
@@ -391,9 +393,11 @@ impl Suspendable for FwCfgDevice {
 
 #[cfg(test)]
 mod tests {
+    use serde_keyvalue::*;
+
     use super::*;
     use crate::FW_CFG_BASE_PORT;
-    use serde_keyvalue::*;
+
     const MAGIC_BYTE: u8 = 111;
     const MAGIC_BYTE_ALT: u8 = 222;
     const FILENAME: &str = "/test/device/crosvmval";

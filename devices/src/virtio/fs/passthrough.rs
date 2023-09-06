@@ -2832,12 +2832,12 @@ impl FileSystem for PassthroughFs {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::path::Path;
 
     use named_lock::NamedLock;
     use tempfile::TempDir;
+
+    use super::*;
 
     const UNITTEST_LOCK_NAME: &str = "passthroughfs_unittest_lock";
 

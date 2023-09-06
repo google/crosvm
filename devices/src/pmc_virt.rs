@@ -2,13 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{pci::CrosvmDeviceId, BusAccessInfo, BusDevice, DeviceId};
+use std::sync::Arc;
+
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
 use base::warn;
-use std::sync::Arc;
-use sync::{Condvar, Mutex};
+use sync::Condvar;
+use sync::Mutex;
 
+use crate::pci::CrosvmDeviceId;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
 use crate::Suspendable;
 
 /// PMC Virt MMIO offset

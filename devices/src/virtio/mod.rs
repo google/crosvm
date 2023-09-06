@@ -127,10 +127,10 @@ cfg_if::cfg_if! {
     }
 }
 
-use futures::channel::oneshot;
 use std::cmp;
 use std::convert::TryFrom;
 
+use futures::channel::oneshot;
 use hypervisor::ProtectionType;
 use virtio_sys::virtio_config::VIRTIO_F_ACCESS_PLATFORM;
 use virtio_sys::virtio_config::VIRTIO_F_VERSION_1;

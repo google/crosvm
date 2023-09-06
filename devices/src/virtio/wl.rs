@@ -88,7 +88,9 @@ use base::WaitContext;
 use base::WorkerThread;
 use data_model::*;
 #[cfg(feature = "minigbm")]
-use libc::{EBADF, EINVAL};
+use libc::EBADF;
+#[cfg(feature = "minigbm")]
+use libc::EINVAL;
 use remain::sorted;
 use resources::address_allocator::AddressAllocator;
 use resources::AddressRange;

@@ -738,10 +738,11 @@ enum IoapicError {
 
 #[cfg(test)]
 mod tests {
+    use std::thread;
+
     use hypervisor::DeliveryMode;
     use hypervisor::DeliveryStatus;
     use hypervisor::DestinationMode;
-    use std::thread;
 
     use super::*;
 

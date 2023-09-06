@@ -4,6 +4,7 @@
 
 //! Runs hardware devices in child processes.
 
+use std::fs;
 use std::time::Duration;
 
 use anyhow::anyhow;
@@ -21,7 +22,6 @@ use minijail::Minijail;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
-use std::fs;
 use thiserror::Error;
 
 use crate::bus::ConfigWriteResult;

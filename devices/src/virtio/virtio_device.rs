@@ -17,11 +17,12 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
 use super::*;
+use crate::pci::MsixConfig;
+use crate::pci::MsixStatus;
 use crate::pci::PciAddress;
 use crate::pci::PciBarConfiguration;
 use crate::pci::PciBarIndex;
 use crate::pci::PciCapability;
-use crate::pci::{MsixConfig, MsixStatus};
 use crate::virtio::queue::QueueConfig;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

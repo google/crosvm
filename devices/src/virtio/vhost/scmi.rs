@@ -7,15 +7,23 @@ use std::path::Path;
 
 use anyhow::anyhow;
 use anyhow::Context;
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Event;
+use base::RawDescriptor;
 use base::WorkerThread;
-use base::{error, warn, AsRawDescriptor, Event, RawDescriptor};
 use vhost::Scmi as VhostScmiHandle;
 use vhost::Vhost;
 use vm_memory::GuestMemory;
 
 use super::worker::Worker;
-use super::{Error, Result};
-use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice};
+use super::Error;
+use super::Result;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
 use crate::Suspendable;
 
 const QUEUE_SIZE: u16 = 128;

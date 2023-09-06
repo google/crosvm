@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use usb_util::DeviceSpeed;
+
 use super::xhci_transfer::XhciTransfer;
 use crate::usb::host_backend::error::Result;
-use usb_util::DeviceSpeed;
 
 /// Address of this usb device, as in Set Address standard usb device request.
 pub type UsbDeviceAddress = u32;

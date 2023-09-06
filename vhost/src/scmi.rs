@@ -2,15 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::os::unix::fs::OpenOptionsExt;
-use std::{
-    fs::{File, OpenOptions},
-    path::Path,
-};
+use std::path::Path;
 
-use base::{AsRawDescriptor, RawDescriptor};
+use base::AsRawDescriptor;
+use base::RawDescriptor;
 
-use super::{Error, Result, Vhost};
+use super::Error;
+use super::Result;
+use super::Vhost;
 
 /// Handle for running VHOST_SCMI ioctls.
 pub struct Scmi {

@@ -7,12 +7,12 @@ pub mod vmm;
 
 use std::fmt::Debug;
 
-pub use self::device::*;
-
 use argh::FromArgValue;
 use serde::Deserialize;
 use serde_keyvalue::ErrorKind;
 use serde_keyvalue::KeyValueDeserializer;
+
+pub use self::device::*;
 
 /// Extends any device configuration with a mandatory extra "vhost" parameter to specify the socket
 /// or PCI device to use in order to communicate with a vhost client.

@@ -17,7 +17,6 @@ pub(crate) mod pci_hotplug_helpers;
 pub(crate) mod pci_hotplug_manager;
 mod vcpu;
 
-use devices::virtio::VirtioDevice;
 use std::cmp::max;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -94,6 +93,7 @@ use devices::virtio::BalloonMode;
 use devices::virtio::NetParameters;
 #[cfg(feature = "pci-hotplug")]
 use devices::virtio::NetParametersMode;
+use devices::virtio::VirtioDevice;
 use devices::virtio::VirtioDeviceType;
 use devices::virtio::VirtioTransportType;
 use devices::Bus;
@@ -1431,7 +1431,9 @@ fn run_gunyah(
     components: VmComponents,
 ) -> Result<ExitState> {
     use devices::GunyahIrqChip;
-    use hypervisor::gunyah::{Gunyah, GunyahVcpu, GunyahVm};
+    use hypervisor::gunyah::Gunyah;
+    use hypervisor::gunyah::GunyahVcpu;
+    use hypervisor::gunyah::GunyahVm;
 
     let device_path = device_path.unwrap_or(Path::new(GUNYAH_PATH));
     let gunyah = Gunyah::new_with_path(device_path)

@@ -6,24 +6,18 @@
 mod aarch64;
 
 mod gunyah_sys;
-use gunyah_sys::*;
-
-use std::collections::HashSet;
-
 use std::cmp::min;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
+use std::collections::HashSet;
 use std::ffi::CString;
+use std::mem::size_of;
 use std::os::raw::c_ulong;
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-use std::mem::size_of;
-
-use crate::*;
 
 use base::errno_result;
 use base::info;
@@ -39,6 +33,7 @@ use base::MemoryMappingBuilder;
 use base::MemoryMappingBuilderUnix;
 use base::MmapError;
 use base::RawDescriptor;
+use gunyah_sys::*;
 use libc::open;
 use libc::EFAULT;
 use libc::EINVAL;
@@ -50,6 +45,8 @@ use libc::O_CLOEXEC;
 use libc::O_RDWR;
 use sync::Mutex;
 use vm_memory::MemoryRegionPurpose;
+
+use crate::*;
 
 pub struct Gunyah {
     gunyah: SafeDescriptor,

@@ -24,6 +24,7 @@ impl<T: TimerTrait + IntoAsync> TimerAsync<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::time::Duration;
     use std::time::Instant;
 
@@ -35,7 +36,6 @@ mod tests {
     use crate::common_executor::RawExecutor;
     use crate::sys::unix::uring_executor::is_uring_stable;
     use crate::Executor;
-    use std::sync::Arc;
 
     impl TimerAsync<Timer> {
         pub(crate) fn new_poll(

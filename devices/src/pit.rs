@@ -36,7 +36,6 @@ cfg_if::cfg_if! {
     }
 }
 use base::TimerTrait;
-
 use base::WorkerThread;
 
 use crate::bus::BusAccessInfo;

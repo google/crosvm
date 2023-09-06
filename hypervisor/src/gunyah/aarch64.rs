@@ -4,25 +4,23 @@
 
 use std::collections::BTreeMap;
 
+use base::error;
+use base::Error;
+use base::Result;
 use cros_fdt::FdtWriter;
 use libc::ENOENT;
 use libc::ENOTSUP;
 use vm_memory::GuestAddress;
 use vm_memory::MemoryRegionPurpose;
 
-use base::error;
-use base::Error;
-use base::Result;
-
+use super::GunyahVcpu;
+use super::GunyahVm;
 use crate::Hypervisor;
 use crate::PsciVersion;
 use crate::VcpuAArch64;
 use crate::VcpuRegAArch64;
 use crate::VmAArch64;
 use crate::PSCI_0_2;
-
-use super::GunyahVcpu;
-use super::GunyahVm;
 
 const GIC_FDT_IRQ_TYPE_SPI: u32 = 0;
 
