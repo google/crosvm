@@ -6,6 +6,7 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::io;
 use std::io::Write;
 use std::rc::Rc;
 
@@ -21,6 +22,8 @@ use futures::pin_mut;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
+use remain::sorted;
+use thiserror::Error as ThisError;
 use virtio_sys::virtio_scsi::virtio_scsi_cmd_req;
 use virtio_sys::virtio_scsi::virtio_scsi_cmd_resp;
 use virtio_sys::virtio_scsi::virtio_scsi_config;
@@ -34,6 +37,8 @@ use zerocopy::AsBytes;
 use crate::virtio::async_utils;
 use crate::virtio::block::sys::get_seg_max;
 use crate::virtio::copy_config;
+use crate::virtio::scsi::constants::CHECK_CONDITION;
+use crate::virtio::scsi::constants::MEDIUM_ERROR;
 use crate::virtio::DescriptorChain;
 use crate::virtio::DeviceType as VirtioDeviceType;
 use crate::virtio::Interrupt;
@@ -61,7 +66,94 @@ const MAX_CMD_PER_LUN: u32 = 128;
 // We set the maximum transfer size hint to 0xffff: 2^16 * 512 ~ 34mb.
 const MAX_SECTORS: u32 = 0xffff;
 
-/// Virtio device for exposing SCSI command operations on a host file.
+/// Errors that happen while handling scsi commands.
+#[sorted]
+#[derive(ThisError, Debug)]
+pub enum ExecuteError {
+    #[error("failed to read message: {0}")]
+    Read(io::Error),
+    #[error("failed to write message: {0}")]
+    Write(io::Error),
+}
+
+impl ExecuteError {
+    // The asc and ascq assignments are taken from the t10 SPC spec.
+    // cf) Table 28 of <https://www.t10.org/cgi-bin/ac.pl?t=f&f=spc3r23.pdf>
+    fn to_sense(self) -> Sense {
+        match self {
+            // UNRECOVERED READ ERROR
+            Self::Read(_) => Sense {
+                key: MEDIUM_ERROR,
+                asc: 0x11,
+                ascq: 0x00,
+            },
+            // WRITE ERROR
+            Self::Write(_) => Sense {
+                key: MEDIUM_ERROR,
+                asc: 0x0c,
+                ascq: 0x00,
+            },
+        }
+    }
+}
+
+/// Sense code representation
+#[derive(Copy, Clone, Debug)]
+pub struct Sense {
+    /// Provides generic information describing an error or exception condition.
+    pub key: u8,
+    /// Additional Sense Code.
+    /// Indicates further information related to the error or exception reported in the key field.
+    pub asc: u8,
+    /// Additional Sense Code Qualifier.
+    /// Indicates further detailed information related to the additional sense code.
+    pub ascq: u8,
+}
+
+impl Sense {
+    // Converts to (sense bytes, actual size of the sense data)
+    // There are two formats to convert sense data to bytes; fixed format and descriptor format.
+    // Details are in SPC-3 t10 revision 23: <https://www.t10.org/cgi-bin/ac.pl?t=f&f=spc3r23.pdf>
+    fn as_bytes(&self, fixed: bool) -> ([u8; VIRTIO_SCSI_SENSE_DEFAULT_SIZE as usize], u32) {
+        let mut sense_data = [0u8; VIRTIO_SCSI_SENSE_DEFAULT_SIZE as usize];
+        if fixed {
+            // Fixed format sense data has response code:
+            // 1) 0x70 for current errors
+            // 2) 0x71 for deferred errors
+            sense_data[0] = 0x70;
+            // sense_data[1]: Obsolete
+            // Sense key
+            sense_data[2] = self.key;
+            // sense_data[3..7]: Information field, which we do not support.
+            // Additional length. The data is 18 bytes, and this byte is 8th.
+            sense_data[7] = 10;
+            // sense_data[8..12]: Command specific information, which we do not support.
+            // Additional sense code
+            sense_data[12] = self.asc;
+            // Additional sense code qualifier
+            sense_data[13] = self.ascq;
+            // sense_data[14]: Field replaceable unit code, which we do not support.
+            // sense_data[15..18]: Field replaceable unit code, which we do not support.
+            (sense_data, 18)
+        } else {
+            // Descriptor format sense data has response code:
+            // 1) 0x72 for current errors
+            // 2) 0x73 for deferred errors
+            sense_data[0] = 0x72;
+            // Sense key
+            sense_data[1] = self.key;
+            // Additional sense code
+            sense_data[2] = self.asc;
+            // Additional sense code qualifier
+            sense_data[3] = self.ascq;
+            // sense_data[4..7]: Reserved
+            // sense_data[7]: Additional sense length, which is 0 in this case.
+            (sense_data, 8)
+        }
+    }
+}
+
+/// Vitio device for exposing SCSI command operations on a host file.
 pub struct Device {
     // Bitmap of virtio-scsi feature bits.
     avail_features: u64,
@@ -113,13 +205,13 @@ impl Device {
     async fn execute_request(
         reader: &mut Reader,
         resp_writer: &mut Writer,
-    ) -> anyhow::Result<usize> {
+    ) -> Result<usize, ExecuteError> {
         #[allow(unused_variables)]
         // TODO(b/301011017): Cope with the configurable cdb size. We would need to define
         // something like virtio_scsi_cmd_req_header.
         let req_header = reader
             .read_obj::<virtio_scsi_cmd_req>()
-            .context("failed to read virtio_scsi_cmd_req from virtqueue")?;
+            .map_err(ExecuteError::Read)?;
         // TODO(b/300042376): Return a proper response. For now, we always reply
         // VIRTIO_SCSI_S_BAD_TARGET to pretend that we do not have any SCSI devices corresponding
         // to the provided LUN.
@@ -129,7 +221,7 @@ impl Device {
         };
         resp_writer
             .write_all(resp.as_bytes())
-            .context("failed to write virtio_scsi_cmd_resp to virtqueue")?;
+            .map_err(ExecuteError::Write)?;
         Ok(resp_writer.bytes_written())
     }
 }
@@ -255,9 +347,23 @@ async fn process_one_request(avail_desc: &mut DescriptorChain) -> usize {
     let resp_writer = &mut avail_desc.writer;
     match Device::execute_request(reader, resp_writer).await {
         Ok(n) => n,
-        Err(e) => {
-            error!("request failed: {:#}", e);
-            0
+        Err(err) => {
+            let (sense, sense_len) = err.to_sense().as_bytes(true);
+            let resp = virtio_scsi_cmd_resp {
+                status: CHECK_CONDITION,
+                sense_len,
+                sense,
+                ..Default::default()
+            };
+            // If the write of the virtio_scsi_cmd_resp fails, there is nothing we can do to inform
+            // the error to the guest driver (we usually propagate errors with sense field, which
+            // is in the struct virtio_scsi_cmd_resp). The guest driver should have at least
+            // sizeof(virtio_scsi_cmd_resp) bytes of device-writable part regions. For now we
+            // simply emit an error message.
+            let _ = resp_writer
+                .write_all(resp.as_bytes())
+                .map_err(|e| error!("failed to write response: {}", e));
+            resp_writer.bytes_written()
         }
     }
 }
