@@ -295,10 +295,12 @@ impl<'a> VirtioDeviceBuilder for &'a ScsiOption {
 
     fn create_virtio_device(
         self,
-        _protection_type: ProtectionType,
+        protection_type: ProtectionType,
     ) -> anyhow::Result<Box<dyn VirtioDevice>> {
-        // TODO(b/300042376): create a SCSI device.
-        bail!("SCSI device creation is not supported yet.")
+        let base_features = virtio::base_features(protection_type);
+        info!("Trying to attach scsi device: {}", self.path.display());
+        let disk_image = self.open()?;
+        Ok(Box::new(virtio::ScsiDevice::new(disk_image, base_features)))
     }
 }
 

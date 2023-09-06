@@ -118,3 +118,23 @@ bindgen_generate \
     | replace_linux_int_types \
     | replace_linux_endian_types \
     > virtio_sys/src/virtio_vsock.rs
+
+VIRTIO_SCSI_EXTRA="// Added by virtio_sys/bindgen.sh
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;"
+
+bindgen_generate \
+    --raw-line "${VIRTIO_SCSI_EXTRA}" \
+    --allowlist-var='VIRTIO_SCSI_.*' \
+    --allowlist-type='virtio_scsi_.*' \
+    --blocklist-type='virtio_scsi_cmd_req_pi' \
+    --blocklist-type='virtio_scsi_ctrl_.*' \
+    --with-derive-custom "virtio_scsi_config=FromBytes,AsBytes" \
+    --with-derive-custom "virtio_scsi_cmd_req=FromBytes,AsBytes" \
+    --with-derive-custom "virtio_scsi_cmd_resp=FromBytes,AsBytes" \
+    "${BINDGEN_LINUX_X86_HEADERS}/include/linux/virtio_scsi.h" \
+    -- \
+    -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
+    | replace_linux_int_types \
+    | replace_linux_endian_types \
+    > virtio_sys/src/virtio_scsi.rs

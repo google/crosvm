@@ -9,6 +9,10 @@ use serde::Serialize;
 
 pub(crate) mod sys;
 
+mod device;
+
+pub use device::Device;
+
 fn scsi_option_block_size_default() -> u32 {
     512
 }

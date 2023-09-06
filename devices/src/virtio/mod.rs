@@ -87,6 +87,7 @@ pub use self::queue::split_descriptor_chain::SplitDescriptorChain;
 pub use self::queue::Queue;
 pub use self::queue::QueueConfig;
 pub use self::rng::Rng;
+pub use self::scsi::Device as ScsiDevice;
 #[cfg(any(feature = "tpm", feature = "vtpm"))]
 pub use self::tpm::Tpm;
 #[cfg(any(feature = "tpm", feature = "vtpm"))]
