@@ -3251,11 +3251,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         #[cfg(feature = "balloon")]
                                         VmRequest::BalloonCommand(cmd) => {
                                             if let Some(tube) = balloon_tube.as_mut() {
-                                                let Some((r, key)) = tube.send_cmd(cmd, Some(id)) else {
+                                                let Some((r, key)) = tube.send_cmd(cmd, Some(id))
+                                                else {
                                                     continue;
                                                 };
                                                 if key != id {
-                                                    let Some(TaggedControlTube::Vm(tube)) = control_tubes.get(&key) else {
+                                                    let Some(TaggedControlTube::Vm(tube)) =
+                                                        control_tubes.get(&key)
+                                                    else {
                                                         continue;
                                                     };
                                                     if let Err(e) = tube.send(&r) {

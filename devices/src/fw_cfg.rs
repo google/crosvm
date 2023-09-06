@@ -320,7 +320,9 @@ impl BusDevice for FwCfgDevice {
                 return;
             }
 
-            let Ok(selector) = data.try_into().map(u16::from_le_bytes) else {return};
+            let Ok(selector) = data.try_into().map(u16::from_le_bytes) else {
+                return;
+            };
 
             self.cur_offset = 0;
 
