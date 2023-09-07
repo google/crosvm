@@ -17,6 +17,7 @@ mod rutabaga_2d;
 mod rutabaga_core;
 mod rutabaga_gralloc;
 mod rutabaga_os;
+mod rutabaga_snapshot;
 mod rutabaga_utils;
 mod virgl_renderer;
 
