@@ -194,7 +194,7 @@ impl UsbEndpoint {
                     self.fail_handle.clone(),
                     &self.job_queue,
                     tmp_transfer,
-                    &mut self.device.lock(),
+                    &mut *self.device.lock(),
                     usb_transfer,
                 )?;
             }
@@ -251,7 +251,7 @@ impl UsbEndpoint {
                     self.fail_handle.clone(),
                     &self.job_queue,
                     tmp_transfer,
-                    &mut self.device.lock(),
+                    &mut *self.device.lock(),
                     usb_transfer,
                 )?;
             }

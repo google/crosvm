@@ -527,7 +527,7 @@ impl TransferHandle {
     /// Attempt to cancel the transfer associated with this `TransferHandle`.
     /// Safe to call even if the transfer has already completed;
     /// `Error::TransferAlreadyCompleted` will be returned in this case.
-    pub fn cancel(self) -> Result<()> {
+    pub fn cancel(&self) -> Result<()> {
         let rc_transfer = match self.weak_transfer.upgrade() {
             None => return Err(Error::TransferAlreadyCompleted),
             Some(rc_transfer) => rc_transfer,

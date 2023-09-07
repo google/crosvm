@@ -21,12 +21,16 @@ use usb_util::DeviceSpeed;
 use usb_util::InterfaceDescriptor;
 use usb_util::StandardControlRequest;
 use usb_util::Transfer;
+use usb_util::TransferHandle;
 use usb_util::TransferStatus;
 use usb_util::UsbRequestSetup;
 use zerocopy::AsBytes;
 
 use super::usb_endpoint::UsbEndpoint;
+use crate::usb::backend::device::BackendDevice;
 use crate::usb::backend::error::*;
+use crate::usb::backend::transfer::BackendTransferHandle;
+use crate::usb::backend::transfer::GenericTransferHandle;
 use crate::usb::backend::utils::submit_transfer;
 use crate::usb::backend::utils::update_transfer_state;
 use crate::usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
@@ -284,7 +288,7 @@ impl HostDevice {
             self.fail_handle.clone(),
             &self.job_queue,
             tmp_transfer,
-            &mut self.device.lock(),
+            &mut *self.device.lock(),
             control_transfer,
         )
     }
@@ -556,6 +560,21 @@ impl HostDevice {
         transfer
             .on_transfer_complete(&TransferStatus::Error, 0)
             .map_err(Error::TransferComplete)
+    }
+}
+
+impl GenericTransferHandle for TransferHandle {
+    fn cancel(&self) -> Result<()> {
+        TransferHandle::cancel(self).map_err(Error::TransferHandle)
+    }
+}
+
+impl BackendDevice for Device {
+    fn submit_backend_transfer(&mut self, transfer: Transfer) -> Result<BackendTransferHandle> {
+        match Device::submit_transfer(self, transfer).map_err(Error::CreateTransfer) {
+            Ok(handle) => Ok(BackendTransferHandle::new(handle)),
+            Err(e) => Err(e),
+        }
     }
 }
 

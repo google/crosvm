@@ -8,10 +8,10 @@ use std::sync::Arc;
 use base::debug;
 use base::error;
 use base::warn;
-use usb_util::Device;
 use usb_util::Transfer;
 use usb_util::TransferStatus;
 
+use super::device::BackendDevice;
 use super::error::*;
 use crate::usb::xhci::xhci_transfer::XhciTransfer;
 use crate::usb::xhci::xhci_transfer::XhciTransferState;
@@ -48,11 +48,11 @@ pub fn update_transfer_state(
 }
 
 /// Helper function to submit usb_transfer to device handle.
-pub fn submit_transfer(
+pub fn submit_transfer<T: BackendDevice>(
     fail_handle: Arc<dyn FailHandle>,
     job_queue: &Arc<AsyncJobQueue>,
     xhci_transfer: Arc<XhciTransfer>,
-    device: &mut Device,
+    device: &mut T,
     usb_transfer: Transfer,
 ) -> Result<()> {
     let transfer_status = {
@@ -62,7 +62,7 @@ pub fn submit_transfer(
         let mut state = xhci_transfer.state().lock();
         match mem::replace(&mut *state, XhciTransferState::Cancelled) {
             XhciTransferState::Created => {
-                match device.submit_transfer(usb_transfer) {
+                match device.submit_backend_transfer(usb_transfer) {
                     Err(e) => {
                         error!("fail to submit transfer {:?}", e);
                         *state = XhciTransferState::Completed;

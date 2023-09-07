@@ -19,6 +19,8 @@ pub use self::device::Device;
 #[cfg(unix)]
 pub use self::device::Transfer;
 #[cfg(unix)]
+pub use self::device::TransferHandle;
+#[cfg(unix)]
 pub use self::device::TransferStatus;
 pub use self::error::Error;
 pub use self::error::Result;

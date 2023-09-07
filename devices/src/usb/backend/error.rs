@@ -73,6 +73,8 @@ pub enum Error {
     StartAsyncJobQueue(UtilsError),
     #[error("xhci transfer completed: {0}")]
     TransferComplete(XhciTransferError),
+    #[error("failed to cancel transfer: {0}")]
+    TransferHandle(UsbUtilError),
     #[error("failed to write buffer: {0}")]
     WriteBuffer(BufferError),
     #[error("failed to write control tube: {0}")]
