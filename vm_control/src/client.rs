@@ -73,6 +73,20 @@ pub fn do_net_add<T: AsRef<Path> + std::fmt::Debug>(
     }
 }
 
+#[cfg(feature = "pci-hotplug")]
+/// Send a `VmRequest` for removing hotplugged PCI device that expects `VmResponse::Ok`
+pub fn do_net_remove<T: AsRef<Path> + std::fmt::Debug>(
+    bus_num: u8,
+    socket_path: T,
+) -> AnyHowResult<()> {
+    let request = VmRequest::HotPlugNetCommand(NetControlCommand::RemoveTap(bus_num));
+    let response = handle_request(&request, socket_path).map_err(|()| anyhow!("socket error: "))?;
+    match response {
+        VmResponse::Ok => Ok(()),
+        e => Err(anyhow!("Unexpected response: {:#}", e)),
+    }
+}
+
 pub fn do_usb_attach<T: AsRef<Path> + std::fmt::Debug>(
     socket_path: T,
     dev_path: &Path,
