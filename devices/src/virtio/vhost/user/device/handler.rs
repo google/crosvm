@@ -161,6 +161,7 @@ pub trait VhostUserBackend {
 
     /// Indicates that the backend should stop processing requests for virtio queue number `idx`.
     /// This method should return the queue passed to `start_queue` for the corresponding `idx`.
+    /// This method will only be called for queues that were previously started by `start_queue`.
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<Queue>;
 
     /// Resets the vhost-user backend.
@@ -542,21 +543,22 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
     }
 
     fn get_vring_base(&mut self, index: u32) -> VhostResult<VhostUserVringState> {
-        if index as usize >= self.vrings.len() {
-            return Err(VhostError::InvalidParam);
-        }
+        let vring = self
+            .vrings
+            .get_mut(index as usize)
+            .ok_or(VhostError::InvalidParam)?;
 
         // Quotation from vhost-user spec:
-        // Client must start ring upon receiving a kick (that is, detecting
-        // that file descriptor is readable) on the descriptor specified by
-        // VHOST_USER_SET_VRING_KICK, and stop ring upon receiving
-        // VHOST_USER_GET_VRING_BASE.
-        if let Err(e) = self.backend.stop_queue(index as usize) {
-            error!("Failed to stop queue in get_vring_base: {}", e);
-        }
+        // "The back-end must [...] stop ring upon receiving VHOST_USER_GET_VRING_BASE."
+        // We only call `queue.set_ready()` when starting the queue, so if the queue is ready, that
+        // means it is started and should be stopped.
+        if vring.queue.ready() {
+            if let Err(e) = self.backend.stop_queue(index as usize) {
+                error!("Failed to stop queue in get_vring_base: {:#}", e);
+            }
 
-        let vring = &mut self.vrings[index as usize];
-        vring.reset();
+            vring.reset();
+        }
 
         Ok(VhostUserVringState::new(
             index,
@@ -711,7 +713,12 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
     }
 
     fn sleep(&mut self) -> VhostResult<()> {
-        for (index, vring) in self.vrings.iter_mut().enumerate() {
+        for (index, vring) in self
+            .vrings
+            .iter_mut()
+            .enumerate()
+            .filter(|(_index, vring)| vring.queue.ready())
+        {
             match self.backend.stop_queue(index) {
                 Ok(queue) => vring.paused_queue = Some(queue),
                 Err(e) => return Err(VhostError::StopQueueError(e)),
