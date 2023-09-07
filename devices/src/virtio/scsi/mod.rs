@@ -9,6 +9,7 @@ use serde::Serialize;
 
 pub(crate) mod sys;
 
+pub mod commands;
 pub mod constants;
 mod device;
 
