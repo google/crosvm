@@ -26,8 +26,8 @@ use usb_util::TransferStatus;
 use usb_util::UsbRequestSetup;
 use zerocopy::AsBytes;
 
-use super::usb_endpoint::UsbEndpoint;
 use crate::usb::backend::device::BackendDevice;
+use crate::usb::backend::endpoint::UsbEndpoint;
 use crate::usb::backend::error::*;
 use crate::usb::backend::transfer::BackendTransferHandle;
 use crate::usb::backend::transfer::GenericTransferHandle;
@@ -528,7 +528,6 @@ impl HostDevice {
                 self.endpoints.push(UsbEndpoint::new(
                     self.fail_handle.clone(),
                     self.job_queue.clone(),
-                    self.device.clone(),
                     ep_num,
                     direction,
                     ty,
@@ -553,7 +552,7 @@ impl HostDevice {
         }
         for ep in &self.endpoints {
             if ep.match_ep(transfer.get_endpoint_number(), transfer.get_transfer_dir()) {
-                return ep.handle_transfer(transfer);
+                return ep.handle_transfer(&mut *self.device.lock(), transfer);
             }
         }
         warn!("Could not find endpoint for transfer");

@@ -7,14 +7,13 @@ use std::sync::Arc;
 
 use base::debug;
 use base::error;
-use sync::Mutex;
-use usb_util::Device;
 use usb_util::EndpointDirection;
 use usb_util::EndpointType;
 use usb_util::Transfer;
 use usb_util::TransferStatus;
 use usb_util::ENDPOINT_DIRECTION_OFFSET;
 
+use crate::usb::backend::device::BackendDevice;
 use crate::usb::backend::error::*;
 use crate::usb::backend::utils::submit_transfer;
 use crate::usb::backend::utils::update_transfer_state;
@@ -30,7 +29,6 @@ use crate::utils::FailHandle;
 pub struct UsbEndpoint {
     fail_handle: Arc<dyn FailHandle>,
     job_queue: Arc<AsyncJobQueue>,
-    device: Arc<Mutex<Device>>,
     endpoint_number: u8,
     direction: EndpointDirection,
     ty: EndpointType,
@@ -41,7 +39,6 @@ impl UsbEndpoint {
     pub fn new(
         fail_handle: Arc<dyn FailHandle>,
         job_queue: Arc<AsyncJobQueue>,
-        device: Arc<Mutex<Device>>,
         endpoint_number: u8,
         direction: EndpointDirection,
         ty: EndpointType,
@@ -50,7 +47,6 @@ impl UsbEndpoint {
         UsbEndpoint {
             fail_handle,
             job_queue,
-            device,
             endpoint_number,
             direction,
             ty,
@@ -71,7 +67,11 @@ impl UsbEndpoint {
     }
 
     /// Handle a xhci transfer.
-    pub fn handle_transfer(&self, transfer: XhciTransfer) -> Result<()> {
+    pub fn handle_transfer(
+        &self,
+        device: &mut impl BackendDevice,
+        transfer: XhciTransfer,
+    ) -> Result<()> {
         let buffer = match transfer
             .get_transfer_type()
             .map_err(Error::GetXhciTransferType)?
@@ -92,10 +92,10 @@ impl UsbEndpoint {
 
         match self.ty {
             EndpointType::Bulk => {
-                self.handle_bulk_transfer(transfer, buffer)?;
+                self.handle_bulk_transfer(device, transfer, buffer)?;
             }
             EndpointType::Interrupt => {
-                self.handle_interrupt_transfer(transfer, buffer)?;
+                self.handle_interrupt_transfer(device, transfer, buffer)?;
             }
             _ => {
                 return transfer
@@ -117,6 +117,7 @@ impl UsbEndpoint {
 
     fn handle_bulk_transfer(
         &self,
+        device: &mut impl BackendDevice,
         xhci_transfer: XhciTransfer,
         buffer: ScatterGatherBuffer,
     ) -> Result<()> {
@@ -127,22 +128,24 @@ impl UsbEndpoint {
             xhci_transfer.get_stream_id(),
         )
         .map_err(Error::CreateTransfer)?;
-        self.do_handle_transfer(xhci_transfer, usb_transfer, buffer)
+        self.do_handle_transfer(device, xhci_transfer, usb_transfer, buffer)
     }
 
     fn handle_interrupt_transfer(
         &self,
+        device: &mut impl BackendDevice,
         xhci_transfer: XhciTransfer,
         buffer: ScatterGatherBuffer,
     ) -> Result<()> {
         let transfer_buffer = self.get_transfer_buffer(&buffer)?;
         let usb_transfer = Transfer::new_interrupt(self.ep_addr(), transfer_buffer)
             .map_err(Error::CreateTransfer)?;
-        self.do_handle_transfer(xhci_transfer, usb_transfer, buffer)
+        self.do_handle_transfer(device, xhci_transfer, usb_transfer, buffer)
     }
 
     fn do_handle_transfer(
         &self,
+        device: &mut impl BackendDevice,
         xhci_transfer: XhciTransfer,
         mut usb_transfer: Transfer,
         buffer: ScatterGatherBuffer,
@@ -194,7 +197,7 @@ impl UsbEndpoint {
                     self.fail_handle.clone(),
                     &self.job_queue,
                     tmp_transfer,
-                    &mut *self.device.lock(),
+                    device,
                     usb_transfer,
                 )?;
             }
@@ -251,7 +254,7 @@ impl UsbEndpoint {
                     self.fail_handle.clone(),
                     &self.job_queue,
                     tmp_transfer,
-                    &mut *self.device.lock(),
+                    device,
                     usb_transfer,
                 )?;
             }

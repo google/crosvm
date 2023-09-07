@@ -4,4 +4,3 @@
 
 pub mod host_backend_device_provider;
 pub mod host_device;
-pub mod usb_endpoint;

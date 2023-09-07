@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 pub mod device;
+pub mod endpoint;
 pub mod error;
 pub mod host_backend;
 pub mod transfer;
