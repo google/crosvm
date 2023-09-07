@@ -807,6 +807,8 @@ impl Display for GpuResponse {
     }
 }
 
+impl std::error::Error for GpuResponse {}
+
 /// An error indicating something went wrong decoding a `GpuCommand`.
 #[sorted]
 #[derive(Error, Debug)]

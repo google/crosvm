@@ -73,6 +73,7 @@ use self::protocol::*;
 use self::virtio_gpu::to_rutabaga_descriptor;
 pub use self::virtio_gpu::ProcessDisplayResult;
 use self::virtio_gpu::VirtioGpu;
+use self::virtio_gpu::VirtioGpuSnapshot;
 use super::copy_config;
 use super::resource_bridge::ResourceRequest;
 use super::resource_bridge::ResourceResponse;
@@ -134,7 +135,7 @@ pub struct VirtioScanoutBlobData {
     pub offsets: [u32; 4],
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 enum VirtioGpuRing {
     Global,
     ContextSpecific { ctx_id: u32, ring_idx: u8 },
@@ -151,6 +152,25 @@ struct FenceDescriptor {
 pub struct FenceState {
     descs: Vec<FenceDescriptor>,
     completed_fences: BTreeMap<VirtioGpuRing, u64>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct FenceStateSnapshot {
+    completed_fences: BTreeMap<VirtioGpuRing, u64>,
+}
+
+impl FenceState {
+    fn snapshot(&self) -> FenceStateSnapshot {
+        assert!(self.descs.is_empty(), "can't snapshot with pending fences");
+        FenceStateSnapshot {
+            completed_fences: self.completed_fences.clone(),
+        }
+    }
+
+    fn restore(&mut self, snapshot: FenceStateSnapshot) {
+        assert!(self.descs.is_empty(), "can't restore activated device");
+        self.completed_fences = snapshot.completed_fences;
+    }
 }
 
 pub trait QueueReader {
@@ -849,12 +869,18 @@ struct Worker {
 }
 
 struct WorkerReturn {
-    // None if device not yet activated.
-    queues: Option<Vec<Queue>>,
     #[cfg(unix)]
     gpu_control_tube: Tube,
     resource_bridges: ResourceBridges,
     event_devices: Vec<EventDevice>,
+    // None if device not yet activated.
+    activated_state: Option<(Vec<Queue>, WorkerSnapshot)>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct WorkerSnapshot {
+    fence_state_snapshot: FenceStateSnapshot,
+    virtio_gpu_snapshot: VirtioGpuSnapshot,
 }
 
 impl Worker {
@@ -1131,6 +1157,7 @@ struct GpuActivationResources {
     interrupt: Interrupt,
     ctrl_queue: SharedQueueReader,
     cursor_queue: LocalQueueReader,
+    worker_snapshot: Option<WorkerSnapshot>,
 }
 
 pub struct Gpu {
@@ -1172,6 +1199,10 @@ pub struct Gpu {
     capset_mask: u64,
     #[cfg(unix)]
     gpu_cgroup_path: Option<PathBuf>,
+    /// Used to differentiate worker kill events that are for shutdown vs sleep. `virtio_sleep`
+    /// sets this to true while stopping the worker.
+    sleep_requested: Arc<AtomicBool>,
+    worker_snapshot: Option<WorkerSnapshot>,
 }
 
 impl Gpu {
@@ -1274,6 +1305,8 @@ impl Gpu {
             capset_mask: gpu_parameters.capset_mask,
             #[cfg(unix)]
             gpu_cgroup_path: gpu_cgroup_path.cloned(),
+            sleep_requested: Arc::new(AtomicBool::new(false)),
+            worker_snapshot: None,
         }
     }
 
@@ -1378,6 +1411,7 @@ impl Gpu {
 
         let (init_finished_tx, init_finished_rx) = mpsc::channel();
         let (activate_tx, activate_rx) = mpsc::channel();
+        let sleep_requested = self.sleep_requested.clone();
 
         let worker_thread = WorkerThread::start("v_gpu", move |kill_evt| {
             #[cfg(unix)]
@@ -1397,11 +1431,11 @@ impl Gpu {
                     Err(e) => {
                         error!("failed to build rutabaga {}", e);
                         return WorkerReturn {
-                            queues: None,
                             #[cfg(unix)]
                             gpu_control_tube,
                             resource_bridges,
                             event_devices,
+                            activated_state: None,
                         };
                     }
                 };
@@ -1422,12 +1456,12 @@ impl Gpu {
                 Some(backend) => backend,
                 None => {
                     return WorkerReturn {
-                        queues: None,
                         #[cfg(unix)]
                         gpu_control_tube,
                         resource_bridges,
                         event_devices,
-                    }
+                        activated_state: None,
+                    };
                 }
             };
 
@@ -1446,11 +1480,11 @@ impl Gpu {
                 // Other half of channel was dropped.
                 Err(mpsc::RecvError) => {
                     return WorkerReturn {
-                        queues: None,
                         #[cfg(unix)]
                         gpu_control_tube,
                         resource_bridges,
                         event_devices: virtio_gpu.display().borrow_mut().take_event_devices(),
+                        activated_state: None,
                     };
                 }
             };
@@ -1478,27 +1512,61 @@ impl Gpu {
                 #[cfg(windows)]
                 gpu_display_wait_descriptor_ctrl_rd,
             };
+
+            // If a snapshot was provided, restore from it.
+            if let Some(snapshot) = activation_resources.worker_snapshot {
+                worker
+                    .state
+                    .fence_state
+                    .lock()
+                    .restore(snapshot.fence_state_snapshot);
+                worker
+                    .state
+                    .virtio_gpu
+                    .restore(snapshot.virtio_gpu_snapshot, &worker.mem)
+                    .expect("failed to restore VirtioGpu");
+            }
+
             worker.run();
+
             let event_devices = worker
                 .state
                 .virtio_gpu
                 .display()
                 .borrow_mut()
                 .take_event_devices();
-            // Need to drop `Frontend` for the `Arc::try_unwrap` below to succeed.
-            std::mem::drop(worker.state);
+            // If we are stopping the worker because of a virtio_sleep request, then take a
+            // snapshot and reclaim the queues.
+            let activated_state = if sleep_requested.load(Ordering::SeqCst) {
+                let worker_snapshot = WorkerSnapshot {
+                    fence_state_snapshot: worker.state.fence_state.lock().snapshot(),
+                    virtio_gpu_snapshot: worker
+                        .state
+                        .virtio_gpu
+                        .snapshot()
+                        .expect("failed to snapshot VirtioGpu"),
+                };
+                // Need to drop `Frontend` for the `Arc::try_unwrap` below to succeed.
+                std::mem::drop(worker.state);
+                Some((
+                    vec![
+                        match Arc::try_unwrap(worker.ctrl_queue.queue) {
+                            Ok(x) => x.into_inner(),
+                            Err(_) => panic!("too many refs on ctrl_queue"),
+                        },
+                        worker.cursor_queue.queue.into_inner(),
+                    ],
+                    worker_snapshot,
+                ))
+            } else {
+                None
+            };
             WorkerReturn {
-                queues: Some(vec![
-                    match Arc::try_unwrap(worker.ctrl_queue.queue) {
-                        Ok(x) => x.into_inner(),
-                        Err(_) => panic!("too many refs on ctrl_queue"),
-                    },
-                    worker.cursor_queue.queue.into_inner(),
-                ]),
                 #[cfg(unix)]
                 gpu_control_tube: worker.gpu_control_tube,
                 resource_bridges: worker.resource_bridges,
                 event_devices,
+                activated_state,
             }
         });
 
@@ -1690,6 +1758,7 @@ impl VirtioDevice for Gpu {
                 interrupt,
                 ctrl_queue,
                 cursor_queue,
+                worker_snapshot: self.worker_snapshot.take(),
             })
             .expect("failed to send activation resources to worker thread");
 
@@ -1711,16 +1780,28 @@ impl VirtioDevice for Gpu {
         true
     }
 
+    // Notes on sleep/wake/snapshot/restore functionality.
+    //
+    //   * Only 2d mode is supported so far.
+    //   * We only snapshot the state relevant to the virtio-gpu 2d mode protocol (i.e. scanouts,
+    //     resources, fences).
+    //   * The GpuDisplay is recreated from scratch, we don't want to snapshot the state of a
+    //     Wayland socket (for example).
+    //   * No state about pending virtio requests needs to be snapshotted because the 2d backend
+    //     completes them synchronously.
+
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         if let Some((activate_tx, worker_thread)) = self.worker_thread.take() {
+            self.sleep_requested.store(true, Ordering::SeqCst);
             drop(activate_tx);
             let WorkerReturn {
-                queues,
                 #[cfg(unix)]
                 gpu_control_tube,
                 resource_bridges,
                 event_devices,
+                activated_state,
             } = worker_thread.stop();
+            self.sleep_requested.store(false, Ordering::SeqCst);
 
             self.resource_bridges = Some(resource_bridges);
             #[cfg(unix)]
@@ -1729,10 +1810,16 @@ impl VirtioDevice for Gpu {
             }
             self.event_devices = Some(event_devices);
 
-            match queues {
-                Some(queues) => return Ok(Some(queues.into_iter().enumerate().collect())),
+            match activated_state {
+                Some((queues, worker_snapshot)) => {
+                    self.worker_snapshot = Some(worker_snapshot);
+                    return Ok(Some(queues.into_iter().enumerate().collect()));
+                }
                 // Device not activated yet.
-                None => return Ok(None),
+                None => {
+                    self.worker_snapshot = None;
+                    return Ok(None);
+                }
             }
         }
         Ok(None)
@@ -1754,6 +1841,15 @@ impl VirtioDevice for Gpu {
                 Ok(())
             }
         }
+    }
+
+    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::to_value(&self.worker_snapshot)?)
+    }
+
+    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        self.worker_snapshot = serde_json::from_value(data)?;
+        Ok(())
     }
 }
 

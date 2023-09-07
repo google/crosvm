@@ -16,6 +16,8 @@ use base::EventType;
 use base::WaitContext;
 use data_model::VolatileSlice;
 use remain::sorted;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 mod event_device;
@@ -105,7 +107,7 @@ impl From<IoError> for GpuDisplayError {
 }
 
 /// A surface type
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SurfaceType {
     /// Scanout surface
     Scanout,
