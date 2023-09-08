@@ -8,7 +8,6 @@ use std::path::PathBuf;
 
 #[cfg(feature = "pci-hotplug")]
 use anyhow::anyhow;
-#[cfg(feature = "pci-hotplug")]
 use anyhow::Result as AnyHowResult;
 use base::open_file_or_duplicate;
 use remain::sorted;
@@ -73,6 +72,15 @@ pub fn do_net_add<T: AsRef<Path> + std::fmt::Debug>(
     }
 }
 
+#[cfg(not(feature = "pci-hotplug"))]
+/// Send a `VmRequest` for PCI hotplug that expects `VmResponse::PciResponse::AddOk(bus)`
+pub fn do_net_add<T: AsRef<Path> + std::fmt::Debug>(
+    _tap_name: &str,
+    _socket_path: T,
+) -> AnyHowResult<u8> {
+    bail!("Unsupported: pci-hotplug feature disabled");
+}
+
 #[cfg(feature = "pci-hotplug")]
 /// Send a `VmRequest` for removing hotplugged PCI device that expects `VmResponse::Ok`
 pub fn do_net_remove<T: AsRef<Path> + std::fmt::Debug>(
@@ -85,6 +93,15 @@ pub fn do_net_remove<T: AsRef<Path> + std::fmt::Debug>(
         VmResponse::Ok => Ok(()),
         e => Err(anyhow!("Unexpected response: {:#}", e)),
     }
+}
+
+#[cfg(not(feature = "pci-hotplug"))]
+/// Send a `VmRequest` for removing hotplugged PCI device that expects `VmResponse::Ok`
+pub fn do_net_remove<T: AsRef<Path> + std::fmt::Debug>(
+    _bus_num: u8,
+    _socket_path: T,
+) -> AnyHowResult<()> {
+    bail!("Unsupported: pci-hotplug feature disabled");
 }
 
 pub fn do_usb_attach<T: AsRef<Path> + std::fmt::Debug>(
