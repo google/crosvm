@@ -1669,6 +1669,7 @@ impl VirtioDevice for Balloon {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::suspendable_virtio_tests;
     use crate::virtio::descriptor_utils::create_descriptor_chain;
     use crate::virtio::descriptor_utils::DescriptorType;
 
@@ -1742,4 +1743,43 @@ mod tests {
             ]))
         );
     }
+
+    struct BalloonContext {
+        _ctrl_tube: Tube,
+        #[cfg(windows)]
+        _mem_client_tube: Tube,
+    }
+
+    fn modify_device(_balloon_context: &mut BalloonContext, balloon: &mut Balloon) {
+        balloon.ws_num_bins = !balloon.ws_num_bins;
+    }
+
+    fn create_device() -> (BalloonContext, Balloon) {
+        let (_ctrl_tube, ctrl_tube_device) = Tube::pair().unwrap();
+        #[cfg(windows)]
+        let (_mem_client_tube, mem_client_tube_device) = Tube::pair().unwrap();
+        (
+            BalloonContext {
+                _ctrl_tube,
+                #[cfg(windows)]
+                _mem_client_tube,
+            },
+            Balloon::new(
+                0,
+                ctrl_tube_device,
+                #[cfg(windows)]
+                VmMemoryClient::new(mem_client_tube_device),
+                None,
+                1024,
+                BalloonMode::Relaxed,
+                0,
+                #[cfg(feature = "registered_events")]
+                None,
+                0,
+            )
+            .unwrap(),
+        )
+    }
+
+    suspendable_virtio_tests!(balloon, create_device, 2, modify_device);
 }
