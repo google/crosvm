@@ -41,12 +41,6 @@ use crate::virtio::SharedMemoryRegion;
 
 type BackendReqHandler = MasterReqHandler<Mutex<BackendReqHandlerImpl>>;
 
-fn set_features(vu: &mut SocketMaster, avail_features: u64, ack_features: u64) -> Result<u64> {
-    let features = avail_features & ack_features;
-    vu.set_features(features).map_err(Error::SetFeatures)?;
-    Ok(features)
-}
-
 pub struct VhostUserHandler {
     vu: SocketMaster,
     pub avail_features: u64,
@@ -65,17 +59,21 @@ impl VhostUserHandler {
     fn new(
         mut vu: SocketMaster,
         allow_features: u64,
-        init_features: u64,
         allow_protocol_features: VhostUserProtocolFeatures,
         #[cfg(windows)] backend_pid: Option<u32>,
     ) -> Result<Self> {
         vu.set_owner().map_err(Error::SetOwner)?;
 
         let avail_features = allow_features & vu.get_features().map_err(Error::GetFeatures)?;
-        let acked_features = set_features(&mut vu, avail_features, init_features)?;
+        let mut acked_features = 0;
 
         let mut protocol_features = VhostUserProtocolFeatures::empty();
-        if acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
+        if avail_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
+            // The vhost-user backend supports VHOST_USER_F_PROTOCOL_FEATURES; enable it.
+            vu.set_features(1 << VHOST_USER_F_PROTOCOL_FEATURES)
+                .map_err(Error::SetFeatures)?;
+            acked_features |= 1 << VHOST_USER_F_PROTOCOL_FEATURES;
+
             let avail_protocol_features = vu
                 .get_protocol_features()
                 .map_err(Error::GetProtocolFeatures)?;
@@ -133,11 +131,8 @@ impl VhostUserHandler {
 
     /// Enables a set of features.
     pub fn ack_features(&mut self, ack_features: u64) -> Result<()> {
-        let features = set_features(
-            &mut self.vu,
-            self.avail_features,
-            self.acked_features | ack_features,
-        )?;
+        let features = (ack_features & self.avail_features) | self.acked_features;
+        self.vu.set_features(features).map_err(Error::SetFeatures)?;
         self.acked_features = features;
         Ok(())
     }

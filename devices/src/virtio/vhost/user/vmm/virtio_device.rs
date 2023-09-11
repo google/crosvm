@@ -65,12 +65,10 @@ impl VhostUserVirtioDevice {
         expose_shmem_descriptors_with_viommu: bool,
     ) -> Result<VhostUserVirtioDevice> {
         let allow_features = allow_features | base_features | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
-        let init_features = base_features | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
 
         let handler = VhostUserHandler::new_from_connection(
             connection,
             allow_features,
-            init_features,
             allow_protocol_features,
         )?;
 
