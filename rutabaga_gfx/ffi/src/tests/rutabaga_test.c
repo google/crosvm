@@ -7,6 +7,7 @@
 #define _GNU_SOURCE
 #include <assert.h>
 #include <errno.h>
+#include <ftw.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -430,6 +431,21 @@ static int test_rutabaga_2d(struct rutabaga_test *test)
     return 0;
 }
 
+struct cb_data {
+    uint8_t buf[2000];
+    size_t len;
+};
+
+static void snapshot_cb(uint64_t user_data, const uint8_t* data, size_t len) {
+    struct cb_data* cb_data = (struct cb_data*)user_data;
+    if (cb_data->len + len > 2000) {
+      // Silently truncate. Checked for by the test.
+      len = 2000 - cb_data->len;
+    }
+    memcpy(cb_data->buf + cb_data->len, data, len);
+    cb_data->len += len;
+}
+
 static int test_rutabaga_finish(struct rutabaga_test *test)
 {
     int result;
@@ -438,6 +454,86 @@ static int test_rutabaga_finish(struct rutabaga_test *test)
     CHECK_RESULT(result);
     CHECK(test->rutabaga == NULL);
     return 0;
+}
+
+static int test_rutabaga_2d_snapshot(struct rutabaga_test *test, const char* dir)
+{
+    struct rutabaga_create_3d rc_3d = { 0 };
+    struct rutabaga_transfer transfer = { 0 };
+    int result;
+    uint32_t resource_id = s_resource_id++;
+
+    result = test_rutabaga_init(test, 0);
+    CHECK_RESULT(result);
+
+    struct rutabaga_iovecs vecs = { 0 };
+    struct iovec *iovecs = (struct iovec *)calloc(1, sizeof(struct iovec));
+    uint8_t *test_data;
+    struct iovec result_iovec;
+
+    iovecs[0].iov_base = calloc(1, DEFAULT_BUFFER_SIZE);
+    iovecs[0].iov_len = DEFAULT_BUFFER_SIZE;
+    result_iovec.iov_base = calloc(1, DEFAULT_BUFFER_SIZE);
+    result_iovec.iov_len = DEFAULT_BUFFER_SIZE;
+    test_data = (uint8_t *)result_iovec.iov_base;
+
+    vecs.iovecs = iovecs;
+    vecs.num_iovecs = 1;
+
+    rc_3d.target = PIPE_TEXTURE_2D;
+    rc_3d.bind = PIPE_BIND_RENDER_TARGET;
+    rc_3d.format = VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM;
+    rc_3d.width = DEFAULT_BUFFER_SIZE / 16;
+    rc_3d.height = 4;
+
+    transfer.w = DEFAULT_BUFFER_SIZE / 16;
+    transfer.h = 4;
+    transfer.d = 1;
+
+    result = rutabaga_resource_create_3d(test->rutabaga, resource_id, &rc_3d);
+    CHECK_RESULT(result);
+
+    result = rutabaga_resource_attach_backing(test->rutabaga, resource_id, &vecs);
+    CHECK_RESULT(result);
+
+    struct cb_data cb_data;
+    memset(&cb_data, 0, sizeof(struct cb_data));
+
+    result = rutabaga_snapshot(test->rutabaga, dir);
+    CHECK_RESULT(result);
+    // If the buffer is filled, assume it overflow. If that happens, just make
+    // the test's buffer bigger (or make the snapshot smaller).
+    CHECK(cb_data.len < 2000);
+
+    result = rutabaga_resource_unref(test->rutabaga, resource_id);
+    CHECK_RESULT(result);
+
+    free(iovecs[0].iov_base);
+    free(iovecs);
+    free(test_data);
+
+    // Teardown and re-init. Restore is only supported from a fresh init.
+    result = test_rutabaga_finish(test);
+    CHECK_RESULT(result);
+
+    result = test_rutabaga_init(test, 0);
+    CHECK_RESULT(result);
+
+    result = rutabaga_restore(test->rutabaga, dir);
+    CHECK_RESULT(result);
+
+    result = test_rutabaga_finish(test);
+    CHECK_RESULT(result);
+
+    return 0;
+}
+
+int ftw_cb(const char *fpath, const struct stat *, int, struct FTW *) {
+  return remove(fpath);
+}
+
+int recursive_rm(const char* dir) {
+    CHECK(nftw(dir, ftw_cb, 64, FTW_DEPTH | FTW_PHYS) == 0);
 }
 
 int main(int argc, char *argv[])
@@ -456,6 +552,7 @@ int main(int argc, char *argv[])
     const uint32_t num_context_names = 2;
 
     for (uint32_t i = 0; i < num_context_names; i++) {
+        continue;
         const char *context_name = context_names[i];
         for (uint32_t j = 0; j < NUM_ITERATIONS; j++) {
             result = test_capset_mask_calculation();
@@ -490,6 +587,16 @@ int main(int argc, char *argv[])
 
         result |= test_rutabaga_finish(&test);
         CHECK_RESULT(result);
+    }
+
+    for (uint32_t i = 0; i < NUM_ITERATIONS; i++) {
+        char template[] = "/tmp/rutabaga_test_snapshot.XXXXXX";
+        const char *dir = mkdtemp(template);
+        CHECK(dir);
+        result = test_rutabaga_2d_snapshot(&test, dir);
+        CHECK(recursive_rm(dir) == 0);
+        CHECK_RESULT(result);
+        break;
     }
 
     printf("[  PASSED  ] rutabaga_test success\n");

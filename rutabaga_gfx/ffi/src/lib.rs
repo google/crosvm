@@ -9,11 +9,13 @@ use std::cell::RefCell;
 use std::convert::TryInto;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::fs::File;
 use std::io::IoSliceMut;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::panic::catch_unwind;
 use std::panic::AssertUnwindSafe;
+use std::path::Path;
 use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::ptr::null;
@@ -64,6 +66,18 @@ macro_rules! return_on_error {
             Err(e) => {
                 log_error(e.to_string());
                 return -EINVAL;
+            }
+        }
+    };
+}
+
+macro_rules! return_on_io_error {
+    ($result:expr) => {
+        match $result {
+            Ok(t) => t,
+            Err(e) => {
+                log_error(e.to_string());
+                return -e.raw_os_error().unwrap_or(EINVAL);
             }
         }
     };
@@ -590,6 +604,37 @@ pub unsafe extern "C" fn rutabaga_submit_command(
 pub extern "C" fn rutabaga_create_fence(ptr: &mut rutabaga, fence: &rutabaga_fence) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
         let result = ptr.create_fence(*fence);
+        return_result(result)
+    }))
+    .unwrap_or(-ESRCH)
+}
+
+#[no_mangle]
+pub extern "C" fn rutabaga_snapshot(ptr: &mut rutabaga, dir: *const c_char) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        // SAFETY: Caller guarantees a valid C string.
+        let dir = match unsafe { CStr::from_ptr(dir) }.to_str() {
+            Ok(x) => x,
+            Err(_) => return -EINVAL,
+        };
+        let file = return_on_io_error!(File::create(Path::new(dir).join("snapshot")));
+        let result = ptr.snapshot(&mut std::io::BufWriter::new(file));
+        return_result(result)
+    }))
+    .unwrap_or(-ESRCH)
+}
+
+#[no_mangle]
+pub extern "C" fn rutabaga_restore(ptr: &mut rutabaga, dir: *const c_char) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        // SAFETY: Caller guarantees a valid C string.
+        let dir = unsafe { CStr::from_ptr(dir) };
+        let dir = match dir.to_str() {
+            Ok(x) => x,
+            Err(_) => return -EINVAL,
+        };
+        let file = return_on_io_error!(File::open(Path::new(dir).join("snapshot")));
+        let result = ptr.restore(&mut std::io::BufReader::new(file));
         return_result(result)
     }))
     .unwrap_or(-ESRCH)

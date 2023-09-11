@@ -343,6 +343,22 @@ int32_t rutabaga_submit_command(struct rutabaga *ptr, struct rutabaga_command *c
 
 int32_t rutabaga_create_fence(struct rutabaga *ptr, const struct rutabaga_fence *fence);
 
+/**
+ * Write a snapshot to `dir`. The directory is expected to already exist and to be empty.
+ *
+ * # Safety
+ * - `dir` must be a null-terminated C-string.
+ */
+int32_t rutabaga_snapshot(struct rutabaga *ptr, const char *dir);
+
+/**
+ * Restore from a snapshot at `dir`.
+ *
+ * # Safety
+ * - `dir` must be a null-terminated C-string.
+ */
+int32_t rutabaga_restore(struct rutabaga *ptr, const char *dir);
+
 #ifdef __cplusplus
 }
 #endif
