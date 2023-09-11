@@ -170,7 +170,10 @@ pub enum Error {
 
 impl From<base::TubeError> for Error {
     fn from(err: base::TubeError) -> Self {
-        Error::TubeError(err)
+        match err {
+            base::TubeError::Disconnected => Error::Disconnect,
+            err => Error::TubeError(err),
+        }
     }
 }
 

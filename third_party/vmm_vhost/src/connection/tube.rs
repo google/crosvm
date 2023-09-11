@@ -87,7 +87,7 @@ impl<R: Req> Endpoint<R> for TubeEndpoint<R> {
                 msg.rds.push(RawDescriptorContainer { rd: *rd });
             }
         }
-        self.tube.send(&msg).map_err(Error::TubeError)?;
+        self.tube.send(&msg)?;
         Ok(total_bytes)
     }
 
@@ -109,7 +109,7 @@ impl<R: Req> Endpoint<R> for TubeEndpoint<R> {
     ) -> Result<(usize, Option<Vec<File>>)> {
         // TODO(b/221882601): implement "allow_rds"
 
-        let msg: EndpointMessage = self.tube.recv().map_err(Error::TubeError)?;
+        let msg: EndpointMessage = self.tube.recv()?;
 
         let files = match msg.rds.len() {
             0 => None,

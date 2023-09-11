@@ -1172,8 +1172,7 @@ mod tests {
 
         match handle_request(&mut req_handler) {
             Err(VhostError::ClientExit) => (),
-            Err(VhostError::TubeError(base::TubeError::Disconnected)) => (),
-            r => panic!("expected Err(ClientExit) or Err(TubeError) but got {:?}", r),
+            r => panic!("expected Err(ClientExit) but got {:?}", r),
         }
     }
 
