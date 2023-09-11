@@ -82,6 +82,8 @@ pub enum ExecuteError {
     Read(io::Error),
     #[error("failed to read command from cdb")]
     ReadCommand,
+    #[error("unsupported scsi command: {0}")]
+    Unsupported(u8),
     #[error("failed to write message: {0}")]
     Write(io::Error),
 }
@@ -107,6 +109,12 @@ impl ExecuteError {
             Self::InvalidField => Sense {
                 key: ILLEGAL_REQUEST,
                 asc: 0x24,
+                ascq: 0x00,
+            },
+            // INVALID COMMAND OPERATION CODE
+            Self::Unsupported(_) => Sense {
+                key: ILLEGAL_REQUEST,
+                asc: 0x20,
                 ascq: 0x00,
             },
         }

@@ -10,6 +10,8 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use crate::virtio::scsi::constants::INQUIRY;
+use crate::virtio::scsi::constants::REPORT_LUNS;
+use crate::virtio::scsi::constants::TEST_UNIT_READY;
 use crate::virtio::scsi::constants::TYPE_DISK;
 use crate::virtio::scsi::device::ExecuteError;
 use crate::virtio::scsi::device::Request;
@@ -18,28 +20,45 @@ use crate::virtio::Writer;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
+    TestUnitReady(TestUnitReady),
     Inquiry(Inquiry),
+    ReportLuns(ReportLuns),
 }
 
 impl Command {
     pub fn new(cdb: &[u8]) -> Result<Self, ExecuteError> {
         let op = cdb[0];
         match op {
-            INQUIRY => {
-                let cmd = Inquiry::read_from(cdb).ok_or(ExecuteError::ReadCommand)?;
-                Ok(Self::Inquiry(cmd))
-            }
+            TEST_UNIT_READY => Ok(Self::TestUnitReady(Self::parse_command(cdb)?)),
+            INQUIRY => Ok(Self::Inquiry(Self::parse_command(cdb)?)),
+            REPORT_LUNS => Ok(Self::ReportLuns(Self::parse_command(cdb)?)),
             _ => {
-                todo!("SCSI command {:#x?} is not implemented", op);
+                warn!("SCSI command {:#x?} is not implemented", op);
+                Err(ExecuteError::Unsupported(op))
             }
         }
     }
 
+    fn parse_command<T: FromBytes>(cdb: &[u8]) -> Result<T, ExecuteError> {
+        let size = std::mem::size_of::<T>();
+        T::read_from(&cdb[..size]).ok_or(ExecuteError::ReadCommand)
+    }
+
     pub fn execute(&self, writer: &mut Writer, req: &mut Request) {
         match self {
+            Self::TestUnitReady(_) => (), // noop as the device is ready.
             Self::Inquiry(inquiry) => inquiry.emulate(writer, req),
+            Self::ReportLuns(report_luns) => report_luns.emulate(writer, req),
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes, PartialEq, Eq)]
+#[repr(C, packed)]
+pub struct TestUnitReady {
+    opcode: u8,
+    reserved: [u8; 4],
+    control: u8,
 }
 
 #[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes, PartialEq, Eq)]
@@ -172,9 +191,65 @@ impl Inquiry {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes, PartialEq, Eq)]
+#[repr(C, packed)]
+pub struct ReportLuns {
+    opcode: u8,
+    _reserved: u8,
+    select_report: u8,
+    _reserved2: [u8; 3],
+    alloc_len_bytes: [u8; 4],
+    _reserved3: u8,
+    control: u8,
+}
+
+impl ReportLuns {
+    fn alloc_len(&self) -> usize {
+        u32::from_be_bytes(self.alloc_len_bytes) as usize
+    }
+
+    fn emulate(&self, writer: &mut Writer, req: &mut Request) {
+        // We need at least 16 bytes.
+        if self.alloc_len() < 16 {
+            req.status = RequestStatus::CheckCondition {
+                err: ExecuteError::InvalidField,
+                fixed: true,
+            };
+            return;
+        }
+        // Each LUN takes 8 bytes and we only support LUN0 (b/300586438).
+        let lun_list_len = 8u32;
+        let _ = writer
+            .write_all(&lun_list_len.to_be_bytes())
+            .map_err(|e| warn!("failed to write bytes: {e}"));
+        let reserved = [0; 4];
+        let _ = writer
+            .write_all(&reserved)
+            .map_err(|e| warn!("failed to write bytes: {e}"));
+        let lun0 = 0u64;
+        let _ = writer
+            .write_all(&lun0.to_be_bytes())
+            .map_err(|e| warn!("failed to write bytes: {e}"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_test_unit_ready() {
+        let cdb = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let command = Command::new(&cdb).unwrap();
+        assert_eq!(
+            command,
+            Command::TestUnitReady(TestUnitReady {
+                opcode: TEST_UNIT_READY,
+                reserved: [0; 4],
+                control: 0
+            })
+        );
+    }
 
     #[test]
     fn parse_inquiry() {
@@ -187,5 +262,24 @@ mod tests {
         assert!(inquiry.vital_product_data_enabled());
         assert_eq!(inquiry.alloc_len(), 0x0040);
         assert_eq!(inquiry.page_code(), 0x00);
+    }
+
+    #[test]
+    fn parse_report_luns() {
+        let cdb = [
+            0xa0, 0x00, 0x00, 0x00, 0x00, 0x00, 0xab, 0xcd, 0xef, 0x12, 0x00, 0x00,
+        ];
+        let command = Command::new(&cdb).unwrap();
+        let report_luns = ReportLuns {
+            opcode: REPORT_LUNS,
+            _reserved: 0x00,
+            select_report: 0x00,
+            _reserved2: [0x00, 0x00, 0x00],
+            alloc_len_bytes: [0xab, 0xcd, 0xef, 0x12],
+            _reserved3: 0x00,
+            control: 0x00,
+        };
+        assert_eq!(command, Command::ReportLuns(report_luns));
+        assert_eq!(report_luns.alloc_len(), 0xabcdef12);
     }
 }
