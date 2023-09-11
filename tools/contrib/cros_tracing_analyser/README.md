@@ -29,3 +29,12 @@ $ python3 -m http.server
 
 And then open the page at http://localhost:8000/flamegraph.html and the flamegraph will be
 displayed.
+
+### How to apply filters to the flamegraph
+
+```
+$ cargo run -- flamegraph --input trace.dat --output-json tracing_data.json --function "lookup" --count 20
+```
+
+For example this command outputs the data of the top 20 "lookup" functions that are taking the most
+time:

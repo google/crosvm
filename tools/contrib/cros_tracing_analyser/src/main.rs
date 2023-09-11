@@ -51,6 +51,14 @@ struct Flamegraph {
     #[argh(option)]
     /// path to the output JSON file
     output_json: String,
+    #[argh(option)]
+    /// decide which function to focus on
+    /// unspecified: output flamegraph for all event
+    function: Option<String>,
+    #[argh(option)]
+    /// top <n> time consuming events
+    /// unspecified: output flamegraph for all event
+    count: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,9 +180,21 @@ struct LatencyData {
 }
 
 impl LatencyData {
-    fn calculate_root_layer_events(&self, eventdata: &EventData) -> Vec<LayerData> {
+    fn calculate_root_layer_events(
+        &self,
+        eventdata: &EventData,
+        function_filter: Option<String>,
+        count_filter: Option<u64>,
+    ) -> Vec<LayerData> {
         let mut base_layer_data: Vec<LayerData> = Vec::new();
         for i in 0..self.stats.len() {
+            if let Some(count_filter) = count_filter {}
+            if !self.stats[i]
+                .event_name
+                .contains(&*function_filter.as_ref().unwrap())
+            {
+                continue;
+            }
             let mut layer_data: Vec<LayerData> = Vec::new();
             let mut index_counter = HashSet::new();
             let pid = eventdata.stats[self.stats[i].enter_index].pid;
@@ -192,6 +212,12 @@ impl LatencyData {
                 children: layer_data,
             };
             base_layer_data.push(data);
+        }
+        if let Some(count_filter) = count_filter {
+            base_layer_data.sort_by(|a, b| b.value.cmp(&a.value));
+            if count_filter <= base_layer_data.len() as u64 {
+                base_layer_data = base_layer_data[..count_filter as usize].to_vec();
+            }
         }
         base_layer_data
     }
@@ -327,9 +353,12 @@ fn main() -> anyhow::Result<()> {
             {
                 return Err(anyhow!("file extension must be .json"));
             }
-
             let latency_data = stats.calculate_latency_data();
-            let layer_data = latency_data.calculate_root_layer_events(&stats);
+            let layer_data = latency_data.calculate_root_layer_events(
+                &stats,
+                flamegraph.function.clone(),
+                flamegraph.count,
+            );
             let data: LayerData = LayerData {
                 name: "root".to_string(),
                 // set root value to 0 because we don't need it
@@ -339,7 +368,6 @@ fn main() -> anyhow::Result<()> {
             write_to_file(data, &output)
         }
     }
-
     Ok(())
 }
 
