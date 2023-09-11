@@ -325,3 +325,287 @@ pub fn apply_overlay(base: &mut Fdt, mut overlay: Fdt) -> Result<()> {
     merge_resvmem(&mut base.reserved_memory, overlay.reserved_memory);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn load_fdt(mut reader: impl std::io::Read) -> Result<Fdt> {
+        let mut buffer = Vec::new();
+        reader.read_to_end(&mut buffer).map_err(Error::FdtIoError)?;
+        Fdt::from_blob(&buffer[..])
+    }
+
+    #[test]
+    fn fdt_merge_resvmem() {
+        let mut base = vec![
+            FdtReserveEntry::new(1000, 100),
+            FdtReserveEntry::new(2000, 500),
+            FdtReserveEntry::new(3000, 1000),
+        ];
+        let new_entries = vec![
+            FdtReserveEntry::new(1010, 20),
+            FdtReserveEntry::new(1050, 1000),
+            FdtReserveEntry::new(2700, 500),
+        ];
+        merge_resvmem(&mut base, new_entries);
+        assert_eq!(
+            base,
+            vec![
+                FdtReserveEntry::new(1000, 1500),
+                FdtReserveEntry::new(2700, 1300),
+            ]
+        );
+    }
+
+    #[test]
+    fn fdt_find_phandle_single() {
+        let mut root = FdtNode::empty("").unwrap();
+        root.set_prop("a", 1u32).unwrap();
+        root.set_prop("b", 2u32).unwrap();
+        root.set_prop("phandle", 3u32).unwrap();
+        assert_eq!(get_node_phandle(&root), Some(3));
+    }
+
+    #[test]
+    fn fdt_find_phandle_none() {
+        let mut root = FdtNode::empty("").unwrap();
+        root.set_prop("a", 1u32).unwrap();
+        root.set_prop("b", 2u32).unwrap();
+        assert_eq!(get_node_phandle(&root), None);
+    }
+
+    #[test]
+    fn fdt_find_phandle_deprecated() {
+        let mut root = FdtNode::empty("").unwrap();
+        root.set_prop("a", 1u32).unwrap();
+        root.set_prop("linux,phandle", 2u32).unwrap();
+        assert_eq!(get_node_phandle(&root), Some(2));
+    }
+
+    #[test]
+    fn fdt_find_max_phandle() {
+        let mut root = FdtNode::empty("").unwrap();
+        root.set_prop("phandle", 2u32).unwrap();
+        let node_a = root.subnode_mut("a").unwrap();
+        node_a.set_prop("linux,phandle", 4u32).unwrap();
+        let node_b = root.subnode_mut("b").unwrap();
+        node_b.set_prop("phandle", 0xAu32).unwrap();
+        node_b.set_prop("linux,phandle", 0xAAu32).unwrap();
+
+        let node_c = node_b.subnode_mut("c").unwrap();
+        node_c.set_prop("linux,phandle", 0x10u32).unwrap();
+        node_c.set_prop("not-phandle", 0x11u32).unwrap();
+        let node_d = node_b.subnode_mut("d").unwrap();
+        node_d.set_prop("not-phandle", 0x20u32).unwrap();
+        node_b.subnode_mut("").unwrap();
+
+        assert_eq!(get_max_phandle(&root), 0x10);
+    }
+
+    #[test]
+    fn fdt_offset_phandles() {
+        let mut fdt = Fdt::new(&[]);
+        fdt.root.set_prop("a", 1u32).unwrap();
+        fdt.root.set_prop("b", 2u32).unwrap();
+        fdt.root.set_prop("phandle", 3u32).unwrap();
+        let node_a = fdt.root.subnode_mut("a").unwrap();
+        node_a.set_prop("linux,phandle", 0x10u32).unwrap();
+        fdt.root.subnode_mut("b").unwrap();
+
+        offset_phandle_values(&mut fdt, 100).unwrap();
+        for (prop, exp_val) in fdt.root.prop_names().zip([1u32, 2, 103].into_iter()) {
+            assert_eq!(fdt.root.get_prop::<u32>(prop).unwrap(), exp_val);
+        }
+        let node = fdt.get_node("/a").unwrap();
+        assert_eq!(node.get_prop::<u32>(LINUX_PHANDLE_PROP).unwrap(), 116);
+        let node = fdt.get_node("/b").unwrap();
+        assert!(node.prop_names().next().is_none());
+    }
+
+    #[test]
+    fn fdt_collect_local_references() {
+        let mut fdt = Fdt::new(&[]);
+        let fixups_node = fdt.root.subnode_mut(LOCAL_FIXUPS_NODE).unwrap();
+        fixups_node.set_prop("p1", vec![0u32, 4u32]).unwrap();
+        let fixups_subnode = fixups_node.subnode_mut("subnode1").unwrap();
+        fixups_subnode.set_prop("p2", vec![8u32]).unwrap();
+        let fixups_subnode = fixups_node.subnode_mut("subnode2").unwrap();
+        fixups_subnode.set_prop("p1", vec![16u32, 24u32]).unwrap();
+
+        let paths = collect_local_fixup_paths(&fdt).unwrap();
+        assert_eq!(paths.len(), 3);
+
+        let expected_paths: BTreeMap<Path, Vec<PhandlePin>> = BTreeMap::from([
+            (
+                ROOT_NODE.parse().unwrap(),
+                vec![PhandlePin("p1".into(), 0), PhandlePin("p1".into(), 4)],
+            ),
+            (
+                "/subnode1".parse().unwrap(),
+                vec![PhandlePin("p2".into(), 8)],
+            ),
+            (
+                "/subnode2".parse().unwrap(),
+                vec![PhandlePin("p1".into(), 16), PhandlePin("p1".into(), 24)],
+            ),
+        ]);
+
+        for (key, value) in expected_paths {
+            assert!(value.eq(paths.get(&key).unwrap()));
+        }
+    }
+
+    fn make_fragment0() -> FdtNode {
+        let mut fragment_node = FdtNode::empty("fragment@0").unwrap();
+        fragment_node.set_prop("target-path", ROOT_NODE).unwrap();
+
+        let overlay_node = fragment_node.subnode_mut(OVERLAY_NODE).unwrap();
+        overlay_node.set_prop("root-prop1", 1u32).unwrap();
+        overlay_node
+            .set_prop("root-prop2", vec![1u32, 2u32, 3u32])
+            .unwrap();
+        let overlay_child_node = overlay_node.subnode_mut("child1").unwrap();
+        overlay_child_node.set_prop("prop1", 10u32).unwrap();
+        overlay_child_node
+            .set_prop("prop2", vec![10u32, 20u32, 30u32])
+            .unwrap();
+        fragment_node
+    }
+
+    fn make_fragment1() -> FdtNode {
+        let mut fragment_node = FdtNode::empty("fragment@1").unwrap();
+        fragment_node.set_prop("target-path", ROOT_NODE).unwrap();
+
+        let overlay_node = fragment_node.subnode_mut(OVERLAY_NODE).unwrap();
+        overlay_node.set_prop("root-prop1", "abc").unwrap();
+        overlay_node.set_prop("root-prop3", 100u64).unwrap();
+        let overlay_child_node = overlay_node.subnode_mut("child1").unwrap();
+        overlay_child_node.set_prop("prop1", 0u32).unwrap();
+        let _ = overlay_node.subnode_mut("child2").unwrap();
+        fragment_node
+    }
+
+    #[test]
+    fn fdt_test_overlay_nodes() {
+        let mut base = Fdt::new(&[]);
+
+        let fragment_node = make_fragment0();
+        overlay_fragment(&fragment_node, &mut base).unwrap();
+
+        assert_eq!(base.root.get_prop::<u32>("root-prop1").unwrap(), 1u32);
+        assert_eq!(
+            base.root.get_prop::<Vec<u32>>("root-prop2").unwrap(),
+            vec![1u32, 2u32, 3u32]
+        );
+        let child_node = base.get_node("/child1").unwrap();
+        assert_eq!(child_node.get_prop::<u32>("prop1").unwrap(), 10u32);
+        assert_eq!(
+            child_node.get_prop::<Vec<u32>>("prop2").unwrap(),
+            vec![10u32, 20u32, 30u32]
+        );
+
+        let fragment_node = make_fragment1();
+        overlay_fragment(&fragment_node, &mut base).unwrap();
+        assert_eq!(
+            base.root.get_prop::<Vec<u8>>("root-prop1").unwrap(),
+            vec![b'a', b'b', b'c', 0u8]
+        );
+        assert_eq!(base.root.get_prop::<u64>("root-prop3").unwrap(), 100u64);
+
+        let child_node = base.get_node("/child1").unwrap();
+        assert_eq!(child_node.get_prop::<u32>("prop1").unwrap(), 0u32);
+
+        let child_node = base.get_node("/child2").unwrap();
+        assert!(child_node.prop_names().next().is_none());
+    }
+
+    #[test]
+    fn fdt_overlay_symbols() {
+        let mut base = Fdt::new(&[]);
+        let symbols = base.root.subnode_mut(SYMBOLS_NODE).unwrap();
+
+        symbols.set_prop("n1", "/path/to/node1").unwrap();
+        symbols.set_prop("n2", "/path/to/node2").unwrap();
+
+        let mut overlay = Fdt::new(&[]);
+        let symbols = overlay.root.subnode_mut(SYMBOLS_NODE).unwrap();
+        symbols
+            .set_prop("n1", "/fragment@0/__overlay__/node1")
+            .unwrap();
+        symbols
+            .set_prop("n3", "/fragment@0/__overlay__/path/to/node3")
+            .unwrap();
+        let fragment = overlay.root.subnode_mut("fragment@0").unwrap();
+        fragment.set_prop("target-path", ROOT_NODE).unwrap();
+
+        update_base_symbols(&mut base, &overlay).unwrap();
+
+        let symbols = base.root.subnode_mut(SYMBOLS_NODE).unwrap();
+        assert_eq!(symbols.get_prop::<String>("n1").unwrap(), "/node1");
+        assert_eq!(symbols.get_prop::<String>("n2").unwrap(), "/path/to/node2");
+        assert_eq!(symbols.get_prop::<String>("n3").unwrap(), "/path/to/node3");
+    }
+
+    fn get_test_file(test_file_name: &str) -> std::fs::File {
+        let manifest_dir =
+            std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set");
+        let mut path = std::path::PathBuf::from(manifest_dir);
+        path.push("test-files");
+        path.push(test_file_name);
+        std::fs::File::open(path)
+            .unwrap_or_else(|_| panic!("cannot find resource file {test_file_name}"))
+    }
+
+    #[test]
+    fn fdt_offset_local_references() {
+        let file = get_test_file("local_refs.dtb");
+        let mut fdt = load_fdt(file).unwrap();
+
+        let node = fdt.get_node("/fragment@0/__overlay__/node1").unwrap();
+        assert_eq!(node.get_prop::<u32>("p2").unwrap(), 0x01);
+        assert_eq!(node.get_prop::<u32>("p3").unwrap(), 0xaa);
+        let node = fdt.get_node("/fragment@0/__overlay__/node1/node2").unwrap();
+        assert_eq!(node.get_prop::<u32>("p1").unwrap(), 0xaa);
+        assert_eq!(node.get_prop::<u32>("p2").unwrap(), 0x02);
+        assert_eq!(node.get_prop::<u32>("p3").unwrap(), 0x03);
+        let node = fdt.get_node("/fragment@0/__overlay__/node1/node3").unwrap();
+        assert_eq!(node.get_prop::<u32>("p1").unwrap(), 0x01);
+
+        update_local_refs(&mut fdt, 5).unwrap();
+        let node = fdt.get_node("/fragment@0/__overlay__/node1").unwrap();
+        assert_eq!(node.get_prop::<u32>("p2").unwrap(), 0x06);
+        assert_eq!(node.get_prop::<u32>("p3").unwrap(), 0xaa);
+        let node = fdt.get_node("/fragment@0/__overlay__/node1/node2").unwrap();
+        assert_eq!(node.get_prop::<u32>("p1").unwrap(), 0xaa);
+        assert_eq!(node.get_prop::<u32>("p2").unwrap(), 0x07);
+        assert_eq!(node.get_prop::<u32>("p3").unwrap(), 0x08);
+        let node = fdt.get_node("/fragment@0/__overlay__/node1/node3").unwrap();
+        assert_eq!(node.get_prop::<u32>("p1").unwrap(), 0x06);
+    }
+
+    #[test]
+    fn fdt_collect_symbols() {
+        let base = load_fdt(get_test_file("external_refs_base.dtb")).unwrap();
+        let mut overlay = load_fdt(get_test_file("external_refs_overlay.dtb")).unwrap();
+        let paths = [
+            "/fragment@0/__overlay__/node1:p2:0",
+            "/fragment@0/__overlay__/node1/node2:p3:4",
+            "/fragment@0/__overlay__/node1/node3:p1:0",
+        ];
+        for p in paths.iter() {
+            let (path, pin) = parse_path_with_prop(p).unwrap();
+            let node = overlay.get_node(&path).unwrap();
+            let ref_val = node.phandle_at_offset(&pin.0, pin.1 as usize).unwrap();
+            assert_eq!(ref_val, 0xffffffff);
+        }
+
+        apply_external_fixups(&base, &mut overlay).unwrap();
+        for (p, exp_val) in paths.iter().zip([1u32, 2u32, 2u32].into_iter()) {
+            let (path, pin) = parse_path_with_prop(p).unwrap();
+            let node = overlay.get_node(&path).unwrap();
+            let ref_val = node.phandle_at_offset(&pin.0, pin.1 as usize).unwrap();
+            assert_eq!(ref_val, exp_val);
+        }
+    }
+}

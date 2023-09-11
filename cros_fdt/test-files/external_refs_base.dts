@@ -1,0 +1,19 @@
+/dts-v1/;
+
+/ {
+    ext1: node_ext1 {
+        prop1;
+        prop2 = <0x00000010>;
+        phandle = <0x00000001>;
+
+        ext2: node_ext2 {
+            prop1;
+            phandle = <0x00000002>;
+        };
+    };
+
+    ext3: node_ext3 {
+        prop1;
+        phandle = <0x00000003>;
+    };
+};

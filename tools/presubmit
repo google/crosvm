@@ -342,6 +342,8 @@ CHECKS: List[Check] = [
             "**.min.js",
             "**.drawio",
             "**.json",
+            "**.dtb",
+            "**.dtbo",
         ],
     ),
 ]
