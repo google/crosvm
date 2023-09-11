@@ -956,25 +956,20 @@ pub enum Error {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(unix)]
     use std::sync::mpsc::channel;
-    #[cfg(unix)]
     use std::sync::Barrier;
+    use std::sync::Mutex;
 
     use anyhow::anyhow;
     use anyhow::bail;
     use base::Event;
-    #[cfg(unix)]
-    use tempfile::Builder;
-    #[cfg(unix)]
-    use tempfile::TempDir;
-    use vmm_vhost::connection::Listener;
     use vmm_vhost::message::MasterReq;
     use vmm_vhost::SlaveReqHandler;
     use vmm_vhost::VhostUserSlaveReqHandler;
     use zerocopy::AsBytes;
     use zerocopy::FromBytes;
 
+    use super::sys::test_helpers;
     use super::*;
     use crate::virtio::vhost::user::vmm::VhostUserHandler;
 
@@ -1076,24 +1071,11 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
-    fn temp_dir() -> TempDir {
-        Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
-    }
-
-    #[cfg(unix)]
     #[test]
     fn test_vhost_user_activate() {
-        use std::os::unix::net::UnixStream;
-
-        use vmm_vhost::connection::socket::Listener as SocketListener;
-
         const QUEUES_NUM: usize = 2;
 
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let mut listener = SocketListener::new(&path, true).unwrap();
+        let (dev, vmm) = test_helpers::setup();
 
         let vmm_bar = Arc::new(Barrier::new(2));
         let dev_bar = vmm_bar.clone();
@@ -1106,7 +1088,8 @@ mod tests {
 
             let allow_features = 1 << VHOST_USER_F_PROTOCOL_FEATURES;
             let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
-            let connection = UnixStream::connect(&path).unwrap();
+            let connection = test_helpers::connect(vmm);
+
             let mut vmm_handler =
                 VhostUserHandler::new(connection, allow_features, allow_protocol_features).unwrap();
 
@@ -1146,7 +1129,7 @@ mod tests {
         });
 
         // Device side
-        let handler = std::sync::Mutex::new(DeviceRequestHandler::new(
+        let handler = Mutex::new(DeviceRequestHandler::new(
             Box::new(FakeBackend::new()),
             Box::new(VhostUserRegularOps),
         ));
@@ -1154,8 +1137,7 @@ mod tests {
         // Notify listener is ready.
         tx.send(()).unwrap();
 
-        let endpoint = listener.accept().unwrap().unwrap();
-        let mut req_handler = SlaveReqHandler::new(endpoint, handler);
+        let mut req_handler = test_helpers::listen(dev, handler);
 
         // VhostUserHandler::new()
         handle_request(&mut req_handler).expect("set_owner");
@@ -1190,34 +1172,8 @@ mod tests {
 
         match handle_request(&mut req_handler) {
             Err(VhostError::ClientExit) => (),
-            r => panic!("Err(ClientExit) was expected but {:?}", r),
-        }
-    }
-
-    pub(super) fn vmm_handler_send_requests(vmm_handler: &mut VhostUserHandler, queues_num: usize) {
-        println!("read_config");
-        let mut buf = vec![0; std::mem::size_of::<FakeConfig>()];
-        vmm_handler.read_config(0, &mut buf).unwrap();
-        // Check if the obtained config data is correct.
-        let config = FakeConfig::read_from(buf.as_bytes()).unwrap();
-        assert_eq!(config, FAKE_CONFIG_DATA);
-
-        println!("set_mem_table");
-        let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
-        vmm_handler.set_mem_table(&mem).unwrap();
-
-        for idx in 0..queues_num {
-            println!("activate_mem_table: queue_index={}", idx);
-            let mut queue = QueueConfig::new(0x10, 0);
-            queue.set_ready(true);
-            let queue = queue
-                .activate(&mem, Event::new().unwrap())
-                .expect("QueueConfig::activate");
-            let irqfd = Event::new().unwrap();
-
-            vmm_handler
-                .activate_vring(&mem, idx, &queue, &irqfd)
-                .unwrap();
+            Err(VhostError::TubeError(base::TubeError::Disconnected)) => (),
+            r => panic!("expected Err(ClientExit) or Err(TubeError) but got {:?}", r),
         }
     }
 
@@ -1226,33 +1182,5 @@ mod tests {
     ) -> Result<(), VhostError> {
         let (hdr, files) = handler.recv_header()?;
         handler.process_message(hdr, files)
-    }
-
-    pub(super) fn test_handle_requests<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>>(
-        req_handler: &mut SlaveReqHandler<S, E>,
-        queues_num: usize,
-    ) {
-        // VhostUserHandler::new()
-        handle_request(req_handler).expect("set_owner");
-        handle_request(req_handler).expect("get_features");
-        handle_request(req_handler).expect("set_features");
-        handle_request(req_handler).expect("get_protocol_features");
-        handle_request(req_handler).expect("set_protocol_features");
-
-        // VhostUserHandler::read_config()
-        handle_request(req_handler).expect("get_config");
-
-        // VhostUserHandler::set_mem_table()
-        handle_request(req_handler).expect("set_mem_table");
-
-        for _ in 0..queues_num {
-            // VhostUserHandler::activate_vring()
-            handle_request(req_handler).expect("set_vring_num");
-            handle_request(req_handler).expect("set_vring_addr");
-            handle_request(req_handler).expect("set_vring_base");
-            handle_request(req_handler).expect("set_vring_call");
-            handle_request(req_handler).expect("set_vring_kick");
-            handle_request(req_handler).expect("set_vring_enable");
-        }
     }
 }

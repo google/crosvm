@@ -110,46 +110,24 @@ pub async fn run_handler(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Barrier;
+pub mod test_helpers {
+    use base::Tube;
+    use vmm_vhost::message::MasterReq;
+    use vmm_vhost::SlaveReqHandler;
+    use vmm_vhost::VhostUserSlaveReqHandler;
 
-    use super::*;
-    use crate::virtio::vhost::user::device::handler::tests::*;
-    use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
-    use crate::virtio::vhost::user::device::handler::*;
-    use crate::virtio::vhost::user::vmm::VhostUserHandler;
-    #[test]
-    fn test_vhost_user_activate() {
-        const QUEUES_NUM: usize = 2;
+    pub(crate) fn setup() -> (Tube, Tube) {
+        Tube::pair().unwrap()
+    }
 
-        let (dev_tube, main_tube) = Tube::pair().unwrap();
+    pub(crate) fn connect(tube: Tube) -> Tube {
+        tube
+    }
 
-        let vmm_bar = Arc::new(Barrier::new(2));
-        let dev_bar = vmm_bar.clone();
-
-        std::thread::spawn(move || {
-            // VMM side
-            let allow_features = 1 << VHOST_USER_F_PROTOCOL_FEATURES;
-            let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
-
-            let mut vmm_handler =
-                VhostUserHandler::new(main_tube, allow_features, allow_protocol_features).unwrap();
-
-            vmm_handler_send_requests(&mut vmm_handler, QUEUES_NUM);
-
-            vmm_bar.wait();
-        });
-
-        // Device side
-        let backend = std::sync::Mutex::new(DeviceRequestHandler::new(
-            Box::new(FakeBackend::new()),
-            Box::new(VhostUserRegularOps),
-        ));
-
-        let mut req_handler = SlaveReqHandler::from_stream(dev_tube, backend);
-
-        test_handle_requests(&mut req_handler, QUEUES_NUM);
-
-        dev_bar.wait();
+    pub(crate) fn listen<S: VhostUserSlaveReqHandler>(
+        dev_tube: Tube,
+        handler: S,
+    ) -> SlaveReqHandler<S, vmm_vhost::connection::TubeEndpoint<MasterReq>> {
+        SlaveReqHandler::from_stream(dev_tube, handler)
     }
 }

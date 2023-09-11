@@ -56,78 +56,39 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::mpsc::channel;
-    use std::sync::Barrier;
+pub mod test_helpers {
+    use std::os::unix::net::UnixStream;
 
-    use tempfile::Builder;
     use tempfile::TempDir;
+    use vmm_vhost::connection::socket::Endpoint as SocketEndpoint;
     use vmm_vhost::connection::Listener;
+    use vmm_vhost::message::MasterReq;
+    use vmm_vhost::SlaveReqHandler;
+    use vmm_vhost::VhostUserSlaveReqHandler;
 
-    use super::*;
-    use crate::virtio::vhost::user::device::handler::tests::*;
-    use crate::virtio::vhost::user::device::handler::*;
-    use crate::virtio::vhost::user::vmm::VhostUserHandler;
-
-    fn temp_dir() -> TempDir {
-        Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
-    }
-
-    #[test]
-    fn test_vhost_user_activate() {
-        use std::os::unix::net::UnixStream;
-
-        use vmm_vhost::connection::socket::Listener as SocketListener;
-
-        const QUEUES_NUM: usize = 2;
-
-        let dir = temp_dir();
+    pub(crate) fn setup() -> (vmm_vhost::connection::socket::Listener, TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix("/tmp/vhost_test")
+            .tempdir()
+            .unwrap();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let mut listener = SocketListener::new(&path, true).unwrap();
+        let listener = vmm_vhost::connection::socket::Listener::new(&path, true).unwrap();
 
-        let vmm_bar = Arc::new(Barrier::new(2));
-        let dev_bar = vmm_bar.clone();
+        (listener, dir)
+    }
 
-        let (tx, rx) = channel();
+    pub(crate) fn connect(dir: tempfile::TempDir) -> UnixStream {
+        let mut path = dir.path().to_owned();
+        path.push("sock");
+        UnixStream::connect(path).unwrap()
+    }
 
-        std::thread::spawn(move || {
-            // VMM side
-            rx.recv().unwrap(); // Ensure the device is ready.
-
-            let allow_features = 1 << VHOST_USER_F_PROTOCOL_FEATURES;
-            let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
-            let connection = UnixStream::connect(&path).unwrap();
-            let mut vmm_handler =
-                VhostUserHandler::new(connection, allow_features, allow_protocol_features).unwrap();
-
-            vmm_handler_send_requests(&mut vmm_handler, QUEUES_NUM);
-
-            // The VMM side is supposed to stop before the device side.
-            drop(vmm_handler);
-
-            vmm_bar.wait();
-        });
-
-        // Device side
-        let handler = std::sync::Mutex::new(DeviceRequestHandler::new(
-            Box::new(FakeBackend::new()),
-            Box::new(VhostUserRegularOps),
-        ));
-
-        // Notify listener is ready.
-        tx.send(()).unwrap();
-
+    pub(crate) fn listen<S: VhostUserSlaveReqHandler>(
+        mut listener: vmm_vhost::connection::socket::Listener,
+        handler: S,
+    ) -> SlaveReqHandler<S, SocketEndpoint<MasterReq>> {
         let endpoint = listener.accept().unwrap().unwrap();
-        let mut req_handler = SlaveReqHandler::new(endpoint, handler);
-
-        test_handle_requests(&mut req_handler, QUEUES_NUM);
-
-        dev_bar.wait();
-
-        match req_handler.recv_header() {
-            Err(VhostError::ClientExit) => (),
-            r => panic!("Err(ClientExit) was expected but {:?}", r),
-        }
+        SlaveReqHandler::new(endpoint, handler)
     }
 }

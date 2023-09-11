@@ -5,7 +5,11 @@
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         pub mod unix;
+        #[cfg(test)]
+        pub use unix::test_helpers;
     } else if #[cfg(windows)] {
         pub mod windows;
+        #[cfg(test)]
+        pub use windows::test_helpers;
     }
 }
