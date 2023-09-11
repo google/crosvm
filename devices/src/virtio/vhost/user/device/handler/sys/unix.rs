@@ -98,12 +98,8 @@ mod tests {
             let allow_features = 1 << VHOST_USER_F_PROTOCOL_FEATURES;
             let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
             let connection = UnixStream::connect(&path).unwrap();
-            let mut vmm_handler = VhostUserHandler::new_from_connection(
-                connection,
-                allow_features,
-                allow_protocol_features,
-            )
-            .unwrap();
+            let mut vmm_handler =
+                VhostUserHandler::new(connection, allow_features, allow_protocol_features).unwrap();
 
             vmm_handler_send_requests(&mut vmm_handler, QUEUES_NUM);
 

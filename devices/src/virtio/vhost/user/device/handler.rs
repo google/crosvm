@@ -1107,12 +1107,8 @@ mod tests {
             let allow_features = 1 << VHOST_USER_F_PROTOCOL_FEATURES;
             let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
             let connection = UnixStream::connect(&path).unwrap();
-            let mut vmm_handler = VhostUserHandler::new_from_connection(
-                connection,
-                allow_features,
-                allow_protocol_features,
-            )
-            .unwrap();
+            let mut vmm_handler =
+                VhostUserHandler::new(connection, allow_features, allow_protocol_features).unwrap();
 
             println!("read_config");
             let mut buf = vec![0; std::mem::size_of::<FakeConfig>()];

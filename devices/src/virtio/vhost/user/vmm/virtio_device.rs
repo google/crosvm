@@ -66,11 +66,7 @@ impl VhostUserVirtioDevice {
     ) -> Result<VhostUserVirtioDevice> {
         let allow_features = allow_features | base_features | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
 
-        let handler = VhostUserHandler::new_from_connection(
-            connection,
-            allow_features,
-            allow_protocol_features,
-        )?;
+        let handler = VhostUserHandler::new(connection, allow_features, allow_protocol_features)?;
 
         // If the device supports VHOST_USER_PROTOCOL_F_MQ, use VHOST_USER_GET_QUEUE_NUM to
         // determine the number of queues supported. Otherwise, use the `default_queues` value

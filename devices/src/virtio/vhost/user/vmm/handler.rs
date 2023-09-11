@@ -32,6 +32,7 @@ use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio::vhost::user::vmm::handler::sys::create_backend_req_handler;
 use crate::virtio::vhost::user::vmm::handler::sys::SocketMaster;
+use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Error;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::Interrupt;
@@ -49,19 +50,20 @@ pub struct VhostUserHandler {
     backend_req_handler: Option<BackendReqHandler>,
     // Shared memory region info. IPC result from backend is saved with outer Option.
     shmem_region: Option<Option<SharedMemoryRegion>>,
-    // On Windows, we need a backend pid to support backend requests.
-    #[cfg(windows)]
-    backend_pid: Option<u32>,
 }
 
 impl VhostUserHandler {
     /// Creates a `VhostUserHandler` instance with features and protocol features initialized.
-    fn new(
-        mut vu: SocketMaster,
+    pub fn new(
+        connection: Connection,
         allow_features: u64,
         allow_protocol_features: VhostUserProtocolFeatures,
-        #[cfg(windows)] backend_pid: Option<u32>,
     ) -> Result<Self> {
+        #[cfg(windows)]
+        let backend_pid = connection.target_pid();
+
+        let mut vu = SocketMaster::from_stream(connection);
+
         vu.set_owner().map_err(Error::SetOwner)?;
 
         let avail_features = allow_features & vu.get_features().map_err(Error::GetFeatures)?;
@@ -107,8 +109,6 @@ impl VhostUserHandler {
             protocol_features,
             backend_req_handler,
             shmem_region: None,
-            #[cfg(windows)]
-            backend_pid,
         })
     }
 
