@@ -2,34 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(feature = "virgl_renderer")]
 use std::env;
-#[cfg(feature = "virgl_renderer")]
 use std::fs;
-#[cfg(feature = "virgl_renderer")]
 use std::path::Path;
-#[cfg(feature = "virgl_renderer")]
 use std::path::PathBuf;
-#[cfg(feature = "virgl_renderer")]
 use std::process::Command;
 
-#[cfg(feature = "virgl_renderer")]
 use anyhow::bail;
 use anyhow::Result;
 
-#[cfg(feature = "virgl_renderer")]
 const MINIGBM_SRC: &str = "../third_party/minigbm";
-#[cfg(feature = "virgl_renderer")]
 const VIRGLRENDERER_SRC: &str = "../third_party/virglrenderer";
 
-#[cfg(feature = "virgl_renderer")]
 fn is_native_build() -> bool {
     env::var("HOST").unwrap() == env::var("TARGET").unwrap()
 }
 
 /// Returns the target triplet prefix for gcc commands. No prefix is required
 /// for native builds.
-#[cfg(feature = "virgl_renderer")]
 fn get_cross_compile_prefix() -> String {
     if is_native_build() {
         return String::from("");
@@ -43,7 +33,6 @@ fn get_cross_compile_prefix() -> String {
 
 /// For cross-compilation with meson, we need to pick a cross-file, which
 /// live in /usr/local/share/meson/cross.
-#[cfg(feature = "virgl_renderer")]
 fn get_meson_cross_args() -> Vec<String> {
     if is_native_build() {
         Vec::new()
@@ -55,7 +44,6 @@ fn get_meson_cross_args() -> Vec<String> {
     }
 }
 
-#[cfg(feature = "virgl_renderer")]
 fn build_minigbm(out_dir: &Path) -> Result<()> {
     let lib_path = out_dir.join("libgbm.a");
     if lib_path.exists() {
@@ -87,7 +75,6 @@ fn build_minigbm(out_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "virgl_renderer")]
 fn build_virglrenderer(out_dir: &Path) -> Result<()> {
     let lib_path = out_dir.join("src/libvirglrenderer.a");
     if lib_path.exists() {
@@ -102,11 +89,10 @@ fn build_virglrenderer(out_dir: &Path) -> Result<()> {
         );
     }
 
-    let platforms = [
-        "egl",
-        #[cfg(feature = "x")]
-        "glx",
-    ];
+    let mut platforms = vec!["egl"];
+    if env::var("CARGO_FEATURE_X").is_ok() {
+        platforms.push("glx");
+    }
 
     let minigbm_src_abs = PathBuf::from(MINIGBM_SRC).canonicalize()?;
     let status = Command::new("meson")
@@ -136,7 +122,6 @@ fn build_virglrenderer(out_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "virgl_renderer")]
 fn virglrenderer_deps() -> Result<()> {
     // System provided runtime dependencies.
     pkg_config::Config::new().probe("epoxy")?;
@@ -144,12 +129,10 @@ fn virglrenderer_deps() -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "virgl_renderer")]
 fn virglrenderer() -> Result<()> {
     // Use virglrenderer package from pkgconfig on ChromeOS builds
-    if std::env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos"
-        || std::env::var("CROSVM_USE_SYSTEM_VIRGLRENDERER").unwrap_or_else(|_| "0".to_string())
-            != "0"
+    if env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos"
+        || env::var("CROSVM_USE_SYSTEM_VIRGLRENDERER").unwrap_or_else(|_| "0".to_string()) != "0"
     {
         pkg_config::Config::new().probe("virglrenderer")?;
         virglrenderer_deps()?;
@@ -176,9 +159,8 @@ fn virglrenderer() -> Result<()> {
     Ok(())
 }
 
-#[cfg(all(feature = "gfxstream", not(feature = "gfxstream_stub")))]
 fn gfxstream() -> Result<()> {
-    if let Ok(gfxstream_path) = std::env::var("GFXSTREAM_PATH") {
+    if let Ok(gfxstream_path) = env::var("GFXSTREAM_PATH") {
         println!("cargo:rustc-link-lib=gfxstream_backend");
         println!("cargo:rustc-link-search={}", gfxstream_path);
         Ok(())
@@ -188,7 +170,7 @@ fn gfxstream() -> Result<()> {
         pkg_config::Config::new().probe("aemu_host_common")?;
         pkg_config::Config::new().probe("logging_base")?;
 
-        let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
         if target_os.contains("linux") {
             pkg_config::Config::new().probe("libdrm")?;
@@ -208,14 +190,19 @@ fn gfxstream() -> Result<()> {
 
 fn main() -> Result<()> {
     // Skip installing dependencies when generating documents.
-    if std::env::var("CARGO_DOC").is_ok() {
+    if env::var("CARGO_DOC").is_ok() {
         return Ok(());
     }
 
-    #[cfg(feature = "virgl_renderer")]
-    virglrenderer()?;
-    #[cfg(all(feature = "gfxstream", not(feature = "gfxstream_stub")))]
-    gfxstream()?;
+    if env::var("CARGO_FEATURE_VIRGL_RENDERER").is_ok() {
+        virglrenderer()?;
+    }
+
+    if env::var("CARGO_FEATURE_GFXSTREAM").is_ok()
+        && env::var("CARGO_FEATURE_GFXSTREAM_STUB").is_err()
+    {
+        gfxstream()?;
+    }
 
     Ok(())
 }
