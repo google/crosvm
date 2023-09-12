@@ -158,7 +158,7 @@ impl EventData {
     }
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct LatencyInformation {
     event_name: String,
     enter_index: usize,
@@ -166,7 +166,7 @@ struct LatencyInformation {
     latency: u64,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct LatencyData {
     stats: Vec<LatencyInformation>,
 }
@@ -352,4 +352,62 @@ fn write_to_file<T: serde::Serialize>(data: T, output: &str) {
         .unwrap();
     let serialized = serde_json::to_string(&data).unwrap();
     fout.write_all(serialized.as_bytes());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // example data
+    fn setup() -> EventData {
+        let stats = vec![
+            EventInformation {
+                pid: 100,
+                cpu: 3,
+                name: "sys_enter_write".to_string(),
+                time_stamp: 1,
+                details: " __syscall_nr=1 fd=0x00000004 buf=0x7fbac80360a0 count=0x00000066"
+                    .to_string(),
+            },
+            EventInformation{
+                pid: 100,
+                cpu: 3,
+                name: "print".to_string(),
+                time_stamp: 100,
+                details: " ip=tracing_mark_write buf=32256 VirtioFs Enter: lookup - (self.tag: \"mtdroot\")(parent: 5358)(name: \"LC_MESSAGES\")\n".to_string()
+            },
+            EventInformation {
+                pid: 100,
+                cpu: 3,
+                name: "print".to_string(),
+                time_stamp: 200,
+                details: " ip=tracing_mark_write buf=32256 VirtioFs Exit: lookup\n".to_string(),
+            },
+        ];
+        let event_names = HashSet::<String>::new();
+        EventData { event_names, stats }
+    }
+
+    #[test]
+    fn populate_event_names_test() {
+        let mut data = setup();
+        data.populate_event_names();
+        assert_eq!(data.event_names, HashSet::from(["lookup".to_string()]));
+    }
+
+    #[test]
+    fn calculate_latency_data_test() {
+        let data = setup();
+        let latency_data = data.calculate_latency_data();
+        let expected_data = LatencyData {
+            stats: [LatencyInformation {
+                event_name: "lookup".to_string(),
+                enter_index: 1,
+                exit_index: 2,
+                latency: 100,
+            }]
+            .to_vec(),
+        };
+        assert_eq!(latency_data, expected_data);
+    }
 }
