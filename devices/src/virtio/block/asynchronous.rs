@@ -284,8 +284,8 @@ async fn process_one_request(
         Ok(()) => VIRTIO_BLK_S_OK,
         Err(e) => {
             match e.log_level() {
-                LogLevel::Debug => debug!("failed executing disk request: {}", e),
-                LogLevel::Error => error!("failed executing disk request: {}", e),
+                LogLevel::Debug => debug!("failed executing disk request: {:#}", e),
+                LogLevel::Error => error!("failed executing disk request: {:#}", e),
             }
             e.status()
         }
@@ -311,7 +311,7 @@ pub async fn process_one_chain(
     {
         Ok(len) => len,
         Err(e) => {
-            error!("block: failed to handle request: {}", e);
+            error!("block: failed to handle request: {:#}", e);
             0
         }
     };
@@ -348,7 +348,7 @@ async fn handle_queue(
             res = evt_future => {
                 evt_future.set(evt.next_val().fuse());
                 if let Err(e) = res {
-                    error!("Failed to read the next queue event: {}", e);
+                    error!("Failed to read the next queue event: {:#}", e);
                     continue;
                 }
             }
@@ -410,7 +410,7 @@ async fn handle_command_tube(
                             match &request.lock().deref() {
                                 VhostBackendReqConnectionState::Connected(frontend) => {
                                     if let Err(e) = frontend.send_config_changed() {
-                                        error!("Failed to notify config change: {}", e);
+                                        error!("Failed to notify config change: {:#}", e);
                                     }
                                 }
                                 VhostBackendReqConnectionState::NoConnection => {
@@ -442,14 +442,14 @@ async fn resize(disk_state: &AsyncRwLock<DiskState>, new_size: u64) -> DiskContr
     info!("Resizing block device to {} bytes", new_size);
 
     if let Err(e) = disk_state.disk_image.set_len(new_size) {
-        error!("Resizing disk failed! {}", e);
+        error!("Resizing disk failed! {:#}", e);
         return DiskControlResult::Err(SysError::new(libc::EIO));
     }
 
     // Allocate new space if the disk image is not sparse.
     if !disk_state.sparse {
         if let Err(e) = disk_state.disk_image.allocate(0, new_size) {
-            error!("Allocating disk space after resize failed! {}", e);
+            error!("Allocating disk space after resize failed! {:#}", e);
             return DiskControlResult::Err(SysError::new(libc::EIO));
         }
     }
@@ -1061,7 +1061,7 @@ impl VirtioDevice for BlockAsync {
                     .map(|c| AsyncTube::new(&ex, c).expect("failed to create async tube"));
                 let async_image = match disk_image.to_async_disk(&ex) {
                     Ok(d) => d,
-                    Err(e) => panic!("Failed to create async disk {}", e),
+                    Err(e) => panic!("Failed to create async disk {:#}", e),
                 };
                 let disk_state = Rc::new(AsyncRwLock::new(DiskState {
                     disk_image: async_image,
@@ -1094,7 +1094,7 @@ impl VirtioDevice for BlockAsync {
                     })
                     .expect("run_until failed")
                 {
-                    error!("{}", err_string);
+                    error!("{:#}", err_string);
                 }
 
                 let disk_state = match Rc::try_unwrap(disk_state) {
