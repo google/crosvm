@@ -1210,6 +1210,7 @@ mod tests {
     use vm_memory::GuestAddress;
 
     use super::*;
+    use crate::suspendable_virtio_tests;
     use crate::virtio::base_features;
     use crate::virtio::descriptor_utils::create_descriptor_chain;
     use crate::virtio::descriptor_utils::DescriptorType;
@@ -1863,4 +1864,38 @@ mod tests {
 
         assert_eq!(b.worker_threads.len(), 2, "2 threads should be spawned.");
     }
+
+    fn modify_device(b: &mut BlockAsync) {
+        b.avail_features = !b.avail_features;
+    }
+
+    fn create_device() -> BlockAsync {
+        // Create an empty disk image
+        let f = tempfile().unwrap();
+        f.set_len(0x1000).unwrap();
+        let disk_image: Box<dyn DiskFile> = Box::new(f);
+
+        // Create a BlockAsync to test
+        let features = base_features(ProtectionType::Unprotected);
+        let id = b"Block serial number\0";
+        let disk_option = DiskOption {
+            read_only: true,
+            id: Some(*id),
+            sparse: false,
+            multiple_workers: true,
+            ..Default::default()
+        };
+        BlockAsync::new(
+            features,
+            disk_image.try_clone().unwrap(),
+            &disk_option,
+            None,
+            None,
+            None,
+        )
+        .unwrap()
+    }
+
+    #[cfg(unix)]
+    suspendable_virtio_tests!(asyncblock, create_device, 2, modify_device);
 }
