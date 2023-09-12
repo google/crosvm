@@ -1573,6 +1573,11 @@ mod tests {
         let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
             .expect("Creating guest memory failed.");
 
+        // Create a control tube.
+        // NOTE: We don't want to drop the vmm half of the tube. That would cause the worker thread
+        // will immediately fail, which isn't what we want to test in this case.
+        let (_control_tube, control_tube_device) = Tube::pair().unwrap();
+
         // Create a BlockAsync to test
         let features = base_features(ProtectionType::Unprotected);
         let id = b"Block serial number\0";
@@ -1587,7 +1592,7 @@ mod tests {
             features,
             disk_image.try_clone().unwrap(),
             &disk_option,
-            Some(Tube::pair().unwrap().0),
+            Some(control_tube_device),
             None,
             None,
         )
