@@ -12,8 +12,16 @@
 pub const TEST_UNIT_READY: u8 = 0x00;
 /// Opcode for REQUEST SENSE command.
 pub const REQUEST_SENSE: u8 = 0x03;
+/// Opcode for READ(6) command.
+pub const READ_6: u8 = 0x08;
 /// Opcode for INQUIRY command.
 pub const INQUIRY: u8 = 0x12;
+/// Opcode for READ CAPACITY(10) command.
+pub const READ_CAPACITY_10: u8 = 0x25;
+/// Opcode for READ(10) command.
+pub const READ_10: u8 = 0x28;
+/// Opcode for WRITE(10) command.
+pub const WRITE_10: u8 = 0x2a;
 /// Opcode for REPORT LUNS command.
 pub const REPORT_LUNS: u8 = 0xa0;
 

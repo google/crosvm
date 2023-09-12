@@ -13,12 +13,14 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use base::error;
+use base::warn;
 use base::Event;
 use base::WorkerThread;
 use cros_async::sync::RwLock;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::ExecutorKind;
+use disk::AsyncDisk;
 use disk::DiskFile;
 use futures::pin_mut;
 use futures::stream::FuturesUnordered;
@@ -89,14 +91,32 @@ const fn virtio_scsi_cmd_resp_ok() -> virtio_scsi_cmd_resp {
 pub enum ExecuteError {
     #[error("invalid cdb field")]
     InvalidField,
+    #[error("{length} bytes from sector {sector} exceeds end of this device {max_lba}")]
+    LbaOutOfRange {
+        length: usize,
+        sector: u64,
+        max_lba: u64,
+    },
     #[error("failed to read message: {0}")]
     Read(io::Error),
     #[error("failed to read command from cdb")]
     ReadCommand,
+    #[error("io error {resid} bytes remained to be read: {desc_error}")]
+    ReadIo {
+        resid: usize,
+        desc_error: disk::Error,
+    },
+    #[error("writing to a read only device")]
+    ReadOnly,
     #[error("unsupported scsi command: {0}")]
     Unsupported(u8),
     #[error("failed to write message: {0}")]
     Write(io::Error),
+    #[error("io error {resid} bytes remained to be written: {desc_error}")]
+    WriteIo {
+        resid: usize,
+        desc_error: disk::Error,
+    },
 }
 
 impl ExecuteError {
@@ -138,6 +158,22 @@ impl ExecuteError {
                     asc: 0x20,
                     ascq: 0x00,
                 }
+            }
+            Self::ReadOnly | Self::LbaOutOfRange { .. } => {
+                // LOGICAL BLOCK ADDRESS OUT OF RANGE
+                Sense {
+                    key: ILLEGAL_REQUEST,
+                    asc: 0x21,
+                    ascq: 0x00,
+                }
+            }
+            // Ignore these errors.
+            Self::ReadIo { resid, desc_error } | Self::WriteIo { resid, desc_error } => {
+                warn!("error while performing I/O {}", desc_error);
+                return virtio_scsi_cmd_resp {
+                    resid: (*resid).try_into().unwrap_or(u32::MAX).to_be(),
+                    ..resp
+                };
             }
         };
         let (sense, sense_len) = sense.as_bytes(true);
@@ -213,6 +249,7 @@ pub struct LogicalUnit {
     pub max_lba: u64,
     /// Block size of the target device.
     pub block_size: u32,
+    pub read_only: bool,
 }
 
 /// Vitio device for exposing SCSI command operations on a host file.
@@ -244,12 +281,14 @@ impl Device {
         disk_image: Box<dyn DiskFile>,
         base_features: u64,
         block_size: u32,
+        read_only: bool,
     ) -> anyhow::Result<Self> {
         let target = LogicalUnit {
             max_lba: disk_image
                 .get_len()
                 .context("Failed to get the length of the disk image")?,
             block_size,
+            read_only,
         };
         // b/300560198: Support feature bits in virtio-scsi.
         Ok(Self {
@@ -286,6 +325,8 @@ impl Device {
         reader: &mut Reader,
         resp_writer: &mut Writer,
         data_writer: &mut Writer,
+        disk_image: &dyn AsyncDisk,
+        dev: &Arc<RwLock<LogicalUnit>>,
     ) -> Result<usize, ExecuteError> {
         // TODO(b/301011017): Cope with the configurable cdb size. We would need to define
         // something like virtio_scsi_cmd_req_header.
@@ -294,7 +335,10 @@ impl Device {
             .map_err(ExecuteError::Read)?;
         let resp = if Self::is_lun0(req_header.lun) {
             let command = Command::new(&req_header.cdb)?;
-            match command.execute(data_writer).await {
+            match command
+                .execute(reader, data_writer, Arc::clone(dev), disk_image)
+                .await
+            {
                 Ok(()) => virtio_scsi_cmd_resp {
                     sense_len: 0,
                     resid: 0,
@@ -373,11 +417,22 @@ impl VirtioDevice for Device {
         queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         let executor_kind = self.executor_kind;
+        let dev = Arc::clone(&self.target);
+        let disk_image = self
+            .disk_image
+            .take()
+            .context("Failed to take a disk image")?;
         let worker_thread = WorkerThread::start("virtio_scsi", move |kill_evt| {
             let ex =
                 Executor::with_executor_kind(executor_kind).expect("Failed to create an executor");
+            let async_disk = match disk_image.to_async_disk(&ex) {
+                Ok(d) => d,
+                Err(e) => panic!("Failed to create async disk: {}", e),
+            };
             if let Err(err) = ex
-                .run_until(run_worker(&ex, interrupt, queues, kill_evt))
+                .run_until(run_worker(
+                    &ex, interrupt, queues, kill_evt, async_disk, dev,
+                ))
                 .expect("run_until failed")
             {
                 error!("run_worker failed: {err}");
@@ -393,6 +448,8 @@ async fn run_worker(
     interrupt: Interrupt,
     mut queues: BTreeMap<usize, Queue>,
     kill_evt: Event,
+    disk_image: Box<dyn AsyncDisk>,
+    dev: Arc<RwLock<LogicalUnit>>,
 ) -> anyhow::Result<()> {
     let kill = async_utils::await_and_exit(ex, kill_evt).fuse();
     pin_mut!(kill);
@@ -411,6 +468,8 @@ async fn run_worker(
         Rc::new(RefCell::new(request_queue)),
         EventAsync::new(kick_evt, ex).expect("Failed to create async event for queue"),
         interrupt.clone(),
+        disk_image,
+        dev,
     )
     .fuse();
     pin_mut!(queue_handler);
@@ -422,7 +481,13 @@ async fn run_worker(
     };
 }
 
-async fn handle_queue(queue: Rc<RefCell<Queue>>, evt: EventAsync, interrupt: Interrupt) {
+async fn handle_queue(
+    queue: Rc<RefCell<Queue>>,
+    evt: EventAsync,
+    interrupt: Interrupt,
+    disk_image: Box<dyn AsyncDisk>,
+    dev: Arc<RwLock<LogicalUnit>>,
+) {
     let mut background_tasks = FuturesUnordered::new();
     let evt_future = evt.next_val().fuse();
     pin_mut!(evt_future);
@@ -438,7 +503,13 @@ async fn handle_queue(queue: Rc<RefCell<Queue>>, evt: EventAsync, interrupt: Int
             }
         }
         while let Some(chain) = queue.borrow_mut().pop() {
-            background_tasks.push(process_one_chain(&queue, chain, &interrupt));
+            background_tasks.push(process_one_chain(
+                &queue,
+                chain,
+                &interrupt,
+                &*disk_image,
+                &dev,
+            ));
         }
     }
 }
@@ -447,18 +518,26 @@ async fn process_one_chain(
     queue: &RefCell<Queue>,
     mut avail_desc: DescriptorChain,
     interrupt: &Interrupt,
+    disk_image: &dyn AsyncDisk,
+    dev: &Arc<RwLock<LogicalUnit>>,
 ) {
-    let len = process_one_request(&mut avail_desc).await;
+    let len = process_one_request(&mut avail_desc, disk_image, dev).await;
     let mut queue = queue.borrow_mut();
     queue.add_used(avail_desc, len as u32);
     queue.trigger_interrupt(interrupt);
 }
 
-async fn process_one_request(avail_desc: &mut DescriptorChain) -> usize {
+async fn process_one_request(
+    avail_desc: &mut DescriptorChain,
+    disk_image: &dyn AsyncDisk,
+    dev: &Arc<RwLock<LogicalUnit>>,
+) -> usize {
     let reader = &mut avail_desc.reader;
     let resp_writer = &mut avail_desc.writer;
     let mut data_writer = resp_writer.split_at(std::mem::size_of::<virtio_scsi_cmd_resp>());
-    if let Err(err) = Device::execute_request(reader, resp_writer, &mut data_writer).await {
+    if let Err(err) =
+        Device::execute_request(reader, resp_writer, &mut data_writer, disk_image, dev).await
+    {
         // If the write of the virtio_scsi_cmd_resp fails, there is nothing we can do to inform
         // the error to the guest driver (we usually propagate errors with sense field, which
         // is in the struct virtio_scsi_cmd_resp). The guest driver should have at least
