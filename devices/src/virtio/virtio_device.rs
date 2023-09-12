@@ -315,78 +315,89 @@ macro_rules! suspendable_virtio_tests {
 
             #[test]
             fn test_sleep_snapshot() {
-                let unit = &mut $dev();
+                let (_ctx, device) = &mut $dev();
                 let mem = memory();
                 let interrupt = interrupt();
                 let queues = create_queues(
                     $num_queues,
-                    unit.queue_max_sizes()
+                    device
+                        .queue_max_sizes()
                         .first()
                         .cloned()
                         .expect("missing queue size"),
                     &mem,
                 );
-                unit.activate(mem.clone(), interrupt.clone(), queues)
+                device
+                    .activate(mem.clone(), interrupt.clone(), queues)
                     .expect("failed to activate");
-                unit.virtio_sleep()
+                device
+                    .virtio_sleep()
                     .expect("failed to sleep")
                     .expect("missing queues while sleeping");
-                unit.virtio_snapshot().expect("failed to snapshot");
+                device.virtio_snapshot().expect("failed to snapshot");
             }
 
             #[test]
             fn test_sleep_snapshot_wake() {
-                let unit = &mut $dev();
+                let (_ctx, device) = &mut $dev();
                 let mem = memory();
                 let interrupt = interrupt();
                 let queues = create_queues(
                     $num_queues,
-                    unit.queue_max_sizes()
+                    device
+                        .queue_max_sizes()
                         .first()
                         .cloned()
                         .expect("missing queue size"),
                     &mem,
                 );
-                unit.activate(mem.clone(), interrupt.clone(), queues)
+                device
+                    .activate(mem.clone(), interrupt.clone(), queues)
                     .expect("failed to activate");
-                let sleep_result = unit
+                let sleep_result = device
                     .virtio_sleep()
                     .expect("failed to sleep")
                     .expect("missing queues while sleeping");
-                unit.virtio_snapshot().expect("failed to snapshot");
-                unit.virtio_wake(Some((mem.clone(), interrupt.clone(), sleep_result)))
+                device.virtio_snapshot().expect("failed to snapshot");
+                device
+                    .virtio_wake(Some((mem.clone(), interrupt.clone(), sleep_result)))
                     .expect("failed to wake");
             }
 
             #[test]
             fn test_suspend_mod_restore() {
-                let unit = &mut $dev();
+                let (context, device) = &mut $dev();
                 let mem = memory();
                 let interrupt = interrupt();
                 let queues = create_queues(
                     $num_queues,
-                    unit.queue_max_sizes()
+                    device
+                        .queue_max_sizes()
                         .first()
                         .cloned()
                         .expect("missing queue size"),
                     &mem,
                 );
-                unit.activate(mem.clone(), interrupt.clone(), queues)
+                device
+                    .activate(mem.clone(), interrupt.clone(), queues)
                     .expect("failed to activate");
-                let sleep_result = unit
+                let sleep_result = device
                     .virtio_sleep()
                     .expect("failed to sleep")
                     .expect("missing queues while sleeping");
-                let snap = unit
+                // Modify device before snapshotting.
+                $modfun(context, device);
+                let snap = device
                     .virtio_snapshot()
                     .expect("failed to take initial snapshot");
-                unit.virtio_wake(Some((mem.clone(), interrupt.clone(), sleep_result)))
+                device
+                    .virtio_wake(Some((mem.clone(), interrupt.clone(), sleep_result)))
                     .expect("failed to wake");
-                $modfun(unit);
-                let unit = &mut $dev();
-                unit.virtio_restore(snap.clone())
+                let (_, device) = &mut $dev();
+                device
+                    .virtio_restore(snap.clone())
                     .expect("failed to restore");
-                let snap2 = unit
+                let snap2 = device
                     .virtio_snapshot()
                     .expect("failed to take snapshot after mod");
                 assert_eq!(snap, snap2);

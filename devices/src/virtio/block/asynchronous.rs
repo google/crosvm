@@ -1870,11 +1870,13 @@ mod tests {
         assert_eq!(b.worker_threads.len(), 2, "2 threads should be spawned.");
     }
 
-    fn modify_device(b: &mut BlockAsync) {
+    struct BlockContext {}
+
+    fn modify_device(_block_context: &mut BlockContext, b: &mut BlockAsync) {
         b.avail_features = !b.avail_features;
     }
 
-    fn create_device() -> BlockAsync {
+    fn create_device() -> (BlockContext, BlockAsync) {
         // Create an empty disk image
         let f = tempfile().unwrap();
         f.set_len(0x1000).unwrap();
@@ -1890,15 +1892,18 @@ mod tests {
             multiple_workers: true,
             ..Default::default()
         };
-        BlockAsync::new(
-            features,
-            disk_image.try_clone().unwrap(),
-            &disk_option,
-            None,
-            None,
-            None,
+        (
+            BlockContext {},
+            BlockAsync::new(
+                features,
+                disk_image.try_clone().unwrap(),
+                &disk_option,
+                None,
+                None,
+                None,
+            )
+            .unwrap(),
         )
-        .unwrap()
     }
 
     #[cfg(unix)]
