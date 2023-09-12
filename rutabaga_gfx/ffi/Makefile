@@ -8,6 +8,8 @@ includedir = ${prefix}/include/rutabaga_gfx
 
 UNAME := $(shell uname -s)
 
+GFXSTREAM_DEP = gfxstream_backend
+
 ifdef debug
   release :=
   target :=debug
@@ -31,12 +33,17 @@ ifeq ($(UNAME), Darwin)
 LIB_NAME := librutabaga_gfx_ffi.dylib
 endif
 
+gfxstream_feature :=
+ifeq ($(shell pkg-config --exists $(GFXSTREAM_DEP) && echo 1),1)
+    gfxstream_feature :=--features=gfxstream
+endif
+
 RUTABAGA_VERSION := $(RUTABAGA_VERSION_MAJOR).1.2
 
 all: build
 
 build:
-	cargo build --features=gfxstream $(release)
+	cargo build $(gfxstream_feature) $(release)
 
 install: build
 ifeq ($(UNAME), Linux)
