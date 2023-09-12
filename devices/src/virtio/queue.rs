@@ -481,15 +481,6 @@ impl Queue {
     );
 
     define_queue_method!(
-        /// Reset queue's counters.
-        /// This method doesn't change the queue's metadata so it's reusable without initializing it
-        /// again.
-        reset_counters,
-        (),
-        mut,
-    );
-
-    define_queue_method!(
         /// Get the first available descriptor chain without removing it from the queue.
         /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
         peek,

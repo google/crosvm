@@ -213,16 +213,6 @@ impl PackedQueue {
         ]
     }
 
-    /// Reset queue's counters.
-    /// This method doesn't change the queue's metadata so it's reusable without initializing it
-    /// again.
-    pub fn reset_counters(&mut self) {
-        self.avail_index = PackedQueueIndex::default();
-        self.use_index = PackedQueueIndex::default();
-        self.peeked_index = PackedQueueIndex::default();
-        self.signalled_used_index = PackedQueueIndex::default();
-    }
-
     /// Set the device event suppression
     ///
     // This field is used to specify the timing of when the driver notifies the

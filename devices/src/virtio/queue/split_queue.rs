@@ -164,15 +164,6 @@ impl SplitQueue {
         index.0 & self.size.wrapping_sub(1)
     }
 
-    /// Reset queue's counters.
-    /// This method doesn't change the queue's metadata so it's reusable without initializing it
-    /// again.
-    pub fn reset_counters(&mut self) {
-        self.next_avail = Wrapping(0);
-        self.next_used = Wrapping(0);
-        self.last_used = Wrapping(0);
-    }
-
     fn ring_sizes(
         queue_size: u16,
         desc_table: GuestAddress,
