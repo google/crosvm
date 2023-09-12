@@ -72,6 +72,17 @@ const MAX_CMD_PER_LUN: u32 = 128;
 // We set the maximum transfer size hint to 0xffff: 2^16 * 512 ~ 34mb.
 const MAX_SECTORS: u32 = 0xffff;
 
+const fn virtio_scsi_cmd_resp_ok() -> virtio_scsi_cmd_resp {
+    virtio_scsi_cmd_resp {
+        sense_len: 0,
+        resid: 0,
+        status_qualifier: 0,
+        status: GOOD,
+        response: VIRTIO_SCSI_S_OK as u8,
+        sense: [0; VIRTIO_SCSI_SENSE_DEFAULT_SIZE as usize],
+    }
+}
+
 /// Errors that happen while handling scsi commands.
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -89,40 +100,58 @@ pub enum ExecuteError {
 }
 
 impl ExecuteError {
-    // The asc and ascq assignments are taken from the t10 SPC spec.
-    // cf) Table 28 of <https://www.t10.org/cgi-bin/ac.pl?t=f&f=spc3r23.pdf>
-    fn as_sense(&self) -> Sense {
-        match self {
-            // UNRECOVERED READ ERROR
-            Self::Read(_) | Self::ReadCommand => Sense {
-                key: MEDIUM_ERROR,
-                asc: 0x11,
-                ascq: 0x00,
-            },
-            // WRITE ERROR
-            Self::Write(_) => Sense {
-                key: MEDIUM_ERROR,
-                asc: 0x0c,
-                ascq: 0x00,
-            },
-            // INVALID FIELD IN CDB
-            Self::InvalidField => Sense {
-                key: ILLEGAL_REQUEST,
-                asc: 0x24,
-                ascq: 0x00,
-            },
-            // INVALID COMMAND OPERATION CODE
-            Self::Unsupported(_) => Sense {
-                key: ILLEGAL_REQUEST,
-                asc: 0x20,
-                ascq: 0x00,
-            },
+    // TODO(b/301011017): We would need to define something like
+    // virtio_scsi_cmd_resp_header to cope with the configurable sense size.
+    fn as_resp(&self) -> virtio_scsi_cmd_resp {
+        let resp = virtio_scsi_cmd_resp_ok();
+        // The asc and ascq assignments are taken from the t10 SPC spec.
+        // cf) Table 28 of <https://www.t10.org/cgi-bin/ac.pl?t=f&f=spc3r23.pdf>
+        let sense = match self {
+            Self::Read(_) | Self::ReadCommand => {
+                // UNRECOVERED READ ERROR
+                Sense {
+                    key: MEDIUM_ERROR,
+                    asc: 0x11,
+                    ascq: 0x00,
+                }
+            }
+            Self::Write(_) => {
+                // WRITE ERROR
+                Sense {
+                    key: MEDIUM_ERROR,
+                    asc: 0x0c,
+                    ascq: 0x00,
+                }
+            }
+            Self::InvalidField => {
+                // INVALID FIELD IN CDB
+                Sense {
+                    key: ILLEGAL_REQUEST,
+                    asc: 0x24,
+                    ascq: 0x00,
+                }
+            }
+            Self::Unsupported(_) => {
+                // INVALID COMMAND OPERATION CODE
+                Sense {
+                    key: ILLEGAL_REQUEST,
+                    asc: 0x20,
+                    ascq: 0x00,
+                }
+            }
+        };
+        let (sense, sense_len) = sense.as_bytes(true);
+        virtio_scsi_cmd_resp {
+            sense_len,
+            sense,
+            status: CHECK_CONDITION,
+            ..resp
         }
     }
 }
 
 /// Sense code representation
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Sense {
     /// Provides generic information describing an error or exception condition.
     pub key: u8,
@@ -186,59 +215,6 @@ pub struct LogicalUnit {
     pub block_size: u32,
 }
 
-/// Holds the status bit and sense data in response value.
-pub enum RequestStatus {
-    Good { residual: u32 },
-    CheckCondition { err: ExecuteError, fixed: bool },
-}
-
-impl RequestStatus {
-    // TODO(b/301011017): We would need to define something like
-    // virtio_scsi_cmd_resp_header to cope with the configurable sense size.
-    fn as_resp(&self) -> virtio_scsi_cmd_resp {
-        match self {
-            Self::Good { residual } => virtio_scsi_cmd_resp {
-                sense_len: 0,
-                resid: residual.to_be(),
-                status_qualifier: 0,
-                status: GOOD,
-                response: VIRTIO_SCSI_S_OK as u8,
-                sense: [0; VIRTIO_SCSI_SENSE_DEFAULT_SIZE as usize],
-            },
-            Self::CheckCondition { err, fixed } => {
-                let (sense, sense_len) = err.as_sense().as_bytes(*fixed);
-                virtio_scsi_cmd_resp {
-                    sense_len,
-                    resid: 0,
-                    status_qualifier: 0,
-                    status: CHECK_CONDITION,
-                    response: VIRTIO_SCSI_S_OK as u8,
-                    sense,
-                }
-            }
-        }
-    }
-}
-
-/// Describes a specific SCSI request.
-pub struct Request {
-    /// The logical unit which the command targets.
-    pub dev: Arc<RwLock<LogicalUnit>>,
-    /// The residual value in response. Used for read or write operations.
-    pub residual: u32,
-    pub status: RequestStatus,
-}
-
-impl Request {
-    pub fn new(dev: Arc<RwLock<LogicalUnit>>) -> Self {
-        Self {
-            dev,
-            residual: 0,
-            status: RequestStatus::Good { residual: 0 },
-        }
-    }
-}
-
 /// Vitio device for exposing SCSI command operations on a host file.
 pub struct Device {
     // Bitmap of virtio-scsi feature bits.
@@ -258,6 +234,7 @@ pub struct Device {
     // TODO(b/300586438): Make this a BTreeMap<_> to enable this Device struct to manage multiple
     // LogicalUnit. That is, when user passes multiple --scsi-block options, we will have a single
     // instance of Device which has multiple LogicalUnit.
+    #[allow(dead_code)]
     target: Arc<RwLock<LogicalUnit>>,
 }
 
@@ -309,7 +286,6 @@ impl Device {
         reader: &mut Reader,
         resp_writer: &mut Writer,
         data_writer: &mut Writer,
-        dev: &Arc<RwLock<LogicalUnit>>,
     ) -> Result<usize, ExecuteError> {
         // TODO(b/301011017): Cope with the configurable cdb size. We would need to define
         // something like virtio_scsi_cmd_req_header.
@@ -318,9 +294,20 @@ impl Device {
             .map_err(ExecuteError::Read)?;
         let resp = if Self::is_lun0(req_header.lun) {
             let command = Command::new(&req_header.cdb)?;
-            let mut request = Request::new(Arc::clone(dev));
-            command.execute(data_writer, &mut request);
-            request.status.as_resp()
+            match command.execute(data_writer).await {
+                Ok(()) => virtio_scsi_cmd_resp {
+                    sense_len: 0,
+                    resid: 0,
+                    status_qualifier: 0,
+                    status: GOOD,
+                    response: VIRTIO_SCSI_S_OK as u8,
+                    sense: [0; VIRTIO_SCSI_SENSE_DEFAULT_SIZE as usize],
+                },
+                Err(err) => {
+                    error!("error while executing a scsi request: {err}");
+                    err.as_resp()
+                }
+            }
         } else {
             virtio_scsi_cmd_resp {
                 response: VIRTIO_SCSI_S_BAD_TARGET as u8,
@@ -386,12 +373,11 @@ impl VirtioDevice for Device {
         queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         let executor_kind = self.executor_kind;
-        let dev = Arc::clone(&self.target);
         let worker_thread = WorkerThread::start("virtio_scsi", move |kill_evt| {
             let ex =
                 Executor::with_executor_kind(executor_kind).expect("Failed to create an executor");
             if let Err(err) = ex
-                .run_until(run_worker(&ex, interrupt, queues, kill_evt, dev))
+                .run_until(run_worker(&ex, interrupt, queues, kill_evt))
                 .expect("run_until failed")
             {
                 error!("run_worker failed: {err}");
@@ -407,7 +393,6 @@ async fn run_worker(
     interrupt: Interrupt,
     mut queues: BTreeMap<usize, Queue>,
     kill_evt: Event,
-    dev: Arc<RwLock<LogicalUnit>>,
 ) -> anyhow::Result<()> {
     let kill = async_utils::await_and_exit(ex, kill_evt).fuse();
     pin_mut!(kill);
@@ -426,7 +411,6 @@ async fn run_worker(
         Rc::new(RefCell::new(request_queue)),
         EventAsync::new(kick_evt, ex).expect("Failed to create async event for queue"),
         interrupt.clone(),
-        dev,
     )
     .fuse();
     pin_mut!(queue_handler);
@@ -438,12 +422,7 @@ async fn run_worker(
     };
 }
 
-async fn handle_queue(
-    queue: Rc<RefCell<Queue>>,
-    evt: EventAsync,
-    interrupt: Interrupt,
-    dev: Arc<RwLock<LogicalUnit>>,
-) {
+async fn handle_queue(queue: Rc<RefCell<Queue>>, evt: EventAsync, interrupt: Interrupt) {
     let mut background_tasks = FuturesUnordered::new();
     let evt_future = evt.next_val().fuse();
     pin_mut!(evt_future);
@@ -459,7 +438,7 @@ async fn handle_queue(
             }
         }
         while let Some(chain) = queue.borrow_mut().pop() {
-            background_tasks.push(process_one_chain(&queue, chain, &interrupt, &dev));
+            background_tasks.push(process_one_chain(&queue, chain, &interrupt));
         }
     }
 }
@@ -468,31 +447,26 @@ async fn process_one_chain(
     queue: &RefCell<Queue>,
     mut avail_desc: DescriptorChain,
     interrupt: &Interrupt,
-    dev: &Arc<RwLock<LogicalUnit>>,
 ) {
-    let len = process_one_request(&mut avail_desc, dev).await;
+    let len = process_one_request(&mut avail_desc).await;
     let mut queue = queue.borrow_mut();
     queue.add_used(avail_desc, len as u32);
     queue.trigger_interrupt(interrupt);
 }
 
-async fn process_one_request(
-    avail_desc: &mut DescriptorChain,
-    dev: &Arc<RwLock<LogicalUnit>>,
-) -> usize {
+async fn process_one_request(avail_desc: &mut DescriptorChain) -> usize {
     let reader = &mut avail_desc.reader;
     let resp_writer = &mut avail_desc.writer;
     let mut data_writer = resp_writer.split_at(std::mem::size_of::<virtio_scsi_cmd_resp>());
-    if let Err(err) = Device::execute_request(reader, resp_writer, &mut data_writer, dev).await {
-        let resp = RequestStatus::CheckCondition { err, fixed: true }.as_resp();
+    if let Err(err) = Device::execute_request(reader, resp_writer, &mut data_writer).await {
         // If the write of the virtio_scsi_cmd_resp fails, there is nothing we can do to inform
         // the error to the guest driver (we usually propagate errors with sense field, which
         // is in the struct virtio_scsi_cmd_resp). The guest driver should have at least
         // sizeof(virtio_scsi_cmd_resp) bytes of device-writable part regions. For now we
         // simply emit an error message.
-        let _ = resp_writer
-            .write_all(resp.as_bytes())
-            .map_err(|e| error!("failed to write response: {}", e));
+        if let Err(e) = resp_writer.write_all(err.as_resp().as_bytes()) {
+            error!("failed to write response: {e}");
+        }
     }
     resp_writer.bytes_written() + data_writer.bytes_written()
 }

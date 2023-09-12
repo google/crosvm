@@ -14,8 +14,6 @@ use crate::virtio::scsi::constants::REPORT_LUNS;
 use crate::virtio::scsi::constants::TEST_UNIT_READY;
 use crate::virtio::scsi::constants::TYPE_DISK;
 use crate::virtio::scsi::device::ExecuteError;
-use crate::virtio::scsi::device::Request;
-use crate::virtio::scsi::device::RequestStatus;
 use crate::virtio::Writer;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -44,11 +42,11 @@ impl Command {
         T::read_from(&cdb[..size]).ok_or(ExecuteError::ReadCommand)
     }
 
-    pub fn execute(&self, writer: &mut Writer, req: &mut Request) {
+    pub async fn execute(&self, writer: &mut Writer) -> Result<(), ExecuteError> {
         match self {
-            Self::TestUnitReady(_) => (), // noop as the device is ready.
-            Self::Inquiry(inquiry) => inquiry.emulate(writer, req),
-            Self::ReportLuns(report_luns) => report_luns.emulate(writer, req),
+            Self::TestUnitReady(_) => Ok(()), // noop as the device is ready.
+            Self::Inquiry(inquiry) => inquiry.emulate(writer),
+            Self::ReportLuns(report_luns) => report_luns.emulate(writer),
         }
     }
 }
@@ -84,17 +82,13 @@ impl Inquiry {
         self.page_code
     }
 
-    fn emulate(&self, writer: &mut Writer, req: &mut Request) {
+    fn emulate(&self, writer: &mut Writer) -> Result<(), ExecuteError> {
         if self.vital_product_data_enabled() {
-            return self.emulate_vital_product_data_page(writer, req);
+            return self.emulate_vital_product_data_page(writer);
         }
         // PAGE CODE should be 0 when vpd bit is 0.
         if self.page_code() != 0 {
-            req.status = RequestStatus::CheckCondition {
-                err: ExecuteError::InvalidField,
-                fixed: true,
-            };
-            return;
+            return Err(ExecuteError::InvalidField);
         }
         let alloc_len = self.alloc_len();
         let mut outbuf = vec![0u8; cmp::max(writer.available_bytes(), alloc_len)];
@@ -123,12 +117,12 @@ impl Inquiry {
         // Product revision level
         Self::fill_left_aligned_ascii(&mut outbuf[32..36], "0.1");
 
-        let _ = writer
+        writer
             .write_all(&outbuf[..alloc_len])
-            .map_err(|e| warn!("failed to write bytes: {e}"));
+            .map_err(ExecuteError::Write)
     }
 
-    fn emulate_vital_product_data_page(&self, writer: &mut Writer, req: &mut Request) {
+    fn emulate_vital_product_data_page(&self, writer: &mut Writer) -> Result<(), ExecuteError> {
         let alloc_len = self.alloc_len();
         let mut outbuf = vec![0u8; cmp::max(4096, alloc_len)];
         // Peripheral
@@ -172,16 +166,12 @@ impl Inquiry {
             }
             _ => {
                 warn!("unsupported vpd page code: {:#x?}", page_code);
-                req.status = RequestStatus::CheckCondition {
-                    err: ExecuteError::InvalidField,
-                    fixed: true,
-                };
-                return;
+                return Err(ExecuteError::InvalidField);
             }
         };
-        let _ = writer
+        writer
             .write_all(&outbuf[..alloc_len])
-            .map_err(|e| warn!("failed to write bytes: {e}"));
+            .map_err(ExecuteError::Write)
     }
 
     fn fill_left_aligned_ascii(buf: &mut [u8], s: &str) {
@@ -208,28 +198,22 @@ impl ReportLuns {
         u32::from_be_bytes(self.alloc_len_bytes) as usize
     }
 
-    fn emulate(&self, writer: &mut Writer, req: &mut Request) {
+    fn emulate(&self, writer: &mut Writer) -> Result<(), ExecuteError> {
         // We need at least 16 bytes.
         if self.alloc_len() < 16 {
-            req.status = RequestStatus::CheckCondition {
-                err: ExecuteError::InvalidField,
-                fixed: true,
-            };
-            return;
+            return Err(ExecuteError::InvalidField);
         }
         // Each LUN takes 8 bytes and we only support LUN0 (b/300586438).
         let lun_list_len = 8u32;
-        let _ = writer
+        writer
             .write_all(&lun_list_len.to_be_bytes())
-            .map_err(|e| warn!("failed to write bytes: {e}"));
+            .map_err(ExecuteError::Write)?;
         let reserved = [0; 4];
-        let _ = writer
-            .write_all(&reserved)
-            .map_err(|e| warn!("failed to write bytes: {e}"));
+        writer.write_all(&reserved).map_err(ExecuteError::Write)?;
         let lun0 = 0u64;
-        let _ = writer
+        writer
             .write_all(&lun0.to_be_bytes())
-            .map_err(|e| warn!("failed to write bytes: {e}"));
+            .map_err(ExecuteError::Write)
     }
 }
 
@@ -270,16 +254,10 @@ mod tests {
             0xa0, 0x00, 0x00, 0x00, 0x00, 0x00, 0xab, 0xcd, 0xef, 0x12, 0x00, 0x00,
         ];
         let command = Command::new(&cdb).unwrap();
-        let report_luns = ReportLuns {
-            opcode: REPORT_LUNS,
-            _reserved: 0x00,
-            select_report: 0x00,
-            _reserved2: [0x00, 0x00, 0x00],
-            alloc_len_bytes: [0xab, 0xcd, 0xef, 0x12],
-            _reserved3: 0x00,
-            control: 0x00,
+        let report_luns = match command {
+            Command::ReportLuns(r) => r,
+            _ => panic!("unexpected command type: {:?}", command),
         };
-        assert_eq!(command, Command::ReportLuns(report_luns));
         assert_eq!(report_luns.alloc_len(), 0xabcdef12);
     }
 }
