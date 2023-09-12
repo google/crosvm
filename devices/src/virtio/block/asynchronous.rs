@@ -1050,7 +1050,7 @@ impl VirtioDevice for BlockAsync {
                         queue,
                         interrupt: interrupt.clone(),
                     })
-                    .unwrap_or_else(|_| panic!("worker channel closed early"));
+                    .expect("worker channel closed early");
             }
 
             let worker_thread = WorkerThread::start("virtio_blk", move |kill_evt| {
@@ -1140,7 +1140,7 @@ impl VirtioDevice for BlockAsync {
             let (response_tx, response_rx) = oneshot::channel();
             worker_tx
                 .unbounded_send(WorkerCmd::StopQueue { index, response_tx })
-                .unwrap_or_else(|_| panic!("worker channel closed early"));
+                .expect("worker channel closed early");
             let queue = cros_async::block_on(async {
                 response_rx
                     .await
