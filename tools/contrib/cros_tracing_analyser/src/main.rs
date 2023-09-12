@@ -279,7 +279,7 @@ impl LatencyData {
     }
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct LayerData {
     name: String,
     value: u64,
@@ -389,26 +389,48 @@ mod tests {
     // example data
     fn setup() -> EventData {
         let stats = vec![
-            EventInformation {
-                pid: 100,
-                cpu: 3,
-                name: "sys_enter_write".to_string(),
-                time_stamp: 1,
-                details: " __syscall_nr=1 fd=0x00000004 buf=0x7fbac80360a0 count=0x00000066"
-                    .to_string(),
-            },
             EventInformation{
                 pid: 100,
-                cpu: 3,
+                cpu: 1,
                 name: "print".to_string(),
                 time_stamp: 100,
                 details: " ip=tracing_mark_write buf=32256 VirtioFs Enter: lookup - (self.tag: \"mtdroot\")(parent: 5358)(name: \"LC_MESSAGES\")\n".to_string()
             },
             EventInformation {
                 pid: 100,
-                cpu: 3,
-                name: "print".to_string(),
+                cpu: 1,
+                name: "sys_enter_write".to_string(),
                 time_stamp: 200,
+                details: " __syscall_nr=1 fd=0x00000021 buf=0x7f21e4e0a02f count=0x00000001"
+                    .to_string(),
+            },
+            EventInformation {
+                pid: 100,
+                cpu: 1,
+                name: "sys_enter_read".to_string(),
+                time_stamp: 300,
+                details: " __syscall_nr=0 fd=0x00000011 buf=0x7f21ef3fc688 count=0x00000001"
+                    .to_string(),
+            },
+            EventInformation {
+                pid: 100,
+                cpu: 1,
+                name: "sys_exit_read".to_string(),
+                time_stamp: 400,
+                details: " __syscall_nr=0 ret=0x1".to_string(),
+            },
+            EventInformation {
+                pid: 100,
+                cpu: 1,
+                name: "sys_exit_write".to_string(),
+                time_stamp: 500,
+                details: " __syscall_nr=1 ret=0x1".to_string(),
+            },
+            EventInformation {
+                pid: 100,
+                cpu: 1,
+                name: "print".to_string(),
+                time_stamp: 600,
                 details: " ip=tracing_mark_write buf=32256 VirtioFs Exit: lookup\n".to_string(),
             },
         ];
@@ -430,12 +452,38 @@ mod tests {
         let expected_data = LatencyData {
             stats: [LatencyInformation {
                 event_name: "lookup".to_string(),
-                enter_index: 1,
-                exit_index: 2,
-                latency: 100,
+                enter_index: 0,
+                exit_index: 5,
+                latency: 500,
             }]
             .to_vec(),
         };
         assert_eq!(latency_data, expected_data);
+    }
+
+    #[test]
+    fn create_layer_test() {
+        let data = setup();
+        let mut test_layer_data: Vec<LayerData> = Vec::new();
+        let mut test_index_counter = HashSet::new();
+        LatencyData::create_layer(
+            &data,
+            0,
+            5,
+            100,
+            &mut test_layer_data,
+            &mut test_index_counter,
+        );
+        let expected_data = vec![LayerData {
+            name: "sys_write".to_string(),
+            value: 300,
+            children: [LayerData {
+                name: "sys_read".to_string(),
+                value: 100,
+                children: vec![].to_vec(),
+            }]
+            .to_vec(),
+        }];
+        assert_eq!(test_layer_data, expected_data);
     }
 }
