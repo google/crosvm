@@ -525,7 +525,7 @@ impl VhostUserMsgValidator for VhostUserMemory {
 }
 
 /// Memory region descriptors as payload for the SET_MEM_TABLE request.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Clone, Copy, AsBytes, FromBytes)]
 pub struct VhostUserMemoryRegion {
     /// Guest physical address of the memory region.

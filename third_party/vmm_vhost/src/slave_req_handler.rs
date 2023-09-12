@@ -3,7 +3,6 @@
 
 use std::fs::File;
 use std::mem;
-use std::slice;
 use std::sync::Mutex;
 
 use base::error;
@@ -11,6 +10,7 @@ use base::AsRawDescriptor;
 use base::RawDescriptor;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::LayoutVerified;
 
 use crate::connection::Endpoint;
 use crate::connection::EndpointExt;
@@ -477,10 +477,7 @@ impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
         buf: &[u8],
         files: Option<Vec<File>>,
     ) -> Result<(u8, Option<File>)> {
-        if buf.len() < mem::size_of::<VhostUserU64>() {
-            return Err(Error::InvalidMessage);
-        }
-        let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const VhostUserU64) };
+        let msg = VhostUserU64::read_from_prefix(buf).ok_or(Error::InvalidMessage)?;
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
         }
@@ -822,7 +819,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                     return Err(Error::InvalidOperation);
                 }
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
-                let res = self.set_config(size, &buf);
+                let res = self.set_config(&buf);
                 self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
@@ -961,16 +958,9 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     ) -> Result<()> {
         self.check_request_size(hdr, size, hdr.get_size() as usize)?;
 
-        // check message size is consistent
-        let hdrsize = mem::size_of::<VhostUserMemory>();
-        if size < hdrsize {
-            return Err(Error::InvalidMessage);
-        }
-        let msg = unsafe { &*(buf.as_ptr() as *const VhostUserMemory) };
+        let (msg, regions) = LayoutVerified::<_, VhostUserMemory>::new_from_prefix(buf)
+            .ok_or(Error::InvalidMessage)?;
         if !msg.is_valid() {
-            return Err(Error::InvalidMessage);
-        }
-        if size != hdrsize + msg.num_regions as usize * mem::size_of::<VhostUserMemoryRegion>() {
             return Err(Error::InvalidMessage);
         }
 
@@ -980,32 +970,33 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             return Err(Error::InvalidMessage);
         }
 
-        // Validate memory regions
-        let regions = unsafe {
-            slice::from_raw_parts(
-                buf.as_ptr().add(hdrsize) as *const VhostUserMemoryRegion,
+        let (regions, excess) =
+            LayoutVerified::<_, [VhostUserMemoryRegion]>::new_slice_from_prefix(
+                regions,
                 msg.num_regions as usize,
             )
-        };
+            .ok_or(Error::InvalidMessage)?;
+        if !excess.is_empty() {
+            return Err(Error::InvalidMessage);
+        }
+
+        // Validate memory regions
         for region in regions.iter() {
             if !region.is_valid() {
                 return Err(Error::InvalidMessage);
             }
         }
 
-        self.backend.set_mem_table(regions, files)
+        self.backend.set_mem_table(&regions, files)
     }
 
     fn get_config(&mut self, hdr: &VhostUserMsgHeader<MasterReq>, buf: &[u8]) -> Result<()> {
-        let payload_offset = mem::size_of::<VhostUserConfig>();
-        if buf.len() < payload_offset {
-            return Err(Error::InvalidMessage);
-        }
-        let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const VhostUserConfig) };
+        let (msg, payload) = LayoutVerified::<_, VhostUserConfig>::new_from_prefix(buf)
+            .ok_or(Error::InvalidMessage)?;
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
         }
-        if buf.len() - payload_offset != msg.size as usize {
+        if payload.len() != msg.size as usize {
             return Err(Error::InvalidMessage);
         }
         let flags = match VhostUserConfigFlags::from_bits(msg.flags) {
@@ -1035,15 +1026,13 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
         Ok(())
     }
 
-    fn set_config(&mut self, size: usize, buf: &[u8]) -> Result<()> {
-        if size < mem::size_of::<VhostUserConfig>() {
-            return Err(Error::InvalidMessage);
-        }
-        let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const VhostUserConfig) };
+    fn set_config(&mut self, buf: &[u8]) -> Result<()> {
+        let (msg, payload) = LayoutVerified::<_, VhostUserConfig>::new_from_prefix(buf)
+            .ok_or(Error::InvalidMessage)?;
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
         }
-        if size - mem::size_of::<VhostUserConfig>() != msg.size as usize {
+        if payload.len() != msg.size as usize {
             return Err(Error::InvalidMessage);
         }
         let flags: VhostUserConfigFlags = match VhostUserConfigFlags::from_bits(msg.flags) {
@@ -1051,7 +1040,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             None => return Err(Error::InvalidMessage),
         };
 
-        self.backend.set_config(msg.offset, buf, flags)
+        self.backend.set_config(msg.offset, payload, flags)
     }
 
     fn set_slave_req_fd(&mut self, files: Option<Vec<File>>) -> Result<()> {
