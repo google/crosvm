@@ -122,7 +122,7 @@ impl XhciController {
     pub fn new(mem: GuestMemory, usb_provider: Box<dyn XhciBackendDeviceProvider>) -> Self {
         let config_regs = PciConfiguration::new(
             0x01b73, // fresco logic, (google = 0x1ae0)
-            0x1000,  // fresco logic pdk. This chip has broken msi. See kernel xhci-pci.c
+            0x1400,  // fresco logic fl1400. This chip has broken msi. See kernel xhci-pci.c
             PciClassCode::SerialBusController,
             &PciSerialBusSubClass::Usb,
             Some(&UsbControllerProgrammingInterface::Usb3HostController),
