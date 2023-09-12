@@ -88,10 +88,10 @@ impl DescriptorChain {
 
         while let Some(desc) = chain.next()? {
             if desc.len == 0 {
-                bail!("invalid zero-length descriptor");
+                trace!("zero-length descriptor at index {index}");
+            } else {
+                Self::add_descriptor(&mut readable_regions, &mut writable_regions, desc)?;
             }
-
-            Self::add_descriptor(&mut readable_regions, &mut writable_regions, desc)?;
         }
 
         let count = chain.count();
