@@ -272,10 +272,10 @@ impl VhostUserBackend for GpuBackend {
     }
 
     fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
-        let data =
-            serde_json::to_value(data).context("Failed to deserialize NULL in the GPU device")?;
+        let data: serde_json::Value = serde_json::from_slice(data.as_slice())
+            .context("Failed to deserialize NULL in the GPU device")?;
         anyhow::ensure!(
-            data == serde_json::Value::Null,
+            data.is_null(),
             "unexpected snapshot data: should be null, got {}",
             data
         );
