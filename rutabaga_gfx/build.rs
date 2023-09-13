@@ -126,6 +126,9 @@ fn virglrenderer_deps() -> Result<()> {
     // System provided runtime dependencies.
     pkg_config::Config::new().probe("epoxy")?;
     pkg_config::Config::new().probe("libdrm")?;
+    if env::var("CARGO_FEATURE_X").is_ok() {
+        pkg_config::Config::new().probe("x11")?;
+    }
     Ok(())
 }
 

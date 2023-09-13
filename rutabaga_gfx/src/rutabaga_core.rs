@@ -1232,3 +1232,76 @@ impl RutabagaBuilder {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+
+    fn new_2d() -> Rutabaga {
+        RutabagaBuilder::new(RutabagaComponentType::Rutabaga2D, 0)
+            .build(RutabagaHandler::new(|_| {}), None)
+            .unwrap()
+    }
+
+    #[test]
+    fn snapshot_restore_2d_no_resources() {
+        let mut buffer = std::io::Cursor::new(Vec::new());
+
+        let rutabaga1 = new_2d();
+        rutabaga1.snapshot(&mut buffer).unwrap();
+
+        let mut rutabaga1 = new_2d();
+        rutabaga1.restore(&mut &buffer.get_ref()[..]).unwrap();
+    }
+
+    #[test]
+    fn snapshot_restore_2d_one_resource() {
+        let resource_id = 123;
+        let resource_create_3d = ResourceCreate3D {
+            target: RUTABAGA_PIPE_TEXTURE_2D,
+            format: 1,
+            bind: RUTABAGA_PIPE_BIND_RENDER_TARGET,
+            width: 100,
+            height: 200,
+            depth: 1,
+            array_size: 1,
+            last_level: 0,
+            nr_samples: 0,
+            flags: 0,
+        };
+
+        let mut buffer = std::io::Cursor::new(Vec::new());
+
+        let mut rutabaga1 = new_2d();
+        rutabaga1
+            .resource_create_3d(resource_id, resource_create_3d)
+            .unwrap();
+        rutabaga1
+            .attach_backing(
+                resource_id,
+                vec![RutabagaIovec {
+                    base: std::ptr::null_mut(),
+                    len: 456,
+                }],
+            )
+            .unwrap();
+        rutabaga1.snapshot(&mut buffer).unwrap();
+
+        let mut rutabaga2 = new_2d();
+        rutabaga2.restore(&mut &buffer.get_ref()[..]).unwrap();
+
+        assert_eq!(rutabaga2.resources.len(), 1);
+        let rutabaga_resource = rutabaga2.resources.get(&resource_id).unwrap();
+        assert_eq!(rutabaga_resource.resource_id, resource_id);
+        assert_eq!(
+            rutabaga_resource.info_2d.as_ref().unwrap().width,
+            resource_create_3d.width
+        );
+        assert_eq!(
+            rutabaga_resource.info_2d.as_ref().unwrap().height,
+            resource_create_3d.height
+        );
+        // NOTE: We attached an backing iovec, but it should be gone post-restore.
+        assert!(rutabaga_resource.backing_iovecs.is_none());
+    }
+}
