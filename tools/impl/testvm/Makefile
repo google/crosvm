@@ -41,7 +41,7 @@ else
 endif
 
 GS_PREFIX=gs://crosvm/testvm
-DEBIAN_URL=https://cloud.debian.org/images/cloud/bookworm/daily/20220912-1136/
+DEBIAN_URL=https://cloud.debian.org/images/cloud/bookworm/daily/20230913-1502/
 
 BASE_IMG_NAME=base-$(ARCH)-$(shell cat version).qcow2
 GS_URL=$(GS_PREFIX)/$(BASE_IMG_NAME)
@@ -59,7 +59,7 @@ upload: $(LOCAL_IMAGE)
 
 # Download debian bullseye as base image for the testvm.
 $(TARGET)/debian.qcow2:
-	wget $(DEBIAN_URL)/debian-12-generic-$(DEBIAN_ARCH)-daily-20220912-1136.qcow2 -O $@
+	wget $(DEBIAN_URL)/debian-12-generic-$(DEBIAN_ARCH)-daily-20230913-1502.qcow2 -O $@
 	qemu-img resize $@ 4G
 
 # The cloud init file contains instructions for how to set up the VM when it's
