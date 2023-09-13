@@ -27,6 +27,7 @@ struct Config {
 enum Mode {
     Average(Average),
     Flamegraph(Flamegraph),
+    List(List),
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -61,6 +62,20 @@ struct Flamegraph {
     count: Option<u64>,
 }
 
+#[derive(FromArgs, PartialEq, Debug)]
+/// print the total value and number of appearances
+/// for the top 10 cros_tracing events of the total value of value
+#[argh(subcommand, name = "list")]
+struct List {
+    #[argh(option)]
+    /// path to the input .dat file
+    input: String,
+    #[argh(option)]
+    /// top <n> time consuming events
+    /// unspecified: output list for all event
+    count: Option<usize>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct EventInformation {
     pid: i32,
@@ -90,8 +105,8 @@ impl EventData {
         self.event_names = event_names;
     }
 
-    // Calculates average latency of each cros_tracing event
-    fn calculate_function_time(&self) -> HashMap<String, u64> {
+    // Calculates average latency and count of each cros_tracing event
+    fn calculate_function_time(&self) -> HashMap<String, (u64, u64)> {
         let mut values = HashMap::new();
         for event in self.event_names.iter() {
             let mut count = 0;
@@ -123,13 +138,12 @@ impl EventData {
                 }
             }
             let latency = sum_time / count;
-            let name = format!("{event}_latency");
-            values.insert(String::from(name), latency);
+            values.insert(String::from(event), (latency, count));
         }
         values
     }
 
-    //Populates all cros_tracing events name and latency in LatencyData
+    // Populates all cros_tracing events name and latency in LatencyData
     fn calculate_latency_data(&self) -> LatencyData {
         let mut latency_data: LatencyData = Default::default();
         for i in 0..self.stats.len() {
@@ -188,7 +202,6 @@ impl LatencyData {
     ) -> Vec<LayerData> {
         let mut base_layer_data: Vec<LayerData> = Vec::new();
         for i in 0..self.stats.len() {
-            if let Some(count_filter) = count_filter {}
             if !self.stats[i]
                 .event_name
                 .contains(&*function_filter.as_ref().unwrap())
@@ -222,7 +235,7 @@ impl LatencyData {
         base_layer_data
     }
 
-    // collect syscall data for flamegraph recursively
+    // Collect syscall data for flamegraph recursively
     fn create_layer(
         eventdata: &EventData,
         enter_index: usize,
@@ -287,7 +300,7 @@ struct LayerData {
 }
 
 // Struct that we implement `libtracecmd::Handler` for.
-//unit struct
+// Unit struct
 struct HandlerImplement;
 
 impl Handler for HandlerImplement {
@@ -324,8 +337,7 @@ fn main() -> anyhow::Result<()> {
     let mode = cfg.mode;
     match mode {
         Mode::Average(average) => {
-            let input = average.input;
-            let mut input = Input::new(&input)?;
+            let mut input = Input::new(&average.input)?;
             let mut stats = HandlerImplement::process(&mut input).unwrap();
             let output = average.output_json;
             if std::path::Path::new(&output)
@@ -335,16 +347,18 @@ fn main() -> anyhow::Result<()> {
             {
                 return Err(anyhow!("file extension must be .json"));
             }
-
             stats.populate_event_names();
-            let average_data = stats.calculate_function_time();
-            write_to_file(average_data, &output)
+            let data = stats.calculate_function_time();
+            let mut average = HashMap::new();
+            for (name, (latency, _)) in &data {
+                average.insert(String::from(name), latency);
+            }
+            write_to_file(data, &output)
         }
 
         Mode::Flamegraph(flamegraph) => {
-            let input = flamegraph.input;
-            let mut input = Input::new(&input)?;
-            let mut stats = HandlerImplement::process(&mut input).unwrap();
+            let mut input = Input::new(&flamegraph.input)?;
+            let stats = HandlerImplement::process(&mut input).unwrap();
             let output = flamegraph.output_json;
             if std::path::Path::new(&output)
                 .extension()
@@ -366,6 +380,28 @@ fn main() -> anyhow::Result<()> {
                 children: layer_data,
             };
             write_to_file(data, &output)
+        }
+        Mode::List(list) => {
+            let mut input = Input::new(&list.input)?;
+            // if count is None, return top 10 events.
+            let count = list.count.unwrap_or(10);
+            let mut stats = HandlerImplement::process(&mut input).unwrap();
+            stats.populate_event_names();
+            let data = stats.calculate_function_time();
+            let mut list = Vec::new();
+            for (name, (latency, count)) in &data {
+                let sum = latency * count;
+                list.push((name, sum));
+            }
+            list.sort_by(|a, b| b.1.cmp(&a.1));
+            // print top {count} events of the total value
+            if list.len() >= count {
+                list.truncate(count);
+            }
+            for i in 0..list.len() {
+                println!("#{}: {}: {} usec", i + 1, list[i].0, list[i].1);
+            }
+            return Ok(());
         }
     }
     Ok(())
