@@ -677,7 +677,7 @@ where
 
     loop {
         let _trace_event = trace_event!(crosvm, "vcpu loop");
-        let mut check_vm_shutdown = false;
+        let mut check_vm_shutdown = run_mode_arc.get_mode() != VmRunMode::Running;
 
         match irq_chip.wait_until_runnable(&vcpu).with_exit_context(
             Exit::WaitUntilRunnable,
