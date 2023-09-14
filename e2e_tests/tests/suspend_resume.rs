@@ -4,6 +4,7 @@
 
 #![cfg(unix)]
 
+use std::io::Write;
 use std::path::Path;
 
 use base::test_utils::call_test_with_sudo;
@@ -33,9 +34,17 @@ fn suspend_snapshot_restore_resume_disable_sandbox() -> anyhow::Result<()> {
 }
 
 fn suspend_resume_system(disabled_sandbox: bool) -> anyhow::Result<()> {
+    let mut pmem_file = NamedTempFile::new().unwrap();
+    pmem_file.write_all(&[0; 4096]).unwrap();
+    pmem_file.as_file_mut().sync_all().unwrap();
+
     let new_config = || {
         let mut config = Config::new();
         config = config.with_stdout_hardware("legacy-virtio-console");
+        config = config.extra_args(vec![
+            "--pmem-device".to_string(),
+            pmem_file.path().display().to_string(),
+        ]);
         // TODO: Remove once USB has snapshot/restore support.
         config = config.extra_args(vec!["--no-usb".to_string()]);
         if disabled_sandbox {
