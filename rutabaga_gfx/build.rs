@@ -171,7 +171,8 @@ fn gfxstream() -> Result<()> {
         pkg_config::Config::new().probe("gfxstream_backend")?;
         pkg_config::Config::new().probe("aemu_base")?;
         pkg_config::Config::new().probe("aemu_host_common")?;
-        pkg_config::Config::new().probe("logging_base")?;
+        pkg_config::Config::new().probe("aemu_logging")?;
+        pkg_config::Config::new().probe("aemu_snapshot")?;
 
         let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
