@@ -18,7 +18,15 @@ use crate::virtio::video::response;
 pub enum Token {
     CmdQueue,
     EventQueue,
-    Event { id: u32 },
+    Event {
+        id: u32,
+    },
+    /// Signals that processing of a given buffer has completed. Used for cases where the guest CPU
+    /// may access the buffer, in which case it cannot be handed over to the guest until operations
+    /// on it have completed.
+    BufferBarrier {
+        id: u32,
+    },
     Kill,
     InterruptResample,
 }
@@ -118,5 +126,17 @@ pub trait Device {
         &mut self,
         desc_map: &mut AsyncCmdDescMap,
         stream_id: u32,
+        wait_ctx: &WaitContext<Token>,
     ) -> Option<Vec<VideoEvtResponseType>>;
+
+    /// Processes a `Token::BufferBarrier` event and returns a list of `VideoEvtResponseType`
+    /// responses. Only needs to be implemented for devices that adds `Token::BufferBarrier` tokens
+    /// to the wait context.
+    fn process_buffer_barrier(
+        &mut self,
+        _stream_id: u32,
+        _wait_ctx: &WaitContext<Token>,
+    ) -> Option<Vec<VideoEvtResponseType>> {
+        None
+    }
 }

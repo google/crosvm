@@ -1553,6 +1553,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
         &mut self,
         _desc_map: &mut AsyncCmdDescMap,
         stream_id: u32,
+        _wait_ctx: &WaitContext<Token>,
     ) -> Option<Vec<VideoEvtResponseType>> {
         let stream = match self.streams.get_mut(&stream_id) {
             Some(s) => s,

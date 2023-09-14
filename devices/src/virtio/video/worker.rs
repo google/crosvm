@@ -286,8 +286,36 @@ impl Worker {
     ///
     /// * `device` - Instance of backend device
     /// * `stream_id` - Stream session ID of the event
-    fn handle_event(&mut self, device: &mut dyn Device, stream_id: u32) -> Result<()> {
-        if let Some(event_responses) = device.process_event(&mut self.desc_map, stream_id) {
+    /// * `wait_ctx` - `device` may register a new `Token::Buffer` for a new stream session
+    ///   to `wait_ctx`
+    fn handle_event(
+        &mut self,
+        device: &mut dyn Device,
+        stream_id: u32,
+        wait_ctx: &WaitContext<Token>,
+    ) -> Result<()> {
+        if let Some(event_responses) = device.process_event(&mut self.desc_map, stream_id, wait_ctx)
+        {
+            self.write_event_responses(event_responses, stream_id)?;
+        }
+        Ok(())
+    }
+
+    /// Handles a completed buffer barrier.
+    ///
+    /// # Arguments
+    ///
+    /// * `device` - Instance of backend device
+    /// * `stream_id` - Stream session ID of the event
+    /// * `wait_ctx` - `device` may deregister the completed `Token::BufferBarrier` from
+    /// `wait_ctx`.
+    fn handle_buffer_barrier(
+        &mut self,
+        device: &mut dyn Device,
+        stream_id: u32,
+        wait_ctx: &WaitContext<Token>,
+    ) -> Result<()> {
+        if let Some(event_responses) = device.process_buffer_barrier(stream_id, wait_ctx) {
             self.write_event_responses(event_responses, stream_id)?;
         }
         Ok(())
@@ -328,7 +356,10 @@ impl Worker {
                         let _ = self.event_queue.event().wait();
                     }
                     Token::Event { id } => {
-                        self.handle_event(device.as_mut(), id)?;
+                        self.handle_event(device.as_mut(), id, &wait_ctx)?;
+                    }
+                    Token::BufferBarrier { id } => {
+                        self.handle_buffer_barrier(device.as_mut(), id, &wait_ctx)?;
                     }
                     Token::InterruptResample => {
                         // Clear the event. `expect` is ok since the token fires if and only if
@@ -407,7 +438,7 @@ impl Worker {
                 for device_event in device_events {
                     // A Device must trigger only Token::Event. See [`Device::process_cmd()`].
                     if let Token::Event { id } = device_event.token {
-                        self.handle_event(device.as_mut(), id)?;
+                        self.handle_event(device.as_mut(), id, &device_wait_ctx)?;
                     } else {
                         error!(
                             "invalid event is triggered by a device {:?}",

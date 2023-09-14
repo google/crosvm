@@ -11,6 +11,9 @@ use std::collections::VecDeque;
 
 use backend::*;
 use base::error;
+use base::AsRawDescriptor;
+use base::Descriptor;
+use base::SafeDescriptor;
 use base::Tube;
 use base::WaitContext;
 use vm_memory::GuestMemory;
@@ -91,6 +94,10 @@ struct OutputResources {
 
     // OutputResourceId -> ResourceHandle
     res_id_to_res_handle: BTreeMap<OutputResourceId, GuestResource>,
+
+    // Maps the resource_id of an output buffer to its descriptor, for output buffers that may be
+    // accessed by the guest CPU which we need to poll for completion before passing to the guest.
+    res_id_to_descriptor: BTreeMap<OutputResourceId, SafeDescriptor>,
 }
 
 impl OutputResources {
@@ -167,6 +174,10 @@ enum PendingResponse {
         timestamp: u64,
     },
     FlushCompleted,
+    // Signals that we need to block on the `Descriptor` before processing further events.
+    BufferBarrier(Descriptor),
+    // Signals that we are currently blocking on the `Descriptor`.
+    PollingBufferBarrier(Descriptor),
 }
 
 // Context is associated with one `DecoderSession`, which corresponds to one stream from the
@@ -233,16 +244,37 @@ impl<S: DecoderSession> Context<S> {
         }
     }
 
-    fn output_pending_responses(&mut self) -> Vec<VideoEvtResponseType> {
+    fn output_pending_responses(
+        &mut self,
+        wait_ctx: &WaitContext<Token>,
+    ) -> Vec<VideoEvtResponseType> {
         let mut event_responses = vec![];
         while let Some(mut responses) = self.output_pending_response() {
             event_responses.append(&mut responses);
         }
+
+        // Check whether the next response is a buffer barrier we need to poll on.
+        if let Some(PendingResponse::BufferBarrier(desc)) = self.pending_responses.front() {
+            let desc = Descriptor(desc.as_raw_descriptor());
+            self.pending_responses.pop_front();
+            match wait_ctx.add(&desc, Token::BufferBarrier { id: self.stream_id }) {
+                Ok(()) => self
+                    .pending_responses
+                    .push_front(PendingResponse::PollingBufferBarrier(desc)),
+                Err(e) => {
+                    error!("failed to add buffer FD to wait context, returning uncompleted buffer: {:#}", e)
+                }
+            }
+        }
+
         event_responses
     }
 
     fn output_pending_response(&mut self) -> Option<Vec<VideoEvtResponseType>> {
         let responses = match self.pending_responses.front()? {
+            PendingResponse::BufferBarrier(_) | PendingResponse::PollingBufferBarrier(_) => {
+                return None
+            }
             PendingResponse::PictureReady {
                 picture_buffer_id,
                 timestamp,
@@ -702,6 +734,20 @@ impl<D: DecoderBackend> Decoder<D> {
 
                 let session = ctx.session.as_mut().ok_or(VideoError::InvalidOperation)?;
 
+                ctx.out_res.res_id_to_descriptor.remove(&resource_id);
+                if resource.guest_cpu_mappable {
+                    if let GuestResourceHandle::VirtioObject(VirtioObjectHandle { desc, .. }) =
+                        &resource.handle
+                    {
+                        let desc = desc.try_clone().map_err(|e| {
+                            VideoError::BackendFailure(anyhow::anyhow!(e).context(
+                                "failed to clone buffer descriptor for completion barrier",
+                            ))
+                        })?;
+                        ctx.out_res.res_id_to_descriptor.insert(resource_id, desc);
+                    }
+                }
+
                 // Set output_buffer_count before passing the first output buffer.
                 if ctx.out_res.output_params_set() {
                     const OUTPUT_BUFFER_COUNT: usize = 32;
@@ -853,6 +899,7 @@ impl<D: DecoderBackend> Decoder<D> {
         &mut self,
         stream_id: StreamId,
         queue_type: QueueType,
+        wait_ctx: &WaitContext<Token>,
     ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
 
@@ -868,6 +915,21 @@ impl<D: DecoderBackend> Decoder<D> {
                 if let Some(session) = ctx.session.as_mut() {
                     session.reset()?;
                     ctx.is_resetting = true;
+                    // Remove all the buffer barriers we are waiting on.
+                    for polled_barrier in ctx.pending_responses.iter_mut().filter_map(|r| {
+                        if let PendingResponse::PollingBufferBarrier(desc) = r {
+                            Some(desc)
+                        } else {
+                            None
+                        }
+                    }) {
+                        wait_ctx.delete(polled_barrier).unwrap_or_else(|e| {
+                            base::warn!(
+                                "failed to remove buffer barrier from wait context: {:#}",
+                                e
+                            )
+                        });
+                    }
                     ctx.pending_responses.clear();
                     Ok(VideoCmdResponseType::Async(AsyncCmdTag::Clear {
                         stream_id,
@@ -952,7 +1014,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 let resp = self.queue_output_resource(stream_id, resource_id);
                 if resp.is_ok() {
                     if let Ok(ctx) = self.contexts.get_mut(&stream_id) {
-                        event_ret = Some((stream_id, ctx.output_pending_responses()));
+                        event_ret = Some((stream_id, ctx.output_pending_responses(wait_ctx)));
                     }
                 }
                 resp
@@ -981,7 +1043,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
             QueueClear {
                 stream_id,
                 queue_type,
-            } => self.clear_queue(stream_id, queue_type),
+            } => self.clear_queue(stream_id, queue_type, wait_ctx),
         };
 
         let cmd_ret = match cmd_response {
@@ -998,6 +1060,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
         &mut self,
         desc_map: &mut AsyncCmdDescMap,
         stream_id: u32,
+        wait_ctx: &WaitContext<Token>,
     ) -> Option<Vec<VideoEvtResponseType>> {
         // TODO(b/161774071): Switch the return value from Option to VideoResult or another
         // result that would allow us to return an error to the caller.
@@ -1049,12 +1112,24 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 if ctx.is_resetting {
                     vec![]
                 } else {
+                    // Do we need to wait for processing on the buffer to be completed before
+                    // passing it to the guest? If so add a barrier to our pending events.
+                    if let Some(desc) = ctx
+                        .out_res
+                        .frame_buf_id_to_res_id
+                        .get(&picture_buffer_id)
+                        .and_then(|res_id| ctx.out_res.res_id_to_descriptor.get(res_id))
+                    {
+                        let desc = Descriptor(desc.as_raw_descriptor());
+                        ctx.pending_responses
+                            .push_back(PendingResponse::BufferBarrier(desc));
+                    }
                     ctx.pending_responses
                         .push_back(PendingResponse::PictureReady {
                             picture_buffer_id,
                             timestamp,
                         });
-                    ctx.output_pending_responses()
+                    ctx.output_pending_responses(wait_ctx)
                 }
             }
             DecoderEvent::NotifyEndOfBitstreamBuffer(resource_id) => {
@@ -1077,7 +1152,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                     Ok(()) => {
                         ctx.pending_responses
                             .push_back(PendingResponse::FlushCompleted);
-                        ctx.output_pending_responses()
+                        ctx.output_pending_responses(wait_ctx)
                     }
                     Err(error) => {
                         // TODO(b/151810591): If `resp` is `libvda::decode::Response::Canceled`,
@@ -1135,5 +1210,33 @@ impl<D: DecoderBackend> Device for Decoder<D> {
         };
 
         Some(event_responses)
+    }
+
+    fn process_buffer_barrier(
+        &mut self,
+        stream_id: u32,
+        wait_ctx: &WaitContext<Token>,
+    ) -> Option<Vec<VideoEvtResponseType>> {
+        let ctx = match self.contexts.get_mut(&stream_id) {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                error!("failed to get a context for session {}: {}", stream_id, e);
+                return None;
+            }
+        };
+
+        match ctx.pending_responses.front() {
+            Some(PendingResponse::PollingBufferBarrier(desc)) => {
+                wait_ctx
+                    .delete(&Descriptor(desc.as_raw_descriptor()))
+                    .unwrap();
+                ctx.pending_responses.pop_front();
+            }
+            _ => {
+                error!("expected a buffer barrier, but found none");
+            }
+        }
+
+        Some(ctx.output_pending_responses(wait_ctx))
     }
 }
