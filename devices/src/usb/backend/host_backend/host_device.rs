@@ -41,6 +41,7 @@ use crate::usb::xhci::xhci_transfer::XhciTransfer;
 use crate::usb::xhci::xhci_transfer::XhciTransferState;
 use crate::usb::xhci::xhci_transfer::XhciTransferType;
 use crate::utils::AsyncJobQueue;
+use crate::utils::EventLoop;
 use crate::utils::FailHandle;
 
 #[derive(PartialEq, Eq)]
@@ -574,6 +575,14 @@ impl BackendDevice for Device {
             Ok(handle) => Ok(BackendTransferHandle::new(handle)),
             Err(e) => Err(e),
         }
+    }
+
+    fn detach_event_handler(&self, event_loop: &Arc<EventLoop>) -> Result<()> {
+        // usb_util's Device implements AsRawDescriptor so we can just pass self in the event
+        // loop to remove the fd.
+        event_loop
+            .remove_event_for_descriptor(self)
+            .map_err(Error::RemoveFromEventLoop)
     }
 }
 

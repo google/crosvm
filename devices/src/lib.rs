@@ -163,7 +163,7 @@ cfg_if::cfg_if! {
         pub use self::proxy::Error as ProxyError;
         pub use self::proxy::ProxyDevice;
         #[cfg(feature = "usb")]
-        pub use self::usb::backend::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
+        pub use self::usb::backend::device_provider::DeviceProvider;
         #[cfg(feature = "usb")]
         pub use self::usb::xhci::xhci_controller::XhciController;
         pub use self::vfio::VfioContainer;

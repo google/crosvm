@@ -100,7 +100,7 @@ use devices::Bus;
 use devices::BusDeviceObj;
 use devices::CoIommuDev;
 #[cfg(feature = "usb")]
-use devices::HostBackendDeviceProvider;
+use devices::DeviceProvider;
 #[cfg(target_arch = "x86_64")]
 use devices::HotPlugBus;
 #[cfg(target_arch = "x86_64")]
@@ -671,7 +671,7 @@ fn create_devices(
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
     fs_device_tubes: &mut Vec<Tube>,
-    #[cfg(feature = "usb")] usb_provider: HostBackendDeviceProvider,
+    #[cfg(feature = "usb")] usb_provider: DeviceProvider,
     #[cfg(feature = "gpu")] gpu_control_tube: Tube,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     iova_max_addr: &mut Option<u64>,
@@ -1587,7 +1587,7 @@ where
 
     #[cfg(feature = "usb")]
     let (usb_control_tube, usb_provider) =
-        HostBackendDeviceProvider::new().context("failed to create usb provider")?;
+        DeviceProvider::new().context("failed to create usb provider")?;
 
     // Masking signals is inherently dangerous, since this can persist across clones/execs. Do this
     // before any jailed devices have been spawned, so that we can catch any of them that fail very

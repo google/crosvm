@@ -30,6 +30,8 @@ pub enum Error {
     CreateBuffer(XhciTransferError),
     #[error("failed to create control tube: {0}")]
     CreateControlTube(TubeError),
+    #[error("failed to create host backend usb device: {0}")]
+    CreateHostUsbDevice(UsbUtilError),
     #[error("failed to create libusb context: {0}")]
     CreateLibUsbContext(UsbUtilError),
     #[error("failed to create transfer: {0}")]
@@ -61,6 +63,8 @@ pub enum Error {
     ReadBuffer(BufferError),
     #[error("failed to read control tube: {0}")]
     ReadControlTube(TubeError),
+    #[error("failed to remove device from event loop: {0}")]
+    RemoveFromEventLoop(UtilsError),
     #[error("failed to reset: {0}")]
     Reset(UsbUtilError),
     #[error("failed to set active config: {0}")]
