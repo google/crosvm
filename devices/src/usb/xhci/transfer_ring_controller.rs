@@ -64,7 +64,7 @@ impl TransferDescriptorHandler for TransferRingTrbHandler {
     }
 
     fn stop(&self) -> bool {
-        let backend = self.port.get_backend_device();
+        let backend = self.port.backend_device();
         if backend.is_some() {
             self.transfer_manager.cancel_all();
             true

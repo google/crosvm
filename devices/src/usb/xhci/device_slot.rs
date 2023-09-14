@@ -158,7 +158,7 @@ impl DeviceSlots {
     /// Reset the device connected to a specific port.
     pub fn reset_port(&self, port_id: u8) -> Result<()> {
         if let Some(port) = self.hub.get_port(port_id) {
-            if let Some(backend_device) = port.get_backend_device().as_mut() {
+            if let Some(backend_device) = port.backend_device().as_mut() {
                 backend_device.reset().map_err(Error::ResetPort)?;
             }
         }
@@ -506,7 +506,7 @@ impl DeviceSlot {
                 .set_slot_state(DeviceSlotState::Default);
         } else {
             let port = self.hub.get_port(port_id).ok_or(Error::GetPort(port_id))?;
-            match port.get_backend_device().as_mut() {
+            match port.backend_device().as_mut() {
                 Some(backend) => {
                     backend.set_address(self.slot_id as u32);
                 }
@@ -925,7 +925,7 @@ impl DeviceSlot {
                 self.create_stream_trcs(tr_dequeue_pointer, max_pstreams, device_context_index)?;
 
             if let Some(port) = self.hub.get_port(self.port_id.get()?) {
-                if let Some(backend_device) = port.get_backend_device().as_mut() {
+                if let Some(backend_device) = port.backend_device().as_mut() {
                     let mut endpoint_address = device_context_index / 2;
                     if device_context_index % 2 == 1 {
                         endpoint_address |= 1u8 << 7;
@@ -967,7 +967,7 @@ impl DeviceSlot {
         let endpoint_context = &mut device_context.endpoint_context[endpoint_index];
         if endpoint_context.get_max_primary_streams() > 0 {
             if let Some(port) = self.hub.get_port(self.port_id.get()?) {
-                if let Some(backend_device) = port.get_backend_device().as_mut() {
+                if let Some(backend_device) = port.backend_device().as_mut() {
                     let mut endpoint_address = device_context_index / 2;
                     if device_context_index % 2 == 1 {
                         endpoint_address |= 1u8 << 7;

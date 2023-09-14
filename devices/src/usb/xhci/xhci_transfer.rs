@@ -466,7 +466,7 @@ impl XhciTransfer {
         if self.validate_transfer()? {
             // Backend should invoke on transfer complete when transfer is completed.
             let port = self.port.clone();
-            let mut backend = port.get_backend_device();
+            let mut backend = port.backend_device();
             match &mut *backend {
                 Some(backend) => backend
                     .submit_transfer(self)

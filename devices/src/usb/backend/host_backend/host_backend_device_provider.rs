@@ -249,7 +249,7 @@ impl ProviderInner {
         let mut devices: [UsbControlAttachedDevice; USB_CONTROL_MAX_PORTS] = Default::default();
         for (result_index, &port_id) in ports.iter().enumerate() {
             match self.usb_hub.get_port(port_id).and_then(|p| {
-                p.get_backend_device()
+                p.backend_device()
                     .as_ref()
                     .map(|d| (d.get_vid(), d.get_pid()))
             }) {

@@ -95,7 +95,7 @@ impl UsbPort {
 
     /// Detach current connected backend. Returns false when there is no backend connected.
     pub fn detach(&self) -> Result<()> {
-        let mut locked = self.backend_device.lock();
+        let mut locked = self.backend_device();
         if locked.is_none() {
             return Err(Error::AlreadyDetached(self.port_id));
         }
@@ -110,12 +110,12 @@ impl UsbPort {
     }
 
     /// Get current connected backend.
-    pub fn get_backend_device(&self) -> MutexGuard<Option<Box<dyn XhciBackendDevice>>> {
+    pub fn backend_device(&self) -> MutexGuard<Option<Box<dyn XhciBackendDevice>>> {
         self.backend_device.lock()
     }
 
     fn is_attached(&self) -> bool {
-        self.backend_device.lock().is_some()
+        self.backend_device().is_some()
     }
 
     fn reset(&self) -> std::result::Result<(), InterrupterError> {
@@ -131,7 +131,7 @@ impl UsbPort {
     ) -> std::result::Result<(), InterrupterError> {
         info!("usb_hub: backend attached to port {}", self.port_id);
         let speed = device.get_speed();
-        let mut locked = self.backend_device.lock();
+        let mut locked = self.backend_device();
         assert!(locked.is_none());
         *locked = Some(device);
         self.portsc.clear_bits(PORTSC_PORT_SPEED_MASK);
