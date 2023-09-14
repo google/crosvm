@@ -1273,7 +1273,7 @@ pub fn create_pmem_device(
         GuestAddress(mapping_address),
         slot,
         arena_size,
-        Some(pmem_device_tube),
+        pmem_device_tube,
     )
     .context("failed to create pmem device")?;
 

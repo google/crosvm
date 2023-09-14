@@ -240,7 +240,7 @@ impl Pmem {
         mapping_address: GuestAddress,
         mapping_arena_slot: MemSlot,
         mapping_size: u64,
-        pmem_device_tube: Option<Tube>,
+        pmem_device_tube: Tube,
     ) -> SysResult<Pmem> {
         if mapping_size > usize::max_value() as u64 {
             return Err(SysError::new(libc::EOVERFLOW));
@@ -253,7 +253,7 @@ impl Pmem {
             mapping_address,
             mapping_arena_slot,
             mapping_size,
-            pmem_device_tube,
+            pmem_device_tube: Some(pmem_device_tube),
         })
     }
 }
