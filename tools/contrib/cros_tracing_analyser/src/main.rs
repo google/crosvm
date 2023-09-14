@@ -287,6 +287,14 @@ impl LatencyData {
                     layer_data.push(data);
                     break;
                 }
+            } else {
+                let data = LayerData {
+                    name: eventdata.stats[i].name.clone(),
+                    value: eventdata.stats[i + 1].time_stamp - eventdata.stats[i].time_stamp,
+                    children: Vec::new(),
+                };
+                index_counter.insert(i);
+                layer_data.push(data);
             }
         }
     }
