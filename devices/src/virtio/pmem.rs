@@ -147,7 +147,7 @@ async fn handle_queue(
     queue: &mut Queue,
     mut queue_event: EventAsync,
     interrupt: Interrupt,
-    pmem_device_tube: Tube,
+    pmem_device_tube: &Tube,
     mapping_arena_slot: u32,
     mapping_size: usize,
 ) {
@@ -162,7 +162,7 @@ async fn handle_queue(
 
         let written = match handle_request(
             &mut avail_desc,
-            &pmem_device_tube,
+            pmem_device_tube,
             mapping_arena_slot,
             mapping_size,
         ) {
@@ -179,7 +179,7 @@ async fn handle_queue(
 
 fn run_worker(
     queue: &mut Queue,
-    pmem_device_tube: Tube,
+    pmem_device_tube: &Tube,
     interrupt: Interrupt,
     kill_evt: Event,
     mapping_arena_slot: u32,
@@ -218,7 +218,7 @@ fn run_worker(
 }
 
 pub struct Pmem {
-    worker_thread: Option<WorkerThread<Queue>>,
+    worker_thread: Option<WorkerThread<(Queue, Tube)>>,
     base_features: u64,
     disk_image: Option<File>,
     mapping_address: GuestAddress,
@@ -315,13 +315,13 @@ impl VirtioDevice for Pmem {
         self.worker_thread = Some(WorkerThread::start("v_pmem", move |kill_event| {
             run_worker(
                 &mut queue,
-                pmem_device_tube,
+                &pmem_device_tube,
                 interrupt,
                 kill_event,
                 mapping_arena_slot,
                 mapping_size,
             );
-            queue
+            (queue, pmem_device_tube)
         }));
 
         Ok(())
@@ -329,7 +329,8 @@ impl VirtioDevice for Pmem {
 
     fn reset(&mut self) -> bool {
         if let Some(worker_thread) = self.worker_thread.take() {
-            let _queue = worker_thread.stop();
+            let (_queue, pmem_device_tube) = worker_thread.stop();
+            self.pmem_device_tube = Some(pmem_device_tube);
             return true;
         }
         false
@@ -337,7 +338,8 @@ impl VirtioDevice for Pmem {
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
-            let queue = worker_thread.stop();
+            let (queue, pmem_device_tube) = worker_thread.stop();
+            self.pmem_device_tube = Some(pmem_device_tube);
             return Ok(Some(BTreeMap::from([(0, queue)])));
         }
         Ok(None)
