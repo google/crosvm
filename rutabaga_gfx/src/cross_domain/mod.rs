@@ -701,6 +701,9 @@ impl RutabagaContext for CrossDomainContext {
                         strides: reqs.strides,
                         offsets: reqs.offsets,
                         modifier: reqs.modifier,
+                        guest_cpu_mappable: (resource_create_blob.blob_flags
+                            & RUTABAGA_BLOB_FLAG_USE_MAPPABLE)
+                            != 0,
                     };
 
                     Ok(RutabagaResource {

@@ -421,6 +421,7 @@ mod tests {
                                 width: H264_STREAM_WIDTH as _,
                                 height: H264_STREAM_HEIGHT as _,
                                 format: out_format,
+                                guest_cpu_mappable: false,
                             },
                         )
                         .unwrap();

@@ -100,6 +100,8 @@ pub struct Resource3DInfo {
     pub strides: [u32; 4],
     pub offsets: [u32; 4],
     pub modifier: u64,
+    /// Whether the buffer can be accessed by the guest CPU.
+    pub guest_cpu_mappable: bool,
 }
 
 /// A unique identifier for a device.

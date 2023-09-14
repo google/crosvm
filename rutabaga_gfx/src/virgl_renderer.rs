@@ -369,6 +369,7 @@ impl VirglRenderer {
             strides: query.out_strides,
             offsets: query.out_offsets,
             modifier: query.out_modifier,
+            guest_cpu_mappable: false,
         })
     }
 

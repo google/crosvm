@@ -784,6 +784,7 @@ impl VirtioGpu {
                 },
             ],
             modifier: q.modifier,
+            guest_cpu_mappable: q.guest_cpu_mappable,
         }))
     }
 

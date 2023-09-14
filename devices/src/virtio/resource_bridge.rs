@@ -34,6 +34,8 @@ pub struct BufferInfo {
     pub handle: SafeDescriptor,
     pub planes: [PlaneInfo; RESOURE_PLANE_NUM],
     pub modifier: u64,
+    /// Whether the buffer can be accessed by the guest CPU.
+    pub guest_cpu_mappable: bool,
 }
 
 pub const RESOURE_PLANE_NUM: usize = 4;
