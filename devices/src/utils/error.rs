@@ -15,6 +15,8 @@ pub enum Error {
     CreateWaitContext(SysError),
     #[error("event loop already failed due to previous errors")]
     EventLoopAlreadyFailed,
+    #[error("attempted to resume polling descriptor without handler")]
+    EventLoopMissingHandler,
     #[error("failed to read event: {0}")]
     ReadEvent(SysError),
     #[error("failed to start thread: {0}")]

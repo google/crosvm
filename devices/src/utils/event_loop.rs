@@ -90,7 +90,7 @@ impl EventLoop {
             .spawn(move || {
                 loop {
                     if fail_handle.failed() {
-                        error!("xhci controller already failed, stopping event ring");
+                        error!("event loop already failed");
                         return;
                     }
                     let events = match poll_ctx.wait() {
@@ -173,7 +173,7 @@ impl EventLoop {
             .map_err(Error::WaitContextAddDescriptor)
     }
 
-    /// Removes event for this `descriptor`. This function returns false if it fails.
+    /// Removes event for this `descriptor`.
     ///
     /// EventLoop does not guarantee all events for `descriptor` is handled.
     pub fn remove_event_for_descriptor(&self, descriptor: &dyn AsRawDescriptor) -> Result<()> {
@@ -188,6 +188,37 @@ impl EventLoop {
             .lock()
             .remove(&Descriptor(descriptor.as_raw_descriptor()));
         Ok(())
+    }
+
+    /// Pauses polling on the given `descriptor`. It keeps a reference to the `descriptor` and its
+    /// handler so it can be resumed by calling `resume_event_for_descriptor()`.
+    pub fn pause_event_for_descriptor(&self, descriptor: &dyn AsRawDescriptor) -> Result<()> {
+        if self.fail_handle.failed() {
+            return Err(Error::EventLoopAlreadyFailed);
+        }
+        // This might fail due to epoll syscall. Check epoll_ctl(2).
+        self.poll_ctx
+            .delete(descriptor)
+            .map_err(Error::WaitContextDeleteDescriptor)?;
+        Ok(())
+    }
+
+    /// Resumes polling on the given `descriptor` with the previously-provided handler. If
+    /// `descriptor` was not paused beforehand, this function does nothing. If `descriptor` does
+    /// not exist in the event loop, it returns an error.
+    /// `event_type` does not need to match the previously registered event type.
+    pub fn resume_event_for_descriptor(
+        &self,
+        descriptor: &dyn AsRawDescriptor,
+        event_type: EventType,
+    ) -> Result<()> {
+        let handler = self
+            .handlers
+            .lock()
+            .get(&Descriptor(descriptor.as_raw_descriptor()))
+            .ok_or(Error::EventLoopMissingHandler)?
+            .clone();
+        self.add_event(descriptor, event_type, handler)
     }
 
     /// Stops this event loop asynchronously. Previous events might not be handled.
