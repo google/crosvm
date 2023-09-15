@@ -28,6 +28,7 @@ enum Mode {
     Average(Average),
     Flamegraph(Flamegraph),
     List(List),
+    Histogram(Histogram),
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -74,6 +75,18 @@ struct List {
     /// top <n> time consuming events
     /// unspecified: output list for all event
     count: Option<usize>,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// output json file for histogram
+#[argh(subcommand, name = "histogram")]
+struct Histogram {
+    #[argh(option)]
+    /// path to the input .dat file
+    input: String,
+    #[argh(option)]
+    /// path to the output JSON file
+    output_json: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,6 +159,7 @@ impl EventData {
     // Populates all cros_tracing events name and latency in LatencyData
     fn calculate_latency_data(&self) -> LatencyData {
         let mut latency_data: LatencyData = Default::default();
+        let mut histogram_data = HashMap::new();
         for i in 0..self.stats.len() {
             if self.stats[i].details.contains("Enter") {
                 let split_enter = self.stats[i]
@@ -170,12 +184,17 @@ impl EventData {
                                 latency: time,
                             };
                             latency_data.stats.push(element);
+                            histogram_data
+                                .entry(event_name.to_string())
+                                .or_insert_with(Vec::new)
+                                .push(time);
                             break;
                         }
                     }
                 }
             }
         }
+        latency_data.histogram = histogram_data;
         latency_data
     }
 }
@@ -191,6 +210,7 @@ struct LatencyInformation {
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct LatencyData {
     stats: Vec<LatencyInformation>,
+    histogram: HashMap<String, Vec<u64>>,
 }
 
 impl LatencyData {
@@ -201,27 +221,30 @@ impl LatencyData {
         count_filter: Option<u64>,
     ) -> Vec<LayerData> {
         let mut base_layer_data: Vec<LayerData> = Vec::new();
-        for i in 0..self.stats.len() {
-            if !self.stats[i]
-                .event_name
-                .contains(&*function_filter.as_ref().unwrap())
-            {
-                continue;
-            }
+        let filtered_stats = if let Some(f) = &function_filter {
+            self.stats
+                .clone()
+                .into_iter()
+                .filter(|s| s.event_name.contains(f))
+                .collect()
+        } else {
+            self.stats.clone()
+        };
+        for stat in filtered_stats {
             let mut layer_data: Vec<LayerData> = Vec::new();
             let mut index_counter = HashSet::new();
-            let pid = eventdata.stats[self.stats[i].enter_index].pid;
+            let pid = eventdata.stats[stat.enter_index].pid;
             LatencyData::create_layer(
                 eventdata,
-                self.stats[i].enter_index,
-                self.stats[i].exit_index,
+                stat.enter_index,
+                stat.exit_index,
                 pid,
                 &mut layer_data,
                 &mut index_counter,
             );
             let data = LayerData {
-                name: self.stats[i].event_name.clone(),
-                value: self.stats[i].latency,
+                name: stat.event_name.clone(),
+                value: stat.latency,
                 children: layer_data,
             };
             base_layer_data.push(data);
@@ -257,11 +280,12 @@ impl LatencyData {
             if let Some(m) = eventdata.stats[i].name.find("enter") {
                 index_counter.insert(i);
                 // "m" represents e(nter),
-                // m + "enter".len() represents the first character of syscall_name
+                // m + "enter".len() - 1 represents the first character of syscall_name
                 // example: write
-                let syscall_name = &eventdata.stats[i].name[m + "enter".len()..];
+                let syscall_name = &eventdata.stats[i].name[m + "enter".len() - 1..];
                 let name = format!("sys_{syscall_name}");
                 let exit_name = format!("sys_exit_{syscall_name}");
+                println!("{:?}", name);
                 for j in i + 1..exit_index {
                     if eventdata.stats[j].pid != sys_enter_pid {
                         continue;
@@ -269,6 +293,7 @@ impl LatencyData {
                     if !eventdata.stats[j].name.contains(&exit_name) {
                         continue;
                     }
+                    index_counter.insert(j);
                     let layer_time = eventdata.stats[j].time_stamp - eventdata.stats[i].time_stamp;
                     let mut new_layer: Vec<LayerData> = Vec::new();
                     LatencyData::create_layer(
@@ -411,6 +436,21 @@ fn main() -> anyhow::Result<()> {
             }
             return Ok(());
         }
+        Mode::Histogram(histogram) => {
+            let mut input = Input::new(&histogram.input)?;
+            let stats = HandlerImplement::process(&mut input).unwrap();
+            let output = histogram.output_json;
+            if std::path::Path::new(&output)
+                .extension()
+                .and_then(OsStr::to_str)
+                != Some("json")
+            {
+                return Err(anyhow!("file extension must be .json"));
+            }
+            let histogram_data = stats.calculate_latency_data().histogram;
+
+            write_to_file(histogram_data, &output);
+        }
     }
     Ok(())
 }
@@ -493,6 +533,9 @@ mod tests {
     fn calculate_latency_data_test() {
         let data = setup();
         let latency_data = data.calculate_latency_data();
+        let expected_vec = vec![500];
+        let expected_hashmap: HashMap<String, Vec<u64>> =
+            HashMap::from([("lookup".to_string(), expected_vec)]);
         let expected_data = LatencyData {
             stats: [LatencyInformation {
                 event_name: "lookup".to_string(),
@@ -501,6 +544,7 @@ mod tests {
                 latency: 500,
             }]
             .to_vec(),
+            histogram: expected_hashmap,
         };
         assert_eq!(latency_data, expected_data);
     }

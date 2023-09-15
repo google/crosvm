@@ -14,7 +14,7 @@
     .width(960);
   chart.selfValue(true);
 
-  d3.json("tracing_data.json")
+  d3.json("./src/tracing_data.json")
     .then(data => {
       d3.select("#chart")
         .datum(data)

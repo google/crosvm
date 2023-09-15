@@ -24,6 +24,27 @@ Print list of function names and sum of latency in the trace.dat. Example log:
 #10: getattr: 301824 usec
 ```
 
+## How to generate histogram
+
+```
+$ cargo run -- histogram --input trace.dat --output histogram.json
+```
+
+To run the python script that generates the histogram plots, you need to install the `matplotlib`
+python library.
+
+```
+$ sudo apt-get install python3-matplotlib
+```
+
+To visualize the histogram,
+
+```
+$ python3 histogram.py ./src/histogram.json
+```
+
+And then histograms for each cros_tracing event will be displayed.
+
 ## How to calculate event average latency
 
 ```
