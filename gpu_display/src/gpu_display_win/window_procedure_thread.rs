@@ -237,7 +237,6 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         // We don't implement Default for WindowProcedureThreadBuilder so that the builder function
         // is the only way to create WindowProcedureThreadBuilder.
         WindowProcedureThreadBuilder::<T> {
-            #[cfg(feature = "kiwi")]
             display_tube: None,
             #[cfg(feature = "kiwi")]
             ime_tube: None,
@@ -245,7 +244,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         }
     }
 
-    fn start_thread(#[cfg(feature = "kiwi")] gpu_main_display_tube: Option<Tube>) -> Result<Self> {
+    fn start_thread(gpu_main_display_tube: Option<Tube>) -> Result<Self> {
         let (message_router_handle_sender, message_router_handle_receiver) = channel();
         let message_loop_state = Arc::new(AtomicI32::new(MessageLoopState::NotStarted as i32));
         let thread_terminated_event = Event::new().unwrap();
@@ -255,8 +254,6 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
             .try_clone()
             .map_err(|e| anyhow!("Failed to clone thread_terminated_event: {}", e))?;
 
-        #[cfg(not(feature = "kiwi"))]
-        let gpu_main_display_tube = None;
         let thread = match ThreadBuilder::new()
             .name("gpu_display_wndproc".into())
             .spawn(move || {
@@ -637,7 +634,6 @@ unsafe impl<T: HandleWindowMessage> Send for WindowProcedureThread<T> {}
 
 #[derive(Deserialize, Serialize)]
 pub struct WindowProcedureThreadBuilder<T: HandleWindowMessage> {
-    #[cfg(feature = "kiwi")]
     display_tube: Option<Tube>,
     #[cfg(feature = "kiwi")]
     ime_tube: Option<Tube>,
@@ -648,7 +644,6 @@ pub struct WindowProcedureThreadBuilder<T: HandleWindowMessage> {
 }
 
 impl<T: HandleWindowMessage> WindowProcedureThreadBuilder<T> {
-    #[cfg(feature = "kiwi")]
     pub fn set_display_tube(&mut self, display_tube: Option<Tube>) -> &mut Self {
         self.display_tube = display_tube;
         self
@@ -668,11 +663,10 @@ impl<T: HandleWindowMessage> WindowProcedureThreadBuilder<T> {
     pub fn start_thread(self) -> Result<WindowProcedureThread<T>> {
         cfg_if::cfg_if! {
             if #[cfg(feature = "kiwi")] {
-                let Self { ime_tube, display_tube, .. } = self;
-                let ime_tube = ime_tube.ok_or_else(|| anyhow!("The ime tube is not set."))?;
-                WindowProcedureThread::<T>::start_thread(display_tube, ime_tube)
+                let ime_tube = self.ime_tube.ok_or_else(|| anyhow!("The ime tube is not set."))?;
+                WindowProcedureThread::<T>::start_thread(self.display_tube, ime_tube)
             } else {
-                WindowProcedureThread::<T>::start_thread()
+                WindowProcedureThread::<T>::start_thread(None)
             }
         }
     }
