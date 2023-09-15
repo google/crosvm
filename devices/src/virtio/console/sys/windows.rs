@@ -106,6 +106,12 @@ pub(in crate::virtio::console) fn spawn_input_thread(
             thread_in_avail_evt.signal().unwrap();
         }
 
+        match rx.wait_for_client_connection_overlapped_blocking(&kill_evt) {
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => return,
+            Err(e) => panic!("failed to wait for client: {}", e),
+            Ok(()) => (),
+        }
+
         let mut read_overlapped =
             named_pipes::OverlappedWrapper::new(true).expect("failed to create OverlappedWrapper");
         loop {
