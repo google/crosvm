@@ -80,8 +80,6 @@ members = [
     "system_api",
     "third_party/vmm_vhost",
     "tools/impl/catapult_converter",
-    "tpm2-sys",
-    "tpm2",
     "usb_sys",
     "usb_util",
     "vendor/generic/anti_tamper",
@@ -168,10 +166,6 @@ swap = ["aarch64/swap", "arch/swap", "devices/swap", "vm_control/swap", "x86_64/
 
 ## Enables collection of VM statistics.
 stats = ["devices/stats"]
-
-## Enables trusted platform module emulation for the guest. This relies on the software emulated
-## TPM implementation from libtpm2 which is suited only for testing purposes.
-tpm = ["devices/tpm"]
 
 ## Enables USB host device passthrough via an emulated XHCI controller.
 ## USB is supported only on unix/linux. The feature is a no-op on windows.
@@ -332,7 +326,6 @@ all-default = [
     "slirp",
     "swap",
     "trace_marker",
-    "tpm",
     "vaapi",
     "video-decoder",
     "video-encoder",
@@ -371,7 +364,6 @@ all-armhf = [
     "gdb",
     "libvda-stub",
     "net",
-    "tpm",
 ]
 
 ## All features that are compiled and tested for mingw64

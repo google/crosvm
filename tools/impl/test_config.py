@@ -15,8 +15,6 @@ BUILD_FEATURES: Dict[str, str] = {
 # Do not build these on riscv64. They don't yet have riscv64 support of the backing libraries in the
 # dev container.
 DO_NOT_BUILD_RISCV64 = [
-    "tpm2",
-    "tpm2-sys",
     "libvda",
     "libva",
     "ffmpeg",

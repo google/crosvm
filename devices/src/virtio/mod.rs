@@ -20,7 +20,7 @@ pub mod net;
 pub mod pvclock;
 mod queue;
 mod rng;
-#[cfg(any(feature = "tpm", feature = "vtpm"))]
+#[cfg(feature = "vtpm")]
 mod tpm;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 mod video;
@@ -88,9 +88,9 @@ pub use self::queue::Queue;
 pub use self::queue::QueueConfig;
 pub use self::rng::Rng;
 pub use self::scsi::Device as ScsiDevice;
-#[cfg(any(feature = "tpm", feature = "vtpm"))]
+#[cfg(feature = "vtpm")]
 pub use self::tpm::Tpm;
-#[cfg(any(feature = "tpm", feature = "vtpm"))]
+#[cfg(feature = "vtpm")]
 pub use self::tpm::TpmBackend;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 pub use self::video::VideoDevice;

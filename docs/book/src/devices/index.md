@@ -27,8 +27,7 @@ Here is a (non-comprehensive) list of emulated devices provided by crosvm.
 - [`pmem`] - Persistent memory.
 - [`rng`] - Entropy source used to seed guest OS's entropy pool.
 - [`snd`] - Encodes and decodes audio streams.
-- [`tpm`] - Creates a TPM (Trusted Platform Module) device backed by libtpm2 simulator or vTPM
-  daemon.
+- [`tpm`] - Creates a TPM (Trusted Platform Module) device backed by vTPM daemon.
 - [`video`] - Allows the guest to leverage the host's video capabilities.
 - [`wayland`] - Allows the guest to use the host's Wayland socket.
 - [`vsock`] - Enables use of virtual sockets for the guest.

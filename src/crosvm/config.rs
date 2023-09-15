@@ -864,8 +864,6 @@ pub struct Config {
     #[cfg(all(windows, feature = "audio"))]
     pub snd_split_config: Option<SndSplitConfig>,
     pub socket_path: Option<PathBuf>,
-    #[cfg(feature = "tpm")]
-    pub software_tpm: bool,
     #[cfg(feature = "audio")]
     pub sound: Option<PathBuf>,
     pub strict_balloon: bool,
@@ -1067,8 +1065,6 @@ impl Default for Config {
             #[cfg(all(windows, feature = "audio"))]
             snd_split_config: None,
             socket_path: None,
-            #[cfg(feature = "tpm")]
-            software_tpm: false,
             #[cfg(feature = "audio")]
             sound: None,
             strict_balloon: false,

@@ -59,8 +59,6 @@ use devices::BusDeviceObj;
 use devices::IommuDevType;
 use devices::PciAddress;
 use devices::PciDevice;
-#[cfg(feature = "tpm")]
-use devices::SoftwareTpm;
 use devices::VfioDevice;
 use devices::VfioDeviceType;
 use devices::VfioPciDevice;
@@ -483,49 +481,6 @@ pub fn create_virtio_snd_device(
     } else {
         None
     };
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail,
-    })
-}
-
-#[cfg(feature = "tpm")]
-pub fn create_software_tpm_device(
-    protection_type: ProtectionType,
-    jail_config: &Option<JailConfig>,
-) -> DeviceResult {
-    use std::ffi::CString;
-    use std::fs;
-    use std::process;
-
-    let (jail, tpm_storage) = if let Some(jail_config) = jail_config {
-        let mut config = SandboxConfig::new(jail_config, "tpm_device");
-        config.bind_mounts = true;
-        let mut jail =
-            create_sandbox_minijail(&jail_config.pivot_root, MAX_OPEN_FILES_DEFAULT, &config)?;
-
-        let pid = process::id();
-        let crosvm_uid = geteuid();
-        let crosvm_gid = getegid();
-        let tpm_pid_dir = format!("/run/vm/tpm.{}", pid);
-        let tpm_storage = PathBuf::from(&tpm_pid_dir);
-        fs::create_dir_all(&tpm_storage).with_context(|| {
-            format!("failed to create tpm storage dir {}", tpm_storage.display())
-        })?;
-        let tpm_pid_dir_c = CString::new(tpm_pid_dir).expect("no nul bytes");
-        chown(&tpm_pid_dir_c, crosvm_uid, crosvm_gid).context("failed to chown tpm storage")?;
-
-        jail.mount_bind(&tpm_storage, &tpm_storage, true)?;
-
-        (Some(jail), tpm_storage)
-    } else {
-        // Path used inside cros_sdk which does not have /run/vm.
-        (None, PathBuf::from("/tmp/tpm-simulator"))
-    };
-
-    let backend = SoftwareTpm::new(tpm_storage).context("failed to create SoftwareTpm")?;
-    let dev = virtio::Tpm::new(Box::new(backend), virtio::base_features(protection_type));
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),

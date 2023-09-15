@@ -383,16 +383,6 @@ fn create_virtio_devices(
         devs.push(create_rng_device(cfg.protection_type, &cfg.jail_config)?);
     }
 
-    #[cfg(feature = "tpm")]
-    {
-        if cfg.software_tpm {
-            devs.push(create_software_tpm_device(
-                cfg.protection_type,
-                &cfg.jail_config,
-            )?);
-        }
-    }
-
     #[cfg(feature = "vtpm")]
     {
         if cfg.vtpm_proxy {

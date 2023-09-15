@@ -2021,13 +2021,6 @@ pub struct RunCommand {
     /// path to put the control socket. If PATH is a directory, a name will be generated
     pub socket: Option<PathBuf>,
 
-    #[cfg(feature = "tpm")]
-    #[argh(switch)]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite_option)]
-    /// enable a software emulated trusted platform module device
-    pub software_tpm: Option<bool>,
-
     #[cfg(feature = "audio")]
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
@@ -2816,11 +2809,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         {
             cfg.vhost_scmi = cmd.vhost_scmi.unwrap_or_default();
-        }
-
-        #[cfg(feature = "tpm")]
-        {
-            cfg.software_tpm = cmd.software_tpm.unwrap_or_default();
         }
 
         #[cfg(feature = "vtpm")]
