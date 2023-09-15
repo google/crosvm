@@ -36,7 +36,8 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container",
+      "NEXTEST_PROFILE": "postsubmit"
     },
     "luci_context": {
       "realm": {
@@ -64,7 +65,8 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container",
+      "NEXTEST_PROFILE": "postsubmit"
     },
     "luci_context": {
       "realm": {
@@ -135,6 +137,7 @@
       "/scratch/cargo_target/crosvm/x86_64-unknown-linux-gnu/x86_64-unknown-linux-gnu/release/crosvm",
       "--base-dir",
       "/scratch/cargo_target/crosvm",
+      "--upload",
       "--builder-name",
       "builder",
       "--log-url",

@@ -267,7 +267,9 @@ def main(
     skip_str = "[yellow]skip[/yellow]"
     unit_test_str = "Run on host" if not no_unit_tests else skip_str
     integration_test_str = dut_str if dut else skip_str
+    profile = os.environ.get("NEXTEST_PROFILE", "default")
     console.print(f"Running tests for [green]{triple}[/green]")
+    console.print(f"Profile: [green]{profile}[/green]")
     console.print(f"With features: [green]{features}[/green]")
     console.print(f"no-default-features: [green]{no_default_features}[/green]")
     console.print()

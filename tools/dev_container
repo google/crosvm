@@ -70,6 +70,8 @@ COMMON_ARGS = [
     "--device /dev/kvm",
     # Enable terminal colors
     f"--env TERM={os.environ.get('TERM', 'xterm-256color')}",
+    # Pass through NEXTEST_PROFILE for use by run_tests.
+    f"--env NEXTEST_PROFILE",
 ]
 
 DOCKER_ARGS = [

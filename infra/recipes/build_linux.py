@@ -85,9 +85,10 @@ def RunSteps(api, properties):
         )
         check_list = result.stdout.strip().split("\n")
         for check in check_list:
-            api.crosvm.step_in_container(
-                "tools/presubmit %s" % check, ["tools/presubmit", "--no-delta", check]
-            )
+            with api.context(env={"NEXTEST_PROFILE": properties.profile}):
+                api.crosvm.step_in_container(
+                    "tools/presubmit %s" % check, ["tools/presubmit", "--no-delta", check]
+                )
 
         with api.step.nest("Collect binary sizes"):
             collect_binary_sizes(api, properties)
@@ -99,7 +100,7 @@ def GenTests(api):
             "build_x86_64",
             api.buildbucket.ci_build(project="crosvm/crosvm"),
         )
-        + api.properties(BuildLinuxProperties(test_arch="x86_64"))
+        + api.properties(BuildLinuxProperties(test_arch="x86_64", profile="postsubmit"))
         + api.step_data(
             "Collect binary sizes.Build crosvm releases",
             stdout=api.raw_io.output_text(
