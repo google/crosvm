@@ -288,7 +288,7 @@ def build_if_needed(arch: Arch, reset: bool = False):
             "-F qcow2",
             f"-b {base_img}",
             rootfs_img,
-            "4G",
+            "8G",
         ).fg(quiet=True)
 
 

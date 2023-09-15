@@ -59,8 +59,9 @@ upload: $(LOCAL_IMAGE)
 
 # Download debian bullseye as base image for the testvm.
 $(TARGET)/debian.qcow2:
-	wget $(DEBIAN_URL)/debian-12-generic-$(DEBIAN_ARCH)-daily-20230913-1502.qcow2 -O $@
-	qemu-img resize $@ 4G
+	wget $(DEBIAN_URL)/debian-12-generic-$(DEBIAN_ARCH)-daily-20230913-1502.qcow2 -O $@.tmp
+	qemu-img resize $@.tmp 8G
+	mv $@.tmp $@
 
 # The cloud init file contains instructions for how to set up the VM when it's
 # first booted.
