@@ -259,33 +259,34 @@ impl Name {
 }
 
 /// Package object. 'children' represents the ACPI objects contained in this package.
-pub struct Package<'a> {
-    children: Vec<&'a dyn Aml>,
+pub struct Package {
+    children_bytes: Vec<u8>,
 }
 
-impl<'a> Aml for Package<'a> {
+impl Aml for Package {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = vec![self.children.len() as u8];
-        for child in &self.children {
-            child.to_aml_bytes(&mut bytes);
-        }
-
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
-
-        bytes.insert(0, PACKAGEOP);
-
-        aml.append(&mut bytes);
+        let pkg_length = create_pkg_length(&self.children_bytes, true);
+        aml.append(
+            &mut [
+                &[PACKAGEOP],
+                pkg_length.as_slice(),
+                self.children_bytes.as_slice(),
+            ]
+            .concat(),
+        );
     }
 }
 
-impl<'a> Package<'a> {
+impl Package {
     /// Create Package object:
-    pub fn new(children: Vec<&'a dyn Aml>) -> Self {
-        Package { children }
+    pub fn new(children: Vec<&dyn Aml>) -> Package {
+        let mut bytes = vec![children.len() as u8];
+        for child in &children {
+            child.to_aml_bytes(&mut bytes);
+        }
+        Package {
+            children_bytes: bytes,
+        }
     }
 }
 
