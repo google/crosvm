@@ -5,8 +5,6 @@
 use std::marker::PhantomData;
 
 use base::info;
-#[cfg(feature = "kiwi")]
-use battlestar::phenotype;
 use serde::Deserialize;
 use serde::Serialize;
 use winapi::um::winuser::GetSystemMetrics;
@@ -37,11 +35,7 @@ impl<T: ProvideDisplayData> DisplayModeTrait for WinDisplayMode<T> {
     }
 
     fn get_virtual_display_size(&self) -> (u32, u32) {
-        #[cfg(feature = "kiwi")]
-        let is_4k_uhd_enabled = phenotype!(kiwi_emulator_feature, get_enable_4k_uhd_resolution);
-        #[cfg(not(feature = "kiwi"))]
-        let is_4k_uhd_enabled = false;
-        self.get_virtual_display_size_4k_uhd(is_4k_uhd_enabled)
+        self.get_virtual_display_size_4k_uhd(vm_control_product::is_4k_uhd_enabled())
     }
 
     fn get_virtual_display_size_4k_uhd(&self, is_4k_uhd_enabled: bool) -> (u32, u32) {

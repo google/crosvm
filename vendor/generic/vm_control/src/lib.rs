@@ -13,3 +13,7 @@ pub enum ServiceSendToGpu {}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum GpuSendToMain {}
+
+pub fn is_4k_uhd_enabled() -> bool {
+    false
+}
