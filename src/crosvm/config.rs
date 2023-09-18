@@ -903,7 +903,7 @@ pub struct Config {
     pub virtio_switches: Vec<PathBuf>,
     pub virtio_trackpad: Vec<TouchDeviceOption>,
     pub vsock: Option<VsockConfig>,
-    #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
+    #[cfg(feature = "vtpm")]
     pub vtpm_proxy: bool,
     pub wayland_socket_paths: BTreeMap<String, PathBuf>,
     pub x_display: Option<String>,
@@ -1105,7 +1105,7 @@ impl Default for Config {
             virtio_snds: Vec::new(),
             virtio_switches: Vec::new(),
             virtio_trackpad: Vec::new(),
-            #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
+            #[cfg(feature = "vtpm")]
             vtpm_proxy: false,
             wayland_socket_paths: BTreeMap::new(),
             x_display: None,

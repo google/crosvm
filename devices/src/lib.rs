@@ -31,7 +31,7 @@ mod suspendable;
 mod sys;
 mod virtcpufreq;
 pub mod virtio;
-#[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
+#[cfg(feature = "vtpm")]
 mod vtpm_proxy;
 
 cfg_if::cfg_if! {
@@ -134,7 +134,7 @@ pub use self::suspendable::Suspendable;
 pub use self::virtcpufreq::VirtCpufreq;
 pub use self::virtio::VirtioMmioDevice;
 pub use self::virtio::VirtioPciDevice;
-#[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
+#[cfg(feature = "vtpm")]
 pub use self::vtpm_proxy::VtpmProxy;
 
 cfg_if::cfg_if! {

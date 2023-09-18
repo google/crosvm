@@ -65,7 +65,7 @@ use devices::VfioDevice;
 use devices::VfioDeviceType;
 use devices::VfioPciDevice;
 use devices::VfioPlatformDevice;
-#[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
+#[cfg(feature = "vtpm")]
 use devices::VtpmProxy;
 use hypervisor::ProtectionType;
 use hypervisor::Vm;
@@ -522,7 +522,7 @@ pub fn create_software_tpm_device(
     })
 }
 
-#[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
+#[cfg(feature = "vtpm")]
 pub fn create_vtpm_proxy_device(
     protection_type: ProtectionType,
     jail_config: &Option<JailConfig>,

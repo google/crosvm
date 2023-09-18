@@ -2339,7 +2339,7 @@ pub struct RunCommand {
     ///         use (Linux only). Defaults to /dev/vhost-vsock.
     pub vsock: Option<VsockConfig>,
 
-    #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
+    #[cfg(feature = "vtpm")]
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -2816,7 +2816,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.software_tpm = cmd.software_tpm.unwrap_or_default();
         }
 
-        #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
+        #[cfg(feature = "vtpm")]
         {
             cfg.vtpm_proxy = cmd.vtpm_proxy.unwrap_or_default();
         }

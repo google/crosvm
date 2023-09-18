@@ -396,7 +396,7 @@ fn create_virtio_devices(
         }
     }
 
-    #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
+    #[cfg(feature = "vtpm")]
     {
         if cfg.vtpm_proxy {
             devs.push(create_vtpm_proxy_device(
