@@ -12,7 +12,6 @@ path = "tests/process.rs"
 harness = false
 
 [features]
-chromeos = []
 proto_tube = ["protobuf"]
 seccomp_trace = []
 

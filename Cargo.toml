@@ -383,7 +383,7 @@ all-mingw64 = [
 all-msvc64 = [ "all-mingw64" ]
 
 ## All features that are enabled in ChromeOS builds.
-all-chromeos = ["base/chromeos", "audio_cras", "devices/chromeos", "panic-memfd", "arc_quota", "vtpm", "registered_events"]
+all-chromeos = ["audio_cras", "panic-memfd", "arc_quota", "vtpm", "registered_events"]
 
 # Deprecated feature flag. Remove after ChromeOS-side is updated.
 chromeos = ["all-chromeos"]
