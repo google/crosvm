@@ -66,6 +66,7 @@ use crate::pci::PciBarConfiguration;
 use crate::pci::PciBarIndex;
 use crate::pci::PciBarPrefetchable;
 use crate::pci::PciBarRegionType;
+use crate::pci::PciBaseSystemPeripheralSubclass;
 use crate::pci::PciCapability;
 use crate::pci::PciCapabilityID;
 use crate::pci::PciClassCode;
@@ -75,9 +76,14 @@ use crate::pci::PciDeviceError;
 use crate::pci::PciDisplaySubclass;
 use crate::pci::PciHeaderType;
 use crate::pci::PciId;
+use crate::pci::PciInputDeviceSubclass;
 use crate::pci::PciInterruptPin;
 use crate::pci::PciMassStorageSubclass;
+use crate::pci::PciMultimediaSubclass;
+use crate::pci::PciNetworkControllerSubclass;
+use crate::pci::PciSimpleCommunicationControllerSubclass;
 use crate::pci::PciSubclass;
+use crate::pci::PciWirelessControllerSubclass;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 #[cfg(feature = "pci-hotplug")]
 use crate::HotPluggable;
@@ -239,19 +245,6 @@ impl VirtioPciShmCap {
     }
 }
 
-/// Subclasses for virtio.
-#[allow(dead_code)]
-#[derive(Copy, Clone)]
-pub enum PciVirtioSubclass {
-    NonTransitionalBase = 0xff,
-}
-
-impl PciSubclass for PciVirtioSubclass {
-    fn get_register_value(&self) -> u8 {
-        *self as u8
-    }
-}
-
 // Allocate one bar for the structs pointed to by the capability structures.
 const COMMON_CONFIG_BAR_OFFSET: u64 = 0x0000;
 const COMMON_CONFIG_SIZE: u64 = 56;
@@ -383,17 +376,89 @@ impl VirtioPciDevice {
         let pci_device_id = VIRTIO_PCI_DEVICE_ID_BASE + device.device_type() as u16;
 
         let (pci_device_class, pci_device_subclass) = match device.device_type() {
+            DeviceType::Net => (
+                PciClassCode::NetworkController,
+                &PciNetworkControllerSubclass::Other as &dyn PciSubclass,
+            ),
             DeviceType::Block => (
                 PciClassCode::MassStorage,
                 &PciMassStorageSubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::Console => (
+                PciClassCode::SimpleCommunicationController,
+                &PciSimpleCommunicationControllerSubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::Rng => (
+                PciClassCode::BaseSystemPeripheral,
+                &PciBaseSystemPeripheralSubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::Balloon => (
+                PciClassCode::BaseSystemPeripheral,
+                &PciBaseSystemPeripheralSubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::Scsi => (
+                PciClassCode::MassStorage,
+                &PciMassStorageSubclass::Scsi as &dyn PciSubclass,
+            ),
+            DeviceType::P9 => (
+                PciClassCode::NetworkController,
+                &PciNetworkControllerSubclass::Other as &dyn PciSubclass,
             ),
             DeviceType::Gpu => (
                 PciClassCode::DisplayController,
                 &PciDisplaySubclass::Other as &dyn PciSubclass,
             ),
-            _ => (
-                PciClassCode::TooOld,
-                &PciVirtioSubclass::NonTransitionalBase as &dyn PciSubclass,
+            DeviceType::Input => (
+                PciClassCode::InputDevice,
+                &PciInputDeviceSubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::Vsock => (
+                PciClassCode::NetworkController,
+                &PciNetworkControllerSubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::Iommu => (
+                PciClassCode::BaseSystemPeripheral,
+                &PciBaseSystemPeripheralSubclass::Iommu as &dyn PciSubclass,
+            ),
+            DeviceType::Sound => (
+                PciClassCode::MultimediaController,
+                &PciMultimediaSubclass::AudioController as &dyn PciSubclass,
+            ),
+            DeviceType::Fs => (
+                PciClassCode::MassStorage,
+                &PciMassStorageSubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::Pmem => (
+                PciClassCode::MassStorage,
+                &PciMassStorageSubclass::NonVolatileMemory as &dyn PciSubclass,
+            ),
+            DeviceType::Mac80211HwSim => (
+                PciClassCode::WirelessController,
+                &PciWirelessControllerSubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::VideoEncoder => (
+                PciClassCode::MultimediaController,
+                &PciMultimediaSubclass::VideoController as &dyn PciSubclass,
+            ),
+            DeviceType::VideoDecoder => (
+                PciClassCode::MultimediaController,
+                &PciMultimediaSubclass::VideoController as &dyn PciSubclass,
+            ),
+            DeviceType::Scmi => (
+                PciClassCode::BaseSystemPeripheral,
+                &PciBaseSystemPeripheralSubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::Wl => (
+                PciClassCode::DisplayController,
+                &PciDisplaySubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::Tpm => (
+                PciClassCode::BaseSystemPeripheral,
+                &PciBaseSystemPeripheralSubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::Pvclock => (
+                PciClassCode::BaseSystemPeripheral,
+                &PciBaseSystemPeripheralSubclass::Other as &dyn PciSubclass,
             ),
         };
 
