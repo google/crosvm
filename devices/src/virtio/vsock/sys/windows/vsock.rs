@@ -138,13 +138,18 @@ const MIN_FREE_BUFFER_PCT: f64 = 0.1;
 // Number of packets to buffer in the tx processing channels.
 const CHANNEL_SIZE: usize = 256;
 
+type VsockConnectionMap = RwLock<HashMap<PortPair, VsockConnection>>;
+
 /// Virtio device for exposing entropy to the guest OS through virtio.
 pub struct Vsock {
     guest_cid: u64,
     host_guid: Option<String>,
     features: u64,
     acked_features: u64,
-    worker_thread: Option<WorkerThread<Option<PausedQueues>>>,
+    worker_thread: Option<WorkerThread<Option<(PausedQueues, VsockConnectionMap)>>>,
+    /// Stores any active connections when the device sleeps. This allows us to sleep/wake
+    /// without disrupting active connections, which is useful when taking a snapshot.
+    sleeping_connections: Option<VsockConnectionMap>,
 }
 
 /// Snapshotted state of Vsock. These fields are serialized in order to validate they haven't
@@ -164,6 +169,7 @@ impl Vsock {
             features: base_features,
             acked_features: 0,
             worker_thread: None,
+            sleeping_connections: None,
         })
     }
 
@@ -173,10 +179,10 @@ impl Vsock {
         }
     }
 
-    fn stop_worker(&mut self) -> StoppedWorker<PausedQueues> {
+    fn stop_worker(&mut self) -> StoppedWorker<(PausedQueues, VsockConnectionMap)> {
         if let Some(worker_thread) = self.worker_thread.take() {
-            if let Some(paused_queues) = worker_thread.stop() {
-                StoppedWorker::WithQueues(Box::new(paused_queues))
+            if let Some(queues_and_conns) = worker_thread.stop() {
+                StoppedWorker::WithQueues(Box::new(queues_and_conns))
             } else {
                 StoppedWorker::MissingQueues
             }
@@ -190,6 +196,7 @@ impl Vsock {
         mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: VsockQueues,
+        existing_connections: Option<VsockConnectionMap>,
     ) -> anyhow::Result<()> {
         let rx_queue = queues.rx;
         let tx_queue = queues.tx;
@@ -200,7 +207,8 @@ impl Vsock {
         self.worker_thread = Some(WorkerThread::start(
             "userspace_virtio_vsock",
             move |kill_evt| {
-                let mut worker = Worker::new(mem, interrupt, host_guid, guest_cid);
+                let mut worker =
+                    Worker::new(mem, interrupt, host_guid, guest_cid, existing_connections);
                 let result = worker.run(rx_queue, tx_queue, event_queue, kill_evt);
 
                 match result {
@@ -208,7 +216,9 @@ impl Vsock {
                         error!("userspace vsock worker thread exited with error: {:?}", e);
                         None
                     }
-                    Ok(paused_queues_option) => paused_queues_option,
+                    Ok(paused_queues_and_connections_option) => {
+                        paused_queues_and_connections_option
+                    }
                 }
             },
         ));
@@ -262,12 +272,16 @@ impl VirtioDevice for Vsock {
             event: queues.remove(&2).unwrap(),
         };
 
-        self.start_worker(mem, interrupt, vsock_queues)
+        self.start_worker(mem, interrupt, vsock_queues, None)
     }
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         match self.stop_worker() {
-            StoppedWorker::WithQueues(paused_queues) => Ok(Some(paused_queues.into())),
+            StoppedWorker::WithQueues(paused_queues_and_conns) => {
+                let (queues, sleeping_connections) = *paused_queues_and_conns;
+                self.sleeping_connections = Some(sleeping_connections);
+                Ok(Some(queues.into()))
+            }
             StoppedWorker::MissingQueues => {
                 anyhow::bail!("vsock queue workers did not stop cleanly")
             }
@@ -283,12 +297,14 @@ impl VirtioDevice for Vsock {
         queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         if let Some((mem, interrupt, queues)) = queues_state {
+            let connections = self.sleeping_connections.take();
             self.start_worker(
                 mem,
                 interrupt,
                 queues
                     .try_into()
                     .expect("Failed to convert queue BTreeMap to VsockQueues"),
+                connections,
             )?;
         }
         Ok(())
@@ -394,7 +410,7 @@ struct Worker {
     host_guid: Option<String>,
     guest_cid: u64,
     // Map of host port to a VsockConnection.
-    connections: RwLock<HashMap<PortPair, VsockConnection>>,
+    connections: VsockConnectionMap,
     connection_event: Event,
 }
 
@@ -404,13 +420,14 @@ impl Worker {
         interrupt: Interrupt,
         host_guid: Option<String>,
         guest_cid: u64,
+        existing_connections: Option<VsockConnectionMap>,
     ) -> Worker {
         Worker {
             mem,
             interrupt,
             host_guid,
             guest_cid,
-            connections: RwLock::new(HashMap::new()),
+            connections: existing_connections.unwrap_or_default(),
             connection_event: Event::new().unwrap(),
         }
     }
@@ -1329,12 +1346,12 @@ impl Worker {
     }
 
     fn run(
-        &mut self,
+        self,
         rx_queue: Queue,
         tx_queue: Queue,
         event_queue: Queue,
         kill_evt: Event,
-    ) -> Result<Option<PausedQueues>> {
+    ) -> Result<Option<(PausedQueues, VsockConnectionMap)>> {
         let rx_queue_evt = rx_queue
             .event()
             .try_clone()
@@ -1440,7 +1457,7 @@ impl Worker {
         // At this point, a request to stop this worker has been sent or an error has happened in
         // one of the futures, which will stop this worker anyways.
 
-        let paused_queue = match res {
+        let queues_and_connections = match res {
             Ok(main_future_res) => match main_future_res {
                 Ok((tx_queue, event_handler_queue)) => {
                     let rx_queue = match Arc::try_unwrap(rx_queue_arc) {
@@ -1448,7 +1465,7 @@ impl Worker {
                         Err(_) => panic!("failed to recover queue from worker"),
                     };
                     let paused_queues = PausedQueues::new(rx_queue, tx_queue, event_handler_queue);
-                    Some(paused_queues)
+                    Some((paused_queues, self.connections))
                 }
                 Err(e) => {
                     error!("Error happened in a vsock future: {}", e);
@@ -1461,7 +1478,7 @@ impl Worker {
             }
         };
 
-        Ok(paused_queue)
+        Ok(queues_and_connections)
     }
 }
 
@@ -1490,8 +1507,8 @@ impl TryFrom<BTreeMap<usize, Queue>> for VsockQueues {
     }
 }
 
-impl From<Box<PausedQueues>> for BTreeMap<usize, Queue> {
-    fn from(queues: Box<PausedQueues>) -> Self {
+impl From<PausedQueues> for BTreeMap<usize, Queue> {
+    fn from(queues: PausedQueues) -> Self {
         let mut ret = BTreeMap::new();
         ret.insert(0, queues.rx_queue);
         ret.insert(1, queues.tx_queue);
