@@ -2055,6 +2055,29 @@ impl X8664arch {
         )
         .to_aml_bytes(&mut amls);
 
+        if let (Some(start), Some(len)) = (
+            u32::try_from(read_pcie_cfg_mmio().start).ok(),
+            read_pcie_cfg_mmio()
+                .len()
+                .and_then(|l| u32::try_from(l).ok()),
+        ) {
+            aml::Device::new(
+                "_SB_.MB00".into(),
+                vec![
+                    &aml::Name::new("_HID".into(), &aml::EISAName::new("PNP0C02")),
+                    &aml::Name::new(
+                        "_CRS".into(),
+                        &aml::ResourceTemplate::new(vec![&aml::Memory32Fixed::new(
+                            true, start, len,
+                        )]),
+                    ),
+                ],
+            )
+            .to_aml_bytes(&mut amls);
+        } else {
+            warn!("Failed to create ACPI MMCFG region reservation");
+        }
+
         let root_bus = pci_root.lock().get_root_bus();
         let addresses = root_bus.lock().get_downstream_devices();
         for address in addresses {
