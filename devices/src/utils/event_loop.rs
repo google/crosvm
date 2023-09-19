@@ -163,7 +163,6 @@ impl EventLoop {
         self.handlers
             .lock()
             .insert(Descriptor(descriptor.as_raw_descriptor()), handler);
-        // This might fail due to epoll syscall. Check epoll_ctl(2).
         self.poll_ctx
             .add_for_event(
                 descriptor,
@@ -173,14 +172,14 @@ impl EventLoop {
             .map_err(Error::WaitContextAddDescriptor)
     }
 
-    /// Removes event for this `descriptor`.
+    /// Removes event for this `descriptor`. This function is safe to call even when the `descriptor`
+    /// is not actively being polled because it's been paused.
     ///
     /// EventLoop does not guarantee all events for `descriptor` is handled.
     pub fn remove_event_for_descriptor(&self, descriptor: &dyn AsRawDescriptor) -> Result<()> {
         if self.fail_handle.failed() {
             return Err(Error::EventLoopAlreadyFailed);
         }
-        // This might fail due to epoll syscall. Check epoll_ctl(2).
         self.poll_ctx
             .delete(descriptor)
             .map_err(Error::WaitContextDeleteDescriptor)?;
@@ -196,7 +195,6 @@ impl EventLoop {
         if self.fail_handle.failed() {
             return Err(Error::EventLoopAlreadyFailed);
         }
-        // This might fail due to epoll syscall. Check epoll_ctl(2).
         self.poll_ctx
             .delete(descriptor)
             .map_err(Error::WaitContextDeleteDescriptor)?;

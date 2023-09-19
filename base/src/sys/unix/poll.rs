@@ -14,6 +14,7 @@ use libc::epoll_create1;
 use libc::epoll_ctl;
 use libc::epoll_event;
 use libc::epoll_wait;
+use libc::ENOENT;
 use libc::EPOLLHUP;
 use libc::EPOLLIN;
 use libc::EPOLLOUT;
@@ -159,7 +160,8 @@ impl<T: EventToken> EventContext<T> {
         Ok(())
     }
 
-    /// Deletes the given `fd` from this context.
+    /// Deletes the given `fd` from this context. If the `fd` is not being polled by this context,
+    /// the call is silently dropped without errors.
     ///
     /// If an `fd`'s token shows up in the list of hangup events, it should be removed using this
     /// method or by closing/dropping (if and only if the fd was never dup()'d/fork()'d) the `fd`.
@@ -176,7 +178,9 @@ impl<T: EventToken> EventContext<T> {
                 null_mut(),
             )
         };
-        if ret < 0 {
+        // If epoll_ctl returns ENOENT it means the fd is not part of the current polling set so
+        // there is nothing to delete.
+        if ret < 0 && ret != ENOENT {
             return errno_result();
         };
         Ok(())
