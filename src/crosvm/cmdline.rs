@@ -1286,6 +1286,8 @@ pub struct RunCommand {
     ///     cache-path=PATH - The path to the virtio-gpu device
     ///        shader cache.
     ///     cache-size=SIZE - The maximum size of the shader cache.
+    ///     pci-address=ADDR - The PCI bus, device, and function
+    ///        numbers, e.g. "00:01.0"
     ///     pci-bar-size=SIZE - The size for the PCI BAR in bytes
     ///        (default 8gb).
     ///     implicit-render-server[=true|=false] - If the render

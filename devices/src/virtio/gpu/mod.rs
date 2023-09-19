@@ -86,6 +86,7 @@ use super::SharedMemoryMapper;
 use super::SharedMemoryRegion;
 use super::VirtioDevice;
 use super::Writer;
+use crate::PciAddress;
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.
@@ -1179,6 +1180,7 @@ pub struct Gpu {
     display_params: Vec<GpuDisplayParameters>,
     display_event: Arc<AtomicBool>,
     rutabaga_builder: RutabagaBuilder,
+    pci_address: Option<PciAddress>,
     pci_bar_size: u64,
     external_blob: bool,
     rutabaga_component: RutabagaComponentType,
@@ -1290,6 +1292,7 @@ impl Gpu {
             display_params,
             display_event: Arc::new(AtomicBool::new(false)),
             rutabaga_builder,
+            pci_address: gpu_parameters.pci_address,
             pci_bar_size: gpu_parameters.pci_bar_size,
             external_blob: gpu_parameters.external_blob,
             rutabaga_component: component,
@@ -1763,6 +1766,10 @@ impl VirtioDevice for Gpu {
             .expect("failed to send activation resources to worker thread");
 
         Ok(())
+    }
+
+    fn pci_address(&self) -> Option<PciAddress> {
+        self.pci_address
     }
 
     fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
