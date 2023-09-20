@@ -1849,7 +1849,7 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]")]
     #[serde(default)]
     #[merge(strategy = append)]
-    /// parameters for setting up a SCSI disk.
+    /// (EXPERIMENTAL) parameters for setting up a SCSI disk.
     /// Valid keys:
     ///     path=PATH - Path to the disk image. Can be specified
     ///         without the key as the first argument.
