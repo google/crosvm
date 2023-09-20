@@ -6,7 +6,6 @@
 //! For message definition, please refer to the [vhost-user spec](https://github.com/qemu/qemu/blob/f7526eece29cd2e36a63b6703508b24453095eb8/docs/interop/vhost-user.txt).
 
 #![allow(dead_code)]
-#![allow(deprecated)]
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
@@ -15,7 +14,6 @@ use std::marker::PhantomData;
 
 use base::Protection;
 use bitflags::bitflags;
-use data_model::DataInit;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
@@ -248,16 +246,14 @@ bitflags! {
 /// Common message header for vhost-user requests and replies.
 /// A vhost-user message consists of 3 header fields and an optional payload. All numbers are in the
 /// machine native byte order.
-#[repr(packed)]
-#[derive(Copy, FromZeroes, FromBytes)]
+#[repr(C, packed)]
+#[derive(Copy, FromZeroes, FromBytes, AsBytes)]
 pub struct VhostUserMsgHeader<R: Req> {
     request: u32,
     flags: u32,
     size: u32,
     _r: PhantomData<R>,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl<R: Req> DataInit for VhostUserMsgHeader<R> {}
 
 impl<R: Req> Debug for VhostUserMsgHeader<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

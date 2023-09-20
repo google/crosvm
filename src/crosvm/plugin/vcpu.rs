@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![allow(deprecated)]
-
 use std::alloc::Layout;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -21,20 +19,13 @@ use std::sync::RwLock;
 
 use base::error;
 use base::LayoutAllocation;
-use data_model::DataInit;
+use data_model::zerocopy_from_slice;
 use kvm::CpuId;
 use kvm::Vcpu;
-use kvm_sys::kvm_debugregs;
 use kvm_sys::kvm_enable_cap;
-use kvm_sys::kvm_fpu;
-use kvm_sys::kvm_lapic_state;
-use kvm_sys::kvm_mp_state;
 use kvm_sys::kvm_msr_entry;
 use kvm_sys::kvm_msrs;
 use kvm_sys::kvm_regs;
-use kvm_sys::kvm_sregs;
-use kvm_sys::kvm_vcpu_events;
-use kvm_sys::kvm_xcrs;
 use kvm_sys::KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
 use libc::EINVAL;
 use libc::ENOENT;
@@ -48,6 +39,7 @@ use protobuf::Message;
 use protos::plugin::*;
 use static_assertions::const_assert;
 use sync::Mutex;
+use zerocopy::AsBytes;
 
 use super::*;
 
@@ -81,32 +73,6 @@ impl PartialOrd for Range {
     }
 }
 
-// Wrapper types to make the kvm register structs DataInit
-#[derive(Copy, Clone)]
-struct VcpuRegs(kvm_regs);
-unsafe impl DataInit for VcpuRegs {}
-#[derive(Copy, Clone)]
-struct VcpuSregs(kvm_sregs);
-unsafe impl DataInit for VcpuSregs {}
-#[derive(Copy, Clone)]
-struct VcpuFpu(kvm_fpu);
-unsafe impl DataInit for VcpuFpu {}
-#[derive(Copy, Clone)]
-struct VcpuDebugregs(kvm_debugregs);
-unsafe impl DataInit for VcpuDebugregs {}
-#[derive(Copy, Clone)]
-struct VcpuXcregs(kvm_xcrs);
-unsafe impl DataInit for VcpuXcregs {}
-#[derive(Copy, Clone)]
-struct VcpuLapicState(kvm_lapic_state);
-unsafe impl DataInit for VcpuLapicState {}
-#[derive(Copy, Clone)]
-struct VcpuMpState(kvm_mp_state);
-unsafe impl DataInit for VcpuMpState {}
-#[derive(Copy, Clone)]
-struct VcpuEvents(kvm_vcpu_events);
-unsafe impl DataInit for VcpuEvents {}
-
 fn get_vcpu_state_enum_or_unknown(
     vcpu: &Vcpu,
     state_set: EnumOrUnknown<vcpu_request::StateSet>,
@@ -119,16 +85,14 @@ fn get_vcpu_state_enum_or_unknown(
 
 fn get_vcpu_state(vcpu: &Vcpu, state_set: vcpu_request::StateSet) -> SysResult<Vec<u8>> {
     Ok(match state_set {
-        vcpu_request::StateSet::REGS => VcpuRegs(vcpu.get_regs()?).as_slice().to_vec(),
-        vcpu_request::StateSet::SREGS => VcpuSregs(vcpu.get_sregs()?).as_slice().to_vec(),
-        vcpu_request::StateSet::FPU => VcpuFpu(vcpu.get_fpu()?).as_slice().to_vec(),
-        vcpu_request::StateSet::DEBUGREGS => {
-            VcpuDebugregs(vcpu.get_debugregs()?).as_slice().to_vec()
-        }
-        vcpu_request::StateSet::XCREGS => VcpuXcregs(vcpu.get_xcrs()?).as_slice().to_vec(),
-        vcpu_request::StateSet::LAPIC => VcpuLapicState(vcpu.get_lapic()?).as_slice().to_vec(),
-        vcpu_request::StateSet::MP => VcpuMpState(vcpu.get_mp_state()?).as_slice().to_vec(),
-        vcpu_request::StateSet::EVENTS => VcpuEvents(vcpu.get_vcpu_events()?).as_slice().to_vec(),
+        vcpu_request::StateSet::REGS => vcpu.get_regs()?.as_bytes().to_vec(),
+        vcpu_request::StateSet::SREGS => vcpu.get_sregs()?.as_bytes().to_vec(),
+        vcpu_request::StateSet::FPU => vcpu.get_fpu()?.as_bytes().to_vec(),
+        vcpu_request::StateSet::DEBUGREGS => vcpu.get_debugregs()?.as_bytes().to_vec(),
+        vcpu_request::StateSet::XCREGS => vcpu.get_xcrs()?.as_bytes().to_vec(),
+        vcpu_request::StateSet::LAPIC => vcpu.get_lapic()?.as_bytes().to_vec(),
+        vcpu_request::StateSet::MP => vcpu.get_mp_state()?.as_bytes().to_vec(),
+        vcpu_request::StateSet::EVENTS => vcpu.get_vcpu_events()?.as_bytes().to_vec(),
     })
 }
 
@@ -147,39 +111,29 @@ fn set_vcpu_state_enum_or_unknown(
 fn set_vcpu_state(vcpu: &Vcpu, state_set: vcpu_request::StateSet, state: &[u8]) -> SysResult<()> {
     match state_set {
         vcpu_request::StateSet::REGS => {
-            vcpu.set_regs(&VcpuRegs::from_slice(state).ok_or(SysError::new(EINVAL))?.0)
+            vcpu.set_regs(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
         }
         vcpu_request::StateSet::SREGS => {
-            vcpu.set_sregs(&VcpuSregs::from_slice(state).ok_or(SysError::new(EINVAL))?.0)
+            vcpu.set_sregs(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
         }
         vcpu_request::StateSet::FPU => {
-            vcpu.set_fpu(&VcpuFpu::from_slice(state).ok_or(SysError::new(EINVAL))?.0)
+            vcpu.set_fpu(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
         }
-        vcpu_request::StateSet::DEBUGREGS => vcpu.set_debugregs(
-            &VcpuDebugregs::from_slice(state)
-                .ok_or(SysError::new(EINVAL))?
-                .0,
-        ),
-        vcpu_request::StateSet::XCREGS => vcpu.set_xcrs(
-            &VcpuXcregs::from_slice(state)
-                .ok_or(SysError::new(EINVAL))?
-                .0,
-        ),
-        vcpu_request::StateSet::LAPIC => vcpu.set_lapic(
-            &VcpuLapicState::from_slice(state)
-                .ok_or(SysError::new(EINVAL))?
-                .0,
-        ),
-        vcpu_request::StateSet::MP => vcpu.set_mp_state(
-            &VcpuMpState::from_slice(state)
-                .ok_or(SysError::new(EINVAL))?
-                .0,
-        ),
-        vcpu_request::StateSet::EVENTS => vcpu.set_vcpu_events(
-            &VcpuEvents::from_slice(state)
-                .ok_or(SysError::new(EINVAL))?
-                .0,
-        ),
+        vcpu_request::StateSet::DEBUGREGS => {
+            vcpu.set_debugregs(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+        }
+        vcpu_request::StateSet::XCREGS => {
+            vcpu.set_xcrs(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+        }
+        vcpu_request::StateSet::LAPIC => {
+            vcpu.set_lapic(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+        }
+        vcpu_request::StateSet::MP => {
+            vcpu.set_mp_state(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+        }
+        vcpu_request::StateSet::EVENTS => {
+            vcpu.set_vcpu_events(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+        }
     }
 }
 
@@ -484,7 +438,7 @@ impl PluginVcpu {
                 if !async_write && vcpu_state_lock.matches_hint(io_space, addr, io.is_write) {
                     if let Ok(regs) = vcpu.get_regs() {
                         let (has_sregs, has_debugregs) = vcpu_state_lock.check_hint_details(&regs);
-                        io.regs = VcpuRegs(regs).as_slice().to_vec();
+                        io.regs = regs.as_bytes().to_vec();
                         if has_sregs {
                             if let Ok(state) = get_vcpu_state(vcpu, vcpu_request::StateSet::SREGS) {
                                 io.sregs = state;

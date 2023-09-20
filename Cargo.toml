@@ -403,7 +403,7 @@ cros_async = { path = "cros_async" }
 cros_tracing = { path = "cros_tracing" }
 crosvm_cli = { path = "crosvm_cli" }
 crosvm_plugin = { path = "crosvm_plugin", optional = true }
-data_model = "*"
+data_model = { path ="common/data_model" }
 devices = { path = "devices" }
 disk = { path = "disk" }
 document-features = { version = "0.2", optional = true }
@@ -442,6 +442,7 @@ thiserror = { version = "1.0.20" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }
 vm_memory = { path = "vm_memory" }
+zerocopy = { version = "0.7", features = ["derive"] }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 riscv64 = { path = "riscv64" }
