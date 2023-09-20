@@ -321,7 +321,7 @@ enum SleepState {
 
 #[derive(Serialize, Deserialize)]
 struct VirtioPciDeviceSnapshot {
-    config_regs: PciConfiguration,
+    config_regs: serde_json::Value,
 
     inner_device: serde_json::Value,
     device_activated: bool,
@@ -1145,7 +1145,7 @@ impl Suspendable for VirtioPciDevice {
         }
 
         serde_json::to_value(VirtioPciDeviceSnapshot {
-            config_regs: self.config_regs.clone(),
+            config_regs: self.config_regs.snapshot()?,
             inner_device: self.device.virtio_snapshot()?,
             device_activated: self.device_activated,
             interrupt: self.interrupt.as_ref().map(|i| i.snapshot()),
@@ -1184,7 +1184,7 @@ impl Suspendable for VirtioPciDevice {
 
         let deser: VirtioPciDeviceSnapshot = serde_json::from_value(data)?;
 
-        self.config_regs = deser.config_regs;
+        self.config_regs.restore(deser.config_regs)?;
         self.device_activated = deser.device_activated;
 
         self.msix_config.lock().restore(deser.msix_config)?;

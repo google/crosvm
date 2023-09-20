@@ -257,8 +257,17 @@ pub trait PciCapability {
 /// Contains the configuration space of a PCI node.
 /// See the [specification](https://en.wikipedia.org/wiki/PCI_configuration_space).
 /// The configuration space is accessed with DWORD reads and writes from the guest.
-#[derive(Clone, Serialize, Deserialize)]
 pub struct PciConfiguration {
+    registers: [u32; NUM_CONFIGURATION_REGISTERS],
+    writable_bits: [u32; NUM_CONFIGURATION_REGISTERS], // writable bits for each register.
+    bar_used: [bool; NUM_BAR_REGS],
+    bar_configs: [Option<PciBarConfiguration>; NUM_BAR_REGS],
+    // Contains the byte offset and size of the last capability.
+    last_capability: Option<(usize, usize)>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PciConfigurationSerialized {
     #[serde(
         serialize_with = "serialize_arr",
         deserialize_with = "deserialize_seq_to_arr"
@@ -268,10 +277,9 @@ pub struct PciConfiguration {
         serialize_with = "serialize_arr",
         deserialize_with = "deserialize_seq_to_arr"
     )]
-    writable_bits: [u32; NUM_CONFIGURATION_REGISTERS], // writable bits for each register.
+    writable_bits: [u32; NUM_CONFIGURATION_REGISTERS],
     bar_used: [bool; NUM_BAR_REGS],
     bar_configs: [Option<PciBarConfiguration>; NUM_BAR_REGS],
-    // Contains the byte offset and size of the last capability.
     last_capability: Option<(usize, usize)>,
 }
 
@@ -691,10 +699,25 @@ impl PciConfiguration {
         (next + 3) & !3
     }
 
+    pub fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(PciConfigurationSerialized {
+            registers: self.registers,
+            writable_bits: self.writable_bits,
+            bar_used: self.bar_used,
+            bar_configs: self.bar_configs,
+            last_capability: self.last_capability,
+        })
+        .context("failed to serialize PciConfiguration")
+    }
+
     pub fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        let deser: PciConfiguration =
+        let deser: PciConfigurationSerialized =
             serde_json::from_value(data).context("failed to deserialize PciConfiguration")?;
-        *self = deser;
+        self.registers = deser.registers;
+        self.writable_bits = deser.writable_bits;
+        self.bar_used = deser.bar_used;
+        self.bar_configs = deser.bar_configs;
+        self.last_capability = deser.last_capability;
         Ok(())
     }
 }
@@ -1322,7 +1345,7 @@ mod tests {
             0,
         );
 
-        let snap_init = serde_json::to_value(&cfg).context("failed to snapshot")?;
+        let snap_init = cfg.snapshot().context("failed to snapshot")?;
 
         // Add a capability.
         let cap1 = TestCap {
@@ -1333,17 +1356,15 @@ mod tests {
         };
         cfg.add_capability(&cap1).unwrap();
 
-        let snap_mod = serde_json::to_value(&cfg).context("failed to snapshot mod")?;
+        let snap_mod = cfg.snapshot().context("failed to snapshot mod")?;
         cfg.restore(snap_init.clone())
             .context("failed to restore snap_init")?;
-        let snap_restore_init =
-            serde_json::to_value(&cfg).context("failed to snapshot restored_init")?;
+        let snap_restore_init = cfg.snapshot().context("failed to snapshot restored_init")?;
         assert_eq!(snap_init, snap_restore_init);
         assert_ne!(snap_init, snap_mod);
         cfg.restore(snap_mod.clone())
             .context("failed to restore snap_init")?;
-        let snap_restore_mod =
-            serde_json::to_value(&cfg).context("failed to snapshot restored_mod")?;
+        let snap_restore_mod = cfg.snapshot().context("failed to snapshot restored_mod")?;
         assert_eq!(snap_mod, snap_restore_mod);
         Ok(())
     }
@@ -1362,7 +1383,7 @@ mod tests {
             0,
         );
 
-        let snap_init = serde_json::to_value(&cfg).context("failed to snapshot")?;
+        let snap_init = cfg.snapshot().context("failed to snapshot")?;
 
         // bar_num 0-1: 64-bit memory
         cfg.add_pci_bar(
@@ -1376,17 +1397,15 @@ mod tests {
         )
         .expect("add_pci_bar failed");
 
-        let snap_mod = serde_json::to_value(&cfg).context("failed to snapshot mod")?;
+        let snap_mod = cfg.snapshot().context("failed to snapshot mod")?;
         cfg.restore(snap_init.clone())
             .context("failed to restore snap_init")?;
-        let snap_restore_init =
-            serde_json::to_value(&cfg).context("failed to snapshot restored_init")?;
+        let snap_restore_init = cfg.snapshot().context("failed to snapshot restored_init")?;
         assert_eq!(snap_init, snap_restore_init);
         assert_ne!(snap_init, snap_mod);
         cfg.restore(snap_mod.clone())
             .context("failed to restore snap_init")?;
-        let snap_restore_mod =
-            serde_json::to_value(&cfg).context("failed to snapshot restored_mod")?;
+        let snap_restore_mod = cfg.snapshot().context("failed to snapshot restored_mod")?;
         assert_eq!(snap_mod, snap_restore_mod);
         Ok(())
     }
@@ -1405,7 +1424,7 @@ mod tests {
             0,
         );
 
-        let snap_init = serde_json::to_value(&cfg).context("failed to snapshot")?;
+        let snap_init = cfg.snapshot().context("failed to snapshot")?;
 
         // Add a capability.
         let cap1 = TestCap {
@@ -1428,17 +1447,15 @@ mod tests {
         )
         .expect("add_pci_bar failed");
 
-        let snap_mod = serde_json::to_value(&cfg).context("failed to snapshot mod")?;
+        let snap_mod = cfg.snapshot().context("failed to snapshot mod")?;
         cfg.restore(snap_init.clone())
             .context("failed to restore snap_init")?;
-        let snap_restore_init =
-            serde_json::to_value(&cfg).context("failed to snapshot restored_init")?;
+        let snap_restore_init = cfg.snapshot().context("failed to snapshot restored_init")?;
         assert_eq!(snap_init, snap_restore_init);
         assert_ne!(snap_init, snap_mod);
         cfg.restore(snap_mod.clone())
             .context("failed to restore snap_init")?;
-        let snap_restore_mod =
-            serde_json::to_value(&cfg).context("failed to snapshot restored_mod")?;
+        let snap_restore_mod = cfg.snapshot().context("failed to snapshot restored_mod")?;
         assert_eq!(snap_mod, snap_restore_mod);
         Ok(())
     }

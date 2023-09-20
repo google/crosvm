@@ -12,7 +12,6 @@
 //! scanned if function 0 is present. A stub PCI device is useful in that situation to present
 //! something to the guest on function 0.
 
-use anyhow::Context;
 use base::RawDescriptor;
 use resources::Alloc;
 use resources::SystemAllocator;
@@ -108,13 +107,8 @@ pub struct StubPciParameters {
     pub revision: u8,
 }
 
-#[derive(Serialize, Deserialize)]
 pub struct StubPciDevice {
-    #[serde(default)]
-    #[serde(skip)]
     requested_address: PciAddress,
-    #[serde(default)]
-    #[serde(skip)]
     assigned_address: Option<PciAddress>,
     config_regs: PciConfiguration,
 }
@@ -219,14 +213,11 @@ impl Suspendable for StubPciDevice {
     }
 
     fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(self).context("failed to snapshot")
+        self.config_regs.snapshot()
     }
 
     fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        let restored_device: StubPciDevice =
-            serde_json::from_value(data).context("failed to restore snapshot")?;
-        *self = restored_device;
-        Ok(())
+        self.config_regs.restore(data)
     }
 }
 

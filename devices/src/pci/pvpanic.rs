@@ -22,8 +22,6 @@ use base::VmEventType;
 use resources::Alloc;
 use resources::AllocOptions;
 use resources::SystemAllocator;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::pci::pci_configuration::PciBarConfiguration;
 use crate::pci::pci_configuration::PciBarPrefetchable;
@@ -83,18 +81,10 @@ impl fmt::Display for PvPanicCode {
     }
 }
 
-#[derive(Serialize)]
 pub struct PvPanicPciDevice {
-    #[serde(skip_serializing)]
     pci_address: Option<PciAddress>,
     config_regs: PciConfiguration,
-    #[serde(skip_serializing)]
     evt_wrtube: SendTube,
-}
-
-#[derive(Deserialize)]
-struct PvPanicPciDeviceSerializable {
-    config_regs: serde_json::Value,
 }
 
 impl PvPanicPciDevice {
@@ -218,14 +208,15 @@ impl PciDevice for PvPanicPciDevice {
 
 impl Suspendable for PvPanicPciDevice {
     fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(self).context("failed to serialize PvPanicPciDevice")
+        self.config_regs
+            .snapshot()
+            .context("failed to serialize PvPanicPciDevice")
     }
 
     fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        let deser: PvPanicPciDeviceSerializable =
-            serde_json::from_value(data).context("failed to deserialize PvPanicPciDevice")?;
-        self.config_regs.restore(deser.config_regs)?;
-        Ok(())
+        self.config_regs
+            .restore(data)
+            .context("failed to deserialize PvPanicPciDevice")
     }
 
     fn sleep(&mut self) -> anyhow::Result<()> {
