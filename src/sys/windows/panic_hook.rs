@@ -8,7 +8,7 @@ use std::process::abort;
 /// The intent of our panic hook is to get panic info and a stacktrace into the syslog, even for
 /// jailed subprocesses. It will always abort on panic to ensure a minidump is generated.
 ///
-/// Note that jailed processes will usually have a stacktrace of <unknown> because the backtrace
+/// Note that jailed processes will usually have a stacktrace of \<unknown\> because the backtrace
 /// routines attempt to open this binary and are unable to do so in a jail.
 pub fn set_panic_hook() {
     let default_panic = panic::take_hook();

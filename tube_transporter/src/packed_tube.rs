@@ -36,18 +36,18 @@ struct PackedTube {
     server_pipe: PipeConnection,
 }
 
-/// Sends a [Tube] through a protocol that expects a [RawDescriptor].
+/// Sends a [`Tube`] through a protocol that expects a [`RawDescriptor`](base::RawDescriptor).
 ///
 /// A packed tube works by creating a named pipe pair, and serializing both the Tube and the
 /// server end of the pipe. Then, it returns the client end of the named pipe pair, which can be
 /// used as the desired descriptor to send / duplicate to the target.
 ///
-/// The receiver will need to use [packed_tube::unpack] to read the message off the pipe, and thus
+/// The receiver will need to use [`unpack()`] to read the message off the pipe, and thus
 /// extract a real [Tube]. It will also read the server end of the pipe, and close it. The
 /// `receiver_pid` is the pid of the process that will be unpacking the tube.
 ///
 /// # Safety
-/// To prevent dangling handles, the resulting descriptor must be passed to [packed_tube::unpack],
+/// To prevent dangling handles, the resulting descriptor must be passed to [`unpack()`],
 /// in the process which corresponds to `receiver_pid`.
 pub unsafe fn pack(tube: Tube, receiver_pid: u32) -> PackedTubeResult<SafeDescriptor> {
     let (server_pipe, client_pipe) = named_pipes::pair(
@@ -77,7 +77,7 @@ pub unsafe fn pack(tube: Tube, receiver_pid: u32) -> PackedTubeResult<SafeDescri
 /// Unpacks a tube from a client descriptor. This must come from a packed tube.
 ///
 /// # Safety
-/// The descriptor passed in must come from [packed_tube::pack].
+/// The descriptor passed in must come from [`pack()`].
 pub unsafe fn unpack(descriptor: SafeDescriptor) -> PackedTubeResult<Tube> {
     let pipe = PipeConnection::from_raw_descriptor(
         descriptor.into_raw_descriptor(),

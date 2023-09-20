@@ -36,7 +36,7 @@ impl AsRawHandle for Timer {
 impl Timer {
     /// Creates a new timer.  The timer is initally disarmed and must be armed by calling
     /// `reset`. Note that this timer MAY wake/trigger early due to limitations on
-    /// SetWaitableTimer (see https://github.com/rust-lang/rust/issues/43376).
+    /// SetWaitableTimer (see <https://github.com/rust-lang/rust/issues/43376>).
     pub fn new() -> Result<Timer> {
         // Safe because this doesn't modify any memory and we check the return value.
         let handle = unsafe {

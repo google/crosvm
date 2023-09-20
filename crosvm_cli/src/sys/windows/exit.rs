@@ -415,7 +415,7 @@ use bitmasks::*;
 
 /// If you are looking for a fun interview question, you have come to the right place. To
 /// understand the details of NTSTATUS, which you'll want to do before reading further, visit
-/// https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-erref/87fba13e-bf06-450e-83b1-9241dc81e781.
+/// <https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-erref/87fba13e-bf06-450e-83b1-9241dc81e781>.
 ///
 /// This function is unfortunately what happens when you only have six bits to store auxiliary
 /// information, and have to fit in with an existing bitfield's schema.

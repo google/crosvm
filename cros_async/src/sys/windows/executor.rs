@@ -30,7 +30,7 @@ use crate::IoSource;
 /// represented on the POSIX side as an enum, rather than a trait. This leads to some code &
 /// interface duplication, but as far as we understand that is unavoidable.
 ///
-/// See https://chromium-review.googlesource.com/c/chromiumos/platform/crosvm/+/2571401/2..6/cros_async/src/executor.rs#b75
+/// See <https://chromium-review.googlesource.com/c/chromiumos/platform/crosvm/+/2571401/2..6/cros_async/src/executor.rs#b75>
 /// for further details.
 ///
 /// # Examples
