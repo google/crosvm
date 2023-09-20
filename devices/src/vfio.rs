@@ -32,7 +32,6 @@ use base::FromRawDescriptor;
 use base::RawDescriptor;
 use base::SafeDescriptor;
 use data_model::vec_with_array_field;
-use data_model::zerocopy_from_reader;
 use hypervisor::DeviceKind;
 use hypervisor::Vm;
 use once_cell::sync::OnceCell;
@@ -170,12 +169,11 @@ pub struct VfioContainer {
     groups: HashMap<u32, Arc<Mutex<VfioGroup>>>,
 }
 
-fn extract_vfio_struct<T>(bytes: &[u8], offset: usize) -> T
+fn extract_vfio_struct<T>(bytes: &[u8], offset: usize) -> Option<T>
 where
     T: FromBytes,
 {
-    zerocopy_from_reader(&bytes[offset..(offset + mem::size_of::<T>())])
-        .expect("malformed kernel data")
+    bytes.get(offset..).and_then(T::read_from_prefix)
 }
 
 const VFIO_API_VERSION: u8 = 0;
@@ -330,19 +328,25 @@ impl VfioContainer {
 
         let mut offset = iommu_info[0].cap_offset as usize;
         while offset != 0 {
-            let header = extract_vfio_struct::<vfio_info_cap_header>(info_bytes, offset);
+            let header = extract_vfio_struct::<vfio_info_cap_header>(info_bytes, offset)
+                .ok_or(VfioError::IommuGetCapInfo)?;
 
             if header.id == VFIO_IOMMU_TYPE1_INFO_CAP_IOVA_RANGE as u16 && header.version == 1 {
-                let iova_header = extract_vfio_struct::<vfio_iommu_type1_info_cap_iova_range_header>(
-                    info_bytes, offset,
-                );
+                let iova_header =
+                    extract_vfio_struct::<vfio_iommu_type1_info_cap_iova_range_header>(
+                        info_bytes, offset,
+                    )
+                    .ok_or(VfioError::IommuGetCapInfo)?;
                 let range_offset = offset + mem::size_of::<vfio_iommu_type1_info_cap_iova_range>();
                 let mut ret = Vec::new();
                 for i in 0..iova_header.nr_iovas {
-                    ret.push(extract_vfio_struct::<vfio_iova_range>(
-                        info_bytes,
-                        range_offset + i as usize * mem::size_of::<vfio_iova_range>(),
-                    ));
+                    ret.push(
+                        extract_vfio_struct::<vfio_iova_range>(
+                            info_bytes,
+                            range_offset + i as usize * mem::size_of::<vfio_iova_range>(),
+                        )
+                        .ok_or(VfioError::IommuGetCapInfo)?,
+                    );
                 }
                 return Ok(ret
                     .iter()
