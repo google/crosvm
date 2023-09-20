@@ -4,22 +4,13 @@
 
 //! Implements vhost-based virtio devices.
 
-use anyhow::anyhow;
-use anyhow::Context;
 use base::Error as SysError;
 use base::TubeError;
-use data_model::zerocopy_from_mut_slice;
 use net_util::Error as TapError;
 use remain::sorted;
 use thiserror::Error;
 #[cfg(unix)]
 use vhost::Error as VhostError;
-use vmm_vhost::message::MasterReq;
-use vmm_vhost::message::Req;
-use vmm_vhost::message::VhostUserMsgHeader;
-use zerocopy::AsBytes;
-use zerocopy::FromBytes;
-use zerocopy::LayoutVerified;
 
 mod control_socket;
 pub mod user;
@@ -148,37 +139,3 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
-
-pub const HEADER_LEN: usize = std::mem::size_of::<VhostUserMsgHeader<MasterReq>>();
-
-pub fn vhost_header_from_bytes<R: Req>(bytes: &[u8]) -> Option<&VhostUserMsgHeader<R>> {
-    if bytes.len() < HEADER_LEN {
-        return None;
-    }
-    // This can't fail because we already checked the size and because packed alignment is 1.
-    Some(
-        LayoutVerified::<_, VhostUserMsgHeader<R>>::new(&bytes[0..HEADER_LEN])
-            .unwrap()
-            .into_ref(),
-    )
-}
-
-pub fn vhost_body_from_message_bytes<T: FromBytes + AsBytes>(
-    bytes: &mut [u8],
-) -> anyhow::Result<&mut T> {
-    let body_len = std::mem::size_of::<T>();
-    let hdr = vhost_header_from_bytes::<MasterReq>(bytes).context("failed to parse header")?;
-
-    if body_len != hdr.get_size() as usize || bytes.len() != body_len + HEADER_LEN {
-        return Err(anyhow!(
-            "parse error: body_len={} hdr_size={} msg_size={}",
-            body_len,
-            hdr.get_size(),
-            bytes.len()
-        ));
-    }
-
-    // We already checked the size. This can only fail due to alignment, but all valid
-    // message types are packed (i.e. alignment=1).
-    Ok(zerocopy_from_mut_slice(&mut bytes[HEADER_LEN..]).expect("bad alignment"))
-}
