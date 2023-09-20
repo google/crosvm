@@ -46,6 +46,8 @@ pub enum Error {
     GetConfigDescriptor(UsbUtilError),
     #[error("failed to get device descriptor: {0}")]
     GetDeviceDescriptor(UsbUtilError),
+    #[error("failed to get dma buffer")]
+    GetDmaBuffer,
     #[error("failed to get endpoint descriptor for ep: {0}")]
     GetEndpointDescriptor(u8),
     #[error("failed to get endpoint type")]
@@ -63,6 +65,8 @@ pub enum Error {
     ReadBuffer(BufferError),
     #[error("failed to read control tube: {0}")]
     ReadControlTube(TubeError),
+    #[error("failed to release dma buffer")]
+    ReleaseDmaBuffer,
     #[error("failed to remove device from event loop: {0}")]
     RemoveFromEventLoop(UtilsError),
     #[error("failed to reset: {0}")]

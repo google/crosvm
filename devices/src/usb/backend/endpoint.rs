@@ -10,6 +10,7 @@ use base::error;
 use usb_util::EndpointDirection;
 use usb_util::EndpointType;
 use usb_util::Transfer;
+use usb_util::TransferBuffer;
 use usb_util::TransferStatus;
 use usb_util::ENDPOINT_DIRECTION_OFFSET;
 
@@ -106,13 +107,31 @@ impl UsbEndpoint {
         Ok(())
     }
 
-    fn get_transfer_buffer(&self, buffer: &ScatterGatherBuffer) -> Result<Vec<u8>> {
-        let mut v = vec![0u8; buffer.len().map_err(Error::BufferLen)?];
+    fn get_transfer_buffer(
+        &self,
+        buffer: &ScatterGatherBuffer,
+        device: &mut impl BackendDevice,
+    ) -> Result<TransferBuffer> {
+        let len = buffer.len().map_err(Error::BufferLen)?;
+        let mut buf = device.request_transfer_buffer(len);
         if self.direction == EndpointDirection::HostToDevice {
             // Read data from ScatterGatherBuffer to a continuous memory.
-            buffer.read(v.as_mut_slice()).map_err(Error::ReadBuffer)?;
+            match &mut buf {
+                TransferBuffer::Dma(dmabuf) => {
+                    if let Some(buf) = dmabuf.upgrade() {
+                        buffer
+                            .read(buf.lock().as_mut_slice())
+                            .map_err(Error::ReadBuffer)?;
+                    } else {
+                        return Err(Error::GetDmaBuffer);
+                    }
+                }
+                TransferBuffer::Vector(v) => {
+                    buffer.read(v.as_mut_slice()).map_err(Error::ReadBuffer)?;
+                }
+            }
         }
-        Ok(v)
+        Ok(buf)
     }
 
     fn handle_bulk_transfer(
@@ -121,7 +140,7 @@ impl UsbEndpoint {
         xhci_transfer: XhciTransfer,
         buffer: ScatterGatherBuffer,
     ) -> Result<()> {
-        let transfer_buffer = self.get_transfer_buffer(&buffer)?;
+        let transfer_buffer = self.get_transfer_buffer(&buffer, device)?;
         let usb_transfer = Transfer::new_bulk(
             self.ep_addr(),
             transfer_buffer,
@@ -137,7 +156,7 @@ impl UsbEndpoint {
         xhci_transfer: XhciTransfer,
         buffer: ScatterGatherBuffer,
     ) -> Result<()> {
-        let transfer_buffer = self.get_transfer_buffer(&buffer)?;
+        let transfer_buffer = self.get_transfer_buffer(&buffer, device)?;
         let usb_transfer = Transfer::new_interrupt(self.ep_addr(), transfer_buffer)
             .map_err(Error::CreateTransfer)?;
         self.do_handle_transfer(device, xhci_transfer, usb_transfer, buffer)
@@ -223,9 +242,20 @@ impl UsbEndpoint {
                         XhciTransferState::Completed => {
                             let status = t.status();
                             let actual_length = t.actual_length();
-                            let copied_length = buffer
-                                .write(t.buffer.as_slice())
-                                .map_err(Error::WriteBuffer)?;
+                            let copied_length = match t.buffer {
+                                TransferBuffer::Vector(v) => {
+                                    buffer.write(v.as_slice()).map_err(Error::WriteBuffer)?
+                                }
+                                TransferBuffer::Dma(buf) => {
+                                    if let Some(buf) = buf.upgrade() {
+                                        buffer
+                                            .write(buf.lock().as_slice())
+                                            .map_err(Error::WriteBuffer)?
+                                    } else {
+                                        return Err(Error::GetDmaBuffer);
+                                    }
+                                }
+                            };
                             let actual_length = cmp::min(actual_length, copied_length);
                             drop(state);
                             xhci_transfer

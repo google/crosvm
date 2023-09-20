@@ -21,6 +21,7 @@ use usb_util::DeviceSpeed;
 use usb_util::InterfaceDescriptor;
 use usb_util::StandardControlRequest;
 use usb_util::Transfer;
+use usb_util::TransferBuffer;
 use usb_util::TransferHandle;
 use usb_util::TransferStatus;
 use usb_util::UsbRequestSetup;
@@ -228,8 +229,8 @@ impl HostDevice {
             buffer
         };
 
-        let mut control_transfer =
-            Transfer::new_control(control_buffer).map_err(Error::CreateTransfer)?;
+        let mut control_transfer = Transfer::new_control(TransferBuffer::Vector(control_buffer))
+            .map_err(Error::CreateTransfer)?;
 
         let tmp_transfer = xhci_transfer.clone();
         let callback = move |t: Transfer| {
@@ -247,14 +248,20 @@ impl HostDevice {
                     let status = t.status();
                     let actual_length = t.actual_length();
                     if direction == ControlRequestDataPhaseTransferDirection::DeviceToHost {
-                        if let Some(control_request_data) =
-                            t.buffer.get(mem::size_of::<UsbRequestSetup>()..)
-                        {
-                            if let Some(buffer) = &buffer {
-                                buffer
-                                    .write(control_request_data)
-                                    .map_err(Error::WriteBuffer)?;
+                        match &t.buffer {
+                            TransferBuffer::Vector(v) => {
+                                if let Some(control_request_data) =
+                                    v.get(mem::size_of::<UsbRequestSetup>()..)
+                                {
+                                    if let Some(buffer) = &buffer {
+                                        buffer
+                                            .write(control_request_data)
+                                            .map_err(Error::WriteBuffer)?;
+                                    }
+                                }
                             }
+                            // control buffer must use a vector for buffer
+                            TransferBuffer::Dma(_) => unreachable!(),
                         }
                     }
                     drop(state);
@@ -583,6 +590,13 @@ impl BackendDevice for Device {
         event_loop
             .remove_event_for_descriptor(self)
             .map_err(Error::RemoveFromEventLoop)
+    }
+
+    fn request_transfer_buffer(&mut self, size: usize) -> TransferBuffer {
+        match self.reserve_dma_buffer(size) {
+            Ok(dmabuf) => TransferBuffer::Dma(dmabuf),
+            Err(_) => TransferBuffer::Vector(vec![0u8; size]),
+        }
     }
 }
 

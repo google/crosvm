@@ -13,17 +13,24 @@ use std::os::raw::c_uchar;
 use std::os::raw::c_uint;
 use std::os::raw::c_void;
 use std::sync::Arc;
+use std::sync::Weak;
 
 use base::error;
 use base::handle_eintr_errno;
+use base::warn;
 use base::AsRawDescriptor;
 use base::IoctlNr;
+use base::MappedRegion;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
+use base::Protection;
 use base::RawDescriptor;
 use data_model::vec_with_array_field;
 use libc::EAGAIN;
 use libc::ENODEV;
 use libc::ENOENT;
 use libc::EPIPE;
+use sync::Mutex;
 
 use crate::control_request_type;
 use crate::descriptor;
@@ -38,10 +45,71 @@ use crate::Error;
 use crate::Result;
 use crate::StandardControlRequest;
 
+// This is the maximum block size observed during storage performance test
+const MMAP_SIZE: usize = 1024 * 1024;
+
+/// ManagedDmaBuffer represents the entire DMA buffer allocated by a device
+struct ManagedDmaBuffer {
+    /// The entire DMA buffer
+    buf: MemoryMapping,
+    /// A DMA buffer lent to a TransferBuffer. This is a part of the entire buffer.
+    used: Option<Arc<Mutex<DmaBuffer>>>,
+}
+
+/// DmaBuffer represents a DMA buffer lent by a device
+pub struct DmaBuffer {
+    /// Host virtual address of the buffer
+    addr: u64,
+    /// Size of the buffer
+    size: usize,
+}
+
+impl DmaBuffer {
+    pub fn address(&mut self) -> *mut c_void {
+        self.addr as *mut c_void
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        // Safe because the region has been lent by a device
+        unsafe { std::slice::from_raw_parts(self.addr as *const u8, self.size) }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        // Safe because the region has been lent by a device
+        unsafe { std::slice::from_raw_parts_mut(self.addr as *mut u8, self.size) }
+    }
+}
+
+/// TransferBuffer is used for data transfer between crosvm and the host kernel
+pub enum TransferBuffer {
+    Vector(Vec<u8>),
+    Dma(Weak<Mutex<DmaBuffer>>),
+}
+
+impl TransferBuffer {
+    pub fn address(&mut self) -> Option<*mut c_void> {
+        match self {
+            TransferBuffer::Vector(v) => Some(v.as_mut_ptr() as *mut c_void),
+            TransferBuffer::Dma(buf) => buf.upgrade().map(|buf| buf.lock().address()),
+        }
+    }
+    pub fn size(&self) -> Option<usize> {
+        match self {
+            TransferBuffer::Vector(v) => Some(v.len()),
+            TransferBuffer::Dma(buf) => buf.upgrade().map(|buf| buf.lock().size()),
+        }
+    }
+}
+
 /// Device represents a USB device.
 pub struct Device {
     fd: Arc<File>,
     device_descriptor_tree: DeviceDescriptorTree,
+    dma_buffer: Option<ManagedDmaBuffer>,
 }
 
 /// Transfer contains the information necessary to submit a USB request
@@ -50,7 +118,7 @@ pub struct Transfer {
     // NOTE: This Vec is actually a single URB with a trailing
     // variable-length field created by vec_with_array_field().
     urb: Vec<usb_sys::usbdevfs_urb>,
-    pub buffer: Vec<u8>,
+    pub buffer: TransferBuffer,
     callback: Option<Box<dyn Fn(Transfer) + Send + Sync>>,
 }
 
@@ -82,10 +150,31 @@ impl Device {
             .map_err(Error::DescriptorRead)?;
         let device_descriptor_tree = descriptor::parse_usbfs_descriptors(&descriptor_data)?;
 
-        let device = Device {
+        let mut device = Device {
             fd: Arc::new(fd),
             device_descriptor_tree,
+            dma_buffer: None,
         };
+
+        let map = MemoryMappingBuilder::new(MMAP_SIZE)
+            .from_file(&device.fd)
+            .protection(Protection::read_write())
+            .build();
+        match map {
+            Ok(map) => {
+                device.dma_buffer = Some(ManagedDmaBuffer {
+                    buf: map,
+                    used: None,
+                });
+            }
+            Err(e) => {
+                // Ignore the error since we can process requests without DMA buffer
+                warn!(
+                    "mmap() failed. User-provided buffer will be used for data transfer. {}",
+                    e
+                );
+            }
+        }
         Ok(device)
     }
 
@@ -123,6 +212,36 @@ impl Device {
             return Err(Error::IoctlFailed(nr, base::Error::last()));
         }
         Ok(ret)
+    }
+
+    pub fn reserve_dma_buffer(&mut self, size: usize) -> Result<Weak<Mutex<DmaBuffer>>> {
+        if let Some(managed) = &mut self.dma_buffer {
+            if managed.used.is_none() {
+                let buf = Arc::new(Mutex::new(DmaBuffer {
+                    addr: managed.buf.as_ptr() as u64,
+                    size,
+                }));
+                let ret = Ok(Arc::downgrade(&buf));
+                managed.used = Some(buf);
+                return ret;
+            }
+        }
+        Err(Error::GetDmaBufferFailed(size))
+    }
+
+    pub fn release_dma_buffer(&mut self, dmabuf: Weak<Mutex<DmaBuffer>>) -> Result<()> {
+        if let Some(managed) = &mut self.dma_buffer {
+            if let Some(released) = dmabuf.upgrade() {
+                let addr = { released.lock().address() as u64 };
+                if let Some(lent) = &managed.used {
+                    if lent.lock().addr == addr {
+                        managed.used = None;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Err(Error::ReleaseDmaBufferFailed)
     }
 
     /// Submit a transfer to the device.
@@ -166,7 +285,7 @@ impl Device {
 
     /// Check for completed asynchronous transfers submitted via `submit_transfer()`.
     /// The callback for each completed transfer will be called.
-    pub fn poll_transfers(&self) -> Result<()> {
+    pub fn poll_transfers(&mut self) -> Result<()> {
         // Reap completed transfers until we get EAGAIN.
         loop {
             let mut urb_ptr: *mut usb_sys::usbdevfs_urb = std::ptr::null_mut();
@@ -193,8 +312,19 @@ impl Device {
             // so try_unwrap() should never fail.
             let mut transfer = Arc::try_unwrap(rc_transfer).map_err(|_| Error::RcUnwrapFailed)?;
 
+            let dmabuf = match &mut transfer.buffer {
+                TransferBuffer::Dma(buf) => Some(buf.clone()),
+                TransferBuffer::Vector(_) => None,
+            };
+
             if let Some(cb) = transfer.callback.take() {
                 cb(transfer);
+            }
+
+            if let Some(dmabuf) = dmabuf {
+                if self.release_dma_buffer(dmabuf).is_err() {
+                    warn!("failed to release dma buffer");
+                }
             }
         }
 
@@ -436,7 +566,7 @@ impl Transfer {
     fn new(
         transfer_type: u8,
         endpoint: u8,
-        buffer: Vec<u8>,
+        buffer: TransferBuffer,
         iso_packets: &[usb_sys::usbdevfs_iso_packet_desc],
     ) -> Result<Transfer> {
         let mut transfer = Transfer {
@@ -449,10 +579,11 @@ impl Transfer {
 
         transfer.urb_mut().urb_type = transfer_type;
         transfer.urb_mut().endpoint = endpoint;
-        transfer.urb_mut().buffer = transfer.buffer.as_mut_ptr() as *mut c_void;
+        transfer.urb_mut().buffer = transfer.buffer.address().ok_or(Error::InvalidBuffer)?;
         transfer.urb_mut().buffer_length = transfer
             .buffer
-            .len()
+            .size()
+            .ok_or(Error::InvalidBuffer)?
             .try_into()
             .map_err(Error::InvalidBufferLength)?;
 
@@ -470,18 +601,22 @@ impl Transfer {
     }
 
     /// Create a control transfer.
-    pub fn new_control(buffer: Vec<u8>) -> Result<Transfer> {
+    pub fn new_control(buffer: TransferBuffer) -> Result<Transfer> {
         let endpoint = 0;
         Self::new(usb_sys::USBDEVFS_URB_TYPE_CONTROL, endpoint, buffer, &[])
     }
 
     /// Create an interrupt transfer.
-    pub fn new_interrupt(endpoint: u8, buffer: Vec<u8>) -> Result<Transfer> {
+    pub fn new_interrupt(endpoint: u8, buffer: TransferBuffer) -> Result<Transfer> {
         Self::new(usb_sys::USBDEVFS_URB_TYPE_INTERRUPT, endpoint, buffer, &[])
     }
 
     /// Create a bulk transfer.
-    pub fn new_bulk(endpoint: u8, buffer: Vec<u8>, stream_id: Option<u16>) -> Result<Transfer> {
+    pub fn new_bulk(
+        endpoint: u8,
+        buffer: TransferBuffer,
+        stream_id: Option<u16>,
+    ) -> Result<Transfer> {
         let mut transfer = Self::new(usb_sys::USBDEVFS_URB_TYPE_BULK, endpoint, buffer, &[])?;
         if let Some(stream_id) = stream_id {
             transfer.urb_mut().number_of_packets_or_stream_id = stream_id as u32;
@@ -490,7 +625,7 @@ impl Transfer {
     }
 
     /// Create an isochronous transfer.
-    pub fn new_isochronous(endpoint: u8, buffer: Vec<u8>) -> Result<Transfer> {
+    pub fn new_isochronous(endpoint: u8, buffer: TransferBuffer) -> Result<Transfer> {
         // TODO(dverkamp): allow user to specify iso descriptors
         Self::new(usb_sys::USBDEVFS_URB_TYPE_ISO, endpoint, buffer, &[])
     }
