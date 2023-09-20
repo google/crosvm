@@ -18,6 +18,7 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::virtio::descriptor_chain::Descriptor;
 use crate::virtio::descriptor_chain::DescriptorAccess;
@@ -37,7 +38,7 @@ pub const RING_EVENT_FLAGS_DISABLE: u16 = 0x1;
 pub const RING_EVENT_FLAGS_DESC: u16 = 0x2;
 
 /// A packed virtio packed queue descriptor (`struct pvirtq_desc` in the spec).
-#[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, FromZeroes, FromBytes, AsBytes)]
 #[repr(C)]
 pub struct PackedDesc {
     /// Guest address of memory buffer address
@@ -82,7 +83,7 @@ impl PackedDesc {
     }
 }
 
-#[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, FromZeroes, FromBytes, AsBytes)]
 #[repr(C)]
 pub struct PackedDescEvent {
     pub desc: Le16,

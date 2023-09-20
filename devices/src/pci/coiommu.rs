@@ -65,6 +65,7 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::pci::pci_configuration::PciBarConfiguration;
 use crate::pci::pci_configuration::PciBarPrefetchable;
@@ -268,7 +269,7 @@ fn vfio_unmap(vfio_container: &Arc<Mutex<VfioContainer>>, iova: u64, size: u64) 
     }
 }
 
-#[derive(Default, Debug, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Default, Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 #[repr(C)]
 struct PinPageInfo {
     bdf: u16,

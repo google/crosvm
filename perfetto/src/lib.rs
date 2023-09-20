@@ -28,13 +28,14 @@ use protos::perfetto_config::TraceConfig;
 use protos::perfetto_config::TrackEventConfig;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 /// Randomly generated GUID to help locate the AOT header.
 const HEADER_MAGIC: &[u8; 16] = b"\x8d\x10\xa3\xee\x79\x1f\x47\x25\xb2\xb8\xb8\x9f\x85\xe7\xd6\x7c";
 
 /// The optional header written ahead of the trace data.
 #[repr(C)]
-#[derive(Copy, Clone, AsBytes, FromBytes)]
+#[derive(Copy, Clone, AsBytes, FromZeroes, FromBytes)]
 struct TraceHeader {
     magic: [u8; 16],
     data_size: u64,

@@ -22,7 +22,8 @@ cfg-if = "1.0.0"
 libc = "0.2.116"
 remain = "0.2"
 thiserror = "1.0.23"
-zerocopy = "0.6"
+zerocopy = { version = "0.7", features = ["derive"] }
+
 log = "0.4"
 
 [target.'cfg(unix)'.dependencies]

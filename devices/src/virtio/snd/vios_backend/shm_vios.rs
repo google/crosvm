@@ -45,6 +45,7 @@ use sync::Mutex;
 use thiserror::Error as ThisError;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
@@ -855,7 +856,17 @@ const VIOS_VERSION: u32 = 2;
 
 #[repr(C)]
 #[derive(
-    Copy, Clone, Default, AsBytes, FromBytes, Serialize, Deserialize, PartialEq, Eq, Debug,
+    Copy,
+    Clone,
+    Default,
+    AsBytes,
+    FromZeroes,
+    FromBytes,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
 )]
 struct VioSConfig {
     version: u32,
@@ -871,7 +882,7 @@ struct BufferReleaseMsg {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, AsBytes, FromBytes)]
+#[derive(Copy, Clone, AsBytes, FromZeroes, FromBytes)]
 struct IoTransferMsg {
     io_xfer: virtio_snd_pcm_xfer,
     buffer_offset: u32,
@@ -891,7 +902,7 @@ impl IoTransferMsg {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
+#[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes)]
 struct IoStatusMsg {
     status: virtio_snd_pcm_status,
     buffer_offset: u32,

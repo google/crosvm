@@ -54,6 +54,7 @@ use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 #[cfg(target_arch = "x86_64")]
 use crate::pci::PciAddress;
@@ -83,7 +84,7 @@ const VIRTIO_IOMMU_VIOT_NODE_PCI_RANGE: u8 = 1;
 #[cfg(target_arch = "x86_64")]
 const VIRTIO_IOMMU_VIOT_NODE_VIRTIO_IOMMU_PCI: u8 = 3;
 
-#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
 struct VirtioIommuViotHeader {
     node_count: u16,
@@ -91,7 +92,7 @@ struct VirtioIommuViotHeader {
     reserved: [u8; 8],
 }
 
-#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
 struct VirtioIommuViotVirtioPciNode {
     type_: u8,
@@ -102,7 +103,7 @@ struct VirtioIommuViotVirtioPciNode {
     reserved2: [u8; 8],
 }
 
-#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
 struct VirtioIommuViotPciRangeNode {
     type_: u8,

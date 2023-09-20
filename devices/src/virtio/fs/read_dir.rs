@@ -13,9 +13,10 @@ use fuse::filesystem::DirEntry;
 use fuse::filesystem::DirectoryIterator;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 #[repr(C, packed)]
-#[derive(Clone, Copy, AsBytes, FromBytes)]
+#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 struct LinuxDirent64 {
     d_ino: libc::ino64_t,
     d_off: libc::off64_t,

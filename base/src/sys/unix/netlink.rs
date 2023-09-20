@@ -11,7 +11,8 @@ use libc::EINVAL;
 use log::error;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::LayoutVerified;
+use zerocopy::FromZeroes;
+use zerocopy::Ref;
 
 use super::errno_result;
 use super::getpid;
@@ -35,7 +36,7 @@ const NLA_HDRLEN: usize = std::mem::size_of::<NlAttr>();
 const NLATTR_ALIGN_TO: usize = 4;
 
 #[repr(C)]
-#[derive(Copy, Clone, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 struct NlMsgHdr {
     pub nlmsg_len: u32,
     pub nlmsg_type: u16,
@@ -46,7 +47,7 @@ struct NlMsgHdr {
 
 /// Netlink attribute struct, can be used by netlink consumer
 #[repr(C)]
-#[derive(Copy, Clone, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct NlAttr {
     pub len: u16,
     pub _type: u16,
@@ -54,7 +55,7 @@ pub struct NlAttr {
 
 /// Generic netlink header struct, can be used by netlink consumer
 #[repr(C)]
-#[derive(Copy, Clone, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct GenlMsgHdr {
     pub cmd: u8,
     pub version: u8,
@@ -261,7 +262,7 @@ impl NetlinkGenericSocket {
         let data = unsafe { allocation.as_mut_slice(buf_size) };
 
         // Prepare the netlink message header
-        let hdr = LayoutVerified::<_, NlMsgHdr>::new(&mut data[..NLMSGHDR_SIZE])
+        let hdr = Ref::<_, NlMsgHdr>::new(&mut data[..NLMSGHDR_SIZE])
             .expect("failed to unwrap")
             .into_mut();
         hdr.nlmsg_len = NLMSGHDR_SIZE as u32 + GENL_HDRLEN as u32;
@@ -272,7 +273,7 @@ impl NetlinkGenericSocket {
 
         // Prepare generic netlink message header
         let genl_hdr_end = NLMSGHDR_SIZE + GENL_HDRLEN;
-        let genl_hdr = LayoutVerified::<_, GenlMsgHdr>::new(&mut data[NLMSGHDR_SIZE..genl_hdr_end])
+        let genl_hdr = Ref::<_, GenlMsgHdr>::new(&mut data[NLMSGHDR_SIZE..genl_hdr_end])
             .expect("unable to get GenlMsgHdr from slice")
             .into_mut();
         genl_hdr.cmd = libc::CTRL_CMD_GETFAMILY as u8;
@@ -281,7 +282,7 @@ impl NetlinkGenericSocket {
         // Netlink attributes
         let nlattr_start = genl_hdr_end;
         let nlattr_end = nlattr_start + NLA_HDRLEN;
-        let nl_attr = LayoutVerified::<_, NlAttr>::new(&mut data[nlattr_start..nlattr_end])
+        let nl_attr = Ref::<_, NlAttr>::new(&mut data[nlattr_start..nlattr_end])
             .expect("unable to get NlAttr from slice")
             .into_mut();
         nl_attr._type = libc::CTRL_ATTR_FAMILY_NAME as u16;

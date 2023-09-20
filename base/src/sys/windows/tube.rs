@@ -20,6 +20,7 @@ use serde::Serializer;
 use winapi::shared::winerror::ERROR_MORE_DATA;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
@@ -81,7 +82,7 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
 #[repr(C)]
 struct MsgHeader {
     msg_json_size: usize,

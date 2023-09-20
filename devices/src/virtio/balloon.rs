@@ -57,6 +57,7 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use super::async_utils;
 use super::copy_config;
@@ -134,7 +135,7 @@ const VIRTIO_BALLOON_F_RESPONSIVE_DEVICE: u32 = 6; // Device actively watching g
 const VIRTIO_BALLOON_F_EVENTS_VQ: u32 = 7; // Event vq is enabled
 
 // virtio_balloon_config is the balloon device configuration space defined by the virtio spec.
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
 #[repr(C)]
 struct virtio_balloon_config {
     num_pages: Le32,
@@ -174,7 +175,7 @@ const VIRTIO_BALLOON_S_NONSTANDARD_SHMEM: u16 = 65534;
 const VIRTIO_BALLOON_S_NONSTANDARD_UNEVICTABLE: u16 = 65535;
 
 // BalloonStat is used to deserialize stats from the stats_queue.
-#[derive(Copy, Clone, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
 struct BalloonStat {
     tag: Le16,
@@ -206,14 +207,14 @@ const VIRTIO_BALLOON_EVENT_PRESSURE: u32 = 1;
 const VIRTIO_BALLOON_EVENT_PUFF_FAILURE: u32 = 2;
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
+#[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes)]
 struct virtio_balloon_event_header {
     evt_type: Le32,
 }
 
 // virtio_balloon_ws is used to deserialize from the ws data vq.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
 struct virtio_balloon_ws {
     tag: Le16,
     node_id: Le16,
@@ -245,7 +246,7 @@ const _VIRTIO_BALLOON_WS_OP_DISCARD: u16 = 3;
 
 // virtio_balloon_op is used to serialize to the ws cmd vq.
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
 struct virtio_balloon_op {
     type_: Le16,
 }

@@ -56,6 +56,7 @@ use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::virtio::async_utils;
 use crate::virtio::copy_config;

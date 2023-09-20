@@ -12,7 +12,8 @@ source tools/impl/bindgen-common.sh
 
 KERNEL_LOADER_EXTRA="// Added by kernel_loader/bindgen.sh
 use zerocopy::AsBytes;
-use zerocopy::FromBytes;"
+use zerocopy::FromBytes;
+use zerocopy::FromZeroes;"
 
 bindgen_generate \
     --raw-line "${KERNEL_LOADER_EXTRA}" \
@@ -21,10 +22,10 @@ bindgen_generate \
     --allowlist-type='Elf64_Ehdr' \
     --allowlist-type='Elf64_Phdr' \
     --allowlist-var='.+' \
-    --with-derive-custom "elf32_hdr=FromBytes,AsBytes" \
-    --with-derive-custom "elf64_hdr=FromBytes,AsBytes" \
-    --with-derive-custom "elf32_phdr=FromBytes,AsBytes" \
-    --with-derive-custom "elf64_phdr=FromBytes,AsBytes" \
+    --with-derive-custom "elf32_hdr=FromZeroes,FromBytes,AsBytes" \
+    --with-derive-custom "elf64_hdr=FromZeroes,FromBytes,AsBytes" \
+    --with-derive-custom "elf32_phdr=FromZeroes,FromBytes,AsBytes" \
+    --with-derive-custom "elf64_phdr=FromZeroes,FromBytes,AsBytes" \
     "${BINDGEN_LINUX}/include/uapi/linux/elf.h" \
     -- \
     -isystem "${BINDGEN_LINUX}/include" \

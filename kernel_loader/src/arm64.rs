@@ -17,12 +17,13 @@ use resources::AddressRange;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::Error;
 use crate::LoadedKernel;
 use crate::Result;
 
-#[derive(Copy, Clone, FromBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes)]
 #[allow(unused)]
 #[repr(C)]
 struct Arm64ImageHeader {

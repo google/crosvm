@@ -16,8 +16,6 @@ base = { path = "../base" }
 cfg-if = "1.0.0"
 cros_async = { path = "../cros_async" }
 libc = "*"
-zerocopy = "0.6"
-
 net_sys = { path = "../net_sys" }
 pcap-file = { version = "1.1.0", optional = true }
 remain = "*"
@@ -25,6 +23,7 @@ serde = { version = "1", features = [ "derive" ] }
 smallvec = "*"
 thiserror = "*"
 virtio_sys = { path = "../virtio_sys" }
+zerocopy = { version = "0.7", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
 metrics = { path = "../metrics" }

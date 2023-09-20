@@ -40,6 +40,7 @@ use serde::Serializer;
 use static_assertions::const_assert;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 macro_rules! endian_type {
     ($old_type:ident, $new_type:ident, $to_new:ident, $from_new:ident) => {
@@ -47,7 +48,7 @@ macro_rules! endian_type {
         ///
         /// See module level documentation for examples.
         #[repr(transparent)]
-        #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, FromBytes, AsBytes)]
+        #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, FromZeroes, FromBytes, AsBytes)]
         pub struct $new_type($old_type);
 
         impl $new_type {

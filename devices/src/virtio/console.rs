@@ -41,6 +41,7 @@ use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::virtio::base_features;
 use crate::virtio::copy_config;
@@ -64,7 +65,7 @@ pub enum ConsoleError {
     RxDescriptorsExhausted,
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
 #[repr(C)]
 pub struct virtio_console_config {
     pub cols: Le16,

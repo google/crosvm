@@ -12,5 +12,5 @@ remain = "*"
 thiserror = "*"
 base = { path = "../base" }
 usb_sys = { path = "../usb_sys" }
-zerocopy = "0.6"
 sync = { path = "../common/sync" }
+zerocopy = { version = "0.7", features = ["derive"] }

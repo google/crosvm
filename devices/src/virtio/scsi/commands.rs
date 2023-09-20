@@ -11,6 +11,7 @@ use cros_async::sync::RwLock;
 use disk::AsyncDisk;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::virtio::scsi::constants::INQUIRY;
 use crate::virtio::scsi::constants::READ_10;
@@ -78,7 +79,7 @@ impl Command {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct TestUnitReady {
     opcode: u8,
@@ -124,7 +125,7 @@ async fn read_from_disk(
         })
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct Read6 {
     opcode: u8,
@@ -163,7 +164,7 @@ impl Read6 {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct Inquiry {
     opcode: u8,
@@ -285,7 +286,7 @@ impl Inquiry {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct ReadCapacity10 {
     opcode: u8,
@@ -328,7 +329,7 @@ impl ReadCapacity10 {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct Read10 {
     opcode: u8,
@@ -358,7 +359,7 @@ impl Read10 {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct Write10 {
     opcode: u8,
@@ -412,7 +413,7 @@ async fn write_to_disk(
         })
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct ReportLuns {
     opcode: u8,

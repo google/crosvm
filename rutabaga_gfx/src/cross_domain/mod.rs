@@ -19,6 +19,7 @@ use std::thread;
 use log::error;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::cross_domain::cross_domain_protocol::*;
 use crate::cross_domain::sys::channel;
@@ -653,7 +654,7 @@ impl Drop for CrossDomainContext {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
+#[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes)]
 struct CrossDomainInitLegacy {
     hdr: CrossDomainHeader,
     query_ring_id: u32,

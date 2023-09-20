@@ -10,6 +10,7 @@
 // Added by virtio_sys/bindgen.sh
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 #[repr(C)]
 #[derive(Default)]
@@ -215,7 +216,7 @@ impl Default for virtio_net_hdr_v1_hash {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct virtio_net_hdr {
     pub flags: u8,
     pub gso_type: u8,
@@ -225,7 +226,7 @@ pub struct virtio_net_hdr {
     pub csum_offset: __virtio16,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct virtio_net_hdr_mrg_rxbuf {
     pub hdr: virtio_net_hdr,
     pub num_buffers: __virtio16,

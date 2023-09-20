@@ -9,6 +9,7 @@
 // manually added, needs to be included when this crate gets automated bindgen
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 pub const MPC_SIGNATURE: &'static [u8; 5usize] = b"PCMP\x00";
 pub const MP_PROCESSOR: ::std::os::raw::c_uint = 0;
@@ -48,7 +49,7 @@ pub const MP_LEVEL_TRIGGER: ::std::os::raw::c_uint = 0xc;
 pub const MP_APIC_ALL: ::std::os::raw::c_uint = 255;
 pub const MPC_OEM_SIGNATURE: &'static [u8; 5usize] = b"_OEM\x00";
 #[repr(C)]
-#[derive(Debug, Default, Copy, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, FromZeroes, FromBytes, AsBytes)]
 pub struct mpf_intel {
     pub signature: [::std::os::raw::c_char; 4usize],
     pub physptr: ::std::os::raw::c_uint,
@@ -180,7 +181,7 @@ impl Clone for mpf_intel {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, FromZeroes, FromBytes, AsBytes)]
 pub struct mpc_table {
     pub signature: [::std::os::raw::c_char; 4usize],
     pub length: ::std::os::raw::c_ushort,
@@ -323,7 +324,7 @@ impl Clone for mpc_table {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, FromZeroes, FromBytes, AsBytes)]
 pub struct mpc_cpu {
     pub type_: ::std::os::raw::c_uchar,
     pub apicid: ::std::os::raw::c_uchar,
@@ -422,7 +423,7 @@ impl Clone for mpc_cpu {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, FromZeroes, FromBytes, AsBytes)]
 pub struct mpc_bus {
     pub type_: ::std::os::raw::c_uchar,
     pub busid: ::std::os::raw::c_uchar,
@@ -477,7 +478,7 @@ impl Clone for mpc_bus {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, FromZeroes, FromBytes, AsBytes)]
 pub struct mpc_ioapic {
     pub type_: ::std::os::raw::c_uchar,
     pub apicid: ::std::os::raw::c_uchar,
@@ -554,7 +555,7 @@ impl Clone for mpc_ioapic {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, FromZeroes, FromBytes, AsBytes)]
 pub struct mpc_intsrc {
     pub type_: ::std::os::raw::c_uchar,
     pub irqtype: ::std::os::raw::c_uchar,
@@ -658,7 +659,7 @@ pub const mp_irq_source_types_mp_SMI: mp_irq_source_types = 2;
 pub const mp_irq_source_types_mp_ExtINT: mp_irq_source_types = 3;
 pub type mp_irq_source_types = ::std::os::raw::c_uint;
 #[repr(C)]
-#[derive(Debug, Default, Copy, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, FromZeroes, FromBytes, AsBytes)]
 pub struct mpc_lintsrc {
     pub type_: ::std::os::raw::c_uchar,
     pub irqtype: ::std::os::raw::c_uchar,

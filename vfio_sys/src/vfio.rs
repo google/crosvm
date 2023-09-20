@@ -10,6 +10,7 @@
 // Added by vfio_sys/bindgen.sh
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -36,7 +37,7 @@ pub struct vfio_region_info_with_cap {
 // vfio_iommu_type1_info_cap_iova_range minus the incomplete iova_ranges
 // array, so that Copy/AsBytes/FromBytes can be implemented.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
 pub struct vfio_iommu_type1_info_cap_iova_range_header {
     pub header: vfio_info_cap_header,
     pub nr_iovas: u32,
@@ -197,7 +198,7 @@ pub const VFIO_EEH_PE_RESET_FUNDAMENTAL: u32 = 7;
 pub const VFIO_EEH_PE_CONFIGURE: u32 = 8;
 pub const VFIO_EEH_PE_INJECT_ERR: u32 = 9;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct vfio_info_cap_header {
     pub id: u16,
     pub version: u16,
@@ -463,7 +464,7 @@ pub struct vfio_iommu_type1_info {
     pub cap_offset: u32,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct vfio_iova_range {
     pub start: u64,
     pub end: u64,

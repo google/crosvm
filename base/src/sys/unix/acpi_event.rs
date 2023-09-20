@@ -6,6 +6,7 @@ use std::str;
 
 use thiserror::Error;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use super::netlink::*;
 
@@ -39,7 +40,7 @@ enum GenmsghdrCmd {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, FromBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes)]
 struct AcpiGenlEvent {
     device_class: [::std::os::raw::c_char; 20usize],
     bus_id: [::std::os::raw::c_char; 15usize],

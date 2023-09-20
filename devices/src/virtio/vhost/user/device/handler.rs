@@ -968,12 +968,13 @@ mod tests {
     use vmm_vhost::VhostUserSlaveReqHandler;
     use zerocopy::AsBytes;
     use zerocopy::FromBytes;
+    use zerocopy::FromZeroes;
 
     use super::sys::test_helpers;
     use super::*;
     use crate::virtio::vhost::user::vmm::VhostUserHandler;
 
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, AsBytes, FromBytes)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, AsBytes, FromZeroes, FromBytes)]
     #[repr(C, packed(4))]
     struct FakeConfig {
         x: u32,

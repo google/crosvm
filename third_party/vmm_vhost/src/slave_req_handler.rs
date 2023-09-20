@@ -10,7 +10,8 @@ use base::AsRawDescriptor;
 use base::RawDescriptor;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::LayoutVerified;
+
+use zerocopy::Ref;
 
 use crate::connection::Endpoint;
 use crate::connection::EndpointExt;
@@ -958,8 +959,8 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     ) -> Result<()> {
         self.check_request_size(hdr, size, hdr.get_size() as usize)?;
 
-        let (msg, regions) = LayoutVerified::<_, VhostUserMemory>::new_from_prefix(buf)
-            .ok_or(Error::InvalidMessage)?;
+        let (msg, regions) =
+            Ref::<_, VhostUserMemory>::new_from_prefix(buf).ok_or(Error::InvalidMessage)?;
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
         }
@@ -970,12 +971,11 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             return Err(Error::InvalidMessage);
         }
 
-        let (regions, excess) =
-            LayoutVerified::<_, [VhostUserMemoryRegion]>::new_slice_from_prefix(
-                regions,
-                msg.num_regions as usize,
-            )
-            .ok_or(Error::InvalidMessage)?;
+        let (regions, excess) = Ref::<_, [VhostUserMemoryRegion]>::new_slice_from_prefix(
+            regions,
+            msg.num_regions as usize,
+        )
+        .ok_or(Error::InvalidMessage)?;
         if !excess.is_empty() {
             return Err(Error::InvalidMessage);
         }
@@ -991,8 +991,8 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     }
 
     fn get_config(&mut self, hdr: &VhostUserMsgHeader<MasterReq>, buf: &[u8]) -> Result<()> {
-        let (msg, payload) = LayoutVerified::<_, VhostUserConfig>::new_from_prefix(buf)
-            .ok_or(Error::InvalidMessage)?;
+        let (msg, payload) =
+            Ref::<_, VhostUserConfig>::new_from_prefix(buf).ok_or(Error::InvalidMessage)?;
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
         }
@@ -1027,8 +1027,8 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     }
 
     fn set_config(&mut self, buf: &[u8]) -> Result<()> {
-        let (msg, payload) = LayoutVerified::<_, VhostUserConfig>::new_from_prefix(buf)
-            .ok_or(Error::InvalidMessage)?;
+        let (msg, payload) =
+            Ref::<_, VhostUserConfig>::new_from_prefix(buf).ok_or(Error::InvalidMessage)?;
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
         }

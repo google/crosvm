@@ -19,6 +19,7 @@ fix_vfio_type() {
 VFIO_EXTRA="// Added by vfio_sys/bindgen.sh
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -45,7 +46,7 @@ pub struct vfio_region_info_with_cap {
 // vfio_iommu_type1_info_cap_iova_range minus the incomplete iova_ranges
 // array, so that Copy/AsBytes/FromBytes can be implemented.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
 pub struct vfio_iommu_type1_info_cap_iova_range_header {
     pub header: vfio_info_cap_header,
     pub nr_iovas: u32,
@@ -57,8 +58,8 @@ bindgen_generate \
     --allowlist-var='VFIO_.*' \
     --blocklist-item='VFIO_DEVICE_API_.*_STRING' \
     --allowlist-type='vfio_.*' \
-    --with-derive-custom "vfio_info_cap_header=FromBytes,AsBytes" \
-    --with-derive-custom "vfio_iova_range=FromBytes,AsBytes" \
+    --with-derive-custom "vfio_info_cap_header=FromZeroes,FromBytes,AsBytes" \
+    --with-derive-custom "vfio_iova_range=FromZeroes,FromBytes,AsBytes" \
     "${BINDGEN_LINUX}/include/uapi/linux/vfio.h" \
     -- \
     -D__user= \

@@ -18,6 +18,7 @@
 
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 #[repr(C)]
 #[derive(Default)]
@@ -60,7 +61,7 @@ pub type __u16 = ::std::os::raw::c_ushort;
 pub type __u32 = ::std::os::raw::c_uint;
 pub type __u64 = ::std::os::raw::c_ulonglong;
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct screen_info {
     pub orig_x: __u8,
     pub orig_y: __u8,
@@ -100,7 +101,7 @@ pub struct screen_info {
     pub _reserved: [__u8; 2usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct apm_bios_info {
     pub version: __u16,
     pub cseg: __u16,
@@ -113,7 +114,7 @@ pub struct apm_bios_info {
     pub dseg_len: __u16,
 }
 #[repr(C, packed)]
-#[derive(Copy, Clone, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params {
     pub length: __u16,
     pub info_flags: __u16,
@@ -135,7 +136,7 @@ pub struct edd_device_params {
     pub checksum: __u8,
 }
 #[repr(C)]
-#[derive(Copy, Clone, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub union edd_device_params__bindgen_ty_1 {
     pub isa: edd_device_params__bindgen_ty_1__bindgen_ty_1,
     pub pci: edd_device_params__bindgen_ty_1__bindgen_ty_2,
@@ -146,14 +147,14 @@ pub union edd_device_params__bindgen_ty_1 {
     _bindgen_union_align: [u8; 8usize],
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_1__bindgen_ty_1 {
     pub base_address: __u16,
     pub reserved1: __u16,
     pub reserved2: __u32,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_1__bindgen_ty_2 {
     pub bus: __u8,
     pub slot: __u8,
@@ -162,22 +163,22 @@ pub struct edd_device_params__bindgen_ty_1__bindgen_ty_2 {
     pub reserved: __u32,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_1__bindgen_ty_3 {
     pub reserved: __u64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_1__bindgen_ty_4 {
     pub reserved: __u64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_1__bindgen_ty_5 {
     pub reserved: __u64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_1__bindgen_ty_6 {
     pub reserved: __u64,
 }
@@ -187,7 +188,7 @@ impl Default for edd_device_params__bindgen_ty_1 {
     }
 }
 #[repr(C)]
-#[derive(Copy, Clone, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub union edd_device_params__bindgen_ty_2 {
     pub ata: edd_device_params__bindgen_ty_2__bindgen_ty_1,
     pub atapi: edd_device_params__bindgen_ty_2__bindgen_ty_2,
@@ -202,7 +203,7 @@ pub union edd_device_params__bindgen_ty_2 {
     _bindgen_union_align: [u8; 16usize],
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_2__bindgen_ty_1 {
     pub device: __u8,
     pub reserved1: __u8,
@@ -211,7 +212,7 @@ pub struct edd_device_params__bindgen_ty_2__bindgen_ty_1 {
     pub reserved4: __u64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_2__bindgen_ty_2 {
     pub device: __u8,
     pub lun: __u8,
@@ -221,7 +222,7 @@ pub struct edd_device_params__bindgen_ty_2__bindgen_ty_2 {
     pub reserved4: __u64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_2__bindgen_ty_3 {
     pub id: __u16,
     pub lun: __u64,
@@ -229,38 +230,38 @@ pub struct edd_device_params__bindgen_ty_2__bindgen_ty_3 {
     pub reserved2: __u32,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_2__bindgen_ty_4 {
     pub serial_number: __u64,
     pub reserved: __u64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_2__bindgen_ty_5 {
     pub eui: __u64,
     pub reserved: __u64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_2__bindgen_ty_6 {
     pub wwid: __u64,
     pub lun: __u64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_2__bindgen_ty_7 {
     pub identity_tag: __u64,
     pub reserved: __u64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_2__bindgen_ty_8 {
     pub array_number: __u32,
     pub reserved1: __u32,
     pub reserved2: __u64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_2__bindgen_ty_9 {
     pub device: __u8,
     pub reserved1: __u8,
@@ -269,7 +270,7 @@ pub struct edd_device_params__bindgen_ty_2__bindgen_ty_9 {
     pub reserved4: __u64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_device_params__bindgen_ty_2__bindgen_ty_10 {
     pub reserved1: __u64,
     pub reserved2: __u64,
@@ -285,7 +286,7 @@ impl Default for edd_device_params {
     }
 }
 #[repr(C, packed)]
-#[derive(Copy, Clone, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct edd_info {
     pub device: __u8,
     pub version: __u8,
@@ -301,7 +302,7 @@ impl Default for edd_info {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct ist_info {
     pub signature: __u32,
     pub command: __u32,
@@ -309,7 +310,7 @@ pub struct ist_info {
     pub perf_level: __u32,
 }
 #[repr(C)]
-#[derive(Copy, Clone, AsBytes, FromBytes)]
+#[derive(Copy, Clone, AsBytes, FromZeroes, FromBytes)]
 pub struct edid_info {
     pub dummy: [::std::os::raw::c_uchar; 128usize],
 }
@@ -327,7 +328,7 @@ pub struct setup_data {
     pub data: __IncompleteArrayField<__u8>,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct setup_header {
     pub setup_sects: __u8,
     pub root_flags: __u16,
@@ -369,13 +370,13 @@ pub struct setup_header {
     pub handover_offset: __u32,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct sys_desc_table {
     pub length: __u16,
     pub table: [__u8; 14usize],
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct olpc_ofw_header {
     pub ofw_magic: __u32,
     pub ofw_version: __u32,
@@ -383,7 +384,7 @@ pub struct olpc_ofw_header {
     pub irq_desc_table: __u32,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct efi_info {
     pub efi_loader_signature: __u32,
     pub efi_systab: __u32,
@@ -395,14 +396,14 @@ pub struct efi_info {
     pub efi_memmap_hi: __u32,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct boot_e820_entry {
     pub addr: __u64,
     pub size: __u64,
     pub type_: __u32,
 }
 #[repr(C, packed)]
-#[derive(Copy, Clone, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct boot_params {
     pub screen_info: screen_info,
     pub apm_bios_info: apm_bios_info,

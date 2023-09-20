@@ -64,6 +64,7 @@ use system_api::spaced::SetProjectIdReply;
 use system_api::spaced::SetProjectInheritanceFlagReply;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::virtio::fs::caps::Capability;
 use crate::virtio::fs::caps::Caps;
@@ -101,7 +102,7 @@ macro_rules! fs_trace {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromBytes)]
+#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 struct fscrypt_policy_v1 {
     _version: u8,
     _contents_encryption_mode: u8,
@@ -111,7 +112,7 @@ struct fscrypt_policy_v1 {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromBytes)]
+#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 struct fscrypt_policy_v2 {
     _version: u8,
     _contents_encryption_mode: u8,
@@ -122,7 +123,7 @@ struct fscrypt_policy_v2 {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, FromBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes)]
 union fscrypt_policy {
     _version: u8,
     _v1: fscrypt_policy_v1,
@@ -130,7 +131,7 @@ union fscrypt_policy {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, FromBytes)]
+#[derive(Copy, Clone, FromZeroes, FromBytes)]
 struct fscrypt_get_policy_ex_arg {
     policy_size: u64,       /* input/output */
     policy: fscrypt_policy, /* output */
@@ -153,7 +154,7 @@ impl From<&fscrypt_get_policy_ex_arg> for &[u8] {
 ioctl_iowr_nr!(FS_IOC_GET_ENCRYPTION_POLICY_EX, 'f' as u32, 22, [u8; 9]);
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromBytes)]
+#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 struct fsxattr {
     fsx_xflags: u32,     /* xflags field value (get/set) */
     fsx_extsize: u32,    /* extsize field value (get/set)*/
@@ -176,7 +177,7 @@ ioctl_ior_nr!(FS_IOC64_GETFLAGS, 'f' as u32, 1, u64);
 ioctl_iow_nr!(FS_IOC64_SETFLAGS, 'f' as u32, 2, u64);
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromBytes)]
+#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 struct fsverity_enable_arg {
     _version: u32,
     _hash_algorithm: u32,
@@ -190,7 +191,7 @@ struct fsverity_enable_arg {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromBytes)]
+#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 struct fsverity_digest {
     _digest_algorithm: u16,
     digest_size: u16,

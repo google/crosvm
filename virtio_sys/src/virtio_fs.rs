@@ -11,10 +11,11 @@
 use data_model::Le32;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 pub const VIRTIO_FS_SHMCAP_ID_CACHE: u32 = 0;
 #[repr(C, packed)]
-#[derive(Debug, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct virtio_fs_config {
     pub tag: [u8; 36usize],
     pub num_request_queues: Le32,

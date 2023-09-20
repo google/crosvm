@@ -10,6 +10,7 @@
 // Added by virtio_sys/bindgen.sh
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 pub const VIRTIO_SCSI_CDB_DEFAULT_SIZE: u32 = 32;
 pub const VIRTIO_SCSI_SENSE_DEFAULT_SIZE: u32 = 96;
@@ -59,7 +60,7 @@ pub type __virtio16 = u16;
 pub type __virtio32 = u32;
 pub type __virtio64 = u64;
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct virtio_scsi_cmd_req {
     pub lun: [u8; 8usize],
     pub tag: __virtio64,
@@ -69,7 +70,7 @@ pub struct virtio_scsi_cmd_req {
     pub cdb: [u8; 32usize],
 }
 #[repr(C, packed)]
-#[derive(Debug, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct virtio_scsi_cmd_resp {
     pub sense_len: __virtio32,
     pub resid: __virtio32,
@@ -95,7 +96,7 @@ pub struct virtio_scsi_event {
     pub reason: __virtio32,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct virtio_scsi_config {
     pub num_queues: __virtio32,
     pub seg_max: __virtio32,

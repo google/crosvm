@@ -48,6 +48,7 @@ use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use super::copy_config;
 use super::DeviceType;
@@ -74,7 +75,7 @@ const VIRTIO_PVCLOCK_S_IOERR: u8 = 1;
 
 const VIRTIO_PVCLOCK_CLOCKSOURCE_RATING: u32 = 450;
 
-#[derive(Debug, Clone, Copy, Default, AsBytes, FromBytes)]
+#[derive(Debug, Clone, Copy, Default, AsBytes, FromZeroes, FromBytes)]
 #[repr(C)]
 struct virtio_pvclock_config {
     // Number of nanoseconds the VM has been suspended without guest suspension.
@@ -84,7 +85,7 @@ struct virtio_pvclock_config {
     padding: u32,
 }
 
-#[derive(Debug, Clone, Copy, Default, FromBytes, AsBytes)]
+#[derive(Debug, Clone, Copy, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C)]
 struct virtio_pvclock_set_pvclock_page_req {
     // Physical address of pvclock page.

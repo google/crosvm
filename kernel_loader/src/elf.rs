@@ -10,6 +10,7 @@
 // Added by kernel_loader/bindgen.sh
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 pub const __BITS_PER_LONG: u32 = 64;
 pub const BITS_PER_LONG: u32 = 32;
@@ -287,7 +288,7 @@ pub type Elf64_Off = u64;
 pub type Elf64_Word = u32;
 pub type Elf64_Xword = u64;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct elf32_hdr {
     pub e_ident: [::std::os::raw::c_uchar; 16usize],
     pub e_type: Elf32_Half,
@@ -306,7 +307,7 @@ pub struct elf32_hdr {
 }
 pub type Elf32_Ehdr = elf32_hdr;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct elf64_hdr {
     pub e_ident: [::std::os::raw::c_uchar; 16usize],
     pub e_type: Elf64_Half,
@@ -325,7 +326,7 @@ pub struct elf64_hdr {
 }
 pub type Elf64_Ehdr = elf64_hdr;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct elf32_phdr {
     pub p_type: Elf32_Word,
     pub p_offset: Elf32_Off,
@@ -338,7 +339,7 @@ pub struct elf32_phdr {
 }
 pub type Elf32_Phdr = elf32_phdr;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct elf64_phdr {
     pub p_type: Elf64_Word,
     pub p_flags: Elf64_Word,

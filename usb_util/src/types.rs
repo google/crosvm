@@ -7,6 +7,7 @@ use std::mem::size_of;
 use static_assertions::const_assert;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 /// Standard USB descriptor types.
 pub enum DescriptorType {
@@ -24,7 +25,7 @@ pub trait Descriptor {
 
 /// Standard USB descriptor header common to all descriptor types.
 #[allow(non_snake_case)]
-#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
 pub struct DescriptorHeader {
     pub bLength: u8,
@@ -38,7 +39,7 @@ fn _assert_descriptor_header() {
 /// Standard USB device descriptor as defined in USB 2.0 chapter 9,
 /// not including the standard header.
 #[allow(non_snake_case)]
-#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
 pub struct DeviceDescriptor {
     pub bcdUSB: u16,
@@ -68,7 +69,7 @@ fn _assert_device_descriptor() {
 /// Standard USB configuration descriptor as defined in USB 2.0 chapter 9,
 /// not including the standard header.
 #[allow(non_snake_case)]
-#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
 pub struct ConfigDescriptor {
     pub wTotalLength: u16,
@@ -98,7 +99,7 @@ impl ConfigDescriptor {
 /// Standard USB interface descriptor as defined in USB 2.0 chapter 9,
 /// not including the standard header.
 #[allow(non_snake_case)]
-#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
 pub struct InterfaceDescriptor {
     pub bInterfaceNumber: u8,
@@ -123,7 +124,7 @@ fn _assert_interface_descriptor() {
 /// Standard USB endpoint descriptor as defined in USB 2.0 chapter 9,
 /// not including the standard header.
 #[allow(non_snake_case)]
-#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
 pub struct EndpointDescriptor {
     pub bEndpointAddress: u8,
@@ -247,7 +248,7 @@ pub enum StandardControlRequest {
 
 /// RequestSetup is first part of control transfer buffer.
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, FromZeroes, FromBytes, AsBytes)]
 pub struct UsbRequestSetup {
     // USB Device Request. USB spec. rev. 2.0 9.3
     pub request_type: u8, // bmRequestType
