@@ -12,10 +12,13 @@ use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
 use crate::virtio::scsi::constants::INQUIRY;
+use crate::virtio::scsi::constants::MODE_SELECT_6;
+use crate::virtio::scsi::constants::MODE_SENSE_6;
 use crate::virtio::scsi::constants::READ_10;
 use crate::virtio::scsi::constants::READ_6;
 use crate::virtio::scsi::constants::READ_CAPACITY_10;
 use crate::virtio::scsi::constants::REPORT_LUNS;
+use crate::virtio::scsi::constants::SYNCHRONIZE_CACHE_10;
 use crate::virtio::scsi::constants::TEST_UNIT_READY;
 use crate::virtio::scsi::constants::TYPE_DISK;
 use crate::virtio::scsi::constants::WRITE_10;
@@ -29,9 +32,12 @@ pub enum Command {
     TestUnitReady(TestUnitReady),
     Read6(Read6),
     Inquiry(Inquiry),
+    ModeSelect6(ModeSelect6),
+    ModeSense6(ModeSense6),
     ReadCapacity10(ReadCapacity10),
     Read10(Read10),
     Write10(Write10),
+    SynchronizeCache10(SynchronizeCache10),
     ReportLuns(ReportLuns),
 }
 
@@ -42,9 +48,12 @@ impl Command {
             TEST_UNIT_READY => Ok(Self::TestUnitReady(Self::parse_command(cdb)?)),
             READ_6 => Ok(Self::Read6(Self::parse_command(cdb)?)),
             INQUIRY => Ok(Self::Inquiry(Self::parse_command(cdb)?)),
+            MODE_SELECT_6 => Ok(Self::ModeSelect6(Self::parse_command(cdb)?)),
+            MODE_SENSE_6 => Ok(Self::ModeSense6(Self::parse_command(cdb)?)),
             READ_CAPACITY_10 => Ok(Self::ReadCapacity10(Self::parse_command(cdb)?)),
             READ_10 => Ok(Self::Read10(Self::parse_command(cdb)?)),
             WRITE_10 => Ok(Self::Write10(Self::parse_command(cdb)?)),
+            SYNCHRONIZE_CACHE_10 => Ok(Self::SynchronizeCache10(Self::parse_command(cdb)?)),
             REPORT_LUNS => Ok(Self::ReportLuns(Self::parse_command(cdb)?)),
             _ => {
                 warn!("SCSI command {:#x?} is not implemented", op);
@@ -69,9 +78,14 @@ impl Command {
             Self::TestUnitReady(_) => Ok(()), // noop as the device is ready.
             Self::Read6(read6) => read6.emulate(writer, dev, disk_image).await,
             Self::Inquiry(inquiry) => inquiry.emulate(writer),
+            Self::ModeSelect6(mode_select_6) => mode_select_6.emulate(),
+            Self::ModeSense6(mode_sense_6) => mode_sense_6.emulate(writer, dev),
             Self::ReadCapacity10(read_capacity_10) => read_capacity_10.emulate(writer, dev),
             Self::Read10(read_10) => read_10.emulate(writer, dev, disk_image).await,
             Self::Write10(write_10) => write_10.emulate(reader, dev, disk_image).await,
+            Self::SynchronizeCache10(synchronize_cache_10) => {
+                synchronize_cache_10.emulate(disk_image).await
+            }
             Self::ReportLuns(report_luns) => report_luns.emulate(writer),
         }
     }
@@ -283,6 +297,198 @@ impl Inquiry {
     }
 }
 
+// According to the spec, devices that implement MODE SENSE(6) shall also implement MODE SELECT(6)
+// as well.
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
+#[repr(C, packed)]
+pub struct ModeSelect6 {
+    opcode: u8,
+    pf_sp_field: u8,
+    _reserved: [u8; 2],
+    param_list_len: u8,
+    control: u8,
+}
+
+impl ModeSelect6 {
+    fn emulate(&self) -> Result<(), ExecuteError> {
+        // TODO(b/303338922): Implement this command properly.
+        Err(ExecuteError::InvalidField)
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
+#[repr(C, packed)]
+pub struct ModeSense6 {
+    opcode: u8,
+    dbd_field: u8,
+    page_control_and_page_code: u8,
+    subpage_code: u8,
+    alloc_len: u8,
+    control: u8,
+}
+
+impl ModeSense6 {
+    fn alloc_len(&self) -> usize {
+        self.alloc_len as usize
+    }
+
+    fn disable_block_desc(&self) -> bool {
+        self.dbd_field & 0x8 != 0
+    }
+
+    fn page_code(&self) -> u8 {
+        // The top two bits represents page control field, and the rest is page code.
+        self.page_control_and_page_code & 0x3f
+    }
+
+    fn page_control(&self) -> u8 {
+        self.page_control_and_page_code >> 6
+    }
+
+    fn subpage_code(&self) -> u8 {
+        self.subpage_code
+    }
+
+    fn emulate(&self, writer: &mut Writer, dev: LogicalUnit) -> Result<(), ExecuteError> {
+        let alloc_len = self.alloc_len();
+        let mut outbuf = vec![0u8; cmp::max(4096, alloc_len)];
+        // outbuf[0]: Represents data length. Will be filled later.
+        // outbuf[1]: Medium type should be 0.
+
+        // Device specific parameter
+        // We do not support the disabled page out (DPO) and forced unit access (FUA) bit.
+        outbuf[2] = if dev.read_only { 0x80 } else { 0x00 };
+        let mut idx = if !self.disable_block_desc() && dev.max_lba > 0 {
+            // Block descriptor length.
+            outbuf[3] = 8;
+            // outbuf[4]: Density code is 0.
+            let sectors = dev.max_lba / dev.block_size as u64;
+            // Fill in the number of sectors if not bigger than 0xffffff, leave it with 0
+            // otherwise.
+            if sectors <= 0xffffff {
+                outbuf[5..8].copy_from_slice(&(sectors as u32).to_be_bytes()[1..]);
+            }
+            // outbuf[8]: reserved.
+            outbuf[9..12].copy_from_slice(&dev.block_size.to_be_bytes()[1..]);
+            12
+        } else {
+            4
+        };
+
+        let page_control = self.page_control();
+        // We do not support saved values.
+        if page_control == 0b11 {
+            return Err(ExecuteError::SavingParamNotSupported);
+        }
+
+        let page_code = self.page_code();
+        let subpage_code = self.subpage_code();
+        // The pair of the page code and the subpage code specifies which mode pages and subpages
+        // to return. Refer to the Table 99 in the SPC-3 spec for more details:
+        // <https://www.t10.org/cgi-bin/ac.pl?t=f&f=spc3r23.pdf>
+        match (page_code, subpage_code) {
+            // Return all mode pages with subpage 0.
+            (0x3f, 0x00) => {
+                Self::add_all_page_codes(subpage_code, page_control, &mut outbuf, &mut idx)
+            }
+            // Return all mode pages with subpages 0x00-0xfe.
+            (0x3f, 0xff) => {
+                for subpage_code in 0..0xff {
+                    Self::add_all_page_codes(subpage_code, page_control, &mut outbuf, &mut idx)
+                }
+            }
+            // subpage_code other than 0x00 or 0xff are reserved.
+            (0x3f, _) => return Err(ExecuteError::InvalidField),
+            // Return a specific mode page with subpages 0x00-0xfe.
+            (_, 0xff) => {
+                for subpage_code in 0..0xff {
+                    match Self::fill_page(
+                        page_code,
+                        subpage_code,
+                        page_control,
+                        &mut outbuf[idx as usize..],
+                    ) {
+                        Some(n) => idx += n,
+                        None => return Err(ExecuteError::InvalidField),
+                    };
+                }
+            }
+            (_, _) => {
+                match Self::fill_page(
+                    page_code,
+                    subpage_code,
+                    page_control,
+                    &mut outbuf[idx as usize..],
+                ) {
+                    Some(n) => idx += n,
+                    None => return Err(ExecuteError::InvalidField),
+                };
+            }
+        };
+        outbuf[0] = idx - 1;
+        writer
+            .write_all(&outbuf[..alloc_len])
+            .map_err(ExecuteError::Write)
+    }
+
+    // Fill in mode pages with a specific subpage_code.
+    fn add_all_page_codes(subpage_code: u8, page_control: u8, outbuf: &mut [u8], idx: &mut u8) {
+        for page_code in 1..0x3f {
+            if let Some(n) = Self::fill_page(
+                page_code,
+                subpage_code,
+                page_control,
+                &mut outbuf[*idx as usize..],
+            ) {
+                *idx += n;
+            }
+        }
+        // Add mode page 0 after all other mode pages were returned.
+        if let Some(n) =
+            Self::fill_page(0, subpage_code, page_control, &mut outbuf[*idx as usize..])
+        {
+            *idx += n;
+        }
+    }
+
+    // Fill in the information of the page code and return the number of bytes written to the
+    // buffer.
+    fn fill_page(
+        page_code: u8,
+        subpage_code: u8,
+        page_control: u8,
+        outbuf: &mut [u8],
+    ) -> Option<u8> {
+        // outbuf[0]: page code
+        // outbuf[1]: page length
+        match (page_code, subpage_code) {
+            // Vendor specific.
+            (0x00, 0x00) => None,
+            // Read-Write error recovery mode page
+            (0x01, 0x00) => {
+                let len = 10;
+                outbuf[0] = page_code;
+                outbuf[1] = len;
+                if page_control != 0b01 {
+                    // Automatic write reallocation enabled.
+                    outbuf[3] = 0x80;
+                }
+                Some(len + 2)
+            }
+            // Caching.
+            (0x08, 0x00) => {
+                let len = 0x12;
+                outbuf[0] = page_code;
+                outbuf[1] = len;
+                // Writeback cache enabled.
+                outbuf[2] = 0x04;
+                Some(len + 2)
+            }
+            _ => None,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct ReadCapacity10 {
@@ -406,6 +612,26 @@ async fn write_to_disk(
 
 #[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
 #[repr(C, packed)]
+pub struct SynchronizeCache10 {
+    opcode: u8,
+    immed_byte: u8,
+    lba_bytes: [u8; 4],
+    group_number: u8,
+    block_num_bytes: [u8; 2],
+    control: u8,
+}
+
+impl SynchronizeCache10 {
+    async fn emulate(&self, disk_image: &dyn AsyncDisk) -> Result<(), ExecuteError> {
+        disk_image.fdatasync().await.map_err(|e| {
+            warn!("failed to sync: {e}");
+            ExecuteError::SynchronizationError
+        })
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
+#[repr(C, packed)]
 pub struct ReportLuns {
     opcode: u8,
     _reserved: u8,
@@ -484,6 +710,19 @@ mod tests {
     }
 
     #[test]
+    fn parse_mode_sense_6() {
+        let cdb = [0x1a, 0x00, 0xa8, 0x00, 0x04, 0x00];
+        let command = Command::new(&cdb).unwrap();
+        let mode_sense_6 = match command {
+            Command::ModeSense6(m) => m,
+            _ => panic!("unexpected command type: {:?}", command),
+        };
+        assert_eq!(mode_sense_6.alloc_len(), 0x04);
+        assert_eq!(mode_sense_6.page_code(), 0x28);
+        assert_eq!(mode_sense_6.page_control(), 0x02);
+    }
+
+    #[test]
     fn parse_read_capacity_10() {
         let cdb = [0x25, 0x00, 0xab, 0xcd, 0xef, 0x01, 0x00, 0x00, 0x9, 0x0];
         let command = Command::new(&cdb).unwrap();
@@ -517,6 +756,23 @@ mod tests {
         };
         assert_eq!(write10.xfer_len(), 0x0008);
         assert_eq!(write10.lba(), 0x00000000);
+    }
+
+    #[test]
+    fn parse_synchronize_cache_10() {
+        let cdb = [0x35, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let command = Command::new(&cdb).unwrap();
+        assert_eq!(
+            command,
+            Command::SynchronizeCache10(SynchronizeCache10 {
+                opcode: SYNCHRONIZE_CACHE_10,
+                immed_byte: 0,
+                lba_bytes: [0x00, 0x00, 0x00, 0x00],
+                group_number: 0x00,
+                block_num_bytes: [0x00, 0x00],
+                control: 0x00,
+            })
+        );
     }
 
     #[test]

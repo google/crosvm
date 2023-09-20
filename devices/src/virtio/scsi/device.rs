@@ -106,6 +106,10 @@ pub enum ExecuteError {
     },
     #[error("writing to a read only device")]
     ReadOnly,
+    #[error("saving parameters not supported")]
+    SavingParamNotSupported,
+    #[error("synchronization error")]
+    SynchronizationError,
     #[error("unsupported scsi command: {0}")]
     Unsupported(u8),
     #[error("failed to write message: {0}")]
@@ -165,6 +169,18 @@ impl ExecuteError {
                     ascq: 0x00,
                 }
             }
+            Self::SavingParamNotSupported => Sense {
+                // SAVING PARAMETERS NOT SUPPORTED
+                key: ILLEGAL_REQUEST,
+                asc: 0x39,
+                ascq: 0x00,
+            },
+            Self::SynchronizationError => Sense {
+                // SYNCHRONIZATION ERROR
+                key: MEDIUM_ERROR,
+                asc: 0x16,
+                ascq: 0x00,
+            },
             // Ignore these errors.
             Self::ReadIo { resid, desc_error } | Self::WriteIo { resid, desc_error } => {
                 warn!("error while performing I/O {}", desc_error);
