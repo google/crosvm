@@ -7,8 +7,6 @@ use std::fmt::Display;
 
 use bit_field::Error as BitFieldError;
 use bit_field::*;
-use data_model::zerocopy_from_mut_slice;
-use data_model::zerocopy_from_slice;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestAddress;
@@ -688,35 +686,39 @@ impl TypedTrb for PortStatusChangeEventTrb {
 /// values might be invalid.
 pub unsafe trait TrbCast: FromBytes + AsBytes + TypedTrb {
     fn cast<T: TrbCast>(&self) -> Result<&T> {
-        zerocopy_from_slice(self.as_bytes()).ok_or(Error::CannotCastTrb)
+        zerocopy::Ref::<_, T>::new(self.as_bytes())
+            .ok_or(Error::CannotCastTrb)
+            .map(zerocopy::Ref::into_ref)
     }
 
     fn cast_mut<T: TrbCast>(&mut self) -> Result<&mut T> {
-        zerocopy_from_mut_slice(self.as_bytes_mut()).ok_or(Error::CannotCastTrb)
+        zerocopy::Ref::<_, T>::new(self.as_bytes_mut())
+            .ok_or(Error::CannotCastTrb)
+            .map(zerocopy::Ref::into_mut)
     }
 
     fn checked_cast<T: TrbCast>(&self) -> Result<&T> {
-        if zerocopy_from_slice::<Trb>(self.as_bytes())
-            .ok_or(Error::CannotCastTrb)?
+        if self
+            .cast::<Trb>()?
             .get_trb_type()
             .map_err(Error::UnknownTrbType)?
             != T::TY
         {
             return Err(Error::CannotCastTrb);
         }
-        zerocopy_from_slice(self.as_bytes()).ok_or(Error::CannotCastTrb)
+        self.cast::<T>()
     }
 
     fn checked_mut_cast<T: TrbCast>(&mut self) -> Result<&mut T> {
-        if zerocopy_from_slice::<Trb>(self.as_bytes())
-            .ok_or(Error::CannotCastTrb)?
+        if self
+            .cast::<Trb>()?
             .get_trb_type()
             .map_err(Error::UnknownTrbType)?
             != T::TY
         {
             return Err(Error::CannotCastTrb);
         }
-        zerocopy_from_mut_slice(self.as_bytes_mut()).ok_or(Error::CannotCastTrb)
+        self.cast_mut::<T>()
     }
 }
 
