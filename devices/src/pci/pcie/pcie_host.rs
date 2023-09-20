@@ -18,12 +18,12 @@ use anyhow::Context;
 use anyhow::Result;
 use base::error;
 use base::Tube;
-use data_model::zerocopy_from_slice;
 use sync::Mutex;
 use vm_control::HotPlugDeviceInfo;
 use vm_control::HotPlugDeviceType;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
+use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use crate::pci::pci_configuration::PciBridgeSubclass;
@@ -66,21 +66,19 @@ impl PciHostConfig {
     }
 
     // Read host pci device's config register
-    fn read_config<T: FromBytes + Copy>(&self, offset: u64) -> T {
+    fn read_config<T: AsBytes + FromBytes + Copy + Default>(&self, offset: u64) -> T {
         let length = std::mem::size_of::<T>();
-        let mut buf = vec![0u8; length];
+        let mut val = T::default();
         if offset % length as u64 != 0 {
             error!(
                 "read_config, offset {} isn't aligned to length {}",
                 offset, length
             );
-        } else if let Err(e) = self.config_file.read_exact_at(&mut buf, offset) {
+        } else if let Err(e) = self.config_file.read_exact_at(val.as_bytes_mut(), offset) {
             error!("failed to read host sysfs config: {}", e);
         }
 
-        zerocopy_from_slice::<T>(&buf)
-            .copied()
-            .expect("failed to convert host sysfs config data from slice")
+        val
     }
 
     // write host pci device's config register
