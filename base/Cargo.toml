@@ -36,7 +36,7 @@ smallvec = "1.6.1"
 tempfile = "3"
 thiserror = "1.0.20"
 uuid = { version = "1", features = ["v4"] }
-zerocopy = "*"
+zerocopy = "0.6"
 
 [dev-dependencies]
 libtest-mimic = "0.6"

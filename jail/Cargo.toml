@@ -14,7 +14,7 @@ libc = "*"
 once_cell = "*"
 serde = "*"
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
-zerocopy = "*"
+zerocopy = "0.6"
 static_assertions = "*"
 
 [target.'cfg(unix)'.dependencies]

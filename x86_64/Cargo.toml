@@ -34,7 +34,7 @@ base = { path = "../base" }
 swap = { path = "../swap" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
-zerocopy = "*"
+zerocopy = "0.6"
 
 [target.'cfg(unix)'.dependencies]
 minijail = "*"

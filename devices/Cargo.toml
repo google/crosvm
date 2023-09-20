@@ -89,7 +89,7 @@ vmm_vhost = { path = "../third_party/vmm_vhost", features = ["vmm", "device"] }
 virtio_sys = { path = "../virtio_sys" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
-zerocopy = "*"
+zerocopy = "0.6"
 
 [target.'cfg(unix)'.dependencies]
 fuse = {path = "../fuse" }

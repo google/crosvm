@@ -18,7 +18,7 @@ remain = "*"
 thiserror = "*"
 cfg-if = "*"
 serde = { version = "1", features = [ "derive" ] }
-zerocopy = "*"
+zerocopy = "0.6"
 
 [target.'cfg(windows)'.dependencies]
 cros_tracing = { path = "../cros_tracing" }

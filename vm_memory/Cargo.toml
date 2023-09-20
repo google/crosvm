@@ -17,4 +17,4 @@ remain = "*"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "*"
 thiserror = "*"
-zerocopy = "*"
+zerocopy = "0.6"

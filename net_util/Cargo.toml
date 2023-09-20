@@ -16,7 +16,7 @@ base = { path = "../base" }
 cfg-if = "1.0.0"
 cros_async = { path = "../cros_async" }
 libc = "*"
-zerocopy = "*"
+zerocopy = "0.6"
 
 net_sys = { path = "../net_sys" }
 pcap-file = { version = "1.1.0", optional = true }
