@@ -11,7 +11,6 @@ use std::os::windows::io::AsRawHandle;
 use std::os::windows::io::RawHandle;
 use std::time::Duration;
 
-use data_model::zerocopy_from_slice;
 use log::warn;
 use once_cell::sync::Lazy;
 use serde::de::DeserializeOwned;
@@ -82,7 +81,7 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
 #[repr(C)]
 struct MsgHeader {
     msg_json_size: usize,
@@ -313,13 +312,8 @@ fn perform_read<F: FnMut(&mut [u8]) -> io::Result<usize>>(
 pub fn deserialize_and_recv<T: DeserializeOwned, F: FnMut(&mut [u8]) -> io::Result<usize>>(
     mut read_fn: F,
 ) -> Result<T> {
-    let mut header_bytes = vec![0u8; mem::size_of::<MsgHeader>()];
-    perform_read(&mut read_fn, header_bytes.as_mut_slice()).map_err(Error::from_recv_io_error)?;
-
-    // Safe because the header is always written by the send function, and only that function
-    // writes to this channel.
-    let header: &MsgHeader =
-        zerocopy_from_slice(header_bytes.as_slice()).expect("Tube header failed to deserialize.");
+    let mut header = MsgHeader::default();
+    perform_read(&mut read_fn, header.as_bytes_mut()).map_err(Error::from_recv_io_error)?;
 
     let mut msg_json = vec![0u8; header.msg_json_size];
     perform_read(&mut read_fn, msg_json.as_mut_slice()).map_err(Error::from_recv_io_error)?;
