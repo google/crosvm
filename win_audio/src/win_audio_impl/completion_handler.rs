@@ -138,7 +138,7 @@ const IWIN_AUDIO_COMPLETION_HANDLER_VTBL: &IActivateAudioInterfaceCompletionHand
                             (*this).AddRef();
                             return NOERROR;
                         }
-                        return E_NOINTERFACE;
+                        E_NOINTERFACE
                     }
                     query_interface
                 },
@@ -207,7 +207,7 @@ mod test {
 
         // Calling `QueryInterface`
         let res = unsafe {
-            ((*(*completion_handler).lpVtbl).parent.QueryInterface)(
+            ((*completion_handler.lpVtbl).parent.QueryInterface)(
                 completion_handler.as_raw() as *mut IUnknown,
                 &invalid_ref_iid,
                 ppv_object,
@@ -220,7 +220,7 @@ mod test {
 
         let invalid_ref_iid = IActivateAudioInterfaceCompletionHandler::uuidof();
         let res = unsafe {
-            ((*(*completion_handler).lpVtbl).parent.QueryInterface)(
+            ((*completion_handler.lpVtbl).parent.QueryInterface)(
                 completion_handler.as_raw() as *mut IUnknown,
                 &invalid_ref_iid,
                 ppv_object,
@@ -232,7 +232,7 @@ mod test {
 
         let invalid_ref_iid = IAgileObject::uuidof();
         let res = unsafe {
-            ((*(*completion_handler).lpVtbl).parent.QueryInterface)(
+            ((*completion_handler.lpVtbl).parent.QueryInterface)(
                 completion_handler.as_raw() as *mut IUnknown,
                 &invalid_ref_iid,
                 ppv_object,
@@ -253,7 +253,7 @@ mod test {
 
         // Call `QueryInterface`
         let res = unsafe {
-            ((*(*completion_handler).lpVtbl).parent.QueryInterface)(
+            ((*completion_handler.lpVtbl).parent.QueryInterface)(
                 completion_handler.as_raw() as *mut IUnknown,
                 &invalid_ref_iid,
                 ppv_object,
@@ -293,7 +293,7 @@ mod test {
 
     fn release(completion_handler: &ComPtr<IActivateAudioInterfaceCompletionHandler>) -> ULONG {
         unsafe {
-            ((*(*completion_handler).lpVtbl).parent.Release)(
+            ((*completion_handler.lpVtbl).parent.Release)(
                 completion_handler.as_raw() as *mut IUnknown
             )
         }
@@ -301,7 +301,7 @@ mod test {
 
     fn add_ref(completion_handler: &ComPtr<IActivateAudioInterfaceCompletionHandler>) -> ULONG {
         unsafe {
-            ((*(*completion_handler).lpVtbl).parent.AddRef)(
+            ((*completion_handler.lpVtbl).parent.AddRef)(
                 completion_handler.as_raw() as *mut IUnknown
             )
         }

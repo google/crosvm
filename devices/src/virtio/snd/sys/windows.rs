@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// TODO(b/275406212): Deleted resampler code to make upstream easier. The resample
+// will be in win_audio now
 use std::io;
 use std::io::Read;
 use std::slice;
@@ -23,7 +25,6 @@ use serde::Serialize;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 use win_audio::async_stream::WinAudioStreamSourceGenerator;
-use win_audio::intermediate_resampler_buffer::IntermediateResamplerBuffer;
 use win_audio::AudioSharedFormat;
 use win_audio::WinAudioServer;
 use win_audio::WinStreamSourceGenerator;
@@ -122,46 +123,15 @@ pub(crate) struct WinBufferWriter {
     guest_period_bytes: usize,
     shared_audio_engine_period_bytes: usize,
     guest_num_channels: usize,
-    intermediate_resampler_buffer: IntermediateResamplerBuffer,
 }
 
 impl WinBufferWriter {
     fn needs_prefill(&self) -> bool {
-        self.intermediate_resampler_buffer.ring_buf.len()
-            + (self
-                .intermediate_resampler_buffer
-                .guest_period_in_target_sample_rate_frames
-                * self.guest_num_channels)
-            <= self
-                .intermediate_resampler_buffer
-                .shared_audio_engine_period_in_frames
-                * self.guest_num_channels
+        false
     }
 
     fn write_to_resampler_buffer(&mut self, reader: &mut Reader) -> Result<usize, Error> {
-        let written = reader.read_to_cb(
-            |iovs| {
-                let mut written = 0;
-                for iov in iovs {
-                    let buffer_slice = unsafe { slice::from_raw_parts(iov.as_ptr(), iov.size()) };
-                    self.intermediate_resampler_buffer
-                        .convert_and_add(buffer_slice);
-                    written += iov.size();
-                }
-                written
-            },
-            self.guest_period_bytes,
-        );
-
-        if written != self.guest_period_bytes {
-            error!(
-                "{} written bytes != guest period bytes of {}",
-                written, self.guest_period_bytes
-            );
-            Err(Error::InvalidBufferSize)
-        } else {
-            Ok(written)
-        }
+        Ok(0)
     }
 }
 
@@ -182,15 +152,6 @@ impl PlaybackBufferWriter for WinBufferWriter {
                 / 8
                 * audio_shared_format.channels,
             guest_num_channels,
-            intermediate_resampler_buffer: IntermediateResamplerBuffer::new(
-                /* from */ frame_rate,
-                /* to */ audio_shared_format.frame_rate,
-                guest_period_bytes / frame_size,
-                audio_shared_format.shared_audio_engine_period_in_frames,
-                audio_shared_format.channels,
-                audio_shared_format.channel_mask,
-            )
-            .expect("Failed to create intermediate resampler buffer"),
         }
     }
     fn endpoint_period_bytes(&self) -> usize {
@@ -202,17 +163,9 @@ impl PlaybackBufferWriter for WinBufferWriter {
         reader: &mut Reader,
     ) -> Result<usize, Error> {
         self.write_to_resampler_buffer(reader)?;
-
-        if let Some(next_period) = self.intermediate_resampler_buffer.get_next_period() {
-            dst_buf
-                .copy_cb(next_period.len(), |out| out.copy_from_slice(next_period))
-                .map_err(Error::Io)
-        } else {
-            warn!("Getting the next period failed. Most likely the resampler is being primed.");
-            dst_buf
-                .copy_from(&mut io::repeat(0).take(self.shared_audio_engine_period_bytes as u64))
-                .map_err(Error::Io)
-        }
+        dst_buf
+            .copy_cb(self.guest_period_bytes, |out| out.copy_from_slice(&[]))
+            .map_err(Error::Io)
     }
 
     async fn check_and_prefill(

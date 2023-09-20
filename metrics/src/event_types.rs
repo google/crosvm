@@ -36,6 +36,8 @@ pub enum MetricEventType {
     DllLoaded,
     GraphicsHangRenderThread,
     GraphicsHangSyncThread,
+    AudioNoopStreamForced,
+    AudioPlaybackError,
     Other(i64),
 }
 
@@ -65,6 +67,8 @@ impl From<MetricEventType> for i64 {
             MetricEventType::DllLoaded => 10021,
             MetricEventType::GraphicsHangRenderThread => 10024,
             MetricEventType::GraphicsHangSyncThread => 10026,
+            MetricEventType::AudioNoopStreamForced => 10038,
+            MetricEventType::AudioPlaybackError => 10039,
             MetricEventType::Other(code) => code,
         }
     }
@@ -98,6 +102,8 @@ impl TryFrom<i64> for MetricEventType {
             10021 => Ok(MetricEventType::DllLoaded),
             10024 => Ok(MetricEventType::GraphicsHangRenderThread),
             10026 => Ok(MetricEventType::GraphicsHangSyncThread),
+            10038 => Ok(MetricEventType::AudioNoopStreamForced),
+            10039 => Ok(MetricEventType::AudioPlaybackError),
             _ => Ok(MetricEventType::Other(event_code)),
         }
     }

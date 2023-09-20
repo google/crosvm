@@ -42,7 +42,7 @@ use winapi::um::combaseapi::CoTaskMemFree;
 use wio::com::ComPtr;
 
 use crate::AudioSharedFormat;
-use crate::RenderError;
+use crate::WinAudioError;
 use crate::MONO_CHANNEL_COUNT;
 use crate::STEREO_CHANNEL_COUNT;
 
@@ -125,7 +125,7 @@ impl WaveAudioFormat {
                 {
                     wave_format.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
                     wave_format.nChannels =
-                        std::cmp::min(STEREO_CHANNEL_COUNT as u16, default_num_channels);
+                        std::cmp::min(STEREO_CHANNEL_COUNT, default_num_channels);
                     wave_format.wBitsPerSample = target_bit_depth as u16;
                     wave_format.nAvgBytesPerSec = calc_avg_bytes_per_sec(
                         wave_format.nChannels,
@@ -209,8 +209,8 @@ impl WaveAudioFormat {
             }
         };
 
-        ((samples_per_sec as f64 * shared_default_size_in_100nanoseconds as f64) / 10000000.0)
-            .ceil() as usize
+        ((samples_per_sec as f64 * shared_default_size_in_100nanoseconds) / 10000000.0).ceil()
+            as usize
     }
 
     pub fn create_audio_shared_format(
@@ -447,7 +447,7 @@ impl From<&WaveAudioFormat> for WaveFormatProto {
 /// is to always get a 32bit float format.
 pub(crate) fn get_valid_mix_format(
     audio_client: &ComPtr<IAudioClient>,
-) -> Result<WaveAudioFormat, RenderError> {
+) -> Result<WaveAudioFormat, WinAudioError> {
     // Safe because `format_ptr` is owned by this unsafe block. `format_ptr` is guarenteed to
     // be not null by the time it reached `WaveAudioFormat::new` (check_hresult! should make
     // sure of that), which is also release the pointer passed in.
@@ -456,7 +456,7 @@ pub(crate) fn get_valid_mix_format(
         let hr = audio_client.GetMixFormat(&mut format_ptr);
         check_hresult!(
             hr,
-            RenderError::from(hr),
+            WinAudioError::from(hr),
             "Failed to retrieve audio engine's shared format"
         )?;
 
@@ -491,7 +491,7 @@ pub(crate) fn check_format(
     format: &WaveAudioFormat,
     mut wave_format_details: WaveFormatDetailsProto,
     event_code: MetricEventType,
-) -> Result<(), RenderError> {
+) -> Result<(), WinAudioError> {
     let mut closest_match_format: *mut WAVEFORMATEX = std::ptr::null_mut();
     // Safe because all values passed into `IsFormatSupport` is owned by us and we will
     // guarentee they won't be dropped and are valid.
@@ -526,7 +526,7 @@ pub(crate) fn check_format(
         // differentiate between rendering and capture.
         upload_metrics(wave_format_details, MetricEventType::AudioFormatFailed);
 
-        Err(RenderError::WindowsError(hr, last_error))
+        Err(WinAudioError::WindowsError(hr, last_error))
     } else {
         upload_metrics(wave_format_details, event_code);
 
