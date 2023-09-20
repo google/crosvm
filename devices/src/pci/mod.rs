@@ -74,6 +74,7 @@ pub use self::pci_hotplug::NetResourceCarrier;
 pub use self::pci_hotplug::ResourceCarrier;
 pub use self::pci_root::PciConfigIo;
 pub use self::pci_root::PciConfigMmio;
+pub use self::pci_root::PciMmioMapper;
 pub use self::pci_root::PciRoot;
 pub use self::pci_root::PciRootCommand;
 pub use self::pci_root::PciVirtualConfigMmio;

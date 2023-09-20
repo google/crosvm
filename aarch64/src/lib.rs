@@ -555,6 +555,8 @@ impl arch::LinuxArch for AArch64 {
                 pci_devices,
                 irq_chip.as_irq_chip_mut(),
                 mmio_bus.clone(),
+                GuestAddress(AARCH64_PCI_CFG_BASE),
+                8,
                 io_bus.clone(),
                 system_allocator,
                 &mut vm,

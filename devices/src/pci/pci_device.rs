@@ -11,8 +11,10 @@ use acpi_tables::sdt::SDT;
 use anyhow::bail;
 use base::error;
 use base::trace;
+use base::warn;
 use base::MemoryMapping;
 use base::RawDescriptor;
+use base::SharedMemory;
 use remain::sorted;
 use resources::Error as SystemAllocatorFaliure;
 use resources::SystemAllocator;
@@ -99,6 +101,9 @@ pub enum Error {
     /// Registering an IO BAR failed.
     #[error("failed to register an IO BAR, addr={0} err={1}")]
     IoRegistrationFailed(u64, pci_configuration::Error),
+    /// Setting up MMIO mapping
+    #[error("failed to set up MMIO mapping: {0}")]
+    MmioSetup(anyhow::Error),
     /// Out-of-space encountered
     #[error("Out-of-space detected")]
     OutOfSpace,
@@ -406,6 +411,30 @@ pub trait PciDevice: Send + Suspendable {
     /// * `data`    - The data to write.
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]);
 
+    /// Provides a memory region to back MMIO access to the configuration
+    /// space. If the device can keep the memory region up to date, then it
+    /// should return Ok(true), after which no more calls to read_config_register
+    /// will be made. If support isn't implemented, it should return Ok(false).
+    /// Otherwise, it should return an error (a failure here is not treated as
+    /// a fatal setup error).
+    ///
+    /// The device must set the header type register (0x0E) before returning
+    /// from this function, and must make no further modifications to it
+    /// after returning. This is to allow the caller to manage the multi-
+    /// function device bit without worrying about race conditions.
+    ///
+    /// * `shmem` - The shared memory to use for the configuration space.
+    /// * `base` - The base address of the memory region in shmem.
+    /// * `len` - The length of the memory region.
+    fn setup_pci_config_mapping(
+        &mut self,
+        _shmem: &SharedMemory,
+        _base: usize,
+        _len: usize,
+    ) -> Result<bool> {
+        Ok(false)
+    }
+
     /// Reads from a virtual config register.
     /// * `reg_idx` - virtual config register index (in units of 4 bytes).
     fn read_virtual_config_register(&self, _reg_idx: usize) -> u32 {
@@ -675,6 +704,16 @@ impl<T: PciDevice> BusDevice for T {
         self.read_config_register(reg_idx)
     }
 
+    fn init_pci_config_mapping(&mut self, shmem: &SharedMemory, base: usize, len: usize) -> bool {
+        match self.setup_pci_config_mapping(shmem, base, len) {
+            Ok(res) => res,
+            Err(err) => {
+                warn!("Failed to create PCI mapping: {:#}", err);
+                false
+            }
+        }
+    }
+
     fn virtual_config_register_write(&mut self, reg_idx: usize, value: u32) {
         self.write_virtual_config_register(reg_idx, value);
     }
@@ -764,6 +803,14 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     }
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
         (**self).write_config_register(reg_idx, offset, data)
+    }
+    fn setup_pci_config_mapping(
+        &mut self,
+        shmem: &SharedMemory,
+        base: usize,
+        len: usize,
+    ) -> Result<bool> {
+        (**self).setup_pci_config_mapping(shmem, base, len)
     }
     fn read_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &mut [u8]) {
         (**self).read_bar(bar_index, offset, data)

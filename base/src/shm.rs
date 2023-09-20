@@ -53,6 +53,13 @@ impl SharedMemory {
     pub fn from_safe_descriptor(descriptor: SafeDescriptor, size: u64) -> Result<SharedMemory> {
         <SharedMemory as PlatformSharedMemory>::from_safe_descriptor(descriptor, size)
     }
+
+    /// Clones the SharedMemory. The new SharedMemory will refer to the same
+    /// underlying object as the original.
+    pub fn try_clone(&self) -> Result<SharedMemory> {
+        let shmem_descriptor = SafeDescriptor::try_from(self as &dyn AsRawDescriptor)?;
+        SharedMemory::from_safe_descriptor(shmem_descriptor, self.size())
+    }
 }
 
 /// USE THIS CAUTIOUSLY. On Windows, the returned handle is not a file handle and cannot be used as

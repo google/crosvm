@@ -10,6 +10,7 @@ use zerocopy::FromZeroes;
 
 use crate::pci::pci_configuration::PciCapConfig;
 use crate::pci::pci_configuration::PciCapConfigWriteResult;
+use crate::pci::pci_configuration::PciCapMapping;
 use crate::pci::PciCapability;
 use crate::pci::PciCapabilityID;
 
@@ -76,12 +77,14 @@ impl PciPmCap {
 
 pub struct PmConfig {
     power_control_status: u16,
+    cap_mapping: Option<PciCapMapping>,
 }
 
 impl PmConfig {
     pub fn new() -> Self {
         PmConfig {
             power_control_status: 0,
+            cap_mapping: None,
         }
     }
 
@@ -128,6 +131,13 @@ impl PmConfig {
             && self.power_control_status & PM_PME_ENABLE != 0
         {
             self.power_control_status |= PM_PME_STATUS;
+            if let Some(cap_mapping) = &mut self.cap_mapping {
+                cap_mapping.set_reg(
+                    PM_CAP_CONTROL_STATE_OFFSET,
+                    self.power_control_status as u32,
+                    0xffff,
+                );
+            }
             return true;
         }
 
@@ -181,5 +191,9 @@ impl PciCapConfig for PmConfig {
             }
         }
         None
+    }
+
+    fn set_cap_mapping(&mut self, mapping: PciCapMapping) {
+        self.cap_mapping = Some(mapping);
     }
 }

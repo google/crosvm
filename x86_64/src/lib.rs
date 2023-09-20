@@ -746,6 +746,8 @@ impl arch::LinuxArch for X8664arch {
                 pci_devices,
                 irq_chip.as_irq_chip_mut(),
                 mmio_bus.clone(),
+                GuestAddress(pcie_cfg_mmio_range.start),
+                12,
                 io_bus.clone(),
                 system_allocator,
                 &mut vm,

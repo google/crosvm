@@ -20,6 +20,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use base::debug;
 use base::error;
+use base::SharedMemory;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
@@ -114,6 +115,22 @@ pub trait BusDevice: Send + Suspendable {
     /// * `reg_idx` - The index of the config register to read.
     fn config_register_read(&self, reg_idx: usize) -> u32 {
         0
+    }
+    /// Provides a memory region to back MMIO access to the configuration
+    /// space. If the device can keep the memory region up to date, then it
+    /// should return true, after which no more calls to config_register_read
+    /// will be made. Otherwise the device should return false.
+    ///
+    /// The device must set the header type register (0x0E) before returning
+    /// from this function, and must make no further modifications to it
+    /// after returning. This is to allow the caller to manage the multi-
+    /// function device bit without worrying about race conditions.
+    ///
+    /// * `shmem` - The shared memory to use for the configuration space.
+    /// * `base` - The base address of the memory region in shmem.
+    /// * `len` - The length of the memory region.
+    fn init_pci_config_mapping(&mut self, shmem: &SharedMemory, base: usize, len: usize) -> bool {
+        false
     }
     /// Sets a register in the virtual config space. Only used by PCI.
     /// * `reg_idx` - The index of the config register to modify.

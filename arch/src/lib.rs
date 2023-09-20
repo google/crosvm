@@ -590,6 +590,9 @@ pub enum DeviceRegistrationError {
     // Unable to create a pipe.
     #[error("failed to create pipe: {0}")]
     CreatePipe(base::Error),
+    // Unable to create a root.
+    #[error("failed to create pci root: {0}")]
+    CreateRoot(anyhow::Error),
     // Unable to create serial device from serial parameters
     #[error("failed to create serial device: {0}")]
     CreateSerialDevice(devices::SerialError),
@@ -951,6 +954,8 @@ pub fn generate_pci_root(
     mut devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
     irq_chip: &mut dyn IrqChip,
     mmio_bus: Arc<Bus>,
+    mmio_base: GuestAddress,
+    mmio_register_bit_num: usize,
     io_bus: Arc<Bus>,
     resources: &mut SystemAllocator,
     vm: &mut impl Vm,
@@ -989,7 +994,15 @@ pub fn generate_pci_root(
         &mut devices,
     )?;
 
-    let mut root = PciRoot::new(Arc::downgrade(&mmio_bus), Arc::downgrade(&io_bus), root_bus);
+    let mut root = PciRoot::new(
+        vm,
+        Arc::downgrade(&mmio_bus),
+        mmio_base,
+        mmio_register_bit_num,
+        Arc::downgrade(&io_bus),
+        root_bus,
+    )
+    .map_err(DeviceRegistrationError::CreateRoot)?;
     #[cfg_attr(windows, allow(unused_mut))]
     let mut pid_labels = BTreeMap::new();
 
@@ -1144,7 +1157,7 @@ pub fn generate_pci_root(
             device.on_sandboxed();
             Arc::new(Mutex::new(device))
         };
-        root.add_device(address, arced_dev.clone())
+        root.add_device(address, arced_dev.clone(), vm)
             .map_err(DeviceRegistrationError::PciRootAddDevice)?;
         for range in &ranges {
             mmio_bus

@@ -7,11 +7,15 @@ use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::sync::Arc;
 
+use anyhow::bail;
 use anyhow::Context;
 use base::custom_serde::deserialize_seq_to_arr;
 use base::custom_serde::serialize_arr;
 use base::error;
 use base::warn;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
+use base::SharedMemory;
 use downcast_rs::impl_downcast;
 use downcast_rs::Downcast;
 use remain::sorted;
@@ -35,7 +39,8 @@ pub const STATUS_REG_CAPABILITIES_USED_MASK: u32 = 0x0010_0000;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub const CLASS_REG: usize = 2;
 pub const HEADER_TYPE_REG: usize = 3;
-pub const HEADER_TYPE_MULTIFUNCTION_MASK: u32 = 0x0080_0000;
+pub const HEADER_TYPE_REG_OFFSET: usize = 2;
+pub const HEADER_TYPE_MULTIFUNCTION_MASK: u8 = 0x80;
 pub const BAR0_REG: usize = 4;
 const BAR_IO_ADDR_MASK: u32 = 0xffff_fffc;
 const BAR_IO_MIN_SIZE: u64 = 4;
@@ -286,6 +291,12 @@ pub trait PciCapConfig: Send {
         data: &[u8],
     ) -> Option<Box<dyn PciCapConfigWriteResult>>;
 
+    /// Used to pass the mmio region for the capability to the implementation.
+    /// If any external events update the capability's registers, then
+    /// `PciCapMapping.set_reg` must be called to make the changes visible
+    /// to the guest.
+    fn set_cap_mapping(&mut self, _mapping: PciCapMapping) {}
+
     fn num_regs(&self) -> usize {
         self.read_mask().len()
     }
@@ -302,6 +313,7 @@ pub struct PciConfiguration {
     // Contains the byte offset and size of the last capability.
     last_capability: Option<(usize, usize)>,
     capability_configs: BTreeMap<usize, Box<dyn PciCapConfig>>,
+    mmio_mapping: Option<(Arc<Mutex<MemoryMapping>>, usize)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -452,6 +464,7 @@ impl PciConfiguration {
             bar_configs: [None; NUM_BAR_REGS],
             last_capability: None,
             capability_configs: BTreeMap::new(),
+            mmio_mapping: None,
         }
     }
 
@@ -489,7 +502,11 @@ impl PciConfiguration {
         if let Some((idx, cfg)) = self.capability_configs.range_mut(..=reg_idx).last() {
             if reg_idx < idx + cfg.num_regs() {
                 let cap_idx = reg_idx - idx;
-                return cfg.write_reg(cap_idx, offset, data);
+                let ret = cfg.write_reg(cap_idx, offset, data);
+                let new_val = cfg.read_reg(cap_idx);
+                let mask = cfg.read_mask()[cap_idx];
+                self.set_reg(reg_idx, new_val, mask);
+                return ret;
             }
         }
         None
@@ -502,8 +519,11 @@ impl PciConfiguration {
             return;
         }
         let reg_idx = offset / 4;
-        if let Some(r) = self.registers.get_mut(reg_idx) {
-            *r = (*r & !self.writable_bits[reg_idx]) | (value & self.writable_bits[reg_idx]);
+        if reg_idx < NUM_CONFIGURATION_REGISTERS {
+            let old_value = self.registers[reg_idx];
+            let new_value =
+                (old_value & !self.writable_bits[reg_idx]) | (value & self.writable_bits[reg_idx]);
+            self.do_write(reg_idx, new_value)
         } else {
             warn!("bad PCI dword write {}", offset);
         }
@@ -521,11 +541,13 @@ impl PciConfiguration {
         };
         let reg_idx = offset / 4;
 
-        if let Some(r) = self.registers.get_mut(reg_idx) {
+        if reg_idx < NUM_CONFIGURATION_REGISTERS {
+            let old_value = self.registers[reg_idx];
             let writable_mask = self.writable_bits[reg_idx];
             let mask = (0xffffu32 << shift) & writable_mask;
             let shifted_value = (u32::from(value) << shift) & writable_mask;
-            *r = *r & !mask | shifted_value;
+            let new_value = old_value & !mask | shifted_value;
+            self.do_write(reg_idx, new_value)
         } else {
             warn!("bad PCI config word write offset {}", offset);
         }
@@ -541,18 +563,34 @@ impl PciConfiguration {
         let shift = (offset % 4) * 8;
         let reg_idx = offset / 4;
 
-        if let Some(r) = self.registers.get_mut(reg_idx) {
+        if reg_idx < NUM_CONFIGURATION_REGISTERS {
             let writable_mask = if apply_writable_mask {
                 self.writable_bits[reg_idx]
             } else {
                 0xffff_ffff
             };
+            let old_value = self.registers[reg_idx];
             let mask = (0xffu32 << shift) & writable_mask;
             let shifted_value = (u32::from(value) << shift) & writable_mask;
-            *r = *r & !mask | shifted_value;
+            let new_value = old_value & !mask | shifted_value;
+            self.do_write(reg_idx, new_value)
         } else {
             warn!("bad PCI config byte write offset {}", offset);
         }
+    }
+
+    /// Sets the value of a PciConfiguration register. This should be used when
+    /// device-internal events require changing the configuration space - as such,
+    /// the writable bits masks do not apply.
+    /// `reg_idx` - index into PciConfiguration.registers.
+    /// `data`    - The data to write.
+    /// `mask`    - The mask of which bits to modify.
+    pub fn set_reg(&mut self, reg_idx: usize, data: u32, mask: u32) {
+        if reg_idx >= NUM_CONFIGURATION_REGISTERS {
+            return;
+        }
+        let new_val = (self.registers[reg_idx] & !mask) | (data & mask);
+        self.do_write(reg_idx, new_val);
     }
 
     /// Adds a region specified by `config`.  Configures the specified BAR(s) to
@@ -617,7 +655,7 @@ impl PciConfiguration {
                     return Err(Error::BarInUse64(config.bar_idx));
                 }
 
-                self.registers[reg_idx + 1] = (config.addr >> 32) as u32;
+                self.do_write(reg_idx + 1, (config.addr >> 32) as u32);
                 self.writable_bits[reg_idx + 1] = !((config.size - 1) >> 32) as u32;
                 self.bar_used[config.bar_idx + 1] = true;
             }
@@ -637,7 +675,7 @@ impl PciConfiguration {
             }
         };
 
-        self.registers[reg_idx] = ((config.addr as u32) & mask) | lower_bits;
+        self.do_write(reg_idx, ((config.addr as u32) & mask) | lower_bits);
         self.writable_bits[reg_idx] = !(config.size - 1) as u32;
         if config.is_expansion_rom() {
             self.writable_bits[reg_idx] |= 1; // Expansion ROM enable bit.
@@ -711,10 +749,10 @@ impl PciConfiguration {
     pub fn set_irq(&mut self, line: u8, pin: PciInterruptPin) {
         // `pin` is 1-based in the pci config space.
         let pin_idx = (pin as u32) + 1;
-        self.registers[INTERRUPT_LINE_PIN_REG] = (self.registers[INTERRUPT_LINE_PIN_REG]
-            & 0xffff_0000)
+        let new_val = (self.registers[INTERRUPT_LINE_PIN_REG] & 0xffff_0000)
             | (pin_idx << 8)
             | u32::from(line);
+        self.do_write(INTERRUPT_LINE_PIN_REG, new_val)
     }
 
     /// Adds the capability `cap_data` to the list of capabilities.
@@ -741,7 +779,10 @@ impl PciConfiguration {
         if end_offset > CAPABILITY_MAX_OFFSET {
             return Err(Error::CapabilitySpaceFull(total_len));
         }
-        self.registers[STATUS_REG] |= STATUS_REG_CAPABILITIES_USED_MASK;
+        self.do_write(
+            STATUS_REG,
+            self.registers[STATUS_REG] | STATUS_REG_CAPABILITIES_USED_MASK,
+        );
         self.write_byte_internal(tail_offset, cap_offset as u8, false);
         self.write_byte_internal(cap_offset, cap_data.id() as u8, false);
         self.write_byte_internal(cap_offset + 1, 0, false); // Next pointer.
@@ -753,7 +794,14 @@ impl PciConfiguration {
             self.writable_bits[reg_idx + i] = *dword;
         }
         self.last_capability = Some((cap_offset, total_len));
-        if let Some(cap_config) = cap_config {
+        if let Some(mut cap_config) = cap_config {
+            if let Some((mapping, offset)) = &self.mmio_mapping {
+                cap_config.set_cap_mapping(PciCapMapping {
+                    mapping: mapping.clone(),
+                    offset: reg_idx * 4 + offset,
+                    num_regs: total_len / 4,
+                });
+            }
             self.capability_configs.insert(cap_offset / 4, cap_config);
         }
         Ok(())
@@ -763,6 +811,30 @@ impl PciConfiguration {
     fn next_dword(offset: usize, len: usize) -> usize {
         let next = offset + len;
         (next + 3) & !3
+    }
+
+    fn do_write(&mut self, reg_idx: usize, value: u32) {
+        self.registers[reg_idx] = value;
+        if let Some((mmio_mapping, offset)) = self.mmio_mapping.as_ref() {
+            let mmio_mapping = mmio_mapping.lock();
+            let reg_offset = offset + reg_idx * 4;
+            if reg_idx == HEADER_TYPE_REG {
+                // Skip writing the header type byte (reg_idx=2/offset=3) as
+                // per the requirements of PciDevice.setup_pci_config_mapping.
+                mmio_mapping
+                    .write_obj_volatile((value & 0xffff) as u16, reg_offset)
+                    .expect("bad register offset");
+                // Skip HEADER_TYPE_REG_OFFSET (i.e. header+mfd byte)
+                mmio_mapping
+                    .write_obj_volatile(((value >> 24) & 0xff) as u8, reg_offset + 3)
+                    .expect("bad register offset");
+            } else {
+                mmio_mapping
+                    .write_obj_volatile(value, reg_offset)
+                    .expect("bad register offset");
+            }
+            mmio_mapping.flush_uncached_guest_mapping(reg_offset)
+        }
     }
 
     pub fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
@@ -784,6 +856,50 @@ impl PciConfiguration {
         self.bar_used = deser.bar_used;
         self.bar_configs = deser.bar_configs;
         self.last_capability = deser.last_capability;
+        // Restore everything via do_write to avoid writing to the header type register
+        // and clobbering the multi-function device bit, as that bit is managed by the
+        // PciRoot. Since restore doesn't change the types or layout of PCI devices, the
+        // header type bits in the register are already correct anyway.
+        for i in 0..NUM_CONFIGURATION_REGISTERS {
+            self.do_write(i, self.registers[i]);
+        }
+        Ok(())
+    }
+
+    pub fn setup_mapping(
+        &mut self,
+        shmem: &SharedMemory,
+        base: usize,
+        len: usize,
+    ) -> anyhow::Result<()> {
+        if self.mmio_mapping.is_some() {
+            bail!("PCIe config mmio mapping already initialized");
+        }
+        let mapping = MemoryMappingBuilder::new(base::pagesize())
+            .from_shared_memory(shmem)
+            .build()
+            .context("Failed to create mapping")?;
+        for i in 0..(len / 4) {
+            let val = self.registers.get(i).unwrap_or(&0xffff_ffff);
+            mapping
+                .write_obj_volatile(*val, base + i * 4)
+                .expect("memcpy failed");
+        }
+        let mapping = Arc::new(Mutex::new(mapping));
+        for (idx, cap) in self.capability_configs.iter_mut() {
+            let mut cap_mapping = PciCapMapping {
+                mapping: mapping.clone(),
+                offset: idx * 4 + base,
+                num_regs: cap.num_regs(),
+            };
+            for i in 0..cap.num_regs() {
+                let val = cap.read_reg(i);
+                let mask = cap.read_mask()[i];
+                cap_mapping.set_reg(i, val, mask);
+            }
+            cap.set_cap_mapping(cap_mapping);
+        }
+        self.mmio_mapping = Some((mapping, base));
         Ok(())
     }
 }
@@ -871,6 +987,37 @@ impl<T: PciCapConfig + ?Sized> PciCapConfig for Arc<Mutex<T>> {
         data: &[u8],
     ) -> Option<Box<dyn PciCapConfigWriteResult>> {
         self.lock().write_reg(reg_idx, offset, data)
+    }
+    fn set_cap_mapping(&mut self, mapping: PciCapMapping) {
+        self.lock().set_cap_mapping(mapping)
+    }
+}
+
+/// Struct for updating a capabilitiy's mmio mapping.
+pub struct PciCapMapping {
+    mapping: Arc<Mutex<MemoryMapping>>,
+    offset: usize,
+    num_regs: usize,
+}
+
+impl PciCapMapping {
+    /// Set the bits of register `reg_idx` specified by `mask` to `data`.
+    pub fn set_reg(&mut self, reg_idx: usize, data: u32, mask: u32) {
+        if reg_idx >= self.num_regs {
+            error!(
+                "out of bounds register write {} vs {}",
+                self.num_regs, reg_idx
+            );
+            return;
+        }
+        let mapping = self.mapping.lock();
+        let offset = self.offset + reg_idx * 4;
+        let cur_value = mapping.read_obj::<u32>(offset).expect("memcpy failed");
+        let new_val = (cur_value & !mask) | (data & mask);
+        mapping
+            .write_obj_volatile(new_val, offset)
+            .expect("memcpy failed");
+        mapping.flush_uncached_guest_mapping(offset);
     }
 }
 

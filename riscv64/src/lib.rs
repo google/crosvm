@@ -234,6 +234,8 @@ impl arch::LinuxArch for Riscv64 {
                 pci_devices,
                 irq_chip.as_irq_chip_mut(),
                 Arc::clone(&mmio_bus),
+                GuestAddress(RISCV64_PCI_CFG_BASE),
+                8,
                 Arc::clone(&io_bus),
                 system_allocator,
                 &mut vm,

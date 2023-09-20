@@ -255,6 +255,44 @@ impl MemoryMapping {
     pub fn msync(&self) -> Result<()> {
         self.mapping.msync()
     }
+
+    /// Flush memory which the guest may be accessing through an uncached mapping.
+    ///
+    /// Reads via an uncached mapping can bypass the cache and directly access main
+    /// memory. This is outside the memory model of Rust, which means that even with
+    /// proper synchronization, guest reads via an uncached mapping might not see
+    /// updates from the host. As such, it is necessary to perform architectural
+    /// cache maintainance to flush the host writes to main memory.
+    ///
+    /// Note that this does not support writable uncached guest mappings, as doing so
+    /// requires invalidating the cache, not flushing the cache.
+    ///
+    /// Currently only supported on x86_64 and aarch64. Cannot be supported on 32-bit arm.
+    pub fn flush_uncached_guest_mapping(&self, offset: usize) {
+        if offset > self.mapping.size() {
+            return;
+        }
+        // SAFETY: We checked that offset is within the mapping, and flushing
+        // the cache doesn't affect any rust safety properties.
+        unsafe {
+            #[allow(unused)]
+            let target = self.mapping.as_ptr().add(offset);
+            cfg_if::cfg_if! {
+                if #[cfg(target_arch = "x86_64")] {
+                    // As per table 11-7 of the SDM, processors are not required to
+                    // snoop UC mappings, so flush the target to memory.
+                    core::arch::x86_64::_mm_clflush(target);
+                } else if #[cfg(target_arch = "aarch64")] {
+                    // Data cache clean by VA to PoC.
+                    std::arch::asm!("DC CVAC, {x}", x = in(reg) target);
+                } else if #[cfg(target_arch = "arm")] {
+                    panic!("Userspace cannot flush to PoC");
+                } else {
+                    unimplemented!("Cache flush not implemented")
+                }
+            }
+        }
+    }
 }
 
 pub struct MemoryMappingBuilder<'a> {

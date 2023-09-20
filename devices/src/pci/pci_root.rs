@@ -2,21 +2,29 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::btree_map::Entry as BTreeMapEntry;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::ops::Bound::Included;
+use std::ops::DerefMut;
 use std::sync::Arc;
 use std::sync::Weak;
 
 use anyhow::Context;
 use base::error;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
+use base::Protection;
 use base::RawDescriptor;
 use base::SendTube;
+use base::SharedMemory;
 use base::VmEventType;
+use hypervisor::Vm;
 use resources::SystemAllocator;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
+use vm_memory::GuestAddress;
 
 use crate::pci::pci_configuration::PciBarConfiguration;
 use crate::pci::pci_configuration::PciBridgeSubclass;
@@ -25,6 +33,7 @@ use crate::pci::pci_configuration::PciConfiguration;
 use crate::pci::pci_configuration::PciHeaderType;
 use crate::pci::pci_configuration::HEADER_TYPE_MULTIFUNCTION_MASK;
 use crate::pci::pci_configuration::HEADER_TYPE_REG;
+use crate::pci::pci_configuration::HEADER_TYPE_REG_OFFSET;
 use crate::pci::pci_device::Error;
 use crate::pci::pci_device::PciBus;
 use crate::pci::pci_device::PciDevice;
@@ -67,6 +76,18 @@ impl PciDevice for PciRootConfiguration {
         self.config.write_reg(reg_idx, offset, data);
     }
 
+    fn setup_pci_config_mapping(
+        &mut self,
+        shmem: &SharedMemory,
+        base: usize,
+        len: usize,
+    ) -> Result<bool, Error> {
+        self.config
+            .setup_mapping(shmem, base, len)
+            .map(|_| true)
+            .map_err(Error::MmioSetup)
+    }
+
     fn read_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &mut [u8]) {}
 
     fn write_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &[u8]) {}
@@ -107,6 +128,20 @@ pub enum PciRootCommand {
     Kill,
 }
 
+#[derive(Serialize)]
+struct PciRootMmioState {
+    /// Contains pages mapped read-only into the guest's MMIO space corresponding to
+    /// the PCI configuration space. Keys are the offset in number of pages from the
+    /// start of MMIO space. If a particular value is None, then at least one
+    /// attached device on that page does not support read-only mapped MMIO.
+    #[serde(skip_serializing)]
+    mappings: BTreeMap<u32, Option<(SharedMemory, MemoryMapping)>>,
+    /// Base address of the PCI configuration space's MMIO region.
+    base: GuestAddress,
+    /// Number of bits in the address space of a particular function's MMIO space.
+    register_bit_num: usize,
+}
+
 /// Emulates the PCI Root bridge.
 #[allow(dead_code)] // TODO(b/174705596): remove once mmio_bus and io_bus are used
 pub struct PciRoot {
@@ -122,6 +157,7 @@ pub struct PciRoot {
     devices: BTreeMap<PciAddress, Arc<Mutex<dyn BusDevice>>>,
     /// pcie enhanced configuration access mmio base
     pcie_cfg_mmio: Option<u64>,
+    pci_mmio_state: PciRootMmioState,
 }
 
 const PCI_DEVICE_ID_INTEL_82441: u16 = 0x1237;
@@ -136,7 +172,36 @@ struct PciRootSerializable {
 
 impl PciRoot {
     /// Create an empty PCI root bus.
-    pub fn new(mmio_bus: Weak<Bus>, io_bus: Weak<Bus>, root_bus: Arc<Mutex<PciBus>>) -> Self {
+    pub fn new(
+        vm: &mut impl Vm,
+        mmio_bus: Weak<Bus>,
+        mmio_base: GuestAddress,
+        mmio_register_bit_num: usize,
+        io_bus: Weak<Bus>,
+        root_bus: Arc<Mutex<PciBus>>,
+    ) -> anyhow::Result<Self> {
+        // mmio_mappings's implementation assumes each device's mmio registers
+        // can fit on a single page. Always true given existing specs.
+        assert!(base::pagesize() >= (1 << mmio_register_bit_num));
+        let mut root =
+            Self::create_for_test(mmio_bus, mmio_base, mmio_register_bit_num, io_bus, root_bus);
+        root.pci_mmio_state
+            .setup_mapping(
+                &PciAddress::new(0, 0, 0, 0).unwrap(),
+                &mut root.root_configuration,
+                vm,
+            )
+            .context("failed to set up root configuration mapping")?;
+        Ok(root)
+    }
+
+    fn create_for_test(
+        mmio_bus: Weak<Bus>,
+        mmio_base: GuestAddress,
+        mmio_register_bit_num: usize,
+        io_bus: Weak<Bus>,
+        root_bus: Arc<Mutex<PciBus>>,
+    ) -> Self {
         PciRoot {
             mmio_bus,
             io_bus,
@@ -156,6 +221,11 @@ impl PciRoot {
             },
             devices: BTreeMap::new(),
             pcie_cfg_mmio: None,
+            pci_mmio_state: PciRootMmioState {
+                mappings: BTreeMap::new(),
+                base: mmio_base,
+                register_bit_num: mmio_register_bit_num,
+            },
         }
     }
 
@@ -191,20 +261,61 @@ impl PciRoot {
     /// enable pcie enhanced configuration access and set base mmio
     pub fn enable_pcie_cfg_mmio(&mut self, pcie_cfg_mmio: u64) {
         self.pcie_cfg_mmio = Some(pcie_cfg_mmio);
+        // Update the config space registers that depend on pcie_cfg_mmio.
+        self.root_configuration.config.set_reg(
+            PCIE_XBAR_BASE_ADDR,
+            self.pcie_cfg_mmio.unwrap() as u32 | 0x1,
+            0xffff_ffff,
+        );
+        self.root_configuration.config.set_reg(
+            PCIE_XBAR_BASE_ADDR + 1,
+            (self.pcie_cfg_mmio.unwrap() >> 32) as u32,
+            0xffff_ffff,
+        );
     }
 
     /// Add a `device` to this root PCI bus.
-    pub fn add_device(
+    pub fn add_device<T>(
         &mut self,
         address: PciAddress,
         device: Arc<Mutex<dyn BusDevice>>,
-    ) -> Result<(), Error> {
+        mapper: &mut T,
+    ) -> Result<(), Error>
+    where
+        T: PciMmioMapper,
+    {
         // Ignore attempt to replace PCI Root host bridge.
         if !address.is_root() {
+            self.pci_mmio_state
+                .setup_mapping(&address, device.lock().deref_mut(), mapper)
+                .map_err(Error::MmioSetup)?;
             self.devices.insert(address, device);
+            self.sync_multifunction_bit_to_mmio_mappings(&address, true);
         }
 
         self.root_bus.lock().add_child_device(address)
+    }
+
+    fn sync_multifunction_bit_to_mmio_mappings(&mut self, address: &PciAddress, on_add: bool) {
+        let num_mfd = self.num_multifunction_device(address);
+        let target_range = if (num_mfd == 1 && on_add) || (num_mfd == 0 && !on_add) {
+            // If we added the first mfd or removed the last mfd, update all functions' bits
+            0..8
+        } else if on_add && num_mfd > 0 {
+            // If we added a new function, set its bit if necessary
+            address.func..(address.func + 1)
+        } else {
+            return;
+        };
+        for i in target_range {
+            self.pci_mmio_state.set_mfd_bit(
+                &PciAddress {
+                    func: i,
+                    ..*address
+                },
+                num_mfd > 0,
+            );
+        }
     }
 
     pub fn add_bridge(&mut self, bridge_bus: Arc<Mutex<PciBus>>) -> Result<(), Error> {
@@ -234,6 +345,7 @@ impl PciRoot {
             d.lock().destroy_device();
             let _ = self.root_bus.lock().remove_child_device(address);
         }
+        self.sync_multifunction_bit_to_mmio_mappings(&address, false);
     }
 
     pub fn config_space_read(&self, address: PciAddress, register: usize) -> u32 {
@@ -255,24 +367,8 @@ impl PciRoot {
             if register == HEADER_TYPE_REG {
                 // Set multifunction bit in header type if there are devices at non-zero functions
                 // in this slot.
-                if self
-                    .devices
-                    .range((
-                        Included(&PciAddress {
-                            bus: address.bus,
-                            dev: address.dev,
-                            func: 1,
-                        }),
-                        Included(&PciAddress {
-                            bus: address.bus,
-                            dev: address.dev,
-                            func: 7,
-                        }),
-                    ))
-                    .next()
-                    .is_some()
-                {
-                    data |= HEADER_TYPE_MULTIFUNCTION_MASK;
+                if self.num_multifunction_device(&address) != 0 {
+                    data |= (HEADER_TYPE_MULTIFUNCTION_MASK as u32) << (HEADER_TYPE_REG_OFFSET * 8);
                 }
             }
 
@@ -363,6 +459,129 @@ impl PciRoot {
         self.root_configuration.restore(deser.root_configuration)?;
         self.pcie_cfg_mmio = deser.pcie_cfg_mmio;
         Ok(())
+    }
+
+    fn num_multifunction_device(&self, address: &PciAddress) -> usize {
+        self.devices
+            .range((
+                Included(&PciAddress {
+                    func: 1,
+                    ..*address
+                }),
+                Included(&PciAddress {
+                    func: 7,
+                    ..*address
+                }),
+            ))
+            .count()
+    }
+}
+
+impl PciRootMmioState {
+    fn setup_mapping<T>(
+        &mut self,
+        address: &PciAddress,
+        device: &mut dyn BusDevice,
+        mapper: &mut T,
+    ) -> anyhow::Result<()>
+    where
+        T: PciMmioMapper,
+    {
+        // The PCI spec requires that config writes are non-posted. This requires
+        // uncached mappings in the guest. 32-bit ARM does not support flushing to
+        // PoC from userspace. The cache maintance story for riscv is unclear, so
+        // that is also not implemmented.
+        if cfg!(not(any(target_arch = "x86_64", target_arch = "aarch64"))) {
+            return Ok(());
+        }
+
+        let pagesize = base::pagesize();
+        let offset = address.to_config_address(0, self.register_bit_num);
+        let mmio_mapping_num = offset / pagesize as u32;
+        let (shmem, new_entry) = match self.mappings.entry(mmio_mapping_num) {
+            BTreeMapEntry::Vacant(e) => {
+                let shmem = SharedMemory::new(
+                    format!("{:04x}_pci_cfg_mapping", mmio_mapping_num),
+                    pagesize as u64,
+                )
+                .context("failed to create shmem")?;
+                let mapping = MemoryMappingBuilder::new(pagesize)
+                    .from_shared_memory(&shmem)
+                    .protection(Protection::read_write())
+                    .build()
+                    .context("failed to map shmem")?;
+                let (shmem, _) = e.insert(Some((shmem, mapping))).as_ref().unwrap();
+                (shmem, true)
+            }
+            BTreeMapEntry::Occupied(e) => {
+                let Some((shmem, _)) = e.into_mut() else {
+                    // Another device sharing the page didn't support mapped mmio. Oh
+                    // well, we'll just have to fall back to vm-exit handling.
+                    return Ok(());
+                };
+                (&*shmem, false)
+            }
+        };
+
+        if device.init_pci_config_mapping(
+            shmem,
+            offset as usize % pagesize,
+            1 << self.register_bit_num,
+        ) {
+            if new_entry {
+                let mmio_address = self
+                    .base
+                    .unchecked_add(mmio_mapping_num as u64 * pagesize as u64);
+                match mapper.add_mapping(mmio_address, shmem) {
+                    // We never unmap the mapping, so we don't need the id
+                    Ok(_) => (),
+                    // If this fails, mmio handling via vm-exit will work fine. Devices
+                    // will be doing some pointless work keeping the unused mapping up
+                    // to date, but addressing that isn't worth the implementation cost.
+                    Err(e) => error!("Failed to map mmio page; {:?}", e),
+                }
+            }
+        } else {
+            self.mappings.insert(mmio_mapping_num, None);
+        }
+        Ok(())
+    }
+
+    fn set_mfd_bit(&mut self, address: &PciAddress, is_mfd: bool) {
+        let pagesize = base::pagesize();
+        let offset = address.to_config_address(0, self.register_bit_num);
+        let mapping_num = offset / pagesize as u32;
+        if let Some(Some((_, mapping))) = self.mappings.get_mut(&mapping_num) {
+            let mapping_base = offset as usize % pagesize;
+            let reg_offset = mapping_base + (HEADER_TYPE_REG * 4) + HEADER_TYPE_REG_OFFSET;
+
+            let mut val = mapping.read_obj::<u8>(reg_offset).expect("memcpy failed");
+            val = if is_mfd {
+                val | HEADER_TYPE_MULTIFUNCTION_MASK
+            } else {
+                val & !HEADER_TYPE_MULTIFUNCTION_MASK
+            };
+            mapping
+                .write_obj_volatile(val, reg_offset)
+                .expect("memcpy failed");
+            mapping.flush_uncached_guest_mapping(reg_offset);
+        }
+    }
+}
+
+pub trait PciMmioMapper {
+    fn add_mapping(&mut self, addr: GuestAddress, shmem: &SharedMemory) -> anyhow::Result<u32>;
+}
+
+impl<T: Vm> PciMmioMapper for T {
+    fn add_mapping(&mut self, addr: GuestAddress, shmem: &SharedMemory) -> anyhow::Result<u32> {
+        let mapping = MemoryMappingBuilder::new(base::pagesize())
+            .from_shared_memory(shmem)
+            .protection(Protection::read())
+            .build()
+            .context("failed to map shmem")?;
+        self.add_memory_region(addr, Box::new(mapping), true, false)
+            .context("failed to create vm mapping")
     }
 }
 
@@ -762,8 +981,10 @@ mod tests {
         let mmio_bus = Arc::new(Bus::new(BusType::Mmio));
         let root_bus = Arc::new(Mutex::new(PciBus::new(0, 0, false)));
 
-        Arc::new(Mutex::new(PciRoot::new(
+        Arc::new(Mutex::new(PciRoot::create_for_test(
             Arc::downgrade(&mmio_bus),
+            GuestAddress(0),
+            0,
             Arc::downgrade(&io_bus),
             root_bus,
         )))

@@ -109,6 +109,7 @@ pub use self::pci::PciConfigMmio;
 pub use self::pci::PciDevice;
 pub use self::pci::PciDeviceError;
 pub use self::pci::PciInterruptPin;
+pub use self::pci::PciMmioMapper;
 pub use self::pci::PciRoot;
 pub use self::pci::PciRootCommand;
 pub use self::pci::PciVirtualConfigMmio;

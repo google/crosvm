@@ -14,6 +14,7 @@ use base::AsRawDescriptor;
 #[cfg(feature = "swap")]
 use base::AsRawDescriptors;
 use base::RawDescriptor;
+use base::SharedMemory;
 use base::Tube;
 use base::TubeError;
 use libc::pid_t;
@@ -68,6 +69,11 @@ enum Command {
         len: u32,
         data: [u8; 4],
     },
+    InitPciConfigMapping {
+        shmem: SharedMemory,
+        base: usize,
+        len: usize,
+    },
     ReadVirtualConfig(u32),
     WriteVirtualConfig {
         reg_idx: u32,
@@ -95,6 +101,7 @@ enum CommandResult {
         io_add: Vec<BusRange>,
         removed_pci_devices: Vec<PciAddress>,
     },
+    InitPciConfigMappingResult(bool),
     ReadVirtualConfigResult(u32),
     GetRangesResult(Vec<(BusRange, BusType)>),
     SnapshotResult(std::result::Result<serde_json::Value, String>),
@@ -167,6 +174,10 @@ fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
                     io_add: res.io_add,
                     removed_pci_devices: res.removed_pci_devices,
                 })
+            }
+            Command::InitPciConfigMapping { shmem, base, len } => {
+                let success = device.init_pci_config_mapping(&shmem, base, len);
+                tube.send(&CommandResult::InitPciConfigMappingResult(success))
             }
             Command::ReadVirtualConfig(idx) => {
                 let val = device.virtual_config_register_read(idx as usize);
@@ -442,6 +453,15 @@ impl BusDevice for ProxyDevice {
         } else {
             0
         }
+    }
+
+    fn init_pci_config_mapping(&mut self, shmem: &SharedMemory, base: usize, len: usize) -> bool {
+        let Ok(shmem) = shmem.try_clone() else {
+            error!("Failed to clone pci config mapping shmem");
+            return false;
+        };
+        let res = self.sync_send(&Command::InitPciConfigMapping { shmem, base, len });
+        matches!(res, Some(CommandResult::InitPciConfigMappingResult(true)))
     }
 
     fn virtual_config_register_write(&mut self, reg_idx: usize, value: u32) {

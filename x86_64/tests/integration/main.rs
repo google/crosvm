@@ -133,6 +133,8 @@ where
         devices,
         &mut irq_chip,
         mmio_bus.clone(),
+        GuestAddress(0),
+        12,
         io_bus.clone(),
         &mut resources,
         &mut vm,

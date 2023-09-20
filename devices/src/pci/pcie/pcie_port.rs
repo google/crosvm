@@ -14,6 +14,7 @@ use zerocopy::FromBytes;
 
 use crate::pci::pci_configuration::PciCapConfig;
 use crate::pci::pci_configuration::PciCapConfigWriteResult;
+use crate::pci::pci_configuration::PciCapMapping;
 use crate::pci::pci_configuration::PciCapability;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_device::PcieCap;
@@ -392,6 +393,8 @@ pub struct PcieConfig {
 
     hp_interrupt_pending: bool,
     removed_downstream_valid: bool,
+
+    cap_mapping: Option<PciCapMapping>,
 }
 
 impl PcieConfig {
@@ -415,6 +418,8 @@ impl PcieConfig {
 
             hp_interrupt_pending: false,
             removed_downstream_valid: false,
+
+            cap_mapping: None,
         }
     }
 
@@ -568,6 +573,13 @@ impl PcieConfig {
 
     fn set_slot_status(&mut self, flag: u16) {
         self.slot_status |= flag;
+        if let Some(mapping) = self.cap_mapping.as_mut() {
+            mapping.set_reg(
+                PCIE_SLTCTL_OFFSET / 4,
+                (self.slot_status as u32) << 16,
+                0xffff0000,
+            );
+        }
     }
 }
 
@@ -598,6 +610,10 @@ impl PciCapConfig for PcieConfig {
     ) -> Option<Box<dyn PciCapConfigWriteResult>> {
         self.write_pcie_cap(reg_idx * 4 + offset as usize, data);
         None
+    }
+
+    fn set_cap_mapping(&mut self, mapping: PciCapMapping) {
+        self.cap_mapping = Some(mapping);
     }
 }
 

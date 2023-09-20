@@ -17,6 +17,7 @@ use base::Event;
 use base::Protection;
 use base::RawDescriptor;
 use base::Result;
+use base::SharedMemory;
 use base::Tube;
 use data_model::Le32;
 use hypervisor::Datamatch;
@@ -746,6 +747,18 @@ impl PciDevice for VirtioPciDevice {
                 self.device.control_notify(*msix_behavior);
             }
         }
+    }
+
+    fn setup_pci_config_mapping(
+        &mut self,
+        shmem: &SharedMemory,
+        base: usize,
+        len: usize,
+    ) -> std::result::Result<bool, PciDeviceError> {
+        self.config_regs
+            .setup_mapping(shmem, base, len)
+            .map(|_| true)
+            .map_err(PciDeviceError::MmioSetup)
     }
 
     fn read_bar(&mut self, bar_index: usize, offset: u64, data: &mut [u8]) {
