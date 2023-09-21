@@ -336,9 +336,7 @@ def main(
             sys.exit(returncode)
 
     if not no_unit_tests:
-        unit_test_filter = copy.deepcopy(test_filter)
-        unit_test_filter.include("kind(bench)")
-        unit_test_filter.exclude(*E2E_TESTS)
+        unit_test_filter = copy.deepcopy(test_filter).exclude(*E2E_TESTS).include("kind(bench)")
         console.print()
         console.rule("Running unit tests")
         with record_time("Unit Tests"):
