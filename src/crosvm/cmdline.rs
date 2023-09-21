@@ -622,6 +622,7 @@ pub struct GpuSetDisplayMouseModeCommand {
 #[argh(subcommand)]
 pub enum UsbSubCommand {
     Attach(UsbAttachCommand),
+    SecurityKeyAttach(UsbAttachKeyCommand),
     Detach(UsbDetachCommand),
     List(UsbListCommand),
 }
@@ -638,6 +639,18 @@ pub struct UsbAttachCommand {
     pub addr: (u8, u8, u16, u16),
     #[argh(positional)]
     /// usb device path
+    pub dev_path: String,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+/// Attach security key device
+#[argh(subcommand, name = "attach_key")]
+pub struct UsbAttachKeyCommand {
+    #[argh(positional)]
+    /// security key hidraw device path
     pub dev_path: String,
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path

@@ -120,6 +120,22 @@ pub fn do_usb_attach<T: AsRef<Path> + std::fmt::Debug>(
     }
 }
 
+pub fn do_security_key_attach<T: AsRef<Path> + std::fmt::Debug>(
+    socket_path: T,
+    dev_path: &Path,
+) -> ModifyUsbResult<UsbControlResult> {
+    let usb_file = open_file_or_duplicate(dev_path, OpenOptions::new().read(true).write(true))
+        .map_err(|e| ModifyUsbError::FailedToOpenDevice(dev_path.into(), e))?;
+
+    let request = VmRequest::UsbCommand(UsbControlCommand::AttachSecurityKey { file: usb_file });
+    let response =
+        handle_request(&request, socket_path).map_err(|_| ModifyUsbError::SocketFailed)?;
+    match response {
+        VmResponse::UsbResponse(usb_resp) => Ok(usb_resp),
+        r => Err(ModifyUsbError::UnexpectedResponse(r)),
+    }
+}
+
 pub fn do_usb_detach<T: AsRef<Path> + std::fmt::Debug>(
     socket_path: T,
     port: u8,
