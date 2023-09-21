@@ -34,7 +34,6 @@ use base::geteuid;
 use base::info;
 use base::pipe;
 use base::register_rt_signal_handler;
-use base::validate_raw_descriptor;
 use base::warn;
 use base::AsRawDescriptor;
 use base::Error as SysError;
@@ -48,7 +47,6 @@ use base::Result as SysResult;
 use base::SignalFd;
 use base::WaitContext;
 use base::SIGRTMIN;
-use devices::virtio::NetParametersMode;
 use jail::create_sandbox_minijail;
 use jail::mount_proc;
 use jail::SandboxConfig;
@@ -80,7 +78,6 @@ use libc::O_NONBLOCK;
 use libc::SIGCHLD;
 use libc::SOCK_SEQPACKET;
 use net_util::sys::unix::Tap;
-use net_util::TapTCommon;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
@@ -544,8 +541,13 @@ pub fn run_config(cfg: Config) -> Result<()> {
         None
     };
 
+    #[allow(unused_mut)]
     let mut tap_interfaces: Vec<Tap> = Vec::new();
+    #[cfg(feature = "net")]
     for net_params in cfg.net {
+        use devices::virtio::NetParametersMode;
+        use net_util::TapTCommon;
+
         if net_params.vhost_net.is_some() {
             bail!("vhost-net not supported with plugin");
         }
@@ -579,7 +581,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 // Safe because we ensure that we get a unique handle to the fd.
                 let tap = unsafe {
                     Tap::from_raw_descriptor(
-                        validate_raw_descriptor(tap_fd).context("failed to validate raw tap fd")?,
+                        base::validate_raw_descriptor(tap_fd)
+                            .context("failed to validate raw tap fd")?,
                     )
                     .context("failed to create tap device from raw fd")?
                 };
