@@ -7,7 +7,6 @@ use std::fmt::Display;
 use std::mem::size_of;
 
 use base::debug;
-use base::warn;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestAddress;
@@ -147,7 +146,7 @@ impl RingBuffer {
         // If cycle bit of trb does not equal consumer cycle state, the ring is empty.
         // This trb is invalid.
         if trb.get_cycle() != self.consumer_cycle_state {
-            warn!(
+            debug!(
                 "xhci: cycle bit does not match, self cycle {}",
                 self.consumer_cycle_state
             );
