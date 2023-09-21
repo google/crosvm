@@ -18,4 +18,4 @@ pub use platform::StreamSourceBackend;
 pub(crate) use platform::SysAsyncStreamObjects;
 pub(crate) use platform::SysAudioStreamSource;
 pub(crate) use platform::SysAudioStreamSourceGenerator;
-pub(crate) use platform::SysBufferWriter;
+pub(crate) use platform::SysDirectionOutput;

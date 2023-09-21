@@ -3,7 +3,10 @@
 // found in the LICENSE file.
 
 use async_trait::async_trait;
+use audio_streams::capture::AsyncCaptureBuffer;
+use audio_streams::capture::AsyncCaptureBufferStream;
 use audio_streams::AsyncPlaybackBufferStream;
+use audio_streams::BoxError;
 use audio_streams::StreamSource;
 use audio_streams::StreamSourceGenerator;
 #[cfg(feature = "audio_cras")]
@@ -19,6 +22,7 @@ use libcras::CrasStreamType;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::virtio::snd::common_backend::async_funcs::CaptureBufferReader;
 use crate::virtio::snd::common_backend::async_funcs::PlaybackBufferWriter;
 use crate::virtio::snd::common_backend::stream_info::StreamInfo;
 use crate::virtio::snd::common_backend::DirectionalStream;
@@ -32,10 +36,11 @@ const AUDIO_THREAD_RTPRIO: u16 = 10; // Matches other cros audio clients.
 
 pub(crate) type SysAudioStreamSourceGenerator = Box<dyn StreamSourceGenerator>;
 pub(crate) type SysAudioStreamSource = Box<dyn StreamSource>;
-pub(crate) type SysBufferWriter = UnixBufferWriter;
+pub(crate) type SysBufferReader = UnixBufferReader;
 
-pub(crate) struct SysAsyncStream {
-    pub(crate) async_playback_buffer_stream: Box<dyn AsyncPlaybackBufferStream>,
+pub struct SysDirectionOutput {
+    pub async_playback_buffer_stream: Box<dyn audio_streams::AsyncPlaybackBufferStream>,
+    pub buffer_writer: Box<dyn PlaybackBufferWriter>,
 }
 
 pub(crate) struct SysAsyncStreamObjects {
@@ -119,28 +124,91 @@ impl StreamInfo {
     /// `period_bytes` in virtio-snd device (or ALSA) indicates the device transmits (or
     /// consumes) for each PCM message.
     /// Therefore, `buffer_size` in `audio_streams` == `period_bytes` in virtio-snd.
-    pub(crate) async fn set_up_async_playback_stream(
+    async fn set_up_async_playback_stream(
         &mut self,
         frame_size: usize,
         ex: &Executor,
-    ) -> Result<SysAsyncStream, Error> {
-        Ok(SysAsyncStream {
-            async_playback_buffer_stream: self
-                .stream_source
-                .as_mut()
-                .ok_or(Error::EmptyStreamSource)?
-                .async_new_async_playback_stream(
-                    self.channels as usize,
-                    self.format,
-                    self.frame_rate,
-                    // See (*)
-                    self.period_bytes / frame_size,
-                    ex,
-                )
-                .await
-                .map_err(Error::CreateStream)?
-                .1,
-        })
+    ) -> Result<Box<dyn AsyncPlaybackBufferStream>, Error> {
+        Ok(self
+            .stream_source
+            .as_mut()
+            .ok_or(Error::EmptyStreamSource)?
+            .async_new_async_playback_stream(
+                self.channels as usize,
+                self.format,
+                self.frame_rate,
+                // See (*)
+                self.period_bytes / frame_size,
+                ex,
+            )
+            .await
+            .map_err(Error::CreateStream)?
+            .1)
+    }
+
+    pub(crate) async fn set_up_async_capture_stream(
+        &mut self,
+        frame_size: usize,
+        ex: &Executor,
+    ) -> Result<SysBufferReader, Error> {
+        let async_capture_buffer_stream = self
+            .stream_source
+            .as_mut()
+            .ok_or(Error::EmptyStreamSource)?
+            .async_new_async_capture_stream(
+                self.channels as usize,
+                self.format,
+                self.frame_rate,
+                self.period_bytes / frame_size,
+                &self.effects,
+                ex,
+            )
+            .await
+            .map_err(Error::CreateStream)?
+            .1;
+        Ok(SysBufferReader::new(async_capture_buffer_stream))
+    }
+
+    pub(crate) async fn create_directionstream_output(
+        &mut self,
+        frame_size: usize,
+        ex: &Executor,
+    ) -> Result<DirectionalStream, Error> {
+        let async_playback_buffer_stream =
+            self.set_up_async_playback_stream(frame_size, ex).await?;
+
+        let buffer_writer = UnixBufferWriter::new(self.period_bytes);
+
+        Ok(DirectionalStream::Output(SysDirectionOutput {
+            async_playback_buffer_stream,
+            buffer_writer: Box::new(buffer_writer),
+        }))
+    }
+}
+
+pub(crate) struct UnixBufferReader {
+    async_stream: Box<dyn AsyncCaptureBufferStream>,
+}
+
+impl UnixBufferReader {
+    fn new(async_stream: Box<dyn AsyncCaptureBufferStream>) -> Self
+    where
+        Self: Sized,
+    {
+        UnixBufferReader { async_stream }
+    }
+}
+#[async_trait(?Send)]
+impl CaptureBufferReader for UnixBufferReader {
+    async fn get_next_capture_period(
+        &mut self,
+        ex: &Executor,
+    ) -> Result<AsyncCaptureBuffer, BoxError> {
+        Ok(self
+            .async_stream
+            .next_capture_buffer(ex)
+            .await
+            .map_err(Error::FetchBuffer)?)
     }
 }
 

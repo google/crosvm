@@ -60,7 +60,7 @@ use crate::virtio::snd::sys::create_stream_source_generators as sys_create_strea
 use crate::virtio::snd::sys::set_audio_thread_priority;
 use crate::virtio::snd::sys::SysAsyncStreamObjects;
 use crate::virtio::snd::sys::SysAudioStreamSourceGenerator;
-use crate::virtio::snd::sys::SysBufferWriter;
+use crate::virtio::snd::sys::SysDirectionOutput;
 use crate::virtio::DescriptorChain;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
@@ -145,13 +145,10 @@ pub enum Error {
 
 pub enum DirectionalStream {
     Input(
-        Box<dyn audio_streams::capture::AsyncCaptureBufferStream>,
         usize, // `period_size` in `usize`
+        Box<dyn CaptureBufferReader>,
     ),
-    Output(
-        Box<dyn audio_streams::AsyncPlaybackBufferStream>,
-        Box<dyn PlaybackBufferWriter>,
-    ),
+    Output(SysDirectionOutput),
 }
 
 #[derive(Copy, Clone, std::cmp::PartialEq, Eq)]

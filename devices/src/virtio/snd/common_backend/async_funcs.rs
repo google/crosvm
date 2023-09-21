@@ -12,6 +12,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use audio_streams::capture::AsyncCaptureBuffer;
 use audio_streams::AsyncPlaybackBuffer;
+use audio_streams::BoxError;
 use base::debug;
 use base::error;
 use cros_async::sync::Condvar;
@@ -27,8 +28,6 @@ use futures::FutureExt;
 use futures::SinkExt;
 use futures::StreamExt;
 use thiserror::Error as ThisError;
-#[cfg(windows)]
-use win_audio::AudioSharedFormat;
 use zerocopy::AsBytes;
 
 use super::Error;
@@ -47,18 +46,19 @@ use crate::virtio::Queue;
 use crate::virtio::Reader;
 use crate::virtio::Writer;
 
-// TODO(b/246601226): Remove once a generic audio_stream solution that can accpet
-// arbitrarily size buffers.
+/// Trait to wrap system specific helpers for reading from the start point capture buffer.
+#[async_trait(?Send)]
+pub trait CaptureBufferReader {
+    async fn get_next_capture_period(
+        &mut self,
+        ex: &Executor,
+    ) -> Result<AsyncCaptureBuffer, BoxError>;
+}
+
 /// Trait to wrap system specific helpers for writing to endpoint playback buffers.
 #[async_trait(?Send)]
 pub trait PlaybackBufferWriter {
-    fn new(
-        guest_period_bytes: usize,
-        #[cfg(windows)] frame_size: usize,
-        #[cfg(windows)] frame_rate: usize,
-        #[cfg(windows)] guest_num_channels: usize,
-        #[cfg(windows)] audio_shared_format: AudioSharedFormat,
-    ) -> Self
+    fn new(guest_period_bytes: usize) -> Self
     where
         Self: Sized;
 
@@ -73,17 +73,6 @@ pub trait PlaybackBufferWriter {
     ) -> Result<usize, Error> {
         dst_buf.copy_from(reader).map_err(Error::Io)
     }
-    /// Check to see if an additional read from the tx virtqueue is needed during a playback
-    /// loop. If so, read from the virtqueue.
-    ///
-    /// Prefill will happen, for example, if the endpoint buffer requires a 513 frame period, but
-    /// each tx virtqueue read only produces 480 frames.
-    #[cfg(windows)]
-    async fn check_and_prefill(
-        &mut self,
-        desc_receiver: &mut mpsc::UnboundedReceiver<DescriptorChain>,
-        sender: &mut mpsc::UnboundedSender<PcmResponse>,
-    ) -> Result<(), Error>;
 }
 
 #[derive(Debug)]
@@ -376,8 +365,23 @@ async fn pcm_worker_loop(
     pin_mut!(on_release);
 
     match dstream {
-        #[allow(unused_mut)]
-        DirectionalStream::Output(mut stream, mut buffer_writer) => loop {
+        DirectionalStream::Output(mut sys_direction_output) => loop {
+            #[cfg(windows)]
+            let (mut stream, mut buffer_writer_lock) = (
+                sys_direction_output
+                    .async_playback_buffer_stream
+                    .lock()
+                    .await,
+                sys_direction_output.buffer_writer.lock().await,
+            );
+            #[cfg(windows)]
+            let buffer_writer = &mut buffer_writer_lock;
+            #[cfg(unix)]
+            let (stream, buffer_writer) = (
+                &mut sys_direction_output.async_playback_buffer_stream,
+                &mut sys_direction_output.buffer_writer,
+            );
+
             let next_buf = stream.next_playback_buffer(&ex).fuse();
             pin_mut!(next_buf);
 
@@ -392,56 +396,44 @@ async fn pcm_worker_loop(
             match *worker_status {
                 WorkerStatus::Quit => {
                     drain_desc_receiver(desc_receiver, sender).await?;
-                    if let Err(e) = write_data(dst_buf, None, &mut buffer_writer).await {
+                    if let Err(e) = write_data(dst_buf, None, buffer_writer).await {
                         error!("Error on write_data after worker quit: {}", e)
                     }
                     break Ok(());
                 }
                 WorkerStatus::Pause => {
-                    write_data(dst_buf, None, &mut buffer_writer).await?;
+                    write_data(dst_buf, None, buffer_writer).await?;
                 }
-                WorkerStatus::Running => {
-                    // TODO(b/246601226): Remove once a generic audio_stream solution that can
-                    // accpet arbitrarily size buffers
-                    #[cfg(windows)]
-                    buffer_writer
-                        .check_and_prefill(desc_receiver, sender)
-                        .await?;
-
-                    match desc_receiver.try_next() {
-                        Err(e) => {
-                            error!("Underrun. No new DescriptorChain while running: {}", e);
-                            write_data(dst_buf, None, &mut buffer_writer).await?;
-                        }
-                        Ok(None) => {
-                            error!("Unreachable. status should be Quit when the channel is closed");
-                            write_data(dst_buf, None, &mut buffer_writer).await?;
-                            return Err(Error::InvalidPCMWorkerState);
-                        }
-                        Ok(Some(mut desc_chain)) => {
-                            // stream_id was already read in handle_pcm_queue
-                            let status = write_data(
-                                dst_buf,
-                                Some(&mut desc_chain.reader),
-                                &mut buffer_writer,
-                            )
-                            .await
-                            .into();
-                            sender
-                                .send(PcmResponse {
-                                    desc_chain,
-                                    status,
-                                    done: None,
-                                })
-                                .await
-                                .map_err(Error::MpscSend)?;
-                        }
+                WorkerStatus::Running => match desc_receiver.try_next() {
+                    Err(e) => {
+                        error!("Underrun. No new DescriptorChain while running: {}", e);
+                        write_data(dst_buf, None, buffer_writer).await?;
                     }
-                }
+                    Ok(None) => {
+                        error!("Unreachable. status should be Quit when the channel is closed");
+                        write_data(dst_buf, None, buffer_writer).await?;
+                        return Err(Error::InvalidPCMWorkerState);
+                    }
+                    Ok(Some(mut desc_chain)) => {
+                        // stream_id was already read in handle_pcm_queue
+                        let status =
+                            write_data(dst_buf, Some(&mut desc_chain.reader), buffer_writer)
+                                .await
+                                .into();
+                        sender
+                            .send(PcmResponse {
+                                desc_chain,
+                                status,
+                                done: None,
+                            })
+                            .await
+                            .map_err(Error::MpscSend)?;
+                    }
+                },
             }
         },
-        DirectionalStream::Input(mut stream, period_bytes) => loop {
-            let next_buf = stream.next_capture_buffer(&ex).fuse();
+        DirectionalStream::Input(period_bytes, mut buffer_reader) => loop {
+            let next_buf = buffer_reader.get_next_capture_period(&ex).fuse();
             pin_mut!(next_buf);
 
             let src_buf = select! {

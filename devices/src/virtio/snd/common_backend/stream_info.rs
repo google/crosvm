@@ -27,7 +27,6 @@ use crate::virtio::snd::common::*;
 use crate::virtio::snd::common_backend::async_funcs::*;
 use crate::virtio::snd::common_backend::DirectionalStream;
 use crate::virtio::snd::common_backend::SysAsyncStreamObjects;
-use crate::virtio::snd::common_backend::SysBufferWriter;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::sys::SysAudioStreamSource;
 use crate::virtio::snd::sys::SysAudioStreamSourceGenerator;
@@ -92,7 +91,7 @@ pub struct StreamInfo {
     direction: u8,  // VIRTIO_SND_D_*
     pub state: u32, // VIRTIO_SND_R_PCM_SET_PARAMS -> VIRTIO_SND_R_PCM_STOP, or 0 (uninitialized)
     // Stream effects to use when creating a new stream on [`prepare()`].
-    effects: Vec<StreamEffect>,
+    pub(crate) effects: Vec<StreamEffect>,
 
     // just_reset set to true after reset. Make invalid state transition return Ok. Set to false
     // after a valid state transition to SET_PARAMS or PREPARE.
@@ -104,6 +103,11 @@ pub struct StreamInfo {
     worker_future: Option<Box<dyn Future<Output = Result<(), Error>> + Unpin>>,
     release_signal: Option<Rc<(AsyncRwLock<bool>, Condvar)>>, // Signal worker on release
     ex: Option<Executor>, // Executor provided on `prepare()`. Used on `drop()`.
+    #[cfg(windows)]
+    pub(crate) playback_stream_cache: Option<(
+        Arc<AsyncRwLock<Box<dyn audio_streams::AsyncPlaybackBufferStream>>>,
+        Arc<AsyncRwLock<Box<dyn PlaybackBufferWriter>>>,
+    )>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -174,6 +178,8 @@ impl From<StreamInfoBuilder> for StreamInfo {
             worker_future: None,
             release_signal: None,
             ex: None,
+            #[cfg(windows)]
+            playback_stream_cache: None,
         }
     }
 }
@@ -257,47 +263,15 @@ impl StreamInfo {
                 .generate()
                 .map_err(Error::GenerateStreamSource)?,
         );
-        let SysAsyncStreamObjects { stream, pcm_sender } = match self.direction {
-            VIRTIO_SND_D_OUTPUT => {
-                let sys_async_stream = self.set_up_async_playback_stream(frame_size, ex).await?;
-
-                let buffer_writer = SysBufferWriter::new(
-                    self.period_bytes,
-                    #[cfg(windows)]
-                    frame_size,
-                    #[cfg(windows)]
-                    usize::try_from(self.frame_rate).expect("Failed to cast from u32 to usize"),
-                    #[cfg(windows)]
-                    usize::try_from(self.channels).expect("Failed to cast from u32 to usize"),
-                    #[cfg(windows)]
-                    sys_async_stream.audio_shared_format,
-                );
-                SysAsyncStreamObjects {
-                    stream: DirectionalStream::Output(
-                        sys_async_stream.async_playback_buffer_stream,
-                        Box::new(buffer_writer),
-                    ),
-                    pcm_sender: tx_send.clone(),
-                }
-            }
+        let stream_objects = match self.direction {
+            VIRTIO_SND_D_OUTPUT => SysAsyncStreamObjects {
+                stream: self.create_directionstream_output(frame_size, ex).await?,
+                pcm_sender: tx_send.clone(),
+            },
             VIRTIO_SND_D_INPUT => {
-                let async_stream = self
-                    .stream_source
-                    .as_mut()
-                    .ok_or(Error::EmptyStreamSource)?
-                    .async_new_async_capture_stream(
-                        self.channels as usize,
-                        self.format,
-                        self.frame_rate,
-                        self.period_bytes / frame_size,
-                        &self.effects[..],
-                        ex,
-                    )
-                    .await
-                    .map_err(Error::CreateStream)?
-                    .1;
+                let buffer_reader = self.set_up_async_capture_stream(frame_size, ex).await?;
                 SysAsyncStreamObjects {
-                    stream: DirectionalStream::Input(async_stream, self.period_bytes),
+                    stream: DirectionalStream::Input(self.period_bytes, Box::new(buffer_reader)),
                     pcm_sender: rx_send.clone(),
                 }
             }
@@ -316,10 +290,10 @@ impl StreamInfo {
         self.release_signal = Some(release_signal.clone());
         let f = start_pcm_worker(
             ex.clone(),
-            stream,
+            stream_objects.stream,
             receiver,
             self.status_mutex.clone(),
-            pcm_sender,
+            stream_objects.pcm_sender,
             period_dur,
             release_signal,
         );
@@ -436,7 +410,6 @@ impl StreamInfo {
     }
 }
 
-// TODO(b/246997900): Get these new tests to run on Windows.
 #[cfg(test)]
 mod tests {
     use audio_streams::NoopStreamSourceGenerator;
