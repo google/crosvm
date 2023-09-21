@@ -76,6 +76,7 @@ $(TARGET)/rootfs: $(TARGET)/rootfs-build/delegate rootfs/Dockerfile
 $(TARGET)/rootfs-build/delegate: rootfs/delegate/Cargo.toml rootfs/delegate/src/main.rs rootfs/delegate/src/wire_format.rs
 	rustup target add $(RUST_TARGET)
 	CARGO_TARGET_DIR=$(TARGET) RUSTFLAGS=$(RUSTFLAGS) cargo build --target $(RUST_TARGET) --release --manifest-path=rootfs/delegate/Cargo.toml
+	mkdir -p $(TARGET)/rootfs-build
 	cp $(TARGET)/$(RUST_TARGET)/release/delegate $(TARGET)/rootfs-build/delegate
 
 ################################################################################
