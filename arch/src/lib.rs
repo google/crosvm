@@ -317,6 +317,8 @@ pub struct VmComponents {
     pub acpi_sdts: Vec<SDT>,
     pub android_fstab: Option<File>,
     pub bootorder_fw_cfg_blob: Vec<u8>,
+    #[cfg(target_arch = "x86_64")]
+    pub break_linux_pci_config_io: bool,
     pub cpu_capacity: BTreeMap<usize, u32>,
     pub cpu_clusters: Vec<CpuSet>,
     pub cpu_frequencies: BTreeMap<usize, Vec<u32>>,

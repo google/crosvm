@@ -743,6 +743,8 @@ pub struct Config {
     pub block_control_tube: Vec<Tube>,
     #[cfg(windows)]
     pub block_vhost_user_tube: Vec<Tube>,
+    #[cfg(target_arch = "x86_64")]
+    pub break_linux_pci_config_io: bool,
     #[cfg(windows)]
     pub broker_shutdown_event: Option<Event>,
     #[cfg(all(target_arch = "x86_64", unix))]
@@ -943,6 +945,8 @@ impl Default for Config {
             block_control_tube: Vec::new(),
             #[cfg(windows)]
             block_vhost_user_tube: Vec::new(),
+            #[cfg(target_arch = "x86_64")]
+            break_linux_pci_config_io: false,
             #[cfg(windows)]
             broker_shutdown_event: None,
             #[cfg(all(target_arch = "x86_64", unix))]

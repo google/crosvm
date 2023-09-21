@@ -755,6 +755,7 @@ impl arch::LinuxArch for X8664arch {
         pci.lock().enable_pcie_cfg_mmio(pcie_cfg_mmio_range.start);
         let pci_cfg = PciConfigIo::new(
             pci.clone(),
+            components.break_linux_pci_config_io,
             vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
         );
         let pci_bus = Arc::new(Mutex::new(pci_cfg));

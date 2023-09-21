@@ -372,6 +372,8 @@ pub struct PciConfigIo {
     pci_root: Arc<Mutex<PciRoot>>,
     /// Current address to read/write from (0xcf8 register, litte endian).
     config_address: u32,
+    /// Whether or not to actually function.
+    break_linux_pci_config_io: bool,
     /// Tube to signal that the guest requested reset via writing to 0xcf9 register.
     reset_evt_wrtube: SendTube,
 }
@@ -385,10 +387,15 @@ struct PciConfigIoSerializable {
 impl PciConfigIo {
     const REGISTER_BITS_NUM: usize = 8;
 
-    pub fn new(pci_root: Arc<Mutex<PciRoot>>, reset_evt_wrtube: SendTube) -> Self {
+    pub fn new(
+        pci_root: Arc<Mutex<PciRoot>>,
+        break_linux_pci_config_io: bool,
+        reset_evt_wrtube: SendTube,
+    ) -> Self {
         PciConfigIo {
             pci_root,
             config_address: 0,
+            break_linux_pci_config_io,
             reset_evt_wrtube,
         }
     }
@@ -449,6 +456,12 @@ impl BusDevice for PciConfigIo {
     }
 
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
+        if self.break_linux_pci_config_io {
+            for d in data {
+                *d = 0xff;
+            }
+            return;
+        }
         // `offset` is relative to 0xcf8
         let value = match info.offset {
             0..=3 => self.config_address,
@@ -758,7 +771,7 @@ mod tests {
 
     fn create_pci_io_config(pci_root: Arc<Mutex<PciRoot>>) -> PciConfigIo {
         let (reset_evt_wrtube, _) = Tube::directional_pair().unwrap();
-        PciConfigIo::new(pci_root, reset_evt_wrtube)
+        PciConfigIo::new(pci_root, false, reset_evt_wrtube)
     }
 
     fn modify_pci_io_config(pci_config: &mut PciConfigIo) {

@@ -998,6 +998,13 @@ pub struct RunCommand {
     ///         bootindex=1.
     block: Vec<DiskOptionWithId>,
 
+    #[cfg(target_arch = "x86_64")]
+    #[argh(switch)]
+    #[merge(strategy = overwrite_option)]
+    /// break linux PCI configuration space io probing, to force the use of
+    /// mmio access to PCIe ECAM.
+    pub break_linux_pci_config_io: Option<bool>,
+
     /// ratelimit enforced on detected bus locks in guest.
     /// The default value of the bus_lock_ratelimit is 0 per second,
     /// which means no limitation on the guest's bus locks.
@@ -3106,6 +3113,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(target_arch = "x86_64")]
         {
+            cfg.break_linux_pci_config_io = cmd.break_linux_pci_config_io.unwrap_or_default();
             cfg.enable_hwp = cmd.enable_hwp.unwrap_or_default();
             cfg.force_s2idle = cmd.s2idle.unwrap_or_default();
             cfg.pcie_ecam = cmd.pcie_ecam;
