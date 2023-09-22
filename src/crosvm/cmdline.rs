@@ -1865,6 +1865,10 @@ pub struct RunCommand {
     ///        disk (default: 512)
     ///     ro=BOOL - Whether the block should be read-only.
     ///         (default: false)
+    ///     root=BOOL - Whether the scsi device should be mounted
+    ///         as the root filesystem. This will add the required
+    ///         parameters to the kernel command-line. Can only be
+    ///         specified once. (default: false)
     // TODO(b/300580119): Add O_DIRECT and sparse file support.
     scsi_block: Vec<ScsiOption>,
 
@@ -2634,7 +2638,10 @@ impl TryFrom<RunCommand> for super::config::Config {
         disks.sort_by_key(|d| d.index);
 
         // Check that we don't have more than one root disk.
-        if disks.iter().filter(|d| d.disk_option.root).count() > 1 {
+        if disks.iter().filter(|d| d.disk_option.root).count() > 1
+            || cmd.scsi_block.iter().filter(|s| s.root).count() > 1
+            || disks.iter().any(|d| d.disk_option.root) && cmd.scsi_block.iter().any(|s| s.root)
+        {
             return Err("only one root disk can be specified".to_string());
         }
 
@@ -2652,6 +2659,19 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         // Pass the sorted disks to the VM config.
         cfg.disks = disks.into_iter().map(|d| d.disk_option).collect();
+
+        // TODO(b/300586438): Support multiple scsi options.
+        if cmd.scsi_block.len() > 1 {
+            return Err("multiple --scsi-block options are not supported yet".to_string());
+        }
+
+        // If we have a root scsi disk, add the corresponding command-line parameters.
+        if let Some(s) = cmd.scsi_block.iter().find(|s| s.root) {
+            cfg.params.push(format!(
+                "root=/dev/sda {}",
+                if s.read_only { "ro" } else { "rw" }
+            ));
+        }
 
         cfg.scsis = cmd.scsi_block;
 
