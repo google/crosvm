@@ -251,13 +251,11 @@ impl StreamInfo {
             error!("period_bytes must be divisible by frame size");
             return Err(Error::OperationNotSupported);
         }
-        if self.stream_source.is_none() {
-            self.stream_source = Some(
-                self.stream_source_generator
-                    .generate()
-                    .map_err(Error::GenerateStreamSource)?,
-            );
-        }
+        self.stream_source = Some(
+            self.stream_source_generator
+                .generate()
+                .map_err(Error::GenerateStreamSource)?,
+        );
         let SysAsyncStreamObjects { stream, pcm_sender } = match self.direction {
             VIRTIO_SND_D_OUTPUT => {
                 let sys_async_stream = self.set_up_async_playback_stream(frame_size, ex).await?;
