@@ -48,10 +48,26 @@ And then histograms for each cros_tracing event will be displayed.
 ## How to calculate event average latency
 
 ```
-$ cargo run -- average --input trace.dat --output-json tracing_data.json
+$ cargo run -- average --input trace.dat
 ```
 
-calculate the average latency for each virtiofs event and output it to json file
+calculate the average latency for each virtiofs event and print. Example log:
+
+```
+#0: readdir: 307364 usec
+#1: read: 303366 usec
+#2: lookup: 71762 usec
+#3: open: 34148 usec
+#4: opendir: 34132 usec
+#5: statfs: 27116 usec
+#6: forget: 26754 usec
+#7: getxattr: 18714 usec
+#8: getattr: 16768 usec
+#9: release: 15983 usec
+#10: releasedir: 15964 usec
+#11: readlink: 15480 usec
+#12: flush: 11939 usec
+```
 
 ## How to generate flamegraph data
 

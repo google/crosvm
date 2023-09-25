@@ -32,15 +32,12 @@ enum Mode {
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
-/// output average latency of each cros_tracing event.
+/// print average latency of each cros_tracing event.
 #[argh(subcommand, name = "average")]
 struct Average {
     #[argh(option)]
     /// path to the input .dat file
     input: String,
-    #[argh(option)]
-    /// path to the output JSON file
-    output_json: String,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -372,21 +369,16 @@ fn main() -> anyhow::Result<()> {
         Mode::Average(average) => {
             let mut input = Input::new(&average.input)?;
             let mut stats = HandlerImplement::process(&mut input).unwrap();
-            let output = average.output_json;
-            if std::path::Path::new(&output)
-                .extension()
-                .and_then(OsStr::to_str)
-                != Some("json")
-            {
-                return Err(anyhow!("file extension must be .json"));
-            }
             stats.populate_event_names();
             let data = stats.calculate_function_time();
-            let mut average = HashMap::new();
+            let mut average = Vec::new();
             for (name, (latency, _)) in &data {
-                average.insert(String::from(name), latency);
+                average.push((name, latency));
             }
-            write_to_file(data, &output)
+            average.sort_by(|a, b| b.1.cmp(&a.1));
+            for i in 0..average.len() {
+                println!("#{}: {}: {} usec", i, average[i].0, average[i].1)
+            }
         }
 
         Mode::Flamegraph(flamegraph) => {
