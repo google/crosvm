@@ -2,57 +2,52 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use serde::Deserialize;
-use serde::Serialize;
+use std::ffi::CStr;
 
-use crate::descriptor::AsRawDescriptor;
-use crate::descriptor::IntoRawDescriptor;
+use win_util::create_file_mapping;
+use winapi::um::winnt::PAGE_EXECUTE_READWRITE;
+
+use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::SafeDescriptor;
-use crate::RawDescriptor;
+use crate::shm::PlatformSharedMemory;
+use crate::Result;
+use crate::SharedMemory;
 
-/// A shared memory file descriptor and its size.
-#[derive(Debug, Deserialize, Serialize)]
-pub struct SharedMemory {
-    #[serde(with = "crate::with_as_descriptor")]
-    pub descriptor: SafeDescriptor,
-    pub size: u64,
-}
+impl PlatformSharedMemory for SharedMemory {
+    fn new(_debug_name: &CStr, size: u64) -> Result<SharedMemory> {
+        // Safe because we do not provide a handle.
+        let mapping_handle =
+            unsafe { create_file_mapping(None, size, PAGE_EXECUTE_READWRITE, None) }
+                .map_err(super::Error::from)?;
 
-impl SharedMemory {
-    /// Gets the size in bytes of the shared memory.
-    ///
-    /// The size returned here does not reflect changes by other interfaces or users of the shared
-    /// memory file descriptor.
-    pub fn size(&self) -> u64 {
-        self.size
+        // Safe because we have exclusive ownership of mapping_handle & it is valid.
+        Self::from_safe_descriptor(
+            unsafe { SafeDescriptor::from_raw_descriptor(mapping_handle) },
+            size,
+        )
     }
-}
 
-/// USE THIS CAUTIOUSLY. The returned handle is not a file handle and cannot be
-/// used as if it were one. It is a handle to a the associated file mapping object
-/// and should only be used for memory-mapping the file view.
-impl AsRawDescriptor for SharedMemory {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.descriptor.as_raw_descriptor()
-    }
-}
-
-impl IntoRawDescriptor for SharedMemory {
-    fn into_raw_descriptor(self) -> RawDescriptor {
-        self.descriptor.into_raw_descriptor()
+    fn from_safe_descriptor(mapping_handle: SafeDescriptor, size: u64) -> Result<SharedMemory> {
+        Ok(SharedMemory {
+            descriptor: mapping_handle,
+            size,
+        })
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::ffi::CString;
+mod test {
+    use winapi::shared::winerror::ERROR_NOT_ENOUGH_MEMORY;
 
     use super::*;
 
+    #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]
-    fn new() {
-        let shm = SharedMemory::new(&CString::new("name").unwrap(), 1028)
-            .expect("failed to create shared memory");
-        assert_eq!(shm.size(), 1028);
+    fn new_too_huge() {
+        let result = SharedMemory::new("test", 0x8000_0000_0000_0000);
+        assert_eq!(
+            result.err().unwrap().errno(),
+            ERROR_NOT_ENOUGH_MEMORY as i32
+        );
     }
 }

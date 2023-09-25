@@ -307,17 +307,16 @@ pub struct MemoryMappingArena();
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::CString;
     use std::ptr;
 
     use winapi::shared::winerror;
 
     use super::super::pagesize;
-    use super::super::SharedMemory;
     use super::Error;
     use crate::descriptor::FromRawDescriptor;
     use crate::MappedRegion;
     use crate::MemoryMappingBuilder;
+    use crate::SharedMemory;
 
     #[test]
     fn map_invalid_fd() {
@@ -338,8 +337,7 @@ mod tests {
 
     #[test]
     fn from_descriptor_offset_invalid() {
-        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
-        let shm = crate::SharedMemory(shm);
+        let shm = SharedMemory::new("test", 1028).unwrap();
         let res = MemoryMappingBuilder::new(4096)
             .from_shared_memory(&shm)
             .offset((i64::max_value() as u64) + 1)
@@ -354,8 +352,7 @@ mod tests {
     #[test]
     fn arena_msync() {
         let size: usize = 0x40000;
-        let shm = SharedMemory::new(&CString::new("test").unwrap(), size as u64).unwrap();
-        let shm = crate::SharedMemory(shm);
+        let shm = SharedMemory::new("test", size as u64).unwrap();
         let m = MemoryMappingBuilder::new(size)
             .from_shared_memory(&shm)
             .build()
