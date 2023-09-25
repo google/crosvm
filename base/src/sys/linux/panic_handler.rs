@@ -4,13 +4,14 @@
 
 //! A panic handler for better crash signatures for rust apps.
 
-use std::ffi::CString;
+use std::fs::File;
 use std::io;
 use std::mem;
 use std::panic;
 use std::process::abort;
 
-use super::SharedMemory;
+use crate::SafeDescriptor;
+use crate::SharedMemory;
 
 const PANIC_MEMFD_NAME: &str = "RUST_PANIC_SIG";
 
@@ -23,10 +24,8 @@ pub fn install_memfd_handler() {
         let panic_info = format!("{}\n", &p);
         let panic_bytes = panic_info.as_bytes();
         // On failure, ignore the error and call the original handler.
-        if let Ok(mut panic_memfd) = SharedMemory::new(
-            &CString::new(PANIC_MEMFD_NAME).unwrap(),
-            panic_bytes.len() as u64,
-        ) {
+        if let Ok(panic_memfd) = SharedMemory::new(PANIC_MEMFD_NAME, panic_bytes.len() as u64) {
+            let mut panic_memfd = File::from(SafeDescriptor::from(panic_memfd));
             io::Write::write_all(&mut panic_memfd, panic_bytes).ok();
             // Intentionally leak panic_memfd so it is picked up by the crash handler.
             mem::forget(panic_memfd);
