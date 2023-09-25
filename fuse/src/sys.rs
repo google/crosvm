@@ -54,19 +54,22 @@ bitflags! {
 // Flags returned by the OPEN request.
 
 /// Bypass page cache for this open file.
-const FOPEN_DIRECT_IO: u32 = 1;
+const FOPEN_DIRECT_IO: u32 = 1 << 0;
 
 /// Don't invalidate the data cache on open.
-const FOPEN_KEEP_CACHE: u32 = 2;
+const FOPEN_KEEP_CACHE: u32 = 1 << 1;
 
 /// The file is not seekable.
-const FOPEN_NONSEEKABLE: u32 = 4;
+const FOPEN_NONSEEKABLE: u32 = 1 << 2;
 
 /// Allow caching the directory entries.
-const FOPEN_CACHE_DIR: u32 = 8;
+const FOPEN_CACHE_DIR: u32 = 1 << 3;
 
 /// This file is stream-like (i.e., no file position).
-const FOPEN_STREAM: u32 = 16;
+const FOPEN_STREAM: u32 = 1 << 4;
+
+/// New file was created in atomic open
+const FOPEN_FILE_CREATED: u32 = 1 << 7;
 
 bitflags! {
     /// Options controlling the behavior of files opened by the server in response
@@ -79,6 +82,7 @@ bitflags! {
         const NONSEEKABLE = FOPEN_NONSEEKABLE;
         const CACHE_DIR = FOPEN_CACHE_DIR;
         const STREAM = FOPEN_STREAM;
+        const FILE_CREATED = FOPEN_FILE_CREATED;
     }
 }
 
@@ -616,6 +620,9 @@ pub enum Opcode {
     CopyFileRange = 47,
     SetUpMapping = 48,
     RemoveMapping = 49,
+    // TODO(b/310102543): Update the opcode keep same with kernel patch after the atomic open
+    // kernel is merged to upstream.
+    OpenAtomic = u32::MAX - 1,
     ChromeOsTmpfile = u32::MAX,
 }
 

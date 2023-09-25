@@ -1193,4 +1193,62 @@ pub trait FileSystem {
     fn remove_mapping<M: Mapper>(&self, msgs: &[RemoveMappingOne], mapper: M) -> io::Result<()> {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
+
+    /// Lookup and open/create the file
+    ///
+    /// In this call, program first do a lookup on the file. Then depending upon
+    /// flags combination, either do create + open, open only or return error.
+    /// In all successful cases, it will return the dentry. For return value's
+    /// handle and open options atomic_open should apply same rules to handle
+    /// flags and configuration in open/create system call.
+    ///
+    /// This function is called when the client supports FUSE_OPEN_ATOMIC.
+    /// Implementing atomic_open is optional. When the it's not implemented,
+    /// the client fall back to send lookup and open requests separately.
+    ///
+    ///  # Specification
+    ///
+    /// If file was indeed newly created (as a result of O_CREAT), then set
+    /// `FOPEN_FILE_CREATED` bit in `struct OpenOptions open`. This bit is used by
+    ///  crosvm to inform the fuse client to set `FILE_CREATED` bit in `struct
+    /// fuse_file_info'.
+    ///
+    /// All flags applied to open/create should be handled samely in atomic open,
+    /// only the following are exceptions:
+    /// * The O_NOCTTY is filtered out by fuse client.
+    /// * O_TRUNC is filtered out by VFS for O_CREAT, O_EXCL combination.
+    ///
+    /// # Implementation
+    ///
+    /// To implement this API, you need to handle the following cases:
+    ///
+    /// a) File does not exist
+    ///  - O_CREAT:
+    ///    - Create file with specified mode
+    ///    - Set `FOPEN_FILE_CREATED` bit in `struct OpenOptions open`
+    ///    - Open the file
+    ///    - Return d_entry and file handler
+    ///  - ~O_CREAT:
+    ///    - ENOENT
+    ///
+    /// b) File exist already (exception is O_EXCL)
+    ///    - O_CREAT:
+    ///     - Open the file
+    ///     - Return d_entry and file handler
+    ///    - O_EXCL:
+    ///      - EEXIST
+    ///
+    /// c) File is symbol link
+    ///    - Return dentry and file handler
+    fn atomic_open(
+        &self,
+        ctx: Context,
+        parent: Self::Inode,
+        name: &CStr,
+        mode: u32,
+        flags: u32,
+        umask: u32,
+    ) -> io::Result<(Entry, Option<Self::Handle>, OpenOptions)> {
+        Err(io::Error::from_raw_os_error(libc::ENOSYS))
+    }
 }

@@ -770,7 +770,9 @@ impl PassthroughFs {
         Ok(unsafe { File::from_raw_descriptor(raw_descriptor) })
     }
 
-    fn open_inode(&self, inode: &InodeData, mut flags: i32) -> io::Result<File> {
+    /// Modifies the provided open flags based on the writeback caching configuration.
+    /// Return the updated open flags.
+    fn update_open_flags(&self, mut flags: i32) -> i32 {
         // When writeback caching is enabled, the kernel may send read requests even if the
         // userspace program opened the file write-only. So we need to ensure that we have opened
         // the file for reading as well as writing.
@@ -789,6 +791,13 @@ impl PassthroughFs {
         if writeback && flags & libc::O_APPEND != 0 {
             flags &= !libc::O_APPEND;
         }
+
+        flags
+    }
+
+    fn open_inode(&self, inode: &InodeData, mut flags: i32) -> io::Result<File> {
+        // handle writeback caching cases
+        flags = self.update_open_flags(flags);
 
         self.open_fd(inode.as_raw_descriptor(), flags)
     }
@@ -2854,6 +2863,53 @@ impl FileSystem for PassthroughFs {
             mapper.unmap(*moffset, *len)?;
         }
         Ok(())
+    }
+
+    fn atomic_open(
+        &self,
+        ctx: Context,
+        parent: Self::Inode,
+        name: &CStr,
+        mode: u32,
+        flags: u32,
+        umask: u32,
+    ) -> io::Result<(Entry, Option<Self::Handle>, OpenOptions)> {
+        let _trace = fs_trace!(self.tag, "atomic_open", parent, name, mode, flags, umask);
+        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+
+        // Perform lookup but not create negative dentry
+        let data = self.find_inode(parent)?;
+
+        // This lookup serves two purposes:
+        // 1. If the O_CREATE flag is not set, it retrieves the d_entry for the file.
+        // 2. If the O_CREATE flag is set, it checks whether the file exists.
+        let mut res = self.do_lookup(&data, name);
+        // If `ascii_casefold` is enabled, fallback to `ascii_casefold_lookup()`.
+        if res.is_err() && self.cfg.ascii_casefold {
+            res = self.ascii_casefold_lookup(&data, name.to_bytes());
+        }
+
+        if let Err(e) = res {
+            if e.kind() == std::io::ErrorKind::NotFound && (flags as i32 & libc::O_CREAT) != 0 {
+                // If the file did not exist & O_CREAT is set,
+                // create file & set FILE_CREATED bits in open options
+                let (entry, handler, mut opts) =
+                    self.create(ctx, parent, name, mode, flags, umask)?;
+                opts |= OpenOptions::FILE_CREATED;
+                return Ok((entry, handler, opts));
+            }
+            return Err(e);
+        }
+
+        // SAFETY: checked res is not error before
+        let entry = res.unwrap();
+
+        if entry.attr.st_mode & libc::S_IFMT == libc::S_IFLNK {
+            return Ok((entry, None, OpenOptions::empty()));
+        }
+
+        let (handler, opts) = self.do_open(entry.inode, flags)?;
+        Ok((entry, handler, opts))
     }
 }
 
