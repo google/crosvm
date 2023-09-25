@@ -83,11 +83,7 @@ impl TryFrom<SerializedSharedMemory> for SharedMemory {
     type Error = crate::Error;
 
     fn try_from(shm: SerializedSharedMemory) -> Result<Self> {
-        SharedMemory::from_safe_descriptor(
-            shm.descriptor,
-            #[cfg(windows)]
-            Some(shm.size),
-        )
+        SharedMemory::from_safe_descriptor(shm.descriptor, shm.size)
     }
 }
 

@@ -27,12 +27,11 @@ impl SharedMemory {
         // Safe because we have exclusive ownership of mapping_handle & it is valid.
         Self::from_safe_descriptor(
             unsafe { SafeDescriptor::from_raw_descriptor(mapping_handle) },
-            Some(size),
+            size,
         )
     }
 
-    pub fn from_safe_descriptor(mapping_handle: SafeDescriptor, size: Option<u64>) -> Result<Self> {
-        let size = size.unwrap();
+    pub fn from_safe_descriptor(mapping_handle: SafeDescriptor, size: u64) -> Result<Self> {
         let mapping = match MemoryMapping::from_raw_descriptor(
             mapping_handle.as_raw_descriptor(),
             size as usize,

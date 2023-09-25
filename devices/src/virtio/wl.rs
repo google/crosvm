@@ -826,7 +826,7 @@ impl WlVfd {
         let (offset, desc, reqs) = vm.allocate_and_register_gpu_memory(width, height, format)?;
         let mut vfd = WlVfd::default();
         let vfd_shm =
-            SharedMemory::from_safe_descriptor(desc, Some(reqs.size)).map_err(WlError::NewAlloc)?;
+            SharedMemory::from_safe_descriptor(desc, reqs.size).map_err(WlError::NewAlloc)?;
 
         let mut desc = GpuMemoryDesc::default();
         for i in 0..3 {

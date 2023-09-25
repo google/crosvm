@@ -328,7 +328,7 @@ impl VhostUserPlatformOps for VhostUserRegularOps {
                 Arc::new(
                     SharedMemory::from_safe_descriptor(
                         SafeDescriptor::from(file),
-                        Some(region.memory_size),
+                        region.memory_size,
                     )
                     .unwrap(),
                 ),

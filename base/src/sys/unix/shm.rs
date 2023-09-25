@@ -199,13 +199,11 @@ impl SharedMemory {
     /// Creates a SharedMemory instance from a SafeDescriptor owning a reference to a
     /// shared memory descriptor. Ownership of the underlying descriptor is transferred to the
     /// new SharedMemory object.
-    pub fn from_safe_descriptor(
-        descriptor: SafeDescriptor,
-        size: Option<u64>,
-    ) -> Result<SharedMemory> {
-        let mut file = unsafe { File::from_raw_descriptor(descriptor.into_raw_descriptor()) };
-        let size = size.unwrap_or(file.seek(SeekFrom::End(0))?);
-        Ok(SharedMemory { fd: file, size })
+    pub fn from_safe_descriptor(descriptor: SafeDescriptor, size: u64) -> Result<SharedMemory> {
+        Ok(SharedMemory {
+            fd: File::from(descriptor),
+            size,
+        })
     }
 
     /// Constructs a `SharedMemory` instance from a `File` that represents shared memory.

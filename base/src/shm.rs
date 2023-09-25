@@ -39,13 +39,7 @@ impl SharedMemory {
     /// Creates a SharedMemory instance from a SafeDescriptor owning a reference to a
     /// shared memory descriptor. Ownership of the underlying descriptor is transferred to the
     /// new SharedMemory object.
-    /// `size` needs to be Some() on windows.
-    /// On unix, when `size` is Some(value), the mapping size is set to `value`.
-    // TODO(b:231319974): Make size non-optional arg.
-    pub fn from_safe_descriptor(
-        descriptor: SafeDescriptor,
-        size: Option<u64>,
-    ) -> Result<SharedMemory> {
+    pub fn from_safe_descriptor(descriptor: SafeDescriptor, size: u64) -> Result<SharedMemory> {
         SysUtilSharedMemory::from_safe_descriptor(descriptor, size).map(SharedMemory)
     }
 }
