@@ -5,11 +5,8 @@
 use std::ffi::CStr;
 use std::fs::read_link;
 use std::fs::File;
-use std::io;
-use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
-use std::io::Write;
 
 use libc::c_char;
 use libc::c_int;
@@ -278,50 +275,6 @@ impl SharedMemory {
                     .to_owned()
             })
             .ok_or_else(|| Error::new(EINVAL))
-    }
-}
-
-impl Read for SharedMemory {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.fd.read(buf)
-    }
-}
-
-impl Read for &SharedMemory {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        (&self.fd).read(buf)
-    }
-}
-
-impl Write for SharedMemory {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.fd.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.fd.flush()
-    }
-}
-
-impl Write for &SharedMemory {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        (&self.fd).write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        (&self.fd).flush()
-    }
-}
-
-impl Seek for SharedMemory {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        self.fd.seek(pos)
-    }
-}
-
-impl Seek for &SharedMemory {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        (&self.fd).seek(pos)
     }
 }
 
