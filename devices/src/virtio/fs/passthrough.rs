@@ -233,6 +233,7 @@ struct InodeData {
     file: Mutex<(File, libc::c_int)>,
     refcount: AtomicU64,
     filetype: FileType,
+    path: String,
 }
 
 impl AsRawDescriptor for InodeData {
@@ -800,7 +801,7 @@ impl PassthroughFs {
     // Creates a new entry for `f` or increases the refcount of the existing entry for `f`.
     // The inodes mutex lock must not be already taken by the same thread otherwise this
     // will deadlock.
-    fn add_entry(&self, f: File, st: libc::stat64, open_flags: libc::c_int) -> Entry {
+    fn add_entry(&self, f: File, st: libc::stat64, open_flags: libc::c_int, path: String) -> Entry {
         let mut inodes = self.inodes.lock();
 
         let altkey = InodeAltKey {
@@ -820,6 +821,7 @@ impl PassthroughFs {
                     file: Mutex::new((f, open_flags)),
                     refcount: AtomicU64::new(1),
                     filetype: st.st_mode.into(),
+                    path,
                 }),
             );
 
@@ -939,10 +941,15 @@ impl PassthroughFs {
 
         // Safe because we own the fd.
         let f = unsafe { File::from_raw_descriptor(fd) };
+        let path = format!(
+            "{}/{}",
+            parent.path.clone(),
+            name.to_str().unwrap_or("<non UTF-8 str>")
+        );
         // We made sure the lock acquired for `self.inodes` is released automatically when
         // the if block above is exited, so a call to `self.add_entry()` should not cause a deadlock
         // here. This would not be the case if this were executed in an else block instead.
-        Ok(self.add_entry(f, st, flags))
+        Ok(self.add_entry(f, st, flags, path))
     }
 
     fn do_open(&self, inode: Inode, flags: u32) -> io::Result<(Option<Handle>, OpenOptions)> {
@@ -1584,6 +1591,7 @@ impl FileSystem for PassthroughFs {
                 file: Mutex::new((f, flags)),
                 refcount: AtomicU64::new(2),
                 filetype: st.st_mode.into(),
+                path: "".to_string(),
             }),
         );
 
@@ -1632,8 +1640,14 @@ impl FileSystem for PassthroughFs {
     }
 
     fn lookup(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<Entry> {
-        let _trace = fs_trace!(self.tag, "lookup", parent, name);
         let data = self.find_inode(parent)?;
+        #[allow(unused_variables)]
+        let path = format!(
+            "{}/{}",
+            data.path,
+            name.to_str().unwrap_or("<non UTF-8 path>")
+        );
+        let _trace = fs_trace!(self.tag, "lookup", parent, path);
 
         let mut res = self.do_lookup(&data, name);
         // If `ascii_casefold` is enabled, fallback to `ascii_casefold_lookup()`.
@@ -1844,7 +1858,12 @@ impl FileSystem for PassthroughFs {
         let tmpfile = unsafe { File::from_raw_descriptor(fd) };
 
         let st = stat(&tmpfile)?;
-        Ok(self.add_entry(tmpfile, st, tmpflags))
+        let path = format!(
+            "{}/{}",
+            data.path.clone(),
+            current_dir.to_str().unwrap_or("<non UTF-8 str>")
+        );
+        Ok(self.add_entry(tmpfile, st, tmpflags, path))
     }
 
     fn create(
@@ -1885,7 +1904,12 @@ impl FileSystem for PassthroughFs {
         let file = unsafe { File::from_raw_descriptor(fd) };
 
         let st = stat(&file)?;
-        let entry = self.add_entry(file, st, create_flags);
+        let path = format!(
+            "{}/{}",
+            data.path.clone(),
+            name.to_str().unwrap_or("<non UTF-8 str>")
+        );
+        let entry = self.add_entry(file, st, create_flags, path);
 
         let (handle, opts) = if self.zero_message_open.load(Ordering::Relaxed) {
             (None, OpenOptions::KEEP_CACHE)
