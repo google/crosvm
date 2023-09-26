@@ -15,6 +15,7 @@ impl VhostUserVirtioDevice {
     pub fn new_mac80211_hwsim(
         base_features: u64,
         connection: Connection,
+        max_queue_size: Option<u16>,
     ) -> Result<VhostUserVirtioDevice> {
         let default_queues = QUEUE_COUNT;
 
@@ -26,6 +27,7 @@ impl VhostUserVirtioDevice {
             connection,
             DeviceType::Mac80211HwSim,
             default_queues,
+            max_queue_size,
             allow_features,
             allow_protocol_features,
             base_features,

@@ -139,17 +139,13 @@ pub struct MemOptions {
     pub size: Option<u64>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct VhostUserOption {
     pub socket: PathBuf,
-}
 
-impl FromStr for VhostUserOption {
-    type Err = <PathBuf as FromStr>::Err;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self { socket: s.parse()? })
-    }
+    /// Maximum number of entries per queue (default: 32768)
+    pub max_queue_size: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1851,5 +1847,16 @@ mod tests {
             let params: VideoDeviceConfig = from_key_values("vaapi").unwrap();
             assert_eq!(params.backend, VideoBackendType::Vaapi);
         }
+    }
+
+    #[test]
+    fn parse_vhost_user_option() {
+        let opt: VhostUserOption = from_key_values("/10mm").unwrap();
+        assert_eq!(opt.socket.to_str(), Some("/10mm"));
+        assert_eq!(opt.max_queue_size, None);
+
+        let opt: VhostUserOption = from_key_values("/10mm,max-queue-size=256").unwrap();
+        assert_eq!(opt.socket.to_str(), Some("/10mm"));
+        assert_eq!(opt.max_queue_size, Some(256));
     }
 }

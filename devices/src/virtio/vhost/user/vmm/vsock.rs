@@ -11,7 +11,11 @@ use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 use crate::virtio::DeviceType;
 
 impl VhostUserVirtioDevice {
-    pub fn new_vsock(base_features: u64, connection: Connection) -> Result<VhostUserVirtioDevice> {
+    pub fn new_vsock(
+        base_features: u64,
+        connection: Connection,
+        max_queue_size: Option<u16>,
+    ) -> Result<VhostUserVirtioDevice> {
         let default_queues = NUM_QUEUES;
 
         let allow_features = 0;
@@ -23,6 +27,7 @@ impl VhostUserVirtioDevice {
             connection,
             DeviceType::Vsock,
             default_queues,
+            max_queue_size,
             allow_features,
             allow_protocol_features,
             base_features,

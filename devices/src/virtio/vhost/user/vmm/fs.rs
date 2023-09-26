@@ -18,6 +18,7 @@ impl VhostUserVirtioDevice {
     pub fn new_fs(
         base_features: u64,
         connection: Connection,
+        max_queue_size: Option<u16>,
         tag: &str,
     ) -> Result<VhostUserVirtioDevice> {
         if tag.len() > FS_MAX_TAG_LEN {
@@ -48,6 +49,7 @@ impl VhostUserVirtioDevice {
             connection,
             DeviceType::Fs,
             default_queues,
+            max_queue_size,
             allow_features,
             allow_protocol_features,
             base_features,

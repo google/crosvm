@@ -270,12 +270,15 @@ type DeviceResult<T = VirtioDeviceStub> = Result<T>;
 
 fn create_vhost_user_block_device(cfg: &Config, disk_device_tube: Tube) -> DeviceResult {
     let features = virtio::base_features(cfg.protection_type);
-    let dev =
-        virtio::vhost::user::vmm::VhostUserVirtioDevice::new_block(features, disk_device_tube)
-            .exit_context(
-                Exit::VhostUserBlockDeviceNew,
-                "failed to set up vhost-user block device",
-            )?;
+    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new_block(
+        features,
+        disk_device_tube,
+        None,
+    )
+    .exit_context(
+        Exit::VhostUserBlockDeviceNew,
+        "failed to set up vhost-user block device",
+    )?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -303,12 +306,15 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
 
 #[cfg(feature = "gpu")]
 fn create_vhost_user_gpu_device(base_features: u64, vhost_user_tube: Tube) -> DeviceResult {
-    let dev =
-        virtio::vhost::user::vmm::VhostUserVirtioDevice::new_gpu(base_features, vhost_user_tube)
-            .exit_context(
-                Exit::VhostUserGpuDeviceNew,
-                "failed to set up vhost-user gpu device",
-            )?;
+    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new_gpu(
+        base_features,
+        vhost_user_tube,
+        None,
+    )
+    .exit_context(
+        Exit::VhostUserGpuDeviceNew,
+        "failed to set up vhost-user gpu device",
+    )?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -363,12 +369,15 @@ fn create_snd_device(
 
 #[cfg(feature = "audio")]
 fn create_vhost_user_snd_device(base_features: u64, vhost_user_tube: Tube) -> DeviceResult {
-    let dev =
-        virtio::vhost::user::vmm::VhostUserVirtioDevice::new_snd(base_features, vhost_user_tube)
-            .exit_context(
-                Exit::VhostUserSndDeviceNew,
-                "failed to set up vhost-user snd device",
-            )?;
+    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new_snd(
+        base_features,
+        vhost_user_tube,
+        None,
+    )
+    .exit_context(
+        Exit::VhostUserSndDeviceNew,
+        "failed to set up vhost-user snd device",
+    )?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -411,11 +420,12 @@ fn create_mouse_device(cfg: &Config, event_pipe: StreamChannel, idx: u32) -> Dev
 #[cfg(feature = "slirp")]
 fn create_vhost_user_net_device(cfg: &Config, net_device_tube: Tube) -> DeviceResult {
     let features = virtio::base_features(cfg.protection_type);
-    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new_net(features, net_device_tube)
-        .exit_context(
-        Exit::VhostUserNetDeviceNew,
-        "failed to set up vhost-user net device",
-    )?;
+    let dev =
+        virtio::vhost::user::vmm::VhostUserVirtioDevice::new_net(features, net_device_tube, None)
+            .exit_context(
+            Exit::VhostUserNetDeviceNew,
+            "failed to set up vhost-user net device",
+        )?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),

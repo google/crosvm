@@ -13,7 +13,11 @@ use crate::virtio::DeviceType;
 const NUM_QUEUES: usize = 4;
 
 impl VhostUserVirtioDevice {
-    pub fn new_snd(base_features: u64, connection: Connection) -> Result<VhostUserVirtioDevice> {
+    pub fn new_snd(
+        base_features: u64,
+        connection: Connection,
+        max_queue_size: Option<u16>,
+    ) -> Result<VhostUserVirtioDevice> {
         let default_queues = NUM_QUEUES;
 
         let allow_features = 0;
@@ -24,6 +28,7 @@ impl VhostUserVirtioDevice {
             connection,
             DeviceType::Sound,
             default_queues,
+            max_queue_size,
             allow_features,
             allow_protocol_features,
             base_features,

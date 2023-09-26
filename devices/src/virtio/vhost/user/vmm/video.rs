@@ -16,6 +16,7 @@ impl VhostUserVirtioDevice {
     pub fn new_video(
         base_features: u64,
         connection: Connection,
+        max_queue_size: Option<u16>,
         device_type: VideoDeviceType,
     ) -> Result<VhostUserVirtioDevice> {
         let default_queues = NUM_QUEUES;
@@ -31,6 +32,7 @@ impl VhostUserVirtioDevice {
                 VideoDeviceType::Encoder => DeviceType::VideoEnc,
             },
             default_queues,
+            max_queue_size,
             allow_features,
             allow_protocol_features,
             base_features,

@@ -323,6 +323,7 @@ pub fn create_vhost_user_block_device(
     let dev = VhostUserVirtioDevice::new_block(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
+        opt.max_queue_size,
     )
     .context("failed to set up vhost-user block device")?;
 
@@ -340,6 +341,7 @@ pub fn create_vhost_user_console_device(
     let dev = VhostUserVirtioDevice::new_console(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
+        opt.max_queue_size,
     )
     .context("failed to set up vhost-user console device")?;
 
@@ -357,6 +359,7 @@ pub fn create_vhost_user_fs_device(
     let dev = VhostUserVirtioDevice::new_fs(
         virtio::base_features(protection_type),
         vhost_user_connection(&option.socket)?,
+        None, // TODO(dverkamp): add max_queue_size to VhostUserFsOption
         &option.tag,
     )
     .context("failed to set up vhost-user fs device")?;
@@ -375,6 +378,7 @@ pub fn create_vhost_user_mac80211_hwsim_device(
     let dev = VhostUserVirtioDevice::new_mac80211_hwsim(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
+        opt.max_queue_size,
     )
     .context("failed to set up vhost-user mac80211_hwsim device")?;
 
@@ -392,6 +396,7 @@ pub fn create_vhost_user_snd_device(
     let dev = VhostUserVirtioDevice::new_snd(
         virtio::base_features(protection_type),
         vhost_user_connection(&option.socket)?,
+        option.max_queue_size,
     )
     .context("failed to set up vhost-user snd device")?;
 
@@ -411,6 +416,7 @@ pub fn create_vhost_user_gpu_device(
     let dev = VhostUserVirtioDevice::new_gpu(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
+        opt.max_queue_size,
     )
     .context("failed to set up vhost-user gpu device")?;
 
@@ -869,6 +875,7 @@ pub fn create_vhost_user_net_device(
     let dev = VhostUserVirtioDevice::new_net(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
+        opt.max_queue_size,
     )
     .context("failed to set up vhost-user net device")?;
 
@@ -886,6 +893,7 @@ pub fn create_vhost_user_vsock_device(
     let dev = VhostUserVirtioDevice::new_vsock(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
+        opt.max_queue_size,
     )
     .context("failed to set up vhost-user vsock device")?;
 
@@ -905,6 +913,7 @@ pub fn create_vhost_user_wl_device(
     let dev = VhostUserVirtioDevice::new_wl(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
+        opt.max_queue_size,
     )
     .context("failed to set up vhost-user wl device")?;
 
@@ -1057,6 +1066,7 @@ pub fn create_vhost_user_video_device(
     let dev = VhostUserVirtioDevice::new_video(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
+        opt.max_queue_size,
         device_type,
     )
     .context("failed to set up vhost-user video device")?;

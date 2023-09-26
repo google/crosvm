@@ -11,7 +11,11 @@ use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 use crate::virtio::DeviceType;
 
 impl VhostUserVirtioDevice {
-    pub fn new_net(base_features: u64, connection: Connection) -> Result<VhostUserVirtioDevice> {
+    pub fn new_net(
+        base_features: u64,
+        connection: Connection,
+        max_queue_size: Option<u16>,
+    ) -> Result<VhostUserVirtioDevice> {
         // 3 = rx, tx, ctrl
         let default_queues = 3;
 
@@ -34,6 +38,7 @@ impl VhostUserVirtioDevice {
             connection,
             DeviceType::Net,
             default_queues,
+            max_queue_size,
             allow_features,
             allow_protocol_features,
             base_features,
