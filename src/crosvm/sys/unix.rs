@@ -200,9 +200,6 @@ const GENIEZONE_PATH: &str = "/dev/gzvm";
 #[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
 static GUNYAH_PATH: &str = "/dev/gunyah";
 
-#[cfg(all(feature = "pci-hotplug", not(target_arch = "x86_64")))]
-compile_error!("pci-hotplug is only supported on x86-64 architecture");
-
 fn create_virtio_devices(
     cfg: &Config,
     vm: &mut impl Vm,
@@ -3153,9 +3150,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 Token::VmControl { id } => {
                     #[cfg(target_arch = "x86_64")]
                     let mut add_tubes = Vec::new();
-                    #[cfg(target_arch = "x86_64")]
+                    #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
                     let mut add_irq_control_tubes = Vec::new();
-                    #[cfg(target_arch = "x86_64")]
+                    #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
                     let mut add_vm_memory_control_tubes = Vec::new();
                     if let Some(socket) = control_tubes.get(&id) {
                         match socket {
@@ -3444,13 +3441,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             .context("failed to add hotplug vfio-pci descriptor to wait context")?;
                         control_tubes.insert(id, socket);
                     }
-                    #[cfg(target_arch = "x86_64")]
+                    #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
                     if !add_irq_control_tubes.is_empty() {
                         irq_handler_control.send(&IrqHandlerRequest::AddIrqControlTubes(
                             add_irq_control_tubes,
                         ))?;
                     }
-                    #[cfg(target_arch = "x86_64")]
+                    #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
                     if !add_vm_memory_control_tubes.is_empty() {
                         vm_memory_handler_control.send(
                             &VmMemoryHandlerRequest::AddControlTubes(add_vm_memory_control_tubes),
