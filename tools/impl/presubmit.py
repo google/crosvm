@@ -13,10 +13,11 @@ from datetime import datetime, timedelta
 from fnmatch import fnmatch
 from pathlib import Path
 from time import sleep
-from typing import Callable, List, NamedTuple, Optional, Union
+from typing import Callable, List, Sequence, NamedTuple, Optional, Union
 
 from impl.common import (
     Command,
+    ParallelCommands,
     all_tracked_files,
     cmd,
     console,
@@ -52,7 +53,7 @@ class Check(NamedTuple):
     "Metadata for each check, definining on which files it should run."
 
     # Function to call for this check
-    check_function: Callable[[CheckContext], Union[Command, None, List[Command]]]
+    check_function: Callable[[CheckContext], Union[Command, ParallelCommands, None, List[Command]]]
 
     custom_name: Optional[str] = None
 
@@ -159,7 +160,9 @@ class Task(object):
     This information can then be rendered from a separate thread via `Task.status_widget()`
     """
 
-    def __init__(self, title: str, commands: List[Command], priority: bool):
+    def __init__(
+        self, title: str, commands: Sequence[Union[Command, ParallelCommands]], priority: bool
+    ):
         "Display title."
         self.title = title
         "Commands to execute."
@@ -222,16 +225,32 @@ class Task(object):
             self.start_time = datetime.now()
             success = True
             for command in self.commands:
+                commands: List[Command] = []
+                if isinstance(command, Command):
+                    commands = [command]
+                else:
+                    commands = list(command.commands)
                 if verbose():
-                    self.log_lines.append(f"$ {command}")
-                process = command.popen(
-                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, errors="replace"
-                )
-                assert process.stdout
-                for line in iter(process.stdout.readline, ""):
-                    self.log_lines.append(line.strip())
-                if process.wait() != 0:
-                    success = False
+                    for command in commands:
+                        self.log_lines.append(f"$ {command}")
+                processes = [
+                    command.popen(
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, errors="replace"
+                    )
+                    for command in commands
+                ]
+                # The stdout is collected before we wait for the processes to exit so that the UI is
+                # at least real-time for the first process. Note that in this way, the output for
+                # other processes other than the first process are not real-time. In addition, we
+                # can't proactively kill other processes in the same task if any process fails.
+                for process in processes:
+                    assert process.stdout
+                    for line in iter(process.stdout.readline, ""):
+                        self.log_lines.append(line.strip())
+                for process in processes:
+                    if process.wait() != 0:
+                        success = False
+                    break
             self.duration = datetime.now() - self.start_time
             self.success = success
             self.done = True
@@ -342,12 +361,15 @@ def generate_plan(
             new_files=[f for f in new_files if should_run_check_on_file(check, f)],
         )
         if context.modified_files:
-            commands = check.check_function(context)
-            if commands is None:
+            maybe_commands = check.check_function(context)
+            if maybe_commands is None:
                 unsupported_checks.append(check.name)
                 continue
-            if not isinstance(commands, list):
-                commands = [commands]
+            commands: Sequence[Union[Command, ParallelCommands]] = []
+            if isinstance(maybe_commands, list):
+                commands = maybe_commands
+            else:
+                commands = [maybe_commands]
             title = f"fixing {check.name}" if fix else check.name
             tasks.append(Task(title, commands, check.priority))
 

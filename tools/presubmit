@@ -16,6 +16,7 @@ from impl.common import (
     cmd,
     is_kiwi_repo,
     run_main,
+    parallel,
 )
 from impl.presubmit import Check, CheckContext, run_checks, Group
 
@@ -92,9 +93,11 @@ def check_rust_format(context: CheckContext):
         )
     else:
         rustfmt = cmd(cmd("rustup which rustfmt"))
-    return rustfmt.with_color_flag().with_args(
-        "--check" if not context.fix else "",
-        *context.modified_files,
+    # Windows doesn't accept very long arguments: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa#:~:text=The%20maximum%20length%20of%20this%20string%20is%2032%2C767%20characters%2C%20including%20the%20Unicode%20terminating%20null%20character.%20If%20lpApplicationName%20is%20NULL%2C%20the%20module%20name%20portion%20of%20lpCommandLine%20is%20limited%20to%20MAX_PATH%20characters.
+    return parallel(
+        *rustfmt.with_color_flag()
+        .with_args("--check" if not context.fix else "")
+        .foreach(context.modified_files, batch_size=10)
     )
 
 

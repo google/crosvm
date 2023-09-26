@@ -477,16 +477,23 @@ class Command(object):
     @staticmethod
     def __parse_cmd_args(arg: Any) -> List[str]:
         """Parses a mixed type command line argument into a list of strings."""
+
+        def escape_backslash_if_necessary(input: str) -> str:
+            if os.name == "nt":
+                return input.replace("\\", "\\\\")
+            else:
+                return input
+
         if isinstance(arg, Path):
-            return [str(arg)]
+            return [escape_backslash_if_necessary(str(arg))]
         elif isinstance(arg, QuotedString):
             return [arg.value]
         elif isinstance(arg, Command):
-            return [*shlex.split(arg.stdout())]
+            return [*shlex.split(escape_backslash_if_necessary(arg.stdout()))]
         elif arg is None or arg is False:
             return []
         else:
-            return [*shlex.split(str(arg))]
+            return [*shlex.split(escape_backslash_if_necessary(str(arg)))]
 
 
 class ParallelCommands(object):
