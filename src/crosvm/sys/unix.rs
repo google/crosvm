@@ -1566,6 +1566,12 @@ where
         Some(swap_controller) => Some(swap_controller.create_device_helper()?),
         None => None,
     };
+    // pci-hotplug is only implemented for x86_64 for now, attempting to use it on other platform
+    // would crash.
+    #[cfg(all(feature = "pci-hotplug", not(target_arch = "x86_64")))]
+    if cfg.pci_hotplug_slots.is_some() {
+        bail!("pci-hotplug is not implemented for non x86_64 architecture");
+    }
     // hotplug_manager must be created before vm is started since it forks jail warden process.
     #[cfg(feature = "pci-hotplug")]
     let mut hotplug_manager = if cfg.pci_hotplug_slots.is_some() {
