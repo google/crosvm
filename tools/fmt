@@ -8,12 +8,12 @@
 #
 # Usage:
 #
-#    $ bin/fmt
+#    $ tools/fmt
 #
 # To print a diff and exit 1 if code is not formatted, but without changing any
 # files, use:
 #
-#    $ bin/fmt --check
+#    $ tools/fmt --check
 #
 
 from impl.common import (
