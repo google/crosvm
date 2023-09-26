@@ -217,6 +217,7 @@ where
         #[cfg(unix)]
         false,
         Default::default(),
+        &pci_irqs,
     )
     .unwrap();
 

@@ -81,6 +81,7 @@ use devices::PciAddress;
 use devices::PciConfigIo;
 use devices::PciConfigMmio;
 use devices::PciDevice;
+use devices::PciInterruptPin;
 use devices::PciRoot;
 use devices::PciRootCommand;
 use devices::PciVirtualConfigMmio;
@@ -701,7 +702,6 @@ impl arch::LinuxArch for X8664arch {
         vm.set_tss_addr(tss_addr).map_err(Error::SetTssAddr)?;
 
         // Use IRQ info in ACPI if provided by the user.
-        let mut noirq = true;
         let mut mptable = true;
         let mut sci_irq = X86_64_SCI_IRQ;
 
@@ -713,9 +713,7 @@ impl arch::LinuxArch for X8664arch {
             .map_err(Error::ReservePcieCfgMmio)?;
 
         for sdt in components.acpi_sdts.iter() {
-            if sdt.is_signature(b"DSDT") || sdt.is_signature(b"APIC") {
-                noirq = false;
-            } else if sdt.is_signature(b"FACP") {
+            if sdt.is_signature(b"FACP") {
                 mptable = false;
                 let sci_irq_fadt: u16 = sdt.read(acpi::FADT_FIELD_SCI_INTERRUPT);
                 sci_irq = sci_irq_fadt.into();
@@ -893,6 +891,7 @@ impl arch::LinuxArch for X8664arch {
             components.ac_adapter,
             #[cfg(unix)]
             guest_suspended_cvar,
+            &pci_irqs,
         )?;
 
         // Create customized SSDT table
@@ -944,10 +943,6 @@ impl arch::LinuxArch for X8664arch {
         .ok_or(Error::CreateAcpi)?;
 
         let mut cmdline = Self::get_base_linux_cmdline();
-
-        if noirq {
-            cmdline.insert_str("acpi=noirq").unwrap();
-        }
 
         get_serial_cmdline(&mut cmdline, serial_parameters, "io")
             .map_err(Error::GetSerialCmdline)?;
@@ -1855,6 +1850,9 @@ impl X8664arch {
     /// * - `irq_chip` the IrqChip object for registering irq events
     /// * - `battery` indicate whether to create the battery
     /// * - `mmio_bus` the MMIO bus to add the devices to
+    /// * - `pci_irqs` IRQ assignment of PCI devices. Tuples of (PCI address,
+    ///               gsi, PCI interrupt pin). Note that this matches one of
+    ///               the return values of generate_pci_root.
     pub fn setup_acpi_devices(
         pci_root: Arc<Mutex<PciRoot>>,
         mem: &GuestMemory,
@@ -1872,6 +1870,7 @@ impl X8664arch {
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
         #[cfg(unix)] ac_adapter: bool,
         #[cfg(unix)] guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
+        pci_irqs: &[(PciAddress, u32, PciInterruptPin)],
     ) -> Result<(acpi::AcpiDevResource, Option<BatControl>)> {
         // The AML data for the acpi devices
         let mut amls = Vec::new();
@@ -2022,6 +2021,18 @@ impl X8664arch {
             crs_entries.push(entry);
         }
 
+        let prt_entries: Vec<aml::Package> = pci_irqs
+            .iter()
+            .map(|(pci_address, gsi, pci_intr_pin)| {
+                aml::Package::new(vec![
+                    &pci_address.acpi_adr(),
+                    &pci_intr_pin.to_mask(),
+                    &aml::ZERO,
+                    gsi,
+                ])
+            })
+            .collect();
+
         aml::Device::new(
             "_SB_.PC00".into(),
             vec![
@@ -2036,6 +2047,10 @@ impl X8664arch {
                     &aml::ResourceTemplate::new(crs_entries.iter().map(|b| b.as_ref()).collect()),
                 ),
                 &PciRootOSC {},
+                &aml::Name::new(
+                    "_PRT".into(),
+                    &aml::Package::new(prt_entries.iter().map(|p| p as &dyn Aml).collect()),
+                ),
             ],
         )
         .to_aml_bytes(&mut amls);
