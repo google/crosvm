@@ -359,7 +359,7 @@ pub fn create_vhost_user_fs_device(
     let dev = VhostUserVirtioDevice::new_fs(
         virtio::base_features(protection_type),
         vhost_user_connection(&option.socket)?,
-        None, // TODO(dverkamp): add max_queue_size to VhostUserFsOption
+        option.max_queue_size,
         &option.tag,
     )
     .context("failed to set up vhost-user fs device")?;
