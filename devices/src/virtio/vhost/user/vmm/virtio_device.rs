@@ -215,7 +215,10 @@ impl VirtioDevice for VhostUserVirtioDevice {
     }
 
     fn virtio_snapshot(&self) -> anyhow::Result<Value> {
-        Ok(self.handler.borrow_mut().snapshot()?)
+        self.handler
+            .borrow_mut()
+            .snapshot()
+            .context("failed to snapshot vu device")
     }
 
     fn virtio_restore(&mut self, _data: Value) -> anyhow::Result<()> {
