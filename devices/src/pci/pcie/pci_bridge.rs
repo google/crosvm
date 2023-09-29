@@ -71,7 +71,6 @@ pub struct PciBridge {
     pci_bus: Arc<Mutex<PciBus>>,
     bus_range: PciBridgeBusRange,
     msi_config: Arc<Mutex<MsiConfig>>,
-    msi_cap_offset: u32,
     interrupt_evt: Option<IrqLevelEvent>,
 }
 
@@ -98,11 +97,10 @@ impl PciBridge {
             0,
         );
         let msi_cap = MsiCap::new(true, false);
-        let msi_cap_reg = config
-            .add_capability(&msi_cap)
+        config
+            .add_capability(&msi_cap, Some(Box::new(msi_config.clone())))
             .map_err(PciDeviceError::CapabilitiesSetup)
             .unwrap();
-        let msi_cap_offset = msi_cap_reg as u32;
         let bus_range = device
             .lock()
             .get_bus_range()
@@ -128,7 +126,6 @@ impl PciBridge {
             pci_bus,
             bus_range,
             msi_config,
-            msi_cap_offset,
             interrupt_evt: None,
         }
     }
@@ -272,15 +269,10 @@ impl PciDevice for PciBridge {
 
     fn register_device_capabilities(&mut self) -> std::result::Result<(), PciDeviceError> {
         let caps = self.device.lock().get_caps();
-        for cap in caps {
-            let cap_reg = self
-                .config
-                .add_capability(&*cap)
+        for (cap, cfg) in caps {
+            self.config
+                .add_capability(&*cap, cfg)
                 .map_err(PciDeviceError::CapabilitiesSetup)?;
-
-            self.device
-                .lock()
-                .set_capability_reg_idx(cap.id(), cap_reg / 4);
         }
 
         Ok(())
@@ -288,29 +280,11 @@ impl PciDevice for PciBridge {
 
     fn read_config_register(&self, reg_idx: usize) -> u32 {
         let mut data: u32 = self.config.read_reg(reg_idx);
-
-        let reg_offset: u64 = reg_idx as u64 * 4;
-
-        let locked_msi_config = self.msi_config.lock();
-        if locked_msi_config.is_msi_reg(self.msi_cap_offset, reg_offset, 0) {
-            let offset = reg_offset as u32 - self.msi_cap_offset;
-            data = locked_msi_config.read_msi_capability(offset, data);
-            return data;
-        }
-        std::mem::drop(locked_msi_config);
         self.device.lock().read_config(reg_idx, &mut data);
         data
     }
 
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
-        let reg_offset = reg_idx as u64 * 4;
-
-        let mut locked_msi_config = self.msi_config.lock();
-        if locked_msi_config.is_msi_reg(self.msi_cap_offset, reg_offset, data.len()) {
-            let offset = reg_offset as u32 + offset as u32 - self.msi_cap_offset;
-            locked_msi_config.write_msi_capability(offset, data);
-        }
-        std::mem::drop(locked_msi_config);
         // Suppose kernel won't modify primary/secondary/subordinate bus number,
         // if it indeed modify, print a warning
         if reg_idx == BR_BUS_NUMBER_REG {
@@ -348,7 +322,9 @@ impl PciDevice for PciBridge {
 
         self.device.lock().write_config(reg_idx, offset, data);
 
-        self.config.write_reg(reg_idx, offset, data)
+        if let Some(res) = self.config.write_reg(reg_idx, offset, data) {
+            self.device.lock().handle_cap_write_result(res);
+        }
     }
 
     fn read_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &mut [u8]) {}

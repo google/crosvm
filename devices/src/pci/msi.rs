@@ -16,8 +16,11 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
+use crate::pci::pci_configuration::PciCapConfig;
+use crate::pci::pci_configuration::PciCapConfigWriteResult;
 use crate::pci::PciCapability;
 use crate::pci::PciCapabilityID;
+
 // MSI registers
 pub const PCI_MSI_NEXT_POINTER: u32 = 0x1; // Next cap pointer
 pub const PCI_MSI_FLAGS: u32 = 0x2; // Message Control
@@ -84,14 +87,17 @@ impl MsiConfig {
         }
     }
 
-    pub fn is_msi_reg(&self, offset: u32, index: u64, len: usize) -> bool {
-        let msi_len = match (self.is_64bit, self.mask_cap) {
+    fn len(&self) -> u32 {
+        match (self.is_64bit, self.mask_cap) {
             (true, true) => MSI_LENGTH_64BIT_WITH_MASK,
             (true, false) => MSI_LENGTH_64BIT_WITHOUT_MASK,
             (false, true) => MSI_LENGTH_32BIT_WITH_MASK,
             (false, false) => MSI_LENGTH_32BIT_WITHOUT_MASK,
-        };
+        }
+    }
 
+    pub fn is_msi_reg(&self, offset: u32, index: u64, len: usize) -> bool {
+        let msi_len = self.len();
         index >= offset as u64
             && index + len as u64 <= (offset + msi_len) as u64
             && len as u32 <= msi_len
@@ -405,5 +411,30 @@ impl MsiCap {
             msg_addr: 0,
             msi_vary,
         }
+    }
+}
+
+const MSI_CONFIG_READ_MASK: [u32; MSI_LENGTH_64BIT_WITH_MASK as usize / 4] =
+    [0xffff_0000, 0, 0, 0, 0, 0];
+
+impl PciCapConfig for MsiConfig {
+    fn read_mask(&self) -> &'static [u32] {
+        let num_regs = (self.len() + 3) / 4;
+        &MSI_CONFIG_READ_MASK[0..(num_regs as usize)]
+    }
+
+    fn read_reg(&self, reg_idx: usize) -> u32 {
+        self.read_msi_capability(reg_idx as u32 * 4, 0)
+    }
+
+    fn write_reg(
+        &mut self,
+        reg_idx: usize,
+        offset: u64,
+        data: &[u8],
+    ) -> Option<Box<dyn PciCapConfigWriteResult>> {
+        let offset = reg_idx as u32 * 4 + offset as u32;
+        self.write_msi_capability(offset, data);
+        None
     }
 }

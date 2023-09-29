@@ -2,16 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
+use std::sync::Arc;
 
 use anyhow::Context;
 use base::custom_serde::deserialize_seq_to_arr;
 use base::custom_serde::serialize_arr;
+use base::error;
 use base::warn;
+use downcast_rs::impl_downcast;
+use downcast_rs::Downcast;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use sync::Mutex;
 use thiserror::Error;
 
 use crate::pci::PciInterruptPin;
@@ -254,6 +260,37 @@ pub trait PciCapability {
     fn writable_bits(&self) -> Vec<u32>;
 }
 
+pub trait PciCapConfigWriteResult: Downcast {}
+impl_downcast!(PciCapConfigWriteResult);
+
+/// A trait for implementing complex PCI capabilities.
+pub trait PciCapConfig: Send {
+    /// Reads a 32bit register from the capability. Only the bits set in the
+    /// read mask will be used, while the rest of the bits will be taken from
+    /// the `PciConfiguration`'s register data.
+    /// `reg_idx` - index into the capability
+    fn read_reg(&self, reg_idx: usize) -> u32;
+
+    /// Returns the read mask used by `read_reg`.
+    fn read_mask(&self) -> &'static [u32];
+
+    /// Writes data to the capability.
+    /// `reg_idx` - index into PciConfiguration.registers.
+    /// `offset`  - PciConfiguration.registers is in unit of DWord, offset define byte
+    ///             offset in the DWord.
+    /// `data`    - The data to write.
+    fn write_reg(
+        &mut self,
+        reg_idx: usize,
+        offset: u64,
+        data: &[u8],
+    ) -> Option<Box<dyn PciCapConfigWriteResult>>;
+
+    fn num_regs(&self) -> usize {
+        self.read_mask().len()
+    }
+}
+
 /// Contains the configuration space of a PCI node.
 /// See the [specification](https://en.wikipedia.org/wiki/PCI_configuration_space).
 /// The configuration space is accessed with DWORD reads and writes from the guest.
@@ -264,6 +301,7 @@ pub struct PciConfiguration {
     bar_configs: [Option<PciBarConfiguration>; NUM_BAR_REGS],
     // Contains the byte offset and size of the last capability.
     last_capability: Option<(usize, usize)>,
+    capability_configs: BTreeMap<usize, Box<dyn PciCapConfig>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -413,20 +451,34 @@ impl PciConfiguration {
             bar_used: [false; NUM_BAR_REGS],
             bar_configs: [None; NUM_BAR_REGS],
             last_capability: None,
+            capability_configs: BTreeMap::new(),
         }
     }
 
     /// Reads a 32bit register from `reg_idx` in the register map.
     pub fn read_reg(&self, reg_idx: usize) -> u32 {
-        *(self.registers.get(reg_idx).unwrap_or(&0xffff_ffff))
+        let mut data = *(self.registers.get(reg_idx).unwrap_or(&0xffff_ffff));
+        if let Some((idx, cfg)) = self.capability_configs.range(..=reg_idx).last() {
+            if reg_idx < idx + cfg.num_regs() {
+                let cap_idx = reg_idx - idx;
+                let mask = cfg.read_mask()[cap_idx];
+                data = (data & !mask) | (cfg.read_reg(cap_idx) & mask);
+            }
+        }
+        data
     }
 
     /// Writes data to PciConfiguration.registers.
     /// `reg_idx` - index into PciConfiguration.registers.
     /// `offset`  - PciConfiguration.registers is in unit of DWord, offset define byte
-    ///             offset in the DWrod.
+    ///             offset in the DWord.
     /// `data`    - The data to write.
-    pub fn write_reg(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+    pub fn write_reg(
+        &mut self,
+        reg_idx: usize,
+        offset: u64,
+        data: &[u8],
+    ) -> Option<Box<dyn PciCapConfigWriteResult>> {
         let reg_offset = reg_idx * 4 + offset as usize;
         match data.len() {
             1 => self.write_byte(reg_offset, data[0]),
@@ -434,6 +486,13 @@ impl PciConfiguration {
             4 => self.write_dword(reg_offset, u32::from_le_bytes(data.try_into().unwrap())),
             _ => (),
         }
+        if let Some((idx, cfg)) = self.capability_configs.range_mut(..=reg_idx).last() {
+            if reg_idx < idx + cfg.num_regs() {
+                let cap_idx = reg_idx - idx;
+                return cfg.write_reg(cap_idx, offset, data);
+            }
+        }
+        None
     }
 
     /// Writes a 32bit dword to `offset`. `offset` must be 32bit aligned.
@@ -662,7 +721,11 @@ impl PciConfiguration {
     /// `cap_data` should include the two-byte PCI capability header (type, next),
     /// but not populate it. Correct values will be generated automatically based
     /// on `cap_data.id()`.
-    pub fn add_capability(&mut self, cap_data: &dyn PciCapability) -> Result<usize> {
+    pub fn add_capability(
+        &mut self,
+        cap_data: &dyn PciCapability,
+        cap_config: Option<Box<dyn PciCapConfig>>,
+    ) -> Result<()> {
         let total_len = cap_data.bytes().len();
         // Check that the length is valid.
         if cap_data.bytes().is_empty() {
@@ -690,7 +753,10 @@ impl PciConfiguration {
             self.writable_bits[reg_idx + i] = *dword;
         }
         self.last_capability = Some((cap_offset, total_len));
-        Ok(cap_offset)
+        if let Some(cap_config) = cap_config {
+            self.capability_configs.insert(cap_offset / 4, cap_config);
+        }
+        Ok(())
     }
 
     // Find the next aligned offset after the one given.
@@ -791,6 +857,23 @@ impl PciBarConfiguration {
     }
 }
 
+impl<T: PciCapConfig + ?Sized> PciCapConfig for Arc<Mutex<T>> {
+    fn read_mask(&self) -> &'static [u32] {
+        self.lock().read_mask()
+    }
+    fn read_reg(&self, reg_idx: usize) -> u32 {
+        self.lock().read_reg(reg_idx)
+    }
+    fn write_reg(
+        &mut self,
+        reg_idx: usize,
+        offset: u64,
+        data: &[u8],
+    ) -> Option<Box<dyn PciCapConfigWriteResult>> {
+        self.lock().write_reg(reg_idx, offset, data)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use zerocopy::AsBytes;
@@ -842,8 +925,8 @@ mod tests {
             len: 4,
             foo: 0xAA,
         };
-        let cap1_offset = cfg.add_capability(&cap1).unwrap();
-        assert_eq!(cap1_offset % 4, 0);
+        let cap1_offset = 64;
+        cfg.add_capability(&cap1, None).unwrap();
 
         let cap2 = TestCap {
             _vndr: 0,
@@ -851,8 +934,8 @@ mod tests {
             len: 0x04,
             foo: 0x55,
         };
-        let cap2_offset = cfg.add_capability(&cap2).unwrap();
-        assert_eq!(cap2_offset % 4, 0);
+        let cap2_offset = 68;
+        cfg.add_capability(&cap2, None).unwrap();
 
         // The capability list head should be pointing to cap1.
         let cap_ptr = cfg.read_reg(CAPABILITY_LIST_HEAD_OFFSET / 4) & 0xFF;
@@ -1354,7 +1437,7 @@ mod tests {
             len: 4,
             foo: 0xAA,
         };
-        cfg.add_capability(&cap1).unwrap();
+        cfg.add_capability(&cap1, None).unwrap();
 
         let snap_mod = cfg.snapshot().context("failed to snapshot mod")?;
         cfg.restore(snap_init.clone())
@@ -1433,7 +1516,7 @@ mod tests {
             len: 4,
             foo: 0xAA,
         };
-        cfg.add_capability(&cap1).unwrap();
+        cfg.add_capability(&cap1, None).unwrap();
 
         // bar_num 0-1: 64-bit memory
         cfg.add_pci_bar(

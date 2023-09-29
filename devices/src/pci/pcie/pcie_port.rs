@@ -12,7 +12,9 @@ use resources::SystemAllocator;
 use sync::Mutex;
 use zerocopy::FromBytes;
 
-use crate::pci::pci_configuration::PciCapabilityID;
+use crate::pci::pci_configuration::PciCapConfig;
+use crate::pci::pci_configuration::PciCapConfigWriteResult;
+use crate::pci::pci_configuration::PciCapability;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_device::PcieCap;
 use crate::pci::pcie::pcie_device::PcieDevice;
@@ -21,10 +23,9 @@ use crate::pci::pcie::*;
 use crate::pci::pm::PciDevicePower;
 use crate::pci::pm::PciPmCap;
 use crate::pci::pm::PmConfig;
-use crate::pci::pm::PM_CAP_CONTROL_STATE_OFFSET;
+use crate::pci::pm::PmStatusChanged;
 use crate::pci::MsiConfig;
 use crate::pci::PciAddress;
-use crate::pci::PciCapability;
 use crate::pci::PciDeviceError;
 
 // reserve 8MB memory window
@@ -104,10 +105,8 @@ pub struct PciePort {
     pci_address: Option<PciAddress>,
     bus_range: PciBridgeBusRange,
     pcie_host: Option<PcieHostPort>,
-    pcie_cap_reg_idx: Option<usize>,
-    pm_cap_reg_idx: Option<usize>,
-    pcie_config: PcieConfig,
-    pm_config: PmConfig,
+    pcie_config: Arc<Mutex<PcieConfig>>,
+    pm_config: Arc<Mutex<PmConfig>>,
 
     msi_config: Option<Arc<Mutex<MsiConfig>>>,
 
@@ -153,11 +152,13 @@ impl PciePort {
             pci_address: None,
             bus_range,
             pcie_host: None,
-            pcie_cap_reg_idx: None,
-            pm_cap_reg_idx: None,
             msi_config: None,
-            pcie_config: PcieConfig::new(root_cap.clone(), slot_implemented, port_type),
-            pm_config: PmConfig::new(),
+            pcie_config: Arc::new(Mutex::new(PcieConfig::new(
+                root_cap.clone(),
+                slot_implemented,
+                port_type,
+            ))),
+            pm_config: Arc::new(Mutex::new(PmConfig::new())),
 
             root_cap,
             port_type,
@@ -192,11 +193,13 @@ impl PciePort {
             pci_address: None,
             bus_range,
             pcie_host: Some(pcie_host),
-            pcie_cap_reg_idx: None,
-            pm_cap_reg_idx: None,
             msi_config: None,
-            pcie_config: PcieConfig::new(root_cap.clone(), slot_implemented, port_type),
-            pm_config: PmConfig::new(),
+            pcie_config: Arc::new(Mutex::new(PcieConfig::new(
+                root_cap.clone(),
+                slot_implemented,
+                port_type,
+            ))),
+            pm_config: Arc::new(Mutex::new(PmConfig::new())),
 
             root_cap,
             port_type,
@@ -256,63 +259,42 @@ impl PciePort {
     }
 
     pub fn read_config(&self, reg_idx: usize, data: &mut u32) {
-        if let Some(pcie_cap_reg_idx) = self.pcie_cap_reg_idx {
-            if reg_idx >= pcie_cap_reg_idx && reg_idx < pcie_cap_reg_idx + (PCIE_CAP_LEN / 4) {
-                let offset = (reg_idx - pcie_cap_reg_idx) * 4;
-                self.pcie_config.read_pcie_cap(offset, data);
-            }
-        }
-        if let Some(pm_cap_reg_idx) = self.pm_cap_reg_idx {
-            if reg_idx == pm_cap_reg_idx + PM_CAP_CONTROL_STATE_OFFSET {
-                self.pm_config.read(data);
-            }
-        }
         if let Some(host) = &self.pcie_host {
             host.read_config(reg_idx, data);
         }
     }
 
     pub fn write_config(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
-        if let Some(pcie_cap_reg_idx) = self.pcie_cap_reg_idx {
-            if reg_idx >= pcie_cap_reg_idx && reg_idx < pcie_cap_reg_idx + (PCIE_CAP_LEN / 4) {
-                let delta = ((reg_idx - pcie_cap_reg_idx) * 4) + offset as usize;
-                self.pcie_config.write_pcie_cap(delta, data);
-            }
-        }
-        if let Some(pm_cap_reg_idx) = self.pm_cap_reg_idx {
-            if reg_idx == pm_cap_reg_idx + PM_CAP_CONTROL_STATE_OFFSET {
-                let old_status = self.pm_config.get_power_status();
-                self.pm_config.write(offset, data);
-                let new_status = self.pm_config.get_power_status();
-                if old_status == PciDevicePower::D3
-                    && new_status == PciDevicePower::D0
-                    && self.prepare_hotplug
-                {
-                    if let Some(host) = self.pcie_host.as_mut() {
-                        host.hotplug_probe();
-                        self.prepare_hotplug = false;
-                    }
-                }
-            }
-        }
         if let Some(host) = self.pcie_host.as_mut() {
             host.write_config(reg_idx, offset, data);
         }
     }
 
-    pub fn get_caps(&self) -> Vec<Box<dyn PciCapability>> {
-        vec![
-            Box::new(PcieCap::new(self.port_type, self.hotplug_implemented(), 0)),
-            Box::new(PciPmCap::new()),
-        ]
+    pub fn handle_cap_write_result(&mut self, res: Box<dyn PciCapConfigWriteResult>) {
+        if let Some(status) = res.downcast_ref::<PmStatusChanged>() {
+            if status.from == PciDevicePower::D3
+                && status.to == PciDevicePower::D0
+                && self.prepare_hotplug
+            {
+                if let Some(host) = self.pcie_host.as_mut() {
+                    host.hotplug_probe();
+                    self.prepare_hotplug = false;
+                }
+            }
+        }
     }
 
-    pub fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize) {
-        match id {
-            PciCapabilityID::PciExpress => self.pcie_cap_reg_idx = Some(reg_idx),
-            PciCapabilityID::PowerManagement => self.pm_cap_reg_idx = Some(reg_idx),
-            _ => (),
-        }
+    pub fn get_caps(&self) -> Vec<(Box<dyn PciCapability>, Option<Box<dyn PciCapConfig>>)> {
+        vec![
+            (
+                Box::new(PcieCap::new(self.port_type, self.hotplug_implemented(), 0)),
+                Some(Box::new(self.pcie_config.clone())),
+            ),
+            (
+                Box::new(PciPmCap::new()),
+                Some(Box::new(self.pm_config.clone())),
+            ),
+        ]
     }
 
     pub fn get_bus_range(&self) -> Option<PciBridgeBusRange> {
@@ -331,12 +313,12 @@ impl PciePort {
         if self.port_type == PcieDevicePortType::RootPort {
             self.root_cap.lock().clone_interrupt(msi_config.clone());
         }
-        self.pcie_config.msi_config = Some(msi_config.clone());
+        self.pcie_config.lock().msi_config = Some(msi_config.clone());
         self.msi_config = Some(msi_config);
     }
 
     pub fn hotplug_implemented(&self) -> bool {
-        self.pcie_config.slot_control.is_some()
+        self.pcie_config.lock().slot_control.is_some()
     }
 
     pub fn inject_pme(&mut self, requester_id: u16) {
@@ -354,11 +336,11 @@ impl PciePort {
     }
 
     pub fn trigger_hp_or_pme_interrupt(&mut self) {
-        if self.pm_config.should_trigger_pme() {
-            self.pcie_config.hp_interrupt_pending = true;
+        if self.pm_config.lock().should_trigger_pme() {
+            self.pcie_config.lock().hp_interrupt_pending = true;
             self.inject_pme(self.pci_address.unwrap().pme_requester_id());
         } else {
-            self.pcie_config.trigger_hp_interrupt();
+            self.pcie_config.lock().trigger_hp_interrupt();
         }
     }
 
@@ -381,15 +363,15 @@ impl PciePort {
     }
 
     pub fn removed_downstream_valid(&self) -> bool {
-        self.pcie_config.removed_downstream_valid
+        self.pcie_config.lock().removed_downstream_valid
     }
 
     pub fn set_slot_status(&mut self, flag: u16) {
-        self.pcie_config.set_slot_status(flag)
+        self.pcie_config.lock().set_slot_status(flag);
     }
 
     pub fn should_trigger_pme(&mut self) -> bool {
-        self.pm_config.should_trigger_pme()
+        self.pm_config.lock().should_trigger_pme()
     }
 
     pub fn prepare_hotplug(&mut self) {
@@ -589,6 +571,36 @@ impl PcieConfig {
     }
 }
 
+const PCIE_CONFIG_READ_MASK: [u32; PCIE_CAP_LEN / 4] = {
+    let mut arr: [u32; PCIE_CAP_LEN / 4] = [0; PCIE_CAP_LEN / 4];
+    arr[PCIE_SLTCTL_OFFSET / 4] = 0xffffffff;
+    arr[PCIE_ROOTCTL_OFFSET / 4] = 0xffffffff;
+    arr[PCIE_ROOTSTA_OFFSET / 4] = 0xffffffff;
+    arr
+};
+
+impl PciCapConfig for PcieConfig {
+    fn read_mask(&self) -> &'static [u32] {
+        &PCIE_CONFIG_READ_MASK
+    }
+
+    fn read_reg(&self, reg_idx: usize) -> u32 {
+        let mut data = 0;
+        self.read_pcie_cap(reg_idx * 4, &mut data);
+        data
+    }
+
+    fn write_reg(
+        &mut self,
+        reg_idx: usize,
+        offset: u64,
+        data: &[u8],
+    ) -> Option<Box<dyn PciCapConfigWriteResult>> {
+        self.write_pcie_cap(reg_idx * 4 + offset as usize, data);
+        None
+    }
+}
+
 /// Helper trait for implementing PcieDevice where most functions
 /// are proxied directly to a PciePort instance.
 pub trait PciePortVariant: Send {
@@ -637,12 +649,12 @@ impl<T: PciePortVariant> PcieDevice for T {
         self.get_pcie_port_mut().write_config(reg_idx, offset, data);
     }
 
-    fn get_caps(&self) -> Vec<Box<dyn PciCapability>> {
+    fn get_caps(&self) -> Vec<(Box<dyn PciCapability>, Option<Box<dyn PciCapConfig>>)> {
         self.get_pcie_port().get_caps()
     }
 
-    fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize) {
-        self.get_pcie_port_mut().set_capability_reg_idx(id, reg_idx);
+    fn handle_cap_write_result(&mut self, res: Box<dyn PciCapConfigWriteResult>) {
+        self.get_pcie_port_mut().handle_cap_write_result(res)
     }
 
     fn get_bus_range(&self) -> Option<PciBridgeBusRange> {

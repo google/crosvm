@@ -15,7 +15,7 @@ libvda-stub = ["libvda/libvda-stub"]
 net = []
 geniezone = []
 usb = []
-vaapi = ["cros-codecs/vaapi", "downcast-rs", "crc32fast"]
+vaapi = ["cros-codecs/vaapi", "crc32fast"]
 video-decoder = []
 video-encoder = []
 minigbm = ["rutabaga_gfx/minigbm"]
@@ -52,7 +52,7 @@ crosvm_cli = { path = "../crosvm_cli" }
 data_model = { path = "../common/data_model" }
 dbus = { version = "0.9", optional = true }
 disk = { path = "../disk" }
-downcast-rs = { version = "1.2.0", optional = true }
+downcast-rs = "1.2.0"
 enumn = "0.1.0"
 ffmpeg = { path = "../media/ffmpeg", optional = true }
 gpu_display = { path = "../gpu_display", optional = true }

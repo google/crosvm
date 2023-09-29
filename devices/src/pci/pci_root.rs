@@ -64,7 +64,7 @@ impl PciDevice for PciRootConfiguration {
     }
 
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
-        self.config.write_reg(reg_idx, offset, data)
+        self.config.write_reg(reg_idx, offset, data);
     }
 
     fn read_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &mut [u8]) {}

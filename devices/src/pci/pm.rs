@@ -8,10 +8,12 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
+use crate::pci::pci_configuration::PciCapConfig;
+use crate::pci::pci_configuration::PciCapConfigWriteResult;
 use crate::pci::PciCapability;
 use crate::pci::PciCapabilityID;
 
-pub const PM_CAP_CONTROL_STATE_OFFSET: usize = 1;
+const PM_CAP_CONTROL_STATE_OFFSET: usize = 1;
 pub const PM_CAP_LENGTH: usize = 8;
 const PM_CAP_PME_SUPPORT_D0: u16 = 0x0800;
 const PM_CAP_PME_SUPPORT_D3_HOT: u16 = 0x4000;
@@ -126,7 +128,6 @@ impl PmConfig {
             && self.power_control_status & PM_PME_ENABLE != 0
         {
             self.power_control_status |= PM_PME_STATUS;
-
             return true;
         }
 
@@ -140,5 +141,45 @@ impl PmConfig {
             PM_POWER_STATE_D3 => PciDevicePower::D3,
             _ => PciDevicePower::Unsupported,
         }
+    }
+}
+
+pub struct PmStatusChanged {
+    pub from: PciDevicePower,
+    pub to: PciDevicePower,
+}
+
+impl PciCapConfigWriteResult for PmStatusChanged {}
+
+const PM_CONFIG_READ_MASK: [u32; 2] = [0, 0xffff];
+
+impl PciCapConfig for PmConfig {
+    fn read_mask(&self) -> &'static [u32] {
+        &PM_CONFIG_READ_MASK
+    }
+
+    fn read_reg(&self, reg_idx: usize) -> u32 {
+        let mut data = 0;
+        if reg_idx == PM_CAP_CONTROL_STATE_OFFSET {
+            self.read(&mut data);
+        }
+        data
+    }
+
+    fn write_reg(
+        &mut self,
+        reg_idx: usize,
+        offset: u64,
+        data: &[u8],
+    ) -> Option<Box<dyn PciCapConfigWriteResult>> {
+        if reg_idx == PM_CAP_CONTROL_STATE_OFFSET {
+            let from = self.get_power_status();
+            self.write(offset, data);
+            let to = self.get_power_status();
+            if from != to {
+                return Some(Box::new(PmStatusChanged { from, to }));
+            }
+        }
+        None
     }
 }
