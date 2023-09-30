@@ -801,6 +801,55 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     force_s2idle: bool,
     vcpu_control_channels: &[mpsc::Sender<VcpuControl>],
 ) -> Result<(bool, Option<ExitState>)> {
+    let execute_vm_request = |request: VmRequest, guest_os: &mut RunnableLinuxVm<V, Vcpu>| {
+        let mut run_mode_opt = None;
+        let vcpu_size = vcpu_boxes.lock().len();
+        let resp = request.execute(
+            &mut run_mode_opt,
+            disk_host_tubes,
+            &mut guest_os.pm,
+            #[cfg(feature = "gpu")]
+            None,
+            None,
+            &mut None,
+            |msg| {
+                kick_all_vcpus(
+                    run_mode_arc,
+                    vcpu_control_channels,
+                    vcpu_boxes,
+                    guest_os.irq_chip.as_ref(),
+                    pvclock_host_tube,
+                    msg,
+                );
+            },
+            |msg, index| {
+                kick_vcpu(
+                    run_mode_arc,
+                    vcpu_control_channels,
+                    vcpu_boxes,
+                    guest_os.irq_chip.as_ref(),
+                    pvclock_host_tube,
+                    index,
+                    msg,
+                );
+            },
+            force_s2idle,
+            #[cfg(feature = "swap")]
+            None,
+            device_ctrl_tube,
+            vcpu_size,
+            irq_handler_control,
+            || guest_os.irq_chip.as_ref().snapshot(vcpu_size),
+            |snapshot| {
+                guest_os
+                    .irq_chip
+                    .try_box_clone()?
+                    .restore(snapshot, vcpu_size)
+            },
+        );
+        (resp, run_mode_opt)
+    };
+
     match event.token {
         Token::VmEvent => match vm_evt_rdtube.recv::<VmEventType>() {
             Ok(vm_event) => {
@@ -908,52 +957,10 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     }
                                 }
                                 _ => {
-                                    let vcpu_size = vcpu_boxes.lock().len();
-                                    let response = request.execute(
-                                        &mut run_mode_opt,
-                                        disk_host_tubes,
-                                        &mut guest_os.pm,
-                                        #[cfg(feature = "gpu")]
-                                        None,
-                                        None,
-                                        &mut None,
-                                        |msg| {
-                                            kick_all_vcpus(
-                                                run_mode_arc,
-                                                vcpu_control_channels,
-                                                vcpu_boxes,
-                                                guest_os.irq_chip.as_ref(),
-                                                pvclock_host_tube,
-                                                msg,
-                                            );
-                                        },
-                                        |msg, index| {
-                                            kick_vcpu(
-                                                run_mode_arc,
-                                                vcpu_control_channels,
-                                                vcpu_boxes,
-                                                guest_os.irq_chip.as_ref(),
-                                                pvclock_host_tube,
-                                                index,
-                                                msg,
-                                            );
-                                        },
-                                        force_s2idle,
-                                        #[cfg(feature = "swap")]
-                                        None,
-                                        device_ctrl_tube,
-                                        vcpu_size,
-                                        irq_handler_control,
-                                        || guest_os.irq_chip.as_ref().snapshot(vcpu_size),
-                                        |snapshot| {
-                                            guest_os
-                                                .irq_chip
-                                                .try_box_clone()?
-                                                .restore(snapshot, vcpu_size)
-                                        },
-                                    );
-
-                                    Some(response)
+                                    let (resp, run_mode_ret) =
+                                        execute_vm_request(request, guest_os);
+                                    run_mode_opt = run_mode_ret;
+                                    Some(resp)
                                 }
                             };
 
@@ -962,21 +969,9 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     error!("failed to send VmResponse: {}", e);
                                 }
                             }
-
-                            if let Some(run_mode) = run_mode_opt {
-                                info!("control socket changed run mode to {}", run_mode);
-                                match run_mode {
-                                    VmRunMode::Exiting => {
-                                        unimplemented!("not implemented on Windows");
-                                    }
-                                    other => {
-                                        if other == VmRunMode::Running {
-                                            for dev in &guest_os.resume_notify_devices {
-                                                dev.lock().resume_imminent();
-                                            }
-                                        }
-                                    }
-                                }
+                            if handle_run_mode_change_for_vm_request(&run_mode_opt, guest_os) {
+                                // True -> exit the VM immediately.
+                                return Ok((true, Some(ExitState::Stop)));
                             }
                         }
                         Err(e) => {
@@ -1010,24 +1005,55 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         #[cfg(not(feature = "balloon"))]
         Token::BalloonTube => unreachable!("balloon tube not registered"),
         #[allow(unreachable_patterns)]
-        _ => product::handle_received_token(
-            &event.token,
-            anti_tamper_main_thread_tube,
-            #[cfg(feature = "balloon")]
-            balloon_tube,
-            control_tubes,
-            guest_os,
-            ipc_main_loop_tube,
-            memory_size_mb,
-            proto_main_loop_tube,
-            pvclock_host_tube,
-            run_mode_arc,
-            service_vm_state,
-            vcpu_boxes,
-            virtio_snd_host_mute_tube,
-        ),
+        _ => {
+            let run_mode_opt = product::handle_received_token(
+                &event.token,
+                anti_tamper_main_thread_tube,
+                #[cfg(feature = "balloon")]
+                balloon_tube,
+                control_tubes,
+                guest_os,
+                ipc_main_loop_tube,
+                memory_size_mb,
+                proto_main_loop_tube,
+                pvclock_host_tube,
+                run_mode_arc,
+                service_vm_state,
+                vcpu_boxes,
+                virtio_snd_host_mute_tube,
+                execute_vm_request,
+            );
+            if handle_run_mode_change_for_vm_request(&run_mode_opt, guest_os) {
+                return Ok((true, None));
+            }
+        }
     };
     Ok((false, None))
+}
+
+/// Handles a run mode change (if one occurred) if one is pending as a
+/// result a VmRequest. The parameter, run_mode_opt, is the run mode change
+/// proposed by the VmRequest's execution.
+///
+/// Returns whether the VM should stop (true), or continue running (false).
+fn handle_run_mode_change_for_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
+    run_mode_opt: &Option<VmRunMode>,
+    guest_os: &mut RunnableLinuxVm<V, Vcpu>,
+) -> bool {
+    if let Some(run_mode) = run_mode_opt {
+        info!("control socket changed run mode to {}", run_mode);
+        match run_mode {
+            VmRunMode::Exiting => return true,
+            other => {
+                if other == &VmRunMode::Running {
+                    for dev in &guest_os.resume_notify_devices {
+                        dev.lock().resume_imminent();
+                    }
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Commands to control the VM Memory handler thread.

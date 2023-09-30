@@ -48,6 +48,9 @@ use sync::Mutex;
 #[cfg(feature = "balloon")]
 use vm_control::BalloonTube;
 use vm_control::PvClockCommand;
+use vm_control::VmRequest;
+use vm_control::VmResponse;
+use vm_control::VmRunMode;
 
 use super::run_vcpu::VcpuRunMode;
 use crate::crosvm::config::Config;
@@ -167,7 +170,7 @@ pub(super) fn push_triggers<'a>(
     }
 }
 
-pub(super) fn handle_received_token<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
+pub(super) fn handle_received_token<'a, V: VmArch + 'static, Vcpu: VcpuArch + 'static, F>(
     token: &Token,
     _anti_tamper_main_thread_tube: &Option<ProtoTube>,
     #[cfg(feature = "balloon")] _balloon_tube: Option<&mut BalloonTube>,
@@ -181,7 +184,11 @@ pub(super) fn handle_received_token<V: VmArch + 'static, Vcpu: VcpuArch + 'stati
     _service_vm_state: &mut ServiceVmState,
     _vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
     _virtio_snd_host_mute_tube: &mut Option<Tube>,
-) {
+    _execute_vm_request: F,
+) -> Option<VmRunMode>
+where
+    F: FnMut(VmRequest, &'a mut RunnableLinuxVm<V, Vcpu>) -> (VmResponse, Option<VmRunMode>),
+{
     panic!(
         "Received an unrecognized shared token to product specific handler: {:?}",
         token
