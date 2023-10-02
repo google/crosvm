@@ -13,7 +13,7 @@ use cros_fdt::Result;
 fn parse_fstab_line(line: &str) -> Result<Vec<String>> {
     let vec: Vec<&str> = line.split_whitespace().collect();
     if vec.len() != 5 {
-        return Err(Error::FdtFileParseError);
+        return Err(Error::FdtParseError("invalid fstab format".into()));
     }
     Ok(vec.iter().map(|s| s.to_string()).collect())
 }

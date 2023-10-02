@@ -5,8 +5,9 @@
 //! This module writes Flattened Devicetree blobs as defined here:
 //! <https://devicetree-specification.readthedocs.io/en/stable/flattened-format.html>
 
+use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
-use std::ffi::CString;
+use std::convert::TryInto;
 use std::io;
 
 use remain::sorted;
@@ -20,18 +21,24 @@ pub(crate) const SIZE_U64: usize = std::mem::size_of::<u64>();
 #[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
+    #[error("Binary size must fit in 32 bits")]
+    BinarySizeTooLarge,
+    #[error("Duplicate node {}", .0)]
+    DuplicateNode(String),
     #[error("I/O error dumping FDT to file code={} path={}", .0, .1.display())]
     FdtDumpIoError(io::Error, std::path::PathBuf),
-    #[error("Parse error reading FDT parameters")]
-    FdtFileParseError,
     #[error("Error writing FDT to guest memory")]
     FdtGuestMemoryWriteError,
     #[error("I/O error code={0}")]
     FdtIoError(io::Error),
+    #[error("Parse error reading FDT parameters: {}", .0)]
+    FdtParseError(String),
     #[error("Invalid name string: {}", .0)]
     InvalidName(String),
     #[error("Invalid string value {}", .0)]
     InvalidString(String),
+    #[error("Property value is not valid")]
+    PropertyValueInvalid,
     #[error("Property value size must fit in 32 bits")]
     PropertyValueTooLarge,
     #[error("Total size must fit in 32 bits")]
@@ -45,11 +52,43 @@ impl From<io::Error> for Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+type Blob<'a> = &'a [u8];
 
 const FDT_BEGIN_NODE: u32 = 0x00000001;
 const FDT_END_NODE: u32 = 0x00000002;
 const FDT_PROP: u32 = 0x00000003;
+const FDT_NOP: u32 = 0x00000004;
 const FDT_END: u32 = 0x00000009;
+
+// Consume and return `n` bytes from the beginning of a slice.
+fn consume<'a>(bytes: &mut &'a [u8], n: usize) -> Result<&'a [u8]> {
+    let mid = n;
+    if mid > bytes.len() {
+        Err(Error::PropertyValueInvalid)
+    } else {
+        let (data_bytes, rest) = bytes.split_at(n);
+        *(bytes) = rest;
+        Ok(data_bytes)
+    }
+}
+
+// Consume a u32 from a byte slice.
+#[inline]
+fn rdu32(data: &mut Blob) -> Result<u32> {
+    Ok(u32::from_be_bytes(
+        // Unwrap won't panic because the slice length is checked in consume().
+        consume(data, SIZE_U32)?.try_into().unwrap(),
+    ))
+}
+
+// Consume a u64 from a byte slice.
+#[inline]
+fn rdu64(data: &mut Blob) -> Result<u64> {
+    Ok(u64::from_be_bytes(
+        // Unwrap won't panic because the slice length is checked in consume().
+        consume(data, SIZE_U64)?.try_into().unwrap(),
+    ))
+}
 
 // Return the number of padding bytes required to align `size` to `alignment`.
 #[inline]
@@ -61,6 +100,12 @@ fn align_pad_len(size: usize, alignment: usize) -> usize {
 #[inline]
 fn align_data(data: &mut Vec<u8>, alignment: usize) {
     data.resize(align_pad_len(data.len(), alignment) + data.len(), 0u8);
+}
+
+// Construct a string from the start of a byte slice until the first null byte.
+pub(crate) fn c_str_to_string(input: Blob) -> Option<String> {
+    let size = input.iter().position(|&v| v == 0u8)?;
+    String::from_utf8(input[..size].to_vec()).ok()
 }
 
 // Verify FDT property name.
@@ -146,25 +191,88 @@ impl FdtHeader {
         }
         Ok(())
     }
+
+    // Load FDT header from a byte slice.
+    fn from_blob(mut input: Blob) -> Result<Self> {
+        if input.len() < Self::SIZE {
+            return Err(Error::FdtParseError("invalid binary size".into()));
+        }
+        let input = &mut input;
+        let header = Self {
+            magic: rdu32(input)?,
+            total_size: rdu32(input)?,
+            off_dt_struct: rdu32(input)?,
+            off_dt_strings: rdu32(input)?,
+            off_mem_rsvmap: rdu32(input)?,
+            version: rdu32(input)?,
+            last_comp_version: rdu32(input)?,
+            boot_cpuid_phys: rdu32(input)?,
+            size_dt_strings: rdu32(input)?,
+            size_dt_struct: rdu32(input)?,
+        };
+        if header.version < Self::VERSION {
+            return Err(Error::FdtParseError("unsupported FDT version".into()));
+        }
+        if header.off_mem_rsvmap >= header.off_dt_strings
+            || header.off_mem_rsvmap < FdtHeader::SIZE as u32
+        {
+            return Err(Error::FdtParseError(
+                "invalid reserved memory offset".into(),
+            ));
+        }
+        if header.off_dt_struct >= header.off_dt_strings {
+            return Err(Error::FdtParseError("invalid DT struct offset".into()));
+        }
+        if header.magic != Self::MAGIC {
+            Err(Error::FdtParseError("invalid header magic".into()))
+        } else {
+            Ok(header)
+        }
+    }
 }
 
 // An implementation of FDT strings block (property names)
 #[derive(Default)]
 struct FdtStrings {
     strings: Vec<u8>,
-    string_offsets: BTreeMap<CString, u32>,
+    string_offsets: BTreeMap<String, u32>,
 }
 
 impl FdtStrings {
+    // Load the strings block from a byte slice.
+    fn from_blob(input: Blob) -> Result<Self> {
+        if input.last().map_or(false, |i| *i != 0) {
+            return Err(Error::FdtParseError(
+                "strings block missing null terminator".into(),
+            ));
+        }
+        let mut string_offsets = BTreeMap::new();
+        let mut offset = 0u32;
+        for bytes in input.split(|&x| x == 0u8) {
+            if bytes.is_empty() {
+                break;
+            }
+            let string = String::from_utf8(bytes.to_vec())
+                .map_err(|_| Error::FdtParseError("invalid value in strings block".into()))?;
+            string_offsets.insert(string, offset);
+            offset += u32::try_from(bytes.len() + 1).map_err(|_| Error::BinarySizeTooLarge)?;
+        }
+        Ok(Self {
+            strings: input.to_vec(),
+            string_offsets,
+        })
+    }
+
     // Find an existing instance of a string `s`, or add it to the strings block.
     // Returns the offset into the strings block.
-    fn intern_string(&mut self, s: CString) -> u32 {
-        if let Some(off) = self.string_offsets.get(&s) {
+    fn intern_string(&mut self, s: &str) -> u32 {
+        if let Some(off) = self.string_offsets.get(s) {
             *off
         } else {
             let off = self.strings.len() as u32;
-            self.strings.extend_from_slice(s.to_bytes_with_nul());
-            self.string_offsets.insert(s, off);
+            self.strings.extend_from_slice(s.as_bytes());
+            self.strings.push(0u8);
+            self.string_offsets.insert(s.to_owned(), off);
             off
         }
     }
@@ -172,6 +280,14 @@ impl FdtStrings {
     // Write the strings blob to a `Write` object.
     fn write_blob(&self, mut writer: impl io::Write) -> Result<()> {
         Ok(writer.write_all(&self.strings)?)
+    }
+
+    // Return the string at given offset or `None` if such a string doesn't exist.
+    fn at_offset(&self, off: u32) -> Option<String> {
+        self.strings
+            .get(off as usize..)
+            .and_then(c_str_to_string)
+            .filter(|s| !s.is_empty())
     }
 }
 
@@ -215,6 +331,78 @@ impl FdtNode {
         FdtNode::new(name.into(), [].into(), [].into())
     }
 
+    fn read_token(input: &mut Blob) -> Result<u32> {
+        loop {
+            let value = rdu32(input)?;
+            if value != FDT_NOP {
+                return Ok(value);
+            }
+        }
+    }
+
+    // Parse binary content of an FDT node.
+    fn parse_node(input: &mut Blob, strings: &FdtStrings) -> Result<Self> {
+        // Node name
+        let name = c_str_to_string(input)
+            .ok_or_else(|| Error::FdtParseError("could not parse node name".into()))?;
+        let name_nbytes = name.len() + 1;
+        consume(input, name_nbytes + align_pad_len(name_nbytes, SIZE_U32))?;
+
+        // Node properties and subnodes
+        let mut props = BTreeMap::new();
+        let mut subnodes = BTreeMap::new();
+        let mut encountered_subnode = false; // Properties must appear before subnodes
+
+        loop {
+            match Self::read_token(input)? {
+                FDT_BEGIN_NODE => {
+                    encountered_subnode = true;
+                    let subnode = Self::parse_node(input, strings)?;
+                    match subnodes.entry(subnode.name.clone()) {
+                        Entry::Vacant(e) => e.insert(subnode),
+                        Entry::Occupied(_) => return Err(Error::DuplicateNode(subnode.name)),
+                    };
+                }
+                FDT_END_NODE => break,
+                FDT_PROP => {
+                    if encountered_subnode {
+                        return Err(Error::FdtParseError(
+                            "unexpected prop token after subnode".into(),
+                        ));
+                    }
+                    let prop_len = rdu32(input)? as usize;
+                    let prop_name_offset = rdu32(input)?;
+                    let prop_blob = consume(input, prop_len + align_pad_len(prop_len, SIZE_U32))?;
+                    let prop_name = strings.at_offset(prop_name_offset).ok_or_else(|| {
+                        Error::FdtParseError(format!(
+                            "invalid property name at {prop_name_offset:#x}",
+                        ))
+                    })?;
+                    // Keep the original (non-aligned) size as property value
+                    props.insert(prop_name, prop_blob[..prop_len].to_vec());
+                }
+                FDT_NOP => continue,
+                FDT_END => return Err(Error::FdtParseError("unexpected END token".into())),
+                t => return Err(Error::FdtParseError(format!("invalid FDT token {t}"))),
+            }
+        }
+        FdtNode::new(name, props, subnodes)
+    }
+
+    // Load an `FdtNode` instance from a slice of bytes.
+    fn from_blob(mut input: Blob, strings: &FdtStrings) -> Result<Self> {
+        let input = &mut input;
+        if Self::read_token(input)? != FDT_BEGIN_NODE {
+            return Err(Error::FdtParseError("expected begin node token".into()));
+        }
+        let root = Self::parse_node(input, strings)?;
+        if Self::read_token(input)? != FDT_END {
+            Err(Error::FdtParseError("expected end node token".into()))
+        } else {
+            Ok(root)
+        }
+    }
+
     // Write binary contents of a node to a vector of bytes.
     fn write_blob(&self, writer: &mut impl io::Write, strings: &mut FdtStrings) -> Result<()> {
         // Token
@@ -231,7 +419,6 @@ impl FdtNode {
             // Prop size
             writer.write_all(&(propblob.len() as u32).to_be_bytes())?;
             // Prop name offset
-            let propname = CString::new(propname.as_str()).expect("\\0 in property name");
             writer.write_all(&strings.intern_string(propname).to_be_bytes())?;
             // Prop value
             writer.write_all(propblob)?;
@@ -313,7 +500,7 @@ pub struct Fdt {
 ///
 /// This represents an area of physical memory reserved by the firmware and unusable by the OS.
 /// For example, this could be used to preserve bootloader code or data used at runtime.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct FdtReserveEntry {
     /// Physical address of the beginning of the reserved region.
     pub address: u64,
@@ -333,6 +520,14 @@ impl FdtReserveEntry {
     /// `size` - size of reserved memory region.
     pub const fn new(address: u64, size: u64) -> Self {
         Self { address, size }
+    }
+
+    // Load a reserved memory entry from a byte slice.
+    fn from_blob(input: &mut Blob) -> Result<Self> {
+        Ok(Self {
+            address: rdu64(input)?,
+            size: rdu64(input)?,
+        })
     }
 
     // Dump the entry as a vector of bytes.
@@ -367,6 +562,20 @@ impl Fdt {
         self.boot_cpuid_phys = boot_cpuid_phys;
     }
 
+    // Parse the reserved memory block from a binary blob.
+    fn parse_reserved_memory(mut input: Blob) -> Result<Vec<FdtReserveEntry>> {
+        let mut entries = vec![];
+        let input = &mut input;
+        loop {
+            let entry = FdtReserveEntry::from_blob(input)?;
+            if entry == RESVMEM_TERMINATOR {
+                break;
+            }
+            entries.push(entry);
+        }
+        Ok(entries)
+    }
+
     // Write the reserved memory block to a buffer.
     fn write_reserved_memory(&self, mut writer: impl io::Write) -> Result<()> {
         for entry in &self.reserved_memory {
@@ -375,7 +584,36 @@ impl Fdt {
         RESVMEM_TERMINATOR.write_blob(writer)
     }
 
-    // Write the structure block of the FDT.
+    /// Load a flattened device tree from a byte slice.
+    ///
+    /// # Arguments
+    ///
+    /// `input` - byte slice from which to load the FDT.
+    pub fn from_blob(input: Blob) -> Result<Self> {
+        let header = FdtHeader::from_blob(&input[..FdtHeader::SIZE])?;
+        if header.total_size as usize != input.len() {
+            return Err(Error::FdtParseError("input size doesn't match".into()));
+        }
+
+        let reserved_mem_blob = &input[header.off_mem_rsvmap as usize..];
+        let nodes_blob = &input[header.off_dt_struct as usize
+            ..(header.off_dt_struct + header.size_dt_struct) as usize];
+        let strings_blob = &input[header.off_dt_strings as usize
+            ..(header.off_dt_strings + header.size_dt_strings) as usize];
+
+        let reserved_memory = Self::parse_reserved_memory(reserved_mem_blob)?;
+        let strings = FdtStrings::from_blob(strings_blob)?;
+        let root = FdtNode::from_blob(nodes_blob, &strings)?;
+
+        Ok(Self {
+            reserved_memory,
+            root,
+            strings,
+            boot_cpuid_phys: header.boot_cpuid_phys,
+        })
+    }
+
+    // Write the structure block of the FDT
     fn write_struct(&mut self, mut writer: impl io::Write) -> Result<()> {
         self.root.write_blob(&mut writer, &mut self.strings)?;
         writer.write_all(&FDT_END.to_be_bytes())?;
