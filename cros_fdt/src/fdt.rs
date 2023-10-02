@@ -9,10 +9,12 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::io;
+use std::str::FromStr;
 
 use remain::sorted;
 use thiserror::Error as ThisError;
 
+use crate::path::Path;
 use crate::propval::FromFdtPropval;
 use crate::propval::ToFdtPropval;
 
@@ -36,6 +38,8 @@ pub enum Error {
     FdtParseError(String),
     #[error("Invalid name string: {}", .0)]
     InvalidName(String),
+    #[error("Invalid path: {}", .0)]
+    InvalidPath(String),
     #[error("Invalid string value {}", .0)]
     InvalidString(String),
     #[error("Property value is not valid")]
@@ -498,6 +502,15 @@ impl FdtNode {
         Ok(())
     }
 
+    /// Return a reference to an existing subnode with given name, or `None` if it doesn't exist.
+    ///
+    /// # Arguments
+    ///
+    /// `name` - name of the node.
+    pub fn subnode(&self, name: &str) -> Option<&FdtNode> {
+        self.subnodes.get(name)
+    }
+
     /// Create a node if it doesn't already exist, and return a mutable reference to it. Return
     /// an error if the node name is not valid.
     ///
@@ -509,6 +522,18 @@ impl FdtNode {
             self.subnodes.insert(name.into(), FdtNode::empty(name)?);
         }
         Ok(self.subnodes.get_mut(name).unwrap())
+    }
+
+    // Iterate subnode references.
+    #[allow(unused)]
+    pub(crate) fn iter_subnodes(&self) -> impl std::iter::Iterator<Item = &FdtNode> {
+        self.subnodes.values()
+    }
+
+    // Iterate mutable subnode references.
+    #[allow(unused)]
+    pub(crate) fn iter_subnodes_mut(&mut self) -> impl std::iter::Iterator<Item = &mut FdtNode> {
+        self.subnodes.values_mut()
     }
 }
 
@@ -699,6 +724,35 @@ impl Fdt {
     /// Return a mutable reference to the root node of the FDT.
     pub fn root_mut(&mut self) -> &mut FdtNode {
         &mut self.root
+    }
+
+    // Return a reference to the node the path points to, or `None` if it doesn't exist.
+    ///
+    /// # Arguments
+    ///
+    /// `path` - device tree path of the target node.
+    pub fn get_node<T: AsRef<str>>(&self, path: T) -> Option<&FdtNode> {
+        let mut result_node = &self.root;
+        let path = Path::from_str(path.as_ref()).ok()?;
+        for node_name in path.iter() {
+            result_node = result_node.subnodes.get(node_name)?;
+        }
+        Some(result_node)
+    }
+
+    /// Return a mutable reference to the node the path points to, or `None` if it
+    /// doesn't exist.
+    ///
+    /// # Arguments
+    ///
+    /// `path` - device tree path of the target node.
+    pub fn get_node_mut<T: AsRef<str>>(&mut self, path: T) -> Option<&mut FdtNode> {
+        let mut result_node = &mut self.root;
+        let path = Path::from_str(path.as_ref()).ok()?;
+        for node_name in path.iter() {
+            result_node = result_node.subnodes.get_mut(node_name)?;
+        }
+        Some(result_node)
     }
 }
 
@@ -1023,6 +1077,51 @@ mod tests {
         assert_eq!(nested3_node.name, "nested3");
         assert_eq!(nested3_node.subnodes.len(), 0);
         assert_eq!(nested3_node.props.len(), 0);
+    }
+
+    #[test]
+    fn fdt_iter_nodes() {
+        let mut root = FdtNode::empty("").unwrap();
+        let node_a = root.subnode_mut("A").unwrap();
+        node_a.subnode_mut("B").unwrap();
+        node_a.subnode_mut("A").unwrap();
+
+        let mut root_subnodes = root.iter_subnodes();
+        let node_a = root_subnodes.next().unwrap();
+        assert_eq!(node_a.name, "A");
+        assert!(root_subnodes.next().is_none());
+
+        let mut node_a_subnodes = node_a.iter_subnodes();
+        assert_eq!(node_a_subnodes.next().unwrap().name, "A");
+        assert_eq!(node_a_subnodes.next().unwrap().name, "B");
+        assert!(node_a_subnodes.next().is_none());
+    }
+
+    #[test]
+    fn fdt_get_node() {
+        let fdt = Fdt::new(&[]);
+        assert!(fdt.get_node("/").is_some());
+        assert!(fdt.get_node("/a").is_none());
+    }
+
+    #[test]
+    fn fdt_find_nested_node() {
+        let mut fdt = Fdt::new(&[]);
+        let node1 = fdt.root.subnode_mut("N1").unwrap();
+        node1.subnode_mut("N1-1").unwrap();
+        node1.subnode_mut("N1-2").unwrap();
+        let node2 = fdt.root.subnode_mut("N2").unwrap();
+        let node2_1 = node2.subnode_mut("N2-1").unwrap();
+        node2_1.subnode_mut("N2-1-1").unwrap();
+
+        assert!(fdt.get_node("/").is_some());
+        assert!(fdt.get_node("/N1").is_some());
+        assert!(fdt.get_node("/N2").is_some());
+        assert!(fdt.get_node("/N1/N1-1").is_some());
+        assert!(fdt.get_node("/N1/N1-2").is_some());
+        assert!(fdt.get_node("/N2/N2-1").is_some());
+        assert!(fdt.get_node("/N2/N2-1/N2-1-1").is_some());
+        assert!(fdt.get_node("/N2/N2-1/A").is_none());
     }
 
     #[test]

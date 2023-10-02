@@ -5,6 +5,7 @@
 //! Flattened device tree writer.
 
 mod fdt;
+mod path;
 mod propval;
 
 pub use fdt::Error;
