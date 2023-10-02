@@ -34,13 +34,13 @@ fn fdt_create_shm_device(
 ) -> cros_fdt::Result<()> {
     let shm_name = format!("shm-{:x}", index);
     let shm_node = fdt.begin_node(&shm_name)?;
-    fdt.property_string("vdevice-type", "shm")?;
-    fdt.property_null("peer-default")?;
-    fdt.property_u64("dma_base", 0)?;
+    fdt.set_prop("vdevice-type", "shm")?;
+    fdt.set_prop("peer-default", ())?;
+    fdt.set_prop("dma_base", 0u64)?;
     let mem_node = fdt.begin_node("memory")?;
-    fdt.property_u32("label", index)?;
-    fdt.property_u32("#address-cells", 2)?;
-    fdt.property_u64("base", guest_addr.offset())?;
+    fdt.set_prop("label", index)?;
+    fdt.set_prop("#address-cells", 2u32)?;
+    fdt.set_prop("base", guest_addr.offset())?;
     fdt.end_node(mem_node)?;
     fdt.end_node(shm_node)
 }
@@ -65,12 +65,12 @@ impl VmAArch64 for GunyahVm {
     fn create_fdt(&self, fdt: &mut Fdt, phandles: &BTreeMap<&str, u32>) -> cros_fdt::Result<()> {
         let top_node = fdt.begin_node("gunyah-vm-config")?;
 
-        fdt.property_string("image-name", "crosvm-vm")?;
-        fdt.property_string("os-type", "linux")?;
+        fdt.set_prop("image-name", "crosvm-vm")?;
+        fdt.set_prop("os-type", "linux")?;
 
         let memory_node = fdt.begin_node("memory")?;
-        fdt.property_u32("#address-cells", 2)?;
-        fdt.property_u32("#size-cells", 2)?;
+        fdt.set_prop("#address-cells", 2u32)?;
+        fdt.set_prop("#size-cells", 2u32)?;
 
         let mut base_set = false;
         let mut firmware_set = false;
@@ -80,7 +80,7 @@ impl VmAArch64 for GunyahVm {
                     // Assume first GuestMemoryRegion contains the payload
                     if !base_set {
                         base_set = true;
-                        fdt.property_u64("base-address", region.guest_addr.offset())?;
+                        fdt.set_prop("base-address", region.guest_addr.offset())?;
                     }
                 }
                 MemoryRegionPurpose::ProtectedFirmwareRegion => {
@@ -90,7 +90,7 @@ impl VmAArch64 for GunyahVm {
                         unreachable!()
                     }
                     firmware_set = true;
-                    fdt.property_u64("firmware-address", region.guest_addr.offset())?;
+                    fdt.set_prop("firmware-address", region.guest_addr.offset())?;
                 }
                 _ => {}
             }
@@ -99,24 +99,24 @@ impl VmAArch64 for GunyahVm {
         fdt.end_node(memory_node)?;
 
         let interrupts_node = fdt.begin_node("interrupts")?;
-        fdt.property_u32("config", *phandles.get("intc").unwrap())?;
+        fdt.set_prop("config", *phandles.get("intc").unwrap())?;
         fdt.end_node(interrupts_node)?;
 
         let vcpus_node = fdt.begin_node("vcpus")?;
-        fdt.property_string("affinity", "proxy")?;
+        fdt.set_prop("affinity", "proxy")?;
         fdt.end_node(vcpus_node)?;
 
         let vdev_node = fdt.begin_node("vdevices")?;
-        fdt.property_string("generate", "/hypervisor")?;
+        fdt.set_prop("generate", "/hypervisor")?;
         for irq in self.routes.lock().iter() {
             let bell_name = format!("bell-{:x}", irq.irq);
             let bell_node = fdt.begin_node(&bell_name)?;
-            fdt.property_string("vdevice-type", "doorbell")?;
+            fdt.set_prop("vdevice-type", "doorbell")?;
             let path_name = format!("/hypervisor/bell-{:x}", irq.irq);
-            fdt.property_string("generate", &path_name)?;
-            fdt.property_u32("label", irq.irq)?;
-            fdt.property_null("peer-default")?;
-            fdt.property_null("source-can-clear")?;
+            fdt.set_prop("generate", path_name)?;
+            fdt.set_prop("label", irq.irq)?;
+            fdt.set_prop("peer-default", ())?;
+            fdt.set_prop("source-can-clear", ())?;
 
             let interrupt_type = if irq.level {
                 IRQ_TYPE_LEVEL_HIGH
@@ -124,7 +124,7 @@ impl VmAArch64 for GunyahVm {
                 IRQ_TYPE_EDGE_RISING
             };
             let interrupts = [GIC_FDT_IRQ_TYPE_SPI, irq.irq, interrupt_type];
-            fdt.property_array_u32("interrupts", &interrupts)?;
+            fdt.set_prop("interrupts", &interrupts)?;
             fdt.end_node(bell_node)?;
         }
 
