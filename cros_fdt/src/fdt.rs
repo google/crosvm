@@ -662,6 +662,209 @@ impl Fdt {
 mod tests {
     use super::*;
 
+    const FDT_BLOB_HEADER_ONLY: [u8; 0x48] = [
+        0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
+        0x00, 0x00, 0x00, 0x48, // 0004: totalsize (0x48)
+        0x00, 0x00, 0x00, 0x38, // 0008: off_dt_struct (0x38)
+        0x00, 0x00, 0x00, 0x48, // 000C: off_dt_strings (0x48)
+        0x00, 0x00, 0x00, 0x28, // 0010: off_mem_rsvmap (0x28)
+        0x00, 0x00, 0x00, 0x11, // 0014: version (0x11 = 17)
+        0x00, 0x00, 0x00, 0x10, // 0018: last_comp_version (0x10 = 16)
+        0x00, 0x00, 0x00, 0x00, // 001C: boot_cpuid_phys (0)
+        0x00, 0x00, 0x00, 0x00, // 0020: size_dt_strings (0)
+        0x00, 0x00, 0x00, 0x10, // 0024: size_dt_struct (0x10)
+        0x00, 0x00, 0x00, 0x00, // 0028: rsvmap terminator (address = 0 high)
+        0x00, 0x00, 0x00, 0x00, // 002C: rsvmap terminator (address = 0 low)
+        0x00, 0x00, 0x00, 0x00, // 0030: rsvmap terminator (size = 0 high)
+        0x00, 0x00, 0x00, 0x00, // 0034: rsvmap terminator (size = 0 low)
+        0x00, 0x00, 0x00, 0x01, // 0038: FDT_BEGIN_NODE
+        0x00, 0x00, 0x00, 0x00, // 003C: node name ("") + padding
+        0x00, 0x00, 0x00, 0x02, // 0040: FDT_END_NODE
+        0x00, 0x00, 0x00, 0x09, // 0044: FDT_END
+    ];
+
+    const FDT_BLOB_RSVMAP: [u8; 0x68] = [
+        0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
+        0x00, 0x00, 0x00, 0x68, // 0004: totalsize (0x68)
+        0x00, 0x00, 0x00, 0x58, // 0008: off_dt_struct (0x58)
+        0x00, 0x00, 0x00, 0x68, // 000C: off_dt_strings (0x68)
+        0x00, 0x00, 0x00, 0x28, // 0010: off_mem_rsvmap (0x28)
+        0x00, 0x00, 0x00, 0x11, // 0014: version (0x11 = 17)
+        0x00, 0x00, 0x00, 0x10, // 0018: last_comp_version (0x10 = 16)
+        0x00, 0x00, 0x00, 0x00, // 001C: boot_cpuid_phys (0)
+        0x00, 0x00, 0x00, 0x00, // 0020: size_dt_strings (0)
+        0x00, 0x00, 0x00, 0x10, // 0024: size_dt_struct (0x10)
+        0x12, 0x34, 0x56, 0x78, // 0028: rsvmap entry 0 address high
+        0xAA, 0xBB, 0xCC, 0xDD, // 002C: rsvmap entry 0 address low
+        0x00, 0x00, 0x00, 0x00, // 0030: rsvmap entry 0 size high
+        0x00, 0x00, 0x12, 0x34, // 0034: rsvmap entry 0 size low
+        0x10, 0x20, 0x30, 0x40, // 0038: rsvmap entry 1 address high
+        0x50, 0x60, 0x70, 0x80, // 003C: rsvmap entry 1 address low
+        0x00, 0x00, 0x00, 0x00, // 0040: rsvmap entry 1 size high
+        0x00, 0x00, 0x56, 0x78, // 0044: rsvmap entry 1 size low
+        0x00, 0x00, 0x00, 0x00, // 0048: rsvmap terminator (address = 0 high)
+        0x00, 0x00, 0x00, 0x00, // 004C: rsvmap terminator (address = 0 low)
+        0x00, 0x00, 0x00, 0x00, // 0050: rsvmap terminator (size = 0 high)
+        0x00, 0x00, 0x00, 0x00, // 0054: rsvmap terminator (size = 0 low)
+        0x00, 0x00, 0x00, 0x01, // 0058: FDT_BEGIN_NODE
+        0x00, 0x00, 0x00, 0x00, // 005C: node name ("") + padding
+        0x00, 0x00, 0x00, 0x02, // 0060: FDT_END_NODE
+        0x00, 0x00, 0x00, 0x09, // 0064: FDT_END
+    ];
+
+    const FDT_BLOB_STRINGS: [u8; 0x26] = [
+        b'n', b'u', b'l', b'l', 0x00, b'u', b'3', b'2', 0x00, b'u', b'6', b'4', 0x00, b's', b't',
+        b'r', 0x00, b's', b't', b'r', b'l', b's', b't', 0x00, b'a', b'r', b'r', b'u', b'3', b'2',
+        0x00, b'a', b'r', b'r', b'u', b'6', b'4', 0x00,
+    ];
+
+    const EXPECTED_STRINGS: [&str; 7] = ["null", "u32", "u64", "str", "strlst", "arru32", "arru64"];
+
+    /*
+    Node structure:
+    /
+    |- nested
+    |- nested2
+       |- nested3
+     */
+    const FDT_BLOB_NESTED_NODES: [u8; 0x80] = [
+        0x00, 0x00, 0x00, 0x01, // FDT_BEGIN_NODE
+        0x00, 0x00, 0x00, 0x00, // node name ("") + padding
+        0x00, 0x00, 0x00, 0x03, // FDT_PROP
+        0x00, 0x00, 0x00, 0x04, // prop len (4)
+        0x00, 0x00, 0x00, 0x00, // prop nameoff (0x00)
+        0x13, 0x57, 0x90, 0x24, // prop u32 value (0x13579024)
+        0x00, 0x00, 0x00, 0x01, // FDT_BEGIN_NODE
+        b'n', b'e', b's', b't', // Node name ("nested")
+        b'e', b'd', 0x00, 0x00, // "ed\0" + pad
+        0x00, 0x00, 0x00, 0x03, // FDT_PROP
+        0x00, 0x00, 0x00, 0x04, // prop len (4)
+        0x00, 0x00, 0x00, 0x05, // prop nameoff (0x05)
+        0x12, 0x12, 0x12, 0x12, // prop u32 value (0x12121212)
+        0x00, 0x00, 0x00, 0x03, // FDT_PROP
+        0x00, 0x00, 0x00, 0x04, // prop len (4)
+        0x00, 0x00, 0x00, 0x18, // prop nameoff (0x18)
+        0x13, 0x57, 0x90, 0x24, // prop u32 value (0x13579024)
+        0x00, 0x00, 0x00, 0x02, // FDT_END_NODE ("nested")
+        0x00, 0x00, 0x00, 0x01, // FDT_BEGIN_NODE
+        b'n', b'e', b's', b't', // Node name ("nested2")
+        b'e', b'd', b'2', 0x00, // "ed2\0"
+        0x00, 0x00, 0x00, 0x03, // FDT_PROP
+        0x00, 0x00, 0x00, 0x04, // prop len (0)
+        0x00, 0x00, 0x00, 0x05, // prop nameoff (0x05)
+        0x12, 0x12, 0x12, 0x12, // prop u32 value (0x12121212)
+        0x00, 0x00, 0x00, 0x01, // FDT_BEGIN_NODE
+        b'n', b'e', b's', b't', // Node name ("nested3")
+        b'e', b'd', b'3', 0x00, // "ed3\0"
+        0x00, 0x00, 0x00, 0x02, // FDT_END_NODE ("nested3")
+        0x00, 0x00, 0x00, 0x02, // FDT_END_NODE ("nested2")
+        0x00, 0x00, 0x00, 0x02, // FDT_END_NODE ("")
+        0x00, 0x00, 0x00, 0x09, // FDT_END
+    ];
+
+    #[test]
+    fn fdt_load_header() {
+        let blob: &[u8] = &FDT_BLOB_HEADER_ONLY;
+        let header = FdtHeader::from_blob(blob).unwrap();
+        assert_eq!(header.magic, FdtHeader::MAGIC);
+        assert_eq!(header.total_size, 0x48);
+        assert_eq!(header.off_dt_struct, 0x38);
+        assert_eq!(header.off_dt_strings, 0x48);
+        assert_eq!(header.off_mem_rsvmap, 0x28);
+        assert_eq!(header.version, 17);
+        assert_eq!(header.last_comp_version, 16);
+        assert_eq!(header.boot_cpuid_phys, 0);
+        assert_eq!(header.size_dt_strings, 0);
+        assert_eq!(header.size_dt_struct, 0x10);
+    }
+
+    #[test]
+    fn fdt_load_resv_map() {
+        let blob: &[u8] = &FDT_BLOB_RSVMAP;
+        let fdt = Fdt::from_blob(blob).unwrap();
+        assert_eq!(fdt.reserved_memory.len(), 2);
+        assert!(
+            fdt.reserved_memory[0].address == 0x12345678AABBCCDD
+                && fdt.reserved_memory[0].size == 0x1234
+        );
+        assert!(
+            fdt.reserved_memory[1].address == 0x1020304050607080
+                && fdt.reserved_memory[1].size == 0x5678
+        );
+    }
+
+    #[test]
+    fn fdt_simple_use() {
+        let mut fdt = Fdt::new(&[]);
+        let root_node = fdt.root_mut();
+        root_node
+            .set_prop("compatible", "linux,dummy-virt")
+            .unwrap();
+        root_node.set_prop("#address-cells", 0x2u32).unwrap();
+        root_node.set_prop("#size-cells", 0x2u32).unwrap();
+        let chosen_node = root_node.subnode_mut("chosen").unwrap();
+        chosen_node.set_prop("linux,pci-probe-only", 1u32).unwrap();
+        chosen_node
+            .set_prop("bootargs", "panic=-1 console=hvc0 root=/dev/vda")
+            .unwrap();
+        fdt.finish().unwrap();
+    }
+
+    #[test]
+    fn fdt_load_strings() {
+        let blob = &FDT_BLOB_STRINGS[..];
+        let strings = FdtStrings::from_blob(blob).unwrap();
+        let mut offset = 0u32;
+
+        for s in EXPECTED_STRINGS {
+            assert_eq!(strings.at_offset(offset).unwrap(), s);
+            offset += strings.at_offset(offset).unwrap().len() as u32 + 1;
+        }
+    }
+
+    #[test]
+    fn fdt_load_strings_intern() {
+        let strings_blob = &FDT_BLOB_STRINGS[..];
+        let mut strings = FdtStrings::from_blob(strings_blob).unwrap();
+        assert_eq!(strings.intern_string("null"), 0);
+        assert_eq!(strings.intern_string("strlst"), 17);
+        assert_eq!(strings.intern_string("arru64"), 31);
+        assert_eq!(strings.intern_string("abc"), 38);
+        assert_eq!(strings.intern_string("def"), 42);
+        assert_eq!(strings.intern_string("strlst"), 17);
+    }
+
+    #[test]
+    fn fdt_load_nodes_nested() {
+        let strings_blob = &FDT_BLOB_STRINGS[..];
+        let strings = FdtStrings::from_blob(strings_blob).unwrap();
+        let blob: &[u8] = &FDT_BLOB_NESTED_NODES[..];
+        let root_node = FdtNode::from_blob(blob, &strings).unwrap();
+
+        // Check root node
+        assert_eq!(root_node.name, "");
+        assert_eq!(root_node.subnodes.len(), 2);
+        assert_eq!(root_node.props.len(), 1);
+
+        // Check first nested node
+        let nested_node = root_node.subnodes.get("nested").unwrap();
+        assert_eq!(nested_node.name, "nested");
+        assert_eq!(nested_node.subnodes.len(), 0);
+        assert_eq!(nested_node.props.len(), 2);
+
+        // Check second nested node
+        let nested2_node = root_node.subnodes.get("nested2").unwrap();
+        assert_eq!(nested2_node.name, "nested2");
+        assert_eq!(nested2_node.subnodes.len(), 1);
+        assert_eq!(nested2_node.props.len(), 1);
+
+        // Check third nested node
+        let nested3_node = nested2_node.subnodes.get("nested3").unwrap();
+        assert_eq!(nested3_node.name, "nested3");
+        assert_eq!(nested3_node.subnodes.len(), 0);
+        assert_eq!(nested3_node.props.len(), 0);
+    }
+
     #[test]
     fn minimal() {
         let mut fdt = Fdt::new(&[]);
@@ -881,6 +1084,59 @@ mod tests {
                 b'u', b'6', b'4', 0x00, // 00EA: strings + 0x22: "u64"
             ]
         );
+    }
+
+    #[test]
+    fn prop_order() {
+        let expected_bytes: &[u8] = &[
+            0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
+            0x00, 0x00, 0x00, 0x84, // 0004: totalsize (0x84)
+            0x00, 0x00, 0x00, 0x38, // 0008: off_dt_struct (0x38)
+            0x00, 0x00, 0x00, 0x78, // 000C: off_dt_strings (0x78)
+            0x00, 0x00, 0x00, 0x28, // 0010: off_mem_rsvmap (0x28)
+            0x00, 0x00, 0x00, 0x11, // 0014: version (0x11 = 17)
+            0x00, 0x00, 0x00, 0x10, // 0018: last_comp_version (0x10 = 16)
+            0x00, 0x00, 0x00, 0x00, // 001C: boot_cpuid_phys (0)
+            0x00, 0x00, 0x00, 0x0C, // 0020: size_dt_strings (0x0C)
+            0x00, 0x00, 0x00, 0x40, // 0024: size_dt_struct (0x40)
+            0x00, 0x00, 0x00, 0x00, // 0028: rsvmap terminator (address = 0 high)
+            0x00, 0x00, 0x00, 0x00, // 002C: rsvmap terminator (address = 0 low)
+            0x00, 0x00, 0x00, 0x00, // 0030: rsvmap terminator (size = 0 high)
+            0x00, 0x00, 0x00, 0x00, // 0034: rsvmap terminator (size = 0 low)
+            0x00, 0x00, 0x00, 0x01, // 0038: FDT_BEGIN_NODE
+            0x00, 0x00, 0x00, 0x00, // 003C: node name ("") + padding
+            0x00, 0x00, 0x00, 0x03, // 0040: FDT_PROP (u32)
+            0x00, 0x00, 0x00, 0x04, // 0044: prop len (4)
+            0x00, 0x00, 0x00, 0x00, // 0048: prop nameoff (0x00)
+            0x00, 0x00, 0x00, 0x01, // 004C: prop u32 value (0x1)
+            0x00, 0x00, 0x00, 0x03, // 0050: FDT_PROP (u32)
+            0x00, 0x00, 0x00, 0x04, // 0054: prop len (4)
+            0x00, 0x00, 0x00, 0x04, // 0058: prop nameoff (0x04)
+            0x00, 0x00, 0x00, 0x02, // 005C: prop u32 high (0x2)
+            0x00, 0x00, 0x00, 0x03, // 0060: FDT_PROP (u32)
+            0x00, 0x00, 0x00, 0x04, // 0064: prop len (4)
+            0x00, 0x00, 0x00, 0x08, // 0068: prop nameoff (0x22)
+            0x76, 0x61, 0x6c, 0x00, // 006C: prop string value ("val")
+            0x00, 0x00, 0x00, 0x02, // 0070: FDT_END_NODE
+            0x00, 0x00, 0x00, 0x09, // 0074: FDT_END
+            b'a', b'b', b'c', 0x00, // 0078: strings + 0x00: "abc"
+            b'd', b'e', b'f', 0x00, // 007C: strings + 0x04: "def"
+            b'g', b'h', b'i', 0x00, // 0080: strings + 0x08: "ghi"
+        ];
+
+        let mut fdt = Fdt::new(&[]);
+        let root_node = fdt.root_mut();
+        root_node.set_prop("abc", 1u32).unwrap();
+        root_node.set_prop("def", 2u32).unwrap();
+        root_node.set_prop("ghi", "val").unwrap();
+        assert_eq!(fdt.finish().unwrap(), expected_bytes);
+
+        let mut fdt = Fdt::new(&[]);
+        let root_node = fdt.root_mut();
+        root_node.set_prop("ghi", "val").unwrap();
+        root_node.set_prop("def", 2u32).unwrap();
+        root_node.set_prop("abc", 1u32).unwrap();
+        assert_eq!(fdt.finish().unwrap(), expected_bytes);
     }
 
     #[test]
