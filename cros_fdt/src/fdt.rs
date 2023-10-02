@@ -57,10 +57,10 @@ const FDT_END: u32 = 0x00000009;
 /// # Example
 ///
 /// ```rust
-/// use cros_fdt::FdtWriter;
+/// use cros_fdt::Fdt;
 ///
 /// # fn main() -> cros_fdt::Result<()> {
-/// let mut fdt = FdtWriter::new(&[]);
+/// let mut fdt = Fdt::new(&[]);
 /// let root_node = fdt.begin_node("")?;
 /// fdt.property_string("compatible", "linux,dummy-virt")?;
 /// fdt.property_u32("#address-cells", 0x2)?;
@@ -74,7 +74,7 @@ const FDT_END: u32 = 0x00000009;
 /// # Ok(())
 /// # }
 /// ```
-pub struct FdtWriter {
+pub struct Fdt {
     data: Vec<u8>,
     off_mem_rsvmap: u32,
     off_dt_struct: u32,
@@ -96,17 +96,17 @@ pub struct FdtReserveEntry {
     pub size: u64,
 }
 
-/// Handle to an open node created by `FdtWriter::begin_node`.
+/// Handle to an open node created by `Fdt::begin_node`.
 ///
-/// This must be passed back to `FdtWriter::end_node` to close the nodes.
+/// This must be passed back to `Fdt::end_node` to close the nodes.
 /// Nodes must be closed in reverse order as they were opened, matching the nesting structure
 /// of the devicetree.
 #[derive(Debug)]
-pub struct FdtWriterNode {
+pub struct FdtNode {
     depth: usize,
 }
 
-impl FdtWriter {
+impl Fdt {
     /// Create a new Flattened Devicetree writer instance.
     ///
     /// # Arguments
@@ -115,7 +115,7 @@ impl FdtWriter {
     pub fn new(mem_reservations: &[FdtReserveEntry]) -> Self {
         let data = vec![0u8; FDT_HEADER_SIZE]; // Reserve space for header.
 
-        let mut fdt = FdtWriter {
+        let mut fdt = Fdt {
             data,
             off_mem_rsvmap: 0,
             off_dt_struct: 0,
@@ -185,20 +185,20 @@ impl FdtWriter {
     /// # Arguments
     ///
     /// `name` - name of the node; must not contain any NUL bytes.
-    pub fn begin_node(&mut self, name: &str) -> Result<FdtWriterNode> {
+    pub fn begin_node(&mut self, name: &str) -> Result<FdtNode> {
         let name_cstr = CString::new(name).map_err(|_| Error::InvalidString)?;
         self.append_u32(FDT_BEGIN_NODE);
         self.data.extend(name_cstr.to_bytes_with_nul());
         self.align(4);
         self.node_depth += 1;
         self.node_ended = false;
-        Ok(FdtWriterNode {
+        Ok(FdtNode {
             depth: self.node_depth,
         })
     }
 
     /// Close a node previously opened with `begin_node`.
-    pub fn end_node(&mut self, node: FdtWriterNode) -> Result<()> {
+    pub fn end_node(&mut self, node: FdtNode) -> Result<()> {
         if node.depth != self.node_depth {
             return Err(Error::OutOfOrderEndNode);
         }
@@ -300,7 +300,7 @@ impl FdtWriter {
 
     /// Finish writing the Devicetree Blob (DTB).
     ///
-    /// Returns the DTB as a vector of bytes, consuming the `FdtWriter`.
+    /// Returns the DTB as a vector of bytes, consuming the `Fdt`.
     /// The DTB is always padded up to `max_size` with zeroes, so the returned
     /// value will either be exactly `max_size` bytes long, or an error will
     /// be returned if the DTB does not fit in `max_size` bytes.
@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn minimal() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         let root_node = fdt.begin_node("").unwrap();
         fdt.end_node(root_node).unwrap();
         assert_eq!(
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn reservemap() {
-        let mut fdt = FdtWriter::new(&[
+        let mut fdt = Fdt::new(&[
             FdtReserveEntry {
                 address: 0x12345678AABBCCDD,
                 size: 0x1234,
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn prop_null() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         let root_node = fdt.begin_node("").unwrap();
         fdt.property_null("null").unwrap();
         fdt.end_node(root_node).unwrap();
@@ -466,7 +466,7 @@ mod tests {
 
     #[test]
     fn prop_u32() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         let root_node = fdt.begin_node("").unwrap();
         fdt.property_u32("u32", 0x12345678).unwrap();
         fdt.end_node(root_node).unwrap();
@@ -502,7 +502,7 @@ mod tests {
 
     #[test]
     fn all_props() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         let root_node = fdt.begin_node("").unwrap();
         fdt.property_null("null").unwrap();
         fdt.property_u32("u32", 0x12345678).unwrap();
@@ -580,7 +580,7 @@ mod tests {
 
     #[test]
     fn nested_nodes() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         let root_node = fdt.begin_node("").unwrap();
         fdt.property_u32("abc", 0x13579024).unwrap();
         let nested_node = fdt.begin_node("nested").unwrap();
@@ -628,7 +628,7 @@ mod tests {
 
     #[test]
     fn prop_name_string_reuse() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         let root_node = fdt.begin_node("").unwrap();
         fdt.property_u32("abc", 0x13579024).unwrap();
         let nested_node = fdt.begin_node("nested").unwrap();
@@ -681,28 +681,28 @@ mod tests {
 
     #[test]
     fn invalid_node_name_nul() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         fdt.begin_node("abc\0def")
             .expect_err("node name with embedded NUL");
     }
 
     #[test]
     fn invalid_prop_name_nul() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         fdt.property_u32("abc\0def", 0)
             .expect_err("property name with embedded NUL");
     }
 
     #[test]
     fn invalid_prop_string_value_nul() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         fdt.property_string("mystr", "abc\0def")
             .expect_err("string property value with embedded NUL");
     }
 
     #[test]
     fn invalid_prop_string_list_value_nul() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         let strs = ["test", "abc\0def"];
         fdt.property_string_list("mystr", &strs)
             .expect_err("stringlist property value with embedded NUL");
@@ -710,7 +710,7 @@ mod tests {
 
     #[test]
     fn invalid_prop_after_end_node() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         let _root_node = fdt.begin_node("").unwrap();
         fdt.property_u32("ok_prop", 1234).unwrap();
         let nested_node = fdt.begin_node("mynode").unwrap();
@@ -722,7 +722,7 @@ mod tests {
 
     #[test]
     fn invalid_end_node_out_of_order() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         let root_node = fdt.begin_node("").unwrap();
         fdt.property_u32("ok_prop", 1234).unwrap();
         let _nested_node = fdt.begin_node("mynode").unwrap();
@@ -732,7 +732,7 @@ mod tests {
 
     #[test]
     fn invalid_finish_while_node_open() {
-        let mut fdt = FdtWriter::new(&[]);
+        let mut fdt = Fdt::new(&[]);
         let _root_node = fdt.begin_node("").unwrap();
         fdt.property_u32("ok_prop", 1234).unwrap();
         let _nested_node = fdt.begin_node("mynode").unwrap();

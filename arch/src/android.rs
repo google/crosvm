@@ -7,7 +7,7 @@ use std::io::BufRead;
 use std::io::BufReader;
 
 use cros_fdt::Error;
-use cros_fdt::FdtWriter;
+use cros_fdt::Fdt;
 use cros_fdt::Result;
 
 fn parse_fstab_line(line: &str) -> Result<Vec<String>> {
@@ -25,7 +25,7 @@ fn parse_fstab_line(line: &str) -> Result<Vec<String>> {
 ///
 /// * `fdt` - The DTB to modify. The top-most node should be open.
 /// * `android-fstab` - A text file of Android fstab entries to add to the DTB
-pub fn create_android_fdt(fdt: &mut FdtWriter, fstab: File) -> Result<()> {
+pub fn create_android_fdt(fdt: &mut Fdt, fstab: File) -> Result<()> {
     let vecs = BufReader::new(fstab)
         .lines()
         .map(|l| parse_fstab_line(&l.map_err(Error::FdtIoError)?))

@@ -7,5 +7,5 @@
 mod fdt;
 
 pub use fdt::Error;
-pub use fdt::FdtWriter;
+pub use fdt::Fdt;
 pub use fdt::Result;

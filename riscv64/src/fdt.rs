@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use cros_fdt::Error;
-use cros_fdt::FdtWriter;
+use cros_fdt::Fdt;
 use cros_fdt::Result;
 use devices::irqchip::aia_aplic_addr;
 use devices::irqchip::aia_imsic_size;
@@ -26,7 +26,7 @@ const PHANDLE_AIA_APLIC: u32 = 2;
 const PHANDLE_AIA_IMSIC: u32 = 3;
 const PHANDLE_CPU_INTC_BASE: u32 = 4;
 
-fn create_memory_node(fdt: &mut FdtWriter, guest_mem: &GuestMemory) -> Result<()> {
+fn create_memory_node(fdt: &mut Fdt, guest_mem: &GuestMemory) -> Result<()> {
     let mut mem_reg_prop = Vec::new();
     let mut previous_memory_region_end = None;
     let mut regions = guest_mem.guest_memory_regions();
@@ -56,7 +56,7 @@ fn create_memory_node(fdt: &mut FdtWriter, guest_mem: &GuestMemory) -> Result<()
     Ok(())
 }
 
-fn create_cpu_nodes(fdt: &mut FdtWriter, num_cpus: u32, timebase_frequency: u32) -> Result<()> {
+fn create_cpu_nodes(fdt: &mut Fdt, num_cpus: u32, timebase_frequency: u32) -> Result<()> {
     let cpus_node = fdt.begin_node("cpus")?;
     fdt.property_u32("#address-cells", 0x1)?;
     fdt.property_u32("#size-cells", 0x0)?;
@@ -89,7 +89,7 @@ fn create_cpu_nodes(fdt: &mut FdtWriter, num_cpus: u32, timebase_frequency: u32)
 }
 
 fn create_chosen_node(
-    fdt: &mut FdtWriter,
+    fdt: &mut Fdt,
     cmdline: &str,
     initrd: Option<(GuestAddress, usize)>,
 ) -> Result<()> {
@@ -121,7 +121,7 @@ fn create_chosen_node(
 // num_ids: number of imsic ids from the aia subsystem
 // num_sources: number of aplic sources from the aia subsystem
 fn create_aia_node(
-    fdt: &mut FdtWriter,
+    fdt: &mut Fdt,
     num_cpus: usize,
     num_ids: usize,
     num_sources: usize,
@@ -212,7 +212,7 @@ pub struct PciConfigRegion {
 }
 
 fn create_pci_nodes(
-    fdt: &mut FdtWriter,
+    fdt: &mut Fdt,
     pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
     cfg: PciConfigRegion,
     ranges: &[PciRange],
@@ -317,7 +317,7 @@ pub fn create_fdt(
     initrd: Option<(GuestAddress, usize)>,
     timebase_frequency: u32,
 ) -> Result<()> {
-    let mut fdt = FdtWriter::new(&[]);
+    let mut fdt = Fdt::new(&[]);
 
     // The whole thing is put into one giant node with some top level properties
     let root_node = fdt.begin_node("")?;

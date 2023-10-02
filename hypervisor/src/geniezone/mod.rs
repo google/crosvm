@@ -33,7 +33,7 @@ use base::Protection;
 use base::RawDescriptor;
 use base::Result;
 use base::SafeDescriptor;
-use cros_fdt::FdtWriter;
+use cros_fdt::Fdt;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
 #[cfg(feature = "gdb")]
@@ -182,11 +182,7 @@ impl VmAArch64 for GeniezoneVm {
         Ok(Box::new(GeniezoneVm::create_vcpu(self, id)?))
     }
 
-    fn create_fdt(
-        &self,
-        _fdt: &mut FdtWriter,
-        _phandles: &BTreeMap<&str, u32>,
-    ) -> cros_fdt::Result<()> {
+    fn create_fdt(&self, _fdt: &mut Fdt, _phandles: &BTreeMap<&str, u32>) -> cros_fdt::Result<()> {
         Ok(())
     }
 

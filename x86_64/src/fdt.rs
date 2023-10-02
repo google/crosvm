@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use arch::android::create_android_fdt;
 use cros_fdt::Error;
-use cros_fdt::FdtWriter;
+use cros_fdt::Fdt;
 
 use crate::SetupData;
 use crate::SetupDataType;
@@ -22,7 +22,7 @@ pub fn create_fdt(
     android_fstab: File,
     dump_device_tree_blob: Option<PathBuf>,
 ) -> Result<SetupData, Error> {
-    let mut fdt = FdtWriter::new(&[]);
+    let mut fdt = Fdt::new(&[]);
 
     // The whole thing is put into one giant node with some top level properties
     let root_node = fdt.begin_node("")?;

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use arch::CpuSet;
 use arch::SERIAL_ADDR;
 use cros_fdt::Error;
-use cros_fdt::FdtWriter;
+use cros_fdt::Fdt;
 use cros_fdt::Result;
 // This is a Battery related constant
 use devices::bat::GOLDFISHBAT_MMIO_LEN;
@@ -65,7 +65,7 @@ const IRQ_TYPE_EDGE_RISING: u32 = 0x00000001;
 const IRQ_TYPE_LEVEL_HIGH: u32 = 0x00000004;
 const IRQ_TYPE_LEVEL_LOW: u32 = 0x00000008;
 
-fn create_memory_node(fdt: &mut FdtWriter, guest_mem: &GuestMemory) -> Result<()> {
+fn create_memory_node(fdt: &mut Fdt, guest_mem: &GuestMemory) -> Result<()> {
     let mut mem_reg_prop = Vec::new();
     let mut previous_memory_region_end = None;
     let mut regions = guest_mem.guest_memory_regions();
@@ -99,7 +99,7 @@ fn create_memory_node(fdt: &mut FdtWriter, guest_mem: &GuestMemory) -> Result<()
 }
 
 fn create_resv_memory_node(
-    fdt: &mut FdtWriter,
+    fdt: &mut Fdt,
     resv_addr_and_size: (Option<GuestAddress>, u64),
 ) -> Result<u32> {
     let (resv_addr, resv_size) = resv_addr_and_size;
@@ -128,7 +128,7 @@ fn create_resv_memory_node(
 }
 
 fn create_cpu_nodes(
-    fdt: &mut FdtWriter,
+    fdt: &mut Fdt,
     num_cpus: u32,
     cpu_clusters: Vec<CpuSet>,
     cpu_capacity: BTreeMap<usize, u32>,
@@ -199,7 +199,7 @@ fn create_cpu_nodes(
     Ok(())
 }
 
-fn create_gic_node(fdt: &mut FdtWriter, is_gicv3: bool, num_cpus: u64) -> Result<()> {
+fn create_gic_node(fdt: &mut Fdt, is_gicv3: bool, num_cpus: u64) -> Result<()> {
     let mut gic_reg_prop = [AARCH64_GIC_DIST_BASE, AARCH64_GIC_DIST_SIZE, 0, 0];
 
     let intc_node = fdt.begin_node("intc")?;
@@ -223,7 +223,7 @@ fn create_gic_node(fdt: &mut FdtWriter, is_gicv3: bool, num_cpus: u64) -> Result
     Ok(())
 }
 
-fn create_timer_node(fdt: &mut FdtWriter, num_cpus: u32) -> Result<()> {
+fn create_timer_node(fdt: &mut Fdt, num_cpus: u32) -> Result<()> {
     // These are fixed interrupt numbers for the timer device.
     let irqs = [13, 14, 11, 10];
     let compatible = "arm,armv8-timer";
@@ -246,7 +246,7 @@ fn create_timer_node(fdt: &mut FdtWriter, num_cpus: u32) -> Result<()> {
     Ok(())
 }
 
-fn create_virt_cpufreq_node(fdt: &mut FdtWriter, num_cpus: u64) -> Result<()> {
+fn create_virt_cpufreq_node(fdt: &mut Fdt, num_cpus: u64) -> Result<()> {
     let compatible = "virtual,kvm-cpufreq";
     let vcf_node = fdt.begin_node("cpufreq")?;
     let reg = [AARCH64_VIRTFREQ_BASE, AARCH64_VIRTFREQ_SIZE * num_cpus];
@@ -257,7 +257,7 @@ fn create_virt_cpufreq_node(fdt: &mut FdtWriter, num_cpus: u64) -> Result<()> {
     Ok(())
 }
 
-fn create_pmu_node(fdt: &mut FdtWriter, num_cpus: u32) -> Result<()> {
+fn create_pmu_node(fdt: &mut Fdt, num_cpus: u32) -> Result<()> {
     let compatible = "arm,armv8-pmuv3";
     let cpu_mask: u32 =
         (((1 << num_cpus) - 1) << GIC_FDT_IRQ_PPI_CPU_SHIFT) & GIC_FDT_IRQ_PPI_CPU_MASK;
@@ -274,7 +274,7 @@ fn create_pmu_node(fdt: &mut FdtWriter, num_cpus: u32) -> Result<()> {
     Ok(())
 }
 
-fn create_serial_node(fdt: &mut FdtWriter, addr: u64, irq: u32) -> Result<()> {
+fn create_serial_node(fdt: &mut Fdt, addr: u64, irq: u32) -> Result<()> {
     let serial_reg_prop = [addr, AARCH64_SERIAL_SIZE];
     let irq = [GIC_FDT_IRQ_TYPE_SPI, irq, IRQ_TYPE_EDGE_RISING];
 
@@ -288,7 +288,7 @@ fn create_serial_node(fdt: &mut FdtWriter, addr: u64, irq: u32) -> Result<()> {
     Ok(())
 }
 
-fn create_serial_nodes(fdt: &mut FdtWriter) -> Result<()> {
+fn create_serial_nodes(fdt: &mut Fdt) -> Result<()> {
     // Note that SERIAL_ADDR contains the I/O port addresses conventionally used
     // for serial ports on x86. This uses the same addresses (but on the MMIO bus)
     // to simplify the shared serial code.
@@ -319,7 +319,7 @@ fn psci_compatible(version: &PsciVersion) -> Vec<&str> {
     compatible
 }
 
-fn create_psci_node(fdt: &mut FdtWriter, version: &PsciVersion) -> Result<()> {
+fn create_psci_node(fdt: &mut Fdt, version: &PsciVersion) -> Result<()> {
     let compatible = psci_compatible(version);
     let psci_node = fdt.begin_node("psci")?;
     fdt.property_string_list("compatible", &compatible)?;
@@ -331,7 +331,7 @@ fn create_psci_node(fdt: &mut FdtWriter, version: &PsciVersion) -> Result<()> {
 }
 
 fn create_chosen_node(
-    fdt: &mut FdtWriter,
+    fdt: &mut Fdt,
     cmdline: &str,
     initrd: Option<(GuestAddress, usize)>,
 ) -> Result<()> {
@@ -361,7 +361,7 @@ fn create_chosen_node(
     Ok(())
 }
 
-fn create_config_node(fdt: &mut FdtWriter, (addr, size): (GuestAddress, usize)) -> Result<()> {
+fn create_config_node(fdt: &mut Fdt, (addr, size): (GuestAddress, usize)) -> Result<()> {
     let addr = addr
         .offset()
         .try_into()
@@ -376,7 +376,7 @@ fn create_config_node(fdt: &mut FdtWriter, (addr, size): (GuestAddress, usize)) 
     Ok(())
 }
 
-fn create_kvm_cpufreq_node(fdt: &mut FdtWriter) -> Result<()> {
+fn create_kvm_cpufreq_node(fdt: &mut Fdt) -> Result<()> {
     let vcf_node = fdt.begin_node("cpufreq")?;
 
     fdt.property_string("compatible", "virtual,kvm-cpufreq")?;
@@ -438,7 +438,7 @@ pub struct VmWdtConfig {
 }
 
 fn create_pci_nodes(
-    fdt: &mut FdtWriter,
+    fdt: &mut Fdt,
     pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
     cfg: PciConfigRegion,
     ranges: &[PciRange],
@@ -521,7 +521,7 @@ fn create_pci_nodes(
     Ok(())
 }
 
-fn create_rtc_node(fdt: &mut FdtWriter) -> Result<()> {
+fn create_rtc_node(fdt: &mut Fdt) -> Result<()> {
     // the kernel driver for pl030 really really wants a clock node
     // associated with an AMBA device or it will fail to probe, so we
     // need to make up a clock node to associate with the pl030 rtc
@@ -553,10 +553,10 @@ fn create_rtc_node(fdt: &mut FdtWriter) -> Result<()> {
 ///
 /// # Arguments
 ///
-/// * `fdt` - A FdtWriter in which the node is created
+/// * `fdt` - A Fdt in which the node is created
 /// * `mmio_base` - The MMIO base address of the battery
 /// * `irq` - The IRQ number of the battery
-fn create_battery_node(fdt: &mut FdtWriter, mmio_base: u64, irq: u32) -> Result<()> {
+fn create_battery_node(fdt: &mut Fdt, mmio_base: u64, irq: u32) -> Result<()> {
     let reg = [mmio_base, GOLDFISHBAT_MMIO_LEN];
     let irqs = [GIC_FDT_IRQ_TYPE_SPI, irq, IRQ_TYPE_LEVEL_HIGH];
     let bat_node = fdt.begin_node("goldfish_battery")?;
@@ -567,7 +567,7 @@ fn create_battery_node(fdt: &mut FdtWriter, mmio_base: u64, irq: u32) -> Result<
     Ok(())
 }
 
-fn create_vmwdt_node(fdt: &mut FdtWriter, vmwdt_cfg: VmWdtConfig) -> Result<()> {
+fn create_vmwdt_node(fdt: &mut Fdt, vmwdt_cfg: VmWdtConfig) -> Result<()> {
     let vmwdt_name = format!("vmwdt@{:x}", vmwdt_cfg.base);
     let reg = [vmwdt_cfg.base, vmwdt_cfg.size];
     let vmwdt_node = fdt.begin_node(&vmwdt_name)?;
@@ -623,10 +623,10 @@ pub fn create_fdt(
     bat_mmio_base_and_irq: Option<(u64, u32)>,
     vmwdt_cfg: VmWdtConfig,
     dump_device_tree_blob: Option<PathBuf>,
-    vm_generator: &impl Fn(&mut FdtWriter, &BTreeMap<&str, u32>) -> cros_fdt::Result<()>,
+    vm_generator: &impl Fn(&mut Fdt, &BTreeMap<&str, u32>) -> cros_fdt::Result<()>,
     dynamic_power_coefficient: BTreeMap<usize, u32>,
 ) -> Result<()> {
-    let mut fdt = FdtWriter::new(&[]);
+    let mut fdt = Fdt::new(&[]);
     let mut phandles = BTreeMap::new();
 
     // The whole thing is put into one giant node with some top level properties

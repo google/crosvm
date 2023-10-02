@@ -17,7 +17,7 @@ use base::ioctl_with_val;
 use base::warn;
 use base::Error;
 use base::Result;
-use cros_fdt::FdtWriter;
+use cros_fdt::Fdt;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
 #[cfg(feature = "gdb")]
@@ -204,11 +204,7 @@ impl VmAArch64 for KvmVm {
         Ok(Box::new(self.create_kvm_vcpu(id)?))
     }
 
-    fn create_fdt(
-        &self,
-        _fdt: &mut FdtWriter,
-        _phandles: &BTreeMap<&str, u32>,
-    ) -> cros_fdt::Result<()> {
+    fn create_fdt(&self, _fdt: &mut Fdt, _phandles: &BTreeMap<&str, u32>) -> cros_fdt::Result<()> {
         Ok(())
     }
 

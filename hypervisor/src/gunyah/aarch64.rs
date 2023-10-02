@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use base::error;
 use base::Error;
 use base::Result;
-use cros_fdt::FdtWriter;
+use cros_fdt::Fdt;
 use libc::ENOENT;
 use libc::ENOTSUP;
 use vm_memory::GuestAddress;
@@ -28,7 +28,7 @@ const IRQ_TYPE_EDGE_RISING: u32 = 0x00000001;
 const IRQ_TYPE_LEVEL_HIGH: u32 = 0x00000004;
 
 fn fdt_create_shm_device(
-    fdt: &mut FdtWriter,
+    fdt: &mut Fdt,
     index: u32,
     guest_addr: GuestAddress,
 ) -> cros_fdt::Result<()> {
@@ -62,11 +62,7 @@ impl VmAArch64 for GunyahVm {
         Ok(Box::new(GunyahVm::create_vcpu(self, id)?))
     }
 
-    fn create_fdt(
-        &self,
-        fdt: &mut FdtWriter,
-        phandles: &BTreeMap<&str, u32>,
-    ) -> cros_fdt::Result<()> {
+    fn create_fdt(&self, fdt: &mut Fdt, phandles: &BTreeMap<&str, u32>) -> cros_fdt::Result<()> {
         let top_node = fdt.begin_node("gunyah-vm-config")?;
 
         fdt.property_string("image-name", "crosvm-vm")?;
