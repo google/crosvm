@@ -15,6 +15,7 @@ use zerocopy::FromBytes;
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_device::PcieCap;
+use crate::pci::pcie::pcie_device::PcieDevice;
 use crate::pci::pcie::pcie_host::PcieHostPort;
 use crate::pci::pcie::*;
 use crate::pci::pm::PciDevicePower;
@@ -585,5 +586,82 @@ impl PcieConfig {
 
     fn set_slot_status(&mut self, flag: u16) {
         self.slot_status |= flag;
+    }
+}
+
+/// Helper trait for implementing PcieDevice where most functions
+/// are proxied directly to a PciePort instance.
+pub trait PciePortVariant: Send {
+    fn get_pcie_port(&self) -> &PciePort;
+    fn get_pcie_port_mut(&mut self) -> &mut PciePort;
+
+    /// Called via PcieDevice.get_removed_devices
+    fn get_removed_devices_impl(&self) -> Vec<PciAddress>;
+
+    /// Called via PcieDevice.hotplug_implemented
+    fn hotplug_implemented_impl(&self) -> bool;
+
+    /// Called via PcieDevice.hotplug
+    fn hotplugged_impl(&self) -> bool;
+}
+
+impl<T: PciePortVariant> PcieDevice for T {
+    fn get_device_id(&self) -> u16 {
+        self.get_pcie_port().get_device_id()
+    }
+
+    fn debug_label(&self) -> String {
+        self.get_pcie_port().debug_label()
+    }
+
+    fn preferred_address(&self) -> Option<PciAddress> {
+        self.get_pcie_port().preferred_address()
+    }
+
+    fn allocate_address(
+        &mut self,
+        resources: &mut SystemAllocator,
+    ) -> std::result::Result<PciAddress, PciDeviceError> {
+        self.get_pcie_port_mut().allocate_address(resources)
+    }
+
+    fn clone_interrupt(&mut self, msi_config: Arc<Mutex<MsiConfig>>) {
+        self.get_pcie_port_mut().clone_interrupt(msi_config);
+    }
+
+    fn read_config(&self, reg_idx: usize, data: &mut u32) {
+        self.get_pcie_port().read_config(reg_idx, data);
+    }
+
+    fn write_config(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+        self.get_pcie_port_mut().write_config(reg_idx, offset, data);
+    }
+
+    fn get_caps(&self) -> Vec<Box<dyn PciCapability>> {
+        self.get_pcie_port().get_caps()
+    }
+
+    fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize) {
+        self.get_pcie_port_mut().set_capability_reg_idx(id, reg_idx);
+    }
+
+    fn get_bus_range(&self) -> Option<PciBridgeBusRange> {
+        self.get_pcie_port().get_bus_range()
+    }
+
+    fn get_removed_devices(&self) -> Vec<PciAddress> {
+        self.get_removed_devices_impl()
+    }
+
+    fn hotplug_implemented(&self) -> bool {
+        self.hotplug_implemented_impl()
+    }
+
+    fn hotplugged(&self) -> bool {
+        self.hotplugged_impl()
+    }
+
+    fn get_bridge_window_size(&self) -> (u64, u64) {
+        self.get_pcie_port().get_bridge_window_size()
     }
 }
