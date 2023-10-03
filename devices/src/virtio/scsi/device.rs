@@ -549,3 +549,156 @@ async fn process_one_request(
     }
     resp_writer.bytes_written() + data_writer.bytes_written()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::mem::size_of;
+    use std::mem::size_of_val;
+    use std::rc::Rc;
+
+    use cros_async::Executor;
+    use disk::SingleFileDisk;
+    use tempfile::tempfile;
+    use virtio_sys::virtio_scsi::virtio_scsi_cmd_req;
+    use virtio_sys::virtio_scsi::VIRTIO_SCSI_S_OK;
+    use vm_memory::GuestAddress;
+    use vm_memory::GuestMemory;
+
+    use crate::virtio::create_descriptor_chain;
+    use crate::virtio::scsi::constants::READ_10;
+    use crate::virtio::DescriptorType;
+
+    use super::*;
+
+    fn setup_disk(disk_size: u64, ex: &Executor) -> (SingleFileDisk, Vec<u8>) {
+        let mut file_content = vec![0; disk_size as usize];
+        for i in 0..disk_size {
+            file_content[i as usize] = (i % 10) as u8;
+        }
+        let mut f = tempfile().unwrap();
+        f.set_len(disk_size).unwrap();
+        f.write_all(file_content.as_slice()).unwrap();
+        let af = SingleFileDisk::new(f, ex).expect("Failed to create SFD");
+        (af, file_content)
+    }
+
+    fn build_read_req_header(start_lba: u8, xfer_blocks: u8) -> virtio_scsi_cmd_req {
+        let mut cdb = [0; 32];
+        cdb[0] = READ_10;
+        cdb[5] = start_lba;
+        cdb[8] = xfer_blocks;
+        virtio_scsi_cmd_req {
+            lun: [1, 0, 0, 0, 0, 0, 0, 0],
+            cdb,
+            ..Default::default()
+        }
+    }
+
+    fn setup_desciptor_chain(
+        start_lba: u8,
+        xfer_blocks: u8,
+        block_size: u32,
+        mem: &Rc<GuestMemory>,
+    ) -> DescriptorChain {
+        let req_hdr = build_read_req_header(start_lba, xfer_blocks);
+        let xfer_bytes = xfer_blocks as u32 * block_size;
+        create_descriptor_chain(
+            mem,
+            GuestAddress(0x100),  // Place descriptor chain at 0x100.
+            GuestAddress(0x1000), // Describe buffer at 0x1000.
+            vec![
+                // Request header
+                (DescriptorType::Readable, size_of_val(&req_hdr) as u32),
+                // Response header
+                (
+                    DescriptorType::Writable,
+                    size_of::<virtio_scsi_cmd_resp>() as u32,
+                ),
+                (DescriptorType::Writable, xfer_bytes),
+            ],
+            0,
+        )
+        .expect("create_descriptor_chain failed")
+    }
+
+    fn read_blocks(
+        ex: &Executor,
+        af: &SingleFileDisk,
+        start_lba: u8,
+        xfer_blocks: u8,
+        block_size: u32,
+    ) -> (virtio_scsi_cmd_resp, Vec<u8>) {
+        let xfer_bytes = xfer_blocks as u32 * block_size;
+        let mem = Rc::new(
+            GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
+                .expect("Creating guest memory failed."),
+        );
+        let req_hdr = build_read_req_header(start_lba, xfer_blocks);
+        mem.write_obj_at_addr(req_hdr, GuestAddress(0x1000))
+            .expect("writing req failed");
+
+        let mut avail_desc = setup_desciptor_chain(0, xfer_blocks, block_size, &mem);
+
+        let logical_unit = Arc::new(RwLock::new(LogicalUnit {
+            max_lba: 0x1000,
+            block_size,
+            read_only: false,
+        }));
+        ex.run_until(process_one_request(&mut avail_desc, af, &logical_unit))
+            .expect("running executor failed");
+        let resp_offset = GuestAddress((0x1000 + size_of::<virtio_scsi_cmd_resp>()) as u64);
+        let resp = mem
+            .read_obj_from_addr::<virtio_scsi_cmd_resp>(resp_offset)
+            .unwrap();
+        let dataout_offset = GuestAddress(
+            (0x1000 + size_of::<virtio_scsi_cmd_req>() + size_of::<virtio_scsi_cmd_resp>()) as u64,
+        );
+        let dataout_slice = mem
+            .get_slice_at_addr(dataout_offset, xfer_bytes as usize)
+            .unwrap();
+        let mut dataout = vec![0; xfer_bytes as usize];
+        dataout_slice.copy_to(&mut dataout);
+        (resp, dataout)
+    }
+
+    fn test_read_blocks(blocks: u8, start_lba: u8, xfer_blocks: u8, block_size: u32) {
+        let ex = Executor::new().expect("creating an executor failed");
+        let file_len = blocks as u64 * block_size as u64;
+        let xfer_bytes = xfer_blocks as usize * block_size as usize;
+        let start_off = start_lba as usize * block_size as usize;
+
+        let (af, file_content) = setup_disk(file_len, &ex);
+        let (resp, dataout) = read_blocks(&ex, &af, start_lba, xfer_blocks, block_size);
+
+        let sense_len = resp.sense_len;
+        assert_eq!(sense_len, 0);
+        assert_eq!(resp.status, VIRTIO_SCSI_S_OK as u8);
+        assert_eq!(resp.response, GOOD);
+
+        assert_eq!(&dataout, &file_content[start_off..(start_off + xfer_bytes)]);
+    }
+
+    #[test]
+    fn read_first_blocks() {
+        // Read the first 3 blocks of a 8-block device.
+        let blocks = 8u8;
+        let start_lba = 0u8;
+        let xfer_blocks = 3u8;
+
+        test_read_blocks(blocks, start_lba, xfer_blocks, 64u32);
+        test_read_blocks(blocks, start_lba, xfer_blocks, 128u32);
+        test_read_blocks(blocks, start_lba, xfer_blocks, 512u32);
+    }
+
+    #[test]
+    fn read_middle_blocks() {
+        // Read 3 blocks from the 2nd block in the 8-block device.
+        let blocks = 8u8;
+        let start_lba = 1u8;
+        let xfer_blocks = 3u8;
+
+        test_read_blocks(blocks, start_lba, xfer_blocks, 64u32);
+        test_read_blocks(blocks, start_lba, xfer_blocks, 128u32);
+        test_read_blocks(blocks, start_lba, xfer_blocks, 512u32);
+    }
+}
