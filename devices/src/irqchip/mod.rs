@@ -22,7 +22,7 @@ use crate::IrqEdgeEvent;
 use crate::IrqLevelEvent;
 
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         mod kvm;
         pub use self::kvm::KvmKernelIrqChip;
         #[cfg(target_arch = "x86_64")]

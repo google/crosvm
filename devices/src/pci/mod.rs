@@ -5,7 +5,7 @@
 //! Implements pci devices and busses.
 
 mod acpi;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 mod coiommu;
 mod msi;
 mod msix;
@@ -15,12 +15,12 @@ mod pci_device;
 #[cfg(feature = "pci-hotplug")]
 mod pci_hotplug;
 mod pci_root;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 mod pcie;
 mod pm;
 mod pvpanic;
 mod stub;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 mod vfio_pci;
 
 use libc::EINVAL;
@@ -31,11 +31,11 @@ pub use self::acpi::DeviceVcfgRegister;
 pub use self::acpi::DsmMethod;
 pub use self::acpi::GpeScope;
 pub use self::acpi::PowerResourceMethod;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::coiommu::CoIommuDev;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::coiommu::CoIommuParameters;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::coiommu::CoIommuUnpinPolicy;
 pub use self::msi::MsiConfig;
 pub use self::msix::MsixCap;
@@ -77,21 +77,21 @@ pub use self::pci_root::PciConfigMmio;
 pub use self::pci_root::PciRoot;
 pub use self::pci_root::PciRootCommand;
 pub use self::pci_root::PciVirtualConfigMmio;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::pcie::PciBridge;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::pcie::PcieDownstreamPort;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::pcie::PcieHostPort;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::pcie::PcieRootPort;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::pcie::PcieUpstreamPort;
 pub use self::pvpanic::PvPanicCode;
 pub use self::pvpanic::PvPanicPciDevice;
 pub use self::stub::StubPciDevice;
 pub use self::stub::StubPciParameters;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::vfio_pci::VfioPciDevice;
 
 /// PCI has four interrupt pins A->D.

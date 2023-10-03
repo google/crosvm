@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub(crate) mod unix;
 
 #[cfg(windows)]
 pub(crate) mod windows;
 
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         use unix as platform;
 
         #[cfg(feature = "gpu")]

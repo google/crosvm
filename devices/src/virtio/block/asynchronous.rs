@@ -1549,20 +1549,20 @@ mod tests {
     }
 
     // TODO(b/270225199): enable this test on Windows once IoSource::into_source is implemented
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn reset_and_reactivate_single_worker() {
         reset_and_reactivate(false);
     }
 
     // TODO(b/270225199): enable this test on Windows once IoSource::into_source is implemented
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn reset_and_reactivate_multiple_workers() {
         reset_and_reactivate(true);
     }
 
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn reset_and_reactivate(enables_multiple_workers: bool) {
         // Create an empty disk image
         let f = tempfile().unwrap();
@@ -1662,7 +1662,7 @@ mod tests {
 
     // TODO(b/270225199): enable this test on Windows once IoSource::into_source is implemented,
     // or after finding a good way to prevent BlockAsync::drop() from panicking due to that.
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn resize_with_single_worker() {
         resize(false);
@@ -1670,7 +1670,7 @@ mod tests {
 
     // TODO(b/270225199): enable this test on Windows once IoSource::into_source is implemented,
     // or after finding a good way to prevent BlockAsync::drop() from panicking due to that.
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn resize_with_multiple_workers() {
         // Test resize handled by one worker affect the whole state
@@ -1789,7 +1789,7 @@ mod tests {
 
     // TODO(b/270225199): enable this test on Windows once IoSource::into_source is implemented,
     // or after finding a good way to prevent BlockAsync::drop() from panicking due to that.
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn run_worker_threads() {
         // Create an empty duplicable disk image
@@ -1906,6 +1906,6 @@ mod tests {
         )
     }
 
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     suspendable_virtio_tests!(asyncblock, create_device, 2, modify_device);
 }

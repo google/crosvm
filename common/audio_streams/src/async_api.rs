@@ -13,9 +13,9 @@
 //! The implementation is provided in `cros_async::audio_streams_async`.
 
 use std::io::Result;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::os::unix::io::RawFd as RawDescriptor;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::os::unix::net::UnixStream;
 #[cfg(windows)]
 use std::os::windows::io::RawHandle;
@@ -64,7 +64,7 @@ pub type AsyncStream = Box<dyn ReadWriteAsync + Send>;
 #[async_trait(?Send)]
 pub trait AudioStreamsExecutor {
     /// Create an object to allow async reads/writes from the specified UnixStream.
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn async_unix_stream(&self, f: UnixStream) -> Result<AsyncStream>;
 
     /// Wraps an event that will be triggered when the audio backend is ready to read more audio
@@ -80,7 +80,7 @@ pub trait AudioStreamsExecutor {
     async fn delay(&self, dur: Duration) -> Result<()>;
 
     // Returns a future that resolves after the provided descriptor is readable.
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     async fn wait_fd_readable(&self, _fd: RawDescriptor) -> Result<()> {
         Ok(())
     }
@@ -95,7 +95,7 @@ pub mod test {
 
     #[async_trait(?Send)]
     impl AudioStreamsExecutor for TestExecutor {
-        #[cfg(unix)]
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         fn async_unix_stream(&self, _f: UnixStream) -> Result<AsyncStream> {
             panic!("Not Implemented");
         }
@@ -110,7 +110,7 @@ pub mod test {
             unimplemented!("async_event is not yet implemented on windows");
         }
 
-        #[cfg(unix)]
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         async fn wait_fd_readable(&self, _fd: RawDescriptor) -> Result<()> {
             panic!("Not Implemented");
         }

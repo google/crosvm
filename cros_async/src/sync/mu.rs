@@ -888,7 +888,7 @@ impl<'a, T: ?Sized> Drop for RwLockReadGuard<'a, T> {
 }
 
 // TODO(b/194338842): Fix tests for windows
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[cfg(test)]
 mod test {
     use std::future::Future;

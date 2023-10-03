@@ -215,7 +215,7 @@ where
         &mut resume_notify_devices,
         #[cfg(feature = "swap")]
         &mut None,
-        #[cfg(unix)]
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         false,
         Default::default(),
         &pci_irqs,

@@ -134,7 +134,7 @@ pub use self::virtio::VirtioPciDevice;
 pub use self::vtpm_proxy::VtpmProxy;
 
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         mod platform;
         mod proxy;
         pub mod vmwdt;

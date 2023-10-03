@@ -5,7 +5,7 @@
 use cros_async::Executor;
 use cros_async::ExecutorKind;
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn all_kinds() -> Vec<ExecutorKind> {
     let mut kinds = vec![ExecutorKind::Fd];
     if cros_async::is_uring_stable() {

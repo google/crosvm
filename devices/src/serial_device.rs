@@ -280,7 +280,7 @@ mod tests {
         assert_eq!(params.type_, SerialType::Sink);
         let params = from_serial_arg("type=syslog").unwrap();
         assert_eq!(params.type_, SerialType::Syslog);
-        #[cfg(unix)]
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         let opt = "type=unix";
         #[cfg(windows)]
         let opt = "type=namedpipe";

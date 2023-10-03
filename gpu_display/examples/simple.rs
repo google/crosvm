@@ -4,7 +4,7 @@
 
 use std::process::exit;
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 mod platform {
     use anyhow::Context;
     use anyhow::Result;

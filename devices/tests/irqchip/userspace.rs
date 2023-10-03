@@ -669,7 +669,7 @@ impl Vcpu for FakeVcpu {
 
     fn set_immediate_exit(&self, _exit: bool) {}
 
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn signal_handle(&self) -> hypervisor::VcpuSignalHandle {
         unimplemented!()
     }

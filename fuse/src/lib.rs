@@ -4,7 +4,7 @@
 
 //! FUSE (Filesystem in Userspace) server and filesystem mounting support.
 
-#![cfg(unix)]
+#![cfg(any(target_os = "android", target_os = "linux"))]
 
 use std::ffi::FromBytesWithNulError;
 use std::fs::File;

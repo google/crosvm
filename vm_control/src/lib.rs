@@ -16,7 +16,7 @@ pub mod gdb;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use base::MemoryMappingBuilderUnix;
 #[cfg(windows)]
 use base::MemoryMappingBuilderWindows;
@@ -89,11 +89,11 @@ use serde::Deserialize;
 use serde::Serialize;
 use swap::SwapStatus;
 use sync::Mutex;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use sys::FsMappingRequest;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use sys::VmMsyncRequest;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use sys::VmMsyncResponse;
 use thiserror::Error;
 pub use vm_control_product::GpuSendToMain;

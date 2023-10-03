@@ -33,7 +33,7 @@ impl VsockConfig {
     pub fn new<P: AsRef<Path>>(cid: u64, vhost_device: Option<P>) -> Self {
         Self {
             cid,
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             vhost_device: vhost_device
                 .map(|p| PathBuf::from(p.as_ref()))
                 .unwrap_or_else(|| PathBuf::from(VHOST_VSOCK_DEFAULT_PATH)),
@@ -77,7 +77,7 @@ mod tests {
         assert_eq!(
             from_vsock_arg("78").unwrap(),
             VsockConfig {
-                #[cfg(unix)]
+                #[cfg(any(target_os = "android", target_os = "linux"))]
                 vhost_device: VHOST_VSOCK_DEFAULT_PATH.into(),
                 cid: 78,
             }

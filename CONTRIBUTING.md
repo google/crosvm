@@ -41,8 +41,9 @@ Here is an example of a good commit message:
 ```
 devices: vhost: user: vmm: Add Connection type
 
-This abstracts away the cross-platform differences: cfg(unix) uses a
-Unix domain stream socket to connect to the vhost-user backend, and
+This abstracts away the cross-platform differences:
+cfg(any(target_os = "android", target_os = "linux")) uses a Unix
+domain domain stream socket to connect to the vhost-user backend, and
 cfg(windows) uses a Tube.
 
 BUG=b:249361790

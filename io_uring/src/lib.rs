@@ -4,7 +4,7 @@
 
 //! Safe wrapper over the Linux `io_uring` system calls.
 
-#![cfg(unix)]
+#![cfg(any(target_os = "android", target_os = "linux"))]
 
 mod bindings;
 mod syscalls;

@@ -399,7 +399,7 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn await_uring_from_poll() {
         if !is_uring_stable() {
@@ -434,7 +434,7 @@ mod tests {
         handle.join().unwrap().unwrap();
     }
 
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn await_poll_from_uring() {
         if !is_uring_stable() {

@@ -56,7 +56,7 @@ fn copy_file() {
 /// 3. Start a VM with a virtiofs device for the temporal directory.
 /// 4. Check that `user_file.txt`'s uid is <mapped-uid> in the VM.
 /// 5. Verify gid similarly.
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[test]
 fn file_ugid() {
     const FILE_NAME: &str = "user_file.txt";

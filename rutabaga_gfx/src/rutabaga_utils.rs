@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::str::Utf8Error;
 use std::sync::Arc;
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use nix::Error as NixError;
 use remain::sorted;
 use thiserror::Error;
@@ -268,7 +268,7 @@ pub enum RutabagaError {
     #[error("The mapping failed with library error: {0}")]
     MappingFailed(i32),
     /// Nix crate error.
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[error("The errno is {0}")]
     NixError(NixError),
     #[error("Nul Error occured {0}")]
@@ -315,7 +315,7 @@ pub enum RutabagaError {
     VkMemoryMapError(MemoryMapError),
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 impl From<NixError> for RutabagaError {
     fn from(e: NixError) -> RutabagaError {
         RutabagaError::NixError(e)

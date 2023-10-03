@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 // TODO(b/237714823): Currently, only kvm is enabled for this test once LUCI can run windows.
-#![cfg(unix)]
+#![cfg(any(target_os = "android", target_os = "linux"))]
 #![cfg(target_arch = "x86_64")]
 
 use std::sync::atomic::AtomicU16;
@@ -16,7 +16,7 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn test_kvm_read_only_memory() {
     use hypervisor::kvm::*;
     test_read_only_memory(|guest_mem| {

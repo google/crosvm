@@ -26,7 +26,7 @@ zerocopy = { version = "0.7", features = ["derive"] }
 
 log = "0.4"
 
-[target.'cfg(unix)'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 nix = "0.26.1"
 
 [target.'cfg(windows)'.dependencies]

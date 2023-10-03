@@ -19,5 +19,5 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "*"
 thiserror = "1.0.20"
 
-[target.'cfg(unix)'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 minijail = "*"

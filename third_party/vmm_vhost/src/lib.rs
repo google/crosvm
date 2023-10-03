@@ -462,7 +462,7 @@ mod tests {
         let descriptor =
             unsafe { tube_transporter::packed_tube::pack(tubes.0, std::process::id()).unwrap() };
 
-        #[cfg(unix)]
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         let descriptor = base::Event::new().unwrap();
 
         master.set_slave_request_fd(&descriptor).unwrap();

@@ -6,7 +6,7 @@
 //!
 //! New code should use the `hypervisor` crate instead.
 
-#![cfg(unix)]
+#![cfg(any(target_os = "android", target_os = "linux"))]
 
 mod cap;
 

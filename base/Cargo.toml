@@ -41,7 +41,7 @@ zerocopy = { version = "0.7", features = ["derive"] }
 libtest-mimic = "0.6"
 protos = { path = "../protos", features = ["composite-disk"] }
 
-[target.'cfg(unix)'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 minijail = "*"
 
 [target.'cfg(windows)'.dependencies]

@@ -4,7 +4,7 @@
 
 //! Bindings for the `libvda` video decoder and encoder libraries.
 
-#![cfg(unix)]
+#![cfg(any(target_os = "android", target_os = "linux"))]
 
 pub mod decode;
 pub mod encode;

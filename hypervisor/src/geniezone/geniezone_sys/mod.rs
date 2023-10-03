@@ -4,7 +4,7 @@
 
 //! Bindings for the GZVM (Geniezone Hypervisor) API.
 
-#![cfg(unix)]
+#![cfg(any(target_os = "android", target_os = "linux"))]
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]

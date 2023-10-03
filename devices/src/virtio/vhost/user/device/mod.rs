@@ -38,7 +38,7 @@ pub use snd::Options as SndOptions;
 use vmm_vhost::VhostUserSlaveReqHandler;
 
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         mod console;
         mod fs;
         mod vsock;

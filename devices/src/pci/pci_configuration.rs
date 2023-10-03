@@ -26,7 +26,7 @@ pub const COMMAND_REG_MEMORY_SPACE_MASK: u32 = 0x0000_0002;
 const STATUS_REG: usize = 1;
 pub const STATUS_REG_CAPABILITIES_USED_MASK: u32 = 0x0010_0000;
 #[allow(dead_code)]
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub const CLASS_REG: usize = 2;
 pub const HEADER_TYPE_REG: usize = 3;
 pub const HEADER_TYPE_MULTIFUNCTION_MASK: u32 = 0x0080_0000;
@@ -40,7 +40,7 @@ pub const NUM_BAR_REGS: usize = 7; // 6 normal BARs + expansion ROM BAR.
 pub const ROM_BAR_IDX: PciBarIndex = 6;
 pub const ROM_BAR_REG: usize = 12;
 pub const CAPABILITY_LIST_HEAD_OFFSET: usize = 0x34;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub const PCI_CAP_NEXT_POINTER: usize = 0x1;
 const FIRST_CAPABILITY_OFFSET: usize = 0x40;
 pub const CAPABILITY_MAX_OFFSET: usize = 255;

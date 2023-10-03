@@ -75,7 +75,7 @@ pub use write_zeroes::WriteZeroesAt;
 // TODO(b/233233301): reorganize platform specific exports under platform
 // namespaces instead of exposing them directly in base::.
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         pub use sys::unix;
 
         pub use unix::net;

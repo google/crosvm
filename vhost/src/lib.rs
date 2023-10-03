@@ -4,10 +4,10 @@
 
 //! Linux vhost kernel API wrapper.
 
-#![cfg(unix)]
+#![cfg(any(target_os = "android", target_os = "linux"))]
 
 pub mod net;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 mod scmi;
 mod vsock;
@@ -30,11 +30,11 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use crate::net::Net;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use crate::net::NetT;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use crate::scmi::Scmi;
 pub use crate::vsock::Vsock;

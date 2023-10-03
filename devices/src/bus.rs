@@ -33,7 +33,7 @@ use crate::DeviceId;
 use crate::PciAddress;
 use crate::PciDevice;
 use crate::Suspendable;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use crate::VfioPlatformDevice;
 use crate::VirtioMmioDevice;
 
@@ -231,15 +231,15 @@ pub trait BusDeviceObj {
     fn into_pci_device(self: Box<Self>) -> Option<Box<dyn PciDevice>> {
         None
     }
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn as_platform_device(&self) -> Option<&VfioPlatformDevice> {
         None
     }
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn as_platform_device_mut(&mut self) -> Option<&mut VfioPlatformDevice> {
         None
     }
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn into_platform_device(self: Box<Self>) -> Option<Box<VfioPlatformDevice>> {
         None
     }

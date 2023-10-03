@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use base::AsRawDescriptor;
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use crate::sys::unix::PollSource;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use crate::sys::unix::UringSource;
 #[cfg(windows)]
 use crate::sys::windows::HandleSource;
@@ -21,9 +21,9 @@ use crate::MemRegion;
 /// Associates an IO object `F` with cros_async's runtime and exposes an API to perform async IO on
 /// that object's descriptor.
 pub enum IoSource<F: base::AsRawDescriptor> {
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     Uring(UringSource<F>),
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     Epoll(PollSource<F>),
     #[cfg(windows)]
     Handle(HandleSource<F>),
@@ -32,14 +32,14 @@ pub enum IoSource<F: base::AsRawDescriptor> {
 }
 
 pub enum AllocateMode {
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     Allocate,
     PunchHole,
     ZeroRange,
 }
 
 // This assume we always want KEEP_SIZE
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 impl From<AllocateMode> for u32 {
     fn from(value: AllocateMode) -> Self {
         match value {
@@ -60,9 +60,9 @@ impl From<AllocateMode> for u32 {
 macro_rules! await_on_inner {
     ($x:ident, $method:ident $(, $args:expr)*) => {
         match $x {
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             IoSource::Uring(x) => UringSource::$method(x, $($args),*).await,
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             IoSource::Epoll(x) => PollSource::$method(x, $($args),*).await,
             #[cfg(windows)]
             IoSource::Handle(x) => HandleSource::$method(x, $($args),*).await,
@@ -78,9 +78,9 @@ macro_rules! await_on_inner {
 macro_rules! on_inner {
     ($x:ident, $method:ident $(, $args:expr)*) => {
         match $x {
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             IoSource::Uring(x) => UringSource::$method(x, $($args),*),
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             IoSource::Epoll(x) => PollSource::$method(x, $($args),*),
             #[cfg(windows)]
             IoSource::Handle(x) => HandleSource::$method(x, $($args),*),
@@ -192,13 +192,13 @@ mod tests {
 
     use super::*;
     use crate::mem::VecIoWrapper;
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     use crate::sys::unix::uring_executor::is_uring_stable;
     use crate::Executor;
     use crate::ExecutorKind;
     use crate::MemRegion;
 
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn all_kinds() -> Vec<ExecutorKind> {
         let mut kinds = vec![ExecutorKind::Fd];
         if is_uring_stable() {

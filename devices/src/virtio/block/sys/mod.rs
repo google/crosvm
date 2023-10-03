@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         mod unix;
         pub use self::unix::*;
     } else if #[cfg(windows)] {

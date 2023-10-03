@@ -24,7 +24,7 @@ anyhow = "1.0"
 serde = "*"
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] } # provided by ebuild
 
-[target.'cfg(unix)'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 io_uring = { path = "../io_uring" } # provided by ebuild
 
 [target.'cfg(windows)'.dependencies]

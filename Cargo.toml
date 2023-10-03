@@ -453,7 +453,7 @@ x86_64 = { path = "x86_64" }
 [target.'cfg(any(target_arch = "aarch64", target_arch = "arm"))'.dependencies]
 aarch64 = { path = "aarch64" }
 
-[target.'cfg(unix)'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 minijail = "*" # provided by ebuild
 p9 = "0.2.3"
 vhost = { path = "vhost" }

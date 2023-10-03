@@ -44,21 +44,21 @@ fn boot_test_vm_uring() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[test]
 fn boot_test_vm_odirect() {
     let mut vm = TestVm::new(Config::new().o_direct()).unwrap();
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().stdout.trim(), "42");
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[test]
 fn boot_test_vm_config_file() {
     let mut vm = TestVm::new_with_config_file(Config::new()).unwrap();
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().stdout.trim(), "42");
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[test]
 fn boot_test_suspend_resume() {
     // There is no easy way for us to check if the VM is actually suspended. But at
@@ -69,7 +69,7 @@ fn boot_test_suspend_resume() {
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().stdout.trim(), "42");
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[test]
 fn boot_test_suspend_resume_full() {
     // There is no easy way for us to check if the VM is actually suspended. But at
@@ -88,28 +88,28 @@ fn boot_test_suspend_resume_full() {
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().stdout.trim(), "42");
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[test]
 fn boot_test_vm_disable_sandbox() {
     let mut vm = TestVm::new(Config::new().disable_sandbox()).unwrap();
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().stdout.trim(), "42");
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[test]
 fn boot_test_vm_disable_sandbox_odirect() {
     let mut vm = TestVm::new(Config::new().disable_sandbox().o_direct()).unwrap();
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().stdout.trim(), "42");
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[test]
 fn boot_test_vm_disable_sandbox_config_file() {
     let mut vm = TestVm::new_with_config_file(Config::new().disable_sandbox()).unwrap();
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().stdout.trim(), "42");
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[test]
 fn boot_test_disable_sandbox_suspend_resume() {
     // There is no easy way for us to check if the VM is actually suspended. But at

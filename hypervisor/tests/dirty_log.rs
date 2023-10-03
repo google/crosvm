@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 // TODO(b/237714823): Currently, only kvm is enabled for this test once LUCI can run windows.
-#![cfg(unix)]
+#![cfg(any(target_os = "android", target_os = "linux"))]
 #![cfg(target_arch = "x86_64")]
 #![cfg(any(feature = "whpx", feature = "gvm", feature = "haxm", unix))]
 
@@ -14,7 +14,7 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn test_kvm_dirty_log() {
     use hypervisor::kvm::*;
     test_dirty_log(|guest_mem| {

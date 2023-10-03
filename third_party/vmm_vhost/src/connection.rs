@@ -4,7 +4,7 @@
 //! Common data structures for listener and endpoint.
 
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         pub mod socket;
         mod unix;
     } else if #[cfg(windows)] {
@@ -447,7 +447,7 @@ impl<R: Req, E: Endpoint<R> + ?Sized> EndpointExt<R> for E {}
 pub(crate) mod tests {
     use super::*;
     cfg_if::cfg_if! {
-        if #[cfg(unix)] {
+        if #[cfg(any(target_os = "android", target_os = "linux"))] {
             #[cfg(feature = "vmm")]
             pub(crate) use super::unix::tests::*;
         } else if #[cfg(windows)] {

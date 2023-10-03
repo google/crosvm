@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
 use std::sync::Condvar;
@@ -174,7 +174,7 @@ pub trait SharedMemory {
     fn size(&self) -> u64;
 
     /// Returns the underlying raw fd.
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn as_raw_fd(&self) -> RawFd;
 }
 
@@ -224,7 +224,7 @@ pub trait ShmStreamSource<E: std::error::Error>: Send {
     /// Returns any open file descriptors needed by the implementation.
     /// This list helps users of the ShmStreamSource enter Linux jails without
     /// closing needed file descriptors.
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn keep_fds(&self) -> Vec<RawFd> {
         Vec::new()
     }
@@ -500,7 +500,7 @@ pub mod tests {
             0
         }
 
-        #[cfg(unix)]
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         fn as_raw_fd(&self) -> RawFd {
             0
         }

@@ -125,7 +125,7 @@ File: `sys.rs`
 
 ```rust
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         mod unix;
         pub use platform_print::UnixPrinter as Printer;
     } else if #[cfg(windows)] {
@@ -137,13 +137,14 @@ cfg_if::cfg_if! {
 
 ## Imports
 
-When conditionally importing and using modules, use `cfg(unix)` and `cfg(windows)` for describing
-the platform. Order imports such that common comes first followed by unix and windows dependencies.
+When conditionally importing and using modules, use
+`cfg(any(target_os = "android", target_os = "linux"))` and `cfg(windows)` for describing the
+platform. Order imports such that common comes first followed by unix and windows dependencies.
 
 ```rust
 // All other imports
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use {
   std::x::y,
   base::a::b::{Foo, Bar},
@@ -394,7 +395,7 @@ File: `sys.rs`
 
 ```rust
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         pub mod unix;
         use unix as platform;
     } else if #[cfg(windows)] {
@@ -441,7 +442,7 @@ use mylib::sys::print;
 fn my_print() {
   print();
 
-  #[cfg(unix)]
+  #[cfg(any(target_os = "android", target_os = "linux"))]
   mylib::sys::unix::print_u8(1);
 
   #[cfg(windows)]

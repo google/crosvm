@@ -57,11 +57,11 @@ use x86_64::check_host_hybrid_support;
 use x86_64::CpuIdCall;
 
 pub(crate) use super::sys::HypervisorKind;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use crate::crosvm::sys::config::SharedDir;
 
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         #[cfg(feature = "gpu")]
         use crate::crosvm::sys::GpuRenderServerParameters;
 
@@ -764,7 +764,7 @@ pub struct Config {
     pub broker_shutdown_event: Option<Event>,
     #[cfg(all(target_arch = "x86_64", unix))]
     pub bus_lock_ratelimit: u64,
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     pub coiommu_param: Option<devices::CoIommuParameters>,
     pub core_scheduling: bool,
     pub cpu_capacity: BTreeMap<usize, u32>, // CPU index -> capacity
@@ -815,7 +815,7 @@ pub struct Config {
     pub jail_config: Option<JailConfig>,
     #[cfg(windows)]
     pub kernel_log_file: Option<String>,
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     pub lock_guest_memory: bool,
     #[cfg(windows)]
     pub log_file: Option<String>,
@@ -871,7 +871,7 @@ pub struct Config {
     pub serial_parameters: BTreeMap<(SerialHardware, u8), SerialParameters>,
     #[cfg(windows)]
     pub service_pipe_name: Option<String>,
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[serde(skip)]
     pub shared_dirs: Vec<SharedDir>,
     #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
@@ -890,7 +890,7 @@ pub struct Config {
     pub swiotlb: Option<u64>,
     #[cfg(target_os = "android")]
     pub task_profiles: Vec<String>,
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     pub unmap_guest_memory_on_fork: bool,
     pub usb: bool,
     pub vcpu_affinity: Option<VcpuAffinity>,
@@ -898,14 +898,14 @@ pub struct Config {
     pub vcpu_count: Option<usize>,
     #[cfg(target_arch = "x86_64")]
     pub vcpu_hybrid_type: BTreeMap<usize, CpuHybridType>, // CPU index -> hybrid type
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     pub vfio: Vec<super::sys::config::VfioOption>,
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     pub vfio_isolate_hotplug: bool,
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     pub vhost_scmi: bool,
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     pub vhost_scmi_device: PathBuf,
     pub vhost_user_blk: Vec<VhostUserOption>,
@@ -966,7 +966,7 @@ impl Default for Config {
             broker_shutdown_event: None,
             #[cfg(all(target_arch = "x86_64", unix))]
             bus_lock_ratelimit: 0,
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             coiommu_param: None,
             core_scheduling: true,
             #[cfg(feature = "crash-report")]
@@ -1025,7 +1025,7 @@ impl Default for Config {
             },
             #[cfg(windows)]
             kernel_log_file: None,
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             lock_guest_memory: false,
             #[cfg(windows)]
             log_file: None,
@@ -1075,7 +1075,7 @@ impl Default for Config {
             scsis: Vec::new(),
             #[cfg(windows)]
             service_pipe_name: None,
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             shared_dirs: Vec::new(),
             #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
             slirp_capture_file: None,
@@ -1093,7 +1093,7 @@ impl Default for Config {
             swiotlb: None,
             #[cfg(target_os = "android")]
             task_profiles: Vec::new(),
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             unmap_guest_memory_on_fork: false,
             usb: true,
             vcpu_affinity: None,
@@ -1101,14 +1101,14 @@ impl Default for Config {
             vcpu_count: None,
             #[cfg(target_arch = "x86_64")]
             vcpu_hybrid_type: BTreeMap::new(),
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             vfio: Vec::new(),
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             vfio_isolate_hotplug: false,
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
             vhost_scmi: false,
-            #[cfg(unix)]
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
             vhost_scmi_device: PathBuf::from(VHOST_SCMI_PATH),
             vhost_user_blk: Vec::new(),
@@ -1277,7 +1277,7 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         return Err("'balloon_page_reporting' requires enabled balloon".to_string());
     }
 
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     if cfg.lock_guest_memory && cfg.jail_config.is_none() {
         return Err("'lock-guest-memory' and 'disable-sandbox' are mutually exclusive".to_string());
     }

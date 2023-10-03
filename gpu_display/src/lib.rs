@@ -24,7 +24,7 @@ mod event_device;
 mod gpu_display_stub;
 #[cfg(windows)]
 mod gpu_display_win;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 mod gpu_display_wl;
 #[cfg(feature = "x")]
 mod gpu_display_x;

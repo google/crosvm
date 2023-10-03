@@ -15,7 +15,7 @@ pub mod caps;
 pub mod gunyah;
 #[cfg(all(windows, feature = "haxm"))]
 pub mod haxm;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub mod kvm;
 #[cfg(target_arch = "riscv64")]
 pub mod riscv64;
@@ -235,12 +235,12 @@ pub struct IoParams {
 }
 
 /// Handle to a virtual CPU that may be used to request a VM exit from within a signal handler.
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub struct VcpuSignalHandle {
     inner: Box<dyn VcpuSignalHandleInner>,
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 impl VcpuSignalHandle {
     /// Request an immediate exit for this VCPU.
     ///
@@ -253,7 +253,7 @@ impl VcpuSignalHandle {
 /// Signal-safe mechanism for requesting an immediate VCPU exit.
 ///
 /// Each hypervisor backend must implement this for its VCPU type.
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub(crate) trait VcpuSignalHandleInner {
     /// Signal the associated VCPU to exit if it is currently running.
     ///
@@ -286,7 +286,7 @@ pub trait Vcpu: downcast_rs::DowncastSync {
 
     /// Returns a handle that can be used to cause this VCPU to exit from `run()` from a signal
     /// handler.
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn signal_handle(&self) -> VcpuSignalHandle;
 
     /// Handles an incoming MMIO request from the guest.

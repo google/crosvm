@@ -4,7 +4,7 @@
 //! A wrapper module for platform dependent code.
 
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         pub mod unix;
         use unix as platform;
     } else if #[cfg(windows)] {

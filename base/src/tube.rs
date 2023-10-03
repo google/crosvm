@@ -120,7 +120,7 @@ pub enum Error {
     #[cfg(windows)]
     #[error("failed to flush named pipe: {0}")]
     Flush(io::Error),
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[error("byte framing mode is not supported")]
     InvalidFramingMode,
     #[error("failed to serialize/deserialize json from packet: {0}")]

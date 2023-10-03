@@ -25,7 +25,7 @@ use vmm_vhost::Error as VhostError;
 pub use self::handler::VhostUserHandler;
 
 cfg_if::cfg_if! {
-    if #[cfg(unix)] {
+    if #[cfg(any(target_os = "android", target_os = "linux"))] {
         pub type Connection = std::os::unix::net::UnixStream;
     } else if #[cfg(windows)] {
         pub type Connection = base::Tube;

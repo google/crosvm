@@ -5,7 +5,7 @@
 //! USB device access and descriptor manipulation.
 
 mod descriptor;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 mod device;
 mod error;
 mod types;
@@ -14,17 +14,17 @@ pub use self::descriptor::parse_usbfs_descriptors;
 pub use self::descriptor::ConfigDescriptorTree;
 pub use self::descriptor::DeviceDescriptorTree;
 pub use self::descriptor::InterfaceDescriptorTree;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::device::Device;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::device::DmaBuffer;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::device::Transfer;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::device::TransferBuffer;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::device::TransferHandle;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::device::TransferStatus;
 pub use self::error::Error;
 pub use self::error::Result;

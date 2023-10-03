@@ -981,7 +981,7 @@ fn run_worker(
                     len,
                     #[cfg(windows)]
                     &vm_memory_client,
-                    #[cfg(unix)]
+                    #[cfg(any(target_os = "android", target_os = "linux"))]
                     &mem,
                 )
             },
@@ -1060,7 +1060,7 @@ fn run_worker(
                         len,
                         #[cfg(windows)]
                         &vm_memory_client,
-                        #[cfg(unix)]
+                        #[cfg(any(target_os = "android", target_os = "linux"))]
                         &mem,
                     )
                 },

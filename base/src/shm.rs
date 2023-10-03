@@ -74,7 +74,7 @@ impl audio_streams::shm_streams::SharedMemory for SharedMemory {
         self.size()
     }
 
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn as_raw_fd(&self) -> RawDescriptor {
         self.as_raw_descriptor()
     }

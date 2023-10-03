@@ -5,7 +5,7 @@
 #![cfg(not(test))]
 #![no_main]
 
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 mod fuzzer {
     use std::convert::TryInto;
 

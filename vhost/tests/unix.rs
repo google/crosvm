@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 // TODO(225193541): Enable/add tests for windows.
-#![cfg(unix)]
+#![cfg(any(target_os = "android", target_os = "linux"))]
 
 use std::path::PathBuf;
 use std::result;

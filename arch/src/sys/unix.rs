@@ -124,7 +124,7 @@ pub fn add_goldfish_battery(
 }
 
 /// Creates a platform device for use by this Vm.
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub fn generate_platform_bus(
     devices: Vec<(VfioPlatformDevice, Option<Minijail>)>,
     irq_chip: &mut dyn IrqChip,

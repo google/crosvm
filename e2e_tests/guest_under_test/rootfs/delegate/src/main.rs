@@ -9,7 +9,7 @@ mod wire_format;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::process::Command;
@@ -53,7 +53,7 @@ fn listen(
                         stderr: String::from_utf8_lossy(&result.stderr).into_owned(),
                         exit_status: match result.status.code() {
                             Some(code) => wire_format::ExitStatus::Code(code),
-                            #[cfg(unix)]
+                            #[cfg(any(target_os = "android", target_os = "linux"))]
                             None => match result.status.signal() {
                                 Some(signal) => wire_format::ExitStatus::Signal(signal),
                                 None => wire_format::ExitStatus::None,

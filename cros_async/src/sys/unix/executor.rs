@@ -90,7 +90,7 @@ use crate::IoSource;
 ///     Ok(len)
 /// }
 ///
-/// #[cfg(unix)]
+/// #[cfg(any(target_os = "android", target_os = "linux"))]
 /// # fn do_it() -> Result<(), Box<dyn Error>> {
 ///     let ex = Executor::new()?;
 ///
@@ -119,7 +119,7 @@ use crate::IoSource;
 ///
 /// #     Ok(())
 /// # }
-/// #[cfg(unix)]
+/// #[cfg(any(target_os = "android", target_os = "linux"))]
 /// # do_it().unwrap();
 /// ```
 

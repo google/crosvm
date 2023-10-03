@@ -452,7 +452,7 @@ fn cancel_waiter(cv: usize, waiter: &Waiter, wake_next: bool) {
 }
 
 // TODO(b/194338842): Fix tests for windows
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[cfg(test)]
 mod test {
     use std::future::Future;

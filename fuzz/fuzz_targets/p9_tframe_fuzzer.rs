@@ -9,6 +9,6 @@
 use crosvm_fuzz::fuzz_target;
 
 fuzz_target!(|bytes: &[u8]| {
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     p9::fuzzing::tframe_decode(bytes);
 });

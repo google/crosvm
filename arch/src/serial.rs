@@ -17,7 +17,7 @@ use hypervisor::ProtectionType;
 use jail::read_jail_addr;
 #[cfg(windows)]
 use jail::FakeMinijailStub as Minijail;
-#[cfg(unix)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use minijail::Minijail;
 use remain::sorted;
 use thiserror::Error as ThisError;
@@ -123,7 +123,7 @@ pub fn add_serial_devices(
             .create_serial_device::<Serial>(protection_type, com_evt, &mut preserved_descriptors)
             .map_err(DeviceRegistrationError::CreateSerialDevice)?;
 
-        #[cfg(unix)]
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         let serial_jail = if let Some(serial_jail) = serial_jail.as_ref() {
             let jail_clone = serial_jail
                 .try_clone()

@@ -130,6 +130,6 @@ pub struct DevicesCommand {
 #[argh(subcommand)]
 /// Unix Commands
 pub enum Commands {
-    #[cfg(unix)]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     Devices(DevicesCommand),
 }
