@@ -7,11 +7,11 @@
 use std::convert::TryInto;
 use std::fmt;
 
+use base::linux::MemoryMappingBuilderUnix;
 use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
 use base::MemoryMappingArena;
 use base::MemoryMappingBuilder;
-use base::MemoryMappingBuilderUnix;
 use base::MmapError;
 use base::SafeDescriptor;
 use thiserror::Error as ThisError;

@@ -9,9 +9,9 @@ use std::ops::Range;
 use std::os::unix::fs::FileExt;
 
 use base::error;
+use base::linux::MemoryMappingUnix;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
-use base::MemoryMappingUnix;
 use base::MmapError;
 use base::Protection;
 use base::PunchHole;

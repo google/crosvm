@@ -242,12 +242,12 @@ mod tests {
     use data_model::VolatileMemory;
     use libc::EINVAL;
 
+    use crate::linux::SharedMemoryLinux;
     use crate::AsRawDescriptor;
     use crate::Error;
     use crate::MemoryMappingBuilder;
     use crate::Result;
     use crate::SharedMemory;
-    use crate::SharedMemoryLinux;
 
     /// Reads the name from the underlying file as a `String`.
     ///

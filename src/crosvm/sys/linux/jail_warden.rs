@@ -16,11 +16,11 @@ use base::error;
 use base::info;
 use base::linux::process::fork_process;
 use base::linux::process::Child;
-use base::sys::Pid;
 use base::syslog;
 use base::AsRawDescriptor;
 #[cfg(feature = "swap")]
 use base::AsRawDescriptors;
+use base::Pid;
 use base::Tube;
 use devices::virtio::VirtioDeviceType;
 use devices::BusDevice;

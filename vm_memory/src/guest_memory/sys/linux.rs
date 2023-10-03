@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::MemfdSeals;
-use base::MemoryMappingUnix;
+use base::linux::MemfdSeals;
+use base::linux::MemoryMappingUnix;
+use base::linux::SharedMemoryLinux;
 use base::SharedMemory;
-use base::SharedMemoryLinux;
 use bitflags::bitflags;
 
 use crate::Error;

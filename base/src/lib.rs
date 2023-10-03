@@ -78,17 +78,6 @@ cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
         pub use sys::linux;
 
-        pub use linux::net;
-
-        // File related exports.
-        pub use platform::{FileFlags, get_max_open_files};
-
-        // memory/mmap related exports.
-        pub use platform::{
-            MemfdSeals, MemoryMappingBuilderUnix, Unix as MemoryMappingUnix,
-            SharedMemoryLinux,
-        };
-
         // descriptor/fd related exports.
         pub use platform::{
             add_fd_flags, clear_fd_flags, clone_descriptor, safe_descriptor_from_path,
@@ -166,6 +155,7 @@ pub use platform::FileSerdeWrapper;
 pub use platform::FramingMode;
 pub use platform::MemoryMappingArena;
 pub use platform::MmapError;
+pub use platform::Pid;
 pub use platform::RawDescriptor;
 pub use platform::SerializeDescriptors;
 pub use platform::StreamChannel;

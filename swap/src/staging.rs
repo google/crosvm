@@ -8,9 +8,9 @@ use std::ops::Range;
 use std::ptr::copy_nonoverlapping;
 
 use base::error;
+use base::linux::MemoryMappingUnix;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
-use base::MemoryMappingUnix;
 use base::MmapError;
 use base::SharedMemory;
 use data_model::VolatileMemory;

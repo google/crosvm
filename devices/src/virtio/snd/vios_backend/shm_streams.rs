@@ -24,12 +24,12 @@ use audio_streams::SampleFormat;
 use audio_streams::StreamDirection;
 use audio_streams::StreamEffect;
 use base::error;
+use base::linux::SharedMemoryLinux;
 use base::Error as SysError;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::RawDescriptor;
 use base::SharedMemory;
-use base::SharedMemoryLinux;
 use data_model::VolatileMemory;
 use sync::Mutex;
 

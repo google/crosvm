@@ -17,7 +17,7 @@ pub mod gdb;
 pub mod gpu;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
-use base::MemoryMappingBuilderUnix;
+use base::linux::MemoryMappingBuilderUnix;
 #[cfg(windows)]
 use base::MemoryMappingBuilderWindows;
 use hypervisor::BalloonEvent;

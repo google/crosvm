@@ -20,6 +20,7 @@ use std::sync::RwLock;
 use std::thread::JoinHandle;
 
 use base::error;
+use base::linux::SharedMemoryLinux;
 use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::Event;
@@ -29,7 +30,6 @@ use base::MemoryMappingBuilder;
 use base::Result as SysResult;
 use base::ScmSocket;
 use base::SharedMemory;
-use base::SharedMemoryLinux;
 use base::SIGRTMIN;
 use data_model::zerocopy_from_slice;
 use kvm::dirty_log_bitmap_size;

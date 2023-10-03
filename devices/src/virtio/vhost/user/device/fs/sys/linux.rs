@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Context;
-use base::get_max_open_files;
+use base::linux::get_max_open_files;
 use base::RawDescriptor;
 use cros_async::Executor;
 use minijail::Minijail;
