@@ -1888,7 +1888,7 @@ impl X8664arch {
                     let irq_num = resources.allocate_irq().ok_or(Error::CreateBatDevices(
                         arch::DeviceRegistrationError::AllocateIrq,
                     ))?;
-                    let (control_tube, _mmio_base) = arch::sys::unix::add_goldfish_battery(
+                    let (control_tube, _mmio_base) = arch::sys::linux::add_goldfish_battery(
                         &mut amls,
                         battery.1,
                         mmio_bus,

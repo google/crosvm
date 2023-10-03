@@ -30,9 +30,9 @@ use swap::SwapDeviceHelper;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 
-use crate::crosvm::sys::unix::JailWarden;
-use crate::crosvm::sys::unix::JailWardenImpl;
-use crate::crosvm::sys::unix::PermissiveJailWarden;
+use crate::crosvm::sys::linux::JailWarden;
+use crate::crosvm::sys::linux::JailWardenImpl;
+use crate::crosvm::sys::linux::PermissiveJailWarden;
 use crate::Config;
 
 pub type Result<T> = std::result::Result<T, Error>;

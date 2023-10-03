@@ -104,7 +104,7 @@ def copy_crate_src_to_module(source: str, destination: str):
         Path("lib.rs").rename("mod.rs")
 
 
-IMPORT = """pub mod unix;
+IMPORT = """pub mod linux;
 
 #[cfg(windows)]
 pub mod windows;

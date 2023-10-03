@@ -7,9 +7,9 @@ use std::sync::Arc;
 use base::AsRawDescriptor;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
-use crate::sys::unix::PollSource;
+use crate::sys::linux::PollSource;
 #[cfg(any(target_os = "android", target_os = "linux"))]
-use crate::sys::unix::UringSource;
+use crate::sys::linux::UringSource;
 #[cfg(windows)]
 use crate::sys::windows::HandleSource;
 #[cfg(windows)]
@@ -193,7 +193,7 @@ mod tests {
     use super::*;
     use crate::mem::VecIoWrapper;
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    use crate::sys::unix::uring_executor::is_uring_stable;
+    use crate::sys::linux::uring_executor::is_uring_stable;
     use crate::Executor;
     use crate::ExecutorKind;
     use crate::MemRegion;

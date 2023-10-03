@@ -327,7 +327,7 @@ pub mod tests {
     use std::result;
 
     use hypervisor::ProtectionType;
-    use net_util::sys::unix::fakes::FakeTap;
+    use net_util::sys::linux::fakes::FakeTap;
     use net_util::TapTCommon;
     use vhost::net::fakes::FakeNet;
     use vm_memory::GuestAddress;

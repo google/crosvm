@@ -38,7 +38,7 @@ mod tests {
     use super::super::uring_executor::UringReactor;
     use super::*;
     use crate::common_executor::RawExecutor;
-    use crate::sys::unix::uring_executor::is_uring_stable;
+    use crate::sys::linux::uring_executor::is_uring_stable;
 
     pub(crate) fn new_poll(
         event: Event,

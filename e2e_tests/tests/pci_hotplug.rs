@@ -12,11 +12,11 @@ use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
-use base::sys::unix::ioctl_with_val;
+use base::sys::linux::ioctl_with_val;
 use base::test_utils::call_test_with_sudo;
 use fixture::vm::Config;
 use fixture::vm::TestVm;
-use net_util::sys::unix::Tap;
+use net_util::sys::linux::Tap;
 use net_util::MacAddress;
 use net_util::TapTCommon;
 

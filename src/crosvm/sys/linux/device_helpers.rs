@@ -70,7 +70,7 @@ use hypervisor::Vm;
 use jail::*;
 use minijail::Minijail;
 #[cfg(feature = "net")]
-use net_util::sys::unix::Tap;
+use net_util::sys::linux::Tap;
 #[cfg(feature = "net")]
 use net_util::MacAddress;
 #[cfg(feature = "net")]

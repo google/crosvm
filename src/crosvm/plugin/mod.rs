@@ -77,7 +77,7 @@ use libc::F_SETPIPE_SZ;
 use libc::O_NONBLOCK;
 use libc::SIGCHLD;
 use libc::SOCK_SEQPACKET;
-use net_util::sys::unix::Tap;
+use net_util::sys::linux::Tap;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;

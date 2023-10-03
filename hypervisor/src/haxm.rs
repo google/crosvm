@@ -36,9 +36,9 @@ mod win;
 use win::*;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
-mod unix;
+mod linux;
 #[cfg(any(target_os = "android", target_os = "linux"))]
-use unix::*;
+use linux::*;
 
 static USE_GHAXM: AtomicBool = AtomicBool::new(true);
 

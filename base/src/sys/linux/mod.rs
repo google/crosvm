@@ -9,6 +9,7 @@ mod android;
 #[cfg(target_os = "android")]
 use android as target_os;
 #[cfg(target_os = "linux")]
+#[allow(clippy::module_inception)]
 mod linux;
 #[cfg(target_os = "linux")]
 use linux as target_os;

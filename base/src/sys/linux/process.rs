@@ -17,8 +17,8 @@ use log::warn;
 use minijail::Minijail;
 
 use crate::error;
-use crate::unix::wait_for_pid;
-use crate::unix::Pid;
+use crate::linux::wait_for_pid;
+use crate::linux::Pid;
 use crate::RawDescriptor;
 
 /// Child represents the forked process.

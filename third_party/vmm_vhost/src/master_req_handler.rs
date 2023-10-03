@@ -3,7 +3,7 @@
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        mod unix;
+        mod linux;
     } else if #[cfg(windows)] {
         mod windows;
     }

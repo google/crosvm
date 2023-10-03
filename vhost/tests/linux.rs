@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::result;
 
 use base::Event;
-use net_util::sys::unix::fakes::FakeTap;
+use net_util::sys::linux::fakes::FakeTap;
 use vhost::net::fakes::FakeNet;
 use vhost::net::NetT;
 use vhost::Error;

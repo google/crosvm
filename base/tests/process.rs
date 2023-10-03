@@ -8,7 +8,7 @@ mod test {
     use std::time::Duration;
 
     use base::getpid;
-    use base::unix::process::fork_process;
+    use base::linux::process::fork_process;
     use base::AsRawDescriptor;
     use base::Tube;
     use minijail::Minijail;

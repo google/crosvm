@@ -4,9 +4,9 @@
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        pub(crate) mod unix;
-        pub use unix::UnixGpuDisplayExt as SysGpuDisplayExt;
-        pub(crate) use unix::UnixDisplayT as SysDisplayT;
+        pub(crate) mod linux;
+        pub use linux::UnixGpuDisplayExt as SysGpuDisplayExt;
+        pub(crate) use linux::UnixDisplayT as SysDisplayT;
     } else if #[cfg(windows)] {
         pub(crate) mod windows;
         pub use windows::WinGpuDisplayExt as SysGpuDisplayExt;

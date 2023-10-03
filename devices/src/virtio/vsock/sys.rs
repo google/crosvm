@@ -4,8 +4,8 @@
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        mod unix;
-        use unix as platform;
+        mod linux;
+        use linux as platform;
         pub use crate::virtio::vhost::Vsock;
     } else if #[cfg(windows)] {
         mod windows;

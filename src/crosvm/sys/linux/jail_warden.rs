@@ -14,10 +14,10 @@ use anyhow::Context;
 use anyhow::Result;
 use base::error;
 use base::info;
+use base::linux::process::fork_process;
+use base::linux::process::Child;
 use base::sys::Pid;
 use base::syslog;
-use base::unix::process::fork_process;
-use base::unix::process::Child;
 use base::AsRawDescriptor;
 #[cfg(feature = "swap")]
 use base::AsRawDescriptors;
@@ -40,9 +40,9 @@ use swap::SwapDeviceHelper;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 
-use crate::crosvm::sys::unix::pci_hotplug_helpers::build_hotplug_net_device;
-use crate::crosvm::sys::unix::pci_hotplug_helpers::NetLocalParameters;
-use crate::crosvm::sys::unix::VirtioDeviceBuilder;
+use crate::crosvm::sys::linux::pci_hotplug_helpers::build_hotplug_net_device;
+use crate::crosvm::sys::linux::pci_hotplug_helpers::NetLocalParameters;
+use crate::crosvm::sys::linux::VirtioDeviceBuilder;
 use crate::Config;
 
 /// Control commands to jail warden process.

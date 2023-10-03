@@ -7,7 +7,7 @@
 use std::net;
 
 use base::test_utils::call_test_with_sudo;
-use net_util::sys::unix::Tap;
+use net_util::sys::linux::Tap;
 use net_util::MacAddress;
 use net_util::TapTCommon;
 

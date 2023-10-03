@@ -76,9 +76,9 @@ pub use write_zeroes::WriteZeroesAt;
 // namespaces instead of exposing them directly in base::.
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        pub use sys::unix;
+        pub use sys::linux;
 
-        pub use unix::net;
+        pub use linux::net;
 
         // File related exports.
         pub use platform::{FileFlags, get_max_open_files};

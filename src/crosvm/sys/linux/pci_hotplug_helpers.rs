@@ -16,7 +16,7 @@ use devices::VirtioPciDevice;
 use hypervisor::ProtectionType;
 use vm_memory::GuestMemory;
 
-use crate::crosvm::sys::unix::VirtioDeviceBuilder;
+use crate::crosvm::sys::linux::VirtioDeviceBuilder;
 
 /// Builds HotPlugPci from NetResourceCarrier and NetLocalParameters.
 pub fn build_hotplug_net_device(

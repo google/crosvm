@@ -112,7 +112,7 @@ cfg_if::cfg_if! {
         pub mod wl;
         pub mod fs;
 
-        pub use self::iommu::sys::unix::vfio_wrapper;
+        pub use self::iommu::sys::linux::vfio_wrapper;
         #[cfg(feature = "net")]
         pub use self::net::VhostNetParameters;
         #[cfg(feature = "net")]

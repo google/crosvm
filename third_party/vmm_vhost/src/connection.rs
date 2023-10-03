@@ -6,7 +6,7 @@
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
         pub mod socket;
-        mod unix;
+        mod linux;
     } else if #[cfg(windows)] {
         mod tube;
         pub use tube::TubeEndpoint;
@@ -449,7 +449,7 @@ pub(crate) mod tests {
     cfg_if::cfg_if! {
         if #[cfg(any(target_os = "android", target_os = "linux"))] {
             #[cfg(feature = "vmm")]
-            pub(crate) use super::unix::tests::*;
+            pub(crate) use super::linux::tests::*;
         } else if #[cfg(windows)] {
             #[cfg(feature = "vmm")]
             pub(crate) use windows::tests::*;

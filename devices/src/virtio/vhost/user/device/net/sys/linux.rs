@@ -23,7 +23,7 @@ use futures::channel::oneshot;
 use futures::select_biased;
 use futures::FutureExt;
 use hypervisor::ProtectionType;
-use net_util::sys::unix::Tap;
+use net_util::sys::linux::Tap;
 use net_util::MacAddress;
 use net_util::TapT;
 use virtio_sys::virtio_net;

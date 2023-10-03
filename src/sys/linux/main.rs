@@ -19,7 +19,7 @@ use devices::virtio::vhost::user::device::run_wl_device;
 
 use crate::crosvm::sys::cmdline::Commands;
 use crate::crosvm::sys::cmdline::DeviceSubcommand;
-use crate::crosvm::sys::unix::start_devices;
+use crate::crosvm::sys::linux::start_devices;
 use crate::CommandStatus;
 use crate::Config;
 

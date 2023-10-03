@@ -4,9 +4,9 @@
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        pub(crate) mod unix;
-        use unix as platform;
-        pub(crate) use crate::crosvm::sys::unix::{run_config, ExitState};
+        pub(crate) mod linux;
+        use linux as platform;
+        pub(crate) use crate::crosvm::sys::linux::{run_config, ExitState};
     } else if #[cfg(windows)] {
         pub(crate) mod windows;
         use windows as platform;

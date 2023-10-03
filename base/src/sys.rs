@@ -3,14 +3,14 @@
 // found in the LICENSE file.
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
-pub mod unix;
+pub mod linux;
 
 #[cfg(windows)]
 pub mod windows;
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        pub use unix as platform;
+        pub use linux as platform;
         pub use platform::*;
     } else if #[cfg(windows)] {
         pub use windows as platform;

@@ -507,7 +507,7 @@ impl Process {
     }
 
     fn handle_get_net_config(
-        tap: &net_util::sys::unix::Tap,
+        tap: &net_util::sys::linux::Tap,
         config: &mut main_response::GetNetConfig,
     ) -> SysResult<()> {
         // Log any NetError so that the cause can be found later, but extract and return the

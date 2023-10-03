@@ -18,7 +18,7 @@ use vmm_vhost::message::MasterReq;
 use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandler;
 
-use crate::virtio::vhost::user::device::handler::sys::unix::run_handler;
+use crate::virtio::vhost::user::device::handler::sys::linux::run_handler;
 use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;

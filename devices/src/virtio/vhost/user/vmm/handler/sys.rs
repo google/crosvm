@@ -4,9 +4,9 @@
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        mod unix;
-        pub(super) use self::unix::*;
-        use unix as platform;
+        mod linux;
+        pub(super) use self::linux::*;
+        use linux as platform;
     } else if #[cfg(windows)] {
         mod windows;
         pub(super) use self::windows::*;

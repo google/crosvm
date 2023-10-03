@@ -24,7 +24,8 @@ use once_cell::sync::Lazy;
 use rand::random;
 use tempfile::tempfile;
 
-static TAP_AVAILABLE: Lazy<bool> = Lazy::new(|| net_util::sys::unix::Tap::new(true, false).is_ok());
+static TAP_AVAILABLE: Lazy<bool> =
+    Lazy::new(|| net_util::sys::linux::Tap::new(true, false).is_ok());
 
 struct RemovePath(PathBuf);
 impl Drop for RemovePath {
