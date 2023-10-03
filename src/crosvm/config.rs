@@ -135,6 +135,14 @@ pub struct CpuOptions {
     pub core_types: Option<CpuCoreType>,
 }
 
+/// Device tree overlay configuration.
+#[derive(Debug, Default, Serialize, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct DtboOption {
+    /// Overlay file to apply to the base device tree.
+    pub path: PathBuf,
+}
+
 #[derive(Debug, Default, Deserialize, Serialize, FromKeyValues, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct MemOptions {
@@ -778,6 +786,7 @@ pub struct Config {
     #[cfg(feature = "crash-report")]
     pub crash_report_uuid: Option<String>,
     pub delay_rt: bool,
+    pub device_tree_overlay: Vec<DtboOption>,
     pub disable_virtio_intx: bool,
     pub disks: Vec<DiskOption>,
     pub display_window_keyboard: bool,
@@ -984,6 +993,7 @@ impl Default for Config {
             cpu_capacity: BTreeMap::new(),
             cpu_clusters: Vec::new(),
             delay_rt: false,
+            device_tree_overlay: Vec::new(),
             disks: Vec::new(),
             disable_virtio_intx: false,
             display_window_keyboard: false,
@@ -1860,6 +1870,32 @@ mod tests {
         assert_eq!(cfg.fw_cfg_parameters[0].name, "bar".to_string());
         assert_eq!(cfg.fw_cfg_parameters[0].string, Some("foo".to_string()));
         assert_eq!(cfg.fw_cfg_parameters[0].path, None);
+    }
+
+    #[test]
+    fn parse_dtbo() {
+        let cfg: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--device-tree-overlay",
+                "/path/to/dtbo1",
+                "--device-tree-overlay",
+                "/path/to/dtbo2",
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(cfg.device_tree_overlay.len(), 2);
+        for (opt, p) in cfg
+            .device_tree_overlay
+            .into_iter()
+            .zip(["/path/to/dtbo1", "/path/to/dtbo2"])
+        {
+            assert_eq!(opt.path, PathBuf::from(p));
+        }
     }
 
     #[test]

@@ -5,6 +5,7 @@
 //! Virtual machine architecture support code.
 
 pub mod android;
+pub mod fdt;
 pub mod pstore;
 pub mod serial;
 
@@ -56,6 +57,7 @@ use devices::ProxyDevice;
 use devices::SerialHardware;
 use devices::SerialParameters;
 use devices::VirtioMmioDevice;
+pub use fdt::DtbOverlay;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
 use hypervisor::IoEventAddress;
@@ -443,6 +445,7 @@ pub trait LinuxArch {
     /// * `debugcon_jail` - Jail used for debugcon devices created here.
     /// * `pflash_jail` - Jail used for pflash device created here.
     /// * `fw_cfg_jail` - Jail used for fw_cfg device created here.
+    /// * `device_tree_overlays` - Device tree overlay binaries
     fn build_vm<V, Vcpu>(
         components: VmComponents,
         vm_evt_wrtube: &SendTube,
@@ -463,6 +466,7 @@ pub trait LinuxArch {
         #[cfg(any(target_os = "android", target_os = "linux"))] guest_suspended_cvar: Option<
             Arc<(Mutex<bool>, Condvar)>,
         >,
+        device_tree_overlays: Vec<DtbOverlay>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmArch,

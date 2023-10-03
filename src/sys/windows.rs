@@ -41,6 +41,7 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use arch::CpuConfigArch;
+use arch::DtbOverlay;
 use arch::IrqChipArch;
 use arch::LinuxArch;
 use arch::RunnableLinuxVm;
@@ -2551,6 +2552,19 @@ where
 
     let mut vcpu_ids = Vec::new();
 
+    let dt_overlays = cfg
+        .device_tree_overlay
+        .iter()
+        .map(|o| {
+            Ok(DtbOverlay(
+                open_file_or_duplicate(o.path.as_path(), OpenOptions::new().read(true))
+                    .with_context(|| {
+                        format!("failed to open device tree overlay {}", o.path.display())
+                    })?,
+            ))
+        })
+        .collect::<Result<Vec<DtbOverlay>>>()?;
+
     let windows = Arch::build_vm::<V, Vcpu>(
         components,
         &vm_evt_wrtube,
@@ -2567,6 +2581,7 @@ where
         /*debugcon_jail=*/ None,
         None,
         None,
+        dt_overlays,
     )
     .exit_context(Exit::BuildVm, "the architecture failed to build the vm")?;
 

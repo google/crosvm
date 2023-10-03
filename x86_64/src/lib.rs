@@ -53,6 +53,7 @@ use acpi_tables::aml::Aml;
 use acpi_tables::sdt::SDT;
 use anyhow::Context;
 use arch::get_serial_cmdline;
+use arch::DtbOverlay;
 use arch::GetSerialCmdlineError;
 use arch::RunnableLinuxVm;
 use arch::VmComponents;
@@ -690,6 +691,7 @@ impl arch::LinuxArch for X8664arch {
         #[cfg(any(target_os = "android", target_os = "linux"))] guest_suspended_cvar: Option<
             Arc<(Mutex<bool>, Condvar)>,
         >,
+        _device_tree_overlays: Vec<DtbOverlay>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmX86_64,

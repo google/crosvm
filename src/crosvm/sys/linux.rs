@@ -53,6 +53,7 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
+use arch::DtbOverlay;
 use arch::IrqChipArch;
 use arch::LinuxArch;
 use arch::RunnableLinuxVm;
@@ -1924,6 +1925,19 @@ where
         None
     };
 
+    let dt_overlays = cfg
+        .device_tree_overlay
+        .iter()
+        .map(|o| {
+            Ok(DtbOverlay(
+                open_file_or_duplicate(o.path.as_path(), OpenOptions::new().read(true))
+                    .with_context(|| {
+                        format!("failed to open device tree overlay {}", o.path.display())
+                    })?,
+            ))
+        })
+        .collect::<Result<Vec<DtbOverlay>>>()?;
+
     let mut linux = Arch::build_vm::<V, Vcpu>(
         components,
         &vm_evt_wrtube,
@@ -1945,6 +1959,7 @@ where
         #[cfg(feature = "swap")]
         &mut swap_controller,
         guest_suspended_cvar.clone(),
+        dt_overlays,
     )
     .context("the architecture failed to build the vm")?;
 

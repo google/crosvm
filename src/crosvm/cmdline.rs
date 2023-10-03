@@ -86,6 +86,7 @@ use crate::crosvm::config::BatteryConfig;
 #[cfg(feature = "plugin")]
 use crate::crosvm::config::BindMount;
 use crate::crosvm::config::CpuOptions;
+use crate::crosvm::config::DtboOption;
 use crate::crosvm::config::Executable;
 use crate::crosvm::config::FileBackedMappingParameters;
 #[cfg(feature = "plugin")]
@@ -1116,6 +1117,12 @@ pub struct RunCommand {
     #[merge(strategy = overwrite_option)]
     /// don't set VCPUs real-time until make-rt command is run
     pub delay_rt: Option<bool>,
+
+    #[argh(option, arg_name = "PATH")]
+    #[serde(default)]
+    #[merge(strategy = append)]
+    /// path to device tree overlay binary which will be applied to the base guest device tree
+    pub device_tree_overlay: Vec<DtboOption>,
 
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
@@ -3206,6 +3213,8 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.vfio.extend(cmd.vfio_platform);
             cfg.vfio_isolate_hotplug = cmd.vfio_isolate_hotplug.unwrap_or_default();
         }
+
+        cfg.device_tree_overlay = cmd.device_tree_overlay;
 
         // `--disable-sandbox` has the effect of disabling sandboxing altogether, so make sure
         // to handle it after other sandboxing options since they implicitly enable it.
