@@ -57,7 +57,7 @@ use crate::virtio::Writer;
 // <https://docs.oasis-open.org/virtio/virtio/v1.2/csd01/virtio-v1.2-csd01.html#x1-3470004>
 
 // Should have one controlq, one eventq, and at least one request queue.
-const MINIMUM_NUM_QUEUES: u16 = 3;
+const MINIMUM_NUM_QUEUES: usize = 3;
 // Max channel should be 0.
 const DEFAULT_MAX_CHANNEL: u16 = 0;
 // Max target should be less than or equal to 255.
@@ -278,7 +278,7 @@ impl Device {
         Ok(Self {
             avail_features: base_features,
             disk_image: Some(disk_image),
-            queue_sizes: vec![DEFAULT_QUEUE_SIZE; MINIMUM_NUM_QUEUES as usize],
+            queue_sizes: vec![DEFAULT_QUEUE_SIZE; MINIMUM_NUM_QUEUES],
             seg_max: get_seg_max(DEFAULT_QUEUE_SIZE),
             sense_size: VIRTIO_SCSI_SENSE_DEFAULT_SIZE,
             cdb_size: VIRTIO_SCSI_CDB_DEFAULT_SIZE,
@@ -290,7 +290,9 @@ impl Device {
 
     fn build_config_space(&self) -> virtio_scsi_config {
         virtio_scsi_config {
-            num_queues: (self.queue_sizes.len() as u32),
+            // num_queues is the number of request queues only so we subtract 2 for the control
+            // queue and the event queue.
+            num_queues: self.queue_sizes.len() as u32 - 2,
             seg_max: self.seg_max,
             max_sectors: MAX_SECTORS,
             cmd_per_lun: MAX_CMD_PER_LUN,
