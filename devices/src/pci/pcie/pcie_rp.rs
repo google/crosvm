@@ -16,12 +16,10 @@ use crate::bus::HotPlugBus;
 use crate::bus::HotPlugKey;
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
-use crate::pci::pcie::pcie_device::PcieCap;
 use crate::pci::pcie::pcie_device::PcieDevice;
 use crate::pci::pcie::pcie_host::PcieHostPort;
 use crate::pci::pcie::pcie_port::PciePort;
 use crate::pci::pcie::*;
-use crate::pci::pm::PciPmCap;
 use crate::pci::MsiConfig;
 use crate::pci::PciAddress;
 use crate::pci::PciCapability;
@@ -45,7 +43,7 @@ impl PcieRootPort {
                 0,
                 secondary_bus_num,
                 slot_implemented,
-                true,
+                PcieDevicePortType::RootPort,
             ),
             downstream_devices: BTreeMap::new(),
             hotplug_out_begin: false,
@@ -56,8 +54,12 @@ impl PcieRootPort {
     /// Constructs a new PCIE root port which associated with the host physical pcie RP
     pub fn new_from_host(pcie_host: PcieHostPort, slot_implemented: bool) -> Result<Self> {
         Ok(PcieRootPort {
-            pcie_port: PciePort::new_from_host(pcie_host, slot_implemented, true)
-                .context("PciePort::new_from_host failed")?,
+            pcie_port: PciePort::new_from_host(
+                pcie_host,
+                slot_implemented,
+                PcieDevicePortType::RootPort,
+            )
+            .context("PciePort::new_from_host failed")?,
             downstream_devices: BTreeMap::new(),
             hotplug_out_begin: false,
             removed_downstream: Vec::new(),
@@ -90,14 +92,7 @@ impl PcieDevice for PcieRootPort {
     }
 
     fn get_caps(&self) -> Vec<Box<dyn PciCapability>> {
-        vec![
-            Box::new(PcieCap::new(
-                PcieDevicePortType::RootPort,
-                self.pcie_port.hotplug_implemented(),
-                0,
-            )),
-            Box::new(PciPmCap::new()),
-        ]
+        self.pcie_port.get_caps()
     }
 
     fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize) {

@@ -16,7 +16,7 @@ pub use pcie_switch::PcieDownstreamPort;
 pub use pcie_switch::PcieUpstreamPort;
 
 #[allow(dead_code)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum PcieDevicePortType {
     PcieEndpoint = 0,
     PcieLegacyEndpoint = 1,

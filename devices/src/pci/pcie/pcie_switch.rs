@@ -14,11 +14,9 @@ use crate::bus::HotPlugBus;
 use crate::bus::HotPlugKey;
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
-use crate::pci::pcie::pcie_device::PcieCap;
 use crate::pci::pcie::pcie_device::PcieDevice;
 use crate::pci::pcie::pcie_port::PciePort;
 use crate::pci::pcie::*;
-use crate::pci::pm::PciPmCap;
 use crate::pci::MsiConfig;
 use crate::pci::PciAddress;
 use crate::pci::PciCapability;
@@ -43,7 +41,7 @@ impl PcieUpstreamPort {
                 primary_bus_num,
                 secondary_bus_num,
                 false,
-                false,
+                PcieDevicePortType::UpstreamPort,
             ),
             hotplugged,
             downstream_devices: BTreeMap::new(),
@@ -54,7 +52,8 @@ impl PcieUpstreamPort {
         pcie_host: PcieHostPort,
         hotplugged: bool,
     ) -> std::result::Result<Self, PciDeviceError> {
-        let pcie_port = PciePort::new_from_host(pcie_host, false, false)?;
+        let pcie_port =
+            PciePort::new_from_host(pcie_host, false, PcieDevicePortType::UpstreamPort)?;
         Ok(PcieUpstreamPort {
             pcie_port,
             hotplugged,
@@ -96,10 +95,7 @@ impl PcieDevice for PcieUpstreamPort {
     }
 
     fn get_caps(&self) -> Vec<Box<dyn PciCapability>> {
-        vec![
-            Box::new(PcieCap::new(PcieDevicePortType::UpstreamPort, false, 0)),
-            Box::new(PciPmCap::new()),
-        ]
+        self.pcie_port.get_caps()
     }
 
     fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize) {
@@ -202,7 +198,7 @@ impl PcieDownstreamPort {
                 primary_bus_num,
                 secondary_bus_num,
                 false,
-                false,
+                PcieDevicePortType::DownstreamPort,
             ),
             hotplugged,
             downstream_devices: BTreeMap::new(),
@@ -215,7 +211,8 @@ impl PcieDownstreamPort {
         pcie_host: PcieHostPort,
         hotplugged: bool,
     ) -> std::result::Result<Self, PciDeviceError> {
-        let pcie_port = PciePort::new_from_host(pcie_host, true, false)?;
+        let pcie_port =
+            PciePort::new_from_host(pcie_host, true, PcieDevicePortType::DownstreamPort)?;
         Ok(PcieDownstreamPort {
             pcie_port,
             hotplugged,
@@ -259,10 +256,7 @@ impl PcieDevice for PcieDownstreamPort {
     }
 
     fn get_caps(&self) -> Vec<Box<dyn PciCapability>> {
-        vec![
-            Box::new(PcieCap::new(PcieDevicePortType::DownstreamPort, true, 0)),
-            Box::new(PciPmCap::new()),
-        ]
+        self.pcie_port.get_caps()
     }
 
     fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize) {

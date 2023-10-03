@@ -14,13 +14,16 @@ use zerocopy::FromBytes;
 
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
+use crate::pci::pcie::pcie_device::PcieCap;
 use crate::pci::pcie::pcie_host::PcieHostPort;
 use crate::pci::pcie::*;
 use crate::pci::pm::PciDevicePower;
+use crate::pci::pm::PciPmCap;
 use crate::pci::pm::PmConfig;
 use crate::pci::pm::PM_CAP_CONTROL_STATE_OFFSET;
 use crate::pci::MsiConfig;
 use crate::pci::PciAddress;
+use crate::pci::PciCapability;
 use crate::pci::PciDeviceError;
 
 // reserve 8MB memory window
@@ -110,7 +113,7 @@ pub struct PciePort {
     // For PcieRootPort, root_cap point to itself
     // For PcieDownstreamPort or PciDownstreamPort, root_cap point to PcieRootPort its behind.
     root_cap: Arc<Mutex<PcieRootCap>>,
-    is_root_port: bool,
+    port_type: PcieDevicePortType,
 
     prepare_hotplug: bool,
 }
@@ -123,7 +126,7 @@ impl PciePort {
         primary_bus_num: u8,
         secondary_bus_num: u8,
         slot_implemented: bool,
-        is_root_port: bool,
+        port_type: PcieDevicePortType,
     ) -> Self {
         let bus_range = PciBridgeBusRange {
             primary: primary_bus_num,
@@ -131,7 +134,7 @@ impl PciePort {
             subordinate: secondary_bus_num,
         };
 
-        let root_cap = if is_root_port {
+        let root_cap = if port_type == PcieDevicePortType::RootPort {
             let cap = Arc::new(Mutex::new(PcieRootCap::new(
                 secondary_bus_num,
                 secondary_bus_num,
@@ -152,11 +155,11 @@ impl PciePort {
             pcie_cap_reg_idx: None,
             pm_cap_reg_idx: None,
             msi_config: None,
-            pcie_config: PcieConfig::new(root_cap.clone(), slot_implemented, is_root_port),
+            pcie_config: PcieConfig::new(root_cap.clone(), slot_implemented, port_type),
             pm_config: PmConfig::new(),
 
             root_cap,
-            is_root_port,
+            port_type,
 
             prepare_hotplug: false,
         }
@@ -165,12 +168,12 @@ impl PciePort {
     pub fn new_from_host(
         pcie_host: PcieHostPort,
         slot_implemented: bool,
-        is_root_port: bool,
+        port_type: PcieDevicePortType,
     ) -> std::result::Result<Self, PciDeviceError> {
         let bus_range = pcie_host.get_bus_range();
         let host_address = PciAddress::from_str(&pcie_host.host_name())
             .map_err(|e| PciDeviceError::PciAddressParseFailure(pcie_host.host_name(), e))?;
-        let root_cap = if is_root_port {
+        let root_cap = if port_type == PcieDevicePortType::RootPort {
             let cap = Arc::new(Mutex::new(PcieRootCap::new(
                 bus_range.secondary,
                 bus_range.subordinate,
@@ -191,11 +194,11 @@ impl PciePort {
             pcie_cap_reg_idx: None,
             pm_cap_reg_idx: None,
             msi_config: None,
-            pcie_config: PcieConfig::new(root_cap.clone(), slot_implemented, is_root_port),
+            pcie_config: PcieConfig::new(root_cap.clone(), slot_implemented, port_type),
             pm_config: PmConfig::new(),
 
             root_cap,
-            is_root_port,
+            port_type,
 
             prepare_hotplug: false,
         })
@@ -296,6 +299,13 @@ impl PciePort {
         }
     }
 
+    pub fn get_caps(&self) -> Vec<Box<dyn PciCapability>> {
+        vec![
+            Box::new(PcieCap::new(self.port_type, self.hotplug_implemented(), 0)),
+            Box::new(PciPmCap::new()),
+        ]
+    }
+
     pub fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize) {
         match id {
             PciCapabilityID::PciExpress => self.pcie_cap_reg_idx = Some(reg_idx),
@@ -317,7 +327,7 @@ impl PciePort {
     }
 
     pub fn clone_interrupt(&mut self, msi_config: Arc<Mutex<MsiConfig>>) {
-        if self.is_root_port {
+        if self.port_type == PcieDevicePortType::RootPort {
             self.root_cap.lock().clone_interrupt(msi_config.clone());
         }
         self.pcie_config.msi_config = Some(msi_config.clone());
@@ -395,14 +405,18 @@ pub struct PcieConfig {
     // For PcieRootPort, root_cap point to itself
     // For PcieDownstreamPort or PciDownstreamPort, root_cap point to PcieRootPort its behind.
     root_cap: Arc<Mutex<PcieRootCap>>,
-    is_root_port: bool,
+    port_type: PcieDevicePortType,
 
     hp_interrupt_pending: bool,
     removed_downstream_valid: bool,
 }
 
 impl PcieConfig {
-    fn new(root_cap: Arc<Mutex<PcieRootCap>>, slot_implemented: bool, is_root_port: bool) -> Self {
+    fn new(
+        root_cap: Arc<Mutex<PcieRootCap>>,
+        slot_implemented: bool,
+        port_type: PcieDevicePortType,
+    ) -> Self {
         PcieConfig {
             msi_config: None,
 
@@ -414,7 +428,7 @@ impl PcieConfig {
             slot_status: 0,
 
             root_cap,
-            is_root_port,
+            port_type,
 
             hp_interrupt_pending: false,
             removed_downstream_valid: false,
@@ -425,14 +439,14 @@ impl PcieConfig {
         if offset == PCIE_SLTCTL_OFFSET {
             *data = ((self.slot_status as u32) << 16) | (self.get_slot_control() as u32);
         } else if offset == PCIE_ROOTCTL_OFFSET {
-            *data = match self.is_root_port {
-                true => self.root_cap.lock().control as u32,
-                false => 0,
+            *data = match self.port_type {
+                PcieDevicePortType::RootPort => self.root_cap.lock().control as u32,
+                _ => 0,
             };
         } else if offset == PCIE_ROOTSTA_OFFSET {
-            *data = match self.is_root_port {
-                true => self.root_cap.lock().status,
-                false => 0,
+            *data = match self.port_type {
+                PcieDevicePortType::RootPort => self.root_cap.lock().status,
+                _ => 0,
             };
         }
     }
@@ -510,7 +524,7 @@ impl PcieConfig {
             }
             PCIE_ROOTCTL_OFFSET => match u16::read_from(data) {
                 Some(v) => {
-                    if self.is_root_port {
+                    if self.port_type == PcieDevicePortType::RootPort {
                         self.root_cap.lock().control = v;
                     } else {
                         warn!("write root control register while device isn't root port");
@@ -520,7 +534,7 @@ impl PcieConfig {
             },
             PCIE_ROOTSTA_OFFSET => match u32::read_from(data) {
                 Some(v) => {
-                    if self.is_root_port {
+                    if self.port_type == PcieDevicePortType::RootPort {
                         if v & PCIE_ROOTSTA_PME_STATUS != 0 {
                             let mut r = self.root_cap.lock();
                             if let Some(requester_id) = r.pme_pending_requester_id {
