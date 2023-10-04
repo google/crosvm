@@ -36,7 +36,7 @@ impl VhostUserVirtioDevice {
             num_request_queues: Le32::from(1),
         };
 
-        VhostUserVirtioDevice::new(
+        VhostUserVirtioDevice::new_internal(
             connection,
             DeviceType::Fs,
             max_queue_size,

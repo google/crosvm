@@ -60,13 +60,36 @@ impl VhostUserVirtioDevice {
     ///
     /// # Arguments
     ///
+    /// - `device_type`: virtio device type
+    /// - `base_features`: base virtio device features (e.g. `VIRTIO_F_VERSION_1`)
+    /// - `connection`: connection to the device backend
+    /// - `max_queue_size`: maximum number of entries in each queue (default: [`Queue::MAX_SIZE`])
+    pub fn new(
+        device_type: DeviceType,
+        base_features: u64,
+        connection: Connection,
+        max_queue_size: Option<u16>,
+    ) -> Result<VhostUserVirtioDevice> {
+        VhostUserVirtioDevice::new_internal(
+            connection,
+            device_type,
+            max_queue_size,
+            base_features,
+            None, // cfg
+        )
+    }
+
+    /// Create a new VirtioDevice for a vhost-user device frontend.
+    ///
+    /// # Arguments
+    ///
     /// - `connection`: connection to the device backend
     /// - `device_type`: virtio device type
     /// - `max_queue_size`: maximum number of entries in each queue (default: [`Queue::MAX_SIZE`])
     /// - `base_features`: base virtio device features (e.g. `VIRTIO_F_VERSION_1`)
     /// - `cfg`: bytes to return for the virtio configuration space (queried from device if not
     ///   specified)
-    pub fn new(
+    pub(crate) fn new_internal(
         connection: Connection,
         device_type: DeviceType,
         max_queue_size: Option<u16>,

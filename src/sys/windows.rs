@@ -280,9 +280,9 @@ pub enum ExitState {
 type DeviceResult<T = VirtioDeviceStub> = Result<T>;
 
 fn create_vhost_user_block_device(cfg: &Config, disk_device_tube: Tube) -> DeviceResult {
-    let features = virtio::base_features(cfg.protection_type);
-    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new_block(
-        features,
+    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new(
+        virtio::DeviceType::Block,
+        virtio::base_features(cfg.protection_type),
         disk_device_tube,
         None,
     )
@@ -317,7 +317,8 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
 
 #[cfg(feature = "gpu")]
 fn create_vhost_user_gpu_device(base_features: u64, vhost_user_tube: Tube) -> DeviceResult {
-    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new_gpu(
+    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new(
+        virtio::DeviceType::Gpu,
         base_features,
         vhost_user_tube,
         None,
@@ -382,7 +383,8 @@ fn create_snd_device(
 
 #[cfg(feature = "audio")]
 fn create_vhost_user_snd_device(base_features: u64, vhost_user_tube: Tube) -> DeviceResult {
-    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new_snd(
+    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new(
+        virtio::DeviceType::Sound,
         base_features,
         vhost_user_tube,
         None,
@@ -435,12 +437,16 @@ fn create_mouse_device(cfg: &Config, event_pipe: StreamChannel, idx: u32) -> Dev
 #[cfg(feature = "slirp")]
 fn create_vhost_user_net_device(cfg: &Config, net_device_tube: Tube) -> DeviceResult {
     let features = virtio::base_features(cfg.protection_type);
-    let dev =
-        virtio::vhost::user::vmm::VhostUserVirtioDevice::new_net(features, net_device_tube, None)
-            .exit_context(
-            Exit::VhostUserNetDeviceNew,
-            "failed to set up vhost-user net device",
-        )?;
+    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new(
+        virtio::DeviceType::Net,
+        features,
+        net_device_tube,
+        None,
+    )
+    .exit_context(
+        Exit::VhostUserNetDeviceNew,
+        "failed to set up vhost-user net device",
+    )?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),

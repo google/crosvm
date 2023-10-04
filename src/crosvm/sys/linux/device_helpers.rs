@@ -330,7 +330,8 @@ pub fn create_vhost_user_block_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserVirtioDevice::new_block(
+    let dev = VhostUserVirtioDevice::new(
+        virtio::DeviceType::Block,
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
         opt.max_queue_size,
@@ -348,7 +349,8 @@ pub fn create_vhost_user_console_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserVirtioDevice::new_console(
+    let dev = VhostUserVirtioDevice::new(
+        virtio::DeviceType::Console,
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
         opt.max_queue_size,
@@ -385,7 +387,8 @@ pub fn create_vhost_user_mac80211_hwsim_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserVirtioDevice::new_mac80211_hwsim(
+    let dev = VhostUserVirtioDevice::new(
+        virtio::DeviceType::Mac80211HwSim,
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
         opt.max_queue_size,
@@ -403,7 +406,8 @@ pub fn create_vhost_user_snd_device(
     protection_type: ProtectionType,
     option: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserVirtioDevice::new_snd(
+    let dev = VhostUserVirtioDevice::new(
+        virtio::DeviceType::Sound,
         virtio::base_features(protection_type),
         vhost_user_connection(&option.socket)?,
         option.max_queue_size,
@@ -423,7 +427,8 @@ pub fn create_vhost_user_gpu_device(
 ) -> DeviceResult {
     // The crosvm gpu device expects us to connect the tube before it will accept a vhost-user
     // connection.
-    let dev = VhostUserVirtioDevice::new_gpu(
+    let dev = VhostUserVirtioDevice::new(
+        virtio::DeviceType::Gpu,
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
         opt.max_queue_size,
@@ -845,7 +850,8 @@ pub fn create_vhost_user_net_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserVirtioDevice::new_net(
+    let dev = VhostUserVirtioDevice::new(
+        virtio::DeviceType::Net,
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
         opt.max_queue_size,
@@ -863,7 +869,8 @@ pub fn create_vhost_user_vsock_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserVirtioDevice::new_vsock(
+    let dev = VhostUserVirtioDevice::new(
+        virtio::DeviceType::Vsock,
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
         opt.max_queue_size,
@@ -883,7 +890,8 @@ pub fn create_vhost_user_wl_device(
 ) -> DeviceResult {
     // The crosvm wl device expects us to connect the tube before it will accept a vhost-user
     // connection.
-    let dev = VhostUserVirtioDevice::new_wl(
+    let dev = VhostUserVirtioDevice::new(
+        virtio::DeviceType::Wl,
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
         opt.max_queue_size,
@@ -1036,11 +1044,14 @@ pub fn create_vhost_user_video_device(
     opt: &VhostUserOption,
     device_type: VideoDeviceType,
 ) -> DeviceResult {
-    let dev = VhostUserVirtioDevice::new_video(
+    let dev = VhostUserVirtioDevice::new(
+        match device_type {
+            VideoDeviceType::Decoder => virtio::DeviceType::VideoDec,
+            VideoDeviceType::Encoder => virtio::DeviceType::VideoEnc,
+        },
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
         opt.max_queue_size,
-        device_type,
     )
     .context("failed to set up vhost-user video device")?;
 
