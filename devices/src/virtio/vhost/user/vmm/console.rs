@@ -19,8 +19,6 @@ impl VhostUserVirtioDevice {
         // transmitq)
         let default_queues = 2;
 
-        let allow_features = 0;
-
         let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
 
         VhostUserVirtioDevice::new(
@@ -28,7 +26,6 @@ impl VhostUserVirtioDevice {
             DeviceType::Console,
             default_queues,
             max_queue_size,
-            allow_features,
             allow_protocol_features,
             base_features,
             None,

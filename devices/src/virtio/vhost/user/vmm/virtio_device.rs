@@ -22,6 +22,7 @@ use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::pci::MsixConfig;
 use crate::virtio::copy_config;
+use crate::virtio::device_constants::VIRTIO_DEVICE_TYPE_SPECIFIC_FEATURES_MASK;
 use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserHandler;
@@ -63,7 +64,6 @@ impl VhostUserVirtioDevice {
     /// - `device_type`: virtio device type
     /// - `default_queues`: number of queues if the backend does not support the MQ feature
     /// - `max_queue_size`: maximum number of entries in each queue (default: [`Queue::MAX_SIZE`])
-    /// - `allow_features`: allowed virtio device features
     /// - `allow_protocol_features`: allowed vhost-user protocol features
     /// - `base_features`: base virtio device features (e.g. `VIRTIO_F_VERSION_1`)
     /// - `cfg`: bytes to return for the virtio configuration space (queried from device if not
@@ -73,13 +73,14 @@ impl VhostUserVirtioDevice {
         device_type: DeviceType,
         default_queues: usize,
         max_queue_size: Option<u16>,
-        allow_features: u64,
         allow_protocol_features: VhostUserProtocolFeatures,
         base_features: u64,
         cfg: Option<&[u8]>,
         expose_shmem_descriptors_with_viommu: bool,
     ) -> Result<VhostUserVirtioDevice> {
-        let allow_features = allow_features | base_features | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
+        let allow_features = VIRTIO_DEVICE_TYPE_SPECIFIC_FEATURES_MASK
+            | base_features
+            | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
 
         let handler = VhostUserHandler::new(connection, allow_features, allow_protocol_features)?;
 

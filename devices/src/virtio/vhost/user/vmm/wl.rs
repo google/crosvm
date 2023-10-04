@@ -5,9 +5,6 @@
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
 use crate::virtio::device_constants::wl::NUM_QUEUES;
-use crate::virtio::device_constants::wl::VIRTIO_WL_F_SEND_FENCES;
-use crate::virtio::device_constants::wl::VIRTIO_WL_F_TRANS_FLAGS;
-use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
 use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
@@ -21,10 +18,6 @@ impl VhostUserVirtioDevice {
     ) -> Result<VhostUserVirtioDevice> {
         let default_queues = NUM_QUEUES;
 
-        let allow_features = 1 << VIRTIO_WL_F_TRANS_FLAGS
-            | 1 << VIRTIO_WL_F_SEND_FENCES
-            | 1 << VIRTIO_WL_F_USE_SHMEM;
-
         let allow_protocol_features = VhostUserProtocolFeatures::MQ
             | VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::SLAVE_REQ
@@ -35,7 +28,6 @@ impl VhostUserVirtioDevice {
             DeviceType::Wl,
             default_queues,
             max_queue_size,
-            allow_features,
             allow_protocol_features,
             base_features,
             None,

@@ -40,8 +40,6 @@ impl VhostUserVirtioDevice {
             num_request_queues: Le32::from(default_queues as u32 - 1),
         };
 
-        let allow_features = 0;
-
         let allow_protocol_features =
             VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
 
@@ -50,7 +48,6 @@ impl VhostUserVirtioDevice {
             DeviceType::Fs,
             default_queues,
             max_queue_size,
-            allow_features,
             allow_protocol_features,
             base_features,
             Some(cfg.as_bytes()),

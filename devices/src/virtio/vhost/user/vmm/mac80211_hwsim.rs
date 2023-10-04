@@ -19,8 +19,6 @@ impl VhostUserVirtioDevice {
     ) -> Result<VhostUserVirtioDevice> {
         let default_queues = QUEUE_COUNT;
 
-        let allow_features = 0;
-
         let allow_protocol_features = VhostUserProtocolFeatures::empty();
 
         VhostUserVirtioDevice::new(
@@ -28,7 +26,6 @@ impl VhostUserVirtioDevice {
             DeviceType::Mac80211HwSim,
             default_queues,
             max_queue_size,
-            allow_features,
             allow_protocol_features,
             base_features,
             None,

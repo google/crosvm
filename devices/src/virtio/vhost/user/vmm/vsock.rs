@@ -18,8 +18,6 @@ impl VhostUserVirtioDevice {
     ) -> Result<VhostUserVirtioDevice> {
         let default_queues = NUM_QUEUES;
 
-        let allow_features = 0;
-
         let allow_protocol_features =
             VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
 
@@ -28,7 +26,6 @@ impl VhostUserVirtioDevice {
             DeviceType::Vsock,
             default_queues,
             max_queue_size,
-            allow_features,
             allow_protocol_features,
             base_features,
             None,

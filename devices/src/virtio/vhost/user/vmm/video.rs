@@ -4,7 +4,6 @@
 
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
-use crate::virtio::device_constants::video::all_backend_virtio_features;
 use crate::virtio::device_constants::video::VideoDeviceType;
 use crate::virtio::device_constants::video::NUM_QUEUES;
 use crate::virtio::vhost::user::vmm::Connection;
@@ -21,8 +20,6 @@ impl VhostUserVirtioDevice {
     ) -> Result<VhostUserVirtioDevice> {
         let default_queues = NUM_QUEUES;
 
-        let allow_features = all_backend_virtio_features();
-
         let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
 
         VhostUserVirtioDevice::new(
@@ -33,7 +30,6 @@ impl VhostUserVirtioDevice {
             },
             default_queues,
             max_queue_size,
-            allow_features,
             allow_protocol_features,
             base_features,
             None,
