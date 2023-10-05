@@ -802,7 +802,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     wait_ctx: &WaitContext<Token>,
     force_s2idle: bool,
     vcpu_control_channels: &[mpsc::Sender<VcpuControl>],
-) -> Result<(bool, Option<ExitState>)> {
+) -> Result<Option<ExitState>> {
     let execute_vm_request = |request: VmRequest, guest_os: &mut RunnableLinuxVm<V, Vcpu>| {
         let mut run_mode_opt = None;
         let vcpu_size = vcpu_boxes.lock().len();
@@ -877,7 +877,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         Some(ExitState::WatchdogReset)
                     }
                 };
-                return Ok((exit_state.is_some(), exit_state));
+                return Ok(exit_state);
             }
             Err(e) => {
                 warn!("failed to recv VmEvent: {}", e);
@@ -885,7 +885,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         },
         Token::BrokerShutdown => {
             info!("main loop got broker shutdown event");
-            return Ok((true, None));
+            return Ok(Some(ExitState::Stop));
         }
         Token::VmControlServer => {
             let server =
@@ -971,9 +971,10 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     error!("failed to send VmResponse: {}", e);
                                 }
                             }
-                            if handle_run_mode_change_for_vm_request(&run_mode_opt, guest_os) {
-                                // True -> exit the VM immediately.
-                                return Ok((true, Some(ExitState::Stop)));
+                            if let Some(exit_state) =
+                                handle_run_mode_change_for_vm_request(&run_mode_opt, guest_os)
+                            {
+                                return Ok(Some(exit_state));
                             }
                         }
                         Err(e) => {
@@ -1025,27 +1026,29 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 virtio_snd_host_mute_tube,
                 execute_vm_request,
             );
-            if handle_run_mode_change_for_vm_request(&run_mode_opt, guest_os) {
-                return Ok((true, None));
+            if let Some(exit_state) = handle_run_mode_change_for_vm_request(&run_mode_opt, guest_os)
+            {
+                return Ok(Some(exit_state));
             }
         }
     };
-    Ok((false, None))
+    Ok(None)
 }
 
 /// Handles a run mode change (if one occurred) if one is pending as a
 /// result a VmRequest. The parameter, run_mode_opt, is the run mode change
 /// proposed by the VmRequest's execution.
 ///
-/// Returns whether the VM should stop (true), or continue running (false).
+/// Returns the exit state, if it changed due to a run mode change.
+/// None otherwise.
 fn handle_run_mode_change_for_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     run_mode_opt: &Option<VmRunMode>,
     guest_os: &mut RunnableLinuxVm<V, Vcpu>,
-) -> bool {
+) -> Option<ExitState> {
     if let Some(run_mode) = run_mode_opt {
         info!("control socket changed run mode to {}", run_mode);
         match run_mode {
-            VmRunMode::Exiting => return true,
+            VmRunMode::Exiting => return Some(ExitState::Stop),
             other => {
                 if other == &VmRunMode::Running {
                     for dev in &guest_os.resume_notify_devices {
@@ -1055,7 +1058,8 @@ fn handle_run_mode_change_for_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + '
             }
         }
     }
-    false
+    // No exit state change.
+    None
 }
 
 /// Commands to control the VM Memory handler thread.
@@ -1428,7 +1432,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
         let mut vm_control_ids_to_remove = Vec::new();
         for event in events.iter().filter(|e| e.is_readable) {
-            let (break_poll, state) = handle_readable_event(
+            let state = handle_readable_event(
                 event,
                 &mut vm_control_ids_to_remove,
                 &mut next_control_id,
@@ -1458,8 +1462,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             )?;
             if let Some(state) = state {
                 exit_state = state;
-            }
-            if break_poll {
                 break 'poll;
             }
         }
