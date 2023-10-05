@@ -4,7 +4,6 @@
 
 use data_model::Le32;
 use virtio_sys::virtio_fs::virtio_fs_config;
-use vmm_vhost::message::VhostUserProtocolFeatures;
 use zerocopy::AsBytes;
 
 use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
@@ -40,18 +39,13 @@ impl VhostUserVirtioDevice {
             num_request_queues: Le32::from(default_queues as u32 - 1),
         };
 
-        let allow_protocol_features =
-            VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
-
         VhostUserVirtioDevice::new(
             connection,
             DeviceType::Fs,
             default_queues,
             max_queue_size,
-            allow_protocol_features,
             base_features,
             Some(cfg.as_bytes()),
-            false,
         )
     }
 }

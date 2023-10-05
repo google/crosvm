@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use vmm_vhost::message::VhostUserProtocolFeatures;
-
 use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
@@ -19,17 +17,13 @@ impl VhostUserVirtioDevice {
     ) -> Result<VhostUserVirtioDevice> {
         let default_queues = QUEUE_COUNT;
 
-        let allow_protocol_features = VhostUserProtocolFeatures::empty();
-
         VhostUserVirtioDevice::new(
             connection,
             DeviceType::Mac80211HwSim,
             default_queues,
             max_queue_size,
-            allow_protocol_features,
             base_features,
             None,
-            false,
         )
     }
 }

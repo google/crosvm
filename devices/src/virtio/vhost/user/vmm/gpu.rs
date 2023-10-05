@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use vmm_vhost::message::VhostUserProtocolFeatures;
-
 use crate::virtio::device_constants::gpu;
 use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Result;
@@ -18,19 +16,13 @@ impl VhostUserVirtioDevice {
     ) -> Result<VhostUserVirtioDevice> {
         let default_queues = gpu::NUM_QUEUES;
 
-        let allow_protocol_features = VhostUserProtocolFeatures::CONFIG
-            | VhostUserProtocolFeatures::SLAVE_REQ
-            | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS;
-
         VhostUserVirtioDevice::new(
             connection,
             DeviceType::Gpu,
             default_queues,
             max_queue_size,
-            allow_protocol_features,
             base_features,
             None,
-            true,
         )
     }
 }

@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use vmm_vhost::message::VhostUserProtocolFeatures;
-
 use crate::virtio::device_constants::video::VideoDeviceType;
 use crate::virtio::device_constants::video::NUM_QUEUES;
 use crate::virtio::vhost::user::vmm::Connection;
@@ -20,8 +18,6 @@ impl VhostUserVirtioDevice {
     ) -> Result<VhostUserVirtioDevice> {
         let default_queues = NUM_QUEUES;
 
-        let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
-
         VhostUserVirtioDevice::new(
             connection,
             match device_type {
@@ -30,10 +26,8 @@ impl VhostUserVirtioDevice {
             },
             default_queues,
             max_queue_size,
-            allow_protocol_features,
             base_features,
             None,
-            false,
         )
     }
 }

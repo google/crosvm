@@ -64,7 +64,6 @@ impl VhostUserVirtioDevice {
     /// - `device_type`: virtio device type
     /// - `default_queues`: number of queues if the backend does not support the MQ feature
     /// - `max_queue_size`: maximum number of entries in each queue (default: [`Queue::MAX_SIZE`])
-    /// - `allow_protocol_features`: allowed vhost-user protocol features
     /// - `base_features`: base virtio device features (e.g. `VIRTIO_F_VERSION_1`)
     /// - `cfg`: bytes to return for the virtio configuration space (queried from device if not
     ///   specified)
@@ -73,14 +72,26 @@ impl VhostUserVirtioDevice {
         device_type: DeviceType,
         default_queues: usize,
         max_queue_size: Option<u16>,
-        allow_protocol_features: VhostUserProtocolFeatures,
         base_features: u64,
         cfg: Option<&[u8]>,
-        expose_shmem_descriptors_with_viommu: bool,
     ) -> Result<VhostUserVirtioDevice> {
         let allow_features = VIRTIO_DEVICE_TYPE_SPECIFIC_FEATURES_MASK
             | base_features
             | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
+
+        let mut allow_protocol_features = VhostUserProtocolFeatures::CONFIG
+            | VhostUserProtocolFeatures::MQ
+            | VhostUserProtocolFeatures::SLAVE_REQ;
+
+        // HACK: the crosvm vhost-user GPU backend supports the non-standard
+        // VHOST_USER_PROTOCOL_FEATURE_SHARED_MEMORY_REGIONS. This should either be standardized
+        // (and enabled for all device types) or removed.
+        let expose_shmem_descriptors_with_viommu = if device_type == DeviceType::Gpu {
+            allow_protocol_features |= VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS;
+            true
+        } else {
+            false
+        };
 
         let handler = VhostUserHandler::new(connection, allow_features, allow_protocol_features)?;
 
