@@ -62,7 +62,6 @@ impl VhostUserVirtioDevice {
     ///
     /// - `connection`: connection to the device backend
     /// - `device_type`: virtio device type
-    /// - `default_queues`: number of queues if the backend does not support the MQ feature
     /// - `max_queue_size`: maximum number of entries in each queue (default: [`Queue::MAX_SIZE`])
     /// - `base_features`: base virtio device features (e.g. `VIRTIO_F_VERSION_1`)
     /// - `cfg`: bytes to return for the virtio configuration space (queried from device if not
@@ -70,7 +69,6 @@ impl VhostUserVirtioDevice {
     pub fn new(
         connection: Connection,
         device_type: DeviceType,
-        default_queues: usize,
         max_queue_size: Option<u16>,
         base_features: u64,
         cfg: Option<&[u8]>,
@@ -96,9 +94,11 @@ impl VhostUserVirtioDevice {
         let handler = VhostUserHandler::new(connection, allow_features, allow_protocol_features)?;
 
         // If the device supports VHOST_USER_PROTOCOL_F_MQ, use VHOST_USER_GET_QUEUE_NUM to
-        // determine the number of queues supported. Otherwise, use the `default_queues` value
-        // provided by the frontend.
-        let num_queues = handler.num_queues()?.unwrap_or(default_queues);
+        // determine the number of queues supported. Otherwise, use the minimum number of queues
+        // required by the spec for this device type.
+        let num_queues = handler
+            .num_queues()?
+            .unwrap_or_else(|| device_type.min_queues());
 
         // Clamp the maximum queue size to the largest power of 2 <= max_queue_size.
         let max_queue_size = max_queue_size

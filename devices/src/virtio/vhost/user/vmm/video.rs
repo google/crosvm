@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use crate::virtio::device_constants::video::VideoDeviceType;
-use crate::virtio::device_constants::video::NUM_QUEUES;
 use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
@@ -16,15 +15,12 @@ impl VhostUserVirtioDevice {
         max_queue_size: Option<u16>,
         device_type: VideoDeviceType,
     ) -> Result<VhostUserVirtioDevice> {
-        let default_queues = NUM_QUEUES;
-
         VhostUserVirtioDevice::new(
             connection,
             match device_type {
                 VideoDeviceType::Decoder => DeviceType::VideoDec,
                 VideoDeviceType::Encoder => DeviceType::VideoEnc,
             },
-            default_queues,
             max_queue_size,
             base_features,
             None,

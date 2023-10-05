@@ -174,6 +174,38 @@ pub enum DeviceType {
     Pvclock = virtio_ids::VIRTIO_ID_PVCLOCK,
 }
 
+impl DeviceType {
+    /// Returns the minimum number of queues that a device of the corresponding type must support.
+    ///
+    /// Note that this does not mean a driver must activate these queues, only that they must be
+    /// implemented by a spec-compliant device.
+    pub fn min_queues(&self) -> usize {
+        match self {
+            DeviceType::Net => 2,           // rx, tx
+            DeviceType::Block => 1,         // request queue
+            DeviceType::Console => 2,       // receiveq, transmitq
+            DeviceType::Rng => 1,           // request queue
+            DeviceType::Balloon => 2,       // inflateq, deflateq
+            DeviceType::Scsi => 3,          // controlq, eventq, request queue
+            DeviceType::P9 => 1,            // request queue
+            DeviceType::Gpu => 2,           // controlq, cursorq
+            DeviceType::Input => 2,         // eventq, statusq
+            DeviceType::Vsock => 3,         // rx, tx, event
+            DeviceType::Iommu => 2,         // requestq, eventq
+            DeviceType::Sound => 4,         // controlq, eventq, txq, rxq
+            DeviceType::Fs => 2,            // hiprio, request queue
+            DeviceType::Pmem => 1,          // request queue
+            DeviceType::Mac80211HwSim => 2, // tx, rx
+            DeviceType::VideoEnc => 2,      // cmdq, eventq
+            DeviceType::VideoDec => 2,      // cmdq, eventq
+            DeviceType::Scmi => 2,          // cmdq, eventq
+            DeviceType::Wl => 2,            // in, out
+            DeviceType::Tpm => 1,           // request queue
+            DeviceType::Pvclock => 1,       // request queue
+        }
+    }
+}
+
 /// Prints a string representation of the given virtio device type.
 impl std::fmt::Display for DeviceType {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

@@ -27,22 +27,18 @@ impl VhostUserVirtioDevice {
             });
         }
 
-        // The spec requires a minimum of 2 queues: one worker queue and one high priority queue
-        let default_queues = 2;
-
         let mut cfg_tag = [0u8; FS_MAX_TAG_LEN];
         cfg_tag[..tag.len()].copy_from_slice(tag.as_bytes());
 
         let cfg = virtio_fs_config {
             tag: cfg_tag,
-            // Only count the worker queues, exclude the high prio queue
-            num_request_queues: Le32::from(default_queues as u32 - 1),
+            // Only count the request queue, exclude the high prio queue
+            num_request_queues: Le32::from(1),
         };
 
         VhostUserVirtioDevice::new(
             connection,
             DeviceType::Fs,
-            default_queues,
             max_queue_size,
             base_features,
             Some(cfg.as_bytes()),

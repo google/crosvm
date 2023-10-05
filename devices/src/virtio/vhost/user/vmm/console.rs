@@ -13,14 +13,9 @@ impl VhostUserVirtioDevice {
         connection: Connection,
         max_queue_size: Option<u16>,
     ) -> Result<VhostUserVirtioDevice> {
-        // VIRTIO_CONSOLE_F_MULTIPORT is not supported, so we just implement port 0 (receiveq,
-        // transmitq)
-        let default_queues = 2;
-
         VhostUserVirtioDevice::new(
             connection,
             DeviceType::Console,
-            default_queues,
             max_queue_size,
             base_features,
             None,

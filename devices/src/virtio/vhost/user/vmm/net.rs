@@ -13,13 +13,9 @@ impl VhostUserVirtioDevice {
         connection: Connection,
         max_queue_size: Option<u16>,
     ) -> Result<VhostUserVirtioDevice> {
-        // 3 = rx, tx, ctrl
-        let default_queues = 3;
-
         VhostUserVirtioDevice::new(
             connection,
             DeviceType::Net,
-            default_queues,
             max_queue_size,
             base_features,
             None,
