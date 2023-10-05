@@ -1493,10 +1493,10 @@ pub struct RunCommand {
     /// enable the Memory Tagging Extension in the guest
     pub mte: Option<bool>,
 
-    #[argh(option, arg_name = "PATH:WIDTH:HEIGHT")]
+    #[argh(option, arg_name = "PATH:WIDTH:HEIGHT:NAME")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
-    /// path to a socket from where to read multi touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280)
+    /// path to a socket from where to read multi touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280) and a name for the input device
     pub multi_touch: Vec<TouchDeviceOption>,
 
     #[cfg(all(unix, feature = "net"))]
@@ -1996,10 +1996,10 @@ pub struct RunCommand {
     ///     and give CAP_SETUID/CAP_SETGID to the crosvm.
     pub shared_dir: Vec<SharedDir>,
 
-    #[argh(option, arg_name = "PATH:WIDTH:HEIGHT")]
+    #[argh(option, arg_name = "PATH:WIDTH:HEIGHT:NAME")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
-    /// path to a socket from where to read single touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280)
+    /// path to a socket from where to read single touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280) and a name for the input device
     pub single_touch: Vec<TouchDeviceOption>,
 
     #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
@@ -2119,10 +2119,10 @@ pub struct RunCommand {
     /// comma-separated names of the task profiles to apply to all threads in crosvm including the vCPU threads
     pub task_profiles: Vec<String>,
 
-    #[argh(option, arg_name = "PATH:WIDTH:HEIGHT")]
+    #[argh(option, arg_name = "PATH:WIDTH:HEIGHT:NAME")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
-    /// path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280)
+    /// path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280) and a name for the input device
     pub trackpad: Vec<TouchDeviceOption>,
 
     #[cfg(unix)]

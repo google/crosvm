@@ -674,6 +674,7 @@ pub fn new_single_touch<T>(
     source: T,
     width: u32,
     height: u32,
+    name: Option<&str>,
     virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
@@ -681,7 +682,7 @@ where
 {
     Ok(Input {
         worker_thread: None,
-        config: defaults::new_single_touch_config(idx, width, height),
+        config: defaults::new_single_touch_config(idx, width, height, name),
         source: Some(SocketEventSource::new(source)),
         virtio_features,
     })
@@ -693,6 +694,7 @@ pub fn new_multi_touch<T>(
     source: T,
     width: u32,
     height: u32,
+    name: Option<&str>,
     virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
@@ -700,7 +702,7 @@ where
 {
     Ok(Input {
         worker_thread: None,
-        config: defaults::new_multi_touch_config(idx, width, height),
+        config: defaults::new_multi_touch_config(idx, width, height, name),
         source: Some(SocketEventSource::new(source)),
         virtio_features,
     })
@@ -713,6 +715,7 @@ pub fn new_trackpad<T>(
     source: T,
     width: u32,
     height: u32,
+    name: Option<&str>,
     virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
@@ -720,7 +723,7 @@ where
 {
     Ok(Input {
         worker_thread: None,
-        config: defaults::new_trackpad_config(idx, width, height),
+        config: defaults::new_trackpad_config(idx, width, height, name),
         source: Some(SocketEventSource::new(source)),
         virtio_features,
     })

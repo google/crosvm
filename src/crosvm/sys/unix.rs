@@ -284,12 +284,14 @@ fn create_virtio_devices(
                 let (event_device_socket, virtio_dev_socket) =
                     StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
                         .context("failed to create socket")?;
-                let (multi_touch_width, multi_touch_height) = cfg
-                    .virtio_multi_touch
-                    .first()
+                let multi_touch_spec = cfg.virtio_multi_touch.first();
+                let (multi_touch_width, multi_touch_height) = multi_touch_spec
                     .as_ref()
                     .map(|multi_touch_spec| multi_touch_spec.get_size())
                     .unwrap_or((gpu_display_w, gpu_display_h));
+                let multi_touch_name = multi_touch_spec
+                    .as_ref()
+                    .and_then(|multi_touch_spec| multi_touch_spec.get_name());
                 let dev = virtio::input::new_multi_touch(
                     // u32::MAX is the least likely to collide with the indices generated above for
                     // the multi_touch options, which begin at 0.
@@ -297,6 +299,7 @@ fn create_virtio_devices(
                     virtio_dev_socket,
                     multi_touch_width,
                     multi_touch_height,
+                    multi_touch_name,
                     virtio::base_features(cfg.protection_type),
                 )
                 .context("failed to set up mouse device")?;

@@ -393,11 +393,13 @@ fn create_multi_touch_device(
     idx: u32,
 ) -> DeviceResult {
     let (width, height) = multi_touch_spec.get_size();
+    let name = multi_touch_spec.get_name();
     let dev = virtio::input::new_multi_touch(
         idx,
         event_pipe,
         width,
         height,
+        name,
         virtio::base_features(cfg.protection_type),
     )
     .exit_context(Exit::InputDeviceNew, "failed to set up input device")?;

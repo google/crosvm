@@ -319,6 +319,7 @@ pub struct TouchDeviceOption {
     path: PathBuf,
     width: Option<u32>,
     height: Option<u32>,
+    name: Option<String>,
     default_width: u32,
     default_height: u32,
 }
@@ -329,6 +330,7 @@ impl TouchDeviceOption {
             path,
             width: None,
             height: None,
+            name: None,
             default_width: DEFAULT_TOUCH_DEVICE_WIDTH,
             default_height: DEFAULT_TOUCH_DEVICE_HEIGHT,
         }
@@ -367,6 +369,16 @@ impl TouchDeviceOption {
             self.height.unwrap_or(self.default_height),
         )
     }
+
+    /// Setter for the input device's name specified by the user.
+    pub fn set_name(&mut self, name: String) {
+        self.name.replace(name);
+    }
+
+    /// Getter for the input device's name
+    pub fn get_name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
 }
 
 impl FromStr for TouchDeviceOption {
@@ -380,6 +392,9 @@ impl FromStr for TouchDeviceOption {
         }
         if let Some(height) = it.next() {
             touch_spec.set_height(height.trim().parse().unwrap());
+        }
+        if let Some(name) = it.next() {
+            touch_spec.set_name(name.trim().to_string());
         }
         Ok(touch_spec)
     }
