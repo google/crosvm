@@ -56,6 +56,7 @@ use devices::ProxyDevice;
 use devices::SerialHardware;
 use devices::SerialParameters;
 use devices::VirtioMmioDevice;
+pub use fdt::apply_device_tree_overlays;
 pub use fdt::DtbOverlay;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;

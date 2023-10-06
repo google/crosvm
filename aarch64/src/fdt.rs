@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::PathBuf;
 
+use arch::apply_device_tree_overlays;
 use arch::CpuSet;
+use arch::DtbOverlay;
 use arch::SERIAL_ADDR;
 use cros_fdt::Error;
 use cros_fdt::Fdt;
@@ -207,6 +209,7 @@ fn create_gic_node(fdt: &mut Fdt, is_gicv3: bool, num_cpus: u64) -> Result<()> {
     intc_node.set_prop("phandle", PHANDLE_GIC)?;
     intc_node.set_prop("#address-cells", 2u32)?;
     intc_node.set_prop("#size-cells", 2u32)?;
+    add_symbols_entry(fdt, "intc", "/intc")?;
     Ok(())
 }
 
@@ -549,6 +552,22 @@ fn create_vmwdt_node(fdt: &mut Fdt, vmwdt_cfg: VmWdtConfig) -> Result<()> {
     Ok(())
 }
 
+// Add a node path to __symbols__ node of the FDT, so it can be referenced by an overlay.
+fn add_symbols_entry(fdt: &mut Fdt, symbol: &str, path: &str) -> Result<()> {
+    // Ensure the path points to a valid node with a defined phandle
+    let Some(target_node) = fdt.get_node(path) else {
+        return Err(Error::InvalidPath(format!("{path} does not exist")));
+    };
+    target_node
+        .get_prop::<u32>("phandle")
+        .or_else(|| target_node.get_prop("linux,phandle"))
+        .ok_or_else(|| Error::InvalidPath(format!("{path} must have a phandle")))?;
+    // Add the label -> path mapping.
+    let symbols_node = fdt.root_mut().subnode_mut("__symbols__")?;
+    symbols_node.set_prop(symbol, path)?;
+    Ok(())
+}
+
 /// Creates a flattened device tree containing all of the parameters for the
 /// kernel and loads it into the guest memory at the specified offset.
 ///
@@ -595,6 +614,7 @@ pub fn create_fdt(
     dump_device_tree_blob: Option<PathBuf>,
     vm_generator: &impl Fn(&mut Fdt, &BTreeMap<&str, u32>) -> cros_fdt::Result<()>,
     dynamic_power_coefficient: BTreeMap<usize, u32>,
+    device_tree_overlays: Vec<DtbOverlay>,
 ) -> Result<()> {
     let mut fdt = Fdt::new(&[]);
     let mut phandles = BTreeMap::new();
@@ -646,6 +666,9 @@ pub fn create_fdt(
     if !cpu_frequencies.is_empty() {
         create_virt_cpufreq_node(&mut fdt, num_cpus as u64)?;
     }
+
+    // Done writing base FDT, now apply DT overlays
+    apply_device_tree_overlays(&mut fdt, device_tree_overlays)?;
 
     let fdt_final = fdt.finish()?;
 
@@ -713,5 +736,24 @@ mod tests {
             psci_compatible(&PsciVersion::new(1, 5).unwrap()),
             vec!["arm,psci-1.0", "arm,psci-0.2"]
         );
+    }
+
+    #[test]
+    fn symbols_entries() {
+        const TEST_SYMBOL: &str = "dev";
+        const TEST_PATH: &str = "/dev";
+
+        let mut fdt = Fdt::new(&[]);
+        add_symbols_entry(&mut fdt, TEST_SYMBOL, TEST_PATH).expect_err("missing node");
+
+        fdt.root_mut().subnode_mut(TEST_SYMBOL).unwrap();
+        add_symbols_entry(&mut fdt, TEST_SYMBOL, TEST_PATH).expect_err("missing phandle");
+
+        let intc_node = fdt.get_node_mut(TEST_PATH).unwrap();
+        intc_node.set_prop("phandle", 1u32).unwrap();
+        add_symbols_entry(&mut fdt, TEST_SYMBOL, TEST_PATH).expect("valid path");
+
+        let symbols = fdt.get_node("/__symbols__").unwrap();
+        assert_eq!(symbols.get_prop::<String>(TEST_SYMBOL).unwrap(), TEST_PATH);
     }
 }

@@ -234,6 +234,7 @@ where
         kernel_end,
         params,
         None,
+        Vec::new(),
     )
     .expect("failed to setup system_memory");
 

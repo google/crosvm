@@ -6,6 +6,8 @@ use std::fs::File;
 use std::path::PathBuf;
 
 use arch::android::create_android_fdt;
+use arch::apply_device_tree_overlays;
+use arch::DtbOverlay;
 use cros_fdt::Error;
 use cros_fdt::Fdt;
 
@@ -21,10 +23,15 @@ use crate::SetupDataType;
 pub fn create_fdt(
     android_fstab: File,
     dump_device_tree_blob: Option<PathBuf>,
+    device_tree_overlays: Vec<DtbOverlay>,
 ) -> Result<SetupData, Error> {
     let mut fdt = Fdt::new(&[]);
     // The whole thing is put into one giant node with some top level properties
     create_android_fdt(&mut fdt, android_fstab)?;
+
+    // Done writing base FDT, now apply DT overlays
+    apply_device_tree_overlays(&mut fdt, device_tree_overlays)?;
+
     let fdt_final = fdt.finish()?;
 
     if let Some(file_path) = dump_device_tree_blob {

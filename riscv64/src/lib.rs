@@ -193,7 +193,7 @@ impl arch::LinuxArch for Riscv64 {
         #[cfg(any(target_os = "android", target_os = "linux"))] _guest_suspended_cvar: Option<
             Arc<(Mutex<bool>, Condvar)>,
         >,
-        _device_tree_overlays: Vec<DtbOverlay>,
+        device_tree_overlays: Vec<DtbOverlay>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmRiscv64,
@@ -383,6 +383,7 @@ impl arch::LinuxArch for Riscv64 {
             cmdline.as_str(),
             initrd,
             timebase_freq,
+            device_tree_overlays,
         )
         .map_err(Error::CreateFdt)?;
 

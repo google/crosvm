@@ -692,7 +692,7 @@ impl arch::LinuxArch for X8664arch {
         #[cfg(any(target_os = "android", target_os = "linux"))] guest_suspended_cvar: Option<
             Arc<(Mutex<bool>, Condvar)>,
         >,
-        _device_tree_overlays: Vec<DtbOverlay>,
+        device_tree_overlays: Vec<DtbOverlay>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmX86_64,
@@ -996,6 +996,7 @@ impl arch::LinuxArch for X8664arch {
                     kernel_end,
                     params,
                     dump_device_tree_blob,
+                    device_tree_overlays,
                 )?;
 
                 // Configure the bootstrap VCPU for the Linux/x86 64-bit boot protocol.
@@ -1615,6 +1616,7 @@ impl X8664arch {
         kernel_end: u64,
         params: boot_params,
         dump_device_tree_blob: Option<PathBuf>,
+        device_tree_overlays: Vec<DtbOverlay>,
     ) -> Result<()> {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)
             .map_err(Error::LoadCmdline)?;
@@ -1622,7 +1624,8 @@ impl X8664arch {
         let mut setup_data = Vec::<SetupData>::new();
         if let Some(android_fstab) = android_fstab {
             setup_data.push(
-                fdt::create_fdt(android_fstab, dump_device_tree_blob).map_err(Error::CreateFdt)?,
+                fdt::create_fdt(android_fstab, dump_device_tree_blob, device_tree_overlays)
+                    .map_err(Error::CreateFdt)?,
             );
         }
         setup_data.push(setup_data_rng_seed());

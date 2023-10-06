@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use arch::apply_device_tree_overlays;
+use arch::DtbOverlay;
 use cros_fdt::Error;
 use cros_fdt::Fdt;
 use cros_fdt::Result;
@@ -302,6 +304,7 @@ pub fn create_fdt(
     cmdline: &str,
     initrd: Option<(GuestAddress, usize)>,
     timebase_frequency: u32,
+    device_tree_overlays: Vec<DtbOverlay>,
 ) -> Result<()> {
     let mut fdt = Fdt::new(&[]);
 
@@ -316,6 +319,9 @@ pub fn create_fdt(
     create_aia_node(&mut fdt, num_cpus as usize, aia_num_ids, aia_num_sources)?;
     create_pci_nodes(&mut fdt, pci_irqs, pci_cfg, pci_ranges)?;
 
+    // Done writing base FDT, now apply DT overlays
+    apply_device_tree_overlays(&mut fdt, device_tree_overlays)?;
+
     let fdt_final = fdt.finish()?;
     if fdt_final.len() > fdt_max_size {
         return Err(Error::TotalSizeTooLarge);
@@ -328,5 +334,6 @@ pub fn create_fdt(
     if written < fdt_final.len() {
         return Err(Error::FdtGuestMemoryWriteError);
     }
+
     Ok(())
 }
