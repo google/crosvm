@@ -100,7 +100,9 @@ impl BusDevice for VirtCpufreq {
             }
         };
 
-        let util = self.cpu_capacity * freq / self.cpu_fmax;
+        // Undo 25% margin applied by schedutil governor to cpufreq.
+        let cpu_cap_scaled = self.cpu_capacity * 80 / 100;
+        let util = cpu_cap_scaled * freq / self.cpu_fmax;
 
         let mut sched_attr = sched_attr::default();
         sched_attr.sched_flags =
