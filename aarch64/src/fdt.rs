@@ -242,7 +242,7 @@ fn create_timer_node(fdt: &mut Fdt, num_cpus: u32) -> Result<()> {
 }
 
 fn create_virt_cpufreq_node(fdt: &mut Fdt, num_cpus: u64) -> Result<()> {
-    let compatible = "virtual,kvm-cpufreq";
+    let compatible = "qemu,virtual-cpufreq";
     let vcf_node = fdt.root_mut().subnode_mut("cpufreq")?;
     let reg = [AARCH64_VIRTFREQ_BASE, AARCH64_VIRTFREQ_SIZE * num_cpus];
 
