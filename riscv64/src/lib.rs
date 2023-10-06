@@ -258,7 +258,7 @@ impl arch::LinuxArch for Riscv64 {
             .into_iter()
             .map(|(dev, jail_orig)| (*(dev.into_platform_device().unwrap()), jail_orig))
             .collect();
-        let (platform_devices, mut platform_pid_debug_label_map) =
+        let (platform_devices, mut platform_pid_debug_label_map, dev_resources) =
             arch::sys::linux::generate_platform_bus(
                 platform_devices,
                 irq_chip.as_irq_chip_mut(),
@@ -376,6 +376,7 @@ impl arch::LinuxArch for Riscv64 {
             pci_irqs,
             pci_cfg,
             &pci_ranges,
+            dev_resources,
             components.vcpu_count as u32,
             fdt_offset,
             aia_num_ids,

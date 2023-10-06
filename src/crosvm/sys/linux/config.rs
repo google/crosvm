@@ -60,6 +60,10 @@ pub struct VfioOption {
     /// PCI address to use for the VFIO device in the guest.
     /// If not specified, defaults to mirroring the host PCI address.
     pub guest_address: Option<PciAddress>,
+
+    /// The symbol that labels the overlay device tree node which corresponds to this
+    /// VFIO device.
+    pub dt_symbol: Option<String>,
 }
 
 #[derive(Default, Eq, PartialEq, Serialize, Deserialize)]

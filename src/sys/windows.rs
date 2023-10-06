@@ -2556,12 +2556,12 @@ where
         .device_tree_overlay
         .iter()
         .map(|o| {
-            Ok(DtbOverlay(
-                open_file_or_duplicate(o.path.as_path(), OpenOptions::new().read(true))
+            Ok(DtbOverlay {
+                file: open_file_or_duplicate(o.path.as_path(), OpenOptions::new().read(true))
                     .with_context(|| {
                         format!("failed to open device tree overlay {}", o.path.display())
                     })?,
-            ))
+            })
         })
         .collect::<Result<Vec<DtbOverlay>>>()?;
 

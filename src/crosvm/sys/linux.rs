@@ -695,6 +695,7 @@ fn create_devices(
                 vfio_dev.guest_address,
                 Some(&mut coiommu_attached_endpoints),
                 vfio_dev.iommu,
+                vfio_dev.dt_symbol.clone(),
             )?;
             match dev {
                 VfioDeviceVariant::Pci(vfio_pci_device) => {
@@ -1929,12 +1930,13 @@ where
         .device_tree_overlay
         .iter()
         .map(|o| {
-            Ok(DtbOverlay(
-                open_file_or_duplicate(o.path.as_path(), OpenOptions::new().read(true))
+            Ok(DtbOverlay {
+                file: open_file_or_duplicate(o.path.as_path(), OpenOptions::new().read(true))
                     .with_context(|| {
                         format!("failed to open device tree overlay {}", o.path.display())
                     })?,
-            ))
+                do_filter: o.filter_devs,
+            })
         })
         .collect::<Result<Vec<DtbOverlay>>>()?;
 
@@ -2220,6 +2222,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                 } else {
                     IommuDevType::NoIommu
                 },
+                None,
             )?;
             let vfio_pci_device = match vfio_device {
                 VfioDeviceVariant::Pci(pci) => Box::new(pci),

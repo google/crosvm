@@ -823,6 +823,7 @@ pub struct VfioDevice {
     num_irqs: u32,
 
     iova_alloc: Arc<Mutex<AddressAllocator>>,
+    dt_symbol: Option<String>,
 }
 
 impl VfioDevice {
@@ -834,6 +835,7 @@ impl VfioDevice {
         vm: &impl Vm,
         container: Arc<Mutex<VfioContainer>>,
         iommu_dev: IommuDevType,
+        dt_symbol: Option<String>,
     ) -> Result<Self> {
         let group_id = VfioGroup::get_group_id(sysfspath)?;
 
@@ -866,6 +868,7 @@ impl VfioDevice {
             regions,
             num_irqs: dev_info.num_irqs,
             iova_alloc: Arc::new(Mutex::new(iova_alloc)),
+            dt_symbol,
         })
     }
 
@@ -920,6 +923,7 @@ impl VfioDevice {
             regions,
             num_irqs: dev_info.num_irqs,
             iova_alloc: Arc::new(Mutex::new(iova_alloc)),
+            dt_symbol: None,
         })
     }
 
@@ -936,6 +940,11 @@ impl VfioDevice {
     /// Returns the type of this VFIO device.
     pub fn device_type(&self) -> VfioDeviceType {
         self.dev_type
+    }
+
+    /// Returns the DT symbol (node label) of this VFIO device.
+    pub fn dt_symbol(&self) -> Option<&str> {
+        self.dt_symbol.as_deref()
     }
 
     /// enter the device's low power state

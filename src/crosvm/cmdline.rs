@@ -1118,10 +1118,12 @@ pub struct RunCommand {
     /// don't set VCPUs real-time until make-rt command is run
     pub delay_rt: Option<bool>,
 
-    #[argh(option, arg_name = "PATH")]
+    #[argh(option, arg_name = "PATH[,filter]")]
     #[serde(default)]
     #[merge(strategy = append)]
     /// path to device tree overlay binary which will be applied to the base guest device tree
+    /// Parameters:
+    ///    filter - only apply device tree nodes which belong to a VFIO device
     pub device_tree_overlay: Vec<DtboOption>,
 
     #[argh(switch)]
@@ -2165,7 +2167,7 @@ pub struct RunCommand {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(
         option,
-        arg_name = "PATH[,guest-address=<BUS:DEVICE.FUNCTION>][,iommu=viommu|coiommu|off]"
+        arg_name = "PATH[,guest-address=<BUS:DEVICE.FUNCTION>][,iommu=viommu|coiommu|off][,dt-symbol=<SYMBOL>]"
     )]
     #[serde(default)]
     #[merge(strategy = append)]
@@ -2177,6 +2179,8 @@ pub struct RunCommand {
     ///        Only valid for PCI devices.
     ///     iommu=viommu|coiommu|off - indicates which type of IOMMU
     ///        to use for this device.
+    ///     dt-symbol=<SYMBOL> - the symbol that labels the device tree
+    ///        node in the device tree overlay file.
     pub vfio: Vec<VfioOption>,
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -3215,6 +3219,14 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.device_tree_overlay = cmd.device_tree_overlay;
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        {
+            if cfg.device_tree_overlay.iter().any(|o| o.filter_devs)
+                && cfg.vfio.iter().all(|o| o.dt_symbol.is_none())
+            {
+                return Err("expected at least one VFIO device with a defined dt_symbol".into());
+            }
+        }
 
         // `--disable-sandbox` has the effect of disabling sandboxing altogether, so make sure
         // to handle it after other sandboxing options since they implicitly enable it.

@@ -30,7 +30,12 @@ pub fn create_fdt(
     create_android_fdt(&mut fdt, android_fstab)?;
 
     // Done writing base FDT, now apply DT overlays
-    apply_device_tree_overlays(&mut fdt, device_tree_overlays)?;
+    apply_device_tree_overlays(
+        &mut fdt,
+        device_tree_overlays,
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        vec![],
+    )?;
 
     let fdt_final = fdt.finish()?;
 

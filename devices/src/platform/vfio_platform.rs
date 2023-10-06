@@ -302,4 +302,9 @@ impl VfioPlatformDevice {
     pub fn device_file(&self) -> &File {
         self.device.device_file()
     }
+
+    /// Returns the DT symbol (node label) of the VFIO device.
+    pub fn dt_symbol(&self) -> Option<&str> {
+        self.device.dt_symbol()
+    }
 }

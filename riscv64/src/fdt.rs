@@ -4,6 +4,8 @@
 
 use arch::apply_device_tree_overlays;
 use arch::DtbOverlay;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use arch::PlatformBusResources;
 use cros_fdt::Error;
 use cros_fdt::Fdt;
 use cros_fdt::Result;
@@ -297,6 +299,9 @@ pub fn create_fdt(
     pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
     pci_cfg: PciConfigRegion,
     pci_ranges: &[PciRange],
+    #[cfg(any(target_os = "android", target_os = "linux"))] platform_dev_resources: Vec<
+        PlatformBusResources,
+    >,
     num_cpus: u32,
     fdt_load_offset: u64,
     aia_num_ids: usize,
@@ -320,7 +325,12 @@ pub fn create_fdt(
     create_pci_nodes(&mut fdt, pci_irqs, pci_cfg, pci_ranges)?;
 
     // Done writing base FDT, now apply DT overlays
-    apply_device_tree_overlays(&mut fdt, device_tree_overlays)?;
+    apply_device_tree_overlays(
+        &mut fdt,
+        device_tree_overlays,
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        platform_dev_resources,
+    )?;
 
     let fdt_final = fdt.finish()?;
     if fdt_final.len() > fdt_max_size {

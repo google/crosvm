@@ -83,6 +83,8 @@ pub use serial::SERIAL_ADDR;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use sync::Condvar;
 use sync::Mutex;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+pub use sys::linux::PlatformBusResources;
 use thiserror::Error;
 use vm_control::BatControl;
 use vm_control::BatteryType;
@@ -615,6 +617,9 @@ pub enum DeviceRegistrationError {
     /// No more IRQs are available.
     #[error("no more IRQs are available")]
     IrqsExhausted,
+    /// VFIO device is missing a DT symbol.
+    #[error("cannot match VFIO device to DT node due to a missing symbol")]
+    MissingDeviceTreeSymbol,
     /// Missing a required serial device.
     #[error("missing required serial device {0}")]
     MissingRequiredSerialDevice(u8),

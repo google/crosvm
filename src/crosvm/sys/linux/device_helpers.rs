@@ -1421,6 +1421,7 @@ pub fn create_vfio_device(
     guest_address: Option<PciAddress>,
     coiommu_endpoints: Option<&mut Vec<u16>>,
     iommu_dev: IommuDevType,
+    dt_symbol: Option<String>,
 ) -> DeviceResult<(VfioDeviceVariant, Option<Minijail>, Option<VfioWrapper>)> {
     let vfio_container = VfioCommonSetup::vfio_get_container(iommu_dev, Some(vfio_path))
         .context("failed to get vfio container")?;
@@ -1436,7 +1437,7 @@ pub fn create_vfio_device(
     control_tubes.push(TaggedControlTube::Vm(vfio_host_tube_vm));
 
     let vfio_device =
-        VfioDevice::new_passthrough(&vfio_path, vm, vfio_container.clone(), iommu_dev)
+        VfioDevice::new_passthrough(&vfio_path, vm, vfio_container.clone(), iommu_dev, dt_symbol)
             .context("failed to create vfio device")?;
 
     match vfio_device.device_type() {

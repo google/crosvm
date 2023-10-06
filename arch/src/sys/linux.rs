@@ -123,6 +123,25 @@ pub fn add_goldfish_battery(
     Ok((control_tube, mmio_base))
 }
 
+pub struct PlatformBusResources {
+    pub dt_symbol: String,        // DT symbol (label) assigned to the device
+    pub regions: Vec<(u64, u64)>, // (start address, size)
+    pub irqs: Vec<(u32, u32)>,    // (IRQ number, flags)
+}
+
+impl PlatformBusResources {
+    const IRQ_TRIGGER_EDGE: u32 = 1;
+    const IRQ_TRIGGER_LEVEL: u32 = 4;
+
+    fn new(symbol: String) -> Self {
+        Self {
+            dt_symbol: symbol,
+            regions: vec![],
+            irqs: vec![],
+        }
+    }
+}
+
 /// Creates a platform device for use by this Vm.
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub fn generate_platform_bus(
@@ -131,12 +150,25 @@ pub fn generate_platform_bus(
     mmio_bus: &Bus,
     resources: &mut SystemAllocator,
     #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
-) -> Result<(Vec<Arc<Mutex<dyn BusDevice>>>, BTreeMap<u32, String>), DeviceRegistrationError> {
+) -> Result<
+    (
+        Vec<Arc<Mutex<dyn BusDevice>>>,
+        BTreeMap<u32, String>,
+        Vec<PlatformBusResources>,
+    ),
+    DeviceRegistrationError,
+> {
     let mut platform_devices = Vec::new();
     let mut pid_labels = BTreeMap::new();
+    let mut bus_dev_resources = vec![];
 
     // Allocate ranges that may need to be in the Platform MMIO region (MmioType::Platform).
     for (mut device, jail) in devices.into_iter() {
+        let dt_symbol = device
+            .dt_symbol()
+            .ok_or(DeviceRegistrationError::MissingDeviceTreeSymbol)?
+            .to_owned();
+        let mut device_resources = PlatformBusResources::new(dt_symbol);
         let ranges = device
             .allocate_regions(resources)
             .map_err(DeviceRegistrationError::AllocateIoResource)?;
@@ -167,6 +199,9 @@ pub fn generate_platform_bus(
                     .assign_level_platform_irq(&irq_evt, irq.index)
                     .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
                 keep_rds.extend(irq_evt.as_raw_descriptors());
+                device_resources
+                    .irqs
+                    .push((irq_num, PlatformBusResources::IRQ_TRIGGER_LEVEL));
             } else {
                 let irq_evt =
                     devices::IrqEdgeEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
@@ -181,6 +216,9 @@ pub fn generate_platform_bus(
                     .assign_edge_platform_irq(&irq_evt, irq.index)
                     .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
                 keep_rds.extend(irq_evt.as_raw_descriptors());
+                device_resources
+                    .irqs
+                    .push((irq_num, PlatformBusResources::IRQ_TRIGGER_EDGE));
             }
         }
 
@@ -204,7 +242,9 @@ pub fn generate_platform_bus(
             mmio_bus
                 .insert(arced_dev.clone(), range.0, range.1)
                 .map_err(DeviceRegistrationError::MmioInsert)?;
+            device_resources.regions.push((range.0, range.1));
         }
+        bus_dev_resources.push(device_resources);
     }
-    Ok((platform_devices, pid_labels))
+    Ok((platform_devices, pid_labels, bus_dev_resources))
 }
