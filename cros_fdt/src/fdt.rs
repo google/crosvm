@@ -13,6 +13,7 @@ use std::io;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
+use crate::propval::FromFdtPropval;
 use crate::propval::ToFdtPropval;
 
 pub(crate) const SIZE_U32: usize = std::mem::size_of::<u32>();
@@ -434,6 +435,49 @@ impl FdtNode {
         Ok(())
     }
 
+    /// Read property value if it exists.
+    ///
+    /// # Arguments
+    ///
+    /// `name` - name of the property.
+    pub fn get_prop<T>(&self, name: &str) -> Option<T>
+    where
+        T: FromFdtPropval,
+    {
+        T::from_propval(self.props.get(name)?.as_slice())
+    }
+
+    // Read a phandle value (a `u32`) at some offset within a property value.
+    // Returns `None` if a phandle value cannot be constructed.
+    #[allow(unused)]
+    pub(crate) fn phandle_at_offset(&self, name: &str, offset: usize) -> Option<u32> {
+        let data = self.props.get(name)?;
+        data.get(offset..offset + SIZE_U32)
+            .and_then(u32::from_propval)
+    }
+
+    // Overwrite a phandle value (a `u32`) at some offset within a property value.
+    // Returns `Err` if the property doesn't exist, or if the property value is too short to
+    // construct a `u32` at given offset. Does not change property value size.
+    #[allow(unused)]
+    pub(crate) fn update_phandle_at_offset(
+        &mut self,
+        name: &str,
+        offset: usize,
+        phandle: u32,
+    ) -> Result<()> {
+        let propval = self
+            .props
+            .get_mut(name)
+            .ok_or_else(|| Error::InvalidName(format!("property {name} does not exist")))?;
+        if let Some(bytes) = propval.get_mut(offset..offset + SIZE_U32) {
+            bytes.copy_from_slice(phandle.to_propval()?.as_slice());
+            Ok(())
+        } else {
+            Err(Error::PropertyValueInvalid)
+        }
+    }
+
     /// Write a property.
     ///
     /// # Arguments
@@ -720,6 +764,45 @@ mod tests {
 
     const EXPECTED_STRINGS: [&str; 7] = ["null", "u32", "u64", "str", "strlst", "arru32", "arru64"];
 
+    const FDT_BLOB_NODES_ROOT_ONLY: [u8; 0x90] = [
+        0x00, 0x00, 0x00, 0x01, // FDT_BEGIN_NODE
+        0x00, 0x00, 0x00, 0x00, // node name ("") + padding
+        0x00, 0x00, 0x00, 0x03, // FDT_PROP (null)
+        0x00, 0x00, 0x00, 0x00, // prop len (0)
+        0x00, 0x00, 0x00, 0x00, // prop nameoff (0)
+        0x00, 0x00, 0x00, 0x03, // FDT_PROP (u32)
+        0x00, 0x00, 0x00, 0x04, // prop len (4)
+        0x00, 0x00, 0x00, 0x05, // prop nameoff (0x05)
+        0x12, 0x34, 0x56, 0x78, // prop u32 value (0x12345678)
+        0x00, 0x00, 0x00, 0x03, // FDT_PROP (u64)
+        0x00, 0x00, 0x00, 0x08, // prop len (8)
+        0x00, 0x00, 0x00, 0x09, // prop nameoff (0x09)
+        0x12, 0x34, 0x56, 0x78, // prop u64 value high (0x12345678)
+        0x87, 0x65, 0x43, 0x21, // prop u64 value low (0x87654321)
+        0x00, 0x00, 0x00, 0x03, // FDT_PROP (string)
+        0x00, 0x00, 0x00, 0x06, // prop len (6)
+        0x00, 0x00, 0x00, 0x0D, // prop nameoff (0x0D)
+        b'h', b'e', b'l', b'l', // prop str value ("hello") + padding
+        b'o', 0x00, 0x00, 0x00, // "o\0" + padding
+        0x00, 0x00, 0x00, 0x03, // FDT_PROP (string list)
+        0x00, 0x00, 0x00, 0x07, // prop len (7)
+        0x00, 0x00, 0x00, 0x11, // prop nameoff (0x11)
+        b'h', b'i', 0x00, b'b', // prop value ("hi", "bye")
+        b'y', b'e', 0x00, 0x00, // "ye\0" + padding
+        0x00, 0x00, 0x00, 0x03, // FDT_PROP (u32 array)
+        0x00, 0x00, 0x00, 0x08, // prop len (8)
+        0x00, 0x00, 0x00, 0x18, // prop nameoff (0x18)
+        0x12, 0x34, 0x56, 0x78, // prop value 0
+        0xAA, 0xBB, 0xCC, 0xDD, // prop value 1
+        0x00, 0x00, 0x00, 0x03, // FDT_PROP (u64 array)
+        0x00, 0x00, 0x00, 0x08, // prop len (8)
+        0x00, 0x00, 0x00, 0x1f, // prop nameoff (0x1F)
+        0x12, 0x34, 0x56, 0x78, // prop u64 value 0 high
+        0x87, 0x65, 0x43, 0x21, // prop u64 value 0 low
+        0x00, 0x00, 0x00, 0x02, // FDT_END_NODE
+        0x00, 0x00, 0x00, 0x09, // FDT_END
+    ];
+
     /*
     Node structure:
     /
@@ -794,6 +877,57 @@ mod tests {
     }
 
     #[test]
+    fn fdt_test_node_props() {
+        let mut node = FdtNode::empty("mynode").unwrap();
+        node.set_prop("myprop", 1u32).unwrap();
+        assert_eq!(node.get_prop::<u32>("myprop").unwrap(), 1u32);
+        node.set_prop("myprop", 0xabcdef9876543210u64).unwrap();
+        assert_eq!(
+            node.get_prop::<u64>("myprop").unwrap(),
+            0xabcdef9876543210u64
+        );
+        node.set_prop("myprop", ()).unwrap();
+        assert_eq!(node.get_prop::<Vec<u8>>("myprop").unwrap(), []);
+        node.set_prop("myprop", vec![1u8, 2u8, 3u8]).unwrap();
+        assert_eq!(
+            node.get_prop::<Vec<u8>>("myprop").unwrap(),
+            vec![1u8, 2u8, 3u8]
+        );
+        node.set_prop("myprop", vec![1u32, 2u32, 3u32]).unwrap();
+        assert_eq!(
+            node.get_prop::<Vec<u32>>("myprop").unwrap(),
+            vec![1u32, 2u32, 3u32]
+        );
+        node.set_prop("myprop", vec![1u64, 2u64, 3u64]).unwrap();
+        assert_eq!(
+            node.get_prop::<Vec<u64>>("myprop").unwrap(),
+            vec![1u64, 2u64, 3u64]
+        );
+        node.set_prop("myprop", "myval".to_string()).unwrap();
+        assert_eq!(
+            node.get_prop::<String>("myprop").unwrap(),
+            "myval".to_string()
+        );
+        node.set_prop(
+            "myprop",
+            vec![
+                "myval1".to_string(),
+                "myval2".to_string(),
+                "myval3".to_string(),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            node.get_prop::<Vec<String>>("myprop").unwrap(),
+            vec![
+                "myval1".to_string(),
+                "myval2".to_string(),
+                "myval3".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn fdt_simple_use() {
         let mut fdt = Fdt::new(&[]);
         let root_node = fdt.root_mut();
@@ -832,6 +966,32 @@ mod tests {
         assert_eq!(strings.intern_string("abc"), 38);
         assert_eq!(strings.intern_string("def"), 42);
         assert_eq!(strings.intern_string("strlst"), 17);
+    }
+
+    #[test]
+    fn fdt_load_props() {
+        const PROP_SIZES: [(&str, usize); 7] = [
+            ("null", 0),
+            ("u32", 4),
+            ("u64", 8),
+            ("str", 6),
+            ("strlst", 7),
+            ("arru32", 8),
+            ("arru64", 8),
+        ];
+
+        let blob: &[u8] = &FDT_BLOB_STRINGS[..];
+        let strings = FdtStrings::from_blob(blob).unwrap();
+        let blob: &[u8] = &FDT_BLOB_NODES_ROOT_ONLY[..];
+        let node = FdtNode::from_blob(blob, &strings).unwrap();
+
+        assert_eq!(node.name, "");
+        assert_eq!(node.subnodes.len(), 0);
+        assert_eq!(node.props.len(), PROP_SIZES.len());
+
+        for (pname, s) in PROP_SIZES.into_iter() {
+            assert_eq!(node.get_prop::<Vec<u8>>(pname).unwrap().len(), s);
+        }
     }
 
     #[test]
