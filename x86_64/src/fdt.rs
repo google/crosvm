@@ -23,12 +23,8 @@ pub fn create_fdt(
     dump_device_tree_blob: Option<PathBuf>,
 ) -> Result<SetupData, Error> {
     let mut fdt = Fdt::new(&[]);
-
     // The whole thing is put into one giant node with some top level properties
-    let root_node = fdt.begin_node("")?;
     create_android_fdt(&mut fdt, android_fstab)?;
-    fdt.end_node(root_node)?;
-
     let fdt_final = fdt.finish()?;
 
     if let Some(file_path) = dump_device_tree_blob {

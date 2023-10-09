@@ -6,7 +6,6 @@
 //! <https://devicetree-specification.readthedocs.io/en/stable/flattened-format.html>
 
 use std::collections::BTreeMap;
-use std::convert::TryInto;
 use std::ffi::CString;
 use std::io;
 
@@ -14,6 +13,9 @@ use remain::sorted;
 use thiserror::Error as ThisError;
 
 use crate::propval::ToFdtPropval;
+
+pub(crate) const SIZE_U32: usize = std::mem::size_of::<u32>();
+pub(crate) const SIZE_U64: usize = std::mem::size_of::<u64>();
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -28,188 +30,44 @@ pub enum Error {
     FdtIoError(io::Error),
     #[error("Invalid string value {}", .0)]
     InvalidString(String),
-    #[error("Attempted to end a node that was not the most recent")]
-    OutOfOrderEndNode,
-    #[error("Properties may not be added after a node has been ended")]
-    PropertyAfterEndNode,
     #[error("Property value size must fit in 32 bits")]
     PropertyValueTooLarge,
     #[error("Total size must fit in 32 bits")]
     TotalSizeTooLarge,
-    #[error("Attempted to call finish without ending all nodes")]
-    UnclosedNode,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-const FDT_HEADER_SIZE: usize = 40;
+const FDT_MAGIC: u32 = 0xd00dfeed;
 const FDT_VERSION: u32 = 17;
 const FDT_LAST_COMP_VERSION: u32 = 16;
-
-const FDT_MAGIC: u32 = 0xd00dfeed;
+const FDT_HEADER_SIZE: usize = 10 * SIZE_U32;
 
 const FDT_BEGIN_NODE: u32 = 0x00000001;
 const FDT_END_NODE: u32 = 0x00000002;
 const FDT_PROP: u32 = 0x00000003;
 const FDT_END: u32 = 0x00000009;
 
-/// Interface for writing a Flattened Devicetree (FDT) and emitting a Devicetree Blob (DTB).
-///
-/// # Example
-///
-/// ```rust
-/// use cros_fdt::Fdt;
-///
-/// # fn main() -> cros_fdt::Result<()> {
-/// let mut fdt = Fdt::new(&[]);
-/// let root_node = fdt.begin_node("")?;
-/// fdt.set_prop("compatible", "linux,dummy-virt")?;
-/// fdt.set_prop("#address-cells", 0x2u32)?;
-/// fdt.set_prop("#size-cells", 0x2u32)?;
-/// let chosen_node = fdt.begin_node("chosen")?;
-/// fdt.set_prop("linux,pci-probe-only", 1u32)?;
-/// fdt.set_prop("bootargs", "panic=-1 console=hvc0 root=/dev/vda")?;
-/// fdt.end_node(chosen_node)?;
-/// fdt.end_node(root_node)?;
-/// let dtb = fdt.finish()?;
-/// # Ok(())
-/// # }
-/// ```
-pub struct Fdt {
-    data: Vec<u8>,
-    off_mem_rsvmap: u32,
-    off_dt_struct: u32,
+// Return the number of padding bytes required to align `size` to `alignment`.
+#[inline]
+fn align_pad_len(size: usize, alignment: usize) -> usize {
+    (alignment - size % alignment) % alignment
+}
+
+// Pad a byte vector to given alignment.
+#[inline]
+fn align_data(data: &mut Vec<u8>, alignment: usize) {
+    data.resize(align_pad_len(data.len(), alignment) + data.len(), 0u8);
+}
+
+// An implementation of FDT strings block (property names)
+#[derive(Default)]
+struct FdtStrings {
     strings: Vec<u8>,
     string_offsets: BTreeMap<CString, u32>,
-    node_depth: usize,
-    node_ended: bool,
-    boot_cpuid_phys: u32,
 }
 
-/// Reserved physical memory region.
-///
-/// This represents an area of physical memory reserved by the firmware and unusable by the OS.
-/// For example, this could be used to preserve bootloader code or data used at runtime.
-pub struct FdtReserveEntry {
-    /// Physical address of the beginning of the reserved region.
-    pub address: u64,
-    /// Size of the reserved region in bytes.
-    pub size: u64,
-}
-
-/// Handle to an open node created by `Fdt::begin_node`.
-///
-/// This must be passed back to `Fdt::end_node` to close the nodes.
-/// Nodes must be closed in reverse order as they were opened, matching the nesting structure
-/// of the devicetree.
-#[derive(Debug)]
-pub struct FdtNode {
-    depth: usize,
-}
-
-impl Fdt {
-    /// Create a new Flattened Devicetree writer instance.
-    ///
-    /// # Arguments
-    ///
-    /// `mem_reservations` - reserved physical memory regions to list in the FDT header.
-    pub fn new(mem_reservations: &[FdtReserveEntry]) -> Self {
-        let data = vec![0u8; FDT_HEADER_SIZE]; // Reserve space for header.
-
-        let mut fdt = Fdt {
-            data,
-            off_mem_rsvmap: 0,
-            off_dt_struct: 0,
-            strings: Vec::new(),
-            string_offsets: BTreeMap::new(),
-            node_depth: 0,
-            node_ended: false,
-            boot_cpuid_phys: 0,
-        };
-
-        fdt.align(8);
-        fdt.off_mem_rsvmap = fdt.data.len() as u32;
-        fdt.write_mem_rsvmap(mem_reservations);
-
-        fdt.align(4);
-        fdt.off_dt_struct = fdt.data.len() as u32;
-
-        fdt
-    }
-
-    fn write_mem_rsvmap(&mut self, mem_reservations: &[FdtReserveEntry]) {
-        for rsv in mem_reservations {
-            self.append_u64(rsv.address);
-            self.append_u64(rsv.size);
-        }
-
-        self.append_u64(0);
-        self.append_u64(0);
-    }
-
-    /// Set the `boot_cpuid_phys` field of the devicetree header.
-    pub fn set_boot_cpuid_phys(&mut self, boot_cpuid_phys: u32) {
-        self.boot_cpuid_phys = boot_cpuid_phys;
-    }
-
-    // Append `num_bytes` padding bytes (0x00).
-    fn pad(&mut self, num_bytes: usize) {
-        self.data.extend(std::iter::repeat(0).take(num_bytes));
-    }
-
-    // Append padding bytes (0x00) until the length of data is a multiple of `alignment`.
-    fn align(&mut self, alignment: usize) {
-        let offset = self.data.len() % alignment;
-        if offset != 0 {
-            self.pad(alignment - offset);
-        }
-    }
-
-    // Rewrite the value of a big-endian u32 within data.
-    fn update_u32(&mut self, offset: usize, val: u32) {
-        let data_slice = &mut self.data[offset..offset + 4];
-        data_slice.copy_from_slice(&val.to_be_bytes());
-    }
-
-    fn append_u32(&mut self, val: u32) {
-        self.data.extend_from_slice(&val.to_be_bytes());
-    }
-
-    fn append_u64(&mut self, val: u64) {
-        self.data.extend_from_slice(&val.to_be_bytes());
-    }
-
-    /// Open a new FDT node.
-    ///
-    /// The node must be closed using `end_node`.
-    ///
-    /// # Arguments
-    ///
-    /// `name` - name of the node; must not contain any NUL bytes.
-    pub fn begin_node(&mut self, name: &str) -> Result<FdtNode> {
-        let name_cstr = CString::new(name).map_err(|_| Error::InvalidString(name.into()))?;
-        self.append_u32(FDT_BEGIN_NODE);
-        self.data.extend(name_cstr.to_bytes_with_nul());
-        self.align(4);
-        self.node_depth += 1;
-        self.node_ended = false;
-        Ok(FdtNode {
-            depth: self.node_depth,
-        })
-    }
-
-    /// Close a node previously opened with `begin_node`.
-    pub fn end_node(&mut self, node: FdtNode) -> Result<()> {
-        if node.depth != self.node_depth {
-            return Err(Error::OutOfOrderEndNode);
-        }
-
-        self.append_u32(FDT_END_NODE);
-        self.node_depth -= 1;
-        self.node_ended = true;
-        Ok(())
-    }
-
+impl FdtStrings {
     // Find an existing instance of a string `s`, or add it to the strings block.
     // Returns the offset into the strings block.
     fn intern_string(&mut self, s: CString) -> u32 {
@@ -223,84 +81,276 @@ impl Fdt {
         }
     }
 
+    fn to_blob(&self) -> &[u8] {
+        self.strings.as_slice()
+    }
+}
+
+/// Flattened device tree node.
+///
+/// This represents a single node from the FDT structure block. Every node may contain properties
+/// and other (child) nodes.
+#[derive(Debug, Clone)]
+pub struct FdtNode {
+    /// Node name
+    pub name: String,
+    pub(crate) props: BTreeMap<String, Vec<u8>>,
+    pub(crate) subnodes: BTreeMap<String, FdtNode>,
+}
+
+impl FdtNode {
+    // Create a new node with the given name, properties, and child nodes. Return an error if
+    // node or property names do not satisfy devicetree naming criteria.
+    pub(crate) fn new(
+        name: String,
+        props: BTreeMap<String, Vec<u8>>,
+        subnodes: BTreeMap<String, FdtNode>,
+    ) -> Result<Self> {
+        Ok(Self {
+            name,
+            props,
+            subnodes,
+        })
+    }
+
+    // Create an empty node with the given name.
+    pub(crate) fn empty(name: impl Into<String>) -> Result<Self> {
+        FdtNode::new(name.into(), [].into(), [].into())
+    }
+
+    // Write binary contents of a node to a vector of bytes.
+    fn to_blob(node: &FdtNode, blob: &mut Vec<u8>, strings: &mut FdtStrings) {
+        // Token
+        blob.extend(FDT_BEGIN_NODE.to_be_bytes());
+        // Name
+        blob.extend(node.name.as_bytes());
+        blob.push(0u8);
+        align_data(blob, SIZE_U32);
+        // Properties
+        for (propname, propblob) in node.props.iter() {
+            // Prop token
+            blob.extend(FDT_PROP.to_be_bytes());
+            // Prop size
+            blob.extend((propblob.len() as u32).to_be_bytes());
+            // Prop name offset
+            let propname = CString::new(propname.as_str()).expect("\\0 in property name");
+            blob.extend(strings.intern_string(propname).to_be_bytes());
+            // Prop value
+            blob.extend(propblob.iter());
+            align_data(blob, SIZE_U32);
+        }
+        // Subnodes
+        for subnode in node.subnodes.values() {
+            FdtNode::to_blob(subnode, blob, strings);
+        }
+        align_data(blob, SIZE_U32);
+        // Token
+        blob.extend(FDT_END_NODE.to_be_bytes());
+    }
+
     /// Write a property.
     ///
     /// # Arguments
     ///
-    /// `name` - name of the property; must not contain any NUL bytes.
+    /// `name` - name of the property; must be a valid property name according to DT spec.
     /// `val` - value of the property (raw byte array).
-    pub fn set_prop<T>(&mut self, name: &str, val: T) -> Result<()>
+    pub fn set_prop<T>(&mut self, name: &str, value: T) -> Result<()>
     where
         T: ToFdtPropval,
     {
-        if self.node_ended {
-            return Err(Error::PropertyAfterEndNode);
+        if name.contains('\0') {
+            return Err(Error::InvalidString(name.into()));
         }
-
-        let name_cstr = CString::new(name).map_err(|_| Error::InvalidString(name.into()))?;
-        let val = val.to_propval()?;
-
-        let len = val
-            .len()
-            .try_into()
-            .map_err(|_| Error::PropertyValueTooLarge)?;
-
-        let nameoff = self.intern_string(name_cstr);
-        self.append_u32(FDT_PROP);
-        self.append_u32(len);
-        self.append_u32(nameoff);
-        self.data.extend_from_slice(&val);
-        self.align(4);
+        let bytes = value.to_propval()?;
+        // FDT property byte size must fit into a u32.
+        u32::try_from(bytes.len()).map_err(|_| Error::PropertyValueTooLarge)?;
+        self.props.insert(name.into(), bytes);
         Ok(())
+    }
+
+    /// Create a node if it doesn't already exist, and return a mutable reference to it. Return
+    /// an error if the node name is not valid.
+    ///
+    /// # Arguments
+    ///
+    /// `name` - name of the node; must be a valid node name according to DT specification.
+    pub fn subnode_mut(&mut self, name: &str) -> Result<&mut FdtNode> {
+        if name.contains('\0') {
+            return Err(Error::InvalidString(name.into()));
+        }
+        if !self.subnodes.contains_key(name) {
+            self.subnodes.insert(name.into(), FdtNode::empty(name)?);
+        }
+        Ok(self.subnodes.get_mut(name).unwrap())
+    }
+}
+
+/// Interface for creating and manipulating a Flattened Devicetree (FDT) and emitting
+/// a Devicetree Blob (DTB).
+///
+/// # Example
+///
+/// ```rust
+/// use cros_fdt::Fdt;
+///
+/// # fn main() -> cros_fdt::Result<()> {
+/// let mut fdt = Fdt::new(&[]);
+/// let root_node = fdt.root_mut();
+/// root_node.set_prop("compatible", "linux,dummy-virt")?;
+/// root_node.set_prop("#address-cells", 0x2u32)?;
+/// root_node.set_prop("#size-cells", 0x2u32)?;
+/// let chosen_node = root_node.subnode_mut("chosen")?;
+/// chosen_node.set_prop("linux,pci-probe-only", 1u32)?;
+/// chosen_node.set_prop("bootargs", "panic=-1 console=hvc0 root=/dev/vda")?;
+/// let dtb = fdt.finish().unwrap();
+/// # Ok(())
+/// # }
+/// ```
+pub struct Fdt {
+    pub(crate) reserved_memory: Vec<FdtReserveEntry>,
+    pub(crate) root: FdtNode,
+    strings: FdtStrings,
+    boot_cpuid_phys: u32,
+}
+
+/// Reserved physical memory region.
+///
+/// This represents an area of physical memory reserved by the firmware and unusable by the OS.
+/// For example, this could be used to preserve bootloader code or data used at runtime.
+#[derive(Clone)]
+pub struct FdtReserveEntry {
+    /// Physical address of the beginning of the reserved region.
+    pub address: u64,
+    /// Size of the reserved region in bytes.
+    pub size: u64,
+}
+
+// Last entry in the reserved memory section
+const RESVMEM_TERMINATOR: FdtReserveEntry = FdtReserveEntry::new(0, 0);
+
+impl FdtReserveEntry {
+    /// Create a new FdtReserveEntry
+    ///
+    /// # Arguments
+    ///
+    /// `address` - start of reserved memory region.
+    /// `size` - size of reserved memory region.
+    pub const fn new(address: u64, size: u64) -> Self {
+        Self { address, size }
+    }
+
+    // Dump the entry as a vector of bytes.
+    fn to_blob(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(SIZE_U64 * 2);
+        bytes.extend(self.address.to_be_bytes().as_slice());
+        bytes.extend(self.size.to_be_bytes().as_slice());
+        bytes
+    }
+}
+
+impl Fdt {
+    /// Create a new flattened device tree instance with an initialized root node.
+    ///
+    /// # Arguments
+    ///
+    /// `mem_reservations` - reserved physical memory regions to list in the FDT header.
+    pub fn new(mem_reservations: &[FdtReserveEntry]) -> Self {
+        Self {
+            reserved_memory: mem_reservations.to_vec(),
+            root: FdtNode::empty("").unwrap(),
+            strings: FdtStrings::default(),
+            boot_cpuid_phys: 0u32,
+        }
+    }
+
+    /// Set the `boot_cpuid_phys` field of the devicetree header.
+    ///
+    /// # Arguments
+    ///
+    /// `boot_cpuid_phys` - CPU ID
+    pub fn set_boot_cpuid_phys(&mut self, boot_cpuid_phys: u32) {
+        self.boot_cpuid_phys = boot_cpuid_phys;
+    }
+
+    fn dump_reserved_memory(&self) -> Vec<u8> {
+        let mut result = Vec::with_capacity(SIZE_U64 * 2 * (self.reserved_memory.len() + 1));
+        for entry in &self.reserved_memory {
+            result.extend(entry.to_blob());
+        }
+        result.extend(RESVMEM_TERMINATOR.to_blob());
+        result
+    }
+
+    // Dump the structure block of the FDT
+    fn dump_struct(&mut self) -> Vec<u8> {
+        let mut blob = vec![];
+        FdtNode::to_blob(&self.root, &mut blob, &mut self.strings);
+        align_data(&mut blob, SIZE_U32);
+        blob.extend(FDT_END.to_be_bytes());
+        blob
+    }
+
+    // Dump FDT header to a byte vector.
+    fn fdt_header_to_blob(
+        &self,
+        total_size: u32,
+        off_dt_struct: u32,
+        off_dt_strings: u32,
+        size_dt_strings: u32,
+        size_dt_struct: u32,
+    ) -> Vec<u8> {
+        let mut blob = Vec::with_capacity(FDT_HEADER_SIZE);
+        for val in &[
+            FDT_MAGIC,
+            total_size,
+            off_dt_struct,
+            off_dt_strings,
+            FDT_HEADER_SIZE as u32,
+            FDT_VERSION,
+            FDT_LAST_COMP_VERSION,
+            self.boot_cpuid_phys,
+            size_dt_strings,
+            size_dt_struct,
+        ] {
+            blob.extend(val.to_be_bytes());
+        }
+        align_data(&mut blob, SIZE_U64);
+        assert_eq!(blob.len(), FDT_HEADER_SIZE);
+        blob
     }
 
     /// Finish writing the Devicetree Blob (DTB).
     ///
-    /// Returns the DTB as a vector of bytes, consuming the `Fdt`.
-    /// The DTB is always padded up to `max_size` with zeroes, so the returned
-    /// value will either be exactly `max_size` bytes long, or an error will
-    /// be returned if the DTB does not fit in `max_size` bytes.
-    ///
-    /// # Arguments
-    ///
-    /// `max_size` - Maximum size of the finished DTB in bytes.
-    pub fn finish(mut self) -> Result<Vec<u8>> {
-        if self.node_depth > 0 {
-            return Err(Error::UnclosedNode);
-        }
+    /// Returns the DTB as a vector of bytes.
+    pub fn finish(&mut self) -> Result<Vec<u8>> {
+        // Dump blocks
+        let resvmem_blob = self.dump_reserved_memory();
+        let node_blob = self.dump_struct();
+        let strings_blob = self.strings.to_blob();
+        let total_size =
+            resvmem_blob.len() + strings_blob.len() + node_blob.len() + FDT_HEADER_SIZE;
 
-        self.append_u32(FDT_END);
-        let size_dt_struct = self.data.len() as u32 - self.off_dt_struct;
+        // Write the header
+        let off_dt_struct = (FDT_HEADER_SIZE + resvmem_blob.len()) as u32;
+        let mut result = self.fdt_header_to_blob(
+            u32::try_from(total_size).map_err(|_| Error::TotalSizeTooLarge)?,
+            off_dt_struct,
+            off_dt_struct + node_blob.len() as u32,
+            strings_blob.len() as u32,
+            node_blob.len() as u32,
+        );
 
-        let totalsize = self.data.len() + self.strings.len();
+        // Return merged blocks
+        result.reserve_exact(total_size - result.len()); // Allocate capacity for remaining blocks
+        result.extend(resvmem_blob);
+        result.extend(node_blob);
+        result.extend(strings_blob);
+        Ok(result)
+    }
 
-        let totalsize = totalsize.try_into().map_err(|_| Error::TotalSizeTooLarge)?;
-        let off_dt_strings = self
-            .data
-            .len()
-            .try_into()
-            .map_err(|_| Error::TotalSizeTooLarge)?;
-        let size_dt_strings = self
-            .strings
-            .len()
-            .try_into()
-            .map_err(|_| Error::TotalSizeTooLarge)?;
-
-        // Finalize the header.
-        self.update_u32(0, FDT_MAGIC);
-        self.update_u32(1 * 4, totalsize);
-        self.update_u32(2 * 4, self.off_dt_struct);
-        self.update_u32(3 * 4, off_dt_strings);
-        self.update_u32(4 * 4, self.off_mem_rsvmap);
-        self.update_u32(5 * 4, FDT_VERSION);
-        self.update_u32(6 * 4, FDT_LAST_COMP_VERSION);
-        self.update_u32(7 * 4, self.boot_cpuid_phys);
-        self.update_u32(8 * 4, size_dt_strings);
-        self.update_u32(9 * 4, size_dt_struct);
-
-        // Add the strings block.
-        self.data.append(&mut self.strings);
-        Ok(self.data)
+    /// Return a mutable reference to the root node of the FDT.
+    pub fn root_mut(&mut self) -> &mut FdtNode {
+        &mut self.root
     }
 }
 
@@ -311,8 +361,6 @@ mod tests {
     #[test]
     fn minimal() {
         let mut fdt = Fdt::new(&[]);
-        let root_node = fdt.begin_node("").unwrap();
-        fdt.end_node(root_node).unwrap();
         assert_eq!(
             fdt.finish().unwrap(),
             [
@@ -350,8 +398,6 @@ mod tests {
                 size: 0x5678,
             },
         ]);
-        let root_node = fdt.begin_node("").unwrap();
-        fdt.end_node(root_node).unwrap();
         assert_eq!(
             fdt.finish().unwrap(),
             [
@@ -388,9 +434,8 @@ mod tests {
     #[test]
     fn prop_null() {
         let mut fdt = Fdt::new(&[]);
-        let root_node = fdt.begin_node("").unwrap();
-        fdt.set_prop("null", ()).unwrap();
-        fdt.end_node(root_node).unwrap();
+        let root_node = fdt.root_mut();
+        root_node.set_prop("null", ()).unwrap();
         assert_eq!(
             fdt.finish().unwrap(),
             [
@@ -423,9 +468,8 @@ mod tests {
     #[test]
     fn prop_u32() {
         let mut fdt = Fdt::new(&[]);
-        let root_node = fdt.begin_node("").unwrap();
-        fdt.set_prop("u32", 0x12345678u32).unwrap();
-        fdt.end_node(root_node).unwrap();
+        let root_node = fdt.root_mut();
+        root_node.set_prop("u32", 0x12345678u32).unwrap();
         assert_eq!(
             fdt.finish().unwrap(),
             [
@@ -459,16 +503,18 @@ mod tests {
     #[test]
     fn all_props() {
         let mut fdt = Fdt::new(&[]);
-        let root_node = fdt.begin_node("").unwrap();
-        fdt.set_prop("arru32", &[0x12345678u32, 0xAABBCCDDu32])
+        let root_node = fdt.root_mut();
+        root_node
+            .set_prop("arru32", &[0x12345678u32, 0xAABBCCDDu32])
             .unwrap();
-        fdt.set_prop("arru64", &[0x1234567887654321u64]).unwrap();
-        fdt.set_prop("null", ()).unwrap();
-        fdt.set_prop("str", "hello").unwrap();
-        fdt.set_prop("strlst", &["hi", "bye"]).unwrap();
-        fdt.set_prop("u32", 0x12345678u32).unwrap();
-        fdt.set_prop("u64", 0x1234567887654321u64).unwrap();
-        fdt.end_node(root_node).unwrap();
+        root_node
+            .set_prop("arru64", &[0x1234567887654321u64])
+            .unwrap();
+        root_node.set_prop("null", ()).unwrap();
+        root_node.set_prop("str", "hello").unwrap();
+        root_node.set_prop("strlst", &["hi", "bye"]).unwrap();
+        root_node.set_prop("u32", 0x12345678u32).unwrap();
+        root_node.set_prop("u64", 0x1234567887654321u64).unwrap();
         assert_eq!(
             fdt.finish().unwrap(),
             [
@@ -536,12 +582,10 @@ mod tests {
     #[test]
     fn nested_nodes() {
         let mut fdt = Fdt::new(&[]);
-        let root_node = fdt.begin_node("").unwrap();
-        fdt.set_prop("abc", 0x13579024u32).unwrap();
-        let nested_node = fdt.begin_node("nested").unwrap();
-        fdt.set_prop("def", 0x12121212u32).unwrap();
-        fdt.end_node(nested_node).unwrap();
-        fdt.end_node(root_node).unwrap();
+        let root_node = fdt.root_mut();
+        root_node.set_prop("abc", 0x13579024u32).unwrap();
+        let nested_node = root_node.subnode_mut("nested").unwrap();
+        nested_node.set_prop("def", 0x12121212u32).unwrap();
         assert_eq!(
             fdt.finish().unwrap(),
             [
@@ -584,13 +628,11 @@ mod tests {
     #[test]
     fn prop_name_string_reuse() {
         let mut fdt = Fdt::new(&[]);
-        let root_node = fdt.begin_node("").unwrap();
-        fdt.set_prop("abc", 0x13579024u32).unwrap();
-        let nested_node = fdt.begin_node("nested").unwrap();
-        fdt.set_prop("abc", 0x12121212u32).unwrap(); // This should reuse the "abc" string.
-        fdt.set_prop("def", 0x12121212u32).unwrap();
-        fdt.end_node(nested_node).unwrap();
-        fdt.end_node(root_node).unwrap();
+        let root_node = fdt.root_mut();
+        root_node.set_prop("abc", 0x13579024u32).unwrap();
+        let nested = root_node.subnode_mut("nested").unwrap();
+        nested.set_prop("abc", 0x12121212u32).unwrap(); // This should reuse the "abc" string.
+        nested.set_prop("def", 0x12121212u32).unwrap();
         assert_eq!(
             fdt.finish().unwrap(),
             [
@@ -637,61 +679,37 @@ mod tests {
     #[test]
     fn invalid_node_name_nul() {
         let mut fdt = Fdt::new(&[]);
-        fdt.begin_node("abc\0def")
+        let root_node = fdt.root_mut();
+        root_node
+            .subnode_mut("abc\0def")
             .expect_err("node name with embedded NUL");
     }
 
     #[test]
     fn invalid_prop_name_nul() {
         let mut fdt = Fdt::new(&[]);
-        fdt.set_prop("abc\0def", 0u32)
+        let root_node = fdt.root_mut();
+        root_node
+            .set_prop("abc\0def", 0u32)
             .expect_err("property name with embedded NUL");
     }
 
     #[test]
     fn invalid_prop_string_value_nul() {
         let mut fdt = Fdt::new(&[]);
-        fdt.set_prop("mystr", "abc\0def")
+        let root_node = fdt.root_mut();
+        root_node
+            .set_prop("mystr", "abc\0def")
             .expect_err("string property value with embedded NUL");
     }
 
     #[test]
     fn invalid_prop_string_list_value_nul() {
         let mut fdt = Fdt::new(&[]);
+        let root_node = fdt.root_mut();
         let strs = ["test", "abc\0def"];
-        fdt.set_prop("mystr", &strs)
+        root_node
+            .set_prop("mystr", &strs)
             .expect_err("stringlist property value with embedded NUL");
-    }
-
-    #[test]
-    fn invalid_prop_after_end_node() {
-        let mut fdt = Fdt::new(&[]);
-        let _root_node = fdt.begin_node("").unwrap();
-        fdt.set_prop("ok_prop", 1234u32).unwrap();
-        let nested_node = fdt.begin_node("mynode").unwrap();
-        fdt.set_prop("ok_nested_prop", 5678u32).unwrap();
-        fdt.end_node(nested_node).unwrap();
-        fdt.set_prop("bad_prop_after_end_node", 1357u32)
-            .expect_err("property after end_node");
-    }
-
-    #[test]
-    fn invalid_end_node_out_of_order() {
-        let mut fdt = Fdt::new(&[]);
-        let root_node = fdt.begin_node("").unwrap();
-        fdt.set_prop("ok_prop", 1234u32).unwrap();
-        let _nested_node = fdt.begin_node("mynode").unwrap();
-        fdt.end_node(root_node)
-            .expect_err("end node while nested node is open");
-    }
-
-    #[test]
-    fn invalid_finish_while_node_open() {
-        let mut fdt = Fdt::new(&[]);
-        let _root_node = fdt.begin_node("").unwrap();
-        fdt.set_prop("ok_prop", 1234u32).unwrap();
-        let _nested_node = fdt.begin_node("mynode").unwrap();
-        fdt.set_prop("ok_nested_prop", 5678u32).unwrap();
-        fdt.finish().expect_err("finish without ending all nodes");
     }
 }

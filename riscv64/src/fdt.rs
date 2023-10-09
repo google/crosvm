@@ -48,43 +48,36 @@ fn create_memory_node(fdt: &mut Fdt, guest_mem: &GuestMemory) -> Result<()> {
         previous_memory_region_end = Some(region.0.checked_add(region.1 as u64).unwrap());
     }
 
-    let memory_node = fdt.begin_node("memory")?;
-    fdt.set_prop("device_type", "memory")?;
-    fdt.set_prop("reg", mem_reg_prop)?;
-    fdt.end_node(memory_node)?;
-
+    let memory_node = fdt.root_mut().subnode_mut("memory")?;
+    memory_node.set_prop("device_type", "memory")?;
+    memory_node.set_prop("reg", mem_reg_prop)?;
     Ok(())
 }
 
 fn create_cpu_nodes(fdt: &mut Fdt, num_cpus: u32, timebase_frequency: u32) -> Result<()> {
-    let cpus_node = fdt.begin_node("cpus")?;
-    fdt.set_prop("#address-cells", 0x1u32)?;
-    fdt.set_prop("#size-cells", 0x0u32)?;
-    fdt.set_prop("timebase-frequency", timebase_frequency)?;
+    let cpus_node = fdt.root_mut().subnode_mut("cpus")?;
+    cpus_node.set_prop("#address-cells", 0x1u32)?;
+    cpus_node.set_prop("#size-cells", 0x0u32)?;
+    cpus_node.set_prop("timebase-frequency", timebase_frequency)?;
 
     for cpu_id in 0..num_cpus {
         let cpu_name = format!("cpu@{:x}", cpu_id);
-        let cpu_node = fdt.begin_node(&cpu_name)?;
-        fdt.set_prop("device_type", "cpu")?;
-        fdt.set_prop("compatible", "riscv")?;
-        fdt.set_prop("mmu-type", "sv48")?;
-        fdt.set_prop("riscv,isa", "rv64iafdcsu_smaia_ssaia")?;
-        fdt.set_prop("status", "okay")?;
-        fdt.set_prop("reg", cpu_id)?;
-        fdt.set_prop("phandle", PHANDLE_CPU0 + cpu_id)?;
+        let cpu_node = cpus_node.subnode_mut(&cpu_name)?;
+        cpu_node.set_prop("device_type", "cpu")?;
+        cpu_node.set_prop("compatible", "riscv")?;
+        cpu_node.set_prop("mmu-type", "sv48")?;
+        cpu_node.set_prop("riscv,isa", "rv64iafdcsu_smaia_ssaia")?;
+        cpu_node.set_prop("status", "okay")?;
+        cpu_node.set_prop("reg", cpu_id)?;
+        cpu_node.set_prop("phandle", PHANDLE_CPU0 + cpu_id)?;
 
         // Add interrupt controller node
-        let intc_node = fdt.begin_node("interrupt-controller")?;
-        fdt.set_prop("compatible", "riscv,cpu-intc")?;
-        fdt.set_prop("#interrupt-cells", 1u32)?;
-        fdt.set_prop("interrupt-controller", ())?;
-        fdt.set_prop("phandle", PHANDLE_CPU_INTC_BASE + cpu_id)?;
-        fdt.end_node(intc_node)?;
-
-        fdt.end_node(cpu_node)?;
+        let intc_node = cpu_node.subnode_mut("interrupt-controller")?;
+        intc_node.set_prop("compatible", "riscv,cpu-intc")?;
+        intc_node.set_prop("#interrupt-cells", 1u32)?;
+        intc_node.set_prop("interrupt-controller", ())?;
+        intc_node.set_prop("phandle", PHANDLE_CPU_INTC_BASE + cpu_id)?;
     }
-
-    fdt.end_node(cpus_node)?;
     Ok(())
 }
 
@@ -93,27 +86,25 @@ fn create_chosen_node(
     cmdline: &str,
     initrd: Option<(GuestAddress, usize)>,
 ) -> Result<()> {
-    let chosen_node = fdt.begin_node("chosen")?;
-    fdt.set_prop("linux,pci-probe-only", 1u32)?;
-    fdt.set_prop("bootargs", cmdline)?;
+    let chosen_node = fdt.root_mut().subnode_mut("chosen")?;
+    chosen_node.set_prop("linux,pci-probe-only", 1u32)?;
+    chosen_node.set_prop("bootargs", cmdline)?;
 
     let mut kaslr_seed_bytes = [0u8; 8];
     OsRng.fill_bytes(&mut kaslr_seed_bytes);
     let kaslr_seed = u64::from_le_bytes(kaslr_seed_bytes);
-    fdt.set_prop("kaslr-seed", kaslr_seed)?;
+    chosen_node.set_prop("kaslr-seed", kaslr_seed)?;
 
     let mut rng_seed_bytes = [0u8; 256];
     OsRng.fill_bytes(&mut rng_seed_bytes);
-    fdt.set_prop("rng-seed", &rng_seed_bytes)?;
+    chosen_node.set_prop("rng-seed", &rng_seed_bytes)?;
 
     if let Some((initrd_addr, initrd_size)) = initrd {
         let initrd_start = initrd_addr.offset();
         let initrd_end = initrd_start + initrd_size as u64;
-        fdt.set_prop("linux,initrd-start", initrd_start)?;
-        fdt.set_prop("linux,initrd-end", initrd_end)?;
+        chosen_node.set_prop("linux,initrd-start", initrd_start)?;
+        chosen_node.set_prop("linux,initrd-end", initrd_end)?;
     }
-
-    fdt.end_node(chosen_node)?;
 
     Ok(())
 }
@@ -127,8 +118,8 @@ fn create_aia_node(
     num_sources: usize,
 ) -> Result<()> {
     let name = format!("imsics@{:#08x}", AIA_IMSIC_BASE);
-    let imsic_node = fdt.begin_node(&name)?;
-    fdt.set_prop("compatible", "riscv,imsics")?;
+    let imsic_node = fdt.root_mut().subnode_mut(&name)?;
+    imsic_node.set_prop("compatible", "riscv,imsics")?;
 
     let regs = [
         0u32,
@@ -136,12 +127,12 @@ fn create_aia_node(
         0,
         aia_imsic_size(num_cpus) as u32,
     ];
-    fdt.set_prop("reg", &regs)?;
-    fdt.set_prop("#interrupt-cells", 0u32)?;
-    fdt.set_prop("interrupt-controller", ())?;
-    fdt.set_prop("msi-controller", ())?;
-    fdt.set_prop("riscv,num-ids", num_ids as u32)?;
-    fdt.set_prop("phandle", PHANDLE_AIA_IMSIC)?;
+    imsic_node.set_prop("reg", &regs)?;
+    imsic_node.set_prop("#interrupt-cells", 0u32)?;
+    imsic_node.set_prop("interrupt-controller", ())?;
+    imsic_node.set_prop("msi-controller", ())?;
+    imsic_node.set_prop("riscv,num-ids", num_ids as u32)?;
+    imsic_node.set_prop("phandle", PHANDLE_AIA_IMSIC)?;
 
     const S_MODE_EXT_IRQ: u32 = 9;
     let mut cpu_intc_regs: Vec<u32> = Vec::with_capacity(num_cpus * 2);
@@ -149,24 +140,21 @@ fn create_aia_node(
         cpu_intc_regs.push(PHANDLE_CPU_INTC_BASE + hart as u32);
         cpu_intc_regs.push(S_MODE_EXT_IRQ);
     }
-    fdt.set_prop("interrupts-extended", cpu_intc_regs)?;
-
-    fdt.end_node(imsic_node)?;
+    imsic_node.set_prop("interrupts-extended", cpu_intc_regs)?;
 
     /* Skip APLIC node if we have no interrupt sources */
     if num_sources > 0 {
         let name = format!("aplic@{:#08x}", aia_aplic_addr(num_cpus));
-        let aplic_node = fdt.begin_node(&name)?;
-        fdt.set_prop("compatible", "riscv,aplic")?;
+        let aplic_node = fdt.root_mut().subnode_mut(&name)?;
+        aplic_node.set_prop("compatible", "riscv,aplic")?;
 
         let regs = [0u32, aia_aplic_addr(num_cpus) as u32, 0, AIA_APLIC_SIZE];
-        fdt.set_prop("reg", &regs)?;
-        fdt.set_prop("#interrupt-cells", 2u32)?;
-        fdt.set_prop("interrupt-controller", ())?;
-        fdt.set_prop("riscv,num-sources", num_sources as u32)?;
-        fdt.set_prop("phandle", PHANDLE_AIA_APLIC)?;
-        fdt.set_prop("msi-parent", PHANDLE_AIA_IMSIC)?;
-        fdt.end_node(aplic_node)?;
+        aplic_node.set_prop("reg", &regs)?;
+        aplic_node.set_prop("#interrupt-cells", 2u32)?;
+        aplic_node.set_prop("interrupt-controller", ())?;
+        aplic_node.set_prop("riscv,num-sources", num_sources as u32)?;
+        aplic_node.set_prop("phandle", PHANDLE_AIA_APLIC)?;
+        aplic_node.set_prop("msi-parent", PHANDLE_AIA_IMSIC)?;
     }
 
     Ok(())
@@ -270,21 +258,19 @@ fn create_pci_nodes(
         masks.push(0x7); // allow INTA#-INTD# (1 | 2 | 3 | 4)
     }
 
-    let pci_node = fdt.begin_node("pci")?;
-    fdt.set_prop("compatible", "pci-host-cam-generic")?;
-    fdt.set_prop("device_type", "pci")?;
-    fdt.set_prop("ranges", ranges)?;
-    fdt.set_prop("bus-range", &bus_range)?;
-    fdt.set_prop("#address-cells", 3u32)?;
-    fdt.set_prop("#size-cells", 2u32)?;
-    fdt.set_prop("reg", &reg)?;
-    fdt.set_prop("#interrupt-cells", 1u32)?;
-    fdt.set_prop("interrupt-map", interrupts)?;
-    fdt.set_prop("interrupt-map-mask", masks)?;
-    fdt.set_prop("msi-parent", PHANDLE_AIA_IMSIC)?;
-    fdt.set_prop("dma-coherent", ())?;
-    fdt.end_node(pci_node)?;
-
+    let pci_node = fdt.root_mut().subnode_mut("pci")?;
+    pci_node.set_prop("compatible", "pci-host-cam-generic")?;
+    pci_node.set_prop("device_type", "pci")?;
+    pci_node.set_prop("ranges", ranges)?;
+    pci_node.set_prop("bus-range", &bus_range)?;
+    pci_node.set_prop("#address-cells", 3u32)?;
+    pci_node.set_prop("#size-cells", 2u32)?;
+    pci_node.set_prop("reg", &reg)?;
+    pci_node.set_prop("#interrupt-cells", 1u32)?;
+    pci_node.set_prop("interrupt-map", interrupts)?;
+    pci_node.set_prop("interrupt-map-mask", masks)?;
+    pci_node.set_prop("msi-parent", PHANDLE_AIA_IMSIC)?;
+    pci_node.set_prop("dma-coherent", ())?;
     Ok(())
 }
 
@@ -320,18 +306,15 @@ pub fn create_fdt(
     let mut fdt = Fdt::new(&[]);
 
     // The whole thing is put into one giant node with some top level properties
-    let root_node = fdt.begin_node("")?;
-    fdt.set_prop("compatible", "linux,dummy-virt")?;
-    fdt.set_prop("#address-cells", 0x2u32)?;
-    fdt.set_prop("#size-cells", 0x2u32)?;
+    let root_node = fdt.root_mut();
+    root_node.set_prop("compatible", "linux,dummy-virt")?;
+    root_node.set_prop("#address-cells", 0x2u32)?;
+    root_node.set_prop("#size-cells", 0x2u32)?;
     create_chosen_node(&mut fdt, cmdline, initrd)?;
     create_memory_node(&mut fdt, guest_mem)?;
     create_cpu_nodes(&mut fdt, num_cpus, timebase_frequency)?;
     create_aia_node(&mut fdt, num_cpus as usize, aia_num_ids, aia_num_sources)?;
     create_pci_nodes(&mut fdt, pci_irqs, pci_cfg, pci_ranges)?;
-
-    // End giant node
-    fdt.end_node(root_node)?;
 
     let fdt_final = fdt.finish()?;
     if fdt_final.len() > fdt_max_size {
