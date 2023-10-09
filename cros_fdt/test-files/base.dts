@@ -1,0 +1,46 @@
+/dts-v1/;
+
+/ {
+	interrupt-parent = <0x01>;
+	compatible = "linux,dummy-virt";
+	#address-cells = <0x02>;
+	#size-cells = <0x02>;
+
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x00 0x80000000 0x00 0x00001000>;
+	};
+
+	cpus {
+		#address-cells = <0x01>;
+		#size-cells = <0x00>;
+
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "arm,arm-v8";
+			enable-method = "psci";
+			reg = <0x00>;
+		};
+
+		cpu@1 {
+			device_type = "cpu";
+			compatible = "arm,arm-v8";
+			enable-method = "psci";
+			reg = <0x01>;
+		};
+	};
+
+	intc@3fff0000 {
+		compatible = "arm,gic-v3";
+		#address-cells = <0x02>;
+		#size-cells = <0x02>;
+		#interrupt-cells = <0x03>;
+		interrupt-controller;
+		reg = <0x00 0x3fff0000 0x00 0x10000 0x00 0x4fff0000 0x00 0x10000>;
+		phandle = <0x01>;
+	};
+
+	__symbols__ {
+		intc = "/intc@3fff0000";
+	};
+};

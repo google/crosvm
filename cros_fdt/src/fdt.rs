@@ -9,7 +9,6 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::io;
-use std::str::FromStr;
 
 use remain::sorted;
 use thiserror::Error as ThisError;
@@ -38,6 +37,8 @@ pub enum Error {
     FdtIoError(io::Error),
     #[error("Parse error reading FDT parameters: {}", .0)]
     FdtParseError(String),
+    #[error("Error applying FDT tree filter: {}", .0)]
+    FilterError(String),
     #[error("Invalid name string: {}", .0)]
     InvalidName(String),
     #[error("Invalid path: {}", .0)]
@@ -734,14 +735,14 @@ impl Fdt {
         &mut self.root
     }
 
-    // Return a reference to the node the path points to, or `None` if it doesn't exist.
+    /// Return a reference to the node the path points to, or `None` if it doesn't exist.
     ///
     /// # Arguments
     ///
     /// `path` - device tree path of the target node.
-    pub fn get_node<T: AsRef<str>>(&self, path: T) -> Option<&FdtNode> {
+    pub fn get_node<T: TryInto<Path>>(&self, path: T) -> Option<&FdtNode> {
         let mut result_node = &self.root;
-        let path = Path::from_str(path.as_ref()).ok()?;
+        let path: Path = path.try_into().ok()?;
         for node_name in path.iter() {
             result_node = result_node.subnodes.get(node_name)?;
         }
@@ -754,13 +755,29 @@ impl Fdt {
     /// # Arguments
     ///
     /// `path` - device tree path of the target node.
-    pub fn get_node_mut<T: AsRef<str>>(&mut self, path: T) -> Option<&mut FdtNode> {
+    pub fn get_node_mut<T: TryInto<Path>>(&mut self, path: T) -> Option<&mut FdtNode> {
         let mut result_node = &mut self.root;
-        let path = Path::from_str(path.as_ref()).ok()?;
+        let path: Path = path.try_into().ok()?;
         for node_name in path.iter() {
             result_node = result_node.subnodes.get_mut(node_name)?;
         }
         Some(result_node)
+    }
+
+    /// Find a device tree path to the symbol exported by the FDT. The symbol must be a node label.
+    ///
+    /// # Arguments
+    ///
+    /// `symbol` - symbol to search for.
+    pub fn symbol_to_path(&self, symbol: &str) -> Result<Path> {
+        const SYMBOLS_NODE: &str = "__symbols__";
+        let Some(symbols_node) = self.root.subnode(SYMBOLS_NODE) else {
+            return Err(Error::InvalidPath("no symbols in fdt".into()));
+        };
+        symbols_node
+            .get_prop::<String>(symbol)
+            .ok_or_else(|| Error::InvalidName(format!("filter symbol {symbol} does not exist")))?
+            .parse()
     }
 }
 

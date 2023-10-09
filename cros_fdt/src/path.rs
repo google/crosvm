@@ -16,9 +16,9 @@ pub(crate) const PATH_SEP: &str = "/";
 #[derive(Debug, PartialEq)]
 pub(crate) struct PhandlePin(pub String, pub u32);
 
-// DT path.
+/// Device tree path.
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub(crate) struct Path(String);
+pub struct Path(String);
 
 impl Path {
     // Verify path and strip unneeded characters.
@@ -61,6 +61,17 @@ impl Path {
         self.0
             .split(PATH_SEP)
             .skip(if self.0 == PATH_SEP { 2 } else { 1 }) // Skip empty segments at start
+    }
+
+    // Return `true` if the path points to a child of `other`.
+    pub(crate) fn is_child_of(&self, other: &Path) -> bool {
+        let mut self_iter = self.iter();
+        for elem in other.iter() {
+            if self_iter.next() != Some(elem) {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -177,5 +188,18 @@ mod tests {
         assert!(path.iter().eq(["a", "b", "c", "de"]));
         path = path.push("f/g/h").unwrap();
         assert!(path.iter().eq(["a", "b", "c", "de", "f", "g", "h"]));
+    }
+
+    #[test]
+    fn fdt_path_childof() {
+        let path = Path::new("/aaa/bbb/ccc").unwrap();
+        assert!(path.is_child_of(&Path::new("/aaa").unwrap()));
+        assert!(path.is_child_of(&Path::new("/aaa/bbb").unwrap()));
+        assert!(path.is_child_of(&Path::new("/aaa/bbb/ccc").unwrap()));
+        assert!(!path.is_child_of(&Path::new("/aaa/bbb/ccc/ddd").unwrap()));
+        assert!(!path.is_child_of(&Path::new("/aa").unwrap()));
+        assert!(!path.is_child_of(&Path::new("/aaa/bb").unwrap()));
+        assert!(!path.is_child_of(&Path::new("/d").unwrap()));
+        assert!(!path.is_child_of(&Path::new("/d/e").unwrap()));
     }
 }

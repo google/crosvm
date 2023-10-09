@@ -1,0 +1,32 @@
+/dts-v1/;
+/plugin/;
+
+&{/} {
+	interrupt-parent = <&intc>;
+	#address-cells = <0x02>;
+	#size-cells = <0x02>;
+
+	mydev:mydev@8000000 {
+		compatible = "mydev";
+		reg = <0x00 0x8000000 0x00 0x1000>;
+		interrupts = <0x00 0x0f 0x04>;
+		phandle = <0x01>;
+
+		devnode1 {
+			prop1 = "value1";
+			prop2 = <0x01 0x02 0x03>;
+		};
+	};
+
+	mydev2:mydev@8001000 {
+		compatible = "mydev";
+		reg = <0x00 0x8001000 0x00 0x1000>;
+		interrupts = <0x00 0xff 0x04>;
+		phandle = <0x02>;
+
+		devnode1 {
+			prop1 = "value1";
+			prop2 = <0x01 0x02 0x03>;
+		};
+	};
+};

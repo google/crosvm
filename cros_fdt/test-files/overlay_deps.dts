@@ -1,0 +1,31 @@
+/dts-v1/;
+/plugin/;
+
+&{/} {
+	n0-1 {
+		prop1 = <0x01>;
+
+		dev1: n1 {
+			prop1 = <0x02>;
+			prop2 = <&dev2>;
+		};
+		n2 {
+			prop1 = <0x03>;
+			prop2 = <&dev2>;
+		};
+	};
+
+	n0-2 {
+		prop1 = <0x04>;
+
+		dev2: n1 {
+			prop1 = <0x05>;
+			prop2 = <&dev1>;
+		};
+		n2 {
+			prop1 = <0x06>;
+			prop2 = <&dev1>;
+		};
+	};
+
+};
