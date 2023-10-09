@@ -24,6 +24,8 @@ pub(crate) const SIZE_U64: usize = std::mem::size_of::<u64>();
 #[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
+    #[error("Error applying device tree overlay: {}", .0)]
+    ApplyOverlayError(String),
     #[error("Binary size must fit in 32 bits")]
     BinarySizeTooLarge,
     #[error("Duplicate node {}", .0)]
@@ -439,6 +441,16 @@ impl FdtNode {
         Ok(())
     }
 
+    // Iterate over property names defined for this node.
+    pub(crate) fn prop_names(&self) -> impl std::iter::Iterator<Item = &str> {
+        self.props.keys().map(|s| s.as_str())
+    }
+
+    // Return true if a property with the given name exists.
+    pub(crate) fn has_prop(&self, name: &str) -> bool {
+        self.props.contains_key(name)
+    }
+
     /// Read property value if it exists.
     ///
     /// # Arguments
@@ -453,7 +465,6 @@ impl FdtNode {
 
     // Read a phandle value (a `u32`) at some offset within a property value.
     // Returns `None` if a phandle value cannot be constructed.
-    #[allow(unused)]
     pub(crate) fn phandle_at_offset(&self, name: &str, offset: usize) -> Option<u32> {
         let data = self.props.get(name)?;
         data.get(offset..offset + SIZE_U32)
@@ -463,7 +474,6 @@ impl FdtNode {
     // Overwrite a phandle value (a `u32`) at some offset within a property value.
     // Returns `Err` if the property doesn't exist, or if the property value is too short to
     // construct a `u32` at given offset. Does not change property value size.
-    #[allow(unused)]
     pub(crate) fn update_phandle_at_offset(
         &mut self,
         name: &str,
@@ -525,13 +535,11 @@ impl FdtNode {
     }
 
     // Iterate subnode references.
-    #[allow(unused)]
     pub(crate) fn iter_subnodes(&self) -> impl std::iter::Iterator<Item = &FdtNode> {
         self.subnodes.values()
     }
 
     // Iterate mutable subnode references.
-    #[allow(unused)]
     pub(crate) fn iter_subnodes_mut(&mut self) -> impl std::iter::Iterator<Item = &mut FdtNode> {
         self.subnodes.values_mut()
     }

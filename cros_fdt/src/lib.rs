@@ -5,6 +5,7 @@
 //! Flattened device tree writer.
 
 mod fdt;
+mod overlay;
 mod path;
 mod propval;
 
@@ -12,3 +13,4 @@ pub use fdt::Error;
 pub use fdt::Fdt;
 pub use fdt::FdtNode;
 pub use fdt::Result;
+pub use overlay::apply_overlay;

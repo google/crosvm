@@ -43,7 +43,6 @@ impl Path {
     }
 
     // Push a new path segment, creating a new path.
-    #[allow(unused)]
     pub(crate) fn push(&self, subpath: &str) -> Result<Self> {
         let mut new_path = self.0.clone();
         if !new_path.ends_with(PATH_SEP) {
@@ -109,7 +108,6 @@ impl fmt::Display for Path {
 
 // Parse a DT path string containing a node path and a property location (name and offset),
 // eg '/path/to/node:prop1:4'.
-#[allow(unused)]
 pub(crate) fn parse_path_with_prop(value: &str) -> Result<(Path, PhandlePin)> {
     const PROP_SEP: char = ':';
     let mut elements = value.split(PROP_SEP);
