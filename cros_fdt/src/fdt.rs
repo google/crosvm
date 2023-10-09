@@ -38,11 +38,6 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-const FDT_MAGIC: u32 = 0xd00dfeed;
-const FDT_VERSION: u32 = 17;
-const FDT_LAST_COMP_VERSION: u32 = 16;
-const FDT_HEADER_SIZE: usize = 10 * SIZE_U32;
-
 const FDT_BEGIN_NODE: u32 = 0x00000001;
 const FDT_END_NODE: u32 = 0x00000002;
 const FDT_PROP: u32 = 0x00000003;
@@ -58,6 +53,74 @@ fn align_pad_len(size: usize, alignment: usize) -> usize {
 #[inline]
 fn align_data(data: &mut Vec<u8>, alignment: usize) {
     data.resize(align_pad_len(data.len(), alignment) + data.len(), 0u8);
+}
+
+// An implementation of FDT header.
+#[derive(Default)]
+struct FdtHeader {
+    magic: u32,             // magic word FDT_MAGIC
+    total_size: u32,        // total size of DT block
+    off_dt_struct: u32,     // offset to structure
+    off_dt_strings: u32,    // offset to strings
+    off_mem_rsvmap: u32,    // offset to memory reserve map
+    version: u32,           // format version
+    last_comp_version: u32, // last compatible version
+    boot_cpuid_phys: u32,   // Which physical CPU id we're booting on
+    size_dt_strings: u32,   // size of the strings block
+    size_dt_struct: u32,    // size of the structure block
+}
+
+impl FdtHeader {
+    const MAGIC: u32 = 0xd00dfeed;
+    const VERSION: u32 = 17;
+    const LAST_COMP_VERSION: u32 = 16;
+    const SIZE: usize = 10 * SIZE_U32;
+
+    // Create a new FdtHeader instance.
+    fn new(
+        total_size: u32,
+        off_dt_struct: u32,
+        off_dt_strings: u32,
+        off_mem_rsvmap: u32,
+        boot_cpuid_phys: u32,
+        size_dt_strings: u32,
+        size_dt_struct: u32,
+    ) -> Self {
+        Self {
+            magic: Self::MAGIC,
+            total_size,
+            off_dt_struct,
+            off_dt_strings,
+            off_mem_rsvmap,
+            version: Self::VERSION,
+            last_comp_version: Self::LAST_COMP_VERSION,
+            boot_cpuid_phys,
+            size_dt_strings,
+            size_dt_struct,
+        }
+    }
+
+    // Dump FDT header to a byte vector.
+    fn to_blob(&self) -> Vec<u8> {
+        let mut blob = Vec::with_capacity(Self::SIZE);
+        for val in &[
+            self.magic,
+            self.total_size,
+            self.off_dt_struct,
+            self.off_dt_strings,
+            self.off_mem_rsvmap,
+            self.version,
+            self.last_comp_version,
+            self.boot_cpuid_phys,
+            self.size_dt_strings,
+            self.size_dt_struct,
+        ] {
+            blob.extend(val.to_be_bytes());
+        }
+        align_data(&mut blob, SIZE_U64);
+        assert_eq!(blob.len(), Self::SIZE);
+        blob
+    }
 }
 
 // An implementation of FDT strings block (property names)
@@ -290,35 +353,6 @@ impl Fdt {
         blob
     }
 
-    // Dump FDT header to a byte vector.
-    fn fdt_header_to_blob(
-        &self,
-        total_size: u32,
-        off_dt_struct: u32,
-        off_dt_strings: u32,
-        size_dt_strings: u32,
-        size_dt_struct: u32,
-    ) -> Vec<u8> {
-        let mut blob = Vec::with_capacity(FDT_HEADER_SIZE);
-        for val in &[
-            FDT_MAGIC,
-            total_size,
-            off_dt_struct,
-            off_dt_strings,
-            FDT_HEADER_SIZE as u32,
-            FDT_VERSION,
-            FDT_LAST_COMP_VERSION,
-            self.boot_cpuid_phys,
-            size_dt_strings,
-            size_dt_struct,
-        ] {
-            blob.extend(val.to_be_bytes());
-        }
-        align_data(&mut blob, SIZE_U64);
-        assert_eq!(blob.len(), FDT_HEADER_SIZE);
-        blob
-    }
-
     /// Finish writing the Devicetree Blob (DTB).
     ///
     /// Returns the DTB as a vector of bytes.
@@ -328,19 +362,23 @@ impl Fdt {
         let node_blob = self.dump_struct();
         let strings_blob = self.strings.to_blob();
         let total_size =
-            resvmem_blob.len() + strings_blob.len() + node_blob.len() + FDT_HEADER_SIZE;
+            resvmem_blob.len() + strings_blob.len() + node_blob.len() + FdtHeader::SIZE;
 
         // Write the header
-        let off_dt_struct = (FDT_HEADER_SIZE + resvmem_blob.len()) as u32;
-        let mut result = self.fdt_header_to_blob(
+        let off_mem_rsvmap = FdtHeader::SIZE as u32;
+        let off_dt_struct = off_mem_rsvmap + resvmem_blob.len() as u32;
+        let header = FdtHeader::new(
             u32::try_from(total_size).map_err(|_| Error::TotalSizeTooLarge)?,
             off_dt_struct,
             off_dt_struct + node_blob.len() as u32,
+            off_mem_rsvmap,
+            self.boot_cpuid_phys,
             strings_blob.len() as u32,
             node_blob.len() as u32,
         );
 
         // Return merged blocks
+        let mut result = header.to_blob();
         result.reserve_exact(total_size - result.len()); // Allocate capacity for remaining blocks
         result.extend(resvmem_blob);
         result.extend(node_blob);
