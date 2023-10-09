@@ -28,6 +28,8 @@ pub enum Error {
     FdtGuestMemoryWriteError,
     #[error("I/O error code={0}")]
     FdtIoError(io::Error),
+    #[error("Invalid name string: {}", .0)]
+    InvalidName(String),
     #[error("Invalid string value {}", .0)]
     InvalidString(String),
     #[error("Property value size must fit in 32 bits")]
@@ -59,6 +61,25 @@ fn align_pad_len(size: usize, alignment: usize) -> usize {
 #[inline]
 fn align_data(data: &mut Vec<u8>, alignment: usize) {
     data.resize(align_pad_len(data.len(), alignment) + data.len(), 0u8);
+}
+
+// Verify FDT property name.
+fn is_valid_prop_name(name: &str) -> bool {
+    const ALLOWED_SPECIAL_CHARS: [u8; 7] = [b'.', b',', b'_', b'+', b'?', b'#', b'-'];
+    name.bytes()
+        .all(|c| c.is_ascii_alphanumeric() || ALLOWED_SPECIAL_CHARS.contains(&c))
+}
+
+// Verify FDT node name.
+fn is_valid_node_name(name: &str) -> bool {
+    const ALLOWED_SPECIAL_CHARS: [u8; 6] = [b'.', b',', b'_', b'+', b'-', b'@'];
+    const ADDR_SEP: u8 = b'@';
+    // At most one `@` separating node-name and unit-address
+    if name.bytes().filter(|&c| c == ADDR_SEP).count() > 1 {
+        return false;
+    }
+    name.bytes()
+        .all(|c| c.is_ascii_alphanumeric() || ALLOWED_SPECIAL_CHARS.contains(&c))
 }
 
 // An implementation of FDT header.
@@ -161,7 +182,7 @@ impl FdtStrings {
 #[derive(Debug, Clone)]
 pub struct FdtNode {
     /// Node name
-    pub name: String,
+    pub(crate) name: String,
     pub(crate) props: BTreeMap<String, Vec<u8>>,
     pub(crate) subnodes: BTreeMap<String, FdtNode>,
 }
@@ -174,6 +195,14 @@ impl FdtNode {
         props: BTreeMap<String, Vec<u8>>,
         subnodes: BTreeMap<String, FdtNode>,
     ) -> Result<Self> {
+        if !is_valid_node_name(&name) {
+            return Err(Error::InvalidName(name));
+        }
+        for pname in props.keys() {
+            if !is_valid_prop_name(pname) {
+                return Err(Error::InvalidName(pname.into()));
+            }
+        }
         Ok(Self {
             name,
             props,
@@ -228,8 +257,8 @@ impl FdtNode {
     where
         T: ToFdtPropval,
     {
-        if name.contains('\0') {
-            return Err(Error::InvalidString(name.into()));
+        if !is_valid_prop_name(name) {
+            return Err(Error::InvalidName(name.into()));
         }
         let bytes = value.to_propval()?;
         // FDT property byte size must fit into a u32.
@@ -245,9 +274,6 @@ impl FdtNode {
     ///
     /// `name` - name of the node; must be a valid node name according to DT specification.
     pub fn subnode_mut(&mut self, name: &str) -> Result<&mut FdtNode> {
-        if name.contains('\0') {
-            return Err(Error::InvalidString(name.into()));
-        }
         if !self.subnodes.contains_key(name) {
             self.subnodes.insert(name.into(), FdtNode::empty(name)?);
         }
