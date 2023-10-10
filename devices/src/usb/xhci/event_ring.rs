@@ -13,7 +13,8 @@ use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 use zerocopy::AsBytes;
 
-use super::xhci_abi::*;
+use super::xhci_abi::EventRingSegmentTableEntry;
+use super::xhci_abi::Trb;
 
 #[sorted]
 #[derive(Error, Debug)]

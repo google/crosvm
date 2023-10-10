@@ -19,7 +19,10 @@ use super::xhci_abi::Trb;
 use super::xhci_abi::TrbCast;
 use super::xhci_abi::TrbCompletionCode;
 use super::xhci_abi::TrbType;
-use super::xhci_regs::*;
+use super::xhci_regs::XhciRegs;
+use super::xhci_regs::ERDP_EVENT_HANDLER_BUSY;
+use super::xhci_regs::IMAN_INTERRUPT_PENDING;
+use super::xhci_regs::USB_STS_EVENT_INTERRUPT;
 use crate::register_space::Register;
 
 #[sorted]

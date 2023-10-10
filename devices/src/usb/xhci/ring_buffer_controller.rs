@@ -22,7 +22,7 @@ use vm_memory::GuestMemory;
 
 use super::ring_buffer::RingBuffer;
 use super::ring_buffer_stop_cb::RingBufferStopCallback;
-use super::xhci_abi::*;
+use super::xhci_abi::TransferDescriptor;
 use crate::utils;
 use crate::utils::EventHandler;
 use crate::utils::EventLoop;
@@ -243,6 +243,10 @@ mod tests {
     use std::sync::mpsc::channel;
     use std::sync::mpsc::Sender;
 
+    use super::super::xhci_abi::LinkTrb;
+    use super::super::xhci_abi::NormalTrb;
+    use super::super::xhci_abi::Trb;
+    use super::super::xhci_abi::TrbType;
     use super::*;
 
     struct TestHandler {
