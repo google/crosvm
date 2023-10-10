@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt::Write;
+
 use quote::quote;
 
 /// A helper derive proc macro to flatten multiple subcommand enums into one
@@ -142,11 +144,10 @@ pub fn pad_description_for_argh(
                     {
                         if let Ok(syn::Meta::NameValue(nv)) = a.parse_meta() {
                             if let syn::Lit::Str(s) = nv.lit {
-                                let doc = s
-                                    .value()
-                                    .lines()
-                                    .map(|s| format!("{: <61}", s))
-                                    .collect::<String>();
+                                let doc = s.value().lines().fold(String::new(), |mut output, s| {
+                                    let _ = write!(output, "{: <61}", s);
+                                    output
+                                });
                                 *a = syn::parse_quote! { #[doc= #doc] };
                             }
                         }
