@@ -21,6 +21,9 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
+// TODO(b/292077398): Upstream or remove ACPI notification forwarding support
+pub const VFIO_PCI_ACPI_NTFY_IRQ_INDEX: std::os::raw::c_uint = 5;
+
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct vfio_acpi_dsm {
