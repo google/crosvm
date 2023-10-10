@@ -399,9 +399,9 @@ mod tests {
 
     impl VecMem {
         fn new(size: usize) -> VecMem {
-            let mut mem = Vec::new();
-            mem.resize(size, 0);
-            VecMem { mem: Arc::new(mem) }
+            VecMem {
+                mem: Arc::new(vec![0u8; size]),
+            }
         }
     }
 
