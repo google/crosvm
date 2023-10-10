@@ -22,6 +22,7 @@ pub use crate::sys::ROOT_ID;
 const MAX_BUFFER_SIZE: u32 = 1 << 20;
 
 /// Information about a path in the filesystem.
+#[derive(Debug)]
 pub struct Entry {
     /// An `Inode` that uniquely identifies this path. During `lookup`, setting this to `0` means a
     /// negative entry. Returning `ENOENT` also means a negative entry but setting this to `0`

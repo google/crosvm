@@ -2993,6 +2993,41 @@ mod tests {
         Ok(())
     }
 
+    /// Looks up and open the given `path` in `fs`.
+    fn atomic_open(
+        fs: &PassthroughFs,
+        path: &Path,
+        mode: u32,
+        flags: u32,
+        umask: u32,
+    ) -> io::Result<(Entry, Option<Handle>, OpenOptions)> {
+        let mut inode = 1;
+        let ctx = get_context();
+
+        let path_vec: Vec<_> = path.iter().collect();
+        let vec_len = path_vec.len();
+
+        // Do lookup before util (vec_len-1)-th pathname, this operation is to simulate
+        // the behavior of VFS, since when VFS call atomic_open only at last look up.
+        for name in &path_vec[0..vec_len - 1] {
+            let name = CString::new(name.to_str().unwrap()).unwrap();
+            let ent = fs.lookup(ctx, inode, &name)?;
+            inode = ent.inode;
+        }
+
+        let name = CString::new(path_vec[vec_len - 1].to_str().unwrap()).unwrap();
+
+        fs.atomic_open(ctx, inode, &name, mode, flags, umask)
+    }
+
+    fn symlink(fs: &PassthroughFs, linkname: &Path, name: &Path) -> io::Result<Entry> {
+        let inode = 1;
+        let ctx = get_context();
+        let name = CString::new(name.to_str().unwrap()).unwrap();
+        let linkname = CString::new(linkname.to_str().unwrap()).unwrap();
+        fs.symlink(ctx, &linkname, inode, &name)
+    }
+
     #[test]
     fn rewrite_xattr_names() {
         // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
@@ -3349,5 +3384,190 @@ mod tests {
             lookup(&fs, &a_path).expect("lookup a.txt"),
             "Entry with inode=0 is expected for the removed file 'a.txt'"
         );
+    }
+    #[test]
+    fn atomic_open_existing_file() {
+        // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
+        // `NamedLock` before starting each unit test creating a `PassthroughFs` instance.
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+        create_test_data(&temp_dir, &["dir"], &["a.txt", "dir/b.txt", "dir/c.txt"]);
+
+        let cfg = Default::default();
+        let fs = PassthroughFs::new("tag", cfg).unwrap();
+
+        let capable = FsOptions::empty();
+        fs.init(capable).unwrap();
+
+        // atomic_open with flag O_RDWR, should return positive dentry and file handler
+        let res = atomic_open(
+            &fs,
+            &temp_dir.path().join("a.txt"),
+            0o666,
+            libc::O_RDWR as u32,
+            0,
+        );
+        assert!(res.is_ok());
+        let (entry, handler, open_options) = res.unwrap();
+        assert_ne!(entry.inode, 0);
+        assert!(handler.is_some());
+        assert_ne!(
+            open_options & OpenOptions::FILE_CREATED,
+            OpenOptions::FILE_CREATED
+        );
+
+        // atomic_open with flag O_RDWR |  O_CREATE, should return positive dentry and file handler
+        let res = atomic_open(
+            &fs,
+            &temp_dir.path().join("dir/b.txt"),
+            0o666,
+            (libc::O_RDWR | libc::O_CREAT) as u32,
+            0,
+        );
+        assert!(res.is_ok());
+        let (entry, handler, open_options) = res.unwrap();
+        assert_ne!(entry.inode, 0);
+        assert!(handler.is_some());
+        assert_ne!(
+            open_options & OpenOptions::FILE_CREATED,
+            OpenOptions::FILE_CREATED
+        );
+
+        // atomic_open with flag O_RDWR | O_CREATE | O_EXCL, should return positive dentry and file handler
+        let res = atomic_open(
+            &fs,
+            &temp_dir.path().join("dir/c.txt"),
+            0o666,
+            (libc::O_RDWR | libc::O_CREAT | libc::O_EXCL) as u32,
+            0,
+        );
+        assert!(res.is_err());
+        let err_kind = res.unwrap_err().kind();
+        assert_eq!(err_kind, io::ErrorKind::AlreadyExists);
+    }
+
+    #[test]
+    fn atomic_open_non_existing_file() {
+        // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
+        // `NamedLock` before starting each unit test creating a `PassthroughFs` instance.
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+
+        let cfg = Default::default();
+        let fs = PassthroughFs::new("tag", cfg).unwrap();
+
+        let capable = FsOptions::empty();
+        fs.init(capable).unwrap();
+
+        // atomic_open with flag O_RDWR, should return NO_EXIST error
+        let res = atomic_open(
+            &fs,
+            &temp_dir.path().join("a.txt"),
+            0o666,
+            libc::O_RDWR as u32,
+            0,
+        );
+        assert!(res.is_err());
+        let err_kind = res.unwrap_err().kind();
+        assert_eq!(err_kind, io::ErrorKind::NotFound);
+
+        // atomic_open with flag O_RDWR | O_CREATE, should return positive dentry and file handler
+        let res = atomic_open(
+            &fs,
+            &temp_dir.path().join("b.txt"),
+            0o666,
+            (libc::O_RDWR | libc::O_CREAT) as u32,
+            0,
+        );
+        assert!(res.is_ok());
+        let (entry, handler, open_options) = res.unwrap();
+        assert_ne!(entry.inode, 0);
+        assert!(handler.is_some());
+        assert_eq!(
+            open_options & OpenOptions::FILE_CREATED,
+            OpenOptions::FILE_CREATED
+        );
+    }
+
+    #[test]
+    fn atomic_open_symbol_link() {
+        // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
+        // `NamedLock` before starting each unit test creating a `PassthroughFs` instance.
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+        create_test_data(&temp_dir, &["dir"], &["a.txt"]);
+
+        let cfg = Default::default();
+        let fs = PassthroughFs::new("tag", cfg).unwrap();
+
+        let capable = FsOptions::empty();
+        fs.init(capable).unwrap();
+
+        // atomic open the link destination file
+        let res_dst = atomic_open(
+            &fs,
+            &temp_dir.path().join("a.txt"),
+            0o666,
+            libc::O_RDWR as u32,
+            0,
+        );
+        assert!(res_dst.is_ok());
+        let (entry_dst, handler_dst, _) = res_dst.unwrap();
+        assert_ne!(entry_dst.inode, 0);
+        assert!(handler_dst.is_some());
+
+        // create depth 1 symbol link
+        let sym1_res = symlink(
+            &fs,
+            &temp_dir.path().join("a.txt"),
+            &temp_dir.path().join("blink"),
+        );
+        assert!(sym1_res.is_ok());
+        let sym1_entry = sym1_res.unwrap();
+        assert_ne!(sym1_entry.inode, 0);
+
+        // atomic_open symbol link, should return dentry with no handler
+        let res = atomic_open(
+            &fs,
+            &temp_dir.path().join("blink"),
+            0o666,
+            libc::O_RDWR as u32,
+            0,
+        );
+        assert!(res.is_ok());
+        let (entry, handler, open_options) = res.unwrap();
+        assert_eq!(entry.inode, sym1_entry.inode);
+        assert!(handler.is_none());
+        assert_eq!(open_options, OpenOptions::empty());
+
+        // delete link destination
+        unlink(&fs, &temp_dir.path().join("a.txt")).expect("Remove");
+        assert_eq!(
+            lookup(&fs, &temp_dir.path().join("a.txt"))
+                .expect_err("file must not exist")
+                .kind(),
+            io::ErrorKind::NotFound,
+            "a.txt must be removed"
+        );
+
+        // after link destination removed, should still return valid dentry
+        let res = atomic_open(
+            &fs,
+            &temp_dir.path().join("blink"),
+            0o666,
+            libc::O_RDWR as u32,
+            0,
+        );
+        assert!(res.is_ok());
+        let (entry, handler, open_options) = res.unwrap();
+        assert_eq!(entry.inode, sym1_entry.inode);
+        assert!(handler.is_none());
+        assert_eq!(open_options, OpenOptions::empty());
     }
 }
