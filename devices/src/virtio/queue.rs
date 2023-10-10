@@ -6,6 +6,9 @@
 
 #![deny(missing_docs)]
 
+use std::ops::Deref;
+use std::ops::DerefMut;
+
 pub mod packed_descriptor_chain;
 mod packed_queue;
 pub mod split_descriptor_chain;
@@ -395,13 +398,20 @@ impl Queue {
         }
     }
 
-    /// If a new DescriptorHead is available, returns one and removes it from the queue.
+    /// Get the first available descriptor chain without removing it from the queue.
+    /// Call `pop()` on the returned [`PeekedDescriptorChain`] to remove it from the queue.
+    pub fn peek(&mut self) -> Option<PeekedDescriptorChain> {
+        let desc_chain = match self {
+            Queue::SplitVirtQueue(q) => q.peek(),
+            Queue::PackedVirtQueue(q) => q.peek(),
+        }?;
+
+        Some(PeekedDescriptorChain::new(self, desc_chain))
+    }
+
+    /// If a new DescriptorChain is available, returns one and removes it from the queue.
     pub fn pop(&mut self) -> Option<DescriptorChain> {
-        let descriptor_chain = self.peek();
-        if descriptor_chain.is_some() {
-            self.pop_peeked();
-        }
-        descriptor_chain
+        self.peek().map(PeekedDescriptorChain::pop)
     }
 
     /// Returns `None` if stop_rx receives a value; otherwise returns the result
@@ -481,21 +491,6 @@ impl Queue {
     );
 
     define_queue_method!(
-        /// Get the first available descriptor chain without removing it from the queue.
-        /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
-        peek,
-        Option<DescriptorChain>,
-        mut,
-    );
-
-    define_queue_method!(
-        /// If a new DescriptorHead is available, returns one and removes it from the queue.
-        pop_peeked,
-        (),
-        mut,
-    );
-
-    define_queue_method!(
         /// Puts an available descriptor head into the used ring for use by the guest.
         add_used,
         (),
@@ -509,4 +504,48 @@ impl Queue {
         snapshot,
         Result<serde_json::Value>,
     );
+}
+
+/// A `DescriptorChain` that has been peeked from a `Queue` but not popped yet.
+///
+/// Call [`pop()`](Self::pop) to pop this descriptor chain from the `Queue` and receive the
+/// contained `DescriptorChain` object.
+///
+/// This object holds a mutable reference to the `Queue` to ensure it is not possible to pop or peek
+/// another descriptor while a peek is already active. Either `pop()` or drop this object before
+/// attempting to manipulate the `Queue` again.
+pub struct PeekedDescriptorChain<'q> {
+    queue: &'q mut Queue,
+    desc_chain: DescriptorChain,
+}
+
+impl<'q> PeekedDescriptorChain<'q> {
+    /// Create a `PeekedDescriptorChain` that holds a mutable reference to its `Queue`.
+    /// Use [`Queue::peek()`] rather than calling this function.
+    fn new(queue: &'q mut Queue, desc_chain: DescriptorChain) -> Self {
+        PeekedDescriptorChain { queue, desc_chain }
+    }
+
+    /// Pop this descriptor chain from the queue.
+    pub fn pop(self) -> DescriptorChain {
+        match self.queue {
+            Queue::SplitVirtQueue(q) => q.pop_peeked(),
+            Queue::PackedVirtQueue(q) => q.pop_peeked(),
+        }
+        self.desc_chain
+    }
+}
+
+impl Deref for PeekedDescriptorChain<'_> {
+    type Target = DescriptorChain;
+
+    fn deref(&self) -> &Self::Target {
+        &self.desc_chain
+    }
+}
+
+impl DerefMut for PeekedDescriptorChain<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.desc_chain
+    }
 }

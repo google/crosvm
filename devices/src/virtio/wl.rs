@@ -1722,7 +1722,7 @@ pub fn process_in_queue(
             }
             let bytes_written = desc.writer.bytes_written() as u32;
             needs_interrupt = true;
-            in_queue.pop_peeked();
+            let desc = desc.pop();
             in_queue.add_used(desc, bytes_written);
         } else {
             break;

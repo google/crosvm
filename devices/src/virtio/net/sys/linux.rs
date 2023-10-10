@@ -58,7 +58,7 @@ pub fn process_rx<T: TapT>(
         cros_tracing::trace_simple_print!("{bytes_written} bytes read from tap");
 
         if bytes_written > 0 {
-            rx_queue.pop_peeked();
+            let desc_chain = desc_chain.pop();
             rx_queue.add_used(desc_chain, bytes_written);
             needs_interrupt = true;
         }

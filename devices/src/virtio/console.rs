@@ -109,7 +109,7 @@ fn handle_input(
         let bytes_written = writer.bytes_written() as u32;
 
         if bytes_written > 0 {
-            receive_queue.pop_peeked();
+            let desc = desc.pop();
             receive_queue.add_used(desc, bytes_written);
             receive_queue.trigger_interrupt(interrupt);
         }
