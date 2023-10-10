@@ -7,7 +7,6 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
-pub type __int32_t = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct video_frame_plane {

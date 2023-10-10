@@ -87,7 +87,7 @@ curl -L https://github.com/cargo-bins/cargo-binstall/releases/download/v0.19.3/c
 # This should be fixed by: https://github.com/cargo-bins/cargo-binstall/issues/776
 
 # The bindgen tool is required to build a crosvm dependency.
-cargo binstall --no-confirm --disable-strategies crate-meta-data bindgen-cli --version "0.64.0"
+cargo binstall --no-confirm --disable-strategies crate-meta-data bindgen-cli --version "0.68.1"
 
 # binutils are wrappers to call the rustup bundled versions of llvm tools.
 cargo binstall --no-confirm --disable-strategies crate-meta-data cargo-binutils

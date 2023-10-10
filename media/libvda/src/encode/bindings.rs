@@ -9,10 +9,6 @@
 
 pub use crate::bindings::*;
 
-pub type __uint8_t = ::std::os::raw::c_uchar;
-pub type __int32_t = ::std::os::raw::c_int;
-pub type __uint32_t = ::std::os::raw::c_uint;
-pub type __int64_t = ::std::os::raw::c_long;
 pub const vea_impl_type_VEA_FAKE: vea_impl_type = 0;
 pub const vea_impl_type_GAVEA: vea_impl_type = 1;
 pub type vea_impl_type = ::std::os::raw::c_uint;

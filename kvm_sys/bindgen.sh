@@ -43,8 +43,7 @@ where
     Storage: FromZeroes,
 {
     fn only_derive_is_allowed_to_implement_this_trait() {}
-}
-"
+}"
 
 bindgen_generate \
     --raw-line "${KVM_EXTRAS}" \
