@@ -69,9 +69,11 @@ use base::TubeError;
 use chrono::Utc;
 pub use cpuid::adjust_cpuid;
 pub use cpuid::CpuIdContext;
+use devices::Bus;
 use devices::BusDevice;
 use devices::BusDeviceObj;
 use devices::BusResumeDevice;
+use devices::BusType;
 use devices::Debugcon;
 use devices::FwCfgParameters;
 use devices::IrqChip;
@@ -727,8 +729,8 @@ impl arch::LinuxArch for X8664arch {
         }
 
         let pcie_vcfg_range = Self::get_pcie_vcfg_mmio_range(&mem, &pcie_cfg_mmio_range);
-        let mmio_bus = Arc::new(devices::Bus::new());
-        let io_bus = Arc::new(devices::Bus::new());
+        let mmio_bus = Arc::new(Bus::new(BusType::Mmio));
+        let io_bus = Arc::new(Bus::new(BusType::Io));
 
         let (pci_devices, devs): (Vec<_>, Vec<_>) = devs
             .into_iter()
@@ -1519,7 +1521,7 @@ impl X8664arch {
         pflash_image: File,
         block_size: u32,
         bios_size: u64,
-        mmio_bus: &devices::Bus,
+        mmio_bus: &Bus,
         jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
     ) -> Result<()> {
@@ -1705,7 +1707,7 @@ impl X8664arch {
     /// * - `fw_cfg_parameters` - command-line specified data to add to device. May contain
     /// all None fields if user did not specify data to add to the device
     fn setup_fw_cfg_device(
-        io_bus: &devices::Bus,
+        io_bus: &Bus,
         fw_cfg_parameters: Vec<FwCfgParameters>,
         bootorder_fw_cfg_blob: Vec<u8>,
         fw_cfg_jail: Option<Minijail>,
@@ -1775,7 +1777,7 @@ impl X8664arch {
     /// * - `pit_uses_speaker_port` - does the PIT use port 0x61 for the PC speaker
     /// * - `vm_evt_wrtube` - the event object which should receive exit events
     pub fn setup_legacy_i8042_device(
-        io_bus: &devices::Bus,
+        io_bus: &Bus,
         pit_uses_speaker_port: bool,
         vm_evt_wrtube: SendTube,
     ) -> Result<()> {
@@ -1798,7 +1800,7 @@ impl X8664arch {
     /// * - `io_bus` - the IO bus object
     /// * - `mem_size` - the size in bytes of physical ram for the guest
     pub fn setup_legacy_cmos_device(
-        io_bus: &devices::Bus,
+        io_bus: &Bus,
         irq_chip: &mut dyn IrqChipX86_64,
         vm_control: Tube,
         mem_size: u64,
@@ -1860,7 +1862,7 @@ impl X8664arch {
     pub fn setup_acpi_devices(
         pci_root: Arc<Mutex<PciRoot>>,
         mem: &GuestMemory,
-        io_bus: &devices::Bus,
+        io_bus: &Bus,
         resources: &mut SystemAllocator,
         suspend_evt: Event,
         vm_evt_wrtube: SendTube,
@@ -1868,7 +1870,7 @@ impl X8664arch {
         irq_chip: &mut dyn IrqChip,
         sci_irq: u32,
         battery: (Option<BatteryType>, Option<Minijail>),
-        #[cfg_attr(windows, allow(unused_variables))] mmio_bus: &devices::Bus,
+        #[cfg_attr(windows, allow(unused_variables))] mmio_bus: &Bus,
         max_bus: u8,
         resume_notify_devices: &mut Vec<Arc<Mutex<dyn BusResumeDevice>>>,
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
@@ -2128,7 +2130,7 @@ impl X8664arch {
     pub fn setup_serial_devices(
         protection_type: ProtectionType,
         irq_chip: &mut dyn IrqChip,
-        io_bus: &devices::Bus,
+        io_bus: &Bus,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
@@ -2165,7 +2167,7 @@ impl X8664arch {
 
     fn setup_debugcon_devices(
         protection_type: ProtectionType,
-        io_bus: &devices::Bus,
+        io_bus: &Bus,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         debugcon_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,

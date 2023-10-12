@@ -28,6 +28,7 @@ use devices::vmwdt::VMWDT_DEFAULT_TIMEOUT_SEC;
 use devices::Bus;
 use devices::BusDeviceObj;
 use devices::BusError;
+use devices::BusType;
 use devices::IrqChip;
 use devices::IrqChipAArch64;
 use devices::IrqEventSource;
@@ -532,10 +533,10 @@ impl arch::LinuxArch for AArch64 {
             }
         }
 
-        let mmio_bus = Arc::new(devices::Bus::new());
+        let mmio_bus = Arc::new(devices::Bus::new(BusType::Mmio));
 
         // ARM doesn't really use the io bus like x86, so just create an empty bus.
-        let io_bus = Arc::new(devices::Bus::new());
+        let io_bus = Arc::new(devices::Bus::new(BusType::Io));
 
         // Event used by PMDevice to notify crosvm that
         // guest OS is trying to suspend.

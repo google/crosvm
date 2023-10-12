@@ -98,6 +98,7 @@ use devices::virtio::VirtioDeviceType;
 use devices::virtio::VirtioTransportType;
 use devices::Bus;
 use devices::BusDeviceObj;
+use devices::BusType;
 use devices::CoIommuDev;
 #[cfg(feature = "usb")]
 use devices::DeviceProvider;
@@ -3558,11 +3559,17 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     // inside `linux`. If the checks below fail, then some other thread is probably still running
     // and needs to be explicitly stopped before dropping `linux` to ensure devices actually get
     // cleaned up.
-    match Arc::try_unwrap(std::mem::replace(&mut linux.mmio_bus, Arc::new(Bus::new()))) {
+    match Arc::try_unwrap(std::mem::replace(
+        &mut linux.mmio_bus,
+        Arc::new(Bus::new(BusType::Mmio)),
+    )) {
         Ok(_) => {}
         Err(_) => panic!("internal error: mmio_bus had more than one reference at shutdown"),
     }
-    match Arc::try_unwrap(std::mem::replace(&mut linux.io_bus, Arc::new(Bus::new()))) {
+    match Arc::try_unwrap(std::mem::replace(
+        &mut linux.io_bus,
+        Arc::new(Bus::new(BusType::Io)),
+    )) {
         Ok(_) => {}
         Err(_) => panic!("internal error: io_bus had more than one reference at shutdown"),
     }

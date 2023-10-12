@@ -24,6 +24,7 @@ use devices::serial_device::SerialParameters;
 use devices::Bus;
 use devices::BusDeviceObj;
 use devices::BusError;
+use devices::BusType;
 use devices::IrqChipRiscv64;
 use devices::PciAddress;
 use devices::PciConfigMmio;
@@ -202,10 +203,10 @@ impl arch::LinuxArch for Riscv64 {
 
         let mem = vm.get_memory().clone();
 
-        let mmio_bus = Arc::new(Bus::new());
+        let mmio_bus = Arc::new(Bus::new(BusType::Mmio));
 
         // Riscv doesn't really use the io bus like x86, so just create an empty bus.
-        let io_bus = Arc::new(Bus::new());
+        let io_bus = Arc::new(Bus::new(BusType::Io));
 
         let com_evt_1_3 = Event::new().map_err(Error::CreateEvent)?;
         let com_evt_2_4 = Event::new().map_err(Error::CreateEvent)?;

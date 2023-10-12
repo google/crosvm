@@ -758,8 +758,8 @@ mod tests {
     use crate::suspendable_tests;
 
     fn create_pci_root() -> Arc<Mutex<PciRoot>> {
-        let io_bus = Arc::new(Bus::new());
-        let mmio_bus = Arc::new(Bus::new());
+        let io_bus = Arc::new(Bus::new(BusType::Io));
+        let mmio_bus = Arc::new(Bus::new(BusType::Mmio));
         let root_bus = Arc::new(Mutex::new(PciBus::new(0, 0, false)));
 
         Arc::new(Mutex::new(PciRoot::new(

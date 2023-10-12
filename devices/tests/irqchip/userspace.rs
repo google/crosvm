@@ -16,6 +16,7 @@ use base::Tube;
 use devices::Bus;
 use devices::BusAccessInfo;
 use devices::BusDeviceSync;
+use devices::BusType;
 use devices::CrosvmDeviceId;
 use devices::DestinationShorthand;
 use devices::DeviceId;
@@ -203,8 +204,8 @@ fn irq_event_tokens() {
 fn finalize_devices() {
     let mut chip = get_chip(1);
 
-    let mmio_bus = Bus::new();
-    let io_bus = Bus::new();
+    let mmio_bus = Bus::new(BusType::Mmio);
+    let io_bus = Bus::new(BusType::Io);
     let mut resources = SystemAllocator::new(
         SystemAllocatorConfig {
             io: Some(AddressRange {
@@ -459,8 +460,8 @@ fn lowest_priority_destination() {
 fn broadcast_eoi() {
     let mut chip = get_chip(1);
 
-    let mmio_bus = Bus::new();
-    let io_bus = Bus::new();
+    let mmio_bus = Bus::new(BusType::Mmio);
+    let io_bus = Bus::new(BusType::Io);
     let mut resources = SystemAllocator::new(
         SystemAllocatorConfig {
             io: Some(AddressRange {

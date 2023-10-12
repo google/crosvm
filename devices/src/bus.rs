@@ -342,17 +342,24 @@ pub struct Bus {
     access_id: usize,
     #[cfg(feature = "stats")]
     pub stats: Arc<Mutex<BusStatistics>>,
+    bus_type: BusType,
 }
 
 impl Bus {
     /// Constructs an a bus with an empty address space.
-    pub fn new() -> Bus {
+    pub fn new(bus_type: BusType) -> Bus {
         Bus {
             devices: Arc::new(Mutex::new(BTreeMap::new())),
             access_id: 0,
             #[cfg(feature = "stats")]
             stats: Arc::new(Mutex::new(BusStatistics::new())),
+            bus_type,
         }
+    }
+
+    /// Gets the bus type
+    pub fn get_bus_type(&self) -> BusType {
+        self.bus_type
     }
 
     /// Sets the id that will be used for BusAccessInfo.
@@ -702,7 +709,7 @@ impl Bus {
 
 impl Default for Bus {
     fn default() -> Self {
-        Self::new()
+        Self::new(BusType::Io)
     }
 }
 
@@ -808,7 +815,7 @@ mod tests {
 
     #[test]
     fn bus_insert() {
-        let bus = Bus::new();
+        let bus = Bus::new(BusType::Io);
         let dummy = Arc::new(Mutex::new(DummyDevice));
         assert!(bus.insert(dummy.clone(), 0x10, 0).is_err());
         assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
@@ -825,7 +832,7 @@ mod tests {
 
     #[test]
     fn bus_insert_full_addr() {
-        let bus = Bus::new();
+        let bus = Bus::new(BusType::Io);
         let dummy = Arc::new(Mutex::new(DummyDevice));
         assert!(bus.insert(dummy.clone(), 0x10, 0).is_err());
         assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
@@ -842,7 +849,7 @@ mod tests {
 
     #[test]
     fn bus_read_write() {
-        let bus = Bus::new();
+        let bus = Bus::new(BusType::Io);
         let dummy = Arc::new(Mutex::new(DummyDevice));
         assert!(bus.insert(dummy, 0x10, 0x10).is_ok());
         assert!(bus.read(0x10, &mut [0, 0, 0, 0]));
@@ -859,7 +866,7 @@ mod tests {
 
     #[test]
     fn bus_read_write_values() {
-        let bus = Bus::new();
+        let bus = Bus::new(BusType::Io);
         let dummy = Arc::new(Mutex::new(ConstantDevice {
             uses_full_addr: false,
         }));
@@ -876,7 +883,7 @@ mod tests {
 
     #[test]
     fn bus_read_write_full_addr_values() {
-        let bus = Bus::new();
+        let bus = Bus::new(BusType::Io);
         let dummy = Arc::new(Mutex::new(ConstantDevice {
             uses_full_addr: true,
         }));
