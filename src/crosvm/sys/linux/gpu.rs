@@ -212,9 +212,12 @@ fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Resul
         env.entry(key).or_insert(val);
     }
 
-    // TODO(b/237493180): workaround to enable ETC2 format emulation in RADV for ARCVM
-    if !env.contains_key("radv_require_etc2") {
-        env.insert("radv_require_etc2".to_string(), "true".to_string());
+    // TODO(b/237493180, b/284517235): workaround to enable ETC2/ASTC format emulation in Mesa
+    let driconf_options = ["radv_require_etc2", "vk_require_etc2", "vk_require_astc"];
+    for opt in driconf_options {
+        if !env.contains_key(opt) {
+            env.insert(opt.to_string(), "true".to_string());
+        }
     }
 
     Ok(env.iter().map(|(k, v)| format!("{}={}", k, v)).collect())
