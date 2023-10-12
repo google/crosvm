@@ -4,10 +4,8 @@
 
 use std::cmp;
 use std::io::Write;
-use std::sync::Arc;
 
 use base::warn;
-use cros_async::sync::RwLock;
 use disk::AsyncDisk;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
@@ -64,14 +62,14 @@ impl Command {
         &self,
         reader: &mut Reader,
         writer: &mut Writer,
-        dev: Arc<RwLock<LogicalUnit>>,
+        dev: LogicalUnit,
         disk_image: &dyn AsyncDisk,
     ) -> Result<(), ExecuteError> {
         match self {
             Self::TestUnitReady(_) => Ok(()), // noop as the device is ready.
             Self::Read6(read6) => read6.emulate(writer, dev, disk_image).await,
             Self::Inquiry(inquiry) => inquiry.emulate(writer),
-            Self::ReadCapacity10(read_capacity_10) => read_capacity_10.emulate(writer, dev).await,
+            Self::ReadCapacity10(read_capacity_10) => read_capacity_10.emulate(writer, dev),
             Self::Read10(read_10) => read_10.emulate(writer, dev, disk_image).await,
             Self::Write10(write_10) => write_10.emulate(reader, dev, disk_image).await,
             Self::ReportLuns(report_luns) => report_luns.emulate(writer),
@@ -99,11 +97,10 @@ fn check_lba_range(max_lba: u64, sector_num: u64, sector_len: usize) -> bool {
 async fn read_from_disk(
     disk_image: &dyn AsyncDisk,
     writer: &mut Writer,
-    dev: Arc<RwLock<LogicalUnit>>,
+    dev: LogicalUnit,
     xfer_blocks: usize,
     lba: u64,
 ) -> Result<(), ExecuteError> {
-    let dev = dev.read_lock().await;
     let max_lba = dev.max_lba;
     if !check_lba_range(max_lba, lba, xfer_blocks) {
         return Err(ExecuteError::LbaOutOfRange {
@@ -157,7 +154,7 @@ impl Read6 {
     async fn emulate(
         &self,
         writer: &mut Writer,
-        dev: Arc<RwLock<LogicalUnit>>,
+        dev: LogicalUnit,
         disk_image: &dyn AsyncDisk,
     ) -> Result<(), ExecuteError> {
         read_from_disk(disk_image, writer, dev, self.xfer_len(), self.lba() as u64).await
@@ -306,15 +303,10 @@ impl ReadCapacity10 {
         self.pmi_field & 0x1 != 0
     }
 
-    async fn emulate(
-        &self,
-        writer: &mut Writer,
-        dev: Arc<RwLock<LogicalUnit>>,
-    ) -> Result<(), ExecuteError> {
+    fn emulate(&self, writer: &mut Writer, dev: LogicalUnit) -> Result<(), ExecuteError> {
         if !self.pmi() && self.lba() != 0 {
             return Err(ExecuteError::InvalidField);
         }
-        let dev = dev.read_lock().await;
         let block_size = dev.block_size;
         // Returned value is the block address of the last sector.
         // If the block address exceeds u32::MAX, we return u32::MAX.
@@ -352,7 +344,7 @@ impl Read10 {
     async fn emulate(
         &self,
         writer: &mut Writer,
-        dev: Arc<RwLock<LogicalUnit>>,
+        dev: LogicalUnit,
         disk_image: &dyn AsyncDisk,
     ) -> Result<(), ExecuteError> {
         read_from_disk(disk_image, writer, dev, self.xfer_len(), self.lba()).await
@@ -382,7 +374,7 @@ impl Write10 {
     async fn emulate(
         &self,
         reader: &mut Reader,
-        dev: Arc<RwLock<LogicalUnit>>,
+        dev: LogicalUnit,
         disk_image: &dyn AsyncDisk,
     ) -> Result<(), ExecuteError> {
         write_to_disk(disk_image, reader, dev, self.xfer_len(), self.lba()).await
@@ -392,11 +384,10 @@ impl Write10 {
 async fn write_to_disk(
     disk_image: &dyn AsyncDisk,
     reader: &mut Reader,
-    dev: Arc<RwLock<LogicalUnit>>,
+    dev: LogicalUnit,
     xfer_blocks: usize,
     lba: u64,
 ) -> Result<(), ExecuteError> {
-    let dev = dev.read_lock().await;
     if dev.read_only {
         return Err(ExecuteError::ReadOnly);
     }
