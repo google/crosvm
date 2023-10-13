@@ -17,6 +17,8 @@ pub use winapi::um::winioctl::FILE_ANY_ACCESS;
 pub use winapi::um::winioctl::METHOD_BUFFERED;
 
 use crate::descriptor::AsRawDescriptor;
+use crate::errno_result;
+use crate::Result;
 
 /// Raw macro to declare the expression that calculates an ioctl number
 #[macro_export]
@@ -296,29 +298,28 @@ pub unsafe fn ioctl_with_mut_ptr<T>(
 pub unsafe fn device_io_control<F: AsRawDescriptor, T, T2>(
     descriptor: &F,
     nr: IoctlNr,
-    input: &T,
+    input: *const T,
     inputsize: u32,
-    output: &mut T2,
+    output: *mut T2,
     outputsize: u32,
-) -> c_int {
-    let mut byte_ret: c_ulong = 0;
-
+    byte_ret: &mut c_ulong,
+) -> Result<()> {
     let ret = DeviceIoControl(
         descriptor.as_raw_descriptor(),
         nr,
-        input as *const T as *mut c_void,
+        input as *mut c_void,
         inputsize,
-        output as *mut T2 as *mut c_void,
+        output as *mut c_void,
         outputsize,
-        &mut byte_ret,
+        byte_ret,
         null_mut(),
     );
 
     if ret == 1 {
-        return 0;
+        return Ok(());
     }
 
-    GetLastError() as i32
+    errno_result()
 }
 
 #[cfg(test)]
