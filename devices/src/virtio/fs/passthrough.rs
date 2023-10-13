@@ -963,16 +963,7 @@ impl PassthroughFs {
         Ok(self.add_entry(f, st, flags, path))
     }
 
-    fn do_open(&self, inode: Inode, flags: u32) -> io::Result<(Option<Handle>, OpenOptions)> {
-        let inode_data = self.find_inode(inode)?;
-
-        let file = Mutex::new(self.open_inode(&inode_data, flags as i32)?);
-
-        let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
-        let data = HandleData { inode, file };
-
-        self.handles.lock().insert(handle, Arc::new(data));
-
+    fn get_cache_open_options(&self, flags: u32) -> OpenOptions {
         let mut opts = OpenOptions::empty();
         match self.cfg.cache_policy {
             // We only set the direct I/O option on files.
@@ -989,7 +980,51 @@ impl PassthroughFs {
             }
             _ => {}
         };
+        opts
+    }
 
+    fn do_open(&self, inode: Inode, flags: u32) -> io::Result<(Option<Handle>, OpenOptions)> {
+        let inode_data = self.find_inode(inode)?;
+
+        let file = Mutex::new(self.open_inode(&inode_data, flags as i32)?);
+
+        let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
+        let data = HandleData { inode, file };
+
+        self.handles.lock().insert(handle, Arc::new(data));
+
+        let opts = self.get_cache_open_options(flags);
+
+        Ok((Some(handle), opts))
+    }
+
+    fn do_open_at(
+        &self,
+        parent_data: Arc<InodeData>,
+        name: &CStr,
+        inode: Inode,
+        flags: u32,
+    ) -> io::Result<(Option<Handle>, OpenOptions)> {
+        let open_flags = self.update_open_flags(flags as i32);
+
+        let fd_open = syscall!(unsafe {
+            libc::openat64(
+                parent_data.as_raw_descriptor(),
+                name.as_ptr(),
+                (open_flags | libc::O_CLOEXEC) & !(libc::O_NOFOLLOW | libc::O_DIRECT),
+            )
+        })?;
+
+        let file_open = unsafe { File::from_raw_descriptor(fd_open) };
+        let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
+        let data = HandleData {
+            inode,
+            file: Mutex::new(file_open),
+        };
+
+        self.handles.lock().insert(handle, Arc::new(data));
+
+        let opts = self.get_cache_open_options(open_flags as u32);
         Ok((Some(handle), opts))
     }
 
@@ -1925,7 +1960,9 @@ impl FileSystem for PassthroughFs {
         let (handle, opts) = if self.zero_message_open.load(Ordering::Relaxed) {
             (None, OpenOptions::KEEP_CACHE)
         } else {
-            self.do_open(
+            self.do_open_at(
+                data,
+                name,
                 entry.inode,
                 flags & !((libc::O_CREAT | libc::O_EXCL | libc::O_NOCTTY) as u32),
             )
