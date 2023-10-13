@@ -49,6 +49,7 @@ use zerocopy::FromZeroes;
 
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
+use crate::virtio::snd::vios_backend::streams::StreamState;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -107,6 +108,8 @@ pub enum Error {
     WaitError(BaseError),
     #[error("Invalid operation for stream direction: {0}")]
     WrongDirection(u8),
+    #[error("Set saved params should only be used while restoring the device")]
+    WrongSetParams,
 }
 
 #[derive(ThisError, Debug)]
@@ -149,6 +152,9 @@ pub struct VioSClient {
     rx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     recv_thread_state: Arc<Mutex<ThreadFlags>>,
     recv_thread: Mutex<Option<WorkerThread<Result<()>>>>,
+    // Params are required to be stored for snapshot/restore. On restore, we don't have the params
+    // locally available as the VM is started anew, so they need to be restored.
+    params: HashMap<u32, virtio_snd_pcm_set_params>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -157,6 +163,7 @@ pub struct VioSClientSnapshot {
     jacks: Vec<virtio_snd_jack_info>,
     streams: Vec<virtio_snd_pcm_info>,
     chmaps: Vec<virtio_snd_chmap_info>,
+    params: HashMap<u32, virtio_snd_pcm_set_params>,
 }
 
 impl VioSClient {
@@ -250,6 +257,7 @@ impl VioSClient {
             rx_subscribers,
             recv_thread_state,
             recv_thread: Mutex::new(None),
+            params: HashMap::new(),
         };
         client.request_and_cache_info()?;
         Ok(client)
@@ -363,18 +371,29 @@ impl VioSClient {
     }
 
     /// Configures a stream with the given parameters.
-    pub fn set_stream_parameters(&self, stream_id: u32, params: VioSStreamParams) -> Result<()> {
+    pub fn set_stream_parameters(
+        &mut self,
+        stream_id: u32,
+        params: VioSStreamParams,
+    ) -> Result<()> {
         self.streams
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?;
         let raw_params: virtio_snd_pcm_set_params = (stream_id, params).into();
+        // Old value is not needed and is dropped
+        let _ = self.params.insert(stream_id, raw_params);
         let control_socket_lock = self.control_socket.lock();
         send_cmd(&control_socket_lock, raw_params)
     }
 
     /// Configures a stream with the given parameters.
-    pub fn set_stream_parameters_raw(&self, raw_params: virtio_snd_pcm_set_params) -> Result<()> {
+    pub fn set_stream_parameters_raw(
+        &mut self,
+        raw_params: virtio_snd_pcm_set_params,
+    ) -> Result<()> {
         let stream_id = raw_params.hdr.stream_id.to_native();
+        // Old value is not needed and is dropped
+        let _ = self.params.insert(stream_id, raw_params);
         self.streams
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?;
@@ -561,37 +580,44 @@ impl VioSClient {
             jacks: self.jacks.clone(),
             streams: self.streams.clone(),
             chmaps: self.chmaps.clone(),
+            params: self.params.clone(),
         }
     }
 
     // Function called `restore` to signify it will happen as part of the snapshot/restore flow. No
     // data is actually restored in the case of VioSClient.
-    pub fn restore(&self, data: VioSClientSnapshot) -> anyhow::Result<()> {
+    pub fn restore(&mut self, data: VioSClientSnapshot) -> anyhow::Result<()> {
         anyhow::ensure!(
             data.config == self.config,
             "config doesn't match on restore: expected: {:?}, got: {:?}",
             data.config,
             self.config
         );
-        anyhow::ensure!(
-            data.jacks == self.jacks,
-            "jacks doesn't match on restore: expected: {:?}, got: {:?}",
-            data.jacks,
-            self.jacks
-        );
-        anyhow::ensure!(
-            data.streams == self.streams,
-            "streams doesn't match on restore: expected: {:?}, got: {:?}",
-            data.streams,
-            self.streams
-        );
-        anyhow::ensure!(
-            data.chmaps == self.chmaps,
-            "chmaps doesn't match on restore: expected: {:?}, got: {:?}",
-            data.chmaps,
-            self.chmaps
-        );
+        self.jacks = data.jacks;
+        self.streams = data.streams;
+        self.chmaps = data.chmaps;
+        self.params = data.params;
         Ok(())
+    }
+
+    pub fn restore_stream(&mut self, stream_id: u32, state: StreamState) -> Result<()> {
+        if let Some(params) = self.params.get(&stream_id).cloned() {
+            self.set_stream_parameters_raw(params)?;
+        }
+        match state {
+            StreamState::Started => {
+                // If state != prepared, start will always fail.
+                // As such, it is fine to only print the first error without returning, as the
+                // second action will then fail.
+                if let Err(e) = self.prepare_stream(stream_id) {
+                    error!("failed to prepare stream: {}", e);
+                };
+                self.start_stream(stream_id)
+            }
+            StreamState::Prepared => self.prepare_stream(stream_id),
+            // Nothing to do here
+            _ => Ok(()),
+        }
     }
 }
 

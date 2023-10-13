@@ -30,6 +30,7 @@ use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
 use streams::StreamMsg;
+use streams::StreamSnapshot;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
@@ -78,7 +79,8 @@ pub struct Sound {
     config: virtio_snd_config,
     virtio_features: u64,
     worker_thread: Option<WorkerThread<anyhow::Result<Worker>>>,
-    vios_client: Arc<VioSClient>,
+    vios_client: Arc<Mutex<VioSClient>>,
+    saved_stream_state: Vec<StreamSnapshot>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -86,11 +88,12 @@ struct SoundSnapshot {
     config: virtio_snd_config,
     virtio_features: u64,
     vios_client: VioSClientSnapshot,
+    saved_stream_state: Vec<StreamSnapshot>,
 }
 
 impl VirtioDevice for Sound {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        self.vios_client.keep_rds()
+        self.vios_client.lock().keep_rds()
     }
 
     fn device_type(&self) -> DeviceType {
@@ -135,9 +138,11 @@ impl VirtioDevice for Sound {
 
         let vios_client = self.vios_client.clone();
         vios_client
+            .lock()
             .start_bg_thread()
             .context("Failed to start vios background thread")?;
 
+        let saved_stream_state: Vec<StreamSnapshot> = self.saved_stream_state.drain(..).collect();
         self.worker_thread =
             Some(WorkerThread::start(
                 "v_snd_vios",
@@ -148,6 +153,7 @@ impl VirtioDevice for Sound {
                     event_queue,
                     Arc::new(Mutex::new(tx_queue)),
                     Arc::new(Mutex::new(rx_queue)),
+                    saved_stream_state,
                 ) {
                     Ok(mut worker) => match worker.control_loop(kill_evt) {
                         Ok(_) => Ok(worker),
@@ -173,7 +179,7 @@ impl VirtioDevice for Sound {
             let worker_status = worker_thread.stop();
             ret = worker_status.is_ok();
         }
-        if let Err(e) = self.vios_client.stop_bg_thread() {
+        if let Err(e) = self.vios_client.lock().stop_bg_thread() {
             error!("virtio-snd: Failed to stop vios background thread: {}", e);
             ret = false;
         }
@@ -182,12 +188,17 @@ impl VirtioDevice for Sound {
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
+            // The worker is stopped first but not unwrapped until after the VioSClient is stopped.
+            // If the worker fails to stop and returns an error, but that error is unwrapped, the
+            // vios_client background thread could remain running. Instead, by delaying the unwrap,
+            // we can ensure the signal to both threads to stop is sent.
             let worker = worker_thread.stop();
             self.vios_client
+                .lock()
                 .stop_bg_thread()
                 .context("failed to stop VioS Client background thread")?;
-
             let mut worker = worker.context("failed to stop worker_thread")?;
+            self.saved_stream_state = worker.saved_stream_state.drain(..).collect();
             let ctrl_queue = worker.control_queue.clone();
             let event_queue = worker.event_queue.take().unwrap();
             let tx_queue = worker.tx_queue.clone();
@@ -235,7 +246,8 @@ impl VirtioDevice for Sound {
         serde_json::to_value(SoundSnapshot {
             config: self.config,
             virtio_features: self.virtio_features,
-            vios_client: self.vios_client.snapshot(),
+            vios_client: self.vios_client.lock().snapshot(),
+            saved_stream_state: self.saved_stream_state.clone(),
         })
         .context("failed to serialize VioS Client")
     }
@@ -255,21 +267,26 @@ impl VirtioDevice for Sound {
             data.virtio_features,
             self.virtio_features
         );
-        self.vios_client.restore(data.vios_client)
+        self.saved_stream_state = data.saved_stream_state;
+        self.vios_client.lock().restore(data.vios_client)
     }
 }
 
 /// Creates a new virtio sound device connected to a VioS backend
 pub fn new_sound<P: AsRef<Path>>(path: P, virtio_features: u64) -> Result<Sound> {
-    let vios_client = Arc::new(VioSClient::try_new(path).map_err(SoundError::ClientNew)?);
+    let vios_client = VioSClient::try_new(path).map_err(SoundError::ClientNew)?;
+    let jacks = Le32::from(vios_client.num_jacks());
+    let streams = Le32::from(vios_client.num_streams());
+    let chmaps = Le32::from(vios_client.num_chmaps());
     Ok(Sound {
         config: virtio_snd_config {
-            jacks: Le32::from(vios_client.num_jacks()),
-            streams: Le32::from(vios_client.num_streams()),
-            chmaps: Le32::from(vios_client.num_chmaps()),
+            jacks,
+            streams,
+            chmaps,
         },
         virtio_features,
         worker_thread: None,
-        vios_client,
+        vios_client: Arc::new(Mutex::new(vios_client)),
+        saved_stream_state: Vec::new(),
     })
 }

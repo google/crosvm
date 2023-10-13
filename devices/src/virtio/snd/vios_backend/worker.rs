@@ -31,28 +31,35 @@ pub struct Worker {
     interrupt: Interrupt,
     pub control_queue: Arc<Mutex<Queue>>,
     pub event_queue: Option<Queue>,
-    vios_client: Arc<VioSClient>,
+    vios_client: Arc<Mutex<VioSClient>>,
     streams: Vec<StreamProxy>,
     pub tx_queue: Arc<Mutex<Queue>>,
     pub rx_queue: Arc<Mutex<Queue>>,
     io_thread: Option<thread::JoinHandle<Result<()>>>,
     io_kill: Event,
+    // saved_stream_state holds the previous state of streams. When the sound device is newly
+    // created, this will be empty. It will only contain state if the sound device is put to sleep
+    // OR if we restore a VM.
+    pub saved_stream_state: Vec<StreamSnapshot>,
 }
 
 impl Worker {
     /// Creates a new virtio-snd worker.
     pub fn try_new(
-        vios_client: Arc<VioSClient>,
+        vios_client: Arc<Mutex<VioSClient>>,
         interrupt: Interrupt,
         control_queue: Arc<Mutex<Queue>>,
         event_queue: Queue,
         tx_queue: Arc<Mutex<Queue>>,
         rx_queue: Arc<Mutex<Queue>>,
+        saved_stream_state: Vec<StreamSnapshot>,
     ) -> Result<Worker> {
-        let mut streams: Vec<StreamProxy> = Vec::with_capacity(vios_client.num_streams() as usize);
+        let num_streams = vios_client.lock().num_streams();
+        let mut streams: Vec<StreamProxy> = Vec::with_capacity(num_streams as usize);
         {
-            for stream_id in 0..vios_client.num_streams() {
+            for stream_id in 0..num_streams {
                 let capture = vios_client
+                    .lock()
                     .stream_info(stream_id)
                     .map(|i| i.direction == VIRTIO_SND_D_INPUT)
                     .unwrap_or(false);
@@ -64,6 +71,7 @@ impl Worker {
                     control_queue.clone(),
                     io_queue.clone(),
                     capture,
+                    saved_stream_state.get(stream_id as usize).cloned(),
                 )?);
             }
         }
@@ -100,6 +108,7 @@ impl Worker {
             rx_queue,
             io_thread: Some(io_thread),
             io_kill: self_kill_io,
+            saved_stream_state: Vec::new(),
         })
     }
 
@@ -108,6 +117,7 @@ impl Worker {
     pub fn control_loop(&mut self, kill_evt: Event) -> Result<()> {
         let event_notifier = self
             .vios_client
+            .lock()
             .get_event_notifier()
             .map_err(SoundError::ClientEventNotifier)?;
         #[derive(EventToken)]
@@ -168,6 +178,11 @@ impl Worker {
                 }
             }
         }
+        self.saved_stream_state = self
+            .streams
+            .drain(..)
+            .map(|stream| stream.stop_thread())
+            .collect();
         self.event_queue = Some(event_queue);
         Ok(())
     }
@@ -227,7 +242,7 @@ impl Worker {
                             None => (VIRTIO_SND_S_BAD_MSG, Vec::new()),
                             Some((start_id, count)) => {
                                 let end_id = start_id.saturating_add(count);
-                                if end_id > self.vios_client.num_jacks() {
+                                if end_id > self.vios_client.lock().num_jacks() {
                                     error!(
                                         "virtio-snd: Requested info on invalid jacks ids: {}..{}",
                                         start_id,
@@ -239,7 +254,9 @@ impl Worker {
                                         VIRTIO_SND_S_OK,
                                         // Safe to unwrap because we just ensured all the ids are valid
                                         (start_id..end_id)
-                                            .map(|id| self.vios_client.jack_info(id).unwrap())
+                                            .map(|id| {
+                                                self.vios_client.lock().jack_info(id).unwrap()
+                                            })
                                             .collect(),
                                     )
                                 }
@@ -261,7 +278,10 @@ impl Worker {
                         let jack_id = request.hdr.jack_id.to_native();
                         let association = request.association.to_native();
                         let sequence = request.sequence.to_native();
-                        if let Err(e) = self.vios_client.remap_jack(jack_id, association, sequence)
+                        if let Err(e) =
+                            self.vios_client
+                                .lock()
+                                .remap_jack(jack_id, association, sequence)
                         {
                             error!("virtio-snd: Failed to remap jack: {}", e);
                             vios_error_to_status_code(e)
@@ -288,7 +308,8 @@ impl Worker {
                             None => (VIRTIO_SND_S_BAD_MSG, Vec::new()),
                             Some((start_id, count)) => {
                                 let end_id = start_id.saturating_add(count);
-                                if end_id > self.vios_client.num_chmaps() {
+                                let num_chmaps = self.vios_client.lock().num_chmaps();
+                                if end_id > num_chmaps {
                                     error!(
                                         "virtio-snd: Requested info on invalid chmaps ids: {}..{}",
                                         start_id,
@@ -300,7 +321,9 @@ impl Worker {
                                         VIRTIO_SND_S_OK,
                                         // Safe to unwrap because we just ensured all the ids are valid
                                         (start_id..end_id)
-                                            .map(|id| self.vios_client.chmap_info(id).unwrap())
+                                            .map(|id| {
+                                                self.vios_client.lock().chmap_info(id).unwrap()
+                                            })
                                             .collect(),
                                     )
                                 }
@@ -315,7 +338,7 @@ impl Worker {
                             None => (VIRTIO_SND_S_BAD_MSG, Vec::new()),
                             Some((start_id, count)) => {
                                 let end_id = start_id.saturating_add(count);
-                                if end_id > self.vios_client.num_streams() {
+                                if end_id > self.vios_client.lock().num_streams() {
                                     error!(
                                         "virtio-snd: Requested info on invalid stream ids: {}..{}",
                                         start_id,
@@ -327,7 +350,9 @@ impl Worker {
                                         VIRTIO_SND_S_OK,
                                         // Safe to unwrap because we just ensured all the ids are valid
                                         (start_id..end_id)
-                                            .map(|id| self.vios_client.stream_info(id).unwrap())
+                                            .map(|id| {
+                                                self.vios_client.lock().stream_info(id).unwrap()
+                                            })
                                             .collect(),
                                     )
                                 }
@@ -367,7 +392,7 @@ impl Worker {
     }
 
     fn process_event_triggered(&mut self, event_queue: &mut Queue) -> Result<()> {
-        while let Some(evt) = self.vios_client.pop_event() {
+        while let Some(evt) = self.vios_client.lock().pop_event() {
             if let Some(mut desc) = event_queue.pop() {
                 let writer = &mut desc.writer;
                 writer.write_obj(evt).map_err(SoundError::QueueIO)?;
@@ -413,7 +438,7 @@ impl Worker {
         let mut params: virtio_snd_pcm_set_params = Default::default();
         params.as_bytes_mut().copy_from_slice(read_buf);
         let stream_id = params.hdr.stream_id.to_native();
-        if stream_id < self.vios_client.num_streams() {
+        if stream_id < self.vios_client.lock().num_streams() {
             self.streams[stream_id as usize].send(StreamMsg::SetParams(desc, params))
         } else {
             error!(
@@ -452,7 +477,7 @@ impl Worker {
         let mut pcm_hdr: virtio_snd_pcm_hdr = Default::default();
         pcm_hdr.as_bytes_mut().copy_from_slice(read_buf);
         let stream_id = pcm_hdr.stream_id.to_native();
-        if stream_id < self.vios_client.num_streams() {
+        if stream_id < self.vios_client.lock().num_streams() {
             self.streams[stream_id as usize].send(msg)
         } else {
             error!(

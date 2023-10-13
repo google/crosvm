@@ -13,7 +13,7 @@ use zerocopy::FromZeroes;
 use crate::virtio::snd::constants::StatusCode;
 use crate::virtio::snd::constants::VIRTIO_SND_CHMAP_MAX_SIZE;
 
-#[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes, Serialize, Deserialize)]
 #[repr(C)]
 pub struct virtio_snd_hdr {
     pub code: Le32,
@@ -86,14 +86,14 @@ pub struct virtio_snd_pcm_info {
     pub padding: [u8; 5],
 }
 
-#[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes, Serialize, Deserialize)]
 #[repr(C)]
 pub struct virtio_snd_pcm_hdr {
     pub hdr: virtio_snd_hdr,
     pub stream_id: Le32,
 }
 
-#[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes, Serialize, Deserialize)]
 #[repr(C)]
 pub struct virtio_snd_pcm_set_params {
     pub hdr: virtio_snd_pcm_hdr,

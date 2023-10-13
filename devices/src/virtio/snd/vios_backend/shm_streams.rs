@@ -57,17 +57,17 @@ struct StreamDesc {
 
 /// Adapter that provides the ShmStreamSource trait around the VioS backend.
 pub struct VioSShmStreamSource {
-    vios_client: Arc<VioSClient>,
+    vios_client: Arc<Mutex<VioSClient>>,
     stream_descs: Vec<StreamDesc>,
 }
 
 impl VioSShmStreamSource {
     /// Creates a new stream source given the path to the audio server's socket.
     pub fn new<P: AsRef<Path>>(server: P) -> Result<VioSShmStreamSource> {
-        let vios_client = Arc::new(VioSClient::try_new(server)?);
+        let vios_client = Arc::new(Mutex::new(VioSClient::try_new(server)?));
         let mut stream_descs: Vec<StreamDesc> = Vec::new();
         let mut idx = 0u32;
-        while let Some(info) = vios_client.stream_info(idx) {
+        while let Some(info) = vios_client.lock().stream_info(idx) {
             stream_descs.push(StreamDesc {
                 state: Arc::new(Mutex::new(StreamState::Active)),
                 direction: if info.direction == VIRTIO_SND_D_OUTPUT {
@@ -100,7 +100,7 @@ impl VioSShmStreamSource {
     ) -> GenericResult<Box<dyn ShmStream>> {
         let frame_size = num_channels * format.sample_bytes();
         let period_bytes = (frame_size * buffer_size) as u32;
-        self.vios_client.prepare_stream(stream_id)?;
+        self.vios_client.lock().prepare_stream(stream_id)?;
         let params = VioSStreamParams {
             buffer_bytes: 2 * period_bytes,
             period_bytes,
@@ -109,8 +109,10 @@ impl VioSShmStreamSource {
             format: from_sample_format(format),
             rate: virtio_frame_rate(frame_rate)?,
         };
-        self.vios_client.set_stream_parameters(stream_id, params)?;
-        self.vios_client.start_stream(stream_id)?;
+        self.vios_client
+            .lock()
+            .set_stream_parameters(stream_id, params)?;
+        self.vios_client.lock().start_stream(stream_id)?;
         VioSndShmStream::new(
             buffer_size,
             num_channels,
@@ -149,7 +151,7 @@ impl ShmStreamSource<base::Error> for VioSShmStreamSource {
         client_shm: &dyn AudioSharedMemory<Error = base::Error>,
         buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>> {
-        self.vios_client.start_bg_thread()?;
+        self.vios_client.lock().start_bg_thread()?;
         let stream_id = self
             .get_unused_stream_id(direction)
             .ok_or(Box::new(Error::NoStreamsAvailable))?;
@@ -168,7 +170,7 @@ impl ShmStreamSource<base::Error> for VioSShmStreamSource {
             .map_err(|e| {
                 // Attempt to release the stream so that it can be used later. This is a best effort
                 // attempt, so we ignore any error it may return.
-                let _ = self.vios_client.release_stream(stream_id);
+                let _ = self.vios_client.lock().release_stream(stream_id);
                 e
             })?;
         *self.stream_descs[stream_id as usize].state.lock() = StreamState::Acquired;
@@ -181,7 +183,7 @@ impl ShmStreamSource<base::Error> for VioSShmStreamSource {
     /// This list helps users of the ShmStreamSource enter Linux jails without
     /// closing needed file descriptors.
     fn keep_fds(&self) -> Vec<RawDescriptor> {
-        self.vios_client.keep_rds()
+        self.vios_client.lock().keep_rds()
     }
 }
 
@@ -196,7 +198,7 @@ pub struct VioSndShmStream {
     start_time: Instant,
     stream_id: u32,
     direction: StreamDirection,
-    vios_client: Arc<VioSClient>,
+    vios_client: Arc<Mutex<VioSClient>>,
     client_shm: SharedMemory,
     state: Arc<Mutex<StreamState>>,
 }
@@ -210,7 +212,7 @@ impl VioSndShmStream {
         frame_rate: u32,
         stream_id: u32,
         direction: StreamDirection,
-        vios_client: Arc<VioSClient>,
+        vios_client: Arc<Mutex<VioSClient>>,
         client_shm: &dyn AudioSharedMemory<Error = base::Error>,
         state: Arc<Mutex<StreamState>>,
     ) -> GenericResult<Box<dyn ShmStream>> {
@@ -287,7 +289,7 @@ impl BufferSet for VioSndShmStream {
             StreamDirection::Playback => {
                 let requested_size = frames * self.frame_size;
                 let shm_ref = &mut self.client_shm;
-                let (_, res) = self.vios_client.inject_audio_data::<Result<()>, _>(
+                let (_, res) = self.vios_client.lock().inject_audio_data::<Result<()>, _>(
                     self.stream_id,
                     requested_size,
                     |slice| {
@@ -312,26 +314,29 @@ impl BufferSet for VioSndShmStream {
             StreamDirection::Capture => {
                 let requested_size = frames * self.frame_size;
                 let shm_ref = &mut self.client_shm;
-                let (_, res) = self.vios_client.request_audio_data::<Result<()>, _>(
-                    self.stream_id,
-                    requested_size,
-                    |slice| {
-                        if requested_size != slice.size() {
-                            error!(
-                                "Buffer size is different than the requested size: {} vs {}",
-                                requested_size,
-                                slice.size()
-                            );
-                        }
-                        let size = std::cmp::min(requested_size, slice.size());
-                        let (dst_mmap, mmap_offset) = mmap_buffer(shm_ref, offset, size)?;
-                        let dst_slice = dst_mmap
-                            .get_slice(mmap_offset, size)
-                            .map_err(Error::VolatileMemoryError)?;
-                        slice.copy_to_volatile_slice(dst_slice);
-                        Ok(())
-                    },
-                )?;
+                let (_, res) = self
+                    .vios_client
+                    .lock()
+                    .request_audio_data::<Result<()>, _>(
+                        self.stream_id,
+                        requested_size,
+                        |slice| {
+                            if requested_size != slice.size() {
+                                error!(
+                                    "Buffer size is different than the requested size: {} vs {}",
+                                    requested_size,
+                                    slice.size()
+                                );
+                            }
+                            let size = std::cmp::min(requested_size, slice.size());
+                            let (dst_mmap, mmap_offset) = mmap_buffer(shm_ref, offset, size)?;
+                            let dst_slice = dst_mmap
+                                .get_slice(mmap_offset, size)
+                                .map_err(Error::VolatileMemoryError)?;
+                            slice.copy_to_volatile_slice(dst_slice);
+                            Ok(())
+                        },
+                    )?;
                 res?;
             }
         }
@@ -346,12 +351,14 @@ impl BufferSet for VioSndShmStream {
 impl Drop for VioSndShmStream {
     fn drop(&mut self) {
         let stream_id = self.stream_id;
-        if let Err(e) = self
-            .vios_client
-            .stop_stream(stream_id)
-            .and_then(|_| self.vios_client.release_stream(stream_id))
         {
-            error!("Failed to stop and release stream {}: {}", stream_id, e);
+            let vios_client = self.vios_client.lock();
+            if let Err(e) = vios_client
+                .stop_stream(stream_id)
+                .and_then(|_| vios_client.release_stream(stream_id))
+            {
+                error!("Failed to stop and release stream {}: {}", stream_id, e);
+            }
         }
         *self.state.lock() = StreamState::Available;
     }
