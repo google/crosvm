@@ -10,6 +10,7 @@ use std::io::Write;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
+use base::create_overlapped;
 use base::error;
 use base::AsRawDescriptor;
 use base::Descriptor;
@@ -18,7 +19,6 @@ use base::PunchHole;
 use base::RawDescriptor;
 use base::WriteZeroesAt;
 use thiserror::Error as ThisError;
-use winapi::shared::minwindef::DWORD;
 use winapi::um::minwinbase::OVERLAPPED;
 
 use crate::common_executor::RawExecutor;
@@ -107,18 +107,6 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
     }
 }
 
-fn create_overlapped(offset: Option<u64>) -> OVERLAPPED {
-    let mut overlapped = OVERLAPPED::default();
-    if let Some(offset) = offset {
-        // Safe because overlapped is allocated, and we are manipulating non-overlapping fields.
-        unsafe {
-            overlapped.u.s_mut().Offset = (offset & 0xffffffff) as DWORD;
-            overlapped.u.s_mut().OffsetHigh = (offset >> 32) as DWORD;
-        }
-    }
-    overlapped
-}
-
 /// Safety requirements:
 ///     Same as base::platform::read_file.
 unsafe fn read(
@@ -157,7 +145,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
                 io::Error::new(io::ErrorKind::InvalidInput, "seek on non-seekable handle"),
             )));
         }
-        let overlapped = create_overlapped(file_offset);
+        let overlapped = create_overlapped(file_offset, None);
         let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
 
         // Safe because we pass a pointer to a valid vec and that same vector's length.
@@ -198,7 +186,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         };
 
         for region in mem_offsets.into_iter() {
-            let overlapped = create_overlapped(offset);
+            let overlapped = create_overlapped(offset, None);
             let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
 
             let slice = mem.get_volatile_slice(region).map_err(|e| {
@@ -245,7 +233,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
                 io::Error::new(io::ErrorKind::InvalidInput, "seek on non-seekable handle"),
             )));
         }
-        let overlapped = create_overlapped(file_offset);
+        let overlapped = create_overlapped(file_offset, None);
         let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
 
         // Safe because we pass a pointer to a valid vec and that same vector's length.
@@ -287,7 +275,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         };
 
         for region in mem_offsets.into_iter() {
-            let overlapped = create_overlapped(offset);
+            let overlapped = create_overlapped(offset, None);
             let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
 
             let slice = mem.get_volatile_slice(region).map_err(|e| {
