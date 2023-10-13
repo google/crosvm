@@ -16,6 +16,7 @@ use data_model::Le64;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
@@ -23,7 +24,7 @@ use crate::Error;
 use crate::LoadedKernel;
 use crate::Result;
 
-#[derive(Copy, Clone, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, AsBytes, FromZeroes, FromBytes)]
 #[allow(unused)]
 #[repr(C)]
 struct Arm64ImageHeader {

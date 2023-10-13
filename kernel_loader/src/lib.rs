@@ -17,6 +17,7 @@ use resources::AddressRange;
 use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 #[allow(dead_code)]
@@ -335,8 +336,8 @@ where
 fn read_elf_by_type<F, FileHeader, ProgramHeader>(mut file: &mut F) -> Result<Elf64>
 where
     F: Read + Seek + AsRawDescriptor,
-    FileHeader: FromBytes + Default + Into<elf::Elf64_Ehdr>,
-    ProgramHeader: FromBytes + Default + Into<elf::Elf64_Phdr>,
+    FileHeader: AsBytes + FromBytes + Default + Into<elf::Elf64_Ehdr>,
+    ProgramHeader: AsBytes + FromBytes + Default + Into<elf::Elf64_Phdr>,
 {
     file.seek(SeekFrom::Start(0))
         .map_err(|_| Error::SeekKernelStart)?;

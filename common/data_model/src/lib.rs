@@ -3,26 +3,18 @@
 // found in the LICENSE file.
 
 use std::io;
-use std::mem::size_of;
-use std::mem::MaybeUninit;
-use std::slice::from_raw_parts_mut;
 
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-
+use zerocopy::FromZeroes;
 use zerocopy::Ref;
 
-pub fn zerocopy_from_reader<R: io::Read, T: FromBytes>(mut read: R) -> io::Result<T> {
-    // Allocate on the stack via `MaybeUninit` to ensure proper alignment.
-    let mut out = MaybeUninit::zeroed();
-
-    // Safe because the pointer is valid and points to `size_of::<T>()` bytes of zeroes,
-    // which is a properly initialized value for `u8`.
-    let buf = unsafe { from_raw_parts_mut(out.as_mut_ptr() as *mut u8, size_of::<T>()) };
-    read.read_exact(buf)?;
-
-    // Safe because any bit pattern is considered a valid value for `T`.
-    Ok(unsafe { out.assume_init() })
+pub fn zerocopy_from_reader<R: io::Read, T: AsBytes + FromBytes + FromZeroes>(
+    mut read: R,
+) -> io::Result<T> {
+    let mut out = T::new_zeroed();
+    read.read_exact(out.as_bytes_mut())?;
+    Ok(out)
 }
 
 pub fn zerocopy_from_mut_slice<T: FromBytes + AsBytes>(data: &mut [u8]) -> Option<&mut T> {
