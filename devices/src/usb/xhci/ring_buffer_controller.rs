@@ -243,6 +243,8 @@ mod tests {
     use std::sync::mpsc::channel;
     use std::sync::mpsc::Sender;
 
+    use base::pagesize;
+
     use super::super::xhci_abi::LinkTrb;
     use super::super::xhci_abi::NormalTrb;
     use super::super::xhci_abi::Trb;
@@ -270,7 +272,7 @@ mod tests {
 
     fn setup_mem() -> GuestMemory {
         let trb_size = size_of::<Trb>() as u64;
-        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
 
         // Structure of ring buffer:
         //  0x100  --> 0x200  --> 0x300

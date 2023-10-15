@@ -149,13 +149,15 @@ impl ScatterGatherBuffer {
 
 #[cfg(test)]
 mod test {
+    use base::pagesize;
+
     use super::*;
     use crate::usb::xhci::xhci_abi::AddressedTrb;
     use crate::usb::xhci::xhci_abi::Trb;
 
     #[test]
     fn scatter_gather_buffer_test() {
-        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
         let mut td = TransferDescriptor::new();
 
         // In this td, we are going to have scatter buffer at 0x100, length 4, 0x200 length 2 and
@@ -203,7 +205,7 @@ mod test {
 
     #[test]
     fn immediate_data_test() {
-        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
         let mut td = TransferDescriptor::new();
 
         let expected_immediate_data: [u8; 8] = [0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0D, 0xCA, 0xFE];

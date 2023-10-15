@@ -43,6 +43,7 @@ mod tests {
     use std::fs::OpenOptions;
     use std::io::Write;
 
+    use base::pagesize;
     use cros_async::Executor;
     use cros_async::MemRegion;
     use vm_memory::GuestAddress;
@@ -53,7 +54,8 @@ mod tests {
     #[test]
     fn read_async() {
         async fn read_zeros_async(ex: &Executor) {
-            let guest_mem = Arc::new(GuestMemory::new(&[(GuestAddress(0), 4096)]).unwrap());
+            let guest_mem =
+                Arc::new(GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap());
             let f = File::open("/dev/zero").unwrap();
             let async_file = SingleFileDisk::new(f, ex).unwrap();
             let result = async_file
@@ -73,7 +75,8 @@ mod tests {
     #[test]
     fn write_async() {
         async fn write_zeros_async(ex: &Executor) {
-            let guest_mem = Arc::new(GuestMemory::new(&[(GuestAddress(0), 4096)]).unwrap());
+            let guest_mem =
+                Arc::new(GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap());
             let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
             let async_file = SingleFileDisk::new(f, ex).unwrap();
             let result = async_file

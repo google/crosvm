@@ -61,14 +61,14 @@ fn check_capability() {
 #[test]
 fn create_vm() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     KvmVm::new(&kvm, gm, Default::default()).unwrap();
 }
 
 #[test]
 fn clone_vm() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     vm.try_clone().unwrap();
 }
@@ -76,7 +76,7 @@ fn clone_vm() {
 #[test]
 fn send_vm() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     thread::spawn(move || {
         let _vm = vm;
@@ -88,7 +88,7 @@ fn send_vm() {
 #[test]
 fn check_vm_capability() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     assert!(vm.check_raw_capability(Cap::UserMemory));
     // I assume nobody is testing this on s390
@@ -106,7 +106,7 @@ fn create_vcpu() {
 #[test]
 fn get_memory() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let obj_addr = GuestAddress(0xf0);
     vm.get_memory().write_obj_at_addr(67u8, obj_addr).unwrap();
@@ -117,39 +117,47 @@ fn get_memory() {
 #[test]
 fn add_memory() {
     let kvm = Kvm::new().unwrap();
-    let gm =
-        GuestMemory::new(&[(GuestAddress(0), 0x1000), (GuestAddress(0x5000), 0x5000)]).unwrap();
+    let gm = GuestMemory::new(&[
+        (GuestAddress(0), pagesize() as u64),
+        (GuestAddress(pagesize() as u64 * 5), pagesize() as u64 * 5),
+    ])
+    .unwrap();
     let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let mem_size = 0x1000;
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
-    vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
+    vm.add_memory_region(GuestAddress(pagesize() as u64), Box::new(mem), false, false)
         .unwrap();
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
-    vm.add_memory_region(GuestAddress(0x10000), Box::new(mem), false, false)
-        .unwrap();
+    vm.add_memory_region(
+        GuestAddress(0x10 * pagesize() as u64),
+        Box::new(mem),
+        false,
+        false,
+    )
+    .unwrap();
 }
 
 #[test]
 fn add_memory_ro() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let mem_size = 0x1000;
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
-    vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), true, false)
+    vm.add_memory_region(GuestAddress(pagesize() as u64), Box::new(mem), true, false)
         .unwrap();
 }
 
 #[test]
 fn remove_memory() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let mem_size = 0x1000;
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
     let mem_ptr = mem.as_ptr();
     let slot = vm
-        .add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
+        .add_memory_region(GuestAddress(pagesize() as u64), Box::new(mem), false, false)
         .unwrap();
     let removed_mem = vm.remove_memory_region(slot).unwrap();
     assert_eq!(removed_mem.size(), mem_size);
@@ -159,7 +167,7 @@ fn remove_memory() {
 #[test]
 fn remove_invalid_memory() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     assert!(vm.remove_memory_region(0).is_err());
 }
@@ -167,25 +175,33 @@ fn remove_invalid_memory() {
 #[test]
 fn overlap_memory() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), 0x10 * pagesize() as u64)]).unwrap();
     let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
-    let mem_size = 0x2000;
+    let mem_size = 2 * pagesize();
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
     assert!(vm
-        .add_memory_region(GuestAddress(0x2000), Box::new(mem), false, false)
+        .add_memory_region(
+            GuestAddress(2 * pagesize() as u64),
+            Box::new(mem),
+            false,
+            false
+        )
         .is_err());
 }
 
 #[test]
 fn sync_memory() {
     let kvm = Kvm::new().unwrap();
-    let gm =
-        GuestMemory::new(&[(GuestAddress(0), 0x1000), (GuestAddress(0x5000), 0x5000)]).unwrap();
+    let gm = GuestMemory::new(&[
+        (GuestAddress(0), pagesize() as u64),
+        (GuestAddress(5 * pagesize() as u64), 5 * pagesize() as u64),
+    ])
+    .unwrap();
     let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
-    let mem_size = 0x1000;
+    let mem_size = pagesize();
     let mem = MemoryMappingArena::new(mem_size).unwrap();
     let slot = vm
-        .add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
+        .add_memory_region(GuestAddress(pagesize() as u64), Box::new(mem), false, false)
         .unwrap();
     vm.msync_memory_region(slot, mem_size, 0).unwrap();
     assert!(vm.msync_memory_region(slot, mem_size + 1, 0).is_err());
@@ -195,7 +211,7 @@ fn sync_memory() {
 #[test]
 fn register_irqfd() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let evtfd1 = Event::new().unwrap();
     let evtfd2 = Event::new().unwrap();
@@ -210,7 +226,7 @@ fn register_irqfd() {
 #[test]
 fn unregister_irqfd() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let evtfd1 = Event::new().unwrap();
     let evtfd2 = Event::new().unwrap();
@@ -227,7 +243,7 @@ fn unregister_irqfd() {
 #[test]
 fn irqfd_resample() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let evtfd1 = Event::new().unwrap();
     let evtfd2 = Event::new().unwrap();
@@ -251,7 +267,7 @@ fn vcpu_mmap_size() {
 #[test]
 fn register_ioevent() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let evtfd = Event::new().unwrap();
     vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
@@ -287,7 +303,7 @@ fn register_ioevent() {
 #[test]
 fn unregister_ioevent() {
     let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let evtfd = Event::new().unwrap();
     vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)

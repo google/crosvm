@@ -326,6 +326,7 @@ pub mod tests {
     use std::path::PathBuf;
     use std::result;
 
+    use base::pagesize;
     use hypervisor::ProtectionType;
     use net_util::sys::linux::fakes::FakeTap;
     use net_util::TapTCommon;
@@ -342,8 +343,11 @@ pub mod tests {
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);
-        let start_addr2 = GuestAddress(0x1000);
-        GuestMemory::new(&[(start_addr1, 0x1000), (start_addr2, 0x4000)])
+        let start_addr2 = GuestAddress(pagesize() as u64);
+        GuestMemory::new(&[
+            (start_addr1, pagesize() as u64),
+            (start_addr2, 4 * pagesize() as u64),
+        ])
     }
 
     fn create_net_common() -> Net<FakeTap, FakeNet<FakeTap>> {

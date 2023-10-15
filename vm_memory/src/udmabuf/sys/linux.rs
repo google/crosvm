@@ -137,26 +137,36 @@ mod tests {
     #[test]
     fn test_memory_offsets() {
         let start_addr1 = GuestAddress(0x100);
-        let start_addr2 = GuestAddress(0x1100);
-        let start_addr3 = GuestAddress(0x2100);
+        let start_addr2 = GuestAddress(0x100 + pagesize() as u64);
+        let start_addr3 = GuestAddress(0x100 + 2 * pagesize() as u64);
 
         let mem = GuestMemory::new(&[
-            (start_addr1, 0x1000),
-            (start_addr2, 0x1000),
-            (start_addr3, 0x1000),
+            (start_addr1, pagesize() as u64),
+            (start_addr2, pagesize() as u64),
+            (start_addr3, pagesize() as u64),
         ])
         .unwrap();
 
         assert_eq!(memory_offset(&mem, GuestAddress(0x300), 1).unwrap(), 0x200);
         assert_eq!(
-            memory_offset(&mem, GuestAddress(0x1200), 1).unwrap(),
-            0x1100
+            memory_offset(&mem, GuestAddress(0x200 + pagesize() as u64), 1).unwrap(),
+            0x100 + pagesize() as u64,
         );
         assert_eq!(
-            memory_offset(&mem, GuestAddress(0x1100), 0x1000).unwrap(),
-            0x1000
+            memory_offset(
+                &mem,
+                GuestAddress(0x100 + pagesize() as u64),
+                pagesize() as u64
+            )
+            .unwrap(),
+            pagesize() as u64,
         );
-        assert!(memory_offset(&mem, GuestAddress(0x1100), 0x1001).is_err());
+        assert!(memory_offset(
+            &mem,
+            GuestAddress(0x100 + pagesize() as u64),
+            1 + pagesize() as u64
+        )
+        .is_err());
     }
 
     #[test]

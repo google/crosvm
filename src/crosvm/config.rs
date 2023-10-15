@@ -1601,15 +1601,17 @@ mod tests {
 
     #[test]
     fn parse_file_backed_mapping_align() {
-        let mut params = from_key_values::<FileBackedMappingParameters>(
-            "addr=0x3042,size=0xff0,path=/dev/mem,align",
-        )
+        let addr = pagesize() as u64 * 3 + 42;
+        let size = pagesize() as u64 - 0xf;
+        let mut params = from_key_values::<FileBackedMappingParameters>(&format!(
+            "addr={addr},size={size},path=/dev/mem,align",
+        ))
         .unwrap();
-        assert_eq!(params.address, 0x3042);
-        assert_eq!(params.size, 0xff0);
+        assert_eq!(params.address, addr);
+        assert_eq!(params.size, size);
         validate_file_backed_mapping(&mut params).unwrap();
-        assert_eq!(params.address, 0x3000);
-        assert_eq!(params.size, 0x2000);
+        assert_eq!(params.address, pagesize() as u64 * 3);
+        assert_eq!(params.size, pagesize() as u64 * 2);
     }
 
     #[test]

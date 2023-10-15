@@ -243,6 +243,7 @@ mod tests {
     use libc::EINVAL;
 
     use crate::linux::SharedMemoryLinux;
+    use crate::pagesize;
     use crate::AsRawDescriptor;
     use crate::Error;
     use crate::MemoryMappingBuilder;
@@ -324,11 +325,12 @@ mod tests {
 
     #[test]
     fn mmap_page_offset() {
-        let shm = SharedMemory::new("test", 8092).expect("failed to create shared memory");
+        let shm = SharedMemory::new("test", 2 * pagesize() as u64)
+            .expect("failed to create shared memory");
 
         let mmap1 = MemoryMappingBuilder::new(shm.size() as usize)
             .from_shared_memory(&shm)
-            .offset(4096)
+            .offset(pagesize() as u64)
             .build()
             .expect("failed to map shared memory");
         let mmap2 = MemoryMappingBuilder::new(shm.size() as usize)
@@ -337,14 +339,14 @@ mod tests {
             .expect("failed to map shared memory");
 
         mmap1
-            .get_slice(0, 4096)
+            .get_slice(0, pagesize())
             .expect("failed to get mmap slice")
             .write_bytes(0x45);
 
-        for i in 0..4096 {
+        for i in 0..pagesize() {
             assert_eq!(mmap2.read_obj::<u8>(i).unwrap(), 0);
         }
-        for i in 4096..8092 {
+        for i in pagesize()..(2 * pagesize()) {
             assert_eq!(mmap2.read_obj::<u8>(i).unwrap(), 0x45u8);
         }
     }

@@ -213,11 +213,13 @@ impl EventRing {
 mod test {
     use std::mem::size_of;
 
+    use base::pagesize;
+
     use super::*;
 
     #[test]
     fn test_uninited() {
-        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
         let mut er = EventRing::new(gm);
         let trb = Trb::new();
         match er.add_event(trb).err().unwrap() {
@@ -231,7 +233,7 @@ mod test {
     #[test]
     fn test_event_ring() {
         let trb_size = size_of::<Trb>() as u64;
-        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
         let mut er = EventRing::new(gm.clone());
         let mut st_entries = [EventRingSegmentTableEntry::new(); 3];
         st_entries[0].set_ring_segment_base_address(0x100);

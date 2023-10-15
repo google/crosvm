@@ -162,13 +162,15 @@ impl RingBuffer {
 
 #[cfg(test)]
 mod test {
+    use base::pagesize;
+
     use super::*;
     use crate::usb::xhci::xhci_abi::*;
 
     #[test]
     fn ring_test_dequeue() {
         let trb_size = size_of::<Trb>() as u64;
-        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
         let mut transfer_ring = RingBuffer::new(String::new(), gm.clone());
 
         // Structure of ring buffer:
@@ -246,7 +248,7 @@ mod test {
     #[test]
     fn transfer_ring_test_dequeue_failure() {
         let trb_size = size_of::<Trb>() as u64;
-        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
         let mut transfer_ring = RingBuffer::new(String::new(), gm.clone());
 
         let mut trb = NormalTrb::new();
@@ -280,7 +282,7 @@ mod test {
     #[test]
     fn ring_test_toggle_cycle() {
         let trb_size = size_of::<Trb>() as u64;
-        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
         let mut transfer_ring = RingBuffer::new(String::new(), gm.clone());
 
         let mut trb = NormalTrb::new();
