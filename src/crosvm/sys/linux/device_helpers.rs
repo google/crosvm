@@ -1435,13 +1435,9 @@ pub fn create_vfio_device(
     let (vfio_host_tube_vm, vfio_device_tube_vm) = Tube::pair().context("failed to create tube")?;
     control_tubes.push(TaggedControlTube::Vm(vfio_host_tube_vm));
 
-    let vfio_device = VfioDevice::new_passthrough(
-        &vfio_path,
-        vm,
-        vfio_container.clone(),
-        iommu_dev != IommuDevType::NoIommu,
-    )
-    .context("failed to create vfio device")?;
+    let vfio_device =
+        VfioDevice::new_passthrough(&vfio_path, vm, vfio_container.clone(), iommu_dev)
+            .context("failed to create vfio device")?;
 
     match vfio_device.device_type() {
         VfioDeviceType::Pci => {

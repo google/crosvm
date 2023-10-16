@@ -57,8 +57,8 @@ pub enum VfioError {
     BorrowVfioContainer,
     #[error("failed to duplicate VfioContainer")]
     ContainerDupError,
-    #[error("failed to set container's IOMMU driver type as VfioType1V2: {0}")]
-    ContainerSetIOMMU(Error),
+    #[error("failed to set container's IOMMU driver type as {0:?}: {1}")]
+    ContainerSetIOMMU(IommuType, Error),
     #[error("failed to create KVM vfio device: {0}")]
     CreateVfioKvmDevice(Error),
     #[error("failed to get Group Status: {0}")]
@@ -109,6 +109,8 @@ pub enum VfioError {
     VfioDeviceGetInfo(Error),
     #[error("failed to get vfio device's region info: {0}")]
     VfioDeviceGetRegionInfo(Error),
+    #[error("container doesn't support IOMMU driver type {0:?}")]
+    VfioIommuSupport(IommuType),
     #[error("failed to disable vfio deviece's irq: {0}")]
     VfioIrqDisable(Error),
     #[error("failed to enable vfio deviece's irq: {0}")]
@@ -121,8 +123,6 @@ pub enum VfioError {
     VfioPmLowPowerEnter(Error),
     #[error("failed to exit vfio deviece's low power state: {0}")]
     VfioPmLowPowerExit(Error),
-    #[error("container dones't support VfioType1V2 IOMMU driver type")]
-    VfioType1V2,
 }
 
 type Result<T> = std::result::Result<T, VfioError>;
@@ -145,7 +145,8 @@ enum KvmVfioGroupOps {
 }
 
 #[repr(u32)]
-enum IommuType {
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum IommuType {
     Type1V2 = VFIO_TYPE1v2_IOMMU,
     // ChromeOS specific vfio_iommu_type1 implementation that is optimized for
     // small, dynamic mappings. For clients which create large, relatively
@@ -153,14 +154,6 @@ enum IommuType {
     //
     // See crrev.com/c/3593528 for the implementation.
     Type1ChromeOS = 100001,
-}
-
-// Hint as to whether IOMMU mappings will tend to be large and static or
-// small and dynamic.
-#[derive(PartialEq, Eq)]
-enum IommuMappingHint {
-    Static,
-    Dynamic,
 }
 
 /// VfioContainer contain multi VfioGroup, and delegate an IOMMU domain table
@@ -215,6 +208,22 @@ impl VfioContainer {
     fn set_iommu(&self, val: IommuType) -> i32 {
         // Safe as file is vfio container and make sure val is valid.
         unsafe { ioctl_with_val(self, VFIO_SET_IOMMU(), val as c_ulong) }
+    }
+
+    fn set_iommu_checked(&mut self, val: IommuType) -> Result<()> {
+        if !self.check_extension(val) {
+            Err(VfioError::VfioIommuSupport(val))
+        } else {
+            self.set_iommu_forced(val)
+        }
+    }
+
+    fn set_iommu_forced(&mut self, val: IommuType) -> Result<()> {
+        if self.set_iommu(val) != 0 {
+            Err(VfioError::ContainerSetIOMMU(val, get_error()))
+        } else {
+            Ok(())
+        }
     }
 
     pub unsafe fn vfio_dma_map(
@@ -362,31 +371,23 @@ impl VfioContainer {
         Err(VfioError::IommuGetCapInfo)
     }
 
-    fn init_vfio_iommu(&mut self, hint: IommuMappingHint) -> Result<()> {
-        // If we expect granular, dynamic mappings (i.e. viommu/coiommu), try the
-        // ChromeOS Type1ChromeOS first, then fall back to upstream versions.
-        if hint == IommuMappingHint::Dynamic {
-            if self.set_iommu(IommuType::Type1ChromeOS) == 0 {
-                return Ok(());
+    fn set_iommu_from(&mut self, iommu_dev: IommuDevType) -> Result<()> {
+        match iommu_dev {
+            IommuDevType::CoIommu | IommuDevType::VirtioIommu => {
+                // If we expect granular, dynamic mappings, try the ChromeOS Type1ChromeOS first,
+                // then fall back to upstream versions.
+                self.set_iommu_forced(IommuType::Type1ChromeOS)
+                    .or_else(|_| self.set_iommu_checked(IommuType::Type1V2))
             }
+            IommuDevType::NoIommu => self.set_iommu_checked(IommuType::Type1V2),
         }
-
-        if !self.check_extension(IommuType::Type1V2) {
-            return Err(VfioError::VfioType1V2);
-        }
-
-        if self.set_iommu(IommuType::Type1V2) < 0 {
-            return Err(VfioError::ContainerSetIOMMU(get_error()));
-        }
-
-        Ok(())
     }
 
     fn get_group_with_vm(
         &mut self,
         id: u32,
         vm: &impl Vm,
-        iommu_enabled: bool,
+        iommu_dev: IommuDevType,
     ) -> Result<Arc<Mutex<VfioGroup>>> {
         if let Some(group) = self.groups.get(&id) {
             return Ok(group.clone());
@@ -394,28 +395,25 @@ impl VfioContainer {
 
         let group = Arc::new(Mutex::new(VfioGroup::new(self, id)?));
         if self.groups.is_empty() {
+            self.set_iommu_from(iommu_dev)?;
             // Before the first group is added into container, do once per container
             // initialization. Both coiommu and virtio-iommu rely on small, dynamic
             // mappings. However, if an iommu is not enabled, then we map the entirety
             // of guest memory as a small number of large, static mappings.
-            let mapping_hint = if iommu_enabled {
-                IommuMappingHint::Dynamic
-            } else {
-                IommuMappingHint::Static
-            };
-            self.init_vfio_iommu(mapping_hint)?;
-
-            if !iommu_enabled {
-                for region in vm.get_memory().regions() {
-                    // Safe because the guest regions are guaranteed not to overlap
-                    unsafe {
-                        self.vfio_dma_map(
-                            region.guest_addr.0,
-                            region.size as u64,
-                            region.host_addr as u64,
-                            true,
-                        )
-                    }?;
+            match iommu_dev {
+                IommuDevType::CoIommu | IommuDevType::VirtioIommu => {}
+                IommuDevType::NoIommu => {
+                    for region in vm.get_memory().regions() {
+                        // Safe because the guest regions are guaranteed not to overlap
+                        unsafe {
+                            self.vfio_dma_map(
+                                region.guest_addr.0,
+                                region.size as u64,
+                                region.host_addr as u64,
+                                true,
+                            )
+                        }?;
+                    }
                 }
             }
         }
@@ -442,7 +440,7 @@ impl VfioContainer {
         if self.groups.is_empty() {
             // Before the first group is added into container, do once per
             // container initialization.
-            self.init_vfio_iommu(IommuMappingHint::Static)?;
+            self.set_iommu_checked(IommuType::Type1V2)?;
         }
 
         self.groups.insert(id, group.clone());
@@ -788,13 +786,13 @@ impl VfioDevice {
         sysfspath: &P,
         vm: &impl Vm,
         container: Arc<Mutex<VfioContainer>>,
-        iommu_enabled: bool,
+        iommu_dev: IommuDevType,
     ) -> Result<Self> {
         let group_id = VfioGroup::get_group_id(sysfspath)?;
 
         let group = container
             .lock()
-            .get_group_with_vm(group_id, vm, iommu_enabled)?;
+            .get_group_with_vm(group_id, vm, iommu_dev)?;
         let name_osstr = sysfspath
             .as_ref()
             .file_name()
