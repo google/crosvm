@@ -131,7 +131,7 @@ def memstat_plot(data, args) -> str:
     fig = px.area(
         df,
         x="boot time (sec)",
-        y="PSS (GB)",
+        y="Memory usage (GB)",
         color="process",
     )
     fig.update_layout(title={"text": args.title})

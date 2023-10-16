@@ -56,3 +56,28 @@ $ python3 plot.py -i ./memory-data.json
 ./memory-data.html is written
 $ google-chrome ./memory-data.html
 ```
+
+#### How to interpret the graph
+
+##### crosvm process
+
+The main process's memory usage is divided into the following five sections and shown:
+
+- crosvm (guest disk caches)
+- crosvm (guest shared memory)
+- crosvm (guest unevictable)
+- crosvm (guest used)
+- crosvm (host)
+
+These values are computed by the process's RSS and virtio-balloon's statistics.
+
+##### Other processes
+
+For processes other than the main one, `Private_Dirty` in `/proc/${PID}/smaps` is shown. Unlike
+`Pss`, `Private_Dirty` doesn't include the shared memory for the guest physical memory region that
+the process touched. We use this value because such shared memory regions are counted as a part of
+the crosvm main process's memory usage.
+
+##### Balloon
+
+The blue line is the upper bound of the guest's memory usage limited by virtio-balloon.
