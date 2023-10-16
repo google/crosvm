@@ -704,9 +704,9 @@ async fn run_worker(
 
     futures::select! {
         _ = queue_handler => anyhow::bail!("queue handler exited unexpectedly"),
-        r = resample => return r.context("failed to resample an irq value"),
-        r = kill => return r.context("failed to wait on the kill event"),
-    };
+        r = resample => r.context("failed to resample an irq value"),
+        r = kill => r.context("failed to wait on the kill event"),
+    }
 }
 
 async fn handle_queue(
