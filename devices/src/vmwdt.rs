@@ -159,8 +159,12 @@ impl Vmwdt {
                             error!("error waiting for timer event on vcpu {}", cpu_id);
                         }
 
-                        let current_guest_time_ms =
+                        let current_guest_time_ms_result =
                             Vmwdt::get_guest_time_ms(watchdog.ppid, watchdog.pid);
+                        let current_guest_time_ms = match current_guest_time_ms_result {
+                            Ok(value) => value,
+                            Err(_e) => return,
+                        };
                         let remaining_time_ms = watchdog.next_expiration_interval_ms
                             - (current_guest_time_ms - watchdog.last_guest_time_ms);
 
@@ -205,10 +209,10 @@ impl Vmwdt {
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    pub fn get_guest_time_ms(ppid: u32, pid: u32) -> i64 {
+    pub fn get_guest_time_ms(ppid: u32, pid: u32) -> Result<i64, SysError> {
         // TODO: @sebastianene check if we can avoid open-read-close on each call
         let stat_path = format!("/proc/{}/task/{}/stat", ppid, pid);
-        let contents = fs::read_to_string(stat_path).expect("error reading the stat");
+        let contents = fs::read_to_string(stat_path)?;
 
         let coll: Vec<_> = contents.split_whitespace().collect();
         let guest_time = coll[PROCSTAT_GUEST_TIME_INDX].parse::<u64>();
@@ -219,12 +223,12 @@ impl Vmwdt {
 
         // Safe because this just returns an integer
         let ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
-        (gtime_ticks * 1000 / ticks_per_sec) as i64
+        Ok((gtime_ticks * 1000 / ticks_per_sec) as i64)
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
-    pub fn get_guest_time_ms(ppid: u32, pid: u32) -> i64 {
-        0
+    pub fn get_guest_time_ms(ppid: u32, pid: u32) -> Result<i64, SysError> {
+        Ok(0)
     }
 }
 
@@ -276,7 +280,12 @@ impl BusDevice for Vmwdt {
             VMWDT_REG_LOAD_CNT => {
                 let ppid = process::id();
                 let pid = gettid();
-                let guest_time_ms = Vmwdt::get_guest_time_ms(ppid, pid as u32);
+                let guest_time_ms_result = Vmwdt::get_guest_time_ms(ppid, pid as u32);
+                let guest_time_ms = match guest_time_ms_result {
+                    Ok(time) => time,
+                    Err(_e) => return,
+                };
+
                 let mut wdts_locked = self.vm_wdts.lock();
                 let cpu_watchdog = &mut wdts_locked[cpu_index];
                 let next_expiration_interval_ms =
