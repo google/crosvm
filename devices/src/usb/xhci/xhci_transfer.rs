@@ -469,7 +469,8 @@ impl XhciTransfer {
             let mut backend = port.backend_device();
             match &mut *backend {
                 Some(backend) => backend
-                    .submit_transfer(self)
+                    .lock()
+                    .submit_xhci_transfer(self)
                     .map_err(|_| Error::SubmitTransfer)?,
                 None => {
                     error!("backend is already disconnected");

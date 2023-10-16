@@ -29,6 +29,7 @@ use super::xhci_regs::USB3_PORTS_END;
 use super::xhci_regs::USB3_PORTS_START;
 use super::xhci_regs::USB_STS_PORT_CHANGE_DETECT;
 use crate::register_space::Register;
+use crate::usb::backend::device::BackendDeviceType;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -67,7 +68,7 @@ pub struct UsbPort {
     portsc: Register<u32>,
     usbsts: Register<u32>,
     interrupter: Arc<Mutex<Interrupter>>,
-    backend_device: Mutex<Option<Box<dyn XhciBackendDevice>>>,
+    backend_device: Mutex<Option<Arc<Mutex<BackendDeviceType>>>>,
 }
 
 impl UsbPort {
@@ -110,7 +111,7 @@ impl UsbPort {
     }
 
     /// Get current connected backend.
-    pub fn backend_device(&self) -> MutexGuard<Option<Box<dyn XhciBackendDevice>>> {
+    pub fn backend_device(&self) -> MutexGuard<Option<Arc<Mutex<BackendDeviceType>>>> {
         self.backend_device.lock()
     }
 
@@ -127,10 +128,10 @@ impl UsbPort {
 
     fn attach(
         &self,
-        device: Box<dyn XhciBackendDevice>,
+        device: Arc<Mutex<BackendDeviceType>>,
     ) -> std::result::Result<(), InterrupterError> {
         info!("usb_hub: backend attached to port {}", self.port_id);
-        let speed = device.get_speed();
+        let speed = device.lock().get_speed();
         let mut locked = self.backend_device();
         assert!(locked.is_none());
         *locked = Some(device);
@@ -232,12 +233,12 @@ impl UsbHub {
     }
 
     /// Connect backend to next empty port.
-    pub fn connect_backend(&self, backend: Box<dyn XhciBackendDevice>) -> Result<u8> {
+    pub fn connect_backend(&self, backend: Arc<Mutex<BackendDeviceType>>) -> Result<u8> {
         for port in &self.ports {
             if port.is_attached() {
                 continue;
             }
-            if port.ty != backend.get_backend_type() {
+            if port.ty != backend.lock().get_backend_type() {
                 continue;
             }
             let port_id = port.port_id();

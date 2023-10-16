@@ -4,7 +4,6 @@
 
 use usb_util::DeviceSpeed;
 
-use super::xhci_transfer::XhciTransfer;
 use crate::usb::backend::error::Result;
 
 /// Address of this usb device, as in Set Address standard usb device request.
@@ -18,15 +17,13 @@ pub enum BackendType {
 }
 
 /// Xhci backend device is a virtual device connected to xHCI controller. It handles xhci transfers.
-pub trait XhciBackendDevice: Send {
+pub trait XhciBackendDevice: Send + Sync {
     /// Returns the type of USB device provided by this device.
     fn get_backend_type(&self) -> BackendType;
     /// Get vendor id of this device.
     fn get_vid(&self) -> u16;
     /// Get product id of this device.
     fn get_pid(&self) -> u16;
-    /// Submit a xhci transfer to backend.
-    fn submit_transfer(&mut self, transfer: XhciTransfer) -> Result<()>;
     /// Set address of this backend.
     fn set_address(&mut self, address: UsbDeviceAddress);
     /// Reset the backend device.

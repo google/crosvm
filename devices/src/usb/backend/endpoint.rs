@@ -15,8 +15,9 @@ use usb_util::TransferStatus;
 use usb_util::ENDPOINT_DIRECTION_OFFSET;
 
 use crate::usb::backend::device::BackendDevice;
-use crate::usb::backend::error::*;
-use crate::usb::backend::utils::submit_transfer;
+use crate::usb::backend::device::BackendDeviceType;
+use crate::usb::backend::error::Error;
+use crate::usb::backend::error::Result;
 use crate::usb::backend::utils::update_transfer_state;
 use crate::usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
 use crate::usb::xhci::xhci_transfer::TransferDirection;
@@ -25,6 +26,16 @@ use crate::usb::xhci::xhci_transfer::XhciTransferState;
 use crate::usb::xhci::xhci_transfer::XhciTransferType;
 use crate::utils::AsyncJobQueue;
 use crate::utils::FailHandle;
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum ControlEndpointState {
+    /// Control endpoint should receive setup stage next.
+    SetupStage,
+    /// Control endpoint should receive data stage next.
+    DataStage,
+    /// Control endpoint should receive status stage next.
+    StatusStage,
+}
 
 /// Isochronous, Bulk or Interrupt endpoint.
 pub struct UsbEndpoint {
@@ -70,7 +81,7 @@ impl UsbEndpoint {
     /// Handle a xhci transfer.
     pub fn handle_transfer(
         &self,
-        device: &mut impl BackendDevice,
+        device: &mut BackendDeviceType,
         transfer: XhciTransfer,
     ) -> Result<()> {
         let buffer = match transfer
@@ -110,7 +121,7 @@ impl UsbEndpoint {
     fn get_transfer_buffer(
         &self,
         buffer: &ScatterGatherBuffer,
-        device: &mut impl BackendDevice,
+        device: &mut BackendDeviceType,
     ) -> Result<TransferBuffer> {
         let len = buffer.len().map_err(Error::BufferLen)?;
         let mut buf = device.request_transfer_buffer(len);
@@ -136,7 +147,7 @@ impl UsbEndpoint {
 
     fn handle_bulk_transfer(
         &self,
-        device: &mut impl BackendDevice,
+        device: &mut BackendDeviceType,
         xhci_transfer: XhciTransfer,
         buffer: ScatterGatherBuffer,
     ) -> Result<()> {
@@ -152,7 +163,7 @@ impl UsbEndpoint {
 
     fn handle_interrupt_transfer(
         &self,
-        device: &mut impl BackendDevice,
+        device: &mut BackendDeviceType,
         xhci_transfer: XhciTransfer,
         buffer: ScatterGatherBuffer,
     ) -> Result<()> {
@@ -164,7 +175,7 @@ impl UsbEndpoint {
 
     fn do_handle_transfer(
         &self,
-        device: &mut impl BackendDevice,
+        device: &mut BackendDeviceType,
         xhci_transfer: XhciTransfer,
         mut usb_transfer: Transfer,
         buffer: ScatterGatherBuffer,
@@ -212,11 +223,10 @@ impl UsbEndpoint {
                         fail_handle.fail();
                     }
                 });
-                submit_transfer(
+                device.submit_transfer(
                     self.fail_handle.clone(),
                     &self.job_queue,
                     tmp_transfer,
-                    device,
                     usb_transfer,
                 )?;
             }
@@ -280,11 +290,10 @@ impl UsbEndpoint {
                     }
                 });
 
-                submit_transfer(
+                device.submit_transfer(
                     self.fail_handle.clone(),
                     &self.job_queue,
                     tmp_transfer,
-                    device,
                     usb_transfer,
                 )?;
             }

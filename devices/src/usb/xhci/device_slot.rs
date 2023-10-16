@@ -37,6 +37,7 @@ use super::xhci_abi::SlotContext;
 use super::xhci_abi::StreamContextArray;
 use super::xhci_abi::TrbCompletionCode;
 use super::xhci_abi::DEVICE_CONTEXT_ENTRY_SIZE;
+use super::xhci_backend_device::XhciBackendDevice;
 use super::xhci_regs::valid_max_pstreams;
 use super::xhci_regs::valid_slot_id;
 use super::xhci_regs::MAX_PORTS;
@@ -159,7 +160,7 @@ impl DeviceSlots {
     pub fn reset_port(&self, port_id: u8) -> Result<()> {
         if let Some(port) = self.hub.get_port(port_id) {
             if let Some(backend_device) = port.backend_device().as_mut() {
-                backend_device.reset().map_err(Error::ResetPort)?;
+                backend_device.lock().reset().map_err(Error::ResetPort)?;
             }
         }
 
@@ -508,7 +509,7 @@ impl DeviceSlot {
             let port = self.hub.get_port(port_id).ok_or(Error::GetPort(port_id))?;
             match port.backend_device().as_mut() {
                 Some(backend) => {
-                    backend.set_address(self.slot_id as u32);
+                    backend.lock().set_address(self.slot_id as u32);
                 }
                 None => {
                     return Ok(TrbCompletionCode::TransactionError);
@@ -933,6 +934,7 @@ impl DeviceSlot {
                     let streams = 1 << (max_pstreams + 1);
                     // Subtracting 1 is to ignore Stream ID 0
                     backend_device
+                        .lock()
                         .alloc_streams(endpoint_address, streams - 1)
                         .map_err(Error::AllocStreams)?;
                 }
@@ -973,6 +975,7 @@ impl DeviceSlot {
                         endpoint_address |= 1u8 << 7;
                     }
                     backend_device
+                        .lock()
                         .free_streams(endpoint_address)
                         .map_err(Error::FreeStreams)?;
                 }

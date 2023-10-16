@@ -21,10 +21,12 @@ use vm_control::UsbControlResult;
 use vm_control::USB_CONTROL_MAX_PORTS;
 
 use crate::usb::backend::device::BackendDevice;
-use crate::usb::backend::error::*;
+use crate::usb::backend::device::DeviceState;
+use crate::usb::backend::error::Error;
+use crate::usb::backend::error::Result;
 use crate::usb::backend::host_backend::host_backend_device_provider::attach_host_backend_device;
-use crate::usb::backend::host_backend::host_device::HostDevice;
 use crate::usb::xhci::usb_hub::UsbHub;
+use crate::usb::xhci::xhci_backend_device::XhciBackendDevice;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::utils::AsyncJobQueue;
 use crate::utils::EventHandler;
@@ -159,8 +161,11 @@ impl ProviderInner {
     }
 
     fn handle_attach_device(&self, usb_file: File) -> UsbControlResult {
-        let (device, event_handler) = match attach_host_backend_device(usb_file) {
-            Ok((device, event_handler)) => (device, event_handler),
+        let (host_device, event_handler) = match attach_host_backend_device(
+            usb_file,
+            DeviceState::new(self.fail_handle.clone(), self.job_queue.clone()),
+        ) {
+            Ok((host_device, event_handler)) => (host_device, event_handler),
             Err(e) => {
                 error!("could not construct USB device from the given file: {}", e);
                 return UsbControlResult::NoSuchDevice;
@@ -168,7 +173,7 @@ impl ProviderInner {
         };
 
         if let Err(e) = self.event_loop.add_event(
-            &*device.lock(),
+            &*host_device.lock(),
             EventType::ReadWrite,
             Arc::downgrade(&event_handler),
         ) {
@@ -176,25 +181,16 @@ impl ProviderInner {
             return UsbControlResult::FailedToOpenDevice;
         }
 
-        let device_ctx = DeviceContext {
-            event_handler,
-            device: device.clone(),
-        };
-
         // Resetting the device is used to make sure it is in a known state, but it may
         // still function if the reset fails.
-        if let Err(e) = device.lock().reset() {
+        if let Err(e) = host_device.lock().reset() {
             error!("failed to reset device after attach: {:?}", e);
         }
 
-        let host_device =
-            match HostDevice::new(self.fail_handle.clone(), self.job_queue.clone(), device) {
-                Ok(host_device) => Box::new(host_device),
-                Err(e) => {
-                    error!("failed to initialize HostDevice: {}", e);
-                    return UsbControlResult::FailedToInitHostDevice;
-                }
-            };
+        let device_ctx = DeviceContext {
+            event_handler,
+            device: host_device.clone(),
+        };
 
         let port = self.usb_hub.connect_backend(host_device);
         match port {
@@ -214,9 +210,12 @@ impl ProviderInner {
             Ok(()) => {
                 if let Some(device_ctx) = self.devices.lock().remove(&port) {
                     let _ = device_ctx.event_handler.on_event();
-                    let device = device_ctx.device.lock();
 
-                    if let Err(e) = device.detach_event_handler(&self.event_loop) {
+                    if let Err(e) = device_ctx
+                        .device
+                        .lock()
+                        .detach_event_handler(&self.event_loop)
+                    {
                         error!(
                             "failed to remove poll change handler from event loop: {}",
                             e
@@ -238,6 +237,7 @@ impl ProviderInner {
             match self.usb_hub.get_port(port_id).and_then(|p| {
                 p.backend_device()
                     .as_ref()
+                    .map(|d| d.lock())
                     .map(|d| (d.get_vid(), d.get_pid()))
             }) {
                 Some((vendor_id, product_id)) => {
