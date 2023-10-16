@@ -209,7 +209,7 @@ impl VfioContainer {
     fn check_extension(&self, val: IommuType) -> bool {
         // Safe as file is vfio container and make sure val is valid.
         let ret = unsafe { ioctl_with_val(self, VFIO_CHECK_EXTENSION(), val as c_ulong) };
-        ret == 1
+        ret != 0
     }
 
     fn set_iommu(&self, val: IommuType) -> i32 {
