@@ -6,6 +6,7 @@ pub mod device;
 pub mod device_provider;
 pub mod endpoint;
 pub mod error;
+pub mod fido_backend;
 pub mod host_backend;
 pub mod transfer;
 pub mod utils;

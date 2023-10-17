@@ -1,4 +1,4 @@
-// Copyright 2023 The ChromiumOS Authors
+// Copyright 2024 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,6 +29,8 @@ use crate::usb::backend::endpoint::ControlEndpointState;
 use crate::usb::backend::endpoint::UsbEndpoint;
 use crate::usb::backend::error::Error;
 use crate::usb::backend::error::Result;
+use crate::usb::backend::fido_backend::fido_passthrough::FidoPassthroughDevice;
+use crate::usb::backend::fido_backend::transfer::FidoTransfer;
 use crate::usb::backend::host_backend::host_device::HostDevice;
 use crate::usb::backend::transfer::BackendTransfer;
 use crate::usb::backend::transfer::BackendTransferHandle;
@@ -47,14 +49,19 @@ use crate::utils::AsyncJobQueue;
 use crate::utils::EventLoop;
 use crate::utils::FailHandle;
 
+/// This enum defines different USB backend implementations that we support. Each implementation
+/// needs to implement the `BackendDevice` trait as we dispatch on the enum based on the type.
+/// Each concrete implementation can take care of setting up the device-specific configurations.
 pub enum BackendDeviceType {
     // Real device on the host, backed by usbdevfs
     HostDevice(HostDevice),
+    // Virtual security key implementation
+    FidoDevice(FidoPassthroughDevice),
 }
 
 impl AsRawDescriptor for BackendDeviceType {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        multi_dispatch!(self, BackendDeviceType, HostDevice, as_raw_descriptor)
+        multi_dispatch!(self, BackendDeviceType, HostDevice FidoDevice, as_raw_descriptor)
     }
 }
 
@@ -66,7 +73,7 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             submit_backend_transfer,
             transfer
         )
@@ -76,7 +83,7 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             detach_event_handler,
             event_loop
         )
@@ -86,7 +93,7 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             request_transfer_buffer,
             size
         )
@@ -101,7 +108,7 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             build_bulk_transfer,
             ep_addr,
             transfer_buffer,
@@ -117,7 +124,7 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             build_interrupt_transfer,
             ep_addr,
             transfer_buffer
@@ -128,20 +135,20 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             get_control_transfer_state
         )
     }
 
     fn get_device_state(&mut self) -> Arc<RwLock<DeviceState>> {
-        multi_dispatch!(self, BackendDeviceType, HostDevice, get_device_state)
+        multi_dispatch!(self, BackendDeviceType, HostDevice FidoDevice, get_device_state)
     }
 
     fn get_active_config_descriptor(&mut self) -> Result<ConfigDescriptorTree> {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             get_active_config_descriptor
         )
     }
@@ -150,7 +157,7 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             get_config_descriptor,
             config
         )
@@ -160,17 +167,17 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             get_config_descriptor_by_index,
             config_index
         )
     }
 
-    fn get_device_descriptor_tree(&mut self) -> DeviceDescriptorTree {
+    fn get_device_descriptor_tree(&mut self) -> Result<DeviceDescriptorTree> {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             get_device_descriptor_tree
         )
     }
@@ -179,7 +186,7 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             get_active_configuration
         )
     }
@@ -188,7 +195,7 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             set_active_configuration,
             config
         )
@@ -198,7 +205,7 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             clear_feature,
             value,
             index
@@ -209,7 +216,7 @@ impl BackendDevice for BackendDeviceType {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             create_endpoints,
             config_descriptor
         )
@@ -218,34 +225,34 @@ impl BackendDevice for BackendDeviceType {
 
 impl XhciBackendDevice for BackendDeviceType {
     fn get_backend_type(&self) -> BackendType {
-        multi_dispatch!(self, BackendDeviceType, HostDevice, get_backend_type)
+        multi_dispatch!(self, BackendDeviceType, HostDevice FidoDevice, get_backend_type)
     }
 
     fn get_vid(&self) -> u16 {
-        multi_dispatch!(self, BackendDeviceType, HostDevice, get_vid)
+        multi_dispatch!(self, BackendDeviceType, HostDevice FidoDevice, get_vid)
     }
 
     fn get_pid(&self) -> u16 {
-        multi_dispatch!(self, BackendDeviceType, HostDevice, get_pid)
+        multi_dispatch!(self, BackendDeviceType, HostDevice FidoDevice, get_pid)
     }
 
     fn set_address(&mut self, address: UsbDeviceAddress) {
-        multi_dispatch!(self, BackendDeviceType, HostDevice, set_address, address)
+        multi_dispatch!(self, BackendDeviceType, HostDevice FidoDevice, set_address, address)
     }
 
     fn reset(&mut self) -> Result<()> {
-        multi_dispatch!(self, BackendDeviceType, HostDevice, reset)
+        multi_dispatch!(self, BackendDeviceType, HostDevice FidoDevice, reset)
     }
 
     fn get_speed(&self) -> Option<DeviceSpeed> {
-        multi_dispatch!(self, BackendDeviceType, HostDevice, get_speed)
+        multi_dispatch!(self, BackendDeviceType, HostDevice FidoDevice, get_speed)
     }
 
     fn alloc_streams(&self, ep: u8, num_streams: u16) -> Result<()> {
         multi_dispatch!(
             self,
             BackendDeviceType,
-            HostDevice,
+            HostDevice FidoDevice,
             alloc_streams,
             ep,
             num_streams
@@ -253,11 +260,11 @@ impl XhciBackendDevice for BackendDeviceType {
     }
 
     fn free_streams(&self, ep: u8) -> Result<()> {
-        multi_dispatch!(self, BackendDeviceType, HostDevice, free_streams, ep)
+        multi_dispatch!(self, BackendDeviceType, HostDevice FidoDevice, free_streams, ep)
     }
 
     fn stop(&mut self) {
-        multi_dispatch!(self, BackendDeviceType, HostDevice, stop)
+        multi_dispatch!(self, BackendDeviceType, HostDevice FidoDevice, stop)
     }
 }
 
@@ -277,16 +284,6 @@ impl DeviceState {
             endpoints: vec![],
             initialized: false,
             job_queue,
-        }
-    }
-}
-
-impl Drop for BackendDeviceType {
-    fn drop(&mut self) {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => {
-                host_device.release_interfaces();
-            }
         }
     }
 }
@@ -343,10 +340,6 @@ impl BackendDeviceType {
                 ControlRequestDataPhaseTransferDirection::HostToDevice,
             ) => {
                 usb_trace!("handling set interface");
-                // Right now we only have one backend device type so the match statement is a bit
-                // dry but as we add new backend types the compiler will make sure to warn we need
-                // to take care of them in this match statement. Non-host backend device might not
-                // need to set interfaces so we'll have to add a catch-all skip case.
                 match self {
                     BackendDeviceType::HostDevice(host_device) => match host_device.set_interface(
                         control_request_setup.index as u8,
@@ -358,6 +351,10 @@ impl BackendDeviceType {
                             (TransferStatus::Stalled, 0)
                         }
                     },
+                    _ => {
+                        // Nothing to do for non-host devices
+                        (TransferStatus::Completed, 0)
+                    }
                 }
             }
             (
@@ -400,6 +397,10 @@ impl BackendDeviceType {
                                     (TransferStatus::Stalled, 0)
                                 }
                             }
+                        }
+                        BackendDeviceType::FidoDevice(_) => {
+                            error!("Fido device control transfer has not been implemented yet.");
+                            (TransferStatus::Stalled, 0)
                         }
                     }
                 } else {
@@ -453,12 +454,16 @@ impl BackendDeviceType {
             buffer
         };
 
-        // TODO(morg): this match can be abstracted once we have more backends
+        // TODO(morg): Refactor this code so it doesn't need to match on each implementation type
         let mut control_transfer = match self {
             BackendDeviceType::HostDevice(_) => BackendTransferType::HostDevice(
                 Transfer::new_control(TransferBuffer::Vector(control_buffer))
                     .map_err(Error::CreateTransfer)?,
             ),
+            BackendDeviceType::FidoDevice(_) => BackendTransferType::FidoDevice(FidoTransfer::new(
+                0,
+                TransferBuffer::Vector(control_buffer),
+            )),
         };
 
         let tmp_transfer = xhci_transfer.clone();
@@ -612,11 +617,9 @@ impl BackendDeviceType {
         // It's a standard, set_config, device request.
         usb_trace!("set_config: {}", config);
 
-        match self {
-            BackendDeviceType::HostDevice(host_device) => {
-                host_device.release_interfaces();
-            }
-        };
+        if let BackendDeviceType::HostDevice(host_device) = self {
+            host_device.release_interfaces();
+        }
 
         let cur_config = match self.get_active_configuration() {
             Ok(c) => Some(c),
@@ -645,11 +648,9 @@ impl BackendDeviceType {
 
         let config_descriptor = self.get_config_descriptor(config)?;
 
-        match self {
-            BackendDeviceType::HostDevice(host_device) => {
-                host_device.claim_interfaces(&config_descriptor);
-            }
-        };
+        if let BackendDeviceType::HostDevice(host_device) = self {
+            host_device.claim_interfaces(&config_descriptor);
+        }
 
         self.create_endpoints(&config_descriptor)?;
         Ok(TransferStatus::Completed)
@@ -781,7 +782,7 @@ pub trait BackendDevice: Sync + Send {
     /// Gets a specific device config descriptor tree by index.
     fn get_config_descriptor_by_index(&mut self, config_index: u8) -> Result<ConfigDescriptorTree>;
     /// Gets the device descriptor tree.
-    fn get_device_descriptor_tree(&mut self) -> DeviceDescriptorTree;
+    fn get_device_descriptor_tree(&mut self) -> Result<DeviceDescriptorTree>;
     /// Gets the device current active configuration.
     fn get_active_configuration(&mut self) -> Result<u8>;
     /// Sets the device active configuration.

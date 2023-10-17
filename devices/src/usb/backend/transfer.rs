@@ -9,6 +9,7 @@ use usb_util::UsbRequestSetup;
 
 use crate::usb::backend::endpoint::ControlEndpointState;
 use crate::usb::backend::error::Result;
+use crate::usb::backend::fido_backend::transfer::FidoTransfer;
 
 /// BackendTransferHandle is a wrapper structure around a generic transfer handle whose
 /// implementation depends on the backend type that is being used.
@@ -30,6 +31,7 @@ impl BackendTransferHandle {
 
 pub enum BackendTransferType {
     HostDevice(Transfer),
+    FidoDevice(FidoTransfer),
 }
 
 /// The backend transfer trait implemention is the interface of a generic transfer structure that
@@ -46,28 +48,35 @@ pub trait BackendTransfer {
     fn set_callback<C: 'static + Fn(BackendTransferType) + Send + Sync>(&mut self, cb: C);
 }
 
+// TODO(morg): refactor with multi_dispatch
 impl BackendTransfer for BackendTransferType {
     fn status(&self) -> TransferStatus {
         match self {
             BackendTransferType::HostDevice(transfer) => BackendTransfer::status(transfer),
+            BackendTransferType::FidoDevice(transfer) => BackendTransfer::status(transfer),
         }
     }
 
     fn actual_length(&self) -> usize {
         match self {
             BackendTransferType::HostDevice(transfer) => BackendTransfer::actual_length(transfer),
+            BackendTransferType::FidoDevice(transfer) => BackendTransfer::actual_length(transfer),
         }
     }
 
     fn buffer(&self) -> &TransferBuffer {
         match self {
             BackendTransferType::HostDevice(transfer) => BackendTransfer::buffer(transfer),
+            BackendTransferType::FidoDevice(transfer) => BackendTransfer::buffer(transfer),
         }
     }
 
     fn set_callback<C: 'static + Fn(BackendTransferType) + Send + Sync>(&mut self, cb: C) {
         match self {
             BackendTransferType::HostDevice(transfer) => {
+                BackendTransfer::set_callback(transfer, cb)
+            }
+            BackendTransferType::FidoDevice(transfer) => {
                 BackendTransfer::set_callback(transfer, cb)
             }
         }

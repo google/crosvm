@@ -89,7 +89,7 @@ impl HostDevice {
 
         let config_descriptor = self.get_config_descriptor_by_index(descriptor_index)?;
 
-        let device_descriptor = self.get_device_descriptor_tree();
+        let device_descriptor = self.get_device_descriptor_tree()?;
         let config_start = config_descriptor.offset();
         let config_end = config_start + config_descriptor.wTotalLength as usize;
         let mut descriptor_data = device_descriptor.raw()[config_start..config_end].to_vec();
@@ -160,6 +160,12 @@ impl HostDevice {
     }
 }
 
+impl Drop for HostDevice {
+    fn drop(&mut self) {
+        self.release_interfaces();
+    }
+}
+
 impl AsRawDescriptor for HostDevice {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.device.lock().as_raw_descriptor()
@@ -184,6 +190,7 @@ impl BackendDevice for HostDevice {
                 .submit_transfer(transfer)
                 .map_err(Error::CreateTransfer)
                 .map(BackendTransferHandle::new),
+            _ => Err(Error::MalformedBackendTransfer),
         }
     }
 
@@ -249,8 +256,8 @@ impl BackendDevice for HostDevice {
             .map_err(Error::GetConfigDescriptor)
     }
 
-    fn get_device_descriptor_tree(&mut self) -> DeviceDescriptorTree {
-        self.device.lock().get_device_descriptor_tree().clone()
+    fn get_device_descriptor_tree(&mut self) -> Result<DeviceDescriptorTree> {
+        Ok(self.device.lock().get_device_descriptor_tree().clone())
     }
 
     fn get_active_configuration(&mut self) -> Result<u8> {

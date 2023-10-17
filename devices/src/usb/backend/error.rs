@@ -85,6 +85,8 @@ pub enum Error {
     TransferComplete(XhciTransferError),
     #[error("failed to cancel transfer: {0}")]
     TransferHandle(UsbUtilError),
+    #[error("transfer has already completed when being cancelled")]
+    TransferHandleAlreadyComplete,
     #[error("failed to write buffer: {0}")]
     WriteBuffer(BufferError),
     #[error("failed to write control tube: {0}")]
