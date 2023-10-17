@@ -214,12 +214,11 @@ impl Vmwdt {
         let stat_path = format!("/proc/{}/task/{}/stat", ppid, pid);
         let contents = fs::read_to_string(stat_path)?;
 
-        let coll: Vec<_> = contents.split_whitespace().collect();
-        let guest_time = coll[PROCSTAT_GUEST_TIME_INDX].parse::<u64>();
-        let gtime_ticks = match guest_time {
-            Err(_e) => 0,
-            Ok(f) => f,
-        };
+        let gtime_ticks = contents
+            .split_whitespace()
+            .nth(PROCSTAT_GUEST_TIME_INDX)
+            .and_then(|guest_time| guest_time.parse::<u64>().ok())
+            .unwrap_or(0);
 
         // Safe because this just returns an integer
         let ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
