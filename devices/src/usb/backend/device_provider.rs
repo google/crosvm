@@ -24,6 +24,7 @@ use crate::usb::backend::device::BackendDevice;
 use crate::usb::backend::device::DeviceState;
 use crate::usb::backend::error::Error;
 use crate::usb::backend::error::Result;
+use crate::usb::backend::fido_backend::fido_provider::attach_security_key;
 use crate::usb::backend::host_backend::host_backend_device_provider::attach_host_backend_device;
 use crate::usb::xhci::usb_hub::UsbHub;
 use crate::usb::xhci::xhci_backend_device::XhciBackendDevice;
@@ -231,6 +232,56 @@ impl ProviderInner {
         }
     }
 
+    fn handle_attach_security_key(&self, hidraw: File) -> UsbControlResult {
+        let (fido_device, event_handler) = match attach_security_key(
+            hidraw,
+            self.event_loop.clone(),
+            DeviceState::new(self.fail_handle.clone(), self.job_queue.clone()),
+        ) {
+            Ok((fido_device, event_handler)) => (fido_device, event_handler),
+            Err(e) => {
+                error!(
+                    "could not create a virtual fido device from the given file: {}",
+                    e
+                );
+                return UsbControlResult::NoSuchDevice;
+            }
+        };
+
+        if let Err(e) = self.event_loop.add_event(
+            &*fido_device.lock(),
+            EventType::Read,
+            Arc::downgrade(&event_handler),
+        ) {
+            error!("failed to add fido device to event handler: {}", e);
+            return UsbControlResult::FailedToOpenDevice;
+        }
+
+        let device_ctx = DeviceContext {
+            event_handler,
+            device: fido_device.clone(),
+        };
+
+        // Reset the device to make sure it's in a usable state.
+        // Resetting it also stops polling on the FD, since we only poll when there is an active
+        // transaction.
+        if let Err(e) = fido_device.lock().reset() {
+            error!("failed to reset fido device after attach: {:?}", e);
+        }
+
+        let port = self.usb_hub.connect_backend(fido_device);
+        match port {
+            Ok(port) => {
+                self.devices.lock().insert(port, device_ctx);
+                UsbControlResult::Ok { port }
+            }
+            Err(e) => {
+                error!("failed to connect device to hub: {}", e);
+                UsbControlResult::NoAvailablePort
+            }
+        }
+    }
+
     fn handle_list_devices(&self, ports: [u8; USB_CONTROL_MAX_PORTS]) -> UsbControlResult {
         let mut devices: [UsbControlAttachedDevice; USB_CONTROL_MAX_PORTS] = Default::default();
         for (result_index, &port_id) in ports.iter().enumerate() {
@@ -258,6 +309,7 @@ impl ProviderInner {
         let cmd = tube.recv().map_err(Error::ReadControlTube)?;
         let result = match cmd {
             UsbControlCommand::AttachDevice { file } => self.handle_attach_device(file),
+            UsbControlCommand::AttachSecurityKey { file } => self.handle_attach_security_key(file),
             UsbControlCommand::DetachDevice { port } => self.handle_detach_device(port),
             UsbControlCommand::ListDevice { ports } => self.handle_list_devices(ports),
         };

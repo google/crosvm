@@ -233,6 +233,10 @@ pub enum UsbControlCommand {
         #[serde(with = "with_as_descriptor")]
         file: File,
     },
+    AttachSecurityKey {
+        #[serde(with = "with_as_descriptor")]
+        file: File,
+    },
     DetachDevice {
         port: u8,
     },
