@@ -1133,7 +1133,7 @@ pub struct RunCommand {
     #[serde(skip)] // Deprecated - use `block` instead.
     #[merge(strategy = append)]
     /// path to a disk image followed by optional comma-separated
-    /// options.
+    /// options.  Deprecated - use `block` instead.
     /// Valid keys:
     ///    sparse=BOOL - Indicates whether the disk should support
     ///        the discard operation (default: true)
@@ -1787,7 +1787,7 @@ pub struct RunCommand {
     #[serde(skip)] // Deprecated - use `block` instead.
     #[merge(strategy = overwrite_option)]
     /// path to a disk image followed by optional comma-separated
-    /// options.
+    /// options.  Deprecated - use `block` instead.
     /// Valid keys:
     ///     sparse=BOOL - Indicates whether the disk should support
     ///         the discard operation (default: true)
@@ -1820,7 +1820,7 @@ pub struct RunCommand {
     #[serde(skip)] // Deprecated - use `block` instead.
     #[merge(strategy = append)]
     /// path to a read-write disk image followed by optional
-    /// comma-separated options.
+    /// comma-separated options. Deprecated - use `block` instead.
     /// Valid keys:
     ///     sparse=BOOL - Indicates whether the disk should support
     ///        the discard operation (default: true)
@@ -1835,7 +1835,7 @@ pub struct RunCommand {
     #[serde(skip)] // Deprecated - use `block` instead.
     #[merge(strategy = overwrite_option)]
     /// path to a read-write root disk image followed by optional
-    /// comma-separated options.
+    /// comma-separated options.  Deprecated - use `block` instead.
     /// Valid keys:
     ///     sparse=BOOL - Indicates whether the disk should support
     ///       the discard operation (default: true)
