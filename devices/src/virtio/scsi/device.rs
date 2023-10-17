@@ -57,7 +57,12 @@ use crate::virtio::Writer;
 // <https://docs.oasis-open.org/virtio/virtio/v1.2/csd01/virtio-v1.2-csd01.html#x1-3470004>
 
 // Should have one controlq, one eventq, and at least one request queue.
-const MINIMUM_NUM_QUEUES: usize = 3;
+const MIN_NUM_QUEUES: usize = 3;
+// The number of queues exposed by the device.
+// First crosvm pass this value through `VirtioDevice::read_config`, and then the driver determines
+// the number of queues which does not exceed the passed value. The determined value eventually
+// shows as the length of `queues` in `VirtioDevice::activate`.
+const MAX_NUM_QUEUES: usize = 16;
 // Max channel should be 0.
 const DEFAULT_MAX_CHANNEL: u16 = 0;
 // Max target should be less than or equal to 255.
@@ -287,6 +292,9 @@ pub struct Device {
     // instance of Device which has multiple LogicalUnit.
     #[allow(dead_code)]
     target: LogicalUnit,
+    // Whether the devices handles requests in multiple request queues.
+    // If true, each virtqueue will be handled in a separate worker thread.
+    multi_queue: bool,
 }
 
 impl Device {
@@ -304,17 +312,24 @@ impl Device {
             block_size,
             read_only,
         };
+        let multi_queue = disk_image.try_clone().is_ok();
+        let num_queues = if multi_queue {
+            MAX_NUM_QUEUES
+        } else {
+            MIN_NUM_QUEUES
+        };
         // b/300560198: Support feature bits in virtio-scsi.
         Ok(Self {
             avail_features: base_features,
             disk_image: Some(disk_image),
-            queue_sizes: vec![DEFAULT_QUEUE_SIZE; MINIMUM_NUM_QUEUES],
+            queue_sizes: vec![DEFAULT_QUEUE_SIZE; num_queues],
             seg_max: get_seg_max(DEFAULT_QUEUE_SIZE),
             sense_size: VIRTIO_SCSI_SENSE_DEFAULT_SIZE,
             cdb_size: VIRTIO_SCSI_CDB_DEFAULT_SIZE,
             executor_kind: ExecutorKind::default(),
             worker_threads: vec![],
             target,
+            multi_queue,
         })
     }
 
@@ -425,7 +440,7 @@ impl VirtioDevice for Device {
         &mut self,
         _mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, Queue>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         let executor_kind = self.executor_kind;
         let dev = self.target;
@@ -433,23 +448,50 @@ impl VirtioDevice for Device {
             .disk_image
             .take()
             .context("Failed to take a disk image")?;
-        let worker_thread = WorkerThread::start("virtio_scsi", move |kill_evt| {
-            let ex =
-                Executor::with_executor_kind(executor_kind).expect("Failed to create an executor");
-            let async_disk = match disk_image.to_async_disk(&ex) {
-                Ok(d) => d,
-                Err(e) => panic!("Failed to create async disk: {}", e),
-            };
-            if let Err(err) = ex
-                .run_until(run_worker(
-                    &ex, interrupt, queues, kill_evt, async_disk, dev,
-                ))
-                .expect("run_until failed")
-            {
-                error!("run_worker failed: {err}");
-            }
-        });
-        self.worker_threads.push(worker_thread);
+        // 0th virtqueue is the controlq.
+        let _controlq = queues.remove(&0).context("controlq should be present")?;
+        // 1st virtqueue is the eventq.
+        // We do not send any events through eventq.
+        let _eventq = queues.remove(&1).context("eventq should be present")?;
+        // The rest of the queues are request queues.
+        let request_queues = if self.multi_queue {
+            queues
+                .into_values()
+                .map(|queue| {
+                    let disk = disk_image
+                        .try_clone()
+                        .context("Failed to clone a disk image")?;
+                    Ok((queue, disk))
+                })
+                .collect::<anyhow::Result<_>>()?
+        } else {
+            // Handle all virtio requests with one thread.
+            vec![(
+                queues
+                    .remove(&2)
+                    .context("request queue should be present")?,
+                disk_image,
+            )]
+        };
+
+        for (i, (queue, disk_image)) in request_queues.into_iter().enumerate() {
+            let interrupt = interrupt.clone();
+            let worker_thread = WorkerThread::start(format!("v_scsi_{}", i + 2), move |kill_evt| {
+                let ex = Executor::with_executor_kind(executor_kind)
+                    .expect("Failed to create an executor");
+                let async_disk = match disk_image.to_async_disk(&ex) {
+                    Ok(d) => d,
+                    Err(e) => panic!("Failed to create async disk: {}", e),
+                };
+                if let Err(err) = ex
+                    .run_until(run_worker(&ex, interrupt, queue, kill_evt, async_disk, dev))
+                    .expect("run_until failed")
+                {
+                    error!("run_worker failed: {err}");
+                }
+            });
+            self.worker_threads.push(worker_thread);
+        }
         Ok(())
     }
 }
@@ -457,7 +499,7 @@ impl VirtioDevice for Device {
 async fn run_worker(
     ex: &Executor,
     interrupt: Interrupt,
-    mut queues: BTreeMap<usize, Queue>,
+    queue: Queue,
     kill_evt: Event,
     disk_image: Box<dyn AsyncDisk>,
     dev: LogicalUnit,
@@ -468,17 +510,14 @@ async fn run_worker(
     let resample = async_utils::handle_irq_resample(ex, interrupt.clone()).fuse();
     pin_mut!(resample);
 
-    let request_queue = queues
-        .remove(&2)
-        .context("request queue should be present")?;
-    let kick_evt = request_queue
+    let kick_evt = queue
         .event()
         .try_clone()
         .expect("Failed to clone queue event");
     let queue_handler = handle_queue(
-        Rc::new(RefCell::new(request_queue)),
+        Rc::new(RefCell::new(queue)),
         EventAsync::new(kick_evt, ex).expect("Failed to create async event for queue"),
-        interrupt.clone(),
+        interrupt,
         disk_image,
         dev,
     )
