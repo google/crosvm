@@ -9,6 +9,7 @@ use std::io::Write;
 use std::sync::Arc;
 
 use base::syslog::test_only_ensure_inited;
+use base::syslog::LogArgs;
 use base::syslog::LogConfig;
 use base::syslog::Priority;
 use base::syslog::State;
@@ -62,7 +63,10 @@ fn syslog_log() {
 #[test]
 fn proc_name() {
     let state = State::new(LogConfig {
-        proc_name: String::from("syslog-test"),
+        log_args: LogArgs {
+            proc_name: String::from("syslog-test"),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .unwrap();
@@ -93,7 +97,7 @@ fn pipe_formatter(buf: &mut fmt::Formatter, record: &Record<'_>) -> io::Result<(
 fn syslogger_char() {
     let output = MockWrite::new();
     let mut cfg = LogConfig::default();
-    cfg.pipe_formatter = Some(pipe_formatter);
+    cfg.pipe_formatter = Some(Box::new(pipe_formatter));
     cfg.pipe = Some(Box::new(output.clone()));
     let state = Mutex::new(State::new(cfg).unwrap());
 
@@ -120,7 +124,7 @@ fn syslogger_char() {
 fn syslogger_line() {
     let output = MockWrite::new();
     let mut cfg = LogConfig::default();
-    cfg.pipe_formatter = Some(pipe_formatter);
+    cfg.pipe_formatter = Some(Box::new(pipe_formatter));
     cfg.pipe = Some(Box::new(output.clone()));
     let state = Mutex::new(State::new(cfg).unwrap());
 
@@ -175,7 +179,10 @@ fn log_priority_try_from_words() {
 #[test]
 fn log_should_always_be_enabled_for_level_show_all() {
     let state = State::new(LogConfig {
-        filter: "trace",
+        log_args: LogArgs {
+            filter: String::from("trace"),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .unwrap();
@@ -191,7 +198,10 @@ fn log_should_always_be_enabled_for_level_show_all() {
 #[test]
 fn log_should_always_be_disabled_for_level_silent() {
     let state = State::new(LogConfig {
-        filter: "off",
+        log_args: LogArgs {
+            filter: String::from("off"),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .unwrap();
@@ -207,7 +217,10 @@ fn log_should_always_be_disabled_for_level_silent() {
 #[test]
 fn log_should_be_enabled_if_filter_level_has_a_lower_or_equal_priority() {
     let state = State::new(LogConfig {
-        filter: "info",
+        log_args: LogArgs {
+            filter: String::from("info"),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .unwrap();
@@ -229,7 +242,10 @@ fn log_should_be_enabled_if_filter_level_has_a_lower_or_equal_priority() {
 #[test]
 fn log_should_be_disabled_if_filter_level_has_a_higher_priority() {
     let state = State::new(LogConfig {
-        filter: "info",
+        log_args: LogArgs {
+            filter: String::from("info"),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .unwrap();
@@ -245,7 +261,10 @@ fn log_should_be_disabled_if_filter_level_has_a_higher_priority() {
 #[test]
 fn path_overides_should_apply_to_logs() {
     let state = State::new(LogConfig {
-        filter: "info,test=debug",
+        log_args: LogArgs {
+            filter: String::from("info,test=debug"),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .unwrap();
@@ -268,7 +287,10 @@ fn path_overides_should_apply_to_logs() {
 #[test]
 fn longest_path_prefix_match_should_apply_if_multiple_filters_match() {
     let state = State::new(LogConfig {
-        filter: "info,test=debug,test::silence=off",
+        log_args: LogArgs {
+            filter: String::from("info,test=debug,test::silence=off"),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .unwrap();

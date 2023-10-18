@@ -30,15 +30,15 @@
 //! use std::io::Write;
 //!
 //! let mut cfg = LogConfig::default();
-//! cfg.pipe_formatter = Some(|buf, rec| {
+//! cfg.pipe_formatter = Some(Box::new(|buf, rec| {
 //!     let mut level_style = buf.style();
 //!     level_style.set_color(fmt::Color::Green);
 //!     let mut style = buf.style();
 //!     style.set_color(fmt::Color::Red).set_bold(true);
 //!     writeln!(buf, "{}:{}", level_style.value(rec.level()), style.value(rec.args()))
-//! });
-//! cfg.stderr = true;
-//! cfg.filter = "info,base=debug,base::syslog=error,serial_console=false";
+//! }));
+//! cfg.log_args.stderr = true;
+//! cfg.log_args.filter = String::from("info,base=debug,base::syslog=error,serial_console=false");
 //!
 //! init_with(cfg).unwrap();
 //! error!("something went horribly wrong: {}", "out of RAMs");
@@ -116,9 +116,6 @@ impl From<log::Level> for Priority {
     }
 }
 
-pub const FORMATTER_NONE: Option<fn(&mut fmt::Formatter, &log::Record<'_>) -> std::io::Result<()>> =
-    None;
-
 impl TryFrom<&str> for Priority {
     type Error = &'static str;
 
@@ -139,7 +136,7 @@ impl TryFrom<&str> for Priority {
 /// The facility of a syslog message.
 ///
 /// See syslog man pages for information on their semantics.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, serde::Deserialize, serde::Serialize)]
 pub enum Facility {
     Kernel = 0,
     User = 1 << 3,
@@ -221,24 +218,15 @@ impl Log for LoggingFacade {
     }
 }
 
-pub struct LogConfig<'a, F: 'static>
-where
-    F: Fn(&mut fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
-{
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+pub struct LogArgs {
     /// A filter for log messages. Please see
     /// module level documentation and [`env_logger` crate](https://docs.rs/env_logger)
     ///
     /// Example: `off`, `trace`, `trace,crosvm=error,base::syslog=debug`
-    pub filter: &'a str,
+    pub filter: String,
     /// If set to true will duplicate output to stderr
     pub stderr: bool,
-    /// If specified will output to given Sink
-    pub pipe: Option<Box<dyn io::Write + Send>>,
-    /// descriptor to preserve on forks (intended to be used with pipe)
-    pub pipe_fd: Option<RawDescriptor>,
-    /// A formatter to use with the pipe. (Syslog has hardcoded format)
-    /// see module level documentation and [`env_logger` crate](https://docs.rs/env_logger)
-    pub pipe_formatter: Option<F>,
     /// TAG to use for syslog output
     pub proc_name: String,
     /// Enable/disable platform's "syslog"
@@ -247,32 +235,39 @@ where
     pub syslog_facility: Facility,
 }
 
-impl<'a> Default
-    for LogConfig<'a, fn(&mut fmt::Formatter, &log::Record<'_>) -> std::io::Result<()>>
-{
+impl Default for LogArgs {
     fn default() -> Self {
         Self {
-            filter: "info",
+            filter: String::from("info"),
             stderr: true,
-            pipe: None,
             proc_name: String::from("crosvm"),
             syslog: true,
             syslog_facility: Facility::User,
-            pipe_formatter: FORMATTER_NONE,
-            pipe_fd: None,
         }
     }
 }
 
+#[derive(Default)]
+pub struct LogConfig {
+    /// Logging configuration arguments.
+    pub log_args: LogArgs,
+    /// If specified will output to given Sink
+    pub pipe: Option<Box<dyn io::Write + Send>>,
+    /// descriptor to preserve on forks (intended to be used with pipe)
+    pub pipe_fd: Option<RawDescriptor>,
+    /// A formatter to use with the pipe. (Syslog has hardcoded format)
+    /// see module level documentation and [`env_logger` crate](https://docs.rs/env_logger)
+    pub pipe_formatter: Option<
+        Box<dyn Fn(&mut fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send>,
+    >,
+}
+
 impl State {
-    pub fn new<F: 'static>(cfg: LogConfig<'_, F>) -> Result<Self, Error>
-    where
-        F: Fn(&mut fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
-    {
+    pub fn new(cfg: LogConfig) -> Result<Self, Error> {
         let mut loggers: Vec<Box<dyn Log + Send>> = vec![];
         let mut descriptors = vec![];
         let mut builder = env_logger::filter::Builder::new();
-        builder.parse(cfg.filter);
+        builder.parse(&cfg.log_args.filter);
         let filter = builder.build();
 
         let create_formatted_builder = || {
@@ -292,7 +287,7 @@ impl State {
             builder
         };
 
-        if cfg.stderr {
+        if cfg.log_args.stderr {
             let mut builder = create_formatted_builder();
             builder.filter_level(log::LevelFilter::Trace);
             builder.target(env_logger::Target::Stderr);
@@ -317,8 +312,8 @@ impl State {
             loggers.push(Box::new(builder.build()));
         }
 
-        if cfg.syslog {
-            match PlatformSyslog::new(cfg.proc_name, cfg.syslog_facility) {
+        if cfg.log_args.syslog {
+            match PlatformSyslog::new(cfg.log_args.proc_name, cfg.log_args.syslog_facility) {
                 Ok((mut logger, fd)) => {
                     if let Some(fd) = fd {
                         descriptors.push(fd);
@@ -383,10 +378,7 @@ pub fn init() -> Result<(), Error> {
 /// * proc_name: proc name for Syslog implementation
 /// * syslog_facility: syslog facility
 /// * file_formatter: custom formatter for file output. See env_logger docs
-pub fn init_with<F: 'static>(cfg: LogConfig<'_, F>) -> Result<(), Error>
-where
-    F: Fn(&mut fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
-{
+pub fn init_with(cfg: LogConfig) -> Result<(), Error> {
     let mut state = STATE.lock();
     if !state.early_init {
         panic!("double-init of the logging system is not permitted.");

@@ -32,6 +32,8 @@ use base::generate_uuid;
 use base::info;
 use base::named_pipes;
 use base::syslog;
+use base::syslog::LogArgs;
+use base::syslog::LogConfig;
 use base::warn;
 use base::AsRawDescriptor;
 use base::BlockingMode;
@@ -409,11 +411,11 @@ struct ChildProcess {
 }
 
 /// Wrapper to start the broker.
-pub fn run(cfg: Config) -> Result<()> {
+pub fn run(cfg: Config, log_args: LogArgs) -> Result<()> {
     // This wrapper exists because errors that are returned up to the caller aren't logged, though
     // they are used to generate the return code. For practical debugging though, we want to log the
     // errors.
-    let res = run_internal(cfg);
+    let res = run_internal(cfg, log_args);
     if let Err(e) = &res {
         error!("Broker encountered an error: {}", e);
     }
@@ -494,7 +496,7 @@ pub fn setup_emulator_crash_reporting(cfg: &Config) -> Result<String> {
 ///
 /// Refrain from using platform specific code within this function. It will eventually be cross
 /// platform.
-fn run_internal(mut cfg: Config) -> Result<()> {
+fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
     #[cfg(feature = "sandbox")]
     if sandbox::is_sandbox_broker() {
         // Get the BrokerServices pointer so that it gets initialized.
@@ -503,7 +505,11 @@ fn run_internal(mut cfg: Config) -> Result<()> {
     }
     // Note that parsing args causes syslog's log file to be set to the log file for the "main"
     // process. We don't want broker logs going there, so we fetch our own log file and set it here.
-    let mut log_cfg = syslog::LogConfig::default();
+    let mut log_cfg = LogConfig {
+        log_args: log_args.clone(),
+        ..Default::default()
+    };
+
     if let Some(log_path) = get_log_path(&cfg, "broker_syslog.log") {
         log_cfg.pipe = Some(Box::new(
             OpenOptions::new()
@@ -514,9 +520,9 @@ fn run_internal(mut cfg: Config) -> Result<()> {
                     format!("failed to open log file {}", log_path.display())
                 })?,
         ));
-        log_cfg.stderr = false;
+        log_cfg.log_args.stderr = false;
     } else {
-        log_cfg.stderr = true;
+        log_cfg.log_args.stderr = true;
     }
     syslog::init_with(log_cfg)?;
 
@@ -600,6 +606,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
     // Save block children `ChildProcess` so TubeTransporter and Tubes don't get closed.
     let _block_children = start_up_block_backends(
         &mut cfg,
+        &log_args,
         &mut children,
         &mut exit_events,
         &mut wait_ctx,
@@ -616,6 +623,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
         &mut exit_events,
         &mut wait_ctx,
         &mut cfg,
+        &log_args,
         &mut metric_tubes,
         #[cfg(feature = "process-invariants")]
         &process_invariants,
@@ -632,6 +640,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
     } else {
         Some(start_up_snd(
             &mut cfg,
+            &log_args,
             snd_cfg,
             &mut main_child,
             &mut children,
@@ -664,6 +673,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
     } else {
         Some(start_up_gpu(
             &mut cfg,
+            &log_args,
             gpu_cfg,
             &mut main_child,
             &mut children,
@@ -683,6 +693,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
     main_child.bootstrap_tube.send(&cfg).unwrap();
 
     let main_startup_args = CommonChildStartupArgs::new(
+        &log_args,
         get_log_path(&cfg, "main_syslog.log"),
         #[cfg(feature = "crash-report")]
         create_crash_report_attrs(&cfg, product_type::EMULATOR),
@@ -728,6 +739,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
     // We have all the metrics tubes from other children, so give them to the metrics controller
     // along with a startup configuration.
     let metrics_startup_args = CommonChildStartupArgs::new(
+        &log_args,
         get_log_path(&cfg, "metrics_syslog.log"),
         #[cfg(feature = "crash-report")]
         create_crash_report_attrs(&cfg, product_type::METRICS),
@@ -1113,6 +1125,7 @@ impl Supervisor {
 
 fn start_up_block_backends(
     cfg: &mut Config,
+    log_args: &LogArgs,
     children: &mut HashMap<u32, ChildCleanup>,
     exit_events: &mut Vec<Event>,
     wait_ctx: &mut WaitContext<Token>,
@@ -1126,6 +1139,7 @@ fn start_up_block_backends(
         let block_child = spawn_block_backend(index, main_child, children, wait_ctx, cfg)?;
 
         let startup_args = CommonChildStartupArgs::new(
+            log_args,
             get_log_path(cfg, &format!("disk_{}_syslog.log", index)),
             #[cfg(feature = "crash-report")]
             create_crash_report_attrs(cfg, &format!("{}_{}", product_type::DISK, index)),
@@ -1343,6 +1357,7 @@ fn start_up_net_backend(
     exit_events: &mut Vec<Event>,
     wait_ctx: &mut WaitContext<Token>,
     cfg: &mut Config,
+    log_args: &LogArgs,
     metric_tubes: &mut Vec<Tube>,
     #[cfg(feature = "process-invariants")] process_invariants: &EmulatorProcessInvariants,
 ) -> Result<(ChildProcess, ChildProcess)> {
@@ -1359,6 +1374,7 @@ fn start_up_net_backend(
     let slirp_child = spawn_slirp(children, wait_ctx, cfg)?;
 
     let slirp_child_startup_args = CommonChildStartupArgs::new(
+        log_args,
         get_log_path(cfg, "slirp_syslog.log"),
         #[cfg(feature = "crash-report")]
         create_crash_report_attrs(cfg, product_type::SLIRP),
@@ -1384,6 +1400,7 @@ fn start_up_net_backend(
     let net_child = spawn_net_backend(main_child, children, wait_ctx, cfg)?;
 
     let net_child_startup_args = CommonChildStartupArgs::new(
+        log_args,
         get_log_path(cfg, "net_syslog.log"),
         #[cfg(feature = "crash-report")]
         create_crash_report_attrs(cfg, product_type::SLIRP),
@@ -1524,6 +1541,7 @@ fn platform_create_snd(
 #[cfg(feature = "audio")]
 fn start_up_snd(
     cfg: &mut Config,
+    log_args: &LogArgs,
     mut snd_cfg: SndSplitConfig,
     main_child: &mut ChildProcess,
     children: &mut HashMap<u32, ChildCleanup>,
@@ -1576,6 +1594,7 @@ fn start_up_snd(
     cfg.snd_split_config = Some(snd_cfg);
 
     let startup_args = CommonChildStartupArgs::new(
+        log_args,
         get_log_path(cfg, "snd_syslog.log"),
         #[cfg(feature = "crash-report")]
         create_crash_report_attrs(cfg, product_type::SND),
@@ -1665,6 +1684,7 @@ fn platform_create_gpu(
 /// Returns a gpu child process for vhost-user GPU.
 fn start_up_gpu(
     cfg: &mut Config,
+    log_args: &LogArgs,
     gpu_cfg: (GpuBackendConfig, GpuVmmConfig),
     main_child: &mut ChildProcess,
     children: &mut HashMap<u32, ChildCleanup>,
@@ -1712,6 +1732,7 @@ fn start_up_gpu(
     cfg.gpu_vmm_config = Some(vmm_cfg);
 
     let startup_args = CommonChildStartupArgs::new(
+        log_args,
         get_log_path(cfg, "gpu_syslog.log"),
         #[cfg(feature = "crash-report")]
         create_crash_report_attrs(cfg, product_type::GPU),

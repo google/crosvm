@@ -10,6 +10,7 @@ use anyhow::Context;
 use base::kill_process_group;
 use base::reap_child;
 use base::syslog;
+use base::syslog::LogArgs;
 use base::syslog::LogConfig;
 use base::warn;
 use devices::virtio::vhost::user::device::run_console_device;
@@ -78,16 +79,13 @@ pub fn get_library_watcher() -> std::io::Result<()> {
     Ok(())
 }
 
-pub(crate) fn run_command(command: Commands) -> anyhow::Result<()> {
+pub(crate) fn run_command(command: Commands, _log_args: LogArgs) -> anyhow::Result<()> {
     match command {
         Commands::Devices(cmd) => start_devices(cmd).context("start_devices subcommand failed"),
     }
 }
 
-pub(crate) fn init_log<F: 'static>(log_config: LogConfig<F>, _cfg: &Config) -> anyhow::Result<()>
-where
-    F: Fn(&mut syslog::fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
-{
+pub(crate) fn init_log(log_config: LogConfig, _cfg: &Config) -> anyhow::Result<()> {
     if let Err(e) = syslog::init_with(log_config) {
         eprintln!("failed to initialize syslog: {}", e);
         return Err(anyhow!("failed to initialize syslog: {}", e));

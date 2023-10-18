@@ -13,6 +13,7 @@ use argh::FromArgs;
 use argh::SubCommand;
 use base::info;
 use base::syslog;
+use base::syslog::LogArgs;
 use base::syslog::LogConfig;
 use base::FromRawDescriptor;
 use base::RawDescriptor;
@@ -82,9 +83,9 @@ pub(crate) fn run_slirp(args: RunSlirpCommand) -> Result<()> {
     Ok(())
 }
 
-pub fn run_broker_impl(cfg: Config) -> Result<()> {
+pub fn run_broker_impl(cfg: Config, log_args: LogArgs) -> Result<()> {
     cros_tracing::init();
-    crate::crosvm::sys::windows::broker::run(cfg)
+    crate::crosvm::sys::windows::broker::run(cfg, log_args)
 }
 
 #[cfg(feature = "sandbox")]
@@ -150,28 +151,29 @@ pub(crate) fn cleanup() {
     // TODO: b/142733266. When we sandbox each device, have a way to terminate the other sandboxed processes.
 }
 
-fn run_broker(cmd: RunCommand) -> Result<()> {
+fn run_broker(cmd: RunCommand, log_args: LogArgs) -> Result<()> {
     match TryInto::<Config>::try_into(cmd) {
-        Ok(cfg) => run_broker_impl(cfg),
+        Ok(cfg) => run_broker_impl(cfg, log_args),
         Err(e) => Err(anyhow!("{}", e)),
     }
 }
 
-pub(crate) fn run_command(cmd: Commands) -> anyhow::Result<()> {
+pub(crate) fn run_command(cmd: Commands, log_args: LogArgs) -> anyhow::Result<()> {
     match cmd {
         Commands::RunMetrics(cmd) => run_metrics(cmd),
-        Commands::RunMP(cmd) => run_broker(cmd.run),
+        Commands::RunMP(cmd) => run_broker(cmd.run, log_args),
         Commands::RunMain(cmd) => run_vm_for_broker(cmd),
         #[cfg(feature = "slirp")]
         Commands::RunSlirp(cmd) => run_slirp(cmd),
     }
 }
 
-pub(crate) fn init_log<F: 'static>(log_config: LogConfig<F>, cfg: &Config) -> Result<()>
-where
-    F: Fn(&mut base::syslog::fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
-{
+pub(crate) fn init_log(log_config: LogConfig, cfg: &Config) -> Result<()> {
     if let Err(e) = syslog::init_with(LogConfig {
+        log_args: LogArgs {
+            stderr: cfg.log_file.is_none(),
+            ..log_config.log_args
+        },
         pipe: if let Some(log_file_path) = &cfg.log_file {
             let file = OpenOptions::new()
                 .create(true)
@@ -184,7 +186,6 @@ where
         } else {
             None
         },
-        stderr: if cfg.log_file.is_some() { false } else { true },
         ..log_config
     }) {
         eprintln!("failed to initialize syslog: {}", e);
