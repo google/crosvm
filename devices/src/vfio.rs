@@ -388,67 +388,65 @@ impl VfioContainer {
         vm: &impl Vm,
         iommu_enabled: bool,
     ) -> Result<Arc<Mutex<VfioGroup>>> {
-        match self.groups.get(&id) {
-            Some(group) => Ok(group.clone()),
-            None => {
-                let group = Arc::new(Mutex::new(VfioGroup::new(self, id)?));
-                if self.groups.is_empty() {
-                    // Before the first group is added into container, do once per container
-                    // initialization. Both coiommu and virtio-iommu rely on small, dynamic
-                    // mappings. However, if an iommu is not enabled, then we map the entirety
-                    // of guest memory as a small number of large, static mappings.
-                    let mapping_hint = if iommu_enabled {
-                        IommuMappingHint::Dynamic
-                    } else {
-                        IommuMappingHint::Static
-                    };
-                    self.init_vfio_iommu(mapping_hint)?;
+        if let Some(group) = self.groups.get(&id) {
+            return Ok(group.clone());
+        }
 
-                    if !iommu_enabled {
-                        for region in vm.get_memory().regions() {
-                            // Safe because the guest regions are guaranteed not to overlap
-                            unsafe {
-                                self.vfio_dma_map(
-                                    region.guest_addr.0,
-                                    region.size as u64,
-                                    region.host_addr as u64,
-                                    true,
-                                )
-                            }?;
-                        }
-                    }
+        let group = Arc::new(Mutex::new(VfioGroup::new(self, id)?));
+        if self.groups.is_empty() {
+            // Before the first group is added into container, do once per container
+            // initialization. Both coiommu and virtio-iommu rely on small, dynamic
+            // mappings. However, if an iommu is not enabled, then we map the entirety
+            // of guest memory as a small number of large, static mappings.
+            let mapping_hint = if iommu_enabled {
+                IommuMappingHint::Dynamic
+            } else {
+                IommuMappingHint::Static
+            };
+            self.init_vfio_iommu(mapping_hint)?;
+
+            if !iommu_enabled {
+                for region in vm.get_memory().regions() {
+                    // Safe because the guest regions are guaranteed not to overlap
+                    unsafe {
+                        self.vfio_dma_map(
+                            region.guest_addr.0,
+                            region.size as u64,
+                            region.host_addr as u64,
+                            true,
+                        )
+                    }?;
                 }
-
-                let kvm_vfio_file = KVM_VFIO_FILE
-                    .get_or_try_init(|| vm.create_device(DeviceKind::Vfio))
-                    .map_err(VfioError::CreateVfioKvmDevice)?;
-                group
-                    .lock()
-                    .kvm_device_set_group(kvm_vfio_file, KvmVfioGroupOps::Add)?;
-
-                self.groups.insert(id, group.clone());
-
-                Ok(group)
             }
         }
+
+        let kvm_vfio_file = KVM_VFIO_FILE
+            .get_or_try_init(|| vm.create_device(DeviceKind::Vfio))
+            .map_err(VfioError::CreateVfioKvmDevice)?;
+        group
+            .lock()
+            .kvm_device_set_group(kvm_vfio_file, KvmVfioGroupOps::Add)?;
+
+        self.groups.insert(id, group.clone());
+
+        Ok(group)
     }
 
     fn get_group(&mut self, id: u32) -> Result<Arc<Mutex<VfioGroup>>> {
-        match self.groups.get(&id) {
-            Some(group) => Ok(group.clone()),
-            None => {
-                let group = Arc::new(Mutex::new(VfioGroup::new(self, id)?));
-
-                if self.groups.is_empty() {
-                    // Before the first group is added into container, do once per
-                    // container initialization.
-                    self.init_vfio_iommu(IommuMappingHint::Static)?;
-                }
-
-                self.groups.insert(id, group.clone());
-                Ok(group)
-            }
+        if let Some(group) = self.groups.get(&id) {
+            return Ok(group.clone());
         }
+
+        let group = Arc::new(Mutex::new(VfioGroup::new(self, id)?));
+
+        if self.groups.is_empty() {
+            // Before the first group is added into container, do once per
+            // container initialization.
+            self.init_vfio_iommu(IommuMappingHint::Static)?;
+        }
+
+        self.groups.insert(id, group.clone());
+        Ok(group)
     }
 
     fn remove_group(&mut self, id: u32, reduce: bool) {
