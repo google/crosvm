@@ -16,6 +16,7 @@ use base::RawDescriptor;
 use broker_ipc::common_child_setup;
 use broker_ipc::CommonChildStartupArgs;
 use cros_async::Executor;
+use cros_async::ExecutorKind;
 use crosvm_cli::sys::windows::exit::Exit;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
@@ -55,7 +56,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let bootstrap_tube = tubes.get_tube(TubeToken::Bootstrap)?;
 
     let startup_args: CommonChildStartupArgs = bootstrap_tube.recv::<CommonChildStartupArgs>()?;
-    common_child_setup(startup_args)?;
+    let _child_cleanup = common_child_setup(startup_args)?;
 
     let disk_option: DiskOption = bootstrap_tube.recv::<DiskOption>()?;
     let exit_event = bootstrap_tube.recv::<Event>()?;
@@ -67,7 +68,13 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
 
     info!("using {} IO handles.", disk_option.io_concurrency.get());
 
-    let ex = Executor::new().context("failed to create executor")?;
+    let ex = Executor::with_executor_kind(
+        *disk_option
+            .async_executor
+            .as_ref()
+            .unwrap_or(&ExecutorKind::Handle),
+    )
+    .context("failed to create executor")?;
 
     let block = Box::new(BlockAsync::new(
         base_features(ProtectionType::Unprotected),

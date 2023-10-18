@@ -3,12 +3,38 @@
 // found in the LICENSE file.
 
 use std::fs::File;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 
+use cros_async::Executor;
+
+use crate::Error;
 use crate::Result;
+use crate::SingleFileDisk;
 
 pub fn apply_raw_disk_file_options(_raw_image: &File, _is_sparse_file: bool) -> Result<()> {
     // No op on unix.
     Ok(())
+}
+
+pub fn read_from_disk(
+    mut file: &File,
+    offset: u64,
+    buf: &mut [u8],
+    _overlapped_mode: bool,
+) -> Result<()> {
+    file.seek(SeekFrom::Start(offset))
+        .map_err(Error::SeekingFile)?;
+    file.read_exact(buf).map_err(Error::ReadingHeader)
+}
+
+impl SingleFileDisk {
+    pub fn new(disk: File, ex: &Executor) -> Result<Self> {
+        ex.async_from(disk)
+            .map_err(Error::CreateSingleFileDisk)
+            .map(|inner| SingleFileDisk { inner })
+    }
 }
 
 #[cfg(test)]
@@ -70,7 +96,7 @@ mod tests {
         // Fill the first block of the file with "random" data.
         let buf = "ABCD".as_bytes().repeat(1024);
         t.write_all(&buf).unwrap();
-        let image_type = detect_image_type(&t).expect("failed to detect image type");
+        let image_type = detect_image_type(&t, false).expect("failed to detect image type");
         assert_eq!(image_type, ImageType::Raw);
     }
 
@@ -83,7 +109,7 @@ mod tests {
         // to be updated.
         let buf: &[u8] = &[0x51, 0x46, 0x49, 0xfb];
         t.write_all(buf).unwrap();
-        let image_type = detect_image_type(&t).expect("failed to detect image type");
+        let image_type = detect_image_type(&t, false).expect("failed to detect image type");
         assert_eq!(image_type, ImageType::Qcow2);
     }
 
@@ -96,7 +122,7 @@ mod tests {
         // to be updated.
         let buf: &[u8] = &[0x3a, 0xff, 0x26, 0xed];
         t.write_all(buf).unwrap();
-        let image_type = detect_image_type(&t).expect("failed to detect image type");
+        let image_type = detect_image_type(&t, false).expect("failed to detect image type");
         assert_eq!(image_type, ImageType::AndroidSparse);
     }
 
@@ -109,7 +135,7 @@ mod tests {
         // to be updated.
         let buf = "composite_disk\x1d".as_bytes();
         t.write_all(buf).unwrap();
-        let image_type = detect_image_type(&t).expect("failed to detect image type");
+        let image_type = detect_image_type(&t, false).expect("failed to detect image type");
         assert_eq!(image_type, ImageType::CompositeDisk);
     }
 
@@ -120,7 +146,7 @@ mod tests {
         // works correctly and handles it as a raw file.
         let buf: &[u8] = &[0xAA, 0xBB];
         t.write_all(buf).unwrap();
-        let image_type = detect_image_type(&t).expect("failed to detect image type");
+        let image_type = detect_image_type(&t, false).expect("failed to detect image type");
         assert_eq!(image_type, ImageType::Raw);
     }
 }

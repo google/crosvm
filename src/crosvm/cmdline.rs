@@ -517,8 +517,8 @@ pub struct VirtioNetCommand {
 #[argh(subcommand, name = "device")]
 /// Start a device process
 pub struct DeviceCommand {
-    /// configure async executor backend; "uring" or "epoll" on Linux, "handle" on Windows.
-    /// If this option is omitted on Linux, "epoll" is used by default.
+    /// configure async executor backend; "uring" or "epoll" on Linux, "handle" or "overlapped" on
+    /// Windows. If this option is omitted on Linux, "epoll" is used by default.
     #[argh(option, arg_name = "EXECUTOR")]
     pub async_executor: Option<ExecutorKind>,
 
@@ -901,8 +901,8 @@ pub struct RunCommand {
     /// path to Android fstab
     pub android_fstab: Option<PathBuf>,
 
-    /// configure async executor backend; "uring" or "epoll" on Linux, "handle" on Windows.
-    /// If this option is omitted on Linux, "epoll" is used by default.
+    /// configure async executor backend; "uring" or "epoll" on Linux, "handle" or "overlapped" on
+    /// Windows. If this option is omitted on Linux, "epoll" is used by default.
     #[argh(option, arg_name = "EXECUTOR")]
     #[serde(skip)] // TODO(b/255223604)
     pub async_executor: Option<ExecutorKind>,

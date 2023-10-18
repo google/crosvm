@@ -8,7 +8,6 @@ use std::cmp::min;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io;
-use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::path::Path;
@@ -67,6 +66,8 @@ mod android_sparse;
 use android_sparse::AndroidSparse;
 #[cfg(feature = "android-sparse")]
 use android_sparse::SPARSE_HEADER_MAGIC;
+
+use sys::read_from_disk;
 
 /// Nesting depth limit for disk formats that can open other disk files.
 pub const MAX_NESTING_DEPTH: u32 = 10;
@@ -216,11 +217,10 @@ fn log_host_fs_type(file: &File) -> Result<()> {
 }
 
 /// Detect the type of an image file by checking for a valid header of the supported formats.
-pub fn detect_image_type(file: &File) -> Result<ImageType> {
+pub fn detect_image_type(file: &File, overlapped_mode: bool) -> Result<ImageType> {
     let mut f = file;
     let disk_size = f.get_len().map_err(Error::SeekingFile)?;
     let orig_seek = f.stream_position().map_err(Error::SeekingFile)?;
-    f.seek(SeekFrom::Start(0)).map_err(Error::SeekingFile)?;
 
     info!("disk size {}, ", disk_size);
     log_host_fs_type(f)?;
@@ -241,8 +241,7 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
         disk_size as usize
     };
 
-    f.read_exact(&mut magic.data[0..magic_read_len])
-        .map_err(Error::ReadingHeader)?;
+    read_from_disk(f, 0, &mut magic.data[0..magic_read_len], overlapped_mode)?;
     f.seek(SeekFrom::Start(orig_seek))
         .map_err(Error::SeekingFile)?;
 
@@ -278,10 +277,28 @@ impl DiskFile for File {
 pub fn create_disk_file(
     raw_image: File,
     is_sparse_file: bool,
+    max_nesting_depth: u32,
+    image_path: &Path,
+) -> Result<Box<dyn DiskFile>> {
+    let image_type = detect_image_type(&raw_image, false)?;
+    create_disk_file_of_type(
+        raw_image,
+        is_sparse_file,
+        max_nesting_depth,
+        image_path,
+        image_type,
+    )
+}
+
+/// create an appropriate disk file to match give image type.
+pub fn create_disk_file_of_type(
+    raw_image: File,
+    is_sparse_file: bool,
     // max_nesting_depth is only used if the composite-disk or qcow features are enabled.
     #[allow(unused_variables)] mut max_nesting_depth: u32,
     // image_path is only used if the composite-disk feature is enabled.
     #[allow(unused_variables)] image_path: &Path,
+    image_type: ImageType,
 ) -> Result<Box<dyn DiskFile>> {
     if max_nesting_depth == 0 {
         return Err(Error::MaxNestingDepthExceeded);
@@ -291,7 +308,6 @@ pub fn create_disk_file(
         max_nesting_depth -= 1;
     }
 
-    let image_type = detect_image_type(&raw_image)?;
     Ok(match image_type {
         ImageType::Raw => {
             sys::apply_raw_disk_file_options(&raw_image, is_sparse_file)?;
@@ -410,14 +426,6 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
 /// A disk backed by a single file that implements `AsyncDisk` for access.
 pub struct SingleFileDisk {
     inner: IoSource<File>,
-}
-
-impl SingleFileDisk {
-    pub fn new(disk: File, ex: &Executor) -> Result<Self> {
-        ex.async_from(disk)
-            .map_err(Error::CreateSingleFileDisk)
-            .map(|inner| SingleFileDisk { inner })
-    }
 }
 
 impl DiskGetLen for SingleFileDisk {
