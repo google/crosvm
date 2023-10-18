@@ -8,6 +8,12 @@ edition = "2021"
 x = []
 kiwi = []
 vulkan_display = [ "vulkano", "ash", "rand", "protos", "protobuf", "euclid", "smallvec"]
+# Enables the GPU display backend for Android. The backend uses Android surface as the backing
+# store.
+android_display = []
+# Stub implementation of the Android display backend. This is only used for building and testing the
+# Android display backend on a non-Android target
+android_display_stub = []
 
 [dependencies]
 anyhow = "*"

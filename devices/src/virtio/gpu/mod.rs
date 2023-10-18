@@ -1119,6 +1119,12 @@ pub enum DisplayBackend {
     #[cfg(windows)]
     /// Open a window using WinAPI.
     WinApi(WinDisplayProperties),
+    #[cfg(feature = "android_display")]
+    /// The display buffer is backed by an Android surface. The surface is set via an AIDL service
+    /// that the backend hosts. Currently, the AIDL service is registered to the service manager
+    /// using the name given here. The entity holding the surface is expected to locate the service
+    /// via this name, and pass the surface to it.
+    Android(String),
 }
 
 impl DisplayBackend {
@@ -1147,6 +1153,8 @@ impl DisplayBackend {
                     Err(GpuDisplayError::Allocate)
                 }
             },
+            #[cfg(feature = "android_display")]
+            DisplayBackend::Android(service_name) => GpuDisplay::open_android(service_name),
         }
     }
 }

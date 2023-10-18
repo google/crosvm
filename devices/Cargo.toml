@@ -5,6 +5,8 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [features]
+android_display = ["gpu_display/android_display"]
+android_display_stub = ["gpu_display/android_display_stub"]
 arc_quota = ["dbus", "protobuf", "system_api"]
 audio = []
 audio_cras = ["libcras"]

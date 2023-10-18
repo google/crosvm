@@ -27,6 +27,10 @@ use vm_control::gpu::MouseMode;
 use vulkano::VulkanLibrary;
 
 mod event_device;
+#[cfg(feature = "android_display")]
+mod gpu_display_android;
+#[cfg(feature = "android_display_stub")]
+mod gpu_display_android_stub;
 mod gpu_display_stub;
 #[cfg(windows)]
 mod gpu_display_win;
@@ -96,6 +100,9 @@ pub enum GpuDisplayError {
     /// Failed to import a buffer to the compositor.
     #[error("failed to import a buffer to the compositor")]
     FailedImport,
+    /// Android display service name is invalid.
+    #[error("invalid Android display service name: {0}")]
+    InvalidAndroidDisplayServiceName(String),
     /// The import ID is invalid.
     #[error("invalid import ID")]
     InvalidImportId,
@@ -437,6 +444,27 @@ impl GpuDisplay {
             })
         }
         #[cfg(not(feature = "x"))]
+        Err(GpuDisplayError::Unsupported)
+    }
+
+    pub fn open_android(service_name: &str) -> GpuDisplayResult<GpuDisplay> {
+        let _ = service_name;
+        #[cfg(feature = "android_display")]
+        {
+            let display = gpu_display_android::DisplayAndroid::new(service_name)?;
+
+            let wait_ctx = WaitContext::new()?;
+            wait_ctx.add(&display, DisplayEventToken::Display)?;
+
+            Ok(GpuDisplay {
+                inner: Box::new(display),
+                next_id: 1,
+                event_devices: Default::default(),
+                surfaces: Default::default(),
+                wait_ctx,
+            })
+        }
+        #[cfg(not(feature = "android_display"))]
         Err(GpuDisplayError::Unsupported)
     }
 

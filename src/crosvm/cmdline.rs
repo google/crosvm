@@ -946,6 +946,12 @@ pub struct RunCommand {
     /// path to user provided ACPI table
     pub acpi_table: Vec<PathBuf>,
 
+    #[cfg(feature = "android_display")]
+    #[argh(option, arg_name = "NAME")]
+    #[merge(strategy = overwrite_option)]
+    /// name that the Android display backend will be registered to the service manager.
+    pub android_display_service: Option<String>,
+
     #[argh(option)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -3145,6 +3151,11 @@ impl TryFrom<RunCommand> for super::config::Config {
                     .get_or_insert_with(Default::default)
                     .display_params
                     .extend(cmd.gpu_display.into_iter().map(|p| p.0));
+
+                #[cfg(feature = "android_display")]
+                {
+                    cfg.android_display_service = cmd.android_display_service;
+                }
             }
 
             #[cfg(windows)]

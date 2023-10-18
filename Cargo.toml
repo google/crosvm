@@ -209,6 +209,14 @@ vulkan_display = ["gpu_display/vulkan_display"]
 # see rutabaga_gfx/Cargo.toml for instructions on building with enabled.
 vulkano = ["rutabaga_gfx/vulkano"]
 
+# Enables the GPU display backend for Android. The backend uses Android surface as the backing
+# store.
+android_display = ["devices/android_display"]
+
+# Stub implementation of the Android display backend. This is only used for building and testing the
+# Android display backend on a non-Android target
+android_display_stub = ["devices/android_display_stub"]
+
 #! ### Video features
 #!
 #! See [Video Device](https://crosvm.dev/book/devices/video.html) for more information.
@@ -352,6 +360,8 @@ all-default = [
 ## All features that are compiled and tested for aarch64
 all-aarch64 = [
     "all-default",
+    "android_display",
+    "android_display_stub",
     "gunyah",
 ]
 
@@ -363,6 +373,8 @@ all-riscv64 = [
 ## All features that are compiled and tested for x86_64
 all-x86_64 = [
     "all-default",
+    "android_display",
+    "android_display_stub",
     "plugin",
     "pvclock",
     "scudo"

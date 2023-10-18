@@ -125,6 +125,11 @@ pub fn create_gpu_device(
         virtio::DisplayBackend::Stub,
     ];
 
+    #[cfg(feature = "android_display")]
+    if let Some(service_name) = &cfg.android_display_service {
+        display_backends.insert(0, virtio::DisplayBackend::Android(service_name.to_string()));
+    }
+
     // Use the unnamed socket for GPU display screens.
     if let Some(socket_path) = cfg.wayland_socket_paths.get("") {
         display_backends.insert(
