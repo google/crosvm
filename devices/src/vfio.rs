@@ -215,13 +215,7 @@ impl VfioContainer {
     fn set_iommu_checked(&mut self, val: IommuType) -> Result<()> {
         if !self.check_extension(val) {
             Err(VfioError::VfioIommuSupport(val))
-        } else {
-            self.set_iommu_forced(val)
-        }
-    }
-
-    fn set_iommu_forced(&mut self, val: IommuType) -> Result<()> {
-        if self.set_iommu(val) != 0 {
+        } else if self.set_iommu(val) != 0 {
             Err(VfioError::ContainerSetIOMMU(val, get_error()))
         } else {
             self.iommu_type = Some(val);
@@ -429,7 +423,7 @@ impl VfioContainer {
             IommuDevType::CoIommu | IommuDevType::VirtioIommu => {
                 // If we expect granular, dynamic mappings, try the ChromeOS Type1ChromeOS first,
                 // then fall back to upstream versions.
-                self.set_iommu_forced(IommuType::Type1ChromeOS)
+                self.set_iommu_checked(IommuType::Type1ChromeOS)
                     .or_else(|_| self.set_iommu_checked(IommuType::Type1V2))
             }
             IommuDevType::NoIommu => self.set_iommu_checked(IommuType::Type1V2),
