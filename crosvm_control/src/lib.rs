@@ -54,7 +54,7 @@ fn validate_socket_path(socket_path: *const c_char) -> Option<PathBuf> {
 
 /// Stops the crosvm instance whose control socket is listening on `socket_path`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -75,7 +75,7 @@ pub unsafe extern "C" fn crosvm_client_stop_vm(socket_path: *const c_char) -> bo
 
 /// Suspends the crosvm instance whose control socket is listening on `socket_path`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn crosvm_client_suspend_vm(socket_path: *const c_char) ->
 
 /// Resumes the crosvm instance whose control socket is listening on `socket_path`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -117,7 +117,7 @@ pub unsafe extern "C" fn crosvm_client_resume_vm(socket_path: *const c_char) -> 
 
 /// Creates an RT vCPU for the crosvm instance whose control socket is listening on `socket_path`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -139,7 +139,7 @@ pub unsafe extern "C" fn crosvm_client_make_rt_vm(socket_path: *const c_char) ->
 /// Adjusts the balloon size of the crosvm instance whose control socket is
 /// listening on `socket_path`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -196,7 +196,7 @@ pub unsafe extern "C" fn crosvm_client_balloon_vms_wait_with_timeout(
 
 /// Enable vmm swap for crosvm instance whose control socket is listening on `socket_path`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -218,7 +218,7 @@ pub unsafe extern "C" fn crosvm_client_swap_enable_vm(socket_path: *const c_char
 /// Swap out staging memory for crosvm instance whose control socket is listening
 /// on `socket_path`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -248,7 +248,7 @@ pub struct SwapDisableArgs {
 
 /// Disable vmm swap according to `args`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -278,7 +278,7 @@ pub unsafe extern "C" fn crosvm_client_swap_disable_vm(args: *mut SwapDisableArg
 /// Trim staging memory for vmm swap for crosvm instance whose control socket is listening on
 /// `socket_path`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -302,7 +302,7 @@ pub unsafe extern "C" fn crosvm_client_swap_trim(socket_path: *const c_char) -> 
 ///
 /// The parameters `status` is optional and will only be written to if they are non-null.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -427,7 +427,7 @@ pub unsafe extern "C" fn crosvm_client_usb_list(
 /// * `dev_path` - Path to the USB device (Most likely `/dev/bus/usb/<bus>/<addr>`).
 /// * `out_port` - (optional) internal port will be written here if provided.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -470,7 +470,7 @@ pub unsafe extern "C" fn crosvm_client_usb_attach(
 /// Detaches an USB device from crosvm instance whose control socket is listening on `socket_path`.
 /// `port` determines device to be detached.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -570,7 +570,7 @@ pub unsafe extern "C" fn crosvm_client_net_tap_detach(
 /// Modifies the battery status of crosvm instance whose control socket is listening on
 /// `socket_path`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -609,7 +609,7 @@ pub unsafe extern "C" fn crosvm_client_modify_battery(
 
 /// Resizes the disk of the crosvm instance whose control socket is listening on `socket_path`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -683,7 +683,7 @@ impl From<&BalloonStats> for BalloonStatsFfi {
 /// The parameters `stats` and `actual` are optional and will only be written to if they are
 /// non-null.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Note
 ///
@@ -849,7 +849,7 @@ pub struct BalloonWSRConfigFfi {
 
 /// Returns balloon working set of the crosvm instance whose control socket is listening on socket_path.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -927,7 +927,7 @@ impl TryFrom<RegisteredEventFfi> for RegisteredEvent {
 
 /// Registers the connected process as a listener for `event`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -965,7 +965,7 @@ pub unsafe extern "C" fn crosvm_client_register_events_listener(
 
 /// Unegisters the connected process as a listener for `event`.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -1003,7 +1003,7 @@ pub unsafe extern "C" fn crosvm_client_unregister_events_listener(
 
 /// Unegisters the connected process as a listener for all events.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
@@ -1035,7 +1035,7 @@ pub unsafe extern "C" fn crosvm_client_unregister_listener(
 
 /// Set Working Set Reporting config in guest.
 ///
-/// The function returns true on success or false if an error occured.
+/// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
 ///
