@@ -1075,6 +1075,14 @@ impl MultiPartMessagePipe {
         })
     }
 
+    /// Create server side of MutiPartMessagePipe.
+    /// # Safety
+    /// `pipe` must be a server named pipe.
+    #[deny(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn create_from_server_pipe(pipe: PipeConnection) -> Result<Self> {
+        Self::create_from_pipe(pipe, true)
+    }
+
     /// Create client side of MutiPartMessagePipe.
     pub fn create_as_client(pipe_name: &str) -> Result<Self> {
         let pipe = create_client_pipe(
@@ -1096,7 +1104,8 @@ impl MultiPartMessagePipe {
             1024 * 1024,
             true,
         )?;
-        Self::create_from_pipe(pipe, true)
+        // SAFETY: `pipe` is a server named pipe.
+        unsafe { Self::create_from_server_pipe(pipe) }
     }
 
     /// If the struct is created as a server then waits for client connection to arrive.
