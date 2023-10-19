@@ -2,6 +2,39 @@
 
 To see the usage information for your version of crosvm, run `crosvm` or `crosvm run --help`.
 
+## Specify log levels
+
+To change the log levels printed while running crosvm:
+
+```sh
+crosvm --log-level=LEVEL run
+```
+
+Ex:
+
+```sh
+crosvm --log-level=debug run
+```
+
+To change the log levels printed for a specific module:
+
+```sh
+crosvm --log-level=devices::usb::xhci=LEVEL run
+```
+
+Those can be combined to print different log levels for modules and for crosvm:
+
+```sh
+crosvm --log-level=devices::usb::xhci=LEVEL1,LEVEL2 run
+```
+
+Where LEVEL1 will be applied to the module "devices::usb::xhci" and LEVEL2 will be applied to the
+rest of crosvm.
+
+Available LEVELs: off, error, warn, info (default), debug, trace (only available in debug builds).
+
+Note: Logs will print all logs of the same or lower level. Ex: info will print error + warn + info.
+
 ## Boot a Kernel
 
 To run a very basic VM with just a kernel and default devices:
