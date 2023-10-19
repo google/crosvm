@@ -26,7 +26,7 @@ pub enum Error {
     FdtFileParseError,
     #[error("Error writing FDT to guest memory")]
     FdtGuestMemoryWriteError,
-    #[error("I/O error reading FDT parameters code={0}")]
+    #[error("I/O error code={0}")]
     FdtIoError(io::Error),
     #[error("Invalid string value {}", .0)]
     InvalidString(String),
@@ -34,6 +34,12 @@ pub enum Error {
     PropertyValueTooLarge,
     #[error("Total size must fit in 32 bits")]
     TotalSizeTooLarge,
+}
+
+impl From<io::Error> for Error {
+    fn from(value: io::Error) -> Self {
+        Self::FdtIoError(value)
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -58,7 +64,7 @@ fn align_data(data: &mut Vec<u8>, alignment: usize) {
 // An implementation of FDT header.
 #[derive(Default)]
 struct FdtHeader {
-    magic: u32,             // magic word FDT_MAGIC
+    magic: u32,             // magic word
     total_size: u32,        // total size of DT block
     off_dt_struct: u32,     // offset to structure
     off_dt_strings: u32,    // offset to strings
@@ -101,9 +107,9 @@ impl FdtHeader {
     }
 
     // Dump FDT header to a byte vector.
-    fn to_blob(&self) -> Vec<u8> {
-        let mut blob = Vec::with_capacity(Self::SIZE);
-        for val in &[
+    fn write_blob(&self, buffer: &mut [u8]) -> Result<()> {
+        assert_eq!(buffer.len(), Self::SIZE);
+        for (chunk, val_u32) in buffer.chunks_exact_mut(SIZE_U32).zip(&[
             self.magic,
             self.total_size,
             self.off_dt_struct,
@@ -114,12 +120,10 @@ impl FdtHeader {
             self.boot_cpuid_phys,
             self.size_dt_strings,
             self.size_dt_struct,
-        ] {
-            blob.extend(val.to_be_bytes());
+        ]) {
+            chunk.copy_from_slice(&val_u32.to_be_bytes());
         }
-        align_data(&mut blob, SIZE_U64);
-        assert_eq!(blob.len(), Self::SIZE);
-        blob
+        Ok(())
     }
 }
 
@@ -144,8 +148,9 @@ impl FdtStrings {
         }
     }
 
-    fn to_blob(&self) -> &[u8] {
-        self.strings.as_slice()
+    // Write the strings blob to a `Write` object.
+    fn write_blob(&self, mut writer: impl io::Write) -> Result<()> {
+        Ok(writer.write_all(&self.strings)?)
     }
 }
 
@@ -182,33 +187,35 @@ impl FdtNode {
     }
 
     // Write binary contents of a node to a vector of bytes.
-    fn to_blob(node: &FdtNode, blob: &mut Vec<u8>, strings: &mut FdtStrings) {
+    fn write_blob(&self, writer: &mut impl io::Write, strings: &mut FdtStrings) -> Result<()> {
         // Token
-        blob.extend(FDT_BEGIN_NODE.to_be_bytes());
+        writer.write_all(&FDT_BEGIN_NODE.to_be_bytes())?;
         // Name
-        blob.extend(node.name.as_bytes());
-        blob.push(0u8);
-        align_data(blob, SIZE_U32);
+        writer.write_all(self.name.as_bytes())?;
+        writer.write_all(&[0])?; // Node name terminator
+        let pad_len = align_pad_len(self.name.len() + 1, SIZE_U32);
+        writer.write_all(&vec![0; pad_len])?;
         // Properties
-        for (propname, propblob) in node.props.iter() {
+        for (propname, propblob) in self.props.iter() {
             // Prop token
-            blob.extend(FDT_PROP.to_be_bytes());
+            writer.write_all(&FDT_PROP.to_be_bytes())?;
             // Prop size
-            blob.extend((propblob.len() as u32).to_be_bytes());
+            writer.write_all(&(propblob.len() as u32).to_be_bytes())?;
             // Prop name offset
             let propname = CString::new(propname.as_str()).expect("\\0 in property name");
-            blob.extend(strings.intern_string(propname).to_be_bytes());
+            writer.write_all(&strings.intern_string(propname).to_be_bytes())?;
             // Prop value
-            blob.extend(propblob.iter());
-            align_data(blob, SIZE_U32);
+            writer.write_all(propblob)?;
+            let pad_len = align_pad_len(propblob.len(), SIZE_U32);
+            writer.write_all(&vec![0; pad_len])?;
         }
         // Subnodes
-        for subnode in node.subnodes.values() {
-            FdtNode::to_blob(subnode, blob, strings);
+        for subnode in self.subnodes.values() {
+            subnode.write_blob(writer, strings)?;
         }
-        align_data(blob, SIZE_U32);
         // Token
-        blob.extend(FDT_END_NODE.to_be_bytes());
+        writer.write_all(&FDT_END_NODE.to_be_bytes())?;
+        Ok(())
     }
 
     /// Write a property.
@@ -303,11 +310,10 @@ impl FdtReserveEntry {
     }
 
     // Dump the entry as a vector of bytes.
-    fn to_blob(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(SIZE_U64 * 2);
-        bytes.extend(self.address.to_be_bytes().as_slice());
-        bytes.extend(self.size.to_be_bytes().as_slice());
-        bytes
+    fn write_blob(&self, mut writer: impl io::Write) -> Result<()> {
+        writer.write_all(&self.address.to_be_bytes())?;
+        writer.write_all(&self.size.to_be_bytes())?;
+        Ok(())
     }
 }
 
@@ -335,54 +341,50 @@ impl Fdt {
         self.boot_cpuid_phys = boot_cpuid_phys;
     }
 
-    fn dump_reserved_memory(&self) -> Vec<u8> {
-        let mut result = Vec::with_capacity(SIZE_U64 * 2 * (self.reserved_memory.len() + 1));
+    // Write the reserved memory block to a buffer.
+    fn write_reserved_memory(&self, mut writer: impl io::Write) -> Result<()> {
         for entry in &self.reserved_memory {
-            result.extend(entry.to_blob());
+            entry.write_blob(&mut writer)?;
         }
-        result.extend(RESVMEM_TERMINATOR.to_blob());
-        result
+        RESVMEM_TERMINATOR.write_blob(writer)
     }
 
-    // Dump the structure block of the FDT
-    fn dump_struct(&mut self) -> Vec<u8> {
-        let mut blob = vec![];
-        FdtNode::to_blob(&self.root, &mut blob, &mut self.strings);
-        align_data(&mut blob, SIZE_U32);
-        blob.extend(FDT_END.to_be_bytes());
-        blob
+    // Write the structure block of the FDT.
+    fn write_struct(&mut self, mut writer: impl io::Write) -> Result<()> {
+        self.root.write_blob(&mut writer, &mut self.strings)?;
+        writer.write_all(&FDT_END.to_be_bytes())?;
+        Ok(())
     }
 
     /// Finish writing the Devicetree Blob (DTB).
     ///
     /// Returns the DTB as a vector of bytes.
     pub fn finish(&mut self) -> Result<Vec<u8>> {
-        // Dump blocks
-        let resvmem_blob = self.dump_reserved_memory();
-        let node_blob = self.dump_struct();
-        let strings_blob = self.strings.to_blob();
-        let total_size =
-            resvmem_blob.len() + strings_blob.len() + node_blob.len() + FdtHeader::SIZE;
+        let mut result = vec![0u8; FdtHeader::SIZE];
+        align_data(&mut result, SIZE_U64);
 
-        // Write the header
-        let off_mem_rsvmap = FdtHeader::SIZE as u32;
-        let off_dt_struct = off_mem_rsvmap + resvmem_blob.len() as u32;
+        let off_mem_rsvmap = result.len();
+        self.write_reserved_memory(&mut result)?;
+        align_data(&mut result, SIZE_U64);
+
+        let off_dt_struct = result.len();
+        self.write_struct(&mut result)?;
+        align_data(&mut result, SIZE_U32);
+
+        let off_dt_strings = result.len();
+        self.strings.write_blob(&mut result)?;
+        let total_size = u32::try_from(result.len()).map_err(|_| Error::TotalSizeTooLarge)?;
+
         let header = FdtHeader::new(
-            u32::try_from(total_size).map_err(|_| Error::TotalSizeTooLarge)?,
-            off_dt_struct,
-            off_dt_struct + node_blob.len() as u32,
-            off_mem_rsvmap,
+            total_size,
+            off_dt_struct as u32,
+            off_dt_strings as u32,
+            off_mem_rsvmap as u32,
             self.boot_cpuid_phys,
-            strings_blob.len() as u32,
-            node_blob.len() as u32,
+            total_size - off_dt_strings as u32, // strings size
+            off_dt_strings as u32 - off_dt_struct as u32, // struct size
         );
-
-        // Return merged blocks
-        let mut result = header.to_blob();
-        result.reserve_exact(total_size - result.len()); // Allocate capacity for remaining blocks
-        result.extend(resvmem_blob);
-        result.extend(node_blob);
-        result.extend(strings_blob);
+        header.write_blob(&mut result[..FdtHeader::SIZE])?;
         Ok(result)
     }
 

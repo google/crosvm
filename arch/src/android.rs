@@ -28,7 +28,7 @@ fn parse_fstab_line(line: &str) -> Result<Vec<String>> {
 pub fn create_android_fdt(fdt: &mut Fdt, fstab: File) -> Result<()> {
     let vecs = BufReader::new(fstab)
         .lines()
-        .map(|l| parse_fstab_line(&l.map_err(Error::FdtIoError)?))
+        .map(|l| parse_fstab_line(l?.as_str()))
         .collect::<Result<Vec<Vec<String>>>>()?;
     let firmware_node = fdt.root_mut().subnode_mut("firmware")?;
     let android_node = firmware_node.subnode_mut("android")?;
@@ -37,7 +37,7 @@ pub fn create_android_fdt(fdt: &mut Fdt, fstab: File) -> Result<()> {
     let (dtprop, fstab): (_, Vec<_>) = vecs.into_iter().partition(|x| x[0] == "#dt-vendor");
     let vendor_node = android_node.subnode_mut("vendor")?;
     for vec in dtprop {
-        let content = std::fs::read_to_string(&vec[2]).map_err(Error::FdtIoError)?;
+        let content = std::fs::read_to_string(&vec[2])?;
         vendor_node.set_prop(&vec[1], content)?;
     }
     let fstab_node = android_node.subnode_mut("fstab")?;
