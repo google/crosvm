@@ -47,6 +47,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Context;
+use base::debug;
 use base::error;
 use base::info;
 use base::Tube;
@@ -228,7 +229,7 @@ pub fn create_devices_worker_thread(
 fn sleep_devices(bus: &Bus) -> anyhow::Result<()> {
     match bus.sleep_devices() {
         Ok(_) => {
-            info!("Devices slept successfully on {:?} Bus", bus.get_bus_type());
+            debug!("Devices slept successfully on {:?} Bus", bus.get_bus_type());
             Ok(())
         }
         Err(e) => Err(anyhow!(
@@ -242,7 +243,7 @@ fn sleep_devices(bus: &Bus) -> anyhow::Result<()> {
 fn wake_devices(bus: &Bus) {
     match bus.wake_devices() {
         Ok(_) => {
-            info!(
+            debug!(
                 "Devices awoken successfully on {:?} Bus",
                 bus.get_bus_type()
             );
@@ -301,7 +302,7 @@ fn snapshot_devices(
 ) -> anyhow::Result<()> {
     match bus.snapshot_devices(add_snapshot) {
         Ok(_) => {
-            info!(
+            debug!(
                 "Devices snapshot successfully for {:?} Bus",
                 bus.get_bus_type()
             );
@@ -325,7 +326,7 @@ fn restore_devices(
 ) -> anyhow::Result<()> {
     match bus.restore_devices(devices_map) {
         Ok(_) => {
-            info!(
+            debug!(
                 "Devices restore successfully for {:?} Bus",
                 bus.get_bus_type()
             );

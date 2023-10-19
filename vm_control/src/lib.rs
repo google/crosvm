@@ -1726,6 +1726,7 @@ impl VmRequest {
                 VmResponse::Err(SysError::new(ENOTSUP))
             }
             VmRequest::SuspendVm => {
+                info!("Starting crosvm suspend");
                 kick_vcpus(VcpuControl::RunState(VmRunMode::Suspending));
                 let current_mode = match get_vcpu_state(kick_vcpus, vcpu_size) {
                     Ok(state) => state,
@@ -1749,7 +1750,10 @@ impl VmRequest {
                     .recv()
                     .context("receive from devices control socket")
                 {
-                    Ok(VmResponse::Ok) => VmResponse::Ok,
+                    Ok(VmResponse::Ok) => {
+                        info!("Finished crosvm suspend successfully");
+                        VmResponse::Ok
+                    }
                     Ok(resp) => {
                         error!("device sleep failed: {}", resp);
                         VmResponse::Err(SysError::new(EIO))
@@ -1761,6 +1765,7 @@ impl VmRequest {
                 }
             }
             VmRequest::ResumeVm => {
+                info!("Starting crosvm resume");
                 if let Err(e) = device_control_tube
                     .send(&DeviceControlCommand::WakeDevices)
                     .context("send command to devices control socket")
@@ -1772,7 +1777,9 @@ impl VmRequest {
                     .recv()
                     .context("receive from devices control socket")
                 {
-                    Ok(VmResponse::Ok) => (),
+                    Ok(VmResponse::Ok) => {
+                        info!("Finished crosvm resume successfully");
+                    }
                     Ok(resp) => {
                         error!("device wake failed: {}", resp);
                         return VmResponse::Err(SysError::new(EIO));
@@ -1889,6 +1896,7 @@ impl VmRequest {
                 VmResponse::ErrString("hot plug not supported".to_owned())
             }
             VmRequest::Snapshot(SnapshotCommand::Take { ref snapshot_path }) => {
+                info!("Starting crosvm snapshot");
                 match do_snapshot(
                     snapshot_path.to_path_buf(),
                     kick_vcpus,
@@ -1897,7 +1905,10 @@ impl VmRequest {
                     vcpu_size,
                     snapshot_irqchip,
                 ) {
-                    Ok(()) => VmResponse::Ok,
+                    Ok(()) => {
+                        info!("Finished crosvm snapshot successfully");
+                        VmResponse::Ok
+                    }
                     Err(e) => {
                         error!("failed to handle snapshot: {:?}", e);
                         VmResponse::Err(SysError::new(EIO))
@@ -1905,6 +1916,7 @@ impl VmRequest {
                 }
             }
             VmRequest::Restore(RestoreCommand::Apply { ref restore_path }) => {
+                info!("Starting crosvm restore");
                 match do_restore(
                     restore_path.clone(),
                     kick_vcpus,
@@ -1914,7 +1926,10 @@ impl VmRequest {
                     vcpu_size,
                     restore_irqchip,
                 ) {
-                    Ok(()) => VmResponse::Ok,
+                    Ok(()) => {
+                        info!("Finished crosvm restore successfully");
+                        VmResponse::Ok
+                    }
                     Err(e) => {
                         error!("failed to handle restore: {:?}", e);
                         VmResponse::Err(SysError::new(EIO))

@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Context;
+use base::debug;
 use base::error;
 use remain::sorted;
 use serde::Deserialize;
@@ -408,10 +409,12 @@ impl Bus {
             match device_entry {
                 BusDeviceEntry::OuterSync(dev) => {
                     let mut dev = (*dev).lock();
+                    debug!("Sleep on device: {}", dev.debug_label());
                     dev.sleep()
                         .with_context(|| format!("failed to sleep {}", dev.debug_label()))?;
                 }
                 BusDeviceEntry::InnerSync(dev) => {
+                    debug!("Sleep on device: {}", dev.debug_label());
                     dev.sleep_sync()
                         .with_context(|| format!("failed to sleep {}", dev.debug_label()))?;
                 }
@@ -425,10 +428,12 @@ impl Bus {
             match device_entry {
                 BusDeviceEntry::OuterSync(dev) => {
                     let mut dev = dev.lock();
+                    debug!("Wake on device: {}", dev.debug_label());
                     dev.wake()
                         .with_context(|| format!("failed to wake {}", dev.debug_label()))?;
                 }
                 BusDeviceEntry::InnerSync(dev) => {
+                    debug!("Wake on device: {}", dev.debug_label());
                     dev.wake_sync()
                         .with_context(|| format!("failed to wake {}", dev.debug_label()))?;
                 }
@@ -445,17 +450,21 @@ impl Bus {
             match device_entry {
                 BusDeviceEntry::OuterSync(dev) => {
                     let dev = dev.lock();
+                    debug!("Snapshot on device: {}", dev.debug_label());
                     add_snapshot(
                         u32::from(dev.device_id()),
                         dev.snapshot()
                             .with_context(|| format!("failed to snapshot {}", dev.debug_label()))?,
                     )
                 }
-                BusDeviceEntry::InnerSync(dev) => add_snapshot(
-                    u32::from(dev.device_id()),
-                    dev.snapshot_sync()
-                        .with_context(|| format!("failed to snapshot {}", dev.debug_label()))?,
-                ),
+                BusDeviceEntry::InnerSync(dev) => {
+                    debug!("Snapshot on device: {}", dev.debug_label());
+                    add_snapshot(
+                        u32::from(dev.device_id()),
+                        dev.snapshot_sync()
+                            .with_context(|| format!("failed to snapshot {}", dev.debug_label()))?,
+                    )
+                }
             }
         }
         Ok(())
@@ -474,19 +483,21 @@ impl Bus {
             match device_entry {
                 BusDeviceEntry::OuterSync(dev) => {
                     let mut dev = dev.lock();
+                    debug!("Restore on device: {}", dev.debug_label());
                     let snapshot = pop_snapshot(dev.device_id()).ok_or_else(|| {
-                        anyhow!("missing snapshot for device {:?}", dev.debug_label())
+                        anyhow!("missing snapshot for device {}", dev.debug_label())
                     })?;
                     dev.restore(snapshot).with_context(|| {
-                        format!("restore failed for device {:?}", dev.debug_label())
+                        format!("restore failed for device {}", dev.debug_label())
                     })?;
                 }
                 BusDeviceEntry::InnerSync(dev) => {
+                    debug!("Restore on device: {}", dev.debug_label());
                     let snapshot = pop_snapshot(dev.device_id()).ok_or_else(|| {
-                        anyhow!("missing snapshot for device {:?}", dev.debug_label())
+                        anyhow!("missing snapshot for device {}", dev.debug_label())
                     })?;
                     dev.restore_sync(snapshot).with_context(|| {
-                        format!("restore failed for device {:?}", dev.debug_label())
+                        format!("restore failed for device {}", dev.debug_label())
                     })?;
                 }
             }
