@@ -110,7 +110,9 @@ impl ToFdtPropval for Vec<u64> {
 
 fn is_valid_string_property(bytes: &[u8]) -> bool {
     const PRINTABLE_ASCII: std::ops::Range<u8> = 0x20..0x7f;
-    bytes.iter().all(|b| PRINTABLE_ASCII.contains(b))
+    bytes
+        .iter()
+        .all(|b| PRINTABLE_ASCII.contains(b) || *b == 0x0a)
 }
 
 #[inline]
