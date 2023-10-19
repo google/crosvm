@@ -132,18 +132,18 @@ fn find_block_fds(proc_fd: &str) -> Vec<BlockFds> {
         .collect()
 }
 
-fn parse_fd_blocks(target: &Target, who: &str, pid: u32) -> Result<()> {
+fn parse_fd_blocks(target: &Target, who: &str, pid: u32) -> Result<String> {
     let lines = target
         .do_command(vec!["ls", "-l", &format!("/proc/{}/fd/", pid)])
         .context("ls -l for proc/fd")?;
     let block_fds = find_block_fds(&lines);
-    block_fds.par_iter().for_each(|block_fd| {
+    let message = block_fds.par_iter().map(|block_fd| {
         let fdinfo = target.get_file(&format!("/proc/{}/fdinfo/{}", pid, block_fd.fd)).expect("/proc/fdinfo");
         let flags = u32::from_str_radix(parse_proc_fdinfo_flags(&fdinfo), 8).expect("octal");
         let fincore = target.do_fincore(&vec![block_fd.path.to_string()]).unwrap();
         assert_eq!(fincore.len(), 1);
 
-        println!(
+        format!(
             "{} {} {} flags: {:o}  o_direct on x86_64 {}, o_direct on arm {} page cache: {} MB / {} MB",
             who,
             block_fd.path,
@@ -153,9 +153,9 @@ fn parse_fd_blocks(target: &Target, who: &str, pid: u32) -> Result<()> {
             (flags & 0o200000) != 0,
             fincore[0].0 >> 20,
             fincore[0].1 >> 20,
-        );
-    });
-    Ok(())
+        )
+    }).collect::<Vec<_>>().join("\n");
+    Ok(message)
 }
 
 fn parse_proc_fdinfo_flags(proc_fdinfo: &str) -> &str {
@@ -169,7 +169,7 @@ fn parse_proc_fdinfo_flags(proc_fdinfo: &str) -> &str {
     lines["flags"]
 }
 
-fn parse_virtio_fs(target: &Target, pid: u32) -> Result<()> {
+fn parse_virtio_fs(target: &Target, pid: u32) -> Result<String> {
     let lines = target.do_command(vec!["ls", "-1", &format!("/proc/{}/task/", pid)])?;
     let task_pids: Vec<_> = lines.lines().map(|x| x.parse::<u32>().unwrap()).collect();
     let pid_name_pairs: Vec<_> = task_pids
@@ -187,8 +187,7 @@ fn parse_virtio_fs(target: &Target, pid: u32) -> Result<()> {
         .map(|(task_pid, comm)| format!("{}:{}", task_pid, comm))
         .collect::<Vec<_>>()
         .join(" ");
-    println!("virtio-fs {}", message);
-    Ok(())
+    Ok(message)
 }
 
 fn main() -> Result<()> {
@@ -292,22 +291,23 @@ fn main() -> Result<()> {
             .get_file(&format!("/proc/{}/status", child_pid))
             .unwrap();
         let vmpte_kb = parse_status(&status_text).unwrap()["VmPTE:"];
+        let message = match task_name.as_str() {
+            "pcivirtio-block" => parse_fd_blocks(&target, "virtio-block", *child_pid),
+            "pcivirtio-fs" => parse_virtio_fs(&target, *child_pid),
+            _ => Ok("".to_string()),
+        }
+        .unwrap();
+
         // output in MBs.
         println!(
-            "{} {} private_dirty: {} MB rss: {} MB VmPTE: {} KiB",
+            "{} {} private_dirty: {} MB rss: {} MB VmPTE: {} KiB\n  {}",
             task_name,
             child_pid,
             dirty >> 20,
             rss >> 20,
             vmpte_kb,
+            message
         );
-
-        match task_name.as_str() {
-            "pcivirtio-block" => parse_fd_blocks(&target, "virtio-block", *child_pid),
-            "pcivirtio-fs" => parse_virtio_fs(&target, *child_pid),
-            _ => Ok(()),
-        }
-        .unwrap();
     });
 
     let balloon_stat_json = target.do_command(vec!["crosvm", "balloon_stats", socket])?;
