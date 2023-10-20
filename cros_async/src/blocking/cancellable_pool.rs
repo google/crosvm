@@ -361,8 +361,6 @@ mod test {
     use crate::blocking::Error;
     use crate::CancellableBlockingPool;
 
-    const TEST_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(100);
-
     #[test]
     fn disarm_with_pending_work() {
         // Create a pool with only one thread.
@@ -405,11 +403,11 @@ mod test {
         assert_eq!(block_on(unfinished), 0);
 
         // Now the pool is empty and can be shutdown without blocking.
-        pool.shutdown_with_timeout(TEST_SHUTDOWN_TIMEOUT).unwrap();
+        pool.shutdown().unwrap();
     }
 
     #[test]
-    fn shutdown_with_blocked_work_should_panic() {
+    fn shutdown_with_blocked_work_should_timeout() {
         let pool = CancellableBlockingPool::new(1, Duration::from_secs(10));
 
         let running = Arc::new((Mutex::new(false), Condvar::new()));
@@ -428,8 +426,9 @@ mod test {
             is_running = running.1.wait(is_running);
         }
 
+        // This shutdown will wait for the full timeout period, so use a short timeout.
         assert_eq!(
-            pool.shutdown_with_timeout(TEST_SHUTDOWN_TIMEOUT),
+            pool.shutdown_with_timeout(Duration::from_millis(1)),
             Err(Error::Timedout)
         );
     }
@@ -438,10 +437,7 @@ mod test {
     fn multiple_shutdown_returns_error() {
         let pool = CancellableBlockingPool::new(1, Duration::from_secs(10));
         let _ = pool.shutdown();
-        assert_eq!(
-            pool.shutdown_with_timeout(TEST_SHUTDOWN_TIMEOUT),
-            Err(Error::AlreadyShutdown)
-        );
+        assert_eq!(pool.shutdown(), Err(Error::AlreadyShutdown));
     }
 
     #[test]
@@ -467,13 +463,14 @@ mod test {
         let pool_clone = pool.clone();
         thread::spawn(move || {
             while !pool_clone.inner.blocking_pool.shutting_down() {}
-            assert_eq!(
-                pool_clone.shutdown_with_timeout(TEST_SHUTDOWN_TIMEOUT),
-                Err(Error::ShutdownInProgress)
-            );
+            assert_eq!(pool_clone.shutdown(), Err(Error::ShutdownInProgress));
         });
+
+        // This shutdown will wait for the full timeout period, so use a short timeout.
+        // However, it also needs to wait long enough for the thread spawned above to observe the
+        // shutting_down state, so don't make it too short.
         assert_eq!(
-            pool.shutdown_with_timeout(TEST_SHUTDOWN_TIMEOUT),
+            pool.shutdown_with_timeout(Duration::from_millis(200)),
             Err(Error::Timedout)
         );
     }
