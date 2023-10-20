@@ -86,12 +86,29 @@ impl DescriptorChain {
         let mut readable_regions = SmallVec::new();
         let mut writable_regions = SmallVec::new();
 
+        // If `writable` is true, a writable descriptor has already been encountered.
+        // Valid descriptor chains must consist of readable descriptors followed by writable
+        // descriptors.
+        let mut writable = false;
+
         while let Some(desc) = chain.next()? {
             if desc.len == 0 {
                 trace!("zero-length descriptor at index {index}");
-            } else {
-                Self::add_descriptor(&mut readable_regions, &mut writable_regions, desc)?;
+                continue;
             }
+
+            match desc.access {
+                DescriptorAccess::DeviceRead => {
+                    if writable {
+                        bail!("invalid device-readable descriptor following writable descriptors");
+                    }
+                }
+                DescriptorAccess::DeviceWrite => {
+                    writable = true;
+                }
+            }
+
+            Self::add_descriptor(&mut readable_regions, &mut writable_regions, desc)?;
         }
 
         let count = chain.count();

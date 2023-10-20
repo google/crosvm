@@ -129,11 +129,6 @@ pub struct PackedDescriptorChain<'m> {
 
     queue_size: u16,
 
-    /// If `writable` is true, a writable descriptor has already been encountered.
-    /// Valid descriptor chains must consist of readable descriptors followed by writable
-    /// descriptors.
-    writable: bool,
-
     mem: &'m GuestMemory,
     desc_table: GuestAddress,
 }
@@ -159,7 +154,6 @@ impl<'m> PackedDescriptorChain<'m> {
             count: 0,
             id: None,
             queue_size,
-            writable: false,
             mem,
             desc_table,
             avail_wrap_counter,
@@ -222,12 +216,6 @@ impl DescriptorChainIter for PackedDescriptorChain<'_> {
         } else {
             DescriptorAccess::DeviceRead
         };
-
-        if access == DescriptorAccess::DeviceRead && self.writable {
-            bail!("invalid device-readable descriptor following writable descriptors");
-        } else if access == DescriptorAccess::DeviceWrite {
-            self.writable = true;
-        }
 
         // If VIRTQ_DESC_F_NEXT exists, the next descriptor in descriptor chain
         // is the next element in descriptor table. When index reaches the end of

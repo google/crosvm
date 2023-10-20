@@ -53,11 +53,6 @@ pub struct SplitDescriptorChain<'m> {
 
     queue_size: u16,
 
-    /// If `writable` is true, a writable descriptor has already been encountered.
-    /// Valid descriptor chains must consist of readable descriptors followed by writable
-    /// descriptors.
-    writable: bool,
-
     mem: &'m GuestMemory,
     desc_table: GuestAddress,
 }
@@ -81,7 +76,6 @@ impl<'m> SplitDescriptorChain<'m> {
             index: Some(index),
             count: 0,
             queue_size,
-            writable: false,
             mem,
             desc_table,
         }
@@ -134,12 +128,6 @@ impl DescriptorChainIter for SplitDescriptorChain<'_> {
         } else {
             DescriptorAccess::DeviceRead
         };
-
-        if access == DescriptorAccess::DeviceRead && self.writable {
-            bail!("invalid device-readable descriptor following writable descriptors");
-        } else if access == DescriptorAccess::DeviceWrite {
-            self.writable = true;
-        }
 
         self.index = if flags & VIRTQ_DESC_F_NEXT != 0 {
             Some(next)
