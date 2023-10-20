@@ -30,6 +30,12 @@ pub const WRITE_10: u8 = 0x2a;
 pub const SYNCHRONIZE_CACHE_10: u8 = 0x35;
 /// Opcode for REPORT LUNS command.
 pub const REPORT_LUNS: u8 = 0xa0;
+/// Opcode for MAINTENANCE IN command.
+pub const MAINTENANCE_IN: u8 = 0xa3;
+
+// The sub-actions of MAINTENANCE IN command.
+/// REPORT SUPPORTED TASK MANAGEMENT FUNCTIONS
+pub const REPORT_SUPPORTED_TASK_MANAGEMENT_FUNCTIONS: u8 = 0x0d;
 
 // SAM status code
 /// Indicates the completion of the command without error.

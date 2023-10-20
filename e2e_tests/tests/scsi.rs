@@ -8,6 +8,7 @@ use fixture::utils::prepare_disk_img;
 use fixture::vm::Config;
 use fixture::vm::TestVm;
 
+// Mount the scsi device, and then check if simple read, write, and sync operations work.
 fn mount_scsi_device(config: Config) -> anyhow::Result<()> {
     let disk = prepare_disk_img();
     let scsi_disk = disk.path().to_str().unwrap();
@@ -32,4 +33,35 @@ fn test_scsi_mount() {
 fn test_scsi_mount_disable_sandbox() {
     let config = Config::new().disable_sandbox();
     mount_scsi_device(config).unwrap();
+}
+
+// This test is for commands in controlq.
+// First check if the resetting behavior is supported by `sg_opcodes` commands, and then issue the
+// `sg_reset` command.
+fn reset_scsi(config: Config) -> anyhow::Result<()> {
+    let disk = prepare_disk_img();
+    let scsi_disk = disk.path().to_str().unwrap();
+    let config = config.extra_args(vec!["--scsi-block".to_string(), scsi_disk.to_string()]);
+    println!("scsi-disk={scsi_disk}");
+
+    let mut vm = TestVm::new(config).unwrap();
+    let cmd = vm.exec_in_guest("sg_opcodes --tmf /dev/sda")?;
+    let stdout = cmd.stdout.trim();
+    assert!(stdout.contains("Logical unit reset"));
+    assert!(stdout.contains("Target reset"));
+
+    assert!(vm.exec_in_guest("sg_reset -d /dev/sda").is_ok());
+    Ok(())
+}
+
+#[test]
+fn test_scsi_reset() {
+    let config = Config::new();
+    reset_scsi(config).unwrap();
+}
+
+#[test]
+fn test_scsi_reset_disable_sandbox() {
+    let config = Config::new().disable_sandbox();
+    reset_scsi(config).unwrap();
 }

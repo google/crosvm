@@ -89,6 +89,32 @@ impl Default for virtio_scsi_cmd_resp {
     }
 }
 #[repr(C, packed)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+pub struct virtio_scsi_ctrl_tmf_req {
+    pub type_: __virtio32,
+    pub subtype: __virtio32,
+    pub lun: [u8; 8usize],
+    pub tag: __virtio64,
+}
+#[repr(C, packed)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+pub struct virtio_scsi_ctrl_tmf_resp {
+    pub response: u8,
+}
+#[repr(C, packed)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+pub struct virtio_scsi_ctrl_an_req {
+    pub type_: __virtio32,
+    pub lun: [u8; 8usize],
+    pub event_requested: __virtio32,
+}
+#[repr(C, packed)]
+#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+pub struct virtio_scsi_ctrl_an_resp {
+    pub event_actual: __virtio32,
+    pub response: u8,
+}
+#[repr(C, packed)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct virtio_scsi_event {
     pub event: __virtio32,

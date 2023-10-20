@@ -12,12 +12,14 @@ use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
 use crate::virtio::scsi::constants::INQUIRY;
+use crate::virtio::scsi::constants::MAINTENANCE_IN;
 use crate::virtio::scsi::constants::MODE_SELECT_6;
 use crate::virtio::scsi::constants::MODE_SENSE_6;
 use crate::virtio::scsi::constants::READ_10;
 use crate::virtio::scsi::constants::READ_6;
 use crate::virtio::scsi::constants::READ_CAPACITY_10;
 use crate::virtio::scsi::constants::REPORT_LUNS;
+use crate::virtio::scsi::constants::REPORT_SUPPORTED_TASK_MANAGEMENT_FUNCTIONS;
 use crate::virtio::scsi::constants::SYNCHRONIZE_CACHE_10;
 use crate::virtio::scsi::constants::TEST_UNIT_READY;
 use crate::virtio::scsi::constants::TYPE_DISK;
@@ -39,6 +41,7 @@ pub enum Command {
     Write10(Write10),
     SynchronizeCache10(SynchronizeCache10),
     ReportLuns(ReportLuns),
+    ReportSupportedTMFs(ReportSupportedTMFs),
 }
 
 impl Command {
@@ -55,6 +58,7 @@ impl Command {
             WRITE_10 => Ok(Self::Write10(Self::parse_command(cdb)?)),
             SYNCHRONIZE_CACHE_10 => Ok(Self::SynchronizeCache10(Self::parse_command(cdb)?)),
             REPORT_LUNS => Ok(Self::ReportLuns(Self::parse_command(cdb)?)),
+            MAINTENANCE_IN => Self::parse_maintenance_in(cdb),
             _ => {
                 warn!("SCSI command {:#x?} is not implemented", op);
                 Err(ExecuteError::Unsupported(op))
@@ -65,6 +69,23 @@ impl Command {
     fn parse_command<T: FromBytes>(cdb: &[u8]) -> Result<T, ExecuteError> {
         let size = std::mem::size_of::<T>();
         T::read_from(&cdb[..size]).ok_or(ExecuteError::ReadCommand)
+    }
+
+    fn parse_maintenance_in(cdb: &[u8]) -> Result<Self, ExecuteError> {
+        const MAINTENANCE_IN_SIZE: usize = 12;
+        // Top three bits are reserved.
+        let service_action = cdb[1] & 0x1f;
+        match service_action {
+            REPORT_SUPPORTED_TASK_MANAGEMENT_FUNCTIONS => {
+                let r = ReportSupportedTMFs::read_from(&cdb[..MAINTENANCE_IN_SIZE])
+                    .ok_or(ExecuteError::ReadCommand)?;
+                Ok(Self::ReportSupportedTMFs(r))
+            }
+            _ => {
+                warn!("service action {:#x?} is not implemented", service_action);
+                Err(ExecuteError::Unsupported(cdb[0]))
+            }
+        }
     }
 
     pub async fn execute(
@@ -87,6 +108,9 @@ impl Command {
                 synchronize_cache_10.emulate(disk_image).await
             }
             Self::ReportLuns(report_luns) => report_luns.emulate(writer),
+            Self::ReportSupportedTMFs(report_supported_tmfs) => {
+                report_supported_tmfs.emulate(writer)
+            }
         }
     }
 }
@@ -666,6 +690,40 @@ impl ReportLuns {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
+#[repr(C, packed)]
+pub struct ReportSupportedTMFs {
+    opcode: u8,
+    service_action_field: u8,
+    _reserved1: [u8; 4],
+    alloc_len_bytes: [u8; 4],
+    _reserved2: u8,
+    control: u8,
+}
+
+impl ReportSupportedTMFs {
+    fn alloc_len(&self) -> u32 {
+        u32::from_be_bytes(self.alloc_len_bytes)
+    }
+
+    fn emulate(&self, writer: &mut Writer) -> Result<(), ExecuteError> {
+        // The allocation length should be at least four.
+        if self.alloc_len() < 4 {
+            return Err(ExecuteError::InvalidField);
+        }
+        // We support LOGICAL UNIT RESET and TARGET RESET.
+        const LOGICAL_UNIT_RESET: u8 = 1 << 3;
+        const TARGET_RESET: u8 = 1 << 1;
+        writer
+            .write_obj(LOGICAL_UNIT_RESET | TARGET_RESET)
+            .map_err(ExecuteError::Write)?;
+        // Push reserved bytes.
+        let reserved = [0u8; 3];
+        writer.write_all(&reserved).map_err(ExecuteError::Write)?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -786,5 +844,18 @@ mod tests {
             _ => panic!("unexpected command type: {:?}", command),
         };
         assert_eq!(report_luns.alloc_len(), 0xabcdef12);
+    }
+
+    #[test]
+    fn parse_report_supported_tmfs() {
+        let cdb = [
+            0xa3, 0x0d, 0x00, 0x00, 0x00, 0x00, 0xab, 0xcd, 0xef, 0x12, 0x00, 0x00,
+        ];
+        let command = Command::new(&cdb).unwrap();
+        let report_supported_tmfs = match command {
+            Command::ReportSupportedTMFs(r) => r,
+            _ => panic!("unexpected command type: {:?}", command),
+        };
+        assert_eq!(report_supported_tmfs.alloc_len(), 0xabcdef12);
     }
 }

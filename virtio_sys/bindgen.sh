@@ -131,10 +131,13 @@ bindgen_generate \
     --allowlist-var='VIRTIO_SCSI_.*' \
     --allowlist-type='virtio_scsi_.*' \
     --blocklist-type='virtio_scsi_cmd_req_pi' \
-    --blocklist-type='virtio_scsi_ctrl_.*' \
     --with-derive-custom "virtio_scsi_config=FromZeroes,FromBytes,AsBytes" \
     --with-derive-custom "virtio_scsi_cmd_req=FromZeroes,FromBytes,AsBytes" \
     --with-derive-custom "virtio_scsi_cmd_resp=FromZeroes,FromBytes,AsBytes" \
+    --with-derive-custom "virtio_scsi_ctrl_tmf_req=FromZeroes,FromBytes,AsBytes" \
+    --with-derive-custom "virtio_scsi_ctrl_an_req=FromZeroes,FromBytes,AsBytes" \
+    --with-derive-custom "virtio_scsi_ctrl_tmf_resp=FromZeroes,FromBytes,AsBytes" \
+    --with-derive-custom "virtio_scsi_ctrl_an_resp=FromZeroes,FromBytes,AsBytes" \
     "${BINDGEN_LINUX_X86_HEADERS}/include/linux/virtio_scsi.h" \
     -- \
     -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
