@@ -97,18 +97,23 @@ impl DescriptorChain {
                 continue;
             }
 
+            let region = MemRegion {
+                offset: desc.address,
+                len: desc.len as usize,
+            };
+
             match desc.access {
                 DescriptorAccess::DeviceRead => {
                     if writable {
                         bail!("invalid device-readable descriptor following writable descriptors");
                     }
+                    readable_regions.push(region);
                 }
                 DescriptorAccess::DeviceWrite => {
                     writable = true;
+                    writable_regions.push(region);
                 }
             }
-
-            Self::add_descriptor(&mut readable_regions, &mut writable_regions, desc)?;
         }
 
         let count = chain.count();
@@ -137,24 +142,6 @@ impl DescriptorChain {
         };
 
         Ok(desc_chain)
-    }
-
-    fn add_descriptor(
-        readable_regions: &mut SmallVec<[MemRegion; 2]>,
-        writable_regions: &mut SmallVec<[MemRegion; 2]>,
-        desc: Descriptor,
-    ) -> Result<()> {
-        let region = MemRegion {
-            offset: desc.address,
-            len: desc.len as usize,
-        };
-
-        match desc.access {
-            DescriptorAccess::DeviceRead => readable_regions.push(region),
-            DescriptorAccess::DeviceWrite => writable_regions.push(region),
-        }
-
-        Ok(())
     }
 
     fn validate_mem_regions(
