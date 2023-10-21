@@ -18,8 +18,8 @@ use balloon_control::BalloonWS;
 use balloon_control::WSBucket;
 use balloon_control::VIRTIO_BALLOON_WS_MAX_NUM_BINS;
 use balloon_control::VIRTIO_BALLOON_WS_MIN_NUM_BINS;
+use base::debug;
 use base::error;
-use base::info;
 use base::warn;
 use base::AsRawDescriptor;
 use base::Event;
@@ -1559,7 +1559,7 @@ impl VirtioDevice for Balloon {
 
         // If balloon has updated to the requested memory, let the hypervisor know.
         if config.num_pages == config.actual {
-            info!(
+            debug!(
                 "sending target reached event at {}",
                 u32::from(config.num_pages)
             );
