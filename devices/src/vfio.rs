@@ -160,6 +160,7 @@ pub enum IommuType {
 pub struct VfioContainer {
     container: File,
     groups: HashMap<u32, Arc<Mutex<VfioGroup>>>,
+    iommu_type: Option<IommuType>,
 }
 
 fn extract_vfio_struct<T>(bytes: &[u8], offset: usize) -> Option<T>
@@ -192,6 +193,7 @@ impl VfioContainer {
         Ok(VfioContainer {
             container,
             groups: HashMap::new(),
+            iommu_type: None,
         })
     }
 
@@ -205,7 +207,7 @@ impl VfioContainer {
         ret != 0
     }
 
-    fn set_iommu(&self, val: IommuType) -> i32 {
+    fn set_iommu(&mut self, val: IommuType) -> i32 {
         // Safe as file is vfio container and make sure val is valid.
         unsafe { ioctl_with_val(self, VFIO_SET_IOMMU(), val as c_ulong) }
     }
@@ -222,11 +224,29 @@ impl VfioContainer {
         if self.set_iommu(val) != 0 {
             Err(VfioError::ContainerSetIOMMU(val, get_error()))
         } else {
+            self.iommu_type = Some(val);
             Ok(())
         }
     }
 
     pub unsafe fn vfio_dma_map(
+        &self,
+        iova: u64,
+        size: u64,
+        user_addr: u64,
+        write_en: bool,
+    ) -> Result<()> {
+        match self
+            .iommu_type
+            .expect("vfio_dma_map called before configuring IOMMU")
+        {
+            IommuType::Type1V2 | IommuType::Type1ChromeOS => {
+                self.vfio_iommu_type1_dma_map(iova, size, user_addr, write_en)
+            }
+        }
+    }
+
+    unsafe fn vfio_iommu_type1_dma_map(
         &self,
         iova: u64,
         size: u64,
@@ -254,6 +274,17 @@ impl VfioContainer {
     }
 
     pub fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<()> {
+        match self
+            .iommu_type
+            .expect("vfio_dma_unmap called before configuring IOMMU")
+        {
+            IommuType::Type1V2 | IommuType::Type1ChromeOS => {
+                self.vfio_iommu_type1_dma_unmap(iova, size)
+            }
+        }
+    }
+
+    fn vfio_iommu_type1_dma_unmap(&self, iova: u64, size: u64) -> Result<()> {
         let mut dma_unmap = vfio_iommu_type1_dma_unmap {
             argsz: mem::size_of::<vfio_iommu_type1_dma_unmap>() as u32,
             flags: 0,
@@ -273,6 +304,17 @@ impl VfioContainer {
     }
 
     pub fn vfio_get_iommu_page_size_mask(&self) -> Result<u64> {
+        match self
+            .iommu_type
+            .expect("vfio_get_iommu_page_size_mask called before configuring IOMMU")
+        {
+            IommuType::Type1V2 | IommuType::Type1ChromeOS => {
+                self.vfio_iommu_type1_get_iommu_page_size_mask()
+            }
+        }
+    }
+
+    fn vfio_iommu_type1_get_iommu_page_size_mask(&self) -> Result<u64> {
         let mut iommu_info = vfio_iommu_type1_info {
             argsz: mem::size_of::<vfio_iommu_type1_info>() as u32,
             flags: 0,
@@ -291,6 +333,17 @@ impl VfioContainer {
     }
 
     pub fn vfio_iommu_iova_get_iova_ranges(&self) -> Result<Vec<AddressRange>> {
+        match self
+            .iommu_type
+            .expect("vfio_iommu_iova_get_iova_ranges called before configuring IOMMU")
+        {
+            IommuType::Type1V2 | IommuType::Type1ChromeOS => {
+                self.vfio_iommu_type1_get_iova_ranges()
+            }
+        }
+    }
+
+    fn vfio_iommu_type1_get_iova_ranges(&self) -> Result<Vec<AddressRange>> {
         // Query the buffer size needed fetch the capabilities.
         let mut iommu_info_argsz = vfio_iommu_type1_info {
             argsz: mem::size_of::<vfio_iommu_type1_info>() as u32,
