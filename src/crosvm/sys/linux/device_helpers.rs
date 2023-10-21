@@ -1467,7 +1467,7 @@ pub fn create_vfio_device(
                 .context("failed to allocate resources early for vfio pci dev")?;
 
             let viommu_mapper = match iommu_dev {
-                IommuDevType::NoIommu => None,
+                IommuDevType::NoIommu | IommuDevType::PkvmPviommu => None,
                 IommuDevType::VirtioIommu => {
                     Some(VfioWrapper::new(vfio_container, vm.get_memory().clone()))
                 }

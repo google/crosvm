@@ -2176,7 +2176,7 @@ pub struct RunCommand {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(
         option,
-        arg_name = "PATH[,guest-address=<BUS:DEVICE.FUNCTION>][,iommu=viommu|coiommu|off][,dt-symbol=<SYMBOL>]"
+        arg_name = "PATH[,guest-address=<BUS:DEVICE.FUNCTION>][,iommu=viommu|coiommu|pkvm-iommu|off][,dt-symbol=<SYMBOL>]"
     )]
     #[serde(default)]
     #[merge(strategy = append)]
@@ -2186,7 +2186,7 @@ pub struct RunCommand {
     ///        If not specified, the device will be assigned an
     ///        address that mirrors its address in the host.
     ///        Only valid for PCI devices.
-    ///     iommu=viommu|coiommu|off - indicates which type of IOMMU
+    ///     iommu=viommu|coiommu|pkvm-iommu|off - indicates which type of IOMMU
     ///        to use for this device.
     ///     dt-symbol=<SYMBOL> - the symbol that labels the device tree
     ///        node in the device tree overlay file.

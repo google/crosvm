@@ -31,6 +31,7 @@ use base::Event;
 use base::FromRawDescriptor;
 use base::RawDescriptor;
 use base::SafeDescriptor;
+use cfg_if::cfg_if;
 use data_model::vec_with_array_field;
 use hypervisor::DeviceKind;
 use hypervisor::Vm;
@@ -71,6 +72,8 @@ pub enum VfioError {
     GroupViable,
     #[error("invalid region index: {0}")]
     InvalidIndex(usize),
+    #[error("invalid operation")]
+    InvalidOperation,
     #[error("invalid file path")]
     InvalidPath,
     #[error("failed to add guest memory map into iommu table: {0}")]
@@ -81,6 +84,8 @@ pub enum VfioError {
     IommuGetCapInfo,
     #[error("failed to get IOMMU info from host: {0}")]
     IommuGetInfo(Error),
+    #[error("failed to attach device to pKVM pvIOMMU: {0}")]
+    KvmPviommuSetConfig(Error),
     #[error("failed to set KVM vfio device's attribute: {0}")]
     KvmSetDeviceAttr(Error),
     #[error("AddressAllocator is unavailable")]
@@ -144,10 +149,110 @@ enum KvmVfioGroupOps {
     Delete,
 }
 
+#[derive(Debug)]
+pub struct KvmVfioPviommu {
+    file: File,
+}
+
+impl KvmVfioPviommu {
+    pub fn new(vm: &impl Vm) -> Result<Self> {
+        cfg_if! {
+            if #[cfg(all(target_os = "android", target_arch = "aarch64"))] {
+                let file = Self::ioctl_kvm_dev_vfio_pviommu_attach(vm)?;
+
+                Ok(Self { file })
+            } else {
+                let _ = vm;
+                unimplemented!()
+            }
+        }
+    }
+
+    pub fn attach<T: AsRawDescriptor>(&self, device: &T) -> Result<()> {
+        cfg_if! {
+            if #[cfg(all(target_os = "android", target_arch = "aarch64"))] {
+                let sid_idx = 0;
+                let vsid = 0;
+                self.ioctl_kvm_pviommu_set_config(device, sid_idx, vsid)
+            } else {
+                let _ = device;
+                unimplemented!()
+            }
+        }
+    }
+
+    pub fn id(&self) -> u32 {
+        let fd = self.as_raw_descriptor();
+        // Guests identify pvIOMMUs to the hypervisor using the corresponding VMM FDs.
+        fd.try_into().unwrap()
+    }
+
+    #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+    fn ioctl_kvm_dev_vfio_pviommu_attach(vm: &impl Vm) -> Result<File> {
+        let kvm_vfio_file = KVM_VFIO_FILE
+            .get_or_try_init(|| vm.create_device(DeviceKind::Vfio))
+            .map_err(VfioError::CreateVfioKvmDevice)?;
+
+        let vfio_dev_attr = kvm_sys::kvm_device_attr {
+            flags: 0,
+            group: kvm_sys::KVM_DEV_VFIO_PVIOMMU,
+            attr: kvm_sys::KVM_DEV_VFIO_PVIOMMU_ATTACH as u64,
+            addr: 0,
+        };
+
+        // Safe as we are the owner of vfio_dev_attr, which is valid.
+        let ret = unsafe {
+            ioctl_with_ref(
+                kvm_vfio_file,
+                kvm_sys::KVM_SET_DEVICE_ATTR(),
+                &vfio_dev_attr,
+            )
+        };
+
+        if ret < 0 {
+            Err(VfioError::KvmSetDeviceAttr(get_error()))
+        } else {
+            // Safe as we verify the return value.
+            Ok(unsafe { File::from_raw_descriptor(ret) })
+        }
+    }
+
+    #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+    fn ioctl_kvm_pviommu_set_config<T: AsRawDescriptor>(
+        &self,
+        device: &T,
+        sid_idx: u32,
+        vsid: u32,
+    ) -> Result<()> {
+        let config = kvm_sys::kvm_vfio_iommu_config {
+            device_fd: device.as_raw_descriptor(),
+            sid_idx,
+            vsid,
+        };
+
+        // Safe as we are the owner of device and config which are valid, and we verify the return
+        // value.
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_PVIOMMU_SET_CONFIG, &config) };
+
+        if ret < 0 {
+            Err(VfioError::KvmPviommuSetConfig(get_error()))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl AsRawDescriptor for KvmVfioPviommu {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.file.as_raw_descriptor()
+    }
+}
+
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum IommuType {
     Type1V2 = VFIO_TYPE1v2_IOMMU,
+    PkvmPviommu = VFIO_PKVM_PVIOMMU,
     // ChromeOS specific vfio_iommu_type1 implementation that is optimized for
     // small, dynamic mappings. For clients which create large, relatively
     // static mappings, Type1V2 is still preferred.
@@ -237,6 +342,7 @@ impl VfioContainer {
             IommuType::Type1V2 | IommuType::Type1ChromeOS => {
                 self.vfio_iommu_type1_dma_map(iova, size, user_addr, write_en)
             }
+            IommuType::PkvmPviommu => Err(VfioError::InvalidOperation),
         }
     }
 
@@ -275,6 +381,7 @@ impl VfioContainer {
             IommuType::Type1V2 | IommuType::Type1ChromeOS => {
                 self.vfio_iommu_type1_dma_unmap(iova, size)
             }
+            IommuType::PkvmPviommu => Err(VfioError::InvalidOperation),
         }
     }
 
@@ -305,6 +412,7 @@ impl VfioContainer {
             IommuType::Type1V2 | IommuType::Type1ChromeOS => {
                 self.vfio_iommu_type1_get_iommu_page_size_mask()
             }
+            IommuType::PkvmPviommu => Ok(0),
         }
     }
 
@@ -334,6 +442,7 @@ impl VfioContainer {
             IommuType::Type1V2 | IommuType::Type1ChromeOS => {
                 self.vfio_iommu_type1_get_iova_ranges()
             }
+            IommuType::PkvmPviommu => Ok(Vec::new()),
         }
     }
 
@@ -427,6 +536,7 @@ impl VfioContainer {
                     .or_else(|_| self.set_iommu_checked(IommuType::Type1V2))
             }
             IommuDevType::NoIommu => self.set_iommu_checked(IommuType::Type1V2),
+            IommuDevType::PkvmPviommu => self.set_iommu_checked(IommuType::PkvmPviommu),
         }
     }
 
@@ -448,7 +558,7 @@ impl VfioContainer {
             // mappings. However, if an iommu is not enabled, then we map the entirety
             // of guest memory as a small number of large, static mappings.
             match iommu_dev {
-                IommuDevType::CoIommu | IommuDevType::VirtioIommu => {}
+                IommuDevType::CoIommu | IommuDevType::PkvmPviommu | IommuDevType::VirtioIommu => {}
                 IommuDevType::NoIommu => {
                     for region in vm.get_memory().regions() {
                         // Safe because the guest regions are guaranteed not to overlap
@@ -704,6 +814,9 @@ thread_local! {
     // One VFIO container is shared by all VFIO devices that
     // attach to the CoIOMMU device
     static COIOMMU_CONTAINER: RefCell<Option<Arc<Mutex<VfioContainer>>>> = RefCell::new(None);
+
+    // One VFIO container is shared by all VFIO devices that attach to pKVM
+    static PKVM_IOMMU_CONTAINER: RefCell<Option<Arc<Mutex<VfioContainer>>>> = RefCell::new(None);
 }
 
 pub struct VfioCommonSetup;
@@ -771,6 +884,22 @@ impl VfioCommonTrait for VfioCommonSetup {
                     }
                 })
             }
+            IommuDevType::PkvmPviommu => {
+                // One VFIO container is used for devices attached to pKVM
+                PKVM_IOMMU_CONTAINER.with(|v| {
+                    if v.borrow().is_some() {
+                        if let Some(ref container) = *v.borrow() {
+                            Ok(container.clone())
+                        } else {
+                            Err(VfioError::BorrowVfioContainer)
+                        }
+                    } else {
+                        let container = Arc::new(Mutex::new(VfioContainer::new()?));
+                        *v.borrow_mut() = Some(container.clone());
+                        Ok(container)
+                    }
+                })
+            }
         }
     }
 }
@@ -824,6 +953,7 @@ pub struct VfioDevice {
 
     iova_alloc: Arc<Mutex<AddressAllocator>>,
     dt_symbol: Option<String>,
+    pviommu: Option<Arc<Mutex<KvmVfioPviommu>>>,
 }
 
 impl VfioDevice {
@@ -858,6 +988,17 @@ impl VfioDevice {
         let iova_alloc = AddressAllocator::new_from_list(iova_ranges, None, None)
             .map_err(VfioError::Resources)?;
 
+        let pviommu = if matches!(iommu_dev, IommuDevType::PkvmPviommu) {
+            // We currently have a 1-to-1 mapping between pvIOMMUs and VFIO devices.
+            let pviommu = KvmVfioPviommu::new(vm)?;
+
+            pviommu.attach(&dev)?;
+
+            Some(Arc::new(Mutex::new(pviommu)))
+        } else {
+            None
+        };
+
         Ok(VfioDevice {
             dev,
             name,
@@ -869,6 +1010,7 @@ impl VfioDevice {
             num_irqs: dev_info.num_irqs,
             iova_alloc: Arc::new(Mutex::new(iova_alloc)),
             dt_symbol,
+            pviommu,
         })
     }
 
@@ -924,6 +1066,7 @@ impl VfioDevice {
             num_irqs: dev_info.num_irqs,
             iova_alloc: Arc::new(Mutex::new(iova_alloc)),
             dt_symbol: None,
+            pviommu: None,
         })
     }
 

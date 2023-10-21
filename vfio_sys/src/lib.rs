@@ -63,6 +63,7 @@ pub use crate::vfio::VFIO_PCI_MSIX_IRQ_INDEX;
 pub use crate::vfio::VFIO_PCI_MSI_IRQ_INDEX;
 pub use crate::vfio::VFIO_PCI_REQ_IRQ_INDEX;
 pub use crate::vfio::VFIO_PCI_ROM_REGION_INDEX;
+pub use crate::vfio::VFIO_PKVM_PVIOMMU;
 pub use crate::vfio::VFIO_REGION_INFO_CAP_MSIX_MAPPABLE;
 pub use crate::vfio::VFIO_REGION_INFO_CAP_SPARSE_MMAP;
 pub use crate::vfio::VFIO_REGION_INFO_CAP_TYPE;

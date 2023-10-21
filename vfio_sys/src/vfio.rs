@@ -47,6 +47,9 @@ pub struct vfio_iommu_type1_info_cap_iova_range_header {
     pub reserved: u32,
 }
 
+// Experimental Android uABI
+pub const VFIO_PKVM_PVIOMMU: u32 = 11;
+
 #[repr(C)]
 #[derive(Default)]
 pub struct __IncompleteArrayField<T>(::std::marker::PhantomData<T>, [T; 0]);

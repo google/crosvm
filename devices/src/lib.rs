@@ -200,6 +200,8 @@ pub enum IommuDevType {
     VirtioIommu,
     #[serde(rename = "coiommu")]
     CoIommu,
+    #[serde(rename = "pkvm-iommu")]
+    PkvmPviommu,
 }
 
 // Thread that handles commands sent to devices - such as snapshot, sleep, suspend
