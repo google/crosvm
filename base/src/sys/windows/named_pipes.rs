@@ -1186,6 +1186,27 @@ impl MultiPartMessagePipe {
         pipe.read_overlapped_blocking(&mut buf, overlapped_wrapper, exit_event)?;
         Ok(buf)
     }
+
+    /// Returns the inner named pipe if the current struct is the sole owner of the underlying
+    /// named pipe.
+    ///
+    /// Otherwise, [`None`] is returned and the struct is dropped.
+    ///
+    /// Note that this has a similar race condition like [`Arc::try_unwrap`]: if multiple threads
+    /// call this function simultaneously on the same clone of [`MultiPartMessagePipe`], it is
+    /// possible that all of them will result in [`None`]. This is Due to Rust version
+    /// restriction(1.68.2) when this function is introduced). This race condition can be resolved
+    /// once we upgrade to 1.70.0 or higher by using [`Arc::into_inner`].
+    ///
+    /// If the underlying named pipe is a server named pipe, this method allows the caller to
+    /// terminate the connection by first flushing the named pipe then disconnecting the clients
+    /// idiomatically per
+    /// https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-operations#:~:text=When%20a%20client,of%20the%20pipe.
+    pub fn into_inner_pipe(self) -> Option<PipeConnection> {
+        let piper = Arc::clone(&self.reader);
+        drop(self);
+        Arc::try_unwrap(piper).ok().map(Mutex::into_inner)
+    }
 }
 
 impl TryFrom<PipeConnection> for MultiPartMessagePipe {
@@ -1481,6 +1502,56 @@ mod tests {
         for h in handles {
             h.join().unwrap();
         }
+    }
+
+    #[test]
+    fn multipart_message_into_inner_pipe() {
+        let pipe_name = generate_pipe_name();
+        let mut pipe = create_server_pipe(
+            &format!(r"\\.\pipe\{}", pipe_name),
+            &FramingMode::Message,
+            &BlockingMode::Wait,
+            0,
+            1024 * 1024,
+            true,
+        )
+        .expect("should create the server pipe with success");
+        let server1 = {
+            let pipe = pipe
+                .try_clone()
+                .expect("should duplicate the named pipe with success");
+            // SAFETY: `pipe` is a server named pipe.
+            unsafe { MultiPartMessagePipe::create_from_server_pipe(pipe) }
+                .expect("should create the multipart message pipe with success")
+        };
+        let server2 = server1.clone();
+        assert!(
+            server2.into_inner_pipe().is_none(),
+            "not the last reference, should be None"
+        );
+        let inner_pipe = server1
+            .into_inner_pipe()
+            .expect("the last reference, should return the underlying pipe");
+        // CompareObjectHandles is a Windows 10 API and is not available in mingw, so we can't use
+        // that API to compare if 2 handles are the same.
+        pipe.set_blocking(&BlockingMode::NoWait)
+            .expect("should set the blocking mode on the original pipe with success");
+        assert_eq!(
+            pipe.get_info()
+                .expect("should get the pipe information on the original pipe successfully"),
+            inner_pipe
+                .get_info()
+                .expect("should get the pipe information on the inner pipe successfully")
+        );
+        pipe.set_blocking(&BlockingMode::Wait)
+            .expect("should set the blocking mode on the original pipe with success");
+        assert_eq!(
+            pipe.get_info()
+                .expect("should get the pipe information on the original pipe successfully"),
+            inner_pipe
+                .get_info()
+                .expect("should get the pipe information on the inner pipe successfully")
+        );
     }
 
     #[test]
