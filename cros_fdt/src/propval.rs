@@ -108,11 +108,11 @@ impl ToFdtPropval for Vec<u64> {
     }
 }
 
-fn is_valid_string_property(bytes: &[u8]) -> bool {
-    const PRINTABLE_ASCII: std::ops::Range<u8> = 0x20..0x7f;
-    bytes
-        .iter()
-        .all(|b| PRINTABLE_ASCII.contains(b) || *b == 0x0a)
+#[inline]
+fn is_valid_string_property(val: &str) -> bool {
+    // Although the devicetree spec says string properties should be printable, neither libfdt nor
+    // the kernel device tree API verify that, so only check for zero bytes.
+    !val.contains('\0')
 }
 
 #[inline]
@@ -120,11 +120,11 @@ fn str_to_bytes<T: AsRef<str>>(value: &[T]) -> Result<Vec<u8>> {
     let total_length = value.iter().map(|s| s.as_ref().len() + 1).sum();
     let mut bytes = Vec::with_capacity(total_length);
     for s in value {
-        let str_bytes = s.as_ref().as_bytes();
-        if !is_valid_string_property(str_bytes) {
-            return Err(Error::InvalidString(s.as_ref().to_owned()));
+        let s = s.as_ref();
+        if !is_valid_string_property(s) {
+            return Err(Error::InvalidString(s.to_owned()));
         }
-        bytes.extend_from_slice(str_bytes);
+        bytes.extend_from_slice(s.as_bytes());
         bytes.push(0);
     }
     Ok(bytes)
@@ -150,7 +150,7 @@ impl<const N: usize> ToFdtPropval for &[&str; N] {
 
 impl ToFdtPropval for String {
     fn to_propval(self) -> Result<Vec<u8>> {
-        if !is_valid_string_property(self.as_bytes()) {
+        if !is_valid_string_property(&self) {
             Err(Error::InvalidString(self))
         } else {
             let mut bytes = self.into_bytes();
