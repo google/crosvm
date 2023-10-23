@@ -404,6 +404,10 @@ fn ebadf() -> io::Error {
     io::Error::from_raw_os_error(libc::EBADF)
 }
 
+fn eexist() -> io::Error {
+    io::Error::from_raw_os_error(libc::EEXIST)
+}
+
 fn stat<F: AsRawDescriptor + ?Sized>(f: &F) -> io::Result<libc::stat64> {
     let mut st = MaybeUninit::<libc::stat64>::zeroed();
 
@@ -2945,7 +2949,16 @@ impl FileSystem for PassthroughFs {
             return Ok((entry, None, OpenOptions::empty()));
         }
 
-        let (handler, opts) = self.do_open(entry.inode, flags)?;
+        if (flags as i32 & (libc::O_CREAT | libc::O_EXCL)) == (libc::O_CREAT | libc::O_EXCL) {
+            return Err(eexist());
+        }
+
+        let (handler, opts) = if self.zero_message_open.load(Ordering::Relaxed) {
+            (None, OpenOptions::KEEP_CACHE)
+        } else {
+            let (handler, opts) = self.do_open(entry.inode, flags)?;
+            (handler, opts)
+        };
         Ok((entry, handler, opts))
     }
 }
@@ -3423,7 +3436,16 @@ mod tests {
         );
     }
     #[test]
-    fn atomic_open_existing_file() {
+    fn test_atomic_open_existing_file() {
+        atomic_open_existing_file(false);
+    }
+
+    #[test]
+    fn test_atomic_open_existing_file_zero_message() {
+        atomic_open_existing_file(true);
+    }
+
+    fn atomic_open_existing_file(zero_message_open: bool) {
         // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
         // `NamedLock` before starting each unit test creating a `PassthroughFs` instance.
         let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
@@ -3432,10 +3454,18 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         create_test_data(&temp_dir, &["dir"], &["a.txt", "dir/b.txt", "dir/c.txt"]);
 
-        let cfg = Default::default();
+        let cache_policy = match zero_message_open {
+            true => CachePolicy::Always,
+            false => CachePolicy::Auto,
+        };
+
+        let cfg = Config {
+            cache_policy,
+            ..Default::default()
+        };
         let fs = PassthroughFs::new("tag", cfg).unwrap();
 
-        let capable = FsOptions::empty();
+        let capable = FsOptions::ZERO_MESSAGE_OPEN;
         fs.init(capable).unwrap();
 
         // atomic_open with flag O_RDWR, should return positive dentry and file handler
@@ -3449,11 +3479,17 @@ mod tests {
         assert!(res.is_ok());
         let (entry, handler, open_options) = res.unwrap();
         assert_ne!(entry.inode, 0);
-        assert!(handler.is_some());
-        assert_ne!(
-            open_options & OpenOptions::FILE_CREATED,
-            OpenOptions::FILE_CREATED
-        );
+
+        if zero_message_open {
+            assert!(handler.is_none());
+            assert_eq!(open_options, OpenOptions::KEEP_CACHE);
+        } else {
+            assert!(handler.is_some());
+            assert_ne!(
+                open_options & OpenOptions::FILE_CREATED,
+                OpenOptions::FILE_CREATED
+            );
+        }
 
         // atomic_open with flag O_RDWR |  O_CREATE, should return positive dentry and file handler
         let res = atomic_open(
@@ -3466,11 +3502,17 @@ mod tests {
         assert!(res.is_ok());
         let (entry, handler, open_options) = res.unwrap();
         assert_ne!(entry.inode, 0);
-        assert!(handler.is_some());
-        assert_ne!(
-            open_options & OpenOptions::FILE_CREATED,
-            OpenOptions::FILE_CREATED
-        );
+
+        if zero_message_open {
+            assert!(handler.is_none());
+            assert_eq!(open_options, OpenOptions::KEEP_CACHE);
+        } else {
+            assert!(handler.is_some());
+            assert_ne!(
+                open_options & OpenOptions::FILE_CREATED,
+                OpenOptions::FILE_CREATED
+            );
+        }
 
         // atomic_open with flag O_RDWR | O_CREATE | O_EXCL, should return positive dentry and file handler
         let res = atomic_open(
@@ -3486,7 +3528,16 @@ mod tests {
     }
 
     #[test]
-    fn atomic_open_non_existing_file() {
+    fn test_atomic_open_non_existing_file() {
+        atomic_open_non_existing_file(false);
+    }
+
+    #[test]
+    fn test_atomic_open_non_existing_file_zero_message() {
+        atomic_open_non_existing_file(true);
+    }
+
+    fn atomic_open_non_existing_file(zero_message_open: bool) {
         // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
         // `NamedLock` before starting each unit test creating a `PassthroughFs` instance.
         let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
@@ -3494,10 +3545,18 @@ mod tests {
 
         let temp_dir = TempDir::new().unwrap();
 
-        let cfg = Default::default();
+        let cache_policy = match zero_message_open {
+            true => CachePolicy::Always,
+            false => CachePolicy::Auto,
+        };
+
+        let cfg = Config {
+            cache_policy,
+            ..Default::default()
+        };
         let fs = PassthroughFs::new("tag", cfg).unwrap();
 
-        let capable = FsOptions::empty();
+        let capable = FsOptions::ZERO_MESSAGE_OPEN;
         fs.init(capable).unwrap();
 
         // atomic_open with flag O_RDWR, should return NO_EXIST error
@@ -3523,7 +3582,16 @@ mod tests {
         assert!(res.is_ok());
         let (entry, handler, open_options) = res.unwrap();
         assert_ne!(entry.inode, 0);
-        assert!(handler.is_some());
+
+        if zero_message_open {
+            assert!(handler.is_none());
+            assert_eq!(
+                open_options & OpenOptions::KEEP_CACHE,
+                OpenOptions::KEEP_CACHE
+            );
+        } else {
+            assert!(handler.is_some());
+        }
         assert_eq!(
             open_options & OpenOptions::FILE_CREATED,
             OpenOptions::FILE_CREATED
