@@ -106,7 +106,7 @@ pub use priority::*;
 pub use sched::*;
 pub use scoped_signal_handler::*;
 pub use shm::MemfdSeals;
-pub use shm::Unix as SharedMemoryUnix;
+pub use shm::SharedMemoryLinux;
 pub use signal::*;
 pub use signalfd::Error as SignalFdError;
 pub use signalfd::*;

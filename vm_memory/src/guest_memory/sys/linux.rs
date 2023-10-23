@@ -5,7 +5,7 @@
 use base::MemfdSeals;
 use base::MemoryMappingUnix;
 use base::SharedMemory;
-use base::SharedMemoryUnix;
+use base::SharedMemoryLinux;
 use bitflags::bitflags;
 
 use crate::Error;

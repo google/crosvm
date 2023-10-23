@@ -29,7 +29,7 @@ use base::MemoryMappingBuilder;
 use base::Result as SysResult;
 use base::ScmSocket;
 use base::SharedMemory;
-use base::SharedMemoryUnix;
+use base::SharedMemoryLinux;
 use base::SIGRTMIN;
 use data_model::zerocopy_from_slice;
 use kvm::dirty_log_bitmap_size;

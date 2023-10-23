@@ -86,7 +86,7 @@ cfg_if::cfg_if! {
         // memory/mmap related exports.
         pub use platform::{
             MemfdSeals, MemoryMappingBuilderUnix, Unix as MemoryMappingUnix,
-            SharedMemoryUnix,
+            SharedMemoryLinux,
         };
 
         // descriptor/fd related exports.

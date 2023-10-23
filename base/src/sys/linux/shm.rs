@@ -190,7 +190,7 @@ impl PlatformSharedMemory for SharedMemory {
     }
 }
 
-pub trait Unix {
+pub trait SharedMemoryLinux {
     /// Constructs a `SharedMemory` instance from a `File` that represents shared memory.
     ///
     /// The size of the resulting shared memory will be determined using `File::seek`. If the given
@@ -209,7 +209,7 @@ pub trait Unix {
     fn add_seals(&mut self, seals: MemfdSeals) -> Result<()>;
 }
 
-impl Unix for SharedMemory {
+impl SharedMemoryLinux for SharedMemory {
     fn from_file(mut file: File) -> Result<SharedMemory> {
         let file_size = file.seek(SeekFrom::End(0))?;
         Ok(SharedMemory {
@@ -247,7 +247,7 @@ mod tests {
     use crate::MemoryMappingBuilder;
     use crate::Result;
     use crate::SharedMemory;
-    use crate::SharedMemoryUnix;
+    use crate::SharedMemoryLinux;
 
     /// Reads the name from the underlying file as a `String`.
     ///

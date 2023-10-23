@@ -29,7 +29,7 @@ use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::RawDescriptor;
 use base::SharedMemory;
-use base::SharedMemoryUnix;
+use base::SharedMemoryLinux;
 use data_model::VolatileMemory;
 use sync::Mutex;
 

@@ -81,7 +81,7 @@ use base::Result;
 use base::SafeDescriptor;
 use base::ScmSocket;
 use base::SharedMemory;
-use base::SharedMemoryUnix;
+use base::SharedMemoryLinux;
 use base::Tube;
 use base::TubeError;
 use base::WaitContext;
