@@ -3,9 +3,13 @@
 // found in the LICENSE file.
 
 #![deny(missing_docs)]
+//! A SCSI controller has SCSI target(s), a SCSI target has logical unit(s).
+//! crosvm currently supports only one logical unit in a target (LUN0), therefore a SCSI target is
+//! tied to a logical unit and a disk image belongs to a logical unit in crosvm.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::io;
 use std::io::Write;
 use std::rc::Rc;
@@ -272,13 +276,77 @@ impl Sense {
     }
 }
 
-/// Describes each SCSI device.
-#[derive(Copy, Clone)]
-pub struct LogicalUnit {
+/// Describes each SCSI logical unit.
+struct LogicalUnit {
     /// The maximum logical block address of the target device.
-    pub max_lba: u64,
+    max_lba: u64,
     /// Block size of the target device.
+    block_size: u32,
+    read_only: bool,
+    // Represents the image on disk.
+    disk_image: Box<dyn DiskFile>,
+}
+
+impl LogicalUnit {
+    fn make_async(self, ex: &Executor) -> anyhow::Result<AsyncLogicalUnit> {
+        let disk_image = self
+            .disk_image
+            .to_async_disk(ex)
+            .context("Failed to create async disk")?;
+        Ok(AsyncLogicalUnit {
+            max_lba: self.max_lba,
+            block_size: self.block_size,
+            read_only: self.read_only,
+            disk_image,
+        })
+    }
+}
+
+/// A logical unit with an AsyncDisk as the disk.
+pub struct AsyncLogicalUnit {
+    pub max_lba: u64,
     pub block_size: u32,
+    pub read_only: bool,
+    // Represents the async image on disk.
+    pub disk_image: Box<dyn AsyncDisk>,
+}
+
+type TargetId = u8;
+struct Targets(BTreeMap<TargetId, LogicalUnit>);
+
+impl Targets {
+    fn try_clone(&self) -> io::Result<Self> {
+        let logical_units = self
+            .0
+            .iter()
+            .map(|(id, logical_unit)| {
+                let disk_image = logical_unit.disk_image.try_clone()?;
+                Ok((
+                    *id,
+                    LogicalUnit {
+                        disk_image,
+                        max_lba: logical_unit.max_lba,
+                        block_size: logical_unit.block_size,
+                        read_only: logical_unit.read_only,
+                    },
+                ))
+            })
+            .collect::<io::Result<_>>()?;
+        Ok(Self(logical_units))
+    }
+
+    fn target_ids(&self) -> BTreeSet<TargetId> {
+        self.0.keys().cloned().collect()
+    }
+}
+
+/// Configuration of each SCSI device.
+pub struct DiskConfig {
+    /// The disk file of the device.
+    pub file: Box<dyn DiskFile>,
+    /// The block size of the SCSI disk.
+    pub block_size: u32,
+    /// Indicates whether the SCSI disk is read only.
     pub read_only: bool,
 }
 
@@ -286,8 +354,6 @@ pub struct LogicalUnit {
 pub struct Controller {
     // Bitmap of virtio-scsi feature bits.
     avail_features: u64,
-    // Represents the image on disk.
-    disk_image: Option<Box<dyn DiskFile>>,
     // Sizes for the virtqueue.
     queue_sizes: Vec<u16>,
     // The maximum number of segments that can be in a command.
@@ -298,11 +364,8 @@ pub struct Controller {
     cdb_size: u32,
     executor_kind: ExecutorKind,
     worker_threads: Vec<WorkerThread<()>>,
-    // TODO(b/300586438): Make this a BTreeMap<_> to enable this Device struct to manage multiple
-    // LogicalUnit. That is, when user passes multiple --scsi-block options, we will have a single
-    // instance of Device which has multiple LogicalUnit.
-    #[allow(dead_code)]
-    target: LogicalUnit,
+    // Stores target devices by its target id. Currently we only support bus id 0.
+    targets: Option<Targets>,
     // Whether the devices handles requests in multiple request queues.
     // If true, each virtqueue will be handled in a separate worker thread.
     multi_queue: bool,
@@ -310,36 +373,40 @@ pub struct Controller {
 
 impl Controller {
     /// Creates a virtio-scsi device.
-    pub fn new(
-        disk_image: Box<dyn DiskFile>,
-        base_features: u64,
-        block_size: u32,
-        read_only: bool,
-    ) -> anyhow::Result<Self> {
-        let target = LogicalUnit {
-            max_lba: disk_image
-                .get_len()
-                .context("Failed to get the length of the disk image")?,
-            block_size,
-            read_only,
-        };
-        let multi_queue = disk_image.try_clone().is_ok();
+    pub fn new(base_features: u64, disks: Vec<DiskConfig>) -> anyhow::Result<Self> {
+        let multi_queue = disks.iter().all(|disk| disk.file.try_clone().is_ok());
         let num_queues = if multi_queue {
             MAX_NUM_QUEUES
         } else {
             MIN_NUM_QUEUES
         };
+        let logical_units = disks
+            .into_iter()
+            .enumerate()
+            .map(|(i, disk)| {
+                let max_lba = disk
+                    .file
+                    .get_len()
+                    .context("Failed to get the length of the disk image")?;
+                let target = LogicalUnit {
+                    max_lba,
+                    block_size: disk.block_size,
+                    read_only: disk.read_only,
+                    disk_image: disk.file,
+                };
+                Ok((i as TargetId, target))
+            })
+            .collect::<anyhow::Result<_>>()?;
         // b/300560198: Support feature bits in virtio-scsi.
         Ok(Self {
             avail_features: base_features,
-            disk_image: Some(disk_image),
             queue_sizes: vec![DEFAULT_QUEUE_SIZE; num_queues],
             seg_max: get_seg_max(DEFAULT_QUEUE_SIZE),
             sense_size: VIRTIO_SCSI_SENSE_DEFAULT_SIZE,
             cdb_size: VIRTIO_SCSI_CDB_DEFAULT_SIZE,
             executor_kind: ExecutorKind::default(),
             worker_threads: vec![],
-            target,
+            targets: Some(Targets(logical_units)),
             multi_queue,
         })
     }
@@ -362,14 +429,18 @@ impl Controller {
     }
 
     // Executes a request in the controlq.
-    fn execute_control(reader: &mut Reader, writer: &mut Writer) -> Result<(), ExecuteError> {
+    fn execute_control(
+        reader: &mut Reader,
+        writer: &mut Writer,
+        target_ids: &BTreeSet<TargetId>,
+    ) -> Result<(), ExecuteError> {
         let typ = reader.peek_obj::<u32>().map_err(ExecuteError::Read)?;
         match typ {
             VIRTIO_SCSI_T_TMF => {
                 let tmf = reader
                     .read_obj::<virtio_scsi_ctrl_tmf_req>()
                     .map_err(ExecuteError::Read)?;
-                let resp = Self::execute_tmf(tmf);
+                let resp = Self::execute_tmf(tmf, target_ids);
                 writer.write_obj(resp).map_err(ExecuteError::Write)?;
                 Ok(())
             }
@@ -391,14 +462,24 @@ impl Controller {
     }
 
     // Executes a TMF (task management function) request.
-    fn execute_tmf(tmf: virtio_scsi_ctrl_tmf_req) -> virtio_scsi_ctrl_tmf_resp {
+    fn execute_tmf(
+        tmf: virtio_scsi_ctrl_tmf_req,
+        target_ids: &BTreeSet<TargetId>,
+    ) -> virtio_scsi_ctrl_tmf_resp {
         match tmf.subtype {
             VIRTIO_SCSI_T_TMF_LOGICAL_UNIT_RESET | VIRTIO_SCSI_T_TMF_I_T_NEXUS_RESET => {
                 // We only have LUN0.
-                let response = if Self::is_lun0(tmf.lun) {
-                    VIRTIO_SCSI_S_FUNCTION_SUCCEEDED as u8
+                let lun = tmf.lun;
+                let target_id = lun[1];
+                let response = if target_ids.contains(&target_id) {
+                    let is_lun0 = u16::from_be_bytes([lun[2], lun[3]]) & 0x3fff == 0;
+                    if is_lun0 {
+                        VIRTIO_SCSI_S_FUNCTION_SUCCEEDED as u8
+                    } else {
+                        VIRTIO_SCSI_S_INCORRECT_LUN as u8
+                    }
                 } else {
-                    VIRTIO_SCSI_S_INCORRECT_LUN as u8
+                    VIRTIO_SCSI_S_BAD_TARGET as u8
                 };
                 virtio_scsi_ctrl_tmf_resp { response }
             }
@@ -415,35 +496,35 @@ impl Controller {
         reader: &mut Reader,
         resp_writer: &mut Writer,
         data_writer: &mut Writer,
-        disk_image: &dyn AsyncDisk,
-        dev: LogicalUnit,
+        targets: &BTreeMap<TargetId, AsyncLogicalUnit>,
     ) -> Result<(), ExecuteError> {
         // TODO(b/301011017): Cope with the configurable cdb size. We would need to define
         // something like virtio_scsi_cmd_req_header.
         let req_header = reader
             .read_obj::<virtio_scsi_cmd_req>()
             .map_err(ExecuteError::Read)?;
-        let resp = if Self::has_lun(req_header.lun) {
-            let command = Command::new(&req_header.cdb)?;
-            match command.execute(reader, data_writer, dev, disk_image).await {
-                Ok(()) => virtio_scsi_cmd_resp {
-                    sense_len: 0,
-                    resid: 0,
-                    status_qualifier: 0,
-                    status: GOOD,
-                    response: VIRTIO_SCSI_S_OK as u8,
-                    sense: [0; VIRTIO_SCSI_SENSE_DEFAULT_SIZE as usize],
-                },
-                Err(err) => {
-                    error!("error while executing a scsi request: {err}");
-                    err.as_resp()
+        let resp = match Self::get_logical_unit(req_header.lun, targets) {
+            Some(target) => {
+                let command = Command::new(&req_header.cdb)?;
+                match command.execute(reader, data_writer, target).await {
+                    Ok(()) => virtio_scsi_cmd_resp {
+                        sense_len: 0,
+                        resid: 0,
+                        status_qualifier: 0,
+                        status: GOOD,
+                        response: VIRTIO_SCSI_S_OK as u8,
+                        sense: [0; VIRTIO_SCSI_SENSE_DEFAULT_SIZE as usize],
+                    },
+                    Err(err) => {
+                        error!("error while executing a scsi request: {err}");
+                        err.as_resp()
+                    }
                 }
             }
-        } else {
-            virtio_scsi_cmd_resp {
+            None => virtio_scsi_cmd_resp {
                 response: VIRTIO_SCSI_S_BAD_TARGET as u8,
                 ..Default::default()
-            }
+            },
         };
         resp_writer
             .write_all(resp.as_bytes())
@@ -451,34 +532,35 @@ impl Controller {
         Ok(())
     }
 
-    // TODO(b/300586438): Once we alter Controller to handle multiple LogicalUnit, we should update
-    // the search strategy as well.
-    fn has_lun(lun: [u8; 8]) -> bool {
+    fn get_logical_unit(
+        lun: [u8; 8],
+        targets: &BTreeMap<TargetId, AsyncLogicalUnit>,
+    ) -> Option<&AsyncLogicalUnit> {
         // First byte should be 1.
         if lun[0] != 1 {
-            return false;
+            return None;
         }
-        let bus_id = lun[1];
         // General search strategy for scsi devices is as follows:
         // 1) Look for a device which has the same bus id and lun indicated by the given lun. If
         //    there is one, that is the target device.
         // 2) If we cannot find such device, then we return the first device that has the same bus
         //    id.
-        // Since we only support LUN0 for now, we only need to compare the bus id.
-        bus_id == 0
-    }
-
-    fn is_lun0(lun: [u8; 8]) -> bool {
-        u16::from_be_bytes([lun[2], lun[3]]) & 0x3fff == 0
+        // Since we only support one LUN per target, we only need to use the target id.
+        let target_id = lun[1];
+        targets.get(&target_id)
     }
 }
 
 impl VirtioDevice for Controller {
     fn keep_rds(&self) -> Vec<base::RawDescriptor> {
-        self.disk_image
-            .as_ref()
-            .map(|i| i.as_raw_descriptors())
-            .unwrap_or_default()
+        match &self.targets {
+            Some(targets) => targets
+                .0
+                .values()
+                .flat_map(|t| t.disk_image.as_raw_descriptors())
+                .collect(),
+            None => vec![],
+        }
     }
 
     fn features(&self) -> u64 {
@@ -508,25 +590,22 @@ impl VirtioDevice for Controller {
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         let executor_kind = self.executor_kind;
-        let dev = self.target;
-        let disk_image = self
-            .disk_image
-            .take()
-            .context("Failed to take a disk image")?;
         // 0th virtqueue is the controlq.
         let controlq = queues.remove(&0).context("controlq should be present")?;
         // 1st virtqueue is the eventq.
         // We do not send any events through eventq.
         let _eventq = queues.remove(&1).context("eventq should be present")?;
+        let targets = self.targets.take().context("failed to take SCSI targets")?;
+        let target_ids = targets.target_ids();
         // The rest of the queues are request queues.
         let request_queues = if self.multi_queue {
             queues
                 .into_values()
                 .map(|queue| {
-                    let disk = disk_image
+                    let targets = targets
                         .try_clone()
                         .context("Failed to clone a disk image")?;
-                    Ok((queue, disk))
+                    Ok((queue, targets))
                 })
                 .collect::<anyhow::Result<_>>()?
         } else {
@@ -535,7 +614,7 @@ impl VirtioDevice for Controller {
                 queues
                     .remove(&2)
                     .context("request queue should be present")?,
-                disk_image,
+                targets,
             )]
         };
 
@@ -549,8 +628,7 @@ impl VirtioDevice for Controller {
                     intr,
                     controlq,
                     kill_evt,
-                    QueueType::Control,
-                    dev,
+                    QueueType::Control { target_ids },
                 ))
                 .expect("run_until failed")
             {
@@ -559,24 +637,27 @@ impl VirtioDevice for Controller {
         });
         self.worker_threads.push(worker_thread);
 
-        for (i, (queue, disk_image)) in request_queues.into_iter().enumerate() {
+        for (i, (queue, targets)) in request_queues.into_iter().enumerate() {
             let interrupt = interrupt.clone();
             let worker_thread =
                 WorkerThread::start(format!("v_scsi_req_{}", i + 2), move |kill_evt| {
                     let ex = Executor::with_executor_kind(executor_kind)
                         .expect("Failed to create an executor");
-                    let async_disk = match disk_image.to_async_disk(&ex) {
-                        Ok(d) => d,
-                        Err(e) => panic!("Failed to create async disk: {}", e),
-                    };
+                    let async_logical_unit = targets
+                        .0
+                        .into_iter()
+                        .map(|(idx, unit)| match unit.make_async(&ex) {
+                            Ok(async_unit) => (idx, async_unit),
+                            Err(err) => panic!("{err}"),
+                        })
+                        .collect();
                     if let Err(err) = ex
                         .run_until(run_worker(
                             &ex,
                             interrupt,
                             queue,
                             kill_evt,
-                            QueueType::Request(async_disk),
-                            dev,
+                            QueueType::Request(async_logical_unit),
                         ))
                         .expect("run_until failed")
                     {
@@ -590,8 +671,8 @@ impl VirtioDevice for Controller {
 }
 
 enum QueueType {
-    Control,
-    Request(Box<dyn AsyncDisk>),
+    Control { target_ids: BTreeSet<TargetId> },
+    Request(BTreeMap<TargetId, AsyncLogicalUnit>),
 }
 
 async fn run_worker(
@@ -600,7 +681,6 @@ async fn run_worker(
     queue: Queue,
     kill_evt: Event,
     queue_type: QueueType,
-    dev: LogicalUnit,
 ) -> anyhow::Result<()> {
     let kill = async_utils::await_and_exit(ex, kill_evt).fuse();
     pin_mut!(kill);
@@ -617,7 +697,6 @@ async fn run_worker(
         EventAsync::new(kick_evt, ex).expect("Failed to create async event for queue"),
         interrupt,
         queue_type,
-        dev,
     )
     .fuse();
     pin_mut!(queue_handler);
@@ -634,7 +713,6 @@ async fn handle_queue(
     evt: EventAsync,
     interrupt: Interrupt,
     queue_type: QueueType,
-    dev: LogicalUnit,
 ) {
     let mut background_tasks = FuturesUnordered::new();
     let evt_future = evt.next_val().fuse();
@@ -651,13 +729,7 @@ async fn handle_queue(
             }
         }
         while let Some(chain) = queue.borrow_mut().pop() {
-            background_tasks.push(process_one_chain(
-                &queue,
-                chain,
-                &interrupt,
-                &queue_type,
-                dev,
-            ));
+            background_tasks.push(process_one_chain(&queue, chain, &interrupt, &queue_type));
         }
     }
 }
@@ -667,38 +739,28 @@ async fn process_one_chain(
     mut avail_desc: DescriptorChain,
     interrupt: &Interrupt,
     queue_type: &QueueType,
-    dev: LogicalUnit,
 ) {
-    let len = process_one_request(&mut avail_desc, queue_type, dev).await;
+    let len = process_one_request(&mut avail_desc, queue_type).await;
     let mut queue = queue.borrow_mut();
     queue.add_used(avail_desc, len as u32);
     queue.trigger_interrupt(interrupt);
 }
 
-async fn process_one_request(
-    avail_desc: &mut DescriptorChain,
-    queue_type: &QueueType,
-    dev: LogicalUnit,
-) -> usize {
+async fn process_one_request(avail_desc: &mut DescriptorChain, queue_type: &QueueType) -> usize {
     let reader = &mut avail_desc.reader;
     let resp_writer = &mut avail_desc.writer;
     match queue_type {
-        QueueType::Control => {
-            if let Err(err) = Controller::execute_control(reader, resp_writer) {
+        QueueType::Control { target_ids } => {
+            if let Err(err) = Controller::execute_control(reader, resp_writer, target_ids) {
                 error!("failed to execute control request: {err}");
             }
             resp_writer.bytes_written()
         }
-        QueueType::Request(disk_image) => {
+        QueueType::Request(async_targets) => {
             let mut data_writer = resp_writer.split_at(std::mem::size_of::<virtio_scsi_cmd_resp>());
-            if let Err(err) = Controller::execute_request(
-                reader,
-                resp_writer,
-                &mut data_writer,
-                disk_image.as_ref(),
-                dev,
-            )
-            .await
+            if let Err(err) =
+                Controller::execute_request(reader, resp_writer, &mut data_writer, async_targets)
+                    .await
             {
                 // If the write of the virtio_scsi_cmd_resp fails, there is nothing we can do to
                 // inform the error to the guest driver (we usually propagate errors with sense
@@ -716,6 +778,7 @@ async fn process_one_request(
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
     use std::mem::size_of;
     use std::mem::size_of_val;
     use std::rc::Rc;
@@ -734,7 +797,7 @@ mod tests {
 
     use super::*;
 
-    fn setup_disk(disk_size: u64, ex: &Executor) -> (SingleFileDisk, Vec<u8>) {
+    fn setup_disk(disk_size: u64) -> (File, Vec<u8>) {
         let mut file_content = vec![0; disk_size as usize];
         for i in 0..disk_size {
             file_content[i as usize] = (i % 10) as u8;
@@ -742,29 +805,29 @@ mod tests {
         let mut f = tempfile().unwrap();
         f.set_len(disk_size).unwrap();
         f.write_all(file_content.as_slice()).unwrap();
-        let af = SingleFileDisk::new(f, ex).expect("Failed to create SFD");
-        (af, file_content)
+        (f, file_content)
     }
 
-    fn build_read_req_header(start_lba: u8, xfer_blocks: u8) -> virtio_scsi_cmd_req {
+    fn build_read_req_header(target_id: u8, start_lba: u8, xfer_blocks: u8) -> virtio_scsi_cmd_req {
         let mut cdb = [0; 32];
         cdb[0] = READ_10;
         cdb[5] = start_lba;
         cdb[8] = xfer_blocks;
         virtio_scsi_cmd_req {
-            lun: [1, 0, 0, 0, 0, 0, 0, 0],
+            lun: [1, 0, 0, target_id, 0, 0, 0, 0],
             cdb,
             ..Default::default()
         }
     }
 
     fn setup_desciptor_chain(
+        target_id: TargetId,
         start_lba: u8,
         xfer_blocks: u8,
         block_size: u32,
         mem: &Rc<GuestMemory>,
     ) -> DescriptorChain {
-        let req_hdr = build_read_req_header(start_lba, xfer_blocks);
+        let req_hdr = build_read_req_header(target_id, start_lba, xfer_blocks);
         let xfer_bytes = xfer_blocks as u32 * block_size;
         create_descriptor_chain(
             mem,
@@ -787,7 +850,8 @@ mod tests {
 
     fn read_blocks(
         ex: &Executor,
-        af: Box<SingleFileDisk>,
+        file_disks: &[File],
+        target_id: u8,
         start_lba: u8,
         xfer_blocks: u8,
         block_size: u32,
@@ -797,22 +861,30 @@ mod tests {
             GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
                 .expect("Creating guest memory failed."),
         );
-        let req_hdr = build_read_req_header(start_lba, xfer_blocks);
+        let req_hdr = build_read_req_header(target_id, start_lba, xfer_blocks);
         mem.write_obj_at_addr(req_hdr, GuestAddress(0x1000))
             .expect("writing req failed");
 
-        let mut avail_desc = setup_desciptor_chain(0, xfer_blocks, block_size, &mem);
+        let mut avail_desc = setup_desciptor_chain(target_id, 0, xfer_blocks, block_size, &mem);
 
-        let logical_unit = LogicalUnit {
-            max_lba: 0x1000,
-            block_size,
-            read_only: false,
-        };
-        let queue_type = QueueType::Request(af);
+        let targets = file_disks
+            .iter()
+            .enumerate()
+            .map(|(i, file)| {
+                let file = file.try_clone().unwrap();
+                let disk_image = Box::new(SingleFileDisk::new(file, ex).unwrap());
+                let logical_unit = AsyncLogicalUnit {
+                    max_lba: 0x1000,
+                    block_size,
+                    read_only: false,
+                    disk_image,
+                };
+                (i as TargetId, logical_unit)
+            })
+            .collect();
         ex.run_until(process_one_request(
             &mut avail_desc,
-            &queue_type,
-            logical_unit,
+            &QueueType::Request(targets),
         ))
         .expect("running executor failed");
         let resp_offset = GuestAddress((0x1000 + size_of::<virtio_scsi_cmd_resp>()) as u64);
@@ -830,21 +902,37 @@ mod tests {
         (resp, dataout)
     }
 
-    fn test_read_blocks(blocks: u8, start_lba: u8, xfer_blocks: u8, block_size: u32) {
+    fn test_read_blocks(
+        num_targets: usize,
+        blocks: u8,
+        start_lba: u8,
+        xfer_blocks: u8,
+        block_size: u32,
+    ) {
         let ex = Executor::new().expect("creating an executor failed");
         let file_len = blocks as u64 * block_size as u64;
         let xfer_bytes = xfer_blocks as usize * block_size as usize;
         let start_off = start_lba as usize * block_size as usize;
 
-        let (af, file_content) = setup_disk(file_len, &ex);
-        let (resp, dataout) = read_blocks(&ex, Box::new(af), start_lba, xfer_blocks, block_size);
+        let (files, file_contents): (Vec<_>, Vec<_>) =
+            (0..num_targets).map(|_| setup_disk(file_len)).unzip();
+        for (target_id, file_content) in file_contents.iter().enumerate() {
+            let (resp, dataout) = read_blocks(
+                &ex,
+                &files,
+                target_id as TargetId,
+                start_lba,
+                xfer_blocks,
+                block_size,
+            );
 
-        let sense_len = resp.sense_len;
-        assert_eq!(sense_len, 0);
-        assert_eq!(resp.status, VIRTIO_SCSI_S_OK as u8);
-        assert_eq!(resp.response, GOOD);
+            let sense_len = resp.sense_len;
+            assert_eq!(sense_len, 0);
+            assert_eq!(resp.status, VIRTIO_SCSI_S_OK as u8);
+            assert_eq!(resp.response, GOOD);
 
-        assert_eq!(&dataout, &file_content[start_off..(start_off + xfer_bytes)]);
+            assert_eq!(&dataout, &file_content[start_off..(start_off + xfer_bytes)]);
+        }
     }
 
     #[test]
@@ -854,9 +942,9 @@ mod tests {
         let start_lba = 0u8;
         let xfer_blocks = 3u8;
 
-        test_read_blocks(blocks, start_lba, xfer_blocks, 64u32);
-        test_read_blocks(blocks, start_lba, xfer_blocks, 128u32);
-        test_read_blocks(blocks, start_lba, xfer_blocks, 512u32);
+        test_read_blocks(1, blocks, start_lba, xfer_blocks, 64u32);
+        test_read_blocks(1, blocks, start_lba, xfer_blocks, 128u32);
+        test_read_blocks(1, blocks, start_lba, xfer_blocks, 512u32);
     }
 
     #[test]
@@ -866,8 +954,32 @@ mod tests {
         let start_lba = 1u8;
         let xfer_blocks = 3u8;
 
-        test_read_blocks(blocks, start_lba, xfer_blocks, 64u32);
-        test_read_blocks(blocks, start_lba, xfer_blocks, 128u32);
-        test_read_blocks(blocks, start_lba, xfer_blocks, 512u32);
+        test_read_blocks(1, blocks, start_lba, xfer_blocks, 64u32);
+        test_read_blocks(1, blocks, start_lba, xfer_blocks, 128u32);
+        test_read_blocks(1, blocks, start_lba, xfer_blocks, 512u32);
+    }
+
+    #[test]
+    fn read_first_blocks_with_multiple_disks() {
+        // Read the first 3 blocks of a 8-block device.
+        let blocks = 8u8;
+        let start_lba = 0u8;
+        let xfer_blocks = 3u8;
+
+        test_read_blocks(3, blocks, start_lba, xfer_blocks, 64u32);
+        test_read_blocks(3, blocks, start_lba, xfer_blocks, 128u32);
+        test_read_blocks(3, blocks, start_lba, xfer_blocks, 512u32);
+    }
+
+    #[test]
+    fn read_middle_blocks_with_multiple_disks() {
+        // Read 3 blocks from the 2nd block in the 8-block device.
+        let blocks = 8u8;
+        let start_lba = 1u8;
+        let xfer_blocks = 3u8;
+
+        test_read_blocks(3, blocks, start_lba, xfer_blocks, 64u32);
+        test_read_blocks(3, blocks, start_lba, xfer_blocks, 128u32);
+        test_read_blocks(3, blocks, start_lba, xfer_blocks, 512u32);
     }
 }

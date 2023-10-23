@@ -6,7 +6,6 @@ use std::cmp;
 use std::io::Write;
 
 use base::warn;
-use disk::AsyncDisk;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
@@ -24,8 +23,8 @@ use crate::virtio::scsi::constants::SYNCHRONIZE_CACHE_10;
 use crate::virtio::scsi::constants::TEST_UNIT_READY;
 use crate::virtio::scsi::constants::TYPE_DISK;
 use crate::virtio::scsi::constants::WRITE_10;
+use crate::virtio::scsi::device::AsyncLogicalUnit;
 use crate::virtio::scsi::device::ExecuteError;
-use crate::virtio::scsi::device::LogicalUnit;
 use crate::virtio::Reader;
 use crate::virtio::Writer;
 
@@ -92,20 +91,19 @@ impl Command {
         &self,
         reader: &mut Reader,
         writer: &mut Writer,
-        dev: LogicalUnit,
-        disk_image: &dyn AsyncDisk,
+        dev: &AsyncLogicalUnit,
     ) -> Result<(), ExecuteError> {
         match self {
             Self::TestUnitReady(_) => Ok(()), // noop as the device is ready.
-            Self::Read6(read6) => read6.emulate(writer, dev, disk_image).await,
+            Self::Read6(read6) => read6.emulate(writer, dev).await,
             Self::Inquiry(inquiry) => inquiry.emulate(writer),
             Self::ModeSelect6(mode_select_6) => mode_select_6.emulate(),
             Self::ModeSense6(mode_sense_6) => mode_sense_6.emulate(writer, dev),
             Self::ReadCapacity10(read_capacity_10) => read_capacity_10.emulate(writer, dev),
-            Self::Read10(read_10) => read_10.emulate(writer, dev, disk_image).await,
-            Self::Write10(write_10) => write_10.emulate(reader, dev, disk_image).await,
+            Self::Read10(read_10) => read_10.emulate(writer, dev).await,
+            Self::Write10(write_10) => write_10.emulate(reader, dev).await,
             Self::SynchronizeCache10(synchronize_cache_10) => {
-                synchronize_cache_10.emulate(disk_image).await
+                synchronize_cache_10.emulate(dev).await
             }
             Self::ReportLuns(report_luns) => report_luns.emulate(writer),
             Self::ReportSupportedTMFs(report_supported_tmfs) => {
@@ -133,9 +131,8 @@ fn check_lba_range(max_lba: u64, sector_num: u64, sector_len: usize) -> bool {
 }
 
 async fn read_from_disk(
-    disk_image: &dyn AsyncDisk,
     writer: &mut Writer,
-    dev: LogicalUnit,
+    dev: &AsyncLogicalUnit,
     xfer_blocks: usize,
     lba: u64,
 ) -> Result<(), ExecuteError> {
@@ -152,7 +149,7 @@ async fn read_from_disk(
     let offset = lba * block_size as u64;
     let before = writer.bytes_written();
     writer
-        .write_all_from_at_fut(disk_image, count, offset)
+        .write_all_from_at_fut(&*dev.disk_image, count, offset)
         .await
         .map_err(|desc_error| {
             let resid = count - (writer.bytes_written() - before);
@@ -192,10 +189,9 @@ impl Read6 {
     async fn emulate(
         &self,
         writer: &mut Writer,
-        dev: LogicalUnit,
-        disk_image: &dyn AsyncDisk,
+        dev: &AsyncLogicalUnit,
     ) -> Result<(), ExecuteError> {
-        read_from_disk(disk_image, writer, dev, self.xfer_len(), self.lba() as u64).await
+        read_from_disk(writer, dev, self.xfer_len(), self.lba() as u64).await
     }
 }
 
@@ -373,7 +369,7 @@ impl ModeSense6 {
         self.subpage_code
     }
 
-    fn emulate(&self, writer: &mut Writer, dev: LogicalUnit) -> Result<(), ExecuteError> {
+    fn emulate(&self, writer: &mut Writer, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
         let alloc_len = self.alloc_len();
         let mut outbuf = vec![0u8; cmp::max(4096, alloc_len)];
         // outbuf[0]: Represents data length. Will be filled later.
@@ -533,7 +529,7 @@ impl ReadCapacity10 {
         self.pmi_field & 0x1 != 0
     }
 
-    fn emulate(&self, writer: &mut Writer, dev: LogicalUnit) -> Result<(), ExecuteError> {
+    fn emulate(&self, writer: &mut Writer, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
         if !self.pmi() && self.lba() != 0 {
             return Err(ExecuteError::InvalidField);
         }
@@ -574,10 +570,9 @@ impl Read10 {
     async fn emulate(
         &self,
         writer: &mut Writer,
-        dev: LogicalUnit,
-        disk_image: &dyn AsyncDisk,
+        dev: &AsyncLogicalUnit,
     ) -> Result<(), ExecuteError> {
-        read_from_disk(disk_image, writer, dev, self.xfer_len(), self.lba()).await
+        read_from_disk(writer, dev, self.xfer_len(), self.lba()).await
     }
 }
 
@@ -604,17 +599,15 @@ impl Write10 {
     async fn emulate(
         &self,
         reader: &mut Reader,
-        dev: LogicalUnit,
-        disk_image: &dyn AsyncDisk,
+        dev: &AsyncLogicalUnit,
     ) -> Result<(), ExecuteError> {
-        write_to_disk(disk_image, reader, dev, self.xfer_len(), self.lba()).await
+        write_to_disk(reader, dev, self.xfer_len(), self.lba()).await
     }
 }
 
 async fn write_to_disk(
-    disk_image: &dyn AsyncDisk,
     reader: &mut Reader,
-    dev: LogicalUnit,
+    dev: &AsyncLogicalUnit,
     xfer_blocks: usize,
     lba: u64,
 ) -> Result<(), ExecuteError> {
@@ -626,7 +619,7 @@ async fn write_to_disk(
     let offset = lba * block_size as u64;
     let before = reader.bytes_read();
     reader
-        .read_exact_to_at_fut(disk_image, count, offset)
+        .read_exact_to_at_fut(&*dev.disk_image, count, offset)
         .await
         .map_err(|desc_error| {
             let resid = count - (reader.bytes_read() - before);
@@ -646,8 +639,8 @@ pub struct SynchronizeCache10 {
 }
 
 impl SynchronizeCache10 {
-    async fn emulate(&self, disk_image: &dyn AsyncDisk) -> Result<(), ExecuteError> {
-        disk_image.fdatasync().await.map_err(|e| {
+    async fn emulate(&self, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
+        dev.disk_image.fdatasync().await.map_err(|e| {
             warn!("failed to sync: {e}");
             ExecuteError::SynchronizationError
         })
@@ -676,7 +669,7 @@ impl ReportLuns {
         if self.alloc_len() < 16 {
             return Err(ExecuteError::InvalidField);
         }
-        // Each LUN takes 8 bytes and we only support LUN0 (b/300586438).
+        // Each LUN takes 8 bytes and we only support LUN0.
         let lun_list_len = 8u32;
         writer
             .write_all(&lun_list_len.to_be_bytes())

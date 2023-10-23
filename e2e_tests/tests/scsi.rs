@@ -4,35 +4,64 @@
 
 //! Integration test for scsi devices as virtio-scsi.
 
+use std::path::Path;
+
 use fixture::utils::prepare_disk_img;
 use fixture::vm::Config;
 use fixture::vm::TestVm;
 
 // Mount the scsi device, and then check if simple read, write, and sync operations work.
-fn mount_scsi_device(config: Config) -> anyhow::Result<()> {
-    let disk = prepare_disk_img();
-    let scsi_disk = disk.path().to_str().unwrap();
-    println!("scsi-disk={scsi_disk}");
+fn mount_scsi_devices(mut config: Config, count: usize) -> anyhow::Result<()> {
+    let disks = (0..count).map(|_| prepare_disk_img()).collect::<Vec<_>>();
+    for disk in &disks {
+        let scsi_disk = disk.path().to_str().unwrap();
+        println!("scsi-disk={scsi_disk}");
+        config = config.extra_args(vec!["--scsi-block".to_string(), scsi_disk.to_string()]);
+    }
 
-    let config = config.extra_args(vec!["--scsi-block".to_string(), scsi_disk.to_string()]);
     let mut vm = TestVm::new(config).unwrap();
-    vm.exec_in_guest("mount -t ext4 /dev/sda /mnt")?;
-    vm.exec_in_guest("echo 42 > /mnt/tmp")?;
-    vm.exec_in_guest("sync -d /mnt/tmp")?;
-    assert_eq!(vm.exec_in_guest("cat /mnt/tmp")?.stdout.trim(), "42");
+    for (i, disk) in disks.iter().enumerate() {
+        let dev = format!("/dev/sd{}", char::from(b'a' + i as u8));
+        let dest = Path::new("/mnt").join(disk.path().file_name().unwrap());
+        vm.exec_in_guest("mount -t tmpfs none /mnt")?;
+        vm.exec_in_guest(&format!("mkdir -p {}", dest.display()))?;
+        vm.exec_in_guest(&format!("mount -t ext4 {dev} {}", dest.display()))?;
+
+        let output = dest.join("tmp");
+        vm.exec_in_guest(&format!("echo 42 > {}", output.display()))?;
+        vm.exec_in_guest(&format!("sync -d {}", output.display()))?;
+        assert_eq!(
+            vm.exec_in_guest(&format!("cat {}", output.display()))?
+                .stdout
+                .trim(),
+            "42"
+        );
+    }
     Ok(())
 }
 
 #[test]
 fn test_scsi_mount() {
     let config = Config::new();
-    mount_scsi_device(config).unwrap();
+    mount_scsi_devices(config, 1).unwrap();
 }
 
 #[test]
 fn test_scsi_mount_disable_sandbox() {
     let config = Config::new().disable_sandbox();
-    mount_scsi_device(config).unwrap();
+    mount_scsi_devices(config, 1).unwrap();
+}
+
+#[test]
+fn test_scsi_mount_multi_devices() {
+    let config = Config::new();
+    mount_scsi_devices(config, 3).unwrap();
+}
+
+#[test]
+fn test_scsi_mount_multi_devices_disable_sandbox() {
+    let config = Config::new().disable_sandbox();
+    mount_scsi_devices(config, 3).unwrap();
 }
 
 // This test is for commands in controlq.

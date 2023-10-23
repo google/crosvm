@@ -14,6 +14,7 @@ pub mod constants;
 mod device;
 
 pub use device::Controller;
+pub use device::DiskConfig;
 
 fn scsi_option_block_size_default() -> u32 {
     512

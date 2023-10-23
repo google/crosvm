@@ -89,6 +89,7 @@ pub use self::queue::Queue;
 pub use self::queue::QueueConfig;
 pub use self::rng::Rng;
 pub use self::scsi::Controller as ScsiController;
+pub use self::scsi::DiskConfig as ScsiDiskConfig;
 #[cfg(feature = "vtpm")]
 pub use self::tpm::Tpm;
 #[cfg(feature = "vtpm")]

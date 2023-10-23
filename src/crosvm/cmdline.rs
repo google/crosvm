@@ -2660,15 +2660,11 @@ impl TryFrom<RunCommand> for super::config::Config {
         // Pass the sorted disks to the VM config.
         cfg.disks = disks.into_iter().map(|d| d.disk_option).collect();
 
-        // TODO(b/300586438): Support multiple scsi options.
-        if cmd.scsi_block.len() > 1 {
-            return Err("multiple --scsi-block options are not supported yet".to_string());
-        }
-
         // If we have a root scsi disk, add the corresponding command-line parameters.
-        if let Some(s) = cmd.scsi_block.iter().find(|s| s.root) {
+        if let Some((i, s)) = cmd.scsi_block.iter().enumerate().find(|(_, s)| s.root) {
             cfg.params.push(format!(
-                "root=/dev/sda {}",
+                "root=/dev/sd{} {}",
+                char::from(b'a' + i as u8),
                 if s.read_only { "ro" } else { "rw" }
             ));
         }

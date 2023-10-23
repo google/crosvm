@@ -288,7 +288,9 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
     }
 }
 
-impl<'a> VirtioDeviceBuilder for &'a ScsiOption {
+pub struct ScsiConfig<'a>(pub &'a [ScsiOption]);
+
+impl<'a> VirtioDeviceBuilder for &'a ScsiConfig<'a> {
     const NAME: &'static str = "scsi";
 
     fn create_virtio_device(
@@ -296,12 +298,22 @@ impl<'a> VirtioDeviceBuilder for &'a ScsiOption {
         protection_type: ProtectionType,
     ) -> anyhow::Result<Box<dyn VirtioDevice>> {
         let base_features = virtio::base_features(protection_type);
-        info!("Trying to attach scsi device: {}", self.path.display());
-        let disk_image = self.open()?;
-        Ok(Box::new(
-            virtio::ScsiController::new(disk_image, base_features, self.block_size, self.read_only)
-                .context("failed to create scsi device")?,
-        ))
+        let disks = self
+            .0
+            .iter()
+            .map(|op| {
+                info!("Trying to attach a scsi device: {}", op.path.display());
+                let file = op.open()?;
+                Ok(virtio::ScsiDiskConfig {
+                    file,
+                    block_size: op.block_size,
+                    read_only: op.read_only,
+                })
+            })
+            .collect::<anyhow::Result<_>>()?;
+        let controller = virtio::ScsiController::new(base_features, disks)
+            .context("failed to create a scsi controller")?;
+        Ok(Box::new(controller))
     }
 }
 
