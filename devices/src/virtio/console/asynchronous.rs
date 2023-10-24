@@ -12,7 +12,10 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use anyhow::Context;
 use base::error;
+#[cfg(windows)]
+use base::named_pipes;
 use base::AsRawDescriptor;
+use base::Descriptor;
 use base::Event;
 use base::FileSync;
 use base::RawDescriptor;
@@ -223,6 +226,17 @@ impl SerialDevice for ConsoleDevice {
             avail_features,
         }
     }
+
+    #[cfg(windows)]
+    fn new_with_pipe(
+        _protection_type: ProtectionType,
+        _interrupt_evt: Event,
+        _pipe_in: named_pipes::PipeConnection,
+        _pipe_out: named_pipes::PipeConnection,
+        _keep_rds: Vec<RawDescriptor>,
+    ) -> ConsoleDevice {
+        unimplemented!("new_with_pipe unimplemented for ConsoleDevice");
+    }
 }
 
 enum VirtioConsoleState {
@@ -235,7 +249,7 @@ enum VirtioConsoleState {
 pub struct AsyncConsole {
     state: VirtioConsoleState,
     base_features: u64,
-    keep_rds: Vec<RawDescriptor>,
+    keep_descriptors: Vec<Descriptor>,
 }
 
 impl SerialDevice for AsyncConsole {
@@ -259,14 +273,28 @@ impl SerialDevice for AsyncConsole {
                 Default::default(),
             )),
             base_features: base_features(protection_type),
-            keep_rds,
+            keep_descriptors: keep_rds.iter().copied().map(Descriptor).collect(),
         }
+    }
+
+    #[cfg(windows)]
+    fn new_with_pipe(
+        _protection_type: ProtectionType,
+        _interrupt_evt: Event,
+        _pipe_in: named_pipes::PipeConnection,
+        _pipe_out: named_pipes::PipeConnection,
+        _keep_rds: Vec<RawDescriptor>,
+    ) -> AsyncConsole {
+        unimplemented!("new_with_pipe unimplemented for AsyncConsole");
     }
 }
 
 impl VirtioDevice for AsyncConsole {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        self.keep_rds.clone()
+        self.keep_descriptors
+            .iter()
+            .map(Descriptor::as_raw_descriptor)
+            .collect()
     }
 
     fn features(&self) -> u64 {

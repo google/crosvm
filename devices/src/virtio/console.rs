@@ -5,7 +5,6 @@
 //! Legacy console device that uses a polling thread. This is kept because it is still used by
 //! Windows ; outside of this use-case, please use [[asynchronous::AsyncConsole]] instead.
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
 pub mod asynchronous;
 mod sys;
 
