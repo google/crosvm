@@ -727,7 +727,7 @@ impl Worker {
     }
 
     fn calculate_buf_alloc_from_pipe(pipe: &PipeConnection, port: PortPair) -> usize {
-        match pipe.get_info(/* is_server_connection= */ false) {
+        match pipe.get_info() {
             Ok(info) => {
                 if info.outgoing_buffer_size > 0 {
                     info.outgoing_buffer_size as usize

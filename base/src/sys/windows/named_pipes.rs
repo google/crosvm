@@ -1001,31 +1001,19 @@ impl PipeConnection {
     }
 
     /// Returns metadata about the connected NamedPipe.
-    pub fn get_info(&self, is_server_connection: bool) -> Result<NamedPipeInfo> {
+    pub fn get_info(&self) -> Result<NamedPipeInfo> {
         let mut flags: u32 = 0;
-        // Marked mutable because they are mutated in a system call
-        #[allow(unused_mut)]
         let mut incoming_buffer_size: u32 = 0;
-        #[allow(unused_mut)]
         let mut outgoing_buffer_size: u32 = 0;
-        #[allow(unused_mut)]
         let mut max_instances: u32 = 0;
-        // Client side with BYTE type are default flags
-        if is_server_connection {
-            flags |= 0x00000001 /* PIPE_SERVER_END */
-        }
-        if self.framing_mode == FramingMode::Message {
-            flags |= 0x00000004 /* PIPE_TYPE_MESSAGE */
-        }
-        // Safe because we have allocated all pointers and own
-        // them as mutable.
+        // SAFETY: all pointers are valid
         fail_if_zero!(unsafe {
             GetNamedPipeInfo(
                 self.as_raw_descriptor(),
-                flags as *mut u32,
-                outgoing_buffer_size as *mut u32,
-                incoming_buffer_size as *mut u32,
-                max_instances as *mut u32,
+                &mut flags,
+                &mut outgoing_buffer_size,
+                &mut incoming_buffer_size,
+                &mut max_instances,
             )
         });
 
@@ -1033,6 +1021,7 @@ impl PipeConnection {
             outgoing_buffer_size,
             incoming_buffer_size,
             max_instances,
+            flags,
         })
     }
 
@@ -1090,10 +1079,12 @@ impl io::Write for PipeConnection {
 
 /// A simple data struct representing
 /// metadata about a NamedPipe.
+#[derive(Debug, PartialEq, Eq)]
 pub struct NamedPipeInfo {
     pub outgoing_buffer_size: u32,
     pub incoming_buffer_size: u32,
     pub max_instances: u32,
+    pub flags: u32,
 }
 
 #[cfg(test)]
