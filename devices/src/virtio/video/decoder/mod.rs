@@ -1227,9 +1227,9 @@ impl<D: DecoderBackend> Device for Decoder<D> {
 
         match ctx.pending_responses.front() {
             Some(PendingResponse::PollingBufferBarrier(desc)) => {
-                wait_ctx
-                    .delete(&Descriptor(desc.as_raw_descriptor()))
-                    .unwrap();
+                // `delete` can return an error if the descriptor has been closed by e.g. the GPU
+                // driver. We can safely ignore these.
+                let _ = wait_ctx.delete(&Descriptor(desc.as_raw_descriptor()));
                 ctx.pending_responses.pop_front();
             }
             _ => {
