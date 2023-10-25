@@ -7,7 +7,7 @@ FROM ${ARCH}/debian:bookworm
 RUN --mount=type=cache,target=/var/cache/apt,sharing=private \
     --mount=type=cache,target=/var/lib/apt,sharing=private \
     apt-get update \
-    && apt-get install --yes pciutils ncat alsa-utils sox
+    && apt-get install --yes pciutils ncat alsa-utils sox sg3-utils
 
 # Note: This docker file is run from the $(target)/rootfs directory specified in
 #       the Makefile.
