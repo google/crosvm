@@ -97,9 +97,10 @@ fn update_device_nodes(
 
     if !resources.iommus.is_empty() {
         let mut iommus_val = Vec::new();
-        for (t, id) in &resources.iommus {
+        for (t, id, vsids) in &resources.iommus {
             let phandle = get_iommu_phandle(*t, *id, phandles)?;
             iommus_val.push(phandle);
+            iommus_val.extend_from_slice(vsids);
         }
         node.set_prop("iommus", iommus_val)?;
     }

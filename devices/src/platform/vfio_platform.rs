@@ -309,8 +309,9 @@ impl VfioPlatformDevice {
         self.device.dt_symbol()
     }
 
-    /// Returns the type and indentifier (if applicable) of the IOMMU used by this VFIO device.
-    pub fn iommu(&self) -> Option<(IommuDevType, Option<u32>)> {
+    /// Returns the type and indentifier (if applicable) of the IOMMU used by this VFIO device and
+    /// its master IDs.
+    pub fn iommu(&self) -> Option<(IommuDevType, Option<u32>, &[u32])> {
         self.device.iommu()
     }
 }

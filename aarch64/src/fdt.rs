@@ -377,7 +377,7 @@ fn get_pkvm_pviommu_ids(platform_dev_resources: &Vec<PlatformBusResources>) -> R
 
     for res in platform_dev_resources {
         for iommu in &res.iommus {
-            if let (IommuDevType::PkvmPviommu, Some(id)) = iommu {
+            if let (IommuDevType::PkvmPviommu, Some(id), _) = iommu {
                 ids.insert(*id);
             }
         }
@@ -394,7 +394,7 @@ fn create_pkvm_pviommu_node(fdt: &mut Fdt, index: usize, id: u32) -> Result<u32>
 
     let iommu_node = fdt.root_mut().subnode_mut(&name)?;
     iommu_node.set_prop("phandle", phandle)?;
-    iommu_node.set_prop("#iommu-cells", 0u32)?;
+    iommu_node.set_prop("#iommu-cells", 1u32)?;
     iommu_node.set_prop("compatible", "pkvm,pviommu")?;
     iommu_node.set_prop("id", id)?;
 

@@ -128,7 +128,7 @@ pub struct PlatformBusResources {
     pub dt_symbol: String,        // DT symbol (label) assigned to the device
     pub regions: Vec<(u64, u64)>, // (start address, size)
     pub irqs: Vec<(u32, u32)>,    // (IRQ number, flags)
-    pub iommus: Vec<(IommuDevType, Option<u32>)>, // (IOMMU type, IOMMU identifier)
+    pub iommus: Vec<(IommuDevType, Option<u32>, Vec<u32>)>, // (IOMMU type, IOMMU identifier, IDs)
 }
 
 impl PlatformBusResources {
@@ -225,9 +225,11 @@ pub fn generate_platform_bus(
             }
         }
 
-        if let Some(iommu) = device.iommu() {
+        if let Some((iommu_type, id, vsids)) = device.iommu() {
             // We currently only support one IOMMU per VFIO device.
-            device_resources.iommus.push(iommu);
+            device_resources
+                .iommus
+                .push((iommu_type, id, vsids.to_vec()));
         }
 
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
