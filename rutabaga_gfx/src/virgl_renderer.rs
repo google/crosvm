@@ -89,6 +89,7 @@ fn import_resource(resource: &mut RutabagaResource) -> RutabagaResult<()> {
 
 impl RutabagaContext for VirglRendererContext {
     fn submit_cmd(&mut self, commands: &mut [u8], fence_ids: &[u64]) -> RutabagaResult<()> {
+        #[cfg(not(virgl_renderer_unstable))]
         if !fence_ids.is_empty() {
             return Err(RutabagaError::Unsupported);
         }
@@ -96,6 +97,7 @@ impl RutabagaContext for VirglRendererContext {
             return Err(RutabagaError::InvalidCommandSize(commands.len()));
         }
         let dword_count = (commands.len() / size_of::<u32>()) as i32;
+        #[cfg(not(virgl_renderer_unstable))]
         // SAFETY:
         // Safe because the context and buffer are valid and virglrenderer will have been
         // initialized if there are Context instances.
@@ -104,6 +106,19 @@ impl RutabagaContext for VirglRendererContext {
                 commands.as_mut_ptr() as *mut c_void,
                 self.ctx_id as i32,
                 dword_count,
+            )
+        };
+        #[cfg(virgl_renderer_unstable)]
+        // SAFETY:
+        // Safe because the context and buffers are valid and virglrenderer will have been
+        // initialized if there are Context instances.
+        let ret = unsafe {
+            virgl_renderer_submit_cmd2(
+                commands.as_mut_ptr() as *mut c_void,
+                self.ctx_id as i32,
+                dword_count,
+                fence_ids.as_ptr() as *mut u64,
+                fence_ids.len() as u32,
             )
         };
         ret_to_res(ret)
