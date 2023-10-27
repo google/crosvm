@@ -117,17 +117,40 @@ async fn run_rx_queue(
     }
 }
 
-pub struct ConsoleDevice {
+pub struct ConsolePort {
     input: Option<AsyncQueueState<AsyncSerialInput>>,
     output: AsyncQueueState<Box<dyn io::Write + Send>>,
-    avail_features: u64,
 }
 
-impl ConsoleDevice {
-    pub fn avail_features(&self) -> u64 {
-        self.avail_features
+impl SerialDevice for ConsolePort {
+    fn new(
+        _protection_type: ProtectionType,
+        _evt: Event,
+        input: Option<Box<dyn SerialInput>>,
+        output: Option<Box<dyn io::Write + Send>>,
+        _sync: Option<Box<dyn FileSync + Send>>,
+        _options: SerialOptions,
+        _keep_rds: Vec<RawDescriptor>,
+    ) -> ConsolePort {
+        let input = input.map(AsyncSerialInput).map(AsyncQueueState::Stopped);
+        let output = AsyncQueueState::Stopped(output.unwrap_or_else(|| Box::new(io::sink())));
+
+        ConsolePort { input, output }
     }
 
+    #[cfg(windows)]
+    fn new_with_pipe(
+        _protection_type: ProtectionType,
+        _interrupt_evt: Event,
+        _pipe_in: named_pipes::PipeConnection,
+        _pipe_out: named_pipes::PipeConnection,
+        _keep_rds: Vec<RawDescriptor>,
+    ) -> ConsolePort {
+        unimplemented!("new_with_pipe unimplemented for ConsolePort");
+    }
+}
+
+impl ConsolePort {
     pub fn start_receive_queue(
         &mut self,
         ex: &Executor,
@@ -209,22 +232,72 @@ impl ConsoleDevice {
     }
 }
 
+/// Console device.
+pub struct ConsoleDevice {
+    avail_features: u64,
+    port: ConsolePort,
+}
+
+impl ConsoleDevice {
+    /// Return available features
+    pub fn avail_features(&self) -> u64 {
+        self.avail_features
+    }
+
+    /// Start the receive queue for port0, which always exists.
+    pub fn start_receive_queue(
+        &mut self,
+        ex: &Executor,
+        queue: Arc<Mutex<virtio::Queue>>,
+        doorbell: Interrupt,
+    ) -> anyhow::Result<()> {
+        let port = &mut self.port;
+        port.start_receive_queue(ex, queue, doorbell)
+    }
+
+    /// Stop the receive queue for port0, which always exists.
+    pub fn stop_receive_queue(&mut self) -> anyhow::Result<bool> {
+        let port = &mut self.port;
+        port.stop_receive_queue().context("failed to stop rx queue")
+    }
+
+    /// Start the transmit queue for port0, which always exists.
+    pub fn start_transmit_queue(
+        &mut self,
+        ex: &Executor,
+        queue: Arc<Mutex<virtio::Queue>>,
+        doorbell: Interrupt,
+    ) -> anyhow::Result<()> {
+        let port = &mut self.port;
+        port.start_transmit_queue(ex, queue, doorbell)
+    }
+
+    /// Stop the transmit queue for port0, which always exists.
+    pub fn stop_transmit_queue(&mut self) -> anyhow::Result<bool> {
+        let port = &mut self.port;
+        port.stop_transmit_queue()
+            .context("failed to stop tx queue")
+    }
+}
+
 impl SerialDevice for ConsoleDevice {
     fn new(
         protection_type: ProtectionType,
-        _evt: Event,
+        evt: Event,
         input: Option<Box<dyn SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
-        _sync: Option<Box<dyn FileSync + Send>>,
-        _options: SerialOptions,
-        _keep_rds: Vec<RawDescriptor>,
+        sync: Option<Box<dyn FileSync + Send>>,
+        options: SerialOptions,
+        keep_rds: Vec<RawDescriptor>,
     ) -> ConsoleDevice {
         let avail_features =
             virtio::base_features(protection_type) | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
+        let console_port =
+            ConsolePort::new(protection_type, evt, input, output, sync, options, keep_rds);
+
         ConsoleDevice {
-            input: input.map(AsyncSerialInput).map(AsyncQueueState::Stopped),
-            output: AsyncQueueState::Stopped(output.unwrap_or_else(|| Box::new(io::sink()))),
             avail_features,
+            port: console_port,
         }
     }
 
@@ -361,10 +434,14 @@ impl VirtioDevice for AsyncConsole {
                 // Run until the kill event is signaled and cancel all tasks.
                 ex.run_until(async {
                     async_utils::await_and_exit(&ex, kill_evt).await?;
-                    if let Some(input) = console.input.as_mut() {
+                    if let Some(input) = console.port.input.as_mut() {
                         input.stop().context("failed to stop rx queue")?;
                     }
-                    console.output.stop().context("failed to stop tx queue")?;
+                    console
+                        .port
+                        .output
+                        .stop()
+                        .context("failed to stop tx queue")?;
 
                     Ok(console)
                 })?
