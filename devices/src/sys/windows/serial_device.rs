@@ -16,6 +16,7 @@ use hypervisor::ProtectionType;
 
 use crate::serial_device::Error;
 use crate::serial_device::SerialInput;
+use crate::serial_device::SerialOptions;
 use crate::serial_device::SerialParameters;
 
 pub const SYSTEM_SERIAL_TYPE_NAME: &str = "NamedPipe";
@@ -29,7 +30,7 @@ pub trait SerialDevice {
         input: Option<Box<dyn SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
         sync: Option<Box<dyn FileSync + Send>>,
-        out_timestamp: bool,
+        options: SerialOptions,
         keep_rds: Vec<RawDescriptor>,
     ) -> Self;
     fn new_with_pipe(

@@ -160,6 +160,15 @@ pub struct SerialParameters {
     pub debugcon_port: u16,
 }
 
+/// Temporary structure containing the parameters of a serial port for easy passing to
+/// `SerialDevice::new`.
+#[derive(Default)]
+pub struct SerialOptions {
+    pub name: Option<String>,
+    pub out_timestamp: bool,
+    pub console: bool,
+}
+
 impl SerialParameters {
     /// Helper function to create a serial device from the defined parameters.
     ///
@@ -236,7 +245,11 @@ impl SerialParameters {
             input,
             output,
             sync,
-            self.out_timestamp,
+            SerialOptions {
+                name: self.name.clone(),
+                out_timestamp: self.out_timestamp,
+                console: self.console,
+            },
             keep_rds.to_vec(),
         ))
     }

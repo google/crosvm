@@ -37,6 +37,7 @@ use super::handle_input;
 use super::process_transmit_queue;
 use super::QUEUE_SIZES;
 use crate::serial_device::SerialInput;
+use crate::serial_device::SerialOptions;
 use crate::virtio;
 use crate::virtio::async_device::AsyncQueueState;
 use crate::virtio::async_utils;
@@ -215,7 +216,7 @@ impl SerialDevice for ConsoleDevice {
         input: Option<Box<dyn SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
         _sync: Option<Box<dyn FileSync + Send>>,
-        _out_timestamp: bool,
+        _options: SerialOptions,
         _keep_rds: Vec<RawDescriptor>,
     ) -> ConsoleDevice {
         let avail_features =
@@ -259,7 +260,7 @@ impl SerialDevice for AsyncConsole {
         input: Option<Box<dyn SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
         sync: Option<Box<dyn FileSync + Send>>,
-        out_timestamp: bool,
+        options: SerialOptions,
         keep_rds: Vec<RawDescriptor>,
     ) -> AsyncConsole {
         AsyncConsole {
@@ -269,7 +270,7 @@ impl SerialDevice for AsyncConsole {
                 input,
                 output,
                 sync,
-                out_timestamp,
+                options,
                 Default::default(),
             )),
             base_features: base_features(protection_type),

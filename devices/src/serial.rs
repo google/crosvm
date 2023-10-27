@@ -620,6 +620,7 @@ mod tests {
     use sync::Mutex;
 
     use super::*;
+    use crate::serial_device::SerialOptions;
     use crate::suspendable_tests;
     pub use crate::sys::serial_device::SerialDevice;
 
@@ -672,7 +673,7 @@ mod tests {
             None,
             Some(Box::new(serial_out.clone())),
             None,
-            false,
+            Default::default(),
             Vec::new(),
         );
 
@@ -693,7 +694,7 @@ mod tests {
             None,
             Some(Box::new(serial_out)),
             None,
-            false,
+            Default::default(),
             Vec::new(),
         );
 
@@ -721,7 +722,7 @@ mod tests {
             None,
             Some(Box::new(serial_out)),
             None,
-            false,
+            Default::default(),
             Vec::new(),
         );
 
@@ -770,7 +771,7 @@ mod tests {
             None,
             Some(Box::new(serial_out)),
             None,
-            false,
+            Default::default(),
             Vec::new(),
         );
 
@@ -809,7 +810,7 @@ mod tests {
             None,
             Some(Box::new(serial_out)),
             None,
-            false,
+            Default::default(),
             Vec::new(),
         );
 
@@ -856,7 +857,7 @@ mod tests {
             None,
             Some(Box::new(serial_out)),
             None,
-            false,
+            Default::default(),
             Vec::new(),
         );
 
@@ -892,7 +893,7 @@ mod tests {
             None,
             Some(Box::new(serial_out)),
             None,
-            false,
+            Default::default(),
             Vec::new(),
         );
 
@@ -916,7 +917,7 @@ mod tests {
             None,
             Some(Box::new(serial_out)),
             None,
-            false,
+            Default::default(),
             Vec::new(),
         );
 
@@ -956,7 +957,7 @@ mod tests {
             None,
             Some(Box::new(SharedBuffer::new())),
             None,
-            false,
+            Default::default(),
             Vec::new(),
         ),
         modify_device
@@ -989,7 +990,10 @@ mod tests {
             None,
             Some(Box::new(serial_out.clone())),
             None,
-            true,
+            SerialOptions {
+                out_timestamp: true,
+                ..Default::default()
+            },
             Vec::new(),
         );
 

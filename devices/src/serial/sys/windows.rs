@@ -21,6 +21,7 @@ use hypervisor::ProtectionType;
 
 use crate::bus::BusDevice;
 use crate::serial_device::SerialInput;
+use crate::serial_device::SerialOptions;
 use crate::sys::serial_device::SerialDevice;
 use crate::Serial;
 
@@ -84,7 +85,7 @@ impl SerialDevice for Serial {
         input: Option<Box<dyn SerialInput>>,
         out: Option<Box<dyn io::Write + Send>>,
         sync: Option<Box<dyn FileSync + Send>>,
-        out_timestamp: bool,
+        options: SerialOptions,
         _keep_rds: Vec<RawDescriptor>,
     ) -> Serial {
         let system_params = SystemSerialParams {
@@ -93,7 +94,13 @@ impl SerialDevice for Serial {
             sync_thread: None,
             kill_evt: None,
         };
-        Serial::new_common(interrupt_evt, input, out, out_timestamp, system_params)
+        Serial::new_common(
+            interrupt_evt,
+            input,
+            out,
+            options.out_timestamp,
+            system_params,
+        )
     }
 
     /// Constructs a Serial device connected to a named pipe for I/O

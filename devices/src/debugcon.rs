@@ -16,6 +16,7 @@ use hypervisor::ProtectionType;
 
 use crate::pci::CrosvmDeviceId;
 use crate::serial_device::SerialInput;
+use crate::serial_device::SerialOptions;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
@@ -35,7 +36,7 @@ impl SerialDevice for Debugcon {
         _input: Option<Box<dyn SerialInput>>,
         out: Option<Box<dyn io::Write + Send>>,
         _sync: Option<Box<dyn FileSync + Send>>,
-        _out_timestamp: bool,
+        _options: SerialOptions,
         _keep_rds: Vec<RawDescriptor>,
     ) -> Debugcon {
         Debugcon { out }
@@ -159,7 +160,7 @@ mod tests {
             None,
             Some(Box::new(debugcon_out.clone())),
             None,
-            false,
+            Default::default(),
             Vec::new(),
         );
 
@@ -177,7 +178,7 @@ mod tests {
             None,
             None,
             None,
-            false,
+            Default::default(),
             Vec::new(),
         );
 

@@ -10,6 +10,7 @@ use base::RawDescriptor;
 use hypervisor::ProtectionType;
 
 use crate::serial_device::SerialInput;
+use crate::serial_device::SerialOptions;
 use crate::sys::serial_device::SerialDevice;
 use crate::Serial;
 
@@ -27,9 +28,9 @@ impl SerialDevice for Serial {
         input: Option<Box<dyn SerialInput>>,
         out: Option<Box<dyn io::Write + Send>>,
         _sync: Option<Box<dyn FileSync + Send>>,
-        out_timestamp: bool,
+        options: SerialOptions,
         _keep_rds: Vec<RawDescriptor>,
     ) -> Serial {
-        Serial::new_common(interrupt_evt, input, out, out_timestamp)
+        Serial::new_common(interrupt_evt, input, out, options.out_timestamp)
     }
 }

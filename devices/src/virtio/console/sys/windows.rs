@@ -17,6 +17,7 @@ use base::WorkerThread;
 use sync::Mutex;
 
 use crate::serial_device::SerialInput;
+use crate::serial_device::SerialOptions;
 use crate::virtio::console::Console;
 use crate::virtio::ProtectionType;
 use crate::SerialDevice;
@@ -29,7 +30,7 @@ impl SerialDevice for Console {
         out: Option<Box<dyn io::Write + Send>>,
         // TODO(b/171331752): connect filesync functionality.
         _sync: Option<Box<dyn FileSync + Send>>,
-        _out_timestamp: bool,
+        _options: SerialOptions,
         keep_rds: Vec<RawDescriptor>,
     ) -> Console {
         Console::new(protection_type, None, out, keep_rds)
