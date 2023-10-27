@@ -14,9 +14,11 @@ use base::flock;
 use base::iov_max;
 use base::open_file_or_duplicate;
 use base::FlockOperation;
+use cros_async::Executor;
 use disk::DiskFile;
 
 use crate::virtio::block::DiskOption;
+use crate::virtio::BlockAsync;
 
 pub fn get_seg_max(queue_size: u16) -> u32 {
     let seg_max = min(max(iov_max(), 1), u32::max_value() as usize) as u32;
@@ -54,5 +56,11 @@ impl DiskOption {
 
         disk::create_disk_file(raw_image, self.sparse, disk::MAX_NESTING_DEPTH, &self.path)
             .context("create_disk_file failed")
+    }
+}
+
+impl BlockAsync {
+    pub fn create_executor(&self) -> Executor {
+        Executor::with_executor_kind(self.executor_kind).expect("Failed to create an executor")
     }
 }

@@ -652,6 +652,8 @@ pub struct BlockAsync {
     worker_per_queue: bool,
     // Number of queues passed to `activate`. None if device not activated.
     num_activated_queues: Option<usize>,
+    #[cfg(windows)]
+    pub(crate) io_concurrency: u32,
 }
 
 impl BlockAsync {
@@ -672,6 +674,8 @@ impl BlockAsync {
         let multiple_workers = disk_option.multiple_workers;
         let executor_kind = disk_option.async_executor;
         let boot_index = disk_option.bootindex;
+        #[cfg(windows)]
+        let io_concurrency = disk_option.io_concurrency.get();
 
         if block_size % SECTOR_SIZE as u32 != 0 {
             error!(
@@ -723,6 +727,8 @@ impl BlockAsync {
             executor_kind,
             num_activated_queues: None,
             boot_index,
+            #[cfg(windows)]
+            io_concurrency,
         })
     }
 
@@ -1007,7 +1013,6 @@ impl VirtioDevice for BlockAsync {
         let read_only = self.read_only;
         let sparse = self.sparse;
         let id = self.id;
-        let executor_kind = self.executor_kind;
         let disk_image = self
             .disk_image
             .take()
@@ -1040,6 +1045,7 @@ impl VirtioDevice for BlockAsync {
             let shared_state = Arc::clone(&shared_state);
             let interrupt = interrupt.clone();
             let control_tube = self.control_tube.take();
+            let ex = self.create_executor();
 
             let (worker_tx, worker_rx) = mpsc::unbounded();
             // Add commands to start all the queues before starting the worker.
@@ -1054,9 +1060,6 @@ impl VirtioDevice for BlockAsync {
             }
 
             let worker_thread = WorkerThread::start("virtio_blk", move |kill_evt| {
-                let ex = Executor::with_executor_kind(executor_kind)
-                    .expect("Failed to create an executor");
-
                 let async_control = control_tube
                     .map(|c| AsyncTube::new(&ex, c).expect("failed to create async tube"));
                 let async_image = match disk_image.to_async_disk(&ex) {

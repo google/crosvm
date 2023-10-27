@@ -25,6 +25,7 @@ use winapi::um::minwinbase::OVERLAPPED;
 
 use crate::common_executor;
 use crate::common_executor::RawExecutor;
+use crate::sys::windows::executor::DEFAULT_IO_CONCURRENCY;
 use crate::sys::windows::io_completion_port::CompletionPacket;
 use crate::sys::windows::io_completion_port::IoCompletionPort;
 use crate::waker::WakerToken;
@@ -75,12 +76,16 @@ pub struct HandleReactor {
 }
 
 impl HandleReactor {
-    fn new() -> Result<Self> {
-        let iocp = IoCompletionPort::new()?;
+    pub fn new_with(concurrency: u32) -> Result<Self> {
+        let iocp = IoCompletionPort::new(concurrency)?;
         Ok(Self {
             iocp,
             overlapped_ops: Mutex::new(HashMap::with_capacity(64)),
         })
+    }
+
+    fn new() -> Result<Self> {
+        Self::new_with(DEFAULT_IO_CONCURRENCY)
     }
 
     /// All descriptors must be first registered with IOCP before any completion packets can be
@@ -149,9 +154,7 @@ impl common_executor::Reactor for HandleReactor {
     }
 
     fn wake(&self) {
-        self.iocp
-            .post_status(0, INVALID_HANDLE_VALUE as usize)
-            .expect("wakeup failed on HandleReactor.");
+        self.iocp.wake().expect("wakeup failed on HandleReactor.");
     }
 
     fn on_executor_drop<'a>(&'a self) -> Pin<Box<dyn Future<Output = ()> + 'a>> {

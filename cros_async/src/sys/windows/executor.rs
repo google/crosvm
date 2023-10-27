@@ -18,6 +18,8 @@ use crate::AsyncResult;
 use crate::IntoAsync;
 use crate::IoSource;
 
+pub const DEFAULT_IO_CONCURRENCY: u32 = 1;
+
 /// An executor for scheduling tasks that poll futures to completion.
 ///
 /// All asynchronous operations must run within an executor, which is capable of spawning futures as
@@ -200,6 +202,16 @@ impl Executor {
             ExecutorKind::Overlapped => {
                 Ok(Executor::Overlapped(RawExecutor::<HandleReactor>::new()?))
             }
+        }
+    }
+
+    /// Create a new `Executor` of the given `ExecutorKind`.
+    pub fn with_kind_and_concurrency(kind: ExecutorKind, concurrency: u32) -> AsyncResult<Self> {
+        match kind {
+            ExecutorKind::Handle => Ok(Executor::Handle(RawExecutor::<HandleReactor>::new()?)),
+            ExecutorKind::Overlapped => Ok(Executor::Overlapped(
+                RawExecutor::<HandleReactor>::new_with(HandleReactor::new_with(concurrency)?)?,
+            )),
         }
     }
 

@@ -84,14 +84,18 @@ pub struct RawExecutor<Re: Reactor + 'static> {
 }
 
 impl<Re: Reactor> RawExecutor<Re> {
-    pub fn new() -> AsyncResult<Arc<Self>> {
+    pub fn new_with(reactor: Re) -> AsyncResult<Arc<Self>> {
         Ok(Arc::new(RawExecutor {
-            reactor: Re::new().map_err(AsyncError::Io)?,
+            reactor,
             queue: RunnableQueue::new(),
             blocking_pool: Default::default(),
             state: AtomicI32::new(PROCESSING),
             detached_tasks: Mutex::new(DetachedTasks::new()),
         }))
+    }
+
+    pub fn new() -> AsyncResult<Arc<Self>> {
+        Self::new_with(Re::new().map_err(AsyncError::Io)?)
     }
 
     fn wake(&self) {

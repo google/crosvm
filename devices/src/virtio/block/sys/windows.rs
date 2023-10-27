@@ -8,6 +8,7 @@ use std::os::windows::fs::OpenOptionsExt;
 
 use anyhow::Context;
 use base::warn;
+use cros_async::Executor;
 use cros_async::ExecutorKind;
 use winapi::um::winbase::FILE_FLAG_NO_BUFFERING;
 use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
@@ -15,6 +16,7 @@ use winapi::um::winnt::FILE_SHARE_READ;
 use winapi::um::winnt::FILE_SHARE_WRITE;
 
 use crate::virtio::block::DiskOption;
+use crate::virtio::BlockAsync;
 
 pub fn get_seg_max(_queue_size: u16) -> u32 {
     // Allow a single segment per request, since vectored I/O is not implemented for Windows yet.
@@ -57,5 +59,12 @@ impl DiskOption {
             &self.path,
             image_type,
         )?)
+    }
+}
+
+impl BlockAsync {
+    pub fn create_executor(&self) -> Executor {
+        Executor::with_kind_and_concurrency(self.executor_kind, self.io_concurrency)
+            .expect("Failed to create an executor")
     }
 }
