@@ -513,7 +513,7 @@ impl BusDevice for ProxyDevice {
 }
 
 impl Suspendable for ProxyDevice {
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         let res = self.sync_send(&Command::Snapshot);
         match res {
             Some(CommandResult::SnapshotResult(Ok(snap))) => Ok(snap),

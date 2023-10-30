@@ -506,7 +506,7 @@ impl Suspendable for GoldfishBattery {
         Ok(())
     }
 
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(GoldfishBatterySnapshot {
             state: self.state.lock().clone(),
             mmio_base: self.mmio_base,

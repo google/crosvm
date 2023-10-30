@@ -466,7 +466,7 @@ impl Bus {
         for device_entry in self.unique_devices() {
             match device_entry {
                 BusDeviceEntry::OuterSync(dev) => {
-                    let dev = dev.lock();
+                    let mut dev = dev.lock();
                     debug!("Snapshot on device: {}", dev.debug_label());
                     add_snapshot(
                         u32::from(dev.device_id()),
@@ -763,7 +763,7 @@ mod tests {
     }
 
     impl Suspendable for DummyDevice {
-        fn snapshot(&self) -> AnyhowResult<serde_json::Value> {
+        fn snapshot(&mut self) -> AnyhowResult<serde_json::Value> {
             serde_json::to_value(self).context("error serializing")
         }
 
@@ -819,7 +819,7 @@ mod tests {
     }
 
     impl Suspendable for ConstantDevice {
-        fn snapshot(&self) -> AnyhowResult<serde_json::Value> {
+        fn snapshot(&mut self) -> AnyhowResult<serde_json::Value> {
             serde_json::to_value(self).context("error serializing")
         }
 

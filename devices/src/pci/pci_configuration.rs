@@ -837,7 +837,7 @@ impl PciConfiguration {
         }
     }
 
-    pub fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    pub fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(PciConfigurationSerialized {
             registers: self.registers,
             writable_bits: self.writable_bits,

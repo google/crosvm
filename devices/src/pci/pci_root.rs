@@ -107,7 +107,7 @@ impl Suspendable for PciRootConfiguration {
         Ok(())
     }
 
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         self.config
             .snapshot()
             .with_context(|| format!("failed to serialize {}", PciDevice::debug_label(self)))
@@ -442,7 +442,7 @@ impl PciRoot {
         }
     }
 
-    pub fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    pub fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(PciRootSerializable {
             root_configuration: self
                 .root_configuration
@@ -730,7 +730,7 @@ impl Suspendable for PciConfigIo {
         Ok(())
     }
 
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(PciConfigIoSerializable {
             pci_root: self
                 .pci_root
@@ -833,7 +833,7 @@ impl Suspendable for PciConfigMmio {
         Ok(())
     }
 
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(PciConfigMmioSerializable {
             pci_root: self
                 .pci_root
@@ -946,7 +946,7 @@ impl Suspendable for PciVirtualConfigMmio {
         Ok(())
     }
 
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(PciVirtualConfigMmioSerializable {
             pci_root: self
                 .pci_root

@@ -162,8 +162,8 @@ impl ACPIPMResource {
 }
 
 impl Suspendable for ACPIPMResource {
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(self)
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(&self)
             .with_context(|| format!("error serializing {}", self.debug_label()))
     }
 

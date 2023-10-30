@@ -18,7 +18,7 @@ pub enum DeviceState {
 /// suspend/resume in crosvm.
 pub trait Suspendable {
     /// Save the device state in an image that can be restored.
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         Err(anyhow!(
             "Suspendable::snapshot not implemented for {}",
             std::any::type_name::<Self>()

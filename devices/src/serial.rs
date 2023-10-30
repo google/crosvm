@@ -517,7 +517,7 @@ struct SerialSnapshot {
 }
 
 impl Suspendable for Serial {
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         let snap = SerialSnapshot {
             interrupt_enable: self.interrupt_enable.load(Ordering::SeqCst),
             interrupt_identification: self.interrupt_identification,

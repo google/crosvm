@@ -220,7 +220,7 @@ impl PciDevice for PvPanicPciDevice {
 }
 
 impl Suspendable for PvPanicPciDevice {
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         self.config_regs
             .snapshot()
             .context("failed to serialize PvPanicPciDevice")

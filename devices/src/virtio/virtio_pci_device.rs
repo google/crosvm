@@ -1140,7 +1140,7 @@ impl Suspendable for VirtioPciDevice {
         Ok(())
     }
 
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         if self.iommu.is_some() {
             return Err(anyhow!("Cannot snapshot if iommu is present."));
         }

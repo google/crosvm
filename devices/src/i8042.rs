@@ -58,7 +58,7 @@ impl BusDevice for I8042Device {
 }
 
 impl Suspendable for I8042Device {
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         Ok(serde_json::Value::Object(serde_json::Map::new()))
     }
 

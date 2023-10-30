@@ -856,7 +856,7 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
 }
 
 impl<T: PciDevice + ?Sized> Suspendable for Box<T> {
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         (**self).snapshot()
     }
 

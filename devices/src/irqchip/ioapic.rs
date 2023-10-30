@@ -652,7 +652,7 @@ impl Ioapic {
 }
 
 impl Suspendable for Ioapic {
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(IoapicSnapshot {
             num_pins: self.num_pins,
             ioregsel: self.ioregsel,
@@ -1262,7 +1262,7 @@ mod tests {
         // Creates an ioapic w/ an MSI for GSI = NUM_IOAPIC_PINS, MSI
         // address 0xa, and data 0xd. The irq index (pin number) is 10, but
         // this is not meaningful.
-        let saved_ioapic = set_up_with_irq(10, TriggerMode::Level);
+        let mut saved_ioapic = set_up_with_irq(10, TriggerMode::Level);
 
         // Take a snapshot of the ioapic.
         let snapshot = saved_ioapic.snapshot().unwrap();

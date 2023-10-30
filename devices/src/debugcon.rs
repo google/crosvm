@@ -98,7 +98,7 @@ impl Suspendable for Debugcon {
         Ok(())
     }
 
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         Ok(serde_json::Value::Null)
     }
 
