@@ -1,0 +1,11 @@
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+@include /usr/share/policy/crosvm/common_device.policy
+
+fdatasync: 1
+openat: 1
+prctl: arg0 == PR_SET_NAME
+preadv: 1
+pwritev: 1
