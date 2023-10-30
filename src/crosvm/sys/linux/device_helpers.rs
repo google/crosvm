@@ -299,7 +299,7 @@ impl<'a> VirtioDeviceBuilder for &'a ScsiOption {
         info!("Trying to attach scsi device: {}", self.path.display());
         let disk_image = self.open()?;
         Ok(Box::new(
-            virtio::ScsiDevice::new(disk_image, base_features, self.block_size, self.read_only)
+            virtio::ScsiController::new(disk_image, base_features, self.block_size, self.read_only)
                 .context("failed to create scsi device")?,
         ))
     }

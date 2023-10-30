@@ -283,7 +283,7 @@ pub struct LogicalUnit {
 }
 
 /// Vitio device for exposing SCSI command operations on a host file.
-pub struct Device {
+pub struct Controller {
     // Bitmap of virtio-scsi feature bits.
     avail_features: u64,
     // Represents the image on disk.
@@ -308,7 +308,7 @@ pub struct Device {
     multi_queue: bool,
 }
 
-impl Device {
+impl Controller {
     /// Creates a virtio-scsi device.
     pub fn new(
         disk_image: Box<dyn DiskFile>,
@@ -451,7 +451,7 @@ impl Device {
         Ok(())
     }
 
-    // TODO(b/300586438): Once we alter Device to handle multiple LogicalUnit, we should update
+    // TODO(b/300586438): Once we alter Controller to handle multiple LogicalUnit, we should update
     // the search strategy as well.
     fn has_lun(lun: [u8; 8]) -> bool {
         // First byte should be 1.
@@ -473,7 +473,7 @@ impl Device {
     }
 }
 
-impl VirtioDevice for Device {
+impl VirtioDevice for Controller {
     fn keep_rds(&self) -> Vec<base::RawDescriptor> {
         self.disk_image
             .as_ref()
@@ -684,14 +684,14 @@ async fn process_one_request(
     let resp_writer = &mut avail_desc.writer;
     match queue_type {
         QueueType::Control => {
-            if let Err(err) = Device::execute_control(reader, resp_writer) {
+            if let Err(err) = Controller::execute_control(reader, resp_writer) {
                 error!("failed to execute control request: {err}");
             }
             resp_writer.bytes_written()
         }
         QueueType::Request(disk_image) => {
             let mut data_writer = resp_writer.split_at(std::mem::size_of::<virtio_scsi_cmd_resp>());
-            if let Err(err) = Device::execute_request(
+            if let Err(err) = Controller::execute_request(
                 reader,
                 resp_writer,
                 &mut data_writer,

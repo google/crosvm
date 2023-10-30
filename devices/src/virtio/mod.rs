@@ -88,7 +88,7 @@ pub use self::queue::PeekedDescriptorChain;
 pub use self::queue::Queue;
 pub use self::queue::QueueConfig;
 pub use self::rng::Rng;
-pub use self::scsi::Device as ScsiDevice;
+pub use self::scsi::Controller as ScsiController;
 #[cfg(feature = "vtpm")]
 pub use self::tpm::Tpm;
 #[cfg(feature = "vtpm")]
