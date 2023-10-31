@@ -1,0 +1,18 @@
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+FROM debian:bookworm
+
+# Install many gimp plugins and data to make the initialize time longer
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes wget gimp gimp-data-extras gimp-lensfun gimp-texturize \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir /workdir
+
+WORKDIR /workdir
+
+ADD logo/logo_512.png test1.png
+
+RUN cp test1.png test2.png
