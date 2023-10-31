@@ -782,7 +782,7 @@ impl VirtioDevice for PvClock {
         Ok(())
     }
 
-    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(PvClockSnapshot {
             features: self.features,
             acked_features: self.acked_features,

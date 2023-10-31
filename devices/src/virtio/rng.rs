@@ -209,7 +209,7 @@ impl VirtioDevice for Rng {
         Ok(())
     }
 
-    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         // `virtio_sleep` ensures there is no pending state, except for the `Queue`s, which are
         // handled at a higher layer.
         Ok(serde_json::Value::Null)

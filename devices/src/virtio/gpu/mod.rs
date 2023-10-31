@@ -1850,7 +1850,7 @@ impl VirtioDevice for Gpu {
         }
     }
 
-    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         Ok(serde_json::to_value(&self.worker_snapshot)?)
     }
 

@@ -214,7 +214,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
             .context("Failed to wake device.")
     }
 
-    fn virtio_snapshot(&self) -> anyhow::Result<Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<Value> {
         self.handler
             .borrow_mut()
             .snapshot()

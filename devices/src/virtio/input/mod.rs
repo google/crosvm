@@ -634,7 +634,7 @@ where
         Ok(())
     }
 
-    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(InputSnapshot {
             virtio_features: self.virtio_features,
             config: self.config.clone(),

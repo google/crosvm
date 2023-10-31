@@ -1630,7 +1630,7 @@ impl VirtioDevice for Balloon {
         Ok(())
     }
 
-    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         let state = self
             .state
             .lock()

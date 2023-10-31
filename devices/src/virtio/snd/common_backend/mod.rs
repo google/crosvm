@@ -507,7 +507,7 @@ impl VirtioDevice for VirtioSnd {
         }
     }
 
-    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         let streams_state = if let Some(states) = &self.streams_state {
             let mut state_vec = Vec::new();
             for state in states {

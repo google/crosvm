@@ -302,7 +302,7 @@ impl VirtioDevice for Vsock {
         }
     }
 
-    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         let vrings_base = self.vrings_base.clone().unwrap_or_default();
         serde_json::to_value(VsockSnapshot {
             // `cid` and `avail_features` are snapshot as a safeguard. Upon restore, validate

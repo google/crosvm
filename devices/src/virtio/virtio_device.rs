@@ -218,7 +218,7 @@ pub trait VirtioDevice: Send {
     }
 
     /// Snapshot current state. Device must be asleep.
-    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         anyhow::bail!("virtio_snapshot not implemented for {}", self.debug_label());
     }
 
@@ -281,10 +281,11 @@ pub trait VirtioDevice: Send {
 macro_rules! suspendable_virtio_tests {
     ($name:ident, $dev: expr, $num_queues:literal, $modfun:expr) => {
         mod $name {
-            use super::*;
             use $crate::virtio::QueueConfig;
             use $crate::virtio::VIRTIO_MSI_NO_VECTOR;
             use $crate::IrqLevelEvent;
+
+            use super::*;
 
             fn memory() -> GuestMemory {
                 GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])

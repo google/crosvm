@@ -356,7 +356,7 @@ impl VirtioDevice for Pmem {
         Ok(())
     }
 
-    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(PmemSnapshot {
             mapping_address: self.mapping_address,
             mapping_size: self.mapping_size,

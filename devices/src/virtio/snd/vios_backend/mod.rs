@@ -242,7 +242,7 @@ impl VirtioDevice for Sound {
         }
     }
 
-    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(SoundSnapshot {
             config: self.config,
             virtio_features: self.virtio_features,

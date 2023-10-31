@@ -839,7 +839,7 @@ where
         }
     }
 
-    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(NetSnapshot {
             acked_features: self.acked_features,
             avail_features: self.avail_features,
