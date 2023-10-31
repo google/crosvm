@@ -61,7 +61,7 @@ pub const DEFAULT_BUFFER_SIZE: usize = 50 * 1024;
 /// The ReadNotifier will return an event handle that is set when data is in the channel.
 ///
 /// In message mode, single writes larger than
-/// `crate::platform::named_pipes::DEFAULT_BUFFER_SIZE` are not permitted.
+/// `crate::windows::named_pipes::DEFAULT_BUFFER_SIZE` are not permitted.
 ///
 /// # Notes for maintainers
 /// 1. This struct contains extremely subtle thread safety considerations.

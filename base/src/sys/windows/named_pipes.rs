@@ -68,7 +68,7 @@ use crate::WaitContext;
 ///
 /// The general rule is this should be *at least* as big as the largest message, otherwise
 /// unexpected blocking behavior can result; for example, if too small, this can interact badly with
-/// crate::platform::StreamChannel, which expects to be able to make a complete write before releasing
+/// crate::windows::StreamChannel, which expects to be able to make a complete write before releasing
 /// a lock that the opposite side needs to complete a read. This means that if the buffer is too
 /// small:
 ///     * The writer can't complete its write and release the lock because the buffer is too small.
@@ -573,7 +573,7 @@ impl PipeConnection {
         buf: &mut [T],
         overlapped: Option<&mut OVERLAPPED>,
     ) -> Result<usize> {
-        let res = crate::platform::read_file(
+        let res = crate::windows::read_file(
             handle,
             buf.as_mut_ptr() as *mut u8,
             mem::size_of_val(buf),
@@ -739,7 +739,7 @@ impl PipeConnection {
         // Safe because buf points to memory valid until the write completes and we pass a valid
         // length for that memory.
         unsafe {
-            crate::platform::write_file(
+            crate::windows::write_file(
                 handle,
                 buf.as_ptr() as *const u8,
                 mem::size_of_val(buf),

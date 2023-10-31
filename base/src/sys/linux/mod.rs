@@ -139,7 +139,7 @@ macro_rules! syscall {
     ($e:expr) => {{
         let res = $e;
         if res < 0 {
-            $crate::platform::errno_result()
+            $crate::linux::errno_result()
         } else {
             Ok(res)
         }
@@ -350,7 +350,7 @@ pub fn wait_for_pid<A: AsRawPid>(pid: A, options: c_int) -> Result<(Option<Pid>,
 /// ```
 /// fn reap_children() {
 ///     loop {
-///         match base::platform::reap_child() {
+///         match base::linux::reap_child() {
 ///             Ok(0) => println!("no children ready to reap"),
 ///             Ok(pid) => {
 ///                 println!("reaped {}", pid);

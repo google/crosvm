@@ -22,7 +22,7 @@ use super::Result;
 /// 0, 1, 5, and 6.
 ///
 /// ```
-/// # use base::platform::set_cpu_affinity;
+/// # use base::windows::set_cpu_affinity;
 ///   set_cpu_affinity(vec![0, 1, 5, 6]).unwrap();
 /// ```
 pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(cpus: I) -> Result<usize> {

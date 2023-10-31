@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
-use base::platform::move_proc_to_cgroup;
+use base::linux::move_proc_to_cgroup;
 use jail::*;
 use serde::Deserialize;
 use serde::Serialize;

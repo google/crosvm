@@ -448,7 +448,7 @@ impl MemoryMapping {
     /// * Write 128 bytes to /dev/null
     ///
     /// ```
-    /// # use base::platform::MemoryMapping;
+    /// # use base::linux::MemoryMapping;
     /// # use std::fs::File;
     /// # use std::path::Path;
     /// # fn test_write_null() -> Result<(), ()> {

@@ -65,7 +65,7 @@ use vm_control::VmRunMode;
 use super::run_vcpu::VcpuRunMode;
 use crate::crosvm::config::Config;
 use crate::crosvm::sys::cmdline::RunMetricsCommand;
-use crate::sys::platform::TaggedControlTube as SharedTaggedControlTube;
+use crate::sys::windows::TaggedControlTube as SharedTaggedControlTube;
 
 pub struct MessageFromService {}
 

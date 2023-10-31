@@ -333,7 +333,7 @@ mod tests {
         iocp.register_descriptor(&f).unwrap();
         let buf = [0u8; 16];
         unsafe {
-            base::platform::write_file(&f, buf.as_ptr(), buf.len(), Some(&mut overlapped)).unwrap()
+            base::windows::write_file(&f, buf.as_ptr(), buf.len(), Some(&mut overlapped)).unwrap()
         };
         assert_eq!(iocp.poll().unwrap().len(), 1);
     }
@@ -348,7 +348,7 @@ mod tests {
         iocp.register_descriptor(&f).unwrap();
         let buf = [0u8; 16];
         unsafe {
-            base::platform::write_file(&f, buf.as_ptr(), buf.len(), Some(&mut overlapped)).unwrap()
+            base::windows::write_file(&f, buf.as_ptr(), buf.len(), Some(&mut overlapped)).unwrap()
         };
         assert_eq!(iocp.poll_ex().unwrap().len(), 1);
     }

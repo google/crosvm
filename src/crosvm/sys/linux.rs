@@ -4259,7 +4259,7 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
 
     // Now wait for all device processes to return.
     while !devices_jails.is_empty() {
-        match base::platform::wait_for_pid(-1, 0) {
+        match base::linux::wait_for_pid(-1, 0) {
             Err(e) => panic!("error waiting for child process to complete: {:#}", e),
             Ok((Some(pid), wait_status)) => match devices_jails.remove_entry(&pid) {
                 Some((_, info)) => {

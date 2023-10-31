@@ -33,7 +33,7 @@ impl<T> InterruptibleResult for io::Result<T> {
 ///
 /// The given expression `$x` can return
 ///
-/// * `crate::platform::Result` in which case the expression is retried if the `Error::errno()` is `EINTR`.
+/// * `crate::linux::Result` in which case the expression is retried if the `Error::errno()` is `EINTR`.
 /// * `std::io::Result` in which case the expression is retried if the `ErrorKind` is `ErrorKind::Interrupted`.
 ///
 /// Note that if expression returns i32 (i.e. either -1 or error code), then handle_eintr_errno()
@@ -115,7 +115,7 @@ impl<T> InterruptibleResult for io::Result<T> {
 #[macro_export]
 macro_rules! handle_eintr {
     ($x:expr) => {{
-        use $crate::platform::handle_eintr::InterruptibleResult;
+        use $crate::linux::handle_eintr::InterruptibleResult;
         let res;
         loop {
             match $x {
@@ -157,7 +157,7 @@ macro_rules! handle_eintr_rc {
 macro_rules! handle_eintr_errno {
     ($x:expr) => {{
         use libc::EINTR;
-        use $crate::platform::Error;
+        use $crate::linux::Error;
         let mut res;
         loop {
             res = $x;

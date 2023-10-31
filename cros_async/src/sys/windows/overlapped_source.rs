@@ -108,27 +108,27 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
 }
 
 /// Safety requirements:
-///     Same as base::platform::read_file.
+///     Same as base::windows::read_file.
 unsafe fn read(
     file: RawDescriptor,
     buf: *mut u8,
     buf_len: usize,
     overlapped: &mut OVERLAPPED,
 ) -> AsyncResult<()> {
-    base::platform::read_file(&Descriptor(file), buf, buf_len, Some(overlapped))
+    base::windows::read_file(&Descriptor(file), buf, buf_len, Some(overlapped))
         .map(|_len| ())
         .map_err(|e| AsyncError::OverlappedSource(Error::StdIoReadError(e)))
 }
 
 /// Safety requirements:
-///     Same as base::platform::write_file.
+///     Same as base::windows::write_file.
 unsafe fn write(
     file: RawDescriptor,
     buf: *const u8,
     buf_len: usize,
     overlapped: &mut OVERLAPPED,
 ) -> AsyncResult<()> {
-    base::platform::write_file(&Descriptor(file), buf, buf_len, Some(overlapped))
+    base::windows::write_file(&Descriptor(file), buf, buf_len, Some(overlapped))
         .map(|_len| ())
         .map_err(|e| AsyncError::OverlappedSource(Error::StdIoWriteError(e)))
 }

@@ -214,8 +214,8 @@ impl MemoryMapping {
     /// * Read bytes from /dev/urandom
     ///
     /// ```
-    ///   use base::platform::MemoryMapping;
-    ///   use base::platform::SharedMemory;
+    ///   use base::windows::MemoryMapping;
+    ///   use base::windows::SharedMemory;
     ///   use std::ffi::CString;
     ///   use std::fs::File;
     ///   use std::path::Path;
@@ -257,8 +257,8 @@ impl MemoryMapping {
     /// * Write 128 bytes to /dev/null
     ///
     /// ```
-    ///   use base::platform::MemoryMapping;
-    ///   use base::platform::SharedMemory;
+    ///   use base::windows::MemoryMapping;
+    ///   use base::windows::SharedMemory;
     ///   use std::ffi::CString;
     ///   use std::fs::File;
     ///   use std::path::Path;
