@@ -272,3 +272,6 @@ extern "C" {
         plane: c_int,
     ) -> *mut c_void;
 }
+extern "C" {
+    pub fn minigbm_create_default_device(out_fd: *mut c_int) -> *mut gbm_device;
+}

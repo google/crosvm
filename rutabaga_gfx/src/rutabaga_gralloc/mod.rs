@@ -12,7 +12,6 @@ mod formats;
 mod gralloc;
 mod minigbm;
 mod minigbm_bindings;
-mod rendernode;
 mod system_gralloc;
 mod vulkano_gralloc;
 
