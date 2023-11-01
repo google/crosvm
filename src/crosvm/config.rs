@@ -766,7 +766,7 @@ pub struct Config {
     pub break_linux_pci_config_io: bool,
     #[cfg(windows)]
     pub broker_shutdown_event: Option<Event>,
-    #[cfg(all(target_arch = "x86_64", unix))]
+    #[cfg(target_arch = "x86_64")]
     pub bus_lock_ratelimit: u64,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub coiommu_param: Option<devices::CoIommuParameters>,
@@ -972,7 +972,7 @@ impl Default for Config {
             break_linux_pci_config_io: false,
             #[cfg(windows)]
             broker_shutdown_event: None,
-            #[cfg(all(target_arch = "x86_64", unix))]
+            #[cfg(target_arch = "x86_64")]
             bus_lock_ratelimit: 0,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             coiommu_param: None,

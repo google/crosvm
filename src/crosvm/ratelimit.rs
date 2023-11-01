@@ -4,6 +4,8 @@
 
 //! Utility file to provide a ratelimit object
 
+#![cfg_attr(not(any(target_os = "android", target_os = "linux")), allow(dead_code))]
+
 use std::cmp;
 use std::time::Duration;
 use std::time::Instant;

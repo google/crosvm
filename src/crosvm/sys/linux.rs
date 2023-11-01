@@ -190,7 +190,7 @@ use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::gdb::gdb_thread;
 #[cfg(feature = "gdb")]
 use crate::crosvm::gdb::GdbStub;
-#[cfg(all(target_arch = "x86_64", unix))]
+#[cfg(target_arch = "x86_64")]
 use crate::crosvm::ratelimit::Ratelimit;
 use crate::crosvm::sys::cmdline::DevicesCommand;
 use crate::crosvm::sys::config::SharedDir;
@@ -2815,9 +2815,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             Some(f)
         }
     };
-    #[cfg(all(target_arch = "x86_64", unix))]
+    #[cfg(target_arch = "x86_64")]
     let bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>> = Arc::new(Mutex::new(Ratelimit::new()));
-    #[cfg(all(target_arch = "x86_64", unix))]
+    #[cfg(target_arch = "x86_64")]
     if cfg.bus_lock_ratelimit > 0 {
         let bus_lock_ratelimit = cfg.bus_lock_ratelimit;
         if linux.vm.check_capability(VmCap::BusLockDetect) {
@@ -2895,7 +2895,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             cfg.itmt,
             vcpu_hybrid_type,
         ));
-        #[cfg(all(target_arch = "x86_64", unix))]
+        #[cfg(target_arch = "x86_64")]
         let bus_lock_ratelimit_ctrl = Arc::clone(&bus_lock_ratelimit_ctrl);
 
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -2937,7 +2937,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         .context("failed to clone vcpu cgroup tasks file")?,
                 ),
             },
-            #[cfg(all(target_arch = "x86_64", unix))]
+            #[cfg(target_arch = "x86_64")]
             bus_lock_ratelimit_ctrl,
             run_mode,
         )?;
