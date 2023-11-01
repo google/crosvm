@@ -74,8 +74,8 @@ impl FromStr for BindMount {
 /// A mapping of linux group IDs for the plugin process.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GidMap {
-    pub inner: base::platform::Gid,
-    pub outer: base::platform::Gid,
+    pub inner: base::Gid,
+    pub outer: base::Gid,
     pub count: u32,
 }
 
@@ -91,14 +91,14 @@ impl FromStr for GidMap {
             ));
         }
 
-        let inner: base::platform::Gid = components[0].parse().map_err(|_| {
+        let inner: base::Gid = components[0].parse().map_err(|_| {
             invalid_value_err(
                 components[0],
                 "the <inner> component for `plugin-gid-map` is not valid gid",
             )
         })?;
 
-        let outer: base::platform::Gid = match components.get(1) {
+        let outer: base::Gid = match components.get(1) {
             None | Some(&"") => inner,
             Some(s) => s.parse().map_err(|_| {
                 invalid_value_err(

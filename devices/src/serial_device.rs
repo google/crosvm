@@ -13,9 +13,9 @@ use std::path::PathBuf;
 
 use base::error;
 use base::open_file_or_duplicate;
-#[cfg(windows)]
-use base::platform::Console as WinConsole;
 use base::syslog;
+#[cfg(windows)]
+use base::windows::Console as WinConsole;
 use base::AsRawDescriptor;
 use base::Event;
 use base::FileSync;

@@ -22,7 +22,7 @@ use anyhow::Context;
 use base::debug;
 use base::error;
 #[cfg(any(target_os = "android", target_os = "linux"))]
-use base::platform::move_task_to_cgroup;
+use base::linux::move_task_to_cgroup;
 use base::warn;
 use base::AsRawDescriptor;
 use base::Event;

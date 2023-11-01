@@ -58,7 +58,7 @@ pub use platform::ioctl::ioctl_with_ref;
 pub use platform::ioctl::ioctl_with_val;
 pub use platform::ioctl::IoctlNr;
 pub use shm::SharedMemory;
-pub use sys::platform;
+use sys::platform;
 pub use timer::FakeTimer;
 pub use timer::Timer;
 pub use timer::TimerTrait;
@@ -110,6 +110,7 @@ cfg_if::cfg_if! {
         pub use linux::{gettid, kill_process_group, reap_child};
         pub use linux::UnlinkUnixListener;
         pub use linux::EventExt;
+        pub use linux::Gid;
     }
 }
 
@@ -177,6 +178,7 @@ pub use platform::getpid;
 pub use platform::logical_core_frequencies_khz;
 pub use platform::open_file_or_duplicate;
 pub use platform::platform_timer_resolution::enable_high_res_timers;
+pub use platform::sched_attr;
 pub use platform::sched_setattr;
 pub use platform::set_cpu_affinity;
 pub use platform::BlockingMode;
