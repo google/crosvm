@@ -39,6 +39,28 @@ multiple matches or conditionals. In these cases, try to remove indentation by c
 reset the indentation level, but be thoughtful about whether this makes the situation worse by
 creating an onion (too many layers / an overly deep stack).
 
+### Unsafe code: minimize code under `unsafe`
+
+Every line of unsafe code can cause memory safety issues. As such, we want to minimize code under
+`unsafe`. Often times we want to have an `unsafe` function because the caller must satisfy safety
+conditions, but we only have one or two actual `unsafe` lines in the function, along with many safe
+lines. In these situations, mark the function `unsafe`, but apply
+[`#[deny(unsafe_op_in_unsafe_fn)]`](https://doc.rust-lang.org/rustc/lints/listing/allowed-by-default.html#unsafe-op-in-unsafe-fn).
+This requires us to explicitly mark the `unsafe` code inside as `unsafe` rather than allowing any
+line in the function to be unsafe.
+
+### Unsafe code: write standard safety statements
+
+Rust tooling expects documentation for `unsafe` code and functions to follow the stdlib's
+[guidelines](https://std-dev-guide.rust-lang.org/policy/safety-comments.html). Notably, use
+`// SAFETY:` for `unsafe` blocks, and always have a `# Safety` section for `unsafe` functions in
+their doc comment. This helps us comply with
+[`undocumented_unsafe_blocks`](https://rust-lang.github.io/rust-clippy/master/#/undocumented_unsafe_blocks),
+which will eventually be turned on.
+
+Note that not all existing code follows this pattern. `// Safe because` comments are still common in
+the codebase, and should be migrated to the new pattern as they are encountered.
+
 ### Formatting
 
 To format all code, crosvm defers to `rustfmt`. In addition, the code adheres to the following
