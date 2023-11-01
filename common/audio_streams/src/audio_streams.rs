@@ -48,7 +48,7 @@ use std::fmt::Display;
 use std::io;
 use std::io::Read;
 use std::io::Write;
-#[cfg(any(target_os = "android", target_os = "linux"))]
+#[cfg(unix)]
 use std::os::unix::io::RawFd as RawDescriptor;
 #[cfg(windows)]
 use std::os::windows::io::RawHandle as RawDescriptor;
