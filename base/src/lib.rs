@@ -103,6 +103,7 @@ cfg_if::cfg_if! {
             ScmSocket, UnlinkUnixListener, SCM_SOCKET_MAX_FD_COUNT,
         };
         pub use linux::EventExt;
+    } else if #[cfg(target_os = "macos")] {
     } else if #[cfg(windows)] {
         pub use sys::windows;
 
