@@ -67,8 +67,11 @@ impl<T: Send + 'static> WorkerThread<T> {
         })
     }
 
-    /// Signal thread's store event. Unlike stop, the function doesn't wait
+    /// Signal thread's stop event. Unlike stop, the function doesn't wait
     /// on joining the thread.
+    /// The function can be called multiple times.
+    /// Calling `stop` or `drop` will internally signal the stop event again
+    /// and join the thread.
     pub fn signal(&mut self) -> Result<(), Error> {
         if let Some((event, _)) = &mut self.worker {
             event.signal()
