@@ -124,15 +124,21 @@ impl Print for LinuxPrinter {
 File: `sys.rs`
 
 ```rust
-cfg_if::cfg_if! {
-    if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        mod linux;
-        pub use platform_print::LinuxPrinter as Printer;
-    } else if #[cfg(windows)] {
-        mod windows;
-        pub use platform_print::WinPrinter as Printer;
-    }
+#[cfg(any(target_os = "android", target_os = "linux"))]
+mod linux;
+
+#[cfg(windows)]
+mod windows;
+
+mod platform {
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    pub use super::linux::LinuxPrinter as Printer;
+
+    #[cfg(windows)]
+    pub use super::windows::WinPrinter as Printer;
 }
+
+pub use platform::Printer;
 ```
 
 ## Imports
