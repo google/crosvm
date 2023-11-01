@@ -109,6 +109,8 @@ const fn virtio_scsi_cmd_resp_ok() -> virtio_scsi_cmd_resp {
 pub enum ExecuteError {
     #[error("invalid cdb field")]
     InvalidField,
+    #[error("invalid parameter length")]
+    InvalidParamLen,
     #[error("{length} bytes from sector {sector} exceeds end of this device {max_lba}")]
     LbaOutOfRange {
         length: usize,
@@ -170,6 +172,14 @@ impl ExecuteError {
                 Sense {
                     key: ILLEGAL_REQUEST,
                     asc: 0x24,
+                    ascq: 0x00,
+                }
+            }
+            Self::InvalidParamLen => {
+                // INVALID PARAMETER LENGTH
+                Sense {
+                    key: ILLEGAL_REQUEST,
+                    asc: 0x1a,
                     ascq: 0x00,
                 }
             }

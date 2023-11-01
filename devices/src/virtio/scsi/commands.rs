@@ -6,6 +6,9 @@ use std::cmp;
 use std::io::Write;
 
 use base::warn;
+use data_model::Be16;
+use data_model::Be32;
+use data_model::Be64;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
@@ -17,12 +20,17 @@ use crate::virtio::scsi::constants::MODE_SENSE_6;
 use crate::virtio::scsi::constants::READ_10;
 use crate::virtio::scsi::constants::READ_6;
 use crate::virtio::scsi::constants::READ_CAPACITY_10;
+use crate::virtio::scsi::constants::READ_CAPACITY_16;
 use crate::virtio::scsi::constants::REPORT_LUNS;
 use crate::virtio::scsi::constants::REPORT_SUPPORTED_TASK_MANAGEMENT_FUNCTIONS;
+use crate::virtio::scsi::constants::SERVICE_ACTION_IN_16;
 use crate::virtio::scsi::constants::SYNCHRONIZE_CACHE_10;
 use crate::virtio::scsi::constants::TEST_UNIT_READY;
 use crate::virtio::scsi::constants::TYPE_DISK;
+use crate::virtio::scsi::constants::UNMAP;
 use crate::virtio::scsi::constants::WRITE_10;
+use crate::virtio::scsi::constants::WRITE_SAME_10;
+use crate::virtio::scsi::constants::WRITE_SAME_16;
 use crate::virtio::scsi::device::AsyncLogicalUnit;
 use crate::virtio::scsi::device::ExecuteError;
 use crate::virtio::Reader;
@@ -36,9 +44,13 @@ pub enum Command {
     ModeSelect6(ModeSelect6),
     ModeSense6(ModeSense6),
     ReadCapacity10(ReadCapacity10),
+    ReadCapacity16(ReadCapacity16),
     Read10(Read10),
     Write10(Write10),
     SynchronizeCache10(SynchronizeCache10),
+    WriteSame10(WriteSame10),
+    Unmap(Unmap),
+    WriteSame16(WriteSame16),
     ReportLuns(ReportLuns),
     ReportSupportedTMFs(ReportSupportedTMFs),
 }
@@ -56,6 +68,10 @@ impl Command {
             READ_10 => Ok(Self::Read10(Self::parse_command(cdb)?)),
             WRITE_10 => Ok(Self::Write10(Self::parse_command(cdb)?)),
             SYNCHRONIZE_CACHE_10 => Ok(Self::SynchronizeCache10(Self::parse_command(cdb)?)),
+            WRITE_SAME_10 => Ok(Self::WriteSame10(Self::parse_command(cdb)?)),
+            UNMAP => Ok(Self::Unmap(Self::parse_command(cdb)?)),
+            WRITE_SAME_16 => Ok(Self::WriteSame16(Self::parse_command(cdb)?)),
+            SERVICE_ACTION_IN_16 => Self::parse_service_action_in_16(cdb),
             REPORT_LUNS => Ok(Self::ReportLuns(Self::parse_command(cdb)?)),
             MAINTENANCE_IN => Self::parse_maintenance_in(cdb),
             _ => {
@@ -81,7 +97,30 @@ impl Command {
                 Ok(Self::ReportSupportedTMFs(r))
             }
             _ => {
-                warn!("service action {:#x?} is not implemented", service_action);
+                warn!(
+                    "service action {:#x?} for MAINTENANCE_IN is not implemented",
+                    service_action
+                );
+                Err(ExecuteError::Unsupported(cdb[0]))
+            }
+        }
+    }
+
+    fn parse_service_action_in_16(cdb: &[u8]) -> Result<Self, ExecuteError> {
+        const SERVICE_ACTION_IN_16_SIZE: usize = 16;
+        // Top three bits are reserved.
+        let service_action = cdb[1] & 0x1f;
+        match service_action {
+            READ_CAPACITY_16 => {
+                let r = ReadCapacity16::read_from(&cdb[..SERVICE_ACTION_IN_16_SIZE])
+                    .ok_or(ExecuteError::ReadCommand)?;
+                Ok(Self::ReadCapacity16(r))
+            }
+            _ => {
+                warn!(
+                    "service action {:#x?} for SERVICE_ACTION_IN_16 is not implemented",
+                    service_action
+                );
                 Err(ExecuteError::Unsupported(cdb[0]))
             }
         }
@@ -96,15 +135,19 @@ impl Command {
         match self {
             Self::TestUnitReady(_) => Ok(()), // noop as the device is ready.
             Self::Read6(read6) => read6.emulate(writer, dev).await,
-            Self::Inquiry(inquiry) => inquiry.emulate(writer),
+            Self::Inquiry(inquiry) => inquiry.emulate(writer, dev),
             Self::ModeSelect6(mode_select_6) => mode_select_6.emulate(),
             Self::ModeSense6(mode_sense_6) => mode_sense_6.emulate(writer, dev),
             Self::ReadCapacity10(read_capacity_10) => read_capacity_10.emulate(writer, dev),
+            Self::ReadCapacity16(read_capacity_16) => read_capacity_16.emulate(writer, dev),
             Self::Read10(read_10) => read_10.emulate(writer, dev).await,
             Self::Write10(write_10) => write_10.emulate(reader, dev).await,
             Self::SynchronizeCache10(synchronize_cache_10) => {
                 synchronize_cache_10.emulate(dev).await
             }
+            Self::WriteSame10(write_same_10) => write_same_10.emulate(reader, dev).await,
+            Self::Unmap(unmap) => unmap.emulate(reader, dev).await,
+            Self::WriteSame16(write_same_16) => write_same_16.emulate(reader, dev).await,
             Self::ReportLuns(report_luns) => report_luns.emulate(writer),
             Self::ReportSupportedTMFs(report_supported_tmfs) => {
                 report_supported_tmfs.emulate(writer)
@@ -215,9 +258,9 @@ impl Inquiry {
         self.page_code
     }
 
-    fn emulate(&self, writer: &mut Writer) -> Result<(), ExecuteError> {
+    fn emulate(&self, writer: &mut Writer, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
         if self.vital_product_data_enabled() {
-            return self.emulate_vital_product_data_page(writer);
+            return self.emulate_vital_product_data_page(writer, dev);
         }
         // PAGE CODE should be 0 when vpd bit is 0.
         if self.page_code() != 0 {
@@ -255,7 +298,11 @@ impl Inquiry {
             .map_err(ExecuteError::Write)
     }
 
-    fn emulate_vital_product_data_page(&self, writer: &mut Writer) -> Result<(), ExecuteError> {
+    fn emulate_vital_product_data_page(
+        &self,
+        writer: &mut Writer,
+        dev: &AsyncLogicalUnit,
+    ) -> Result<(), ExecuteError> {
         let alloc_len = self.alloc_len();
         let mut outbuf = vec![0u8; cmp::max(4096, alloc_len)];
         // Peripheral
@@ -266,10 +313,11 @@ impl Inquiry {
             // Supported VPD Pages
             0x00 => {
                 // outbuf[2] byte is reserved.
-                // We only support mandatory page codes for now.
                 // 0x00: Supported VPD Pages (this command)
                 // 0x83: Device Identification
-                const SUPPORTED_VPD_PAGE_CODES: [u8; 2] = [0x00, 0x83];
+                // 0xb0: Block Limits
+                // 0xb2: Logical Block Provisioning
+                const SUPPORTED_VPD_PAGE_CODES: [u8; 4] = [0x00, 0x83, 0xb0, 0xb2];
                 let page_code_len: u8 = SUPPORTED_VPD_PAGE_CODES
                     .len()
                     .try_into()
@@ -296,6 +344,40 @@ impl Inquiry {
                 // outbuf[6] byte is reserved.
                 outbuf[7] = device_id_len;
                 outbuf[8..8 + device_id_len as usize].copy_from_slice(DEVICE_ID);
+            }
+            // Block Limits
+            0xb0 => {
+                // Page length
+                outbuf[3] = 0x3c;
+                // We do not support a value of zero in the NUMBER OF LOGICAL BLOCKS field in the
+                // WRITE SAME command CDBs.
+                outbuf[4] = 1;
+                // skip outbuf[5]: crosvm does not support the COMPARE AND WRITE command.
+                // Maximum transfer length
+                outbuf[8..12]
+                    .copy_from_slice(&dev.max_lba.try_into().unwrap_or(u32::MAX).to_be_bytes());
+                // Maximum unmap LBA count
+                outbuf[20..24].fill(0xff);
+                // Maximum unmap block descriptor count
+                outbuf[24..28].fill(0xff);
+                // Optimal unmap granularity
+                outbuf[28..32].copy_from_slice(&128u32.to_be_bytes());
+                // Maximum WRITE SAME length
+                outbuf[36..44].copy_from_slice(&dev.max_lba.to_be_bytes());
+            }
+            // Logical Block Provisioning
+            0xb2 => {
+                // Page length
+                outbuf[3] = 4;
+                // skip outbuf[4]: crosvm does not support logical block provisioning threshold sets.
+                const UNMAP: u8 = 1 << 7;
+                const WRITE_SAME_16: u8 = 1 << 6;
+                const WRITE_SAME_10: u8 = 1 << 5;
+                outbuf[5] = UNMAP | WRITE_SAME_10 | WRITE_SAME_16;
+                // The logical unit is thin-provisioned.
+                outbuf[6] = 0x02;
+                // skip outbuf[7]: The logical block data represented by unmapped LBAs is vendor
+                // specific
             }
             _ => {
                 warn!("unsupported vpd page code: {:#x?}", page_code);
@@ -542,6 +624,30 @@ impl ReadCapacity10 {
 
 #[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
 #[repr(C, packed)]
+pub struct ReadCapacity16 {
+    opcode: u8,
+    service_action_field: u8,
+    _obsolete: [u8; 8],
+    alloc_len_bytes: [u8; 4],
+    _reserved: u8,
+    control: u8,
+}
+
+impl ReadCapacity16 {
+    fn emulate(&self, writer: &mut Writer, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
+        let mut outbuf = [0u8; 32];
+        // Last logical block address
+        outbuf[..8].copy_from_slice(&dev.max_lba.saturating_sub(1).to_be_bytes());
+        // Block size
+        outbuf[8..12].copy_from_slice(&dev.block_size.to_be_bytes());
+        // crosvm implements logical block provisioning management.
+        outbuf[14] = 1 << 7;
+        writer.write_all(&outbuf).map_err(ExecuteError::Write)
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
+#[repr(C, packed)]
 pub struct Read10 {
     opcode: u8,
     rdprotect: u8,
@@ -638,6 +744,202 @@ impl SynchronizeCache10 {
             warn!("failed to sync: {e}");
             ExecuteError::SynchronizationError
         })
+    }
+}
+
+async fn unmap(dev: &AsyncLogicalUnit, lba: u64, nblocks: u64) -> Result<(), ExecuteError> {
+    check_lba_range(dev.max_lba, lba, nblocks as usize)?;
+    let offset = lba * dev.block_size as u64;
+    let length = nblocks * dev.block_size as u64;
+    // Ignore the errors here since the device is not strictly required to unmap the LBAs.
+    let _ = dev.disk_image.punch_hole(offset, length).await;
+    Ok(())
+}
+
+async fn write_same(
+    dev: &AsyncLogicalUnit,
+    lba: u64,
+    nblocks: u64,
+    reader: &mut Reader,
+) -> Result<(), ExecuteError> {
+    check_lba_range(dev.max_lba, lba, nblocks as usize)?;
+    // The WRITE SAME command expects the device to transfer a single logical block from the
+    // Data-Out buffer.
+    reader.split_at(dev.block_size as usize);
+    if reader.get_remaining().iter().all(|s| s.is_all_zero()) {
+        // Ignore the errors here since the device is not strictly required to unmap the LBAs.
+        let _ = dev.disk_image.write_zeroes_at(lba, nblocks).await;
+        Ok(())
+    } else {
+        // TODO(b/309376528): If the specified data is not zero, raise error for now.
+        Err(ExecuteError::InvalidField)
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
+#[repr(C, packed)]
+pub struct WriteSame10 {
+    opcode: u8,
+    wrprotect_anchor_unmap: u8,
+    lba_bytes: [u8; 4],
+    group_number_field: u8,
+    nblocks_bytes: [u8; 2],
+    control: u8,
+}
+
+impl WriteSame10 {
+    fn lba(&self) -> u32 {
+        u32::from_be_bytes(self.lba_bytes)
+    }
+
+    fn nblocks(&self) -> u16 {
+        u16::from_be_bytes(self.nblocks_bytes)
+    }
+
+    fn unmap(&self) -> bool {
+        self.wrprotect_anchor_unmap & 0x8 != 0
+    }
+
+    fn anchor(&self) -> bool {
+        self.wrprotect_anchor_unmap & 0x10 != 0
+    }
+
+    async fn emulate(
+        &self,
+        reader: &mut Reader,
+        dev: &AsyncLogicalUnit,
+    ) -> Result<(), ExecuteError> {
+        let lba = self.lba() as u64;
+        let nblocks = self.nblocks() as u64;
+        if nblocks == 0 {
+            // crosvm does not allow the number of blocks to be zero.
+            return Err(ExecuteError::InvalidField);
+        }
+        if self.anchor() {
+            // crosvm currently do not support anchor operations.
+            return Err(ExecuteError::InvalidField);
+        }
+        if self.unmap() {
+            unmap(dev, lba, nblocks).await
+        } else {
+            write_same(dev, lba, nblocks, reader).await
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
+#[repr(C, packed)]
+pub struct Unmap {
+    opcode: u8,
+    anchor_field: u8,
+    _reserved: [u8; 4],
+    group_number_field: u8,
+    param_list_len_bytes: [u8; 2],
+    control: u8,
+}
+
+impl Unmap {
+    fn anchor(&self) -> bool {
+        self.anchor_field & 0x01 != 0
+    }
+
+    fn param_list_len(&self) -> u16 {
+        u16::from_be_bytes(self.param_list_len_bytes)
+    }
+
+    async fn emulate(
+        &self,
+        reader: &mut Reader,
+        dev: &AsyncLogicalUnit,
+    ) -> Result<(), ExecuteError> {
+        // Reject anchor == 1
+        if self.anchor() {
+            return Err(ExecuteError::InvalidField);
+        }
+        if dev.read_only {
+            return Err(ExecuteError::ReadOnly);
+        }
+        let param_list_len = self.param_list_len();
+        if 0 < param_list_len && param_list_len < 8 {
+            return Err(ExecuteError::InvalidParamLen);
+        }
+        // unmap data len
+        reader.consume(2);
+        let unmap_block_descriptors = {
+            let block_data_len = reader
+                .read_obj::<Be16>()
+                .map_err(ExecuteError::Read)?
+                .to_native();
+            // If the data length is not a multiple of 16, the last unmap block should be ignored.
+            block_data_len / 16
+        };
+        // reserved
+        reader.consume(4);
+        for _ in 0..unmap_block_descriptors {
+            let lba = reader
+                .read_obj::<Be64>()
+                .map_err(ExecuteError::Read)?
+                .to_native();
+            let nblocks = reader
+                .read_obj::<Be32>()
+                .map_err(ExecuteError::Read)?
+                .to_native() as u64;
+            // reserved
+            reader.consume(4);
+            unmap(dev, lba, nblocks).await?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
+#[repr(C, packed)]
+pub struct WriteSame16 {
+    opcode: u8,
+    wrprotect_anchor_unmap: u8,
+    lba_bytes: [u8; 8],
+    nblocks_bytes: [u8; 4],
+    group_number_field: u8,
+    control: u8,
+}
+
+impl WriteSame16 {
+    fn lba(&self) -> u64 {
+        u64::from_be_bytes(self.lba_bytes)
+    }
+
+    fn nblocks(&self) -> u32 {
+        u32::from_be_bytes(self.nblocks_bytes)
+    }
+
+    fn unmap(&self) -> bool {
+        self.wrprotect_anchor_unmap & 0x8 != 0
+    }
+
+    fn anchor(&self) -> bool {
+        self.wrprotect_anchor_unmap & 0x10 != 0
+    }
+
+    async fn emulate(
+        &self,
+        reader: &mut Reader,
+        dev: &AsyncLogicalUnit,
+    ) -> Result<(), ExecuteError> {
+        let lba = self.lba();
+        let nblocks = self.nblocks() as u64;
+        if nblocks == 0 {
+            // crosvm does not allow the number of blocks to be zero.
+            return Err(ExecuteError::InvalidField);
+        }
+        if self.anchor() {
+            // crosvm currently do not support anchor operations.
+            return Err(ExecuteError::InvalidField);
+        }
+        if self.unmap() {
+            unmap(dev, lba, nblocks).await
+        } else {
+            write_same(dev, lba, nblocks, reader).await
+        }
     }
 }
 

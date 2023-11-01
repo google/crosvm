@@ -4,6 +4,7 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 
+fallocate: 1
 fdatasync: 1
 openat: 1
 prctl: arg0 == PR_SET_NAME
