@@ -121,12 +121,16 @@ pub struct TestUnitReady {
     control: u8,
 }
 
-fn check_lba_range(max_lba: u64, sector_num: u64, sector_len: usize) -> bool {
+fn check_lba_range(max_lba: u64, sector_num: u64, sector_len: usize) -> Result<(), ExecuteError> {
     // Checking `sector_num + sector_len - 1 <= max_lba`, but we are being careful about overflows
     // and underflows.
     match sector_num.checked_add(sector_len as u64) {
-        Some(v) => v <= max_lba + 1,
-        None => false,
+        Some(v) if v <= max_lba + 1 => Ok(()),
+        _ => Err(ExecuteError::LbaOutOfRange {
+            length: sector_len,
+            sector: sector_num,
+            max_lba,
+        }),
     }
 }
 
@@ -136,14 +140,7 @@ async fn read_from_disk(
     xfer_blocks: usize,
     lba: u64,
 ) -> Result<(), ExecuteError> {
-    let max_lba = dev.max_lba;
-    if !check_lba_range(max_lba, lba, xfer_blocks) {
-        return Err(ExecuteError::LbaOutOfRange {
-            length: xfer_blocks,
-            sector: lba,
-            max_lba,
-        });
-    }
+    check_lba_range(dev.max_lba, lba, xfer_blocks)?;
     let block_size = dev.block_size;
     let count = xfer_blocks * block_size as usize;
     let offset = lba * block_size as u64;
@@ -382,7 +379,7 @@ impl ModeSense6 {
             // Block descriptor length.
             outbuf[3] = 8;
             // outbuf[4]: Density code is 0.
-            let sectors = dev.max_lba / dev.block_size as u64;
+            let sectors = dev.max_lba;
             // Fill in the number of sectors if not bigger than 0xffffff, leave it with 0
             // otherwise.
             if sectors <= 0xffffff {
@@ -533,16 +530,12 @@ impl ReadCapacity10 {
         if !self.pmi() && self.lba() != 0 {
             return Err(ExecuteError::InvalidField);
         }
-        let block_size = dev.block_size;
         // Returned value is the block address of the last sector.
         // If the block address exceeds u32::MAX, we return u32::MAX.
-        let block_address: u32 = (dev.max_lba / dev.block_size as u64)
-            .saturating_sub(1)
-            .try_into()
-            .unwrap_or(u32::MAX);
+        let block_address: u32 = dev.max_lba.saturating_sub(1).try_into().unwrap_or(u32::MAX);
         let mut outbuf = [0u8; 8];
         outbuf[..4].copy_from_slice(&block_address.to_be_bytes());
-        outbuf[4..8].copy_from_slice(&block_size.to_be_bytes());
+        outbuf[4..8].copy_from_slice(&dev.block_size.to_be_bytes());
         writer.write_all(&outbuf).map_err(ExecuteError::Write)
     }
 }
@@ -614,6 +607,7 @@ async fn write_to_disk(
     if dev.read_only {
         return Err(ExecuteError::ReadOnly);
     }
+    check_lba_range(dev.max_lba, lba, xfer_blocks)?;
     let block_size = dev.block_size;
     let count = xfer_blocks * block_size as usize;
     let offset = lba * block_size as u64;

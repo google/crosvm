@@ -387,7 +387,8 @@ impl Controller {
                 let max_lba = disk
                     .file
                     .get_len()
-                    .context("Failed to get the length of the disk image")?;
+                    .context("Failed to get the length of the disk image")?
+                    / disk.block_size as u64;
                 let target = LogicalUnit {
                     max_lba,
                     block_size: disk.block_size,
