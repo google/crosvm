@@ -351,3 +351,83 @@ impl crate::shm::PlatformSharedMemory for crate::SharedMemory {
         todo!();
     }
 }
+
+impl crate::FileReadWriteVolatile for std::fs::File {
+    fn read_volatile(&mut self, _slice: data_model::VolatileSlice) -> std::io::Result<usize> {
+        todo!();
+    }
+    fn read_vectored_volatile(
+        &mut self,
+        _bufs: &[data_model::VolatileSlice],
+    ) -> std::io::Result<usize> {
+        todo!();
+    }
+    fn write_volatile(&mut self, _slice: data_model::VolatileSlice) -> std::io::Result<usize> {
+        todo!();
+    }
+    fn write_vectored_volatile(
+        &mut self,
+        _bufs: &[data_model::VolatileSlice],
+    ) -> std::io::Result<usize> {
+        todo!();
+    }
+}
+
+impl crate::FileReadWriteAtVolatile for std::fs::File {
+    fn read_at_volatile(
+        &mut self,
+        _slice: data_model::VolatileSlice,
+        _offset: u64,
+    ) -> std::io::Result<usize> {
+        todo!();
+    }
+    fn read_vectored_at_volatile(
+        &mut self,
+        _bufs: &[data_model::VolatileSlice],
+        _offset: u64,
+    ) -> std::io::Result<usize> {
+        todo!();
+    }
+    fn write_at_volatile(
+        &mut self,
+        _slice: data_model::VolatileSlice,
+        _offset: u64,
+    ) -> std::io::Result<usize> {
+        todo!();
+    }
+    fn write_vectored_at_volatile(
+        &mut self,
+        _bufs: &[data_model::VolatileSlice],
+        _offset: u64,
+    ) -> std::io::Result<usize> {
+        todo!();
+    }
+}
+
+impl crate::Timer {
+    pub fn new() -> crate::errno::Result<crate::Timer> {
+        todo!();
+    }
+}
+
+impl crate::TimerTrait for crate::Timer {
+    fn reset(
+        &mut self,
+        _dur: std::time::Duration,
+        mut _interval: Option<std::time::Duration>,
+    ) -> crate::errno::Result<()> {
+        todo!();
+    }
+    fn wait(&mut self) -> crate::errno::Result<()> {
+        todo!();
+    }
+    fn mark_waited(&mut self) -> crate::errno::Result<bool> {
+        todo!();
+    }
+    fn clear(&mut self) -> crate::errno::Result<()> {
+        todo!();
+    }
+    fn resolution(&self) -> crate::errno::Result<std::time::Duration> {
+        todo!();
+    }
+}
