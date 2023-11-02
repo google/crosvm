@@ -69,7 +69,7 @@ COMMON_ARGS = [
     # Use tmpfs in the container for faster performance.
     "--mount type=tmpfs,destination=/tmp",
     # KVM is required to run a VM for testing.
-    "--device /dev/kvm",
+    "--device /dev/kvm" if os.name == "posix" else None,
     # Enable terminal colors
     f"--env TERM={os.environ.get('TERM', 'xterm-256color')}",
     # Pass through NEXTEST_PROFILE for use by run_tests.
@@ -83,9 +83,9 @@ DOCKER_ARGS = [
 PODMAN_ARGS = [
     *COMMON_ARGS,
     # Allow access to group permissions of the user (e.g. for kvm access).
-    "--group-add keep-groups",
+    "--group-add keep-groups" if os.name == "posix" else None,
     # Increase number of PIDs the container can spawn (we run a lot of test processes in parallel)
-    "--pids-limit=4096",
+    "--pids-limit=4096" if os.name == "posix" else None,
 ]
 
 
@@ -190,17 +190,18 @@ def validate_podman(podman: cmd):
                 print("[storage]", file=config_file)
                 print('driver = "overlay"', file=config_file)
 
-    username = os.environ["USER"]
-    subuids = Path("/etc/subuid").read_text()
-    if not username in subuids:
-        print("Rootless podman requires subuid's to be set up for your user.")
-        usermod = cmd(
-            "sudo usermod --add-subuids 900000-965535 --add-subgids 900000-965535", username
-        )
-        print("I can fix that by running:", usermod)
-        if confirm("Ok?"):
-            usermod.fg()
-            podman("system migrate").fg()
+    if os.name == "posix":
+        username = os.environ["USER"]
+        subuids = Path("/etc/subuid").read_text()
+        if not username in subuids:
+            print("Rootless podman requires subuid's to be set up for your user.")
+            usermod = cmd(
+                "sudo usermod --add-subuids 900000-965535 --add-subgids 900000-965535", username
+            )
+            print("I can fix that by running:", usermod)
+            if confirm("Ok?"):
+                usermod.fg()
+                podman("system migrate").fg()
 
 
 def main(argv: List[str]):
