@@ -131,6 +131,8 @@ cfg_if::cfg_if! {
         compile_error!("Unsupported platform");
     }
 }
+#[cfg(unix)]
+pub use sys::unix;
 
 pub use descriptor_reflection::deserialize_with_descriptors;
 pub use descriptor_reflection::with_as_descriptor;

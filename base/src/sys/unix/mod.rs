@@ -3,5 +3,6 @@
 // found in the LICENSE file.
 
 pub mod descriptor;
+pub mod file_traits;
 
 pub use descriptor::*;

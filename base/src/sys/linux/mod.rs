@@ -76,6 +76,7 @@ pub(crate) use event::PlatformEvent;
 pub use file::find_next_data;
 pub use file::FileDataIterator;
 pub use file_flags::*;
+pub(crate) use file_traits::lib::*;
 pub use get_filesystem_type::*;
 pub use ioctl::*;
 use libc::c_int;
