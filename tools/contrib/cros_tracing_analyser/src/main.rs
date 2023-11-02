@@ -404,7 +404,7 @@ fn main() -> anyhow::Result<()> {
                 value: 0,
                 children: layer_data,
             };
-            write_to_file(data, &output)
+            write_to_file(data, &output)?;
         }
         Mode::List(list) => {
             let mut input = Input::new(&list.input)?;
@@ -441,13 +441,13 @@ fn main() -> anyhow::Result<()> {
             }
             let histogram_data = stats.calculate_latency_data().histogram;
 
-            write_to_file(histogram_data, &output);
+            write_to_file(histogram_data, &output)?;
         }
     }
     Ok(())
 }
 
-fn write_to_file<T: serde::Serialize>(data: T, output: &str) {
+fn write_to_file<T: serde::Serialize>(data: T, output: &str) -> anyhow::Result<()> {
     let mut fout = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -455,7 +455,8 @@ fn write_to_file<T: serde::Serialize>(data: T, output: &str) {
         .open(&output)
         .unwrap();
     let serialized = serde_json::to_string(&data).unwrap();
-    fout.write_all(serialized.as_bytes());
+    fout.write_all(serialized.as_bytes())?;
+    Ok(())
 }
 
 #[cfg(test)]
