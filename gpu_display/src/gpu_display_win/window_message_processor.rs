@@ -16,12 +16,10 @@ use linux_input_sys::virtio_input_event;
 use vm_control::ServiceSendToGpu;
 use winapi::shared::minwindef::LPARAM;
 use winapi::shared::minwindef::LRESULT;
-use winapi::shared::minwindef::TRUE;
 use winapi::shared::minwindef::UINT;
 use winapi::shared::minwindef::WPARAM;
 use winapi::um::winuser::*;
 
-use super::window::BasicWindow;
 use super::window::GuiWindow;
 use super::window::MessagePacket;
 use super::window_message_dispatcher::DisplayEventDispatcher;
@@ -52,6 +50,11 @@ pub(crate) const WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL: UINT = WM_USER + 1;
 /// `DisplaySendToWndProc` is sent as the lParam. Note that the receiver is responsible for
 /// destructing the message.
 pub(crate) const WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL: UINT = WM_USER + 2;
+
+/// Message for notifying the Surface (and subsequently, service) of changes to the keyboard layout.
+/// the lParam contains the keyboard layout id.
+#[cfg(feature = "kiwi")]
+pub(crate) const WM_USER_KEYBOARD_LAYOUT_UPDATED_INTERNAL: UINT = WM_USER + 4;
 
 /// Struct for resources used for window message handler creation.
 pub struct MessageHandlerResources {
@@ -86,67 +89,11 @@ pub trait HandleWindowMessage: 'static {
     /// dispatched to this handler.
     fn on_message_dispatcher_attached(&mut self, _window: &GuiWindow) {}
 
-    /// Called when processing `WM_ACTIVATE`.
-    fn on_activate(&mut self, _window: &GuiWindow, _w_param: WPARAM) {}
-
-    /// Called when processing `WM_MOUSEACTIVATE`. See possible return values:
-    /// https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mouseactivate#return-value
-    fn on_mouse_activate(&self, _l_param: LPARAM) -> i32 {
-        MA_NOACTIVATE as i32
+    /// Called whenever any window message is retrieved. Should return None to request default
+    /// processing.
+    fn handle_message(&mut self, _window: &GuiWindow, _message: WindowMessage) -> Option<LRESULT> {
+        None
     }
-
-    /// Called when processing `WM_SETFOCUS`.
-    fn on_set_focus(&mut self) {}
-
-    /// Called when processing `WM_INPUT`.
-    fn on_raw_input(&mut self, _window: &GuiWindow, _l_param: LPARAM) {}
-
-    /// Called when processing `WM_MOUSEMOVE`.
-    fn on_mouse_move(&mut self, _w_param: WPARAM, _l_param: LPARAM) {}
-
-    /// Called when processing `WM_LBUTTONDOWN` and `WM_LBUTTONUP`.
-    fn on_mouse_button_left(&mut self, _window: &GuiWindow, _is_down: bool, _l_param: LPARAM) {}
-
-    /// Called when processing `WM_RBUTTONDOWN` and `WM_RBUTTONUP`.
-    fn on_mouse_button_right(&mut self, _is_down: bool) {}
-
-    /// Called when processing `WM_MOUSEWHEEL`.
-    fn on_mouse_wheel(&mut self, _window: &GuiWindow, _w_param: WPARAM, _l_param: LPARAM) {}
-
-    /// Called when processing `WM_SETCURSOR`. It should return true if the cursor has been handled
-    /// and the default processing should be skipped.
-    fn on_set_cursor(&mut self, _window: &GuiWindow) -> bool {
-        false
-    }
-
-    /// Called when processing `WM_KEYDOWN`, `WM_KEYUP`, `WM_SYSKEYDOWN` and `WM_SYSKEYUP`.
-    fn on_key(&mut self, _window: &GuiWindow, _key_down: bool, _w_param: WPARAM, _l_param: LPARAM) {
-    }
-
-    /// Called when processing `WM_WINDOWPOSCHANGING`.
-    fn on_window_pos_changing(&mut self, _window: &GuiWindow, _l_param: LPARAM) {}
-
-    /// Called when processing `WM_SIZING`.
-    fn on_window_size_changing(&mut self, _window: &GuiWindow, _w_param: WPARAM, _l_param: LPARAM) {
-    }
-
-    /// Called when processing `WM_WINDOWPOSCHANGED`. It should return true if it is intended to
-    /// skip default processing, in which case `WM_SIZE` and `WM_MOVE` won't be sent to the window.
-    fn on_window_pos_changed(&mut self, _window: &GuiWindow, _l_param: LPARAM) -> bool {
-        false
-    }
-
-    /// Called when processing `WM_SIZE`.
-    fn on_window_size_changed(&mut self, _window: &GuiWindow, _w_param: WPARAM, _l_param: LPARAM) {}
-
-    /// Called when processing `WM_ENTERSIZEMOVE`.
-    fn on_enter_size_move(&mut self) {}
-
-    /// Called when processing `WM_EXITSIZEMOVE`.
-    fn on_exit_size_move(&mut self, _window: &GuiWindow) {}
-
-    /// Called when processing `WM_DISPLAYCHANGE`.
-    fn on_display_change(&mut self, _window: &GuiWindow) {}
 
     /// Called when processing requests from the service.
     #[cfg(feature = "kiwi")]
@@ -160,18 +107,6 @@ pub trait HandleWindowMessage: 'static {
         _event: virtio_input_event,
     ) {
     }
-
-    /// Called when processing `WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL`.
-    fn on_host_viewport_change(&mut self, _window: &GuiWindow, _l_param: LPARAM) {}
-
-    /// Called when processing `WM_CLOSE`. It should return true if the window should be destroyed
-    /// immediately.
-    fn on_close(&mut self) -> bool {
-        true
-    }
-
-    /// Called when processing `WM_DESTROY`.
-    fn on_destroy(&mut self) {}
 }
 
 /// This class drives the underlying `HandleWindowMessage` trait object to process window messages
@@ -233,14 +168,8 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
     }
 
     pub fn process_message(&mut self, packet: &MessagePacket) -> LRESULT {
-        let MessagePacket {
-            msg,
-            w_param,
-            l_param,
-        } = *packet;
-
         // The handler may read window states so we should update them first.
-        self.window.update_states(msg, w_param);
+        self.window.update_states(packet.msg, packet.w_param);
 
         let handler = match &mut self.message_handler {
             Some(handler) => handler,
@@ -252,132 +181,140 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
                 return self.window.default_process_message(packet);
             }
         };
-        match msg {
-            WM_ACTIVATE => {
-                let _trace_event = trace_event!(gpu_display, "WM_ACTIVATE");
-                handler.on_activate(&self.window, w_param);
-                0
-            }
-            WM_MOUSEACTIVATE => {
-                let _trace_event = trace_event!(gpu_display, "WM_MOUSEACTIVATE");
-                handler.on_mouse_activate(l_param) as LRESULT
-            }
-            WM_SETFOCUS => {
-                let _trace_event = trace_event!(gpu_display, "WM_SETFOCUS");
-                handler.on_set_focus();
-                0
-            }
-            WM_INPUT => {
-                let _trace_event = trace_event!(gpu_display, "WM_INPUT");
-                handler.on_raw_input(&self.window, l_param);
-                self.window.default_process_message(packet)
-            }
-            WM_MOUSEMOVE => {
-                let _trace_event = trace_event!(gpu_display, "WM_MOUSEMOVE");
-                handler.on_mouse_move(w_param, l_param);
-                0
-            }
-            WM_LBUTTONDOWN | WM_LBUTTONUP => {
-                let _trace_event = trace_event!(gpu_display, "WM_LBUTTONDOWN | WM_LBUTTONUP");
-                let is_down = msg == WM_LBUTTONDOWN;
-                handler.on_mouse_button_left(&self.window, is_down, l_param);
-                0
-            }
-            WM_RBUTTONDOWN | WM_RBUTTONUP => {
-                let _trace_event = trace_event!(gpu_display, "WM_RBUTTONDOWN | WM_RBUTTONUP");
-                handler.on_mouse_button_right(/* is_down= */ msg == WM_RBUTTONDOWN);
-                0
-            }
-            WM_MOUSEWHEEL => {
-                let _trace_event = trace_event!(gpu_display, "WM_MOUSEWHEEL");
-                handler.on_mouse_wheel(&self.window, w_param, l_param);
-                0
-            }
-            WM_SETCURSOR => {
-                let _trace_event = trace_event!(gpu_display, "WM_SETCURSOR");
-                if handler.on_set_cursor(&self.window) {
-                    return 0;
-                }
-                self.window.default_process_message(packet)
-            }
-            WM_KEYDOWN | WM_KEYUP | WM_SYSKEYDOWN | WM_SYSKEYUP => {
-                let _trace_event = trace_event!(
-                    gpu_display,
-                    "WM_KEYDOWN | WM_KEYUP | WM_SYSKEYDOWN | WM_SYSKEYUP"
-                );
-                let key_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
-                handler.on_key(&self.window, key_down, w_param, l_param);
-                0
-            }
-            WM_WINDOWPOSCHANGING => {
-                let _trace_event = trace_event!(gpu_display, "WM_WINDOWPOSCHANGING");
-                handler.on_window_pos_changing(&self.window, l_param);
-                0
-            }
-            WM_SIZING => {
-                let _trace_event = trace_event!(gpu_display, "WM_SIZING");
-                handler.on_window_size_changing(&self.window, w_param, l_param);
-                TRUE as LRESULT
-            }
-            WM_WINDOWPOSCHANGED => {
-                let _trace_event = trace_event!(gpu_display, "WM_WINDOWPOSCHANGED");
-                if handler.on_window_pos_changed(&self.window, l_param) {
-                    return 0;
-                }
-                self.window.default_process_message(packet)
-            }
-            WM_SIZE => {
-                let _trace_event = trace_event!(gpu_display, "WM_SIZE");
-                handler.on_window_size_changed(&self.window, w_param, l_param);
-                0
-            }
-            WM_ENTERSIZEMOVE => {
-                let _trace_event = trace_event!(gpu_display, "WM_ENTERSIZEMOVE");
-                handler.on_enter_size_move();
-                0
-            }
-            WM_EXITSIZEMOVE => {
-                let _trace_event = trace_event!(gpu_display, "WM_EXITSIZEMOVE");
-                handler.on_exit_size_move(&self.window);
-                0
-            }
-            WM_DISPLAYCHANGE => {
-                let _trace_event = trace_event!(gpu_display, "WM_DISPLAYCHANGE");
-                handler.on_display_change(&self.window);
-                0
-            }
-            WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL => {
-                let _trace_event =
-                    trace_event!(gpu_display, "WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL");
-                handler.on_host_viewport_change(&self.window, l_param);
-                0
-            }
-            WM_CLOSE => {
-                let _trace_event = trace_event!(gpu_display, "WM_CLOSE");
-                if handler.on_close() {
-                    if let Err(e) = self.window.destroy() {
-                        error!("Failed to destroy window on WM_CLOSE: {:?}", e);
-                    }
-                }
-                0
-            }
-            WM_DESTROY => {
-                let _trace_event = trace_event!(gpu_display, "WM_DESTROY");
-                handler.on_destroy();
-                0
-            }
-            WM_NCDESTROY => {
-                let _trace_event = trace_event!(gpu_display, "WM_NCDESTROY");
-                0
-            }
-            _ => {
-                let _trace_event = trace_event!(gpu_display, "WM_OTHER_GUI_WINDOW_MESSAGE");
-                self.window.default_process_message(packet)
-            }
-        }
+
+        let _trace_event = Self::new_trace_event(packet.msg);
+
+        let window_message: WindowMessage = packet.into();
+        handler
+            .handle_message(&self.window, window_message)
+            .unwrap_or_else(|| self.window.default_process_message(packet))
     }
 
     pub fn window(&self) -> &GuiWindow {
         &self.window
+    }
+
+    #[allow(clippy::if_same_then_else)]
+    fn new_trace_event(msg: UINT) -> impl std::any::Any {
+        if msg == WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL {
+            trace_event!(gpu_display, "WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL")
+        } else {
+            trace_event!(gpu_display, "WM_OTHER_GUI_WINDOW_MESSAGE")
+        }
+    }
+}
+
+/// General window messages that multiple modules may want to process, such as the window manager,
+/// input manager, IME handler, etc.
+pub enum WindowMessage {
+    /// `WM_ACTIVATE`, "sent to both the window being activated and the window being deactivated."
+    WindowActivate { is_activated: bool },
+    /// `WM_MOUSEACTIVATE`, "sent when the cursor is in an inactive window and the user presses a
+    /// mouse button."
+    MouseActivate { l_param: LPARAM },
+    /// `WM_SETFOCUS`, "sent to a window after it has gained the keyboard focus."
+    KeyboardFocus,
+    /// `WM_INPUT`, "sent to the window that is getting raw input."
+    RawInput { l_param: LPARAM },
+    /// `WM_MOUSEMOVE`, "posted to a window when the cursor moves."
+    MouseMove { w_param: WPARAM, l_param: LPARAM },
+    /// `WM_LBUTTONDOWN` or `WM_LBUTTONUP`, "posted when the user presses/releases the left mouse
+    /// button while the cursor is in the client area of a window."
+    LeftMouseButton { is_down: bool, l_param: LPARAM },
+    /// `WM_RBUTTONDOWN` or `WM_RBUTTONUP`, "posted when the user presses/releases the right mouse
+    /// button while the cursor is in the client area of a window."
+    RightMouseButton { is_down: bool },
+    /// `WM_MOUSEWHEEL`, "sent to the focus window when the mouse wheel is rotated."
+    MouseWheel { w_param: WPARAM, l_param: LPARAM },
+    /// `WM_SETCURSOR`, "sent to a window if the mouse causes the cursor to move within a window and
+    /// mouse input is not captured."
+    SetCursor,
+    /// `WM_KEYDOWN`, `WM_KEYUP`, `WM_SYSKEYDOWN` or `WM_SYSKEYUP`, "posted to the window with the
+    /// keyboard focus when a nonsystem/system key is pressed/released."
+    Key {
+        is_sys_key: bool,
+        is_down: bool,
+        w_param: WPARAM,
+        l_param: LPARAM,
+    },
+    /// `WM_WINDOWPOSCHANGING`, "sent to a window whose size, position, or place in the Z order is
+    /// about to change."
+    WindowPosChanging { l_param: LPARAM },
+    /// `WM_WINDOWPOSCHANGED`, "sent to a window whose size, position, or place in the Z order has
+    /// changed."
+    WindowPosChanged { l_param: LPARAM },
+    /// `WM_SIZING`, "sent to a window that the user is resizing."
+    WindowSizeChanging { w_param: WPARAM, l_param: LPARAM },
+    /// `WM_SIZE`, "sent to a window after its size has changed."
+    WindowSizeChanged { w_param: WPARAM, l_param: LPARAM },
+    /// `WM_ENTERSIZEMOVE`, "sent one time to a window after it enters the moving or sizing modal
+    /// loop."
+    EnterSizeMove,
+    /// `WM_EXITSIZEMOVE`, "sent one time to a window, after it has exited the moving or sizing
+    /// modal loop."
+    ExitSizeMove,
+    /// `WM_DISPLAYCHANGE`, "sent to all windows when the display resolution has changed."
+    DisplayChange,
+    /// `WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL`.
+    HostViewportChange { l_param: LPARAM },
+    /// `WM_USER_KEYBOARD_LAYOUT_UPDATED_INTERNAL`.
+    #[cfg(feature = "kiwi")]
+    KeyboardLayoutChange { layout: isize },
+    /// `WM_CLOSE`, "sent as a signal that a window or an application should terminate."
+    WindowClose,
+    /// `WM_DESTROY`, "sent when a window is being destroyed ... before the child windows are
+    /// destroyed."
+    WindowDestroy,
+    /// Not one of the general window messages we care about.
+    Other(MessagePacket),
+}
+
+impl From<&MessagePacket> for WindowMessage {
+    fn from(packet: &MessagePacket) -> Self {
+        let MessagePacket {
+            msg,
+            w_param,
+            l_param,
+        } = *packet;
+
+        match msg {
+            WM_ACTIVATE => Self::WindowActivate {
+                is_activated: w_param != 0,
+            },
+            WM_MOUSEACTIVATE => Self::MouseActivate { l_param },
+            WM_SETFOCUS => Self::KeyboardFocus,
+            WM_INPUT => Self::RawInput { l_param },
+            WM_MOUSEMOVE => Self::MouseMove { w_param, l_param },
+            WM_LBUTTONDOWN | WM_LBUTTONUP => Self::LeftMouseButton {
+                is_down: msg == WM_LBUTTONDOWN,
+                l_param,
+            },
+            WM_RBUTTONDOWN | WM_RBUTTONUP => Self::RightMouseButton {
+                is_down: msg == WM_RBUTTONDOWN,
+            },
+            WM_MOUSEWHEEL => Self::MouseWheel { w_param, l_param },
+            WM_SETCURSOR => Self::SetCursor,
+            WM_KEYDOWN | WM_KEYUP | WM_SYSKEYDOWN | WM_SYSKEYUP => Self::Key {
+                is_sys_key: msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP,
+                is_down: msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN,
+                w_param,
+                l_param,
+            },
+            WM_WINDOWPOSCHANGING => Self::WindowPosChanging { l_param },
+            WM_WINDOWPOSCHANGED => Self::WindowPosChanged { l_param },
+            WM_SIZING => Self::WindowSizeChanging { w_param, l_param },
+            WM_SIZE => Self::WindowSizeChanged { w_param, l_param },
+            WM_ENTERSIZEMOVE => Self::EnterSizeMove,
+            WM_EXITSIZEMOVE => Self::ExitSizeMove,
+            WM_DISPLAYCHANGE => Self::DisplayChange,
+            WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL => Self::HostViewportChange { l_param },
+            #[cfg(feature = "kiwi")]
+            WM_USER_KEYBOARD_LAYOUT_UPDATED_INTERNAL => {
+                Self::KeyboardLayoutChange { layout: l_param }
+            }
+            WM_CLOSE => Self::WindowClose,
+            WM_DESTROY => Self::WindowDestroy,
+            _ => Self::Other(*packet),
+        }
     }
 }
