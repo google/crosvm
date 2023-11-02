@@ -144,7 +144,7 @@ pub fn serialize_descriptor<S: Serializer>(
 ///
 /// ```
 /// use serde_json::to_string;
-/// use base::platform::{FileSerdeWrapper, SerializeDescriptors};
+/// use base::{FileSerdeWrapper, SerializeDescriptors};
 /// use tempfile::tempfile;
 ///
 /// let tmp_f = tempfile().unwrap();
@@ -335,11 +335,11 @@ where
 ///
 /// ```
 /// use serde::{Deserialize, Serialize};
-/// use base::platform::RawDescriptor;
+/// use base::RawDescriptor;
 ///
 /// #[derive(Serialize, Deserialize)]
 /// struct RawContainer {
-///     #[serde(with = "base::platform::with_raw_descriptor")]
+///     #[serde(with = "base::with_raw_descriptor")]
 ///     rd: RawDescriptor,
 /// }
 /// ```
@@ -366,11 +366,11 @@ pub mod with_raw_descriptor {
 /// ```
 /// use std::fs::File;
 /// use serde::{Deserialize, Serialize};
-/// use base::platform::RawDescriptor;
+/// use base::RawDescriptor;
 ///
 /// #[derive(Serialize, Deserialize)]
 /// struct FileContainer {
-///     #[serde(with = "base::platform::with_as_descriptor")]
+///     #[serde(with = "base::with_as_descriptor")]
 ///     file: File,
 /// }
 /// ```

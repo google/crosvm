@@ -113,7 +113,7 @@ enum Command {
     Exit,
     Status,
     ProcessForked {
-        #[serde(with = "base::platform::with_as_descriptor")]
+        #[serde(with = "base::with_as_descriptor")]
         uffd: Userfaultfd,
         reply_tube: Tube,
     },

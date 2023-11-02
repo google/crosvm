@@ -132,13 +132,17 @@ cfg_if::cfg_if! {
     }
 }
 
+pub use descriptor_reflection::deserialize_with_descriptors;
+pub use descriptor_reflection::with_as_descriptor;
+pub use descriptor_reflection::with_raw_descriptor;
+pub use descriptor_reflection::FileSerdeWrapper;
+pub use descriptor_reflection::SerializeDescriptors;
 pub use log::debug;
 pub use log::error;
 pub use log::info;
 pub use log::trace;
 pub use log::warn;
 pub use mmap::Protection;
-pub use platform::deserialize_with_descriptors;
 pub use platform::get_cpu_affinity;
 pub use platform::get_filesystem_type;
 pub use platform::getpid;
@@ -149,17 +153,13 @@ pub use platform::pagesize;
 pub use platform::platform_timer_resolution::enable_high_res_timers;
 pub use platform::sched_setattr;
 pub use platform::set_cpu_affinity;
-pub use platform::with_as_descriptor;
-pub use platform::with_raw_descriptor;
 pub use platform::BlockingMode;
 pub use platform::EventContext;
-pub use platform::FileSerdeWrapper;
 pub use platform::FramingMode;
 pub use platform::MemoryMappingArena;
 pub use platform::MmapError;
 pub use platform::Pid;
 pub use platform::RawDescriptor;
-pub use platform::SerializeDescriptors;
 pub use platform::StreamChannel;
 pub use platform::INVALID_DESCRIPTOR;
 use uuid::Uuid;

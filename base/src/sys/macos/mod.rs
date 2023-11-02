@@ -4,10 +4,6 @@
 
 use crate::sys::unix::RawDescriptor;
 
-pub use crate::descriptor_reflection::deserialize_with_descriptors;
-pub use crate::descriptor_reflection::FileSerdeWrapper;
-pub use crate::descriptor_reflection::SerializeDescriptors;
-
 pub mod tube {
     #[derive(serde::Serialize, serde::Deserialize)]
     pub struct Tube {}
@@ -87,9 +83,6 @@ pub fn sched_setattr(_pid: Pid, _attr: &mut sched_attr, _flags: u32) -> crate::e
 pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(_cpus: I) -> crate::errno::Result<()> {
     todo!();
 }
-
-pub use crate::descriptor_reflection::with_as_descriptor;
-pub use crate::descriptor_reflection::with_raw_descriptor;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum BlockingMode {

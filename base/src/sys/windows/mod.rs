@@ -69,11 +69,6 @@ pub use terminal::*;
 pub use timer::*;
 pub(crate) use write_zeroes::file_write_zeroes_at;
 
-pub use crate::descriptor_reflection::deserialize_with_descriptors;
-pub use crate::descriptor_reflection::with_as_descriptor;
-pub use crate::descriptor_reflection::with_raw_descriptor;
-pub use crate::descriptor_reflection::FileSerdeWrapper;
-pub use crate::descriptor_reflection::SerializeDescriptors;
 pub use crate::errno::Error;
 pub use crate::errno::Result;
 pub use crate::errno::*;

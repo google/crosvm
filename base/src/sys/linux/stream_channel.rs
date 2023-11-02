@@ -52,7 +52,7 @@ impl AsRawDescriptor for StreamChannel {
 #[derive(Debug, Deserialize, Serialize)]
 enum SocketType {
     Message(UnixSeqpacket),
-    #[serde(with = "super::with_as_descriptor")]
+    #[serde(with = "crate::with_as_descriptor")]
     Byte(UnixStream),
 }
 

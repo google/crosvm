@@ -10,13 +10,13 @@ use std::time::Duration;
 
 use base::descriptor::FromRawDescriptor;
 use base::descriptor::SafeDescriptor;
-use base::platform::deserialize_with_descriptors;
-use base::platform::SerializeDescriptors;
+use base::deserialize_with_descriptors;
 use base::Event;
 use base::EventToken;
 use base::ReadNotifier;
 use base::RecvTube;
 use base::SendTube;
+use base::SerializeDescriptors;
 use base::Tube;
 use base::WaitContext;
 use serde::Deserialize;
