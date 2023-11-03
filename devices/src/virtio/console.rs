@@ -448,6 +448,21 @@ impl VirtioDevice for Console {
     }
 
     fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+        if let Some(read) = self.input.as_mut() {
+            if let Some(in_avail_evt) = &self.in_avail_evt {
+                let input_buffer = Arc::new(Mutex::new(std::mem::take(&mut self.input_buffer)));
+
+                let kill_evt = Event::new().unwrap();
+                let _ = kill_evt.signal();
+                sys::read_input(
+                    read,
+                    in_avail_evt.try_clone().unwrap(),
+                    input_buffer.clone(),
+                    kill_evt,
+                );
+                self.input_buffer = std::mem::take(&mut input_buffer.lock());
+            }
+        };
         serde_json::to_value(ConsoleSnapshot {
             // Snapshot base_features as a safeguard when restoring the console device. Saving this
             // info allows us to validate that the proper config was used for the console.

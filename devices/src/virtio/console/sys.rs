@@ -12,4 +12,5 @@ cfg_if::cfg_if! {
     }
 }
 
+pub(in crate::virtio::console) use platform::read_input;
 pub(in crate::virtio::console) use platform::spawn_input_thread;
