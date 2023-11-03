@@ -50,7 +50,6 @@ pub mod tube;
 pub mod vsock;
 mod write_zeroes;
 
-use std::ffi::CStr;
 use std::fs::remove_file;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -206,27 +205,6 @@ pub fn geteuid() -> Uid {
 pub fn getegid() -> Gid {
     // trivially safe
     unsafe { libc::getegid() }
-}
-
-/// Safe wrapper for chown(2).
-#[inline(always)]
-pub fn chown(path: &CStr, uid: Uid, gid: Gid) -> Result<()> {
-    // Safe since we pass in a valid string pointer and check the return value.
-    syscall!(unsafe { libc::chown(path.as_ptr(), uid, gid) }).map(|_| ())
-}
-
-/// Safe wrapper for fchmod(2).
-#[inline(always)]
-pub fn fchmod<A: AsRawFd>(fd: &A, mode: Mode) -> Result<()> {
-    // Safe since the function does not operate on pointers and check the return value.
-    syscall!(unsafe { libc::fchmod(fd.as_raw_fd(), mode) }).map(|_| ())
-}
-
-/// Safe wrapper for fchown(2).
-#[inline(always)]
-pub fn fchown<A: AsRawFd>(fd: &A, uid: Uid, gid: Gid) -> Result<()> {
-    // Safe since the function does not operate on pointers and check the return value.
-    syscall!(unsafe { libc::fchown(fd.as_raw_fd(), uid, gid) }).map(|_| ())
 }
 
 /// The operation to perform with `flock`.

@@ -92,7 +92,7 @@ cfg_if::cfg_if! {
         };
 
         pub use linux::{
-            chown, drop_capabilities, iov_max, pipe, read_raw_stdin
+            drop_capabilities, iov_max, pipe, read_raw_stdin
         };
         pub use linux::{enable_core_scheduling, set_rt_prio_limit, set_rt_round_robin};
         pub use linux::{flock, FlockOperation};
