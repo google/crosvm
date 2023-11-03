@@ -77,17 +77,7 @@ fn compile_protocol<P: AsRef<Path>>(name: &str, out: P) -> PathBuf {
     out_code
 }
 
-fn main() {
-    // Do nothing on Windows.
-    if std::env::var("CARGO_CFG_WINDOWS").is_ok() {
-        return;
-    }
-
-    // Skip installing dependencies when generating documents.
-    if std::env::var("CARGO_DOC").is_ok() {
-        return;
-    }
-
+fn build_wayland() {
     println!("cargo:rerun-if-env-changed=WAYLAND_PROTOCOLS_PATH");
     let out_dir = env::var("OUT_DIR").unwrap();
 
@@ -111,4 +101,18 @@ fn main() {
     build.compile("display_wl");
 
     println!("cargo:rustc-link-lib=dylib=wayland-client");
+}
+
+fn main() {
+    // Skip installing dependencies when generating documents.
+    if std::env::var("CARGO_DOC").is_ok() {
+        return;
+    }
+
+    match std::env::var("CARGO_CFG_TARGET_OS").as_deref().unwrap() {
+        "linux" | "android" => {
+            build_wayland();
+        }
+        _ => {}
+    }
 }
