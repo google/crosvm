@@ -183,18 +183,6 @@ def check_clippy(platform: Platform):
     return check
 
 
-def check_infra_configs(context: CheckContext):
-    "Validate luci configs by sending them to luci-config."
-    # TODO: Validate config files. Requires authentication with luci inside docker.
-    return [lucicfg("fmt --dry-run", file) for file in context.modified_files]
-
-
-def check_infra_tests(_: CheckContext):
-    "Run recipe.py tests, all of them, regardless of which files were modified."
-    recipes = cmd("infra/recipes.py").with_path_env("third_party/depot_tools")
-    return recipes("test run")
-
-
 def custom_check(name: str, can_fix: bool = False):
     "Custom checks are written in python in tools/custom_checks. This is a wrapper to call them."
 
@@ -358,24 +346,6 @@ CHECKS: List[Check] = [
     ),
 ]
 
-# We disable LUCI infra related tests because kokoro doesn't have internet connectivity that
-# the tests rely on.
-if not is_kiwi_repo():
-    CHECKS.extend(
-        [
-            Check(
-                check_infra_configs,
-                files=["infra/config/**.star"],
-                can_fix=True,
-            ),
-            Check(
-                check_infra_tests,
-                files=["infra/**.py"],
-                can_fix=True,
-            ),
-        ]
-    )
-
 ####################################################################################################
 # Group configuration
 #
@@ -459,8 +429,7 @@ GROUPS: List[Group] = [
             "default_health_checks",
             "doc_tests",
             "python_tests",
-        ]
-        + (["infra_configs", "infra_tests"] if not is_kiwi_repo() else []),
+        ],
     ),
     *(
         Group(
