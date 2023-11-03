@@ -587,7 +587,7 @@ pub fn open_file_or_duplicate<P: AsRef<Path>>(path: P, options: &OpenOptions) ->
 }
 
 /// Get the max number of open files allowed by the environment.
-pub fn get_max_open_files() -> Result<u64> {
+pub fn max_open_files() -> Result<u64> {
     let mut buf = mem::MaybeUninit::<libc::rlimit64>::zeroed();
 
     // Safe because this will only modify `buf` and we check the return value.

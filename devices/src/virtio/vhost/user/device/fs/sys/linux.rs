@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Context;
-use base::linux::get_max_open_files;
+use base::linux::max_open_files;
 use base::RawDescriptor;
 use cros_async::Executor;
 use minijail::Minijail;
@@ -64,7 +64,7 @@ fn jail_and_fork(
     }
     j.set_remount_mode(libc::MS_SLAVE);
 
-    let limit = get_max_open_files().context("failed to get max open files")?;
+    let limit = max_open_files().context("failed to get max open files")?;
     j.set_rlimit(libc::RLIMIT_NOFILE as i32, limit, limit)?;
     // vvu locks around 512k memory. Just give 1M.
     j.set_rlimit(libc::RLIMIT_MEMLOCK as i32, 1 << 20, 1 << 20)?;
