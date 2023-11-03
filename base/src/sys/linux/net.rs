@@ -50,6 +50,7 @@ use super::Error;
 use super::RawDescriptor;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
+use crate::handle_eintr_errno;
 use crate::SafeDescriptor;
 
 /// Assist in handling both IP version 4 and IP version 6.

@@ -15,8 +15,6 @@ mod linux;
 use linux as target_os;
 use log::warn;
 #[macro_use]
-pub mod handle_eintr;
-#[macro_use]
 pub mod ioctl;
 #[macro_use]
 pub mod syslog;

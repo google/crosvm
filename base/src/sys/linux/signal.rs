@@ -49,6 +49,8 @@ use super::getsid;
 use super::Error as ErrnoError;
 use super::Pid;
 use super::Result;
+use crate::handle_eintr_errno;
+use crate::handle_eintr_rc;
 
 const POLL_RATE: Duration = Duration::from_millis(50);
 const DEFAULT_KILL_TIMEOUT: Duration = Duration::from_secs(5);

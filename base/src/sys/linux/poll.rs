@@ -27,6 +27,7 @@ use smallvec::SmallVec;
 
 use super::errno_result;
 use super::Result;
+use crate::handle_eintr_errno;
 use crate::AsRawDescriptor;
 use crate::EventToken;
 use crate::EventType;

@@ -23,6 +23,7 @@ use super::duration_to_timespec;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::SafeDescriptor;
+use crate::handle_eintr_errno;
 use crate::timer::Timer;
 use crate::timer::TimerTrait;
 

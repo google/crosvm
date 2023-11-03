@@ -15,7 +15,7 @@ pub trait InterruptibleResult {
     fn is_interrupted(&self) -> bool;
 }
 
-impl<T> InterruptibleResult for super::Result<T> {
+impl<T> InterruptibleResult for crate::Result<T> {
     fn is_interrupted(&self) -> bool {
         matches!(self, Err(e) if e.errno() == EINTR)
     }
@@ -115,7 +115,7 @@ impl<T> InterruptibleResult for io::Result<T> {
 #[macro_export]
 macro_rules! handle_eintr {
     ($x:expr) => {{
-        use $crate::linux::handle_eintr::InterruptibleResult;
+        use $crate::unix::handle_eintr::InterruptibleResult;
         let res;
         loop {
             match $x {
@@ -157,7 +157,7 @@ macro_rules! handle_eintr_rc {
 macro_rules! handle_eintr_errno {
     ($x:expr) => {{
         use libc::EINTR;
-        use $crate::linux::Error;
+        use $crate::Error;
         let mut res;
         loop {
             res = $x;
@@ -171,8 +171,8 @@ macro_rules! handle_eintr_errno {
 
 #[cfg(test)]
 mod tests {
-    use super::super::Error as SysError;
     use super::*;
+    use crate::Error as SysError;
 
     // Sets errno to the given error code.
     fn set_errno(e: i32) {
