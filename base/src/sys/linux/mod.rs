@@ -128,6 +128,7 @@ pub use crate::descriptor_reflection::SerializeDescriptors;
 pub use crate::errno::Error;
 pub use crate::errno::Result;
 pub use crate::errno::*;
+use crate::round_up_to_page_size;
 
 /// Re-export libc types that are part of the API.
 pub type Pid = libc::pid_t;
@@ -158,13 +159,6 @@ pub fn pagesize() -> usize {
 pub fn iov_max() -> usize {
     // Trivially safe
     unsafe { sysconf(_SC_IOV_MAX) as usize }
-}
-
-/// Uses the system's page size in bytes to round the given value up to the nearest page boundary.
-#[inline(always)]
-pub fn round_up_to_page_size(v: usize) -> usize {
-    let page_mask = pagesize() - 1;
-    (v + page_mask) & !page_mask
 }
 
 /// This bypasses `libc`'s caching `getpid(2)` wrapper which can be invalid if a raw clone was used

@@ -38,13 +38,6 @@ pub fn pagesize() -> usize {
     SYSTEM_INFO.pagesize
 }
 
-/// Uses the system's page size in bytes to round the given value up to the nearest page boundary.
-#[inline(always)]
-pub fn round_up_to_page_size(v: usize) -> usize {
-    let page_mask = pagesize() - 1;
-    (v + page_mask) & !page_mask
-}
-
 /// Returns the number of online logical cores on the system.
 pub fn number_of_logical_cores() -> Result<usize> {
     Ok(SYSTEM_INFO.number_of_logical_cores)

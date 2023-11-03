@@ -147,7 +147,6 @@ pub use platform::number_of_logical_cores;
 pub use platform::open_file_or_duplicate;
 pub use platform::pagesize;
 pub use platform::platform_timer_resolution::enable_high_res_timers;
-pub use platform::round_up_to_page_size;
 pub use platform::sched_setattr;
 pub use platform::set_cpu_affinity;
 pub use platform::with_as_descriptor;
@@ -194,4 +193,11 @@ pub enum VmEventType {
     Crash,
     Panic(u8),
     WatchdogReset,
+}
+
+/// Uses the system's page size in bytes to round the given value up to the nearest page boundary.
+#[inline(always)]
+pub fn round_up_to_page_size(v: usize) -> usize {
+    let page_mask = pagesize() - 1;
+    (v + page_mask) & !page_mask
 }

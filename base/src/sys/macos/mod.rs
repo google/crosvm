@@ -77,10 +77,6 @@ pub mod platform_timer_resolution {
     }
 }
 
-pub fn round_up_to_page_size(_v: usize) -> usize {
-    todo!();
-}
-
 #[allow(non_camel_case_types)]
 pub struct sched_attr {}
 

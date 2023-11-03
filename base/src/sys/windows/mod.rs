@@ -65,7 +65,6 @@ pub use system_info::allocation_granularity;
 pub use system_info::getpid;
 pub use system_info::number_of_logical_cores;
 pub use system_info::pagesize;
-pub use system_info::round_up_to_page_size;
 pub use terminal::*;
 pub use timer::*;
 pub(crate) use write_zeroes::file_write_zeroes_at;
