@@ -30,13 +30,12 @@ use libc::cmsghdr;
 use libc::iovec;
 use libc::msghdr;
 use libc::recvmsg;
-use libc::sendmsg;
-use libc::MSG_NOSIGNAL;
 use libc::SCM_RIGHTS;
 use libc::SOL_SOCKET;
 
 use super::net::UnixSeqpacket;
 use super::StreamChannel;
+use crate::sys::sendmsg_nosignal;
 use crate::AsRawDescriptor;
 
 // Each of the following functions performs the same function as their C counterparts. They are
@@ -162,7 +161,7 @@ fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> io::
 
     // Safe because the msghdr was properly constructed from valid (or null) pointers of the
     // indicated length and we check the return value.
-    let write_count = unsafe { sendmsg(fd, &msg, MSG_NOSIGNAL) };
+    let write_count = unsafe { sendmsg_nosignal(fd, &msg, 0) };
 
     if write_count == -1 {
         Err(io::Error::last_os_error())

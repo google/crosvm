@@ -101,10 +101,7 @@ cfg_if::cfg_if! {
         pub use linux::{flock, FlockOperation};
         pub use linux::{getegid, geteuid};
         pub use linux::{gettid, kill_process_group, reap_child};
-        pub use linux::{
-            net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener},
-            ScmSocket, UnlinkUnixListener, SCM_SOCKET_MAX_FD_COUNT,
-        };
+        pub use linux::UnlinkUnixListener;
         pub use linux::EventExt;
     }
 }
@@ -143,6 +140,11 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         pub use sys::unix;
 
+        pub use unix::net::UnixSeqpacket;
+        pub use unix::net::UnixSeqpacketListener;
+        pub use unix::net::UnlinkUnixSeqpacketListener;
+        pub use unix::ScmSocket;
+        pub use unix::SCM_SOCKET_MAX_FD_COUNT;
         pub use unix::number_of_logical_cores;
         pub use unix::pagesize;
         pub use unix::Pid;

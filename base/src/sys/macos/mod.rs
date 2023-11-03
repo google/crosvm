@@ -5,6 +5,13 @@
 use crate::sys::unix::RawDescriptor;
 use crate::MmapError;
 
+mod net;
+
+pub(in crate::sys) use net::sendmsg_nosignal;
+pub(in crate::sys) use net::sockaddr_un;
+pub(in crate::sys) use net::sockaddrv4_to_lib_c;
+pub(in crate::sys) use net::sockaddrv6_to_lib_c;
+
 pub mod tube {
     #[derive(serde::Serialize, serde::Deserialize)]
     pub struct Tube {}
@@ -85,12 +92,6 @@ pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(_cpus: I) -> crate::errno
     todo!();
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum BlockingMode {
-    Blocking,
-    Nonblocking,
-}
-
 pub struct EventContext<T: crate::EventToken> {
     p: std::marker::PhantomData<T>,
 }
@@ -132,15 +133,7 @@ impl<T: crate::EventToken> crate::AsRawDescriptor for EventContext<T> {
     }
 }
 
-#[derive(Copy, Clone)]
-pub enum FramingMode {
-    Message,
-    Byte,
-}
-
 pub struct MemoryMappingArena {}
-
-pub struct StreamChannel {}
 
 #[derive(Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlatformEvent {}

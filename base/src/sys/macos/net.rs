@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::io;
+use std::mem::size_of;
 use std::net::SocketAddrV4;
 use std::net::SocketAddrV6;
 use std::os::fd::RawFd;
@@ -11,27 +12,34 @@ use std::path::Path;
 use std::ptr::null_mut;
 
 use libc::c_int;
+use libc::c_void;
+use libc::close;
+use libc::fcntl;
 use libc::in6_addr;
 use libc::in_addr;
 use libc::msghdr;
 use libc::sa_family_t;
 use libc::sendmsg;
+use libc::setsockopt;
 use libc::sockaddr_in;
 use libc::sockaddr_in6;
+use libc::socklen_t;
 use libc::ssize_t;
 use libc::AF_INET;
 use libc::AF_INET6;
-use libc::MSG_NOSIGNAL;
-use libc::SOCK_CLOEXEC;
+use libc::FD_CLOEXEC;
+use libc::F_SETFD;
 use libc::SOCK_STREAM;
+use libc::SOL_SOCKET;
+use libc::SO_NOSIGPIPE;
 
-use crate::descriptor::AsRawDescriptor;
-use crate::descriptor::FromRawDescriptor;
 use crate::unix::net::socket;
 use crate::unix::net::socketpair;
 use crate::unix::net::sun_path_offset;
 use crate::unix::net::InetVersion;
 use crate::unix::net::TcpSocket;
+use crate::AsRawDescriptor;
+use crate::FromRawDescriptor;
 use crate::SafeDescriptor;
 use crate::UnixSeqpacket;
 use crate::UnixSeqpacketListener;
@@ -41,10 +49,22 @@ pub(in crate::sys) unsafe fn sendmsg_nosignal(
     msg: *const msghdr,
     flags: c_int,
 ) -> ssize_t {
-    sendmsg(fd, msg, flags | MSG_NOSIGNAL)
+    let set: c_int = 1;
+    if setsockopt(
+        fd,
+        SOL_SOCKET,
+        SO_NOSIGPIPE,
+        &set as *const c_int as *const c_void,
+        size_of::<c_int>() as socklen_t,
+    ) < 0
+    {
+        -1
+    } else {
+        sendmsg(fd, msg, flags)
+    }
 }
 
-pub(in crate::sys) fn sockaddrv4_to_lib_c(s: &SocketAddrV4) -> sockaddr_in {
+pub(crate) fn sockaddrv4_to_lib_c(s: &SocketAddrV4) -> sockaddr_in {
     sockaddr_in {
         sin_family: AF_INET as sa_family_t,
         sin_port: s.port().to_be(),
@@ -52,10 +72,11 @@ pub(in crate::sys) fn sockaddrv4_to_lib_c(s: &SocketAddrV4) -> sockaddr_in {
             s_addr: u32::from_ne_bytes(s.ip().octets()),
         },
         sin_zero: [0; 8],
+        sin_len: size_of::<sockaddr_in>() as u8,
     }
 }
 
-pub(in crate::sys) fn sockaddrv6_to_lib_c(s: &SocketAddrV6) -> sockaddr_in6 {
+pub(crate) fn sockaddrv6_to_lib_c(s: &SocketAddrV6) -> sockaddr_in6 {
     sockaddr_in6 {
         sin6_family: AF_INET6 as sa_family_t,
         sin6_port: s.port().to_be(),
@@ -64,6 +85,20 @@ pub(in crate::sys) fn sockaddrv6_to_lib_c(s: &SocketAddrV6) -> sockaddr_in6 {
             s6_addr: s.ip().octets(),
         },
         sin6_scope_id: 0,
+        sin6_len: size_of::<sockaddr_in6>() as u8,
+    }
+}
+
+fn cloexec_or_close<Raw: AsRawDescriptor>(raw: Raw) -> io::Result<Raw> {
+    let res = unsafe { fcntl(raw.as_raw_descriptor(), F_SETFD, FD_CLOEXEC) };
+    if res >= 0 {
+        Ok(raw)
+    } else {
+        let err = io::Error::last_os_error();
+        unsafe {
+            close(raw.as_raw_descriptor());
+        }
+        Err(err)
     }
 }
 
@@ -74,6 +109,7 @@ pub(in crate::sys) fn sockaddr_un<P: AsRef<Path>>(
     let mut addr = libc::sockaddr_un {
         sun_family: libc::AF_UNIX as libc::sa_family_t,
         sun_path: std::array::from_fn(|_| 0),
+        sun_len: 0,
     };
 
     // Check if the input path is valid. Since
@@ -105,19 +141,19 @@ pub(in crate::sys) fn sockaddr_un<P: AsRef<Path>>(
     //     offsetof(struct sockaddr_un, sun_path) + strlen(addr.sun_path) + 1
     //
     // or, more simply, addrlen can be specified as sizeof(struct sockaddr_un).
-    let len = sun_path_offset() + bytes.len() + 1;
-    Ok((addr, len as libc::socklen_t))
+    addr.sun_len = sun_path_offset() as u8 + bytes.len() as u8 + 1;
+    Ok((addr, addr.sun_len as libc::socklen_t))
 }
 
 impl TcpSocket {
     pub fn new(inet_version: InetVersion) -> io::Result<Self> {
         Ok(TcpSocket {
             inet_version,
-            descriptor: socket(
+            descriptor: cloexec_or_close(socket(
                 Into::<sa_family_t>::into(inet_version) as libc::c_int,
-                SOCK_STREAM | SOCK_CLOEXEC,
+                SOCK_STREAM,
                 0,
-            )?,
+            )?)?,
         })
     }
 }
@@ -127,8 +163,9 @@ impl UnixSeqpacket {
     ///
     /// Both returned file descriptors have the `CLOEXEC` flag set.
     pub fn pair() -> io::Result<(UnixSeqpacket, UnixSeqpacket)> {
-        socketpair(libc::AF_UNIX, libc::SOCK_SEQPACKET | libc::SOCK_CLOEXEC, 0)
-            .map(|(s0, s1)| (UnixSeqpacket::from(s0), UnixSeqpacket::from(s1)))
+        let (fd0, fd1) = socketpair(libc::AF_UNIX, libc::SOCK_SEQPACKET, 0)?;
+        let (s0, s1) = (UnixSeqpacket::from(fd0), UnixSeqpacket::from(fd1));
+        Ok((cloexec_or_close(s0)?, cloexec_or_close(s1)?))
     }
 }
 
@@ -139,21 +176,14 @@ impl UnixSeqpacketListener {
     /// The returned socket has the close-on-exec flag set.
     pub fn accept(&self) -> io::Result<UnixSeqpacket> {
         // Safe because we own this fd and the kernel will not write to null pointers.
-        match unsafe {
-            libc::accept4(
-                self.as_raw_descriptor(),
-                null_mut(),
-                null_mut(),
-                SOCK_CLOEXEC,
-            )
-        } {
+        match unsafe { libc::accept(self.as_raw_descriptor(), null_mut(), null_mut()) } {
             -1 => Err(io::Error::last_os_error()),
             fd => {
                 // Safe because we checked the return value of accept. Therefore, the return value
                 // must be a valid socket.
-                Ok(UnixSeqpacket::from(unsafe {
+                Ok(UnixSeqpacket::from(cloexec_or_close(unsafe {
                     SafeDescriptor::from_raw_descriptor(fd)
-                }))
+                })?))
             }
         }
     }

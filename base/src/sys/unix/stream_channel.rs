@@ -14,10 +14,10 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::super::net::UnixSeqpacket;
-use super::super::Result;
-use super::RawDescriptor;
 use crate::descriptor::AsRawDescriptor;
+use crate::RawDescriptor;
 use crate::ReadNotifier;
+use crate::Result;
 
 #[derive(Copy, Clone)]
 pub enum FramingMode {
