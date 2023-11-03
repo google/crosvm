@@ -21,6 +21,11 @@ const DEFAULT_HORIZONTAL_SYNC_PULSE: u16 = 192;
 const DEFAULT_VERTICAL_SYNC_PULSE: u16 = 3;
 const MILLIMETERS_PER_INCH: f32 = 25.4;
 
+const DATA_BLOCK_TYPE_1_DETAILED_TIMING: u8 = 0x3;
+const DATA_BLOCK_TYPE_1_DETAILED_TIMING_SIZE: u8 = 20;
+const DATA_BLOCK_TYPE_1_DETAILED_TIMING_VERSION: u8 = 0x13;
+const DISPLAYID_EXT: u8 = 0x70;
+
 /// This class is used to create the Extended Display Identification Data (EDID), which will be
 /// exposed to the guest system.
 ///
@@ -33,27 +38,33 @@ const MILLIMETERS_PER_INCH: f32 = 25.4;
 /// information and no other form of timing information.
 #[repr(C)]
 pub struct EdidBytes {
-    bytes: [u8; EDID_DATA_LENGTH],
+    bytes: Vec<u8>,
 }
 
 impl EdidBytes {
     /// Creates a virtual EDID block.
     pub fn new(info: &DisplayInfo) -> VirtioGpuResult {
-        let mut edid: [u8; EDID_DATA_LENGTH] = [0; EDID_DATA_LENGTH];
+        let mut edid = vec![0u8; EDID_DATA_LENGTH * 2];
 
         populate_header(&mut edid);
         populate_edid_version(&mut edid);
         populate_size(&mut edid, info);
         populate_standard_timings(&mut edid)?;
 
-        // 4 available descriptor blocks
-        let block0 = &mut edid[54..72];
-        populate_detailed_timing(block0, info);
+        let display_name_block = &mut edid[54..72];
+        populate_display_name(display_name_block);
 
-        let block1 = &mut edid[72..90];
-        populate_display_name(block1);
+        // We add one extension edid.
+        edid[126] = 1;
+        calculate_checksum(&mut edid, 127);
 
-        calculate_checksum(&mut edid);
+        let display_id_extension = &mut edid[EDID_DATA_LENGTH..EDID_DATA_LENGTH * 2];
+        display_id_extension[0] = DISPLAYID_EXT; // This is a display id extensions block.
+
+        // Just populate a single display right now, starting at index 1.
+        populate_displayid_detailed_timings(display_id_extension, 1, info);
+
+        calculate_checksum(display_id_extension, 127);
 
         Ok(OkEdid(Box::new(Self { bytes: edid })))
     }
@@ -172,23 +183,24 @@ fn populate_display_name(edid_block: &mut [u8]) {
     edid_block[5..].clone_from_slice("CrosvmDisplay".as_bytes());
 }
 
-fn populate_detailed_timing(edid_block: &mut [u8], info: &DisplayInfo) {
-    assert_eq!(edid_block.len(), 18);
+fn populate_displayid_detailed_timings(block: &mut [u8], start_index: usize, info: &DisplayInfo) {
+    // A single display id detailed timing block is 28 bytes:
+    //  4 bytes for the display id hdr
+    //  3 bytes for the display id block
+    //  20 bytes for the actual detailed timing data
+    //  1 byte for the checksum
+    let block = &mut block[start_index..start_index + 28];
+    block[0] = DATA_BLOCK_TYPE_1_DETAILED_TIMING_VERSION; // This doesn't seem to be used by the
+                                                          // kernel.
+    block[1] = DATA_BLOCK_TYPE_1_DETAILED_TIMING_SIZE + 3; // Size of this data without this header.
+    block[2] = DATA_BLOCK_TYPE_1_DETAILED_TIMING; // Prod id. This doesn't seem to matter.
+    block[3] = 0; // Extension count
 
-    // Detailed timings
-    //
-    // 18 Byte Descriptors - 72 Bytes
-    // The 72 bytes in this section are divided into four data fields. Each of the four data fields
-    // are 18 bytes in length. These 18 byte data fields shall contain either detailed timing data
-    // as described in Section 3.10.2 or other types of data as described in Section 3.10.3. The
-    // addresses and the contents of the four 18 byte descriptors are shown in Table 3.20.
-    //
-    // We leave the bottom 6 bytes of this block purposefully empty.
-    let horizontal_blanking_lsb: u8 = (info.horizontal_blanking & 0xFF) as u8;
-    let horizontal_blanking_msb: u8 = ((info.horizontal_blanking >> 8) & 0x0F) as u8;
-
-    let vertical_blanking_lsb: u8 = (info.vertical_blanking & 0xFF) as u8;
-    let vertical_blanking_msb: u8 = ((info.vertical_blanking >> 8) & 0x0F) as u8;
+    block[4] = DATA_BLOCK_TYPE_1_DETAILED_TIMING; // Structure of detailed timing info.
+    block[5] = 0x00; // Revision
+    block[6] = DATA_BLOCK_TYPE_1_DETAILED_TIMING_SIZE; // Length of the actual timing information,
+                                                       // must be 20 for
+                                                       // DATA_BLOCK_TYPE_1_DETAILED_TIMING.
 
     // The pixel clock is what controls the refresh timing information.
     //
@@ -211,66 +223,71 @@ fn populate_detailed_timing(edid_block: &mut [u8], info: &DisplayInfo) {
     //    if flags & INTERLACE: refresh *= 2
     //    if flags & DBLSCAN: refresh /= 2
     //    if vscan > 1: refresh /= vscan
-    //
+
     let htotal = info.width() + (info.horizontal_blanking as u32);
     let vtotal = info.height() + (info.vertical_blanking as u32);
-    let mut clock: u16 = ((info.refresh_rate * htotal * vtotal) / 10000) as u16;
-    // Round to nearest 10khz.
-    clock = ((clock + 5) / 10) * 10;
-    edid_block[0..2].copy_from_slice(&clock.to_le_bytes());
+    let clock = (info.refresh_rate * htotal * vtotal) / 10000;
 
-    let width_lsb: u8 = (info.width() & 0xFF) as u8;
-    let width_msb: u8 = ((info.width() >> 8) & 0x0F) as u8;
+    // 3 bytes for clock.
+    block[7] = (clock & 0xff) as u8;
+    block[8] = ((clock & 0xff00) >> 8) as u8;
+    block[9] = ((clock & 0xff0000) >> 16) as u8;
 
-    // Horizointal Addressable Video in pixels.
-    edid_block[2] = width_lsb;
-    // Horizontal blanking in pixels.
-    edid_block[3] = horizontal_blanking_lsb;
-    // Upper bits of the two above vals.
-    edid_block[4] = horizontal_blanking_msb | (width_msb << 4);
+    // Next byte is flags.
+    block[10] = 0x88;
 
-    let vertical_active: u32 = info.height();
+    // Note: We subtract 1 from all of these values because the kernel will then add 1 to all of
+    // them when they are read.
+    let hblanking = info.horizontal_blanking.saturating_sub(1);
+    let horizontal_blanking_lsb: u8 = (hblanking & 0xFF) as u8;
+    let horizontal_blanking_msb: u8 = ((hblanking >> 8) & 0x0F) as u8;
+
+    let vblanking = info.vertical_blanking.saturating_sub(1);
+    let vertical_blanking_lsb: u8 = (vblanking & 0xFF) as u8;
+    let vertical_blanking_msb: u8 = ((vblanking >> 8) & 0x0F) as u8;
+
+    let width = info.width().saturating_sub(1);
+    let width_lsb: u8 = (width & 0xFF) as u8;
+    let width_msb: u8 = ((width >> 8) & 0x0F) as u8;
+
+    let vertical_active: u32 = info.height().saturating_sub(1);
     let vertical_active_lsb: u8 = (vertical_active & 0xFF) as u8;
     let vertical_active_msb: u8 = ((vertical_active >> 8) & 0x0F) as u8;
 
-    // Vertical addressable video in *lines*
-    edid_block[5] = vertical_active_lsb;
-    // Vertical blanking in lines
-    edid_block[6] = vertical_blanking_lsb;
-    // Sigbits of the above.
-    edid_block[7] = vertical_blanking_msb | (vertical_active_msb << 4);
+    let hfront = info.horizontal_front.saturating_sub(1);
+    let horizontal_front_lsb: u8 = (hfront & 0xFF) as u8; // least sig 8 bits
+    let horizontal_front_msb: u8 = ((hfront >> 8) & 0x03) as u8; // most sig 2 bits
 
-    let horizontal_front_lsb: u8 = (info.horizontal_front & 0xFF) as u8; // least sig 8 bits
-    let horizontal_front_msb: u8 = ((info.horizontal_front >> 8) & 0x03) as u8; // most sig 2 bits
-    let horizontal_sync_lsb: u8 = (info.horizontal_sync & 0xFF) as u8; // least sig 8 bits
-    let horizontal_sync_msb: u8 = ((info.horizontal_sync >> 8) & 0x03) as u8; // most sig 2 bits
+    let hsync = info.horizontal_sync.saturating_sub(1);
+    let horizontal_sync_lsb: u8 = (hsync & 0xFF) as u8; // least sig 8 bits
+    let horizontal_sync_msb: u8 = ((hsync >> 8) & 0x03) as u8; // most sig 2 bits
 
-    let vertical_front_lsb: u8 = (info.vertical_front & 0x0F) as u8; // least sig 4 bits
-    let vertical_front_msb: u8 = ((info.vertical_front >> 8) & 0x0F) as u8; // most sig 2 bits
-    let vertical_sync_lsb: u8 = (info.vertical_sync & 0xFF) as u8; // least sig 4 bits
-    let vertical_sync_msb: u8 = ((info.vertical_sync >> 8) & 0x0F) as u8; // most sig 2 bits
+    let vfront = info.vertical_front.saturating_sub(1);
+    let vertical_front_lsb: u8 = (vfront & 0x0F) as u8; // least sig 4 bits
+    let vertical_front_msb: u8 = ((vfront >> 8) & 0x0F) as u8; // most sig 2 bits
 
-    // Horizontal front porch in pixels.
-    edid_block[8] = horizontal_front_lsb;
-    // Horizontal sync pulse width in pixels.
-    edid_block[9] = horizontal_sync_lsb;
-    // LSB of vertical front porch and sync pulse
-    edid_block[10] = vertical_sync_lsb | (vertical_front_lsb << 4);
-    // Upper 2 bits of these values.
-    edid_block[11] = vertical_sync_msb
-        | (vertical_front_msb << 2)
-        | (horizontal_sync_msb << 4)
-        | (horizontal_front_msb << 6);
+    let vsync = info.vertical_sync.saturating_sub(1);
+    let vertical_sync_lsb: u8 = (vsync & 0xFF) as u8; // least sig 4 bits
+    let vertical_sync_msb: u8 = ((vsync >> 8) & 0x0F) as u8; // most sig 2 bits
 
-    let width_millimeters_lsb: u8 = (info.width_millimeters & 0xFF) as u8; // least sig 8 bits
-    let width_millimeters_msb: u8 = ((info.width_millimeters >> 8) & 0xF) as u8; // most sig 4 bits
+    block[11] = width_lsb;
+    block[12] = width_msb;
+    block[13] = horizontal_blanking_lsb;
+    block[14] = horizontal_blanking_msb;
+    block[15] = horizontal_front_lsb;
+    block[16] = horizontal_front_msb;
+    block[17] = horizontal_sync_lsb;
+    block[18] = horizontal_sync_msb;
+    block[19] = vertical_active_lsb;
+    block[20] = vertical_active_msb;
+    block[21] = vertical_blanking_lsb;
+    block[22] = vertical_blanking_msb;
+    block[23] = vertical_front_lsb;
+    block[24] = vertical_front_msb;
+    block[25] = vertical_sync_lsb;
+    block[26] = vertical_sync_msb;
 
-    let height_millimeters_lsb: u8 = (info.height_millimeters & 0xFF) as u8; // least sig 8 bits
-    let height_millimeters_msb: u8 = ((info.height_millimeters >> 8) & 0xF) as u8; // most sig 4 bits
-
-    edid_block[12] = width_millimeters_lsb;
-    edid_block[13] = height_millimeters_lsb;
-    edid_block[14] = height_millimeters_msb | (width_millimeters_msb << 4);
+    calculate_checksum(block, 27);
 }
 
 // The EDID header. This is defined by the EDID spec.
@@ -347,9 +364,9 @@ fn populate_size(edid: &mut [u8], info: &DisplayInfo) {
     edid[22] = info.height_centimeters();
 }
 
-fn calculate_checksum(edid: &mut [u8]) {
+fn calculate_checksum(block: &mut [u8], length: usize) {
     let mut checksum: u8 = 0;
-    for byte in edid.iter().take(EDID_DATA_LENGTH - 1) {
+    for byte in block.iter().take(length) {
         checksum = checksum.wrapping_add(*byte);
     }
 
@@ -357,5 +374,5 @@ fn calculate_checksum(edid: &mut [u8]) {
         checksum = 255 - checksum + 1;
     }
 
-    edid[127] = checksum;
+    block[length] = checksum;
 }
