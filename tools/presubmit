@@ -51,7 +51,8 @@ def platform_is_supported(platform: Platform):
 def check_python_tests(_: CheckContext):
     "Runs unit tests for python dev tooling."
     PYTHON_TESTS = [
-        "tests.cl_tests",
+        # Disabled due to b/309148074
+        # "tests.cl_tests",
         "impl.common",
     ]
     return [python.with_cwd(TOOLS_ROOT).with_args("-m", file) for file in PYTHON_TESTS]
