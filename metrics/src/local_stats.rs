@@ -673,7 +673,8 @@ mod tests {
 
     #[test]
     fn histogram_debug_fmt() {
-        let mut histogram = Histogram::new(&[0..200]).unwrap();
+        let range = 0..200;
+        let mut histogram = Histogram::new(&[range]).unwrap();
 
         let mut simple_stats = SimpleStat::default();
         assert_eq!(histogram.simple_stat(), simple_stats);
@@ -782,7 +783,8 @@ mod tests {
 
     #[test]
     fn add_on_drop() {
-        let histogram = Arc::new(Mutex::new(DetailedHistogram::new(&[0..u64::MAX]).unwrap()));
+        let range = 0..u64::MAX;
+        let histogram = Arc::new(Mutex::new(DetailedHistogram::new(&[range]).unwrap()));
 
         {
             let _ = timed_scope(histogram.clone());

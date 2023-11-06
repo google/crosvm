@@ -26,7 +26,8 @@ mod test {
         let shm = create_shared_memory("test", 3 * pagesize());
         let uffd = create_uffd_for_test();
         let base_addr = shm.base_addr();
-        let regions = [base_addr..(base_addr + 3 * pagesize())];
+        let region = base_addr..(base_addr + 3 * pagesize());
+        let regions = [region];
         let (tube_main, tube_child) = Tube::pair().unwrap();
         let pid = unsafe { libc::fork() };
         if pid == 0 {
@@ -54,7 +55,8 @@ mod test {
         let shm = create_shared_memory("test", 3 * pagesize());
         let uffd = create_uffd_for_test();
         let base_addr = shm.base_addr();
-        let regions = [base_addr..(base_addr + 3 * pagesize())];
+        let region = base_addr..(base_addr + 3 * pagesize());
+        let regions = [region];
         let (tube_main, tube_child) = Tube::pair().unwrap();
         let pid = unsafe { libc::fork() };
         if pid == 0 {

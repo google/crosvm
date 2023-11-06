@@ -93,13 +93,9 @@ fn create_invalid_range() {
     let staging_shmem = SharedMemory::new("test staging memory", 6 * pagesize() as u64).unwrap();
     let shm = create_shared_memory("shm", 6 * pagesize());
     let base_addr = shm.base_addr();
+    let region = base_addr..(base_addr - pagesize());
 
-    let result = PageHandler::create(
-        &file,
-        &staging_shmem,
-        &[base_addr..(base_addr - pagesize())],
-        worker.channel.clone(),
-    );
+    let result = PageHandler::create(&file, &staging_shmem, &[region], worker.channel.clone());
 
     assert!(result.is_err());
     worker.close();
@@ -123,7 +119,8 @@ fn handle_page_fault_zero_success() {
     let uffd = create_uffd_for_test();
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
-    let regions = [base_addr..(base_addr + 3 * pagesize())];
+    let region = base_addr..(base_addr + 3 * pagesize());
+    let regions = [region];
     let page_handler =
         PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
@@ -162,7 +159,8 @@ fn handle_page_fault_invalid_address() {
     let uffd = create_uffd_for_test();
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
-    let regions = [base_addr..(base_addr + 3 * pagesize())];
+    let region = base_addr..(base_addr + 3 * pagesize());
+    let regions = [region];
     let page_handler =
         PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
@@ -190,7 +188,8 @@ fn handle_page_fault_duplicated_page_fault() {
     let uffd = create_uffd_for_test();
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
-    let regions = [base_addr..(base_addr + 3 * pagesize())];
+    let region = base_addr..(base_addr + 3 * pagesize());
+    let regions = [region];
     let page_handler =
         PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
@@ -214,7 +213,8 @@ fn handle_page_remove_success() {
     let uffd = create_uffd_for_test();
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
-    let regions = [base_addr..(base_addr + 3 * pagesize())];
+    let region = base_addr..(base_addr + 3 * pagesize());
+    let regions = [region];
     let page_handler =
         PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
@@ -260,7 +260,8 @@ fn handle_page_remove_invalid_address() {
     let uffd = create_uffd_for_test();
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
-    let regions = [base_addr..(base_addr + 3 * pagesize())];
+    let region = base_addr..(base_addr + 3 * pagesize());
+    let regions = [region];
     let page_handler =
         PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
@@ -526,7 +527,8 @@ fn move_to_staging_invalid_base_addr() {
     let staging_shmem = SharedMemory::new("test staging memory", 3 * pagesize() as u64).unwrap();
     let shm = create_shared_memory("shm1", 3 * pagesize());
     let base_addr = shm.base_addr();
-    let regions = [base_addr..(base_addr + 3 * pagesize())];
+    let region = base_addr..(base_addr + 3 * pagesize());
+    let regions = [region];
     let page_handler =
         PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
@@ -646,7 +648,8 @@ fn swap_out_handled_page() {
         .unwrap();
     let base_addr1 = mmap1.as_ptr() as usize;
 
-    let regions = [base_addr1..(base_addr1 + 3 * pagesize())];
+    let region = base_addr1..(base_addr1 + 3 * pagesize());
+    let regions = [region];
     let page_handler =
         PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
     // write data before registering to userfaultfd
