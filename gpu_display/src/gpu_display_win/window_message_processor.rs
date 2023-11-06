@@ -24,6 +24,7 @@ use super::window::GuiWindow;
 use super::window::MessagePacket;
 use super::window_message_dispatcher::DisplayEventDispatcher;
 use super::ObjectId;
+use super::Surface;
 use crate::EventDevice;
 use crate::EventDeviceKind;
 
@@ -56,23 +57,22 @@ pub(crate) const WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL: UINT = WM_USER + 2;
 #[cfg(feature = "kiwi")]
 pub(crate) const WM_USER_KEYBOARD_LAYOUT_UPDATED_INTERNAL: UINT = WM_USER + 4;
 
-/// Struct for resources used for window message handler creation.
-pub struct MessageHandlerResources {
+/// Struct for resources used for Surface creation.
+pub struct SurfaceResources {
     pub display_event_dispatcher: DisplayEventDispatcher,
     pub gpu_main_display_tube: Option<Rc<Tube>>,
 }
 
-pub type CreateMessageHandlerFunction<T> =
-    Box<dyn FnOnce(&GuiWindow, MessageHandlerResources) -> Result<T>>;
+pub type CreateSurfaceFunction = Box<dyn FnOnce(&GuiWindow, SurfaceResources) -> Result<Surface>>;
 
-/// Called after the handler creation finishes. The argument indicates whether that was successful.
-pub type CreateMessageHandlerCallback = Box<dyn FnOnce(bool)>;
+/// Called after the surface creation finishes. The argument indicates whether that was successful.
+pub type CreateSurfaceCallback = Box<dyn FnOnce(bool)>;
 
 /// Messages sent from the GPU worker thread to the WndProc thread.
-pub enum DisplaySendToWndProc<T: HandleWindowMessage> {
+pub enum DisplaySendToWndProc {
     CreateSurface {
-        function: CreateMessageHandlerFunction<T>,
-        callback: CreateMessageHandlerCallback,
+        function: CreateSurfaceFunction,
+        callback: CreateSurfaceCallback,
     },
     ImportEventDevice {
         event_device_id: ObjectId,
@@ -82,65 +82,38 @@ pub enum DisplaySendToWndProc<T: HandleWindowMessage> {
     HandleEventDevice(ObjectId),
 }
 
-/// A trait for processing messages retrieved from the window message queue. All messages routed to
-/// a trait object would target the same window.
-pub trait HandleWindowMessage: 'static {
-    /// Called once when it is safe to assume all future messages targeting this window will be
-    /// dispatched to this handler.
-    fn on_message_dispatcher_attached(&mut self, _window: &GuiWindow) {}
-
-    /// Called whenever any window message is retrieved. Should return None to request default
-    /// processing.
-    fn handle_message(&mut self, _window: &GuiWindow, _message: WindowMessage) -> Option<LRESULT> {
-        None
-    }
-
-    /// Called when processing requests from the service.
-    #[cfg(feature = "kiwi")]
-    fn on_handle_service_message(&mut self, _window: &GuiWindow, _message: &ServiceSendToGpu) {}
-
-    /// Called when processing inbound events from event devices.
-    fn on_handle_event_device(
-        &mut self,
-        _window: &GuiWindow,
-        _event_device_kind: EventDeviceKind,
-        _event: virtio_input_event,
-    ) {
-    }
-}
-
-/// This class drives the underlying `HandleWindowMessage` trait object to process window messages
-/// retrieved from the message pump. Note that we rely on the owner of `WindowMessageProcessor`
-/// object to drop it before the underlying window is completely gone.
-pub(crate) struct WindowMessageProcessor<T: HandleWindowMessage> {
+/// This class drives the underlying `Surface` object to process window messages retrieved from the
+/// message pump. Note that we rely on the owner of `WindowMessageProcessor` object to drop it
+/// before the underlying window is completely gone.
+pub(crate) struct WindowMessageProcessor {
     window: GuiWindow,
-    message_handler: Option<T>,
+    surface: Option<Surface>,
 }
 
-impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
+impl WindowMessageProcessor {
     /// # Safety
     /// The owner of `WindowMessageProcessor` object is responsible for dropping it before we finish
     /// processing `WM_NCDESTROY`, because the window handle will become invalid afterwards.
     pub unsafe fn new(window: GuiWindow) -> Self {
         Self {
             window,
-            message_handler: None,
+            surface: None,
         }
     }
 
-    pub fn create_message_handler(
+    pub fn create_surface(
         &mut self,
-        create_handler_func: CreateMessageHandlerFunction<T>,
-        handler_resources: MessageHandlerResources,
+        create_surface_func: CreateSurfaceFunction,
+        surface_resources: SurfaceResources,
     ) -> Result<()> {
-        create_handler_func(&self.window, handler_resources)
-            .map(|handler| {
-                self.message_handler.replace(handler);
-                if let Some(handler) = &mut self.message_handler {
-                    handler.on_message_dispatcher_attached(&self.window);
+        create_surface_func(&self.window, surface_resources)
+            .map(|surface| {
+                self.surface.replace(surface);
+                if let Some(surface) = &mut self.surface {
+                    surface.on_message_dispatcher_attached(&self.window);
                 }
             })
-            .context("When creating window message handler")
+            .context("When creating surface")
     }
 
     pub fn handle_event_device(
@@ -148,34 +121,32 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
         event_device_kind: EventDeviceKind,
         event: virtio_input_event,
     ) {
-        match &mut self.message_handler {
-            Some(handler) => handler.on_handle_event_device(&self.window, event_device_kind, event),
-            None => error!(
-                "Cannot handle event device because window message handler has not been created!",
-            ),
+        match &mut self.surface {
+            Some(surface) => surface.handle_event_device(&self.window, event_device_kind, event),
+            None => error!("Cannot handle event device because surface has not been created!",),
         }
     }
 
     #[cfg(feature = "kiwi")]
     pub fn handle_service_message(&mut self, message: &ServiceSendToGpu) {
-        match &mut self.message_handler {
-            Some(handler) => handler.on_handle_service_message(&self.window, message),
+        match &mut self.surface {
+            Some(surface) => surface.handle_service_message(&self.window, message),
             None => error!(
-                "Cannot handle {:?} because window message handler has not been created!",
+                "Cannot handle {:?} because surface has not been created!",
                 message
             ),
         }
     }
 
     pub fn process_message(&mut self, packet: &MessagePacket) -> LRESULT {
-        // The handler may read window states so we should update them first.
+        // Surface may read window states so we should update them first.
         self.window.update_states(packet.msg, packet.w_param);
 
-        let handler = match &mut self.message_handler {
-            Some(handler) => handler,
+        let surface = match &mut self.surface {
+            Some(surface) => surface,
             None => {
                 warn!(
-                    "Skipping processing {:?} because message handler has not been created!",
+                    "Skipping processing {:?} because surface has not been created!",
                     packet
                 );
                 return self.window.default_process_message(packet);
@@ -185,8 +156,8 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
         let _trace_event = Self::new_trace_event(packet.msg);
 
         let window_message: WindowMessage = packet.into();
-        handler
-            .handle_message(&self.window, window_message)
+        surface
+            .handle_window_message(&self.window, window_message)
             .unwrap_or_else(|| self.window.default_process_message(packet))
     }
 

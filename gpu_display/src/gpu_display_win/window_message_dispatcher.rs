@@ -104,9 +104,9 @@ impl Default for DisplayEventDispatcher {
 /// This struct should be created before the WndProc thread enters the message loop. Once all
 /// windows tracked by it are destroyed, it will signal exiting the message loop, and then it can be
 /// dropped.
-pub(crate) struct WindowMessageDispatcher<T: HandleWindowMessage> {
+pub(crate) struct WindowMessageDispatcher {
     message_router_window: Option<MessageOnlyWindow>,
-    message_processor: Option<WindowMessageProcessor<T>>,
+    message_processor: Option<WindowMessageProcessor>,
     display_event_dispatcher: DisplayEventDispatcher,
     gpu_main_display_tube: Option<Rc<Tube>>,
     // The dispatcher is pinned so that its address in the memory won't change, and it is always
@@ -114,7 +114,7 @@ pub(crate) struct WindowMessageDispatcher<T: HandleWindowMessage> {
     _pinned_marker: PhantomPinned,
 }
 
-impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
+impl WindowMessageDispatcher {
     /// This function should only be called once from the WndProc thread. It will take the ownership
     /// of the `GuiWindow` object, and drop it before the underlying window is completely gone.
     /// TODO(b/238680252): This should be good enough for supporting multi-windowing, but we should
@@ -225,7 +225,7 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         unsafe {
             self.get_unchecked_mut()
                 .message_processor
-                .replace(WindowMessageProcessor::<T>::new(window));
+                .replace(WindowMessageProcessor::new(window));
         }
         Ok(())
     }
@@ -249,7 +249,7 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
                     trace_event!(gpu_display, "WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL");
                 // Safe because the sender gives up the ownership and expects the receiver to
                 // destruct the message.
-                let message = unsafe { Box::from_raw(l_param as *mut DisplaySendToWndProc<T>) };
+                let message = unsafe { Box::from_raw(l_param as *mut DisplaySendToWndProc) };
                 self.handle_display_message(*message);
             }
             WM_USER_WNDPROC_THREAD_DROP_KILL_WINDOW_INTERNAL => {
@@ -269,10 +269,10 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         0
     }
 
-    fn handle_display_message(&mut self, message: DisplaySendToWndProc<T>) {
+    fn handle_display_message(&mut self, message: DisplaySendToWndProc) {
         match message {
             DisplaySendToWndProc::CreateSurface { function, callback } => {
-                callback(self.create_message_handler(function));
+                callback(self.create_surface(function));
             }
             DisplaySendToWndProc::ImportEventDevice {
                 event_device_id,
@@ -303,24 +303,21 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         }
     }
 
-    /// Returns true if the window message handler is created successfully.
-    fn create_message_handler(
-        &mut self,
-        create_handler_func: CreateMessageHandlerFunction<T>,
-    ) -> bool {
+    /// Returns true if the surface is created successfully.
+    fn create_surface(&mut self, create_surface_func: CreateSurfaceFunction) -> bool {
         match &mut self.message_processor {
             Some(processor) => {
-                let resources = MessageHandlerResources {
+                let resources = SurfaceResources {
                     display_event_dispatcher: self.display_event_dispatcher.clone(),
                     gpu_main_display_tube: self.gpu_main_display_tube.clone(),
                 };
-                match processor.create_message_handler(create_handler_func, resources) {
+                match processor.create_surface(create_surface_func, resources) {
                     Ok(_) => return true,
-                    Err(e) => error!("Failed to create message handler: {:?}", e),
+                    Err(e) => error!("Failed to create surface: {:?}", e),
                 }
             }
             None => {
-                error!("Cannot create message handler because there is no message processor!")
+                error!("Cannot create surface because there is no message processor!")
             }
         }
         false
