@@ -45,6 +45,7 @@ CRLF_LINE_ENDING_FILES: List[str] = [
     "**.bat",
     "**.ps1",
     "e2e_tests/tests/goldens/backcompat_test_simple_lspci_win.txt",
+    "tools/windows/build_test",
 ]
 
 
@@ -59,7 +60,7 @@ def check_line_endings(*files: str):
     "Checks line endings. Windows only files are using clrf. All others just lf."
     for line in cmd("git ls-files --eol", *files).lines():
         parts = line.split()
-        file = parts[3]
+        file = parts[-1]
         index_endings = parts[0][2:]
         wdir_endings = parts[1][2:]
 

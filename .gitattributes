@@ -1,0 +1,15 @@
+*.rs text eol=lf
+*.py text eol=lf
+*.js text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.lock text eol=lf
+*.proto text eol=lf
+.dockerignore text eol=lf
+*.json text eol=lf
+*.h text eol=lf
+.gitignore text eol=lf
+.gitmodules text eol=lf
+.yml text eol=lf
+config text eol=lf
+*.svg text eol=lf
