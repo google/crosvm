@@ -216,17 +216,24 @@ impl Config {
 
     pub fn from_env() -> Self {
         let mut cfg: Config = Default::default();
-        env::var("CROSVM_CARGO_TEST_E2E_WRAPPER_CMD").map_or((), |x| cfg.wrapper_cmd = Some(x));
-        env::var("CROSVM_CARGO_TEST_LOG_FILE").map_or((), |x| cfg.log_file = Some(x));
-        env::var("CROSVM_CARGO_TEST_LOG_LEVEL_DEBUG").map_or((), |_| cfg.log_level = Level::Debug);
-        env::var("CROSVM_CARGO_TEST_KERNEL_IMAGE")
-            .map_or((), |x| cfg.kernel_url = Url::from_file_path(x).unwrap());
-        env::var("CROSVM_CARGO_TEST_INITRD_IMAGE").map_or((), |x| {
-            cfg.initrd_url = Some(Url::from_file_path(x).unwrap())
-        });
-        env::var("CROSVM_CARGO_TEST_ROOTFS_IMAGE").map_or((), |x| {
-            cfg.rootfs_url = Some(Url::from_file_path(x).unwrap())
-        });
+        if let Ok(wrapper_cmd) = env::var("CROSVM_CARGO_TEST_E2E_WRAPPER_CMD") {
+            cfg.wrapper_cmd = Some(wrapper_cmd);
+        }
+        if let Ok(log_file) = env::var("CROSVM_CARGO_TEST_LOG_FILE") {
+            cfg.log_file = Some(log_file);
+        }
+        if env::var("CROSVM_CARGO_TEST_LOG_LEVEL_DEBUG").is_ok() {
+            cfg.log_level = Level::Debug;
+        }
+        if let Ok(kernel_url) = env::var("CROSVM_CARGO_TEST_KERNEL_IMAGE") {
+            cfg.kernel_url = Url::from_file_path(kernel_url).unwrap();
+        }
+        if let Ok(initrd_url) = env::var("CROSVM_CARGO_TEST_INITRD_IMAGE") {
+            cfg.initrd_url = Some(Url::from_file_path(initrd_url).unwrap());
+        }
+        if let Ok(rootfs_url) = env::var("CROSVM_CARGO_TEST_ROOTFS_IMAGE") {
+            cfg.rootfs_url = Some(Url::from_file_path(rootfs_url).unwrap());
+        }
         cfg
     }
 
