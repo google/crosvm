@@ -226,7 +226,7 @@ impl SwapController {
                     #[cfg(feature = "log_page_fault")]
                     page_fault_logger,
                 ) {
-                    panic!("page_fault_handler_thread exited with error: {:?}", e)
+                    panic!("page_fault_handler_thread exited with error: {:#}", e)
                 }
             })
             .context("fork monitor process")?;
