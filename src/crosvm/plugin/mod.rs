@@ -5,6 +5,7 @@
 mod process;
 mod vcpu;
 
+use std::fmt::Write as FmtWrite;
 use std::fs::File;
 use std::io;
 use std::io::Read;
@@ -496,8 +497,10 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 + &cfg
                     .plugin_gid_maps
                     .into_iter()
-                    .map(|m| format!(",{} {} {}", m.inner, m.outer, m.count))
-                    .collect::<String>()
+                    .fold(String::new(), |mut output, m| {
+                        let _ = write!(output, ",{} {} {}", m.inner, m.outer, m.count);
+                        output
+                    })
         } else {
             gid_map
         };
