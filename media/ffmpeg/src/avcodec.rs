@@ -173,7 +173,6 @@ impl DecoderContextBuilder {
         let context = unsafe { &mut *(self.context.0) };
         context.get_buffer2 = Some(get_buffer2);
         context.opaque = opaque;
-        context.thread_safe_callbacks = 1;
     }
 
     /// Build a decoder AvCodecContext from the configured options.

@@ -1,4 +1,4 @@
 # These version numbers are updated by the bindgen.sh script
-avcodec: 59.18.100
-avutil: 57.17.100
-swscale: 6.4.100
+avcodec: 60.3.100
+avutil: 58.2.100
+swscale: 7.1.100

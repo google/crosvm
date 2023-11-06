@@ -35,12 +35,12 @@ pub const AV_DICT_DONT_STRDUP_VAL: u32 = 8;
 pub const AV_DICT_DONT_OVERWRITE: u32 = 16;
 pub const AV_DICT_APPEND: u32 = 32;
 pub const AV_DICT_MULTIKEY: u32 = 64;
+pub const AV_CH_LAYOUT_NATIVE: i64 = -9223372036854775808;
 pub const AV_NUM_DATA_POINTERS: u32 = 8;
 pub const AV_FRAME_FLAG_CORRUPT: u32 = 1;
 pub const AV_FRAME_FLAG_DISCARD: u32 = 4;
 pub const AV_CODEC_CAP_DRAW_HORIZ_BAND: u32 = 1;
 pub const AV_CODEC_CAP_DR1: u32 = 2;
-pub const AV_CODEC_CAP_TRUNCATED: u32 = 8;
 pub const AV_CODEC_CAP_DELAY: u32 = 32;
 pub const AV_CODEC_CAP_SMALL_LAST_FRAME: u32 = 64;
 pub const AV_CODEC_CAP_SUBFRAMES: u32 = 256;
@@ -50,15 +50,13 @@ pub const AV_CODEC_CAP_FRAME_THREADS: u32 = 4096;
 pub const AV_CODEC_CAP_SLICE_THREADS: u32 = 8192;
 pub const AV_CODEC_CAP_PARAM_CHANGE: u32 = 16384;
 pub const AV_CODEC_CAP_OTHER_THREADS: u32 = 32768;
-pub const AV_CODEC_CAP_AUTO_THREADS: u32 = 32768;
 pub const AV_CODEC_CAP_VARIABLE_FRAME_SIZE: u32 = 65536;
 pub const AV_CODEC_CAP_AVOID_PROBING: u32 = 131072;
-pub const AV_CODEC_CAP_INTRA_ONLY: u32 = 1073741824;
-pub const AV_CODEC_CAP_LOSSLESS: u32 = 2147483648;
 pub const AV_CODEC_CAP_HARDWARE: u32 = 262144;
 pub const AV_CODEC_CAP_HYBRID: u32 = 524288;
 pub const AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE: u32 = 1048576;
 pub const AV_CODEC_CAP_ENCODER_FLUSH: u32 = 2097152;
+pub const AV_CODEC_CAP_ENCODER_RECON_FRAME: u32 = 4194304;
 pub const AV_CODEC_PROP_INTRA_ONLY: u32 = 1;
 pub const AV_CODEC_PROP_LOSSY: u32 = 2;
 pub const AV_CODEC_PROP_LOSSLESS: u32 = 4;
@@ -66,6 +64,14 @@ pub const AV_CODEC_PROP_REORDER: u32 = 8;
 pub const AV_CODEC_PROP_BITMAP_SUB: u32 = 65536;
 pub const AV_CODEC_PROP_TEXT_SUB: u32 = 131072;
 pub const AV_INPUT_BUFFER_PADDING_SIZE: u32 = 64;
+pub const AV_EF_CRCCHECK: u32 = 1;
+pub const AV_EF_BITSTREAM: u32 = 2;
+pub const AV_EF_BUFFER: u32 = 4;
+pub const AV_EF_EXPLODE: u32 = 8;
+pub const AV_EF_IGNORE_ERR: u32 = 32768;
+pub const AV_EF_CAREFUL: u32 = 65536;
+pub const AV_EF_COMPLIANT: u32 = 131072;
+pub const AV_EF_AGGRESSIVE: u32 = 262144;
 pub const AV_PKT_FLAG_KEY: u32 = 1;
 pub const AV_PKT_FLAG_CORRUPT: u32 = 2;
 pub const AV_PKT_FLAG_DISCARD: u32 = 4;
@@ -78,12 +84,14 @@ pub const AV_CODEC_FLAG_4MV: u32 = 4;
 pub const AV_CODEC_FLAG_OUTPUT_CORRUPT: u32 = 8;
 pub const AV_CODEC_FLAG_QPEL: u32 = 16;
 pub const AV_CODEC_FLAG_DROPCHANGED: u32 = 32;
+pub const AV_CODEC_FLAG_RECON_FRAME: u32 = 64;
+pub const AV_CODEC_FLAG_COPY_OPAQUE: u32 = 128;
+pub const AV_CODEC_FLAG_FRAME_DURATION: u32 = 256;
 pub const AV_CODEC_FLAG_PASS1: u32 = 512;
 pub const AV_CODEC_FLAG_PASS2: u32 = 1024;
 pub const AV_CODEC_FLAG_LOOP_FILTER: u32 = 2048;
 pub const AV_CODEC_FLAG_GRAY: u32 = 8192;
 pub const AV_CODEC_FLAG_PSNR: u32 = 32768;
-pub const AV_CODEC_FLAG_TRUNCATED: u32 = 65536;
 pub const AV_CODEC_FLAG_INTERLACED_DCT: u32 = 262144;
 pub const AV_CODEC_FLAG_LOW_DELAY: u32 = 524288;
 pub const AV_CODEC_FLAG_GLOBAL_HEADER: u32 = 4194304;
@@ -94,27 +102,19 @@ pub const AV_CODEC_FLAG_CLOSED_GOP: u32 = 2147483648;
 pub const AV_CODEC_FLAG2_FAST: u32 = 1;
 pub const AV_CODEC_FLAG2_NO_OUTPUT: u32 = 4;
 pub const AV_CODEC_FLAG2_LOCAL_HEADER: u32 = 8;
-pub const AV_CODEC_FLAG2_DROP_FRAME_TIMECODE: u32 = 8192;
 pub const AV_CODEC_FLAG2_CHUNKS: u32 = 32768;
 pub const AV_CODEC_FLAG2_IGNORE_CROP: u32 = 65536;
 pub const AV_CODEC_FLAG2_SHOW_ALL: u32 = 4194304;
 pub const AV_CODEC_FLAG2_EXPORT_MVS: u32 = 268435456;
 pub const AV_CODEC_FLAG2_SKIP_MANUAL: u32 = 536870912;
 pub const AV_CODEC_FLAG2_RO_FLUSH_NOOP: u32 = 1073741824;
+pub const AV_CODEC_FLAG2_ICC_PROFILES: u32 = 2147483648;
 pub const AV_CODEC_EXPORT_DATA_MVS: u32 = 1;
 pub const AV_CODEC_EXPORT_DATA_PRFT: u32 = 2;
 pub const AV_CODEC_EXPORT_DATA_VIDEO_ENC_PARAMS: u32 = 4;
 pub const AV_CODEC_EXPORT_DATA_FILM_GRAIN: u32 = 8;
 pub const AV_GET_BUFFER_FLAG_REF: u32 = 1;
 pub const AV_GET_ENCODE_BUFFER_FLAG_REF: u32 = 1;
-pub const AV_EF_CRCCHECK: u32 = 1;
-pub const AV_EF_BITSTREAM: u32 = 2;
-pub const AV_EF_BUFFER: u32 = 4;
-pub const AV_EF_EXPLODE: u32 = 8;
-pub const AV_EF_IGNORE_ERR: u32 = 32768;
-pub const AV_EF_CAREFUL: u32 = 65536;
-pub const AV_EF_COMPLIANT: u32 = 131072;
-pub const AV_EF_AGGRESSIVE: u32 = 262144;
 pub const FF_PROFILE_UNKNOWN: i32 = -99;
 pub const FF_PROFILE_RESERVED: i32 = -100;
 pub const FF_PROFILE_AAC_MAIN: u32 = 0;
@@ -220,6 +220,7 @@ pub const AV_HWACCEL_CODEC_CAP_EXPERIMENTAL: u32 = 512;
 pub const AV_HWACCEL_FLAG_IGNORE_LEVEL: u32 = 1;
 pub const AV_HWACCEL_FLAG_ALLOW_HIGH_DEPTH: u32 = 2;
 pub const AV_HWACCEL_FLAG_ALLOW_PROFILE_MISMATCH: u32 = 4;
+pub const AV_HWACCEL_FLAG_UNSAFE_OUTPUT: u32 = 8;
 pub const AV_SUBTITLE_FLAG_FORCED: u32 = 1;
 pub const AV_PARSER_PTS_NB: u32 = 4;
 pub const AV_CPU_FLAG_FORCE: u32 = 2147483648;
@@ -249,6 +250,7 @@ pub const AV_CPU_FLAG_FMA3: u32 = 65536;
 pub const AV_CPU_FLAG_BMI1: u32 = 131072;
 pub const AV_CPU_FLAG_BMI2: u32 = 262144;
 pub const AV_CPU_FLAG_AVX512: u32 = 1048576;
+pub const AV_CPU_FLAG_AVX512ICL: u32 = 2097152;
 pub const AV_CPU_FLAG_SLOW_GATHER: u32 = 33554432;
 pub const AV_CPU_FLAG_ALTIVEC: u32 = 1;
 pub const AV_CPU_FLAG_VSX: u32 = 2;
@@ -266,6 +268,14 @@ pub const AV_CPU_FLAG_MMI: u32 = 1;
 pub const AV_CPU_FLAG_MSA: u32 = 2;
 pub const AV_CPU_FLAG_LSX: u32 = 1;
 pub const AV_CPU_FLAG_LASX: u32 = 2;
+pub const AV_CPU_FLAG_RVI: u32 = 1;
+pub const AV_CPU_FLAG_RVF: u32 = 2;
+pub const AV_CPU_FLAG_RVD: u32 = 4;
+pub const AV_CPU_FLAG_RVV_I32: u32 = 8;
+pub const AV_CPU_FLAG_RVV_F32: u32 = 16;
+pub const AV_CPU_FLAG_RVV_I64: u32 = 32;
+pub const AV_CPU_FLAG_RVV_F64: u32 = 64;
+pub const AV_CPU_FLAG_RVB_BASIC: u32 = 128;
 pub const AV_PIX_FMT_FLAG_BE: u32 = 1;
 pub const AV_PIX_FMT_FLAG_PAL: u32 = 2;
 pub const AV_PIX_FMT_FLAG_BITSTREAM: u32 = 4;
@@ -275,13 +285,114 @@ pub const AV_PIX_FMT_FLAG_RGB: u32 = 32;
 pub const AV_PIX_FMT_FLAG_ALPHA: u32 = 128;
 pub const AV_PIX_FMT_FLAG_BAYER: u32 = 256;
 pub const AV_PIX_FMT_FLAG_FLOAT: u32 = 512;
-pub type __uint8_t = ::std::os::raw::c_uchar;
-pub type __uint16_t = ::std::os::raw::c_ushort;
-pub type __uint32_t = ::std::os::raw::c_uint;
-pub type __int64_t = ::std::os::raw::c_long;
-pub type __uint64_t = ::std::os::raw::c_ulong;
 pub type __off_t = ::std::os::raw::c_long;
 pub type __off64_t = ::std::os::raw::c_long;
+pub const AVSampleFormat_AV_SAMPLE_FMT_NONE: AVSampleFormat = -1;
+pub const AVSampleFormat_AV_SAMPLE_FMT_U8: AVSampleFormat = 0;
+pub const AVSampleFormat_AV_SAMPLE_FMT_S16: AVSampleFormat = 1;
+pub const AVSampleFormat_AV_SAMPLE_FMT_S32: AVSampleFormat = 2;
+pub const AVSampleFormat_AV_SAMPLE_FMT_FLT: AVSampleFormat = 3;
+pub const AVSampleFormat_AV_SAMPLE_FMT_DBL: AVSampleFormat = 4;
+pub const AVSampleFormat_AV_SAMPLE_FMT_U8P: AVSampleFormat = 5;
+pub const AVSampleFormat_AV_SAMPLE_FMT_S16P: AVSampleFormat = 6;
+pub const AVSampleFormat_AV_SAMPLE_FMT_S32P: AVSampleFormat = 7;
+pub const AVSampleFormat_AV_SAMPLE_FMT_FLTP: AVSampleFormat = 8;
+pub const AVSampleFormat_AV_SAMPLE_FMT_DBLP: AVSampleFormat = 9;
+pub const AVSampleFormat_AV_SAMPLE_FMT_S64: AVSampleFormat = 10;
+pub const AVSampleFormat_AV_SAMPLE_FMT_S64P: AVSampleFormat = 11;
+pub const AVSampleFormat_AV_SAMPLE_FMT_NB: AVSampleFormat = 12;
+pub type AVSampleFormat = ::std::os::raw::c_int;
+extern "C" {
+    pub fn av_get_sample_fmt_name(sample_fmt: AVSampleFormat) -> *const ::std::os::raw::c_char;
+}
+extern "C" {
+    pub fn av_get_sample_fmt(name: *const ::std::os::raw::c_char) -> AVSampleFormat;
+}
+extern "C" {
+    pub fn av_get_alt_sample_fmt(
+        sample_fmt: AVSampleFormat,
+        planar: ::std::os::raw::c_int,
+    ) -> AVSampleFormat;
+}
+extern "C" {
+    pub fn av_get_packed_sample_fmt(sample_fmt: AVSampleFormat) -> AVSampleFormat;
+}
+extern "C" {
+    pub fn av_get_planar_sample_fmt(sample_fmt: AVSampleFormat) -> AVSampleFormat;
+}
+extern "C" {
+    pub fn av_get_sample_fmt_string(
+        buf: *mut ::std::os::raw::c_char,
+        buf_size: ::std::os::raw::c_int,
+        sample_fmt: AVSampleFormat,
+    ) -> *mut ::std::os::raw::c_char;
+}
+extern "C" {
+    pub fn av_get_bytes_per_sample(sample_fmt: AVSampleFormat) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_sample_fmt_is_planar(sample_fmt: AVSampleFormat) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_samples_get_buffer_size(
+        linesize: *mut ::std::os::raw::c_int,
+        nb_channels: ::std::os::raw::c_int,
+        nb_samples: ::std::os::raw::c_int,
+        sample_fmt: AVSampleFormat,
+        align: ::std::os::raw::c_int,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_samples_fill_arrays(
+        audio_data: *mut *mut u8,
+        linesize: *mut ::std::os::raw::c_int,
+        buf: *const u8,
+        nb_channels: ::std::os::raw::c_int,
+        nb_samples: ::std::os::raw::c_int,
+        sample_fmt: AVSampleFormat,
+        align: ::std::os::raw::c_int,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_samples_alloc(
+        audio_data: *mut *mut u8,
+        linesize: *mut ::std::os::raw::c_int,
+        nb_channels: ::std::os::raw::c_int,
+        nb_samples: ::std::os::raw::c_int,
+        sample_fmt: AVSampleFormat,
+        align: ::std::os::raw::c_int,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_samples_alloc_array_and_samples(
+        audio_data: *mut *mut *mut u8,
+        linesize: *mut ::std::os::raw::c_int,
+        nb_channels: ::std::os::raw::c_int,
+        nb_samples: ::std::os::raw::c_int,
+        sample_fmt: AVSampleFormat,
+        align: ::std::os::raw::c_int,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_samples_copy(
+        dst: *mut *mut u8,
+        src: *const *mut u8,
+        dst_offset: ::std::os::raw::c_int,
+        src_offset: ::std::os::raw::c_int,
+        nb_samples: ::std::os::raw::c_int,
+        nb_channels: ::std::os::raw::c_int,
+        sample_fmt: AVSampleFormat,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_samples_set_silence(
+        audio_data: *mut *mut u8,
+        offset: ::std::os::raw::c_int,
+        nb_samples: ::std::os::raw::c_int,
+        nb_channels: ::std::os::raw::c_int,
+        sample_fmt: AVSampleFormat,
+    ) -> ::std::os::raw::c_int;
+}
 extern "C" {
     pub fn av_version_info() -> *const ::std::os::raw::c_char;
 }
@@ -385,9 +496,6 @@ extern "C" {
 }
 extern "C" {
     pub fn av_calloc(nmemb: usize, size: usize) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    pub fn av_mallocz_array(nmemb: usize, size: usize) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     pub fn av_realloc(ptr: *mut ::std::os::raw::c_void, size: usize)
@@ -947,7 +1055,23 @@ pub const AVPixelFormat_AV_PIX_FMT_P216BE: AVPixelFormat = 202;
 pub const AVPixelFormat_AV_PIX_FMT_P216LE: AVPixelFormat = 203;
 pub const AVPixelFormat_AV_PIX_FMT_P416BE: AVPixelFormat = 204;
 pub const AVPixelFormat_AV_PIX_FMT_P416LE: AVPixelFormat = 205;
-pub const AVPixelFormat_AV_PIX_FMT_NB: AVPixelFormat = 206;
+pub const AVPixelFormat_AV_PIX_FMT_VUYA: AVPixelFormat = 206;
+pub const AVPixelFormat_AV_PIX_FMT_RGBAF16BE: AVPixelFormat = 207;
+pub const AVPixelFormat_AV_PIX_FMT_RGBAF16LE: AVPixelFormat = 208;
+pub const AVPixelFormat_AV_PIX_FMT_VUYX: AVPixelFormat = 209;
+pub const AVPixelFormat_AV_PIX_FMT_P012LE: AVPixelFormat = 210;
+pub const AVPixelFormat_AV_PIX_FMT_P012BE: AVPixelFormat = 211;
+pub const AVPixelFormat_AV_PIX_FMT_Y212BE: AVPixelFormat = 212;
+pub const AVPixelFormat_AV_PIX_FMT_Y212LE: AVPixelFormat = 213;
+pub const AVPixelFormat_AV_PIX_FMT_XV30BE: AVPixelFormat = 214;
+pub const AVPixelFormat_AV_PIX_FMT_XV30LE: AVPixelFormat = 215;
+pub const AVPixelFormat_AV_PIX_FMT_XV36BE: AVPixelFormat = 216;
+pub const AVPixelFormat_AV_PIX_FMT_XV36LE: AVPixelFormat = 217;
+pub const AVPixelFormat_AV_PIX_FMT_RGBF32BE: AVPixelFormat = 218;
+pub const AVPixelFormat_AV_PIX_FMT_RGBF32LE: AVPixelFormat = 219;
+pub const AVPixelFormat_AV_PIX_FMT_RGBAF32BE: AVPixelFormat = 220;
+pub const AVPixelFormat_AV_PIX_FMT_RGBAF32LE: AVPixelFormat = 221;
+pub const AVPixelFormat_AV_PIX_FMT_NB: AVPixelFormat = 222;
 pub type AVPixelFormat = ::std::os::raw::c_int;
 pub const AVColorPrimaries_AVCOL_PRI_RESERVED0: AVColorPrimaries = 0;
 pub const AVColorPrimaries_AVCOL_PRI_BT709: AVColorPrimaries = 1;
@@ -1043,112 +1167,6 @@ extern "C" {
         buf: *mut ::std::os::raw::c_char,
         fourcc: u32,
     ) -> *mut ::std::os::raw::c_char;
-}
-pub const AVSampleFormat_AV_SAMPLE_FMT_NONE: AVSampleFormat = -1;
-pub const AVSampleFormat_AV_SAMPLE_FMT_U8: AVSampleFormat = 0;
-pub const AVSampleFormat_AV_SAMPLE_FMT_S16: AVSampleFormat = 1;
-pub const AVSampleFormat_AV_SAMPLE_FMT_S32: AVSampleFormat = 2;
-pub const AVSampleFormat_AV_SAMPLE_FMT_FLT: AVSampleFormat = 3;
-pub const AVSampleFormat_AV_SAMPLE_FMT_DBL: AVSampleFormat = 4;
-pub const AVSampleFormat_AV_SAMPLE_FMT_U8P: AVSampleFormat = 5;
-pub const AVSampleFormat_AV_SAMPLE_FMT_S16P: AVSampleFormat = 6;
-pub const AVSampleFormat_AV_SAMPLE_FMT_S32P: AVSampleFormat = 7;
-pub const AVSampleFormat_AV_SAMPLE_FMT_FLTP: AVSampleFormat = 8;
-pub const AVSampleFormat_AV_SAMPLE_FMT_DBLP: AVSampleFormat = 9;
-pub const AVSampleFormat_AV_SAMPLE_FMT_S64: AVSampleFormat = 10;
-pub const AVSampleFormat_AV_SAMPLE_FMT_S64P: AVSampleFormat = 11;
-pub const AVSampleFormat_AV_SAMPLE_FMT_NB: AVSampleFormat = 12;
-pub type AVSampleFormat = ::std::os::raw::c_int;
-extern "C" {
-    pub fn av_get_sample_fmt_name(sample_fmt: AVSampleFormat) -> *const ::std::os::raw::c_char;
-}
-extern "C" {
-    pub fn av_get_sample_fmt(name: *const ::std::os::raw::c_char) -> AVSampleFormat;
-}
-extern "C" {
-    pub fn av_get_alt_sample_fmt(
-        sample_fmt: AVSampleFormat,
-        planar: ::std::os::raw::c_int,
-    ) -> AVSampleFormat;
-}
-extern "C" {
-    pub fn av_get_packed_sample_fmt(sample_fmt: AVSampleFormat) -> AVSampleFormat;
-}
-extern "C" {
-    pub fn av_get_planar_sample_fmt(sample_fmt: AVSampleFormat) -> AVSampleFormat;
-}
-extern "C" {
-    pub fn av_get_sample_fmt_string(
-        buf: *mut ::std::os::raw::c_char,
-        buf_size: ::std::os::raw::c_int,
-        sample_fmt: AVSampleFormat,
-    ) -> *mut ::std::os::raw::c_char;
-}
-extern "C" {
-    pub fn av_get_bytes_per_sample(sample_fmt: AVSampleFormat) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn av_sample_fmt_is_planar(sample_fmt: AVSampleFormat) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn av_samples_get_buffer_size(
-        linesize: *mut ::std::os::raw::c_int,
-        nb_channels: ::std::os::raw::c_int,
-        nb_samples: ::std::os::raw::c_int,
-        sample_fmt: AVSampleFormat,
-        align: ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn av_samples_fill_arrays(
-        audio_data: *mut *mut u8,
-        linesize: *mut ::std::os::raw::c_int,
-        buf: *const u8,
-        nb_channels: ::std::os::raw::c_int,
-        nb_samples: ::std::os::raw::c_int,
-        sample_fmt: AVSampleFormat,
-        align: ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn av_samples_alloc(
-        audio_data: *mut *mut u8,
-        linesize: *mut ::std::os::raw::c_int,
-        nb_channels: ::std::os::raw::c_int,
-        nb_samples: ::std::os::raw::c_int,
-        sample_fmt: AVSampleFormat,
-        align: ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn av_samples_alloc_array_and_samples(
-        audio_data: *mut *mut *mut u8,
-        linesize: *mut ::std::os::raw::c_int,
-        nb_channels: ::std::os::raw::c_int,
-        nb_samples: ::std::os::raw::c_int,
-        sample_fmt: AVSampleFormat,
-        align: ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn av_samples_copy(
-        dst: *mut *mut u8,
-        src: *const *mut u8,
-        dst_offset: ::std::os::raw::c_int,
-        src_offset: ::std::os::raw::c_int,
-        nb_samples: ::std::os::raw::c_int,
-        nb_channels: ::std::os::raw::c_int,
-        sample_fmt: AVSampleFormat,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn av_samples_set_silence(
-        audio_data: *mut *mut u8,
-        offset: ::std::os::raw::c_int,
-        nb_samples: ::std::os::raw::c_int,
-        nb_channels: ::std::os::raw::c_int,
-        sample_fmt: AVSampleFormat,
-    ) -> ::std::os::raw::c_int;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1282,6 +1300,12 @@ extern "C" {
     ) -> *mut AVDictionaryEntry;
 }
 extern "C" {
+    pub fn av_dict_iterate(
+        m: *const AVDictionary,
+        prev: *const AVDictionaryEntry,
+    ) -> *const AVDictionaryEntry;
+}
+extern "C" {
     pub fn av_dict_count(m: *const AVDictionary) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -1327,6 +1351,261 @@ extern "C" {
         pairs_sep: ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
+pub const AVChannel_AV_CHAN_NONE: AVChannel = -1;
+pub const AVChannel_AV_CHAN_FRONT_LEFT: AVChannel = 0;
+pub const AVChannel_AV_CHAN_FRONT_RIGHT: AVChannel = 1;
+pub const AVChannel_AV_CHAN_FRONT_CENTER: AVChannel = 2;
+pub const AVChannel_AV_CHAN_LOW_FREQUENCY: AVChannel = 3;
+pub const AVChannel_AV_CHAN_BACK_LEFT: AVChannel = 4;
+pub const AVChannel_AV_CHAN_BACK_RIGHT: AVChannel = 5;
+pub const AVChannel_AV_CHAN_FRONT_LEFT_OF_CENTER: AVChannel = 6;
+pub const AVChannel_AV_CHAN_FRONT_RIGHT_OF_CENTER: AVChannel = 7;
+pub const AVChannel_AV_CHAN_BACK_CENTER: AVChannel = 8;
+pub const AVChannel_AV_CHAN_SIDE_LEFT: AVChannel = 9;
+pub const AVChannel_AV_CHAN_SIDE_RIGHT: AVChannel = 10;
+pub const AVChannel_AV_CHAN_TOP_CENTER: AVChannel = 11;
+pub const AVChannel_AV_CHAN_TOP_FRONT_LEFT: AVChannel = 12;
+pub const AVChannel_AV_CHAN_TOP_FRONT_CENTER: AVChannel = 13;
+pub const AVChannel_AV_CHAN_TOP_FRONT_RIGHT: AVChannel = 14;
+pub const AVChannel_AV_CHAN_TOP_BACK_LEFT: AVChannel = 15;
+pub const AVChannel_AV_CHAN_TOP_BACK_CENTER: AVChannel = 16;
+pub const AVChannel_AV_CHAN_TOP_BACK_RIGHT: AVChannel = 17;
+pub const AVChannel_AV_CHAN_STEREO_LEFT: AVChannel = 29;
+pub const AVChannel_AV_CHAN_STEREO_RIGHT: AVChannel = 30;
+pub const AVChannel_AV_CHAN_WIDE_LEFT: AVChannel = 31;
+pub const AVChannel_AV_CHAN_WIDE_RIGHT: AVChannel = 32;
+pub const AVChannel_AV_CHAN_SURROUND_DIRECT_LEFT: AVChannel = 33;
+pub const AVChannel_AV_CHAN_SURROUND_DIRECT_RIGHT: AVChannel = 34;
+pub const AVChannel_AV_CHAN_LOW_FREQUENCY_2: AVChannel = 35;
+pub const AVChannel_AV_CHAN_TOP_SIDE_LEFT: AVChannel = 36;
+pub const AVChannel_AV_CHAN_TOP_SIDE_RIGHT: AVChannel = 37;
+pub const AVChannel_AV_CHAN_BOTTOM_FRONT_CENTER: AVChannel = 38;
+pub const AVChannel_AV_CHAN_BOTTOM_FRONT_LEFT: AVChannel = 39;
+pub const AVChannel_AV_CHAN_BOTTOM_FRONT_RIGHT: AVChannel = 40;
+pub const AVChannel_AV_CHAN_UNUSED: AVChannel = 512;
+pub const AVChannel_AV_CHAN_UNKNOWN: AVChannel = 768;
+pub const AVChannel_AV_CHAN_AMBISONIC_BASE: AVChannel = 1024;
+pub const AVChannel_AV_CHAN_AMBISONIC_END: AVChannel = 2047;
+pub type AVChannel = ::std::os::raw::c_int;
+pub const AVChannelOrder_AV_CHANNEL_ORDER_UNSPEC: AVChannelOrder = 0;
+pub const AVChannelOrder_AV_CHANNEL_ORDER_NATIVE: AVChannelOrder = 1;
+pub const AVChannelOrder_AV_CHANNEL_ORDER_CUSTOM: AVChannelOrder = 2;
+pub const AVChannelOrder_AV_CHANNEL_ORDER_AMBISONIC: AVChannelOrder = 3;
+pub type AVChannelOrder = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct AVChannelCustom {
+    pub id: AVChannel,
+    pub name: [::std::os::raw::c_char; 16usize],
+    pub opaque: *mut ::std::os::raw::c_void,
+}
+impl Default for AVChannelCustom {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct AVChannelLayout {
+    pub order: AVChannelOrder,
+    pub nb_channels: ::std::os::raw::c_int,
+    pub u: AVChannelLayout__bindgen_ty_1,
+    pub opaque: *mut ::std::os::raw::c_void,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union AVChannelLayout__bindgen_ty_1 {
+    pub mask: u64,
+    pub map: *mut AVChannelCustom,
+}
+impl Default for AVChannelLayout__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for AVChannelLayout {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct AVBPrint {
+    _unused: [u8; 0],
+}
+extern "C" {
+    pub fn av_get_channel_layout(name: *const ::std::os::raw::c_char) -> u64;
+}
+extern "C" {
+    pub fn av_get_extended_channel_layout(
+        name: *const ::std::os::raw::c_char,
+        channel_layout: *mut u64,
+        nb_channels: *mut ::std::os::raw::c_int,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_get_channel_layout_string(
+        buf: *mut ::std::os::raw::c_char,
+        buf_size: ::std::os::raw::c_int,
+        nb_channels: ::std::os::raw::c_int,
+        channel_layout: u64,
+    );
+}
+extern "C" {
+    pub fn av_bprint_channel_layout(
+        bp: *mut AVBPrint,
+        nb_channels: ::std::os::raw::c_int,
+        channel_layout: u64,
+    );
+}
+extern "C" {
+    pub fn av_get_channel_layout_nb_channels(channel_layout: u64) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_get_default_channel_layout(nb_channels: ::std::os::raw::c_int) -> i64;
+}
+extern "C" {
+    pub fn av_get_channel_layout_channel_index(
+        channel_layout: u64,
+        channel: u64,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_layout_extract_channel(
+        channel_layout: u64,
+        index: ::std::os::raw::c_int,
+    ) -> u64;
+}
+extern "C" {
+    pub fn av_get_channel_name(channel: u64) -> *const ::std::os::raw::c_char;
+}
+extern "C" {
+    pub fn av_get_channel_description(channel: u64) -> *const ::std::os::raw::c_char;
+}
+extern "C" {
+    pub fn av_get_standard_channel_layout(
+        index: ::std::os::raw::c_uint,
+        layout: *mut u64,
+        name: *mut *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_name(
+        buf: *mut ::std::os::raw::c_char,
+        buf_size: usize,
+        channel: AVChannel,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_name_bprint(bp: *mut AVBPrint, channel_id: AVChannel);
+}
+extern "C" {
+    pub fn av_channel_description(
+        buf: *mut ::std::os::raw::c_char,
+        buf_size: usize,
+        channel: AVChannel,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_description_bprint(bp: *mut AVBPrint, channel_id: AVChannel);
+}
+extern "C" {
+    pub fn av_channel_from_string(name: *const ::std::os::raw::c_char) -> AVChannel;
+}
+extern "C" {
+    pub fn av_channel_layout_from_mask(
+        channel_layout: *mut AVChannelLayout,
+        mask: u64,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_layout_from_string(
+        channel_layout: *mut AVChannelLayout,
+        str_: *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_layout_default(
+        ch_layout: *mut AVChannelLayout,
+        nb_channels: ::std::os::raw::c_int,
+    );
+}
+extern "C" {
+    pub fn av_channel_layout_standard(
+        opaque: *mut *mut ::std::os::raw::c_void,
+    ) -> *const AVChannelLayout;
+}
+extern "C" {
+    pub fn av_channel_layout_uninit(channel_layout: *mut AVChannelLayout);
+}
+extern "C" {
+    pub fn av_channel_layout_copy(
+        dst: *mut AVChannelLayout,
+        src: *const AVChannelLayout,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_layout_describe(
+        channel_layout: *const AVChannelLayout,
+        buf: *mut ::std::os::raw::c_char,
+        buf_size: usize,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_layout_describe_bprint(
+        channel_layout: *const AVChannelLayout,
+        bp: *mut AVBPrint,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_layout_channel_from_index(
+        channel_layout: *const AVChannelLayout,
+        idx: ::std::os::raw::c_uint,
+    ) -> AVChannel;
+}
+extern "C" {
+    pub fn av_channel_layout_index_from_channel(
+        channel_layout: *const AVChannelLayout,
+        channel: AVChannel,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_layout_index_from_string(
+        channel_layout: *const AVChannelLayout,
+        name: *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_layout_channel_from_string(
+        channel_layout: *const AVChannelLayout,
+        name: *const ::std::os::raw::c_char,
+    ) -> AVChannel;
+}
+extern "C" {
+    pub fn av_channel_layout_subset(channel_layout: *const AVChannelLayout, mask: u64) -> u64;
+}
+extern "C" {
+    pub fn av_channel_layout_check(channel_layout: *const AVChannelLayout)
+        -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_channel_layout_compare(
+        chl: *const AVChannelLayout,
+        chl1: *const AVChannelLayout,
+    ) -> ::std::os::raw::c_int;
+}
 pub const AVFrameSideDataType_AV_FRAME_DATA_PANSCAN: AVFrameSideDataType = 0;
 pub const AVFrameSideDataType_AV_FRAME_DATA_A53_CC: AVFrameSideDataType = 1;
 pub const AVFrameSideDataType_AV_FRAME_DATA_STEREO3D: AVFrameSideDataType = 2;
@@ -1352,6 +1631,8 @@ pub const AVFrameSideDataType_AV_FRAME_DATA_FILM_GRAIN_PARAMS: AVFrameSideDataTy
 pub const AVFrameSideDataType_AV_FRAME_DATA_DETECTION_BBOXES: AVFrameSideDataType = 22;
 pub const AVFrameSideDataType_AV_FRAME_DATA_DOVI_RPU_BUFFER: AVFrameSideDataType = 23;
 pub const AVFrameSideDataType_AV_FRAME_DATA_DOVI_METADATA: AVFrameSideDataType = 24;
+pub const AVFrameSideDataType_AV_FRAME_DATA_DYNAMIC_HDR_VIVID: AVFrameSideDataType = 25;
+pub const AVFrameSideDataType_AV_FRAME_DATA_AMBIENT_VIEWING_ENVIRONMENT: AVFrameSideDataType = 26;
 pub type AVFrameSideDataType = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1372,7 +1653,7 @@ impl Default for AVFrameSideData {
     }
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct AVFrame {
     pub data: [*mut u8; 8usize],
     pub linesize: [::std::os::raw::c_int; 8usize],
@@ -1423,6 +1704,8 @@ pub struct AVFrame {
     pub crop_left: usize,
     pub crop_right: usize,
     pub private_ref: *mut AVBufferRef,
+    pub ch_layout: AVChannelLayout,
+    pub duration: i64,
 }
 impl Default for AVFrame {
     fn default() -> Self {
@@ -1432,9 +1715,6 @@ impl Default for AVFrame {
             s.assume_init()
         }
     }
-}
-extern "C" {
-    pub fn av_get_colorspace_name(val: AVColorSpace) -> *const ::std::os::raw::c_char;
 }
 extern "C" {
     pub fn av_frame_alloc() -> *mut AVFrame;
@@ -1501,7 +1781,7 @@ extern "C" {
 extern "C" {
     pub fn av_frame_remove_side_data(frame: *mut AVFrame, type_: AVFrameSideDataType);
 }
-pub const AV_FRAME_CROP_UNALIGNED: ::std::os::raw::c_uint = 1;
+pub const AV_FRAME_CROP_UNALIGNED: _bindgen_ty_2 = 1;
 pub type _bindgen_ty_2 = ::std::os::raw::c_uint;
 extern "C" {
     pub fn av_frame_apply_cropping(
@@ -1630,10 +1910,10 @@ extern "C" {
 extern "C" {
     pub fn av_hwframe_constraints_free(constraints: *mut *mut AVHWFramesConstraints);
 }
-pub const AV_HWFRAME_MAP_READ: ::std::os::raw::c_uint = 1;
-pub const AV_HWFRAME_MAP_WRITE: ::std::os::raw::c_uint = 2;
-pub const AV_HWFRAME_MAP_OVERWRITE: ::std::os::raw::c_uint = 4;
-pub const AV_HWFRAME_MAP_DIRECT: ::std::os::raw::c_uint = 8;
+pub const AV_HWFRAME_MAP_READ: _bindgen_ty_3 = 1;
+pub const AV_HWFRAME_MAP_WRITE: _bindgen_ty_3 = 2;
+pub const AV_HWFRAME_MAP_OVERWRITE: _bindgen_ty_3 = 4;
+pub const AV_HWFRAME_MAP_DIRECT: _bindgen_ty_3 = 8;
 pub type _bindgen_ty_3 = ::std::os::raw::c_uint;
 extern "C" {
     pub fn av_hwframe_map(
@@ -1909,6 +2189,14 @@ pub const AVCodecID_AV_CODEC_ID_CRI: AVCodecID = 254;
 pub const AVCodecID_AV_CODEC_ID_SIMBIOSIS_IMX: AVCodecID = 255;
 pub const AVCodecID_AV_CODEC_ID_SGA_VIDEO: AVCodecID = 256;
 pub const AVCodecID_AV_CODEC_ID_GEM: AVCodecID = 257;
+pub const AVCodecID_AV_CODEC_ID_VBN: AVCodecID = 258;
+pub const AVCodecID_AV_CODEC_ID_JPEGXL: AVCodecID = 259;
+pub const AVCodecID_AV_CODEC_ID_QOI: AVCodecID = 260;
+pub const AVCodecID_AV_CODEC_ID_PHM: AVCodecID = 261;
+pub const AVCodecID_AV_CODEC_ID_RADIANCE_HDR: AVCodecID = 262;
+pub const AVCodecID_AV_CODEC_ID_WBMP: AVCodecID = 263;
+pub const AVCodecID_AV_CODEC_ID_MEDIA100: AVCodecID = 264;
+pub const AVCodecID_AV_CODEC_ID_VQC: AVCodecID = 265;
 pub const AVCodecID_AV_CODEC_ID_FIRST_AUDIO: AVCodecID = 65536;
 pub const AVCodecID_AV_CODEC_ID_PCM_S16LE: AVCodecID = 65536;
 pub const AVCodecID_AV_CODEC_ID_PCM_S16BE: AVCodecID = 65537;
@@ -1998,6 +2286,7 @@ pub const AVCodecID_AV_CODEC_ID_ADPCM_IMA_MTF: AVCodecID = 69679;
 pub const AVCodecID_AV_CODEC_ID_ADPCM_IMA_CUNNING: AVCodecID = 69680;
 pub const AVCodecID_AV_CODEC_ID_ADPCM_IMA_MOFLEX: AVCodecID = 69681;
 pub const AVCodecID_AV_CODEC_ID_ADPCM_IMA_ACORN: AVCodecID = 69682;
+pub const AVCodecID_AV_CODEC_ID_ADPCM_XMD: AVCodecID = 69683;
 pub const AVCodecID_AV_CODEC_ID_AMR_NB: AVCodecID = 73728;
 pub const AVCodecID_AV_CODEC_ID_AMR_WB: AVCodecID = 73729;
 pub const AVCodecID_AV_CODEC_ID_RA_144: AVCodecID = 77824;
@@ -2009,6 +2298,8 @@ pub const AVCodecID_AV_CODEC_ID_SOL_DPCM: AVCodecID = 81923;
 pub const AVCodecID_AV_CODEC_ID_SDX2_DPCM: AVCodecID = 81924;
 pub const AVCodecID_AV_CODEC_ID_GREMLIN_DPCM: AVCodecID = 81925;
 pub const AVCodecID_AV_CODEC_ID_DERF_DPCM: AVCodecID = 81926;
+pub const AVCodecID_AV_CODEC_ID_WADY_DPCM: AVCodecID = 81927;
+pub const AVCodecID_AV_CODEC_ID_CBD2_DPCM: AVCodecID = 81928;
 pub const AVCodecID_AV_CODEC_ID_MP2: AVCodecID = 86016;
 pub const AVCodecID_AV_CODEC_ID_MP3: AVCodecID = 86017;
 pub const AVCodecID_AV_CODEC_ID_AAC: AVCodecID = 86018;
@@ -2105,6 +2396,13 @@ pub const AVCodecID_AV_CODEC_ID_SIREN: AVCodecID = 86108;
 pub const AVCodecID_AV_CODEC_ID_HCA: AVCodecID = 86109;
 pub const AVCodecID_AV_CODEC_ID_FASTAUDIO: AVCodecID = 86110;
 pub const AVCodecID_AV_CODEC_ID_MSNSIREN: AVCodecID = 86111;
+pub const AVCodecID_AV_CODEC_ID_DFPWM: AVCodecID = 86112;
+pub const AVCodecID_AV_CODEC_ID_BONK: AVCodecID = 86113;
+pub const AVCodecID_AV_CODEC_ID_MISC4: AVCodecID = 86114;
+pub const AVCodecID_AV_CODEC_ID_APAC: AVCodecID = 86115;
+pub const AVCodecID_AV_CODEC_ID_FTR: AVCodecID = 86116;
+pub const AVCodecID_AV_CODEC_ID_WAVARC: AVCodecID = 86117;
+pub const AVCodecID_AV_CODEC_ID_RKA: AVCodecID = 86118;
 pub const AVCodecID_AV_CODEC_ID_FIRST_SUBTITLE: AVCodecID = 94208;
 pub const AVCodecID_AV_CODEC_ID_DVD_SUBTITLE: AVCodecID = 94208;
 pub const AVCodecID_AV_CODEC_ID_DVB_SUBTITLE: AVCodecID = 94209;
@@ -2149,6 +2447,8 @@ pub const AVCodecID_AV_CODEC_ID_MPEG2TS: AVCodecID = 131072;
 pub const AVCodecID_AV_CODEC_ID_MPEG4SYSTEMS: AVCodecID = 131073;
 pub const AVCodecID_AV_CODEC_ID_FFMETADATA: AVCodecID = 135168;
 pub const AVCodecID_AV_CODEC_ID_WRAPPED_AVFRAME: AVCodecID = 135169;
+pub const AVCodecID_AV_CODEC_ID_VNULL: AVCodecID = 135170;
+pub const AVCodecID_AV_CODEC_ID_ANULL: AVCodecID = 135171;
 pub type AVCodecID = ::std::os::raw::c_uint;
 extern "C" {
     pub fn avcodec_get_type(codec_id: AVCodecID) -> AVMediaType;
@@ -2188,11 +2488,6 @@ impl Default for AVProfile {
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct AVCodecDefault {
-    _unused: [u8; 0],
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
 pub struct AVCodec {
     pub name: *const ::std::os::raw::c_char,
     pub long_name: *const ::std::os::raw::c_char,
@@ -2208,68 +2503,7 @@ pub struct AVCodec {
     pub priv_class: *const AVClass,
     pub profiles: *const AVProfile,
     pub wrapper_name: *const ::std::os::raw::c_char,
-    pub caps_internal: ::std::os::raw::c_int,
-    pub priv_data_size: ::std::os::raw::c_int,
-    pub update_thread_context: ::std::option::Option<
-        unsafe extern "C" fn(
-            dst: *mut AVCodecContext,
-            src: *const AVCodecContext,
-        ) -> ::std::os::raw::c_int,
-    >,
-    pub update_thread_context_for_user: ::std::option::Option<
-        unsafe extern "C" fn(
-            dst: *mut AVCodecContext,
-            src: *const AVCodecContext,
-        ) -> ::std::os::raw::c_int,
-    >,
-    pub defaults: *const AVCodecDefault,
-    pub init_static_data: ::std::option::Option<unsafe extern "C" fn(codec: *mut AVCodec)>,
-    pub init: ::std::option::Option<
-        unsafe extern "C" fn(arg1: *mut AVCodecContext) -> ::std::os::raw::c_int,
-    >,
-    pub encode_sub: ::std::option::Option<
-        unsafe extern "C" fn(
-            arg1: *mut AVCodecContext,
-            buf: *mut u8,
-            buf_size: ::std::os::raw::c_int,
-            sub: *const AVSubtitle,
-        ) -> ::std::os::raw::c_int,
-    >,
-    pub encode2: ::std::option::Option<
-        unsafe extern "C" fn(
-            avctx: *mut AVCodecContext,
-            avpkt: *mut AVPacket,
-            frame: *const AVFrame,
-            got_packet_ptr: *mut ::std::os::raw::c_int,
-        ) -> ::std::os::raw::c_int,
-    >,
-    pub decode: ::std::option::Option<
-        unsafe extern "C" fn(
-            avctx: *mut AVCodecContext,
-            outdata: *mut ::std::os::raw::c_void,
-            got_frame_ptr: *mut ::std::os::raw::c_int,
-            avpkt: *mut AVPacket,
-        ) -> ::std::os::raw::c_int,
-    >,
-    pub close: ::std::option::Option<
-        unsafe extern "C" fn(arg1: *mut AVCodecContext) -> ::std::os::raw::c_int,
-    >,
-    pub receive_packet: ::std::option::Option<
-        unsafe extern "C" fn(
-            avctx: *mut AVCodecContext,
-            avpkt: *mut AVPacket,
-        ) -> ::std::os::raw::c_int,
-    >,
-    pub receive_frame: ::std::option::Option<
-        unsafe extern "C" fn(
-            avctx: *mut AVCodecContext,
-            frame: *mut AVFrame,
-        ) -> ::std::os::raw::c_int,
-    >,
-    pub flush: ::std::option::Option<unsafe extern "C" fn(arg1: *mut AVCodecContext)>,
-    pub bsfs: *const ::std::os::raw::c_char,
-    pub hw_configs: *const *mut AVCodecHWConfigInternal,
-    pub codec_tags: *const u32,
+    pub ch_layouts: *const AVChannelLayout,
 }
 impl Default for AVCodec {
     fn default() -> Self {
@@ -2307,10 +2541,10 @@ extern "C" {
         profile: ::std::os::raw::c_int,
     ) -> *const ::std::os::raw::c_char;
 }
-pub const AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX: ::std::os::raw::c_uint = 1;
-pub const AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX: ::std::os::raw::c_uint = 2;
-pub const AV_CODEC_HW_CONFIG_METHOD_INTERNAL: ::std::os::raw::c_uint = 4;
-pub const AV_CODEC_HW_CONFIG_METHOD_AD_HOC: ::std::os::raw::c_uint = 8;
+pub const AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX: _bindgen_ty_4 = 1;
+pub const AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX: _bindgen_ty_4 = 2;
+pub const AV_CODEC_HW_CONFIG_METHOD_INTERNAL: _bindgen_ty_4 = 4;
+pub const AV_CODEC_HW_CONFIG_METHOD_AD_HOC: _bindgen_ty_4 = 8;
 pub type _bindgen_ty_4 = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -2373,7 +2607,7 @@ pub const AVFieldOrder_AV_FIELD_TB: AVFieldOrder = 4;
 pub const AVFieldOrder_AV_FIELD_BT: AVFieldOrder = 5;
 pub type AVFieldOrder = ::std::os::raw::c_uint;
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct AVCodecParameters {
     pub codec_type: AVMediaType,
     pub codec_id: AVCodecID,
@@ -2404,6 +2638,7 @@ pub struct AVCodecParameters {
     pub initial_padding: ::std::os::raw::c_int,
     pub trailing_padding: ::std::os::raw::c_int,
     pub seek_preroll: ::std::os::raw::c_int,
+    pub ch_layout: AVChannelLayout,
 }
 impl Default for AVCodecParameters {
     fn default() -> Self {
@@ -2657,7 +2892,7 @@ pub struct AVCodecInternal {
     _unused: [u8; 0],
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct AVCodecContext {
     pub av_class: *const AVClass,
     pub log_level_offset: ::std::os::raw::c_int,
@@ -2793,7 +3028,6 @@ pub struct AVCodecContext {
     pub thread_count: ::std::os::raw::c_int,
     pub thread_type: ::std::os::raw::c_int,
     pub active_thread_type: ::std::os::raw::c_int,
-    pub thread_safe_callbacks: ::std::os::raw::c_int,
     pub execute: ::std::option::Option<
         unsafe extern "C" fn(
             c: *mut AVCodecContext,
@@ -2846,7 +3080,6 @@ pub struct AVCodecContext {
     pub sub_charenc_mode: ::std::os::raw::c_int,
     pub skip_alpha: ::std::os::raw::c_int,
     pub seek_preroll: ::std::os::raw::c_int,
-    pub debug_mv: ::std::os::raw::c_int,
     pub chroma_intra_matrix: *mut u16,
     pub dump_separator: *mut u8,
     pub codec_whitelist: *mut ::std::os::raw::c_char,
@@ -2854,7 +3087,6 @@ pub struct AVCodecContext {
     pub coded_side_data: *mut AVPacketSideData,
     pub nb_coded_side_data: ::std::os::raw::c_int,
     pub hw_frames_ctx: *mut AVBufferRef,
-    pub sub_text_format: ::std::os::raw::c_int,
     pub trailing_padding: ::std::os::raw::c_int,
     pub max_pixels: i64,
     pub hw_device_ctx: *mut AVBufferRef,
@@ -2871,6 +3103,8 @@ pub struct AVCodecContext {
             flags: ::std::os::raw::c_int,
         ) -> ::std::os::raw::c_int,
     >,
+    pub ch_layout: AVChannelLayout,
+    pub frame_num: i64,
 }
 impl Default for AVCodecContext {
     fn default() -> Self {
@@ -2880,11 +3114,6 @@ impl Default for AVCodecContext {
             s.assume_init()
         }
     }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct MpegEncContext {
-    _unused: [u8; 0],
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -2926,7 +3155,6 @@ pub struct AVHWAccel {
         unsafe extern "C" fn(avctx: *mut AVCodecContext) -> ::std::os::raw::c_int,
     >,
     pub frame_priv_data_size: ::std::os::raw::c_int,
-    pub decode_mb: ::std::option::Option<unsafe extern "C" fn(s: *mut MpegEncContext)>,
     pub init: ::std::option::Option<
         unsafe extern "C" fn(avctx: *mut AVCodecContext) -> ::std::os::raw::c_int,
     >,
@@ -3018,9 +3246,6 @@ extern "C" {
     pub fn avcodec_get_class() -> *const AVClass;
 }
 extern "C" {
-    pub fn avcodec_get_frame_class() -> *const AVClass;
-}
-extern "C" {
     pub fn avcodec_get_subtitle_rect_class() -> *const AVClass;
 }
 extern "C" {
@@ -3092,7 +3317,7 @@ extern "C" {
         avctx: *mut AVCodecContext,
         sub: *mut AVSubtitle,
         got_sub_ptr: *mut ::std::os::raw::c_int,
-        avpkt: *mut AVPacket,
+        avpkt: *const AVPacket,
     ) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -3443,6 +3668,19 @@ extern "C" {
     pub fn av_chroma_location_from_name(
         name: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_chroma_location_enum_to_pos(
+        xpos: *mut ::std::os::raw::c_int,
+        ypos: *mut ::std::os::raw::c_int,
+        pos: AVChromaLocation,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn av_chroma_location_pos_to_enum(
+        xpos: ::std::os::raw::c_int,
+        ypos: ::std::os::raw::c_int,
+    ) -> AVChromaLocation;
 }
 extern "C" {
     pub fn av_get_pix_fmt(name: *const ::std::os::raw::c_char) -> AVPixelFormat;
@@ -3913,10 +4151,5 @@ impl Default for __va_list_tag {
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct AVOption {
-    pub _address: u8,
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct AVCodecHWConfigInternal {
     pub _address: u8,
 }
