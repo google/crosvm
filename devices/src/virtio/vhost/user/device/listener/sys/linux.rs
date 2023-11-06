@@ -23,7 +23,7 @@ use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 
-//// On Unix we can listen to a socket.
+/// On Unix we can listen to a socket.
 pub struct VhostUserListener(SocketListener);
 
 impl VhostUserListener {

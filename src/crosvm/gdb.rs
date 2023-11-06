@@ -584,7 +584,7 @@ where
         }
         VcpuDebug::ReadMem(vaddr, len) => VcpuDebugStatus::MemoryRegion(
             <CrosvmArch as arch::GdbOps<V>>::read_memory(vcpu as &V, guest_mem, vaddr, len)
-                .unwrap_or(Vec::new()),
+                .unwrap_or_default(),
         ),
         VcpuDebug::WriteMem(vaddr, buf) => {
             <CrosvmArch as arch::GdbOps<V>>::write_memory(vcpu as &V, guest_mem, vaddr, &buf)

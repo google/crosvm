@@ -168,7 +168,7 @@ impl VirtioDevice for Fs {
             .fs
             .as_ref()
             .map(PassthroughFs::keep_rds)
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_default();
         if let Some(rd) = self.tube.as_ref().map(|s| s.as_raw_descriptor()) {
             fds.push(rd);
         }

@@ -69,7 +69,7 @@ impl Ord for Range {
 
 impl PartialOrd for Range {
     fn partial_cmp(&self, other: &Range) -> Option<cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 

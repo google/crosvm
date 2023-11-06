@@ -36,7 +36,7 @@ impl Ord for RegisterRange {
 
 impl PartialOrd for RegisterRange {
     fn partial_cmp(&self, other: &RegisterRange) -> Option<Ordering> {
-        self.from.partial_cmp(&other.from)
+        Some(self.cmp(other))
     }
 }
 

@@ -1016,8 +1016,7 @@ impl WlVfd {
             }
             Ok(Vec::new())
         } else if let Some((flags, mut local_pipe)) = self.local_pipe.take() {
-            let mut buf = Vec::new();
-            buf.resize(IN_BUFFER_LEN, 0);
+            let mut buf = vec![0; IN_BUFFER_LEN];
             let len = local_pipe.read(&mut buf[..]).map_err(WlError::ReadPipe)?;
             if len != 0 {
                 buf.truncate(len);

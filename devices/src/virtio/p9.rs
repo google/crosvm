@@ -169,7 +169,7 @@ impl VirtioDevice for P9 {
         self.server
             .as_ref()
             .map(p9::Server::keep_fds)
-            .unwrap_or_else(Vec::new)
+            .unwrap_or_default()
     }
 
     fn device_type(&self) -> DeviceType {
