@@ -863,7 +863,7 @@ impl PassthroughFs {
     // Returns an actual case-sensitive file name that matches with the given `name`.
     // Returns `Ok(None)` if no file matches with the give `name`.
     // This function will panic if casefold is not enabled.
-    fn lookup_case_unfolded_name(
+    fn get_case_unfolded_name(
         &self,
         parent: &InodeData,
         name: &[u8],
@@ -877,7 +877,7 @@ impl PassthroughFs {
 
     // Performs an ascii case insensitive lookup.
     fn ascii_casefold_lookup(&self, parent: &InodeData, name: &[u8]) -> io::Result<Entry> {
-        match self.lookup_case_unfolded_name(parent, name)? {
+        match self.get_case_unfolded_name(parent, name)? {
             None => Err(io::Error::from_raw_os_error(libc::ENOENT)),
             Some(actual_name) => self.do_lookup(parent, &actual_name),
         }
@@ -985,6 +985,21 @@ impl PassthroughFs {
             _ => {}
         };
         opts
+    }
+
+    // Performs lookup using original name first, if it fails and ascii_casefold is enabled,
+    // it tries to unfold the name and do lookup again.
+    fn do_lookup_with_casefold_fallback(
+        &self,
+        parent: &InodeData,
+        name: &CStr,
+    ) -> io::Result<Entry> {
+        let mut res = self.do_lookup(parent, name);
+        // If `ascii_casefold` is enabled, fallback to `ascii_casefold_lookup()`.
+        if res.is_err() && self.cfg.ascii_casefold {
+            res = self.ascii_casefold_lookup(parent, name.to_bytes());
+        }
+        res
     }
 
     fn do_open(&self, inode: Inode, flags: u32) -> io::Result<(Option<Handle>, OpenOptions)> {
@@ -1699,11 +1714,8 @@ impl FileSystem for PassthroughFs {
         );
         let _trace = fs_trace!(self.tag, "lookup", parent, path);
 
-        let mut res = self.do_lookup(&data, name);
-        // If `ascii_casefold` is enabled, fallback to `ascii_casefold_lookup()`.
-        if res.is_err() && self.cfg.ascii_casefold {
-            res = self.ascii_casefold_lookup(&data, name.to_bytes());
-        }
+        let mut res = self.do_lookup_with_casefold_fallback(&data, name);
+
         // FUSE takes a inode=0 as a request to do negative dentry cache.
         // So, if `negative_timeout` is set, return success with the timeout value and inode=0 as a
         // response.
@@ -1807,7 +1819,7 @@ impl FileSystem for PassthroughFs {
         let data = self.find_inode(parent)?;
         let casefold_cache = self.lock_casefold_lookup_caches();
         // TODO(b/278691962): If ascii_casefold is enabled, we need to call
-        // `lookup_case_unfolded_name()` to get the actual name to be unlinked.
+        // `get_case_unfolded_name()` to get the actual name to be unlinked.
         self.do_unlink(&data, name, libc::AT_REMOVEDIR)?;
         if let Some(mut c) = casefold_cache {
             c.remove(data.inode, name);
@@ -1940,7 +1952,7 @@ impl FileSystem for PassthroughFs {
             // really check `flags` because if the kernel can't handle poorly specified flags then
             // we have much bigger problems.
             // TODO(b/278691962): If ascii_casefold is enabled, we need to call
-            // `lookup_case_unfolded_name()` to get the actual name to be created.
+            // `get_case_unfolded_name()` to get the actual name to be created.
             let fd = syscall!(unsafe {
                 libc::openat64(data.as_raw_descriptor(), name.as_ptr(), create_flags, mode)
             })?;
@@ -1984,7 +1996,7 @@ impl FileSystem for PassthroughFs {
         let data = self.find_inode(parent)?;
         let casefold_cache = self.lock_casefold_lookup_caches();
         // TODO(b/278691962): If ascii_casefold is enabled, we need to call
-        // `lookup_case_unfolded_name()` to get the actual name to be unlinked.
+        // `get_case_unfolded_name()` to get the actual name to be unlinked.
         self.do_unlink(&data, name, 0)?;
         if let Some(mut c) = casefold_cache {
             c.remove(data.inode, name);
@@ -2924,11 +2936,7 @@ impl FileSystem for PassthroughFs {
         // This lookup serves two purposes:
         // 1. If the O_CREATE flag is not set, it retrieves the d_entry for the file.
         // 2. If the O_CREATE flag is set, it checks whether the file exists.
-        let mut res = self.do_lookup(&data, name);
-        // If `ascii_casefold` is enabled, fallback to `ascii_casefold_lookup()`.
-        if res.is_err() && self.cfg.ascii_casefold {
-            res = self.ascii_casefold_lookup(&data, name.to_bytes());
-        }
+        let res = self.do_lookup_with_casefold_fallback(&data, name);
 
         if let Err(e) = res {
             if e.kind() == std::io::ErrorKind::NotFound && (flags as i32 & libc::O_CREAT) != 0 {
