@@ -442,6 +442,7 @@ thiserror = { version = "1.0.20" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }
 vm_memory = { path = "vm_memory" }
+uuid = { version = "1", features = ["v4"] }
 zerocopy = { version = "0.7", features = ["derive"] }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]

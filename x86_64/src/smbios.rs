@@ -9,6 +9,7 @@ use std::slice;
 use arch::SmbiosOptions;
 use remain::sorted;
 use thiserror::Error;
+use uuid::Uuid;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
@@ -244,6 +245,8 @@ pub fn setup_smbios(mem: &GuestMemory, options: &SmbiosOptions, bios_size: u64) 
             typ: SYSTEM_INFORMATION,
             length: mem::size_of::<SmbiosSysInfo>() as u8,
             handle,
+            // PC vendors consistently use little-endian ordering for reasons
+            uuid: options.uuid.unwrap_or(Uuid::nil()).to_bytes_le(),
             manufacturer: 1, // First string written in this section
             product_name: 2, // Second string written in this section
             serial_number: if options.serial_number.is_some() {

@@ -31,6 +31,7 @@ remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../common/sync" }
 thiserror = "*"
+uuid = { version = "1", features = ["v4"] }
 base = { path = "../base" }
 swap = { path = "../swap" }
 vm_control = { path = "../vm_control" }

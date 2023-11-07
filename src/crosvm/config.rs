@@ -1189,6 +1189,8 @@ mod tests {
     use argh::FromArgs;
     use devices::PciClassCode;
     use devices::StubPciParameters;
+    #[cfg(target_arch = "x86_64")]
+    use uuid::uuid;
 
     use super::*;
 
@@ -1819,5 +1821,18 @@ mod tests {
         assert_eq!(fs.socket.to_str(), Some("my_socket"));
         assert_eq!(fs.tag, "my_tag");
         assert_eq!(fs.max_queue_size, Some(256));
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn parse_smbios_uuid() {
+        let opt: SmbiosOptions =
+            from_key_values("uuid=12e474af-2cc1-49d1-b0e5-d03a3e03ca03").unwrap();
+        assert_eq!(
+            opt.uuid,
+            Some(uuid!("12e474af-2cc1-49d1-b0e5-d03a3e03ca03"))
+        );
+
+        from_key_values::<SmbiosOptions>("uuid=zzzz").expect_err("expected error parsing uuid");
     }
 }

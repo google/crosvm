@@ -2033,6 +2033,8 @@ pub struct RunCommand {
     ///     bios-version=STRING - BIOS version number (free-form string).
     ///     manufacturer=STRING - System manufacturer name.
     ///     product-name=STRING - System product name.
+    ///     serial-number=STRING - System serial number.
+    ///     uuid=UUID - System UUID.
     ///     oem-strings=[...] - Free-form OEM strings (SMBIOS type 11).
     pub smbios: Option<SmbiosOptions>,
 

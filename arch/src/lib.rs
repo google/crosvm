@@ -86,6 +86,7 @@ use sync::Mutex;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use sys::linux::PlatformBusResources;
 use thiserror::Error;
+use uuid::Uuid;
 use vm_control::BatControl;
 use vm_control::BatteryType;
 use vm_control::PmResource;
@@ -1321,6 +1322,9 @@ pub struct SmbiosOptions {
 
     /// System serial number (free-form string).
     pub serial_number: Option<String>,
+
+    /// System UUID.
+    pub uuid: Option<Uuid>,
 
     /// Additional OEM strings to add to SMBIOS table.
     #[serde(default)]

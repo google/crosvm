@@ -33,6 +33,7 @@ serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
 swap = { path = "../swap" }
 sync = { path = "../common/sync" }
 thiserror = "1.0.20"
+uuid = { version = "1", features = ["v4", "serde"] }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
 
