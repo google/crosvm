@@ -122,7 +122,7 @@ enum Command {
 
 /// [SwapController] provides APIs to control vmm-swap.
 pub struct SwapController {
-    child_process: Child,
+    child_process: Option<Child>,
     uffd_factory: UffdFactory,
     command_tube: Tube,
     num_static_devices: u32,
@@ -249,7 +249,7 @@ impl SwapController {
         };
 
         Ok(Self {
-            child_process,
+            child_process: Some(child_process),
             uffd_factory,
             command_tube: command_tube_main,
             num_static_devices: 0,
@@ -331,28 +331,19 @@ impl SwapController {
         Ok(status)
     }
 
-    /// Shutdown the monitor process.
-    ///
-    /// This blocks until the monitor process exits.
-    ///
-    /// This should be called once.
-    pub fn exit(self) -> anyhow::Result<()> {
-        self.command_tube
-            .send(&Command::Exit)
-            .context("send exit command")?;
-        self.child_process
-            .wait()
-            .context("wait monitor process shutdown")?;
-        Ok(())
-    }
-
     /// Suspend device processes using `SIGSTOP` signal.
     ///
     /// When the returned `ProcessesGuard` is dropped, the devices resume.
     ///
     /// This must be called from the main process.
     pub fn suspend_devices(&self) -> anyhow::Result<ProcessesGuard> {
-        freeze_child_processes(self.child_process.pid)
+        // child_process become none on dropping SwapController.
+        freeze_child_processes(
+            self.child_process
+                .as_ref()
+                .expect("monitor process not exist")
+                .pid,
+        )
     }
 
     /// Notify the monitor process that all static devices are forked.
@@ -381,6 +372,28 @@ impl SwapController {
             uffd_factory,
             command_tube,
         })
+    }
+}
+
+impl Drop for SwapController {
+    fn drop(&mut self) {
+        // Shutdown the monitor process.
+        // This blocks until the monitor process exits.
+        if let Err(e) = self.command_tube.send(&Command::Exit) {
+            error!(
+                "failed to sent exit command to vmm-swap monitor process: {:#}",
+                e
+            );
+            return;
+        }
+        if let Err(e) = self
+            .child_process
+            .take()
+            .expect("monitor process not exist")
+            .wait()
+        {
+            error!("failed to wait vmm-swap monitor process shutdown: {:#}", e);
+        }
     }
 }
 

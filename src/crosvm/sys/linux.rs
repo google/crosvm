@@ -3557,13 +3557,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         error!("failed to remove vcpu thread signal handler: {:#}", e);
     }
 
+    // Stop the vmm-swap monitor process.
     #[cfg(feature = "swap")]
-    // Stop the snapshot monitor process
-    if let Some(swap_controller) = swap_controller {
-        if let Err(e) = swap_controller.exit() {
-            error!("failed to exit snapshot monitor process: {:?}", e);
-        }
-    }
+    drop(swap_controller);
 
     // Stop pci root worker thread
     #[cfg(target_arch = "x86_64")]
