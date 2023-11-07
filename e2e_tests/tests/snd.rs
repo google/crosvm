@@ -4,8 +4,12 @@
 
 use std::fs;
 
+use fixture::vhost_user::CmdType;
+use fixture::vhost_user::Config as VuConfig;
+use fixture::vhost_user::VhostUserBackend;
 use fixture::vm::Config;
 use fixture::vm::TestVm;
+use tempfile::NamedTempFile;
 use tempfile::TempDir;
 
 /// Tests audio playback on virtio-snd with file backend
@@ -21,16 +25,42 @@ fn do_playback() {
     let temp_dir = tempfile::tempdir().unwrap();
     let temp_dir_path_str = temp_dir.path().to_str().unwrap();
 
-    let config = Config::new().extra_args(vec![
-        "--shared-dir".to_string(),
-        format!("{}:tmp2:type=fs:cache=always", temp_dir_path_str),
-        "--virtio-snd".to_string(),
-        format!(
-            "backend=file,playback_path={},playback_size=400000",
-            temp_dir_path_str
-        ),
-    ]);
+    let config = get_test_vm_config(
+        temp_dir_path_str,
+        vec![
+            "--virtio-snd".to_string(),
+            get_virtio_snd_args(temp_dir_path_str),
+        ],
+    );
+    playback_and_check(config, temp_dir)
+}
 
+/// Tests audio playback with vhost user.
+#[test]
+fn do_playback_with_vhost_user() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir_path_str = temp_dir.path().to_str().unwrap();
+
+    let socket = NamedTempFile::new().unwrap();
+    let socket_path_str = socket.path().to_str().unwrap();
+
+    let vu_config = VuConfig::new(CmdType::Device, "snd").extra_args(vec![
+        "snd".to_string(),
+        "--config".to_string(),
+        get_virtio_snd_args(temp_dir_path_str),
+        "--socket".to_string(),
+        socket_path_str.to_string(),
+    ]);
+    let _vu_device = VhostUserBackend::new(vu_config).unwrap();
+
+    let config = get_test_vm_config(
+        temp_dir_path_str,
+        vec!["--vhost-user-snd".to_string(), socket_path_str.to_string()],
+    );
+    playback_and_check(config, temp_dir)
+}
+
+fn playback_and_check(config: Config, temp_dir: TempDir) {
     let mut vm = TestVm::new(config).unwrap();
     vm.exec_in_guest("mount -t virtiofs tmp2 /mnt").unwrap();
     vm.exec_in_guest("ls /mnt 1>&2").unwrap();
@@ -50,6 +80,22 @@ fn do_playback() {
         "test_440_48000.raw",
         "stream-0.out"
     ));
+}
+
+fn get_virtio_snd_args(output_file_path_str: &str) -> String {
+    format!(
+        "backend=file,playback_path={},playback_size=400000",
+        output_file_path_str
+    )
+}
+
+fn get_test_vm_config(temp_dir_path_str: &str, snd_args: Vec<String>) -> Config {
+    let mut args = vec![
+        "--shared-dir".to_string(),
+        format!("{}:tmp2:type=fs:cache=always", temp_dir_path_str),
+    ];
+    args.extend(snd_args);
+    Config::new().extra_args(args)
 }
 
 fn compare_files(temp_dir: TempDir, golden_file_name: &str, output_file_name: &str) -> bool {
