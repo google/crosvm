@@ -189,7 +189,7 @@ impl<
                 let mut disk_file = inner_clone.lock();
                 disk_file
                     .punch_hole_mut(file_offset, length)
-                    .map_err(Error::PunchHole)
+                    .map_err(Error::IoPunchHole)
             })
             .await
     }

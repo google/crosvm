@@ -31,29 +31,6 @@ pub enum IoSource<F: base::AsRawDescriptor> {
     Overlapped(OverlappedSource<F>),
 }
 
-pub enum AllocateMode {
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    Allocate,
-    PunchHole,
-    ZeroRange,
-}
-
-// This assume we always want KEEP_SIZE
-#[cfg(any(target_os = "android", target_os = "linux"))]
-impl From<AllocateMode> for u32 {
-    fn from(value: AllocateMode) -> Self {
-        match value {
-            AllocateMode::Allocate => 0,
-            AllocateMode::PunchHole => {
-                (libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE) as u32
-            }
-            AllocateMode::ZeroRange => {
-                (libc::FALLOC_FL_ZERO_RANGE | libc::FALLOC_FL_KEEP_SIZE) as u32
-            }
-        }
-    }
-}
-
 /// Invoke a method on the underlying source type and await the result.
 ///
 /// `await_on_inner(io_source, method, ...)` => `inner_source.method(...).await`
@@ -134,14 +111,14 @@ impl<F: AsRawDescriptor> IoSource<F> {
         await_on_inner!(self, write_from_mem, file_offset, mem, mem_offsets)
     }
 
-    /// See `fallocate(2)`. Note this op is synchronous when using the Polled backend.
-    pub async fn fallocate(
-        &self,
-        file_offset: u64,
-        len: u64,
-        mode: AllocateMode,
-    ) -> AsyncResult<()> {
-        await_on_inner!(self, fallocate, file_offset, len, mode)
+    /// Deallocates the given range of a file.
+    pub async fn punch_hole(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
+        await_on_inner!(self, punch_hole, file_offset, len)
+    }
+
+    /// Fills the given range with zeroes.
+    pub async fn write_zeroes_at(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
+        await_on_inner!(self, write_zeroes_at, file_offset, len)
     }
 
     /// Sync all completed write operations to the backing storage.

@@ -96,7 +96,6 @@ pub use io_ext::AsyncWrapper;
 pub use io_ext::Error as AsyncError;
 pub use io_ext::IntoAsync;
 pub use io_ext::Result as AsyncResult;
-pub use io_source::AllocateMode;
 pub use io_source::IoSource;
 pub use mem::BackingMemory;
 pub use mem::MemRegion;

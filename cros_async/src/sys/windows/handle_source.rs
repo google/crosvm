@@ -32,7 +32,6 @@ use winapi::um::processthreadsapi::GetCurrentThreadId;
 
 use crate::mem::BackingMemory;
 use crate::mem::MemRegion;
-use crate::AllocateMode;
 use crate::AsyncError;
 use crate::AsyncResult;
 use crate::CancellableBlockingPool;
@@ -329,31 +328,36 @@ impl<F: AsRawDescriptor> HandleSource<F> {
             .map_err(AsyncError::HandleSource)
     }
 
-    /// See `fallocate(2)`. Note this op is synchronous when using the Polled backend.
-    pub async fn fallocate(
-        &self,
-        file_offset: u64,
-        len: u64,
-        mode: AllocateMode,
-    ) -> AsyncResult<()> {
+    /// Deallocates the given range of a file.
+    pub async fn punch_hole(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
+        let handles = HandleWrapper::new(self.as_descriptors());
+        let descriptors = self.source_descriptors.clone();
+        self.blocking_pool
+            .spawn(
+                move || {
+                    let file = get_thread_file(descriptors);
+                    file.punch_hole(file_offset, len)
+                        .map_err(Error::IoPunchHoleError)?;
+                    Ok(())
+                },
+                move || Err(handles.lock().cancel_sync_io(Error::OperationCancelled)),
+            )
+            .await
+            .map_err(AsyncError::HandleSource)
+    }
+
+    /// Fills the given range with zeroes.
+    pub async fn write_zeroes_at(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
         let handles = HandleWrapper::new(self.as_descriptors());
         let descriptors = self.source_descriptors.clone();
         self.blocking_pool
             .spawn(
                 move || {
                     let mut file = get_thread_file(descriptors);
-                    match mode {
-                        AllocateMode::PunchHole => {
-                            file.punch_hole(file_offset, len)
-                                .map_err(Error::IoPunchHoleError)?;
-                        }
-                        // ZeroRange calls `punch_hole` which doesn't extend the File size if it needs to.
-                        // Will fix if it becomes a problem.
-                        AllocateMode::ZeroRange => {
-                            file.write_zeroes_at(file_offset, len as usize)
-                                .map_err(Error::IoWriteZeroesError)?;
-                        }
-                    }
+                    // ZeroRange calls `punch_hole` which doesn't extend the File size if it needs to.
+                    // Will fix if it becomes a problem.
+                    file.write_zeroes_at(file_offset, len as usize)
+                        .map_err(Error::IoWriteZeroesError)?;
                     Ok(())
                 },
                 move || Err(handles.lock().cancel_sync_io(Error::OperationCancelled)),
@@ -444,10 +448,7 @@ mod tests {
         async fn punch_hole(handle_src: &HandleSource<File>) {
             let offset = 1;
             let len = 3;
-            handle_src
-                .fallocate(offset, len, AllocateMode::PunchHole)
-                .await
-                .unwrap();
+            handle_src.punch_hole(offset, len).await.unwrap();
         }
 
         let ex = RawExecutor::<HandleReactor>::new().unwrap();
@@ -478,10 +479,7 @@ mod tests {
         async fn punch_hole(handle_src: &HandleSource<File>) {
             let offset = 9;
             let len = 4;
-            handle_src
-                .fallocate(offset, len, AllocateMode::PunchHole)
-                .await
-                .unwrap();
+            handle_src.punch_hole(offset, len).await.unwrap();
         }
 
         let ex = RawExecutor::<HandleReactor>::new().unwrap();

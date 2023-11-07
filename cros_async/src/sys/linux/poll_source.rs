@@ -6,6 +6,8 @@ use std::io;
 use std::os::fd::AsRawFd;
 use std::sync::Arc;
 
+use base::sys::fallocate;
+use base::sys::FallocateMode;
 use base::AsRawDescriptor;
 use data_model::VolatileSlice;
 use remain::sorted;
@@ -16,7 +18,6 @@ use super::fd_executor::EpollReactor;
 use super::fd_executor::RegisteredSource;
 use crate::common_executor::RawExecutor;
 use crate::mem::BackingMemory;
-use crate::AllocateMode;
 use crate::AsyncError;
 use crate::AsyncResult;
 use crate::MemRegion;
@@ -266,29 +267,6 @@ impl<F: AsRawDescriptor> PollSource<F> {
         }
     }
 
-    /// See `fallocate(2)` for details.
-    pub async fn fallocate(
-        &self,
-        file_offset: u64,
-        len: u64,
-        mode: AllocateMode,
-    ) -> AsyncResult<()> {
-        let mode_u32: u32 = mode.into();
-        let ret = unsafe {
-            libc::fallocate64(
-                self.0.duped_fd.as_raw_fd(),
-                mode_u32 as libc::c_int,
-                file_offset as libc::off64_t,
-                len as libc::off64_t,
-            )
-        };
-        if ret == 0 {
-            Ok(())
-        } else {
-            Err(AsyncError::Poll(Error::Fallocate(base::Error::last())))
-        }
-    }
-
     /// Sync all completed write operations to the backing storage.
     pub async fn fsync(&self) -> AsyncResult<()> {
         let ret = unsafe { libc::fsync(self.0.duped_fd.as_raw_fd()) };
@@ -297,6 +275,28 @@ impl<F: AsRawDescriptor> PollSource<F> {
         } else {
             Err(AsyncError::Poll(Error::Fsync(base::Error::last())))
         }
+    }
+
+    /// punch_hole
+    pub async fn punch_hole(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
+        fallocate(
+            &self.0.duped_fd.as_raw_fd(),
+            FallocateMode::PunchHole,
+            file_offset,
+            len,
+        )
+        .map_err(|e| AsyncError::Poll(Error::Fallocate(e)))
+    }
+
+    /// write_zeroes_at
+    pub async fn write_zeroes_at(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
+        fallocate(
+            &self.0.duped_fd.as_raw_fd(),
+            FallocateMode::ZeroRange,
+            file_offset,
+            len,
+        )
+        .map_err(|e| AsyncError::Poll(Error::Fallocate(e)))
     }
 
     /// Sync all data of completed write operations to the backing storage, avoiding updating extra
@@ -330,36 +330,8 @@ impl<F: AsRawDescriptor> PollSource<F> {
 #[cfg(test)]
 mod tests {
     use std::fs::File;
-    use std::fs::OpenOptions;
-    use std::path::PathBuf;
 
     use super::*;
-
-    #[test]
-    fn fallocate() {
-        async fn go(ex: &Arc<RawExecutor<EpollReactor>>) {
-            let dir = tempfile::TempDir::new().unwrap();
-            let mut file_path = PathBuf::from(dir.path());
-            file_path.push("test");
-
-            let f = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(&file_path)
-                .unwrap();
-            let source = PollSource::new(f, ex).unwrap();
-            source
-                .fallocate(0, 4096, AllocateMode::Allocate)
-                .await
-                .unwrap();
-
-            let meta_data = std::fs::metadata(&file_path).unwrap();
-            assert_eq!(meta_data.len(), 4096);
-        }
-
-        let ex = RawExecutor::<EpollReactor>::new().unwrap();
-        ex.run_until(go(&ex)).unwrap();
-    }
 
     #[test]
     fn memory_leak() {

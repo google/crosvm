@@ -200,6 +200,22 @@ pub enum FallocateMode {
     Allocate,
 }
 
+impl From<FallocateMode> for i32 {
+    fn from(value: FallocateMode) -> Self {
+        match value {
+            FallocateMode::Allocate => libc::FALLOC_FL_KEEP_SIZE,
+            FallocateMode::PunchHole => libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE,
+            FallocateMode::ZeroRange => libc::FALLOC_FL_ZERO_RANGE | libc::FALLOC_FL_KEEP_SIZE,
+        }
+    }
+}
+
+impl From<FallocateMode> for u32 {
+    fn from(value: FallocateMode) -> Self {
+        Into::<i32>::into(value) as u32
+    }
+}
+
 /// Safe wrapper for `fallocate()`.
 pub fn fallocate(file: &dyn AsRawFd, mode: FallocateMode, offset: u64, len: u64) -> Result<()> {
     let offset = if offset > libc::off64_t::max_value() as u64 {
@@ -214,15 +230,9 @@ pub fn fallocate(file: &dyn AsRawFd, mode: FallocateMode, offset: u64, len: u64)
         len as libc::off64_t
     };
 
-    let mode = match mode {
-        FallocateMode::PunchHole => libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE,
-        FallocateMode::ZeroRange => libc::FALLOC_FL_ZERO_RANGE | libc::FALLOC_FL_KEEP_SIZE,
-        FallocateMode::Allocate => libc::FALLOC_FL_KEEP_SIZE,
-    };
-
     // Safe since we pass in a valid fd and fallocate mode, validate offset and len,
     // and check the return value.
-    syscall!(unsafe { libc::fallocate64(file.as_raw_fd(), mode, offset, len) }).map(|_| ())
+    syscall!(unsafe { libc::fallocate64(file.as_raw_fd(), mode.into(), offset, len) }).map(|_| ())
 }
 
 /// A trait used to abstract types that provide a process id that can be operated on.

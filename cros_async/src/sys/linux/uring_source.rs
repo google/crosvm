@@ -6,6 +6,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
+use base::sys::FallocateMode;
 use base::AsRawDescriptor;
 
 use super::uring_executor::RegisteredSource;
@@ -15,7 +16,6 @@ use crate::common_executor::RawExecutor;
 use crate::mem::BackingMemory;
 use crate::mem::MemRegion;
 use crate::mem::VecIoWrapper;
-use crate::AllocateMode;
 use crate::AsyncResult;
 
 /// `UringSource` wraps FD backed IO sources for use with io_uring. It is a thin wrapper around
@@ -120,16 +120,24 @@ impl<F: AsRawDescriptor> UringSource<F> {
         Ok(len as usize)
     }
 
-    /// See `fallocate(2)`. Note this op is synchronous when using the Polled backend.
-    pub async fn fallocate(
-        &self,
-        file_offset: u64,
-        len: u64,
-        mode: AllocateMode,
-    ) -> AsyncResult<()> {
-        let op = self
-            .registered_source
-            .start_fallocate(file_offset, len, mode.into())?;
+    /// Deallocates the given range of a file.
+    pub async fn punch_hole(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
+        let op = self.registered_source.start_fallocate(
+            file_offset,
+            len,
+            FallocateMode::PunchHole.into(),
+        )?;
+        let _ = op.await?;
+        Ok(())
+    }
+
+    /// Fills the given range with zeroes.
+    pub async fn write_zeroes_at(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
+        let op = self.registered_source.start_fallocate(
+            file_offset,
+            len,
+            FallocateMode::ZeroRange.into(),
+        )?;
         let _ = op.await?;
         Ok(())
     }
@@ -183,9 +191,7 @@ impl<F: AsRawDescriptor> DerefMut for UringSource<F> {
 #[cfg(test)]
 mod tests {
     use std::fs::File;
-    use std::fs::OpenOptions;
     use std::future::Future;
-    use std::path::PathBuf;
     use std::pin::Pin;
     use std::task::Context;
     use std::task::Poll;
@@ -304,45 +310,6 @@ mod tests {
                 )
                 .await;
             assert!(ret.is_err());
-        }
-
-        let ex = RawExecutor::<UringReactor>::new().unwrap();
-        ex.run_until(go(&ex)).unwrap();
-    }
-
-    #[test]
-    fn fallocate() {
-        if !is_uring_stable() {
-            return;
-        }
-
-        async fn go(ex: &Arc<RawExecutor<UringReactor>>) {
-            let dir = tempfile::TempDir::new().unwrap();
-            let mut file_path = PathBuf::from(dir.path());
-            file_path.push("test");
-
-            let f = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(&file_path)
-                .unwrap();
-            let source = UringSource::new(f, ex).unwrap();
-            if let Err(e) = source.fallocate(0, 4096, AllocateMode::Allocate).await {
-                match e {
-                    crate::io_ext::Error::Uring(super::super::uring_executor::Error::Io(
-                        io_err,
-                    )) => {
-                        if io_err.kind() == std::io::ErrorKind::InvalidInput {
-                            // Skip the test on kernels before fallocate support.
-                            return;
-                        }
-                    }
-                    _ => panic!("Unexpected uring error on fallocate: {}", e),
-                }
-            }
-
-            let meta_data = std::fs::metadata(&file_path).unwrap();
-            assert_eq!(meta_data.len(), 4096);
         }
 
         let ex = RawExecutor::<UringReactor>::new().unwrap();

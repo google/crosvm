@@ -21,7 +21,6 @@ use base::FileAllocate;
 use base::FileReadWriteAtVolatile;
 use base::FileSetLen;
 use base::PunchHole;
-use cros_async::AllocateMode;
 use cros_async::BackingMemory;
 use cros_async::Executor;
 use cros_async::IoSource;
@@ -86,8 +85,6 @@ pub enum Error {
     CreateCompositeDisk(composite::Error),
     #[error("failure creating single file disk: {0}")]
     CreateSingleFileDisk(cros_async::AsyncError),
-    #[error("failure with fallocate: {0}")]
-    Fallocate(cros_async::AsyncError),
     #[error("failure with fdatasync: {0}")]
     Fdatasync(cros_async::AsyncError),
     #[error("failure with fsync: {0}")]
@@ -98,12 +95,14 @@ pub enum Error {
     IoFlush(io::Error),
     #[error("failure with fsync: {0}")]
     IoFsync(io::Error),
+    #[error("failure to punch hole: {0}")]
+    IoPunchHole(io::Error),
     #[error("checking host fs type: {0}")]
     HostFsType(base::Error),
     #[error("maximum disk nesting depth exceeded")]
     MaxNestingDepthExceeded,
     #[error("failure to punch hole: {0}")]
-    PunchHole(io::Error),
+    PunchHole(cros_async::AsyncError),
     #[cfg(feature = "qcow")]
     #[error("failure in qcow: {0}")]
     QcowError(qcow::Error),
@@ -491,22 +490,22 @@ impl AsyncDisk for SingleFileDisk {
 
     async fn punch_hole(&self, file_offset: u64, length: u64) -> Result<()> {
         self.inner
-            .fallocate(file_offset, length, AllocateMode::PunchHole)
+            .punch_hole(file_offset, length)
             .await
-            .map_err(Error::Fallocate)
+            .map_err(Error::PunchHole)
     }
 
     async fn write_zeroes_at(&self, file_offset: u64, length: u64) -> Result<()> {
         if self
             .inner
-            .fallocate(file_offset, length, AllocateMode::ZeroRange)
+            .write_zeroes_at(file_offset, length)
             .await
             .is_ok()
         {
             return Ok(());
         }
 
-        // Fall back to writing zeros if fallocate doesn't work.
+        // Fall back to filling zeros if more efficient write_zeroes_at doesn't work.
         let buf_size = min(length, 0x10000);
         let mut nwritten = 0;
         while nwritten < length {
