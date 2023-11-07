@@ -18,22 +18,30 @@ impl VhostUserVirtioDevice {
         base_features: u64,
         connection: Connection,
         max_queue_size: Option<u16>,
-        tag: &str,
+        tag: Option<&str>,
     ) -> Result<VhostUserVirtioDevice> {
-        if tag.len() > FS_MAX_TAG_LEN {
-            return Err(Error::TagTooLong {
-                len: tag.len(),
-                max: FS_MAX_TAG_LEN,
-            });
-        }
+        let cfg = if let Some(tag) = tag {
+            if tag.len() > FS_MAX_TAG_LEN {
+                return Err(Error::TagTooLong {
+                    len: tag.len(),
+                    max: FS_MAX_TAG_LEN,
+                });
+            }
 
-        let mut cfg_tag = [0u8; FS_MAX_TAG_LEN];
-        cfg_tag[..tag.len()].copy_from_slice(tag.as_bytes());
+            let mut cfg_tag = [0u8; FS_MAX_TAG_LEN];
+            cfg_tag[..tag.len()].copy_from_slice(tag.as_bytes());
 
-        let cfg = virtio_fs_config {
-            tag: cfg_tag,
-            // Only count the request queue, exclude the high prio queue
-            num_request_queues: Le32::from(1),
+            Some(
+                virtio_fs_config {
+                    tag: cfg_tag,
+                    // Only count the request queue, exclude the high prio queue
+                    num_request_queues: Le32::from(1),
+                }
+                .as_bytes()
+                .to_vec(),
+            )
+        } else {
+            None
         };
 
         VhostUserVirtioDevice::new_internal(
@@ -41,7 +49,7 @@ impl VhostUserVirtioDevice {
             DeviceType::Fs,
             max_queue_size,
             base_features,
-            Some(cfg.as_bytes()),
+            cfg.as_deref(),
         )
     }
 }

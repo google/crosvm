@@ -167,7 +167,7 @@ pub struct VhostUserOption {
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct VhostUserFsOption {
     pub socket: PathBuf,
-    pub tag: String,
+    pub tag: Option<String>,
 
     /// Maximum number of entries per queue (default: 32768)
     pub max_queue_size: Option<u16>,
@@ -202,7 +202,7 @@ pub fn parse_vhost_user_fs_option(param: &str) -> Result<VhostUserFsOption, Stri
 
         Ok(VhostUserFsOption {
             socket,
-            tag,
+            tag: Some(tag),
             max_queue_size: None,
         })
     } else {
@@ -1783,7 +1783,7 @@ mod tests {
         assert_eq!(cfg.vhost_user_fs.len(), 1);
         let fs = &cfg.vhost_user_fs[0];
         assert_eq!(fs.socket.to_str(), Some("my_socket"));
-        assert_eq!(fs.tag, "my_tag");
+        assert_eq!(fs.tag, Some("my_tag".to_string()));
         assert_eq!(fs.max_queue_size, None);
     }
 
@@ -1801,7 +1801,7 @@ mod tests {
         assert_eq!(cfg.vhost_user_fs.len(), 1);
         let fs = &cfg.vhost_user_fs[0];
         assert_eq!(fs.socket.to_str(), Some("my_socket"));
-        assert_eq!(fs.tag, "my_tag");
+        assert_eq!(fs.tag, Some("my_tag".to_string()));
         assert_eq!(fs.max_queue_size, None);
     }
 
@@ -1823,8 +1823,26 @@ mod tests {
         assert_eq!(cfg.vhost_user_fs.len(), 1);
         let fs = &cfg.vhost_user_fs[0];
         assert_eq!(fs.socket.to_str(), Some("my_socket"));
-        assert_eq!(fs.tag, "my_tag");
+        assert_eq!(fs.tag, Some("my_tag".to_string()));
         assert_eq!(fs.max_queue_size, Some(256));
+    }
+
+    #[test]
+    fn parse_vhost_user_fs_no_tag() {
+        let cfg = TryInto::<Config>::try_into(
+            crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--vhost-user-fs", "my_socket", "/dev/null"],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(cfg.vhost_user_fs.len(), 1);
+        let fs = &cfg.vhost_user_fs[0];
+        assert_eq!(fs.socket.to_str(), Some("my_socket"));
+        assert_eq!(fs.tag, None);
+        assert_eq!(fs.max_queue_size, None);
     }
 
     #[cfg(target_arch = "x86_64")]

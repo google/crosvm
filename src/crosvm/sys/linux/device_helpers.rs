@@ -372,7 +372,7 @@ pub fn create_vhost_user_fs_device(
         virtio::base_features(protection_type),
         vhost_user_connection(&option.socket)?,
         option.max_queue_size,
-        &option.tag,
+        option.tag.as_deref(),
     )
     .context("failed to set up vhost-user fs device")?;
 
