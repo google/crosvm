@@ -48,6 +48,7 @@ create a new branch tracking origin/main and cherry-picks your commits.
 
 GERRIT_URL = "https://chromium-review.googlesource.com"
 CROSVM_URL = "https://chromium.googlesource.com/crosvm/crosvm"
+CROSVM_SSO = "sso://chromium/crosvm/crosvm"
 
 git = cmd("git")
 curl = cmd("curl --silent --fail")
@@ -125,7 +126,7 @@ def prerequisites():
     if not git("remote get-url origin").success():
         print("Setting up origin")
         git("remote add origin", CROSVM_URL).fg()
-    if git("remote get-url origin").stdout() != CROSVM_URL:
+    if git("remote get-url origin").stdout() not in [CROSVM_URL, CROSVM_SSO]:
         print("Your remote 'origin' does not point to the main crosvm repository.")
         if confirm(f"Do you want to fix it?"):
             git("remote set-url origin", CROSVM_URL).fg()
