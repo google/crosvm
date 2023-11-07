@@ -89,6 +89,11 @@ PODMAN_ARGS = [
 ]
 
 
+def machine_is_running(docker: cmd):
+    machine_state = docker("machine info").stdout()
+    return "MachineState: Running" in machine_state
+
+
 def container_name(cros: bool):
     if cros:
         return CROS_CONTAINER_NAME
@@ -250,6 +255,12 @@ def main(argv: List[str]):
         ]
     else:
         docker = cmd("podman")
+
+        # On windows, podman uses wsl vm. start the default podman vm for the rest of the script
+        # to work properly.
+        if os.name == "nt" and not machine_is_running(docker):
+            print("Starting podman default machine.")
+            docker("machine start").fg(quiet=True)
         docker_args = [
             *PODMAN_ARGS,
             *workspace_mount_args(args.cros),
