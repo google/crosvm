@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use std::collections::BTreeMap;
+
 use arch::apply_device_tree_overlays;
 use arch::DtbOverlay;
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -330,6 +333,8 @@ pub fn create_fdt(
         device_tree_overlays,
         #[cfg(any(target_os = "android", target_os = "linux"))]
         platform_dev_resources,
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        &BTreeMap::new(),
     )?;
 
     let fdt_final = fdt.finish()?;

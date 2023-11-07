@@ -1090,6 +1090,14 @@ impl VfioDevice {
         self.dt_symbol.as_deref()
     }
 
+    /// Returns the type and indentifier (if applicable) of the IOMMU used by this VFIO device.
+    pub fn iommu(&self) -> Option<(IommuDevType, Option<u32>)> {
+        // We currently only report IommuDevType::PkvmPviommu.
+        self.pviommu
+            .as_ref()
+            .map(|pviommu| (IommuDevType::PkvmPviommu, Some(pviommu.lock().id())))
+    }
+
     /// enter the device's low power state
     pub fn pm_low_power_enter(&self) -> Result<()> {
         let mut device_feature = vec_with_array_field::<vfio_device_feature, u8>(0);

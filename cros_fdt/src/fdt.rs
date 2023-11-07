@@ -45,6 +45,8 @@ pub enum Error {
     InvalidPath(String),
     #[error("Invalid string value {}", .0)]
     InvalidString(String),
+    #[error("Expected phandle value for IOMMU of type: {}, id: {:?}", .0, .1)]
+    MissingIommuPhandle(String, Option<u32>),
     #[error("Property value is not valid")]
     PropertyValueInvalid,
     #[error("Property value size must fit in 32 bits")]

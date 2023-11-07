@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
 
@@ -11,6 +13,8 @@ use cros_fdt::Fdt;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use cros_fdt::Path;
 use cros_fdt::Result;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use devices::IommuDevType;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use crate::sys::linux::PlatformBusResources;
@@ -38,6 +42,25 @@ pub fn apply_device_tree_overlays(fdt: &mut Fdt, overlays: Vec<DtbOverlay>) -> R
     Ok(())
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn get_iommu_phandle(
+    iommu_type: IommuDevType,
+    id: Option<u32>,
+    phandles: &BTreeMap<&str, u32>,
+) -> Result<u32> {
+    match iommu_type {
+        IommuDevType::NoIommu | IommuDevType::VirtioIommu | IommuDevType::CoIommu => None,
+        IommuDevType::PkvmPviommu => {
+            if let Some(id) = id {
+                phandles.get(format!("pviommu{id}").as_str()).copied()
+            } else {
+                None
+            }
+        }
+    }
+    .ok_or_else(|| Error::MissingIommuPhandle(format!("{iommu_type:?}"), id))
+}
+
 // Find the device node at given path and update its `reg` and `interrupts` properties using
 // its platform resources.
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -45,6 +68,7 @@ fn update_device_nodes(
     node_path: Path,
     fdt: &mut Fdt,
     resources: &PlatformBusResources,
+    phandles: &BTreeMap<&str, u32>,
 ) -> Result<()> {
     const GIC_FDT_IRQ_TYPE_SPI: u32 = 0;
 
@@ -70,6 +94,16 @@ fn update_device_nodes(
     if !irq_val.is_empty() {
         node.set_prop("interrupts", irq_val)?;
     }
+
+    if !resources.iommus.is_empty() {
+        let mut iommus_val = Vec::new();
+        for (t, id) in &resources.iommus {
+            let phandle = get_iommu_phandle(*t, *id, phandles)?;
+            iommus_val.push(phandle);
+        }
+        node.set_prop("iommus", iommus_val)?;
+    }
+
     Ok(())
 }
 
@@ -85,6 +119,7 @@ pub fn apply_device_tree_overlays(
     fdt: &mut Fdt,
     overlays: Vec<DtbOverlay>,
     mut devices: Vec<PlatformBusResources>,
+    phandles: &BTreeMap<&str, u32>,
 ) -> Result<()> {
     for mut dtbo in overlays {
         let mut buffer = Vec::new();
@@ -107,7 +142,7 @@ pub fn apply_device_tree_overlays(
 
         // Update device nodes found in this overlay, and then apply the overlay.
         for (path, res) in node_paths.into_iter().zip(&devs_in_overlay) {
-            update_device_nodes(path, &mut overlay, res)?;
+            update_device_nodes(path, &mut overlay, res, phandles)?;
         }
 
         // Unfiltered DTBOs applied as whole.

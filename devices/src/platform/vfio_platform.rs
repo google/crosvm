@@ -33,6 +33,7 @@ use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::BusDeviceObj;
 use crate::DeviceId;
+use crate::IommuDevType;
 use crate::IrqEdgeEvent;
 use crate::IrqLevelEvent;
 use crate::Suspendable;
@@ -306,5 +307,10 @@ impl VfioPlatformDevice {
     /// Returns the DT symbol (node label) of the VFIO device.
     pub fn dt_symbol(&self) -> Option<&str> {
         self.device.dt_symbol()
+    }
+
+    /// Returns the type and indentifier (if applicable) of the IOMMU used by this VFIO device.
+    pub fn iommu(&self) -> Option<(IommuDevType, Option<u32>)> {
+        self.device.iommu()
     }
 }

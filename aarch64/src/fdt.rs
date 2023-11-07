@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::fs::File;
 use std::path::PathBuf;
 
@@ -18,6 +19,7 @@ use cros_fdt::Result;
 // This is a Battery related constant
 use devices::bat::GOLDFISHBAT_MMIO_LEN;
 use devices::pl030::PL030_AMBA_ID;
+use devices::IommuDevType;
 use devices::PciAddress;
 use devices::PciInterruptPin;
 use hypervisor::PsciVersion;
@@ -58,6 +60,9 @@ const PHANDLE_RESTRICTED_DMA_POOL: u32 = 2;
 const PHANDLE_CPU0: u32 = 0x100;
 
 const PHANDLE_OPP_DOMAIN_BASE: u32 = 0x1000;
+
+// pKVM pvIOMMUs are assigned phandles starting with this number.
+const PHANDLE_PKVM_PVIOMMU: u32 = 0x2000;
 
 // These are specified by the Linux GIC bindings
 const GIC_FDT_IRQ_NUM_CELLS: u32 = 3;
@@ -366,6 +371,36 @@ fn create_kvm_cpufreq_node(fdt: &mut Fdt) -> Result<()> {
     Ok(())
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn get_pkvm_pviommu_ids(platform_dev_resources: &Vec<PlatformBusResources>) -> Result<Vec<u32>> {
+    let mut ids = HashSet::new();
+
+    for res in platform_dev_resources {
+        for iommu in &res.iommus {
+            if let (IommuDevType::PkvmPviommu, Some(id)) = iommu {
+                ids.insert(*id);
+            }
+        }
+    }
+
+    Ok(Vec::from_iter(ids))
+}
+
+fn create_pkvm_pviommu_node(fdt: &mut Fdt, index: usize, id: u32) -> Result<u32> {
+    let name = format!("pviommu{index}");
+    let phandle = PHANDLE_PKVM_PVIOMMU
+        .checked_add(index.try_into().unwrap())
+        .unwrap();
+
+    let iommu_node = fdt.root_mut().subnode_mut(&name)?;
+    iommu_node.set_prop("phandle", phandle)?;
+    iommu_node.set_prop("#iommu-cells", 0u32)?;
+    iommu_node.set_prop("compatible", "pkvm,pviommu")?;
+    iommu_node.set_prop("id", id)?;
+
+    Ok(phandle)
+}
+
 /// PCI host controller address range.
 ///
 /// This represents a single entry in the "ranges" property for a PCI host controller.
@@ -622,6 +657,7 @@ pub fn create_fdt(
     device_tree_overlays: Vec<DtbOverlay>,
 ) -> Result<()> {
     let mut fdt = Fdt::new(&[]);
+    let mut phandles_key_cache = Vec::new();
     let mut phandles = BTreeMap::new();
 
     // The whole thing is put into one giant node with some top level properties
@@ -672,12 +708,26 @@ pub fn create_fdt(
         create_virt_cpufreq_node(&mut fdt, num_cpus as u64)?;
     }
 
+    let pviommu_ids = get_pkvm_pviommu_ids(&platform_dev_resources)?;
+
+    let cache_offset = phandles_key_cache.len();
+    // Hack to extend the lifetime of the Strings as keys of phandles (i.e. &str).
+    phandles_key_cache.extend(pviommu_ids.iter().map(|id| format!("pviommu{id}")));
+    let pviommu_phandle_keys = &phandles_key_cache[cache_offset..];
+
+    for (index, (id, key)) in pviommu_ids.iter().zip(pviommu_phandle_keys).enumerate() {
+        let phandle = create_pkvm_pviommu_node(&mut fdt, index, *id)?;
+        phandles.insert(key, phandle);
+    }
+
     // Done writing base FDT, now apply DT overlays
     apply_device_tree_overlays(
         &mut fdt,
         device_tree_overlays,
         #[cfg(any(target_os = "android", target_os = "linux"))]
         platform_dev_resources,
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        &phandles,
     )?;
 
     let fdt_final = fdt.finish()?;

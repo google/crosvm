@@ -11,6 +11,7 @@ use base::AsRawDescriptors;
 use base::Tube;
 use devices::Bus;
 use devices::BusDevice;
+use devices::IommuDevType;
 use devices::IrqChip;
 use devices::IrqEventSource;
 use devices::ProxyDevice;
@@ -127,6 +128,7 @@ pub struct PlatformBusResources {
     pub dt_symbol: String,        // DT symbol (label) assigned to the device
     pub regions: Vec<(u64, u64)>, // (start address, size)
     pub irqs: Vec<(u32, u32)>,    // (IRQ number, flags)
+    pub iommus: Vec<(IommuDevType, Option<u32>)>, // (IOMMU type, IOMMU identifier)
 }
 
 impl PlatformBusResources {
@@ -138,6 +140,7 @@ impl PlatformBusResources {
             dt_symbol: symbol,
             regions: vec![],
             irqs: vec![],
+            iommus: vec![],
         }
     }
 }
@@ -220,6 +223,11 @@ pub fn generate_platform_bus(
                     .irqs
                     .push((irq_num, PlatformBusResources::IRQ_TRIGGER_EDGE));
             }
+        }
+
+        if let Some(iommu) = device.iommu() {
+            // We currently only support one IOMMU per VFIO device.
+            device_resources.iommus.push(iommu);
         }
 
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
