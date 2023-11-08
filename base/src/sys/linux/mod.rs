@@ -201,13 +201,7 @@ pub enum FallocateMode {
 }
 
 /// Safe wrapper for `fallocate()`.
-pub fn fallocate(
-    file: &dyn AsRawFd,
-    mode: FallocateMode,
-    keep_size: bool,
-    offset: u64,
-    len: u64,
-) -> Result<()> {
+pub fn fallocate(file: &dyn AsRawFd, mode: FallocateMode, offset: u64, len: u64) -> Result<()> {
     let offset = if offset > libc::off64_t::max_value() as u64 {
         return Err(Error::new(libc::EINVAL));
     } else {
@@ -220,15 +214,11 @@ pub fn fallocate(
         len as libc::off64_t
     };
 
-    let mut mode = match mode {
-        FallocateMode::PunchHole => libc::FALLOC_FL_PUNCH_HOLE,
-        FallocateMode::ZeroRange => libc::FALLOC_FL_ZERO_RANGE,
-        FallocateMode::Allocate => 0,
+    let mode = match mode {
+        FallocateMode::PunchHole => libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE,
+        FallocateMode::ZeroRange => libc::FALLOC_FL_ZERO_RANGE | libc::FALLOC_FL_KEEP_SIZE,
+        FallocateMode::Allocate => libc::FALLOC_FL_KEEP_SIZE,
     };
-
-    if keep_size {
-        mode |= libc::FALLOC_FL_KEEP_SIZE;
-    }
 
     // Safe since we pass in a valid fd and fallocate mode, validate offset and len,
     // and check the return value.

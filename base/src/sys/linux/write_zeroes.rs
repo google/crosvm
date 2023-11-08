@@ -11,13 +11,13 @@ use super::fallocate;
 use super::FallocateMode;
 
 pub(crate) fn file_punch_hole(file: &File, offset: u64, length: u64) -> io::Result<()> {
-    fallocate(file, FallocateMode::PunchHole, true, offset, length)
+    fallocate(file, FallocateMode::PunchHole, offset, length)
         .map_err(|e| io::Error::from_raw_os_error(e.errno()))
 }
 
 pub(crate) fn file_write_zeroes_at(file: &File, offset: u64, length: usize) -> io::Result<usize> {
     // Try to use fallocate() first.
-    if fallocate(file, FallocateMode::ZeroRange, true, offset, length as u64).is_ok() {
+    if fallocate(file, FallocateMode::ZeroRange, offset, length as u64).is_ok() {
         return Ok(length);
     }
 

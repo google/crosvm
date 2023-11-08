@@ -15,7 +15,7 @@ use crate::FileAllocate;
 
 impl FileAllocate for File {
     fn allocate(&mut self, offset: u64, len: u64) -> Result<()> {
-        fallocate(self, FallocateMode::Allocate, true, offset, len)
+        fallocate(self, FallocateMode::Allocate, offset, len)
             .map_err(|e| Error::from_raw_os_error(e.errno()))
     }
 }
