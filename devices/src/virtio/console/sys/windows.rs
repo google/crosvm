@@ -18,7 +18,6 @@ use sync::Mutex;
 
 use crate::serial_device::SerialInput;
 use crate::virtio::console::Console;
-use crate::virtio::console::ConsoleInput;
 use crate::virtio::ProtectionType;
 use crate::SerialDevice;
 
@@ -46,7 +45,7 @@ impl SerialDevice for Console {
     ) -> Console {
         Console::new(
             protection_type,
-            Some(ConsoleInput::FromRead(Box::new(pipe_in))),
+            Some(Box::new(pipe_in)),
             Some(Box::new(pipe_out)),
             keep_rds,
         )
@@ -90,7 +89,10 @@ pub(in crate::virtio::console) fn spawn_input_thread(
     mut rx: Box<named_pipes::PipeConnection>,
     in_avail_evt: &Event,
     input_buffer: VecDeque<u8>,
-) -> (Arc<Mutex<VecDeque<u8>>>, WorkerThread<()>) {
+) -> (
+    Arc<Mutex<VecDeque<u8>>>,
+    WorkerThread<Box<named_pipes::PipeConnection>>,
+) {
     let buffer = Arc::new(Mutex::new(input_buffer));
     let buffer_cloned = buffer.clone();
 
@@ -107,7 +109,7 @@ pub(in crate::virtio::console) fn spawn_input_thread(
         }
 
         match rx.wait_for_client_connection_overlapped_blocking(&kill_evt) {
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => return,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => return rx,
             Err(e) => panic!("failed to wait for client: {}", e),
             Ok(()) => (),
         }
@@ -148,6 +150,7 @@ pub(in crate::virtio::console) fn spawn_input_thread(
             // Depending on the platform, a short sleep is needed here (ie. Windows).
             read_delay_if_needed();
         }
+        rx
     });
     (buffer_cloned, res)
 }

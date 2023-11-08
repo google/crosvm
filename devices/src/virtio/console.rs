@@ -42,6 +42,7 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
+use crate::serial::sys::InStreamType;
 use crate::virtio::base_features;
 use crate::virtio::copy_config;
 use crate::virtio::DeviceType;
@@ -255,20 +256,15 @@ impl Worker {
     }
 }
 
-enum ConsoleInput {
-    FromRead(crate::serial::sys::InStreamType),
-    FromThread(Arc<Mutex<VecDeque<u8>>>),
-}
-
 /// Virtio console device.
 pub struct Console {
     base_features: u64,
     in_avail_evt: Option<Event>,
     worker_thread: Option<WorkerThread<Worker>>,
-    input: Option<ConsoleInput>,
+    input: Option<InStreamType>,
     output: Option<Box<dyn io::Write + Send>>,
     keep_descriptors: Vec<Descriptor>,
-    input_thread: Option<WorkerThread<()>>,
+    input_thread: Option<WorkerThread<InStreamType>>,
     // input_buffer is not continuously updated. It holds the state of the buffer when a snapshot
     // happens, or when a restore is performed. On a fresh startup, it will be empty. On a restore,
     // it will contain whatever data was remaining in the buffer in the snapshot.
@@ -284,7 +280,7 @@ struct ConsoleSnapshot {
 impl Console {
     fn new(
         protection_type: ProtectionType,
-        input: Option<ConsoleInput>,
+        input: Option<InStreamType>,
         output: Option<Box<dyn io::Write + Send>>,
         keep_rds: Vec<RawDescriptor>,
     ) -> Console {
@@ -359,16 +355,15 @@ impl VirtioDevice for Console {
         // descriptor).  Moving the blocking read call to a separate thread and sending data back to
         // the main worker thread with an event for notification bridges this gap.
         let input = match self.input.take() {
-            Some(ConsoleInput::FromRead(read)) => {
+            Some(read) => {
                 let (buffer, thread) = sys::spawn_input_thread(
                     read,
                     self.in_avail_evt.as_ref().unwrap(),
-                    self.input_buffer.clone(),
+                    std::mem::take(&mut self.input_buffer),
                 );
                 self.input_thread = Some(thread);
                 Some(buffer)
             }
-            Some(ConsoleInput::FromThread(buffer)) => Some(buffer),
             None => None,
         };
         let output = self.output.take().unwrap_or_else(|| Box::new(io::sink()));
@@ -394,9 +389,14 @@ impl VirtioDevice for Console {
     }
 
     fn reset(&mut self) -> bool {
+        self.input = self.input_thread.take().map(|t| t.stop());
         if let Some(worker_thread) = self.worker_thread.take() {
             let worker = worker_thread.stop();
-            self.input = worker.input.map(ConsoleInput::FromThread);
+            // NOTE: Even though we are reseting the device, it still makes sense to preserve the
+            // pending input bytes that the host sent but the guest hasn't accepted yet.
+            self.input_buffer = worker
+                .input
+                .map_or(VecDeque::new(), |arc_mutex| arc_mutex.lock().clone());
             self.output = Some(worker.output);
             return true;
         }
@@ -404,14 +404,12 @@ impl VirtioDevice for Console {
     }
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
+        self.input = self.input_thread.take().map(|t| t.stop());
         if let Some(worker_thread) = self.worker_thread.take() {
-            if let Some(input_thread) = self.input_thread.take() {
-                input_thread.stop();
-            }
             let worker = worker_thread.stop();
-            if let Some(in_buf_ref) = worker.input.as_ref() {
-                self.input_buffer = in_buf_ref.lock().clone();
-            }
+            self.input_buffer = worker
+                .input
+                .map_or(VecDeque::new(), |arc_mutex| arc_mutex.lock().clone());
             self.output = Some(worker.output);
             let receive_queue = match Arc::try_unwrap(worker.receive_queue) {
                 Ok(mutex) => mutex.into_inner(),
