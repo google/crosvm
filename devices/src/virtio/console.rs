@@ -412,6 +412,7 @@ impl VirtioDevice for Console {
             if let Some(in_buf_ref) = worker.input.as_ref() {
                 self.input_buffer = in_buf_ref.lock().clone();
             }
+            self.output = Some(worker.output);
             let receive_queue = match Arc::try_unwrap(worker.receive_queue) {
                 Ok(mutex) => mutex.into_inner(),
                 Err(_) => return Err(anyhow!("failed to retrieve receive queue to sleep device.")),
