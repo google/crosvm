@@ -242,7 +242,6 @@ def verify_linux_builder(arch, **kwargs):
 
     Args:
         arch: Architecture to build and test
-        coverage: Disable coverage collection
         **kwargs: Passed to verify_builder
     """
     name = "linux_%s" % arch
@@ -309,7 +308,9 @@ verify_linux_builder("x86_64")
 verify_linux_builder("aarch64")
 verify_linux_builder("armhf")
 verify_linux_builder("mingw64")
-verify_linux_builder("riscv64")
+
+# Disabled due to b/304875018
+# verify_linux_builder("riscv64")
 
 verify_builder(
     name = "chromeos_hatch",
