@@ -547,19 +547,9 @@ mod tests {
         assert_eq!(symbols.get_prop::<String>("n3").unwrap(), "/path/to/node3");
     }
 
-    fn get_test_file(test_file_name: &str) -> std::fs::File {
-        let manifest_dir =
-            std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set");
-        let mut path = std::path::PathBuf::from(manifest_dir);
-        path.push("test-files");
-        path.push(test_file_name);
-        std::fs::File::open(path)
-            .unwrap_or_else(|_| panic!("cannot find resource file {test_file_name}"))
-    }
-
     #[test]
     fn fdt_offset_local_references() {
-        let file = get_test_file("local_refs.dtb");
+        let file = include_bytes!("../test-files/local_refs.dtb").as_slice();
         let mut fdt = load_fdt(file).unwrap();
 
         let node = fdt.get_node("/fragment@0/__overlay__/node1").unwrap();
@@ -586,8 +576,10 @@ mod tests {
 
     #[test]
     fn fdt_collect_symbols() {
-        let base = load_fdt(get_test_file("external_refs_base.dtb")).unwrap();
-        let mut overlay = load_fdt(get_test_file("external_refs_overlay.dtb")).unwrap();
+        let base =
+            load_fdt(include_bytes!("../test-files/external_refs_base.dtb").as_slice()).unwrap();
+        let mut overlay =
+            load_fdt(include_bytes!("../test-files/external_refs_overlay.dtb").as_slice()).unwrap();
         let paths = [
             "/fragment@0/__overlay__/node1:p2:0",
             "/fragment@0/__overlay__/node1/node2:p3:4",
