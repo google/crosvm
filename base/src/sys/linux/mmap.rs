@@ -15,8 +15,8 @@ use libc::write;
 use log::warn;
 use remain::sorted;
 
-use super::pagesize;
 use super::Error as ErrnoError;
+use crate::pagesize;
 use crate::AsRawDescriptor;
 use crate::Descriptor;
 use crate::MappedRegion;

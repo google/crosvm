@@ -82,7 +82,6 @@ use libc::c_long;
 use libc::fcntl;
 use libc::pipe2;
 use libc::syscall;
-use libc::sysconf;
 use libc::waitpid;
 use libc::SYS_getpid;
 use libc::SYS_getppid;
@@ -95,8 +94,6 @@ pub(crate) use libc::PROT_READ;
 pub(crate) use libc::PROT_WRITE;
 use libc::SIGKILL;
 use libc::WNOHANG;
-use libc::_SC_IOV_MAX;
-use libc::_SC_PAGESIZE;
 pub use mmap::Error as MmapError;
 pub use mmap::*;
 pub use netlink::*;
@@ -139,19 +136,6 @@ macro_rules! syscall {
             Ok(res)
         }
     }};
-}
-
-/// Safe wrapper for `sysconf(_SC_PAGESIZE)`.
-#[inline(always)]
-pub fn pagesize() -> usize {
-    // Trivially safe
-    unsafe { sysconf(_SC_PAGESIZE) as usize }
-}
-
-/// Safe wrapper for `sysconf(_SC_IOV_MAX)`.
-pub fn iov_max() -> usize {
-    // Trivially safe
-    unsafe { sysconf(_SC_IOV_MAX) as usize }
 }
 
 /// This bypasses `libc`'s caching `getpid(2)` wrapper which can be invalid if a raw clone was used
@@ -593,12 +577,6 @@ pub fn max_open_files() -> Result<u64> {
     } else {
         errno_result()
     }
-}
-
-/// Returns the number of online logical cores on the system.
-pub fn number_of_logical_cores() -> Result<usize> {
-    // Safe because we pass a flag for this call and the host supports this system call
-    Ok(unsafe { libc::sysconf(libc::_SC_NPROCESSORS_CONF) } as usize)
 }
 
 /// Moves the requested PID/TID to a particular cgroup

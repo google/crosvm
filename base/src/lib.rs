@@ -92,7 +92,7 @@ cfg_if::cfg_if! {
         };
 
         pub use linux::{
-            drop_capabilities, iov_max, pipe, read_raw_stdin
+            drop_capabilities, pipe, read_raw_stdin
         };
         pub use linux::{enable_core_scheduling, set_rt_prio_limit, set_rt_round_robin};
         pub use linux::{flock, FlockOperation};
@@ -103,8 +103,11 @@ cfg_if::cfg_if! {
             ScmSocket, UnlinkUnixListener, SCM_SOCKET_MAX_FD_COUNT,
         };
         pub use linux::EventExt;
-    } else if #[cfg(target_os = "macos")] {
-    } else if #[cfg(windows)] {
+    }
+}
+
+cfg_if::cfg_if! {
+     if #[cfg(windows)] {
         pub use sys::windows;
 
         pub use windows::{EventTrigger, EventExt, WaitContextExt};
@@ -117,6 +120,8 @@ cfg_if::cfg_if! {
         pub use windows::ioctl::ioctl_with_ptr_sized;
         pub use windows::create_overlapped;
         pub use windows::device_io_control;
+        pub use windows::number_of_logical_cores;
+        pub use windows::pagesize;
         pub use windows::read_overlapped_blocking;
 
         pub use tube::{
@@ -127,12 +132,17 @@ cfg_if::cfg_if! {
         pub use tube::FlushOnDropTube;
         pub use windows::{set_audio_thread_priority, thread};
         pub use windows::Terminal;
-    } else {
-        compile_error!("Unsupported platform");
     }
 }
-#[cfg(unix)]
-pub use sys::unix;
+
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        pub use sys::unix;
+
+        pub use unix::number_of_logical_cores;
+        pub use unix::pagesize;
+    }
+}
 
 pub use descriptor_reflection::deserialize_with_descriptors;
 pub use descriptor_reflection::with_as_descriptor;
@@ -149,9 +159,7 @@ pub use platform::get_cpu_affinity;
 pub use platform::get_filesystem_type;
 pub use platform::getpid;
 pub use platform::logical_core_frequencies_khz;
-pub use platform::number_of_logical_cores;
 pub use platform::open_file_or_duplicate;
-pub use platform::pagesize;
 pub use platform::platform_timer_resolution::enable_high_res_timers;
 pub use platform::sched_setattr;
 pub use platform::set_cpu_affinity;
