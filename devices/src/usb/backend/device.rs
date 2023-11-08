@@ -32,6 +32,7 @@ use crate::usb::backend::error::Result;
 use crate::usb::backend::host_backend::host_device::HostDevice;
 use crate::usb::backend::transfer::BackendTransferHandle;
 use crate::usb::backend::transfer::ControlTransferState;
+use crate::usb::backend::utils::multi_dispatch;
 use crate::usb::backend::utils::update_transfer_state;
 use crate::usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
 use crate::usb::xhci::xhci_backend_device::BackendType;
@@ -51,153 +52,171 @@ pub enum BackendDeviceType {
 
 impl AsRawDescriptor for BackendDeviceType {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.as_raw_descriptor(),
-        }
+        multi_dispatch!(self, BackendDeviceType, HostDevice, as_raw_descriptor)
     }
 }
 
 impl BackendDevice for BackendDeviceType {
     fn submit_backend_transfer(&mut self, transfer: Transfer) -> Result<BackendTransferHandle> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => {
-                host_device.submit_backend_transfer(transfer)
-            }
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            submit_backend_transfer,
+            transfer
+        )
     }
 
     fn detach_event_handler(&self, event_loop: &Arc<EventLoop>) -> Result<()> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => {
-                host_device.detach_event_handler(event_loop)
-            }
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            detach_event_handler,
+            event_loop
+        )
     }
 
     fn request_transfer_buffer(&mut self, size: usize) -> TransferBuffer {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.request_transfer_buffer(size),
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            request_transfer_buffer,
+            size
+        )
     }
 
     fn get_control_transfer_state(&mut self) -> Arc<RwLock<ControlTransferState>> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.get_control_transfer_state(),
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            get_control_transfer_state
+        )
     }
 
     fn get_device_state(&mut self) -> Arc<RwLock<DeviceState>> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.get_device_state(),
-        }
+        multi_dispatch!(self, BackendDeviceType, HostDevice, get_device_state)
     }
 
     fn get_active_config_descriptor(&mut self) -> Result<ConfigDescriptorTree> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => {
-                host_device.get_active_config_descriptor()
-            }
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            get_active_config_descriptor
+        )
     }
 
     fn get_config_descriptor(&mut self, config: u8) -> Result<ConfigDescriptorTree> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.get_config_descriptor(config),
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            get_config_descriptor,
+            config
+        )
     }
 
     fn get_config_descriptor_by_index(&mut self, config_index: u8) -> Result<ConfigDescriptorTree> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => {
-                host_device.get_config_descriptor_by_index(config_index)
-            }
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            get_config_descriptor_by_index,
+            config_index
+        )
     }
 
     fn get_device_descriptor_tree(&mut self) -> DeviceDescriptorTree {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.get_device_descriptor_tree(),
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            get_device_descriptor_tree
+        )
     }
 
     fn get_active_configuration(&mut self) -> Result<u8> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.get_active_configuration(),
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            get_active_configuration
+        )
     }
 
     fn set_active_configuration(&mut self, config: u8) -> Result<()> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => {
-                host_device.set_active_configuration(config)
-            }
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            set_active_configuration,
+            config
+        )
     }
 
     fn clear_feature(&mut self, value: u16, index: u16) -> Result<TransferStatus> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.clear_feature(value, index),
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            clear_feature,
+            value,
+            index
+        )
     }
 
     fn create_endpoints(&mut self, config_descriptor: &ConfigDescriptorTree) -> Result<()> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => {
-                host_device.create_endpoints(config_descriptor)
-            }
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            create_endpoints,
+            config_descriptor
+        )
     }
 }
 
 impl XhciBackendDevice for BackendDeviceType {
     fn get_backend_type(&self) -> BackendType {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.get_backend_type(),
-        }
+        multi_dispatch!(self, BackendDeviceType, HostDevice, get_backend_type)
     }
 
     fn get_vid(&self) -> u16 {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.get_vid(),
-        }
+        multi_dispatch!(self, BackendDeviceType, HostDevice, get_vid)
     }
 
     fn get_pid(&self) -> u16 {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.get_pid(),
-        }
+        multi_dispatch!(self, BackendDeviceType, HostDevice, get_pid)
     }
 
     fn set_address(&mut self, address: UsbDeviceAddress) {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.set_address(address),
-        }
+        multi_dispatch!(self, BackendDeviceType, HostDevice, set_address, address)
     }
 
     fn reset(&mut self) -> Result<()> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.reset(),
-        }
+        multi_dispatch!(self, BackendDeviceType, HostDevice, reset)
     }
 
     fn get_speed(&self) -> Option<DeviceSpeed> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.get_speed(),
-        }
+        multi_dispatch!(self, BackendDeviceType, HostDevice, get_speed)
     }
 
     fn alloc_streams(&self, ep: u8, num_streams: u16) -> Result<()> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => {
-                host_device.alloc_streams(ep, num_streams)
-            }
-        }
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            alloc_streams,
+            ep,
+            num_streams
+        )
     }
 
     fn free_streams(&self, ep: u8) -> Result<()> {
-        match self {
-            BackendDeviceType::HostDevice(host_device) => host_device.free_streams(ep),
-        }
+        multi_dispatch!(self, BackendDeviceType, HostDevice, free_streams, ep)
     }
 }
 

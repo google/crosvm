@@ -17,6 +17,43 @@ use crate::usb::xhci::xhci_transfer::XhciTransfer;
 use crate::usb::xhci::xhci_transfer::XhciTransferState;
 use crate::utils::EventHandler;
 
+#[macro_export]
+/// Allows dispatching a function call to all its enum value implementations.
+/// See `BackendDeviceType` in usb/backend/device.rs for an example usage of it.
+///
+/// # Arguments
+///
+/// * `self` - Replacement for the local `self` reference in the function call.
+/// * `enum` - Enum name that the macro is matching on.
+/// * `types` - Space-separated list of value types of the given enum.
+/// * `func` - Function name that will be called by each match arm.
+/// * `param` - Optional parameters needed for the given function call.
+macro_rules! multi_dispatch {
+    ($self:ident, $enum:ident, $($types:ident )+, $func:ident) => {
+        match $self {
+            $(
+                $enum::$types(device) => device.$func(),
+            )+
+        }
+    };
+    ($self:ident, $enum:ident, $($types:ident )+, $func:ident, $param:expr) => {
+        match $self {
+            $(
+                $enum::$types(device) => device.$func($param),
+            )+
+        }
+    };
+    ($self:ident, $enum:ident, $($types:ident )+, $func:ident, $param1:expr, $param2: expr) => {
+        match $self {
+            $(
+                $enum::$types(device) => device.$func($param1, $param2),
+            )+
+        }
+    };
+}
+
+pub(crate) use multi_dispatch;
+
 pub struct UsbUtilEventHandler {
     pub device: Arc<Mutex<BackendDeviceType>>,
 }
