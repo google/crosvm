@@ -8,6 +8,8 @@
 use std::ptr::null_mut;
 
 use libc::c_int;
+use libc::PROT_READ;
+use libc::PROT_WRITE;
 use log::warn;
 
 use super::Error as ErrnoError;
@@ -22,6 +24,20 @@ use crate::MmapResult as Result;
 use crate::Protection;
 use crate::RawDescriptor;
 use crate::SafeDescriptor;
+
+impl From<Protection> for c_int {
+    #[inline(always)]
+    fn from(p: Protection) -> Self {
+        let mut value = 0;
+        if p.read {
+            value |= PROT_READ
+        }
+        if p.write {
+            value |= PROT_WRITE;
+        }
+        value
+    }
+}
 
 /// Validates that `offset`..`offset+range_size` lies within the bounds of a memory mapping of
 /// `mmap_size` bytes.  Also checks for any overflow.

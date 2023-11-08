@@ -929,7 +929,7 @@ impl From<Protection> for VhostUserShmemMapMsgFlags {
 
 impl From<VhostUserShmemMapMsgFlags> for Protection {
     fn from(flags: VhostUserShmemMapMsgFlags) -> Self {
-        let mut prot = Protection::from(0);
+        let mut prot = Protection::default();
         if flags.contains(VhostUserShmemMapMsgFlags::MAP_R) {
             prot = prot.set_read();
         }

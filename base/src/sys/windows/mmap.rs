@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::c_int;
-use libc::c_uint;
 use libc::c_void;
 use win_util::create_file_mapping;
 use win_util::duplicate_handle;
@@ -21,19 +19,6 @@ use crate::MmapResult as Result;
 use crate::Protection;
 use crate::RawDescriptor;
 use crate::SafeDescriptor;
-
-impl From<c_uint> for Protection {
-    fn from(f: c_uint) -> Self {
-        Protection::from(f as c_int)
-    }
-}
-
-impl From<Protection> for c_uint {
-    fn from(p: Protection) -> c_uint {
-        let i: c_int = p.into();
-        i as c_uint
-    }
-}
 
 /// Validates that `offset`..`offset+range_size` lies within the bounds of a memory mapping of
 /// `mmap_size` bytes.  Also checks for any overflow.

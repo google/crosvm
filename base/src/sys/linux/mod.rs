@@ -89,8 +89,6 @@ use libc::EINVAL;
 use libc::F_GETFL;
 use libc::F_SETFL;
 use libc::O_CLOEXEC;
-pub(crate) use libc::PROT_READ;
-pub(crate) use libc::PROT_WRITE;
 use libc::SIGKILL;
 use libc::WNOHANG;
 pub use mmap::*;

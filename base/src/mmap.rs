@@ -15,7 +15,6 @@ use std::sync::atomic::fence;
 use std::sync::atomic::Ordering;
 
 use data_model::volatile_memory::*;
-use libc::c_int;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
@@ -25,8 +24,6 @@ use zerocopy::FromBytes;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::SafeDescriptor;
 use crate::platform::MemoryMapping as PlatformMmap;
-use crate::platform::PROT_READ;
-use crate::platform::PROT_WRITE;
 use crate::SharedMemory;
 
 #[sorted]
@@ -58,56 +55,59 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Memory access type for anonymous shared memory mapping.
-#[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Protection(c_int);
+#[derive(Copy, Clone, Default, Eq, PartialEq, Serialize, Deserialize, Debug)]
+pub struct Protection {
+    pub(crate) read: bool,
+    pub(crate) write: bool,
+}
+
 impl Protection {
     /// Returns Protection allowing read/write access.
     #[inline(always)]
     pub fn read_write() -> Protection {
-        Protection(PROT_READ | PROT_WRITE)
+        Protection {
+            read: true,
+            write: true,
+        }
     }
 
     /// Returns Protection allowing read access.
     #[inline(always)]
     pub fn read() -> Protection {
-        Protection(PROT_READ)
+        Protection {
+            read: true,
+            ..Default::default()
+        }
     }
 
     /// Returns Protection allowing write access.
     #[inline(always)]
     pub fn write() -> Protection {
-        Protection(PROT_WRITE)
+        Protection {
+            write: true,
+            ..Default::default()
+        }
     }
 
     /// Set read events.
     #[inline(always)]
     pub fn set_read(self) -> Protection {
-        Protection(self.0 | PROT_READ)
+        Protection { read: true, ..self }
     }
 
     /// Set write events.
     #[inline(always)]
     pub fn set_write(self) -> Protection {
-        Protection(self.0 | PROT_WRITE)
+        Protection {
+            write: true,
+            ..self
+        }
     }
 
     /// Returns true if all access allowed by |other| is also allowed by |self|.
     #[inline(always)]
     pub fn allows(&self, other: &Protection) -> bool {
-        (self.0 & PROT_READ) >= (other.0 & PROT_READ)
-            && (self.0 & PROT_WRITE) >= (other.0 & PROT_WRITE)
-    }
-}
-
-impl From<c_int> for Protection {
-    fn from(f: c_int) -> Self {
-        Protection(f)
-    }
-}
-
-impl From<Protection> for c_int {
-    fn from(p: Protection) -> c_int {
-        p.0
+        self.read >= other.read && self.write >= other.write
     }
 }
 

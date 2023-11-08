@@ -5,11 +5,10 @@
 //! The mmap module provides a safe interface to map memory and ensures UnmapViewOfFile is called when the
 //! mmap object leaves scope.
 
-use libc::c_int;
-use libc::c_uint;
 use libc::c_void;
 use win_util::get_high_order;
 use win_util::get_low_order;
+use winapi::shared::minwindef::DWORD;
 use winapi::um::memoryapi::FlushViewOfFile;
 use winapi::um::memoryapi::MapViewOfFile;
 use winapi::um::memoryapi::MapViewOfFileEx;
@@ -26,8 +25,19 @@ use crate::MmapResult as Result;
 use crate::Protection;
 use crate::RawDescriptor;
 
-pub(crate) const PROT_READ: c_int = FILE_MAP_READ as c_int;
-pub(crate) const PROT_WRITE: c_int = FILE_MAP_WRITE as c_int;
+impl From<Protection> for DWORD {
+    #[inline(always)]
+    fn from(p: Protection) -> Self {
+        let mut value = 0;
+        if p.read {
+            value |= FILE_MAP_READ;
+        }
+        if p.write {
+            value |= FILE_MAP_WRITE;
+        }
+        value
+    }
+}
 
 impl MemoryMapping {
     /// Creates an anonymous shared mapping of `size` bytes with `prot` protection.
@@ -139,7 +149,7 @@ impl MemoryMapping {
     unsafe fn try_mmap(
         addr: Option<*mut u8>,
         size: usize,
-        access_flags: c_uint,
+        access_flags: DWORD,
         file_handle: Option<(RawDescriptor, u64)>,
     ) -> Result<MemoryMapping> {
         if file_handle.is_none() {

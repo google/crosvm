@@ -287,9 +287,6 @@ pub mod ioctl {
     }
 }
 
-pub(crate) use libc::PROT_READ;
-pub(crate) use libc::PROT_WRITE;
-
 pub fn file_punch_hole(_file: &std::fs::File, _offset: u64, _length: u64) -> std::io::Result<()> {
     todo!();
 }

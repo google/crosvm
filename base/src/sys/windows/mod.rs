@@ -52,8 +52,6 @@ pub use foreground_window::give_foregrounding_permission;
 pub use get_filesystem_type::*;
 pub use ioctl::*;
 pub use mmap::*;
-pub(crate) use mmap_platform::PROT_READ;
-pub(crate) use mmap_platform::PROT_WRITE;
 pub(crate) use multi_process_mutex::MultiProcessMutex;
 pub use priority::*;
 pub(crate) use punch_hole::file_punch_hole;
