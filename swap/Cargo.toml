@@ -23,22 +23,22 @@ base = { path = "../base" }
 cfg-if = "*"
 cros_tracing = { path = "../cros_tracing" }
 data_model = { path = "../common/data_model" }
-jail = { path = "../jail"}
+jail = { path = "../jail" }
 num_cpus = "*"
 once_cell = "*"
 remain = "*"
-serde = { version = "1", features = [ "derive" ] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "*"
-sync = { path = "../common/sync" } # provided by ebuild
+sync = { path = "../common/sync" }               # provided by ebuild
 thiserror = "*"
-vm_memory = { path = "../vm_memory"}
+vm_memory = { path = "../vm_memory" }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 libc = "*"
 
 [target.'cfg(target_os="linux")'.dependencies]
-userfaultfd = { version = "0.5.0", optional = true }
-userfaultfd-sys = { version = "0.4.2", optional = true }
+userfaultfd = { version = "0.7.0", optional = true }
+userfaultfd-sys = { version = "0.5.0", optional = true }
 
 [dev_dependencies]
 libtest-mimic = "0.6"
