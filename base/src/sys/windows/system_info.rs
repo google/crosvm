@@ -51,6 +51,6 @@ pub fn allocation_granularity() -> u64 {
 /// Cross-platform wrapper around getting the current process id.
 #[inline(always)]
 pub fn getpid() -> Pid {
-    // Safe because we only use the return value. ProcessId can safely be converted from DWORD to i32.
-    unsafe { GetCurrentProcessId() as Pid }
+    // Safe because we only use the return value.
+    unsafe { GetCurrentProcessId() }
 }

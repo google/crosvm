@@ -67,6 +67,7 @@ pub use system_info::number_of_logical_cores;
 pub use system_info::pagesize;
 pub use terminal::*;
 pub use timer::*;
+use winapi::shared::minwindef::DWORD;
 pub(crate) use write_zeroes::file_write_zeroes_at;
 
 pub use crate::errno::Error;
@@ -75,16 +76,16 @@ pub use crate::errno::*;
 
 // Define libc::* types
 #[allow(non_camel_case_types)]
-pub type pid_t = i32;
-#[allow(non_camel_case_types)]
 pub type uid_t = u32;
 #[allow(non_camel_case_types)]
 pub type gid_t = u32;
 #[allow(non_camel_case_types)]
 pub type mode_t = u32;
 
+/// Process identifier.
+pub type Pid = DWORD;
+
 /// Re-export libc types that are part of the API.
-pub type Pid = pid_t;
 pub type Uid = uid_t;
 pub type Gid = gid_t;
 pub type Mode = mode_t;

@@ -12,3 +12,6 @@ pub use descriptor::*;
 pub use system_info::iov_max;
 pub use system_info::number_of_logical_cores;
 pub use system_info::pagesize;
+
+/// Process identifier.
+pub type Pid = libc::pid_t;

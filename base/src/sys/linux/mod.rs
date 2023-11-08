@@ -119,9 +119,9 @@ pub use crate::errno::Error;
 pub use crate::errno::Result;
 pub use crate::errno::*;
 use crate::round_up_to_page_size;
+use crate::Pid;
 
 /// Re-export libc types that are part of the API.
-pub type Pid = libc::pid_t;
 pub type Uid = libc::uid_t;
 pub type Gid = libc::gid_t;
 pub type Mode = libc::mode_t;

@@ -131,6 +131,7 @@ cfg_if::cfg_if! {
         pub use tube::PipeTube;
         pub use tube::FlushOnDropTube;
         pub use windows::{set_audio_thread_priority, thread};
+        pub use windows::Pid;
         pub use windows::Terminal;
     }
 }
@@ -141,6 +142,7 @@ cfg_if::cfg_if! {
 
         pub use unix::number_of_logical_cores;
         pub use unix::pagesize;
+        pub use unix::Pid;
     }
 }
 
@@ -168,7 +170,6 @@ pub use platform::EventContext;
 pub use platform::FramingMode;
 pub use platform::MemoryMappingArena;
 pub use platform::MmapError;
-pub use platform::Pid;
 pub use platform::RawDescriptor;
 pub use platform::StreamChannel;
 pub use platform::INVALID_DESCRIPTOR;
