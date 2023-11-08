@@ -227,64 +227,27 @@ pub fn create_devices_worker_thread(
         })
 }
 
-fn sleep_devices(bus: &Bus) -> anyhow::Result<()> {
-    match bus.sleep_devices() {
-        Ok(_) => {
-            debug!("Devices slept successfully on {:?} Bus", bus.get_bus_type());
-            Ok(())
-        }
-        Err(e) => Err(anyhow!(
-            "Failed to sleep all devices: {} on {:?} Bus.",
-            e,
-            bus.get_bus_type(),
-        )),
-    }
-}
-
-fn wake_devices(bus: &Bus) {
-    match bus.wake_devices() {
-        Ok(_) => {
-            debug!(
-                "Devices awoken successfully on {:?} Bus",
-                bus.get_bus_type()
-            );
-        }
-        Err(e) => {
-            // Some devices may have slept. Eternally.
-            // Recovery - impossible.
-            // Shut down VM.
-            panic!(
-                "Failed to wake devices: {} on {:?} Bus. VM panicked to avoid unexpected behavior",
-                e,
-                bus.get_bus_type(),
-            )
-        }
-    }
-}
-
 fn sleep_buses(buses: &[&Bus]) -> anyhow::Result<()> {
     for bus in buses {
-        if let Err(e) = sleep_devices(bus) {
-            error!(
-                "Failed to sleep all devices on {:?} bus: {}",
-                bus.get_bus_type(),
-                e
-            );
-            // Failing to sleep could mean a single device failing to sleep.
-            // Wake up devices to resume functionality of the VM.
-            for bus in buses {
-                info!("Waking devices on {:?} bus.", bus.get_bus_type());
-                wake_devices(bus);
-            }
-            return Err(e);
-        }
+        bus.sleep_devices()
+            .with_context(|| format!("failed to sleep devices on {:?} bus", bus.get_bus_type()))?;
+        debug!("Devices slept successfully on {:?} bus", bus.get_bus_type());
     }
     Ok(())
 }
 
 fn wake_buses(buses: &[&Bus]) {
     for bus in buses {
-        wake_devices(bus);
+        bus.wake_devices()
+            .with_context(|| format!("failed to wake devices on {:?} bus", bus.get_bus_type()))
+            // Some devices may have slept. Eternally.
+            // Recovery - impossible.
+            // Shut down VM.
+            .expect("VM panicked to avoid unexpected behavior");
+        debug!(
+            "Devices awoken successfully on {:?} Bus",
+            bus.get_bus_type()
+        );
     }
 }
 
@@ -439,6 +402,12 @@ async fn handle_command_tube(
                                 }
                                 Err(e) => {
                                     error!("failed to sleep: {:#}", e);
+
+                                    // Failing to sleep could mean a single device failing to sleep.
+                                    // Wake up devices to resume functionality of the VM.
+                                    info!("Attempting to wake devices after failed sleep");
+                                    wake_buses(buses);
+
                                     command_tube
                                         .send(VmResponse::ErrString(e.to_string()))
                                         .await
