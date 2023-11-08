@@ -27,7 +27,7 @@ mdformat = cmd("mdformat")
 lucicfg = cmd("third_party/depot_tools/lucicfg")
 
 # All supported platforms as a type and a list.
-Platform = Literal["x86_64", "aarch64", "mingw64", "armhf", "riscv64"]
+Platform = Literal["x86_64", "aarch64", "mingw64", "armhf"]
 PLATFORMS: Tuple[Platform, ...] = typing.get_args(Platform)
 
 
@@ -142,10 +142,7 @@ def check_crosvm_unit_tests(platform: Platform):
     def check(_: CheckContext):
         if not platform_is_supported(platform):
             return None
-        command = cmd("./tools/run_tests --verbose --platform", platform).with_color_flag()
-        if platform == "riscv64":
-            command = command.with_args("--no-default-features")
-        return command
+        return cmd("./tools/run_tests --verbose --platform", platform).with_color_flag()
 
     check.__doc__ = f"Runs crosvm unit tests for {platform}."
 

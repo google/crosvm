@@ -32,6 +32,7 @@ sudo apt-get install --yes --no-install-recommends \
     libva-dev \
     libwayland-dev \
     libxext-dev \
+    lld \
     make \
     meson \
     mypy \
@@ -81,14 +82,6 @@ rustup target add x86_64-pc-windows-gnu
 
 # Cargo extension to install binary packages from github
 curl -L https://github.com/cargo-bins/cargo-binstall/releases/download/v1.4.4/cargo-binstall-x86_64-unknown-linux-gnu.tgz | tar -xzvvf - -C ${CARGO_HOME:-~/.cargo}/bin
-
-# Switch directory before installing any rust binaries, otherwise the crosvm rust-toolchain version
-# will be forced on the installation process.
-cd /
-
-# Note: Using crate-meta-data will make too many requests to github to discover which release
-# to download. This will get throttled quickly and slow down massively.
-# This should be fixed by: https://github.com/cargo-bins/cargo-binstall/issues/776
 
 # The bindgen tool is required to build a crosvm dependency.
 cargo binstall --no-confirm bindgen-cli --version "0.68.1"

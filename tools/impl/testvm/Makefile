@@ -41,7 +41,7 @@ else
 endif
 
 GS_PREFIX=gs://crosvm/testvm
-DEBIAN_URL=https://cloud.debian.org/images/cloud/bookworm/daily/20230913-1502/
+DEBIAN_URL=https://cloud.debian.org/images/cloud/trixie/daily/latest/
 
 BASE_IMG_NAME=base-$(ARCH)-$(shell cat version).qcow2
 GS_URL=$(GS_PREFIX)/$(BASE_IMG_NAME)
@@ -59,7 +59,7 @@ upload: $(LOCAL_IMAGE)
 
 # Download debian bullseye as base image for the testvm.
 $(TARGET)/debian.qcow2:
-	wget $(DEBIAN_URL)/debian-12-generic-$(DEBIAN_ARCH)-daily-20230913-1502.qcow2 -O $@.tmp
+	wget $(DEBIAN_URL)/debian-13-generic-$(DEBIAN_ARCH)-daily.qcow2 -O $@.tmp
 	qemu-img resize $@.tmp 8G
 	mv $@.tmp $@
 

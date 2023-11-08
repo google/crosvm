@@ -24,14 +24,14 @@ preserve_hostname: true
 # Note: Keep in sync with ./install-[aarch64-]deps.sh
 packages:
     - gcc
-    - libavcodec59
-    - libavutil57
+    - libavcodec60
+    - libavutil58
     - libcap2
     - libdbus-1-3
     - libdrm2
     - libepoxy0
     - libssl3
-    - libswscale6
+    - libswscale7
     - libva2
     - libwayland-client0
     - libx11-6

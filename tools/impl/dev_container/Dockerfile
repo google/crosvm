@@ -39,23 +39,10 @@ RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloa
 
 # Add foreign architectures for cross-compilation.
 RUN dpkg --add-architecture arm64 \
-    && dpkg --add-architecture armhf \
-    && dpkg --add-architecture riscv64
-
-# In order to support riscv multiarch packages, we need to include the debian ports repository,
-# and ensure it's only used for packages that are otherwise unavailable.
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt \
-    --mount=type=cache,target=/scratch/cargo_target \
-    apt-get update \
-    && apt-get install debian-ports-archive-keyring
-RUN echo "deb [ arch=riscv64 ] http://deb.debian.org/debian-ports sid main" > /etc/apt/sources.list.d/riscv64.list
-RUN echo "Package: *\n\
-Pin: release o=Debian Ports\n\
-Pin-Priority: 100\n" > /etc/apt/preferences.d/riscv64
+    && dpkg --add-architecture armhf
 
 # Install dependencies (APT and cargo packages are cached between image builds for faster iterative builds).
-COPY --chmod=555 tools/install-deps tools/install-aarch64-deps tools/install-armhf-deps tools/install-mingw64-deps tools/install-riscv64-deps tools/setup-wine64 rust-toolchain /tools/
+COPY --chmod=555 tools/install-deps tools/install-aarch64-deps tools/install-armhf-deps tools/install-mingw64-deps tools/setup-wine64 rust-toolchain /tools/
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     --mount=type=cache,target=/scratch/cargo_target \
@@ -65,8 +52,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
     && ./install-deps \
     && ./install-aarch64-deps \
     && ./install-armhf-deps \
-    && ./install-mingw64-deps \
-    && ./install-riscv64-deps
+    && ./install-mingw64-deps
 
 # Add wine64 to PATH, as debian removed alternative entry to wine64
 ENV PATH=/usr/lib/wine:$PATH

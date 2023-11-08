@@ -37,6 +37,8 @@ ROOT_TESTS = [
     "package(e2e_tests) & binary(swap)",
     "package(net_util) & binary(unix_tap)",
     "package(cros_tracing) & binary(trace_marker)",
+    "package(swap) & binary(page_handler)",
+    "package(swap) & binary(main)",
 ]
 
 # Do not run these tests on any platform.

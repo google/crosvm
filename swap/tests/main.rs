@@ -96,14 +96,26 @@ fn main() {
     let tests = vec![
         #[cfg(all(unix, feature = "enable"))]
         libtest_mimic::Trial::test("register_region_skip_obsolete_process", move || {
-            test::register_region_skip_obsolete_process();
+            base::test_utils::call_test_with_sudo("register_region_skip_obsolete_process_impl");
             Ok(())
         }),
         #[cfg(all(unix, feature = "enable"))]
         libtest_mimic::Trial::test("unregister_region_skip_obsolete_process", move || {
-            test::unregister_region_skip_obsolete_process();
+            base::test_utils::call_test_with_sudo("unregister_region_skip_obsolete_process_impl");
             Ok(())
         }),
+        #[cfg(all(unix, feature = "enable"))]
+        libtest_mimic::Trial::test("register_region_skip_obsolete_process_impl", move || {
+            test::register_region_skip_obsolete_process();
+            Ok(())
+        })
+        .with_ignored_flag(true),
+        #[cfg(all(unix, feature = "enable"))]
+        libtest_mimic::Trial::test("unregister_region_skip_obsolete_process_impl", move || {
+            test::unregister_region_skip_obsolete_process();
+            Ok(())
+        })
+        .with_ignored_flag(true),
     ];
     libtest_mimic::run(&args, tests).exit();
 }
