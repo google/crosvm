@@ -184,6 +184,10 @@ mod tests {
         unsafe fn errno_location() -> *mut libc::c_int {
             libc::__errno_location()
         }
+        #[cfg(target_os = "macos")]
+        unsafe fn errno_location() -> *mut libc::c_int {
+            libc::__error()
+        }
 
         unsafe {
             *errno_location() = e;
