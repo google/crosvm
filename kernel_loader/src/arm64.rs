@@ -5,14 +5,11 @@
 //! Linux arm64 kernel loader.
 //! <https://www.kernel.org/doc/Documentation/arm64/booting.txt>
 
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
-
-use base::AsRawDescriptor;
-use data_model::zerocopy_from_reader;
+use base::FileGetLen;
+use base::FileReadWriteAtVolatile;
 use data_model::Le32;
 use data_model::Le64;
+use data_model::VolatileSlice;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -49,17 +46,15 @@ const ARM64_TEXT_OFFSET_DEFAULT: u64 = 0x80000;
 pub fn load_arm64_kernel<F>(
     guest_mem: &GuestMemory,
     kernel_start: GuestAddress,
-    mut kernel_image: &mut F,
+    kernel_image: &mut F,
 ) -> Result<LoadedKernel>
 where
-    F: Read + Seek + AsRawDescriptor,
+    F: FileReadWriteAtVolatile + FileGetLen,
 {
+    let mut header = Arm64ImageHeader::new_zeroed();
     kernel_image
-        .seek(SeekFrom::Start(0))
-        .map_err(|_| Error::SeekKernelStart)?;
-
-    let header: Arm64ImageHeader =
-        zerocopy_from_reader(&mut kernel_image).map_err(|_| Error::ReadHeader)?;
+        .read_exact_at_volatile(VolatileSlice::new(header.as_bytes_mut()), 0)
+        .map_err(|_| Error::ReadHeader)?;
 
     let magic: u32 = header.magic.into();
     if magic != ARM64_IMAGE_MAGIC {
@@ -71,12 +66,7 @@ where
         return Err(Error::BigEndianOnLittle);
     }
 
-    let file_size = kernel_image
-        .seek(SeekFrom::End(0))
-        .map_err(|_| Error::SeekKernelEnd)?;
-    kernel_image
-        .seek(SeekFrom::Start(0))
-        .map_err(|_| Error::SeekKernelStart)?;
+    let file_size = kernel_image.get_len().map_err(|_| Error::SeekKernelEnd)?;
 
     let mut text_offset: u64 = header.text_offset.into();
     let image_size: u64 = header.image_size.into();
@@ -91,8 +81,11 @@ where
         .checked_add(text_offset)
         .ok_or(Error::InvalidKernelOffset)?;
     let load_size = usize::try_from(file_size).map_err(|_| Error::InvalidKernelSize)?;
-    guest_mem
-        .read_to_memory(load_addr, kernel_image, load_size)
+    let guest_slice = guest_mem
+        .get_slice_at_addr(load_addr, load_size)
+        .map_err(|_| Error::ReadKernelImage)?;
+    kernel_image
+        .read_exact_at_volatile(guest_slice, 0)
         .map_err(|_| Error::ReadKernelImage)?;
 
     Ok(LoadedKernel {

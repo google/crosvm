@@ -15,9 +15,6 @@ use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fs::File;
 use std::io;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -30,6 +27,8 @@ use base::syslog;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::Event;
+use base::FileGetLen;
+use base::FileReadWriteAtVolatile;
 use base::SendTube;
 use base::Tube;
 use devices::virtio::VirtioDevice;
@@ -1200,12 +1199,14 @@ pub fn generate_pci_root(
 pub enum LoadImageError {
     #[error("Alignment not a power of two: {0}")]
     BadAlignment(u64),
+    #[error("Getting image size failed: {0}")]
+    GetLen(io::Error),
+    #[error("GuestMemory get slice failed: {0}")]
+    GuestMemorySlice(GuestMemoryError),
     #[error("Image size too large: {0}")]
     ImageSizeTooLarge(u64),
     #[error("Reading image into memory failed: {0}")]
-    ReadToMemory(GuestMemoryError),
-    #[error("Seek failed: {0}")]
-    Seek(io::Error),
+    ReadToMemory(io::Error),
 }
 
 /// Load an image from a file into guest memory.
@@ -1225,9 +1226,9 @@ pub fn load_image<F>(
     max_size: u64,
 ) -> Result<usize, LoadImageError>
 where
-    F: Read + Seek + AsRawDescriptor,
+    F: FileReadWriteAtVolatile + FileGetLen,
 {
-    let size = image.seek(SeekFrom::End(0)).map_err(LoadImageError::Seek)?;
+    let size = image.get_len().map_err(LoadImageError::GetLen)?;
 
     if size > usize::max_value() as u64 || size > max_size {
         return Err(LoadImageError::ImageSizeTooLarge(size));
@@ -1236,12 +1237,11 @@ where
     // This is safe due to the bounds check above.
     let size = size as usize;
 
+    let guest_slice = guest_mem
+        .get_slice_at_addr(guest_addr, size)
+        .map_err(LoadImageError::GuestMemorySlice)?;
     image
-        .seek(SeekFrom::Start(0))
-        .map_err(LoadImageError::Seek)?;
-
-    guest_mem
-        .read_to_memory(guest_addr, image, size)
+        .read_exact_at_volatile(guest_slice, 0)
         .map_err(LoadImageError::ReadToMemory)?;
 
     Ok(size)
@@ -1267,22 +1267,18 @@ pub fn load_image_high<F>(
     align: u64,
 ) -> Result<(GuestAddress, usize), LoadImageError>
 where
-    F: Read + Seek + AsRawDescriptor,
+    F: FileReadWriteAtVolatile + FileGetLen,
 {
     if !align.is_power_of_two() {
         return Err(LoadImageError::BadAlignment(align));
     }
 
     let max_size = max_guest_addr.offset_from(min_guest_addr) & !(align - 1);
-    let size = image.seek(SeekFrom::End(0)).map_err(LoadImageError::Seek)?;
+    let size = image.get_len().map_err(LoadImageError::GetLen)?;
 
     if size > usize::max_value() as u64 || size > max_size {
         return Err(LoadImageError::ImageSizeTooLarge(size));
     }
-
-    image
-        .seek(SeekFrom::Start(0))
-        .map_err(LoadImageError::Seek)?;
 
     // Load image at the maximum aligned address allowed.
     // The subtraction cannot underflow because of the size checks above.
@@ -1291,8 +1287,11 @@ where
     // This is safe due to the bounds check above.
     let size = size as usize;
 
-    guest_mem
-        .read_to_memory(guest_addr, image, size)
+    let guest_slice = guest_mem
+        .get_slice_at_addr(guest_addr, size)
+        .map_err(LoadImageError::GuestMemorySlice)?;
+    image
+        .read_exact_at_volatile(guest_slice, 0)
         .map_err(LoadImageError::ReadToMemory)?;
 
     Ok((guest_addr, size))

@@ -5,10 +5,6 @@
 //! The mmap module provides a safe interface to map memory and ensures UnmapViewOfFile is called when the
 //! mmap object leaves scope.
 
-use std::io;
-use std::slice::from_raw_parts;
-use std::slice::from_raw_parts_mut;
-
 use libc::c_int;
 use libc::c_uint;
 use libc::c_void;
@@ -25,7 +21,6 @@ use super::allocation_granularity;
 use super::mmap::MemoryMapping;
 use crate::descriptor::AsRawDescriptor;
 use crate::warn;
-use crate::MappedRegion;
 use crate::MmapError as Error;
 use crate::MmapResult as Result;
 use crate::Protection;
@@ -200,91 +195,6 @@ impl MemoryMapping {
             }
         };
         Ok(())
-    }
-
-    /// Reads data from a file descriptor and writes it to guest memory.
-    ///
-    /// # Arguments
-    /// * `mem_offset` - Begin writing memory at this offset.
-    /// * `src` - Read from `src` to memory.
-    /// * `count` - Read `count` bytes from `src` to memory.
-    ///
-    /// # Examples
-    ///
-    /// * Read bytes from /dev/urandom
-    ///
-    /// ```
-    ///   use base::windows::MemoryMapping;
-    ///   use base::windows::SharedMemory;
-    ///   use std::ffi::CString;
-    ///   use std::fs::File;
-    ///   use std::path::Path;
-    ///   fn test_read_random() -> Result<u32, ()> {
-    ///       let mut mem_map = MemoryMapping::from_descriptor(
-    ///         &SharedMemory::new(&CString::new("test").unwrap(), 1024).unwrap(), 1024).unwrap();
-    ///       let mut file = File::open(Path::new("/dev/urandom")).map_err(|_| ())?;
-    ///       mem_map.read_to_memory(32, &mut file, 128).map_err(|_| ())?;
-    ///       let rand_val: u32 =  mem_map.read_obj(40).map_err(|_| ())?;
-    ///       Ok(rand_val)
-    ///   }
-    /// ```
-    pub fn read_to_memory<F: io::Read>(
-        &self,
-        mem_offset: usize,
-        src: &mut F,
-        count: usize,
-    ) -> Result<()> {
-        self.range_end(mem_offset, count)
-            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
-        // Safe because the check above ensures that no memory outside this slice will get accessed
-        // by this read call.
-        let buf: &mut [u8] = unsafe { from_raw_parts_mut(self.as_ptr().add(mem_offset), count) };
-        match src.read_exact(buf) {
-            Err(e) => Err(Error::ReadToMemory(e)),
-            Ok(()) => Ok(()),
-        }
-    }
-
-    /// Writes data from memory to a file descriptor.
-    ///
-    /// # Arguments
-    /// * `mem_offset` - Begin reading memory from this offset.
-    /// * `dst` - Write from memory to `dst`.
-    /// * `count` - Read `count` bytes from memory to `src`.
-    ///
-    /// # Examples
-    ///
-    /// * Write 128 bytes to /dev/null
-    ///
-    /// ```
-    ///   use base::windows::MemoryMapping;
-    ///   use base::windows::SharedMemory;
-    ///   use std::ffi::CString;
-    ///   use std::fs::File;
-    ///   use std::path::Path;
-    ///   fn test_write_null() -> Result<(), ()> {
-    ///       let mut mem_map = MemoryMapping::from_descriptor(
-    ///           &SharedMemory::new(&CString::new("test").unwrap(), 1024).unwrap(), 1024).unwrap();
-    ///       let mut file = File::open(Path::new("/dev/null")).map_err(|_| ())?;
-    ///       mem_map.write_from_memory(32, &mut file, 128).map_err(|_| ())?;
-    ///       Ok(())
-    ///   }
-    /// ```
-    pub fn write_from_memory<F: io::Write>(
-        &self,
-        mem_offset: usize,
-        dst: &mut F,
-        count: usize,
-    ) -> Result<()> {
-        self.range_end(mem_offset, count)
-            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
-        // Safe because the check above ensures that no memory outside this slice will get accessed
-        // by this write call.
-        let buf: &[u8] = unsafe { from_raw_parts(self.as_ptr().add(mem_offset), count) };
-        match dst.write_all(buf) {
-            Err(e) => Err(Error::WriteFromMemory(e)),
-            Ok(()) => Ok(()),
-        }
     }
 }
 

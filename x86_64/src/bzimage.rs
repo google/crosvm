@@ -6,12 +6,10 @@
 //! <https://www.kernel.org/doc/Documentation/x86/boot.txt>
 
 use std::io;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
 
 use base::debug;
-use base::AsRawDescriptor;
+use base::FileReadWriteAtVolatile;
+use data_model::VolatileSlice;
 use memoffset::offset_of;
 use remain::sorted;
 use thiserror::Error;
@@ -27,6 +25,8 @@ use crate::bootparam::boot_params;
 pub enum Error {
     #[error("bad kernel header signature")]
     BadSignature,
+    #[error("guest memory error {0}")]
+    GuestMemoryError(GuestMemoryError),
     #[error("invalid setup_header_end value {0}")]
     InvalidSetupHeaderEnd(usize),
     #[error("invalid setup_sects value {0}")]
@@ -38,13 +38,7 @@ pub enum Error {
     #[error("unable to read header size: {0}")]
     ReadHeaderSize(io::Error),
     #[error("unable to read kernel image: {0}")]
-    ReadKernelImage(GuestMemoryError),
-    #[error("unable to seek to boot_params: {0}")]
-    SeekBootParams(io::Error),
-    #[error("unable to seek to header size byte: {0}")]
-    SeekHeaderSize(io::Error),
-    #[error("unable to seek to kernel start: {0}")]
-    SeekKernelStart(io::Error),
+    ReadKernelImage(io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -62,7 +56,7 @@ pub fn load_bzimage<F>(
     kernel_image: &mut F,
 ) -> Result<(boot_params, u64)>
 where
-    F: Read + Seek + AsRawDescriptor,
+    F: FileReadWriteAtVolatile,
 {
     let mut params = boot_params::default();
 
@@ -73,10 +67,10 @@ where
     // "The end of setup header can be calculated as follows: 0x0202 + byte value at offset 0x0201"
     let mut setup_size_byte = 0u8;
     kernel_image
-        .seek(SeekFrom::Start(0x0201))
-        .map_err(Error::SeekHeaderSize)?;
-    kernel_image
-        .read_exact(setup_size_byte.as_bytes_mut())
+        .read_exact_at_volatile(
+            VolatileSlice::new(std::slice::from_mut(&mut setup_size_byte)),
+            0x0201,
+        )
         .map_err(Error::ReadHeaderSize)?;
     let setup_header_end = 0x0202 + usize::from(setup_size_byte);
 
@@ -95,10 +89,10 @@ where
         .ok_or(Error::InvalidSetupHeaderEnd(setup_header_end))?;
 
     kernel_image
-        .seek(SeekFrom::Start(setup_header_start as u64))
-        .map_err(Error::SeekBootParams)?;
-    kernel_image
-        .read_exact(setup_header_slice)
+        .read_exact_at_volatile(
+            VolatileSlice::new(setup_header_slice),
+            setup_header_start as u64,
+        )
         .map_err(Error::ReadBootParams)?;
 
     // bzImage header signature "HdrS"
@@ -120,13 +114,12 @@ where
         .checked_mul(16)
         .ok_or(Error::InvalidSysSize(params.hdr.syssize))?;
 
-    kernel_image
-        .seek(SeekFrom::Start(kernel_offset))
-        .map_err(Error::SeekKernelStart)?;
-
     // Load the whole kernel image to kernel_start
-    guest_mem
-        .read_to_memory(kernel_start, kernel_image, kernel_size)
+    let guest_slice = guest_mem
+        .get_slice_at_addr(kernel_start, kernel_size)
+        .map_err(Error::GuestMemoryError)?;
+    kernel_image
+        .read_exact_at_volatile(guest_slice, kernel_offset)
         .map_err(Error::ReadKernelImage)?;
 
     Ok((params, kernel_start.offset() + kernel_size as u64))

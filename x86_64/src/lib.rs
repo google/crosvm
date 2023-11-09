@@ -42,7 +42,6 @@ use std::ffi::CStr;
 use std::ffi::CString;
 use std::fs::File;
 use std::io;
-use std::io::Seek;
 use std::mem;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -64,6 +63,8 @@ use base::warn;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use base::AsRawDescriptors;
 use base::Event;
+use base::FileGetLen;
+use base::FileReadWriteAtVolatile;
 use base::SendTube;
 use base::Tube;
 use base::TubeError;
@@ -1499,9 +1500,7 @@ impl X8664arch {
     /// * `mem` - The memory to be used by the guest.
     /// * `bios_image` - the File object for the specified bios
     fn load_bios(mem: &GuestMemory, bios_image: &mut File) -> Result<()> {
-        let bios_image_length = bios_image
-            .seek(io::SeekFrom::End(0))
-            .map_err(Error::LoadBios)?;
+        let bios_image_length = bios_image.get_len().map_err(Error::LoadBios)?;
         if bios_image_length >= FIRST_ADDR_PAST_32BITS {
             return Err(Error::LoadBios(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -1511,15 +1510,13 @@ impl X8664arch {
                 ),
             )));
         }
+
+        let guest_slice = mem
+            .get_slice_at_addr(bios_start(bios_image_length), bios_image_length as usize)
+            .map_err(Error::SetupGuestMemory)?;
         bios_image
-            .seek(io::SeekFrom::Start(0))
+            .read_exact_at_volatile(guest_slice, 0)
             .map_err(Error::LoadBios)?;
-        mem.read_to_memory(
-            bios_start(bios_image_length),
-            bios_image,
-            bios_image_length as usize,
-        )
-        .map_err(Error::SetupGuestMemory)?;
         Ok(())
     }
 

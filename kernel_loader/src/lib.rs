@@ -5,13 +5,10 @@
 //! Linux kernel ELF file loader.
 
 use std::ffi::CStr;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
 use std::mem;
 
-use base::AsRawDescriptor;
-use data_model::zerocopy_from_reader;
+use base::FileReadWriteAtVolatile;
+use data_model::VolatileSlice;
 use remain::sorted;
 use resources::AddressRange;
 use thiserror::Error;
@@ -112,7 +109,7 @@ pub fn load_elf32<F>(
     phys_offset: u64,
 ) -> Result<LoadedKernel>
 where
-    F: Read + Seek + AsRawDescriptor,
+    F: FileReadWriteAtVolatile,
 {
     load_elf_for_class(
         guest_mem,
@@ -141,7 +138,7 @@ pub fn load_elf64<F>(
     phys_offset: u64,
 ) -> Result<LoadedKernel>
 where
-    F: Read + Seek + AsRawDescriptor,
+    F: FileReadWriteAtVolatile,
 {
     load_elf_for_class(
         guest_mem,
@@ -170,7 +167,7 @@ pub fn load_elf<F>(
     phys_offset: u64,
 ) -> Result<LoadedKernel>
 where
-    F: Read + Seek + AsRawDescriptor,
+    F: FileReadWriteAtVolatile,
 {
     load_elf_for_class(guest_mem, kernel_start, kernel_image, phys_offset, None)
 }
@@ -183,7 +180,7 @@ fn load_elf_for_class<F>(
     ei_class: Option<u32>,
 ) -> Result<LoadedKernel>
 where
-    F: Read + Seek + AsRawDescriptor,
+    F: FileReadWriteAtVolatile,
 {
     let elf = read_elf(kernel_image, ei_class)?;
     let mut start = None;
@@ -216,12 +213,11 @@ where
             continue;
         }
 
+        let guest_slice = guest_mem
+            .get_slice_at_addr(GuestAddress(paddr), phdr.p_filesz as usize)
+            .map_err(|_| Error::ReadKernelImage)?;
         kernel_image
-            .seek(SeekFrom::Start(phdr.p_offset))
-            .map_err(|_| Error::SeekKernelStart)?;
-
-        guest_mem
-            .read_to_memory(GuestAddress(paddr), kernel_image, phdr.p_filesz as usize)
+            .read_exact_at_volatile(guest_slice, phdr.p_offset)
             .map_err(|_| Error::ReadKernelImage)?;
     }
 
@@ -293,13 +289,12 @@ struct Elf64 {
 /// match, an Err is returned.
 fn read_elf<F>(file: &mut F, required_ei_class: Option<u32>) -> Result<Elf64>
 where
-    F: Read + Seek + AsRawDescriptor,
+    F: FileReadWriteAtVolatile,
 {
     // Read the ELF identification (e_ident) block.
-    file.seek(SeekFrom::Start(0))
-        .map_err(|_| Error::SeekKernelStart)?;
     let mut ident = [0u8; 16];
-    file.read_exact(&mut ident).map_err(|_| Error::ReadHeader)?;
+    file.read_exact_at_volatile(VolatileSlice::new(&mut ident), 0)
+        .map_err(|_| Error::ReadHeader)?;
 
     // e_ident checks
     if ident[elf::EI_MAG0 as usize] != elf::ELFMAG0 as u8
@@ -333,15 +328,15 @@ where
 /// converted to ELF64 format.  `FileHeader` and `ProgramHeader` are the ELF32 or ELF64 ehdr/phdr
 /// types to read from the file.  Caller should check that `file` is a valid ELF file before calling
 /// this function.
-fn read_elf_by_type<F, FileHeader, ProgramHeader>(mut file: &mut F) -> Result<Elf64>
+fn read_elf_by_type<F, FileHeader, ProgramHeader>(file: &mut F) -> Result<Elf64>
 where
-    F: Read + Seek + AsRawDescriptor,
+    F: FileReadWriteAtVolatile,
     FileHeader: AsBytes + FromBytes + Default + Into<elf::Elf64_Ehdr>,
-    ProgramHeader: AsBytes + FromBytes + Default + Into<elf::Elf64_Phdr>,
+    ProgramHeader: AsBytes + FromBytes + Clone + Default + Into<elf::Elf64_Phdr>,
 {
-    file.seek(SeekFrom::Start(0))
-        .map_err(|_| Error::SeekKernelStart)?;
-    let ehdr: FileHeader = zerocopy_from_reader(&mut file).map_err(|_| Error::ReadHeader)?;
+    let mut ehdr = FileHeader::new_zeroed();
+    file.read_exact_at_volatile(VolatileSlice::new(ehdr.as_bytes_mut()), 0)
+        .map_err(|_| Error::ReadHeader)?;
     let ehdr: elf::Elf64_Ehdr = ehdr.into();
 
     if ehdr.e_phentsize as usize != mem::size_of::<ProgramHeader>() {
@@ -352,12 +347,10 @@ where
         return Err(Error::InvalidProgramHeaderOffset);
     }
 
-    file.seek(SeekFrom::Start(ehdr.e_phoff))
-        .map_err(|_| Error::SeekProgramHeader)?;
-    let phdrs: Vec<ProgramHeader> = (0..ehdr.e_phnum)
-        .enumerate()
-        .map(|_| zerocopy_from_reader(&mut file).map_err(|_| Error::ReadProgramHeader))
-        .collect::<Result<Vec<ProgramHeader>>>()?;
+    let num_phdrs = ehdr.e_phnum as usize;
+    let mut phdrs = vec![ProgramHeader::default(); num_phdrs];
+    file.read_exact_at_volatile(VolatileSlice::new(phdrs.as_bytes_mut()), ehdr.e_phoff)
+        .map_err(|_| Error::ReadProgramHeader)?;
 
     Ok(Elf64 {
         file_header: ehdr,
@@ -404,6 +397,8 @@ impl From<elf::Elf32_Phdr> for elf::Elf64_Phdr {
 #[cfg(test)]
 mod test {
     use std::fs::File;
+    use std::io::Seek;
+    use std::io::SeekFrom;
     use std::io::Write;
 
     use tempfile::tempfile;

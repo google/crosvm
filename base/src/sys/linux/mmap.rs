@@ -5,13 +5,9 @@
 //! The mmap module provides a safe interface to mmap memory and ensures unmap is called when the
 //! mmap object leaves scope.
 
-use std::io;
 use std::ptr::null_mut;
 
 use libc::c_int;
-use libc::c_void;
-use libc::read;
-use libc::write;
 use log::warn;
 
 use super::Error as ErrnoError;
@@ -347,125 +343,6 @@ impl MemoryMapping {
         };
         if ret == -1 {
             return Err(Error::SystemCallFailed(ErrnoError::last()));
-        }
-        Ok(())
-    }
-
-    /// Reads data from a file descriptor and writes it to guest memory.
-    ///
-    /// # Arguments
-    /// * `mem_offset` - Begin writing memory at this offset.
-    /// * `src` - Read from `src` to memory.
-    /// * `count` - Read `count` bytes from `src` to memory.
-    ///
-    /// # Examples
-    ///
-    /// * Read bytes from /dev/urandom
-    ///
-    /// ```
-    /// # use base::MemoryMappingBuilder;
-    /// # use std::fs::File;
-    /// # use std::path::Path;
-    /// # fn test_read_random() -> Result<u32, ()> {
-    /// #     let mut mem_map = MemoryMappingBuilder::new(1024).build().unwrap();
-    ///       let mut file = File::open(Path::new("/dev/urandom")).map_err(|_| ())?;
-    ///       mem_map.read_to_memory(32, &mut file, 128).map_err(|_| ())?;
-    ///       let rand_val: u32 =  mem_map.read_obj(40).map_err(|_| ())?;
-    /// #     Ok(rand_val)
-    /// # }
-    /// ```
-    pub fn read_to_memory(
-        &self,
-        mut mem_offset: usize,
-        src: &dyn AsRawDescriptor,
-        mut count: usize,
-    ) -> Result<()> {
-        self.range_end(mem_offset, count)
-            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
-        while count > 0 {
-            // The check above ensures that no memory outside this slice will get accessed by this
-            // read call.
-            match unsafe {
-                read(
-                    src.as_raw_descriptor(),
-                    self.as_ptr().add(mem_offset) as *mut c_void,
-                    count,
-                )
-            } {
-                0 => {
-                    return Err(Error::ReadToMemory(io::Error::from(
-                        io::ErrorKind::UnexpectedEof,
-                    )))
-                }
-                r if r < 0 => return Err(Error::ReadToMemory(io::Error::last_os_error())),
-                ret => {
-                    let bytes_read = ret as usize;
-                    match count.checked_sub(bytes_read) {
-                        Some(count_remaining) => count = count_remaining,
-                        None => break,
-                    }
-                    mem_offset += ret as usize;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Writes data from memory to a file descriptor.
-    ///
-    /// # Arguments
-    /// * `mem_offset` - Begin reading memory from this offset.
-    /// * `dst` - Write from memory to `dst`.
-    /// * `count` - Read `count` bytes from memory to `src`.
-    ///
-    /// # Examples
-    ///
-    /// * Write 128 bytes to /dev/null
-    ///
-    /// ```
-    /// # use base::linux::MemoryMapping;
-    /// # use std::fs::File;
-    /// # use std::path::Path;
-    /// # fn test_write_null() -> Result<(), ()> {
-    /// #     let mut mem_map = MemoryMapping::new(1024).unwrap();
-    ///       let mut file = File::open(Path::new("/dev/null")).map_err(|_| ())?;
-    ///       mem_map.write_from_memory(32, &mut file, 128).map_err(|_| ())?;
-    /// #     Ok(())
-    /// # }
-    /// ```
-    pub fn write_from_memory(
-        &self,
-        mut mem_offset: usize,
-        dst: &dyn AsRawDescriptor,
-        mut count: usize,
-    ) -> Result<()> {
-        self.range_end(mem_offset, count)
-            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
-        while count > 0 {
-            // The check above ensures that no memory outside this slice will get accessed by this
-            // write call.
-            match unsafe {
-                write(
-                    dst.as_raw_descriptor(),
-                    self.as_ptr().add(mem_offset) as *const c_void,
-                    count,
-                )
-            } {
-                0 => {
-                    return Err(Error::WriteFromMemory(io::Error::from(
-                        io::ErrorKind::WriteZero,
-                    )))
-                }
-                ret if ret < 0 => return Err(Error::WriteFromMemory(io::Error::last_os_error())),
-                ret => {
-                    let bytes_written = ret as usize;
-                    match count.checked_sub(bytes_written) {
-                        Some(count_remaining) => count = count_remaining,
-                        None => break,
-                    }
-                    mem_offset += ret as usize;
-                }
-            }
         }
         Ok(())
     }
@@ -850,24 +727,6 @@ impl CrateMemoryMapping {
 
     pub fn use_hugepages(&self) -> Result<()> {
         self.mapping.use_hugepages()
-    }
-
-    pub fn read_to_memory(
-        &self,
-        mem_offset: usize,
-        src: &dyn AsRawDescriptor,
-        count: usize,
-    ) -> Result<()> {
-        self.mapping.read_to_memory(mem_offset, src, count)
-    }
-
-    pub fn write_from_memory(
-        &self,
-        mem_offset: usize,
-        dst: &dyn AsRawDescriptor,
-        count: usize,
-    ) -> Result<()> {
-        self.mapping.write_from_memory(mem_offset, dst, count)
     }
 
     pub fn from_raw_ptr(addr: RawDescriptor, size: usize) -> Result<CrateMemoryMapping> {

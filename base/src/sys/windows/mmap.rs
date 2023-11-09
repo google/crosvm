@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::Read;
-use std::io::Write;
-
 use libc::c_int;
 use libc::c_uint;
 use libc::c_void;
@@ -152,24 +149,6 @@ unsafe impl MappedRegion for MemoryMapping {
 }
 
 impl CrateMemoryMapping {
-    pub fn read_to_memory<F: Read>(
-        &self,
-        mem_offset: usize,
-        src: &mut F,
-        count: usize,
-    ) -> Result<()> {
-        self.mapping.read_to_memory(mem_offset, src, count)
-    }
-
-    pub fn write_from_memory<F: Write>(
-        &self,
-        mem_offset: usize,
-        dst: &mut F,
-        count: usize,
-    ) -> Result<()> {
-        self.mapping.write_from_memory(mem_offset, dst, count)
-    }
-
     pub fn from_raw_ptr(addr: RawDescriptor, size: usize) -> Result<CrateMemoryMapping> {
         MemoryMapping::from_raw_ptr(addr, size).map(|mapping| CrateMemoryMapping {
             mapping,
