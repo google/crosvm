@@ -74,21 +74,8 @@ pub use crate::errno::Error;
 pub use crate::errno::Result;
 pub use crate::errno::*;
 
-// Define libc::* types
-#[allow(non_camel_case_types)]
-pub type uid_t = u32;
-#[allow(non_camel_case_types)]
-pub type gid_t = u32;
-#[allow(non_camel_case_types)]
-pub type mode_t = u32;
-
 /// Process identifier.
 pub type Pid = DWORD;
-
-/// Re-export libc types that are part of the API.
-pub type Uid = uid_t;
-pub type Gid = gid_t;
-pub type Mode = mode_t;
 
 /// Returns a list of supported frequencies in kHz for a given logical core.
 /// This is currently not supported on Windows.
