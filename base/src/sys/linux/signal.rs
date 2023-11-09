@@ -6,16 +6,12 @@ use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::io;
 use std::mem;
-use std::ops::Deref;
-use std::ops::DerefMut;
 use std::os::unix::thread::JoinHandleExt;
-use std::process::Child;
 use std::ptr::null;
 use std::ptr::null_mut;
 use std::result;
 use std::thread::JoinHandle;
 use std::time::Duration;
-use std::time::Instant;
 
 use libc::c_int;
 use libc::pthread_kill;
@@ -31,7 +27,6 @@ use libc::sigset_t;
 use libc::sigtimedwait;
 use libc::sigwait;
 use libc::timespec;
-use libc::waitpid;
 use libc::EAGAIN;
 use libc::EINTR;
 use libc::EINVAL;
@@ -39,21 +34,16 @@ use libc::SA_RESTART;
 use libc::SIG_BLOCK;
 use libc::SIG_DFL;
 use libc::SIG_UNBLOCK;
-use libc::WNOHANG;
 use remain::sorted;
 use thiserror::Error;
 
 use super::duration_to_timespec;
 use super::errno_result;
-use super::getsid;
 use super::Error as ErrnoError;
 use super::Pid;
 use super::Result;
 use crate::handle_eintr_errno;
 use crate::handle_eintr_rc;
-
-const POLL_RATE: Duration = Duration::from_millis(50);
-const DEFAULT_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -335,20 +325,6 @@ pub fn clear_signal_handler(num: c_int) -> Result<()> {
     Ok(())
 }
 
-/// Returns true if the signal handler for signum `num` is the default.
-pub fn has_default_signal_handler(num: c_int) -> Result<bool> {
-    // Safe because sigaction is owned and expected to be initialized ot zeros.
-    let mut sigact: sigaction = unsafe { mem::zeroed() };
-
-    // Safe because sigact is owned, and this is just querying the existing state.
-    let ret = unsafe { sigaction(num, null(), &mut sigact) };
-    if ret < 0 {
-        return errno_result();
-    }
-
-    Ok(sigact.sa_sigaction == SIG_DFL)
-}
-
 /// Registers `handler` as the signal handler for the real-time signal with signum `num`.
 ///
 /// The value of `num` must be within [`SIGRTMIN`, `SIGRTMAX`] range.
@@ -573,152 +549,6 @@ pub unsafe trait Killable {
 unsafe impl<T> Killable for JoinHandle<T> {
     fn pthread_handle(&self) -> pthread_t {
         self.as_pthread_t() as _
-    }
-}
-
-/// Treat some errno's as Ok(()).
-macro_rules! ok_if {
-    ($result:expr, $errno:pat) => {{
-        match $result {
-            Err(err) if !matches!(err.errno(), $errno) => Err(err),
-            _ => Ok(()),
-        }
-    }};
-}
-
-/// Terminates and reaps a child process. If the child process is a group leader, its children will
-/// be terminated and reaped as well. After the given timeout, the child process and any relevant
-/// children are killed (i.e. sent SIGKILL).
-pub fn kill_tree(child: &mut Child, terminate_timeout: Duration) -> SignalResult<()> {
-    let target = {
-        let pid = child.id() as Pid;
-        if getsid(Some(pid)).map_err(Error::GetSid)? == pid {
-            -pid
-        } else {
-            pid
-        }
-    };
-
-    // Safe because target is a child process (or group) and behavior of SIGTERM is defined.
-    ok_if!(unsafe { kill(target, libc::SIGTERM) }, libc::ESRCH).map_err(Error::Kill)?;
-
-    // Reap the direct child first in case it waits for its descendants, afterward reap any
-    // remaining group members.
-    let start = Instant::now();
-    let mut child_running = true;
-    loop {
-        // Wait for the direct child to exit before reaping any process group members.
-        if child_running {
-            if child
-                .try_wait()
-                .map_err(|e| Error::WaitPid(ErrnoError::from(e)))?
-                .is_some()
-            {
-                child_running = false;
-                // Skip the timeout check because waitpid(..., WNOHANG) will not block.
-                continue;
-            }
-        } else {
-            // Safe because target is a child process (or group), WNOHANG is used, and the return
-            // value is checked.
-            let ret = unsafe { waitpid(target, null_mut(), WNOHANG) };
-            match ret {
-                -1 => {
-                    let err = ErrnoError::last();
-                    if err.errno() == libc::ECHILD {
-                        // No group members to wait on.
-                        break;
-                    }
-                    return Err(Error::WaitPid(err));
-                }
-                0 => {}
-                // If a process was reaped, skip the timeout check in case there are more.
-                _ => continue,
-            };
-        }
-
-        // Check for a timeout.
-        let elapsed = start.elapsed();
-        if elapsed > terminate_timeout {
-            // Safe because target is a child process (or group) and behavior of SIGKILL is defined.
-            ok_if!(unsafe { kill(target, libc::SIGKILL) }, libc::ESRCH).map_err(Error::Kill)?;
-            return Err(Error::TimedOut);
-        }
-
-        // Wait a SIGCHLD or until either the remaining time or a poll interval elapses.
-        ok_if!(
-            wait_for_signal(
-                &[libc::SIGCHLD],
-                Some(POLL_RATE.min(terminate_timeout - elapsed))
-            ),
-            libc::EAGAIN | libc::EINTR
-        )
-        .map_err(Error::WaitForSignal)?
-    }
-
-    Ok(())
-}
-
-/// Wraps a Child process, and calls kill_tree for its process group to clean
-/// it up when dropped.
-pub struct KillOnDrop {
-    process: Child,
-    timeout: Duration,
-}
-
-impl KillOnDrop {
-    /// Get the timeout. See timeout_mut() for more details.
-    pub fn timeout(&self) -> Duration {
-        self.timeout
-    }
-
-    /// Change the timeout for how long child processes are waited for before
-    /// the process group is forcibly killed.
-    pub fn timeout_mut(&mut self) -> &mut Duration {
-        &mut self.timeout
-    }
-}
-
-impl From<Child> for KillOnDrop {
-    fn from(process: Child) -> Self {
-        KillOnDrop {
-            process,
-            timeout: DEFAULT_KILL_TIMEOUT,
-        }
-    }
-}
-
-impl AsRef<Child> for KillOnDrop {
-    fn as_ref(&self) -> &Child {
-        &self.process
-    }
-}
-
-impl AsMut<Child> for KillOnDrop {
-    fn as_mut(&mut self) -> &mut Child {
-        &mut self.process
-    }
-}
-
-impl Deref for KillOnDrop {
-    type Target = Child;
-
-    fn deref(&self) -> &Self::Target {
-        &self.process
-    }
-}
-
-impl DerefMut for KillOnDrop {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.process
-    }
-}
-
-impl Drop for KillOnDrop {
-    fn drop(&mut self) {
-        if let Err(err) = kill_tree(&mut self.process, self.timeout) {
-            eprintln!("failed to kill child process group: {}", err);
-        }
     }
 }
 

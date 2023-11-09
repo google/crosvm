@@ -157,18 +157,6 @@ pub fn gettid() -> Pid {
     unsafe { syscall(SYS_gettid as c_long) as Pid }
 }
 
-/// Safe wrapper for `getsid(2)`.
-pub fn getsid(pid: Option<Pid>) -> Result<Pid> {
-    // Calling the getsid() sycall is always safe.
-    syscall!(unsafe { libc::getsid(pid.unwrap_or(0)) } as Pid)
-}
-
-/// Wrapper for `setsid(2)`.
-pub fn setsid() -> Result<Pid> {
-    // Safe because the return code is checked.
-    syscall!(unsafe { libc::setsid() as Pid })
-}
-
 /// Safe wrapper for `geteuid(2)`.
 #[inline(always)]
 pub fn geteuid() -> Uid {
