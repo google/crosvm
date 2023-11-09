@@ -221,6 +221,7 @@ impl arch::LinuxArch for Riscv64 {
             serial_jail,
             #[cfg(feature = "swap")]
             swap_controller,
+            components.hv_cfg.protection_type,
         )
         .map_err(Error::CreateSerialDevices)?;
 

@@ -16,6 +16,8 @@ use devices::IrqChip;
 use devices::IrqEventSource;
 use devices::ProxyDevice;
 use devices::VfioPlatformDevice;
+use hypervisor::ProtectionType;
+use hypervisor::Vm;
 use minijail::Minijail;
 use resources::AllocOptions;
 use resources::SystemAllocator;
@@ -152,7 +154,9 @@ pub fn generate_platform_bus(
     irq_chip: &mut dyn IrqChip,
     mmio_bus: &Bus,
     resources: &mut SystemAllocator,
+    vm: &mut impl Vm,
     #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
+    protection_type: ProtectionType,
 ) -> Result<
     (
         Vec<Arc<Mutex<dyn BusDevice>>>,
@@ -175,6 +179,11 @@ pub fn generate_platform_bus(
         let ranges = device
             .allocate_regions(resources)
             .map_err(DeviceRegistrationError::AllocateIoResource)?;
+
+        // If guest memory is private, don't wait for the first access to mmap the device.
+        if protection_type.isolates_memory() {
+            device.regions_mmap_early(vm);
+        }
 
         let mut keep_rds = device.keep_rds();
         syslog::push_descriptors(&mut keep_rds);

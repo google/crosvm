@@ -10,6 +10,8 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::error;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use base::linux::MemoryMappingBuilderUnix;
 use base::pagesize;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
@@ -17,13 +19,17 @@ use base::Event;
 use base::MappedRegion;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
+#[cfg(windows)]
+use base::MemoryMappingBuilderWindows;
 use base::Protection;
 use base::RawDescriptor;
+use hypervisor::Vm;
 use resources::SystemAllocator;
 use vfio_sys::*;
 use vm_control::api::VmMemoryClient;
 use vm_control::VmMemoryDestination;
 use vm_control::VmMemorySource;
+use vm_memory::GuestAddress;
 
 use crate::pci::CrosvmDeviceId;
 use crate::vfio::VfioDevice;
@@ -180,6 +186,50 @@ impl VfioPlatformDevice {
             });
         }
         Ok(ranges)
+    }
+
+    fn region_mmap_early(&self, vm: &mut impl Vm, index: usize, start_addr: u64) {
+        if self.device.get_region_flags(index) & VFIO_REGION_INFO_FLAG_MMAP == 0 {
+            return;
+        }
+
+        for mmap in &self.device.get_region_mmap(index) {
+            let mmap_offset = mmap.offset;
+            let mmap_size = mmap.size;
+            let guest_map_start = start_addr + mmap_offset;
+            let region_offset = self.device.get_region_offset(index);
+            let offset = region_offset + mmap_offset;
+
+            let mmap = match MemoryMappingBuilder::new(mmap_size as usize)
+                .from_descriptor(self.device.device_file())
+                .offset(offset)
+                .build()
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("{e}, index: {index}, start_addr:{start_addr:#x}, offset:{offset:#x}");
+                    break;
+                }
+            };
+
+            let host = mmap.as_ptr();
+            let guest_addr = GuestAddress(guest_map_start);
+            if let Err(e) = vm.add_memory_region(guest_addr, Box::new(mmap), false, false) {
+                error!("{e}, index: {index}, guest_addr:{guest_addr}, host:{host:?}");
+                break;
+            }
+        }
+    }
+
+    /// Force adding the MMIO regions to the guest memory space.
+    ///
+    /// By default, MMIO regions are mapped lazily when the guest first accesses them. Instead,
+    /// this function maps them, even if the guest might end up not accessing them. It only runs in
+    /// the current thread and can therefore be called before the VM is started.
+    pub fn regions_mmap_early(&mut self, vm: &mut impl Vm) {
+        for mmio_info in self.mmio_regions.iter() {
+            self.region_mmap_early(vm, mmio_info.index, mmio_info.start);
+        }
     }
 
     fn region_mmap(&self, index: usize, start_addr: u64) -> Vec<MemoryMapping> {

@@ -585,8 +585,10 @@ impl arch::LinuxArch for AArch64 {
                 irq_chip.as_irq_chip_mut(),
                 &mmio_bus,
                 system_allocator,
+                &mut vm,
                 #[cfg(feature = "swap")]
                 swap_controller,
+                components.hv_cfg.protection_type,
             )
             .map_err(Error::CreatePlatformBus)?;
         pid_debug_label_map.append(&mut platform_pid_debug_label_map);
