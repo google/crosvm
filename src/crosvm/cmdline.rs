@@ -78,25 +78,25 @@ use crate::crosvm::config::parse_dynamic_power_coefficient;
 use crate::crosvm::config::parse_memory_region;
 use crate::crosvm::config::parse_mmio_address_range;
 use crate::crosvm::config::parse_pflash_parameters;
-#[cfg(feature = "plugin")]
-use crate::crosvm::config::parse_plugin_mount_option;
 use crate::crosvm::config::parse_serial_options;
 use crate::crosvm::config::parse_vhost_user_fs_option;
 use crate::crosvm::config::BatteryConfig;
-#[cfg(feature = "plugin")]
-use crate::crosvm::config::BindMount;
 use crate::crosvm::config::CpuOptions;
 use crate::crosvm::config::DtboOption;
 use crate::crosvm::config::Executable;
 use crate::crosvm::config::FileBackedMappingParameters;
-#[cfg(feature = "plugin")]
-use crate::crosvm::config::GidMap;
 use crate::crosvm::config::HypervisorKind;
 use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::config::MemOptions;
 use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::config::VhostUserFsOption;
 use crate::crosvm::config::VhostUserOption;
+#[cfg(feature = "plugin")]
+use crate::crosvm::plugin::parse_plugin_mount_option;
+#[cfg(feature = "plugin")]
+use crate::crosvm::plugin::BindMount;
+#[cfg(feature = "plugin")]
+use crate::crosvm::plugin::GidMap;
 
 #[derive(FromArgs)]
 /// crosvm

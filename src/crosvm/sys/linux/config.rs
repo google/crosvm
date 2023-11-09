@@ -215,7 +215,6 @@ mod tests {
 
     use super::*;
     use crate::crosvm::config::from_key_values;
-    use crate::crosvm::config::BindMount;
     use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_HEIGHT;
     use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_WIDTH;
 
@@ -303,30 +302,6 @@ mod tests {
         // invalid parameter
         let coiommu_params = from_key_values::<CoIommuParameters>("unpin_invalid_param=0");
         assert!(coiommu_params.is_err());
-    }
-
-    #[test]
-    fn parse_plugin_mount_valid() {
-        let opt: BindMount = "/dev/null:/dev/zero:true".parse().unwrap();
-
-        assert_eq!(opt.src, PathBuf::from("/dev/null"));
-        assert_eq!(opt.dst, PathBuf::from("/dev/zero"));
-        assert!(opt.writable);
-    }
-
-    #[test]
-    fn parse_plugin_mount_valid_shorthand() {
-        let opt: BindMount = "/dev/null".parse().unwrap();
-        assert_eq!(opt.dst, PathBuf::from("/dev/null"));
-        assert!(!opt.writable);
-
-        let opt: BindMount = "/dev/null:/dev/zero".parse().unwrap();
-        assert_eq!(opt.dst, PathBuf::from("/dev/zero"));
-        assert!(!opt.writable);
-
-        let opt: BindMount = "/dev/null::true".parse().unwrap();
-        assert_eq!(opt.dst, PathBuf::from("/dev/null"));
-        assert!(opt.writable);
     }
 
     #[test]
