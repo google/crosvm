@@ -22,12 +22,12 @@ use winapi::um::memoryapi::FILE_MAP_READ;
 use winapi::um::memoryapi::FILE_MAP_WRITE;
 
 use super::allocation_granularity;
-use super::mmap::Error;
 use super::mmap::MemoryMapping;
-use super::mmap::Result;
 use crate::descriptor::AsRawDescriptor;
 use crate::warn;
 use crate::MappedRegion;
+use crate::MmapError as Error;
+use crate::MmapResult as Result;
 use crate::Protection;
 use crate::RawDescriptor;
 

@@ -93,7 +93,6 @@ pub(crate) use libc::PROT_READ;
 pub(crate) use libc::PROT_WRITE;
 use libc::SIGKILL;
 use libc::WNOHANG;
-pub use mmap::Error as MmapError;
 pub use mmap::*;
 pub use netlink::*;
 pub use poll::EventContext;

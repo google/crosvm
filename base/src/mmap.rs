@@ -5,6 +5,7 @@
 use std::cmp::min;
 use std::fs::File;
 use std::intrinsics::copy_nonoverlapping;
+use std::io;
 use std::mem::size_of;
 use std::ptr::read_unaligned;
 use std::ptr::read_volatile;
@@ -15,6 +16,7 @@ use std::sync::atomic::Ordering;
 
 use data_model::volatile_memory::*;
 use libc::c_int;
+use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
 use zerocopy::AsBytes;
@@ -23,11 +25,36 @@ use zerocopy::FromBytes;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::SafeDescriptor;
 use crate::platform::MemoryMapping as PlatformMmap;
-use crate::platform::MmapError as Error;
 use crate::platform::PROT_READ;
 use crate::platform::PROT_WRITE;
 use crate::SharedMemory;
 
+#[sorted]
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("`add_fd_mapping` is unsupported")]
+    AddFdMappingIsUnsupported,
+    #[error("requested memory out of range")]
+    InvalidAddress,
+    #[error("invalid argument provided when creating mapping")]
+    InvalidArgument,
+    #[error("requested offset is out of range of off_t")]
+    InvalidOffset,
+    #[error("requested memory range spans past the end of the region: offset={0} count={1} region_size={2}")]
+    InvalidRange(usize, usize, usize),
+    #[error("requested memory is not page aligned")]
+    NotPageAligned,
+    #[error("failed to read from file to memory: {0}")]
+    ReadToMemory(#[source] io::Error),
+    #[error("`remove_mapping` is unsupported")]
+    RemoveMappingIsUnsupported,
+    #[error("system call failed while creating the mapping: {0}")]
+    StdSyscallFailed(io::Error),
+    #[error("mmap related system call failed: {0}")]
+    SystemCallFailed(#[source] crate::Error),
+    #[error("failed to write from memory to file: {0}")]
+    WriteFromMemory(#[source] io::Error),
+}
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Memory access type for anonymous shared memory mapping.

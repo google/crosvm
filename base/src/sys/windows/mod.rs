@@ -51,7 +51,6 @@ pub use file_util::set_sparse_file;
 pub use foreground_window::give_foregrounding_permission;
 pub use get_filesystem_type::*;
 pub use ioctl::*;
-pub use mmap::Error as MmapError;
 pub use mmap::*;
 pub(crate) use mmap_platform::PROT_READ;
 pub(crate) use mmap_platform::PROT_WRITE;

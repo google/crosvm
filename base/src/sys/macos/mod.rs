@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use crate::sys::unix::RawDescriptor;
+use crate::MmapError;
 
 pub mod tube {
     #[derive(serde::Serialize, serde::Deserialize)]
@@ -138,13 +139,6 @@ pub enum FramingMode {
 }
 
 pub struct MemoryMappingArena {}
-
-pub enum MmapError {
-    AddFdMappingIsUnsupported,
-    InvalidAddress,
-    InvalidArgument,
-    RemoveMappingIsUnsupported,
-}
 
 pub struct StreamChannel {}
 

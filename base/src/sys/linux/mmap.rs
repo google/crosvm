@@ -13,7 +13,6 @@ use libc::c_void;
 use libc::read;
 use libc::write;
 use log::warn;
-use remain::sorted;
 
 use super::Error as ErrnoError;
 use crate::pagesize;
@@ -22,35 +21,11 @@ use crate::Descriptor;
 use crate::MappedRegion;
 use crate::MemoryMapping as CrateMemoryMapping;
 use crate::MemoryMappingBuilder;
+use crate::MmapError as Error;
+use crate::MmapResult as Result;
 use crate::Protection;
 use crate::RawDescriptor;
 use crate::SafeDescriptor;
-
-#[sorted]
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("`add_fd_mapping` is unsupported")]
-    AddFdMappingIsUnsupported,
-    #[error("requested memory out of range")]
-    InvalidAddress,
-    #[error("invalid argument provided when creating mapping")]
-    InvalidArgument,
-    #[error("requested offset is out of range of off64_t")]
-    InvalidOffset,
-    #[error("requested memory range spans past the end of the region: offset={0} count={1} region_size={2}")]
-    InvalidRange(usize, usize, usize),
-    #[error("requested memory is not page aligned")]
-    NotPageAligned,
-    #[error("failed to read from file to memory: {0}")]
-    ReadToMemory(#[source] io::Error),
-    #[error("`remove_mapping` is unsupported")]
-    RemoveMappingIsUnsupported,
-    #[error("mmap related system call failed: {0}")]
-    SystemCallFailed(#[source] ErrnoError),
-    #[error("failed to write from memory to file: {0}")]
-    WriteFromMemory(#[source] io::Error),
-}
-pub type Result<T> = std::result::Result<T, Error>;
 
 /// Validates that `offset`..`offset+range_size` lies within the bounds of a memory mapping of
 /// `mmap_size` bytes.  Also checks for any overflow.
