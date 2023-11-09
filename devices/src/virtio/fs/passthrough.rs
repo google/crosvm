@@ -34,6 +34,7 @@ use base::linux::FileFlags;
 use base::syscall;
 use base::AsRawDescriptor;
 use base::FromRawDescriptor;
+use base::Protection;
 use base::RawDescriptor;
 use data_model::zerocopy_from_reader;
 use fuse::filesystem::Context;
@@ -2804,10 +2805,11 @@ impl FileSystem for PassthroughFs {
 
         let read = prot & libc::PROT_READ as u32 != 0;
         let write = prot & libc::PROT_WRITE as u32 != 0;
-        let mmap_flags = match (read, write) {
-            (true, true) => libc::O_RDWR,
-            (true, false) => libc::O_RDONLY,
-            (false, true) => libc::O_RDWR, // mmap always requires an fd opened for reading.
+        let (mmap_flags, prot) = match (read, write) {
+            (true, true) => (libc::O_RDWR, Protection::read_write()),
+            (true, false) => (libc::O_RDONLY, Protection::read()),
+            // Write-only is mapped to O_RDWR since mmap always requires an fd opened for reading.
+            (false, true) => (libc::O_RDWR, Protection::write()),
             (false, false) => return Err(io::Error::from_raw_os_error(libc::EINVAL)),
         };
 

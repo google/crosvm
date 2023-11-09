@@ -14,6 +14,8 @@ use std::os::unix::fs::FileExt;
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 
+use base::Protection;
+
 use crate::filesystem::FileSystem;
 use crate::filesystem::ZeroCopyReader;
 use crate::filesystem::ZeroCopyWriter;
@@ -145,7 +147,7 @@ impl Mapper for DevFuseMapper {
         _size: usize,
         _fd: &dyn AsRawFd,
         _file_offset: u64,
-        _prot: u32,
+        _prot: Protection,
     ) -> io::Result<()> {
         Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
     }

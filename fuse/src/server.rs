@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use base::error;
 use base::pagesize;
+use base::Protection;
 use data_model::zerocopy_from_reader;
 use zerocopy::AsBytes;
 
@@ -96,14 +97,14 @@ pub trait Mapper {
     /// * `size` - Size of memory region in bytes.
     /// * `fd` - File descriptor to mmap from.
     /// * `file_offset` - Offset in bytes from the beginning of `fd` to start the mmap.
-    /// * `prot` - Protection (e.g. `libc::PROT_READ`) of the memory region.
+    /// * `prot` - Protection of the memory region.
     fn map(
         &self,
         mem_offset: u64,
         size: usize,
         fd: &dyn AsRawFd,
         file_offset: u64,
-        prot: u32,
+        prot: Protection,
     ) -> io::Result<()>;
 
     /// Unmaps `size` bytes at `offset` bytes from the start of the memory region. `offset` must be
@@ -122,7 +123,7 @@ impl<'a, M: Mapper> Mapper for &'a M {
         size: usize,
         fd: &dyn AsRawFd,
         file_offset: u64,
-        prot: u32,
+        prot: Protection,
     ) -> io::Result<()> {
         (**self).map(mem_offset, size, fd, file_offset, prot)
     }

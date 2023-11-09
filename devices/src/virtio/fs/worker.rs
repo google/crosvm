@@ -97,7 +97,7 @@ impl fuse::Mapper for Mapper {
         size: usize,
         fd: &dyn AsRawFd,
         file_offset: u64,
-        prot: u32,
+        prot: Protection,
     ) -> io::Result<()> {
         let mem_offset: usize = mem_offset.try_into().map_err(|e| {
             error!("mem_offset {} is too big: {}", mem_offset, e);
@@ -111,7 +111,7 @@ impl fuse::Mapper for Mapper {
             fd,
             size,
             file_offset,
-            prot: Protection::from(prot as libc::c_int),
+            prot,
             mem_offset,
         };
 

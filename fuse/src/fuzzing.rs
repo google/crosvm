@@ -5,6 +5,8 @@
 use std::io;
 use std::os::unix::io::AsRawFd;
 
+use base::Protection;
+
 use crate::filesystem::DirEntry;
 use crate::filesystem::DirectoryIterator;
 use crate::filesystem::FileSystem;
@@ -38,7 +40,7 @@ impl Mapper for NullMapper {
         _size: usize,
         _fd: &dyn AsRawFd,
         _file_offset: u64,
-        _prot: u32,
+        _prot: Protection,
     ) -> io::Result<()> {
         Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
     }
