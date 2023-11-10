@@ -9,6 +9,8 @@ fdatasync: 1
 fstat64: 1
 fstatat64: 1
 fsync: 1
+# 0x1277 == BLKDISCARD.
+ioctl: arg1 == 0x1277
 open: return ENOENT
 openat: return ENOENT
 pread64: 1

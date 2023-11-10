@@ -49,6 +49,7 @@ use std::fs::remove_file;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
@@ -233,6 +234,39 @@ pub fn fallocate(file: &dyn AsRawFd, mode: FallocateMode, offset: u64, len: u64)
     // Safe since we pass in a valid fd and fallocate mode, validate offset and len,
     // and check the return value.
     syscall!(unsafe { libc::fallocate64(file.as_raw_fd(), mode.into(), offset, len) }).map(|_| ())
+}
+
+/// Safe wrapper for `fstat()`.
+pub fn fstat(f: &dyn AsRawFd) -> Result<libc::stat64> {
+    let mut st = MaybeUninit::<libc::stat64>::zeroed();
+
+    // Safe because the kernel will only write data in `st` and we check the return
+    // value.
+    syscall!(unsafe { libc::fstat64(f.as_raw_fd(), st.as_mut_ptr()) })?;
+
+    // Safe because the kernel guarantees that the struct is now fully initialized.
+    Ok(unsafe { st.assume_init() })
+}
+
+/// Checks whether a file is a block device fie or not.
+pub fn is_block_file(file: &dyn AsRawFd) -> Result<bool> {
+    let stat = fstat(file)?;
+    Ok((stat.st_mode & libc::S_IFBLK) == libc::S_IFBLK)
+}
+
+const BLOCK_IO_TYPE: u32 = 0x12;
+ioctl_io_nr!(BLKDISCARD, BLOCK_IO_TYPE, 119);
+
+/// Discards the given range of a block file.
+pub fn discard_block(file: &dyn AsRawFd, offset: u64, len: u64) -> Result<()> {
+    let range: [u64; 2] = [offset, len];
+    // # Safety
+    // Safe because
+    // - we check the return value.
+    // - ioctl(BLKDISCARD) does not hold the descriptor after the call.
+    // - ioctl(BLKDISCARD) does not break the file descriptor.
+    // - ioctl(BLKDISCARD) does not modify the given range.
+    syscall!(unsafe { libc::ioctl(file.as_raw_fd(), BLKDISCARD(), &range) }).map(|_| ())
 }
 
 /// A trait used to abstract types that provide a process id that can be operated on.
