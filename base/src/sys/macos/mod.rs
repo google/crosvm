@@ -7,7 +7,7 @@ use crate::MmapError;
 
 mod net;
 
-pub(in crate::sys) use net::sendmsg_nosignal;
+pub(in crate::sys) use libc::sendmsg;
 pub(in crate::sys) use net::sockaddr_un;
 pub(in crate::sys) use net::sockaddrv4_to_lib_c;
 pub(in crate::sys) use net::sockaddrv6_to_lib_c;

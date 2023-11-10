@@ -1589,7 +1589,7 @@ where
                             path.display(),
                         )
                     })?,
-                )),
+                )?),
             )
         } else {
             // Balloon gets a special socket so balloon requests can be forwarded
@@ -2675,7 +2675,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             let sock = UnixSeqpacket::connect(addr.clone()).with_context(|| {
                 format!("failed to connect to registered listening socket {}", addr)
             })?;
-            let tube = ProtoTube::new_from_unix_seqpacket(sock);
+            let tube = ProtoTube::new_from_unix_seqpacket(sock)?;
             Ok(AddressedProtoTube {
                 tube: Rc::new(tube),
                 socket_addr: addr,
@@ -3166,7 +3166,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     .context("failed to add descriptor to wait context")?;
                                 control_tubes.insert(
                                     id,
-                                    TaggedControlTube::Vm(Tube::new_from_unix_seqpacket(socket)),
+                                    TaggedControlTube::Vm(Tube::new_from_unix_seqpacket(socket)?),
                                 );
                             }
                             Err(e) => error!("failed to accept socket: {}", e),
@@ -4163,7 +4163,13 @@ fn start_vhost_user_control_server(
     loop {
         match control_server_socket.accept() {
             Ok(socket) => {
-                let tube = Tube::new_from_unix_seqpacket(socket);
+                let tube = match Tube::new_from_unix_seqpacket(socket) {
+                    Ok(tube) => tube,
+                    Err(e) => {
+                        error!("failed to open tube: {:#}", e);
+                        return;
+                    }
+                };
                 if let Err(e) = process_vhost_user_control_request(tube, &disk_host_tubes) {
                     error!("failed to process control request: {:#}", e);
                 }

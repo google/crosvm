@@ -766,7 +766,7 @@ impl<'a> WlResp<'a> {
 
 #[derive(Default)]
 struct WlVfd {
-    socket: Option<UnixStream>,
+    socket: Option<ScmSocket<UnixStream>>,
     guest_shared_memory: Option<SharedMemory>,
     remote_pipe: Option<File>,
     local_pipe: Option<(u32 /* flags */, File)>,
@@ -800,7 +800,7 @@ impl WlVfd {
     fn connect<P: AsRef<Path>>(path: P) -> WlResult<WlVfd> {
         let socket = UnixStream::connect(path).map_err(WlError::SocketConnect)?;
         let mut vfd = WlVfd::default();
-        vfd.socket = Some(socket);
+        vfd.socket = Some(socket.try_into().map_err(WlError::SocketConnect)?);
         Ok(vfd)
     }
 

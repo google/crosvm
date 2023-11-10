@@ -7,6 +7,9 @@ use std::net::SocketAddrV4;
 use std::net::SocketAddrV6;
 use std::os::fd::RawFd;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::net::UnixDatagram;
+use std::os::unix::net::UnixListener;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::ptr::null_mut;
 
@@ -33,6 +36,8 @@ use crate::unix::net::sun_path_offset;
 use crate::unix::net::InetVersion;
 use crate::unix::net::TcpSocket;
 use crate::SafeDescriptor;
+use crate::ScmSocket;
+use crate::StreamChannel;
 use crate::UnixSeqpacket;
 use crate::UnixSeqpacketListener;
 
@@ -158,3 +163,21 @@ impl UnixSeqpacketListener {
         }
     }
 }
+
+macro_rules! ScmSocketTryFrom {
+    ($name:ident) => {
+        impl TryFrom<$name> for ScmSocket<$name> {
+            type Error = io::Error;
+
+            fn try_from(socket: $name) -> io::Result<Self> {
+                Ok(ScmSocket { socket })
+            }
+        }
+    };
+}
+
+ScmSocketTryFrom!(StreamChannel);
+ScmSocketTryFrom!(UnixDatagram);
+ScmSocketTryFrom!(UnixListener);
+ScmSocketTryFrom!(UnixSeqpacket);
+ScmSocketTryFrom!(UnixStream);

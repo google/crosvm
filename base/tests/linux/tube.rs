@@ -67,8 +67,8 @@ fn test_serialize_tube_new() {
 #[test]
 fn test_send_recv_new_from_seqpacket() {
     let (sock_send, sock_recv) = UnixSeqpacket::pair().unwrap();
-    let tube_send = Tube::new_from_unix_seqpacket(sock_send);
-    let tube_recv = Tube::new_from_unix_seqpacket(sock_recv);
+    let tube_send = Tube::new_from_unix_seqpacket(sock_send).unwrap();
+    let tube_recv = Tube::new_from_unix_seqpacket(sock_recv).unwrap();
 
     tube_send.send(&"hi".to_string()).unwrap();
 

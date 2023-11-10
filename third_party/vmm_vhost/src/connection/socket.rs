@@ -86,7 +86,7 @@ impl ListenerTrait for Listener {
             match self.fd.accept() {
                 Ok((stream, _addr)) => {
                     return Ok(Some(Endpoint {
-                        sock: stream,
+                        sock: stream.try_into()?,
                         _r: PhantomData,
                     }))
                 }
@@ -123,14 +123,14 @@ impl AsRawDescriptor for Listener {
 
 /// Unix domain socket endpoint for vhost-user connection.
 pub struct Endpoint<R: Req> {
-    sock: SystemStream,
+    sock: ScmSocket<SystemStream>,
     _r: PhantomData<R>,
 }
 
 impl<R: Req> From<SystemStream> for Endpoint<R> {
     fn from(sock: SystemStream) -> Self {
         Self {
-            sock,
+            sock: sock.try_into().unwrap(),
             _r: PhantomData,
         }
     }
@@ -236,7 +236,7 @@ impl<T: Req> AsRawDescriptor for Endpoint<T> {
 
 impl<T: Req> AsMut<SystemStream> for Endpoint<T> {
     fn as_mut(&mut self) -> &mut SystemStream {
-        &mut self.sock
+        self.sock.inner_mut()
     }
 }
 

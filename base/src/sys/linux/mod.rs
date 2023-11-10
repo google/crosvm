@@ -90,7 +90,7 @@ use libc::O_CLOEXEC;
 use libc::SIGKILL;
 use libc::WNOHANG;
 pub use mmap::*;
-pub(in crate::sys) use net::sendmsg_nosignal;
+pub(in crate::sys) use net::sendmsg_nosignal as sendmsg;
 pub(in crate::sys) use net::sockaddr_un;
 pub(in crate::sys) use net::sockaddrv4_to_lib_c;
 pub(in crate::sys) use net::sockaddrv6_to_lib_c;

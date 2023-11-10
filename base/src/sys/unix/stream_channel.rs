@@ -15,6 +15,7 @@ use serde::Serialize;
 
 use super::super::net::UnixSeqpacket;
 use crate::descriptor::AsRawDescriptor;
+use crate::IntoRawDescriptor;
 use crate::RawDescriptor;
 use crate::ReadNotifier;
 use crate::Result;
@@ -239,6 +240,15 @@ impl AsRawDescriptor for &StreamChannel {
         match &self.stream {
             SocketType::Byte(sock) => sock.as_raw_descriptor(),
             SocketType::Message(sock) => sock.as_raw_descriptor(),
+        }
+    }
+}
+
+impl IntoRawDescriptor for StreamChannel {
+    fn into_raw_descriptor(self) -> RawFd {
+        match self.stream {
+            SocketType::Byte(sock) => sock.into_raw_descriptor(),
+            SocketType::Message(sock) => sock.into_raw_descriptor(),
         }
     }
 }

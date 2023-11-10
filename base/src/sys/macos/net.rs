@@ -6,8 +6,10 @@ use std::io;
 use std::mem::size_of;
 use std::net::SocketAddrV4;
 use std::net::SocketAddrV6;
-use std::os::fd::RawFd;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::net::UnixDatagram;
+use std::os::unix::net::UnixListener;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::ptr::null_mut;
 
@@ -17,14 +19,11 @@ use libc::close;
 use libc::fcntl;
 use libc::in6_addr;
 use libc::in_addr;
-use libc::msghdr;
 use libc::sa_family_t;
-use libc::sendmsg;
 use libc::setsockopt;
 use libc::sockaddr_in;
 use libc::sockaddr_in6;
 use libc::socklen_t;
-use libc::ssize_t;
 use libc::AF_INET;
 use libc::AF_INET6;
 use libc::FD_CLOEXEC;
@@ -41,28 +40,44 @@ use crate::unix::net::TcpSocket;
 use crate::AsRawDescriptor;
 use crate::FromRawDescriptor;
 use crate::SafeDescriptor;
+use crate::ScmSocket;
+use crate::StreamChannel;
 use crate::UnixSeqpacket;
 use crate::UnixSeqpacketListener;
 
-pub(in crate::sys) unsafe fn sendmsg_nosignal(
-    fd: RawFd,
-    msg: *const msghdr,
-    flags: c_int,
-) -> ssize_t {
-    let set: c_int = 1;
-    if setsockopt(
-        fd,
-        SOL_SOCKET,
-        SO_NOSIGPIPE,
-        &set as *const c_int as *const c_void,
-        size_of::<c_int>() as socklen_t,
-    ) < 0
-    {
-        -1
-    } else {
-        sendmsg(fd, msg, flags)
-    }
+macro_rules! ScmSocketTryFrom {
+    ($name:ident) => {
+        impl TryFrom<$name> for ScmSocket<$name> {
+            type Error = io::Error;
+
+            fn try_from(socket: $name) -> io::Result<Self> {
+                let set = 1;
+                let set_ptr = &set as *const c_int as *const c_void;
+                let size = size_of::<c_int>() as socklen_t;
+                let res = unsafe {
+                    setsockopt(
+                        socket.as_raw_descriptor(),
+                        SOL_SOCKET,
+                        SO_NOSIGPIPE,
+                        set_ptr,
+                        size,
+                    )
+                };
+                if res < 0 {
+                    Err(io::Error::last_os_error())
+                } else {
+                    Ok(ScmSocket { socket })
+                }
+            }
+        }
+    };
 }
+
+ScmSocketTryFrom!(StreamChannel);
+ScmSocketTryFrom!(UnixDatagram);
+ScmSocketTryFrom!(UnixListener);
+ScmSocketTryFrom!(UnixSeqpacket);
+ScmSocketTryFrom!(UnixStream);
 
 pub(crate) fn sockaddrv4_to_lib_c(s: &SocketAddrV4) -> sockaddr_in {
     sockaddr_in {

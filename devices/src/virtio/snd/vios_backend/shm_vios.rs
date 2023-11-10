@@ -169,8 +169,11 @@ pub struct VioSClientSnapshot {
 impl VioSClient {
     /// Create a new client given the path to the audio server's socket.
     pub fn try_new<P: AsRef<Path>>(server: P) -> Result<VioSClient> {
-        let client_socket = UnixSeqpacket::connect(server.as_ref())
-            .map_err(|e| Error::ServerConnectionError(e, server.as_ref().into()))?;
+        let client_socket = ScmSocket::try_from(
+            UnixSeqpacket::connect(server.as_ref())
+                .map_err(|e| Error::ServerConnectionError(e, server.as_ref().into()))?,
+        )
+        .map_err(|e| Error::ServerConnectionError(e, server.as_ref().into()))?;
         let mut config: VioSConfig = Default::default();
         let mut fds: Vec<RawFd> = Vec::new();
         const NUM_FDS: usize = 5;
@@ -247,7 +250,7 @@ impl VioSClient {
             jacks: Vec::new(),
             streams: Vec::new(),
             chmaps: Vec::new(),
-            control_socket: Mutex::new(client_socket),
+            control_socket: Mutex::new(client_socket.into_inner()),
             event_socket,
             tx: IoBufferQueue::new(tx_socket, tx_shm_file)?,
             rx: IoBufferQueue::new(rx_socket, rx_shm_file)?,

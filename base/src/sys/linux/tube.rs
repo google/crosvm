@@ -36,7 +36,7 @@ const TUBE_MAX_FDS: usize = 32;
 /// Bidirectional tube that support both send and recv.
 #[derive(Serialize, Deserialize)]
 pub struct Tube {
-    socket: StreamChannel,
+    socket: ScmSocket<StreamChannel>,
 }
 
 impl Tube {
@@ -55,17 +55,21 @@ impl Tube {
     /// underlying socket type), otherwise, this method returns an error.
     pub fn new(socket: StreamChannel) -> Result<Tube> {
         match socket.get_framing_mode() {
-            FramingMode::Message => Ok(Tube { socket }),
+            FramingMode::Message => Ok(Tube {
+                socket: socket.try_into().map_err(Error::DupDescriptor)?,
+            }),
             FramingMode::Byte => Err(Error::InvalidFramingMode),
         }
     }
 
     /// Create a new `Tube` from a UnixSeqpacket. The StreamChannel is implicitly constructed to
     /// have the right FramingMode by being constructed from a UnixSeqpacket.
-    pub fn new_from_unix_seqpacket(sock: UnixSeqpacket) -> Tube {
-        Tube {
-            socket: StreamChannel::from_unix_seqpacket(sock),
-        }
+    pub fn new_from_unix_seqpacket(sock: UnixSeqpacket) -> Result<Tube> {
+        Ok(Tube {
+            socket: StreamChannel::from_unix_seqpacket(sock)
+                .try_into()
+                .map_err(Error::DupDescriptor)?,
+        })
     }
 
     /// DO NOT USE this method directly as it will become private soon (b/221484449). Use a
@@ -73,6 +77,7 @@ impl Tube {
     #[deprecated]
     pub fn try_clone(&self) -> Result<Self> {
         self.socket
+            .inner()
             .try_clone()
             .map(Tube::new)
             .map_err(Error::Clone)?
@@ -95,7 +100,7 @@ impl Tube {
     }
 
     pub fn recv<T: DeserializeOwned>(&self) -> Result<T> {
-        let msg_size = handle_eintr!(self.socket.peek_size()).map_err(Error::Recv)?;
+        let msg_size = handle_eintr!(self.socket.inner().peek_size()).map_err(Error::Recv)?;
         // This buffer is the right size, as the size received in peek_size() represents the size
         // of only the message itself and not the file descriptors. The descriptors are stored
         // separately in msghdr::msg_control.
@@ -131,12 +136,14 @@ impl Tube {
 
     pub fn set_send_timeout(&self, timeout: Option<Duration>) -> Result<()> {
         self.socket
+            .inner()
             .set_write_timeout(timeout)
             .map_err(Error::SetSendTimeout)
     }
 
     pub fn set_recv_timeout(&self, timeout: Option<Duration>) -> Result<()> {
         self.socket
+            .inner()
             .set_read_timeout(timeout)
             .map_err(Error::SetRecvTimeout)
     }
@@ -154,7 +161,7 @@ impl Tube {
 
     #[cfg(feature = "proto_tube")]
     fn recv_proto<M: protobuf::Message>(&self) -> Result<M> {
-        let msg_size = handle_eintr!(self.socket.peek_size()).map_err(Error::Recv)?;
+        let msg_size = handle_eintr!(self.socket.inner().peek_size()).map_err(Error::Recv)?;
         let mut msg_bytes = vec![0u8; msg_size];
         let mut msg_descriptors_full = [0; TUBE_MAX_FDS];
 
@@ -179,7 +186,7 @@ impl AsRawDescriptor for Tube {
 
 impl AsRawFd for Tube {
     fn as_raw_fd(&self) -> RawFd {
-        self.socket.as_raw_fd()
+        self.socket.inner().as_raw_fd()
     }
 }
 
@@ -221,8 +228,8 @@ impl ProtoTube {
         self.0.recv_proto()
     }
 
-    pub fn new_from_unix_seqpacket(sock: UnixSeqpacket) -> ProtoTube {
-        ProtoTube(Tube::new_from_unix_seqpacket(sock))
+    pub fn new_from_unix_seqpacket(sock: UnixSeqpacket) -> Result<ProtoTube> {
+        Ok(ProtoTube(Tube::new_from_unix_seqpacket(sock)?))
     }
 }
 

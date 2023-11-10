@@ -19,7 +19,6 @@ use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::ops::Deref;
 use std::os::unix::ffi::OsStringExt;
-use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::path::PathBuf;
 use std::ptr::null_mut;
@@ -41,10 +40,9 @@ use log::warn;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::sock_ctrl_msg::ScmSocket;
-use super::sock_ctrl_msg::SCM_SOCKET_MAX_FD_COUNT;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::IntoRawDescriptor;
 use crate::handle_eintr_errno;
 use crate::sys::sockaddr_un;
 use crate::sys::sockaddrv4_to_lib_c;
@@ -450,25 +448,6 @@ impl UnixSeqpacket {
         Ok(buf)
     }
 
-    /// Read data and fds from the socket fd to a new pair of `Vec`.
-    ///
-    /// # Returns
-    /// * `Vec<u8>` - A new `Vec` with the entire received packet's bytes.
-    /// * `Vec<RawFd>` - A new `Vec` with the entire received packet's fds.
-    ///
-    /// # Errors
-    /// Returns error when `recv_with_fds` or `get_readable_bytes` failed.
-    pub fn recv_as_vec_with_fds(&self) -> io::Result<(Vec<u8>, Vec<RawFd>)> {
-        let packet_size = self.next_packet_size()?;
-        let mut buf = vec![0; packet_size];
-        let mut fd_buf = vec![-1; SCM_SOCKET_MAX_FD_COUNT];
-        let (read_bytes, read_fds) =
-            self.recv_with_fds(io::IoSliceMut::new(&mut buf), &mut fd_buf)?;
-        buf.resize(read_bytes, 0);
-        fd_buf.resize(read_fds, -1);
-        Ok((buf, fd_buf))
-    }
-
     #[allow(clippy::useless_conversion)]
     fn set_timeout(&self, timeout: Option<Duration>, kind: libc::c_int) -> io::Result<()> {
         let timeval = match timeout {
@@ -555,6 +534,12 @@ impl FromRawDescriptor for UnixSeqpacket {
 impl AsRawDescriptor for UnixSeqpacket {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.0.as_raw_descriptor()
+    }
+}
+
+impl IntoRawDescriptor for UnixSeqpacket {
+    fn into_raw_descriptor(self) -> RawDescriptor {
+        self.0.into_raw_descriptor()
     }
 }
 

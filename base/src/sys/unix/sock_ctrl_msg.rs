@@ -12,11 +12,8 @@ use std::io::IoSliceMut;
 use std::mem::size_of;
 use std::mem::size_of_val;
 use std::mem::MaybeUninit;
-use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
-use std::os::unix::net::UnixDatagram;
-use std::os::unix::net::UnixStream;
 use std::ptr::copy_nonoverlapping;
 use std::ptr::null_mut;
 use std::ptr::write_unaligned;
@@ -32,11 +29,12 @@ use libc::msghdr;
 use libc::recvmsg;
 use libc::SCM_RIGHTS;
 use libc::SOL_SOCKET;
+use serde::Deserialize;
+use serde::Serialize;
 
-use super::net::UnixSeqpacket;
-use super::StreamChannel;
-use crate::sys::sendmsg_nosignal;
+use crate::sys::sendmsg;
 use crate::AsRawDescriptor;
+use crate::RawDescriptor;
 
 // Each of the following functions performs the same function as their C counterparts. They are
 // reimplemented as const fns here because they are used to size statically allocated arrays.
@@ -161,7 +159,7 @@ fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> io::
 
     // Safe because the msghdr was properly constructed from valid (or null) pointers of the
     // indicated length and we check the return value.
-    let write_count = unsafe { sendmsg_nosignal(fd, &msg, 0) };
+    let write_count = unsafe { sendmsg(fd, &msg, 0) };
 
     if write_count == -1 {
         Err(io::Error::last_os_error())
@@ -235,10 +233,15 @@ pub const SCM_SOCKET_MAX_FD_COUNT: usize = 253;
 
 /// Trait for file descriptors can send and receive socket control messages via `sendmsg` and
 /// `recvmsg`.
-pub trait ScmSocket {
-    /// Gets the file descriptor of this socket.
-    fn socket_fd(&self) -> RawFd;
+///
+/// On Linux, this uses MSG_NOSIGNAL to avoid triggering signals. On MacOS, this sets the
+/// SO_NOSIGPIPE option on the file descriptor to avoid triggering signals.
+#[derive(Serialize, Deserialize)]
+pub struct ScmSocket<T: AsRawDescriptor> {
+    pub(in crate::sys) socket: T,
+}
 
+impl<T: AsRawDescriptor> ScmSocket<T> {
     /// Sends the given data and file descriptor over the socket.
     ///
     /// On success, returns the number of bytes sent.
@@ -249,7 +252,7 @@ pub trait ScmSocket {
     ///
     /// * `buf` - A buffer of data to send on the `socket`.
     /// * `fd` - A file descriptors to be sent.
-    fn send_with_fd<D: AsIobuf>(&self, buf: &[D], fd: RawFd) -> io::Result<usize> {
+    pub fn send_with_fd<D: AsIobuf>(&self, buf: &[D], fd: RawFd) -> io::Result<usize> {
         self.send_with_fds(buf, &[fd])
     }
 
@@ -263,8 +266,8 @@ pub trait ScmSocket {
     ///
     /// * `buf` - A buffer of data to send on the `socket`.
     /// * `fds` - A list of file descriptors to be sent.
-    fn send_with_fds<D: AsIobuf>(&self, buf: &[D], fd: &[RawFd]) -> io::Result<usize> {
-        raw_sendmsg(self.socket_fd(), buf, fd)
+    pub fn send_with_fds<D: AsIobuf>(&self, buf: &[D], fd: &[RawFd]) -> io::Result<usize> {
+        raw_sendmsg(self.socket.as_raw_descriptor(), buf, fd)
     }
 
     /// Sends the given data and file descriptor over the socket.
@@ -277,7 +280,7 @@ pub trait ScmSocket {
     ///
     /// * `bufs` - A slice of slices of data to send on the `socket`.
     /// * `fd` - A file descriptors to be sent.
-    fn send_bufs_with_fd(&self, bufs: &[IoSlice], fd: RawFd) -> io::Result<usize> {
+    pub fn send_bufs_with_fd(&self, bufs: &[IoSlice], fd: RawFd) -> io::Result<usize> {
         self.send_bufs_with_fds(bufs, &[fd])
     }
 
@@ -291,8 +294,8 @@ pub trait ScmSocket {
     ///
     /// * `bufs` - A slice of slices of data to send on the `socket`.
     /// * `fds` - A list of file descriptors to be sent.
-    fn send_bufs_with_fds(&self, bufs: &[IoSlice], fd: &[RawFd]) -> io::Result<usize> {
-        raw_sendmsg(self.socket_fd(), bufs, fd)
+    pub fn send_bufs_with_fds(&self, bufs: &[IoSlice], fd: &[RawFd]) -> io::Result<usize> {
+        raw_sendmsg(self.socket.as_raw_descriptor(), bufs, fd)
     }
 
     /// Receives data and potentially a file descriptor from the socket.
@@ -304,7 +307,7 @@ pub trait ScmSocket {
     /// # Arguments
     ///
     /// * `buf` - A buffer to receive data from the socket.vm
-    fn recv_with_fd(&self, buf: IoSliceMut) -> io::Result<(usize, Option<File>)> {
+    pub fn recv_with_fd(&self, buf: IoSliceMut) -> io::Result<(usize, Option<File>)> {
         let mut fd = [0];
         let (read_count, fd_count) = self.recv_with_fds(buf, &mut fd)?;
         let file = if fd_count == 0 {
@@ -332,8 +335,8 @@ pub trait ScmSocket {
     ///           returned tuple. The caller owns these file descriptors, but they will not be
     ///           closed on drop like a `File`-like type would be. It is recommended that each valid
     ///           file descriptor gets wrapped in a drop type that closes it after this returns.
-    fn recv_with_fds(&self, buf: IoSliceMut, fds: &mut [RawFd]) -> io::Result<(usize, usize)> {
-        raw_recvmsg(self.socket_fd(), &mut [buf], fds)
+    pub fn recv_with_fds(&self, buf: IoSliceMut, fds: &mut [RawFd]) -> io::Result<(usize, usize)> {
+        raw_recvmsg(self.socket.as_raw_descriptor(), &mut [buf], fds)
     }
 
     /// Receives data and file descriptors from the socket.
@@ -354,36 +357,33 @@ pub trait ScmSocket {
     ///           returned tuple. The caller owns these file descriptors, but they will not be
     ///           closed on drop like a `File`-like type would be. It is recommended that each valid
     ///           file descriptor gets wrapped in a drop type that closes it after this returns.
-    fn recv_iovecs_with_fds(
+    pub fn recv_iovecs_with_fds(
         &self,
         iovecs: &mut [IoSliceMut],
         fds: &mut [RawFd],
     ) -> io::Result<(usize, usize)> {
-        raw_recvmsg(self.socket_fd(), iovecs, fds)
+        raw_recvmsg(self.socket.as_raw_descriptor(), iovecs, fds)
+    }
+
+    /// Returns a reference to the wrapped instance.
+    pub fn inner(&self) -> &T {
+        &self.socket
+    }
+
+    /// Returns a mutable reference to the wrapped instance.
+    pub fn inner_mut(&mut self) -> &mut T {
+        &mut self.socket
+    }
+
+    /// Returns the inner object, destroying the ScmSocket.
+    pub fn into_inner(self) -> T {
+        self.socket
     }
 }
 
-impl ScmSocket for UnixDatagram {
-    fn socket_fd(&self) -> RawFd {
-        self.as_raw_fd()
-    }
-}
-
-impl ScmSocket for UnixStream {
-    fn socket_fd(&self) -> RawFd {
-        self.as_raw_fd()
-    }
-}
-
-impl ScmSocket for UnixSeqpacket {
-    fn socket_fd(&self) -> RawFd {
-        self.as_raw_descriptor()
-    }
-}
-
-impl ScmSocket for StreamChannel {
-    fn socket_fd(&self) -> RawFd {
-        self.as_raw_fd()
+impl<T: AsRawDescriptor> AsRawDescriptor for ScmSocket<T> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.socket.as_raw_descriptor()
     }
 }
 
@@ -451,6 +451,7 @@ unsafe impl<'a> AsIobuf for VolatileSlice<'a> {
 mod tests {
     use std::io::Write;
     use std::mem::size_of;
+    use std::os::fd::AsRawFd;
     use std::os::unix::net::UnixDatagram;
     use std::slice::from_raw_parts;
 
@@ -481,7 +482,11 @@ mod tests {
 
     #[test]
     fn send_recv_no_fd() {
-        let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
+        let (u1, u2) = UnixDatagram::pair().expect("failed to create socket pair");
+        let (s1, s2) = (
+            ScmSocket::try_from(u1).unwrap(),
+            ScmSocket::try_from(u2).unwrap(),
+        );
 
         let send_buf = [1u8, 1, 2, 21, 34, 55];
         let ioslice = IoSlice::new(&send_buf);
@@ -517,7 +522,11 @@ mod tests {
 
     #[test]
     fn send_recv_only_fd() {
-        let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
+        let (u1, u2) = UnixDatagram::pair().expect("failed to create socket pair");
+        let (s1, s2) = (
+            ScmSocket::try_from(u1).unwrap(),
+            ScmSocket::try_from(u2).unwrap(),
+        );
 
         let evt = Event::new().expect("failed to create event");
         let ioslice = IoSlice::new([].as_ref());
@@ -536,8 +545,8 @@ mod tests {
 
         assert_eq!(read_count, 0);
         assert!(file.as_raw_fd() >= 0);
-        assert_ne!(file.as_raw_fd(), s1.as_raw_fd());
-        assert_ne!(file.as_raw_fd(), s2.as_raw_fd());
+        assert_ne!(file.as_raw_fd(), s1.as_raw_descriptor());
+        assert_ne!(file.as_raw_fd(), s2.as_raw_descriptor());
         assert_ne!(file.as_raw_fd(), evt.as_raw_descriptor());
 
         file.write_all(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
@@ -548,7 +557,11 @@ mod tests {
 
     #[test]
     fn send_recv_with_fd() {
-        let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
+        let (u1, u2) = UnixDatagram::pair().expect("failed to create socket pair");
+        let (s1, s2) = (
+            ScmSocket::try_from(u1).unwrap(),
+            ScmSocket::try_from(u2).unwrap(),
+        );
 
         let evt = Event::new().expect("failed to create event");
         let ioslice = IoSlice::new([237].as_ref());
@@ -568,8 +581,8 @@ mod tests {
         assert_eq!(buf[0], 237);
         assert_eq!(file_count, 1);
         assert!(files[0] >= 0);
-        assert_ne!(files[0], s1.as_raw_fd());
-        assert_ne!(files[0], s2.as_raw_fd());
+        assert_ne!(files[0], s1.as_raw_descriptor());
+        assert_ne!(files[0], s2.as_raw_descriptor());
         assert_ne!(files[0], evt.as_raw_descriptor());
 
         let mut file = unsafe { File::from_raw_fd(files[0]) };

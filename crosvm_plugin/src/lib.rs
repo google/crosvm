@@ -271,7 +271,7 @@ fn printstats() {}
 
 pub struct crosvm {
     id_allocator: Arc<IdAllocator>,
-    socket: UnixDatagram,
+    socket: ScmSocket<UnixDatagram>,
     request_buffer: Vec<u8>,
     response_buffer: Vec<u8>,
     vcpus: Arc<[crosvm_vcpu]>,
@@ -281,7 +281,7 @@ impl crosvm {
     fn from_connection(socket: UnixDatagram) -> result::Result<crosvm, c_int> {
         let mut crosvm = crosvm {
             id_allocator: Default::default(),
-            socket,
+            socket: socket.try_into().map_err(|_| -1)?,
             request_buffer: Vec::new(),
             response_buffer: vec![0; MAX_DATAGRAM_SIZE],
             vcpus: Arc::new([]),
@@ -297,7 +297,7 @@ impl crosvm {
     ) -> crosvm {
         crosvm {
             id_allocator,
-            socket,
+            socket: socket.try_into().unwrap(),
             request_buffer: Vec::new(),
             response_buffer: vec![0; MAX_DATAGRAM_SIZE],
             vcpus,

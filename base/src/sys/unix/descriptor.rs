@@ -196,6 +196,7 @@ FromRawDescriptor!(UnixDatagram);
 IntoRawDescriptor!(File);
 IntoRawDescriptor!(OwnedFd);
 IntoRawDescriptor!(UnixDatagram);
+IntoRawDescriptor!(UnixStream);
 AsRawDescriptor!(Stdin);
 AsRawDescriptor!(Stdout);
 AsRawDescriptor!(Stderr);

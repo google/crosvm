@@ -121,7 +121,7 @@ pub enum ProcessStatus {
 pub struct Process {
     started: bool,
     plugin_pid: pid_t,
-    request_sockets: Vec<UnixDatagram>,
+    request_sockets: Vec<ScmSocket<UnixDatagram>>,
     objects: HashMap<u32, PluginObject>,
     shared_vcpu_state: Arc<RwLock<SharedVcpuState>>,
     per_vcpu_states: Vec<Arc<Mutex<PerVcpuState>>>,
@@ -204,7 +204,7 @@ impl Process {
         Ok(Process {
             started: false,
             plugin_pid,
-            request_sockets: vec![request_socket],
+            request_sockets: vec![request_socket.try_into()?],
             objects: Default::default(),
             shared_vcpu_state: Default::default(),
             per_vcpu_states,
@@ -253,7 +253,7 @@ impl Process {
     /// If any socket in this slice becomes readable, `handle_socket` should be called with the
     /// index of that socket. If any socket becomes closed, its index should be passed to
     /// `drop_sockets`.
-    pub fn sockets(&self) -> &[UnixDatagram] {
+    pub fn sockets(&self) -> &[ScmSocket<UnixDatagram>] {
         &self.request_sockets
     }
 
@@ -635,7 +635,11 @@ impl Process {
             response.mut_new_connection();
             match new_seqpacket_pair() {
                 Ok((request_socket, child_socket)) => {
-                    self.request_sockets.push(request_socket);
+                    self.request_sockets.push(
+                        request_socket
+                            .try_into()
+                            .map_err(|_| CommError::PluginSocketHup)?,
+                    );
                     response_fds.push(child_socket.as_raw_descriptor());
                     boxed_fds.push(box_owned_fd(child_socket));
                     Ok(())
