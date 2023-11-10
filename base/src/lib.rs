@@ -72,6 +72,7 @@ pub use wait_context::TriggeredEvent;
 pub use wait_context::WaitContext;
 pub use worker_thread::WorkerThread;
 pub use write_zeroes::PunchHole;
+pub use write_zeroes::PunchHoleMut;
 pub use write_zeroes::WriteZeroesAt;
 
 // TODO(b/233233301): reorganize platform specific exports under platform

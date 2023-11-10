@@ -27,6 +27,7 @@ use base::FileAllocate;
 use base::FileReadWriteAtVolatile;
 use base::FileSetLen;
 use base::FileSync;
+use base::PunchHoleMut;
 use base::RawDescriptor;
 use base::WriteZeroesAt;
 use cros_async::Executor;
@@ -49,7 +50,6 @@ use crate::AsyncDisk;
 use crate::AsyncDiskFileWrapper;
 use crate::DiskFile;
 use crate::DiskGetLen;
-use crate::PunchHoleMut;
 use crate::ToAsyncDisk;
 
 #[sorted]

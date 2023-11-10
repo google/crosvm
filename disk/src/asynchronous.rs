@@ -13,6 +13,7 @@ use base::AsRawDescriptors;
 use base::FileAllocate;
 use base::FileSetLen;
 use base::FileSync;
+use base::PunchHoleMut;
 use base::RawDescriptor;
 use base::WriteZeroesAt;
 use cros_async::BackingMemory;
@@ -24,7 +25,6 @@ use crate::AsyncDisk;
 use crate::DiskFile;
 use crate::DiskGetLen;
 use crate::Error;
-use crate::PunchHoleMut;
 use crate::Result;
 
 /// Async wrapper around a non-async `DiskFile` using a `BlockingPool`.

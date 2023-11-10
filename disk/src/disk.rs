@@ -20,7 +20,6 @@ use base::AsRawDescriptors;
 use base::FileAllocate;
 use base::FileReadWriteAtVolatile;
 use base::FileSetLen;
-use base::PunchHole;
 use cros_async::BackingMemory;
 use cros_async::Executor;
 use cros_async::IoSource;
@@ -152,17 +151,6 @@ impl DiskGetLen for File {
         let end = s.seek(SeekFrom::End(0))?;
         s.seek(SeekFrom::Start(orig_seek))?;
         Ok(end)
-    }
-}
-
-pub trait PunchHoleMut {
-    /// Replace a range of bytes with a hole.
-    fn punch_hole_mut(&mut self, offset: u64, length: u64) -> io::Result<()>;
-}
-
-impl<T: PunchHole> PunchHoleMut for T {
-    fn punch_hole_mut(&mut self, offset: u64, length: u64) -> io::Result<()> {
-        self.punch_hole(offset, length)
     }
 }
 

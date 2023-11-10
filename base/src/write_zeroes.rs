@@ -19,6 +19,18 @@ impl PunchHole for File {
     }
 }
 
+/// A trait for deallocating space in a file of a mutable reference
+pub trait PunchHoleMut {
+    /// Replace a range of bytes with a hole.
+    fn punch_hole_mut(&mut self, offset: u64, length: u64) -> io::Result<()>;
+}
+
+impl<T: PunchHole> PunchHoleMut for T {
+    fn punch_hole_mut(&mut self, offset: u64, length: u64) -> io::Result<()> {
+        self.punch_hole(offset, length)
+    }
+}
+
 /// A trait for writing zeroes to an arbitrary position in a file.
 pub trait WriteZeroesAt {
     /// Write up to `length` bytes of zeroes starting at `offset`, returning how many bytes were
