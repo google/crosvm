@@ -69,7 +69,7 @@ COMMON_ARGS = [
     # Use tmpfs in the container for faster performance.
     "--mount type=tmpfs,destination=/tmp",
     # KVM is required to run a VM for testing.
-    "--device /dev/kvm" if os.path.isfile("/dev/kvm") else None,
+    "--device /dev/kvm" if Path("/dev/kvm").is_char_device() else None,
     # Enable terminal colors
     f"--env TERM={os.environ.get('TERM', 'xterm-256color')}",
     # Pass through NEXTEST_PROFILE for use by run_tests.
