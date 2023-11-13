@@ -173,4 +173,16 @@ impl virtio_input_event {
             }),
         }
     }
+
+    /// If the event is EV_LED for the given LED code, return if it is on.
+    pub fn get_led_state(&self, led_code: u16) -> Option<bool> {
+        if self.type_ == EV_LED && self.code == led_code {
+            return match self.value.to_native() {
+                0 => Some(false),
+                1 => Some(true),
+                _ => None,
+            };
+        }
+        None
+    }
 }

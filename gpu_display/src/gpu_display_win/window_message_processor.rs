@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
+#[cfg(feature = "kiwi")]
 use base::error;
 use base::warn;
 use base::Tube;
@@ -20,6 +21,7 @@ use winapi::shared::minwindef::UINT;
 use winapi::shared::minwindef::WPARAM;
 use winapi::um::winuser::*;
 
+use super::keyboard_input_manager::KeyboardInputManager;
 use super::window::GuiWindow;
 use super::window::MessagePacket;
 use super::window_message_dispatcher::DisplayEventDispatcher;
@@ -120,10 +122,10 @@ impl WindowMessageProcessor {
         &mut self,
         event_device_kind: EventDeviceKind,
         event: virtio_input_event,
+        keyboard_input_manager: &KeyboardInputManager,
     ) {
-        match &mut self.surface {
-            Some(surface) => surface.handle_event_device(&self.window, event_device_kind, event),
-            None => error!("Cannot handle event device because surface has not been created!",),
+        if event_device_kind == EventDeviceKind::Keyboard {
+            keyboard_input_manager.handle_guest_event(event);
         }
     }
 
@@ -138,7 +140,11 @@ impl WindowMessageProcessor {
         }
     }
 
-    pub fn process_message(&mut self, packet: &MessagePacket) -> LRESULT {
+    pub fn process_message(
+        &mut self,
+        packet: &MessagePacket,
+        keyboard_input_manager: &KeyboardInputManager,
+    ) -> LRESULT {
         // Surface may read window states so we should update them first.
         self.window.update_states(packet.msg, packet.w_param);
 
@@ -156,6 +162,7 @@ impl WindowMessageProcessor {
         let _trace_event = Self::new_trace_event(packet.msg);
 
         let window_message: WindowMessage = packet.into();
+        keyboard_input_manager.handle_window_message(&window_message);
         surface
             .handle_window_message(&self.window, window_message)
             .unwrap_or_else(|| self.window.default_process_message(packet))

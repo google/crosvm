@@ -28,6 +28,9 @@ use std::os::windows::io::RawHandle;
 use std::ptr;
 use std::slice;
 
+mod keyboard;
+pub use keyboard::*;
+
 use libc::c_ulong;
 use serde::Deserialize;
 use serde::Serialize;

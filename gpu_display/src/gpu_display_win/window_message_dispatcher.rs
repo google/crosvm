@@ -24,6 +24,7 @@ use winapi::shared::minwindef::LRESULT;
 use winapi::shared::windef::HWND;
 use winapi::um::winuser::*;
 
+use super::keyboard_input_manager::KeyboardInputManager;
 use super::window::BasicWindow;
 use super::window::GuiWindow;
 use super::window::MessageOnlyWindow;
@@ -107,6 +108,7 @@ impl Default for DisplayEventDispatcher {
 pub(crate) struct WindowMessageDispatcher {
     message_router_window: Option<MessageOnlyWindow>,
     message_processor: Option<WindowMessageProcessor>,
+    keyboard_input_manager: KeyboardInputManager,
     display_event_dispatcher: DisplayEventDispatcher,
     gpu_main_display_tube: Option<Rc<Tube>>,
     // The dispatcher is pinned so that its address in the memory won't change, and it is always
@@ -125,10 +127,12 @@ impl WindowMessageDispatcher {
         gpu_main_display_tube: Option<Rc<Tube>>,
     ) -> Result<Pin<Box<Self>>> {
         static CONTEXT_MESSAGE: &str = "When creating WindowMessageDispatcher";
+        let display_event_dispatcher = DisplayEventDispatcher::new();
         let mut dispatcher = Box::pin(Self {
             message_router_window: Some(message_router_window),
             message_processor: Default::default(),
-            display_event_dispatcher: DisplayEventDispatcher::new(),
+            keyboard_input_manager: KeyboardInputManager::new(display_event_dispatcher.clone()),
+            display_event_dispatcher,
             gpu_main_display_tube,
             _pinned_marker: PhantomPinned,
         });
@@ -190,7 +194,7 @@ impl WindowMessageDispatcher {
         // Second, check if the message is targeting our GUI window.
         if let Some(processor) = &mut self.message_processor {
             if processor.window().is_same_window(hwnd) {
-                let ret = processor.process_message(packet);
+                let ret = processor.process_message(packet, &self.keyboard_input_manager);
                 // If the destruction of window completes, drop the message processor so that
                 // associated resources can be cleaned up before the window is completely gone.
                 if packet.msg == WM_NCDESTROY {
@@ -294,7 +298,7 @@ impl WindowMessageDispatcher {
                     .display_event_dispatcher
                     .read_from_device(event_device_id)
                 {
-                    processor.handle_event_device(kind, event);
+                    processor.handle_event_device(kind, event, &self.keyboard_input_manager);
                 }
             }
             None => {
