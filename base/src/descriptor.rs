@@ -5,6 +5,7 @@
 use std::fs::File;
 use std::mem;
 use std::mem::ManuallyDrop;
+use std::sync::Arc;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -61,6 +62,15 @@ pub trait FromRawDescriptor {
 impl AsRawDescriptor for SafeDescriptor {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.descriptor
+    }
+}
+
+impl<T> AsRawDescriptor for Arc<T>
+where
+    T: AsRawDescriptor,
+{
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.as_ref().as_raw_descriptor()
     }
 }
 

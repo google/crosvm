@@ -317,15 +317,11 @@ impl<F: AsRawDescriptor> PollSource<F> {
         if *self.is_block_file.get_or_try_init(|| {
             is_block_file(&self.registered_source.duped_fd).map_err(Error::CheckingBlockFile)
         })? {
-            discard_block(
-                &self.registered_source.duped_fd.as_raw_fd(),
-                file_offset,
-                len,
-            )
-            .map_err(|e| AsyncError::Poll(Error::Discard(e)))
+            discard_block(&self.registered_source.duped_fd, file_offset, len)
+                .map_err(|e| AsyncError::Poll(Error::Discard(e)))
         } else {
             fallocate(
-                &self.registered_source.duped_fd.as_raw_fd(),
+                &self.registered_source.duped_fd,
                 FallocateMode::PunchHole,
                 file_offset,
                 len,
@@ -337,7 +333,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
     /// write_zeroes_at
     pub async fn write_zeroes_at(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
         fallocate(
-            &self.registered_source.duped_fd.as_raw_fd(),
+            &self.registered_source.duped_fd,
             FallocateMode::ZeroRange,
             file_offset,
             len,

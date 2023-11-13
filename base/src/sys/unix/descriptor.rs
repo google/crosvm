@@ -11,6 +11,7 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use std::net::UdpSocket;
 use std::ops::Drop;
+use std::os::fd::OwnedFd;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::IntoRawFd;
@@ -181,6 +182,7 @@ macro_rules! IntoRawDescriptor {
 // descriptor container. That should go to either SafeDescriptor or another more
 // relevant container type.
 AsRawDescriptor!(File);
+AsRawDescriptor!(OwnedFd);
 AsRawDescriptor!(TcpListener);
 AsRawDescriptor!(TcpStream);
 AsRawDescriptor!(UdpSocket);
@@ -188,9 +190,11 @@ AsRawDescriptor!(UnixDatagram);
 AsRawDescriptor!(UnixListener);
 AsRawDescriptor!(UnixStream);
 FromRawDescriptor!(File);
+FromRawDescriptor!(OwnedFd);
 FromRawDescriptor!(UnixStream);
 FromRawDescriptor!(UnixDatagram);
 IntoRawDescriptor!(File);
+IntoRawDescriptor!(OwnedFd);
 IntoRawDescriptor!(UnixDatagram);
 AsRawDescriptor!(Stdin);
 AsRawDescriptor!(Stdout);

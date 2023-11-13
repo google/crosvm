@@ -130,10 +130,9 @@ impl<F: AsRawDescriptor> UringSource<F> {
     /// Deallocates the given range of a file. Note this op blocks if the file is a block device.
     pub async fn punch_hole(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
         if *self.is_block_file.get_or_try_init(|| {
-            is_block_file(&self.source.as_raw_descriptor())
-                .map_err(super::uring_executor::Error::CheckingBlockFile)
+            is_block_file(&self.source).map_err(super::uring_executor::Error::CheckingBlockFile)
         })? {
-            discard_block(&self.source.as_raw_descriptor(), file_offset, len)
+            discard_block(&self.source, file_offset, len)
                 .map_err(|e| AsyncError::Uring(super::uring_executor::Error::Discard(e)))?;
         } else {
             let op = self.registered_source.start_fallocate(
