@@ -190,21 +190,21 @@ def main(
 
     To run all unit tests for the hosts native architecture:
 
-    $ ./tools/run_tests2
+    $ ./tools/run_tests
 
     To run all unit tests for another supported architecture using an emulator (e.g. wine64,
     qemu user space emulation).
 
-    $ ./tools/run_tests2 -p aarch64
-    $ ./tools/run_tests2 -p armhw
-    $ ./tools/run_tests2 -p mingw64
+    $ ./tools/run_tests -p aarch64
+    $ ./tools/run_tests -p armhw
+    $ ./tools/run_tests -p mingw64
 
     # Integration Tests
 
     Integration tests can be run on a built-in virtual machine:
 
-    $ ./tools/run_tests2 --dut=vm
-    $ ./tools/run_tests2 --dut=vm -p aarch64
+    $ ./tools/run_tests --dut=vm
+    $ ./tools/run_tests --dut=vm -p aarch64
 
     The virtual machine is automatically started for the test process and can be managed via the
     `./tools/x86vm` or `./tools/aarch64vm` tools.
@@ -212,7 +212,7 @@ def main(
     Integration tests can be run on the host machine as well, but cannot be guaranteed to work on
     all configurations.
 
-    $ ./tools/run_tests2 --dut=host
+    $ ./tools/run_tests --dut=host
 
     # Test Filtering
 
@@ -220,7 +220,7 @@ def main(
 
     For example to run all tests in `my-crate` and all crates that depend on it:
 
-    $ ./tools/run_tests2 [--dut=] -E 'rdeps(my-crate)'
+    $ ./tools/run_tests [--dut=] -E 'rdeps(my-crate)'
     """
     chdir(CROSVM_ROOT)
 
