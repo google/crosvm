@@ -98,8 +98,8 @@ impl DescriptorChainRegions {
             .collect()
     }
 
-    /// Like 'get_remaining_with_count' except convert the offsets to volatile slices in the
-    /// 'GuestMemory' given by 'mem'.
+    /// Like 'get_remaining_regions_with_count' except convert the offsets to volatile slices in
+    /// the 'GuestMemory' given by 'mem'.
     fn get_remaining_with_count<'mem>(
         &self,
         mem: &'mem GuestMemory,
