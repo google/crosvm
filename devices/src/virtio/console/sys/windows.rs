@@ -112,7 +112,7 @@ pub(in crate::virtio::console) fn spawn_input_thread(
             Ok(()) => (),
         }
 
-        read_input(&mut rx, thread_in_avail_evt, buffer, kill_evt);
+        read_input(&mut rx, &thread_in_avail_evt, buffer, kill_evt);
         rx
     });
     (buffer_cloned, res)
@@ -120,7 +120,7 @@ pub(in crate::virtio::console) fn spawn_input_thread(
 
 pub(in crate::virtio::console) fn read_input(
     rx: &mut Box<named_pipes::PipeConnection>,
-    thread_in_avail_evt: Event,
+    thread_in_avail_evt: &Event,
     buffer: Arc<Mutex<VecDeque<u8>>>,
     kill_evt: Event,
 ) {

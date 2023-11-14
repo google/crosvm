@@ -454,12 +454,7 @@ impl VirtioDevice for Console {
 
             let kill_evt = Event::new().unwrap();
             let _ = kill_evt.signal();
-            sys::read_input(
-                read,
-                self.in_avail_evt.try_clone().unwrap(),
-                input_buffer.clone(),
-                kill_evt,
-            );
+            sys::read_input(read, &self.in_avail_evt, input_buffer.clone(), kill_evt);
             self.input_buffer = std::mem::take(&mut input_buffer.lock());
         };
         serde_json::to_value(ConsoleSnapshot {
