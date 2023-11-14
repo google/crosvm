@@ -136,6 +136,8 @@ use std::convert::TryFrom;
 
 use futures::channel::oneshot;
 use hypervisor::ProtectionType;
+use serde::Deserialize;
+use serde::Serialize;
 use virtio_sys::virtio_config::VIRTIO_F_ACCESS_PLATFORM;
 use virtio_sys::virtio_config::VIRTIO_F_VERSION_1;
 use virtio_sys::virtio_ids;
@@ -148,7 +150,8 @@ const INTERRUPT_STATUS_CONFIG_CHANGED: u32 = 0x2;
 
 const VIRTIO_MSI_NO_VECTOR: u16 = 0xffff;
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(u32)]
 pub enum DeviceType {
     Net = virtio_ids::VIRTIO_ID_NET,
@@ -157,6 +160,7 @@ pub enum DeviceType {
     Rng = virtio_ids::VIRTIO_ID_RNG,
     Balloon = virtio_ids::VIRTIO_ID_BALLOON,
     Scsi = virtio_ids::VIRTIO_ID_SCSI,
+    #[serde(rename = "9p")]
     P9 = virtio_ids::VIRTIO_ID_9P,
     Gpu = virtio_ids::VIRTIO_ID_GPU,
     Input = virtio_ids::VIRTIO_ID_INPUT,
@@ -165,8 +169,11 @@ pub enum DeviceType {
     Sound = virtio_ids::VIRTIO_ID_SOUND,
     Fs = virtio_ids::VIRTIO_ID_FS,
     Pmem = virtio_ids::VIRTIO_ID_PMEM,
+    #[serde(rename = "mac80211-hwsim")]
     Mac80211HwSim = virtio_ids::VIRTIO_ID_MAC80211_HWSIM,
+    #[serde(rename = "video-encoder")]
     VideoEnc = virtio_ids::VIRTIO_ID_VIDEO_ENCODER,
+    #[serde(rename = "video-decoder")]
     VideoDec = virtio_ids::VIRTIO_ID_VIDEO_DECODER,
     Scmi = virtio_ids::VIRTIO_ID_SCMI,
     Wl = virtio_ids::VIRTIO_ID_WL,
@@ -221,7 +228,7 @@ impl std::fmt::Display for DeviceType {
             DeviceType::Gpu => write!(f, "gpu"),
             DeviceType::Vsock => write!(f, "vsock"),
             DeviceType::Iommu => write!(f, "iommu"),
-            DeviceType::Sound => write!(f, "snd"),
+            DeviceType::Sound => write!(f, "sound"),
             DeviceType::Fs => write!(f, "fs"),
             DeviceType::Pmem => write!(f, "pmem"),
             DeviceType::Wl => write!(f, "wl"),
@@ -229,7 +236,7 @@ impl std::fmt::Display for DeviceType {
             DeviceType::Pvclock => write!(f, "pvclock"),
             DeviceType::VideoDec => write!(f, "video-decoder"),
             DeviceType::VideoEnc => write!(f, "video-encoder"),
-            DeviceType::Mac80211HwSim => write!(f, "mac-80211-hw-sim"),
+            DeviceType::Mac80211HwSim => write!(f, "mac80211-hwsim"),
             DeviceType::Scmi => write!(f, "scmi"),
         }
     }

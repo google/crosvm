@@ -282,8 +282,8 @@ fn vhost_user_host_to_guest() {
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
     let config = Config::new().extra_args(vec![
-        "--vhost-user-vsock".to_string(),
-        socket.path().to_str().unwrap().to_string(),
+        "--vhost-user".to_string(),
+        format!("vsock,socket={}", socket.path().to_str().unwrap()),
     ]);
 
     let mut vm = TestVm::new(config).unwrap();
@@ -300,8 +300,8 @@ fn vhost_user_host_to_guest_with_devices() {
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
     let config = Config::new().extra_args(vec![
-        "--vhost-user-vsock".to_string(),
-        socket.path().to_str().unwrap().to_string(),
+        "--vhost-user".to_string(),
+        format!("vsock,socket={}", socket.path().to_str().unwrap()),
     ]);
 
     let mut vm = TestVm::new(config).unwrap();
@@ -318,8 +318,8 @@ fn vhost_user_guest_to_host() {
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
     let config = Config::new().extra_args(vec![
-        "--vhost-user-vsock".to_string(),
-        socket.path().to_str().unwrap().to_string(),
+        "--vhost-user".to_string(),
+        format!("vsock,socket={}", socket.path().to_str().unwrap()),
     ]);
 
     let mut vm = TestVm::new(config).unwrap();
@@ -336,8 +336,8 @@ fn vhost_user_guest_to_host_with_devices() {
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
     let config = Config::new().extra_args(vec![
-        "--vhost-user-vsock".to_string(),
-        socket.path().to_str().unwrap().to_string(),
+        "--vhost-user".to_string(),
+        format!("vsock,socket={}", socket.path().to_str().unwrap()),
     ]);
 
     let mut vm = TestVm::new(config).unwrap();

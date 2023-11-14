@@ -78,6 +78,7 @@ use devices::vfio::VfioCommonSetup;
 use devices::vfio::VfioCommonTrait;
 #[cfg(feature = "gpu")]
 use devices::virtio;
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceType;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::EventDevice;
@@ -221,10 +222,6 @@ fn create_virtio_devices(
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
-    for opt in &cfg.vhost_user_gpu {
-        devs.push(create_vhost_user_gpu_device(cfg.protection_type, opt)?);
-    }
-
     #[cfg(any(feature = "gpu", feature = "video-decoder", feature = "video-encoder"))]
     let mut resource_bridges = Vec::<Tube>::new();
 
@@ -365,17 +362,6 @@ fn create_virtio_devices(
         );
     }
 
-    for blk in &cfg.vhost_user_blk {
-        devs.push(create_vhost_user_block_device(cfg.protection_type, blk)?);
-    }
-
-    for console in &cfg.vhost_user_console {
-        devs.push(create_vhost_user_console_device(
-            cfg.protection_type,
-            console,
-        )?);
-    }
-
     for (index, pmem_disk) in cfg.pmem_devices.iter().enumerate() {
         let pmem_device_tube = pmem_device_tubes.remove(0);
         devs.push(create_pmem_device(
@@ -507,18 +493,6 @@ fn create_virtio_devices(
         devs.push(dev);
     }
 
-    for net in &cfg.vhost_user_net {
-        devs.push(create_vhost_user_net_device(cfg.protection_type, net)?);
-    }
-
-    for vsock in &cfg.vhost_user_vsock {
-        devs.push(create_vhost_user_vsock_device(cfg.protection_type, vsock)?);
-    }
-
-    for opt in &cfg.vhost_user_wl {
-        devs.push(create_vhost_user_wl_device(cfg.protection_type, opt)?);
-    }
-
     #[cfg(feature = "audio")]
     {
         for virtio_snd in &cfg.virtio_snds {
@@ -542,13 +516,6 @@ fn create_virtio_devices(
                 VideoDeviceType::Decoder,
             )?;
         }
-    }
-    for socket_path in &cfg.vhost_user_video_dec {
-        devs.push(create_vhost_user_video_device(
-            cfg.protection_type,
-            socket_path,
-            VideoDeviceType::Decoder,
-        )?);
     }
 
     #[cfg(feature = "video-encoder")]
@@ -585,13 +552,6 @@ fn create_virtio_devices(
         devs.push(create_vhost_user_fs_device(
             cfg.protection_type,
             vhost_user_fs,
-        )?);
-    }
-
-    for vhost_user_snd in &cfg.vhost_user_snd {
-        devs.push(create_vhost_user_snd_device(
-            cfg.protection_type,
-            vhost_user_snd,
         )?);
     }
 
@@ -636,13 +596,6 @@ fn create_virtio_devices(
         devs.push(dev);
     }
 
-    if let Some(vhost_user_mac80211_hwsim) = &cfg.vhost_user_mac80211_hwsim {
-        devs.push(create_vhost_user_mac80211_hwsim_device(
-            cfg.protection_type,
-            vhost_user_mac80211_hwsim,
-        )?);
-    }
-
     #[cfg(feature = "audio")]
     if let Some(path) = &cfg.sound {
         devs.push(create_sound_device(
@@ -650,6 +603,10 @@ fn create_virtio_devices(
             cfg.protection_type,
             &cfg.jail_config,
         )?);
+    }
+
+    for opt in &cfg.vhost_user {
+        devs.push(create_vhost_user_frontend(cfg.protection_type, opt)?);
     }
 
     Ok(devs)

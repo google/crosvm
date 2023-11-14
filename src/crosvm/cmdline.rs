@@ -36,6 +36,7 @@ use devices::virtio::scsi::ScsiOption;
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
 use devices::virtio::vsock::VsockConfig;
+use devices::virtio::DeviceType;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuDisplayParameters;
 #[cfg(feature = "gpu")]
@@ -89,6 +90,7 @@ use crate::crosvm::config::HypervisorKind;
 use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::config::MemOptions;
 use crate::crosvm::config::TouchDeviceOption;
+use crate::crosvm::config::VhostUserFrontendOption;
 use crate::crosvm::config::VhostUserFsOption;
 use crate::crosvm::config::VhostUserOption;
 #[cfg(feature = "plugin")]
@@ -2229,14 +2231,28 @@ pub struct RunCommand {
     /// use vhost for scmi
     pub vhost_scmi: Option<bool>,
 
+    #[argh(
+        option,
+        arg_name = "[type=]TYPE,socket=SOCKET_PATH[,max-queue-size=NUM]"
+    )]
+    #[serde(default)]
+    #[merge(strategy = append)]
+    /// comma separated key=value pairs for connecting to a
+    /// vhost-user backend.
+    /// Possible key values:
+    ///     type=TYPE - Virtio device type (net, block, etc.)
+    ///     socket=SOCKET_PATH - Path to vhost-user socket.
+    ///     max-queue-size=NUM - Limit maximum queue size (must be a power of two).
+    pub vhost_user: Vec<VhostUserFrontendOption>,
+
     #[argh(option, arg_name = "SOCKET_PATH")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = append)]
     /// path to a socket for vhost-user block
     pub vhost_user_blk: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = append)]
     /// path to a socket for vhost-user console
     pub vhost_user_console: Vec<VhostUserOption>,
@@ -2246,49 +2262,49 @@ pub struct RunCommand {
         arg_name = "[socket=]SOCKET_PATH,tag=TAG[,max-queue-size=NUM]",
         from_str_fn(parse_vhost_user_fs_option)
     )]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = append)]
     /// path to a socket path for vhost-user fs, and tag for the shared dir
     pub vhost_user_fs: Vec<VhostUserFsOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = append)]
     /// paths to a vhost-user socket for gpu
     pub vhost_user_gpu: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = overwrite_option)]
     /// path to a socket for vhost-user mac80211_hwsim
     pub vhost_user_mac80211_hwsim: Option<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = append)]
     /// path to a socket for vhost-user net
     pub vhost_user_net: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = append)]
     /// path to a socket for vhost-user snd
     pub vhost_user_snd: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
-    #[serde(default)]
+    #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = append)]
     /// path to a socket for vhost-user video decoder
     pub vhost_user_video_decoder: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = append)]
     /// path to a socket for vhost-user vsock
     pub vhost_user_vsock: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = overwrite_option)]
     /// path to a vhost-user socket for wayland
     pub vhost_user_wl: Option<VhostUserOption>,
@@ -2574,7 +2590,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         {
             cfg.sound = cmd.sound;
         }
-        cfg.vhost_user_snd = cmd.vhost_user_snd;
 
         for serial_params in cmd.serial {
             super::sys::config::check_serial_params(&serial_params)?;
@@ -3183,15 +3198,41 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.balloon_bias = b * 1024 * 1024;
         }
 
-        cfg.vhost_user_blk = cmd.vhost_user_blk;
-        cfg.vhost_user_console = cmd.vhost_user_console;
+        cfg.vhost_user = cmd.vhost_user;
+
+        // Convert an option from `VhostUserOption` to `VhostUserFrontendOption` with the given
+        // device type.
+        fn vu(
+            opt: impl IntoIterator<Item = VhostUserOption>,
+            type_: DeviceType,
+        ) -> impl Iterator<Item = VhostUserFrontendOption> {
+            opt.into_iter().map(move |o| {
+                log::warn!(
+                    "`--vhost-user-*` is deprecated; use `--vhost-user {},socket={}` instead",
+                    type_,
+                    o.socket.display(),
+                );
+                VhostUserFrontendOption {
+                    type_,
+                    socket: o.socket,
+                    max_queue_size: o.max_queue_size,
+                }
+            })
+        }
+
+        cfg.vhost_user.extend(
+            vu(cmd.vhost_user_blk, DeviceType::Block)
+                .chain(vu(cmd.vhost_user_console, DeviceType::Console))
+                .chain(vu(cmd.vhost_user_gpu, DeviceType::Gpu))
+                .chain(vu(cmd.vhost_user_mac80211_hwsim, DeviceType::Mac80211HwSim))
+                .chain(vu(cmd.vhost_user_net, DeviceType::Net))
+                .chain(vu(cmd.vhost_user_snd, DeviceType::Sound))
+                .chain(vu(cmd.vhost_user_video_decoder, DeviceType::VideoDec))
+                .chain(vu(cmd.vhost_user_vsock, DeviceType::Vsock))
+                .chain(vu(cmd.vhost_user_wl, DeviceType::Wl)),
+        );
+
         cfg.vhost_user_fs = cmd.vhost_user_fs;
-        cfg.vhost_user_gpu = cmd.vhost_user_gpu;
-        cfg.vhost_user_mac80211_hwsim = cmd.vhost_user_mac80211_hwsim;
-        cfg.vhost_user_net = cmd.vhost_user_net;
-        cfg.vhost_user_video_dec = cmd.vhost_user_video_decoder;
-        cfg.vhost_user_vsock = cmd.vhost_user_vsock;
-        cfg.vhost_user_wl = cmd.vhost_user_wl;
 
         cfg.disable_virtio_intx = cmd.disable_virtio_intx.unwrap_or_default();
 

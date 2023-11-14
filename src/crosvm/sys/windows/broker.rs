@@ -95,6 +95,7 @@ use devices::virtio::vhost::user::device::snd::sys::windows::SndSplitConfig;
 use devices::virtio::vhost::user::device::snd::sys::windows::SndVmmConfig;
 #[cfg(feature = "net")]
 use devices::virtio::vhost::user::device::NetBackendConfig;
+use devices::virtio::DeviceType;
 #[cfg(feature = "gpu")]
 use gpu_display::EventDevice;
 #[cfg(feature = "gpu")]
@@ -649,7 +650,11 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
     let snd_cfg = platform_create_snd(&cfg, &mut main_child, &mut exit_events)?;
 
     #[cfg(feature = "audio")]
-    let _snd_child = if cfg.vhost_user_snd.is_empty() {
+    let _snd_child = if !cfg
+        .vhost_user
+        .iter()
+        .any(|opt| opt.type_ == DeviceType::Sound)
+    {
         // Pass both backend and frontend configs to main process.
         cfg.snd_split_config = Some(snd_cfg);
         None
@@ -694,7 +699,11 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
     )?;
 
     #[cfg(feature = "gpu")]
-    let _gpu_child = if cfg.vhost_user_gpu.is_empty() {
+    let _gpu_child = if !cfg
+        .vhost_user
+        .iter()
+        .any(|opt| opt.type_ == DeviceType::Gpu)
+    {
         // Pass both backend and frontend configs to main process.
         cfg.gpu_backend_config = Some(gpu_cfg.0);
         cfg.gpu_vmm_config = Some(gpu_cfg.1);

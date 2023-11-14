@@ -127,8 +127,8 @@ fn run_vhost_user_test(cmd_type: CmdType, config: VmConfig) {
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
     let config = config.extra_args(vec![
-        "--vhost-user-blk".to_string(),
-        socket.path().to_str().unwrap().to_string(),
+        "--vhost-user".to_string(),
+        format!("block,socket={}", socket.path().to_str().unwrap()),
     ]);
     let mut vm = TestVm::new(config).unwrap();
     assert_eq!(

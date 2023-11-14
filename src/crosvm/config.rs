@@ -41,6 +41,7 @@ use devices::virtio::vhost::user::device::gpu::sys::windows::WindowProcedureThre
 #[cfg(all(windows, feature = "audio"))]
 use devices::virtio::vhost::user::device::snd::sys::windows::SndSplitConfig;
 use devices::virtio::vsock::VsockConfig;
+use devices::virtio::DeviceType;
 #[cfg(feature = "net")]
 use devices::virtio::NetParameters;
 use devices::FwCfgParameters;
@@ -157,6 +158,20 @@ pub struct MemOptions {
 #[derive(Serialize, Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct VhostUserOption {
+    pub socket: PathBuf,
+
+    /// Maximum number of entries per queue (default: 32768)
+    pub max_queue_size: Option<u16>,
+}
+
+#[derive(Serialize, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct VhostUserFrontendOption {
+    /// Device type
+    #[serde(rename = "type")]
+    pub type_: devices::virtio::DeviceType,
+
+    /// Path to the vhost-user backend socket to connect to
     pub socket: PathBuf,
 
     /// Maximum number of entries per queue (default: 32768)
@@ -765,16 +780,8 @@ pub struct Config {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     pub vhost_scmi_device: PathBuf,
-    pub vhost_user_blk: Vec<VhostUserOption>,
-    pub vhost_user_console: Vec<VhostUserOption>,
+    pub vhost_user: Vec<VhostUserFrontendOption>,
     pub vhost_user_fs: Vec<VhostUserFsOption>,
-    pub vhost_user_gpu: Vec<VhostUserOption>,
-    pub vhost_user_mac80211_hwsim: Option<VhostUserOption>,
-    pub vhost_user_net: Vec<VhostUserOption>,
-    pub vhost_user_snd: Vec<VhostUserOption>,
-    pub vhost_user_video_dec: Vec<VhostUserOption>,
-    pub vhost_user_vsock: Vec<VhostUserOption>,
-    pub vhost_user_wl: Option<VhostUserOption>,
     #[cfg(feature = "video-decoder")]
     pub video_dec: Vec<VideoDeviceConfig>,
     #[cfg(feature = "video-encoder")]
@@ -976,16 +983,8 @@ impl Default for Config {
             #[cfg(any(target_os = "android", target_os = "linux"))]
             #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
             vhost_scmi_device: PathBuf::from(VHOST_SCMI_PATH),
-            vhost_user_blk: Vec::new(),
-            vhost_user_console: Vec::new(),
-            vhost_user_video_dec: Vec::new(),
+            vhost_user: Vec::new(),
             vhost_user_fs: Vec::new(),
-            vhost_user_gpu: Vec::new(),
-            vhost_user_mac80211_hwsim: None,
-            vhost_user_net: Vec::new(),
-            vhost_user_snd: Vec::new(),
-            vhost_user_vsock: Vec::new(),
-            vhost_user_wl: None,
             vsock: None,
             #[cfg(feature = "video-decoder")]
             video_dec: Vec::new(),
@@ -1158,7 +1157,9 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
 
     set_default_serial_parameters(
         &mut cfg.serial_parameters,
-        !cfg.vhost_user_console.is_empty(),
+        cfg.vhost_user
+            .iter()
+            .any(|opt| opt.type_ == DeviceType::Console),
     );
 
     for mapping in cfg.file_backed_mappings.iter_mut() {
@@ -1767,6 +1768,48 @@ mod tests {
         let opt: VhostUserOption = from_key_values("/10mm,max-queue-size=256").unwrap();
         assert_eq!(opt.socket.to_str(), Some("/10mm"));
         assert_eq!(opt.max_queue_size, Some(256));
+    }
+
+    #[test]
+    fn parse_vhost_user_option_all_device_types() {
+        fn test_device_type(type_string: &str, type_: DeviceType) {
+            let vhost_user_arg = format!("{},socket=sock", type_string);
+
+            let cfg = TryInto::<Config>::try_into(
+                crate::crosvm::cmdline::RunCommand::from_args(
+                    &[],
+                    &["--vhost-user", &vhost_user_arg, "/dev/null"],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+            assert_eq!(cfg.vhost_user.len(), 1);
+            let vu = &cfg.vhost_user[0];
+            assert_eq!(vu.type_, type_);
+        }
+
+        test_device_type("net", DeviceType::Net);
+        test_device_type("block", DeviceType::Block);
+        test_device_type("console", DeviceType::Console);
+        test_device_type("rng", DeviceType::Rng);
+        test_device_type("balloon", DeviceType::Balloon);
+        test_device_type("scsi", DeviceType::Scsi);
+        test_device_type("9p", DeviceType::P9);
+        test_device_type("gpu", DeviceType::Gpu);
+        test_device_type("input", DeviceType::Input);
+        test_device_type("vsock", DeviceType::Vsock);
+        test_device_type("iommu", DeviceType::Iommu);
+        test_device_type("sound", DeviceType::Sound);
+        test_device_type("fs", DeviceType::Fs);
+        test_device_type("pmem", DeviceType::Pmem);
+        test_device_type("mac80211-hwsim", DeviceType::Mac80211HwSim);
+        test_device_type("video-encoder", DeviceType::VideoEnc);
+        test_device_type("video-decoder", DeviceType::VideoDec);
+        test_device_type("scmi", DeviceType::Scmi);
+        test_device_type("wl", DeviceType::Wl);
+        test_device_type("tpm", DeviceType::Tpm);
+        test_device_type("pvclock", DeviceType::Pvclock);
     }
 
     #[test]

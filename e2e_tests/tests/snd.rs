@@ -55,7 +55,10 @@ fn do_playback_with_vhost_user() {
 
     let config = get_test_vm_config(
         temp_dir_path_str,
-        vec!["--vhost-user-snd".to_string(), socket_path_str.to_string()],
+        vec![
+            "--vhost-user".to_string(),
+            format!("sound,socket={}", socket_path_str),
+        ],
     );
     playback_and_check(config, temp_dir)
 }

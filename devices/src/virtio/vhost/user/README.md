@@ -21,7 +21,7 @@ $ crosvm devices --block vhost=/path/to/socket,path=/path/to/block.img
 Then start a VM with a vhost-user block device by specifying the same socket path.
 
 ```bash
-$ crosvm run -r rootfs.img --vhost-user-blk /path/to/socket <crosvm arguments>
+$ crosvm run -r rootfs.img --vhost-user block,socket=/path/to/socket <crosvm arguments>
 ```
 
 [vhost-user]: https://qemu.readthedocs.io/en/latest/interop/vhost-user.html

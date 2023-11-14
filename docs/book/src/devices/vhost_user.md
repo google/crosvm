@@ -28,11 +28,11 @@ VHOST_USER_SOCK=/tmp/vhost-user.socket
 crosvm devices --block vhost=${VHOST_USER_SOCK},path=disk.img
 ```
 
-Then, open another terminal and start a vmm process with `--vhost-user-blk` flag.
+Then, open another terminal and start a vmm process with `--vhost-user` flag.
 
 ```sh
 crosvm run \
-  --vhost-user-blk "${VHOST_USER_SOCK}" \
+  --vhost-user block,socket="${VHOST_USER_SOCK}" \
   <usual crosvm arguments>
   /path/to/bzImage
 ```
