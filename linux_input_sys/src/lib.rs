@@ -150,20 +150,27 @@ impl virtio_input_event {
 
     #[inline]
     pub fn touch(has_contact: bool) -> virtio_input_event {
-        Self::key(BTN_TOUCH, has_contact)
+        Self::key(BTN_TOUCH, has_contact, false)
     }
 
     #[inline]
     pub fn finger_tool(active: bool) -> virtio_input_event {
-        Self::key(BTN_TOOL_FINGER, active)
+        Self::key(BTN_TOOL_FINGER, active, false)
     }
 
+    /// Repeated keys must set the `repeat` option if the key was already down, or repeated keys
+    /// will not be seen correctly by the guest.
     #[inline]
-    pub fn key(code: u16, pressed: bool) -> virtio_input_event {
+    pub fn key(code: u16, down: bool, repeat: bool) -> virtio_input_event {
         virtio_input_event {
             type_: Le16::from(EV_KEY),
             code: Le16::from(code),
-            value: SLe32::from(i32::from(pressed)),
+            value: SLe32::from(match (down, repeat) {
+                (true, true) => 2,
+                (true, false) => 1,
+                // repeat is not meaningful for key up events.
+                _ => 0,
+            }),
         }
     }
 }
