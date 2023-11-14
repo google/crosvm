@@ -86,6 +86,7 @@ pub fn set_vcpu_thread_scheduling(
     enable_per_vm_core_scheduling: bool,
     vcpu_cgroup_tasks_file: Option<File>,
     run_rt: bool,
+    vcpu_nice: Option<i32>,
 ) -> anyhow::Result<()> {
     if !vcpu_affinity.is_empty() {
         if let Err(e) = set_cpu_affinity(vcpu_affinity) {
@@ -112,6 +113,11 @@ pub fn set_vcpu_thread_scheduling(
             .and_then(|_| set_rt_round_robin(i32::from(DEFAULT_VCPU_RT_LEVEL)))
         {
             warn!("Failed to set vcpu to real time: {}", e);
+        }
+    } else {
+        // Only modify the nice value of the vCPU thread if one has been specified.
+        if let Some(vcpu_threads_nice) = vcpu_nice {
+            set_thread_nice(vcpu_threads_nice)?;
         }
     }
 
@@ -477,6 +483,7 @@ pub fn run_vcpu<V>(
     vcpu_cgroup_tasks_file: Option<File>,
     #[cfg(target_arch = "x86_64")] bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
     run_mode: VmRunMode,
+    vcpu_nice: Option<i32>,
 ) -> Result<JoinHandle<()>>
 where
     V: VcpuArch + 'static,
@@ -494,6 +501,7 @@ where
                     enable_per_vm_core_scheduling,
                     vcpu_cgroup_tasks_file,
                     run_rt && !delay_rt,
+                    vcpu_nice,
                 ) {
                     error!("vcpu thread setup failed: {:#}", e);
                     return ExitState::Stop;

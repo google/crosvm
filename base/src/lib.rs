@@ -96,7 +96,8 @@ cfg_if::cfg_if! {
         pub use linux::{
             drop_capabilities, pipe, read_raw_stdin
         };
-        pub use linux::{enable_core_scheduling, set_rt_prio_limit, set_rt_round_robin};
+        pub use linux::{
+            enable_core_scheduling, set_rt_prio_limit, set_rt_round_robin, set_thread_nice};
         pub use linux::{flock, FlockOperation};
         pub use linux::{getegid, geteuid};
         pub use linux::{gettid, kill_process_group, reap_child};

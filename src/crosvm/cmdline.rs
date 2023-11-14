@@ -2166,6 +2166,13 @@ pub struct RunCommand {
     /// move all vCPU threads to this CGroup (default: nothing moves)
     pub vcpu_cgroup_path: Option<PathBuf>,
 
+    #[cfg(unix)]
+    #[argh(option, arg_name = "NICE_VALUE")]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// adjust the nice value of the vCPU threads
+    pub vcpu_nice: Option<i32>,
+
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(
         option,
@@ -2515,6 +2522,11 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.vcpu_cgroup_path = cmd.vcpu_cgroup_path;
+
+        #[cfg(unix)]
+        {
+            cfg.vcpu_nice = cmd.vcpu_nice;
+        }
 
         cfg.no_smt = cmd.no_smt.unwrap_or_default();
 
