@@ -22,7 +22,6 @@ dirs=(
     io_uring
     kernel_loader
     kvm_sys
-    media/ffmpeg
     media/libvda
     net_sys
     vfio_sys

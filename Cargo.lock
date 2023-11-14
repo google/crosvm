@@ -1050,6 +1050,7 @@ name = "ffmpeg"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bindgen 0.63.0",
  "libc",
  "pkg-config",
  "thiserror",

@@ -9,8 +9,15 @@ mod avutil;
 pub use avutil::*;
 mod error;
 pub use error::*;
-mod ffmpeg;
-use crate::ffmpeg as ffi;
+mod ffi {
+    #![allow(clippy::missing_safety_doc)]
+    #![allow(clippy::upper_case_acronyms)]
+    #![allow(non_upper_case_globals)]
+    #![allow(non_camel_case_types)]
+    #![allow(non_snake_case)]
+    #![allow(dead_code)]
+    include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+}
 pub mod swscale;
 
 pub use ffi::AVPictureType_AV_PICTURE_TYPE_I;

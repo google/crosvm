@@ -10,4 +10,5 @@ libc = "*"
 thiserror = "*"
 
 [build-dependencies]
+bindgen = "0.63"
 pkg-config = "*"
