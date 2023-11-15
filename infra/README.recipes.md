@@ -122,7 +122,7 @@ This recipe requires ambient luci authentication. To test locally run:
 [DEPS](/infra/recipes/build_linux.py#11): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/json][recipe_engine/recipe_modules/json], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/raw\_io][recipe_engine/recipe_modules/raw_io], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 
-&mdash; **def [RunSteps](/infra/recipes/build_linux.py#73)(api, properties):**
+&mdash; **def [RunSteps](/infra/recipes/build_linux.py#74)(api, properties):**
 
 &mdash; **def [collect\_binary\_sizes](/infra/recipes/build_linux.py#24)(api, properties):**
 ### *recipes* / [build\_windows](/infra/recipes/build_windows.py)

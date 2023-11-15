@@ -28,6 +28,11 @@ strip = "symbols"
 inherits = "chromeos"
 lto = true
 
+# Set codegen units to 1 to further reduce binary size.
+[profile.largecodegen]
+inherits = "lto"
+codegen-units = 1
+
 [workspace]
 # Explicitly list all crates of crosvm as workspace members since not all of them may be referenced
 # by dependencies.

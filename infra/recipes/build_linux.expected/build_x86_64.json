@@ -95,7 +95,8 @@
       "./tools/build_release",
       "--json",
       "--platform=x86_64",
-      "--strip"
+      "--profile",
+      "chromeos"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {

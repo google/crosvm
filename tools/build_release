@@ -135,6 +135,9 @@ def main():
         help="Output in JSON instead of human readable format.",
     )
     parser.add_argument("--strip", action="store_true", help="Strip output binaries")
+    parser.add_argument(
+        "--build-profile", help="Select compile profile, default to release.", default="release"
+    )
     pgo_group = parser.add_mutually_exclusive_group()
     pgo_group.add_argument(
         "--profile-generate",
@@ -167,7 +170,8 @@ def main():
 
     features = build_target.feature_flag
     cargo_args = [
-        "--release",
+        "--profile",
+        args.build_profile,
         "--features=" + features,
         f"--target={build_target}",
         "--workspace",
