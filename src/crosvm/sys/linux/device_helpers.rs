@@ -336,6 +336,7 @@ pub fn create_vhost_user_frontend(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
         opt.max_queue_size,
+        opt.pci_address,
     )
     .context("failed to set up vhost-user frontend")?;
 

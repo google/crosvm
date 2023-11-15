@@ -33,6 +33,7 @@ use crate::virtio::QueueConfig;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::VirtioDevice;
+use crate::PciAddress;
 
 pub struct VhostUserVirtioDevice {
     device_type: DeviceType,
@@ -41,6 +42,7 @@ pub struct VhostUserVirtioDevice {
     queue_sizes: Vec<u16>,
     cfg: Option<Vec<u8>>,
     expose_shmem_descriptors_with_viommu: bool,
+    pci_address: Option<PciAddress>,
 }
 
 // Returns the largest power of two that is less than or equal to `val`.
@@ -69,6 +71,7 @@ impl VhostUserVirtioDevice {
         base_features: u64,
         connection: Connection,
         max_queue_size: Option<u16>,
+        pci_address: Option<PciAddress>,
     ) -> Result<VhostUserVirtioDevice> {
         VhostUserVirtioDevice::new_internal(
             connection,
@@ -76,6 +79,7 @@ impl VhostUserVirtioDevice {
             max_queue_size,
             base_features,
             None, // cfg
+            pci_address,
         )
     }
 
@@ -95,6 +99,7 @@ impl VhostUserVirtioDevice {
         max_queue_size: Option<u16>,
         base_features: u64,
         cfg: Option<&[u8]>,
+        pci_address: Option<PciAddress>,
     ) -> Result<VhostUserVirtioDevice> {
         let allow_features = VIRTIO_DEVICE_TYPE_SPECIFIC_FEATURES_MASK
             | base_features
@@ -129,7 +134,13 @@ impl VhostUserVirtioDevice {
             .unwrap_or(Queue::MAX_SIZE);
 
         trace!(
-            "vhost-user {device_type} frontend with {num_queues} queues x {max_queue_size} entries"
+            "vhost-user {device_type} frontend with {num_queues} queues x {max_queue_size} entries\
+            {}",
+            if let Some(pci_address) = pci_address {
+                format!(" pci-address {pci_address}")
+            } else {
+                "".to_string()
+            }
         );
 
         let queue_sizes = vec![max_queue_size; num_queues];
@@ -141,6 +152,7 @@ impl VhostUserVirtioDevice {
             queue_sizes,
             cfg: cfg.map(|cfg| cfg.to_vec()),
             expose_shmem_descriptors_with_viommu,
+            pci_address,
         })
     }
 }
@@ -204,6 +216,10 @@ impl VirtioDevice for VhostUserVirtioDevice {
         } else {
             true
         }
+    }
+
+    fn pci_address(&self) -> Option<PciAddress> {
+        self.pci_address
     }
 
     fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {

@@ -50,6 +50,7 @@ impl VhostUserVirtioDevice {
             max_queue_size,
             base_features,
             cfg.as_deref(),
+            None, // pci_address
         )
     }
 }

@@ -285,6 +285,7 @@ fn create_vhost_user_block_device(cfg: &Config, disk_device_tube: Tube) -> Devic
         virtio::base_features(cfg.protection_type),
         disk_device_tube,
         None,
+        None,
     )
     .exit_context(
         Exit::VhostUserBlockDeviceNew,
@@ -321,6 +322,7 @@ fn create_vhost_user_gpu_device(base_features: u64, vhost_user_tube: Tube) -> De
         virtio::DeviceType::Gpu,
         base_features,
         vhost_user_tube,
+        None,
         None,
     )
     .exit_context(
@@ -390,6 +392,7 @@ fn create_vhost_user_snd_device(base_features: u64, vhost_user_tube: Tube) -> De
         base_features,
         vhost_user_tube,
         None,
+        None,
     )
     .exit_context(
         Exit::VhostUserSndDeviceNew,
@@ -443,6 +446,7 @@ fn create_vhost_user_net_device(cfg: &Config, net_device_tube: Tube) -> DeviceRe
         virtio::DeviceType::Net,
         features,
         net_device_tube,
+        None,
         None,
     )
     .exit_context(

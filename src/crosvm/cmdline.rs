@@ -2233,7 +2233,7 @@ pub struct RunCommand {
 
     #[argh(
         option,
-        arg_name = "[type=]TYPE,socket=SOCKET_PATH[,max-queue-size=NUM]"
+        arg_name = "[type=]TYPE,socket=SOCKET_PATH[,max-queue-size=NUM][,pci-address=ADDR]"
     )]
     #[serde(default)]
     #[merge(strategy = append)]
@@ -2243,6 +2243,7 @@ pub struct RunCommand {
     ///     type=TYPE - Virtio device type (net, block, etc.)
     ///     socket=SOCKET_PATH - Path to vhost-user socket.
     ///     max-queue-size=NUM - Limit maximum queue size (must be a power of two).
+    ///     pci-address=ADDR - Preferred PCI address, e.g. "00:01.0".
     pub vhost_user: Vec<VhostUserFrontendOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
@@ -3216,6 +3217,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     type_,
                     socket: o.socket,
                     max_queue_size: o.max_queue_size,
+                    pci_address: None,
                 }
             })
         }

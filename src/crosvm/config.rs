@@ -45,6 +45,7 @@ use devices::virtio::DeviceType;
 #[cfg(feature = "net")]
 use devices::virtio::NetParameters;
 use devices::FwCfgParameters;
+use devices::PciAddress;
 use devices::PflashParameters;
 use devices::StubPciParameters;
 #[cfg(target_arch = "x86_64")]
@@ -176,6 +177,9 @@ pub struct VhostUserFrontendOption {
 
     /// Maximum number of entries per queue (default: 32768)
     pub max_queue_size: Option<u16>,
+
+    /// Preferred PCI address
+    pub pci_address: Option<PciAddress>,
 }
 
 #[derive(Serialize, Deserialize, FromKeyValues)]
