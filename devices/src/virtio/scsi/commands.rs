@@ -598,26 +598,15 @@ impl ModeSense6 {
 #[repr(C, packed)]
 pub struct ReadCapacity10 {
     opcode: u8,
-    _obsolete: u8,
-    lba_bytes: [u8; 4],
+    _obsolete1: u8,
+    _obsolete2: [u8; 4],
     _reserved: [u8; 2],
-    pmi_field: u8,
+    _obsolete3: u8,
     control: u8,
 }
 
 impl ReadCapacity10 {
-    fn lba(&self) -> u32 {
-        u32::from_be_bytes(self.lba_bytes)
-    }
-
-    fn pmi(&self) -> bool {
-        self.pmi_field & 0x1 != 0
-    }
-
     fn emulate(&self, writer: &mut Writer, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
-        if !self.pmi() && self.lba() != 0 {
-            return Err(ExecuteError::InvalidField);
-        }
         // Returned value is the block address of the last sector.
         // If the block address exceeds u32::MAX, we return u32::MAX.
         let block_address: u32 = dev.max_lba.saturating_sub(1).try_into().unwrap_or(u32::MAX);
@@ -1092,12 +1081,10 @@ mod tests {
     fn parse_read_capacity_10() {
         let cdb = [0x25, 0x00, 0xab, 0xcd, 0xef, 0x01, 0x00, 0x00, 0x9, 0x0];
         let command = Command::new(&cdb).unwrap();
-        let cap = match command {
-            Command::ReadCapacity10(c) => c,
+        match command {
+            Command::ReadCapacity10(_) => (),
             _ => panic!("unexpected command type: {:?}", command),
         };
-        assert_eq!(cap.lba(), 0xabcdef01);
-        assert!(cap.pmi());
     }
 
     #[test]
