@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::cmp;
+use std::io::Read;
 use std::io::Write;
 
 use base::warn;
@@ -136,7 +137,7 @@ impl Command {
             Self::TestUnitReady(_) => Ok(()), // noop as the device is ready.
             Self::Read6(read6) => read6.emulate(writer, dev).await,
             Self::Inquiry(inquiry) => inquiry.emulate(writer, dev),
-            Self::ModeSelect6(mode_select_6) => mode_select_6.emulate(),
+            Self::ModeSelect6(mode_select_6) => mode_select_6.emulate(reader, dev),
             Self::ModeSense6(mode_sense_6) => mode_sense_6.emulate(writer, dev),
             Self::ReadCapacity10(read_capacity_10) => read_capacity_10.emulate(writer, dev),
             Self::ReadCapacity16(read_capacity_16) => read_capacity_16.emulate(writer, dev),
@@ -400,6 +401,44 @@ impl Inquiry {
     }
 }
 
+// Fill in the information of the page code and return the number of bytes written to the buffer.
+fn fill_mode_page(
+    page_code: u8,
+    subpage_code: u8,
+    page_control: PageControl,
+    outbuf: &mut [u8],
+) -> Option<u8> {
+    // outbuf[0]: page code
+    // outbuf[1]: page length
+    match (page_code, subpage_code) {
+        // Vendor specific.
+        (0x00, 0x00) => None,
+        // Read-Write error recovery mode page
+        (0x01, 0x00) => {
+            const LEN: u8 = 10;
+            outbuf[0] = page_code;
+            outbuf[1] = LEN;
+            if page_control != PageControl::Changable {
+                // Automatic write reallocation enabled.
+                outbuf[3] = 0x80;
+            }
+            Some(LEN + 2)
+        }
+        // Caching.
+        (0x08, 0x00) => {
+            const LEN: u8 = 0x12;
+            outbuf[0] = page_code;
+            outbuf[1] = LEN;
+            if page_control != PageControl::Changable {
+                // Writeback cache enabled.
+                outbuf[2] = 0x04;
+            }
+            Some(LEN + 2)
+        }
+        _ => None,
+    }
+}
+
 // According to the spec, devices that implement MODE SENSE(6) shall also implement MODE SELECT(6)
 // as well.
 #[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
@@ -413,10 +452,105 @@ pub struct ModeSelect6 {
 }
 
 impl ModeSelect6 {
-    fn emulate(&self) -> Result<(), ExecuteError> {
+    fn is_valid_pf_and_sp(&self) -> bool {
+        // crosvm only support page format bit = 1 and saved pages bit = 0
+        self.pf_sp_field & 0x11 == 0x10
+    }
+
+    fn emulate(&self, reader: &mut Reader, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
+        #[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
+        #[repr(C, packed)]
+        struct BlockDescriptor {
+            _density: u8,
+            _number_of_blocks_field: [u8; 3],
+            _reserved: u8,
+            block_len_field: [u8; 3],
+        }
+
+        impl BlockDescriptor {
+            fn block_len(&self) -> u32 {
+                u32::from_be_bytes([
+                    0,
+                    self.block_len_field[0],
+                    self.block_len_field[1],
+                    self.block_len_field[2],
+                ])
+            }
+        }
+
         let _trace = cros_tracing::trace_event!(VirtioScsi, "MODE_SELECT(6)");
-        // TODO(b/303338922): Implement this command properly.
-        Err(ExecuteError::InvalidField)
+        if !self.is_valid_pf_and_sp() {
+            return Err(ExecuteError::InvalidField);
+        }
+        // Values for the mode parameter header.
+        let [_mode_data_len, medium_type, _dev_param, block_desc_len] =
+            reader.read_obj::<[u8; 4]>().map_err(ExecuteError::Read)?;
+        if medium_type != TYPE_DISK {
+            return Err(ExecuteError::InvalidField);
+        }
+        match block_desc_len {
+            0 => (),
+            8 => {
+                let block_desc = reader
+                    .read_obj::<BlockDescriptor>()
+                    .map_err(ExecuteError::Read)?;
+                // crosvm currently does not support modifying the block size.
+                if block_desc.block_len() != dev.block_size {
+                    return Err(ExecuteError::InvalidField);
+                }
+            }
+            // crosvm does not support 2 or more block descriptors, hence block_desc_len other than
+            // 0 and 8 is considered invalid.
+            _ => return Err(ExecuteError::InvalidField),
+        };
+        while reader.available_bytes() > 0 {
+            Self::handle_mode_page(reader)?;
+        }
+        Ok(())
+    }
+
+    fn handle_mode_page(reader: &mut Reader) -> Result<(), ExecuteError> {
+        #[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
+        #[repr(C, packed)]
+        struct Page0Header {
+            page_code: u8,
+            page_len: u8,
+        }
+
+        #[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes, PartialEq, Eq)]
+        #[repr(C, packed)]
+        struct SubpageHeader {
+            page_code: u8,
+            subpage_code: u8,
+            page_len_field: [u8; 2],
+        }
+
+        let is_page0 = reader.peek_obj::<u8>().map_err(ExecuteError::Read)? & 0x40 == 0;
+        let (page_code, subpage_code, page_len) = if is_page0 {
+            let header = reader
+                .read_obj::<Page0Header>()
+                .map_err(ExecuteError::Read)?;
+            (header.page_code, 0, header.page_len as u16)
+        } else {
+            let header = reader
+                .read_obj::<SubpageHeader>()
+                .map_err(ExecuteError::Read)?;
+            (
+                header.page_code,
+                header.subpage_code,
+                u16::from_be_bytes(header.page_len_field),
+            )
+        };
+        let mut outbuf = vec![0; page_len as usize];
+        fill_mode_page(page_code, subpage_code, PageControl::Current, &mut outbuf);
+        let mut input = vec![0; page_len as usize];
+        reader.read_exact(&mut input).map_err(ExecuteError::Read)?;
+        // crosvm does not allow any values to be changed.
+        if input == outbuf {
+            Ok(())
+        } else {
+            Err(ExecuteError::InvalidField)
+        }
     }
 }
 
@@ -429,6 +563,13 @@ pub struct ModeSense6 {
     subpage_code: u8,
     alloc_len: u8,
     control: u8,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum PageControl {
+    Current,
+    Default,
+    Changable,
 }
 
 impl ModeSense6 {
@@ -445,8 +586,14 @@ impl ModeSense6 {
         self.page_control_and_page_code & 0x3f
     }
 
-    fn page_control(&self) -> u8 {
-        self.page_control_and_page_code >> 6
+    fn page_control(&self) -> Result<PageControl, ExecuteError> {
+        match self.page_control_and_page_code >> 6 {
+            0 => Ok(PageControl::Current),
+            1 => Ok(PageControl::Changable),
+            2 => Ok(PageControl::Default),
+            3 => Err(ExecuteError::SavingParamNotSupported),
+            _ => Err(ExecuteError::InvalidField),
+        }
     }
 
     fn subpage_code(&self) -> u8 {
@@ -480,12 +627,7 @@ impl ModeSense6 {
             4
         };
 
-        let page_control = self.page_control();
-        // We do not support saved values.
-        if page_control == 0b11 {
-            return Err(ExecuteError::SavingParamNotSupported);
-        }
-
+        let page_control = self.page_control()?;
         let page_code = self.page_code();
         let subpage_code = self.subpage_code();
         // The pair of the page code and the subpage code specifies which mode pages and subpages
@@ -507,7 +649,7 @@ impl ModeSense6 {
             // Return a specific mode page with subpages 0x00-0xfe.
             (_, 0xff) => {
                 for subpage_code in 0..0xff {
-                    match Self::fill_page(
+                    match fill_mode_page(
                         page_code,
                         subpage_code,
                         page_control,
@@ -519,7 +661,7 @@ impl ModeSense6 {
                 }
             }
             (_, _) => {
-                match Self::fill_page(
+                match fill_mode_page(
                     page_code,
                     subpage_code,
                     page_control,
@@ -537,9 +679,14 @@ impl ModeSense6 {
     }
 
     // Fill in mode pages with a specific subpage_code.
-    fn add_all_page_codes(subpage_code: u8, page_control: u8, outbuf: &mut [u8], idx: &mut u8) {
+    fn add_all_page_codes(
+        subpage_code: u8,
+        page_control: PageControl,
+        outbuf: &mut [u8],
+        idx: &mut u8,
+    ) {
         for page_code in 1..0x3f {
-            if let Some(n) = Self::fill_page(
+            if let Some(n) = fill_mode_page(
                 page_code,
                 subpage_code,
                 page_control,
@@ -549,47 +696,9 @@ impl ModeSense6 {
             }
         }
         // Add mode page 0 after all other mode pages were returned.
-        if let Some(n) =
-            Self::fill_page(0, subpage_code, page_control, &mut outbuf[*idx as usize..])
+        if let Some(n) = fill_mode_page(0, subpage_code, page_control, &mut outbuf[*idx as usize..])
         {
             *idx += n;
-        }
-    }
-
-    // Fill in the information of the page code and return the number of bytes written to the
-    // buffer.
-    fn fill_page(
-        page_code: u8,
-        subpage_code: u8,
-        page_control: u8,
-        outbuf: &mut [u8],
-    ) -> Option<u8> {
-        // outbuf[0]: page code
-        // outbuf[1]: page length
-        match (page_code, subpage_code) {
-            // Vendor specific.
-            (0x00, 0x00) => None,
-            // Read-Write error recovery mode page
-            (0x01, 0x00) => {
-                let len = 10;
-                outbuf[0] = page_code;
-                outbuf[1] = len;
-                if page_control != 0b01 {
-                    // Automatic write reallocation enabled.
-                    outbuf[3] = 0x80;
-                }
-                Some(len + 2)
-            }
-            // Caching.
-            (0x08, 0x00) => {
-                let len = 0x12;
-                outbuf[0] = page_code;
-                outbuf[1] = len;
-                // Writeback cache enabled.
-                outbuf[2] = 0x04;
-                Some(len + 2)
-            }
-            _ => None,
         }
     }
 }
@@ -824,7 +933,7 @@ impl WriteSame10 {
             return Err(ExecuteError::InvalidField);
         }
         if self.anchor() {
-            // crosvm currently do not support anchor operations.
+            // crosvm currently does not support anchor operations.
             return Err(ExecuteError::InvalidField);
         }
         if self.unmap() {
@@ -942,7 +1051,7 @@ impl WriteSame16 {
             return Err(ExecuteError::InvalidField);
         }
         if self.anchor() {
-            // crosvm currently do not support anchor operations.
+            // crosvm currently does not support anchor operations.
             return Err(ExecuteError::InvalidField);
         }
         if self.unmap() {
@@ -1078,7 +1187,7 @@ mod tests {
         };
         assert_eq!(mode_sense_6.alloc_len(), 0x04);
         assert_eq!(mode_sense_6.page_code(), 0x28);
-        assert_eq!(mode_sense_6.page_control(), 0x02);
+        assert_eq!(mode_sense_6.page_control().unwrap(), PageControl::Default);
     }
 
     #[test]
