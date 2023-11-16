@@ -19,6 +19,8 @@ from pathlib import Path
 import sys
 from datetime import date
 from typing import List
+import random
+import string
 
 sys.path.append(os.path.dirname(sys.path[0]))
 
@@ -30,6 +32,7 @@ git = cmd("git")
 git_log = git("log --decorate=no --color=never")
 curl = cmd("curl --silent --fail")
 chmod = cmd("chmod")
+dev_container = cmd("tools/dev_container")
 
 UPSTREAM_URL = "https://chromium.googlesource.com/crosvm/crosvm"
 CROS_URL = "https://chromium.googlesource.com/chromiumos/platform/crosvm"
@@ -140,11 +143,66 @@ def upload_to_gerrit(target_branch: str, *extra_params: str):
     raise Exception("Could not upload changes to gerrit.")
 
 
+def rename_files_to_random(dir_path: str):
+    "Rename all files in a folder to random file names with extension kept"
+    print("Renaming all files in " + dir_path)
+    file_names = os.listdir(dir_path)
+    for file_name in filter(os.path.isfile, map(lambda x: os.path.join(dir_path, x), file_names)):
+        file_extension = os.path.splitext(file_name)[1]
+        new_name_stem = "".join(
+            random.choice(string.ascii_lowercase + string.digits) for _ in range(16)
+        )
+        new_path = os.path.join(dir_path, new_name_stem + file_extension)
+        print(f"Renaming {file_name} to {new_path}")
+        os.rename(file_name, new_path)
+
+
+def create_pgo_profile():
+    "Create PGO profile matching HEAD at merge."
+    has_kvm = os.path.exists("/dev/kvm")
+    if not has_kvm:
+        return
+    os.chdir(CROSVM_ROOT)
+    tmpdirname = "target/pgotmp/" + "".join(
+        random.choice(string.ascii_lowercase + string.digits) for _ in range(16)
+    )
+    dev_container(f"mkdir -p /workspace/{tmpdirname}").fg()
+    benchmark_list = list(
+        map(
+            lambda x: os.path.splitext(x)[0],
+            filter(lambda x: x.endswith(".rs"), os.listdir("e2e_tests/benches")),
+        )
+    )
+    print(f"Building instrumented binary, perf data will be saved to {tmpdirname}")
+    dev_container(
+        "./tools/build_release --build-profile release --profile-generate /workspace/" + tmpdirname
+    ).fg()
+    print()
+    print("List of benchmarks to run:")
+    for bench_name in benchmark_list:
+        print(bench_name)
+    print()
+    dev_container("mkdir -p /var/empty").fg()
+    for bench_name in benchmark_list:
+        print(f"Running bechmark: {bench_name}")
+        dev_container(f"./tools/bench {bench_name}").fg()
+        # Instrumented binary always give same file name to generated .profraw files, rename to avoid
+        # overwriting profile from previous bench suite
+        rename_files_to_random(tmpdirname)
+    dev_container("mkdir -p /workspace/profiles").fg()
+    dev_container(
+        f"cargo profdata -- merge -o /workspace/profiles/benchmarks.profdata /workspace/{tmpdirname}"
+    ).fg()
+    dev_container("xz -9e -T 0 /workspace/profiles/benchmarks.profdata").fg()
+
+
 ####################################################################################################
 # The functions below are callable via the command line
 
 
-def create_merge_commits(revision: str, max_size: int = 0, create_dry_run: bool = False):
+def create_merge_commits(
+    revision: str, max_size: int = 0, create_dry_run: bool = False, force_pgo: bool = False
+):
     "Merges `revision` into HEAD, creating merge commits including at most `max-size` commits."
     os.chdir(CROSVM_ROOT)
 
@@ -189,6 +247,12 @@ def create_merge_commits(revision: str, max_size: int = 0, create_dry_run: bool 
             message = f"(CONFLICT) {message}"
             git("commit", "-m", quoted(message), "-m", quoted(trailers)).fg()
             has_conflicts = True
+        # Only uprev PGO profile on Monday to reduce impact on repo size
+        # TODO: b/181105093 - Re-evaluate throttling strategy after sometime
+        if date.today().weekday() == 0 or force_pgo:
+            create_pgo_profile()
+            git("add profiles/benchmarks.profdata.xz").fg()
+            git("commit --amend --no-edit").fg()
 
     return (len(batches), has_conflicts)
 
@@ -302,7 +366,9 @@ def update_dry_runs(
 
     print(f"Creating dry run merge of {parsed_revision} into cros/{target_branch}")
     with tracking_branch_context("merge-bot-branch", target_branch):
-        count, has_conflicts = create_merge_commits(parsed_revision, max_size, create_dry_run=True)
+        count, has_conflicts = create_merge_commits(
+            parsed_revision, max_size, create_dry_run=True, force_pgo=True
+        )
         if count > 0 and not has_conflicts:
             upload_to_gerrit(
                 target_branch,
