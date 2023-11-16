@@ -28,7 +28,7 @@ def collect_binary_sizes(api, properties):
             "./tools/build_release",
             "--json",
             "--platform=" + str(properties.test_arch),
-            "--profile",
+            "--build-profile",
             "chromeos",
         ],
         stdout=api.raw_io.output_text(name="Obtain release build output", add_output_log=True),
