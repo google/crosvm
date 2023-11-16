@@ -189,9 +189,13 @@ pub struct GpuRenderServerParameters {
     pub cache_size: Option<String>,
     pub foz_db_list_path: Option<String>,
     pub precompiled_cache_path: Option<String>,
+    pub ld_preload_path: Option<String>,
 }
 
-fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Result<Vec<String>> {
+fn get_gpu_render_server_environment(
+    cache_info: Option<&GpuCacheInfo>,
+    ld_preload_path: Option<&String>,
+) -> Result<Vec<String>> {
     let mut env = HashMap::<String, String>::new();
     let os_env_len = env::vars_os().count();
 
@@ -210,6 +214,13 @@ fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Resul
         let key = key_os.into_string().map_err(into_string_err)?;
         let val = val_os.into_string().map_err(into_string_err)?;
         env.entry(key).or_insert(val);
+    }
+
+    // for debugging purpose, avoid appending if LD_PRELOAD has been set outside
+    if !env.contains_key("LD_PRELOAD") {
+        if let Some(ld_preload_path) = ld_preload_path {
+            env.insert("LD_PRELOAD".to_string(), ld_preload_path.to_string());
+        }
     }
 
     // TODO(b/237493180, b/284517235): workaround to enable ETC2/ASTC format emulation in Mesa
@@ -285,7 +296,10 @@ pub fn start_gpu_render_server(
     let fd_str = server_socket.as_raw_descriptor().to_string();
     let args = [cmd_str, "--socket-fd", &fd_str];
 
-    let env = Some(get_gpu_render_server_environment(cache_info.as_ref())?);
+    let env = Some(get_gpu_render_server_environment(
+        cache_info.as_ref(),
+        render_server_parameters.ld_preload_path.as_ref(),
+    )?);
     let mut envp: Option<Vec<&str>> = None;
     if let Some(ref env) = env {
         envp = Some(env.iter().map(AsRef::as_ref).collect());
@@ -323,6 +337,7 @@ mod tests {
                 cache_size: None,
                 foz_db_list_path: None,
                 precompiled_cache_path: None,
+                ld_preload_path: None,
             }
         );
 
@@ -335,6 +350,7 @@ mod tests {
                 cache_size: None,
                 foz_db_list_path: None,
                 precompiled_cache_path: None,
+                ld_preload_path: None,
             }
         );
 
@@ -348,6 +364,7 @@ mod tests {
                 cache_size: Some("16M".into()),
                 foz_db_list_path: None,
                 precompiled_cache_path: None,
+                ld_preload_path: None,
             }
         );
 
@@ -363,6 +380,21 @@ mod tests {
                 cache_size: Some("16M".into()),
                 foz_db_list_path: Some("/db/list/path".into()),
                 precompiled_cache_path: Some("/precompiled/path".into()),
+                ld_preload_path: None,
+            }
+        );
+
+        let res: GpuRenderServerParameters =
+            from_key_values("path=/some/path,ld-preload-path=/ld/preload/path").unwrap();
+        assert_eq!(
+            res,
+            GpuRenderServerParameters {
+                path: "/some/path".into(),
+                cache_path: None,
+                cache_size: None,
+                foz_db_list_path: None,
+                precompiled_cache_path: None,
+                ld_preload_path: Some("/ld/preload/path".into()),
             }
         );
 
