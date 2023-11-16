@@ -4,6 +4,7 @@
 
 use std::env;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Once;
@@ -264,6 +265,16 @@ impl Config {
 
     pub fn with_stdout_hardware(mut self, hw_type: &str) -> Self {
         self.console_hardware = hw_type.to_owned();
+        self
+    }
+
+    pub fn with_vhost_user(mut self, device_type: &str, socket_path: &Path) -> Self {
+        self.extra_args.push("--vhost-user".to_string());
+        self.extra_args.push(format!(
+            "{},socket={}",
+            device_type,
+            socket_path.to_str().unwrap()
+        ));
         self
     }
 }

@@ -167,13 +167,9 @@ fn snapshot_vhost_user() {
 
         let mut config = Config::new();
         config = config.with_stdout_hardware("legacy-virtio-console");
-        config = config.extra_args(vec![
-            "--vhost-user".to_string(),
-            format!("block,socket={}", block_socket.path().to_str().unwrap()),
-            "--vhost-user".to_string(),
-            format!("net,socket={}", net_socket.path().to_str().unwrap()),
-            "--no-usb".to_string(),
-        ]);
+        config = config.with_vhost_user("block", block_socket.path());
+        config = config.with_vhost_user("net", net_socket.path());
+        config = config.extra_args(vec!["--no-usb".to_string()]);
         let mut vm = TestVm::new(config).unwrap();
 
         // suspend VM
@@ -190,11 +186,9 @@ fn snapshot_vhost_user() {
     let mut config = Config::new();
     // Start up VM with cold restore.
     config = config.with_stdout_hardware("legacy-virtio-console");
+    config = config.with_vhost_user("block", block_socket.path());
+    config = config.with_vhost_user("net", net_socket.path());
     config = config.extra_args(vec![
-        "--vhost-user".to_string(),
-        format!("block,socket={}", block_socket.path().to_str().unwrap()),
-        "--vhost-user".to_string(),
-        format!("net,socket={}", net_socket.path().to_str().unwrap()),
         "--restore".to_string(),
         snap_path.to_str().unwrap().to_string(),
         "--no-usb".to_string(),
