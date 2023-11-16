@@ -22,6 +22,7 @@ use base::StreamChannel;
 use base::Tube;
 use broker_ipc::common_child_setup;
 use broker_ipc::CommonChildStartupArgs;
+use cros_async::AsyncTube;
 use cros_async::AsyncWrapper;
 use cros_async::EventAsync;
 use cros_async::Executor;
@@ -33,6 +34,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
 use tube_transporter::TubeToken;
+use vm_control::gpu::GpuControlCommand;
+use vm_control::gpu::GpuControlResult;
 
 use crate::virtio;
 use crate::virtio::gpu;
@@ -81,6 +84,33 @@ async fn run_display(
     }
 }
 
+async fn run_gpu_control_command_handler(
+    mut gpu_control_tube: AsyncTube,
+    state: Rc<RefCell<gpu::Frontend>>,
+) {
+    'wait: loop {
+        let req = match gpu_control_tube.next::<GpuControlCommand>().await {
+            Ok(req) => req,
+            Err(e) => {
+                error!("GPU control socket failed to recv: {:?}", e);
+                break 'wait;
+            }
+        };
+
+        // TODO(b/306024335): Support adding/removing displays.
+        if !matches!(req, GpuControlCommand::ListDisplays) {
+            error!("Only list-displays is supported for now");
+            break 'wait;
+        }
+
+        let resp = state.borrow_mut().process_gpu_control_command(req);
+        if let Err(e) = gpu_control_tube.send(resp).await {
+            error!("Display control socket failed to send: {}", e);
+            break 'wait;
+        }
+    }
+}
+
 impl GpuBackend {
     pub fn start_platform_workers(&mut self) -> anyhow::Result<()> {
         let state = self
@@ -98,7 +128,21 @@ impl GpuBackend {
 
         let task = self
             .ex
-            .spawn_local(run_display(display, state, self.gpu.clone()));
+            .spawn_local(run_display(display, state.clone(), self.gpu.clone()));
+        self.platform_workers.borrow_mut().push(task);
+
+        let task = self.ex.spawn_local(run_gpu_control_command_handler(
+            AsyncTube::new(
+                &self.ex,
+                self.gpu
+                    .borrow_mut()
+                    .gpu_control_tube
+                    .take()
+                    .expect("gpu control tube must exist"),
+            )
+            .expect("gpu control tube creation"),
+            state,
+        ));
         self.platform_workers.borrow_mut().push(task);
 
         Ok(())
@@ -148,6 +192,8 @@ pub struct InputEventSplitConfig {
 pub struct GpuVmmConfig {
     // Tube for setting up the vhost-user connection. May not exist if not using vhost-user.
     pub main_vhost_user_tube: Option<Tube>,
+    // A tube to forward GPU control commands in the main process.
+    pub gpu_control_host_tube: Option<Tube>,
     pub product_config: product::GpuVmmConfig,
 }
 
@@ -161,6 +207,8 @@ pub struct GpuBackendConfig {
     pub exit_event: Event,
     // A tube to send an exit request.
     pub exit_evt_wrtube: SendTube,
+    // A tube to handle GPU control commands in the GPU device.
+    pub gpu_control_device_tube: Tube,
     // GPU parameters.
     pub params: GpuParameters,
     // Product related configurations.
@@ -230,6 +278,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     let gpu = Rc::new(RefCell::new(Gpu::new(
         config.exit_evt_wrtube,
+        config.gpu_control_device_tube,
         /*resource_bridges=*/ Vec::new(),
         display_backends,
         &gpu_params,

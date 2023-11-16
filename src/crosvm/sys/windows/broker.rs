@@ -671,6 +671,10 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         Tube::directional_pair().context("failed to create vm event tube")?;
 
     #[cfg(feature = "gpu")]
+    let (gpu_control_host_tube, gpu_control_device_tube) =
+        Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
+
+    #[cfg(feature = "gpu")]
     let mut input_event_split_config = platform_create_input_event_config(&cfg)
         .context("create input event devices for virtio-gpu device")?;
 
@@ -685,6 +689,8 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         vm_evt_wrtube
             .try_clone()
             .exit_context(Exit::CloneEvent, "failed to clone event")?,
+        gpu_control_host_tube,
+        gpu_control_device_tube,
     )?;
 
     #[cfg(feature = "gpu")]
@@ -1721,6 +1727,8 @@ fn platform_create_gpu(
     #[allow(unused_variables)] main_child: &mut ChildProcess,
     exit_events: &mut Vec<Event>,
     exit_evt_wrtube: SendTube,
+    gpu_control_host_tube: Tube,
+    gpu_control_device_tube: Tube,
 ) -> Result<(GpuBackendConfig, GpuVmmConfig)> {
     let exit_event = Event::new().exit_context(Exit::CreateEvent, "failed to create exit event")?;
     exit_events.push(
@@ -1736,6 +1744,7 @@ fn platform_create_gpu(
         device_vhost_user_tube: None,
         exit_event,
         exit_evt_wrtube,
+        gpu_control_device_tube,
         params: cfg
             .gpu_parameters
             .as_ref()
@@ -1746,6 +1755,7 @@ fn platform_create_gpu(
 
     let vmm_config = GpuVmmConfig {
         main_vhost_user_tube: None,
+        gpu_control_host_tube: Some(gpu_control_host_tube),
         product_config: vmm_config_product,
     };
 
@@ -1808,6 +1818,14 @@ fn start_up_gpu(
     // Update target PIDs to new child.
     device_host_user_tube.set_target_pid(main_child.alias_pid);
     main_vhost_user_tube.set_target_pid(gpu_child.alias_pid);
+    backend_cfg
+        .gpu_control_device_tube
+        .set_target_pid(main_child.alias_pid);
+    vmm_cfg
+        .gpu_control_host_tube
+        .as_mut()
+        .unwrap()
+        .set_target_pid(gpu_child.alias_pid);
 
     // Insert vhost-user tube to backend / frontend configs.
     backend_cfg.device_vhost_user_tube = Some(device_host_user_tube);

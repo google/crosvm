@@ -216,6 +216,7 @@ pub(super) fn create_service_vm_state(_memory_size_mb: u64) -> ServiceVmState {
 #[cfg(feature = "gpu")]
 pub(super) fn create_gpu(
     vm_evt_wrtube: &SendTube,
+    gpu_control_tube: Tube,
     resource_bridges: Vec<Tube>,
     display_backends: Vec<DisplayBackend>,
     gpu_parameters: &GpuParameters,
@@ -228,6 +229,7 @@ pub(super) fn create_gpu(
         vm_evt_wrtube
             .try_clone()
             .exit_context(Exit::CloneTube, "failed to clone tube")?,
+        gpu_control_tube,
         resource_bridges,
         display_backends,
         gpu_parameters,

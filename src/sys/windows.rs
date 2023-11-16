@@ -339,6 +339,7 @@ fn create_gpu_device(
     cfg: &Config,
     gpu_parameters: &GpuParameters,
     vm_evt_wrtube: &SendTube,
+    gpu_control_tube: Tube,
     resource_bridges: Vec<Tube>,
     event_devices: Vec<EventDevice>,
     wndproc_thread: WindowProcedureThread,
@@ -350,6 +351,7 @@ fn create_gpu_device(
     let features = virtio::base_features(cfg.protection_type);
     let dev = product::create_gpu(
         vm_evt_wrtube,
+        gpu_control_tube,
         resource_bridges,
         display_backends,
         gpu_parameters,
@@ -763,6 +765,7 @@ fn create_virtio_gpu_device(
                 cfg,
                 &backend_config.params,
                 &backend_config.exit_evt_wrtube,
+                backend_config.gpu_control_device_tube,
                 resource_bridges,
                 event_devices.ok_or_else(|| {
                     anyhow!(
@@ -858,6 +861,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     service_vm_state: &mut ServiceVmState,
     disk_host_tubes: &[Tube],
     ipc_main_loop_tube: Option<&Tube>,
+    #[cfg(feature = "gpu")] gpu_control_tube: Option<&Tube>,
     vm_evt_rdtube: &RecvTube,
     control_tubes: &mut BTreeMap<usize, TaggedControlTube>,
     guest_os: &mut RunnableLinuxVm<V, Vcpu>,
@@ -886,7 +890,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             disk_host_tubes,
             &mut guest_os.pm,
             #[cfg(feature = "gpu")]
-            None,
+            gpu_control_tube,
             None,
             &mut None,
             |msg| {
@@ -1269,6 +1273,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     vm_memory_control_tubes: Vec<Tube>,
     vm_evt_rdtube: RecvTube,
     vm_evt_wrtube: SendTube,
+    #[cfg(feature = "gpu")] gpu_control_tube: Option<Tube>,
     broker_shutdown_evt: Option<Event>,
     balloon_host_tube: Option<Tube>,
     pvclock_host_tube: Option<Tube>,
@@ -1514,6 +1519,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 &mut service_vm_state,
                 disk_host_tubes.as_slice(),
                 ipc_main_loop_tube.as_ref(),
+                #[cfg(feature = "gpu")]
+                gpu_control_tube.as_ref(),
                 &vm_evt_rdtube,
                 &mut control_tubes,
                 &mut guest_os,
@@ -2532,6 +2539,11 @@ where
         );
     }
 
+    #[cfg(feature = "gpu")]
+    let gpu_control_tube = cfg
+        .gpu_vmm_config
+        .as_mut()
+        .and_then(|config| config.gpu_control_host_tube.take());
     let product_args = product::get_run_control_args(&mut cfg);
 
     let virtio_snd_state_device_tube = create_snd_state_tube(&mut control_tubes)?;
@@ -2635,6 +2647,8 @@ where
         vm_memory_control_tubes,
         vm_evt_rdtube,
         vm_evt_wrtube,
+        #[cfg(feature = "gpu")]
+        gpu_control_tube,
         cfg.broker_shutdown_event.take(),
         balloon_host_tube,
         pvclock_host_tube,
