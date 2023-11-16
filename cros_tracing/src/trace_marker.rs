@@ -237,7 +237,9 @@ setup_trace_marker!(
     (VirtioFs, true),
     (VirtioNet, true),
     (USB, true),
-    (gpu_display, true)
+    (gpu_display, true),
+    (VirtioBlk, true),
+    (VirtioScsi, true)
 );
 
 /// Platform-specific implementation of the `trace_simple_print!` macro. If tracing

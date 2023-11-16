@@ -231,7 +231,10 @@ impl Read6 {
         writer: &mut Writer,
         dev: &AsyncLogicalUnit,
     ) -> Result<(), ExecuteError> {
-        read_from_disk(writer, dev, self.xfer_len(), self.lba() as u64).await
+        let xfer_len = self.xfer_len();
+        let lba = self.lba() as u64;
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "READ(6)", xfer_len, lba);
+        read_from_disk(writer, dev, xfer_len, lba).await
     }
 }
 
@@ -259,6 +262,7 @@ impl Inquiry {
     }
 
     fn emulate(&self, writer: &mut Writer, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "INQUIRY");
         if self.vital_product_data_enabled() {
             return self.emulate_vital_product_data_page(writer, dev);
         }
@@ -410,6 +414,7 @@ pub struct ModeSelect6 {
 
 impl ModeSelect6 {
     fn emulate(&self) -> Result<(), ExecuteError> {
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "MODE_SELECT(6)");
         // TODO(b/303338922): Implement this command properly.
         Err(ExecuteError::InvalidField)
     }
@@ -449,6 +454,7 @@ impl ModeSense6 {
     }
 
     fn emulate(&self, writer: &mut Writer, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "MODE_SENSE(6)");
         let alloc_len = self.alloc_len();
         let mut outbuf = vec![0u8; cmp::max(4096, alloc_len)];
         // outbuf[0]: Represents data length. Will be filled later.
@@ -635,6 +641,7 @@ pub struct ReadCapacity16 {
 
 impl ReadCapacity16 {
     fn emulate(&self, writer: &mut Writer, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "READ_CAPACITY(16)");
         let mut outbuf = [0u8; 32];
         // Last logical block address
         outbuf[..8].copy_from_slice(&dev.max_lba.saturating_sub(1).to_be_bytes());
@@ -671,7 +678,10 @@ impl Read10 {
         writer: &mut Writer,
         dev: &AsyncLogicalUnit,
     ) -> Result<(), ExecuteError> {
-        read_from_disk(writer, dev, self.xfer_len(), self.lba()).await
+        let xfer_len = self.xfer_len();
+        let lba = self.lba();
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "READ(10)", lba, xfer_len);
+        read_from_disk(writer, dev, xfer_len, lba).await
     }
 }
 
@@ -700,7 +710,10 @@ impl Write10 {
         reader: &mut Reader,
         dev: &AsyncLogicalUnit,
     ) -> Result<(), ExecuteError> {
-        write_to_disk(reader, dev, self.xfer_len(), self.lba()).await
+        let xfer_len = self.xfer_len();
+        let lba = self.lba();
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "WRITE(10)", lba, xfer_len);
+        write_to_disk(reader, dev, xfer_len, lba).await
     }
 }
 
@@ -740,6 +753,7 @@ pub struct SynchronizeCache10 {
 
 impl SynchronizeCache10 {
     async fn emulate(&self, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "SYNCHRONIZE_CACHE(10)");
         dev.disk_image.fdatasync().await.map_err(|e| {
             warn!("failed to sync: {e}");
             ExecuteError::SynchronizationError
@@ -811,6 +825,7 @@ impl WriteSame10 {
     ) -> Result<(), ExecuteError> {
         let lba = self.lba() as u64;
         let nblocks = self.nblocks() as u64;
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "WRITE_SAME(10)", lba, nblocks);
         if nblocks == 0 {
             // crosvm does not allow the number of blocks to be zero.
             return Err(ExecuteError::InvalidField);
@@ -852,6 +867,7 @@ impl Unmap {
         reader: &mut Reader,
         dev: &AsyncLogicalUnit,
     ) -> Result<(), ExecuteError> {
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "UNMAP");
         // Reject anchor == 1
         if self.anchor() {
             return Err(ExecuteError::InvalidField);
@@ -927,6 +943,7 @@ impl WriteSame16 {
     ) -> Result<(), ExecuteError> {
         let lba = self.lba();
         let nblocks = self.nblocks() as u64;
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "WRITE_SAME(16)", lba, nblocks);
         if nblocks == 0 {
             // crosvm does not allow the number of blocks to be zero.
             return Err(ExecuteError::InvalidField);
@@ -961,6 +978,7 @@ impl ReportLuns {
     }
 
     fn emulate(&self, writer: &mut Writer) -> Result<(), ExecuteError> {
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "REPORT_LUNS");
         // We need at least 16 bytes.
         if self.alloc_len() < 16 {
             return Err(ExecuteError::InvalidField);
@@ -996,6 +1014,7 @@ impl ReportSupportedTMFs {
     }
 
     fn emulate(&self, writer: &mut Writer) -> Result<(), ExecuteError> {
+        let _trace = cros_tracing::trace_event!(VirtioScsi, "REPORT_SUPPORTED_TMFs");
         // The allocation length should be at least four.
         if self.alloc_len() < 4 {
             return Err(ExecuteError::InvalidField);

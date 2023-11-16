@@ -46,6 +46,9 @@ The categories that are currently supported by cros_tracing are:
 - VirtioFs
 - VirtioNet
 - USB
+- gpu_display
+- VirtioBlk
+- VirtioScsi
 
 ### The trace_marker Backend
 
@@ -184,7 +187,15 @@ In this last example we used the `VirtioFs` category tag. If you want to add a n
 
 ```rust
 // List of categories that can be enabled.
-setup_trace_marker!((VirtioFs, true), (NewCategory, true));
+setup_trace_marker!(
+    (VirtioFs, true),
+    (VirtioNet, true),
+    (USB, true),
+    (gpu_display, true),
+    (VirtioBlk, true),
+    (VirtioScsi, true),
+    (NewCategory, true)
+);
 ```
 
 If the value is `false` then the events will not be traced. This can be useful when you just want to
