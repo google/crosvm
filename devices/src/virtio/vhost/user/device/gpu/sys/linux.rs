@@ -20,6 +20,7 @@ use base::UnlinkUnixSeqpacketListener;
 use cros_async::AsyncWrapper;
 use cros_async::Executor;
 use cros_async::IoSource;
+use futures::channel::oneshot;
 use hypervisor::ProtectionType;
 use sync::Mutex;
 
@@ -27,6 +28,7 @@ use crate::virtio;
 use crate::virtio::gpu;
 use crate::virtio::gpu::ProcessDisplayResult;
 use crate::virtio::vhost::user::device::gpu::GpuBackend;
+use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::wl::parse_wayland_sock;
@@ -76,7 +78,10 @@ async fn run_resource_bridge(tube: IoSource<Tube>, state: Rc<RefCell<gpu::Fronte
 }
 
 impl GpuBackend {
-    pub fn start_platform_workers(&mut self) -> anyhow::Result<()> {
+    pub fn start_platform_workers(
+        &mut self,
+        _backend_req_conn_rx: Option<oneshot::Receiver<VhostBackendReqConnection>>,
+    ) -> anyhow::Result<()> {
         let state = self
             .state
             .as_ref()
@@ -250,6 +255,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         queue_workers: Default::default(),
         platform_workers: Default::default(),
         shmem_mapper: Arc::new(Mutex::new(None)),
+        backend_req_conn_channels: (None, None),
     });
 
     // Run until the backend is finished.

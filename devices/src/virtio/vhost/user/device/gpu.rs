@@ -11,12 +11,14 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
+use base::debug;
 use base::error;
 use base::warn;
 use base::Tube;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::TaskHandle;
+use futures::channel::oneshot;
 use sync::Mutex;
 pub use sys::run_gpu_device;
 pub use sys::Options;
@@ -92,6 +94,10 @@ struct GpuBackend {
     queue_workers: [Option<WorkerState<Arc<Mutex<Queue>>, ()>>; MAX_QUEUE_NUM],
     platform_workers: Rc<RefCell<Vec<TaskHandle<()>>>>,
     shmem_mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
+    backend_req_conn_channels: (
+        Option<oneshot::Sender<VhostBackendReqConnection>>,
+        Option<oneshot::Receiver<VhostBackendReqConnection>>,
+    ),
 }
 
 impl VhostUserBackend for GpuBackend {
@@ -200,7 +206,8 @@ impl VhostUserBackend for GpuBackend {
         };
 
         // Start handling platform-specific workers.
-        self.start_platform_workers()?;
+        let backend_req_conn_rx = self.backend_req_conn_channels.1.take();
+        self.start_platform_workers(backend_req_conn_rx)?;
 
         // Start handling the control queue.
         let queue_task = self
@@ -257,10 +264,20 @@ impl VhostUserBackend for GpuBackend {
     }
 
     fn set_backend_req_connection(&mut self, mut conn: VhostBackendReqConnection) {
-        let mut opt = self.shmem_mapper.lock();
+        if self
+            .shmem_mapper
+            .lock()
+            .replace(conn.take_shmem_mapper().unwrap())
+            .is_some()
+        {
+            warn!("Connection already established. Overwriting shmem_mapper");
+        }
 
-        if opt.replace(conn.take_shmem_mapper().unwrap()).is_some() {
-            warn!("connection already established. overwriting");
+        match self.backend_req_conn_channels.0.take() {
+            Some(backend_req_conn_tx) => {
+                let _ = backend_req_conn_tx.send(conn);
+            }
+            None => debug!("No backend request connection sender"),
         }
     }
 
