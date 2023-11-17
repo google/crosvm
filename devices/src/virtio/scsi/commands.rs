@@ -770,8 +770,12 @@ async fn write_same(
     // Data-Out buffer.
     reader.split_at(dev.block_size as usize);
     if reader.get_remaining().iter().all(|s| s.is_all_zero()) {
+        let block_size = dev.block_size as u64;
         // Ignore the errors here since the device is not strictly required to unmap the LBAs.
-        let _ = dev.disk_image.write_zeroes_at(lba, nblocks).await;
+        let _ = dev
+            .disk_image
+            .write_zeroes_at(lba * block_size, nblocks * block_size)
+            .await;
         Ok(())
     } else {
         // TODO(b/309376528): If the specified data is not zero, raise error for now.
