@@ -142,6 +142,10 @@ pub trait VcpuX86_64: Vcpu {
     /// Set the guest->host TSC offset
     fn set_tsc_offset(&self, offset: u64) -> Result<()>;
 
+    /// Sets the guest TSC exactly to the provided value.
+    /// Required for snapshotting.
+    fn set_tsc_value(&self, value: u64) -> Result<()>;
+
     /// Snapshot vCPU state
     fn snapshot(&self) -> anyhow::Result<VcpuSnapshot> {
         Ok(VcpuSnapshot {
@@ -213,15 +217,39 @@ pub(crate) fn get_tsc_offset_from_msr(vcpu: &impl VcpuX86_64) -> Result<u64> {
     Ok(regs[0].value.wrapping_sub(host_tsc))
 }
 
-/// Implementation of get_tsc_offset that uses VcpuX86_64::get_msrs.
+/// Implementation of set_tsc_offset that uses VcpuX86_64::get_msrs.
+///
+/// It sets TSC_OFFSET (VMCS / CB field) by setting the TSC MSR to the current
+/// host TSC value plus the desired offset. We rely on the fact that hypervisors
+/// determine the value of TSC_OFFSET by computing TSC_OFFSET = new_tsc_value
+/// - _rdtsc() = _rdtsc() + offset - _rdtsc() ~= offset. Note that the ~= is
+/// important: this is an approximate operation, because the two _rdtsc() calls
+/// are separated by at least a few ticks.
+///
+/// Note: TSC_OFFSET, host TSC, guest TSC, and TSC MSR are all different
+/// concepts.
+/// * When a guest executes rdtsc, the value (guest TSC) returned is
+///   host_tsc * TSC_MULTIPLIER + TSC_OFFSET + TSC_ADJUST.
+/// * The TSC MSR is a special MSR that when written to by the host, will cause
+///   TSC_OFFSET to be set accordingly by the hypervisor.
+/// * When the guest *writes* to TSC MSR, it actually changes the TSC_ADJUST MSR
+///   *for the guest*. Generally this is only happens if the guest is trying to
+///   re-zero or synchronize TSCs.
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 pub(crate) fn set_tsc_offset_via_msr(vcpu: &impl VcpuX86_64, offset: u64) -> Result<()> {
-    // Safe because _rdtsc takes no arguments
+    // SAFETY: _rdtsc takes no arguments.
     let host_tsc = unsafe { _rdtsc() };
+    set_tsc_value_via_msr(vcpu, host_tsc.wrapping_add(offset))
+}
 
+/// Sets the guest's TSC by writing the value to the MSR directly. See
+/// [`set_tsc_offset_via_msr`] for an explanation of how this value is actually
+/// read by the guest after being set.
+#[cfg(any(unix, feature = "haxm", feature = "whpx"))]
+pub(crate) fn set_tsc_value_via_msr(vcpu: &impl VcpuX86_64, value: u64) -> Result<()> {
     let regs = vec![Register {
         id: crate::MSR_IA32_TSC,
-        value: host_tsc.wrapping_add(offset),
+        value,
     }];
 
     // set guest TSC value from our hypervisor

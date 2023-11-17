@@ -33,6 +33,7 @@ use super::KvmVm;
 use crate::get_tsc_offset_from_msr;
 use crate::host_phys_addr_bits;
 use crate::set_tsc_offset_via_msr;
+use crate::set_tsc_value_via_msr;
 use crate::ClockState;
 use crate::CpuId;
 use crate::CpuIdEntry;
@@ -974,6 +975,10 @@ impl VcpuX86_64 for KvmVcpu {
     /// KVM does not support the VcpuExit::Cpuid exit type.
     fn handle_cpuid(&mut self, _entry: &CpuIdEntry) -> Result<()> {
         Err(Error::new(ENXIO))
+    }
+
+    fn set_tsc_value(&self, value: u64) -> Result<()> {
+        set_tsc_value_via_msr(self, value)
     }
 
     fn get_tsc_offset(&self) -> Result<u64> {

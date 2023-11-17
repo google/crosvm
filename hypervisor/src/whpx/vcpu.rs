@@ -22,6 +22,7 @@ use super::types::*;
 use super::*;
 use crate::get_tsc_offset_from_msr;
 use crate::set_tsc_offset_via_msr;
+use crate::set_tsc_value_via_msr;
 use crate::CpuId;
 use crate::CpuIdEntry;
 use crate::DebugRegs;
@@ -1308,34 +1309,20 @@ impl VcpuX86_64 for WhpxVcpu {
     }
 
     fn get_tsc_offset(&self) -> Result<u64> {
-        // Although WHPX has the WHV_REGISTER_NAME_WHvX64RegisterTscVirtualOffset register, calling
-        // WHvGetVirtualProcessorRegisters always returns 0 for it.
+        // Note: WHV_REGISTER_NAME_WHvX64RegisterTscVirtualOffset register appears to no longer be
+        // supported, so we use the MSR path. (It also didn't work in 19H2 either, always returning
+        // zero on get.)
         get_tsc_offset_from_msr(self)
     }
 
     fn set_tsc_offset(&self, offset: u64) -> Result<()> {
-        const REG_NAMES: [WHV_REGISTER_NAME; 1] =
-            [WHV_REGISTER_NAME_WHvX64RegisterTscVirtualOffset];
-
-        let values = vec![WHV_REGISTER_VALUE { Reg64: offset }];
-
-        // Try to use the built-in API for setting the TSC offset
-        if check_whpx!(unsafe {
-            WHvSetVirtualProcessorRegisters(
-                self.vm_partition.partition,
-                self.index,
-                &REG_NAMES as *const WHV_REGISTER_NAME,
-                REG_NAMES.len() as u32,
-                values.as_ptr() as *const WHV_REGISTER_VALUE,
-            )
-        })
-        .is_ok()
-        {
-            return Ok(());
-        }
-
-        // Use the default MSR-based implementation
+        // Note: WHV_REGISTER_NAME_WHvX64RegisterTscVirtualOffset register appears to no longer be
+        // supported, so we use the MSR path.
         set_tsc_offset_via_msr(self, offset)
+    }
+
+    fn set_tsc_value(&self, value: u64) -> Result<()> {
+        set_tsc_value_via_msr(self, value)
     }
 }
 

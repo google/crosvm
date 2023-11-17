@@ -785,6 +785,9 @@ impl VcpuX86_64 for FakeVcpu {
     fn set_tsc_offset(&self, _offset: u64) -> Result<()> {
         unimplemented!()
     }
+    fn set_tsc_value(&self, _value: u64) -> Result<()> {
+        unimplemented!()
+    }
     fn snapshot(&self) -> anyhow::Result<VcpuSnapshot> {
         unimplemented!()
     }
