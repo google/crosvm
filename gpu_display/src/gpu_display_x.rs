@@ -34,6 +34,7 @@ use libc::IPC_CREAT;
 use libc::IPC_PRIVATE;
 use libc::IPC_RMID;
 use linux_input_sys::virtio_input_event;
+use vm_control::gpu::DisplayParameters;
 
 use crate::keycode_converter::KeycodeTranslator;
 use crate::keycode_converter::KeycodeTypes;
@@ -699,8 +700,7 @@ impl DisplayT for DisplayX {
         parent_surface_id: Option<u32>,
         _surface_id: u32,
         _scanout_id: Option<u32>,
-        width: u32,
-        height: u32,
+        display_params: &DisplayParameters,
         _surf_type: SurfaceType,
     ) -> GpuDisplayResult<Box<dyn GpuDisplaySurface>> {
         if parent_surface_id.is_some() {
@@ -710,6 +710,7 @@ impl DisplayT for DisplayX {
         // TODO(b/315870313): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
+            let (width, height) = display_params.get_virtual_display_size();
             let depth = xlib::XDefaultDepthOfScreen(self.screen.as_ptr()) as u32;
 
             let black_pixel = xlib::XBlackPixelOfScreen(self.screen.as_ptr());

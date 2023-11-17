@@ -9,6 +9,8 @@ mod platform {
     use anyhow::Context;
     use anyhow::Result;
     use gpu_display::*;
+    use vm_control::gpu::DisplayMode;
+    use vm_control::gpu::DisplayParameters;
 
     pub fn run() -> Result<()> {
         let mut disp = GpuDisplay::open_wayland(None::<&str>).context("open_wayland")?;
@@ -16,8 +18,7 @@ mod platform {
             .create_surface(
                 None,
                 /* scanout_id= */ Some(0),
-                1280,
-                1024,
+                &DisplayParameters::default_with_mode(DisplayMode::Windowed(1280, 1024)),
                 SurfaceType::Scanout,
             )
             .context("create_surface")?;

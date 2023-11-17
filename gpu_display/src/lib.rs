@@ -22,6 +22,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use sync::Waitable;
 use thiserror::Error;
+use vm_control::gpu::DisplayParameters;
 use vm_control::gpu::MouseMode;
 #[cfg(feature = "vulkan_display")]
 use vulkano::VulkanLibrary;
@@ -46,8 +47,6 @@ pub mod vulkan;
 
 pub use event_device::EventDevice;
 pub use event_device::EventDeviceKind;
-#[cfg(windows)]
-pub use gpu_display_win::DisplayProperties as WinDisplayProperties;
 #[cfg(windows)]
 pub use gpu_display_win::WindowProcedureThread;
 #[cfg(windows)]
@@ -319,8 +318,7 @@ trait DisplayT: AsRawDescriptor {
         parent_surface_id: Option<u32>,
         surface_id: u32,
         scanout_id: Option<u32>,
-        width: u32,
-        height: u32,
+        display_params: &DisplayParameters,
         surf_type: SurfaceType,
     ) -> GpuDisplayResult<Box<dyn GpuDisplaySurface>>;
 
@@ -564,8 +562,7 @@ impl GpuDisplay {
         &mut self,
         parent_surface_id: Option<u32>,
         scanout_id: Option<u32>,
-        width: u32,
-        height: u32,
+        display_params: &DisplayParameters,
         surf_type: SurfaceType,
     ) -> GpuDisplayResult<u32> {
         if let Some(parent_id) = parent_surface_id {
@@ -579,8 +576,7 @@ impl GpuDisplay {
             parent_surface_id,
             new_surface_id,
             scanout_id,
-            width,
-            height,
+            display_params,
             surf_type,
         )?;
 

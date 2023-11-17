@@ -46,6 +46,7 @@ use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
+use vm_control::gpu::DisplayMode;
 use vm_control::gpu::DisplayParameters;
 use vm_control::gpu::GpuControlCommand;
 use vm_control::gpu::GpuControlResult;
@@ -285,11 +286,17 @@ impl VirtioGpuScanout {
 
         let mut display = display.borrow_mut();
 
+        let display_params =
+            self.display_params
+                .clone()
+                .unwrap_or(DisplayParameters::default_with_mode(DisplayMode::Windowed(
+                    self.width,
+                    self.height,
+                )));
         let surface_id = display.create_surface(
             self.parent_surface_id,
             self.scanout_id,
-            self.width,
-            self.height,
+            &display_params,
             self.scanout_type,
         )?;
 

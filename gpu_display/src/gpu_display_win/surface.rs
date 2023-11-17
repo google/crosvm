@@ -24,6 +24,8 @@ use euclid::Box2D;
 use euclid::Size2D;
 use metrics::sys::windows::Metrics;
 use sync::Mutex;
+use vm_control::gpu::DisplayMode;
+use vm_control::gpu::DisplayParameters;
 use win_util::keys_down;
 use winapi::shared::minwindef::HIWORD;
 use winapi::shared::minwindef::LOWORD;
@@ -48,10 +50,8 @@ use super::window_message_processor::SurfaceResources;
 use super::window_message_processor::WindowMessage;
 use super::window_message_processor::WindowPosMessage;
 use super::window_message_processor::HANDLE_WINDOW_MESSAGE_TIMEOUT;
-use super::DisplayProperties;
 use super::HostWindowSpace;
 use super::MouseMode;
-use super::VirtualDisplaySpace;
 use super::VulkanDisplayWrapper;
 use crate::EventDeviceKind;
 
@@ -102,6 +102,29 @@ fn update_virtual_display_projection(
     }
 }
 
+#[allow(dead_code)]
+#[derive(Clone)]
+pub(crate) struct DisplayProperties {
+    pub start_hidden: bool,
+    pub is_fullscreen: bool,
+    pub window_width: u32,
+    pub window_height: u32,
+}
+
+impl From<&DisplayParameters> for DisplayProperties {
+    fn from(params: &DisplayParameters) -> Self {
+        let is_fullscreen = matches!(params.mode, DisplayMode::BorderlessFullScreen(_));
+        let (window_width, window_height) = params.get_window_size();
+
+        Self {
+            start_hidden: params.hidden,
+            is_fullscreen,
+            window_width,
+            window_height,
+        }
+    }
+}
+
 pub struct Surface {
     surface_id: u32,
     mouse_input: MouseInputManager,
@@ -116,9 +139,8 @@ impl Surface {
     pub fn new(
         surface_id: u32,
         window: &GuiWindow,
-        virtual_display_size: &Size2D<i32, VirtualDisplaySpace>,
         _metrics: Option<Weak<Metrics>>,
-        display_properties: &DisplayProperties,
+        display_params: &DisplayParameters,
         resources: SurfaceResources,
         vulkan_display: Arc<Mutex<VulkanDisplayWrapper>>,
     ) -> Result<Self> {
@@ -130,8 +152,12 @@ impl Surface {
         );
 
         let initial_host_viewport_size = window.get_client_rect().context(CONTEXT_MESSAGE)?.size;
+        let virtual_display_size = {
+            let (width, height) = display_params.get_virtual_display_size();
+            size2(width, height).checked_cast()
+        };
         let virtual_display_manager =
-            VirtualDisplayManager::new(&initial_host_viewport_size, virtual_display_size);
+            VirtualDisplayManager::new(&initial_host_viewport_size, &virtual_display_size);
         // This will make gfxstream initialize the child window to which it will render.
         update_virtual_display_projection(
             vulkan_display.lock(),
@@ -156,7 +182,7 @@ impl Surface {
             mouse_input,
             window_manager: WindowManager::new(
                 window,
-                display_properties,
+                &display_params.into(),
                 initial_host_viewport_size,
                 gpu_main_display_tube.clone(),
             )

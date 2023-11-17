@@ -15,6 +15,7 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
 use base::VolatileSlice;
+use vm_control::gpu::DisplayParameters;
 
 use crate::DisplayT;
 use crate::GpuDisplayError;
@@ -198,8 +199,7 @@ impl DisplayT for DisplayAndroid {
         parent_surface_id: Option<u32>,
         _surface_id: u32,
         _scanout_id: Option<u32>,
-        requested_width: u32,
-        requested_height: u32,
+        display_params: &DisplayParameters,
         _surf_type: SurfaceType,
     ) -> GpuDisplayResult<Box<dyn GpuDisplaySurface>> {
         if parent_surface_id.is_some() {
@@ -220,6 +220,7 @@ impl DisplayT for DisplayAndroid {
             })
             .map_err(|_| GpuDisplayError::Unsupported)?;
 
+        let (requested_width, requested_height) = display_params.get_virtual_display_size();
         if requested_width != android_width {
             warn!(
                 "Display surface width ({}) doesn't match Android Surface width ({}).",

@@ -8,9 +8,9 @@ use anyhow::Result;
 use base::Tube;
 
 use super::math_util::Size;
+use super::surface::DisplayProperties;
 use super::window::GuiWindow;
 use super::window_message_processor::WindowPosMessage;
-use super::DisplayProperties;
 
 pub(crate) struct NoopWindowManager {}
 

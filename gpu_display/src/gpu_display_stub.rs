@@ -6,6 +6,7 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
 use base::VolatileSlice;
+use vm_control::gpu::DisplayParameters;
 
 use crate::DisplayT;
 use crate::GpuDisplayError;
@@ -103,14 +104,14 @@ impl DisplayT for DisplayStub {
         parent_surface_id: Option<u32>,
         _surface_id: u32,
         _scanout_id: Option<u32>,
-        width: u32,
-        height: u32,
+        display_params: &DisplayParameters,
         _surf_type: SurfaceType,
     ) -> GpuDisplayResult<Box<dyn GpuDisplaySurface>> {
         if parent_surface_id.is_some() {
             return Err(GpuDisplayError::Unsupported);
         }
 
+        let (width, height) = display_params.get_virtual_display_size();
         Ok(Box::new(StubSurface {
             width,
             height,

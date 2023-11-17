@@ -32,6 +32,7 @@ use base::VolatileMemory;
 use dwl::*;
 use linux_input_sys::virtio_input_event;
 use sync::Waitable;
+use vm_control::gpu::DisplayParameters;
 
 use crate::DisplayExternalResourceImport;
 use crate::DisplayT;
@@ -376,12 +377,12 @@ impl DisplayT for DisplayWl {
         parent_surface_id: Option<u32>,
         surface_id: u32,
         scanout_id: Option<u32>,
-        width: u32,
-        height: u32,
+        display_params: &DisplayParameters,
         surf_type: SurfaceType,
     ) -> GpuDisplayResult<Box<dyn GpuDisplaySurface>> {
         let parent_id = parent_surface_id.unwrap_or(0);
 
+        let (width, height) = display_params.get_virtual_display_size();
         let row_size = width * BYTES_PER_PIXEL;
         let fb_size = row_size * height;
         let buffer_size = round_up_to_page_size(fb_size as usize * BUFFER_COUNT);

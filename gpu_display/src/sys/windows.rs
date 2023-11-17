@@ -11,7 +11,6 @@ use base::SendTube;
 use base::WaitContext;
 use metrics::sys::windows::Metrics;
 
-use crate::gpu_display_win::DisplayProperties;
 use crate::gpu_display_win::DisplayWin;
 use crate::DisplayEventToken;
 use crate::DisplayT;
@@ -65,7 +64,6 @@ pub trait WinGpuDisplayExt {
     fn open_winapi(
         wndproc_thread: WindowProcedureThread,
         win_metrics: Option<Weak<Metrics>>,
-        display_properties: DisplayProperties,
         gpu_display_wait_descriptor_ctrl: SendTube,
         vulkan_display_create_params: Option<VulkanCreateParams>,
     ) -> GpuDisplayResult<GpuDisplay>;
@@ -75,14 +73,12 @@ impl WinGpuDisplayExt for GpuDisplay {
     fn open_winapi(
         wndproc_thread: WindowProcedureThread,
         win_metrics: Option<Weak<Metrics>>,
-        display_properties: DisplayProperties,
         gpu_display_wait_descriptor_ctrl: SendTube,
         vulkan_display_create_params: Option<VulkanCreateParams>,
     ) -> GpuDisplayResult<GpuDisplay> {
         let display = DisplayWin::new(
             wndproc_thread,
             win_metrics,
-            display_properties,
             gpu_display_wait_descriptor_ctrl,
             vulkan_display_create_params,
         )?;

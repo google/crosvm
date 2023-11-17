@@ -36,14 +36,10 @@ use base::EventWaitResult;
 use base::RawDescriptor;
 use base::ReadNotifier;
 use base::SendTube;
-use euclid::size2;
-use euclid::Size2D;
-use math_util::Size2DCheckedCast;
 use metrics::sys::windows::Metrics;
 pub use surface::Surface;
 use sync::Mutex;
 use sync::Waitable;
-use vm_control::gpu::DisplayMode;
 use vm_control::gpu::DisplayParameters;
 use vm_control::ModifyWaitContext;
 use window_message_processor::DisplaySendToWndProc;
@@ -72,28 +68,6 @@ pub(crate) type ObjectId = NonZeroU32;
 pub struct VirtualDisplaySpace;
 pub struct HostWindowSpace;
 
-#[derive(Clone)]
-pub struct DisplayProperties {
-    pub start_hidden: bool,
-    pub is_fullscreen: bool,
-    pub window_width: u32,
-    pub window_height: u32,
-}
-
-impl From<&DisplayParameters> for DisplayProperties {
-    fn from(params: &DisplayParameters) -> Self {
-        let is_fullscreen = matches!(params.mode, DisplayMode::BorderlessFullScreen(_));
-        let (window_width, window_height) = params.get_window_size();
-
-        Self {
-            start_hidden: params.hidden,
-            is_fullscreen,
-            window_width,
-            window_height,
-        }
-    }
-}
-
 pub enum VulkanDisplayWrapper {
     Uninitialized,
     #[cfg(feature = "vulkan_display")]
@@ -104,7 +78,6 @@ pub struct DisplayWin {
     wndproc_thread: Rc<WindowProcedureThread>,
     close_requested_event: Event,
     win_metrics: Option<Weak<Metrics>>,
-    display_properties: DisplayProperties,
     is_surface_created: bool,
     #[allow(dead_code)]
     gpu_display_wait_descriptor_ctrl: SendTube,
@@ -118,7 +91,6 @@ impl DisplayWin {
     pub fn new(
         wndproc_thread: WindowProcedureThread,
         win_metrics: Option<Weak<Metrics>>,
-        display_properties: DisplayProperties,
         gpu_display_wait_descriptor_ctrl: SendTube,
         vulkan_display_create_params: Option<VulkanCreateParams>,
     ) -> Result<DisplayWin, GpuDisplayError> {
@@ -133,7 +105,6 @@ impl DisplayWin {
             wndproc_thread: Rc::new(wndproc_thread),
             close_requested_event,
             win_metrics,
-            display_properties,
             is_surface_created: false,
             gpu_display_wait_descriptor_ctrl,
             event_device_wait_descriptor_requests: Vec::new(),
@@ -148,10 +119,10 @@ impl DisplayWin {
         &mut self,
         surface_id: u32,
         scanout_id: u32,
-        virtual_display_size: Size2D<i32, VirtualDisplaySpace>,
+        display_params: &DisplayParameters,
     ) -> Result<Arc<Mutex<VulkanDisplayWrapper>>> {
+        let display_params_clone = display_params.clone();
         let metrics = self.win_metrics.clone();
-        let display_properties = self.display_properties.clone();
         #[cfg(feature = "vulkan_display")]
         let vulkan_create_params = self.vulkan_display_create_params.clone();
         // This function should not return until surface creation finishes. Besides, we would like
@@ -216,9 +187,8 @@ impl DisplayWin {
                     Surface::new(
                         surface_id,
                         window,
-                        &virtual_display_size,
                         metrics,
-                        &display_properties,
+                        &display_params_clone,
                         display_event_dispatcher,
                         vulkan_display,
                     )
@@ -299,8 +269,7 @@ impl DisplayT for DisplayWin {
         parent_surface_id: Option<u32>,
         surface_id: u32,
         scanout_id: Option<u32>,
-        virtual_display_width: u32,
-        virtual_display_height: u32,
+        display_params: &DisplayParameters,
         surface_type: SurfaceType,
     ) -> GpuDisplayResult<Box<dyn GpuDisplaySurface>> {
         if parent_surface_id.is_some() {
@@ -316,7 +285,7 @@ impl DisplayT for DisplayWin {
         let vulkan_display = match self.create_surface_internal(
             surface_id,
             scanout_id.expect("scanout id is required"),
-            size2(virtual_display_width, virtual_display_height).checked_cast(),
+            display_params,
         ) {
             Err(e) => {
                 error!("Failed to create surface: {:?}", e);

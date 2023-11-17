@@ -286,9 +286,7 @@ pub fn run_gpu_device_worker(
             .push(GpuDisplayParameters::default());
     }
 
-    let display_backends = vec![virtio::DisplayBackend::WinApi(
-        (&config.params.display_params[0]).into(),
-    )];
+    let display_backends = vec![virtio::DisplayBackend::WinApi];
 
     let mut gpu_params = config.params.clone();
 
