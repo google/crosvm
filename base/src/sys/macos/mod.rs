@@ -100,6 +100,11 @@ impl<T: crate::EventToken> EventContext<T> {
     pub fn new() -> crate::errno::Result<EventContext<T>> {
         todo!();
     }
+    pub fn build_with(
+        _fd_tokens: &[(&dyn crate::AsRawDescriptor, T)],
+    ) -> crate::errno::Result<EventContext<T>> {
+        todo!();
+    }
     pub fn add_for_event(
         &self,
         _descriptor: &dyn crate::AsRawDescriptor,
@@ -117,6 +122,9 @@ impl<T: crate::EventToken> EventContext<T> {
         todo!();
     }
     pub fn delete(&self, _fd: &dyn crate::AsRawDescriptor) -> crate::errno::Result<()> {
+        todo!();
+    }
+    pub fn wait(&self) -> crate::errno::Result<smallvec::SmallVec<[crate::TriggeredEvent<T>; 16]>> {
         todo!();
     }
     pub fn wait_timeout(
