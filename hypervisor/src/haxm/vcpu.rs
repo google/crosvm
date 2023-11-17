@@ -581,6 +581,21 @@ impl VcpuX86_64 for HaxmVcpu {
         set_tsc_offset_via_msr(self, offset)
     }
 
+    fn restore_timekeeping(&self, _host_tsc_reference_moment: u64, tsc_offset: u64) -> Result<()> {
+        // HAXM sets TSC_OFFSET based on what we set TSC to; however, it does
+        // not yet handle syncing. This means it computes
+        // TSC_OFFSET = new_tsc - rdtsc(), so if we want to target the same
+        // offset value, we need new_tsc = rdtsc() + target_offset. This is what
+        // Self::set_tsc_offset does.
+        //
+        // TODO(b/311793539): haxm doesn't yet support syncing TSCs across VCPUs
+        // if the TSC value is non-zero. Once we have that support, we can
+        // switch to calling Self::set_tsc_value here with the common host
+        // reference moment. (Alternatively, we may just expose a way to set the
+        // offset directly.)
+        self.set_tsc_offset(tsc_offset)
+    }
+
     fn set_tsc_value(&self, value: u64) -> Result<()> {
         set_tsc_value_via_msr(self, value)
     }

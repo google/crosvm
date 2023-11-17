@@ -146,6 +146,12 @@ pub trait VcpuX86_64: Vcpu {
     /// Required for snapshotting.
     fn set_tsc_value(&self, value: u64) -> Result<()>;
 
+    /// Some hypervisors require special handling to restore timekeeping when
+    /// a snapshot is restored. They are provided with a host TSC reference
+    /// moment, guaranteed to be the same across all Vcpus, and the Vcpu's TSC
+    /// offset at the moment it was snapshotted.
+    fn restore_timekeeping(&self, host_tsc_reference_moment: u64, tsc_offset: u64) -> Result<()>;
+
     /// Snapshot vCPU state
     fn snapshot(&self) -> anyhow::Result<VcpuSnapshot> {
         Ok(VcpuSnapshot {
@@ -161,7 +167,11 @@ pub trait VcpuX86_64: Vcpu {
         })
     }
 
-    fn restore(&mut self, snapshot: &VcpuSnapshot) -> anyhow::Result<()> {
+    fn restore(
+        &mut self,
+        snapshot: &VcpuSnapshot,
+        host_tsc_reference_moment: u64,
+    ) -> anyhow::Result<()> {
         assert_eq!(snapshot.vcpu_id, self.id());
         self.set_regs(&snapshot.regs)?;
         self.set_sregs(&snapshot.sregs)?;
@@ -170,7 +180,7 @@ pub trait VcpuX86_64: Vcpu {
         self.set_msrs(&snapshot.msrs)?;
         self.set_xsave(&snapshot.xsave)?;
         self.set_interrupt_state(snapshot.hypervisor_data.clone())?;
-        self.set_tsc_offset(snapshot.tsc_offset)?;
+        self.restore_timekeeping(host_tsc_reference_moment, snapshot.tsc_offset)?;
         Ok(())
     }
 }

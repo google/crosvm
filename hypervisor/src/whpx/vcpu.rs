@@ -1324,6 +1324,15 @@ impl VcpuX86_64 for WhpxVcpu {
     fn set_tsc_value(&self, value: u64) -> Result<()> {
         set_tsc_value_via_msr(self, value)
     }
+
+    fn restore_timekeeping(&self, host_tsc_reference_moment: u64, tsc_offset: u64) -> Result<()> {
+        // Set the guest TSC such that it has the same TSC_OFFSET as it did at
+        // the moment it was snapshotted. This is required for virtio-pvclock
+        // to function correctly. (virtio-pvclock assumes the offset is fixed,
+        // and adjusts CLOCK_BOOTTIME accordingly. It also hides the TSC jump
+        // from CLOCK_MONOTONIC by setting the timebase.)
+        self.set_tsc_value(host_tsc_reference_moment.wrapping_add(tsc_offset))
+    }
 }
 
 fn get_msr_names(msrs: &[Register]) -> Vec<WHV_REGISTER_NAME> {

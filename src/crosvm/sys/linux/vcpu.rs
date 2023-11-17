@@ -321,11 +321,15 @@ where
                                 error!("Failed to send snapshot response: {}", e);
                             }
                         }
-                        VcpuControl::Restore(response_chan, vcpu_data) => {
+                        VcpuControl::Restore(req) => {
                             let resp = vcpu
-                                .restore(&vcpu_data)
+                                .restore(
+                                    &req.snapshot,
+                                    #[cfg(target_arch = "x86_64")]
+                                    req.host_tsc_reference_moment,
+                                )
                                 .with_context(|| format!("Failed to restore Vcpu #{}", vcpu.id()));
-                            if let Err(e) = response_chan.send(resp) {
+                            if let Err(e) = req.result_sender.send(resp) {
                                 error!("Failed to send restore response: {}", e);
                             }
                         }

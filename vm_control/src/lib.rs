@@ -28,6 +28,8 @@ mod balloon_tube;
 pub mod client;
 pub mod sys;
 
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::_rdtsc;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -124,7 +126,17 @@ pub enum VcpuControl {
     // Request the current state of the vCPU. The result is sent back over the included channel.
     GetStates(mpsc::Sender<VmRunMode>),
     Snapshot(mpsc::Sender<anyhow::Result<VcpuSnapshot>>),
-    Restore(mpsc::Sender<anyhow::Result<()>>, Box<VcpuSnapshot>),
+    Restore(VcpuRestoreRequest),
+}
+
+/// Request to restore a Vcpu from a given snapshot, and report the results
+/// back via the provided channel.
+#[derive(Clone, Debug)]
+pub struct VcpuRestoreRequest {
+    pub result_sender: mpsc::Sender<anyhow::Result<()>>,
+    pub snapshot: Box<VcpuSnapshot>,
+    #[cfg(target_arch = "x86_64")]
+    pub host_tsc_reference_moment: u64,
 }
 
 /// Mode of execution for the VM.
@@ -2083,11 +2095,22 @@ pub fn do_restore(
             vcpu_snapshots.len()
         );
     }
+
+    #[cfg(target_arch = "x86_64")]
+    let host_tsc_reference_moment = {
+        // SAFETY: rdtsc takes no arguments.
+        unsafe { _rdtsc() }
+    };
     let (send_chan, recv_chan) = mpsc::channel();
     for vcpu_snap in vcpu_snapshots {
         let vcpu_id = vcpu_snap.vcpu_id;
         kick_vcpu(
-            VcpuControl::Restore(send_chan.clone(), Box::new(vcpu_snap)),
+            VcpuControl::Restore(VcpuRestoreRequest {
+                result_sender: send_chan.clone(),
+                snapshot: Box::new(vcpu_snap),
+                #[cfg(target_arch = "x86_64")]
+                host_tsc_reference_moment,
+            }),
             vcpu_id,
         );
     }
