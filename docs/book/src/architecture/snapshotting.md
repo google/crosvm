@@ -52,6 +52,29 @@ injection. Rather than trying to snapshot the `Event` state, we freeze all inter
 (devices) and flush all pending interrupts into the irqchip. This way, snapshotting the irqchip
 state is sufficient to capture all pending interrupts.
 
+### Two-step snapshotting
+
+Two-step snapshotting is performed in crosvm to ensure data retention.
+
+Problem definition:
+
+1. VMM Manager requests crosvm to suspend.
+1. Crosvm suspends, however host-side processes are still running.
+1. VMM Manager requests processes suspend.
+1. VMM Manager requests snapshot from crosvm.
+1. VMM Manager snapshots host-side processes.
+1. VMM Manager requests host-side processes and crosvm to resume (or stop).
+
+The problem is that data may be lost in steps 4 & 5, because of the time between steps 2 & 3. After
+step 2, crosvm is suspended and host-side processes are still running, which means host-side
+processes may send data to crosvm but the device in crosvm has not read that data.
+
+When the VM resumes, there are no issues, as the data gets read and processing continues normally.
+However, when the VM restores, that data is lost as it was not saved.
+
+Solution is two-step snapshotting. We modify step 4 to read any data coming from the host just
+before snapshotting, to save that data in crosvm, and then process that data when the VM resumes.
+
 ## Restoring a VM in lieu of booting
 
 Restoring on to a running VM is not supported, and may never be. Our preferred approach is to
