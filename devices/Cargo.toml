@@ -63,7 +63,6 @@ libc = "*"
 libvda = { path = "../media/libvda", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
 memoffset = { version = "0.6" }
-net_sys = { path = "../net_sys" }
 net_util = { path = "../net_util" }
 num-traits = "0.2"
 once_cell = "1.7.2"
@@ -92,6 +91,7 @@ zerocopy = { version = "0.7", features = ["derive"] }
 fuse = {path = "../fuse" }
 libcras = { version = "*", optional = true }
 minijail = "*"
+net_sys = { path = "../net_sys" }
 p9 = "*"
 usb_util = { path = "../usb_util" }
 vfio_sys = { path = "../vfio_sys" }

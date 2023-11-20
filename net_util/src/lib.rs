@@ -90,17 +90,14 @@ pub enum MacAddressError {
     ParseOctet(ParseIntError),
 }
 
-/// An Ethernet mac address. This struct is compatible with the C `struct sockaddr`.
-#[repr(C)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// An Ethernet MAC address.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct MacAddress {
-    family: net_sys::sa_family_t,
-    addr: [u8; 6usize],
-    __pad: [u8; 8usize],
+    addr: [u8; 6],
 }
 
 impl MacAddress {
-    pub fn octets(&self) -> [u8; 6usize] {
+    pub fn octets(&self) -> [u8; 6] {
         self.addr
     }
 }
@@ -114,11 +111,7 @@ impl FromStr for MacAddress {
             return Err(MacAddressError::InvalidNumOctets(octets.len()));
         }
 
-        let mut result = MacAddress {
-            family: net_sys::ARPHRD_ETHER,
-            addr: [0; 6usize],
-            __pad: [0; 8usize],
-        };
+        let mut result = MacAddress::default();
 
         for (i, octet) in octets.iter().enumerate() {
             result.addr[i] = u8::from_str_radix(octet, 16).map_err(MacAddressError::ParseOctet)?;
@@ -205,14 +198,6 @@ pub trait TapTCommon: Read + Write + AsRawDescriptor + Send + Sized {
     /// Enable the tap interface.
     fn enable(&self) -> Result<()>;
 
-    /// Set the size of the vnet hdr.
-    fn set_vnet_hdr_size(&self, size: c_int) -> Result<()>;
-
-    fn get_ifreq(&self) -> net_sys::ifreq;
-
-    /// Get the interface flags
-    fn if_flags(&self) -> u32;
-
     /// Try to clone
     fn try_clone(&self) -> Result<Self>;
 
@@ -229,9 +214,7 @@ mod tests {
     #[test]
     fn json_serialize_deserialize() {
         let mac_address = MacAddress {
-            family: net_sys::ARPHRD_ETHER,
             addr: [0x3d, 0x70, 0xeb, 0x61, 0x1a, 0x91],
-            __pad: [0; 8usize],
         };
         const SERIALIZED_ADDRESS: &str = "\"3D:70:EB:61:1A:91\"";
         assert_eq!(to_string(&mac_address).unwrap(), SERIALIZED_ADDRESS);

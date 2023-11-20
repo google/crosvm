@@ -11,12 +11,75 @@ use base::EventType;
 use base::ReadNotifier;
 use base::WaitContext;
 use net_util::TapT;
+use virtio_sys::virtio_net;
+use virtio_sys::virtio_net::virtio_net_hdr_v1;
 
 use super::super::super::net::NetError;
 use super::super::super::net::Token;
 use super::super::super::net::Worker;
 use super::super::super::Interrupt;
 use super::super::super::Queue;
+
+// Ensure that the tap interface has the correct flags and sets the offload and VNET header size
+// to the appropriate values.
+pub fn validate_and_configure_tap<T: TapT>(tap: &T, vq_pairs: u16) -> Result<(), NetError> {
+    let flags = tap.if_flags();
+    let mut required_flags = vec![
+        (net_sys::IFF_TAP, "IFF_TAP"),
+        (net_sys::IFF_NO_PI, "IFF_NO_PI"),
+        (net_sys::IFF_VNET_HDR, "IFF_VNET_HDR"),
+    ];
+    if vq_pairs > 1 {
+        required_flags.push((net_sys::IFF_MULTI_QUEUE, "IFF_MULTI_QUEUE"));
+    }
+    let missing_flags = required_flags
+        .iter()
+        .filter_map(
+            |(value, name)| {
+                if value & flags == 0 {
+                    Some(name)
+                } else {
+                    None
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+
+    if !missing_flags.is_empty() {
+        return Err(NetError::TapValidate(format!(
+            "Missing flags: {:?}",
+            missing_flags
+        )));
+    }
+
+    let vnet_hdr_size = std::mem::size_of::<virtio_net_hdr_v1>();
+    tap.set_vnet_hdr_size(vnet_hdr_size)
+        .map_err(NetError::TapSetVnetHdrSize)?;
+
+    Ok(())
+}
+
+/// Converts virtio-net feature bits to tap's offload bits.
+pub fn virtio_features_to_tap_offload(features: u64) -> u32 {
+    let mut tap_offloads: u32 = 0;
+    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM) != 0 {
+        tap_offloads |= net_sys::TUN_F_CSUM;
+    }
+    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4) != 0 {
+        tap_offloads |= net_sys::TUN_F_TSO4;
+    }
+    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_TSO6) != 0 {
+        tap_offloads |= net_sys::TUN_F_TSO6;
+    }
+    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_ECN) != 0 {
+        tap_offloads |= net_sys::TUN_F_TSO_ECN;
+    }
+    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_UFO) != 0 {
+        tap_offloads |= net_sys::TUN_F_UFO;
+    }
+
+    tap_offloads
+}
 
 pub fn process_rx<T: TapT>(
     interrupt: &Interrupt,

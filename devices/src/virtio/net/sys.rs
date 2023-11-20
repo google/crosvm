@@ -14,3 +14,5 @@ cfg_if::cfg_if! {
 
 pub(crate) use platform::process_rx;
 pub(crate) use platform::process_tx;
+pub(crate) use platform::validate_and_configure_tap;
+pub(crate) use platform::virtio_features_to_tap_offload;

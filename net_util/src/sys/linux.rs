@@ -8,8 +8,17 @@ pub use tap::Tap;
 
 use crate::TapTCommon;
 
+/// Linux-specific TAP functions
+pub trait TapTLinux {
+    /// Set the size of the vnet hdr.
+    fn set_vnet_hdr_size(&self, size: usize) -> Result<(), crate::Error>;
+
+    /// Get the interface flags
+    fn if_flags(&self) -> u32;
+}
+
 // TODO(b/159159958) implement FileReadWriteVolatile for slirp
-pub trait TapT: FileReadWriteVolatile + TapTCommon {}
+pub trait TapT: FileReadWriteVolatile + TapTCommon + TapTLinux {}
 
 pub mod fakes {
     pub use super::tap::fakes::FakeTap;

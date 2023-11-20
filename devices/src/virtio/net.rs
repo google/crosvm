@@ -8,7 +8,6 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::io;
 use std::io::Write;
-use std::mem;
 use std::net::Ipv4Addr;
 use std::os::raw::c_uint;
 use std::path::PathBuf;
@@ -38,7 +37,6 @@ use serde::Serialize;
 use thiserror::Error as ThisError;
 use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use virtio_sys::virtio_net;
-use virtio_sys::virtio_net::virtio_net_hdr_v1;
 use virtio_sys::virtio_net::VIRTIO_NET_CTRL_GUEST_OFFLOADS;
 use virtio_sys::virtio_net::VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET;
 use virtio_sys::virtio_net::VIRTIO_NET_CTRL_MQ;
@@ -69,6 +67,8 @@ pub static VHOST_NET_DEFAULT_PATH: &str = "/dev/vhost-net";
 
 pub(crate) use sys::process_rx;
 pub(crate) use sys::process_tx;
+pub(crate) use sys::validate_and_configure_tap;
+pub(crate) use sys::virtio_features_to_tap_offload;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -219,28 +219,6 @@ impl FromStr for NetParameters {
 pub struct virtio_net_ctrl_hdr {
     pub class: u8,
     pub cmd: u8,
-}
-
-/// Converts virtio-net feature bits to tap's offload bits.
-pub fn virtio_features_to_tap_offload(features: u64) -> c_uint {
-    let mut tap_offloads: c_uint = 0;
-    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM) != 0 {
-        tap_offloads |= net_sys::TUN_F_CSUM;
-    }
-    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4) != 0 {
-        tap_offloads |= net_sys::TUN_F_TSO4;
-    }
-    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_TSO6) != 0 {
-        tap_offloads |= net_sys::TUN_F_TSO6;
-    }
-    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_ECN) != 0 {
-        tap_offloads |= net_sys::TUN_F_TSO_ECN;
-    }
-    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_UFO) != 0 {
-        tap_offloads |= net_sys::TUN_F_UFO;
-    }
-
-    tap_offloads
 }
 
 #[derive(Debug, Clone, Copy, Default, AsBytes, FromZeroes, FromBytes)]
@@ -604,45 +582,6 @@ where
     fn max_virtqueue_pairs(&self) -> usize {
         self.taps.len()
     }
-}
-
-// Ensure that the tap interface has the correct flags and sets the offload and VNET header size
-// to the appropriate values.
-pub fn validate_and_configure_tap<T: TapT>(tap: &T, vq_pairs: u16) -> Result<(), NetError> {
-    let flags = tap.if_flags();
-    let mut required_flags = vec![
-        (net_sys::IFF_TAP, "IFF_TAP"),
-        (net_sys::IFF_NO_PI, "IFF_NO_PI"),
-        (net_sys::IFF_VNET_HDR, "IFF_VNET_HDR"),
-    ];
-    if vq_pairs > 1 {
-        required_flags.push((net_sys::IFF_MULTI_QUEUE, "IFF_MULTI_QUEUE"));
-    }
-    let missing_flags = required_flags
-        .iter()
-        .filter_map(
-            |(value, name)| {
-                if value & flags == 0 {
-                    Some(name)
-                } else {
-                    None
-                }
-            },
-        )
-        .collect::<Vec<_>>();
-
-    if !missing_flags.is_empty() {
-        return Err(NetError::TapValidate(format!(
-            "Missing flags: {:?}",
-            missing_flags
-        )));
-    }
-
-    let vnet_hdr_size = mem::size_of::<virtio_net_hdr_v1>() as i32;
-    tap.set_vnet_hdr_size(vnet_hdr_size)
-        .map_err(NetError::TapSetVnetHdrSize)?;
-
-    Ok(())
 }
 
 impl<T> Drop for Net<T>

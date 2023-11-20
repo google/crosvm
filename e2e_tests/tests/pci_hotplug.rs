@@ -17,6 +17,7 @@ use base::test_utils::call_test_with_sudo;
 use fixture::vm::Config;
 use fixture::vm::TestVm;
 use net_util::sys::linux::Tap;
+use net_util::sys::linux::TapTLinux;
 use net_util::MacAddress;
 use net_util::TapTCommon;
 

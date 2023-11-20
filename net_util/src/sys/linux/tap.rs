@@ -29,6 +29,7 @@ use base::RawDescriptor;
 use base::ReadNotifier;
 use cros_async::IntoAsync;
 
+use crate::sys::linux::TapTLinux;
 use crate::Error;
 use crate::MacAddress;
 use crate::Result;
@@ -104,6 +105,24 @@ impl Tap {
             if_flags: unsafe { ifreq.ifr_ifru.ifru_flags },
         })
     }
+
+    fn get_ifreq(&self) -> net_sys::ifreq {
+        let mut ifreq: net_sys::ifreq = Default::default();
+
+        // This sets the name of the interface, which is the only entry
+        // in a single-field union.
+        unsafe {
+            let ifrn_name = ifreq.ifr_ifrn.ifrn_name.as_mut();
+            ifrn_name.clone_from_slice(&self.if_name);
+        }
+
+        // This sets the flags with which the interface was created, which is the only entry we set
+        // on the second union.
+        ifreq.ifr_ifru.ifru_flags = self.if_flags;
+
+        ifreq
+    }
+
     pub fn try_clone(&self) -> Result<Tap> {
         self.tap_file
             .try_clone()
@@ -300,22 +319,41 @@ impl TapTCommon for Tap {
         }
 
         // We only access one field of the ifru union, hence this is safe.
-        // This is safe since the MacAddress struct is already sized to match the C sockaddr
-        // struct. The address family has also been checked.
-        Ok(unsafe { mem::transmute(ifreq.ifr_ifru.ifru_hwaddr) })
+        let sa: libc::sockaddr = unsafe { ifreq.ifr_ifru.ifru_hwaddr };
+
+        if sa.sa_family != libc::ARPHRD_ETHER {
+            return Err(crate::Error::IoctlError(base::Error::new(libc::EINVAL)));
+        }
+
+        let mut mac = MacAddress::default();
+
+        #[allow(clippy::unnecessary_cast)] // c_char is u8 on some platforms and i8 on others
+        for (mac_addr, sa_data) in mac.addr.iter_mut().zip(sa.sa_data.iter()) {
+            *mac_addr = *sa_data as u8;
+        }
+
+        Ok(mac)
     }
 
     fn set_mac_address(&self, mac_addr: MacAddress) -> Result<()> {
+        let mut sa = libc::sockaddr {
+            sa_family: libc::ARPHRD_ETHER,
+            sa_data: Default::default(),
+        };
+
+        #[allow(clippy::unnecessary_cast)] // c_char is u8 on some platforms and i8 on others
+        for (sa_data, mac) in sa
+            .sa_data
+            .iter_mut()
+            .zip(mac_addr.octets().iter().chain(std::iter::repeat(&0)))
+        {
+            *sa_data = *mac as c_char;
+        }
+
         let sock = create_socket()?;
 
         let mut ifreq = self.get_ifreq();
-
-        // We only access one field of the ifru union, hence this is safe.
-        unsafe {
-            // This is safe since the MacAddress struct is already sized to match the C sockaddr
-            // struct.
-            ifreq.ifr_ifru.ifru_hwaddr = std::mem::transmute(mac_addr);
-        }
+        ifreq.ifr_ifru.ifru_hwaddr = sa;
 
         // ioctl is safe. Called with a valid sock descriptor, and we check the return.
         let ret =
@@ -355,7 +393,19 @@ impl TapTCommon for Tap {
         Ok(())
     }
 
-    fn set_vnet_hdr_size(&self, size: c_int) -> Result<()> {
+    fn try_clone(&self) -> Result<Self> {
+        self.try_clone()
+    }
+
+    // Safe if caller provides a valid descriptor.
+    unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Result<Self> {
+        Tap::from_raw_descriptor(descriptor)
+    }
+}
+
+impl TapTLinux for Tap {
+    fn set_vnet_hdr_size(&self, size: usize) -> Result<()> {
+        let size = size as c_int;
         // ioctl is safe. Called with a valid tap descriptor, and we check the return.
         let ret = unsafe { ioctl_with_ref(&self.tap_file, net_sys::TUNSETVNETHDRSZ(), &size) };
         if ret < 0 {
@@ -365,34 +415,8 @@ impl TapTCommon for Tap {
         Ok(())
     }
 
-    fn get_ifreq(&self) -> net_sys::ifreq {
-        let mut ifreq: net_sys::ifreq = Default::default();
-
-        // This sets the name of the interface, which is the only entry
-        // in a single-field union.
-        unsafe {
-            let ifrn_name = ifreq.ifr_ifrn.ifrn_name.as_mut();
-            ifrn_name.clone_from_slice(&self.if_name);
-        }
-
-        // This sets the flags with which the interface was created, which is the only entry we set
-        // on the second union.
-        ifreq.ifr_ifru.ifru_flags = self.if_flags;
-
-        ifreq
-    }
-
     fn if_flags(&self) -> u32 {
         self.if_flags as u32
-    }
-
-    fn try_clone(&self) -> Result<Self> {
-        self.try_clone()
-    }
-
-    // Safe if caller provides a valid descriptor.
-    unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Result<Self> {
-        Tap::from_raw_descriptor(descriptor)
     }
 }
 
@@ -553,19 +577,6 @@ pub mod fakes {
             Ok(())
         }
 
-        fn set_vnet_hdr_size(&self, _: c_int) -> Result<()> {
-            Ok(())
-        }
-
-        fn get_ifreq(&self) -> net_sys::ifreq {
-            let ifreq: net_sys::ifreq = Default::default();
-            ifreq
-        }
-
-        fn if_flags(&self) -> u32 {
-            net_sys::IFF_TAP
-        }
-
         // Return self so it can compile
         fn try_clone(&self) -> Result<Self> {
             Ok(FakeTap {
@@ -575,6 +586,16 @@ pub mod fakes {
 
         unsafe fn from_raw_descriptor(_descriptor: RawDescriptor) -> Result<Self> {
             unimplemented!()
+        }
+    }
+
+    impl TapTLinux for FakeTap {
+        fn set_vnet_hdr_size(&self, _: usize) -> Result<()> {
+            Ok(())
+        }
+
+        fn if_flags(&self) -> u32 {
+            net_sys::IFF_TAP
         }
     }
 

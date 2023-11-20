@@ -72,7 +72,7 @@ where
         .map_err(Error::TapSetOffload)?;
 
         // We declare VIRTIO_NET_F_MRG_RXBUF, so set the vnet hdr size to match.
-        let vnet_hdr_size = mem::size_of::<virtio_net::virtio_net_hdr_mrg_rxbuf>() as i32;
+        let vnet_hdr_size = mem::size_of::<virtio_net::virtio_net_hdr_mrg_rxbuf>();
         tap.set_vnet_hdr_size(vnet_hdr_size)
             .map_err(Error::TapSetVnetHdrSize)?;
 

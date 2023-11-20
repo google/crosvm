@@ -224,21 +224,6 @@ impl TapTCommon for Slirp {
         Ok(())
     }
 
-    fn set_vnet_hdr_size(&self, _size: c_int) -> Result<()> {
-        // Unused by Slirp specific code that uses this struct.
-        unimplemented!("offloading is unsupported by Slirp.");
-    }
-
-    fn get_ifreq(&self) -> net_sys::ifreq {
-        // Used only by accessors on this struct, which are unimplemented for Slirp.
-        unimplemented!("not used by Slirp");
-    }
-
-    fn if_flags(&self) -> u32 {
-        // This function is unused by the Slirp code paths.
-        unimplemented!("not used by Slirp");
-    }
-
     /// WARNING: This is used so that we can pass Slirp into a listening loop. StreamChannels can't
     /// have >1 reader on one end of a channel, but in Slirp, there is only one guest packet stream
     /// so we have one reader and one writer.

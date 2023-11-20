@@ -37,6 +37,16 @@ use super::super::super::Reader;
 #[cfg(not(feature = "slirp"))]
 compile_error!("Net device without slirp not supported on windows");
 
+pub fn validate_and_configure_tap<T: TapT>(_tap: &T, _vq_pairs: u16) -> Result<(), NetError> {
+    // No-op for slirp on windows
+    Ok(())
+}
+
+pub fn virtio_features_to_tap_offload(_features: u64) -> u32 {
+    // slirp does not support offloads
+    0
+}
+
 // Copies a single frame from `self.rx_buf` into the guest. Returns true
 // if a buffer was used, and false if the frame must be deferred until a buffer
 // is made available by the driver.

@@ -4,6 +4,7 @@
 
 //! Linux networking API bindings.
 
+#![cfg(any(target_os = "android", target_os = "linux"))]
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
@@ -28,12 +29,6 @@ pub use crate::iff::ifreq;
 pub use crate::iff::net_device_flags;
 
 pub const TUNTAP: ::std::os::raw::c_uint = 84;
-
-// Windows doesn't have these constants in libc. As such, we preserve them here
-// for use on that platform, and for the sake of simplicity, crosvm code
-// uses these constants on all platforms.
-pub type sa_family_t = ::std::os::raw::c_ushort;
-pub const ARPHRD_ETHER: sa_family_t = 1;
 
 ioctl_iow_nr!(TUNSETNOCSUM, TUNTAP, 200, ::std::os::raw::c_int);
 ioctl_iow_nr!(TUNSETDEBUG, TUNTAP, 201, ::std::os::raw::c_int);
