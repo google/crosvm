@@ -257,7 +257,7 @@ pub fn fstat<F: AsRawDescriptor>(f: &F) -> Result<libc::stat64> {
 /// Checks whether a file is a block device fie or not.
 pub fn is_block_file<F: AsRawDescriptor>(file: &F) -> Result<bool> {
     let stat = fstat(file)?;
-    Ok((stat.st_mode & libc::S_IFBLK) == libc::S_IFBLK)
+    Ok((stat.st_mode & libc::S_IFMT) == libc::S_IFBLK)
 }
 
 const BLOCK_IO_TYPE: u32 = 0x12;
