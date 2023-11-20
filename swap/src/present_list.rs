@@ -30,11 +30,6 @@ impl PresentList {
         }
     }
 
-    /// Returns the length of the list.
-    pub fn len(&self) -> usize {
-        self.list.len()
-    }
-
     /// Returns whether the page is present or not
     ///
     /// # Arguments
@@ -133,31 +128,12 @@ impl PresentList {
             .map(|v| usize::from(*v))
             .sum()
     }
-
-    /// Returns the count of present pages in the range.
-    ///
-    /// Returns `None` if the `idx_range` is out of range.
-    ///
-    /// # Arguments
-    ///
-    /// * `idx_range` - the indices of pages to count.
-    pub fn present_pages(&self, idx_range: Range<usize>) -> Option<usize> {
-        self.list
-            .get(idx_range)
-            .map(|list| list.iter().map(|v| usize::from(*v)).sum())
-    }
 }
 
 #[cfg(test)]
 mod tests {
 
     use super::*;
-
-    #[test]
-    fn len() {
-        assert_eq!(PresentList::new(1).len(), 1);
-        assert_eq!(PresentList::new(100).len(), 100);
-    }
 
     #[test]
     fn get_default() {
@@ -388,25 +364,5 @@ mod tests {
         list.mark_as_present(12..13);
 
         assert_eq!(list.all_present_pages(), 5);
-    }
-
-    #[test]
-    fn present_pages() {
-        let mut list = PresentList::new(20);
-
-        list.mark_as_present(1..5);
-        list.mark_as_present(12..13);
-
-        assert_eq!(list.present_pages(3..15).unwrap(), 3);
-    }
-
-    #[test]
-    fn present_pages_out_of_range() {
-        let mut list = PresentList::new(20);
-
-        list.mark_as_present(1..5);
-        list.mark_as_present(12..13);
-
-        assert!(list.present_pages(3..21).is_none());
     }
 }

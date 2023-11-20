@@ -14,7 +14,6 @@ use std::sync::Arc;
 use anyhow::Context;
 use base::error;
 use base::linux::FileDataIterator;
-use base::sys::find_next_data;
 use base::AsRawDescriptor;
 use base::SharedMemory;
 use base::VolatileSlice;
@@ -301,7 +300,7 @@ impl<'a> PageHandler<'a> {
                 .clear_range(idx_in_region..idx_in_region + 1)?;
             region.copied_from_staging_pages += 1;
             Ok(())
-        } else if let Some(page_slice) = file.page_content(idx_in_file)? {
+        } else if let Some(page_slice) = file.page_content(idx_in_file, false)? {
             // TODO(kawasin): Unlock regions to proceed swap-in operation background.
             uffd_copy_all(uffd, page_addr, page_slice, true)?;
             // TODO(b/265758094): optimize clear operation.
@@ -368,7 +367,7 @@ impl<'a> PageHandler<'a> {
             let idx_in_file = idx_in_region + region.base_page_idx_in_file;
             let idx_range = idx_in_file..idx_in_file + 1;
             // Erase the pages from the disk because the pages are removed from the guest memory.
-            let munlocked_pages = ctx.file.erase_from_disk(idx_range)?;
+            let munlocked_pages = ctx.file.free_range(idx_range)?;
             ctx.mlock_budget_pages += munlocked_pages;
         }
         Ok(())
@@ -557,7 +556,6 @@ impl<'a> PageHandler<'a> {
         SwapInContext {
             ctx: &self.ctx,
             cur_staging: 0,
-            cur_file: 0,
         }
     }
 
@@ -640,7 +638,6 @@ impl<'a> PageHandler<'a> {
 pub struct SwapInContext<'a> {
     ctx: &'a Mutex<PageHandleContext<'a>>,
     cur_staging: usize,
-    cur_file: usize,
 }
 
 impl SwapInContext<'_> {
@@ -660,7 +657,7 @@ impl SwapInContext<'_> {
         // Request the kernel to pre-populate the present pages in the swap file to page cache
         // background. At most 16MB of pages will be populated.
         // The threshold is to apply MADV_WILLNEED to bigger chunk of pages. The kernel populates
-        // consective pages at once on MADV_WILLNEED.
+        // consecutive pages at once on MADV_WILLNEED.
         if ctx.mlock_budget_pages > bytes_to_pages(PREFETCH_THRESHOLD) {
             let mlock_budget_pages = ctx.mlock_budget_pages;
             let locked_pages = ctx.file.lock_and_async_prefetch(mlock_budget_pages)?;
@@ -687,10 +684,9 @@ impl SwapInContext<'_> {
 
         if let Some(mut idx_range_in_file) = ctx.file.first_data_range(max_pages) {
             let PageHandleContext { regions, file, .. } = &mut *ctx;
-            for region in regions[self.cur_file..].iter_mut() {
+            for region in regions.iter_mut() {
                 let region_tail_idx_in_file = region.base_page_idx_in_file + region.num_pages;
                 if idx_range_in_file.start > region_tail_idx_in_file {
-                    self.cur_file += 1;
                     continue;
                 } else if idx_range_in_file.start < region.base_page_idx_in_file {
                     return Err(Error::File(FileError::OutOfRange));
@@ -768,7 +764,6 @@ impl TrimContext<'_> {
         }
         let PageHandleContext { regions, file, .. } = &mut *ctx;
         let region = &mut regions[self.cur_region];
-        let region_size_bytes = pages_to_bytes(region.num_pages) as u64;
         let mut n_trimmed = 0;
 
         for _ in 0..max_pages {
@@ -778,25 +773,7 @@ impl TrimContext<'_> {
                 .context("get page of staging memory")?
             {
                 let idx_range = self.cur_page..self.cur_page + 1;
-                let idx_range_in_file = idx_range.start + region.base_page_idx_in_file
-                    ..idx_range.end + region.base_page_idx_in_file;
-
-                if self.cur_page >= self.next_data_in_file.end {
-                    let base_offset_in_file = pages_to_bytes(region.base_page_idx_in_file) as u64;
-                    let offset_in_region = pages_to_bytes(self.cur_page) as u64;
-                    let offset = base_offset_in_file + offset_in_region;
-                    if let Some(offset_range) =
-                        find_next_data(file.as_file(), offset, region_size_bytes - offset_in_region)
-                            .context("find next data in swap file")?
-                    {
-                        let start =
-                            bytes_to_pages((offset_range.start - base_offset_in_file) as usize);
-                        let end = bytes_to_pages((offset_range.end - base_offset_in_file) as usize);
-                        self.next_data_in_file = start..end;
-                    } else {
-                        self.next_data_in_file = region.num_pages..region.num_pages;
-                    }
-                }
+                let idx_in_file = idx_range.start + region.base_page_idx_in_file;
 
                 // Check zero page on the staging memory first. If the page is non-zero and have not
                 // been changed, zero checking is useless, but less cost than file I/O for the pages
@@ -807,32 +784,26 @@ impl TrimContext<'_> {
                         .staging_memory
                         .clear_range(idx_range.clone())
                         .context("clear a page in staging memory")?;
-                    if self.cur_page >= self.next_data_in_file.start {
-                        // The page is on the swap file as well.
-                        let munlocked_pages = file
-                            .erase_from_disk(idx_range_in_file)
-                            .context("clear a page in swap file")?;
-                        if munlocked_pages != 0 {
-                            // Only either of swap-in or trimming runs at the same time. This is not
-                            // expected path. Just logging an error because leaking
-                            // mlock_budget_pages is not fatal.
-                            error!("pages are mlock(2)ed while trimming");
-                        }
+                    // The page is on the swap file as well.
+                    let munlocked_pages = file
+                        .free_range(idx_in_file..idx_in_file + 1)
+                        .context("clear a page in swap file")?;
+                    if munlocked_pages != 0 {
+                        // Only either of swap-in or trimming runs at the same time. This is not
+                        // expected path. Just logging an error because leaking
+                        // mlock_budget_pages is not fatal.
+                        error!("pages are mlock(2)ed while trimming");
                     }
                     n_trimmed += 1;
                     self.zero_pages += 1;
-                } else if self.cur_page >= self.next_data_in_file.start {
-                    // The previous content of the page is on the disk.
-                    let slice_in_file = file
-                        .get_slice(idx_range_in_file.clone())
-                        .context("get slice in swap file")?;
-
+                } else if let Some(slice_in_file) = file.page_content(idx_in_file, true)? {
+                    // Compare the page with the previous content of the page on the disk.
                     if slice_in_staging == slice_in_file {
                         region
                             .staging_memory
                             .clear_range(idx_range.clone())
                             .context("clear a page in staging memory")?;
-                        file.mark_as_present(idx_range_in_file.start);
+                        file.mark_as_present(idx_in_file)?;
                         n_trimmed += 1;
                         self.clean_pages += 1;
                     }
