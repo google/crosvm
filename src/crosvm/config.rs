@@ -772,8 +772,6 @@ pub struct Config {
     pub vcpu_count: Option<usize>,
     #[cfg(target_arch = "x86_64")]
     pub vcpu_hybrid_type: BTreeMap<usize, CpuHybridType>, // CPU index -> hybrid type
-    #[cfg(unix)]
-    pub vcpu_nice: Option<i32>,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub vfio: Vec<super::sys::config::VfioOption>,
     #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -975,8 +973,6 @@ impl Default for Config {
             vcpu_count: None,
             #[cfg(target_arch = "x86_64")]
             vcpu_hybrid_type: BTreeMap::new(),
-            #[cfg(unix)]
-            vcpu_nice: None,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             vfio: Vec::new(),
             #[cfg(any(target_os = "android", target_os = "linux"))]
