@@ -114,10 +114,11 @@ fn uffd_copy_all(
 }
 
 /// [Region] represents a memory region and corresponding [SwapFile].
-struct Region<'a> {
+struct Region {
     /// the head page index of the region.
     head_page_idx: usize,
-    file: SwapFile<'a>,
+    base_page_idx_in_file: usize,
+    num_pages: usize,
     staging_memory: StagingMemory,
     copied_from_file_pages: usize,
     copied_from_staging_pages: usize,
@@ -155,7 +156,8 @@ impl Task for MoveToStaging {
 }
 
 struct PageHandleContext<'a> {
-    regions: Vec<Region<'a>>,
+    file: SwapFile<'a>,
+    regions: Vec<Region>,
     mlock_budget_pages: usize,
 }
 
@@ -166,7 +168,6 @@ struct PageHandleContext<'a> {
 pub struct PageHandler<'a> {
     ctx: Mutex<PageHandleContext<'a>>,
     channel: Arc<Channel<MoveToStaging>>,
-    swap_raw_file: &'a File,
 }
 
 impl<'a> PageHandler<'a> {
@@ -182,14 +183,14 @@ impl<'a> PageHandler<'a> {
     /// * `address_ranges` - The list of address range of the regions. the start address must align
     ///   with page. the size must be multiple of pagesize.
     pub fn create(
-        swap_raw_file: &'a File,
+        swap_file: &'a File,
         staging_shmem: &'a SharedMemory,
         address_ranges: &[Range<usize>],
         stating_move_context: Arc<Channel<MoveToStaging>>,
     ) -> Result<Self> {
         // Truncate the file into the size to hold all regions, otherwise access beyond the end of
         // file may cause SIGBUS.
-        swap_raw_file
+        swap_file
             .set_len(
                 address_ranges
                     .iter()
@@ -209,14 +210,14 @@ impl<'a> PageHandler<'a> {
                 )));
             }
             let region_size = address_range.end - address_range.start;
-            let num_of_pages = bytes_to_pages(region_size);
+            let num_pages = bytes_to_pages(region_size);
 
             // Find an overlapping region
             match regions.iter().position(|region| {
                 if region.head_page_idx < head_page_idx {
-                    region.head_page_idx + region.file.num_pages() > head_page_idx
+                    region.head_page_idx + region.num_pages > head_page_idx
                 } else {
-                    region.head_page_idx < head_page_idx + num_of_pages
+                    region.head_page_idx < head_page_idx + num_pages
                 }
             }) {
                 Some(i) => {
@@ -225,7 +226,7 @@ impl<'a> PageHandler<'a> {
                     return Err(Error::RegionOverlap(
                         address_range.clone(),
                         page_idx_to_addr(region.head_page_idx)
-                            ..(page_idx_to_addr(region.head_page_idx + region.file.num_pages())),
+                            ..(page_idx_to_addr(region.head_page_idx + region.num_pages)),
                     ));
                 }
                 None => {
@@ -233,15 +234,15 @@ impl<'a> PageHandler<'a> {
                     assert!(is_page_aligned(base_addr));
                     assert!(is_page_aligned(region_size));
 
-                    let file = SwapFile::new(swap_raw_file, offset_pages, num_of_pages)?;
                     let staging_memory = StagingMemory::new(
                         staging_shmem,
                         pages_to_bytes(offset_pages) as u64,
-                        num_of_pages,
+                        num_pages,
                     )?;
                     regions.push(Region {
                         head_page_idx,
-                        file,
+                        base_page_idx_in_file: offset_pages,
+                        num_pages,
                         staging_memory,
                         copied_from_file_pages: 0,
                         copied_from_staging_pages: 0,
@@ -249,30 +250,28 @@ impl<'a> PageHandler<'a> {
                         swap_in_pages: 0,
                         redundant_pages: 0,
                     });
-                    offset_pages += num_of_pages;
+                    offset_pages += num_pages;
                 }
             }
         }
 
+        let file = SwapFile::new(swap_file, offset_pages)?;
+
         Ok(Self {
             ctx: Mutex::new(PageHandleContext {
+                file,
                 regions,
                 mlock_budget_pages: bytes_to_pages(MLOCK_BUDGET),
             }),
             channel: stating_move_context,
-            swap_raw_file,
         })
     }
 
-    fn find_region<'b>(
-        regions: &'b mut [Region<'a>],
-        page_idx: usize,
-    ) -> Option<&'b mut Region<'a>> {
+    fn find_region(regions: &mut [Region], page_idx: usize) -> Option<&mut Region> {
         // sequential search the corresponding page map from the list. It should be fast enough
         // because there are a few regions (usually only 1).
         regions.iter_mut().find(|region| {
-            region.head_page_idx <= page_idx
-                && page_idx < region.head_page_idx + region.file.num_pages()
+            region.head_page_idx <= page_idx && page_idx < region.head_page_idx + region.num_pages
         })
     }
 
@@ -289,10 +288,11 @@ impl<'a> PageHandler<'a> {
         let page_addr = page_base_addr(address);
         let page_size = pages_to_bytes(1);
         let mut ctx = self.ctx.lock();
-        let region =
-            Self::find_region(&mut ctx.regions, page_idx).ok_or(Error::InvalidAddress(address))?;
+        let PageHandleContext { regions, file, .. } = &mut *ctx;
+        let region = Self::find_region(regions, page_idx).ok_or(Error::InvalidAddress(address))?;
 
         let idx_in_region = page_idx - region.head_page_idx;
+        let idx_in_file = idx_in_region + region.base_page_idx_in_file;
         if let Some(page_slice) = region.staging_memory.page_content(idx_in_region)? {
             uffd_copy_all(uffd, page_addr, page_slice, true)?;
             // TODO(b/265758094): optimize clear operation.
@@ -301,12 +301,12 @@ impl<'a> PageHandler<'a> {
                 .clear_range(idx_in_region..idx_in_region + 1)?;
             region.copied_from_staging_pages += 1;
             Ok(())
-        } else if let Some(page_slice) = region.file.page_content(idx_in_region)? {
+        } else if let Some(page_slice) = file.page_content(idx_in_file)? {
             // TODO(kawasin): Unlock regions to proceed swap-in operation background.
             uffd_copy_all(uffd, page_addr, page_slice, true)?;
             // TODO(b/265758094): optimize clear operation.
             // Do not erase the page from the disk for trimming optimization on next swap out.
-            let munlocked_pages = region.file.clear_range(idx_in_region..idx_in_region + 1)?;
+            let munlocked_pages = file.clear_range(idx_in_file..idx_in_file + 1)?;
             region.copied_from_file_pages += 1;
             ctx.mlock_budget_pages += munlocked_pages;
             Ok(())
@@ -362,11 +362,13 @@ impl<'a> PageHandler<'a> {
                 .ok_or(Error::InvalidAddress(page_addr))?;
             let idx_in_region = page_idx - region.head_page_idx;
             let idx_range = idx_in_region..idx_in_region + 1;
-            if let Err(e) = region.staging_memory.clear_range(idx_range.clone()) {
+            if let Err(e) = region.staging_memory.clear_range(idx_range) {
                 error!("failed to clear removed page from staging: {:?}", e);
             }
+            let idx_in_file = idx_in_region + region.base_page_idx_in_file;
+            let idx_range = idx_in_file..idx_in_file + 1;
             // Erase the pages from the disk because the pages are removed from the guest memory.
-            let munlocked_pages = region.file.erase_from_disk(idx_range)?;
+            let munlocked_pages = ctx.file.erase_from_disk(idx_range)?;
             ctx.mlock_budget_pages += munlocked_pages;
         }
         Ok(())
@@ -415,7 +417,7 @@ impl<'a> PageHandler<'a> {
         if page_idx_to_addr(region.head_page_idx) != base_addr {
             return Err(Error::InvalidAddress(base_addr));
         }
-        let region_size = pages_to_bytes(region.file.num_pages());
+        let region_size = pages_to_bytes(region.num_pages);
         let mut file_data = FileDataIterator::new(memfd, base_offset, region_size as u64);
         let mut moved_size = 0;
         let mut copies = Vec::new();
@@ -528,14 +530,17 @@ impl<'a> PageHandler<'a> {
     pub fn swap_out(&self, max_size: usize) -> Result<usize> {
         let max_pages = bytes_to_pages(max_size);
         let mut ctx = self.ctx.lock();
-        for region in ctx.regions.iter_mut() {
+        let PageHandleContext { regions, file, .. } = &mut *ctx;
+        for region in regions.iter_mut() {
             if let Some(idx_range) = region.staging_memory.first_data_range(max_pages) {
+                let idx_range_in_file = idx_range.start + region.base_page_idx_in_file
+                    ..idx_range.end + region.base_page_idx_in_file;
                 let pages = idx_range.end - idx_range.start;
                 let slice = region.staging_memory.get_slice(idx_range.clone())?;
                 // Convert VolatileSlice to &[u8]
                 // Safe because the range of volatile slice is already validated.
                 let slice = unsafe { std::slice::from_raw_parts(slice.as_ptr(), slice.size()) };
-                region.file.write_to_file(idx_range.start, slice)?;
+                file.write_to_file(idx_range_in_file.start, slice)?;
                 // TODO(kawasin): clear state_list on each write and MADV_REMOVE several chunk at
                 // once.
                 region.staging_memory.clear_range(idx_range)?;
@@ -551,7 +556,6 @@ impl<'a> PageHandler<'a> {
     pub fn start_swap_in(&'a self) -> SwapInContext<'a> {
         SwapInContext {
             ctx: &self.ctx,
-            cur_populate: 0,
             cur_staging: 0,
             cur_file: 0,
         }
@@ -561,7 +565,6 @@ impl<'a> PageHandler<'a> {
     pub fn start_trim(&'a self) -> TrimContext<'a> {
         TrimContext {
             ctx: &self.ctx,
-            swap_raw_file: self.swap_raw_file,
             cur_page: 0,
             cur_region: 0,
             next_data_in_file: 0..0,
@@ -617,12 +620,7 @@ impl<'a> PageHandler<'a> {
 
     /// Returns count of pages present in the swap files.
     fn compute_swap_pages(&self) -> usize {
-        self.ctx
-            .lock()
-            .regions
-            .iter()
-            .map(|r| r.file.present_pages())
-            .sum()
+        self.ctx.lock().file.present_pages()
     }
 
     /// Fill [SwapMetrics] with page handler metrics.
@@ -641,7 +639,6 @@ impl<'a> PageHandler<'a> {
 /// This holds cursor of indices in the regions for each step for optimization.
 pub struct SwapInContext<'a> {
     ctx: &'a Mutex<PageHandleContext<'a>>,
-    cur_populate: usize,
     cur_staging: usize,
     cur_file: usize,
 }
@@ -665,25 +662,9 @@ impl SwapInContext<'_> {
         // The threshold is to apply MADV_WILLNEED to bigger chunk of pages. The kernel populates
         // consective pages at once on MADV_WILLNEED.
         if ctx.mlock_budget_pages > bytes_to_pages(PREFETCH_THRESHOLD) {
-            let PageHandleContext {
-                regions,
-                mlock_budget_pages,
-            } = &mut *ctx;
-            'prefetch_loop: for region in regions[self.cur_populate..].iter_mut() {
-                loop {
-                    let locked_pages = region.file.lock_and_async_prefetch(*mlock_budget_pages)?;
-                    if locked_pages > 0 {
-                        *mlock_budget_pages -= locked_pages;
-                        if *mlock_budget_pages == 0 {
-                            break 'prefetch_loop;
-                        }
-                    } else {
-                        // next region.
-                        self.cur_populate += 1;
-                        break;
-                    }
-                }
-            }
+            let mlock_budget_pages = ctx.mlock_budget_pages;
+            let locked_pages = ctx.file.lock_and_async_prefetch(mlock_budget_pages)?;
+            ctx.mlock_budget_pages -= locked_pages;
         }
 
         let max_pages = bytes_to_pages(max_size);
@@ -704,24 +685,40 @@ impl SwapInContext<'_> {
             self.cur_staging += 1;
         }
 
-        for region in ctx.regions[self.cur_file..].iter_mut() {
-            if let Some(idx_range) = region.file.first_data_range(max_pages) {
-                let pages = idx_range.end - idx_range.start;
-                let page_addr = page_idx_to_addr(region.head_page_idx + idx_range.start);
-                let slice = region.file.get_slice(idx_range.clone())?;
+        if let Some(mut idx_range_in_file) = ctx.file.first_data_range(max_pages) {
+            let PageHandleContext { regions, file, .. } = &mut *ctx;
+            for region in regions[self.cur_file..].iter_mut() {
+                let region_tail_idx_in_file = region.base_page_idx_in_file + region.num_pages;
+                if idx_range_in_file.start > region_tail_idx_in_file {
+                    self.cur_file += 1;
+                    continue;
+                } else if idx_range_in_file.start < region.base_page_idx_in_file {
+                    return Err(Error::File(FileError::OutOfRange));
+                } else if idx_range_in_file.end > region_tail_idx_in_file {
+                    // The consecutive pages can be across regions. Swap-in pages in a region at
+                    // once.
+                    idx_range_in_file.end = region_tail_idx_in_file;
+                }
+                let pages = idx_range_in_file.end - idx_range_in_file.start;
+                let page_addr = page_idx_to_addr(
+                    idx_range_in_file.start - region.base_page_idx_in_file + region.head_page_idx,
+                );
+                let slice = file.get_slice(idx_range_in_file.clone())?;
                 // TODO(kawasin): Unlock regions to proceed page fault handling on the main thread.
                 //                We also need to handle the EEXIST error from UFFD_COPY.
                 uffd_copy_all(uffd, page_addr, slice, false)?;
                 // Do not erase each chunk of pages from disk on swap_in. The whole file will be
                 // truncated when swap_in is completed. Even if swap_in is aborted, the remaining
                 // disk contents help the trimming optimization on swap_out.
-                let munlocked_pages = region.file.clear_range(idx_range)?;
+                let munlocked_pages = file.clear_range(idx_range_in_file)?;
                 region.swap_in_pages += pages;
                 ctx.mlock_budget_pages += munlocked_pages;
                 return Ok(pages);
             }
-            self.cur_file += 1;
+            // File has remaining pages, but regions has been consumed.
+            return Err(Error::File(FileError::OutOfRange));
         }
+
         Ok(0)
     }
 }
@@ -729,10 +726,8 @@ impl SwapInContext<'_> {
 impl Drop for SwapInContext<'_> {
     fn drop(&mut self) {
         let mut ctx = self.ctx.lock();
-        for region in ctx.regions.iter_mut() {
-            if let Err(e) = region.file.clear_mlock() {
-                panic!("failed to clear mlock: {:?}", e);
-            }
+        if let Err(e) = ctx.file.clear_mlock() {
+            panic!("failed to clear mlock: {:?}", e);
         }
         ctx.mlock_budget_pages = bytes_to_pages(MLOCK_BUDGET);
     }
@@ -749,7 +744,6 @@ impl Drop for SwapInContext<'_> {
 ///   * Drop the pages in the staging memory. The pages will be UFFD_ZEROed on page fault.
 pub struct TrimContext<'a> {
     ctx: &'a Mutex<PageHandleContext<'a>>,
-    swap_raw_file: &'a File,
     cur_region: usize,
     cur_page: usize,
     /// The page idx range of pages which have been stored in the swap file.
@@ -772,8 +766,9 @@ impl TrimContext<'_> {
         if self.cur_region >= ctx.regions.len() {
             return Ok(None);
         }
-        let region = &mut ctx.regions[self.cur_region];
-        let region_size_bytes = pages_to_bytes(region.file.num_pages()) as u64;
+        let PageHandleContext { regions, file, .. } = &mut *ctx;
+        let region = &mut regions[self.cur_region];
+        let region_size_bytes = pages_to_bytes(region.num_pages) as u64;
         let mut n_trimmed = 0;
 
         for _ in 0..max_pages {
@@ -783,25 +778,23 @@ impl TrimContext<'_> {
                 .context("get page of staging memory")?
             {
                 let idx_range = self.cur_page..self.cur_page + 1;
+                let idx_range_in_file = idx_range.start + region.base_page_idx_in_file
+                    ..idx_range.end + region.base_page_idx_in_file;
 
                 if self.cur_page >= self.next_data_in_file.end {
+                    let base_offset_in_file = pages_to_bytes(region.base_page_idx_in_file) as u64;
                     let offset_in_region = pages_to_bytes(self.cur_page) as u64;
-                    let offset = region.file.base_offset() + offset_in_region;
-                    if let Some(offset_range) = find_next_data(
-                        self.swap_raw_file,
-                        offset,
-                        region_size_bytes - offset_in_region,
-                    )
-                    .context("find next data in swap file")?
+                    let offset = base_offset_in_file + offset_in_region;
+                    if let Some(offset_range) =
+                        find_next_data(file.as_file(), offset, region_size_bytes - offset_in_region)
+                            .context("find next data in swap file")?
                     {
-                        let start = bytes_to_pages(
-                            (offset_range.start - region.file.base_offset()) as usize,
-                        );
-                        let end =
-                            bytes_to_pages((offset_range.end - region.file.base_offset()) as usize);
+                        let start =
+                            bytes_to_pages((offset_range.start - base_offset_in_file) as usize);
+                        let end = bytes_to_pages((offset_range.end - base_offset_in_file) as usize);
                         self.next_data_in_file = start..end;
                     } else {
-                        self.next_data_in_file = region.file.num_pages()..region.file.num_pages();
+                        self.next_data_in_file = region.num_pages..region.num_pages;
                     }
                 }
 
@@ -816,9 +809,8 @@ impl TrimContext<'_> {
                         .context("clear a page in staging memory")?;
                     if self.cur_page >= self.next_data_in_file.start {
                         // The page is on the swap file as well.
-                        let munlocked_pages = region
-                            .file
-                            .erase_from_disk(idx_range)
+                        let munlocked_pages = file
+                            .erase_from_disk(idx_range_in_file)
                             .context("clear a page in swap file")?;
                         if munlocked_pages != 0 {
                             // Only either of swap-in or trimming runs at the same time. This is not
@@ -831,9 +823,8 @@ impl TrimContext<'_> {
                     self.zero_pages += 1;
                 } else if self.cur_page >= self.next_data_in_file.start {
                     // The previous content of the page is on the disk.
-                    let slice_in_file = region
-                        .file
-                        .get_slice(idx_range.clone())
+                    let slice_in_file = file
+                        .get_slice(idx_range_in_file.clone())
                         .context("get slice in swap file")?;
 
                     if slice_in_staging == slice_in_file {
@@ -841,7 +832,7 @@ impl TrimContext<'_> {
                             .staging_memory
                             .clear_range(idx_range.clone())
                             .context("clear a page in staging memory")?;
-                        region.file.mark_as_present(self.cur_page);
+                        file.mark_as_present(idx_range_in_file.start);
                         n_trimmed += 1;
                         self.clean_pages += 1;
                     }
@@ -849,7 +840,7 @@ impl TrimContext<'_> {
             }
 
             self.cur_page += 1;
-            if self.cur_page >= region.file.num_pages() {
+            if self.cur_page >= region.num_pages {
                 self.cur_region += 1;
                 self.cur_page = 0;
                 self.next_data_in_file = 0..0;

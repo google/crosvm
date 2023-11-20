@@ -50,7 +50,6 @@ pub enum Error {
 #[derive(Debug)]
 pub struct SwapFile<'a> {
     file: &'a File,
-    offset: u64,
     file_mmap: MemoryMapping,
     // Tracks which pages are present, indexed by page index within the memory region.
     present_list: PresentList,
@@ -66,32 +65,19 @@ impl<'a> SwapFile<'a> {
     /// # Arguments
     ///
     /// * `file` - The swap file.
-    /// * `offset_pages` - The starting offset in pages of the region in the swap file.
     /// * `num_of_pages` - The number of pages in the region.
-    pub fn new(file: &'a File, offset_pages: usize, num_of_pages: usize) -> Result<Self> {
-        let offset = pages_to_bytes(offset_pages) as u64;
+    pub fn new(file: &'a File, num_of_pages: usize) -> Result<Self> {
         let file_mmap = MemoryMappingBuilder::new(pages_to_bytes(num_of_pages))
             .from_file(file)
-            .offset(offset)
             .protection(Protection::read())
             .build()
             .map_err(|e| Error::Mmap("create", e))?;
         Ok(Self {
             file,
-            offset,
             file_mmap,
             present_list: PresentList::new(num_of_pages),
             cursor_mlock: 0,
         })
-    }
-
-    pub(crate) fn base_offset(&self) -> u64 {
-        self.offset
-    }
-
-    /// Returns the total count of managed pages.
-    pub fn num_pages(&self) -> usize {
-        self.present_list.len()
     }
 
     /// Returns a content of the page corresponding to the index.
@@ -230,7 +216,7 @@ impl<'a> SwapFile<'a> {
                     )
                     .map_err(|e| Error::Mmap("munlock", e))?;
             }
-            let file_offset = self.offset + pages_to_bytes(idx_range.start) as u64;
+            let file_offset = pages_to_bytes(idx_range.start) as u64;
             self.file.punch_hole(
                 file_offset,
                 pages_to_bytes(idx_range.end - idx_range.start) as u64,
@@ -289,7 +275,7 @@ impl<'a> SwapFile<'a> {
         // more explicit for kernel how many pages are going to be written while mmap only knows
         // each page to be written on a page fault basis.
         self.file
-            .write_all_at(mem_slice, self.offset + pages_to_bytes(idx) as u64)?;
+            .write_all_at(mem_slice, pages_to_bytes(idx) as u64)?;
 
         if !self.present_list.mark_as_present(idx..idx + num_pages) {
             // the range is already validated before writing.
@@ -332,6 +318,11 @@ impl<'a> SwapFile<'a> {
     pub fn present_pages(&self) -> usize {
         self.present_list.all_present_pages()
     }
+
+    /// Returns the raw [File].
+    pub fn as_file(&self) -> &File {
+        self.file
+    }
 }
 
 #[cfg(test)]
@@ -346,21 +337,21 @@ mod tests {
     fn new_success() {
         let file = tempfile::tempfile().unwrap();
 
-        assert_eq!(SwapFile::new(&file, 0, 200).is_ok(), true);
+        assert_eq!(SwapFile::new(&file, 200).is_ok(), true);
     }
 
     #[test]
     fn len() {
         let file = tempfile::tempfile().unwrap();
-        let swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let swap_file = SwapFile::new(&file, 200).unwrap();
 
-        assert_eq!(swap_file.num_pages(), 200);
+        assert_eq!(swap_file.present_list.len(), 200);
     }
 
     #[test]
     fn page_content_default_is_none() {
         let file = tempfile::tempfile().unwrap();
-        let swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let swap_file = SwapFile::new(&file, 200).unwrap();
 
         assert_eq!(swap_file.page_content(0).unwrap().is_none(), true);
     }
@@ -368,7 +359,7 @@ mod tests {
     #[test]
     fn page_content_returns_content() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
@@ -381,7 +372,7 @@ mod tests {
     #[test]
     fn page_content_out_of_range() {
         let file = tempfile::tempfile().unwrap();
-        let swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let swap_file = SwapFile::new(&file, 200).unwrap();
 
         assert_eq!(swap_file.page_content(199).is_ok(), true);
         match swap_file.page_content(200) {
@@ -399,7 +390,7 @@ mod tests {
     #[test]
     fn write_to_file_swap_file() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         let buf1 = &vec![1; pagesize()];
         let buf2 = &vec![2; 2 * pagesize()];
@@ -413,30 +404,9 @@ mod tests {
     }
 
     #[test]
-    fn write_to_file_no_conflict() {
-        let file = tempfile::tempfile().unwrap();
-        let mut swap_file1 = SwapFile::new(&file, 0, 2).unwrap();
-        let mut swap_file2 = SwapFile::new(&file, 2, 2).unwrap();
-
-        let buf1 = &vec![1; pagesize()];
-        let buf2 = &vec![2; pagesize()];
-        let buf3 = &vec![3; pagesize()];
-        let buf4 = &vec![4; pagesize()];
-        swap_file1.write_to_file(0, buf1).unwrap();
-        swap_file1.write_to_file(1, buf2).unwrap();
-        swap_file2.write_to_file(0, buf3).unwrap();
-        swap_file2.write_to_file(1, buf4).unwrap();
-
-        assert_page_content(&swap_file1, 0, buf1);
-        assert_page_content(&swap_file1, 1, buf2);
-        assert_page_content(&swap_file2, 0, buf3);
-        assert_page_content(&swap_file2, 1, buf4);
-    }
-
-    #[test]
     fn write_to_file_invalid_size() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         let buf = &vec![1; pagesize() + 1];
         match swap_file.write_to_file(0, buf) {
@@ -448,7 +418,7 @@ mod tests {
     #[test]
     fn write_to_file_out_of_range() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         let buf1 = &vec![1; pagesize()];
         let buf2 = &vec![2; 2 * pagesize()];
@@ -466,7 +436,7 @@ mod tests {
     #[cfg(target_arch = "x86_64")] // TODO(b/272612118): unit test infra (qemu-user) support
     fn lock_and_start_populate() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         swap_file.write_to_file(1, &vec![1; pagesize()]).unwrap();
         swap_file
@@ -489,7 +459,7 @@ mod tests {
     #[test]
     fn clear_range() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
@@ -502,7 +472,7 @@ mod tests {
     #[cfg(target_arch = "x86_64")] // TODO(b/272612118): unit test infra (qemu-user) support
     fn clear_range_unlocked_pages() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         swap_file
             .write_to_file(1, &vec![1; 10 * pagesize()])
@@ -521,7 +491,7 @@ mod tests {
     #[test]
     fn clear_range_keep_on_disk() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
@@ -535,7 +505,7 @@ mod tests {
     #[test]
     fn clear_range_out_of_range() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         assert_eq!(swap_file.clear_range(199..200).is_ok(), true);
         match swap_file.clear_range(200..201) {
@@ -551,7 +521,7 @@ mod tests {
     #[test]
     fn erase_from_disk() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
@@ -567,7 +537,7 @@ mod tests {
     #[cfg(target_arch = "x86_64")] // TODO(b/272612118): unit test infra (qemu-user) support
     fn erase_from_disk_unlocked_pages() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         swap_file
             .write_to_file(1, &vec![1; 10 * pagesize()])
@@ -590,7 +560,7 @@ mod tests {
     #[test]
     fn erase_from_disk_out_of_range() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         assert_eq!(swap_file.erase_from_disk(199..200).is_ok(), true);
         match swap_file.erase_from_disk(200..201) {
@@ -607,7 +577,7 @@ mod tests {
     #[cfg(target_arch = "x86_64")] // TODO(b/272612118): unit test infra (qemu-user) support
     fn clear_mlock() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         swap_file
             .write_to_file(1, &vec![1; 10 * pagesize()])
@@ -626,7 +596,7 @@ mod tests {
     #[test]
     fn first_data_range() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         swap_file
             .write_to_file(1, &vec![1; 2 * pagesize()])
@@ -644,7 +614,7 @@ mod tests {
     #[test]
     fn get_slice() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         swap_file.write_to_file(1, &vec![1; pagesize()]).unwrap();
         swap_file.write_to_file(2, &vec![2; pagesize()]).unwrap();
@@ -666,7 +636,7 @@ mod tests {
     #[test]
     fn get_slice_out_of_range() {
         let file = tempfile::tempfile().unwrap();
-        let swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let swap_file = SwapFile::new(&file, 200).unwrap();
 
         match swap_file.get_slice(200..201) {
             Err(Error::OutOfRange) => {}
@@ -679,7 +649,7 @@ mod tests {
     #[test]
     fn present_pages() {
         let file = tempfile::tempfile().unwrap();
-        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+        let mut swap_file = SwapFile::new(&file, 200).unwrap();
 
         swap_file.write_to_file(1, &vec![1; pagesize()]).unwrap();
         swap_file.write_to_file(2, &vec![2; pagesize()]).unwrap();
