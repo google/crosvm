@@ -9,7 +9,6 @@ pub mod constants;
 use std::mem::size_of;
 
 use constants::*;
-use data_model::zerocopy_from_slice;
 use data_model::Le16;
 use data_model::SLe32;
 use zerocopy::AsBytes;
@@ -47,11 +46,7 @@ impl InputEventDecoder for input_event {
     const SIZE: usize = size_of::<Self>();
 
     fn decode(data: &[u8]) -> virtio_input_event {
-        #[repr(align(8))]
-        #[derive(FromZeroes, FromBytes)]
-        struct Aligner([u8; input_event::SIZE]);
-        let data_aligned = zerocopy_from_slice::<Aligner>(data).unwrap();
-        let e: &input_event = zerocopy_from_slice(data_aligned.0.as_bytes()).unwrap();
+        let e = input_event::read_from(data).unwrap();
         virtio_input_event {
             type_: Le16::from(e.type_),
             code: Le16::from(e.code),
@@ -72,11 +67,7 @@ impl InputEventDecoder for virtio_input_event {
     const SIZE: usize = size_of::<Self>();
 
     fn decode(data: &[u8]) -> virtio_input_event {
-        #[repr(align(4))]
-        #[derive(FromZeroes, FromBytes)]
-        struct Aligner([u8; virtio_input_event::SIZE]);
-        let data_aligned = zerocopy_from_slice::<Aligner>(data).unwrap();
-        *zerocopy_from_slice(data_aligned.0.as_bytes()).unwrap()
+        virtio_input_event::read_from(data).unwrap()
     }
 }
 
