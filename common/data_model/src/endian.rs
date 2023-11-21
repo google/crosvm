@@ -32,14 +32,10 @@
 //!   assert_ne!(b_trans, l_trans);
 //! ```
 
-use std::mem::align_of;
-use std::mem::size_of;
-
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
-use static_assertions::const_assert;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
@@ -54,11 +50,6 @@ macro_rules! endian_type {
         pub struct $new_type($old_type);
 
         impl $new_type {
-            fn _assert() {
-                const_assert!(align_of::<$new_type>() == align_of::<$old_type>());
-                const_assert!(size_of::<$new_type>() == size_of::<$old_type>());
-            }
-
             /// Converts `self` to the native endianness.
             #[inline]
             pub fn to_native(self) -> $old_type {
@@ -134,6 +125,8 @@ endian_type!(isize, SBeSize, to_be, from_be);
 #[cfg(test)]
 mod tests {
     use std::convert::From;
+    use std::mem::align_of;
+    use std::mem::size_of;
     use std::mem::transmute;
 
     use super::*;
@@ -167,6 +160,16 @@ mod tests {
                     assert_eq!(v, endian_into);
                     assert!(v == endian_v);
                     assert!(endian_v == v);
+                }
+
+                #[test]
+                fn alignment() {
+                    assert_eq!(align_of::<$new_type>(), align_of::<$old_type>());
+                }
+
+                #[test]
+                fn size() {
+                    assert_eq!(size_of::<$new_type>(), size_of::<$old_type>());
                 }
             }
         };

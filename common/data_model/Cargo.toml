@@ -8,6 +8,5 @@ description = "[highly unstable] data model for virtualization"
 license-file = "LICENSE"
 
 [dependencies]
-static_assertions = "1.1"
 serde = { version = "1", features = ["derive"] }
 zerocopy = { version = "0.7", features = ["derive"] }
