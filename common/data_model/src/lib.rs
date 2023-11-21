@@ -2,31 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io;
-
-use zerocopy::AsBytes;
-use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
-use zerocopy::Ref;
-
-pub fn zerocopy_from_reader<R: io::Read, T: AsBytes + FromBytes + FromZeroes>(
-    mut read: R,
-) -> io::Result<T> {
-    let mut out = T::new_zeroed();
-    read.read_exact(out.as_bytes_mut())?;
-    Ok(out)
-}
-
-pub fn zerocopy_from_mut_slice<T: FromBytes + AsBytes>(data: &mut [u8]) -> Option<&mut T> {
-    let lv: Ref<&mut [u8], T> = Ref::new(data)?;
-    Some(lv.into_mut())
-}
-
-pub fn zerocopy_from_slice<T: FromBytes>(data: &[u8]) -> Option<&T> {
-    let lv: Ref<&[u8], T> = Ref::new(data)?;
-    Some(lv.into_ref())
-}
-
 pub mod endian;
 pub use crate::endian::*;
 

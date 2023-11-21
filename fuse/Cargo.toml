@@ -12,7 +12,6 @@ base = "*"
 bitflags = "2.2.1"
 crossbeam-utils = "0.8"
 cros_tracing = { path = "../cros_tracing" }
-data_model = { path = "../common/data_model" }
 enumn = "0.1.0"
 libc = { version = "*", features = ["extra_traits"] }
 remain = "0.2"

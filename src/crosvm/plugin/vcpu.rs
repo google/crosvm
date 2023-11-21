@@ -19,13 +19,19 @@ use std::sync::RwLock;
 
 use base::error;
 use base::LayoutAllocation;
-use data_model::zerocopy_from_slice;
 use kvm::CpuId;
 use kvm::Vcpu;
+use kvm_sys::kvm_debugregs;
 use kvm_sys::kvm_enable_cap;
+use kvm_sys::kvm_fpu;
+use kvm_sys::kvm_lapic_state;
+use kvm_sys::kvm_mp_state;
 use kvm_sys::kvm_msr_entry;
 use kvm_sys::kvm_msrs;
 use kvm_sys::kvm_regs;
+use kvm_sys::kvm_sregs;
+use kvm_sys::kvm_vcpu_events;
+use kvm_sys::kvm_xcrs;
 use kvm_sys::KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
 use libc::EINVAL;
 use libc::ENOENT;
@@ -40,6 +46,7 @@ use protos::plugin::*;
 use static_assertions::const_assert;
 use sync::Mutex;
 use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use super::*;
 
@@ -111,28 +118,36 @@ fn set_vcpu_state_enum_or_unknown(
 fn set_vcpu_state(vcpu: &Vcpu, state_set: vcpu_request::StateSet, state: &[u8]) -> SysResult<()> {
     match state_set {
         vcpu_request::StateSet::REGS => {
-            vcpu.set_regs(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+            let regs = kvm_regs::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vcpu.set_regs(&regs)
         }
         vcpu_request::StateSet::SREGS => {
-            vcpu.set_sregs(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+            let sregs = kvm_sregs::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vcpu.set_sregs(&sregs)
         }
         vcpu_request::StateSet::FPU => {
-            vcpu.set_fpu(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+            let fpu = kvm_fpu::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vcpu.set_fpu(&fpu)
         }
         vcpu_request::StateSet::DEBUGREGS => {
-            vcpu.set_debugregs(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+            let debugregs = kvm_debugregs::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vcpu.set_debugregs(&debugregs)
         }
         vcpu_request::StateSet::XCREGS => {
-            vcpu.set_xcrs(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+            let xcrs = kvm_xcrs::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vcpu.set_xcrs(&xcrs)
         }
         vcpu_request::StateSet::LAPIC => {
-            vcpu.set_lapic(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+            let lapic_state = kvm_lapic_state::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vcpu.set_lapic(&lapic_state)
         }
         vcpu_request::StateSet::MP => {
-            vcpu.set_mp_state(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+            let mp_state = kvm_mp_state::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vcpu.set_mp_state(&mp_state)
         }
         vcpu_request::StateSet::EVENTS => {
-            vcpu.set_vcpu_events(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+            let vcpu_events = kvm_vcpu_events::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vcpu.set_vcpu_events(&vcpu_events)
         }
     }
 }

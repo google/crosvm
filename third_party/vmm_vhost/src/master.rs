@@ -12,7 +12,6 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
 use base::INVALID_DESCRIPTOR;
-use data_model::zerocopy_from_reader;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
@@ -552,7 +551,8 @@ impl Master {
         for _ in 0..body_reply.value {
             regions.push(
                 // Can't fail because the input is the correct size.
-                zerocopy_from_reader(&buf_reply[offset..(offset + struct_size)]).unwrap(),
+                VhostSharedMemoryRegion::read_from(&buf_reply[offset..(offset + struct_size)])
+                    .unwrap(),
             );
             offset += struct_size;
         }

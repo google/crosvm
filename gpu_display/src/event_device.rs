@@ -5,6 +5,7 @@
 use std::collections::VecDeque;
 use std::fmt;
 use std::io;
+use std::io::Read;
 use std::io::Write;
 use std::iter::ExactSizeIterator;
 
@@ -12,12 +13,12 @@ use base::AsRawDescriptor;
 use base::RawDescriptor;
 use base::ReadNotifier;
 use base::StreamChannel;
-use data_model::zerocopy_from_reader;
 use linux_input_sys::virtio_input_event;
 use linux_input_sys::InputEventDecoder;
 use serde::Deserialize;
 use serde::Serialize;
 use zerocopy::AsBytes;
+use zerocopy::FromZeroes;
 
 const EVENT_SIZE: usize = virtio_input_event::SIZE;
 const EVENT_BUFFER_LEN_MAX: usize = 64 * EVENT_SIZE;
@@ -148,7 +149,9 @@ impl EventDevice {
     }
 
     pub fn recv_event_encoded(&self) -> io::Result<virtio_input_event> {
-        zerocopy_from_reader::<_, virtio_input_event>(&self.event_socket)
+        let mut event = virtio_input_event::new_zeroed();
+        (&self.event_socket).read_exact(event.as_bytes_mut())?;
+        Ok(event)
     }
 }
 

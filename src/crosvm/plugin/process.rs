@@ -29,7 +29,6 @@ use base::Result as SysResult;
 use base::ScmSocket;
 use base::SharedMemory;
 use base::SIGRTMIN;
-use data_model::zerocopy_from_slice;
 use kvm::dirty_log_bitmap_size;
 use kvm::Datamatch;
 use kvm::IoeventAddress;
@@ -37,6 +36,10 @@ use kvm::IrqRoute;
 use kvm::IrqSource;
 use kvm::PicId;
 use kvm::Vm;
+use kvm_sys::kvm_clock_data;
+use kvm_sys::kvm_ioapic_state;
+use kvm_sys::kvm_pic_state;
+use kvm_sys::kvm_pit_state2;
 use libc::pid_t;
 use libc::waitpid;
 use libc::EINVAL;
@@ -56,6 +59,7 @@ use protos::plugin::*;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use super::*;
 
@@ -79,22 +83,25 @@ fn set_vm_state(
     state: &[u8],
 ) -> SysResult<()> {
     match state_set.enum_value().map_err(|_| SysError::new(EINVAL))? {
-        main_request::StateSet::PIC0 => vm.set_pic_state(
-            PicId::Primary,
-            zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?,
-        ),
-        main_request::StateSet::PIC1 => vm.set_pic_state(
-            PicId::Secondary,
-            zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?,
-        ),
+        main_request::StateSet::PIC0 => {
+            let pic_state = kvm_pic_state::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vm.set_pic_state(PicId::Primary, &pic_state)
+        }
+        main_request::StateSet::PIC1 => {
+            let pic_state = kvm_pic_state::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vm.set_pic_state(PicId::Secondary, &pic_state)
+        }
         main_request::StateSet::IOAPIC => {
-            vm.set_ioapic_state(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+            let ioapic_state = kvm_ioapic_state::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vm.set_ioapic_state(&ioapic_state)
         }
         main_request::StateSet::PIT => {
-            vm.set_pit_state(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+            let pit_state = kvm_pit_state2::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vm.set_pit_state(&pit_state)
         }
         main_request::StateSet::CLOCK => {
-            vm.set_clock(zerocopy_from_slice(state).ok_or(SysError::new(EINVAL))?)
+            let clock_data = kvm_clock_data::read_from(state).ok_or(SysError::new(EINVAL))?;
+            vm.set_clock(&clock_data)
         }
     }
 }

@@ -411,7 +411,6 @@ cros_async = { path = "cros_async" }
 cros_tracing = { path = "cros_tracing" }
 crosvm_cli = { path = "crosvm_cli" }
 crosvm_plugin = { path = "crosvm_plugin", optional = true }
-data_model = { path ="common/data_model" }
 devices = { path = "devices" }
 disk = { path = "disk" }
 document-features = { version = "0.2", optional = true }

@@ -11,7 +11,6 @@ vulkan_display = [ "vulkano", "ash", "rand", "protos", "protobuf", "euclid", "sm
 
 [dependencies]
 anyhow = "*"
-data_model = { path = "../common/data_model" }
 libc = "*"
 base = { path = "../base" }
 linux_input_sys = { path = "../linux_input_sys" }
