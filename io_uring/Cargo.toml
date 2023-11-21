@@ -5,7 +5,6 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-data_model = { path = "../common/data_model" } # provided by ebuild
 libc = "0.2.93"
 remain = "0.2"
 sync = { path = "../common/sync" } # provided by ebuild

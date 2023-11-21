@@ -564,7 +564,6 @@ dependencies = [
  "audio_streams",
  "base",
  "cfg-if",
- "data_model",
  "futures",
  "futures-executor",
  "futures-util",
@@ -744,7 +743,6 @@ version = "0.0.1"
 dependencies = [
  "base",
  "cfg-if",
- "data_model",
  "devices",
  "disk",
  "fuse",
@@ -810,13 +808,8 @@ dependencies = [
 name = "data_model"
 version = "0.1.1-alpha.1"
 dependencies = [
- "cfg-if",
- "libc",
- "remain",
  "serde",
  "static_assertions",
- "thiserror",
- "winapi",
  "zerocopy",
 ]
 
@@ -1405,7 +1398,6 @@ name = "io_uring"
 version = "0.1.1"
 dependencies = [
  "base",
- "data_model",
  "libc",
  "remain",
  "sync",
@@ -3124,7 +3116,6 @@ dependencies = [
  "cfg-if",
  "chrono",
  "cros_fdt",
- "data_model",
  "devices",
  "gdbstub_arch",
  "hypervisor",

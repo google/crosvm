@@ -20,12 +20,12 @@ use std::sync::atomic::Ordering;
 
 use base::AsRawDescriptor;
 use base::EventType;
+use base::IoBufMut;
 use base::MappedRegion;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::Protection;
 use base::RawDescriptor;
-use data_model::IoBufMut;
 use libc::c_void;
 use remain::sorted;
 use sync::Mutex;

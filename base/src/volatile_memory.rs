@@ -18,6 +18,7 @@
 //! violate pointer aliasing. The second is because unvolatile accesses are inherently undefined if
 //! done concurrently without synchronization. With volatile access we know that the compiler has
 //! not reordered or elided the access.
+
 use std::cmp::min;
 use std::mem::size_of;
 use std::ptr::copy;
@@ -52,29 +53,6 @@ pub type VolatileMemoryResult<T> = result::Result<T, VolatileMemoryError>;
 
 use crate::VolatileMemoryError as Error;
 type Result<T> = VolatileMemoryResult<T>;
-
-/// Convenience function for computing `base + offset` which returns
-/// `Err(VolatileMemoryError::Overflow)` instead of panicking in the case `base + offset` exceeds
-/// `u64::MAX`.
-///
-/// # Examples
-///
-/// ```
-/// # use data_model::*;
-/// # fn get_slice(offset: usize, count: usize) -> VolatileMemoryResult<()> {
-///   let mem_end = calc_offset(offset, count)?;
-///   if mem_end > 100 {
-///       return Err(VolatileMemoryError::OutOfBounds{addr: mem_end});
-///   }
-/// # Ok(())
-/// # }
-/// ```
-pub fn calc_offset(base: usize, offset: usize) -> Result<usize> {
-    match base.checked_add(offset) {
-        None => Err(Error::Overflow { base, offset }),
-        Some(m) => Ok(m),
-    }
-}
 
 /// Trait for types that support raw volatile access to their data.
 pub trait VolatileMemory {
@@ -172,7 +150,12 @@ impl<'a> VolatileSlice<'a> {
     ///
     /// The returned slice's lifetime is still limited by the underlying data's lifetime.
     pub fn sub_slice(self, offset: usize, count: usize) -> Result<VolatileSlice<'a>> {
-        let mem_end = calc_offset(offset, count)?;
+        let mem_end = offset
+            .checked_add(count)
+            .ok_or(VolatileMemoryError::Overflow {
+                base: offset,
+                offset: count,
+            })?;
         if mem_end > self.size() {
             return Err(Error::OutOfBounds { addr: mem_end });
         }
@@ -194,7 +177,7 @@ impl<'a> VolatileSlice<'a> {
     /// # Examples
     ///
     /// ```
-    /// # use data_model::VolatileSlice;
+    /// # use base::VolatileSlice;
     /// # fn test_write_45() -> Result<(), ()> {
     /// let mut mem = [0u8; 32];
     /// let vslice = VolatileSlice::new(&mut mem[..]);
@@ -221,7 +204,7 @@ impl<'a> VolatileSlice<'a> {
     /// ```
     /// # use std::fs::File;
     /// # use std::path::Path;
-    /// # use data_model::VolatileSlice;
+    /// # use base::VolatileSlice;
     /// # fn test_write_null() -> Result<(), ()> {
     /// let mut mem = [0u8; 32];
     /// let vslice = VolatileSlice::new(&mut mem[..]);
@@ -252,7 +235,8 @@ impl<'a> VolatileSlice<'a> {
     /// # Examples
     ///
     /// ```
-    /// # use data_model::{VolatileMemory, VolatileSlice};
+    /// # use base::VolatileMemory;
+    /// # use base::VolatileSlice;
     /// # fn test_write_null() -> Result<(), ()> {
     /// let mut mem = [0u8; 32];
     /// let vslice = VolatileSlice::new(&mut mem[..]);
@@ -280,7 +264,8 @@ impl<'a> VolatileSlice<'a> {
     /// ```
     /// # use std::fs::File;
     /// # use std::path::Path;
-    /// # use data_model::{VolatileMemory, VolatileSlice};
+    /// # use base::VolatileMemory;
+    /// # use base::VolatileSlice;
     /// # fn test_write_null() -> Result<(), ()> {
     /// let mut mem = [0u8; 32];
     /// let vslice = VolatileSlice::new(&mut mem[..]);
@@ -407,7 +392,12 @@ mod tests {
 
     impl VolatileMemory for VecMem {
         fn get_slice(&self, offset: usize, count: usize) -> Result<VolatileSlice> {
-            let mem_end = calc_offset(offset, count)?;
+            let mem_end = offset
+                .checked_add(count)
+                .ok_or(VolatileMemoryError::Overflow {
+                    base: offset,
+                    offset: count,
+                })?;
             if mem_end > self.mem.len() {
                 return Err(Error::OutOfBounds { addr: mem_end });
             }

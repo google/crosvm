@@ -6,12 +6,11 @@ use std::fs::File;
 use std::io::Error;
 use std::io::Result;
 
-use data_model::VolatileSlice;
-
 use crate::descriptor::AsRawDescriptor;
 use crate::FileAllocate;
 use crate::FileReadWriteAtVolatile;
 use crate::FileReadWriteVolatile;
+use crate::VolatileSlice;
 use crate::WriteZeroesAt;
 
 impl FileReadWriteVolatile for File {

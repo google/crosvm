@@ -13,8 +13,8 @@ use std::io::Write;
 use std::mem::size_of;
 
 use base::FileReadWriteAtVolatile;
+use base::VolatileSlice;
 use crosvm_fuzz::fuzz_target;
-use data_model::VolatileSlice;
 use disk::QcowFile;
 
 // Take the first 64 bits of data as an address and the next 64 bits as data to

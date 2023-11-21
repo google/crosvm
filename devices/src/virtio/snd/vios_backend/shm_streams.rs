@@ -30,7 +30,7 @@ use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::RawDescriptor;
 use base::SharedMemory;
-use data_model::VolatileMemory;
+use base::VolatileMemory;
 use sync::Mutex;
 
 use super::shm_vios::Error;

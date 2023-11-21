@@ -239,7 +239,6 @@ impl SharedMemoryLinux for SharedMemory {
 mod tests {
     use std::fs::read_link;
 
-    use data_model::VolatileMemory;
     use libc::EINVAL;
 
     use crate::linux::SharedMemoryLinux;
@@ -249,6 +248,7 @@ mod tests {
     use crate::MemoryMappingBuilder;
     use crate::Result;
     use crate::SharedMemory;
+    use crate::VolatileMemory;
 
     /// Reads the name from the underlying file as a `String`.
     ///

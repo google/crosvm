@@ -17,7 +17,7 @@ use base::linux::FileDataIterator;
 use base::sys::find_next_data;
 use base::AsRawDescriptor;
 use base::SharedMemory;
-use data_model::VolatileSlice;
+use base::VolatileSlice;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 

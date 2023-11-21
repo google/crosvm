@@ -5,7 +5,7 @@
 use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
-use data_model::VolatileSlice;
+use base::VolatileSlice;
 
 use crate::DisplayT;
 use crate::GpuDisplayError;

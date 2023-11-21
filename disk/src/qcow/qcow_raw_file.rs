@@ -13,8 +13,8 @@ use std::mem::size_of;
 use std::mem::size_of_val;
 
 use base::FileReadWriteAtVolatile;
+use base::VolatileSlice;
 use base::WriteZeroesAt;
-use data_model::VolatileSlice;
 
 /// A qcow file. Allows reading/writing clusters and appending clusters.
 #[derive(Debug)]

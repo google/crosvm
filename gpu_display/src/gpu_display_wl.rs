@@ -5,7 +5,6 @@
 //! Crate for displaying simple surfaces and GPU buffers over wayland.
 
 extern crate base;
-extern crate data_model;
 
 #[path = "dwl.rs"]
 mod dwl;
@@ -27,7 +26,7 @@ use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::RawDescriptor;
 use base::SharedMemory;
-use data_model::VolatileMemory;
+use base::VolatileMemory;
 use dwl::*;
 use linux_input_sys::virtio_input_event;
 

@@ -14,7 +14,6 @@ use std::ptr::write_volatile;
 use std::sync::atomic::fence;
 use std::sync::atomic::Ordering;
 
-use data_model::volatile_memory::*;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
@@ -25,6 +24,10 @@ use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::SafeDescriptor;
 use crate::platform::MemoryMapping as PlatformMmap;
 use crate::SharedMemory;
+use crate::VolatileMemory;
+use crate::VolatileMemoryError;
+use crate::VolatileMemoryResult;
+use crate::VolatileSlice;
 
 #[sorted]
 #[derive(Debug, thiserror::Error)]
@@ -426,7 +429,13 @@ impl<'a> MemoryMappingBuilder<'a> {
 
 impl VolatileMemory for MemoryMapping {
     fn get_slice(&self, offset: usize, count: usize) -> VolatileMemoryResult<VolatileSlice> {
-        let mem_end = calc_offset(offset, count)?;
+        let mem_end = offset
+            .checked_add(count)
+            .ok_or(VolatileMemoryError::Overflow {
+                base: offset,
+                offset: count,
+            })?;
+
         if mem_end > self.size() {
             return Err(VolatileMemoryError::OutOfBounds { addr: mem_end });
         }

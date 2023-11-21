@@ -8,7 +8,6 @@ edition = "2021"
 cargo-fuzz = true
 
 [dependencies]
-data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }
 disk = { path = "../disk" }
 fuse = { path = "../fuse" }

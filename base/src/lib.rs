@@ -12,6 +12,7 @@ pub mod descriptor_reflection;
 mod errno;
 mod event;
 mod file_traits;
+mod iobuf;
 mod mmap;
 mod notifiers;
 mod shm;
@@ -19,6 +20,7 @@ pub mod syslog;
 pub mod test_utils;
 mod timer;
 mod tube;
+mod volatile_memory;
 mod wait_context;
 mod worker_thread;
 mod write_zeroes;
@@ -39,6 +41,7 @@ pub use file_traits::FileReadWriteAtVolatile;
 pub use file_traits::FileReadWriteVolatile;
 pub use file_traits::FileSetLen;
 pub use file_traits::FileSync;
+pub use iobuf::IoBufMut;
 pub use mmap::Error as MmapError;
 pub use mmap::ExternalMapping;
 pub use mmap::MappedRegion;
@@ -66,6 +69,10 @@ pub use tube::RecvTube;
 pub use tube::Result as TubeResult;
 pub use tube::SendTube;
 pub use tube::Tube;
+pub use volatile_memory::VolatileMemory;
+pub use volatile_memory::VolatileMemoryError;
+pub use volatile_memory::VolatileMemoryResult;
+pub use volatile_memory::VolatileSlice;
 pub use wait_context::EventToken;
 pub use wait_context::EventType;
 pub use wait_context::TriggeredEvent;
@@ -111,6 +118,7 @@ cfg_if::cfg_if! {
         pub use sys::windows;
 
         pub use windows::{EventTrigger, EventExt, WaitContextExt};
+        pub use windows::IoBuf;
         pub use windows::MemoryMappingBuilderWindows;
         pub use windows::set_thread_priority;
         pub use windows::{give_foregrounding_permission, Console};
@@ -140,6 +148,7 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         pub use sys::unix;
 
+        pub use unix::IoBuf;
         pub use unix::net::UnixSeqpacket;
         pub use unix::net::UnixSeqpacketListener;
         pub use unix::net::UnlinkUnixSeqpacketListener;

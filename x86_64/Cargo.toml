@@ -16,7 +16,6 @@ anyhow = "*"
 cfg-if = "1.0.0"
 chrono = "0.4.19"
 cros_fdt = { path = "../cros_fdt" }
-data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }
 gdbstub_arch = { version = "0.2.4", optional = true }
 hypervisor = { path = "../hypervisor" }

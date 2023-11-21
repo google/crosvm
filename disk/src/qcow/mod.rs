@@ -29,10 +29,10 @@ use base::FileSetLen;
 use base::FileSync;
 use base::PunchHoleMut;
 use base::RawDescriptor;
+use base::VolatileMemory;
+use base::VolatileSlice;
 use base::WriteZeroesAt;
 use cros_async::Executor;
-use data_model::VolatileMemory;
-use data_model::VolatileSlice;
 use libc::EINVAL;
 use libc::ENOSPC;
 use libc::ENOTSUP;
@@ -401,8 +401,8 @@ fn max_refcount_clusters(refcount_order: u32, cluster_size: u32, num_clusters: u
 ///
 /// ```
 /// # use base::FileReadWriteAtVolatile;
-/// # use data_model::VolatileSlice;
 /// # use disk::QcowFile;
+/// # use base::VolatileSlice;
 /// # fn test(file: std::fs::File) -> std::io::Result<()> {
 ///     let mut q = QcowFile::from(file, disk::MAX_NESTING_DEPTH).expect("Can't open qcow file");
 ///     let mut buf = [0u8; 12];

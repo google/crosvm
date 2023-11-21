@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt;
-use std::fmt::Debug;
-
 use winapi::shared::ws2def::WSABUF;
 
 use crate::iobuf::PlatformIoBuf;
@@ -39,15 +36,5 @@ impl PlatformIoBuf for IoBuf {
     #[inline]
     fn set_ptr(&mut self, ptr: *mut u8) {
         self.buf = ptr as *mut i8;
-    }
-}
-
-pub(crate) struct DebugIoBuf(pub(crate) WSABUF);
-impl Debug for DebugIoBuf {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("WSABUF")
-            .field("buf", &self.0.buf)
-            .field("len", &self.0.len)
-            .finish()
     }
 }

@@ -865,8 +865,8 @@ impl<'a> MemoryMappingBuilder<'a> {
 
 #[cfg(test)]
 mod tests {
-    use data_model::VolatileMemory;
-    use data_model::VolatileMemoryError;
+    use crate::VolatileMemory;
+    use crate::VolatileMemoryError;
     use tempfile::tempfile;
 
     use super::*;

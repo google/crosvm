@@ -7,9 +7,9 @@
 
 use base::FileGetLen;
 use base::FileReadWriteAtVolatile;
+use base::VolatileSlice;
 use data_model::Le32;
 use data_model::Le64;
-use data_model::VolatileSlice;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;

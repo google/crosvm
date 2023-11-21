@@ -9,8 +9,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::slice;
 
-use crate::sys::DebugIoBuf;
-pub use crate::sys::IoBuf;
+pub use crate::IoBuf;
 
 pub(crate) trait PlatformIoBuf {
     fn new(ptr: *mut u8, len: usize) -> Self;
@@ -18,11 +17,6 @@ pub(crate) trait PlatformIoBuf {
     fn ptr(&self) -> *mut u8;
     fn set_len(&mut self, len: usize);
     fn set_ptr(&mut self, ptr: *mut u8);
-}
-
-/// Cross platform stub to create a platform specific IoBuf.
-pub fn create_iobuf(addr: *mut u8, len: usize) -> IoBuf {
-    IoBuf::new(addr, len)
 }
 
 /// Cross-platform mutable buffer.
@@ -147,8 +141,8 @@ unsafe impl<'a> Sync for IoBufMut<'a> {}
 impl<'a> Debug for IoBufMut<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("IoBufMut")
-            .field("iobuf", &DebugIoBuf(self.iobuf))
-            .field("phantom", &self.phantom)
+            .field("ptr", &self.iobuf.ptr())
+            .field("len", &self.iobuf.len())
             .finish()
     }
 }

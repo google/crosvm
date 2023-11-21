@@ -11,7 +11,7 @@ use base::sys::fallocate;
 use base::sys::is_block_file;
 use base::sys::FallocateMode;
 use base::AsRawDescriptor;
-use data_model::VolatileSlice;
+use base::VolatileSlice;
 use once_cell::unsync::OnceCell;
 use remain::sorted;
 use thiserror::Error as ThisError;

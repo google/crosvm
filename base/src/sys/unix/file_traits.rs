@@ -16,8 +16,6 @@ use crate::FileReadWriteVolatile;
 // This module allows the below macros to refer to $crate::unix::file_traits::lib::X and ensures other
 // crates don't need to add additional crates to their Cargo.toml.
 pub mod lib {
-    pub use data_model::IoBufMut;
-    pub use data_model::VolatileSlice;
     pub use libc::c_int;
     pub use libc::c_void;
     pub use libc::iovec;
@@ -32,10 +30,7 @@ pub mod lib {
 macro_rules! volatile_impl {
     ($ty:ty) => {
         impl FileReadWriteVolatile for $ty {
-            fn read_volatile(
-                &mut self,
-                slice: $crate::unix::file_traits::lib::VolatileSlice,
-            ) -> std::io::Result<usize> {
+            fn read_volatile(&mut self, slice: $crate::VolatileSlice) -> std::io::Result<usize> {
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
                 // to handle arbitrary memory for I/O.
                 let ret = unsafe {
@@ -54,10 +49,10 @@ macro_rules! volatile_impl {
 
             fn read_vectored_volatile(
                 &mut self,
-                bufs: &[$crate::unix::file_traits::lib::VolatileSlice],
+                bufs: &[$crate::VolatileSlice],
             ) -> std::io::Result<usize> {
-                let iobufs = $crate::unix::file_traits::lib::VolatileSlice::as_iobufs(bufs);
-                let iovecs = $crate::unix::file_traits::lib::IoBufMut::as_iobufs(iobufs);
+                let iobufs = $crate::VolatileSlice::as_iobufs(bufs);
+                let iovecs = $crate::IoBufMut::as_iobufs(iobufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -79,10 +74,7 @@ macro_rules! volatile_impl {
                 }
             }
 
-            fn write_volatile(
-                &mut self,
-                slice: $crate::unix::file_traits::lib::VolatileSlice,
-            ) -> std::io::Result<usize> {
+            fn write_volatile(&mut self, slice: $crate::VolatileSlice) -> std::io::Result<usize> {
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
                 // to handle arbitrary memory for I/O.
                 let ret = unsafe {
@@ -101,10 +93,10 @@ macro_rules! volatile_impl {
 
             fn write_vectored_volatile(
                 &mut self,
-                bufs: &[$crate::unix::file_traits::lib::VolatileSlice],
+                bufs: &[$crate::VolatileSlice],
             ) -> std::io::Result<usize> {
-                let iobufs = $crate::unix::file_traits::lib::VolatileSlice::as_iobufs(bufs);
-                let iovecs = $crate::unix::file_traits::lib::IoBufMut::as_iobufs(iobufs);
+                let iobufs = $crate::VolatileSlice::as_iobufs(bufs);
+                let iovecs = $crate::IoBufMut::as_iobufs(iobufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -135,7 +127,7 @@ macro_rules! volatile_at_impl {
         impl FileReadWriteAtVolatile for $ty {
             fn read_at_volatile(
                 &mut self,
-                slice: $crate::unix::file_traits::lib::VolatileSlice,
+                slice: $crate::VolatileSlice,
                 offset: u64,
             ) -> std::io::Result<usize> {
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
@@ -158,11 +150,11 @@ macro_rules! volatile_at_impl {
 
             fn read_vectored_at_volatile(
                 &mut self,
-                bufs: &[$crate::unix::file_traits::lib::VolatileSlice],
+                bufs: &[$crate::VolatileSlice],
                 offset: u64,
             ) -> std::io::Result<usize> {
-                let iobufs = $crate::unix::file_traits::lib::VolatileSlice::as_iobufs(bufs);
-                let iovecs = $crate::unix::file_traits::lib::IoBufMut::as_iobufs(iobufs);
+                let iobufs = $crate::VolatileSlice::as_iobufs(bufs);
+                let iovecs = $crate::IoBufMut::as_iobufs(iobufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -187,7 +179,7 @@ macro_rules! volatile_at_impl {
 
             fn write_at_volatile(
                 &mut self,
-                slice: $crate::unix::file_traits::lib::VolatileSlice,
+                slice: $crate::VolatileSlice,
                 offset: u64,
             ) -> std::io::Result<usize> {
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
@@ -210,11 +202,11 @@ macro_rules! volatile_at_impl {
 
             fn write_vectored_at_volatile(
                 &mut self,
-                bufs: &[$crate::unix::file_traits::lib::VolatileSlice],
+                bufs: &[$crate::VolatileSlice],
                 offset: u64,
             ) -> std::io::Result<usize> {
-                let iobufs = $crate::unix::file_traits::lib::VolatileSlice::as_iobufs(bufs);
-                let iovecs = $crate::unix::file_traits::lib::IoBufMut::as_iobufs(iobufs);
+                let iobufs = $crate::VolatileSlice::as_iobufs(bufs);
+                let iovecs = $crate::IoBufMut::as_iobufs(iobufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);

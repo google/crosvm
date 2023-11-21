@@ -15,9 +15,9 @@ use base::MemoryMappingBuilder;
 use base::MmapError;
 use base::Protection;
 use base::PunchHole;
-use data_model::VolatileMemory;
-use data_model::VolatileMemoryError;
-use data_model::VolatileSlice;
+use base::VolatileMemory;
+use base::VolatileMemoryError;
+use base::VolatileSlice;
 use thiserror::Error as ThisError;
 
 use crate::pagesize::bytes_to_pages;

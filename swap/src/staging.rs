@@ -13,9 +13,9 @@ use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::MmapError;
 use base::SharedMemory;
-use data_model::VolatileMemory;
-use data_model::VolatileMemoryError;
-use data_model::VolatileSlice;
+use base::VolatileMemory;
+use base::VolatileMemoryError;
+use base::VolatileSlice;
 use thiserror::Error as ThisError;
 
 use crate::pagesize::pages_to_bytes;

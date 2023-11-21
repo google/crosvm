@@ -19,7 +19,7 @@ use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
 use base::Protection;
 use base::SafeDescriptor;
-use data_model::VolatileSlice;
+use base::VolatileSlice;
 use gpu_display::*;
 use libc::c_void;
 use rutabaga_gfx::ResourceCreate3D;

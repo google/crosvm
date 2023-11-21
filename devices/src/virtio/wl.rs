@@ -84,9 +84,11 @@ use base::ScmSocket;
 use base::SharedMemory;
 use base::Tube;
 use base::TubeError;
+use base::VolatileMemoryError;
 use base::WaitContext;
 use base::WorkerThread;
-use data_model::*;
+use data_model::Le32;
+use data_model::Le64;
 #[cfg(feature = "minigbm")]
 use libc::EBADF;
 #[cfg(feature = "minigbm")]

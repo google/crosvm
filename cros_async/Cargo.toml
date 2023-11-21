@@ -8,7 +8,6 @@ edition = "2021"
 async-trait = "0.1.36"
 async-task = "4"
 cfg-if = "1.0.0"
-data_model = { path = "../common/data_model" } # provided by ebuild
 intrusive-collections = "0.9"
 libc = "*"
 once_cell = "1.7.2"

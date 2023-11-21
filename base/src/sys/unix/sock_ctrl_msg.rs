@@ -19,8 +19,6 @@ use std::ptr::null_mut;
 use std::ptr::write_unaligned;
 use std::slice;
 
-use data_model::IoBufMut;
-use data_model::VolatileSlice;
 use libc::c_long;
 use libc::c_void;
 use libc::cmsghdr;
@@ -34,7 +32,9 @@ use serde::Serialize;
 
 use crate::sys::sendmsg;
 use crate::AsRawDescriptor;
+use crate::IoBufMut;
 use crate::RawDescriptor;
+use crate::VolatileSlice;
 
 // Each of the following functions performs the same function as their C counterparts. They are
 // reimplemented as const fns here because they are used to size statically allocated arrays.

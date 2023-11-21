@@ -238,11 +238,10 @@ impl<'a> MemoryMappingBuilder<'a> {
 
 #[cfg(test)]
 mod tests {
-    use data_model::VolatileMemory;
-    use data_model::VolatileMemoryError;
-
     use super::*;
     use crate::SharedMemory;
+    use crate::VolatileMemory;
+    use crate::VolatileMemoryError;
 
     // get_slice() and other methods are only available on crate::MemoryMapping.
     fn to_crate_mmap(mapping: MemoryMapping) -> crate::MemoryMapping {

@@ -25,7 +25,7 @@ use std::rc::Rc;
 
 use base::AsRawDescriptor;
 use base::RawDescriptor;
-use data_model::VolatileSlice;
+use base::VolatileSlice;
 use libc::shmat;
 use libc::shmctl;
 use libc::shmdt;

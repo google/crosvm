@@ -30,17 +30,7 @@ pub fn zerocopy_from_slice<T: FromBytes>(data: &[u8]) -> Option<&T> {
 pub mod endian;
 pub use crate::endian::*;
 
-pub mod volatile_memory;
-pub use crate::volatile_memory::*;
-
 mod flexible_array;
 pub use flexible_array::vec_with_array_field;
 pub use flexible_array::FlexibleArray;
 pub use flexible_array::FlexibleArrayWrapper;
-
-mod iobuf;
-pub use iobuf::create_iobuf;
-pub use iobuf::IoBuf;
-pub use iobuf::IoBufMut;
-
-mod sys;

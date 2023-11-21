@@ -8,7 +8,7 @@ use std::ffi::CStr;
 use std::mem;
 
 use base::FileReadWriteAtVolatile;
-use data_model::VolatileSlice;
+use base::VolatileSlice;
 use remain::sorted;
 use resources::AddressRange;
 use thiserror::Error;

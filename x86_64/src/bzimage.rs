@@ -9,7 +9,7 @@ use std::io;
 
 use base::debug;
 use base::FileReadWriteAtVolatile;
-use data_model::VolatileSlice;
+use base::VolatileSlice;
 use memoffset::offset_of;
 use remain::sorted;
 use thiserror::Error;

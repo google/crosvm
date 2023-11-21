@@ -25,7 +25,7 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use base::error;
-use data_model::VolatileSlice;
+use base::VolatileSlice;
 use disk::DiskFile;
 use serde::Deserialize;
 use serde::Serialize;

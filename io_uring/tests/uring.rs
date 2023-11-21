@@ -29,8 +29,8 @@ use std::time::Duration;
 
 use base::pipe;
 use base::EventType;
+use base::IoBufMut;
 use base::WaitContext;
-use data_model::IoBufMut;
 use io_uring::Error;
 use io_uring::URingAllowlist;
 use io_uring::URingContext;
