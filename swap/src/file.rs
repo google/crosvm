@@ -25,6 +25,9 @@ use crate::pagesize::pages_to_bytes;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+// On 4KB page size system, guest memory must be less than 8 TiB which is reasonable assumption.
+const MAX_PAGE_IDX: usize = (1 << 31) - 2;
+
 #[derive(ThisError, Debug)]
 pub enum Error {
     #[error("failed to io: {0}")]
@@ -41,11 +44,64 @@ pub enum Error {
     InvalidIndex,
 }
 
-/// TODO(kawasin): Serialize this into u32.
+/// u32 to pack the state of a page on the file.
+///
+/// * MSB: Whether the page on file is freed. (1: freed, 2: allocated)
+/// * lower 31 bits:
+///   * The corresponding page index if the file page is allocated.
+///   * The file page index + 1 of next freed file page if the file page is freed. Zero means it is
+///     the last page in the free list.
 #[derive(Debug)]
-enum FilePageState {
-    Free(Option<usize>),
-    Present(usize),
+struct FilePageState(u32);
+
+impl FilePageState {
+    const FREED_BIT_MASK: u32 = 1 << 31;
+
+    fn freed_state(first_freed_page: Option<usize>) -> Self {
+        Self(
+            Self::FREED_BIT_MASK
+                | first_freed_page
+                    .map(|idx_file| idx_file as u32 + 1)
+                    .unwrap_or(0),
+        )
+    }
+
+    fn allocated_state(idx_page: usize) -> Option<Self> {
+        if idx_page <= MAX_PAGE_IDX {
+            Some(Self(idx_page as u32))
+        } else {
+            // idx_page is invalid.
+            None
+        }
+    }
+
+    fn is_freed(&self) -> bool {
+        self.0 & Self::FREED_BIT_MASK != 0
+    }
+
+    /// This is valid only if the page is freed.
+    fn next_file_freed_idx(&self) -> Option<Option<usize>> {
+        if self.is_freed() {
+            let next_idx_file = !Self::FREED_BIT_MASK & self.0;
+            if next_idx_file == 0 {
+                Some(None)
+            } else {
+                Some(Some(next_idx_file as usize - 1))
+            }
+        } else {
+            None
+        }
+    }
+
+    /// This is valid only if the page is allocated.
+    fn idx_page(&self) -> Option<usize> {
+        if self.is_freed() {
+            // The file page is freed.
+            None
+        } else {
+            Some(self.0 as usize)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -70,7 +126,7 @@ impl FilePageStates {
 
     /// Free a page on swap file.
     fn free(&mut self, idx_file: usize) {
-        self.states[idx_file] = FilePageState::Free(self.first_idx_file_freed);
+        self.states[idx_file] = FilePageState::freed_state(self.first_idx_file_freed);
         self.first_idx_file_freed = Some(idx_file);
     }
 
@@ -84,17 +140,24 @@ impl FilePageStates {
         if let Some(idx_file_freed) = self.first_idx_file_freed {
             // TODO(kawasin): Collect consecutive freed pages in the free list to reduce number of
             // writes.
-            let FilePageState::Free(next_idx_file_freed) = self.states[idx_file_freed] else {
-                unreachable!("free list is broken");
+            let Some(next_idx_file_freed) = self.states[idx_file_freed].next_file_freed_idx()
+            else {
+                unreachable!("pages in free list must be freed pages")
             };
-            self.states[idx_file_freed] = FilePageState::Present(idx_page);
+            let Some(state) = FilePageState::allocated_state(idx_page) else {
+                unreachable!("idx_page must be less than MAX_PAGE_IDX");
+            };
+            self.states[idx_file_freed] = state;
             self.first_idx_file_freed = next_idx_file_freed;
 
             idx_file_freed
         } else {
             // The free list is empty. Allocate new pages.
             let head_idx_file = self.states.len();
-            self.states.push(FilePageState::Present(idx_page));
+            let Some(state) = FilePageState::allocated_state(idx_page) else {
+                unreachable!("idx must be less than MAX_PAGE_IDX");
+            };
+            self.states.push(state);
             head_idx_file
         }
     }
@@ -115,41 +178,43 @@ impl FilePageStates {
     fn find_present_pages_range(
         &self,
         idx_file: usize,
-        page_states: &[Option<(usize, bool)>],
+        page_states: &[PageState],
         max_pages: usize,
         consecutive: bool,
     ) -> Option<(Range<usize>, usize)> {
-        let next_head_idx_offset = self.states[idx_file..]
-            .iter()
-            .position(|state| match state {
-                FilePageState::Free(_) => false,
-                FilePageState::Present(idx) => {
-                    page_states[*idx].expect("page state must have idx_file").1
-                }
-            });
+        let next_head_idx_offset = self.states[idx_file..].iter().position(|state| {
+            !state.is_freed()
+                && page_states[state
+                    .idx_page()
+                    .unwrap_or_else(|| unreachable!("the page is not freed"))]
+                .is_present()
+        });
         let Some(next_head_idx_offset) = next_head_idx_offset else {
             return None;
         };
         let idx_file = idx_file + next_head_idx_offset;
 
-        let FilePageState::Present(head_idx_page) = self.states[idx_file] else {
-            unreachable!("state must be present");
+        let Some(head_idx_page) = self.states[idx_file].idx_page() else {
+            unreachable!("the file page must not be freed");
         };
 
         let mut pages = 1;
 
         if max_pages > 1 {
             for state in self.states[idx_file + 1..].iter() {
-                let FilePageState::Present(idx_page) = *state else {
+                if state.is_freed() {
                     break;
-                };
-                if !page_states[idx_page]
-                    .expect("page state must have idx_file")
-                    .1
-                    || (consecutive && idx_page != head_idx_page + pages)
-                {
-                    break;
+                } else {
+                    let Some(idx_page) = state.idx_page() else {
+                        unreachable!("allocated page must have idx_page");
+                    };
+                    if !page_states[idx_page].is_present()
+                        || (consecutive && idx_page != head_idx_page + pages)
+                    {
+                        break;
+                    }
                 }
+
                 pages += 1;
                 if pages >= max_pages {
                     break;
@@ -158,6 +223,51 @@ impl FilePageStates {
         }
 
         Some((idx_file..idx_file + pages, head_idx_page))
+    }
+}
+
+/// u32 to pack the state of a guest memory page.
+///
+/// * If the page is not on the swap file, the value is zero.
+/// * MSB: Whether the page is stale or not. (0: stale, 1: present).
+/// * lower 31 bits: The corresponding file page index + 1. Never be zero.
+#[derive(Clone, Debug)]
+struct PageState(u32);
+
+impl PageState {
+    const IDX_FILE_MASK: u32 = (1 << 31) - 1;
+    const PRESENT_BIT_MASK: u32 = 1 << 31;
+
+    fn is_none(&self) -> bool {
+        self.0 == 0
+    }
+
+    fn idx_file(&self) -> Option<usize> {
+        if self.0 != 0 {
+            Some((self.0 & Self::IDX_FILE_MASK) as usize - 1)
+        } else {
+            None
+        }
+    }
+
+    fn is_present(&self) -> bool {
+        self.0 & Self::PRESENT_BIT_MASK != 0
+    }
+
+    fn update(&mut self, idx_file: usize) {
+        self.0 = (idx_file as u32 + 1) | Self::PRESENT_BIT_MASK;
+    }
+
+    fn mark_as_present(&mut self) {
+        self.0 |= Self::PRESENT_BIT_MASK;
+    }
+
+    fn clear(&mut self) {
+        self.0 &= !Self::PRESENT_BIT_MASK;
+    }
+
+    fn free(&mut self) {
+        self.0 = 0;
     }
 }
 
@@ -171,8 +281,7 @@ impl FilePageStates {
 pub struct SwapFile<'a> {
     file: &'a File,
     file_mmap: MemoryMapping,
-    /// TODO(kawasin): Serialize this into u32.
-    page_states: Vec<Option<(usize, bool)>>,
+    page_states: Vec<PageState>,
     file_states: FilePageStates,
     // All the data pages before this index are mlock(2)ed.
     cursor_mlock: usize,
@@ -189,6 +298,9 @@ impl<'a> SwapFile<'a> {
     /// * `file` - The swap file.
     /// * `num_of_pages` - The number of pages in the region.
     pub fn new(file: &'a File, num_of_pages: usize) -> Result<Self> {
+        if num_of_pages > MAX_PAGE_IDX {
+            return Err(Error::InvalidSize);
+        }
         let file_mmap = MemoryMappingBuilder::new(pages_to_bytes(num_of_pages))
             .from_file(file)
             .protection(Protection::read())
@@ -197,7 +309,7 @@ impl<'a> SwapFile<'a> {
         Ok(Self {
             file,
             file_mmap,
-            page_states: vec![None; num_of_pages],
+            page_states: vec![PageState(0); num_of_pages],
             file_states: FilePageStates::new(num_of_pages),
             cursor_mlock: 0,
             min_possible_present_idx_file: 0,
@@ -218,19 +330,19 @@ impl<'a> SwapFile<'a> {
         idx_page: usize,
         allow_cleared: bool,
     ) -> Result<Option<VolatileSlice>> {
-        if let Some((idx_file, is_present)) =
-            self.page_states.get(idx_page).ok_or(Error::OutOfRange)?
-        {
-            if allow_cleared || *is_present {
-                return match self
-                    .file_mmap
-                    .get_slice(pages_to_bytes(*idx_file), pages_to_bytes(1))
-                {
-                    Ok(slice) => Ok(Some(slice)),
-                    Err(VolatileMemoryError::OutOfBounds { .. }) => Err(Error::OutOfRange),
-                    Err(e) => Err(e.into()),
-                };
-            }
+        let state = self.page_states.get(idx_page).ok_or(Error::OutOfRange)?;
+        if !state.is_none() && (allow_cleared || state.is_present()) {
+            let Some(idx_file) = state.idx_file() else {
+                unreachable!("the page is not none");
+            };
+            return match self
+                .file_mmap
+                .get_slice(pages_to_bytes(idx_file), pages_to_bytes(1))
+            {
+                Ok(slice) => Ok(Some(slice)),
+                Err(VolatileMemoryError::OutOfBounds { .. }) => Err(Error::OutOfRange),
+                Err(e) => Err(e.into()),
+            };
         }
         Ok(None)
     }
@@ -294,7 +406,7 @@ impl<'a> SwapFile<'a> {
         let idx_file_range = self.convert_idx_page_range_to_idx_file(idx_page_range.clone())?;
 
         for state in &mut self.page_states[idx_page_range] {
-            state.as_mut().unwrap().1 = false;
+            state.clear();
         }
 
         let offset = pages_to_bytes(idx_file_range.start);
@@ -325,7 +437,7 @@ impl<'a> SwapFile<'a> {
     ///
     /// # Arguments
     ///
-    /// * `idx_page_range` - The indices of consecutive pages to be erased. This may contains
+    /// * `idx_page_range` - The indices of consecutive pages to be freed. This may contains
     ///   non-present pages.
     pub fn free_range(&mut self, idx_page_range: Range<usize>) -> Result<usize> {
         if idx_page_range.end > self.page_states.len() {
@@ -334,10 +446,13 @@ impl<'a> SwapFile<'a> {
         let mut mlocked_pages = 0;
         let mut mlock_range: Option<Range<usize>> = None;
         for state in &mut self.page_states[idx_page_range] {
-            if let Some((idx_file, is_present)) = *state {
+            if !state.is_none() {
+                let Some(idx_file) = state.idx_file() else {
+                    unreachable!("the page is not none.");
+                };
                 self.file_states.free(idx_file);
 
-                if is_present && idx_file < self.cursor_mlock {
+                if idx_file < self.cursor_mlock && state.is_present() {
                     mlocked_pages += 1;
                     if let Some(range) = mlock_range.as_mut() {
                         if idx_file + 1 == range.start {
@@ -358,7 +473,7 @@ impl<'a> SwapFile<'a> {
                     }
                 }
             }
-            *state = None;
+            state.free();
         }
         if let Some(mlock_range) = mlock_range {
             self.file_mmap
@@ -393,17 +508,22 @@ impl<'a> SwapFile<'a> {
     ///
     /// # Arguments
     ///
-    /// * `idx_page` - the index of the page from the head of the pages.
+    /// * `idx` - the index of the page from the head of the pages.
     pub fn mark_as_present(&mut self, idx_page: usize) -> Result<()> {
-        match self.page_states.get(idx_page).ok_or(Error::OutOfRange)? {
-            Some((file_idx, false)) => {
-                let file_idx = *file_idx;
-                self.page_states[idx_page] = Some((file_idx, true));
-                self.min_possible_present_idx_file =
-                    std::cmp::min(file_idx, self.min_possible_present_idx_file);
-                Ok(())
-            }
-            _ => Err(Error::InvalidIndex),
+        let state = self
+            .page_states
+            .get_mut(idx_page)
+            .ok_or(Error::OutOfRange)?;
+        if !state.is_none() && !state.is_present() {
+            state.mark_as_present();
+            let Some(idx_file) = state.idx_file() else {
+                unreachable!("the page is not none.");
+            };
+            self.min_possible_present_idx_file =
+                std::cmp::min(idx_file, self.min_possible_present_idx_file);
+            Ok(())
+        } else {
+            Err(Error::InvalidIndex)
         }
     }
 
@@ -429,12 +549,12 @@ impl<'a> SwapFile<'a> {
         self.min_possible_present_idx_file = 0;
 
         for cur in idx_page..idx_page + num_pages {
-            if let Some((_, is_present)) = &mut self.page_states[cur] {
-                *is_present = true;
-            } else {
+            let state = &mut self.page_states[cur];
+            if state.is_none() {
                 let idx_file = self.file_states.allocate(cur);
-
-                self.page_states[cur] = Some((idx_file, true));
+                state.update(idx_file);
+            } else {
+                state.mark_as_present();
             }
         }
 
@@ -442,11 +562,11 @@ impl<'a> SwapFile<'a> {
         let mut pending_pages = 0;
         let mut mem_slice = mem_slice;
         for state in self.page_states[idx_page..idx_page + num_pages].iter() {
-            let Some((idx_file, _)) = state else {
+            let Some(idx_file) = state.idx_file() else {
                 unreachable!("pages must be allocated");
             };
             if let Some(pending_idx_file) = pending_idx_file {
-                if *idx_file == pending_idx_file + pending_pages {
+                if idx_file == pending_idx_file + pending_pages {
                     pending_pages += 1;
                     continue;
                 }
@@ -458,7 +578,7 @@ impl<'a> SwapFile<'a> {
                     .write_all_at(&mem_slice[..size], pages_to_bytes(pending_idx_file) as u64)?;
                 mem_slice = &mem_slice[size..];
             }
-            pending_idx_file = Some(*idx_file);
+            pending_idx_file = Some(idx_file);
             pending_pages = 1;
         }
         if let Some(pending_idx_file) = pending_idx_file {
@@ -522,7 +642,7 @@ impl<'a> SwapFile<'a> {
     pub fn present_pages(&self) -> usize {
         self.page_states
             .iter()
-            .map(|state| matches!(state, Some((_, true))) as usize)
+            .map(|state| state.is_present() as usize)
             .sum()
     }
 
@@ -536,23 +656,30 @@ impl<'a> SwapFile<'a> {
         &self,
         idx_page_range: Range<usize>,
     ) -> Result<Range<usize>> {
-        // Validate that the idx_page_range is for cosecutive present file pages.
-        let head_idx_file = match self
+        // Validate that the idx_range is for cosecutive present file pages.
+        let state = self
             .page_states
             .get(idx_page_range.start)
-            .ok_or(Error::OutOfRange)?
-        {
-            Some((idx_file, true)) => Ok(*idx_file),
-            _ => Err(Error::InvalidIndex),
-        }?;
+            .ok_or(Error::OutOfRange)?;
+        if state.is_none() || !state.is_present() {
+            return Err(Error::InvalidIndex);
+        }
+        let Some(head_idx_file) = state.idx_file() else {
+            unreachable!("the page is not none.");
+        };
         let mut idx_file = head_idx_file;
         for idx in idx_page_range.start + 1..idx_page_range.end {
-            idx_file = match self.page_states.get(idx).ok_or(Error::OutOfRange)? {
-                Some((idx_file_of_page, true)) if *idx_file_of_page == idx_file + 1 => {
-                    Ok(*idx_file_of_page)
-                }
-                _ => Err(Error::InvalidIndex),
-            }?;
+            let state = self.page_states.get(idx).ok_or(Error::OutOfRange)?;
+            idx_file += 1;
+            if state.is_none()
+                || !state.is_present()
+                || state
+                    .idx_file()
+                    .unwrap_or_else(|| unreachable!("the page is not none."))
+                    != idx_file
+            {
+                return Err(Error::InvalidIndex);
+            }
         }
         let idx_file_range =
             head_idx_file..head_idx_file + idx_page_range.end - idx_page_range.start;
