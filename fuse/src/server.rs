@@ -1104,8 +1104,8 @@ impl<F: FileSystem + Sync> Server<F> {
         let parent = in_header.nodeid.into();
         let name = dir_entry.name.to_bytes();
         let entry = if name == b"." || name == b".." {
-            // Don't do lookups on the current directory or the parent directory. Safe because
-            // this only contains integer fields and any value is valid.
+            // Don't do lookups on the current directory or the parent directory.
+            // SAFETY: struct only contains integer fields and any value is valid.
             let mut attr = unsafe { MaybeUninit::<libc::stat64>::zeroed().assume_init() };
             attr.st_ino = dir_entry.ino;
             attr.st_mode = dir_entry.type_;

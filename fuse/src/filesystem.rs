@@ -867,7 +867,7 @@ pub trait FileSystem {
 
     /// Get information about the file system.
     fn statfs(&self, ctx: Context, inode: Self::Inode) -> io::Result<libc::statvfs64> {
-        // Safe because we are zero-initializing a struct with only POD fields.
+        // SAFETY: zero-initializing a struct with only POD fields.
         let mut st: libc::statvfs64 = unsafe { mem::zeroed() };
 
         // This matches the behavior of libfuse as it returns these values if the

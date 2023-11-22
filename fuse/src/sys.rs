@@ -753,7 +753,7 @@ pub struct SetattrIn {
 
 impl From<SetattrIn> for libc::stat64 {
     fn from(s: SetattrIn) -> libc::stat64 {
-        // Safe because we are zero-initializing a struct with only POD fields.
+        // SAFETY: zero-initializing a struct with only POD fields.
         let mut out: libc::stat64 = unsafe { mem::zeroed() };
         out.st_mode = s.mode;
         out.st_uid = s.uid;
