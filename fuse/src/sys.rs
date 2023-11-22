@@ -89,92 +89,99 @@ bitflags! {
 // INIT request/reply flags.
 
 /// Asynchronous read requests.
-const ASYNC_READ: u32 = 1;
+const ASYNC_READ: u64 = 1;
 
 /// Remote locking for POSIX file locks.
-const POSIX_LOCKS: u32 = 2;
+const POSIX_LOCKS: u64 = 2;
 
 /// Kernel sends file handle for fstat, etc... (not yet supported).
-const FILE_OPS: u32 = 4;
+const FILE_OPS: u64 = 4;
 
 /// Handles the O_TRUNC open flag in the filesystem.
-const ATOMIC_O_TRUNC: u32 = 8;
+const ATOMIC_O_TRUNC: u64 = 8;
 
 /// FileSystem handles lookups of "." and "..".
-const EXPORT_SUPPORT: u32 = 16;
+const EXPORT_SUPPORT: u64 = 16;
 
 /// FileSystem can handle write size larger than 4kB.
-const BIG_WRITES: u32 = 32;
+const BIG_WRITES: u64 = 32;
 
 /// Don't apply umask to file mode on create operations.
-const DONT_MASK: u32 = 64;
+const DONT_MASK: u64 = 64;
 
 /// Kernel supports splice write on the device.
-const SPLICE_WRITE: u32 = 128;
+const SPLICE_WRITE: u64 = 128;
 
 /// Kernel supports splice move on the device.
-const SPLICE_MOVE: u32 = 256;
+const SPLICE_MOVE: u64 = 256;
 
 /// Kernel supports splice read on the device.
-const SPLICE_READ: u32 = 512;
+const SPLICE_READ: u64 = 512;
 
 /// Remote locking for BSD style file locks.
-const FLOCK_LOCKS: u32 = 1024;
+const FLOCK_LOCKS: u64 = 1024;
 
 /// Kernel supports ioctl on directories.
-const HAS_IOCTL_DIR: u32 = 2048;
+const HAS_IOCTL_DIR: u64 = 2048;
 
 /// Automatically invalidate cached pages.
-const AUTO_INVAL_DATA: u32 = 4096;
+const AUTO_INVAL_DATA: u64 = 4096;
 
 /// Do READDIRPLUS (READDIR+LOOKUP in one).
-const DO_READDIRPLUS: u32 = 8192;
+const DO_READDIRPLUS: u64 = 8192;
 
 /// Adaptive readdirplus.
-const READDIRPLUS_AUTO: u32 = 16384;
+const READDIRPLUS_AUTO: u64 = 16384;
 
 /// Asynchronous direct I/O submission.
-const ASYNC_DIO: u32 = 32768;
+const ASYNC_DIO: u64 = 32768;
 
 /// Use writeback cache for buffered writes.
-const WRITEBACK_CACHE: u32 = 65536;
+const WRITEBACK_CACHE: u64 = 65536;
 
 /// Kernel supports zero-message opens.
-const NO_OPEN_SUPPORT: u32 = 131072;
+const NO_OPEN_SUPPORT: u64 = 131072;
 
 /// Allow parallel lookups and readdir.
-const PARALLEL_DIROPS: u32 = 262144;
+const PARALLEL_DIROPS: u64 = 262144;
 
 /// Fs handles killing suid/sgid/cap on write/chown/trunc.
-const HANDLE_KILLPRIV: u32 = 524288;
+const HANDLE_KILLPRIV: u64 = 524288;
 
 /// FileSystem supports posix acls.
-const POSIX_ACL: u32 = 1048576;
+const POSIX_ACL: u64 = 1048576;
 
 /// Reading the device after an abort returns `ECONNABORTED`.
-const ABORT_ERROR: u32 = 2097152;
+const ABORT_ERROR: u64 = 2097152;
 
 /// The reply to the `init` message contains the max number of request pages.
-const MAX_PAGES: u32 = 4194304;
+const MAX_PAGES: u64 = 4194304;
 
 /// Cache `readlink` responses.
-const CACHE_SYMLINKS: u32 = 8388608;
+const CACHE_SYMLINKS: u64 = 8388608;
 
 /// Kernel supports zero-message opens for directories.
-const NO_OPENDIR_SUPPORT: u32 = 16777216;
+const NO_OPENDIR_SUPPORT: u64 = 16777216;
 
 /// Kernel supports explicit cache invalidation.
-const EXPLICIT_INVAL_DATA: u32 = 33554432;
+const EXPLICIT_INVAL_DATA: u64 = 33554432;
 
 /// The `map_alignment` field of the `InitOut` struct is valid.
-const MAP_ALIGNMENT: u32 = 67108864;
+const MAP_ALIGNMENT: u64 = 67108864;
+
+/// Extended fuse_init_in request to hold additional flags
+const INIT_EXT: u64 = 1073741824;
+
+/// The client should send the security context along with open, mkdir, create, and symlink
+/// requests.
+const SECURITY_CONTEXT: u64 = 4294967296;
 
 bitflags! {
     /// A bitfield passed in as a parameter to and returned from the `init` method of the
     /// `FileSystem` trait.
     #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[repr(transparent)]
-    pub struct FsOptions: u32 {
+    pub struct FsOptions: u64 {
         /// Indicates that the filesystem supports asynchronous read requests.
         ///
         /// If this capability is not requested/available, the kernel will ensure that there is at
@@ -376,12 +383,17 @@ bitflags! {
         /// this feature is enabled by default.
         const MAP_ALIGNMENT = MAP_ALIGNMENT;
 
-
         /// Indicates that the `max_pages` field of the `InitOut` struct is valid.
         ///
         /// This field is used by the kernel driver to determine the maximum number of pages that
         /// may be used for any read or write requests.
         const MAX_PAGES = MAX_PAGES;
+
+        /// Indicates that `InitIn`/`InitOut` struct is extended to hold additional flags.
+        const INIT_EXT = INIT_EXT;
+
+        /// Indicates support for sending the security context with creation requests.
+        const SECURITY_CONTEXT = SECURITY_CONTEXT;
     }
 }
 
@@ -483,6 +495,10 @@ bitflags! {
         const READ = SETUPMAPPING_FLAG_READ;
     }
 }
+
+// Request Extension Constants
+/// Maximum security contexts in a request
+pub const MAX_NR_SECCTX: u32 = 31;
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
@@ -912,6 +928,13 @@ pub struct InitIn {
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
+pub struct InitInExt {
+    pub flags2: u32,
+    pub unused: [u32; 11],
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
 pub struct InitOut {
     pub major: u32,
     pub minor: u32,
@@ -923,7 +946,8 @@ pub struct InitOut {
     pub time_gran: u32,
     pub max_pages: u16,
     pub map_alignment: u16,
-    pub unused: [u32; 8],
+    pub flags2: u32,
+    pub unused: [u32; 7],
 }
 
 #[repr(C)]
@@ -1161,4 +1185,25 @@ pub struct RemoveMappingOne {
     pub moffset: u64,
     /* Length of mapping required */
     pub len: u64,
+}
+
+/// For each security context, send fuse_secctx with size of security context
+/// fuse_secctx will be followed by security context name and this in turn
+/// will be followed by actual context label.
+/// fuse_secctx, name, context
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
+pub struct Secctx {
+    pub size: u32,
+    pub padding: u32,
+}
+
+/// Contains the information about how many fuse_secctx structures are being
+/// sent and what's the total size of all security contexts (including
+/// size of fuse_secctx_header).
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
+pub struct SecctxHeader {
+    pub size: u32,
+    pub nr_secctx: u32,
 }

@@ -16,7 +16,9 @@ use base::error;
 use base::pagesize;
 use base::Protection;
 use data_model::zerocopy_from_reader;
+use data_model::zerocopy_from_slice;
 use zerocopy::AsBytes;
+use zerocopy::Unalign;
 
 use crate::filesystem::Context;
 use crate::filesystem::DirEntry;
@@ -33,6 +35,8 @@ use crate::Error;
 use crate::Result;
 
 const DIRENT_PADDING: [u8; 8] = [0; 8];
+
+const SELINUX_XATTR_CSTR: &[u8] = b"security.selinux\0";
 
 /// A trait for reading from the underlying FUSE endpoint.
 pub trait Reader: io::Read {}
@@ -348,11 +352,15 @@ impl<F: FileSystem + Sync> Server<F> {
             .ok_or(Error::MissingParameter)
             .and_then(bytes_to_cstr)?;
 
+        let split_pos = name.to_bytes_with_nul().len() + linkname.to_bytes_with_nul().len();
+        let security_ctx = parse_selinux_xattr(&buf[split_pos..])?;
+
         match self.fs.symlink(
             Context::from(in_header),
             linkname,
             in_header.nodeid.into(),
             name,
+            security_ctx,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -382,6 +390,9 @@ impl<F: FileSystem + Sync> Server<F> {
             .ok_or(Error::MissingParameter)
             .and_then(bytes_to_cstr)?;
 
+        let split_pos = name.to_bytes_with_nul().len();
+        let security_ctx = parse_selinux_xattr(&buf[split_pos..])?;
+
         match self.fs.mknod(
             Context::from(in_header),
             in_header.nodeid.into(),
@@ -389,6 +400,7 @@ impl<F: FileSystem + Sync> Server<F> {
             mode,
             rdev,
             umask,
+            security_ctx,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -416,12 +428,16 @@ impl<F: FileSystem + Sync> Server<F> {
             .ok_or(Error::MissingParameter)
             .and_then(bytes_to_cstr)?;
 
+        let split_pos = name.to_bytes_with_nul().len();
+        let security_ctx = parse_selinux_xattr(&buf[split_pos..])?;
+
         match self.fs.mkdir(
             Context::from(in_header),
             in_header.nodeid.into(),
             name,
             mode,
             umask,
+            security_ctx,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -441,11 +457,21 @@ impl<F: FileSystem + Sync> Server<F> {
         let ChromeOsTmpfileIn { mode, umask } =
             zerocopy_from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
+        let len = (in_header.len as usize)
+            .checked_sub(size_of::<InHeader>())
+            .ok_or(Error::InvalidHeaderLength)?;
+        let mut buf = vec![0; len];
+
+        r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
+
+        let security_ctx = parse_selinux_xattr(&buf)?;
+
         match self.fs.chromeos_tmpfile(
             Context::from(in_header),
             in_header.nodeid.into(),
             mode,
             umask,
+            security_ctx,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -959,6 +985,13 @@ impl<F: FileSystem + Sync> Server<F> {
             );
         }
 
+        let InitInExt { flags2, .. } =
+            if (FsOptions::from_bits_truncate(u64::from(flags)) & FsOptions::INIT_EXT).is_empty() {
+                InitInExt::default()
+            } else {
+                zerocopy_from_reader(&mut r).map_err(Error::DecodeMessage)?
+            };
+
         // These fuse features are supported by this server by default.
         let supported = FsOptions::ASYNC_READ
             | FsOptions::PARALLEL_DIROPS
@@ -971,9 +1004,10 @@ impl<F: FileSystem + Sync> Server<F> {
             | FsOptions::READDIRPLUS_AUTO
             | FsOptions::ATOMIC_O_TRUNC
             | FsOptions::MAX_PAGES
-            | FsOptions::MAP_ALIGNMENT;
+            | FsOptions::MAP_ALIGNMENT
+            | FsOptions::INIT_EXT;
 
-        let capable = FsOptions::from_bits_truncate(flags);
+        let capable = FsOptions::from_bits_truncate(u64::from(flags) | u64::from(flags2) << 32);
 
         match self.fs.init(capable) {
             Ok(want) => {
@@ -999,13 +1033,14 @@ impl<F: FileSystem + Sync> Server<F> {
                     major: KERNEL_VERSION,
                     minor: KERNEL_MINOR_VERSION,
                     max_readahead,
-                    flags: enabled.bits(),
+                    flags: enabled.bits() as u32,
                     max_background: ::std::u16::MAX,
                     congestion_threshold: (::std::u16::MAX / 4) * 3,
                     max_write,
                     time_gran: 1, // nanoseconds
                     max_pages,
                     map_alignment: pagesize().trailing_zeros() as u16,
+                    flags2: (enabled.bits() >> 32) as u32,
                     ..Default::default()
                 };
 
@@ -1309,6 +1344,9 @@ impl<F: FileSystem + Sync> Server<F> {
             .ok_or(Error::MissingParameter)
             .and_then(bytes_to_cstr)?;
 
+        let split_pos = name.to_bytes_with_nul().len();
+        let security_ctx = parse_selinux_xattr(&buf[split_pos..])?;
+
         match self.fs.create(
             Context::from(in_header),
             in_header.nodeid.into(),
@@ -1316,6 +1354,7 @@ impl<F: FileSystem + Sync> Server<F> {
             mode,
             flags,
             umask,
+            security_ctx,
         ) {
             Ok((entry, handle, opts)) => {
                 let entry_out = EntryOut {
@@ -1654,6 +1693,9 @@ impl<F: FileSystem + Sync> Server<F> {
             .ok_or(Error::MissingParameter)
             .and_then(bytes_to_cstr)?;
 
+        let split_pos = name.to_bytes_with_nul().len();
+        let security_ctx = parse_selinux_xattr(&buf[split_pos..])?;
+
         match self.fs.atomic_open(
             Context::from(in_header),
             in_header.nodeid.into(),
@@ -1661,6 +1703,7 @@ impl<F: FileSystem + Sync> Server<F> {
             mode,
             flags,
             umask,
+            security_ctx,
         ) {
             Ok((entry, handle, opts)) => {
                 let entry_out = EntryOut {
@@ -1886,5 +1929,232 @@ fn add_dirent<W: Writer>(
         }
 
         Ok(total_len)
+    }
+}
+
+/// Parses the value of the desired attribute from the FUSE request input and returns it as an
+/// `Ok(CStr)`. Returns `Ok(None)` if `buf` is empty or appears to be a valid request extension that
+/// does not contain any security context information.
+///
+/// # Arguments
+///
+/// * `buf` - a byte array that contains the contents following any expected byte string parameters
+/// of the FUSE request from the server. It begins with a struct `SecctxHeader`, and then the
+/// subsequent entry is a struct `Secctx` followed by a nul-terminated string with the xattribute
+/// name and then another nul-terminated string with the value for that xattr.
+///
+/// # Errors
+///
+/// * `Error::InvalidHeaderLength` - indicates that there is an inconsistency between the size of
+/// the data read from `buf` and the stated `size` of the `SecctxHeader`, the respective `Secctx`
+/// struct, or `buf` itself.
+/// * `Error::DecodeMessage` - indicates that the expected structs cannot be read from `buf`.
+/// * `Error::MissingParameter` - indicates that either a security context `name` or `value` is
+/// missing from a security context entry.
+fn parse_selinux_xattr(buf: &[u8]) -> Result<Option<&CStr>> {
+    // Return early if request was not followed by context information
+    if buf.is_empty() {
+        return Ok(None);
+    } else if buf.len() < size_of::<SecctxHeader>() {
+        return Err(Error::InvalidHeaderLength);
+    }
+
+    // Because the security context data block may have been preceded by variable-length strings,
+    // `SecctxHeader` and the subsequent `Secctx` structs may not be correctly byte-aligned
+    // within `buf`.
+    let secctx_header: &Unalign<SecctxHeader> =
+        zerocopy_from_slice(&buf[0..size_of::<SecctxHeader>()]).ok_or(Error::DecodeMessage(
+            io::Error::from_raw_os_error(libc::EINVAL),
+        ))?;
+
+    // FUSE 7.38 introduced a generic request extension with the same structure as  `SecctxHeader`.
+    // A `nr_secctx` value above `MAX_NR_SECCTX` indicates that this data block does not contain
+    // any security context information.
+    if secctx_header.get().nr_secctx > MAX_NR_SECCTX {
+        return Ok(None);
+    }
+
+    let mut cur_secctx_pos = size_of::<SecctxHeader>();
+    for _ in 0..secctx_header.get().nr_secctx {
+        // `SecctxHeader.size` denotes the total size for the `SecctxHeader`, each of the
+        // `nr_secctx` `Secctx` structs along with the corresponding context name and value,
+        // and any additional padding.
+        if (cur_secctx_pos + size_of::<Secctx>()) > buf.len()
+            || (cur_secctx_pos + size_of::<Secctx>()) > secctx_header.get().size as usize
+        {
+            return Err(Error::InvalidHeaderLength);
+        }
+
+        let secctx: &Unalign<Secctx> =
+            zerocopy_from_slice(&buf[cur_secctx_pos..(cur_secctx_pos + size_of::<Secctx>())])
+                .ok_or(Error::DecodeMessage(io::Error::from_raw_os_error(
+                    libc::EINVAL,
+                )))?;
+
+        cur_secctx_pos += size_of::<Secctx>();
+
+        let secctx_data = &buf[cur_secctx_pos..]
+            .split_inclusive(|&c| c == b'\0')
+            .take(2)
+            .map(bytes_to_cstr)
+            .collect::<Result<Vec<&CStr>>>()?;
+
+        if secctx_data.len() != 2 {
+            return Err(Error::MissingParameter);
+        }
+
+        let name = secctx_data[0];
+        let value = secctx_data[1];
+
+        cur_secctx_pos += name.to_bytes_with_nul().len() + value.to_bytes_with_nul().len();
+        if cur_secctx_pos > secctx_header.get().size as usize {
+            return Err(Error::InvalidHeaderLength);
+        }
+
+        // `Secctx.size` contains the size of the security context value (not including the
+        // corresponding context name).
+        if value.to_bytes_with_nul().len() as u32 != secctx.get().size {
+            return Err(Error::InvalidHeaderLength);
+        }
+
+        if name.to_bytes_with_nul() == SELINUX_XATTR_CSTR {
+            return Ok(Some(value));
+        }
+    }
+
+    // `SecctxHeader.size` is always the total size of the security context data padded to an
+    // 8-byte alignment. If adding 7 causes an overflow, then the `size` field of our header
+    // is invalid, so we should return an error.
+    let padded_secctx_size = cur_secctx_pos
+        .checked_add(7)
+        .map(|l| l & !7)
+        .ok_or_else(|| Error::InvalidHeaderLength)?;
+    if padded_secctx_size != secctx_header.get().size as usize {
+        return Err(Error::InvalidHeaderLength);
+    }
+
+    // None of the `nr_secctx` attributes we parsed had a `name` matching `SELINUX_XATTR_CSTR`.
+    // Return `Ok(None)` to indicate that the security context data block was valid but there was no
+    // specified selinux label attached to this request.
+    Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_secctx(ctxs: &[(&[u8], &[u8])], size_truncation: u32) -> Vec<u8> {
+        let nr_secctx = ctxs.len();
+        let total_size = (size_of::<SecctxHeader>() as u32
+            + (size_of::<Secctx>() * nr_secctx) as u32
+            + ctxs
+                .iter()
+                .fold(0, |s, &(n, v)| s + n.len() as u32 + v.len() as u32))
+        .checked_add(7)
+        .map(|l| l & !7)
+        .expect("total_size padded to 8-byte boundary")
+        .checked_sub(size_truncation)
+        .expect("size truncated by bytes < total_size");
+
+        let ctx_data: Vec<_> = ctxs
+            .iter()
+            .map(|(n, v)| {
+                [
+                    Secctx {
+                        size: v.len() as u32,
+                        padding: 0,
+                    }
+                    .as_bytes(),
+                    n,
+                    v,
+                ]
+                .concat()
+            })
+            .collect::<Vec<_>>()
+            .concat();
+
+        [
+            SecctxHeader {
+                size: total_size,
+                nr_secctx: nr_secctx as u32,
+            }
+            .as_bytes(),
+            ctx_data.as_slice(),
+        ]
+        .concat()
+    }
+
+    #[test]
+    fn parse_selinux_xattr_empty() {
+        let v: Vec<u8> = vec![];
+        let res = parse_selinux_xattr(&v);
+        assert_eq!(res.unwrap(), None);
+    }
+
+    #[test]
+    fn parse_selinux_xattr_basic() {
+        let sec_value = CStr::from_bytes_with_nul(b"user_u:object_r:security_type:s0\0").unwrap();
+        let v = create_secctx(&[(SELINUX_XATTR_CSTR, sec_value.to_bytes_with_nul())], 0);
+
+        let res = parse_selinux_xattr(&v);
+        assert_eq!(res.unwrap(), Some(sec_value));
+    }
+
+    #[test]
+    fn parse_selinux_xattr_find_attr() {
+        let foo_value: &CStr =
+            CStr::from_bytes_with_nul(b"user_foo:object_foo:foo_type:s0\0").unwrap();
+        let sec_value: &CStr =
+            CStr::from_bytes_with_nul(b"user_u:object_r:security_type:s0\0").unwrap();
+        let v = create_secctx(
+            &[
+                (b"foo\0", foo_value.to_bytes_with_nul()),
+                (SELINUX_XATTR_CSTR, sec_value.to_bytes_with_nul()),
+            ],
+            0,
+        );
+
+        let res = parse_selinux_xattr(&v);
+        assert_eq!(res.unwrap(), Some(sec_value));
+    }
+
+    #[test]
+    fn parse_selinux_xattr_wrong_attr() {
+        // Test with an xattr name that looks similar to security.selinux, but has extra
+        // characters to ensure that `parse_selinux_xattr` will not return the associated
+        // context value to the caller.
+        let invalid_selinux_value: &CStr =
+            CStr::from_bytes_with_nul(b"user_invalid:object_invalid:invalid_type:s0\0").unwrap();
+        let v = create_secctx(
+            &[(
+                b"invalid.security.selinux\0",
+                invalid_selinux_value.to_bytes_with_nul(),
+            )],
+            0,
+        );
+
+        let res = parse_selinux_xattr(&v);
+        assert_eq!(res.unwrap(), None);
+    }
+
+    #[test]
+    fn parse_selinux_xattr_too_short() {
+        // Test that parse_selinux_xattr will return an `Error::InvalidHeaderLength` when
+        // the total size in the `SecctxHeader` does not encompass the entirety of the
+        // associated data.
+        let foo_value: &CStr =
+            CStr::from_bytes_with_nul(b"user_foo:object_foo:foo_type:s0\0").unwrap();
+        let sec_value: &CStr =
+            CStr::from_bytes_with_nul(b"user_u:object_r:security_type:s0\0").unwrap();
+        let v = create_secctx(
+            &[
+                (b"foo\0", foo_value.to_bytes_with_nul()),
+                (SELINUX_XATTR_CSTR, sec_value.to_bytes_with_nul()),
+            ],
+            8,
+        );
+
+        let res = parse_selinux_xattr(&v);
+        assert!(matches!(res, Err(Error::InvalidHeaderLength)));
     }
 }
