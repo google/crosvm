@@ -28,7 +28,6 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::EventToken;
 use base::RawDescriptor;
-#[cfg(windows)]
 use base::ReadNotifier;
 #[cfg(windows)]
 use base::RecvTube;
@@ -905,7 +904,10 @@ impl Worker {
             (&ctrl_evt, WorkerToken::CtrlQueue),
             (&cursor_evt, WorkerToken::CursorQueue),
             (&display_desc, WorkerToken::Display),
-            (&self.gpu_control_tube, WorkerToken::GpuControl),
+            (
+                self.gpu_control_tube.get_read_notifier(),
+                WorkerToken::GpuControl,
+            ),
             (&self.kill_evt, WorkerToken::Kill),
             #[cfg(windows)]
             (
