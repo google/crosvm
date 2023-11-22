@@ -6,7 +6,10 @@
 
 fallocate: 1
 fdatasync: 1
+# 0x1277 == BLKDISCARD.
+ioctl: arg1 == 0x1277
 openat: 1
 prctl: arg0 == PR_SET_NAME
 preadv: 1
 pwritev: 1
+statx: 1
