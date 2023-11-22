@@ -202,10 +202,6 @@ impl VhostUserBackend for ConsoleBackend {
     }
 }
 
-fn parse_serial_params(s: &str) -> Result<SerialParameters, String> {
-    serde_keyvalue::from_key_values(s).map_err(|e| e.to_string())
-}
-
 #[derive(FromArgs)]
 #[argh(subcommand, name = "console")]
 /// Console device
@@ -222,11 +218,7 @@ pub struct Options {
     /// whether we are logging to syslog or not
     #[argh(switch)]
     syslog: bool,
-    #[argh(
-        option,
-        from_str_fn(parse_serial_params),
-        arg_name = "type=TYPE,[path=PATH,input=PATH,console]"
-    )]
+    #[argh(option, arg_name = "type=TYPE,[path=PATH,input=PATH,console]")]
     /// multiport parameters
     port: Vec<SerialParameters>,
 }
@@ -264,7 +256,7 @@ fn create_vu_multi_port_device(
 /// Returns an error if the given `args` is invalid or the device fails to run.
 fn run_multi_port_device(opts: Options) -> anyhow::Result<()> {
     if opts.port.is_empty() {
-        bail!("console: must have at least on `--port`");
+        bail!("console: must have at least one `--port`");
     }
 
     // We won't jail the device and can simply ignore `keep_rds`.
