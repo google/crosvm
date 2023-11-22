@@ -223,6 +223,9 @@ const AARCH64_VIRTFREQ_MAXSIZE: u64 = 0x10000;
 // PMU PPI interrupt, same as qemu
 const AARCH64_PMU_IRQ: u32 = 7;
 
+// VCPU stall detector interrupt
+const AARCH64_VMWDT_IRQ: u32 = 15;
+
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
@@ -1199,11 +1202,26 @@ impl AArch64 {
         )
         .expect("failed to add rtc device");
 
-        let vm_wdt = Arc::new(Mutex::new(
-            devices::vmwdt::Vmwdt::new(vcpu_count, vm_evt_wrtube.try_clone().unwrap()).unwrap(),
-        ));
-        bus.insert(vm_wdt, AARCH64_VMWDT_ADDR, AARCH64_VMWDT_SIZE)
-            .expect("failed to add vmwdt device");
+        let vmwdt_evt = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
+        let vm_wdt = devices::vmwdt::Vmwdt::new(
+            vcpu_count,
+            vm_evt_wrtube.try_clone().unwrap(),
+            vmwdt_evt.try_clone().map_err(Error::CloneEvent)?,
+        );
+        irq_chip
+            .register_edge_irq_event(
+                AARCH64_VMWDT_IRQ,
+                &vmwdt_evt,
+                IrqEventSource::from_device(&vm_wdt),
+            )
+            .map_err(Error::RegisterIrqfd)?;
+
+        bus.insert(
+            Arc::new(Mutex::new(vm_wdt)),
+            AARCH64_VMWDT_ADDR,
+            AARCH64_VMWDT_SIZE,
+        )
+        .expect("failed to add vmwdt device");
 
         Ok(())
     }

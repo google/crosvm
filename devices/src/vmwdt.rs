@@ -8,7 +8,6 @@
 
 use std::convert::TryFrom;
 use std::fs;
-use std::io::Error as IoError;
 use std::process;
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,14 +27,13 @@ use base::TimerTrait;
 use base::VmEventType;
 use base::WaitContext;
 use base::WorkerThread;
-use remain::sorted;
 use sync::Mutex;
-use thiserror::Error;
 
 use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
+use crate::IrqEdgeEvent;
 use crate::Suspendable;
 
 // Registers offsets
@@ -53,24 +51,6 @@ pub const VMWDT_DEFAULT_CLOCK_HZ: u32 = 2;
 // Proc stat indexes
 const PROCSTAT_GUEST_TIME_INDX: usize = 42;
 
-#[sorted]
-#[derive(Error, Debug)]
-pub enum VmwdtError {
-    /// Error while creating event.
-    #[error("failed to create event: {0}")]
-    CreateEvent(SysError),
-    /// Error while trying to create worker thread.
-    #[error("failed to spawn thread: {0}")]
-    SpawnThread(IoError),
-    /// Error while trying to create timer.
-    #[error("failed to create vmwdt counter due to timer fd: {0}")]
-    TimerCreateError(SysError),
-    #[error("failed to wait for events: {0}")]
-    WaitError(SysError),
-}
-
-type VmwdtResult<T> = std::result::Result<T, VmwdtError>;
-
 pub struct VmwdtPerCpu {
     // Flag which indicated if the watchdog is started
     is_enabled: bool,
@@ -87,6 +67,8 @@ pub struct VmwdtPerCpu {
     // The pre-programmed one-shot expiration interval. If the guest runs in this
     // interval but we don't receive a periodic event, the guest is stalled.
     next_expiration_interval_ms: i64,
+    // Keep track if the watchdog PPI raised.
+    stall_evt_ppi_triggered: bool,
 }
 
 pub struct Vmwdt {
@@ -97,10 +79,12 @@ pub struct Vmwdt {
     // Reset source if the device is not responding
     reset_evt_wrtube: SendTube,
     activated: bool,
+    // Event to be used to interrupt the guest on detected stalls
+    stall_evt: IrqEdgeEvent,
 }
 
 impl Vmwdt {
-    pub fn new(cpu_count: usize, reset_evt_wrtube: SendTube) -> VmwdtResult<Vmwdt> {
+    pub fn new(cpu_count: usize, reset_evt_wrtube: SendTube, evt: IrqEdgeEvent) -> Vmwdt {
         let mut vec = Vec::new();
         for _ in 0..cpu_count {
             vec.push(VmwdtPerCpu {
@@ -108,6 +92,7 @@ impl Vmwdt {
                 pid: 0,
                 ppid: 0,
                 is_enabled: false,
+                stall_evt_ppi_triggered: false,
                 timer: Timer::new().unwrap(),
                 timer_freq_hz: 0,
                 next_expiration_interval_ms: 0,
@@ -115,18 +100,20 @@ impl Vmwdt {
         }
         let vm_wdts = Arc::new(Mutex::new(vec));
 
-        Ok(Vmwdt {
+        Vmwdt {
             vm_wdts,
             worker_thread: None,
             reset_evt_wrtube,
             activated: false,
-        })
+            stall_evt: evt,
+        }
     }
 
     pub fn vmwdt_worker_thread(
         vm_wdts: Arc<Mutex<Vec<VmwdtPerCpu>>>,
         kill_evt: Event,
         reset_evt_wrtube: SendTube,
+        stall_evt: IrqEdgeEvent,
     ) {
         #[derive(EventToken)]
         enum Token {
@@ -170,19 +157,27 @@ impl Vmwdt {
 
                         if remaining_time_ms > 0 {
                             watchdog.next_expiration_interval_ms = remaining_time_ms;
-                            if let Err(_e) = watchdog
+                            if let Err(e) = watchdog
                                 .timer
                                 .reset_oneshot(Duration::from_millis(remaining_time_ms as u64))
                             {
-                                error!("failed to reset internal timer on vcpu {}", cpu_id);
+                                error!(
+                                    "failed to reset internal timer on vcpu {}: {:#}",
+                                    cpu_id, e
+                                );
                             }
                         } else {
-                            // The guest ran but it did not send the periodic event
-                            if let Err(_e) =
-                                reset_evt_wrtube.send::<VmEventType>(&VmEventType::WatchdogReset)
-                            {
-                                error!("failed to send reset event from vcpu {}", cpu_id)
+                            if watchdog.stall_evt_ppi_triggered {
+                                if let Err(e) = reset_evt_wrtube
+                                    .send::<VmEventType>(&VmEventType::WatchdogReset)
+                                {
+                                    error!("{} failed to send reset event from vcpu {}", e, cpu_id)
+                                }
                             }
+
+                            stall_evt.trigger().unwrap();
+                            watchdog.stall_evt_ppi_triggered = true;
+                            watchdog.last_guest_time_ms = current_guest_time_ms;
                         }
                     }
                 }
@@ -193,10 +188,11 @@ impl Vmwdt {
     fn start(&mut self) {
         let vm_wdts = self.vm_wdts.clone();
         let reset_evt_wrtube = self.reset_evt_wrtube.try_clone().unwrap();
+        let stall_event = self.stall_evt.try_clone().unwrap();
 
         self.activated = true;
         self.worker_thread = Some(WorkerThread::start("vmwdt worker", |kill_evt| {
-            Vmwdt::vmwdt_worker_thread(vm_wdts, kill_evt, reset_evt_wrtube)
+            Vmwdt::vmwdt_worker_thread(vm_wdts, kill_evt, reset_evt_wrtube, stall_event)
         }));
     }
 
@@ -293,6 +289,7 @@ impl BusDevice for Vmwdt {
                 cpu_watchdog.pid = pid as u32;
                 cpu_watchdog.ppid = ppid;
                 cpu_watchdog.last_guest_time_ms = guest_time_ms;
+                cpu_watchdog.stall_evt_ppi_triggered = false;
                 cpu_watchdog.next_expiration_interval_ms = next_expiration_interval_ms as i64;
 
                 if cpu_watchdog.is_enabled {
@@ -361,7 +358,8 @@ mod tests {
     #[test]
     fn test_watchdog_internal_timer() {
         let (vm_evt_wrtube, _vm_evt_rdtube) = Tube::directional_pair().unwrap();
-        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube).unwrap();
+        let irq = IrqEdgeEvent::new().unwrap();
+        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube, irq);
 
         // Configure the watchdog device, 2Hz internal clock
         device.write(
@@ -390,7 +388,8 @@ mod tests {
     #[test]
     fn test_watchdog_expiration() {
         let (vm_evt_wrtube, vm_evt_rdtube) = Tube::directional_pair().unwrap();
-        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube).unwrap();
+        let irq = IrqEdgeEvent::new().unwrap();
+        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube, irq);
 
         // Configure the watchdog device, 2Hz internal clock
         device.write(
@@ -401,6 +400,16 @@ mod tests {
         device.write(vmwdt_bus_address(VMWDT_REG_STATUS as u64), &[1, 0, 0, 0]);
         // In the test scenario the guest does not interpret the /proc/stat::guest_time, thus
         // the function get_guest_time() returns 0
+        device.vm_wdts.lock()[0].last_guest_time_ms = -100;
+
+        // Check that the interrupt has raised
+        poll_assert!(10, || {
+            sleep(Duration::from_millis(50));
+            let vmwdt_locked = device.vm_wdts.lock();
+            vmwdt_locked[0].stall_evt_ppi_triggered
+        });
+
+        // Simulate that the time has passed since the last expiration
         device.vm_wdts.lock()[0].last_guest_time_ms = -100;
 
         // Poll multiple times as we don't get a signal when the watchdog thread has run.

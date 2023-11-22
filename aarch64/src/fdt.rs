@@ -46,6 +46,7 @@ use crate::AARCH64_RTC_SIZE;
 use crate::AARCH64_SERIAL_SPEED;
 use crate::AARCH64_VIRTFREQ_BASE;
 use crate::AARCH64_VIRTFREQ_SIZE;
+use crate::AARCH64_VMWDT_IRQ;
 
 // This is an arbitrary number to specify the node for the GIC.
 // If we had a more complex interrupt architecture, then we'd need an enum for
@@ -571,14 +572,23 @@ fn create_battery_node(fdt: &mut Fdt, mmio_base: u64, irq: u32) -> Result<()> {
     Ok(())
 }
 
-fn create_vmwdt_node(fdt: &mut Fdt, vmwdt_cfg: VmWdtConfig) -> Result<()> {
+fn create_vmwdt_node(fdt: &mut Fdt, vmwdt_cfg: VmWdtConfig, num_cpus: u32) -> Result<()> {
     let vmwdt_name = format!("vmwdt@{:x}", vmwdt_cfg.base);
     let reg = [vmwdt_cfg.base, vmwdt_cfg.size];
+    let cpu_mask: u32 =
+        (((1 << num_cpus) - 1) << GIC_FDT_IRQ_PPI_CPU_SHIFT) & GIC_FDT_IRQ_PPI_CPU_MASK;
+    let irq = [
+        GIC_FDT_IRQ_TYPE_PPI,
+        AARCH64_VMWDT_IRQ,
+        cpu_mask | IRQ_TYPE_EDGE_RISING,
+    ];
+
     let vmwdt_node = fdt.root_mut().subnode_mut(&vmwdt_name)?;
     vmwdt_node.set_prop("compatible", "qemu,vcpu-stall-detector")?;
     vmwdt_node.set_prop("reg", &reg)?;
     vmwdt_node.set_prop("clock-frequency", vmwdt_cfg.clock_hz)?;
     vmwdt_node.set_prop("timeout-sec", vmwdt_cfg.timeout_sec)?;
+    vmwdt_node.set_prop("interrupts", &irq)?;
     Ok(())
 }
 
@@ -700,7 +710,7 @@ pub fn create_fdt(
     if let Some((bat_mmio_base, bat_irq)) = bat_mmio_base_and_irq {
         create_battery_node(&mut fdt, bat_mmio_base, bat_irq)?;
     }
-    create_vmwdt_node(&mut fdt, vmwdt_cfg)?;
+    create_vmwdt_node(&mut fdt, vmwdt_cfg, num_cpus)?;
     create_kvm_cpufreq_node(&mut fdt)?;
     vm_generator(&mut fdt, &phandles)?;
     if !cpu_frequencies.is_empty() {
