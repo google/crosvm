@@ -4,6 +4,7 @@
 
 pub mod sys;
 
+use std::borrow::Borrow;
 use std::rc::Rc;
 
 use anyhow::anyhow;
@@ -15,8 +16,11 @@ use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use futures::channel::mpsc;
+use futures::FutureExt;
 use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
+use serde::Deserialize;
+use serde::Serialize;
 pub use sys::run_snd_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
@@ -35,10 +39,13 @@ use crate::virtio::snd::common_backend::hardcoded_snd_data;
 use crate::virtio::snd::common_backend::hardcoded_virtio_snd_config;
 use crate::virtio::snd::common_backend::stream_info::StreamInfo;
 use crate::virtio::snd::common_backend::stream_info::StreamInfoBuilder;
+use crate::virtio::snd::common_backend::stream_info::StreamInfoSnapshot;
 use crate::virtio::snd::common_backend::Error;
 use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::common_backend::SndData;
 use crate::virtio::snd::common_backend::MAX_QUEUE_NUM;
+use crate::virtio::snd::constants::VIRTIO_SND_R_PCM_PREPARE;
+use crate::virtio::snd::constants::VIRTIO_SND_R_PCM_START;
 use crate::virtio::snd::parameters::Parameters;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
@@ -70,6 +77,15 @@ struct SndBackend {
     rx_send: mpsc::UnboundedSender<PcmResponse>,
     tx_recv: Option<mpsc::UnboundedReceiver<PcmResponse>>,
     rx_recv: Option<mpsc::UnboundedReceiver<PcmResponse>>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SndBackendSnapshot {
+    avail_features: u64,
+    acked_features: u64,
+    acked_protocol_features: u64,
+    stream_infos: Option<Vec<StreamInfoSnapshot>>,
+    snd_data: SndData,
 }
 
 impl SndBackend {
@@ -228,7 +244,13 @@ impl VhostUserBackend for SndBackend {
                     .await
                 }))
             }
-            1 => None, // TODO(woodychow): Add event queue support
+            // TODO(woodychow): Add event queue support
+            //
+            // Note: Even though we don't support the event queue, we still need to keep track of
+            // the Queue so we can return it back in stop_queue. As such, we create a do nothing
+            // future to "run" this queue so that we track a WorkerState for it (which is how
+            // we return the Queue back).
+            1 => Some(ex.spawn_local(async move { Ok(()) })),
             2 | 3 => {
                 let (send, recv) = if idx == 2 {
                     (self.tx_send.clone(), self.tx_recv.take())
@@ -265,10 +287,16 @@ impl VhostUserBackend for SndBackend {
 
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
         let ex = SND_EXECUTOR.get().expect("Executor not initialized");
-        if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {
-            // Wait for queue_task to be aborted.
-            let _ = ex.run_until(worker.queue_task.cancel());
-        }
+        let worker_queue_rc = self
+            .workers
+            .get_mut(idx)
+            .and_then(Option::take)
+            .map(|worker| {
+                // Wait for queue_task to be aborted.
+                let _ = ex.run_until(worker.queue_task.cancel());
+                worker.queue
+            });
+
         if idx == 2 || idx == 3 {
             if let Some(worker) = self
                 .response_workers
@@ -279,15 +307,111 @@ impl VhostUserBackend for SndBackend {
                 let _ = ex.run_until(worker.queue_task.cancel());
             }
         }
-        if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {
-            let queue = match Rc::try_unwrap(worker.queue) {
-                Ok(queue_mutex) => queue_mutex.into_inner(),
-                Err(_) => panic!("failed to recover queue from worker"),
-            };
 
-            Ok(queue)
+        if let Some(queue_rc) = worker_queue_rc {
+            match Rc::try_unwrap(queue_rc) {
+                Ok(queue_mutex) => Ok(queue_mutex.into_inner()),
+                Err(_) => panic!("failed to recover queue from worker"),
+            }
         } else {
             Err(anyhow::Error::new(DeviceError::WorkerNotFound))
         }
+    }
+
+    fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
+        // now_or_never will succeed here because no workers are running.
+        let stream_info_snaps = if let Some(stream_infos) = &self.streams.lock().now_or_never() {
+            let mut snaps = Vec::new();
+            for stream_info in stream_infos.iter() {
+                snaps.push(
+                    stream_info
+                        .lock()
+                        .now_or_never()
+                        .expect("failed to lock audio state during snapshot")
+                        .snapshot(),
+                );
+            }
+            Some(snaps)
+        } else {
+            None
+        };
+        let snd_data_ref: &SndData = self.snd_data.borrow();
+        serde_json::to_vec(&SndBackendSnapshot {
+            avail_features: self.avail_features,
+            acked_protocol_features: self.acked_protocol_features.bits(),
+            acked_features: self.acked_features,
+            stream_infos: stream_info_snaps,
+            snd_data: snd_data_ref.clone(),
+        })
+        .context("Failed to serialize SndBackendSnapshot")
+    }
+
+    fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
+        let deser: SndBackendSnapshot = serde_json::from_slice(data.as_slice())
+            .context("Failed to deserialize SndBackendSnapshot")?;
+        anyhow::ensure!(
+            deser.avail_features == self.avail_features,
+            "avail features doesn't match on restore: expected: {}, got: {}",
+            deser.avail_features,
+            self.avail_features
+        );
+        anyhow::ensure!(
+            self.acked_protocol_features.bits() == deser.acked_protocol_features,
+            "Vhost user snd restored acked_protocol_features do not match. Live: {:?}, \
+            snapshot: {:?}",
+            self.acked_protocol_features,
+            deser.acked_protocol_features,
+        );
+        let snd_data = self.snd_data.borrow();
+        anyhow::ensure!(
+            &deser.snd_data == snd_data,
+            "snd data doesn't match on restore: expected: {:?}, got: {:?}",
+            deser.snd_data,
+            snd_data,
+        );
+        self.acked_features = deser.acked_features;
+
+        // Wondering why we can pass ex to a move block *and* still use it
+        // afterwards? It's a &'static, which is the only kind of reference that
+        // can taken by a future run via spawn/spawn_local.
+        let ex = SND_EXECUTOR.get().expect("executor must be initialized");
+        let streams_rc = self.streams.clone();
+        let tx_send_clone = self.tx_send.clone();
+        let rx_send_clone = self.rx_send.clone();
+
+        let restore_task = ex.spawn_local(async move {
+            if let Some(stream_infos) = &deser.stream_infos {
+                for (stream, stream_info) in streams_rc.lock().await.iter().zip(stream_infos.iter())
+                {
+                    stream.lock().await.restore(stream_info);
+                    if stream_info.state == VIRTIO_SND_R_PCM_START
+                        || stream_info.state == VIRTIO_SND_R_PCM_PREPARE
+                    {
+                        stream
+                            .lock()
+                            .await
+                            .prepare(ex, &tx_send_clone, &rx_send_clone)
+                            .await
+                            .expect("failed to prepare PCM");
+                    }
+                    if stream_info.state == VIRTIO_SND_R_PCM_START {
+                        stream
+                            .lock()
+                            .await
+                            .start()
+                            .await
+                            .expect("failed to start PCM");
+                    }
+                }
+            }
+        });
+        ex.run_until(restore_task)
+            .expect("failed to restore streams");
+        Ok(())
+    }
+
+    fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
+        // This device has no non-queue workers to stop.
+        Ok(())
     }
 }
