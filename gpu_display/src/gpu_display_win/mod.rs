@@ -4,8 +4,11 @@
 
 mod keyboard_input_manager;
 mod math_util;
+mod mouse_input_manager;
 pub mod surface;
+mod virtual_display_manager;
 mod window;
+mod window_manager;
 mod window_message_dispatcher;
 mod window_message_processor;
 pub mod window_procedure_thread;
@@ -29,7 +32,7 @@ use euclid::size2;
 use euclid::Size2D;
 use math_util::Size2DCheckedCast;
 use metrics::sys::windows::Metrics;
-pub use surface::NoopSurface as Surface;
+pub use surface::Surface;
 use vm_control::gpu::DisplayMode;
 use vm_control::gpu::DisplayParameters;
 use vm_control::ModifyWaitContext;

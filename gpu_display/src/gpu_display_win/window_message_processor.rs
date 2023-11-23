@@ -12,6 +12,9 @@ use base::error;
 use base::warn;
 use base::Tube;
 use cros_tracing::trace_event;
+use euclid::point2;
+use euclid::size2;
+use euclid::Rect;
 use linux_input_sys::virtio_input_event;
 #[cfg(feature = "kiwi")]
 use vm_control::ServiceSendToGpu;
@@ -25,6 +28,7 @@ use super::keyboard_input_manager::KeyboardInputManager;
 use super::window::GuiWindow;
 use super::window::MessagePacket;
 use super::window_message_dispatcher::DisplayEventDispatcher;
+use super::HostWindowSpace;
 use super::ObjectId;
 use super::Surface;
 use crate::EventDevice;
@@ -34,7 +38,6 @@ use crate::EventDeviceKind;
 // Windows will mark the application as "Not Responding", so we'd better finish processing any
 // message within this timeout and retrieve the next one.
 // https://docs.microsoft.com/en-us/windows/win32/win7appqual/preventing-hangs-in-windows-applications
-#[allow(dead_code)]
 pub(crate) const HANDLE_WINDOW_MESSAGE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Thread message for killing the window during a `WndProcThread` drop. This indicates an error
@@ -53,11 +56,6 @@ pub(crate) const WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL: UINT = WM_USER + 1;
 /// `DisplaySendToWndProc` is sent as the lParam. Note that the receiver is responsible for
 /// destructing the message.
 pub(crate) const WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL: UINT = WM_USER + 2;
-
-/// Message for notifying the Surface (and subsequently, service) of changes to the keyboard layout.
-/// the lParam contains the keyboard layout id.
-#[cfg(feature = "kiwi")]
-pub(crate) const WM_USER_KEYBOARD_LAYOUT_UPDATED_INTERNAL: UINT = WM_USER + 4;
 
 /// Struct for resources used for Surface creation.
 pub struct SurfaceResources {
@@ -182,31 +180,37 @@ impl WindowMessageProcessor {
     }
 }
 
+/// Indicates whether the window is getting shown or hidden when receiving `WM_WINDOWPOSCHANGED`.
+#[derive(PartialEq, Debug)]
+pub enum WindowVisibilityChange {
+    Unchanged,
+    Shown,
+    Hidden,
+}
+
+impl From<UINT> for WindowVisibilityChange {
+    fn from(flags: UINT) -> Self {
+        if flags & SWP_SHOWWINDOW != 0 {
+            Self::Shown
+        } else if flags & SWP_HIDEWINDOW != 0 {
+            Self::Hidden
+        } else {
+            Self::Unchanged
+        }
+    }
+}
+
 /// General window messages that multiple modules may want to process, such as the window manager,
 /// input manager, IME handler, etc.
 pub enum WindowMessage {
     /// `WM_ACTIVATE`, "sent to both the window being activated and the window being deactivated."
     WindowActivate { is_activated: bool },
-    /// `WM_MOUSEACTIVATE`, "sent when the cursor is in an inactive window and the user presses a
-    /// mouse button."
-    MouseActivate { l_param: LPARAM },
+    /// Window location and size related messages.
+    WindowPos(WindowPosMessage),
+    /// Mouse related messages.
+    Mouse(MouseMessage),
     /// `WM_SETFOCUS`, "sent to a window after it has gained the keyboard focus."
     KeyboardFocus,
-    /// `WM_INPUT`, "sent to the window that is getting raw input."
-    RawInput { l_param: LPARAM },
-    /// `WM_MOUSEMOVE`, "posted to a window when the cursor moves."
-    MouseMove { w_param: WPARAM, l_param: LPARAM },
-    /// `WM_LBUTTONDOWN` or `WM_LBUTTONUP`, "posted when the user presses/releases the left mouse
-    /// button while the cursor is in the client area of a window."
-    LeftMouseButton { is_down: bool, l_param: LPARAM },
-    /// `WM_RBUTTONDOWN` or `WM_RBUTTONUP`, "posted when the user presses/releases the right mouse
-    /// button while the cursor is in the client area of a window."
-    RightMouseButton { is_down: bool },
-    /// `WM_MOUSEWHEEL`, "sent to the focus window when the mouse wheel is rotated."
-    MouseWheel { w_param: WPARAM, l_param: LPARAM },
-    /// `WM_SETCURSOR`, "sent to a window if the mouse causes the cursor to move within a window and
-    /// mouse input is not captured."
-    SetCursor,
     /// `WM_KEYDOWN`, `WM_KEYUP`, `WM_SYSKEYDOWN` or `WM_SYSKEYUP`, "posted to the window with the
     /// keyboard focus when a nonsystem/system key is pressed/released."
     Key {
@@ -215,12 +219,27 @@ pub enum WindowMessage {
         w_param: WPARAM,
         l_param: LPARAM,
     },
+    /// `WM_DISPLAYCHANGE`, "sent to all windows when the display resolution has changed."
+    DisplayChange,
+    /// `WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL`.
+    HostViewportChange { l_param: LPARAM },
+    /// `WM_CLOSE`, "sent as a signal that a window or an application should terminate."
+    WindowClose,
+    /// Not one of the general window messages we care about.
+    Other(MessagePacket),
+}
+
+/// Window location and size related window messages.
+pub enum WindowPosMessage {
     /// `WM_WINDOWPOSCHANGING`, "sent to a window whose size, position, or place in the Z order is
     /// about to change."
     WindowPosChanging { l_param: LPARAM },
     /// `WM_WINDOWPOSCHANGED`, "sent to a window whose size, position, or place in the Z order has
     /// changed."
-    WindowPosChanged { l_param: LPARAM },
+    WindowPosChanged {
+        visibility_change: WindowVisibilityChange,
+        window_rect: Rect<i32, HostWindowSpace>,
+    },
     /// `WM_SIZING`, "sent to a window that the user is resizing."
     WindowSizeChanging { w_param: WPARAM, l_param: LPARAM },
     /// `WM_SIZE`, "sent to a window after its size has changed."
@@ -231,20 +250,44 @@ pub enum WindowMessage {
     /// `WM_EXITSIZEMOVE`, "sent one time to a window, after it has exited the moving or sizing
     /// modal loop."
     ExitSizeMove,
-    /// `WM_DISPLAYCHANGE`, "sent to all windows when the display resolution has changed."
-    DisplayChange,
-    /// `WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL`.
-    HostViewportChange { l_param: LPARAM },
-    /// `WM_USER_KEYBOARD_LAYOUT_UPDATED_INTERNAL`.
-    #[cfg(feature = "kiwi")]
-    KeyboardLayoutChange { layout: isize },
-    /// `WM_CLOSE`, "sent as a signal that a window or an application should terminate."
-    WindowClose,
-    /// `WM_DESTROY`, "sent when a window is being destroyed ... before the child windows are
-    /// destroyed."
-    WindowDestroy,
-    /// Not one of the general window messages we care about.
-    Other(MessagePacket),
+}
+
+impl std::fmt::Display for WindowPosMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::WindowPosChanging { .. } => write!(f, "WindowPosChanging"),
+            Self::WindowPosChanged { .. } => write!(f, "WindowPosChanged"),
+            Self::WindowSizeChanging { .. } => write!(f, "WindowSizeChanging"),
+            Self::WindowSizeChanged { .. } => write!(f, "WindowSizeChanged"),
+            Self::EnterSizeMove => write!(f, "EnterSizeMove"),
+            Self::ExitSizeMove => write!(f, "ExitSizeMove"),
+        }
+    }
+}
+
+/// Mouse related window messages.
+pub enum MouseMessage {
+    /// `WM_MOUSEACTIVATE`, "sent when the cursor is in an inactive window and the user presses a
+    /// mouse button."
+    MouseActivate { l_param: LPARAM },
+    /// `WM_INPUT`, "sent to the window that is getting raw input."
+    RawInput { l_param: LPARAM },
+    /// `WM_MOUSEMOVE`, "posted to a window when the cursor moves."
+    MouseMove { w_param: WPARAM, l_param: LPARAM },
+    /// `WM_LBUTTONDOWN` or `WM_LBUTTONUP`, "posted when the user presses/releases the left mouse
+    /// button while the cursor is in the client area of a window."
+    LeftMouseButton { is_down: bool, l_param: LPARAM },
+    /// `WM_RBUTTONDOWN` or `WM_RBUTTONUP`, "posted when the user presses/releases the right mouse
+    /// button while the cursor is in the client area of a window."
+    RightMouseButton { is_down: bool },
+    /// `WM_MBUTTONDOWN` or `WM_MBUTTONUP`, "posted when the user presses/releases the middle mouse
+    /// button while the cursor is in the client area of a window."
+    MiddleMouseButton { is_down: bool },
+    /// `WM_MOUSEWHEEL`, "sent to the focus window when the mouse wheel is rotated."
+    MouseWheel { w_param: WPARAM, l_param: LPARAM },
+    /// `WM_SETCURSOR`, "sent to a window if the mouse causes the cursor to move within a window and
+    /// mouse input is not captured."
+    SetCursor,
 }
 
 impl From<&MessagePacket> for WindowMessage {
@@ -259,39 +302,50 @@ impl From<&MessagePacket> for WindowMessage {
             WM_ACTIVATE => Self::WindowActivate {
                 is_activated: w_param != 0,
             },
-            WM_MOUSEACTIVATE => Self::MouseActivate { l_param },
-            WM_SETFOCUS => Self::KeyboardFocus,
-            WM_INPUT => Self::RawInput { l_param },
-            WM_MOUSEMOVE => Self::MouseMove { w_param, l_param },
-            WM_LBUTTONDOWN | WM_LBUTTONUP => Self::LeftMouseButton {
+            WM_WINDOWPOSCHANGING => {
+                Self::WindowPos(WindowPosMessage::WindowPosChanging { l_param })
+            }
+            WM_WINDOWPOSCHANGED => {
+                // Safe because it will live at least until we finish handling
+                // `WM_WINDOWPOSCHANGED`.
+                let window_pos: WINDOWPOS = unsafe { *(l_param as *mut WINDOWPOS) };
+                Self::WindowPos(WindowPosMessage::WindowPosChanged {
+                    visibility_change: window_pos.flags.into(),
+                    window_rect: Rect::new(
+                        point2(window_pos.x, window_pos.y),
+                        size2(window_pos.cx, window_pos.cy),
+                    ),
+                })
+            }
+            WM_SIZING => Self::WindowPos(WindowPosMessage::WindowSizeChanging { w_param, l_param }),
+            WM_SIZE => Self::WindowPos(WindowPosMessage::WindowSizeChanged { w_param, l_param }),
+            WM_ENTERSIZEMOVE => Self::WindowPos(WindowPosMessage::EnterSizeMove),
+            WM_EXITSIZEMOVE => Self::WindowPos(WindowPosMessage::ExitSizeMove),
+            WM_MOUSEACTIVATE => Self::Mouse(MouseMessage::MouseActivate { l_param }),
+            WM_INPUT => Self::Mouse(MouseMessage::RawInput { l_param }),
+            WM_MOUSEMOVE => Self::Mouse(MouseMessage::MouseMove { w_param, l_param }),
+            WM_LBUTTONDOWN | WM_LBUTTONUP => Self::Mouse(MouseMessage::LeftMouseButton {
                 is_down: msg == WM_LBUTTONDOWN,
                 l_param,
-            },
-            WM_RBUTTONDOWN | WM_RBUTTONUP => Self::RightMouseButton {
+            }),
+            WM_RBUTTONDOWN | WM_RBUTTONUP => Self::Mouse(MouseMessage::RightMouseButton {
                 is_down: msg == WM_RBUTTONDOWN,
-            },
-            WM_MOUSEWHEEL => Self::MouseWheel { w_param, l_param },
-            WM_SETCURSOR => Self::SetCursor,
+            }),
+            WM_MBUTTONDOWN | WM_MBUTTONUP => Self::Mouse(MouseMessage::MiddleMouseButton {
+                is_down: msg == WM_MBUTTONDOWN,
+            }),
+            WM_MOUSEWHEEL => Self::Mouse(MouseMessage::MouseWheel { w_param, l_param }),
+            WM_SETCURSOR => Self::Mouse(MouseMessage::SetCursor),
+            WM_SETFOCUS => Self::KeyboardFocus,
             WM_KEYDOWN | WM_KEYUP | WM_SYSKEYDOWN | WM_SYSKEYUP => Self::Key {
                 is_sys_key: msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP,
                 is_down: msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN,
                 w_param,
                 l_param,
             },
-            WM_WINDOWPOSCHANGING => Self::WindowPosChanging { l_param },
-            WM_WINDOWPOSCHANGED => Self::WindowPosChanged { l_param },
-            WM_SIZING => Self::WindowSizeChanging { w_param, l_param },
-            WM_SIZE => Self::WindowSizeChanged { w_param, l_param },
-            WM_ENTERSIZEMOVE => Self::EnterSizeMove,
-            WM_EXITSIZEMOVE => Self::ExitSizeMove,
             WM_DISPLAYCHANGE => Self::DisplayChange,
             WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL => Self::HostViewportChange { l_param },
-            #[cfg(feature = "kiwi")]
-            WM_USER_KEYBOARD_LAYOUT_UPDATED_INTERNAL => {
-                Self::KeyboardLayoutChange { layout: l_param }
-            }
             WM_CLOSE => Self::WindowClose,
-            WM_DESTROY => Self::WindowDestroy,
             _ => Self::Other(*packet),
         }
     }
