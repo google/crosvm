@@ -721,7 +721,10 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         {
             match self.backend.stop_queue(index) {
                 Ok(queue) => vring.paused_queue = Some(queue),
-                Err(e) => return Err(VhostError::StopQueueError(e)),
+                Err(e) => {
+                    error!("failed to stop queue index {}: {:#}", index, e);
+                    return Err(VhostError::StopQueueError(e));
+                }
             }
         }
         self.backend
