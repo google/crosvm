@@ -360,34 +360,6 @@ impl<R: Req> Endpoint<R> {
         Ok((hdr, body, files))
     }
 
-    /// Receive a message with header and optional content. Callers need to
-    /// pre-allocate a big enough buffer to receive the message body and
-    /// optional payload. If there are attached file descriptor associated
-    /// with the message, the first MAX_ATTACHED_FD_ENTRIES file descriptors
-    /// will be accepted and all other file descriptor will be discard
-    /// silently.
-    ///
-    /// # Return:
-    /// * - (message header, [received files]) on success.
-    /// * - PartialMessage: received a partial message.
-    /// * - InvalidMessage: received a invalid message.
-    /// * - backend specific errors
-    #[cfg(test)]
-    pub fn recv_body_into_buf(
-        &self,
-        buf: &mut [u8],
-    ) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
-        let mut hdr = VhostUserMsgHeader::default();
-        let mut slices = [hdr.as_bytes_mut(), buf];
-        let files = self.recv_into_bufs_all(&mut slices)?;
-
-        if !hdr.is_valid() {
-            return Err(Error::InvalidMessage);
-        }
-
-        Ok((hdr, files))
-    }
-
     /// Receive a message with optional payload and attached file descriptors.
     /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be
     /// accepted and all other file descriptor will be discard silently.

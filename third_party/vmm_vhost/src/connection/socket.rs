@@ -242,11 +242,11 @@ mod tests {
     use std::io::SeekFrom;
     use std::io::Write;
     use std::mem;
-    use std::slice;
 
     use tempfile::tempfile;
     use tempfile::Builder;
     use tempfile::TempDir;
+    use zerocopy::AsBytes;
 
     use super::*;
 
@@ -492,14 +492,12 @@ mod tests {
         let features1 = 0x1u64;
         master.send_message(&hdr1, &features1, None).unwrap();
 
+        let mut hdr2 = VhostUserMsgHeader::default();
         let mut features2 = 0u64;
-        let slice = unsafe {
-            slice::from_raw_parts_mut(
-                (&mut features2 as *mut u64) as *mut u8,
-                mem::size_of::<u64>(),
-            )
-        };
-        let (hdr2, files) = slave.recv_body_into_buf(slice).unwrap();
+        let files = slave
+            .recv_into_bufs_all(&mut [hdr2.as_bytes_mut(), features2.as_bytes_mut()])
+            .unwrap();
+        assert!(hdr2.is_valid());
         assert_eq!(hdr1, hdr2);
         assert_eq!(features1, features2);
         assert!(files.is_none());
