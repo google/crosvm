@@ -416,15 +416,16 @@ fn main() -> anyhow::Result<()> {
             let mut list = Vec::new();
             for (name, (latency, count)) in &data {
                 let sum = latency * count;
-                list.push((name, sum));
+                list.push((name, sum, count));
             }
             list.sort_by(|a, b| b.1.cmp(&a.1));
             // print top {count} events of the total value
             if list.len() >= count {
                 list.truncate(count);
             }
-            for i in 0..list.len() {
-                println!("#{}: {}: {} usec", i + 1, list[i].0, list[i].1);
+            println!("name, total (us), count");
+            for (name, sum, cnt) in list {
+                println!("{name}, {sum}, {cnt}");
             }
             return Ok(());
         }
