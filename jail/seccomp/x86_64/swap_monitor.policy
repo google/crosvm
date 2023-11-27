@@ -4,6 +4,7 @@
 
 brk: 1
 chdir: 1
+clock_gettime: 1
 clone: arg0 & CLONE_THREAD
 clone3: 1
 close: 1
