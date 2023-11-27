@@ -499,9 +499,8 @@ mod tests {
                 mem::size_of::<u64>(),
             )
         };
-        let (hdr2, bytes, files) = slave.recv_body_into_buf(slice).unwrap();
+        let (hdr2, files) = slave.recv_body_into_buf(slice).unwrap();
         assert_eq!(hdr1, hdr2);
-        assert_eq!(bytes, 8);
         assert_eq!(features1, features2);
         assert!(files.is_none());
 
