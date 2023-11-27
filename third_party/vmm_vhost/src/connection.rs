@@ -137,9 +137,6 @@ impl<R: Req> Endpoint<R> {
     /// Sends all bytes from scatter-gather vectors with optional attached file descriptors. Will
     /// loop until all data has been transfered.
     ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    ///
     /// # TODO
     /// This function takes a slice of `&[u8]` instead of `IoSlice` because the internal
     /// cursor needs to be moved by `advance_slices()`.
@@ -149,19 +146,14 @@ impl<R: Req> Endpoint<R> {
         &self,
         mut iovs: &mut [&[u8]],
         mut fds: Option<&[RawDescriptor]>,
-    ) -> Result<usize> {
+    ) -> Result<()> {
         // Guarantee that `iovs` becomes empty if it doesn't contain any data.
         advance_slices(&mut iovs, 0);
 
-        let mut data_sent = 0;
         while !iovs.is_empty() {
             let iovec: Vec<_> = iovs.iter_mut().map(|i| IoSlice::new(i)).collect();
             match self.0.send_iovec(&iovec, fds) {
-                Ok(0) => {
-                    break;
-                }
                 Ok(n) => {
-                    data_sent += n;
                     fds = None;
                     advance_slices(&mut iovs, n);
                 }
@@ -171,7 +163,7 @@ impl<R: Req> Endpoint<R> {
                 },
             }
         }
-        Ok(data_sent)
+        Ok(())
     }
 
     /// Sends bytes from a slice with optional attached file descriptors.
@@ -194,12 +186,7 @@ impl<R: Req> Endpoint<R> {
         hdr: &VhostUserMsgHeader<R>,
         fds: Option<&[RawDescriptor]>,
     ) -> Result<()> {
-        let mut iovs = [hdr.as_bytes()];
-        let bytes = self.send_iovec_all(&mut iovs[..], fds)?;
-        if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
-            return Err(Error::PartialMessage);
-        }
-        Ok(())
+        self.send_iovec_all(&mut [hdr.as_bytes()], fds)
     }
 
     /// Send a message with header and body. Optional file descriptors may be attached to
@@ -218,11 +205,8 @@ impl<R: Req> Endpoint<R> {
     ) -> Result<()> {
         // We send the header and the body separately here. This is necessary on Windows. Otherwise
         // the recv side cannot read the header independently (the transport is message oriented).
-        let mut bytes = self.send_iovec_all(&mut [hdr.as_bytes()], fds)?;
-        bytes += self.send_iovec_all(&mut [body.as_bytes()], None)?;
-        if bytes != mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() {
-            return Err(Error::PartialMessage);
-        }
+        self.send_iovec_all(&mut [hdr.as_bytes()], fds)?;
+        self.send_iovec_all(&mut [body.as_bytes()], None)?;
         Ok(())
     }
 
@@ -248,19 +232,11 @@ impl<R: Req> Endpoint<R> {
             }
         }
 
-        let len = payload.len();
-        let total = (mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>())
-            .checked_add(len)
-            .ok_or(Error::OversizedMsg)?;
-
         // We send the header and the body separately here. This is necessary on Windows. Otherwise
         // the recv side cannot read the header independently (the transport is message oriented).
-        let mut len = self.send_iovec_all(&mut [hdr.as_bytes()], fds)?;
-        len += self.send_iovec_all(&mut [body.as_bytes(), payload], None)?;
+        self.send_iovec_all(&mut [hdr.as_bytes()], fds)?;
+        self.send_iovec_all(&mut [body.as_bytes(), payload], None)?;
 
-        if len != total {
-            return Err(Error::PartialMessage);
-        }
         Ok(())
     }
 
