@@ -4,9 +4,9 @@
 //! Common data structures for listener and endpoint.
 
 cfg_if::cfg_if! {
-    if #[cfg(any(target_os = "android", target_os = "linux"))] {
+    if #[cfg(unix)] {
         pub mod socket;
-        mod linux;
+        mod unix;
     } else if #[cfg(windows)] {
         mod tube;
         pub use tube::TubeEndpoint;
@@ -468,8 +468,8 @@ impl<R: Req> AsRawDescriptor for Endpoint<R> {
 pub(crate) mod tests {
     use super::*;
     cfg_if::cfg_if! {
-        if #[cfg(any(target_os = "android", target_os = "linux"))] {
-            pub(crate) use super::linux::tests::*;
+        if #[cfg(unix)] {
+            pub(crate) use super::unix::tests::*;
         } else if #[cfg(windows)] {
             pub(crate) use windows::tests::*;
         }

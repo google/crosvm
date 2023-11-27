@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 cfg_if::cfg_if! {
-    if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        mod linux;
+    if #[cfg(unix)] {
+        mod unix;
     } else if #[cfg(windows)] {
         mod windows;
     }

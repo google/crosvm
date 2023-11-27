@@ -20,9 +20,9 @@ use base::ScmSocket;
 
 use crate::connection::Listener;
 use crate::connection::Req;
-use crate::linux::SystemListener;
 use crate::message::*;
 use crate::take_single_file;
+use crate::unix::SystemListener;
 use crate::Endpoint;
 use crate::Error;
 use crate::Result;
