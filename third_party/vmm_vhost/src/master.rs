@@ -142,11 +142,10 @@ impl Master {
 
         let mut ctx = VhostUserMemoryContext::new();
         for region in regions.iter() {
-            // TODO(b/221882601): once mmap handle cross platform story exists, update this null
-            // check.
-            if region.memory_size == 0 || (region.mmap_handle as isize) < 0 {
+            if region.memory_size == 0 || region.mmap_handle == INVALID_DESCRIPTOR {
                 return Err(VhostUserError::InvalidParam);
             }
+
             let reg = VhostUserMemoryRegion {
                 guest_phys_addr: region.guest_phys_addr,
                 memory_size: region.memory_size,
@@ -546,8 +545,8 @@ impl Master {
         {
             return Err(VhostUserError::InvalidOperation);
         }
-        // TODO(b/221882601): once mmap handle cross platform story exists, update this null check.
-        if region.memory_size == 0 || (region.mmap_handle as isize) < 0 {
+
+        if region.memory_size == 0 || region.mmap_handle == INVALID_DESCRIPTOR {
             return Err(VhostUserError::InvalidParam);
         }
 
@@ -790,6 +789,7 @@ impl MasterInternal {
 #[cfg(test)]
 mod tests {
     use base::INVALID_DESCRIPTOR;
+    use tempfile::tempfile;
 
     use super::*;
     use crate::connection::tests::create_pair;
@@ -1105,8 +1105,23 @@ mod tests {
     fn test_maset_set_mem_table_failure() {
         let (master, _peer) = create_pair2();
 
+        // set_mem_table() with 0 regions is invalid
         master.set_mem_table(&[]).unwrap_err();
-        let tables = vec![VhostUserMemoryRegionInfo::default(); MAX_ATTACHED_FD_ENTRIES + 1];
+
+        // set_mem_table() with more than MAX_ATTACHED_FD_ENTRIES is invalid
+        let files: Vec<File> = (0..MAX_ATTACHED_FD_ENTRIES + 1)
+            .map(|_| tempfile().unwrap())
+            .collect();
+        let tables: Vec<VhostUserMemoryRegionInfo> = files
+            .iter()
+            .map(|f| VhostUserMemoryRegionInfo {
+                guest_phys_addr: 0,
+                memory_size: 0x100000,
+                userspace_addr: 0x800000,
+                mmap_offset: 0,
+                mmap_handle: f.as_raw_descriptor(),
+            })
+            .collect();
         master.set_mem_table(&tables).unwrap_err();
     }
 }

@@ -10,7 +10,6 @@
 //! Common traits and structs for vhost-user backend drivers.
 
 use base::RawDescriptor;
-use base::INVALID_DESCRIPTOR;
 
 /// Maximum number of memory regions supported.
 pub const VHOST_MAX_MEMORY_REGIONS: usize = 255;
@@ -52,7 +51,6 @@ impl VringConfigData {
 }
 
 /// Memory region configuration data.
-#[derive(Clone, Copy)]
 pub struct VhostUserMemoryRegionInfo {
     /// Guest physical address of the memory region.
     pub guest_phys_addr: u64,
@@ -60,23 +58,10 @@ pub struct VhostUserMemoryRegionInfo {
     pub memory_size: u64,
     /// Virtual address in the current process.
     pub userspace_addr: u64,
-    /// Optional offset where region starts in the mapped memory.
+    /// Offset where region starts in the mapped memory.
     pub mmap_offset: u64,
-    /// Optional file descriptor for mmap.
+    /// File descriptor for mmap.
     pub mmap_handle: RawDescriptor,
-}
-
-// We cannot derive default because windows Handle does not implement a default.
-impl Default for VhostUserMemoryRegionInfo {
-    fn default() -> Self {
-        VhostUserMemoryRegionInfo {
-            guest_phys_addr: u64::default(),
-            memory_size: u64::default(),
-            userspace_addr: u64::default(),
-            mmap_offset: u64::default(),
-            mmap_handle: INVALID_DESCRIPTOR,
-        }
-    }
 }
 
 #[cfg(test)]
