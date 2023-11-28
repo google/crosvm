@@ -713,7 +713,7 @@ mod tests {
 
     #[test]
     fn create_master() {
-        let (master, mut slave) = create_pair();
+        let (master, slave) = create_pair();
 
         assert!(master.main_sock.as_raw_descriptor() != INVALID_DESCRIPTOR);
         // Send two messages continuously
@@ -735,7 +735,7 @@ mod tests {
 
     #[test]
     fn test_features() {
-        let (mut master, mut peer) = create_pair();
+        let (mut master, peer) = create_pair();
 
         master.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
@@ -769,7 +769,7 @@ mod tests {
 
     #[test]
     fn test_protocol_features() {
-        let (mut master, mut peer) = create_pair();
+        let (mut master, peer) = create_pair();
 
         master.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();

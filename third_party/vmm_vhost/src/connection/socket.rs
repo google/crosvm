@@ -285,7 +285,7 @@ mod tests {
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let master = Endpoint::<MasterReq>::connect(&path).unwrap();
-        let mut slave = listener.accept().unwrap().unwrap();
+        let slave = listener.accept().unwrap().unwrap();
 
         let buf1 = [0x1, 0x2, 0x3, 0x4];
         let mut len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
@@ -312,7 +312,7 @@ mod tests {
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let master = Endpoint::<MasterReq>::connect(&path).unwrap();
-        let mut slave = listener.accept().unwrap().unwrap();
+        let slave = listener.accept().unwrap().unwrap();
 
         let mut fd = tempfile().unwrap();
         write!(fd, "test").unwrap();
@@ -485,7 +485,7 @@ mod tests {
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let master = Endpoint::<MasterReq>::connect(&path).unwrap();
-        let mut slave = listener.accept().unwrap().unwrap();
+        let slave = listener.accept().unwrap().unwrap();
 
         let mut hdr1 =
             VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, mem::size_of::<u64>() as u32);

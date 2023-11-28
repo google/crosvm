@@ -287,10 +287,7 @@ impl<R: Req> Endpoint<R> {
     /// * - (number of bytes received, buf, [received files]) on success.
     /// * - backend specific errors
     #[cfg(test)]
-    pub fn recv_into_buf(
-        &mut self,
-        buf_size: usize,
-    ) -> Result<(usize, Vec<u8>, Option<Vec<File>>)> {
+    pub fn recv_into_buf(&self, buf_size: usize) -> Result<(usize, Vec<u8>, Option<Vec<File>>)> {
         let mut buf = vec![0u8; buf_size];
         let mut slices = [IoSliceMut::new(buf.as_mut_slice())];
         let (bytes, files) = self.0.recv_into_bufs(&mut slices, true /* allow_fd */)?;
@@ -307,7 +304,7 @@ impl<R: Req> Endpoint<R> {
     /// * - PartialMessage: received a partial message.
     /// * - InvalidMessage: received a invalid message.
     /// * - backend specific errors
-    pub fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
+    pub fn recv_header(&self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
         let (bytes, files) = self.0.recv_into_bufs(
             &mut [IoSliceMut::new(hdr.as_bytes_mut())],

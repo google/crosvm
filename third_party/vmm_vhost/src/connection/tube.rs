@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn send_data() {
-        let (master, mut slave) = create_pair();
+        let (master, slave) = create_pair();
 
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
         let len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn send_fd() {
-        let (master, mut slave) = create_pair();
+        let (master, slave) = create_pair();
 
         let mut file = tempfile().unwrap();
         write!(file, "test").unwrap();
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn send_recv() {
-        let (master, mut slave) = create_pair();
+        let (master, slave) = create_pair();
 
         let mut hdr1 =
             VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, mem::size_of::<u64>() as u32);
