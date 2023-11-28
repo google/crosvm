@@ -613,7 +613,7 @@ impl Master {
         if hdr.is_reply() {
             return Err(VhostUserError::InvalidParam);
         }
-        let (reply, body, rfds) = self.main_sock.recv_body::<T>()?;
+        let (reply, body, rfds) = self.main_sock.recv_message::<T>()?;
         if !reply.is_reply_for(hdr) || rfds.is_some() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
@@ -628,7 +628,7 @@ impl Master {
             return Err(VhostUserError::InvalidParam);
         }
 
-        let (reply, body, files) = self.main_sock.recv_body::<T>()?;
+        let (reply, body, files) = self.main_sock.recv_message::<T>()?;
         if !reply.is_reply_for(hdr) || files.is_none() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
@@ -643,7 +643,7 @@ impl Master {
             return Err(VhostUserError::InvalidParam);
         }
 
-        let (reply, body, buf, files) = self.main_sock.recv_payload_into_buf::<T>()?;
+        let (reply, body, buf, files) = self.main_sock.recv_message_with_payload::<T>()?;
         if !reply.is_reply_for(hdr) || files.is_some() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
@@ -658,7 +658,7 @@ impl Master {
             return Ok(());
         }
 
-        let (reply, body, rfds) = self.main_sock.recv_body::<VhostUserU64>()?;
+        let (reply, body, rfds) = self.main_sock.recv_message::<VhostUserU64>()?;
         if !reply.is_reply_for(hdr) || rfds.is_some() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
@@ -756,7 +756,7 @@ mod tests {
         let msg = VhostUserU64::new(0x15);
         peer.send_message(&hdr, &msg, None).unwrap();
         master.set_features(0x15).unwrap();
-        let (_hdr, msg, rfds) = peer.recv_body::<VhostUserU64>().unwrap();
+        let (_hdr, msg, rfds) = peer.recv_message::<VhostUserU64>().unwrap();
         assert!(rfds.is_none());
         let val = msg.value;
         assert_eq!(val, 0x15);
@@ -791,7 +791,7 @@ mod tests {
         assert!(rfds.is_none());
 
         master.set_features(vfeatures).unwrap();
-        let (_hdr, msg, rfds) = peer.recv_body::<VhostUserU64>().unwrap();
+        let (_hdr, msg, rfds) = peer.recv_message::<VhostUserU64>().unwrap();
         assert!(rfds.is_none());
         let val = msg.value;
         assert_eq!(val, vfeatures);
@@ -806,7 +806,7 @@ mod tests {
         assert!(rfds.is_none());
 
         master.set_protocol_features(pfeatures).unwrap();
-        let (_hdr, msg, rfds) = peer.recv_body::<VhostUserU64>().unwrap();
+        let (_hdr, msg, rfds) = peer.recv_message::<VhostUserU64>().unwrap();
         assert!(rfds.is_none());
         let val = msg.value;
         assert_eq!(val, pfeatures.bits());

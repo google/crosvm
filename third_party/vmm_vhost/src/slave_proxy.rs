@@ -60,7 +60,7 @@ impl SlaveInternal {
             return Ok(0);
         }
 
-        let (reply, body, rfds) = self.sock.recv_body::<VhostUserU64>()?;
+        let (reply, body, rfds) = self.sock.recv_message::<VhostUserU64>()?;
         if !reply.is_reply_for(hdr) || rfds.is_some() || !body.is_valid() {
             return Err(Error::InvalidMessage);
         }

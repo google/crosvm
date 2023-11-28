@@ -83,7 +83,11 @@ fn advance_slices_mut(bufs: &mut &mut [&mut [u8]], mut count: usize) {
     }
 }
 
-/// A vhost-user connection and related operations.
+/// A vhost-user connection at a low abstraction level. Provides methods for sending and receiving
+/// vhost-user message headers and bodies.
+///
+/// Builds on top of `PlatformEndpoint`, which provides methods for sending and receiving raw bytes
+/// and file descriptors (a thin cross-platform abstraction for unix domain sockets).
 pub struct Endpoint<R: Req>(pub(crate) PlatformEndpoint<R>);
 
 impl<R: Req> From<SystemStream> for Endpoint<R> {
@@ -96,31 +100,6 @@ impl<R: Req> Endpoint<R> {
     /// Create a new stream by connecting to server at `path`.
     pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
         PlatformEndpoint::connect(path).map(Self)
-    }
-
-    /// Sends bytes from scatter-gather vectors with optional attached file descriptors.
-    ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    pub fn send_iovec(&mut self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize> {
-        self.0.send_iovec(iovs, fds)
-    }
-
-    /// Reads bytes into the given scatter/gather vectors with optional attached file.
-    ///
-    /// # Arguements
-    /// * `bufs` - A slice of buffers to store received data.
-    /// * `allow_fd` - Indicates whether we can receive FDs.
-    ///
-    /// # Return:
-    /// * - (number of bytes received, [received files]) on success.
-    /// * - `Error::Disconnect` if the client closed.
-    pub fn recv_into_bufs(
-        &mut self,
-        bufs: &mut [IoSliceMut],
-        allow_fd: bool,
-    ) -> Result<(usize, Option<Vec<File>>)> {
-        self.0.recv_into_bufs(bufs, allow_fd)
     }
 
     /// Constructs the slave request endpoint for self.
@@ -142,7 +121,7 @@ impl<R: Req> Endpoint<R> {
     /// cursor needs to be moved by `advance_slices()`.
     /// Once `IoSlice::advance_slices()` becomes stable, this should be updated.
     /// <https://github.com/rust-lang/rust/issues/62726>.
-    pub fn send_iovec_all(
+    fn send_iovec_all(
         &self,
         mut iovs: &mut [&[u8]],
         mut fds: Option<&[RawDescriptor]>,
@@ -171,16 +150,11 @@ impl<R: Req> Endpoint<R> {
     /// # Return:
     /// * - number of bytes sent on success
     #[cfg(test)]
-    pub fn send_slice(&self, data: IoSlice, fds: Option<&[RawDescriptor]>) -> Result<usize> {
+    fn send_slice(&self, data: IoSlice, fds: Option<&[RawDescriptor]>) -> Result<usize> {
         self.0.send_iovec(&[data], fds)
     }
 
     /// Sends a header-only message with optional attached file descriptors.
-    ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    /// * - PartialMessage: received a partial message.
-    /// * - backend specific errors
     pub fn send_header(
         &self,
         hdr: &VhostUserMsgHeader<R>,
@@ -191,13 +165,7 @@ impl<R: Req> Endpoint<R> {
 
     /// Send a message with header and body. Optional file descriptors may be attached to
     /// the message.
-    ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    /// * - OversizedMsg: message size is too big.
-    /// * - PartialMessage: received a partial message.
-    /// * - backend specific errors
-    pub fn send_message<T: Sized + AsBytes>(
+    pub fn send_message<T: AsBytes>(
         &self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,
@@ -210,15 +178,8 @@ impl<R: Req> Endpoint<R> {
         Ok(())
     }
 
-    /// Send a message with header, body and payload. Optional file descriptors
-    /// may also be attached to the message.
-    ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    /// * - OversizedMsg: message size is too big.
-    /// * - PartialMessage: received a partial message.
-    /// * - IncorrectFds: wrong number of attached fds.
-    /// * - backend specific errors
+    /// Send a message with header and body. `payload` is appended to the end of the body. Optional
+    /// file descriptors may also be attached to the message.
     pub fn send_message_with_payload<T: Sized + AsBytes>(
         &self,
         hdr: &VhostUserMsgHeader<R>,
@@ -252,7 +213,7 @@ impl<R: Req> Endpoint<R> {
     /// cursor needs to be moved by `advance_slices_mut()`.
     /// Once `IoSliceMut::advance_slices()` becomes stable, this should be updated.
     /// <https://github.com/rust-lang/rust/issues/62726>.
-    pub fn recv_into_bufs_all(&self, mut bufs: &mut [&mut [u8]]) -> Result<Option<Vec<File>>> {
+    fn recv_into_bufs_all(&self, mut bufs: &mut [&mut [u8]]) -> Result<Option<Vec<File>>> {
         let mut first_read = true;
         let mut rfds = None;
 
@@ -294,16 +255,12 @@ impl<R: Req> Endpoint<R> {
         Ok((bytes, buf, files))
     }
 
-    /// Receive a header-only message with optional attached files.
-    /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be
-    /// accepted and all other file descriptor will be discard silently.
+    /// Receive message header
     ///
-    /// # Return:
-    /// * - (message header, [received files]) on success.
-    /// * - Disconnect: the client closed the connection.
-    /// * - PartialMessage: received a partial message.
-    /// * - InvalidMessage: received a invalid message.
-    /// * - backend specific errors
+    /// Errors if the header is invalid.
+    ///
+    /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be accepted and all
+    /// other file descriptor will be discard silently.
     pub fn recv_header(&self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
         let (bytes, files) = self.0.recv_into_bufs(
@@ -320,16 +277,25 @@ impl<R: Req> Endpoint<R> {
         Ok((hdr, files))
     }
 
-    /// Receive a message with optional attached file descriptors.
+    /// Receive the body following the header `hdr`.
+    pub fn recv_body_bytes(&self, hdr: &VhostUserMsgHeader<R>) -> Result<Vec<u8>> {
+        // NOTE: `recv_into_bufs_all` is a noop when the buffer is empty, so `hdr.get_size() == 0`
+        // works as expected.
+        let mut body = vec![0; hdr.get_size().try_into().unwrap()];
+        let files = self.recv_into_bufs_all(&mut [&mut body[..]])?;
+        if files.is_some() {
+            return Err(Error::InvalidMessage);
+        }
+        Ok(body)
+    }
+
+    /// Receive a message header and body.
+    ///
+    /// Errors if the header or body is invalid.
+    ///
     /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be
     /// accepted and all other file descriptor will be discard silently.
-    ///
-    /// # Return:
-    /// * - (message header, message body, [received files]) on success.
-    /// * - PartialMessage: received a partial message.
-    /// * - InvalidMessage: received a invalid message.
-    /// * - backend specific errors
-    pub fn recv_body<T: AsBytes + FromBytes + VhostUserMsgValidator>(
+    pub fn recv_message<T: AsBytes + FromBytes + VhostUserMsgValidator>(
         &self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
@@ -344,16 +310,14 @@ impl<R: Req> Endpoint<R> {
         Ok((hdr, body, files))
     }
 
-    /// Receive a message with optional payload and attached file descriptors.
-    /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be
-    /// accepted and all other file descriptor will be discard silently.
+    /// Receive a message header and body, where the body includes a variable length payload at the
+    /// end.
     ///
-    /// # Return:
-    /// * - (message header, message body, payload, [received files]) on success.
-    /// * - PartialMessage: received a partial message.
-    /// * - InvalidMessage: received a invalid message.
-    /// * - backend specific errors
-    pub fn recv_payload_into_buf<T: AsBytes + FromBytes + VhostUserMsgValidator>(
+    /// Errors if the header or body is invalid.
+    ///
+    /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be accepted and all
+    /// other file descriptor will be discard silently.
+    pub fn recv_message_with_payload<T: AsBytes + FromBytes + VhostUserMsgValidator>(
         &self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Vec<u8>, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();

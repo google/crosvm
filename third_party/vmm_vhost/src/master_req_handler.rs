@@ -303,8 +303,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         // . validate message body and optional payload
         let (hdr, files) = self.sub_sock.recv_header()?;
         self.check_attached_files(&hdr, &files)?;
-        let mut buf = vec![0u8; hdr.get_size().try_into().unwrap()];
-        self.sub_sock.recv_into_bufs_all(&mut [&mut buf[..]])?;
+        let buf = self.sub_sock.recv_body_bytes(&hdr)?;
         let size = buf.len();
 
         let res = match hdr.get_code() {

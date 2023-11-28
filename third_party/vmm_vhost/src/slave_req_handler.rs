@@ -667,10 +667,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         hdr: VhostUserMsgHeader<MasterReq>,
         files: Option<Vec<File>>,
     ) -> Result<()> {
-        let mut buf = vec![0u8; hdr.get_size().try_into().unwrap()];
-        self.slave_req_helper
-            .endpoint
-            .recv_into_bufs_all(&mut [&mut buf[..]])?;
+        let buf = self.slave_req_helper.endpoint.recv_body_bytes(&hdr)?;
         let size = buf.len();
 
         match hdr.get_code() {
