@@ -358,7 +358,11 @@ impl VhostUserHandler {
 
     /// Sends a restore request with a payload of serialized snapshotted data and queue_evts to the
     /// device process so that it can revive its state and wire up the queue_evts again.
-    pub fn restore(&self, data: serde_json::Value, queue_evts: Option<Vec<Event>>) -> Result<()> {
+    pub fn restore(
+        &mut self,
+        data: serde_json::Value,
+        queue_evts: Option<Vec<Event>>,
+    ) -> Result<()> {
         let data_bytes: Vec<u8> = serde_json::from_value(data).map_err(Error::SerdeValueToSlice)?;
         self.vu
             .restore(data_bytes.as_slice(), queue_evts)

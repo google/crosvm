@@ -150,7 +150,7 @@ impl<R: Req> SocketEndpoint<R> {
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
-    pub fn send_iovec(&mut self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize> {
+    pub fn send_iovec(&self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize> {
         let rfds = match fds {
             Some(rfds) => rfds,
             _ => &[],
@@ -178,7 +178,7 @@ impl<R: Req> SocketEndpoint<R> {
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
     pub fn recv_into_bufs(
-        &mut self,
+        &self,
         bufs: &mut [IoSliceMut],
         allow_fd: bool,
     ) -> Result<(usize, Option<Vec<File>>)> {
@@ -284,7 +284,7 @@ mod tests {
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
 
         let buf1 = [0x1, 0x2, 0x3, 0x4];
@@ -311,7 +311,7 @@ mod tests {
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
 
         let mut fd = tempfile().unwrap();
@@ -483,7 +483,7 @@ mod tests {
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let mut slave = listener.accept().unwrap().unwrap();
 
         let mut hdr1 =

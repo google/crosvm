@@ -70,7 +70,7 @@ impl<R: Req> TubeEndpoint<R> {
     /// # Return:
     /// * - number of bytes sent on success
     /// * - TubeError: tube related errors.
-    pub fn send_iovec(&mut self, iovs: &[IoSlice], rds: Option<&[RawDescriptor]>) -> Result<usize> {
+    pub fn send_iovec(&self, iovs: &[IoSlice], rds: Option<&[RawDescriptor]>) -> Result<usize> {
         // Gather the iovecs
         let total_bytes = iovs.iter().map(|iov| iov.len()).sum();
         let mut data = Vec::with_capacity(total_bytes);
@@ -103,7 +103,7 @@ impl<R: Req> TubeEndpoint<R> {
     /// * - RecvBufferTooSmall: Input bufs is too small for the received buffer.
     /// * - TubeError: tube related errors.
     pub fn recv_into_bufs(
-        &mut self,
+        &self,
         bufs: &mut [IoSliceMut],
         _allow_rds: bool,
     ) -> Result<(usize, Option<Vec<File>>)> {
@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn send_data() {
-        let (mut master, mut slave) = create_pair();
+        let (master, mut slave) = create_pair();
 
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
         let len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn send_fd() {
-        let (mut master, mut slave) = create_pair();
+        let (master, mut slave) = create_pair();
 
         let mut file = tempfile().unwrap();
         write!(file, "test").unwrap();
@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn send_recv() {
-        let (mut master, mut slave) = create_pair();
+        let (master, mut slave) = create_pair();
 
         let mut hdr1 =
             VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, mem::size_of::<u64>() as u32);

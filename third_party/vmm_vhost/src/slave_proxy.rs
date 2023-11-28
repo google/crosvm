@@ -204,7 +204,7 @@ mod tests {
     fn test_slave_recv_negative() {
         let (p1, p2) = SystemStream::pair().unwrap();
         let fs_cache = Slave::from_stream(p1);
-        let mut master = Endpoint::from(p2);
+        let master = Endpoint::from(p2);
 
         let len = mem::size_of::<VhostUserFSSlaveMsg>();
         let mut hdr = VhostUserMsgHeader::new(

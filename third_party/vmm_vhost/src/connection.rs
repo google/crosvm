@@ -146,7 +146,7 @@ impl<R: Req> Endpoint<R> {
     /// Once `IoSlice::advance_slices()` becomes stable, this should be updated.
     /// <https://github.com/rust-lang/rust/issues/62726>.
     pub fn send_iovec_all(
-        &mut self,
+        &self,
         mut iovs: &mut [&[u8]],
         mut fds: Option<&[RawDescriptor]>,
     ) -> Result<usize> {
@@ -179,7 +179,7 @@ impl<R: Req> Endpoint<R> {
     /// # Return:
     /// * - number of bytes sent on success
     #[cfg(test)]
-    pub fn send_slice(&mut self, data: IoSlice, fds: Option<&[RawDescriptor]>) -> Result<usize> {
+    pub fn send_slice(&self, data: IoSlice, fds: Option<&[RawDescriptor]>) -> Result<usize> {
         self.0.send_iovec(&[data], fds)
     }
 
@@ -190,7 +190,7 @@ impl<R: Req> Endpoint<R> {
     /// * - PartialMessage: received a partial message.
     /// * - backend specific errors
     pub fn send_header(
-        &mut self,
+        &self,
         hdr: &VhostUserMsgHeader<R>,
         fds: Option<&[RawDescriptor]>,
     ) -> Result<()> {
@@ -211,7 +211,7 @@ impl<R: Req> Endpoint<R> {
     /// * - PartialMessage: received a partial message.
     /// * - backend specific errors
     pub fn send_message<T: Sized + AsBytes>(
-        &mut self,
+        &self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,
         fds: Option<&[RawDescriptor]>,
@@ -236,7 +236,7 @@ impl<R: Req> Endpoint<R> {
     /// * - IncorrectFds: wrong number of attached fds.
     /// * - backend specific errors
     pub fn send_message_with_payload<T: Sized + AsBytes>(
-        &mut self,
+        &self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,
         payload: &[u8],
@@ -268,7 +268,7 @@ impl<R: Req> Endpoint<R> {
     ///
     /// # Return:
     /// * - (number of bytes received, buf) on success
-    pub fn recv_data(&mut self, len: usize) -> Result<Vec<u8>> {
+    pub fn recv_data(&self, len: usize) -> Result<Vec<u8>> {
         let mut buf = vec![0u8; len];
         let (data_len, _) = self
             .0
@@ -290,7 +290,7 @@ impl<R: Req> Endpoint<R> {
     /// Once `IoSliceMut::advance_slices()` becomes stable, this should be updated.
     /// <https://github.com/rust-lang/rust/issues/62726>.
     pub fn recv_into_bufs_all(
-        &mut self,
+        &self,
         mut bufs: &mut [&mut [u8]],
     ) -> Result<(usize, Option<Vec<File>>)> {
         let data_total: usize = bufs.iter().map(|b| b.len()).sum();
@@ -371,7 +371,7 @@ impl<R: Req> Endpoint<R> {
     /// * - InvalidMessage: received a invalid message.
     /// * - backend specific errors
     pub fn recv_body<T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator>(
-        &mut self,
+        &self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
         let mut body: T = Default::default();
@@ -402,7 +402,7 @@ impl<R: Req> Endpoint<R> {
     /// * - backend specific errors
     #[cfg(test)]
     pub fn recv_body_into_buf(
-        &mut self,
+        &self,
         buf: &mut [u8],
     ) -> Result<(VhostUserMsgHeader<R>, usize, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
@@ -431,7 +431,7 @@ impl<R: Req> Endpoint<R> {
     pub fn recv_payload_into_buf<
         T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator,
     >(
-        &mut self,
+        &self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Vec<u8>, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
         let mut body: T = Default::default();
