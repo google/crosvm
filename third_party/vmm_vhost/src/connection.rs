@@ -88,18 +88,26 @@ fn advance_slices_mut(bufs: &mut &mut [&mut [u8]], mut count: usize) {
 ///
 /// Builds on top of `PlatformEndpoint`, which provides methods for sending and receiving raw bytes
 /// and file descriptors (a thin cross-platform abstraction for unix domain sockets).
-pub struct Endpoint<R: Req>(pub(crate) PlatformEndpoint<R>);
+pub struct Endpoint<R: Req>(
+    pub(crate) PlatformEndpoint<R>,
+    // Mark `Endpoint` as `!Sync` because message sends and recvs cannot safely be done
+    // concurrently.
+    std::marker::PhantomData<std::cell::Cell<()>>,
+);
 
 impl<R: Req> From<SystemStream> for Endpoint<R> {
     fn from(sock: SystemStream) -> Self {
-        Self(PlatformEndpoint::from(sock))
+        Self(PlatformEndpoint::from(sock), std::marker::PhantomData)
     }
 }
 
 impl<R: Req> Endpoint<R> {
     /// Create a new stream by connecting to server at `path`.
     pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
-        PlatformEndpoint::connect(path).map(Self)
+        Ok(Self(
+            PlatformEndpoint::connect(path)?,
+            std::marker::PhantomData,
+        ))
     }
 
     /// Constructs the slave request endpoint for self.
