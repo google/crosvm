@@ -15,7 +15,7 @@ use zerocopy::Ref;
 
 use crate::message::*;
 use crate::take_single_file;
-use crate::Endpoint;
+use crate::Connection;
 use crate::Error;
 use crate::MasterReq;
 use crate::Result;
@@ -71,7 +71,7 @@ pub trait VhostUserSlaveReqHandler {
     fn set_vring_enable(&self, index: u32, enable: bool) -> Result<()>;
     fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>>;
     fn set_config(&self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
-    fn set_slave_req_fd(&self, _vu_req: Endpoint<SlaveReq>) {}
+    fn set_slave_req_fd(&self, _vu_req: Connection<SlaveReq>) {}
     fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&self) -> Result<u64>;
@@ -121,7 +121,7 @@ pub trait VhostUserSlaveReqHandlerMut {
         flags: VhostUserConfigFlags,
     ) -> Result<Vec<u8>>;
     fn set_config(&mut self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
-    fn set_slave_req_fd(&mut self, _vu_req: Endpoint<SlaveReq>) {}
+    fn set_slave_req_fd(&mut self, _vu_req: Connection<SlaveReq>) {}
     fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,
@@ -224,7 +224,7 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
         self.lock().unwrap().set_config(offset, buf, flags)
     }
 
-    fn set_slave_req_fd(&self, vu_req: Endpoint<SlaveReq>) {
+    fn set_slave_req_fd(&self, vu_req: Connection<SlaveReq>) {
         self.lock().unwrap().set_slave_req_fd(vu_req)
     }
 
@@ -354,7 +354,7 @@ where
         self.as_ref().set_config(offset, buf, flags)
     }
 
-    fn set_slave_req_fd(&self, vu_req: Endpoint<SlaveReq>) {
+    fn set_slave_req_fd(&self, vu_req: Connection<SlaveReq>) {
         self.as_ref().set_slave_req_fd(vu_req)
     }
 
@@ -399,20 +399,20 @@ where
     }
 }
 
-/// Abstracts |Endpoint| related operations for vhost-user slave implementations.
+/// Abstracts |Connection| related operations for vhost-user slave implementations.
 pub struct SlaveReqHelper {
-    /// Underlying endpoint for communication.
-    endpoint: Endpoint<MasterReq>,
+    /// Underlying connection for communication.
+    connection: Connection<MasterReq>,
 
     /// Sending ack for messages without payload.
     reply_ack_enabled: bool,
 }
 
 impl SlaveReqHelper {
-    /// Creates a new |SlaveReqHelper| instance with an |Endpoint| underneath it.
-    pub fn new(endpoint: Endpoint<MasterReq>) -> Self {
+    /// Creates a new |SlaveReqHelper| instance with an |Connection| underneath it.
+    pub fn new(connection: Connection<MasterReq>) -> Self {
         SlaveReqHelper {
-            endpoint,
+            connection,
             reply_ack_enabled: false,
         }
     }
@@ -444,7 +444,7 @@ impl SlaveReqHelper {
                 self.new_reply_header::<VhostUserU64>(req, 0)?;
             let val = if success { 0 } else { 1 };
             let msg = VhostUserU64::new(val);
-            self.endpoint.send_message(&hdr, &msg, None)?;
+            self.connection.send_message(&hdr, &msg, None)?;
         }
         Ok(())
     }
@@ -455,7 +455,7 @@ impl SlaveReqHelper {
         msg: &T,
     ) -> Result<()> {
         let hdr = self.new_reply_header::<T>(req, 0)?;
-        self.endpoint.send_message(&hdr, msg, None)?;
+        self.connection.send_message(&hdr, msg, None)?;
         Ok(())
     }
 
@@ -466,7 +466,7 @@ impl SlaveReqHelper {
         payload: &[u8],
     ) -> Result<()> {
         let hdr = self.new_reply_header::<T>(req, payload.len())?;
-        self.endpoint
+        self.connection
             .send_message_with_payload(&hdr, msg, payload, None)?;
         Ok(())
     }
@@ -501,21 +501,21 @@ impl SlaveReqHelper {
     }
 }
 
-impl AsRef<Endpoint<MasterReq>> for SlaveReqHelper {
-    fn as_ref(&self) -> &Endpoint<MasterReq> {
-        &self.endpoint
+impl AsRef<Connection<MasterReq>> for SlaveReqHelper {
+    fn as_ref(&self) -> &Connection<MasterReq> {
+        &self.connection
     }
 }
 
-impl AsMut<Endpoint<MasterReq>> for SlaveReqHelper {
-    fn as_mut(&mut self) -> &mut Endpoint<MasterReq> {
-        &mut self.endpoint
+impl AsMut<Connection<MasterReq>> for SlaveReqHelper {
+    fn as_mut(&mut self) -> &mut Connection<MasterReq> {
+        &mut self.connection
     }
 }
 
 impl AsRawDescriptor for SlaveReqHelper {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.endpoint.as_raw_descriptor()
+        self.connection.as_raw_descriptor()
     }
 }
 
@@ -542,9 +542,9 @@ pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler> {
 }
 
 impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
-    /// Create a vhost-user slave endpoint from a connected socket.
+    /// Create a vhost-user slave connection from a connected socket.
     pub fn from_stream(socket: SystemStream, backend: S) -> Self {
-        Self::new(Endpoint::from(socket), backend)
+        Self::new(Connection::from(socket), backend)
     }
 }
 
@@ -555,10 +555,10 @@ impl<S: VhostUserSlaveReqHandler> AsRef<S> for SlaveReqHandler<S> {
 }
 
 impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
-    /// Create a vhost-user slave endpoint.
-    pub fn new(endpoint: Endpoint<MasterReq>, backend: S) -> Self {
+    /// Create a vhost-user slave connection.
+    pub fn new(connection: Connection<MasterReq>, backend: S) -> Self {
         SlaveReqHandler {
-            slave_req_helper: SlaveReqHelper::new(endpoint),
+            slave_req_helper: SlaveReqHelper::new(connection),
             backend,
             virtio_features: 0,
             acked_virtio_features: 0,
@@ -624,7 +624,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         // . recv optional message body and payload according size field in
         //   message header
         // . validate message body and optional payload
-        let (hdr, files) = match self.slave_req_helper.endpoint.recv_header() {
+        let (hdr, files) = match self.slave_req_helper.connection.recv_header() {
             Ok((hdr, files)) => (hdr, files),
             Err(Error::Disconnect) => {
                 // If the client closed the connection before sending a header, this should be
@@ -667,7 +667,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         hdr: VhostUserMsgHeader<MasterReq>,
         files: Option<Vec<File>>,
     ) -> Result<()> {
-        let buf = self.slave_req_helper.endpoint.recv_body_bytes(&hdr)?;
+        let buf = self.slave_req_helper.connection.recv_body_bytes(&hdr)?;
         let size = buf.len();
 
         match hdr.get_code() {
@@ -836,7 +836,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 let reply_hdr = self
                     .slave_req_helper
                     .new_reply_header::<VhostUserInflight>(&hdr, 0)?;
-                self.slave_req_helper.endpoint.send_message(
+                self.slave_req_helper.connection.send_message(
                     &reply_hdr,
                     &inflight,
                     Some(&[file.as_raw_descriptor()]),
@@ -1037,8 +1037,8 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
     fn set_slave_req_fd(&mut self, files: Option<Vec<File>>) -> Result<()> {
         let ep = self
             .slave_req_helper
-            .endpoint
-            .create_slave_request_endpoint(files)?;
+            .connection
+            .create_slave_request_connection(files)?;
         self.backend.set_slave_req_fd(ep);
         Ok(())
     }
@@ -1113,7 +1113,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
 impl<S: VhostUserSlaveReqHandler> AsRawDescriptor for SlaveReqHandler<S> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         // TODO(b/221882601): figure out if this used for polling.
-        self.slave_req_helper.endpoint.as_raw_descriptor()
+        self.slave_req_helper.connection.as_raw_descriptor()
     }
 }
 
@@ -1123,15 +1123,15 @@ mod tests {
 
     use super::*;
     use crate::dummy_slave::DummySlaveReqHandler;
-    use crate::Endpoint;
+    use crate::Connection;
     use crate::SystemStream;
 
     #[test]
     fn test_slave_req_handler_new() {
         let (p1, _p2) = SystemStream::pair().unwrap();
-        let endpoint = Endpoint::from(p1);
+        let connection = Connection::from(p1);
         let backend = Mutex::new(DummySlaveReqHandler::new());
-        let handler = SlaveReqHandler::new(endpoint, backend);
+        let handler = SlaveReqHandler::new(connection, backend);
 
         assert!(handler.as_raw_descriptor() != INVALID_DESCRIPTOR);
     }

@@ -70,7 +70,7 @@ pub struct DevicesCommand {
     )]
     /// start a serial device.
     /// Possible key values:
-    ///     vhost=PATH - Path to a vhost-user endpoint to listen to.
+    ///     vhost=PATH - Path to a vhost-user socket to listen to.
     ///        This parameter must be given in first position.
     ///     type=(stdout,syslog,sink,file) - Where to route the
     ///        serial device
@@ -95,7 +95,7 @@ pub struct DevicesCommand {
     #[argh(option, arg_name = "vhost=PATH[, block options]")]
     /// start a block device.
     /// Possible key values:
-    ///     vhost=PATH - Path to a vhost-user endpoint to listen to.
+    ///     vhost=PATH - Path to a vhost-user socket to listen to.
     ///        This parameter must be given in first position.
     ///     block options:
     ///        See help from `crosvm run` command.
@@ -104,7 +104,7 @@ pub struct DevicesCommand {
     #[argh(option, arg_name = "vhost=PATH,cid=CID[,device=VHOST_DEVICE]")]
     /// start a vsock device.
     /// Possible key values:
-    ///     vhost=PATH - Path to a vhost-user endpoint to listen to.
+    ///     vhost=PATH - Path to a vhost-user socket to listen to.
     ///        This parameter must be given in first position.
     ///     cid=CID - CID to use for the device.
     ///     device=VHOST_DEVICE - path to the vhost-vsock device to
@@ -115,7 +115,7 @@ pub struct DevicesCommand {
     #[argh(option, arg_name = "net options")]
     /// start a network device.
     /// Possible key values:
-    ///     vhost=PATH - Path to a vhost-user endpoint to listen to.
+    ///     vhost=PATH - Path to a vhost-user socket to listen to.
     ///        This parameter must be given in first position.
     ///     network options:
     ///         See help from the `crosvm run` command.

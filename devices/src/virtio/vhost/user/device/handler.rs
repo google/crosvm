@@ -86,7 +86,7 @@ use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::message::VhostUserSingleMemoryRegion;
 use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
-use vmm_vhost::Endpoint;
+use vmm_vhost::Connection;
 use vmm_vhost::Error as VhostError;
 use vmm_vhost::Result as VhostResult;
 use vmm_vhost::Slave;
@@ -666,7 +666,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         Ok(())
     }
 
-    fn set_slave_req_fd(&mut self, ep: Endpoint<SlaveReq>) {
+    fn set_slave_req_fd(&mut self, ep: Connection<SlaveReq>) {
         let conn = VhostBackendReqConnection::new(
             Slave::new(ep),
             self.backend.get_shared_memory_region().map(|r| r.id),

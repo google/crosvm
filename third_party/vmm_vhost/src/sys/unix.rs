@@ -12,4 +12,4 @@ pub type SystemListener = UnixListener;
 /// Alias to enable platform independent code.
 pub type SystemStream = UnixStream;
 
-pub(crate) use crate::connection::socket::SocketEndpoint as PlatformEndpoint;
+pub(crate) use crate::connection::socket::SocketPlatformConnection as PlatformConnection;

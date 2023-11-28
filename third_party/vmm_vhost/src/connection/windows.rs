@@ -9,13 +9,13 @@ pub(crate) mod tests {
     use crate::message::MasterReq;
     use crate::slave_req_handler::SlaveReqHandler;
     use crate::slave_req_handler::VhostUserSlaveReqHandler;
-    use crate::Endpoint;
+    use crate::Connection;
     use crate::SystemStream;
 
-    pub(crate) fn create_pair() -> (Master, Endpoint<MasterReq>) {
+    pub(crate) fn create_pair() -> (Master, Connection<MasterReq>) {
         let (master_tube, slave_tube) = SystemStream::pair().unwrap();
         let master = Master::from_stream(master_tube);
-        (master, Endpoint::from(slave_tube))
+        (master, Connection::from(slave_tube))
     }
 
     pub(crate) fn create_master_slave_pair<S>(backend: S) -> (Master, SlaveReqHandler<S>)

@@ -1,7 +1,7 @@
 // Copyright (C) 2019 Alibaba Cloud Computing. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Common data structures for listener and endpoint.
+//! Common data structures for listener and connection.
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
@@ -9,7 +9,7 @@ cfg_if::cfg_if! {
         mod unix;
     } else if #[cfg(windows)] {
         mod tube;
-        pub use tube::TubeEndpoint;
+        pub use tube::TubePlatformConnection;
         mod windows;
     }
 }
@@ -29,7 +29,7 @@ use crate::connection::Req;
 use crate::message::MasterReq;
 use crate::message::SlaveReq;
 use crate::message::*;
-use crate::sys::PlatformEndpoint;
+use crate::sys::PlatformConnection;
 use crate::Error;
 use crate::Result;
 use crate::SystemStream;
@@ -37,7 +37,7 @@ use crate::SystemStream;
 /// Listener for accepting connections.
 pub trait Listener: Sized {
     /// Accept an incoming connection.
-    fn accept(&mut self) -> Result<Option<Endpoint<MasterReq>>>;
+    fn accept(&mut self) -> Result<Option<Connection<MasterReq>>>;
 
     /// Change blocking status on the listener.
     fn set_nonblocking(&self, block: bool) -> Result<()>;
@@ -86,39 +86,39 @@ fn advance_slices_mut(bufs: &mut &mut [&mut [u8]], mut count: usize) {
 /// A vhost-user connection at a low abstraction level. Provides methods for sending and receiving
 /// vhost-user message headers and bodies.
 ///
-/// Builds on top of `PlatformEndpoint`, which provides methods for sending and receiving raw bytes
-/// and file descriptors (a thin cross-platform abstraction for unix domain sockets).
-pub struct Endpoint<R: Req>(
-    pub(crate) PlatformEndpoint<R>,
-    // Mark `Endpoint` as `!Sync` because message sends and recvs cannot safely be done
+/// Builds on top of `PlatformConnection`, which provides methods for sending and receiving raw
+/// bytes and file descriptors (a thin cross-platform abstraction for unix domain sockets).
+pub struct Connection<R: Req>(
+    pub(crate) PlatformConnection<R>,
+    // Mark `Connection` as `!Sync` because message sends and recvs cannot safely be done
     // concurrently.
     std::marker::PhantomData<std::cell::Cell<()>>,
 );
 
-impl<R: Req> From<SystemStream> for Endpoint<R> {
+impl<R: Req> From<SystemStream> for Connection<R> {
     fn from(sock: SystemStream) -> Self {
-        Self(PlatformEndpoint::from(sock), std::marker::PhantomData)
+        Self(PlatformConnection::from(sock), std::marker::PhantomData)
     }
 }
 
-impl<R: Req> Endpoint<R> {
+impl<R: Req> Connection<R> {
     /// Create a new stream by connecting to server at `path`.
     pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
         Ok(Self(
-            PlatformEndpoint::connect(path)?,
+            PlatformConnection::connect(path)?,
             std::marker::PhantomData,
         ))
     }
 
-    /// Constructs the slave request endpoint for self.
+    /// Constructs the slave request connection for self.
     ///
     /// # Arguments
-    /// * `files` - Files from which to create the endpoint
-    pub fn create_slave_request_endpoint(
+    /// * `files` - Files from which to create the connection
+    pub fn create_slave_request_connection(
         &mut self,
         files: Option<Vec<File>>,
-    ) -> Result<super::Endpoint<SlaveReq>> {
-        self.0.create_slave_request_endpoint(files)
+    ) -> Result<super::Connection<SlaveReq>> {
+        self.0.create_slave_request_connection(files)
     }
 
     /// Sends all bytes from scatter-gather vectors with optional attached file descriptors. Will
@@ -336,7 +336,7 @@ impl<R: Req> Endpoint<R> {
     }
 }
 
-impl<R: Req> AsRawDescriptor for Endpoint<R> {
+impl<R: Req> AsRawDescriptor for Connection<R> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.0.as_raw_descriptor()
     }

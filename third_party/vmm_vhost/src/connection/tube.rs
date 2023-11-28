@@ -1,8 +1,8 @@
 // Copyright 2022 The Chromium OS Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Structs for Tube based endpoint. Listeners are not used with Tubes, since they are essentially
-//! fancy socket pairs.
+//! Structs for Tube based connection. Listeners are not used with Tubes, since they are
+//! essentially fancy socket pairs.
 
 use std::cmp::min;
 use std::fs::File;
@@ -23,7 +23,7 @@ use tube_transporter::packed_tube;
 use crate::connection::Req;
 use crate::message::SlaveReq;
 use crate::take_single_file;
-use crate::Endpoint;
+use crate::Connection;
 use crate::Error;
 use crate::Result;
 
@@ -34,24 +34,24 @@ struct RawDescriptorContainer {
 }
 
 #[derive(Serialize, Deserialize)]
-struct EndpointMessage {
+struct Message {
     rds: Vec<RawDescriptorContainer>,
     data: Vec<u8>,
 }
 
-/// Tube endpoint for vhost-user connection.
-pub struct TubeEndpoint<R: Req> {
+/// Tube based vhost-user connection.
+pub struct TubePlatformConnection<R: Req> {
     tube: Tube,
     _r: PhantomData<R>,
 }
 
-impl<R: Req> TubeEndpoint<R> {
+impl<R: Req> TubePlatformConnection<R> {
     pub(crate) fn get_tube(&self) -> &Tube {
         &self.tube
     }
 }
 
-impl<R: Req> From<Tube> for TubeEndpoint<R> {
+impl<R: Req> From<Tube> for TubePlatformConnection<R> {
     fn from(tube: Tube) -> Self {
         Self {
             tube,
@@ -60,7 +60,7 @@ impl<R: Req> From<Tube> for TubeEndpoint<R> {
     }
 }
 
-impl<R: Req> TubeEndpoint<R> {
+impl<R: Req> TubePlatformConnection<R> {
     pub fn connect<P: AsRef<Path>>(_path: P) -> Result<Self> {
         unimplemented!("connections not supported on Tubes")
     }
@@ -78,7 +78,7 @@ impl<R: Req> TubeEndpoint<R> {
             data.extend(iov.iter());
         }
 
-        let mut msg = EndpointMessage {
+        let mut msg = Message {
             data,
             rds: Vec::with_capacity(rds.map_or(0, |rds| rds.len())),
         };
@@ -109,7 +109,7 @@ impl<R: Req> TubeEndpoint<R> {
     ) -> Result<(usize, Option<Vec<File>>)> {
         // TODO(b/221882601): implement "allow_rds"
 
-        let msg: EndpointMessage = self.tube.recv()?;
+        let msg: Message = self.tube.recv()?;
 
         let files = match msg.rds.len() {
             0 => None,
@@ -156,18 +156,18 @@ impl<R: Req> TubeEndpoint<R> {
         Ok((bytes_read, files))
     }
 
-    pub fn create_slave_request_endpoint(
+    pub fn create_slave_request_connection(
         &mut self,
         files: Option<Vec<File>>,
-    ) -> Result<Endpoint<SlaveReq>> {
+    ) -> Result<Connection<SlaveReq>> {
         let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
         // Safe because the file represents a packed tube.
         let tube = unsafe { packed_tube::unpack(file.into()).expect("unpacked Tube") };
-        Ok(Endpoint::from(tube))
+        Ok(Connection::from(tube))
     }
 }
 
-impl<R: Req> AsRawDescriptor for TubeEndpoint<R> {
+impl<R: Req> AsRawDescriptor for TubePlatformConnection<R> {
     /// WARNING: this function does not return a waitable descriptor! Use base::ReadNotifier
     /// instead.
     fn as_raw_descriptor(&self) -> RawDescriptor {
@@ -192,13 +192,13 @@ mod tests {
     use crate::message::MasterReq;
     use crate::message::VhostUserMsgHeader;
     use crate::message::VhostUserMsgValidator;
-    use crate::Endpoint;
+    use crate::Connection;
 
-    fn create_pair() -> (Endpoint<MasterReq>, Endpoint<MasterReq>) {
+    fn create_pair() -> (Connection<MasterReq>, Connection<MasterReq>) {
         let (master_tube, slave_tube) = Tube::pair().unwrap();
         (
-            Endpoint::<MasterReq>::from(master_tube),
-            Endpoint::<MasterReq>::from(slave_tube),
+            Connection::<MasterReq>::from(master_tube),
+            Connection::<MasterReq>::from(slave_tube),
         )
     }
 

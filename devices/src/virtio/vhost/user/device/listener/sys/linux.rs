@@ -59,8 +59,8 @@ async fn run_with_handler(
             .accept()
             .context("failed to accept an incoming connection")?
         {
-            Some(endpoint) => {
-                let req_handler = SlaveReqHandler::new(endpoint, handler);
+            Some(connection) => {
+                let req_handler = SlaveReqHandler::new(connection, handler);
                 return run_handler(req_handler, ex).await;
             }
             None => {

@@ -23,7 +23,7 @@ use data_model::Le64;
 use vhost::Vhost;
 use vhost::Vsock;
 use vm_memory::GuestMemory;
-use vmm_vhost::connection::Endpoint;
+use vmm_vhost::connection::Connection;
 use vmm_vhost::message::SlaveReq;
 use vmm_vhost::message::VhostSharedMemoryRegion;
 use vmm_vhost::message::VhostUserConfigFlags;
@@ -398,7 +398,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
         Err(Error::InvalidOperation)
     }
 
-    fn set_slave_req_fd(&mut self, _vu_req: Endpoint<SlaveReq>) {
+    fn set_slave_req_fd(&mut self, _vu_req: Connection<SlaveReq>) {
         // We didn't set VhostUserProtocolFeatures::SLAVE_REQ
         unreachable!("unexpected set_slave_req_fd");
     }

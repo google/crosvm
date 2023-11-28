@@ -84,7 +84,7 @@ pub mod test_helpers {
         mut listener: SocketListener,
         handler: S,
     ) -> SlaveReqHandler<S> {
-        let endpoint = listener.accept().unwrap().unwrap();
-        SlaveReqHandler::new(endpoint, handler)
+        let connection = listener.accept().unwrap().unwrap();
+        SlaveReqHandler::new(connection, handler)
     }
 }

@@ -1,7 +1,7 @@
 // Copyright 2021 The Chromium OS Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Structs for Unix Domain Socket listener and endpoint.
+//! Structs for Unix Domain Socket listener and connection.
 
 use std::any::Any;
 use std::fs::File;
@@ -23,7 +23,7 @@ use crate::connection::Req;
 use crate::message::*;
 use crate::take_single_file;
 use crate::unix::SystemListener;
-use crate::Endpoint;
+use crate::Connection;
 use crate::Error;
 use crate::Result;
 use crate::SystemStream;
@@ -78,11 +78,11 @@ impl Listener for SocketListener {
     /// * - Some(SystemListener): new SystemListener object if new incoming connection is available.
     /// * - None: no incoming connection available.
     /// * - SocketError: errors from accept().
-    fn accept(&mut self) -> Result<Option<Endpoint<MasterReq>>> {
+    fn accept(&mut self) -> Result<Option<Connection<MasterReq>>> {
         loop {
             match self.fd.accept() {
                 Ok((stream, _addr)) => {
-                    return Ok(Some(Endpoint::from(stream)));
+                    return Ok(Some(Connection::from(stream)));
                 }
                 Err(e) => {
                     match e.kind() {
@@ -115,14 +115,14 @@ impl AsRawDescriptor for SocketListener {
     }
 }
 
-/// Unix domain socket endpoint for vhost-user connection.
-pub struct SocketEndpoint<R: Req> {
+/// Unix domain socket based vhost-user connection.
+pub struct SocketPlatformConnection<R: Req> {
     sock: ScmSocket<SystemStream>,
     _r: PhantomData<R>,
 }
 
 // TODO: Switch to TryFrom to avoid the unwrap.
-impl<R: Req> From<SystemStream> for SocketEndpoint<R> {
+impl<R: Req> From<SystemStream> for SocketPlatformConnection<R> {
     fn from(sock: SystemStream) -> Self {
         Self {
             sock: sock.try_into().unwrap(),
@@ -131,11 +131,11 @@ impl<R: Req> From<SystemStream> for SocketEndpoint<R> {
     }
 }
 
-impl<R: Req> SocketEndpoint<R> {
+impl<R: Req> SocketPlatformConnection<R> {
     /// Create a new stream by connecting to server at `str`.
     ///
     /// # Return:
-    /// * - the new SocketEndpoint object on success.
+    /// * - the new SocketPlatformConnection object on success.
     /// * - SocketConnect: failed to connect to peer.
     pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
         let sock = SystemStream::connect(path).map_err(Error::SocketConnect)?;
@@ -212,24 +212,24 @@ impl<R: Req> SocketEndpoint<R> {
         Ok((bytes, files))
     }
 
-    pub fn create_slave_request_endpoint(
+    pub fn create_slave_request_connection(
         &mut self,
         files: Option<Vec<File>>,
-    ) -> Result<Endpoint<SlaveReq>> {
+    ) -> Result<Connection<SlaveReq>> {
         let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
         // Safe because we own the file
         let tube = unsafe { SystemStream::from_raw_descriptor(file.into_raw_descriptor()) };
-        Ok(Endpoint::<SlaveReq>::from(tube))
+        Ok(Connection::<SlaveReq>::from(tube))
     }
 }
 
-impl<T: Req> AsRawDescriptor for SocketEndpoint<T> {
+impl<T: Req> AsRawDescriptor for SocketPlatformConnection<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.sock.as_raw_descriptor()
     }
 }
 
-impl<T: Req> AsMut<SystemStream> for SocketEndpoint<T> {
+impl<T: Req> AsMut<SystemStream> for SocketPlatformConnection<T> {
     fn as_mut(&mut self) -> &mut SystemStream {
         self.sock.inner_mut()
     }
@@ -284,7 +284,7 @@ mod tests {
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let master = Connection::<MasterReq>::connect(&path).unwrap();
         let slave = listener.accept().unwrap().unwrap();
 
         let buf1 = [0x1, 0x2, 0x3, 0x4];
@@ -311,7 +311,7 @@ mod tests {
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let master = Connection::<MasterReq>::connect(&path).unwrap();
         let slave = listener.accept().unwrap().unwrap();
 
         let mut fd = tempfile().unwrap();
@@ -484,7 +484,7 @@ mod tests {
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let master = Connection::<MasterReq>::connect(&path).unwrap();
         let slave = listener.accept().unwrap().unwrap();
 
         let mut hdr1 =

@@ -8,4 +8,4 @@ use base::Tube;
 /// Alias to enable platform independent code.
 pub type SystemStream = Tube;
 
-pub(crate) use crate::connection::TubeEndpoint as PlatformEndpoint;
+pub(crate) use crate::connection::TubePlatformConnection as PlatformConnection;

@@ -12,7 +12,7 @@ use base::RawDescriptor;
 use zerocopy::AsBytes;
 
 use crate::message::*;
-use crate::Endpoint;
+use crate::Connection;
 use crate::Error;
 use crate::HandlerResult;
 use crate::Result;
@@ -21,12 +21,12 @@ use crate::SystemStream;
 use crate::VhostUserMasterReqHandler;
 
 struct SlaveInternal {
-    sock: Endpoint<SlaveReq>,
+    sock: Connection<SlaveReq>,
 
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
 
-    // whether the endpoint has encountered any failure
+    // whether the connection has encountered any failure
     error: Option<i32>,
 }
 
@@ -87,8 +87,8 @@ pub struct Slave {
 }
 
 impl Slave {
-    /// Constructs a new slave proxy from the given endpoint.
-    pub fn new(ep: Endpoint<SlaveReq>) -> Self {
+    /// Constructs a new slave proxy from the given connection.
+    pub fn new(ep: Connection<SlaveReq>) -> Self {
         Slave {
             node: Arc::new(Mutex::new(SlaveInternal {
                 sock: ep,
@@ -118,7 +118,7 @@ impl Slave {
 
     /// Create a new instance from a `SystemStream` object.
     pub fn from_stream(sock: SystemStream) -> Self {
-        Self::new(Endpoint::from(sock))
+        Self::new(Connection::from(sock))
     }
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.
@@ -130,7 +130,7 @@ impl Slave {
         self.node().reply_ack_negotiated = enable;
     }
 
-    /// Mark endpoint as failed with specified error code.
+    /// Mark connection as failed with specified error code.
     pub fn set_failed(&self, error: i32) {
         self.node().error = Some(error);
     }
@@ -204,7 +204,7 @@ mod tests {
     fn test_slave_recv_negative() {
         let (p1, p2) = SystemStream::pair().unwrap();
         let fs_cache = Slave::from_stream(p1);
-        let master = Endpoint::from(p2);
+        let master = Connection::from(p2);
 
         let len = mem::size_of::<VhostUserFSSlaveMsg>();
         let mut hdr = VhostUserMsgHeader::new(

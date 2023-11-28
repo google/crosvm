@@ -46,7 +46,7 @@ pub use message::VHOST_USER_F_PROTOCOL_FEATURES;
 pub mod connection;
 
 mod sys;
-pub use connection::Endpoint;
+pub use connection::Connection;
 pub use message::MasterReq;
 pub use message::SlaveReq;
 pub use sys::SystemStream;

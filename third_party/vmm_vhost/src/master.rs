@@ -20,7 +20,7 @@ use crate::backend::VhostUserMemoryRegionInfo;
 use crate::backend::VringConfigData;
 use crate::message::*;
 use crate::take_single_file;
-use crate::Endpoint;
+use crate::Connection;
 use crate::Error as VhostUserError;
 use crate::MasterReq;
 use crate::Result as VhostUserResult;
@@ -30,7 +30,7 @@ use crate::SystemStream;
 /// Client for a vhost-user device. The API is a thin abstraction over the vhost-user protocol.
 pub struct Master {
     // Used to send requests to the slave.
-    main_sock: Endpoint<MasterReq>,
+    main_sock: Connection<MasterReq>,
     // Cached virtio features from the slave.
     virtio_features: u64,
     // Cached acked virtio features from the driver.
@@ -42,11 +42,11 @@ pub struct Master {
 impl Master {
     /// Create a new instance from a Unix stream socket.
     pub fn from_stream(sock: SystemStream) -> Self {
-        Self::new(Endpoint::from(sock))
+        Self::new(Connection::from(sock))
     }
 
     /// Create a new instance.
-    fn new(ep: Endpoint<MasterReq>) -> Self {
+    fn new(ep: Connection<MasterReq>) -> Self {
         Master {
             main_sock: ep,
             virtio_features: 0,
@@ -55,7 +55,7 @@ impl Master {
         }
     }
 
-    /// Create a new vhost-user master endpoint.
+    /// Create a new vhost-user master connection.
     ///
     /// Will retry as the backend may not be ready to accept the connection.
     ///
@@ -63,9 +63,9 @@ impl Master {
     /// * `path` - path of Unix domain socket listener to connect to
     pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
         let mut retry_count = 5;
-        let endpoint = loop {
-            match Endpoint::connect(&path) {
-                Ok(endpoint) => break Ok(endpoint),
+        let connection = loop {
+            match Connection::connect(&path) {
+                Ok(connection) => break Ok(connection),
                 Err(e) => match &e {
                     VhostUserError::SocketConnect(why) => {
                         if why.kind() == std::io::ErrorKind::ConnectionRefused && retry_count > 0 {
@@ -81,7 +81,7 @@ impl Master {
             }
         }?;
 
-        Ok(Self::new(endpoint))
+        Ok(Self::new(connection))
     }
 
     /// Get a bitmask of supported virtio/vhost features.
@@ -858,7 +858,7 @@ mod tests {
             .unwrap_err();
     }
 
-    fn create_pair2() -> (Master, Endpoint<MasterReq>) {
+    fn create_pair2() -> (Master, Connection<MasterReq>) {
         let (mut master, peer) = create_pair();
 
         master.virtio_features = 0xffff_ffff;

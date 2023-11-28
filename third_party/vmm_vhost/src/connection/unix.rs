@@ -14,13 +14,13 @@ pub(crate) mod tests {
     use crate::message::MasterReq;
     use crate::slave_req_handler::SlaveReqHandler;
     use crate::slave_req_handler::VhostUserSlaveReqHandler;
-    use crate::Endpoint;
+    use crate::Connection;
 
     pub(crate) fn temp_dir() -> TempDir {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
     }
 
-    pub(crate) fn create_pair() -> (Master, Endpoint<MasterReq>) {
+    pub(crate) fn create_pair() -> (Master, Connection<MasterReq>) {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
@@ -40,8 +40,8 @@ pub(crate) mod tests {
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         let master = Master::connect(&path).unwrap();
-        let endpoint = listener.accept().unwrap().unwrap();
-        let req_handler = SlaveReqHandler::new(endpoint, backend);
+        let connection = listener.accept().unwrap().unwrap();
+        let req_handler = SlaveReqHandler::new(connection, backend);
         (master, req_handler)
     }
 
