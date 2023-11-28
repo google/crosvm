@@ -35,14 +35,8 @@ pub struct Master {
     virtio_features: u64,
     // Cached acked virtio features from the driver.
     acked_virtio_features: u64,
-    // Cached vhost-user protocol features from the slave.
-    protocol_features: u64,
     // Cached vhost-user protocol features.
     acked_protocol_features: u64,
-    // Cached vhost-user protocol features are ready to use.
-    protocol_features_ready: bool,
-    // List of header flags.
-    hdr_flags: VhostUserHeaderFlag,
 }
 
 impl Master {
@@ -57,10 +51,7 @@ impl Master {
             main_sock: ep,
             virtio_features: 0,
             acked_virtio_features: 0,
-            protocol_features: 0,
             acked_protocol_features: 0,
-            protocol_features_ready: false,
-            hdr_flags: VhostUserHeaderFlag::empty(),
         }
     }
 
@@ -91,11 +82,6 @@ impl Master {
         }?;
 
         Ok(Self::new(endpoint))
-    }
-
-    /// Set the header flags that should be applied to all following messages.
-    pub fn set_hdr_flags(&mut self, flags: VhostUserHeaderFlag) {
-        self.hdr_flags = flags;
     }
 
     /// Get a bitmask of supported virtio/vhost features.
@@ -316,16 +302,15 @@ impl Master {
     }
 
     /// Get the protocol feature bitmask from the underlying vhost implementation.
-    pub fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures> {
+    pub fn get_protocol_features(&self) -> Result<VhostUserProtocolFeatures> {
         if self.virtio_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
             return Err(VhostUserError::InvalidOperation);
         }
         let hdr = self.send_request_header(MasterReq::GET_PROTOCOL_FEATURES, None)?;
         let val = self.recv_reply::<VhostUserU64>(&hdr)?;
-        self.protocol_features = val.value;
         // Should we support forward compatibility?
         // If so just mask out unrecognized flags instead of return errors.
-        match VhostUserProtocolFeatures::from_bits(self.protocol_features) {
+        match VhostUserProtocolFeatures::from_bits(val.value) {
             Some(val) => Ok(val),
             None => Err(VhostUserError::InvalidMessage),
         }
@@ -346,7 +331,6 @@ impl Master {
         // Don't wait for ACK here because the protocol feature negotiation process hasn't been
         // completed yet.
         self.acked_protocol_features = features.bits();
-        self.protocol_features_ready = true;
         self.wait_for_ack(&hdr)
     }
 
@@ -690,15 +674,7 @@ impl Master {
 
     #[inline]
     fn new_request_header(&self, request: MasterReq, size: u32) -> VhostUserMsgHeader<MasterReq> {
-        VhostUserMsgHeader::new(request, self.hdr_flags.bits() | 0x1, size)
-    }
-}
-
-impl AsRawDescriptor for Master {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        // TODO(b/221882601): why is this here? The underlying Tube needs to use a read notifier
-        // if this is for polling.
-        self.main_sock.as_raw_descriptor()
+        VhostUserMsgHeader::new(request, 0x1, size)
     }
 }
 
@@ -739,7 +715,7 @@ mod tests {
     fn create_master() {
         let (master, mut slave) = create_pair();
 
-        assert!(master.as_raw_descriptor() != INVALID_DESCRIPTOR);
+        assert!(master.main_sock.as_raw_descriptor() != INVALID_DESCRIPTOR);
         // Send two messages continuously
         master.set_owner().unwrap();
         master.reset_owner().unwrap();
@@ -852,7 +828,6 @@ mod tests {
 
         master.virtio_features = 0xffff_ffff;
         master.acked_virtio_features = 0xffff_ffff;
-        master.protocol_features = 0xffff_ffff;
         master.acked_protocol_features = 0xffff_ffff;
 
         master
@@ -888,7 +863,6 @@ mod tests {
 
         master.virtio_features = 0xffff_ffff;
         master.acked_virtio_features = 0xffff_ffff;
-        master.protocol_features = 0xffff_ffff;
         master.acked_protocol_features = 0xffff_ffff;
 
         (master, peer)
