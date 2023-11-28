@@ -332,11 +332,11 @@ impl<R: Req> Endpoint<R> {
     /// * - PartialMessage: received a partial message.
     /// * - InvalidMessage: received a invalid message.
     /// * - backend specific errors
-    pub fn recv_body<T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator>(
+    pub fn recv_body<T: AsBytes + FromBytes + VhostUserMsgValidator>(
         &self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
-        let mut body: T = Default::default();
+        let mut body = T::new_zeroed();
         let mut slices = [hdr.as_bytes_mut(), body.as_bytes_mut()];
         let files = self.recv_into_bufs_all(&mut slices)?;
 
@@ -356,10 +356,7 @@ impl<R: Req> Endpoint<R> {
     /// * - PartialMessage: received a partial message.
     /// * - InvalidMessage: received a invalid message.
     /// * - backend specific errors
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::type_complexity))]
-    pub fn recv_payload_into_buf<
-        T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator,
-    >(
+    pub fn recv_payload_into_buf<T: AsBytes + FromBytes + VhostUserMsgValidator>(
         &self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Vec<u8>, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
@@ -370,7 +367,7 @@ impl<R: Req> Endpoint<R> {
             return Err(Error::InvalidMessage);
         }
 
-        let mut body: T = Default::default();
+        let mut body = T::new_zeroed();
         let payload_size = hdr.get_size() as usize - mem::size_of::<T>();
         let mut buf: Vec<u8> = vec![0; payload_size];
         let mut slices = [body.as_bytes_mut(), buf.as_bytes_mut()];
