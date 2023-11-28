@@ -23,6 +23,7 @@ use base::error;
 use base::warn;
 use metrics::MetricEventType;
 
+use super::NoopBufferCommit;
 use crate::intermediate_resampler_buffer::CaptureResamplerBuffer;
 use crate::intermediate_resampler_buffer::PlaybackResamplerBuffer;
 use crate::CaptureError;
@@ -36,8 +37,6 @@ use crate::WinAudio;
 use crate::WinAudioCapturer;
 use crate::WinAudioError;
 use crate::WinAudioRenderer;
-
-use super::NoopBufferCommit;
 
 // These global values are used to prevent metrics upload spam.
 const ERROR_METRICS_LOG_LIMIT: usize = 5;
@@ -505,9 +504,8 @@ impl AsyncCaptureBufferStream for WinAudioCapturer {
 mod tests {
     use cros_async::Executor;
 
-    use crate::WinStreamSourceGenerator;
-
     use super::*;
+    use crate::WinStreamSourceGenerator;
 
     // This test is meant to run through the normal audio playback procedure in order to make
     // debugging easier. The test needs to be ran with a playback device format of 48KHz,

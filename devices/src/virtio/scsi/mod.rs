@@ -42,8 +42,9 @@ pub struct ScsiOption {
 mod tests {
     use std::path::Path;
 
-    use super::*;
     use serde_keyvalue::from_key_values;
+
+    use super::*;
 
     #[test]
     fn parse_scsi_options() {

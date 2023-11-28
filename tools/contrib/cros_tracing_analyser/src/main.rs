@@ -2,17 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::io::Write;
+
 use anyhow::anyhow;
 use argh::FromArgs;
 use libtracecmd::Event;
 use libtracecmd::Handler;
 use libtracecmd::Input;
 use libtracecmd::Record;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::ffi::OsStr;
-use std::io::Write;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(FromArgs, Debug)]
 /// Command line parameters.

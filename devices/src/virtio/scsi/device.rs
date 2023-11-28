@@ -886,11 +886,10 @@ mod tests {
     use vm_memory::GuestAddress;
     use vm_memory::GuestMemory;
 
+    use super::*;
     use crate::virtio::create_descriptor_chain;
     use crate::virtio::scsi::constants::READ_10;
     use crate::virtio::DescriptorType;
-
-    use super::*;
 
     fn setup_disk(disk_size: u64) -> (File, Vec<u8>) {
         let mut file_content = vec![0; disk_size as usize];

@@ -64,7 +64,6 @@ mod android_sparse;
 use android_sparse::AndroidSparse;
 #[cfg(feature = "android-sparse")]
 use android_sparse::SPARSE_HEADER_MAGIC;
-
 use sys::read_from_disk;
 
 /// Nesting depth limit for disk formats that can open other disk files.

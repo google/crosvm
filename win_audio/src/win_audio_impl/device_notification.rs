@@ -236,11 +236,11 @@ unsafe extern "system" fn on_property_value_changed(
 /// notifications of new devices.
 #[cfg(test)]
 mod test {
-    use super::*;
-
     use winapi::um::mmdeviceapi::eCapture;
     use winapi::um::mmdeviceapi::eRender;
     use winapi::um::mmdeviceapi::IMMDeviceCollection;
+
+    use super::*;
 
     #[test]
     fn test_query_interface_valid() {

@@ -16,5 +16,4 @@ cfg_if::cfg_if! {
 }
 
 pub(crate) use platform::PlatformConnection;
-
 pub use platform::SystemStream;

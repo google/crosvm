@@ -12,10 +12,8 @@ pub use descriptor::AsRawDescriptors;
 pub use descriptor::FromRawDescriptor;
 pub use descriptor::IntoRawDescriptor;
 pub use descriptor::SafeDescriptor;
-pub use shm::SharedMemory;
-
 pub use memory_mapping::MemoryMapping;
-
+pub use shm::SharedMemory;
 pub use sys::platform::descriptor::RawDescriptor;
 pub use sys::platform::shm::round_up_to_page_size;
 

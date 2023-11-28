@@ -89,11 +89,10 @@ use self::process::*;
 use self::vcpu::*;
 use crate::crosvm::config::Executable;
 use crate::crosvm::config::HypervisorKind;
-use crate::Config;
-
 pub use crate::crosvm::plugin::config::parse_plugin_mount_option;
 pub use crate::crosvm::plugin::config::BindMount;
 pub use crate::crosvm::plugin::config::GidMap;
+use crate::Config;
 
 const MAX_DATAGRAM_SIZE: usize = 4096;
 const MAX_VCPU_DATAGRAM_SIZE: usize = 0x40000;

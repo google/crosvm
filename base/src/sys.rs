@@ -17,13 +17,10 @@ pub mod windows;
 pub mod platform {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub use super::linux::*;
-
     #[cfg(target_os = "macos")]
     pub use super::macos::*;
-
     #[cfg(unix)]
     pub use super::unix::*;
-
     #[cfg(windows)]
     pub use super::windows::*;
 }

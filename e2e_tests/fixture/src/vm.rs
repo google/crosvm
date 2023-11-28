@@ -18,6 +18,10 @@ use base::syslog;
 use base::test_utils::check_can_sudo;
 use crc32fast::hash;
 use delegate::wire_format::DelegateMessage;
+use delegate::wire_format::ExitStatus;
+use delegate::wire_format::GuestToHostMessage;
+use delegate::wire_format::HostToGuestMessage;
+use delegate::wire_format::ProgramExit;
 use log::Level;
 use prebuilts::download_file;
 use url::Url;
@@ -25,10 +29,6 @@ use url::Url;
 use crate::sys::SerialArgs;
 use crate::sys::TestVmSys;
 use crate::utils::run_with_timeout;
-use delegate::wire_format::ExitStatus;
-use delegate::wire_format::GuestToHostMessage;
-use delegate::wire_format::HostToGuestMessage;
-use delegate::wire_format::ProgramExit;
 
 const PREBUILT_URL: &str = "https://storage.googleapis.com/crosvm/integration_tests";
 

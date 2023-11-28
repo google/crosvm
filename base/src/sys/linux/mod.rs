@@ -62,7 +62,6 @@ use std::process::ExitStatus;
 use std::ptr;
 use std::time::Duration;
 
-pub use crate::sys::unix::descriptor::*;
 pub use acpi_event::*;
 pub use capabilities::drop_capabilities;
 pub use descriptor::*;
@@ -114,6 +113,7 @@ pub use crate::errno::Error;
 pub use crate::errno::Result;
 pub use crate::errno::*;
 use crate::round_up_to_page_size;
+pub use crate::sys::unix::descriptor::*;
 use crate::AsRawDescriptor;
 use crate::Pid;
 

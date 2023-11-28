@@ -865,12 +865,12 @@ impl<'a> MemoryMappingBuilder<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::VolatileMemory;
-    use crate::VolatileMemoryError;
     use tempfile::tempfile;
 
     use super::*;
     use crate::descriptor::Descriptor;
+    use crate::VolatileMemory;
+    use crate::VolatileMemoryError;
 
     #[test]
     fn basic_map() {

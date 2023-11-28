@@ -11,17 +11,14 @@ use std::io::Write;
 use std::sync::Arc;
 
 use crate::cross_domain::CrossDomain;
-
 #[cfg(feature = "gfxstream")]
 use crate::gfxstream::Gfxstream;
-
 use crate::rutabaga_2d::Rutabaga2D;
 use crate::rutabaga_os::MemoryMapping;
 use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_snapshot::RutabagaResourceSnapshot;
 use crate::rutabaga_snapshot::RutabagaSnapshot;
 use crate::rutabaga_utils::*;
-
 #[cfg(feature = "virgl_renderer")]
 use crate::virgl_renderer::VirglRenderer;
 
