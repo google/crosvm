@@ -85,6 +85,7 @@ impl DmaBuffer {
 }
 
 /// TransferBuffer is used for data transfer between crosvm and the host kernel
+#[derive(Clone)]
 pub enum TransferBuffer {
     Vector(Vec<u8>),
     Dma(Weak<Mutex<DmaBuffer>>),
@@ -131,7 +132,7 @@ pub struct TransferHandle {
     fd: std::sync::Weak<File>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum TransferStatus {
     Completed,
     Error,

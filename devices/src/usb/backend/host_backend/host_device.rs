@@ -31,7 +31,9 @@ use crate::usb::backend::endpoint::ControlEndpointState;
 use crate::usb::backend::endpoint::UsbEndpoint;
 use crate::usb::backend::error::Error;
 use crate::usb::backend::error::Result;
+use crate::usb::backend::transfer::BackendTransfer;
 use crate::usb::backend::transfer::BackendTransferHandle;
+use crate::usb::backend::transfer::BackendTransferType;
 use crate::usb::backend::transfer::ControlTransferState;
 use crate::usb::backend::transfer::GenericTransferHandle;
 use crate::usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
@@ -171,12 +173,18 @@ impl GenericTransferHandle for TransferHandle {
 }
 
 impl BackendDevice for HostDevice {
-    fn submit_backend_transfer(&mut self, transfer: Transfer) -> Result<BackendTransferHandle> {
-        self.device
-            .lock()
-            .submit_transfer(transfer)
-            .map_err(Error::CreateTransfer)
-            .map(BackendTransferHandle::new)
+    fn submit_backend_transfer(
+        &mut self,
+        transfer: BackendTransferType,
+    ) -> Result<BackendTransferHandle> {
+        match transfer {
+            BackendTransferType::HostDevice(transfer) => self
+                .device
+                .lock()
+                .submit_transfer(transfer)
+                .map_err(Error::CreateTransfer)
+                .map(BackendTransferHandle::new),
+        }
     }
 
     fn detach_event_handler(&self, event_loop: &Arc<EventLoop>) -> Result<()> {
@@ -190,6 +198,28 @@ impl BackendDevice for HostDevice {
             Ok(dmabuf) => TransferBuffer::Dma(dmabuf),
             Err(_) => TransferBuffer::Vector(vec![0u8; size]),
         }
+    }
+
+    fn build_bulk_transfer(
+        &mut self,
+        ep_addr: u8,
+        transfer_buffer: TransferBuffer,
+        stream_id: Option<u16>,
+    ) -> Result<BackendTransferType> {
+        Ok(BackendTransferType::HostDevice(
+            Transfer::new_bulk(ep_addr, transfer_buffer, stream_id)
+                .map_err(Error::CreateTransfer)?,
+        ))
+    }
+
+    fn build_interrupt_transfer(
+        &mut self,
+        ep_addr: u8,
+        transfer_buffer: TransferBuffer,
+    ) -> Result<BackendTransferType> {
+        Ok(BackendTransferType::HostDevice(
+            Transfer::new_interrupt(ep_addr, transfer_buffer).map_err(Error::CreateTransfer)?,
+        ))
     }
 
     fn get_control_transfer_state(&mut self) -> Arc<RwLock<ControlTransferState>> {
@@ -350,5 +380,23 @@ impl XhciBackendDevice for HostDevice {
             .lock()
             .free_streams(ep)
             .map_err(Error::FreeStreams)
+    }
+}
+
+impl BackendTransfer for Transfer {
+    fn status(&self) -> TransferStatus {
+        Transfer::status(self)
+    }
+
+    fn actual_length(&self) -> usize {
+        Transfer::actual_length(self)
+    }
+
+    fn buffer(&self) -> &TransferBuffer {
+        &self.buffer
+    }
+
+    fn set_callback<C: 'static + Fn(BackendTransferType) + Send + Sync>(&mut self, cb: C) {
+        Transfer::set_callback(self, move |t| cb(BackendTransferType::HostDevice(t)));
     }
 }

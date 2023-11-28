@@ -57,6 +57,8 @@ pub enum Error {
     GetInterfaceDescriptor(u8, u8),
     #[error("failed to get xhci transfer type: {0}")]
     GetXhciTransferType(XhciTransferError),
+    #[error("the backend received the wrong transfer request")]
+    MalformedBackendTransfer,
     #[error("request missing required data buffer")]
     MissingRequiredBuffer,
     #[error("failed to queue async job: {0}")]

@@ -7,7 +7,6 @@ use std::sync::Arc;
 use anyhow::Context;
 use base::error;
 use sync::Mutex;
-use usb_util::Transfer;
 use usb_util::TransferStatus;
 
 use crate::usb::backend::device::BackendDeviceType;
@@ -50,6 +49,13 @@ macro_rules! multi_dispatch {
             )+
         }
     };
+    ($self:ident, $enum:ident, $($types:ident )+, $func:ident, $param1:expr, $param2: expr, $param3: expr) => {
+        match $self {
+            $(
+                $enum::$types(device) => device.$func($param1, $param2, $param3),
+            )+
+        }
+    };
 }
 
 pub(crate) use multi_dispatch;
@@ -73,9 +79,8 @@ impl EventHandler for UsbUtilEventHandler {
 /// Helper function to update xhci_transfer state.
 pub fn update_transfer_state(
     xhci_transfer: &Arc<XhciTransfer>,
-    usb_transfer: &Transfer,
+    status: TransferStatus,
 ) -> Result<()> {
-    let status = usb_transfer.status();
     let mut state = xhci_transfer.state().lock();
 
     if status == TransferStatus::Cancelled {

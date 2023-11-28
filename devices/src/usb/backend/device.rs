@@ -30,7 +30,9 @@ use crate::usb::backend::endpoint::UsbEndpoint;
 use crate::usb::backend::error::Error;
 use crate::usb::backend::error::Result;
 use crate::usb::backend::host_backend::host_device::HostDevice;
+use crate::usb::backend::transfer::BackendTransfer;
 use crate::usb::backend::transfer::BackendTransferHandle;
+use crate::usb::backend::transfer::BackendTransferType;
 use crate::usb::backend::transfer::ControlTransferState;
 use crate::usb::backend::utils::multi_dispatch;
 use crate::usb::backend::utils::update_transfer_state;
@@ -57,7 +59,10 @@ impl AsRawDescriptor for BackendDeviceType {
 }
 
 impl BackendDevice for BackendDeviceType {
-    fn submit_backend_transfer(&mut self, transfer: Transfer) -> Result<BackendTransferHandle> {
+    fn submit_backend_transfer(
+        &mut self,
+        transfer: BackendTransferType,
+    ) -> Result<BackendTransferHandle> {
         multi_dispatch!(
             self,
             BackendDeviceType,
@@ -84,6 +89,38 @@ impl BackendDevice for BackendDeviceType {
             HostDevice,
             request_transfer_buffer,
             size
+        )
+    }
+
+    fn build_bulk_transfer(
+        &mut self,
+        ep_addr: u8,
+        transfer_buffer: TransferBuffer,
+        stream_id: Option<u16>,
+    ) -> Result<BackendTransferType> {
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            build_bulk_transfer,
+            ep_addr,
+            transfer_buffer,
+            stream_id
+        )
+    }
+
+    fn build_interrupt_transfer(
+        &mut self,
+        ep_addr: u8,
+        transfer_buffer: TransferBuffer,
+    ) -> Result<BackendTransferType> {
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice,
+            build_interrupt_transfer,
+            ep_addr,
+            transfer_buffer
         )
     }
 
@@ -412,13 +449,18 @@ impl BackendDeviceType {
             buffer
         };
 
-        let mut control_transfer = Transfer::new_control(TransferBuffer::Vector(control_buffer))
-            .map_err(Error::CreateTransfer)?;
+        // TODO(morg): this match can be abstracted once we have more backends
+        let mut control_transfer = match self {
+            BackendDeviceType::HostDevice(_) => BackendTransferType::HostDevice(
+                Transfer::new_control(TransferBuffer::Vector(control_buffer))
+                    .map_err(Error::CreateTransfer)?,
+            ),
+        };
 
         let tmp_transfer = xhci_transfer.clone();
-        let callback = move |t: Transfer| {
+        let callback = move |t: BackendTransferType| {
             usb_trace!("setup token control transfer callback");
-            update_transfer_state(&xhci_transfer, &t)?;
+            update_transfer_state(&xhci_transfer, t.status())?;
             let state = xhci_transfer.state().lock();
             match *state {
                 XhciTransferState::Cancelled => {
@@ -431,7 +473,7 @@ impl BackendDeviceType {
                     let status = t.status();
                     let actual_length = t.actual_length();
                     if direction == ControlRequestDataPhaseTransferDirection::DeviceToHost {
-                        match &t.buffer {
+                        match t.buffer() {
                             TransferBuffer::Vector(v) => {
                                 if let Some(control_request_data) =
                                     v.get(mem::size_of::<UsbRequestSetup>()..)
@@ -468,7 +510,7 @@ impl BackendDeviceType {
         };
 
         let fail_handle = self.get_device_state().write().unwrap().fail_handle.clone();
-        control_transfer.set_callback(move |t: Transfer| match callback(t) {
+        control_transfer.set_callback(move |t: BackendTransferType| match callback(t) {
             Ok(_) => {}
             Err(e) => {
                 error!("control transfer callback failed {:?}", e);
@@ -614,7 +656,7 @@ impl BackendDeviceType {
         fail_handle: Arc<dyn FailHandle>,
         job_queue: &Arc<AsyncJobQueue>,
         xhci_transfer: Arc<XhciTransfer>,
-        usb_transfer: Transfer,
+        usb_transfer: BackendTransferType,
     ) -> Result<()> {
         let transfer_status = {
             // We need to hold the lock to avoid race condition.
@@ -697,13 +739,30 @@ impl BackendDeviceType {
 /// to interact with concrete implementations
 pub trait BackendDevice: Sync + Send {
     /// Submits a transfer to the specific backend implementation.
-    fn submit_backend_transfer(&mut self, transfer: Transfer) -> Result<BackendTransferHandle>;
+    fn submit_backend_transfer(
+        &mut self,
+        transfer: BackendTransferType,
+    ) -> Result<BackendTransferHandle>;
     /// This is called by a generic backend provider when a USB detach message is received from the
     /// vm control socket. It detaches the backend device from the backend provider event loop.
     fn detach_event_handler(&self, event_loop: &Arc<EventLoop>) -> Result<()>;
     /// Gets a buffer used for data transfer between the host and this device. The buffer returned
     /// by this function must be consumed by `submit_backend_transfer()`.
     fn request_transfer_buffer(&mut self, size: usize) -> TransferBuffer;
+
+    /// Requests the backend to build a backend-specific bulk transfer request
+    fn build_bulk_transfer(
+        &mut self,
+        ep_addr: u8,
+        transfer_buffer: TransferBuffer,
+        stream_id: Option<u16>,
+    ) -> Result<BackendTransferType>;
+    /// Requests the backend to build a backend-specific interrupt transfer request
+    fn build_interrupt_transfer(
+        &mut self,
+        ep_addr: u8,
+        transfer_buffer: TransferBuffer,
+    ) -> Result<BackendTransferType>;
 
     /// Returns the `ControlTransferState` for the given backend device.
     fn get_control_transfer_state(&mut self) -> Arc<RwLock<ControlTransferState>>;
