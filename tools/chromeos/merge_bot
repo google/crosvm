@@ -33,6 +33,7 @@ git_log = git("log --decorate=no --color=never")
 curl = cmd("curl --silent --fail")
 chmod = cmd("chmod")
 dev_container = cmd("tools/dev_container")
+mkdir = cmd("mkdir -p")
 
 UPSTREAM_URL = "https://chromium.googlesource.com/crosvm/crosvm"
 CROS_URL = "https://chromium.googlesource.com/chromiumos/platform/crosvm"
@@ -166,7 +167,7 @@ def create_pgo_profile():
     tmpdirname = "target/pgotmp/" + "".join(
         random.choice(string.ascii_lowercase + string.digits) for _ in range(16)
     )
-    dev_container(f"mkdir -p /workspace/{tmpdirname}").fg()
+    mkdir(tmpdirname).fg()
     benchmark_list = list(
         map(
             lambda x: os.path.splitext(x)[0],
@@ -189,7 +190,7 @@ def create_pgo_profile():
         # Instrumented binary always give same file name to generated .profraw files, rename to avoid
         # overwriting profile from previous bench suite
         rename_files_to_random(tmpdirname)
-    dev_container("mkdir -p /workspace/profiles").fg()
+    mkdir("profiles").fg()
     dev_container(
         f"cargo profdata -- merge -o /workspace/profiles/benchmarks.profdata /workspace/{tmpdirname}"
     ).fg()
