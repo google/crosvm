@@ -263,17 +263,10 @@ impl<R: Req> Endpoint<R> {
     /// other file descriptor will be discard silently.
     pub fn recv_header(&self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
-        let (bytes, files) = self.0.recv_into_bufs(
-            &mut [IoSliceMut::new(hdr.as_bytes_mut())],
-            true, /* allow_fd */
-        )?;
-
-        if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
-            return Err(Error::PartialMessage);
-        } else if !hdr.is_valid() {
+        let files = self.recv_into_bufs_all(&mut [hdr.as_bytes_mut()])?;
+        if !hdr.is_valid() {
             return Err(Error::InvalidMessage);
         }
-
         Ok((hdr, files))
     }
 
@@ -320,13 +313,7 @@ impl<R: Req> Endpoint<R> {
     pub fn recv_message_with_payload<T: AsBytes + FromBytes + VhostUserMsgValidator>(
         &self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Vec<u8>, Option<Vec<File>>)> {
-        let mut hdr = VhostUserMsgHeader::default();
-        let mut slices = [hdr.as_bytes_mut()];
-        let files = self.recv_into_bufs_all(&mut slices)?;
-
-        if !hdr.is_valid() {
-            return Err(Error::InvalidMessage);
-        }
+        let (hdr, files) = self.recv_header()?;
 
         let mut body = T::new_zeroed();
         let payload_size = hdr.get_size() as usize - mem::size_of::<T>();
