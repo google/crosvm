@@ -14,9 +14,7 @@ from impl.common import (
     argh,
     chdir,
     cmd,
-    is_kiwi_repo,
     run_main,
-    parallel,
 )
 from impl.presubmit import Check, CheckContext, run_checks, Group
 
@@ -87,16 +85,10 @@ def check_markdown_format(context: CheckContext):
 
 def check_rust_format(context: CheckContext):
     "Runs rustfmt on all modified files."
-    if context.nightly_fmt:
-        rustfmt = cmd(
-            cmd("rustup +nightly which rustfmt"),
-            "--config imports_granularity=item,group_imports=StdExternalCrate",
-        )
-    else:
-        rustfmt = cmd(cmd("rustup which rustfmt"))
+    rustfmt = cmd(cmd("rustup +nightly which rustfmt").stdout())
     # Windows doesn't accept very long arguments: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa#:~:text=The%20maximum%20length%20of%20this%20string%20is%2032%2C767%20characters%2C%20including%20the%20Unicode%20terminating%20null%20character.%20If%20lpApplicationName%20is%20NULL%2C%20the%20module%20name%20portion%20of%20lpCommandLine%20is%20limited%20to%20MAX_PATH%20characters.
-    return parallel(
-        *rustfmt.with_color_flag()
+    return list(
+        rustfmt.with_color_flag()
         .with_args("--check" if not context.fix else "")
         .foreach(context.modified_files, batch_size=10)
     )
@@ -487,7 +479,6 @@ def get_check_names_in_group(group: Group) -> Generator[str, None, None]:
 @argh.arg("--fix", default=False, help="Asks checks to fix problems where possible.")
 @argh.arg("--no-delta", default=False, help="Run on all files instead of just modified files.")
 @argh.arg("--no-parallel", default=False, help="Do not run checks in parallel.")
-@argh.arg("--nightly-fmt", default=False, help="Use nightly rust for rustfmt")
 @argh.arg(
     "checks_or_groups",
     help="List of checks or groups to run. Defaults to run the `default` group.",
@@ -497,7 +488,6 @@ def main(
     fix: bool = False,
     no_delta: bool = False,
     no_parallel: bool = False,
-    nightly_fmt: bool = False,
     *checks_or_groups: str,
 ):
     chdir(CROSVM_ROOT)
@@ -530,7 +520,6 @@ def main(
         check_list,
         fix=fix,
         run_on_all_files=no_delta,
-        nightly_fmt=nightly_fmt,
         parallel=not no_parallel,
     )
 

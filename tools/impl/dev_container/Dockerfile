@@ -52,7 +52,10 @@ RUN --mount=type=cache,target=/var/cache/apt \
     && ./install-deps \
     && ./install-aarch64-deps \
     && ./install-armhf-deps \
-    && ./install-mingw64-deps
+    && ./install-mingw64-deps \
+    # We only use the nightly toolchain for rustfmt, remove other parts to save space.
+    && rustup component remove --toolchain nightly rust-std \
+    && rustup component remove --toolchain nightly cargo
 
 # Add wine64 to PATH, as debian removed alternative entry to wine64
 ENV PATH=/usr/lib/wine:$PATH

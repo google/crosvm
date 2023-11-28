@@ -26,13 +26,12 @@ from impl.common import (
 )
 
 
-def main(check: bool = False, nightly: bool = False):
+def main(check: bool = False):
     chdir(CROSVM_ROOT)
     cmd(
         Path(sys.executable),
         "./tools/presubmit format",
         "--fix" if not check else None,
-        "--nightly-fmt" if nightly else None,
     ).fg()
 
 

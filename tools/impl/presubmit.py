@@ -36,9 +36,6 @@ class CheckContext(object):
     # Whether or not --fix was set and checks should attempt to fix problems they encounter.
     fix: bool
 
-    # Use rust nightly version for rust checks
-    nightly_fmt: bool
-
     # All files that this check should cover (e.g. all python files on a python check).
     all_files: List[Path]
 
@@ -53,7 +50,7 @@ class Check(NamedTuple):
     "Metadata for each check, definining on which files it should run."
 
     # Function to call for this check
-    check_function: Callable[[CheckContext], Union[Command, ParallelCommands, None, List[Command]]]
+    check_function: Callable[[CheckContext], Union[Command, None, List[Command]]]
 
     custom_name: Optional[str] = None
 
@@ -160,9 +157,7 @@ class Task(object):
     This information can then be rendered from a separate thread via `Task.status_widget()`
     """
 
-    def __init__(
-        self, title: str, commands: Sequence[Union[Command, ParallelCommands]], priority: bool
-    ):
+    def __init__(self, title: str, commands: Sequence[Command], priority: bool):
         "Display title."
         self.title = title
         "Commands to execute."
@@ -224,33 +219,30 @@ class Task(object):
         try:
             self.start_time = datetime.now()
             success = True
-            for command in self.commands:
-                commands: List[Command] = []
-                if isinstance(command, Command):
-                    commands = [command]
-                else:
-                    commands = list(command.commands)
-                if verbose():
-                    for command in commands:
-                        self.log_lines.append(f"$ {command}")
-                processes = [
-                    command.popen(
-                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, errors="replace"
-                    )
-                    for command in commands
-                ]
-                # The stdout is collected before we wait for the processes to exit so that the UI is
-                # at least real-time for the first process. Note that in this way, the output for
-                # other processes other than the first process are not real-time. In addition, we
-                # can't proactively kill other processes in the same task if any process fails.
-                for process in processes:
-                    assert process.stdout
-                    for line in iter(process.stdout.readline, ""):
-                        self.log_lines.append(line.strip())
-                for process in processes:
-                    if process.wait() != 0:
-                        success = False
-                    break
+            if verbose():
+                for command in self.commands:
+                    self.log_lines.append(f"$ {command}")
+
+            # Spawn all commands as separate processes
+            processes = [
+                command.popen(stdout=subprocess.PIPE, stderr=subprocess.STDOUT, errors="replace")
+                for command in self.commands
+            ]
+
+            # The stdout is collected before we wait for the processes to exit so that the UI is
+            # at least real-time for the first process. Note that in this way, the output for
+            # other processes other than the first process are not real-time. In addition, we
+            # can't proactively kill other processes in the same task if any process fails.
+            for process in processes:
+                assert process.stdout
+                for line in iter(process.stdout.readline, ""):
+                    self.log_lines.append(line.strip())
+
+            # Wait for all processes to finish and check return code
+            for process in processes:
+                if process.wait() != 0:
+                    success = False
+
             self.duration = datetime.now() - self.start_time
             self.success = success
             self.done = True
@@ -337,7 +329,6 @@ def generate_plan(
     checks_list: List[Check],
     fix: bool,
     run_on_all_files: bool,
-    nightly_fmt: bool,
 ):
     "Generates a list of `Task`s to execute the checks provided in `checks_list`"
     all_files = [*all_tracked_files()]
@@ -347,7 +338,6 @@ def generate_plan(
         modified_files = all_files
     else:
         modified_files = [f for (s, f) in file_diff if s in ("M", "A")]
-
     tasks: List[Task] = []
     unsupported_checks: List[str] = []
     for check in checks_list:
@@ -355,7 +345,6 @@ def generate_plan(
             continue
         context = CheckContext(
             fix=fix,
-            nightly_fmt=nightly_fmt,
             all_files=[f for f in all_files if should_run_check_on_file(check, f)],
             modified_files=[f for f in modified_files if should_run_check_on_file(check, f)],
             new_files=[f for f in new_files if should_run_check_on_file(check, f)],
@@ -365,13 +354,9 @@ def generate_plan(
             if maybe_commands is None:
                 unsupported_checks.append(check.name)
                 continue
-            commands: Sequence[Union[Command, ParallelCommands]] = []
-            if isinstance(maybe_commands, list):
-                commands = maybe_commands
-            else:
-                commands = [maybe_commands]
+            commands_list = maybe_commands if isinstance(maybe_commands, list) else [maybe_commands]
             title = f"fixing {check.name}" if fix else check.name
-            tasks.append(Task(title, commands, check.priority))
+            tasks.append(Task(title, commands_list, check.priority))
 
     if unsupported_checks:
         console.print("[yellow]Warning:[/yellow] The following checks cannot be run:")
@@ -397,7 +382,6 @@ def run_checks(
     checks_list: List[Check],
     fix: bool,
     run_on_all_files: bool,
-    nightly_fmt: bool,
     parallel: bool,
 ):
     """
@@ -409,7 +393,7 @@ def run_checks(
         nightly_fmt: Use nightly version of rust tooling.
         parallel: Run tasks in parallel.
     """
-    tasks = generate_plan(checks_list, fix, run_on_all_files, nightly_fmt)
+    tasks = generate_plan(checks_list, fix, run_on_all_files)
     if len(tasks) == 1:
         parallel = False
 

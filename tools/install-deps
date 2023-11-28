@@ -16,7 +16,6 @@ sudo apt-get install --yes --no-install-recommends \
     gcc \
     git \
     jq \
-    libasound2-dev \
     libavcodec-dev \
     libavutil-dev \
     libcap-dev \
@@ -79,6 +78,9 @@ rustup component add llvm-tools-preview
 
 # Allow cross-compilation via mingw64
 rustup target add x86_64-pc-windows-gnu
+
+# Install nightly toolchain. Only used for rustfmt
+rustup toolchain install nightly --profile minimal --component rustfmt
 
 # Cargo extension to install binary packages from github
 curl -L https://github.com/cargo-bins/cargo-binstall/releases/download/v1.4.4/cargo-binstall-x86_64-unknown-linux-gnu.tgz | tar -xzvvf - -C ${CARGO_HOME:-~/.cargo}/bin
