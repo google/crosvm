@@ -386,8 +386,8 @@ mod tests {
             .unwrap();
         assert_eq!(len, 4);
 
-        let buf4 = slave.recv_data(2).unwrap();
-        assert_eq!(buf4.len(), 2);
+        let mut buf4 = vec![0u8; 2];
+        slave.recv_into_bufs_all(&mut [&mut buf4[..]]).unwrap();
         assert_eq!(&buf1[..2], &buf4[..]);
         let (bytes, buf2, files) = slave.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
@@ -451,8 +451,9 @@ mod tests {
             .unwrap();
         assert_eq!(len, 4);
 
-        let v = slave.recv_data(5).unwrap();
-        assert_eq!(v.len(), 5);
+        let mut v = vec![0u8; 5];
+        slave.recv_into_bufs_all(&mut [&mut v[..]]).unwrap();
+        assert_eq!(&v[..], &[1, 2, 3, 4, 1]);
 
         let (bytes, _, files) = slave.recv_into_buf(0x4).unwrap();
         assert_eq!(bytes, 3);

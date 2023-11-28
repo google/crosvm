@@ -240,19 +240,6 @@ impl<R: Req> Endpoint<R> {
         Ok(())
     }
 
-    /// Reads `len` bytes at most.
-    ///
-    /// # Return:
-    /// * - (number of bytes received, buf) on success
-    pub fn recv_data(&self, len: usize) -> Result<Vec<u8>> {
-        let mut buf = vec![0u8; len];
-        let (data_len, _) = self
-            .0
-            .recv_into_bufs(&mut [IoSliceMut::new(&mut buf)], false /* allow_fd */)?;
-        buf.truncate(data_len);
-        Ok(buf)
-    }
-
     /// Reads all bytes into the given scatter/gather vectors with optional attached files. Will
     /// loop until all data has been transfered and errors if EOF is reached before then.
     ///
