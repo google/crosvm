@@ -12,8 +12,6 @@ edition = "2021"
 
 [features]
 default = []
-vmm = []
-device = []
 
 [dependencies]
 anyhow = "*"

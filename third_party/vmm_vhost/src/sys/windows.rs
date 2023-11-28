@@ -8,10 +8,4 @@ use base::Tube;
 /// Alias to enable platform independent code.
 pub type SystemStream = Tube;
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "device")] {
-        use crate::connection::TubeEndpoint;
-
-        pub(crate) type PlatformEndpoint<R> = TubeEndpoint<R>;
-    }
-}
+pub(crate) use crate::connection::TubeEndpoint as PlatformEndpoint;

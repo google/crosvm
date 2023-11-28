@@ -3,7 +3,7 @@
 
 //! Windows specific code that keeps rest of the code in the crate platform independent.
 
-#[cfg(all(test, feature = "vmm"))]
+#[cfg(test)]
 pub(crate) mod tests {
     use crate::master::Master;
     use crate::message::MasterReq;
@@ -18,7 +18,6 @@ pub(crate) mod tests {
         (master, Endpoint::from(slave_tube))
     }
 
-    #[cfg(feature = "device")]
     pub(crate) fn create_master_slave_pair<S>(backend: S) -> (Master, SlaveReqHandler<S>)
     where
         S: VhostUserSlaveReqHandler,

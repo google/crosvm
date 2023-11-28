@@ -469,10 +469,8 @@ pub(crate) mod tests {
     use super::*;
     cfg_if::cfg_if! {
         if #[cfg(any(target_os = "android", target_os = "linux"))] {
-            #[cfg(feature = "vmm")]
             pub(crate) use super::linux::tests::*;
         } else if #[cfg(windows)] {
-            #[cfg(feature = "vmm")]
             pub(crate) use windows::tests::*;
         }
     }

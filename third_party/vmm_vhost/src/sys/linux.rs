@@ -13,11 +13,7 @@ pub type SystemListener = UnixListener;
 /// Alias to enable platform independent code.
 pub type SystemStream = UnixStream;
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "device")] {
-        pub(crate) use crate::connection::socket::SocketEndpoint as PlatformEndpoint;
-    }
-}
+pub(crate) use crate::connection::socket::SocketEndpoint as PlatformEndpoint;
 
 /// Collection of platform-specific methods that  SystemListener  provides.
 pub(crate) trait SystemListenerExt {

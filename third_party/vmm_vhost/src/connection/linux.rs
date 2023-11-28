@@ -3,7 +3,7 @@
 
 //! Unix specific code that keeps rest of the code in the crate platform independent.
 
-#[cfg(all(test, feature = "vmm"))]
+#[cfg(test)]
 pub(crate) mod tests {
     use tempfile::Builder;
     use tempfile::TempDir;
@@ -31,7 +31,6 @@ pub(crate) mod tests {
         (master, slave)
     }
 
-    #[cfg(feature = "device")]
     pub(crate) fn create_master_slave_pair<S>(backend: S) -> (Master, SlaveReqHandler<S>)
     where
         S: VhostUserSlaveReqHandler,

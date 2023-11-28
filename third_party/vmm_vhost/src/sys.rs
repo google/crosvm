@@ -15,10 +15,6 @@ cfg_if::cfg_if! {
     }
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "device")] {
-        pub(crate) use platform::PlatformEndpoint;
-    }
-}
+pub(crate) use platform::PlatformEndpoint;
 
 pub use platform::SystemStream;
