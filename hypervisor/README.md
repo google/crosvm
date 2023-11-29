@@ -47,4 +47,5 @@ The hypervisors in this section are used as backends of the
 
 - Platforms: Linux, aarch64 only
 - Tested upstream: no
-- Contacts: fmayle@google.com, smoreland@google.com
+- Contacts: quic_eberman@quicinc.com, quic_mnalajal@quicinc.com, fmayle@google.com,
+  smoreland@google.com
