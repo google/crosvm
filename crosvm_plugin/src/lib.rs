@@ -19,8 +19,6 @@
 
 use std::env;
 use std::fs::File;
-use std::io::IoSlice;
-use std::io::IoSliceMut;
 use std::io::Read;
 use std::io::Write;
 use std::mem::size_of;
@@ -318,7 +316,7 @@ impl crosvm {
             .write_to_vec(&mut self.request_buffer)
             .map_err(proto_error_to_int)?;
         self.socket
-            .send_with_fds(&[IoSlice::new(self.request_buffer.as_slice())], fds)
+            .send_with_fds(&self.request_buffer, fds)
             // raw_os_error is expected to be `Some` because it is constructed via
             // `std::io::Error::last_os_error()`.
             .map_err(|e| -e.raw_os_error().unwrap_or(EINVAL))?;
@@ -327,7 +325,7 @@ impl crosvm {
         let (msg_size, fd_count) = self
             .socket
             .recv_with_fds(
-                IoSliceMut::new(&mut self.response_buffer),
+                &mut self.response_buffer,
                 &mut datagram_fds,
             )
             // raw_os_error is expected to be `Some` because it is constructed via

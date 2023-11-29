@@ -150,7 +150,9 @@ impl SocketPlatformConnection {
             Some(rfds) => rfds,
             _ => &[],
         };
-        self.sock.send_bufs_with_fds(iovs, rfds).map_err(Into::into)
+        self.sock
+            .send_vectored_with_fds(iovs, rfds)
+            .map_err(Into::into)
     }
 
     /// Reads bytes from the socket into the given scatter/gather vectors with optional attached
@@ -182,7 +184,7 @@ impl SocketPlatformConnection {
         } else {
             vec![]
         };
-        let (bytes, fds) = self.sock.recv_iovecs_with_fds(bufs, &mut fd_array)?;
+        let (bytes, fds) = self.sock.recv_vectored_with_fds(bufs, &mut fd_array)?;
 
         // 0-bytes indicates that the connection is closed.
         if bytes == 0 {

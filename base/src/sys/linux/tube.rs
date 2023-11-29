@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::IoSlice;
-use std::io::IoSliceMut;
 use std::os::unix::prelude::AsRawFd;
 use std::os::unix::prelude::RawFd;
 use std::time::Duration;
@@ -92,10 +90,8 @@ impl Tube {
             return Err(Error::SendTooManyFds);
         }
 
-        handle_eintr!(self
-            .socket
-            .send_with_fds(&[IoSlice::new(&msg_json)], &msg_descriptors))
-        .map_err(Error::Send)?;
+        handle_eintr!(self.socket.send_with_fds(&msg_json, &msg_descriptors))
+            .map_err(Error::Send)?;
         Ok(())
     }
 
@@ -110,7 +106,7 @@ impl Tube {
 
         let (msg_json_size, descriptor_size) = handle_eintr!(self
             .socket
-            .recv_with_fds(IoSliceMut::new(&mut msg_json), &mut msg_descriptors_full))
+            .recv_with_fds(&mut msg_json, &mut msg_descriptors_full))
         .map_err(Error::Recv)?;
 
         if msg_json_size == 0 {
@@ -153,8 +149,7 @@ impl Tube {
         let bytes = msg.write_to_bytes().map_err(Error::Proto)?;
         let no_fds: [RawFd; 0] = [];
 
-        handle_eintr!(self.socket.send_with_fds(&[IoSlice::new(&bytes)], &no_fds))
-            .map_err(Error::Send)?;
+        handle_eintr!(self.socket.send_with_fds(&bytes, &no_fds)).map_err(Error::Send)?;
 
         Ok(())
     }
@@ -167,7 +162,7 @@ impl Tube {
 
         let (msg_bytes_size, _) = handle_eintr!(self
             .socket
-            .recv_with_fds(IoSliceMut::new(&mut msg_bytes), &mut msg_descriptors_full))
+            .recv_with_fds(&mut msg_bytes, &mut msg_descriptors_full))
         .map_err(Error::Recv)?;
 
         if msg_bytes_size == 0 {

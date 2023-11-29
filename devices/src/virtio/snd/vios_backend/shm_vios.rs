@@ -7,7 +7,6 @@ use std::collections::VecDeque;
 use std::fs::File;
 use std::io::Error as IOError;
 use std::io::ErrorKind as IOErrorKind;
-use std::io::IoSliceMut;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::os::unix::io::RawFd;
@@ -179,7 +178,7 @@ impl VioSClient {
         const NUM_FDS: usize = 5;
         fds.resize(NUM_FDS, 0);
         let (recv_size, fd_count) = client_socket
-            .recv_with_fds(IoSliceMut::new(config.as_bytes_mut()), &mut fds)
+            .recv_with_fds(config.as_bytes_mut(), &mut fds)
             .map_err(Error::ServerError)?;
 
         // Resize the vector to the actual number of file descriptors received and wrap them in

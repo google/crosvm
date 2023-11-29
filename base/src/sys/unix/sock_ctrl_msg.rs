@@ -120,11 +120,9 @@ impl CmsgBuffer {
 // Musl requires a try_into when assigning to msg_iovlen and msg_controllen
 // that is unnecessary when compiling for glibc.
 #[allow(clippy::useless_conversion)]
-fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> io::Result<usize> {
+fn raw_sendmsg(fd: RawFd, iovec: &[iovec], out_fds: &[RawFd]) -> io::Result<usize> {
     let cmsg_capacity = CMSG_SPACE(size_of_val(out_fds));
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
-
-    let iovec = AsIobuf::as_iobuf_slice(out_data);
 
     // msghdr on musl has private __pad1 and __pad2 fields that cannot be initialized.
     // Safe because msghdr only contains primitive types for which zero
@@ -171,11 +169,7 @@ fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> io::
 // Musl requires a try_into when assigning to msg_iovlen, msg_controllen and
 // cmsg_len that is unnecessary when compiling for glibc.
 #[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
-fn raw_recvmsg(
-    fd: RawFd,
-    iovs: &mut [IoSliceMut],
-    in_fds: &mut [RawFd],
-) -> io::Result<(usize, usize)> {
+fn raw_recvmsg(fd: RawFd, iovs: &mut [iovec], in_fds: &mut [RawFd]) -> io::Result<(usize, usize)> {
     let cmsg_capacity = CMSG_SPACE(size_of_val(in_fds));
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
@@ -242,20 +236,6 @@ pub struct ScmSocket<T: AsRawDescriptor> {
 }
 
 impl<T: AsRawDescriptor> ScmSocket<T> {
-    /// Sends the given data and file descriptor over the socket.
-    ///
-    /// On success, returns the number of bytes sent.
-    ///
-    /// The error is constructed via `std::io::Error::last_os_error()`.
-    ///
-    /// # Arguments
-    ///
-    /// * `buf` - A buffer of data to send on the `socket`.
-    /// * `fd` - A file descriptors to be sent.
-    pub fn send_with_fd<D: AsIobuf>(&self, buf: &[D], fd: RawFd) -> io::Result<usize> {
-        self.send_with_fds(buf, &[fd])
-    }
-
     /// Sends the given data and file descriptors over the socket.
     ///
     /// On success, returns the number of bytes sent.
@@ -266,22 +246,8 @@ impl<T: AsRawDescriptor> ScmSocket<T> {
     ///
     /// * `buf` - A buffer of data to send on the `socket`.
     /// * `fds` - A list of file descriptors to be sent.
-    pub fn send_with_fds<D: AsIobuf>(&self, buf: &[D], fd: &[RawFd]) -> io::Result<usize> {
-        raw_sendmsg(self.socket.as_raw_descriptor(), buf, fd)
-    }
-
-    /// Sends the given data and file descriptor over the socket.
-    ///
-    /// On success, returns the number of bytes sent.
-    ///
-    /// The error is constructed via `std::io::Error::last_os_error()`.
-    ///
-    /// # Arguments
-    ///
-    /// * `bufs` - A slice of slices of data to send on the `socket`.
-    /// * `fd` - A file descriptors to be sent.
-    pub fn send_bufs_with_fd(&self, bufs: &[IoSlice], fd: RawFd) -> io::Result<usize> {
-        self.send_bufs_with_fds(bufs, &[fd])
+    pub fn send_with_fds(&self, buf: &[u8], fds: &[RawFd]) -> io::Result<usize> {
+        self.send_vectored_with_fds(&[IoSlice::new(buf)], fds)
     }
 
     /// Sends the given data and file descriptors over the socket.
@@ -292,10 +258,64 @@ impl<T: AsRawDescriptor> ScmSocket<T> {
     ///
     /// # Arguments
     ///
-    /// * `bufs` - A slice of slices of data to send on the `socket`.
+    /// * `bufs` - A slice of buffers of data to send on the `socket`.
     /// * `fds` - A list of file descriptors to be sent.
-    pub fn send_bufs_with_fds(&self, bufs: &[IoSlice], fd: &[RawFd]) -> io::Result<usize> {
-        raw_sendmsg(self.socket.as_raw_descriptor(), bufs, fd)
+    pub fn send_vectored_with_fds(
+        &self,
+        bufs: &[impl AsIobuf],
+        fds: &[RawFd],
+    ) -> io::Result<usize> {
+        raw_sendmsg(
+            self.socket.as_raw_descriptor(),
+            AsIobuf::as_iobuf_slice(bufs),
+            fds,
+        )
+    }
+
+    /// Receives data and file descriptors from the socket.
+    ///
+    /// On success, returns the number of bytes and file descriptors received as a tuple
+    /// `(bytes count, files count)`.
+    ///
+    /// The error is constructed via `std::io::Error::last_os_error()`.
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - A buffer to store received data.
+    /// * `fds` - A slice of `RawFd`s to put the received file descriptors into. On success, the
+    ///           number of valid file descriptors is indicated by the second element of the
+    ///           returned tuple. The caller owns these file descriptors, but they will not be
+    ///           closed on drop like a `File`-like type would be. It is recommended that each valid
+    ///           file descriptor gets wrapped in a drop type that closes it after this returns.
+    pub fn recv_with_fds(&self, buf: &mut [u8], fds: &mut [RawFd]) -> io::Result<(usize, usize)> {
+        self.recv_vectored_with_fds(&mut [IoSliceMut::new(buf)], fds)
+    }
+
+    /// Receives data and file descriptors from the socket.
+    ///
+    /// On success, returns the number of bytes and file descriptors received as a tuple
+    /// `(bytes count, files count)`.
+    ///
+    /// The error is constructed via `std::io::Error::last_os_error()`.
+    ///
+    /// # Arguments
+    ///
+    /// * `bufs` - A slice of buffers to store received data.
+    /// * `fds` - A slice of `RawFd`s to put the received file descriptors into. On success, the
+    ///           number of valid file descriptors is indicated by the second element of the
+    ///           returned tuple. The caller owns these file descriptors, but they will not be
+    ///           closed on drop like a `File`-like type would be. It is recommended that each valid
+    ///           file descriptor gets wrapped in a drop type that closes it after this returns.
+    pub fn recv_vectored_with_fds(
+        &self,
+        bufs: &mut [IoSliceMut],
+        fds: &mut [RawFd],
+    ) -> io::Result<(usize, usize)> {
+        raw_recvmsg(
+            self.socket.as_raw_descriptor(),
+            IoSliceMut::as_iobuf_mut_slice(bufs),
+            fds,
+        )
     }
 
     /// Receives data and potentially a file descriptor from the socket.
@@ -307,7 +327,7 @@ impl<T: AsRawDescriptor> ScmSocket<T> {
     /// # Arguments
     ///
     /// * `buf` - A buffer to receive data from the socket.vm
-    pub fn recv_with_fd(&self, buf: IoSliceMut) -> io::Result<(usize, Option<File>)> {
+    pub fn recv_with_file(&self, buf: &mut [u8]) -> io::Result<(usize, Option<File>)> {
         let mut fd = [0];
         let (read_count, fd_count) = self.recv_with_fds(buf, &mut fd)?;
         let file = if fd_count == 0 {
@@ -318,51 +338,6 @@ impl<T: AsRawDescriptor> ScmSocket<T> {
             Some(unsafe { File::from_raw_fd(fd[0]) })
         };
         Ok((read_count, file))
-    }
-
-    /// Receives data and file descriptors from the socket.
-    ///
-    /// On success, returns the number of bytes and file descriptors received as a tuple
-    /// `(bytes count, files count)`.
-    ///
-    /// The error is constructed via `std::io::Error::last_os_error()`.
-    ///
-    /// # Arguments
-    ///
-    /// * `buf` - A buffer to receive data from the socket.
-    /// * `fds` - A slice of `RawFd`s to put the received file descriptors into. On success, the
-    ///           number of valid file descriptors is indicated by the second element of the
-    ///           returned tuple. The caller owns these file descriptors, but they will not be
-    ///           closed on drop like a `File`-like type would be. It is recommended that each valid
-    ///           file descriptor gets wrapped in a drop type that closes it after this returns.
-    pub fn recv_with_fds(&self, buf: IoSliceMut, fds: &mut [RawFd]) -> io::Result<(usize, usize)> {
-        raw_recvmsg(self.socket.as_raw_descriptor(), &mut [buf], fds)
-    }
-
-    /// Receives data and file descriptors from the socket.
-    ///
-    /// On success, returns the number of bytes and file descriptors received as a tuple
-    /// `(bytes count, files count)`.
-    ///
-    /// The error is constructed via `std::io::Error::last_os_error()`.
-    ///
-    /// # Arguments
-    ///
-    /// * `iovecs` - A slice of buffers to store received data.
-    /// * `offset` - An offset for `bufs`. The first `offset` bytes in `bufs` won't be touched.
-    ///              Returns an error if `offset` is larger than or equal to the total size of
-    ///              `bufs`.
-    /// * `fds` - A slice of `RawFd`s to put the received file descriptors into. On success, the
-    ///           number of valid file descriptors is indicated by the second element of the
-    ///           returned tuple. The caller owns these file descriptors, but they will not be
-    ///           closed on drop like a `File`-like type would be. It is recommended that each valid
-    ///           file descriptor gets wrapped in a drop type that closes it after this returns.
-    pub fn recv_iovecs_with_fds(
-        &self,
-        iovecs: &mut [IoSliceMut],
-        fds: &mut [RawFd],
-    ) -> io::Result<(usize, usize)> {
-        raw_recvmsg(self.socket.as_raw_descriptor(), iovecs, fds)
     }
 
     /// Returns a reference to the wrapped instance.
@@ -506,9 +481,8 @@ mod tests {
         );
 
         let send_buf = [1u8, 1, 2, 21, 34, 55];
-        let ioslice = IoSlice::new(&send_buf);
         let write_count = s1
-            .send_with_fds(&[ioslice], &[])
+            .send_with_fds(&send_buf, &[])
             .expect("failed to send data");
 
         assert_eq!(write_count, 6);
@@ -516,7 +490,7 @@ mod tests {
         let mut buf = [0; 6];
         let mut files = [0; 1];
         let (read_count, file_count) = s2
-            .recv_with_fds(IoSliceMut::new(&mut buf), &mut files)
+            .recv_with_fds(&mut buf, &mut files)
             .expect("failed to recv data");
 
         assert_eq!(read_count, 6);
@@ -524,12 +498,12 @@ mod tests {
         assert_eq!(buf, [1, 1, 2, 21, 34, 55]);
 
         let write_count = s1
-            .send_bufs_with_fds(&[IoSlice::new(&send_buf[..])], &[])
+            .send_with_fds(&send_buf, &[])
             .expect("failed to send data");
 
         assert_eq!(write_count, 6);
         let (read_count, file_count) = s2
-            .recv_with_fds(IoSliceMut::new(&mut buf), &mut files)
+            .recv_with_fds(&mut buf, &mut files)
             .expect("failed to recv data");
 
         assert_eq!(read_count, 6);
@@ -546,17 +520,14 @@ mod tests {
         );
 
         let evt = Event::new().expect("failed to create event");
-        let ioslice = IoSlice::new([].as_ref());
         let write_count = s1
-            .send_with_fd(&[ioslice], evt.as_raw_descriptor())
+            .send_with_fds(&[], &[evt.as_raw_descriptor()])
             .expect("failed to send fd");
 
         assert_eq!(write_count, 0);
 
         let mut buf = [];
-        let (read_count, file_opt) = s2
-            .recv_with_fd(IoSliceMut::new(&mut buf))
-            .expect("failed to recv fd");
+        let (read_count, file_opt) = s2.recv_with_file(&mut buf).expect("failed to recv fd");
 
         let mut file = file_opt.unwrap();
 
@@ -581,9 +552,8 @@ mod tests {
         );
 
         let evt = Event::new().expect("failed to create event");
-        let ioslice = IoSlice::new([237].as_ref());
         let write_count = s1
-            .send_with_fds(&[ioslice], &[evt.as_raw_descriptor()])
+            .send_with_fds(&[237], &[evt.as_raw_descriptor()])
             .expect("failed to send fd");
 
         assert_eq!(write_count, 1);
@@ -591,7 +561,7 @@ mod tests {
         let mut files = [0; 2];
         let mut buf = [0u8];
         let (read_count, file_count) = s2
-            .recv_with_fds(IoSliceMut::new(&mut buf), &mut files)
+            .recv_with_fds(&mut buf, &mut files)
             .expect("failed to recv fd");
 
         assert_eq!(read_count, 1);

@@ -7,8 +7,6 @@ use std::collections::hash_map::HashMap;
 use std::collections::hash_map::VacantEntry;
 use std::env::set_var;
 use std::fs::File;
-use std::io::IoSlice;
-use std::io::IoSliceMut;
 use std::io::Write;
 use std::mem::transmute;
 use std::os::unix::net::UnixDatagram;
@@ -548,7 +546,7 @@ impl Process {
         taps: &[Tap],
     ) -> result::Result<(), CommError> {
         let (msg_size, request_file) = self.request_sockets[index]
-            .recv_with_fd(IoSliceMut::new(&mut self.request_buffer))
+            .recv_with_file(&mut self.request_buffer)
             .map_err(io_to_sys_err)
             .map_err(CommError::PluginSocketRecv)?;
 
@@ -779,7 +777,7 @@ impl Process {
             .map_err(CommError::EncodeResponse)?;
         assert_ne!(self.response_buffer.len(), 0);
         self.request_sockets[index]
-            .send_with_fds(&[IoSlice::new(&self.response_buffer[..])], &response_fds)
+            .send_with_fds(&self.response_buffer, &response_fds)
             .map_err(io_to_sys_err)
             .map_err(CommError::PluginSocketSend)?;
 
