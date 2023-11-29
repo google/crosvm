@@ -10,7 +10,6 @@ use nix::sys::mman::munmap;
 use nix::sys::mman::MapFlags;
 use nix::sys::mman::ProtFlags;
 
-use crate::rutabaga_os::descriptor::AsRawDescriptor;
 use crate::rutabaga_os::descriptor::SafeDescriptor;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaResult;
@@ -59,7 +58,7 @@ impl MemoryMapping {
                     non_zero_size,
                     prot,
                     MapFlags::MAP_SHARED,
-                    descriptor.as_raw_descriptor(),
+                    Some(descriptor),
                     0,
                 )?
             };

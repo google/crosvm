@@ -8,7 +8,6 @@ use std::io::IoSliceMut;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::os::unix::io::AsRawFd;
-use std::os::unix::io::FromRawFd;
 use std::os::unix::prelude::AsFd;
 
 use libc::O_ACCMODE;
@@ -160,8 +159,8 @@ impl CrossDomainContext {
         )?;
 
         let unix_addr = UnixAddr::new(base_channel)?;
-        connect(socket_fd, &unix_addr)?;
-        let stream = unsafe { File::from_raw_fd(socket_fd) };
+        connect(socket_fd.as_raw_fd(), &unix_addr)?;
+        let stream = socket_fd.into();
         Ok(Some(stream))
     }
 
@@ -277,7 +276,7 @@ pub fn write_volatile(file: &File, opaque_data: &[u8]) -> RutabagaResult<()> {
 }
 
 pub fn channel() -> RutabagaResult<(Sender, Receiver)> {
-    let sender = unsafe { File::from_raw_fd(eventfd(0, EfdFlags::empty())?) };
+    let sender: File = eventfd(0, EfdFlags::empty())?.into();
     let receiver = sender.try_clone()?;
     Ok((sender, receiver))
 }
