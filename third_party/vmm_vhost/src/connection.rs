@@ -90,7 +90,8 @@ fn advance_slices_mut(bufs: &mut &mut [&mut [u8]], mut count: usize) {
 /// Builds on top of `PlatformConnection`, which provides methods for sending and receiving raw
 /// bytes and file descriptors (a thin cross-platform abstraction for unix domain sockets).
 pub struct Connection<R: Req>(
-    pub(crate) PlatformConnection<R>,
+    pub(crate) PlatformConnection,
+    std::marker::PhantomData<R>,
     // Mark `Connection` as `!Sync` because message sends and recvs cannot safely be done
     // concurrently.
     std::marker::PhantomData<std::cell::Cell<()>>,
@@ -98,7 +99,11 @@ pub struct Connection<R: Req>(
 
 impl<R: Req> From<SystemStream> for Connection<R> {
     fn from(sock: SystemStream) -> Self {
-        Self(PlatformConnection::from(sock), std::marker::PhantomData)
+        Self(
+            PlatformConnection::from(sock),
+            std::marker::PhantomData,
+            std::marker::PhantomData,
+        )
     }
 }
 
@@ -107,6 +112,7 @@ impl<R: Req> Connection<R> {
     pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
         Ok(Self(
             PlatformConnection::connect(path)?,
+            std::marker::PhantomData,
             std::marker::PhantomData,
         ))
     }

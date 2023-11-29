@@ -8,7 +8,6 @@ use std::fs::File;
 use std::io::ErrorKind;
 use std::io::IoSlice;
 use std::io::IoSliceMut;
-use std::marker::PhantomData;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -19,7 +18,6 @@ use base::SafeDescriptor;
 use base::ScmSocket;
 
 use crate::connection::Listener;
-use crate::connection::Req;
 use crate::message::*;
 use crate::unix::SystemListener;
 use crate::Connection;
@@ -115,22 +113,20 @@ impl AsRawDescriptor for SocketListener {
 }
 
 /// Unix domain socket based vhost-user connection.
-pub struct SocketPlatformConnection<R: Req> {
+pub struct SocketPlatformConnection {
     sock: ScmSocket<SystemStream>,
-    _r: PhantomData<R>,
 }
 
 // TODO: Switch to TryFrom to avoid the unwrap.
-impl<R: Req> From<SystemStream> for SocketPlatformConnection<R> {
+impl From<SystemStream> for SocketPlatformConnection {
     fn from(sock: SystemStream) -> Self {
         Self {
             sock: sock.try_into().unwrap(),
-            _r: PhantomData,
         }
     }
 }
 
-impl<R: Req> SocketPlatformConnection<R> {
+impl SocketPlatformConnection {
     /// Create a new stream by connecting to server at `str`.
     ///
     /// # Return:
@@ -212,13 +208,13 @@ impl<R: Req> SocketPlatformConnection<R> {
     }
 }
 
-impl<T: Req> AsRawDescriptor for SocketPlatformConnection<T> {
+impl AsRawDescriptor for SocketPlatformConnection {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.sock.as_raw_descriptor()
     }
 }
 
-impl<T: Req> AsMut<SystemStream> for SocketPlatformConnection<T> {
+impl AsMut<SystemStream> for SocketPlatformConnection {
     fn as_mut(&mut self) -> &mut SystemStream {
         self.sock.inner_mut()
     }

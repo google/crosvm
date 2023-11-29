@@ -8,7 +8,6 @@ use std::cmp::min;
 use std::fs::File;
 use std::io::IoSlice;
 use std::io::IoSliceMut;
-use std::marker::PhantomData;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
 
@@ -21,7 +20,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use tube_transporter::packed_tube;
 
-use crate::connection::Req;
 use crate::Error;
 use crate::Result;
 use crate::SystemStream;
@@ -39,27 +37,23 @@ struct Message {
 }
 
 /// Tube based vhost-user connection.
-pub struct TubePlatformConnection<R: Req> {
+pub struct TubePlatformConnection {
     tube: Tube,
-    _r: PhantomData<R>,
 }
 
-impl<R: Req> TubePlatformConnection<R> {
+impl TubePlatformConnection {
     pub(crate) fn get_tube(&self) -> &Tube {
         &self.tube
     }
 }
 
-impl<R: Req> From<Tube> for TubePlatformConnection<R> {
+impl From<Tube> for TubePlatformConnection {
     fn from(tube: Tube) -> Self {
-        Self {
-            tube,
-            _r: PhantomData,
-        }
+        Self { tube }
     }
 }
 
-impl<R: Req> TubePlatformConnection<R> {
+impl TubePlatformConnection {
     pub fn connect<P: AsRef<Path>>(_path: P) -> Result<Self> {
         unimplemented!("connections not supported on Tubes")
     }
@@ -167,7 +161,7 @@ pub unsafe fn to_system_stream(fd: SafeDescriptor) -> Result<SystemStream> {
     Ok(tube)
 }
 
-impl<R: Req> AsRawDescriptor for TubePlatformConnection<R> {
+impl AsRawDescriptor for TubePlatformConnection {
     /// WARNING: this function does not return a waitable descriptor! Use base::ReadNotifier
     /// instead.
     fn as_raw_descriptor(&self) -> RawDescriptor {
