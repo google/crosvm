@@ -15,17 +15,16 @@ use std::ptr::copy_nonoverlapping;
 use base::AsRawDescriptor;
 use base::FromRawDescriptor;
 use base::RawDescriptor;
+use base::SafeDescriptor;
 use base::Tube;
 use serde::Deserialize;
 use serde::Serialize;
 use tube_transporter::packed_tube;
 
 use crate::connection::Req;
-use crate::message::SlaveReq;
-use crate::take_single_file;
-use crate::Connection;
 use crate::Error;
 use crate::Result;
+use crate::SystemStream;
 
 #[derive(Serialize, Deserialize)]
 struct RawDescriptorContainer {
@@ -155,16 +154,17 @@ impl<R: Req> TubePlatformConnection<R> {
 
         Ok((bytes_read, files))
     }
+}
 
-    pub fn create_slave_request_connection(
-        &mut self,
-        files: Option<Vec<File>>,
-    ) -> Result<Connection<SlaveReq>> {
-        let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
-        // Safe because the file represents a packed tube.
-        let tube = unsafe { packed_tube::unpack(file.into()).expect("unpacked Tube") };
-        Ok(Connection::from(tube))
-    }
+/// Convert a`SafeDescriptor` to a `Tube`.
+///
+/// # Safety
+///
+/// `fd` must represent a packed tube.
+pub unsafe fn to_system_stream(fd: SafeDescriptor) -> Result<SystemStream> {
+    // SAFETY: Safe because the file represents a packed tube.
+    let tube = unsafe { packed_tube::unpack(fd).expect("unpacked Tube") };
+    Ok(tube)
 }
 
 impl<R: Req> AsRawDescriptor for TubePlatformConnection<R> {

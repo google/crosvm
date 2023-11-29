@@ -12,6 +12,7 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::Ref;
 
+use crate::connection::to_system_stream;
 use crate::message::*;
 use crate::take_single_file;
 use crate::Connection;
@@ -1034,11 +1035,12 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
     }
 
     fn set_slave_req_fd(&mut self, files: Option<Vec<File>>) -> Result<()> {
-        let ep = self
-            .slave_req_helper
-            .connection
-            .create_slave_request_connection(files)?;
-        self.backend.set_slave_req_fd(ep);
+        let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
+        let fd = file.into();
+        // SAFETY: Safe because the protocol promises the file represents the appropriate file type
+        // for the platform.
+        let stream = unsafe { to_system_stream(fd) }?;
+        self.backend.set_slave_req_fd(Connection::from(stream));
         Ok(())
     }
 

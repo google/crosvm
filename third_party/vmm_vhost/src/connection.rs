@@ -6,10 +6,12 @@
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         pub mod socket;
+        pub use socket::to_system_stream;
         mod unix;
     } else if #[cfg(windows)] {
         mod tube;
         pub use tube::TubePlatformConnection;
+        pub use tube::to_system_stream;
         mod windows;
     }
 }
@@ -27,7 +29,6 @@ use zerocopy::FromBytes;
 
 use crate::connection::Req;
 use crate::message::MasterReq;
-use crate::message::SlaveReq;
 use crate::message::*;
 use crate::sys::PlatformConnection;
 use crate::Error;
@@ -108,17 +109,6 @@ impl<R: Req> Connection<R> {
             PlatformConnection::connect(path)?,
             std::marker::PhantomData,
         ))
-    }
-
-    /// Constructs the slave request connection for self.
-    ///
-    /// # Arguments
-    /// * `files` - Files from which to create the connection
-    pub fn create_slave_request_connection(
-        &mut self,
-        files: Option<Vec<File>>,
-    ) -> Result<super::Connection<SlaveReq>> {
-        self.0.create_slave_request_connection(files)
     }
 
     /// Sends all bytes from scatter-gather vectors with optional attached file descriptors. Will

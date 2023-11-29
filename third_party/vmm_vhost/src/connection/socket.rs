@@ -14,14 +14,13 @@ use std::path::PathBuf;
 
 use base::AsRawDescriptor;
 use base::FromRawDescriptor;
-use base::IntoRawDescriptor;
 use base::RawDescriptor;
+use base::SafeDescriptor;
 use base::ScmSocket;
 
 use crate::connection::Listener;
 use crate::connection::Req;
 use crate::message::*;
-use crate::take_single_file;
 use crate::unix::SystemListener;
 use crate::Connection;
 use crate::Error;
@@ -211,16 +210,6 @@ impl<R: Req> SocketPlatformConnection<R> {
 
         Ok((bytes, files))
     }
-
-    pub fn create_slave_request_connection(
-        &mut self,
-        files: Option<Vec<File>>,
-    ) -> Result<Connection<SlaveReq>> {
-        let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
-        // Safe because we own the file
-        let tube = unsafe { SystemStream::from_raw_descriptor(file.into_raw_descriptor()) };
-        Ok(Connection::<SlaveReq>::from(tube))
-    }
 }
 
 impl<T: Req> AsRawDescriptor for SocketPlatformConnection<T> {
@@ -233,6 +222,15 @@ impl<T: Req> AsMut<SystemStream> for SocketPlatformConnection<T> {
     fn as_mut(&mut self) -> &mut SystemStream {
         self.sock.inner_mut()
     }
+}
+
+/// Convert a `SafeDescriptor` to a `UnixStream`.
+///
+/// # Safety
+///
+/// `file` must represent a unix domain socket.
+pub unsafe fn to_system_stream(fd: SafeDescriptor) -> Result<SystemStream> {
+    Ok(fd.into())
 }
 
 #[cfg(test)]
