@@ -86,10 +86,10 @@ const DEFAULT_MAX_TARGET: u16 = 255;
 // Max lun should be less than or equal to 16383
 const DEFAULT_MAX_LUN: u32 = 16383;
 
-const DEFAULT_QUEUE_SIZE: u16 = 256;
+const DEFAULT_QUEUE_SIZE: u16 = 1024;
 
 // The maximum number of linked commands.
-const MAX_CMD_PER_LUN: u32 = 128;
+const MAX_CMD_PER_LUN: u32 = 1024;
 // We do not set a limit on the transfer size.
 const MAX_SECTORS: u32 = u32::MAX;
 
