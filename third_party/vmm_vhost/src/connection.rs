@@ -17,7 +17,6 @@ cfg_if::cfg_if! {
 }
 
 use std::fs::File;
-use std::io::IoSlice;
 use std::io::IoSliceMut;
 use std::mem;
 use std::path::Path;
@@ -42,25 +41,6 @@ pub trait Listener: Sized {
 
     /// Change blocking status on the listener.
     fn set_nonblocking(&self, block: bool) -> Result<()>;
-}
-
-// Advance the internal cursor of the slices.
-// This is same with a nightly API `IoSlice::advance_slices` but for `&[u8]`.
-fn advance_slices(bufs: &mut &mut [&[u8]], mut count: usize) {
-    use std::mem::take;
-
-    let mut idx = 0;
-    for b in bufs.iter() {
-        if count < b.len() {
-            break;
-        }
-        count -= b.len();
-        idx += 1;
-    }
-    *bufs = &mut take(bufs)[idx..];
-    if !bufs.is_empty() {
-        bufs[0] = &bufs[0][count..];
-    }
 }
 
 // Advance the internal cursor of the slices.
@@ -117,54 +97,19 @@ impl<R: Req> Connection<R> {
         ))
     }
 
-    /// Sends all bytes from scatter-gather vectors with optional attached file descriptors. Will
-    /// loop until all data has been transfered.
-    ///
-    /// # TODO
-    /// This function takes a slice of `&[u8]` instead of `IoSlice` because the internal
-    /// cursor needs to be moved by `advance_slices()`.
-    /// Once `IoSlice::advance_slices()` becomes stable, this should be updated.
-    /// <https://github.com/rust-lang/rust/issues/62726>.
-    fn send_iovec_all(
-        &self,
-        mut iovs: &mut [&[u8]],
-        mut fds: Option<&[RawDescriptor]>,
-    ) -> Result<()> {
-        // Guarantee that `iovs` becomes empty if it doesn't contain any data.
-        advance_slices(&mut iovs, 0);
-
-        while !iovs.is_empty() {
-            let iovec: Vec<_> = iovs.iter_mut().map(|i| IoSlice::new(i)).collect();
-            match self.0.send_iovec(&iovec, fds) {
-                Ok(n) => {
-                    fds = None;
-                    advance_slices(&mut iovs, n);
-                }
-                Err(e) => match e {
-                    Error::SocketRetry(_) => {}
-                    _ => return Err(e),
-                },
-            }
-        }
-        Ok(())
-    }
-
     /// Sends bytes from a slice with optional attached file descriptors.
-    ///
-    /// # Return:
-    /// * - number of bytes sent on success
     #[cfg(test)]
-    fn send_slice(&self, data: IoSlice, fds: Option<&[RawDescriptor]>) -> Result<usize> {
-        self.0.send_iovec(&[data], fds)
+    fn send_slice(&self, data: &[u8], fds: Option<&[RawDescriptor]>) -> Result<()> {
+        self.0.send_message(data, &[], &[], fds)
     }
 
     /// Sends a header-only message with optional attached file descriptors.
-    pub fn send_header(
+    pub fn send_header_only_message(
         &self,
         hdr: &VhostUserMsgHeader<R>,
         fds: Option<&[RawDescriptor]>,
     ) -> Result<()> {
-        self.send_iovec_all(&mut [hdr.as_bytes()], fds)
+        self.0.send_message(hdr.as_bytes(), &[], &[], fds)
     }
 
     /// Send a message with header and body. Optional file descriptors may be attached to
@@ -175,11 +120,8 @@ impl<R: Req> Connection<R> {
         body: &T,
         fds: Option<&[RawDescriptor]>,
     ) -> Result<()> {
-        // We send the header and the body separately here. This is necessary on Windows. Otherwise
-        // the recv side cannot read the header independently (the transport is message oriented).
-        self.send_iovec_all(&mut [hdr.as_bytes()], fds)?;
-        self.send_iovec_all(&mut [body.as_bytes()], None)?;
-        Ok(())
+        self.0
+            .send_message(hdr.as_bytes(), body.as_bytes(), &[], fds)
     }
 
     /// Send a message with header and body. `payload` is appended to the end of the body. Optional
@@ -191,18 +133,8 @@ impl<R: Req> Connection<R> {
         payload: &[u8],
         fds: Option<&[RawDescriptor]>,
     ) -> Result<()> {
-        if let Some(fd_arr) = fds {
-            if fd_arr.len() > MAX_ATTACHED_FD_ENTRIES {
-                return Err(Error::IncorrectFds);
-            }
-        }
-
-        // We send the header and the body separately here. This is necessary on Windows. Otherwise
-        // the recv side cannot read the header independently (the transport is message oriented).
-        self.send_iovec_all(&mut [hdr.as_bytes()], fds)?;
-        self.send_iovec_all(&mut [body.as_bytes(), payload], None)?;
-
-        Ok(())
+        self.0
+            .send_message(hdr.as_bytes(), body.as_bytes(), payload, fds)
     }
 
     /// Reads all bytes into the given scatter/gather vectors with optional attached files. Will
@@ -347,18 +279,6 @@ pub(crate) mod tests {
         } else if #[cfg(windows)] {
             pub(crate) use windows::tests::*;
         }
-    }
-
-    #[test]
-    fn test_advance_slices() {
-        // Test case from https://doc.rust-lang.org/std/io/struct.IoSlice.html#method.advance_slices
-        let buf1 = [1; 8];
-        let buf2 = [2; 16];
-        let buf3 = [3; 8];
-        let mut bufs = &mut [&buf1[..], &buf2[..], &buf3[..]][..];
-        advance_slices(&mut bufs, 10);
-        assert_eq!(bufs[0], [2; 14].as_ref());
-        assert_eq!(bufs[1], [3; 8].as_ref());
     }
 
     #[test]

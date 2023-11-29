@@ -552,7 +552,7 @@ impl Master {
         fds: Option<&[RawDescriptor]>,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
         let hdr = self.new_request_header(code, 0);
-        self.main_sock.send_header(&hdr, fds)?;
+        self.main_sock.send_header_only_message(&hdr, fds)?;
         Ok(hdr)
     }
 

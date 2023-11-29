@@ -125,6 +125,25 @@ impl From<SystemStream> for SocketPlatformConnection {
     }
 }
 
+// Advance the internal cursor of the slices.
+// This is same with a nightly API `IoSlice::advance_slices` but for `&[u8]`.
+fn advance_slices(bufs: &mut &mut [&[u8]], mut count: usize) {
+    use std::mem::take;
+
+    let mut idx = 0;
+    for b in bufs.iter() {
+        if count < b.len() {
+            break;
+        }
+        count -= b.len();
+        idx += 1;
+    }
+    *bufs = &mut take(bufs)[idx..];
+    if !bufs.is_empty() {
+        bufs[0] = &bufs[0][count..];
+    }
+}
+
 impl SocketPlatformConnection {
     /// Create a new stream by connecting to server at `str`.
     ///
@@ -136,22 +155,52 @@ impl SocketPlatformConnection {
         Ok(Self::from(sock))
     }
 
-    /// Sends bytes from scatter-gather vectors over the socket with optional attached file
-    /// descriptors.
+    /// Sends all bytes from scatter-gather vectors with optional attached file descriptors. Will
+    /// loop until all data has been transfered.
     ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    pub fn send_iovec(&self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize> {
-        let rfds = match fds {
-            Some(rfds) => rfds,
-            _ => &[],
-        };
-        self.sock
-            .send_vectored_with_fds(iovs, rfds)
-            .map_err(Into::into)
+    /// # TODO
+    /// This function takes a slice of `&[u8]` instead of `IoSlice` because the internal
+    /// cursor needs to be moved by `advance_slices()`.
+    /// Once `IoSlice::advance_slices()` becomes stable, this should be updated.
+    /// <https://github.com/rust-lang/rust/issues/62726>.
+    fn send_iovec_all(
+        &self,
+        mut iovs: &mut [&[u8]],
+        mut fds: Option<&[RawDescriptor]>,
+    ) -> Result<()> {
+        // Guarantee that `iovs` becomes empty if it doesn't contain any data.
+        advance_slices(&mut iovs, 0);
+
+        while !iovs.is_empty() {
+            let iovec: Vec<_> = iovs.iter_mut().map(|i| IoSlice::new(i)).collect();
+            match self.sock.send_vectored_with_fds(&iovec, fds.unwrap_or(&[])) {
+                Ok(n) => {
+                    fds = None;
+                    advance_slices(&mut iovs, n);
+                }
+                Err(e) => match e.kind() {
+                    ErrorKind::WouldBlock | ErrorKind::Interrupted => {}
+                    _ => return Err(Error::SocketError(e)),
+                },
+            }
+        }
+        Ok(())
+    }
+
+    /// Sends a single message over the socket with optional attached file descriptors.
+    ///
+    /// - `hdr`: vhost message header
+    /// - `body`: vhost message body (may be empty to send a header-only message)
+    /// - `payload`: additional bytes to append to `body` (may be empty)
+    pub fn send_message(
+        &self,
+        hdr: &[u8],
+        body: &[u8],
+        payload: &[u8],
+        fds: Option<&[RawDescriptor]>,
+    ) -> Result<()> {
+        let mut iobufs = [hdr, body, payload];
+        self.send_iovec_all(&mut iobufs, fds)
     }
 
     /// Reads bytes from the socket into the given scatter/gather vectors with optional attached
@@ -270,14 +319,12 @@ mod tests {
         let slave = listener.accept().unwrap().unwrap();
 
         let buf1 = [0x1, 0x2, 0x3, 0x4];
-        let mut len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
-        assert_eq!(len, 4);
+        master.send_slice(&buf1, None).unwrap();
         let (bytes, buf2, _) = slave.recv_into_buf(0x1000).unwrap();
         assert_eq!(bytes, 4);
         assert_eq!(&buf1[..], &buf2[..bytes]);
 
-        len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
-        assert_eq!(len, 4);
+        master.send_slice(&buf1, None).unwrap();
         let (bytes, buf2, _) = slave.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
         assert_eq!(&buf1[..2], &buf2[..]);
@@ -301,10 +348,9 @@ mod tests {
 
         // Normal case for sending/receiving file descriptors
         let buf1 = [0x1, 0x2, 0x3, 0x4];
-        let len = master
-            .send_slice(IoSlice::new(&buf1[..]), Some(&[fd.as_raw_descriptor()]))
+        master
+            .send_slice(&buf1, Some(&[fd.as_raw_descriptor()]))
             .unwrap();
-        assert_eq!(len, 4);
 
         let (bytes, buf2, files) = slave.recv_into_buf(4).unwrap();
         assert_eq!(bytes, 4);
@@ -323,9 +369,9 @@ mod tests {
         // Following communication pattern should work:
         // Sending side: data(header, body) with fds
         // Receiving side: data(header) with fds, data(body)
-        let len = master
+        master
             .send_slice(
-                IoSlice::new(&buf1[..]),
+                &buf1,
                 Some(&[
                     fd.as_raw_descriptor(),
                     fd.as_raw_descriptor(),
@@ -333,7 +379,6 @@ mod tests {
                 ]),
             )
             .unwrap();
-        assert_eq!(len, 4);
 
         let (bytes, buf2, files) = slave.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
@@ -356,9 +401,9 @@ mod tests {
         // Following communication pattern should not work:
         // Sending side: data(header, body) with fds
         // Receiving side: data(header), data(body) with fds
-        let len = master
+        master
             .send_slice(
-                IoSlice::new(&buf1[..]),
+                &buf1,
                 Some(&[
                     fd.as_raw_descriptor(),
                     fd.as_raw_descriptor(),
@@ -366,7 +411,6 @@ mod tests {
                 ]),
             )
             .unwrap();
-        assert_eq!(len, 4);
 
         let mut buf4 = vec![0u8; 2];
         slave.recv_into_bufs_all(&mut [&mut buf4[..]]).unwrap();
@@ -379,11 +423,10 @@ mod tests {
         // Following communication pattern should work:
         // Sending side: data, data with fds
         // Receiving side: data, data with fds
-        let len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
-        assert_eq!(len, 4);
-        let len = master
+        master.send_slice(&buf1, None).unwrap();
+        master
             .send_slice(
-                IoSlice::new(&buf1[..]),
+                &buf1,
                 Some(&[
                     fd.as_raw_descriptor(),
                     fd.as_raw_descriptor(),
@@ -391,7 +434,6 @@ mod tests {
                 ]),
             )
             .unwrap();
-        assert_eq!(len, 4);
 
         let (bytes, buf2, files) = slave.recv_into_buf(0x4).unwrap();
         assert_eq!(bytes, 4);
@@ -419,11 +461,10 @@ mod tests {
         // Following communication pattern should not work:
         // Sending side: data1, data2 with fds
         // Receiving side: data + partial of data2, left of data2 with fds
-        let len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
-        assert_eq!(len, 4);
-        let len = master
+        master.send_slice(&buf1, None).unwrap();
+        master
             .send_slice(
-                IoSlice::new(&buf1[..]),
+                &buf1,
                 Some(&[
                     fd.as_raw_descriptor(),
                     fd.as_raw_descriptor(),
@@ -431,7 +472,6 @@ mod tests {
                 ]),
             )
             .unwrap();
-        assert_eq!(len, 4);
 
         let mut v = vec![0u8; 5];
         slave.recv_into_bufs_all(&mut [&mut v[..]]).unwrap();
@@ -442,9 +482,9 @@ mod tests {
         assert!(files.is_none());
 
         // If the target fd array is too small, extra file descriptors will get lost.
-        let len = master
+        master
             .send_slice(
-                IoSlice::new(&buf1[..]),
+                &buf1,
                 Some(&[
                     fd.as_raw_descriptor(),
                     fd.as_raw_descriptor(),
@@ -452,7 +492,6 @@ mod tests {
                 ]),
             )
             .unwrap();
-        assert_eq!(len, 4);
 
         let (bytes, _, files) = slave.recv_into_buf(0x4).unwrap();
         assert_eq!(bytes, 4);
@@ -485,9 +524,21 @@ mod tests {
         assert_eq!(features1, features2);
         assert!(files.is_none());
 
-        master.send_header(&hdr1, None).unwrap();
+        master.send_header_only_message(&hdr1, None).unwrap();
         let (hdr2, files) = slave.recv_header().unwrap();
         assert_eq!(hdr1, hdr2);
         assert!(files.is_none());
+    }
+
+    #[test]
+    fn test_advance_slices() {
+        // Test case from https://doc.rust-lang.org/std/io/struct.IoSlice.html#method.advance_slices
+        let buf1 = [1; 8];
+        let buf2 = [2; 16];
+        let buf3 = [3; 8];
+        let mut bufs = &mut [&buf1[..], &buf2[..], &buf3[..]][..];
+        advance_slices(&mut bufs, 10);
+        assert_eq!(bufs[0], [2; 14].as_ref());
+        assert_eq!(bufs[1], [3; 8].as_ref());
     }
 }

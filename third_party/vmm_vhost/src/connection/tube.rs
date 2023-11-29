@@ -6,7 +6,6 @@
 
 use std::cmp::min;
 use std::fs::File;
-use std::io::IoSlice;
 use std::io::IoSliceMut;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
@@ -58,30 +57,43 @@ impl TubePlatformConnection {
         unimplemented!("connections not supported on Tubes")
     }
 
-    /// Sends bytes from scatter-gather vectors with optional attached file descriptors.
+    /// Sends a single message over the socket with optional attached file descriptors.
     ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    /// * - TubeError: tube related errors.
-    pub fn send_iovec(&self, iovs: &[IoSlice], rds: Option<&[RawDescriptor]>) -> Result<usize> {
-        // Gather the iovecs
-        let total_bytes = iovs.iter().map(|iov| iov.len()).sum();
-        let mut data = Vec::with_capacity(total_bytes);
-        for iov in iovs {
-            data.extend(iov.iter());
+    /// - `hdr`: vhost message header
+    /// - `body`: vhost message body (may be empty to send a header-only message)
+    /// - `payload`: additional bytes to append to `body` (may be empty)
+    pub fn send_message(
+        &self,
+        hdr: &[u8],
+        body: &[u8],
+        payload: &[u8],
+        rds: Option<&[RawDescriptor]>,
+    ) -> Result<()> {
+        let hdr_msg = Message {
+            rds: rds
+                .unwrap_or(&[])
+                .iter()
+                .map(|rd| RawDescriptorContainer { rd: *rd })
+                .collect(),
+            data: hdr.to_vec(),
+        };
+
+        let mut body_data = Vec::with_capacity(body.len() + payload.len());
+        body_data.extend_from_slice(body);
+        body_data.extend_from_slice(payload);
+        let body_msg = Message {
+            rds: Vec::new(),
+            data: body_data,
+        };
+
+        // We send the header and the body separately here. This is necessary on Windows. Otherwise
+        // the recv side cannot read the header independently (the transport is message oriented).
+        self.tube.send(&hdr_msg)?;
+        if !body_msg.data.is_empty() {
+            self.tube.send(&body_msg)?;
         }
 
-        let mut msg = Message {
-            data,
-            rds: Vec::with_capacity(rds.map_or(0, |rds| rds.len())),
-        };
-        if let Some(rds) = rds {
-            for rd in rds {
-                msg.rds.push(RawDescriptorContainer { rd: *rd });
-            }
-        }
-        self.tube.send(&msg)?;
-        Ok(total_bytes)
+        Ok(())
     }
 
     /// Reads bytes from the tube into the given scatter/gather vectors with optional attached
@@ -171,7 +183,6 @@ impl AsRawDescriptor for TubePlatformConnection {
 
 #[cfg(test)]
 mod tests {
-    use std::io::IoSlice;
     use std::io::Read;
     use std::io::Seek;
     use std::io::SeekFrom;
@@ -201,8 +212,7 @@ mod tests {
         let (master, slave) = create_pair();
 
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
-        let len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
-        assert_eq!(len, 4);
+        master.send_slice(&buf1, None).unwrap();
         let (bytes, buf2, _) = slave.recv_into_buf(0x1000).unwrap();
         assert_eq!(bytes, 4);
         assert_eq!(&buf1[..], &buf2[..bytes]);
@@ -217,10 +227,9 @@ mod tests {
 
         // Normal case for sending/receiving file descriptors
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
-        let len = master
-            .send_slice(IoSlice::new(&buf1[..]), Some(&[file.as_raw_descriptor()]))
+        master
+            .send_slice(&buf1, Some(&[file.as_raw_descriptor()]))
             .unwrap();
-        assert_eq!(len, 4);
 
         let (bytes, buf2, files) = slave.recv_into_buf(4).unwrap();
         assert_eq!(bytes, 4);
@@ -239,11 +248,10 @@ mod tests {
         // Following communication pattern should work:
         // Sending side: data, data with fds
         // Receiving side: data, data with fds
-        let len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
-        assert_eq!(len, 4);
-        let len = master
+        master.send_slice(&buf1, None).unwrap();
+        master
             .send_slice(
-                IoSlice::new(&buf1[..]),
+                &buf1,
                 Some(&[
                     file.as_raw_descriptor(),
                     file.as_raw_descriptor(),
@@ -251,7 +259,6 @@ mod tests {
                 ]),
             )
             .unwrap();
-        assert_eq!(len, 4);
 
         let (bytes, buf2, files) = slave.recv_into_buf(0x4).unwrap();
         assert_eq!(bytes, 4);
@@ -276,9 +283,9 @@ mod tests {
         //
         // Porting note: no, they won't. The FD array is sized to whatever the header says it
         // should be.
-        let len = master
+        master
             .send_slice(
-                IoSlice::new(&buf1[..]),
+                &buf1,
                 Some(&[
                     file.as_raw_descriptor(),
                     file.as_raw_descriptor(),
@@ -286,7 +293,6 @@ mod tests {
                 ]),
             )
             .unwrap();
-        assert_eq!(len, 4);
 
         let (bytes, _, files) = slave.recv_into_buf(0x4).unwrap();
         assert_eq!(bytes, 4);
@@ -313,7 +319,7 @@ mod tests {
         assert_eq!(features1, features2);
         assert!(files.is_none());
 
-        master.send_header(&hdr1, None).unwrap();
+        master.send_header_only_message(&hdr1, None).unwrap();
         let (hdr2, files) = slave.recv_header().unwrap();
         assert_eq!(hdr1, hdr2);
         assert!(files.is_none());
