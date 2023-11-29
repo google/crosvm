@@ -9,7 +9,7 @@ use fixture::vm::TestVm;
 
 #[test]
 fn psql() -> anyhow::Result<()> {
-    let cfg = Config::new()
+    let cfg = Config::from_env()
     .with_kernel("https://storage.googleapis.com/crosvm/integration_tests/guest-bzimage-x86_64-r0009")
     .with_initrd("https://storage.googleapis.com/crosvm/integration_tests/benchmarks/custom-initramfs.cpio.gz-r0005")
     // Created by e2e_tests/guest_under_test/rootfs_benches/postgres.sh
