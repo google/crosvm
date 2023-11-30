@@ -117,6 +117,13 @@ impl<'a> IoBufMut<'a> {
         // Safe because `IoBufMut` is ABI-compatible with `IoBuf`.
         unsafe { slice::from_raw_parts(iovs.as_ptr() as *const IoBuf, iovs.len()) }
     }
+
+    /// Converts a mutable slice of `IoBufMut`s into a mutable slice of `IoBuf`s.
+    #[inline]
+    pub fn as_iobufs_mut<'slice>(iovs: &'slice mut [IoBufMut<'_>]) -> &'slice mut [IoBuf] {
+        // Safe because `IoBufMut` is ABI-compatible with `IoBuf`.
+        unsafe { slice::from_raw_parts_mut(iovs.as_mut_ptr() as *mut IoBuf, iovs.len()) }
+    }
 }
 
 impl<'a> AsRef<IoBuf> for IoBufMut<'a> {

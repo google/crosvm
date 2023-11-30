@@ -400,6 +400,9 @@ pub unsafe trait AsIobuf: Sized {
     /// Returns a slice of `iovec`s that each describe a contiguous region of memory.
     #[allow(clippy::wrong_self_convention)]
     fn as_iobuf_slice(bufs: &[Self]) -> &[iovec];
+
+    /// Returns a mutable slice of `iovecs` that each describe a contiguous region of memory.
+    fn as_iobuf_mut_slice(bufs: &mut [Self]) -> &mut [iovec];
 }
 
 // Safe because there are no other mutable references to the memory described by `IoSlice` and it is
@@ -415,6 +418,11 @@ unsafe impl<'a> AsIobuf for IoSlice<'a> {
     fn as_iobuf_slice(bufs: &[Self]) -> &[iovec] {
         // Safe because `IoSlice` is guaranteed to be ABI-compatible with `iovec`.
         unsafe { slice::from_raw_parts(bufs.as_ptr() as *const iovec, bufs.len()) }
+    }
+
+    fn as_iobuf_mut_slice(bufs: &mut [Self]) -> &mut [iovec] {
+        // Safe because `IoSlice` is guaranteed to be ABI-compatible with `iovec`.
+        unsafe { slice::from_raw_parts_mut(bufs.as_mut_ptr() as *mut iovec, bufs.len()) }
     }
 }
 
@@ -432,6 +440,11 @@ unsafe impl<'a> AsIobuf for IoSliceMut<'a> {
         // Safe because `IoSliceMut` is guaranteed to be ABI-compatible with `iovec`.
         unsafe { slice::from_raw_parts(bufs.as_ptr() as *const iovec, bufs.len()) }
     }
+
+    fn as_iobuf_mut_slice(bufs: &mut [Self]) -> &mut [iovec] {
+        // Safe because `IoSliceMut` is guaranteed to be ABI-compatible with `iovec`.
+        unsafe { slice::from_raw_parts_mut(bufs.as_mut_ptr() as *mut iovec, bufs.len()) }
+    }
 }
 
 // Safe because volatile slices are only ever accessed with other volatile interfaces and the
@@ -443,6 +456,10 @@ unsafe impl<'a> AsIobuf for VolatileSlice<'a> {
 
     fn as_iobuf_slice(bufs: &[Self]) -> &[iovec] {
         IoBufMut::as_iobufs(VolatileSlice::as_iobufs(bufs))
+    }
+
+    fn as_iobuf_mut_slice(bufs: &mut [Self]) -> &mut [iovec] {
+        IoBufMut::as_iobufs_mut(VolatileSlice::as_iobufs_mut(bufs))
     }
 }
 

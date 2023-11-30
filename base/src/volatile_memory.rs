@@ -126,6 +126,15 @@ impl<'a> VolatileSlice<'a> {
         unsafe { slice::from_raw_parts(iovs.as_ptr() as *const IoBufMut, iovs.len()) }
     }
 
+    /// Converts a mutable slice of `VolatileSlice`s into a mutable slice of `IoBufMut`s
+    #[inline]
+    pub fn as_iobufs_mut<'mem, 'slice>(
+        iovs: &'slice mut [VolatileSlice<'mem>],
+    ) -> &'slice mut [IoBufMut<'mem>] {
+        // Safe because `VolatileSlice` is ABI-compatible with `IoBufMut`.
+        unsafe { slice::from_raw_parts_mut(iovs.as_mut_ptr() as *mut IoBufMut, iovs.len()) }
+    }
+
     /// Creates a copy of this slice with the address increased by `count` bytes, and the size
     /// reduced by `count` bytes.
     pub fn offset(self, count: usize) -> Result<VolatileSlice<'a>> {
