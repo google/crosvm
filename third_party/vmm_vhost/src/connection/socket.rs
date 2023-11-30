@@ -12,7 +12,6 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use base::AsRawDescriptor;
-use base::FromRawDescriptor;
 use base::RawDescriptor;
 use base::SafeDescriptor;
 use base::ScmSocket;
@@ -179,31 +178,18 @@ impl SocketPlatformConnection {
         bufs: &mut [IoSliceMut],
         allow_fd: bool,
     ) -> Result<(usize, Option<Vec<File>>)> {
-        let mut fd_array = if allow_fd {
-            vec![0; MAX_ATTACHED_FD_ENTRIES]
-        } else {
-            vec![]
-        };
-        let (bytes, fds) = self.sock.recv_vectored_with_fds(bufs, &mut fd_array)?;
+        let max_fds = if allow_fd { MAX_ATTACHED_FD_ENTRIES } else { 0 };
+        let (bytes, fds) = self.sock.recv_vectored_with_fds(bufs, max_fds)?;
 
         // 0-bytes indicates that the connection is closed.
         if bytes == 0 {
             return Err(Error::Disconnect);
         }
 
-        let files = match fds {
-            0 => None,
-            n => {
-                let files = fd_array
-                    .iter()
-                    .take(n)
-                    .map(|fd| {
-                        // Safe because we have the ownership of `fd`.
-                        unsafe { File::from_raw_descriptor(*fd as RawDescriptor) }
-                    })
-                    .collect();
-                Some(files)
-            }
+        let files = if fds.is_empty() {
+            None
+        } else {
+            Some(fds.into_iter().map(File::from).collect())
         };
 
         Ok((bytes, files))

@@ -9,7 +9,6 @@ use std::io::Error as IOError;
 use std::io::ErrorKind as IOErrorKind;
 use std::io::Seek;
 use std::io::SeekFrom;
-use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
@@ -174,23 +173,10 @@ impl VioSClient {
         )
         .map_err(|e| Error::ServerConnectionError(e, server.as_ref().into()))?;
         let mut config: VioSConfig = Default::default();
-        let mut fds: Vec<RawFd> = Vec::new();
         const NUM_FDS: usize = 5;
-        fds.resize(NUM_FDS, 0);
-        let (recv_size, fd_count) = client_socket
-            .recv_with_fds(config.as_bytes_mut(), &mut fds)
+        let (recv_size, mut safe_fds) = client_socket
+            .recv_with_fds(config.as_bytes_mut(), NUM_FDS)
             .map_err(Error::ServerError)?;
-
-        // Resize the vector to the actual number of file descriptors received and wrap them in
-        // SafeDescriptors to prevent leaks
-        fds.resize(fd_count, -1);
-        let mut safe_fds: Vec<SafeDescriptor> = fds
-            .into_iter()
-            .map(|fd| unsafe {
-                // safe because the SafeDescriptor object completely assumes ownership of the fd.
-                SafeDescriptor::from_raw_descriptor(fd)
-            })
-            .collect();
 
         if recv_size != std::mem::size_of::<VioSConfig>() {
             return Err(Error::ProtocolError(
@@ -224,6 +210,7 @@ impl VioSClient {
             }
         }
 
+        let fd_count = safe_fds.len();
         let rx_shm_file = pop::<File>(&mut safe_fds, NUM_FDS, fd_count)?;
         let tx_shm_file = pop::<File>(&mut safe_fds, NUM_FDS, fd_count)?;
         let rx_socket = pop::<UnixSeqpacket>(&mut safe_fds, NUM_FDS, fd_count)?;

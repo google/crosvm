@@ -11,8 +11,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::descriptor::AsRawDescriptor;
-use crate::descriptor::FromRawDescriptor;
-use crate::descriptor::SafeDescriptor;
 use crate::descriptor_reflection::deserialize_with_descriptors;
 use crate::descriptor_reflection::SerializeDescriptors;
 use crate::handle_eintr;
@@ -102,26 +100,15 @@ impl Tube {
         // separately in msghdr::msg_control.
         let mut msg_json = vec![0u8; msg_size];
 
-        let mut msg_descriptors_full = [0; TUBE_MAX_FDS];
-
-        let (msg_json_size, descriptor_size) = handle_eintr!(self
-            .socket
-            .recv_with_fds(&mut msg_json, &mut msg_descriptors_full))
-        .map_err(Error::Recv)?;
+        let (msg_json_size, msg_descriptors) =
+            handle_eintr!(self.socket.recv_with_fds(&mut msg_json, TUBE_MAX_FDS))
+                .map_err(Error::Recv)?;
 
         if msg_json_size == 0 {
             return Err(Error::Disconnected);
         }
 
-        let mut msg_descriptors_safe = msg_descriptors_full[..descriptor_size]
-            .iter()
-            .map(|v| {
-                Some(unsafe {
-                    // Safe because the socket returns new fds that are owned locally by this scope.
-                    SafeDescriptor::from_raw_descriptor(*v)
-                })
-            })
-            .collect();
+        let mut msg_descriptors_safe = msg_descriptors.into_iter().map(Option::Some).collect();
 
         deserialize_with_descriptors(
             || serde_json::from_slice(&msg_json[0..msg_json_size]),
@@ -158,12 +145,10 @@ impl Tube {
     fn recv_proto<M: protobuf::Message>(&self) -> Result<M> {
         let msg_size = handle_eintr!(self.socket.inner().peek_size()).map_err(Error::Recv)?;
         let mut msg_bytes = vec![0u8; msg_size];
-        let mut msg_descriptors_full = [0; TUBE_MAX_FDS];
 
-        let (msg_bytes_size, _) = handle_eintr!(self
-            .socket
-            .recv_with_fds(&mut msg_bytes, &mut msg_descriptors_full))
-        .map_err(Error::Recv)?;
+        let (msg_bytes_size, _) =
+            handle_eintr!(self.socket.recv_with_fds(&mut msg_bytes, TUBE_MAX_FDS))
+                .map_err(Error::Recv)?;
 
         if msg_bytes_size == 0 {
             return Err(Error::Disconnected);

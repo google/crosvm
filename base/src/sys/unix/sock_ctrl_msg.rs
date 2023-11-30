@@ -12,7 +12,6 @@ use std::io::IoSliceMut;
 use std::mem::size_of;
 use std::mem::size_of_val;
 use std::mem::MaybeUninit;
-use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
 use std::ptr::copy_nonoverlapping;
 use std::ptr::null_mut;
@@ -32,8 +31,10 @@ use serde::Serialize;
 
 use crate::sys::sendmsg;
 use crate::AsRawDescriptor;
+use crate::FromRawDescriptor;
 use crate::IoBufMut;
 use crate::RawDescriptor;
+use crate::SafeDescriptor;
 use crate::VolatileSlice;
 
 // Each of the following functions performs the same function as their C counterparts. They are
@@ -169,8 +170,12 @@ fn raw_sendmsg(fd: RawFd, iovec: &[iovec], out_fds: &[RawFd]) -> io::Result<usiz
 // Musl requires a try_into when assigning to msg_iovlen, msg_controllen and
 // cmsg_len that is unnecessary when compiling for glibc.
 #[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
-fn raw_recvmsg(fd: RawFd, iovs: &mut [iovec], in_fds: &mut [RawFd]) -> io::Result<(usize, usize)> {
-    let cmsg_capacity = CMSG_SPACE(size_of_val(in_fds));
+fn raw_recvmsg(
+    fd: RawFd,
+    iovs: &mut [iovec],
+    max_fds: usize,
+) -> io::Result<(usize, Vec<SafeDescriptor>)> {
+    let cmsg_capacity = CMSG_SPACE(max_fds * size_of::<RawFd>());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
     // msghdr on musl has private __pad1 and __pad2 fields that cannot be initialized.
@@ -180,7 +185,7 @@ fn raw_recvmsg(fd: RawFd, iovs: &mut [iovec], in_fds: &mut [RawFd]) -> io::Resul
     msg.msg_iov = iovs.as_mut_ptr() as *mut iovec;
     msg.msg_iovlen = iovs.len().try_into().unwrap();
 
-    if !in_fds.is_empty() {
+    if max_fds > 0 {
         msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut c_void;
         msg.msg_controllen = cmsg_capacity.try_into().unwrap();
     }
@@ -194,11 +199,11 @@ fn raw_recvmsg(fd: RawFd, iovs: &mut [iovec], in_fds: &mut [RawFd]) -> io::Resul
     }
 
     if total_read == 0 && (msg.msg_controllen as usize) < size_of::<cmsghdr>() {
-        return Ok((0, 0));
+        return Ok((0, Vec::new()));
     }
 
     let mut cmsg_ptr = msg.msg_control as *mut cmsghdr;
-    let mut in_fds_count = 0;
+    let mut in_fds: Vec<SafeDescriptor> = Vec::with_capacity(max_fds);
     while !cmsg_ptr.is_null() {
         // Safe because we checked that cmsg_ptr was non-null, and the loop is constructed such that
         // that only happens when there is at least sizeof(cmsghdr) space after the pointer to read.
@@ -206,20 +211,20 @@ fn raw_recvmsg(fd: RawFd, iovs: &mut [iovec], in_fds: &mut [RawFd]) -> io::Resul
 
         if cmsg.cmsg_level == SOL_SOCKET && cmsg.cmsg_type == SCM_RIGHTS {
             let fd_count = (cmsg.cmsg_len as usize - CMSG_LEN(0)) / size_of::<RawFd>();
-            unsafe {
-                copy_nonoverlapping(
-                    CMSG_DATA(cmsg_ptr),
-                    in_fds[in_fds_count..(in_fds_count + fd_count)].as_mut_ptr(),
-                    fd_count,
-                );
+            let fd_ptr: *const RawFd = CMSG_DATA(cmsg_ptr);
+            for i in 0..fd_count {
+                // SAFETY: `fd_ptr[i]` is within the `CMsgBuffer` allocation.
+                let fd: RawFd = unsafe { fd_ptr.add(i).read_unaligned() };
+                // SAFETY: We own the raw descriptor returned from `recvmsg()`.
+                let sd = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
+                in_fds.push(sd);
             }
-            in_fds_count += fd_count;
         }
 
         cmsg_ptr = get_next_cmsg(&msg, &cmsg, cmsg_ptr);
     }
 
-    Ok((total_read as usize, in_fds_count))
+    Ok((total_read as usize, in_fds))
 }
 
 /// The maximum number of FDs that can be sent in a single send.
@@ -275,20 +280,20 @@ impl<T: AsRawDescriptor> ScmSocket<T> {
     /// Receives data and file descriptors from the socket.
     ///
     /// On success, returns the number of bytes and file descriptors received as a tuple
-    /// `(bytes count, files count)`.
+    /// `(bytes count, descriptors)`.
     ///
     /// The error is constructed via `std::io::Error::last_os_error()`.
     ///
     /// # Arguments
     ///
     /// * `buf` - A buffer to store received data.
-    /// * `fds` - A slice of `RawFd`s to put the received file descriptors into. On success, the
-    ///           number of valid file descriptors is indicated by the second element of the
-    ///           returned tuple. The caller owns these file descriptors, but they will not be
-    ///           closed on drop like a `File`-like type would be. It is recommended that each valid
-    ///           file descriptor gets wrapped in a drop type that closes it after this returns.
-    pub fn recv_with_fds(&self, buf: &mut [u8], fds: &mut [RawFd]) -> io::Result<(usize, usize)> {
-        self.recv_vectored_with_fds(&mut [IoSliceMut::new(buf)], fds)
+    /// * `max_descriptors` - Maximum number of file descriptors to receive.
+    pub fn recv_with_fds(
+        &self,
+        buf: &mut [u8],
+        max_descriptors: usize,
+    ) -> io::Result<(usize, Vec<SafeDescriptor>)> {
+        self.recv_vectored_with_fds(&mut [IoSliceMut::new(buf)], max_descriptors)
     }
 
     /// Receives data and file descriptors from the socket.
@@ -301,20 +306,16 @@ impl<T: AsRawDescriptor> ScmSocket<T> {
     /// # Arguments
     ///
     /// * `bufs` - A slice of buffers to store received data.
-    /// * `fds` - A slice of `RawFd`s to put the received file descriptors into. On success, the
-    ///           number of valid file descriptors is indicated by the second element of the
-    ///           returned tuple. The caller owns these file descriptors, but they will not be
-    ///           closed on drop like a `File`-like type would be. It is recommended that each valid
-    ///           file descriptor gets wrapped in a drop type that closes it after this returns.
+    /// * `max_descriptors` - Maximum number of file descriptors to receive.
     pub fn recv_vectored_with_fds(
         &self,
         bufs: &mut [IoSliceMut],
-        fds: &mut [RawFd],
-    ) -> io::Result<(usize, usize)> {
+        max_descriptors: usize,
+    ) -> io::Result<(usize, Vec<SafeDescriptor>)> {
         raw_recvmsg(
             self.socket.as_raw_descriptor(),
             IoSliceMut::as_iobuf_mut_slice(bufs),
-            fds,
+            max_descriptors,
         )
     }
 
@@ -328,14 +329,11 @@ impl<T: AsRawDescriptor> ScmSocket<T> {
     ///
     /// * `buf` - A buffer to receive data from the socket.vm
     pub fn recv_with_file(&self, buf: &mut [u8]) -> io::Result<(usize, Option<File>)> {
-        let mut fd = [0];
-        let (read_count, fd_count) = self.recv_with_fds(buf, &mut fd)?;
-        let file = if fd_count == 0 {
-            None
+        let (read_count, mut descriptors) = self.recv_with_fds(buf, 1)?;
+        let file = if descriptors.len() == 1 {
+            Some(File::from(descriptors.swap_remove(0)))
         } else {
-            // Safe because the first fd from recv_with_fds is owned by us and valid because this
-            // branch was taken.
-            Some(unsafe { File::from_raw_fd(fd[0]) })
+            None
         };
         Ok((read_count, file))
     }
@@ -488,13 +486,10 @@ mod tests {
         assert_eq!(write_count, 6);
 
         let mut buf = [0; 6];
-        let mut files = [0; 1];
-        let (read_count, file_count) = s2
-            .recv_with_fds(&mut buf, &mut files)
-            .expect("failed to recv data");
+        let (read_count, files) = s2.recv_with_fds(&mut buf, 1).expect("failed to recv data");
 
         assert_eq!(read_count, 6);
-        assert_eq!(file_count, 0);
+        assert_eq!(files.len(), 0);
         assert_eq!(buf, [1, 1, 2, 21, 34, 55]);
 
         let write_count = s1
@@ -502,12 +497,10 @@ mod tests {
             .expect("failed to send data");
 
         assert_eq!(write_count, 6);
-        let (read_count, file_count) = s2
-            .recv_with_fds(&mut buf, &mut files)
-            .expect("failed to recv data");
+        let (read_count, files) = s2.recv_with_fds(&mut buf, 1).expect("failed to recv data");
 
         assert_eq!(read_count, 6);
-        assert_eq!(file_count, 0);
+        assert_eq!(files.len(), 0);
         assert_eq!(buf, [1, 1, 2, 21, 34, 55]);
     }
 
@@ -558,21 +551,18 @@ mod tests {
 
         assert_eq!(write_count, 1);
 
-        let mut files = [0; 2];
         let mut buf = [0u8];
-        let (read_count, file_count) = s2
-            .recv_with_fds(&mut buf, &mut files)
-            .expect("failed to recv fd");
+        let (read_count, mut files) = s2.recv_with_fds(&mut buf, 2).expect("failed to recv fd");
 
         assert_eq!(read_count, 1);
         assert_eq!(buf[0], 237);
-        assert_eq!(file_count, 1);
-        assert!(files[0] >= 0);
-        assert_ne!(files[0], s1.as_raw_descriptor());
-        assert_ne!(files[0], s2.as_raw_descriptor());
-        assert_ne!(files[0], evt.as_raw_descriptor());
+        assert_eq!(files.len(), 1);
+        assert!(files[0].as_raw_descriptor() >= 0);
+        assert_ne!(files[0].as_raw_descriptor(), s1.as_raw_descriptor());
+        assert_ne!(files[0].as_raw_descriptor(), s2.as_raw_descriptor());
+        assert_ne!(files[0].as_raw_descriptor(), evt.as_raw_descriptor());
 
-        let mut file = unsafe { File::from_raw_fd(files[0]) };
+        let mut file = File::from(files.swap_remove(0));
 
         file.write_all(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
             .expect("failed to write to sent fd");
