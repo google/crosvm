@@ -38,11 +38,11 @@
 //!
 // Implementation note:
 // This code lets us take advantage of the vmm_vhost low level implementation of the vhost user
-// protocol. DeviceRequestHandler implements the VhostUserSlaveReqHandlerMut trait from vmm_vhost,
+// protocol. DeviceRequestHandler implements the VhostUserSlaveReqHandler trait from vmm_vhost,
 // and includes some common code for setting up guest memory and managing partially configured
 // vrings. DeviceRequestHandler::run watches the vhost-user socket and then calls handle_request()
 // when it becomes readable. handle_request() reads and parses the message and then calls one of the
-// VhostUserSlaveReqHandlerMut trait methods. These dispatch back to the supplied VhostUserBackend
+// VhostUserSlaveReqHandler trait methods. These dispatch back to the supplied VhostUserBackend
 // implementation (this is what our devices implement).
 
 pub(super) mod sys;
@@ -93,7 +93,7 @@ use vmm_vhost::Result as VhostResult;
 use vmm_vhost::Slave;
 use vmm_vhost::SlaveReq;
 use vmm_vhost::VhostUserMasterReqHandler;
-use vmm_vhost::VhostUserSlaveReqHandlerMut;
+use vmm_vhost::VhostUserSlaveReqHandler;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio::Interrupt;
@@ -419,7 +419,7 @@ impl DeviceRequestHandler {
     }
 }
 
-impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
+impl VhostUserSlaveReqHandler for DeviceRequestHandler {
     fn set_owner(&mut self) -> VhostResult<()> {
         if self.owned {
             return Err(VhostError::InvalidOperation);
@@ -969,7 +969,6 @@ pub enum Error {
 mod tests {
     use std::sync::mpsc::channel;
     use std::sync::Barrier;
-    use std::sync::Mutex;
 
     use anyhow::anyhow;
     use anyhow::bail;
@@ -1140,10 +1139,8 @@ mod tests {
         });
 
         // Device side
-        let handler = Mutex::new(DeviceRequestHandler::new(
-            Box::new(FakeBackend::new()),
-            Box::new(VhostUserRegularOps),
-        ));
+        let handler =
+            DeviceRequestHandler::new(Box::new(FakeBackend::new()), Box::new(VhostUserRegularOps));
 
         // Notify listener is ready.
         tx.send(()).unwrap();

@@ -259,6 +259,6 @@ where
         });
         let handler = DeviceRequestHandler::new(self, ops);
 
-        Ok(Box::new(std::sync::Mutex::new(handler)))
+        Ok(Box::new(handler))
     }
 }

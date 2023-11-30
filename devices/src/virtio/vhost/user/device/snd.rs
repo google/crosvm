@@ -144,7 +144,7 @@ impl VhostUserDevice for SndBackend {
         _ex: &Executor,
     ) -> anyhow::Result<Box<dyn vmm_vhost::VhostUserSlaveReqHandler>> {
         let handler = DeviceRequestHandler::new(self, ops);
-        Ok(Box::new(std::sync::Mutex::new(handler)))
+        Ok(Box::new(handler))
     }
 }
 

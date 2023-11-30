@@ -5,7 +5,6 @@
 pub mod sys;
 use std::any::Any;
 use std::pin::Pin;
-use std::sync::Mutex;
 
 use base::RawDescriptor;
 use cros_async::Executor;
@@ -78,7 +77,7 @@ pub trait VhostUserListenerTrait {
     {
         self.run_req_handler(
             |ops| {
-                Box::new(Mutex::new(DeviceRequestHandler::new(backend, ops)))
+                Box::new(DeviceRequestHandler::new(backend, ops))
                     as Box<dyn VhostUserSlaveReqHandler>
             },
             ex,

@@ -63,7 +63,6 @@ pub use self::slave_proxy::Slave;
 pub use self::slave_req_handler::SlaveReqHandler;
 pub use self::slave_req_handler::SlaveReqHelper;
 pub use self::slave_req_handler::VhostUserSlaveReqHandler;
-pub use self::slave_req_handler::VhostUserSlaveReqHandlerMut;
 
 /// Errors for vhost-user operations
 #[sorted]
@@ -235,7 +234,6 @@ mod dummy_slave;
 mod tests {
     use std::sync::Arc;
     use std::sync::Barrier;
-    use std::sync::Mutex;
     use std::thread;
 
     use base::AsRawDescriptor;
@@ -250,7 +248,7 @@ mod tests {
     use crate::VringConfigData;
 
     /// Utility function to process a header and a message together.
-    fn handle_request(h: &mut SlaveReqHandler<Mutex<DummySlaveReqHandler>>) -> Result<()> {
+    fn handle_request(h: &mut SlaveReqHandler<DummySlaveReqHandler>) -> Result<()> {
         // We assume that a header comes together with message body in tests so we don't wait before
         // calling `process_message()`.
         let (hdr, files) = h.recv_header()?;
@@ -259,7 +257,7 @@ mod tests {
 
     #[test]
     fn create_dummy_slave() {
-        let slave = Mutex::new(DummySlaveReqHandler::new());
+        let mut slave = DummySlaveReqHandler::new();
 
         slave.set_owner().unwrap();
         assert!(slave.set_owner().is_err());
@@ -267,40 +265,37 @@ mod tests {
 
     #[test]
     fn test_set_owner() {
-        let slave_be = Mutex::new(DummySlaveReqHandler::new());
+        let slave_be = DummySlaveReqHandler::new();
         let (master, mut slave) = create_master_slave_pair(slave_be);
 
-        assert!(!slave.as_ref().lock().unwrap().owned);
+        assert!(!slave.as_ref().owned);
         master.set_owner().unwrap();
         handle_request(&mut slave).unwrap();
-        assert!(slave.as_ref().lock().unwrap().owned);
+        assert!(slave.as_ref().owned);
         master.set_owner().unwrap();
         assert!(handle_request(&mut slave).is_err());
-        assert!(slave.as_ref().lock().unwrap().owned);
+        assert!(slave.as_ref().owned);
     }
 
     #[test]
     fn test_set_features() {
         let mbar = Arc::new(Barrier::new(2));
         let sbar = mbar.clone();
-        let slave_be = Mutex::new(DummySlaveReqHandler::new());
+        let slave_be = DummySlaveReqHandler::new();
         let (mut master, mut slave) = create_master_slave_pair(slave_be);
 
         thread::spawn(move || {
             handle_request(&mut slave).unwrap();
-            assert!(slave.as_ref().lock().unwrap().owned);
+            assert!(slave.as_ref().owned);
+
+            handle_request(&mut slave).unwrap();
+            handle_request(&mut slave).unwrap();
+            assert_eq!(slave.as_ref().acked_features, VIRTIO_FEATURES & !0x1);
 
             handle_request(&mut slave).unwrap();
             handle_request(&mut slave).unwrap();
             assert_eq!(
-                slave.as_ref().lock().unwrap().acked_features,
-                VIRTIO_FEATURES & !0x1
-            );
-
-            handle_request(&mut slave).unwrap();
-            handle_request(&mut slave).unwrap();
-            assert_eq!(
-                slave.as_ref().lock().unwrap().acked_protocol_features,
+                slave.as_ref().acked_protocol_features,
                 VhostUserProtocolFeatures::all().bits()
             );
 
@@ -326,26 +321,23 @@ mod tests {
     fn test_master_slave_process() {
         let mbar = Arc::new(Barrier::new(2));
         let sbar = mbar.clone();
-        let slave_be = Mutex::new(DummySlaveReqHandler::new());
+        let slave_be = DummySlaveReqHandler::new();
         let (mut master, mut slave) = create_master_slave_pair(slave_be);
 
         thread::spawn(move || {
             // set_own()
             handle_request(&mut slave).unwrap();
-            assert!(slave.as_ref().lock().unwrap().owned);
+            assert!(slave.as_ref().owned);
 
             // get/set_features()
             handle_request(&mut slave).unwrap();
             handle_request(&mut slave).unwrap();
-            assert_eq!(
-                slave.as_ref().lock().unwrap().acked_features,
-                VIRTIO_FEATURES & !0x1
-            );
+            assert_eq!(slave.as_ref().acked_features, VIRTIO_FEATURES & !0x1);
 
             handle_request(&mut slave).unwrap();
             handle_request(&mut slave).unwrap();
             assert_eq!(
-                slave.as_ref().lock().unwrap().acked_protocol_features,
+                slave.as_ref().acked_protocol_features,
                 VhostUserProtocolFeatures::all().bits()
             );
 

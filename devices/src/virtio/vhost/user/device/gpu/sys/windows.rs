@@ -337,7 +337,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     // Run until the backend is finished.
     if let Err(e) = ex.run_until(run_handler(
-        Box::new(std::sync::Mutex::new(handler)),
+        Box::new(handler),
         vhost_user_tube,
         config.exit_event,
         &ex,

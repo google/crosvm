@@ -10,7 +10,6 @@ use std::num::Wrapping;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::str;
-use std::sync::Mutex as StdMutex;
 
 use anyhow::Context;
 use argh::FromArgs;
@@ -35,7 +34,7 @@ use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
 use vmm_vhost::Error;
 use vmm_vhost::Result;
-use vmm_vhost::VhostUserSlaveReqHandlerMut;
+use vmm_vhost::VhostUserSlaveReqHandler;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 use zerocopy::AsBytes;
 
@@ -118,7 +117,7 @@ impl VhostUserDevice for VhostUserVsockDevice {
             protocol_features: VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG,
         };
 
-        Ok(Box::new(StdMutex::new(backend)))
+        Ok(Box::new(backend))
     }
 }
 
@@ -130,7 +129,7 @@ fn convert_vhost_error(err: vhost::Error) -> Error {
     }
 }
 
-impl VhostUserSlaveReqHandlerMut for VsockBackend {
+impl VhostUserSlaveReqHandler for VsockBackend {
     fn set_owner(&mut self) -> Result<()> {
         self.handle.set_owner().map_err(convert_vhost_error)
     }

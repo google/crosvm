@@ -169,7 +169,7 @@ impl VhostUserDevice for BlockAsync {
         };
 
         let handler = DeviceRequestHandler::new(Box::new(backend), ops);
-        Ok(Box::new(std::sync::Mutex::new(handler)))
+        Ok(Box::new(handler))
     }
 
     fn executor_kind(&self) -> Option<ExecutorKind> {

@@ -99,7 +99,7 @@ impl VhostUserDevice for VhostUserConsoleDevice {
         };
 
         let handler = DeviceRequestHandler::new(Box::new(backend), ops);
-        Ok(Box::new(std::sync::Mutex::new(handler)))
+        Ok(Box::new(handler))
     }
 }
 

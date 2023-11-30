@@ -3,7 +3,6 @@
 
 use std::fs::File;
 use std::mem;
-use std::sync::Mutex;
 
 use base::error;
 use base::AsRawDescriptor;
@@ -22,11 +21,9 @@ use crate::Result;
 use crate::SlaveReq;
 use crate::SystemStream;
 
-/// Services provided to the master by the slave with interior mutability.
+/// Services provided to the master by the slave.
 ///
 /// The [VhostUserSlaveReqHandler] trait defines the services provided to the master by the slave.
-/// And the [VhostUserSlaveReqHandlerMut] trait is a helper mirroring [VhostUserSlaveReqHandler],
-/// but without interior mutability.
 /// The vhost-user specification defines a master communication channel, by which masters could
 /// request services from slaves. The [VhostUserSlaveReqHandler] trait defines services provided by
 /// slaves, and it's used both on the master side and slave side.
@@ -36,59 +33,10 @@ use crate::SystemStream;
 /// - on the slave side, the [SlaveReqHandler] will forward service requests to a handler
 ///   implementing [VhostUserSlaveReqHandler].
 ///
-/// The [VhostUserSlaveReqHandler] trait is design with interior mutability to improve performance
-/// for multi-threading.
-///
 /// [VhostUserSlaveReqHandler]: trait.VhostUserSlaveReqHandler.html
-/// [VhostUserSlaveReqHandlerMut]: trait.VhostUserSlaveReqHandlerMut.html
 /// [SlaveReqHandler]: struct.SlaveReqHandler.html
 #[allow(missing_docs)]
 pub trait VhostUserSlaveReqHandler {
-    fn set_owner(&self) -> Result<()>;
-    fn reset_owner(&self) -> Result<()>;
-    fn get_features(&self) -> Result<u64>;
-    fn set_features(&self, features: u64) -> Result<()>;
-    fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()>;
-    fn set_vring_num(&self, index: u32, num: u32) -> Result<()>;
-    fn set_vring_addr(
-        &self,
-        index: u32,
-        flags: VhostUserVringAddrFlags,
-        descriptor: u64,
-        used: u64,
-        available: u64,
-        log: u64,
-    ) -> Result<()>;
-    fn set_vring_base(&self, index: u32, base: u32) -> Result<()>;
-    fn get_vring_base(&self, index: u32) -> Result<VhostUserVringState>;
-    fn set_vring_kick(&self, index: u8, fd: Option<File>) -> Result<()>;
-    fn set_vring_call(&self, index: u8, fd: Option<File>) -> Result<()>;
-    fn set_vring_err(&self, index: u8, fd: Option<File>) -> Result<()>;
-
-    fn get_protocol_features(&self) -> Result<VhostUserProtocolFeatures>;
-    fn set_protocol_features(&self, features: u64) -> Result<()>;
-    fn get_queue_num(&self) -> Result<u64>;
-    fn set_vring_enable(&self, index: u32, enable: bool) -> Result<()>;
-    fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>>;
-    fn set_config(&self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
-    fn set_slave_req_fd(&self, _vu_req: Connection<SlaveReq>) {}
-    fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)>;
-    fn set_inflight_fd(&self, inflight: &VhostUserInflight, file: File) -> Result<()>;
-    fn get_max_mem_slots(&self) -> Result<u64>;
-    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
-    fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
-    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>>;
-    fn sleep(&self) -> Result<()>;
-    fn wake(&self) -> Result<()>;
-    fn snapshot(&self) -> Result<Vec<u8>>;
-    fn restore(&self, data_bytes: &[u8], queue_evts: Option<Vec<File>>) -> Result<()>;
-}
-
-/// Services provided to the master by the slave without interior mutability.
-///
-/// This is a helper trait mirroring the [VhostUserSlaveReqHandler] trait.
-#[allow(missing_docs)]
-pub trait VhostUserSlaveReqHandlerMut {
     fn set_owner(&mut self) -> Result<()>;
     fn reset_owner(&mut self) -> Result<()>;
     fn get_features(&mut self) -> Result<u64>;
@@ -141,164 +89,36 @@ pub trait VhostUserSlaveReqHandlerMut {
     fn restore(&mut self, data_bytes: &[u8], queue_evts: Option<Vec<File>>) -> Result<()>;
 }
 
-impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
-    fn set_owner(&self) -> Result<()> {
-        self.lock().unwrap().set_owner()
-    }
-
-    fn reset_owner(&self) -> Result<()> {
-        self.lock().unwrap().reset_owner()
-    }
-
-    fn get_features(&self) -> Result<u64> {
-        self.lock().unwrap().get_features()
-    }
-
-    fn set_features(&self, features: u64) -> Result<()> {
-        self.lock().unwrap().set_features(features)
-    }
-
-    fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()> {
-        self.lock().unwrap().set_mem_table(ctx, files)
-    }
-
-    fn set_vring_num(&self, index: u32, num: u32) -> Result<()> {
-        self.lock().unwrap().set_vring_num(index, num)
-    }
-
-    fn set_vring_addr(
-        &self,
-        index: u32,
-        flags: VhostUserVringAddrFlags,
-        descriptor: u64,
-        used: u64,
-        available: u64,
-        log: u64,
-    ) -> Result<()> {
-        self.lock()
-            .unwrap()
-            .set_vring_addr(index, flags, descriptor, used, available, log)
-    }
-
-    fn set_vring_base(&self, index: u32, base: u32) -> Result<()> {
-        self.lock().unwrap().set_vring_base(index, base)
-    }
-
-    fn get_vring_base(&self, index: u32) -> Result<VhostUserVringState> {
-        self.lock().unwrap().get_vring_base(index)
-    }
-
-    fn set_vring_kick(&self, index: u8, fd: Option<File>) -> Result<()> {
-        self.lock().unwrap().set_vring_kick(index, fd)
-    }
-
-    fn set_vring_call(&self, index: u8, fd: Option<File>) -> Result<()> {
-        self.lock().unwrap().set_vring_call(index, fd)
-    }
-
-    fn set_vring_err(&self, index: u8, fd: Option<File>) -> Result<()> {
-        self.lock().unwrap().set_vring_err(index, fd)
-    }
-
-    fn get_protocol_features(&self) -> Result<VhostUserProtocolFeatures> {
-        self.lock().unwrap().get_protocol_features()
-    }
-
-    fn set_protocol_features(&self, features: u64) -> Result<()> {
-        self.lock().unwrap().set_protocol_features(features)
-    }
-
-    fn get_queue_num(&self) -> Result<u64> {
-        self.lock().unwrap().get_queue_num()
-    }
-
-    fn set_vring_enable(&self, index: u32, enable: bool) -> Result<()> {
-        self.lock().unwrap().set_vring_enable(index, enable)
-    }
-
-    fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>> {
-        self.lock().unwrap().get_config(offset, size, flags)
-    }
-
-    fn set_config(&self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()> {
-        self.lock().unwrap().set_config(offset, buf, flags)
-    }
-
-    fn set_slave_req_fd(&self, vu_req: Connection<SlaveReq>) {
-        self.lock().unwrap().set_slave_req_fd(vu_req)
-    }
-
-    fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)> {
-        self.lock().unwrap().get_inflight_fd(inflight)
-    }
-
-    fn set_inflight_fd(&self, inflight: &VhostUserInflight, file: File) -> Result<()> {
-        self.lock().unwrap().set_inflight_fd(inflight, file)
-    }
-
-    fn get_max_mem_slots(&self) -> Result<u64> {
-        self.lock().unwrap().get_max_mem_slots()
-    }
-
-    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()> {
-        self.lock().unwrap().add_mem_region(region, fd)
-    }
-
-    fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()> {
-        self.lock().unwrap().remove_mem_region(region)
-    }
-
-    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>> {
-        self.lock().unwrap().get_shared_memory_regions()
-    }
-
-    fn sleep(&self) -> Result<()> {
-        self.lock().unwrap().sleep()
-    }
-
-    fn wake(&self) -> Result<()> {
-        self.lock().unwrap().wake()
-    }
-
-    fn snapshot(&self) -> Result<Vec<u8>> {
-        self.lock().unwrap().snapshot()
-    }
-
-    fn restore(&self, data_bytes: &[u8], queue_evts: Option<Vec<File>>) -> Result<()> {
-        self.lock().unwrap().restore(data_bytes, queue_evts)
-    }
-}
-
 impl<T> VhostUserSlaveReqHandler for T
 where
-    T: AsRef<dyn VhostUserSlaveReqHandler>,
+    T: AsMut<dyn VhostUserSlaveReqHandler>,
 {
-    fn set_owner(&self) -> Result<()> {
-        self.as_ref().set_owner()
+    fn set_owner(&mut self) -> Result<()> {
+        self.as_mut().set_owner()
     }
 
-    fn reset_owner(&self) -> Result<()> {
-        self.as_ref().reset_owner()
+    fn reset_owner(&mut self) -> Result<()> {
+        self.as_mut().reset_owner()
     }
 
-    fn get_features(&self) -> Result<u64> {
-        self.as_ref().get_features()
+    fn get_features(&mut self) -> Result<u64> {
+        self.as_mut().get_features()
     }
 
-    fn set_features(&self, features: u64) -> Result<()> {
-        self.as_ref().set_features(features)
+    fn set_features(&mut self, features: u64) -> Result<()> {
+        self.as_mut().set_features(features)
     }
 
-    fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()> {
-        self.as_ref().set_mem_table(ctx, files)
+    fn set_mem_table(&mut self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()> {
+        self.as_mut().set_mem_table(ctx, files)
     }
 
-    fn set_vring_num(&self, index: u32, num: u32) -> Result<()> {
-        self.as_ref().set_vring_num(index, num)
+    fn set_vring_num(&mut self, index: u32, num: u32) -> Result<()> {
+        self.as_mut().set_vring_num(index, num)
     }
 
     fn set_vring_addr(
-        &self,
+        &mut self,
         index: u32,
         flags: VhostUserVringAddrFlags,
         descriptor: u64,
@@ -306,96 +126,104 @@ where
         available: u64,
         log: u64,
     ) -> Result<()> {
-        self.as_ref()
+        self.as_mut()
             .set_vring_addr(index, flags, descriptor, used, available, log)
     }
 
-    fn set_vring_base(&self, index: u32, base: u32) -> Result<()> {
-        self.as_ref().set_vring_base(index, base)
+    fn set_vring_base(&mut self, index: u32, base: u32) -> Result<()> {
+        self.as_mut().set_vring_base(index, base)
     }
 
-    fn get_vring_base(&self, index: u32) -> Result<VhostUserVringState> {
-        self.as_ref().get_vring_base(index)
+    fn get_vring_base(&mut self, index: u32) -> Result<VhostUserVringState> {
+        self.as_mut().get_vring_base(index)
     }
 
-    fn set_vring_kick(&self, index: u8, fd: Option<File>) -> Result<()> {
-        self.as_ref().set_vring_kick(index, fd)
+    fn set_vring_kick(&mut self, index: u8, fd: Option<File>) -> Result<()> {
+        self.as_mut().set_vring_kick(index, fd)
     }
 
-    fn set_vring_call(&self, index: u8, fd: Option<File>) -> Result<()> {
-        self.as_ref().set_vring_call(index, fd)
+    fn set_vring_call(&mut self, index: u8, fd: Option<File>) -> Result<()> {
+        self.as_mut().set_vring_call(index, fd)
     }
 
-    fn set_vring_err(&self, index: u8, fd: Option<File>) -> Result<()> {
-        self.as_ref().set_vring_err(index, fd)
+    fn set_vring_err(&mut self, index: u8, fd: Option<File>) -> Result<()> {
+        self.as_mut().set_vring_err(index, fd)
     }
 
-    fn get_protocol_features(&self) -> Result<VhostUserProtocolFeatures> {
-        self.as_ref().get_protocol_features()
+    fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures> {
+        self.as_mut().get_protocol_features()
     }
 
-    fn set_protocol_features(&self, features: u64) -> Result<()> {
-        self.as_ref().set_protocol_features(features)
+    fn set_protocol_features(&mut self, features: u64) -> Result<()> {
+        self.as_mut().set_protocol_features(features)
     }
 
-    fn get_queue_num(&self) -> Result<u64> {
-        self.as_ref().get_queue_num()
+    fn get_queue_num(&mut self) -> Result<u64> {
+        self.as_mut().get_queue_num()
     }
 
-    fn set_vring_enable(&self, index: u32, enable: bool) -> Result<()> {
-        self.as_ref().set_vring_enable(index, enable)
+    fn set_vring_enable(&mut self, index: u32, enable: bool) -> Result<()> {
+        self.as_mut().set_vring_enable(index, enable)
     }
 
-    fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>> {
-        self.as_ref().get_config(offset, size, flags)
+    fn get_config(
+        &mut self,
+        offset: u32,
+        size: u32,
+        flags: VhostUserConfigFlags,
+    ) -> Result<Vec<u8>> {
+        self.as_mut().get_config(offset, size, flags)
     }
 
-    fn set_config(&self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()> {
-        self.as_ref().set_config(offset, buf, flags)
+    fn set_config(&mut self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()> {
+        self.as_mut().set_config(offset, buf, flags)
     }
 
-    fn set_slave_req_fd(&self, vu_req: Connection<SlaveReq>) {
-        self.as_ref().set_slave_req_fd(vu_req)
+    fn set_slave_req_fd(&mut self, vu_req: Connection<SlaveReq>) {
+        self.as_mut().set_slave_req_fd(vu_req)
     }
 
-    fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)> {
-        self.as_ref().get_inflight_fd(inflight)
+    fn get_inflight_fd(
+        &mut self,
+        inflight: &VhostUserInflight,
+    ) -> Result<(VhostUserInflight, File)> {
+        self.as_mut().get_inflight_fd(inflight)
     }
 
-    fn set_inflight_fd(&self, inflight: &VhostUserInflight, file: File) -> Result<()> {
-        self.as_ref().set_inflight_fd(inflight, file)
+    fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, file: File) -> Result<()> {
+        self.as_mut().set_inflight_fd(inflight, file)
     }
 
-    fn get_max_mem_slots(&self) -> Result<u64> {
-        self.as_ref().get_max_mem_slots()
+    fn get_max_mem_slots(&mut self) -> Result<u64> {
+        self.as_mut().get_max_mem_slots()
     }
 
-    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()> {
-        self.as_ref().add_mem_region(region, fd)
+    fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()> {
+        self.as_mut().add_mem_region(region, fd)
     }
 
-    fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()> {
-        self.as_ref().remove_mem_region(region)
+    fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()> {
+        self.as_mut().remove_mem_region(region)
     }
 
-    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>> {
-        self.as_ref().get_shared_memory_regions()
+    fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
+        self.as_mut().get_shared_memory_regions()
     }
 
-    fn sleep(&self) -> Result<()> {
-        self.as_ref().sleep()
+    fn sleep(&mut self) -> Result<()> {
+        self.as_mut().sleep()
     }
 
-    fn wake(&self) -> Result<()> {
-        self.as_ref().wake()
+    fn wake(&mut self) -> Result<()> {
+        self.as_mut().wake()
     }
 
-    fn snapshot(&self) -> Result<Vec<u8>> {
-        self.as_ref().snapshot()
+    fn snapshot(&mut self) -> Result<Vec<u8>> {
+        self.as_mut().snapshot()
     }
 
-    fn restore(&self, data_bytes: &[u8], queue_evts: Option<Vec<File>>) -> Result<()> {
-        self.as_ref().restore(data_bytes, queue_evts)
+    fn restore(&mut self, data_bytes: &[u8], queue_evts: Option<Vec<File>>) -> Result<()> {
+        self.as_mut().restore(data_bytes, queue_evts)
     }
 }
 
@@ -498,18 +326,6 @@ impl SlaveReqHelper {
         }
 
         Ok((msg.value as u8, file))
-    }
-}
-
-impl AsRef<Connection<MasterReq>> for SlaveReqHelper {
-    fn as_ref(&self) -> &Connection<MasterReq> {
-        &self.connection
-    }
-}
-
-impl AsMut<Connection<MasterReq>> for SlaveReqHelper {
-    fn as_mut(&mut self) -> &mut Connection<MasterReq> {
-        &mut self.connection
     }
 }
 
@@ -1131,7 +947,7 @@ mod tests {
     fn test_slave_req_handler_new() {
         let (p1, _p2) = SystemStream::pair().unwrap();
         let connection = Connection::from(p1);
-        let backend = Mutex::new(DummySlaveReqHandler::new());
+        let backend = DummySlaveReqHandler::new();
         let handler = SlaveReqHandler::new(connection, backend);
 
         assert!(handler.as_raw_descriptor() != INVALID_DESCRIPTOR);
