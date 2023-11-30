@@ -38,6 +38,7 @@ use devices::PciConfigMmio;
 use devices::PciDevice;
 use devices::PciRootCommand;
 use devices::Serial;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use devices::VirtCpufreq;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
@@ -630,6 +631,7 @@ impl arch::LinuxArch for AArch64 {
             .insert(pci_bus, AARCH64_PCI_CFG_BASE, AARCH64_PCI_CFG_SIZE)
             .map_err(Error::RegisterPci)?;
 
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         if !components.cpu_frequencies.is_empty() {
             for vcpu in 0..vcpu_count {
                 let vcpu_affinity = match components.vcpu_affinity.clone() {

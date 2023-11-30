@@ -788,6 +788,10 @@ pub struct Config {
     pub video_dec: Vec<VideoDeviceConfig>,
     #[cfg(feature = "video-encoder")]
     pub video_enc: Vec<VideoDeviceConfig>,
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
     pub virt_cpufreq: bool,
     pub virtio_input_evdevs: Vec<PathBuf>,
     pub virtio_keyboard: Vec<PathBuf>,
@@ -990,6 +994,10 @@ impl Default for Config {
             video_dec: Vec::new(),
             #[cfg(feature = "video-encoder")]
             video_enc: Vec::new(),
+            #[cfg(all(
+                any(target_arch = "arm", target_arch = "aarch64"),
+                any(target_os = "android", target_os = "linux")
+            ))]
             virt_cpufreq: false,
             virtio_input_evdevs: Vec::new(),
             virtio_keyboard: Vec::new(),
@@ -1068,6 +1076,10 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
             }
         }
     }
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
     if cfg.virt_cpufreq {
         if !cfg.host_cpu_topology && (cfg.vcpu_affinity.is_none() || cfg.cpu_capacity.is_empty()) {
             return Err("`virt-cpufreq` requires 'host-cpu-topology' enabled or \

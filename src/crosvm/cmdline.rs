@@ -2333,7 +2333,10 @@ pub struct RunCommand {
     /// Possible backend values: libvda
     pub video_encoder: Vec<VideoDeviceConfig>,
 
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
     #[argh(switch)]
     #[serde(skip)]
     #[merge(strategy = overwrite_option)]
@@ -2528,7 +2531,10 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.cpu_capacity = capacity;
         }
 
-        #[cfg(target_arch = "aarch64")]
+        #[cfg(all(
+            any(target_arch = "arm", target_arch = "aarch64"),
+            any(target_os = "android", target_os = "linux")
+        ))]
         {
             cfg.virt_cpufreq = cmd.virt_cpufreq.unwrap_or_default();
         }

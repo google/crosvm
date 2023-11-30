@@ -27,6 +27,7 @@ mod serial;
 pub mod serial_device;
 mod suspendable;
 mod sys;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 mod virtcpufreq;
 pub mod virtio;
 #[cfg(feature = "vtpm")]
@@ -129,6 +130,7 @@ pub use self::serial_device::SerialParameters;
 pub use self::serial_device::SerialType;
 pub use self::suspendable::DeviceState;
 pub use self::suspendable::Suspendable;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::virtcpufreq::VirtCpufreq;
 pub use self::virtio::VirtioMmioDevice;
 pub use self::virtio::VirtioPciDevice;

@@ -75,32 +75,3 @@ pub use crate::errno::*;
 
 /// Process identifier.
 pub type Pid = DWORD;
-
-/// Returns a list of supported frequencies in kHz for a given logical core.
-/// This is currently not supported on Windows.
-pub fn logical_core_frequencies_khz(_cpu_id: usize) -> Result<Vec<u32>> {
-    Err(Error::new(libc::ENOTSUP))
-}
-
-/// Stub impl for sched_attr.
-/// This is currently not supported on Windows.
-#[repr(C)]
-pub struct sched_attr {
-    pub sched_flags: u64,
-    pub sched_util_min: u32,
-}
-
-impl sched_attr {
-    pub fn default() -> Self {
-        Self {
-            sched_flags: 0,
-            sched_util_min: 0,
-        }
-    }
-}
-
-/// Sets scheduler related attributes for tasks.
-/// This is currently not supported on Windows.
-pub fn sched_setattr(_pid: Pid, _attr: &mut sched_attr, _flags: u32) -> Result<()> {
-    Err(Error::new(libc::ENOTSUP))
-}

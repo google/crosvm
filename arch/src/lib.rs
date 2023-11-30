@@ -326,6 +326,10 @@ pub struct VmComponents {
     pub break_linux_pci_config_io: bool,
     pub cpu_capacity: BTreeMap<usize, u32>,
     pub cpu_clusters: Vec<CpuSet>,
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
     pub cpu_frequencies: BTreeMap<usize, Vec<u32>>,
     pub delay_rt: bool,
     pub dynamic_power_coefficient: BTreeMap<usize, u32>,

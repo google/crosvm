@@ -53,10 +53,6 @@ pub fn getpid() -> Pid {
     todo!();
 }
 
-pub fn logical_core_frequencies_khz(_cpu_id: usize) -> crate::errno::Result<Vec<u32>> {
-    todo!();
-}
-
 pub fn number_of_logical_cores() -> crate::errno::Result<usize> {
     todo!();
 }
@@ -79,13 +75,6 @@ pub mod platform_timer_resolution {
     pub fn enable_high_res_timers() -> crate::Result<Box<dyn crate::EnabledHighResTimer>> {
         todo!();
     }
-}
-
-#[allow(non_camel_case_types)]
-pub struct sched_attr {}
-
-pub fn sched_setattr(_pid: Pid, _attr: &mut sched_attr, _flags: u32) -> crate::errno::Result<()> {
-    todo!();
 }
 
 pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(_cpus: I) -> crate::errno::Result<()> {

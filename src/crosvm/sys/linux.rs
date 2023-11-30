@@ -1047,8 +1047,10 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         (None, 0)
     };
 
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     let mut cpu_frequencies = BTreeMap::new();
 
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     if cfg.virt_cpufreq {
         let host_cpu_frequencies = Arch::get_host_cpu_frequencies_khz()?;
 
@@ -1098,6 +1100,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         vcpu_affinity: cfg.vcpu_affinity.clone(),
         cpu_clusters: cfg.cpu_clusters.clone(),
         cpu_capacity: cfg.cpu_capacity.clone(),
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         cpu_frequencies,
         fw_cfg_parameters: cfg.fw_cfg_parameters.clone(),
         no_smt: cfg.no_smt,
