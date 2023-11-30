@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::sync::Arc;
-use std::sync::Mutex;
-
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
@@ -22,8 +19,7 @@ use crate::virtio::vhost::user::vmm::Error;
 use crate::virtio::vhost::user::vmm::Result as VhostResult;
 
 pub fn create_backend_req_handler(h: BackendReqHandlerImpl) -> VhostResult<BackendReqHandler> {
-    let handler = MasterReqHandler::with_stream(Arc::new(Mutex::new(h)))
-        .map_err(Error::CreateBackendReqHandler)?;
+    let handler = MasterReqHandler::with_stream(h).map_err(Error::CreateBackendReqHandler)?;
     Ok(handler)
 }
 

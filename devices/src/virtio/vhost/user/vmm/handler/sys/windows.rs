@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::sync::Arc;
-use std::sync::Mutex;
-
 use anyhow::Context;
 use anyhow::Result;
 use base::info;
@@ -32,8 +29,8 @@ pub fn create_backend_req_handler(
     backend_pid: Option<u32>,
 ) -> VhostResult<BackendReqHandler> {
     let backend_pid = backend_pid.expect("tube needs target pid for backend requests");
-    let mut handler = MasterReqHandler::with_tube(Arc::new(Mutex::new(h)), backend_pid)
-        .map_err(Error::CreateBackendReqHandler)?;
+    let mut handler =
+        MasterReqHandler::with_tube(h, backend_pid).map_err(Error::CreateBackendReqHandler)?;
     Ok(handler)
 }
 

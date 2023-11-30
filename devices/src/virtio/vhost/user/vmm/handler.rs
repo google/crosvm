@@ -6,7 +6,6 @@ mod sys;
 pub(crate) mod worker;
 
 use std::collections::BTreeMap;
-use std::sync::Mutex;
 
 use base::error;
 use base::info;
@@ -26,7 +25,7 @@ use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::HandlerResult;
 use vmm_vhost::Master;
 use vmm_vhost::MasterReqHandler;
-use vmm_vhost::VhostUserMasterReqHandlerMut;
+use vmm_vhost::VhostUserMasterReqHandler;
 use vmm_vhost::VhostUserMemoryRegionInfo;
 use vmm_vhost::VringConfigData;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
@@ -40,7 +39,7 @@ use crate::virtio::Queue;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 
-type BackendReqHandler = MasterReqHandler<Mutex<BackendReqHandlerImpl>>;
+type BackendReqHandler = MasterReqHandler<BackendReqHandlerImpl>;
 
 pub struct VhostUserHandler {
     vu: Master,
@@ -331,9 +330,7 @@ impl VhostUserHandler {
             .id;
 
         backend_req_handler
-            .backend()
-            .lock()
-            .unwrap()
+            .backend_mut()
             .set_shared_mapper_state(SharedMapperState { mapper, shmid });
         Ok(())
     }
@@ -388,14 +385,10 @@ impl VhostUserHandler {
     ) -> Result<WorkerThread<()>> {
         let label = format!("vhost_user_virtio_{}", label);
 
-        let backend_req_handler = self.backend_req_handler.take();
-        if let Some(handler) = &backend_req_handler {
+        let mut backend_req_handler = self.backend_req_handler.take();
+        if let Some(handler) = &mut backend_req_handler {
             // Using unwrap here to get the mutex protected value
-            handler
-                .backend()
-                .lock()
-                .unwrap()
-                .set_interrupt(interrupt.clone());
+            handler.backend_mut().set_interrupt(interrupt.clone());
         }
 
         Ok(WorkerThread::start(label.clone(), move |kill_evt| {
@@ -433,7 +426,7 @@ impl BackendReqHandlerImpl {
     }
 }
 
-impl VhostUserMasterReqHandlerMut for BackendReqHandlerImpl {
+impl VhostUserMasterReqHandler for BackendReqHandlerImpl {
     fn shmem_map(
         &mut self,
         req: &VhostUserShmemMapMsg,

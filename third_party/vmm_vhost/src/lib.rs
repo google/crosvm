@@ -56,7 +56,6 @@ pub(crate) mod master;
 pub use self::master::Master;
 mod master_req_handler;
 pub use self::master_req_handler::VhostUserMasterReqHandler;
-pub use self::master_req_handler::VhostUserMasterReqHandlerMut;
 mod slave_proxy;
 mod slave_req_handler;
 pub use self::master_req_handler::MasterReqHandler;

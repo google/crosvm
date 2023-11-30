@@ -11,8 +11,6 @@ cfg_if::cfg_if! {
 
 use std::fs::File;
 use std::mem;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 use base::AsRawDescriptor;
 use base::SafeDescriptor;
@@ -35,77 +33,10 @@ use crate::SystemStream;
 /// - on the master side, the [MasterReqHandler] will forward service requests to a handler
 ///   implementing [VhostUserMasterReqHandler].
 ///
-/// The [VhostUserMasterReqHandler] trait is design with interior mutability to improve performance
-/// for multi-threading.
-///
 /// [VhostUserMasterReqHandler]: trait.VhostUserMasterReqHandler.html
 /// [MasterReqHandler]: struct.MasterReqHandler.html
 /// [Slave]: struct.Slave.html
 pub trait VhostUserMasterReqHandler {
-    /// Handle device configuration change notifications.
-    fn handle_config_change(&self) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle shared memory region mapping requests.
-    fn shmem_map(
-        &self,
-        _req: &VhostUserShmemMapMsg,
-        _fd: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle shared memory region unmapping requests.
-    fn shmem_unmap(&self, _req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle virtio-fs map file requests.
-    fn fs_slave_map(
-        &self,
-        _fs: &VhostUserFSSlaveMsg,
-        _fd: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle virtio-fs unmap file requests.
-    fn fs_slave_unmap(&self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle virtio-fs sync file requests.
-    fn fs_slave_sync(&self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle virtio-fs file IO requests.
-    fn fs_slave_io(
-        &self,
-        _fs: &VhostUserFSSlaveMsg,
-        _fd: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    // fn handle_iotlb_msg(&mut self, iotlb: VhostUserIotlb);
-    // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: &dyn AsRawDescriptor);
-
-    /// Handle GPU shared memory region mapping requests.
-    fn gpu_map(
-        &self,
-        _req: &VhostUserGpuMapMsg,
-        _descriptor: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-}
-
-/// A helper trait mirroring [VhostUserMasterReqHandler] but without interior mutability.
-///
-/// [VhostUserMasterReqHandler]: trait.VhostUserMasterReqHandler.html
-pub trait VhostUserMasterReqHandlerMut {
     /// Handle device configuration change notifications.
     fn handle_config_change(&mut self) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
@@ -166,56 +97,6 @@ pub trait VhostUserMasterReqHandlerMut {
     }
 }
 
-impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
-    fn handle_config_change(&self) -> HandlerResult<u64> {
-        self.lock().unwrap().handle_config_change()
-    }
-
-    fn shmem_map(
-        &self,
-        req: &VhostUserShmemMapMsg,
-        fd: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
-        self.lock().unwrap().shmem_map(req, fd)
-    }
-
-    fn shmem_unmap(&self, req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
-        self.lock().unwrap().shmem_unmap(req)
-    }
-
-    fn fs_slave_map(
-        &self,
-        fs: &VhostUserFSSlaveMsg,
-        fd: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_slave_map(fs, fd)
-    }
-
-    fn fs_slave_unmap(&self, fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_slave_unmap(fs)
-    }
-
-    fn fs_slave_sync(&self, fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_slave_sync(fs)
-    }
-
-    fn fs_slave_io(
-        &self,
-        fs: &VhostUserFSSlaveMsg,
-        fd: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_slave_io(fs, fd)
-    }
-
-    fn gpu_map(
-        &self,
-        req: &VhostUserGpuMapMsg,
-        descriptor: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
-        self.lock().unwrap().gpu_map(req, descriptor)
-    }
-}
-
 /// The [MasterReqHandler] acts as a server on the master side, to handle service requests from
 /// slaves on the slave communication channel. It's actually a proxy invoking the registered
 /// handler implementing [VhostUserMasterReqHandler] to do the real work.
@@ -234,7 +115,7 @@ pub struct MasterReqHandler<S: VhostUserMasterReqHandler> {
     reply_ack_negotiated: bool,
 
     /// the VirtIO backend device object
-    backend: Arc<S>,
+    backend: S,
 }
 
 impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
@@ -247,7 +128,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     /// [Self::take_tx_descriptor()]: struct.MasterReqHandler.html#method.take_tx_descriptor
     /// [Master::set_slave_request_fd()]: struct.Master.html#method.set_slave_request_fd
     pub fn new(
-        backend: Arc<S>,
+        backend: S,
         serialize_tx: Box<dyn Fn(SystemStream) -> SafeDescriptor + Send>,
     ) -> Result<Self> {
         let (tx, rx) = SystemStream::pair()?;
@@ -281,8 +162,8 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     }
 
     /// Get the underlying backend device
-    pub fn backend(&self) -> Arc<S> {
-        Arc::clone(&self.backend)
+    pub fn backend_mut(&mut self) -> &mut S {
+        &mut self.backend
     }
 
     /// Main entrance to server slave request from the slave communication channel.

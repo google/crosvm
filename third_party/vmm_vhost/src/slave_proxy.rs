@@ -3,7 +3,6 @@
 
 use std::io;
 use std::mem;
-use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 
@@ -80,21 +79,22 @@ impl SlaveInternal {
 ///
 /// [Slave]: struct.Slave.html
 /// [MasterReqHandler]: struct.MasterReqHandler.html
-#[derive(Clone)]
 pub struct Slave {
     // underlying socket for communication
-    node: Arc<Mutex<SlaveInternal>>,
+    // TODO: Switch methods to accept `&mut self` and remove this mutex, then inline
+    // `SlaveInternal`.
+    node: Mutex<SlaveInternal>,
 }
 
 impl Slave {
     /// Constructs a new slave proxy from the given connection.
     pub fn new(ep: Connection<SlaveReq>) -> Self {
         Slave {
-            node: Arc::new(Mutex::new(SlaveInternal {
+            node: Mutex::new(SlaveInternal {
                 sock: ep,
                 reply_ack_negotiated: false,
                 error: None,
-            })),
+            }),
         }
     }
 
@@ -139,7 +139,7 @@ impl Slave {
 impl VhostUserMasterReqHandler for Slave {
     /// Handle shared memory region mapping requests.
     fn shmem_map(
-        &self,
+        &mut self,
         req: &VhostUserShmemMapMsg,
         fd: &dyn AsRawDescriptor,
     ) -> HandlerResult<u64> {
@@ -147,18 +147,18 @@ impl VhostUserMasterReqHandler for Slave {
     }
 
     /// Handle shared memory region unmapping requests.
-    fn shmem_unmap(&self, req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
+    fn shmem_unmap(&mut self, req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
         self.send_message(SlaveReq::SHMEM_UNMAP, req, None)
     }
 
     /// Handle config change requests.
-    fn handle_config_change(&self) -> HandlerResult<u64> {
+    fn handle_config_change(&mut self) -> HandlerResult<u64> {
         self.send_message(SlaveReq::CONFIG_CHANGE_MSG, &VhostUserEmptyMessage, None)
     }
 
     /// Forward vhost-user-fs map file requests to the slave.
     fn fs_slave_map(
-        &self,
+        &mut self,
         fs: &VhostUserFSSlaveMsg,
         fd: &dyn AsRawDescriptor,
     ) -> HandlerResult<u64> {
@@ -166,13 +166,13 @@ impl VhostUserMasterReqHandler for Slave {
     }
 
     /// Forward vhost-user-fs unmap file requests to the master.
-    fn fs_slave_unmap(&self, fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
+    fn fs_slave_unmap(&mut self, fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
         self.send_message(SlaveReq::FS_UNMAP, fs, None)
     }
 
     /// Handle GPU shared memory region mapping requests.
     fn gpu_map(
-        &self,
+        &mut self,
         req: &VhostUserGpuMapMsg,
         descriptor: &dyn AsRawDescriptor,
     ) -> HandlerResult<u64> {
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn test_slave_recv_negative() {
         let (p1, p2) = SystemStream::pair().unwrap();
-        let fs_cache = Slave::from_stream(p1);
+        let mut fs_cache = Slave::from_stream(p1);
         let master = Connection::from(p2);
 
         let len = mem::size_of::<VhostUserFSSlaveMsg>();

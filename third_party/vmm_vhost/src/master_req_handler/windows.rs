@@ -3,8 +3,6 @@
 
 //! Windows specific code that keeps rest of the code in the crate platform independent.
 
-use std::sync::Arc;
-
 use base::AsRawDescriptor;
 use base::CloseNotifier;
 use base::ReadNotifier;
@@ -17,7 +15,7 @@ use crate::VhostUserMasterReqHandler;
 impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     /// Create a `MasterReqHandler` that uses a Tube internally. Must specify the backend process
     /// which will receive the Tube.
-    pub fn with_tube(backend: Arc<S>, backend_pid: u32) -> Result<Self> {
+    pub fn with_tube(backend: S, backend_pid: u32) -> Result<Self> {
         Self::new(
             backend,
             Box::new(move |tube| unsafe {
@@ -44,8 +42,6 @@ impl<S: VhostUserMasterReqHandler> CloseNotifier for MasterReqHandler<S> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-
     use base::AsRawDescriptor;
     use base::Descriptor;
     use base::INVALID_DESCRIPTOR;
@@ -54,11 +50,11 @@ mod tests {
     use crate::message::VhostUserFSSlaveMsg;
     use crate::HandlerResult;
     use crate::Slave;
-    use crate::VhostUserMasterReqHandlerMut;
+    use crate::VhostUserMasterReqHandler;
 
     struct MockMasterReqHandler {}
 
-    impl VhostUserMasterReqHandlerMut for MockMasterReqHandler {
+    impl VhostUserMasterReqHandler for MockMasterReqHandler {
         /// Handle virtio-fs map file requests from the slave.
         fn fs_slave_map(
             &mut self,
@@ -76,7 +72,7 @@ mod tests {
 
     #[test]
     fn test_new_master_req_handler() {
-        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
+        let backend = MockMasterReqHandler {};
         let handler = MasterReqHandler::with_tube(backend, std::process::id()).unwrap();
 
         assert!(handler.get_read_notifier().as_raw_descriptor() != INVALID_DESCRIPTOR);
@@ -85,14 +81,14 @@ mod tests {
 
     #[test]
     fn test_master_slave_req_handler() {
-        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
+        let backend = MockMasterReqHandler {};
         let mut handler = MasterReqHandler::with_tube(backend, std::process::id()).unwrap();
 
         let event = base::Event::new().unwrap();
         let tx_descriptor = handler.take_tx_descriptor();
         // Safe because we only do it once.
         let stream = unsafe { packed_tube::unpack(tx_descriptor).unwrap() };
-        let fs_cache = Slave::from_stream(stream);
+        let mut fs_cache = Slave::from_stream(stream);
 
         std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();
@@ -115,7 +111,7 @@ mod tests {
 
     #[test]
     fn test_master_slave_req_handler_with_ack() {
-        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
+        let backend = MockMasterReqHandler {};
         let mut handler = MasterReqHandler::with_tube(backend, std::process::id()).unwrap();
         handler.set_reply_ack_flag(true);
 
@@ -123,7 +119,7 @@ mod tests {
         let tx_descriptor = handler.take_tx_descriptor();
         // Safe because we only do it once.
         let stream = unsafe { packed_tube::unpack(tx_descriptor).unwrap() };
-        let fs_cache = Slave::from_stream(stream);
+        let mut fs_cache = Slave::from_stream(stream);
 
         std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();

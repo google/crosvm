@@ -69,6 +69,7 @@ use base::SharedMemory;
 use cros_async::TaskHandle;
 use serde::Deserialize;
 use serde::Serialize;
+use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
@@ -820,7 +821,7 @@ pub enum VhostBackendReqConnectionState {
 
 /// Keeps track of Vhost user backend request connection.
 pub struct VhostBackendReqConnection {
-    conn: Slave,
+    conn: Arc<Mutex<Slave>>,
     shmem_info: Option<ShmemInfo>,
 }
 
@@ -836,12 +837,16 @@ impl VhostBackendReqConnection {
             shmid,
             mapped_regions: BTreeMap::new(),
         });
-        Self { conn, shmem_info }
+        Self {
+            conn: Arc::new(Mutex::new(conn)),
+            shmem_info,
+        }
     }
 
     /// Send `VHOST_USER_CONFIG_CHANGE_MSG` to the frontend
     pub fn send_config_changed(&self) -> anyhow::Result<()> {
         self.conn
+            .lock()
             .handle_config_change()
             .context("Could not send config change message")?;
         Ok(())
@@ -862,7 +867,7 @@ impl VhostBackendReqConnection {
 }
 
 struct VhostShmemMapper {
-    conn: Slave,
+    conn: Arc<Mutex<Slave>>,
     shmem_info: ShmemInfo,
 }
 
@@ -896,6 +901,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
                         driver_uuid,
                     );
                     self.conn
+                        .lock()
                         .gpu_map(&msg, &descriptor)
                         .context("failed to map memory")?;
                     size
@@ -922,6 +928,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
             let msg =
                 VhostUserShmemMapMsg::new(self.shmem_info.shmid, offset, fd_offset, size, flags);
             self.conn
+                .lock()
                 .shmem_map(&msg, &descriptor)
                 .context("failed to map memory")?;
             size
@@ -939,6 +946,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
             .context("unknown offset")?;
         let msg = VhostUserShmemUnmapMsg::new(self.shmem_info.shmid, offset, size);
         self.conn
+            .lock()
             .shmem_unmap(&msg)
             .context("failed to map memory")
             .map(|_| ())

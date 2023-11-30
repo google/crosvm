@@ -4,7 +4,6 @@
 //! Unix specific code that keeps rest of the code in the crate platform independent.
 
 use std::os::unix::io::IntoRawFd;
-use std::sync::Arc;
 
 use base::AsRawDescriptor;
 use base::FromRawDescriptor;
@@ -24,7 +23,7 @@ impl<S: VhostUserMasterReqHandler> AsRawDescriptor for MasterReqHandler<S> {
 
 impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     /// Create a `MasterReqHandler` that uses a Unix stream internally.
-    pub fn with_stream(backend: Arc<S>) -> Result<Self> {
+    pub fn with_stream(backend: S) -> Result<Self> {
         Self::new(
             backend,
             Box::new(|stream| unsafe {
@@ -37,8 +36,6 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-
     use base::AsRawDescriptor;
     use base::Descriptor;
     use base::FromRawDescriptor;
@@ -49,11 +46,11 @@ mod tests {
     use crate::HandlerResult;
     use crate::Slave;
     use crate::SystemStream;
-    use crate::VhostUserMasterReqHandlerMut;
+    use crate::VhostUserMasterReqHandler;
 
     struct MockMasterReqHandler {}
 
-    impl VhostUserMasterReqHandlerMut for MockMasterReqHandler {
+    impl VhostUserMasterReqHandler for MockMasterReqHandler {
         /// Handle virtio-fs map file requests from the slave.
         fn fs_slave_map(
             &mut self,
@@ -71,7 +68,7 @@ mod tests {
 
     #[test]
     fn test_new_master_req_handler() {
-        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
+        let backend = MockMasterReqHandler {};
         let mut handler = MasterReqHandler::with_stream(backend).unwrap();
 
         let tx_descriptor = handler.take_tx_descriptor();
@@ -81,7 +78,7 @@ mod tests {
 
     #[test]
     fn test_master_slave_req_handler() {
-        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
+        let backend = MockMasterReqHandler {};
         let mut handler = MasterReqHandler::with_stream(backend).unwrap();
 
         let tx_descriptor = handler.take_tx_descriptor();
@@ -90,7 +87,7 @@ mod tests {
             panic!("failed to duplicated tx fd!");
         }
         let stream = unsafe { SystemStream::from_raw_descriptor(fd) };
-        let fs_cache = Slave::from_stream(stream);
+        let mut fs_cache = Slave::from_stream(stream);
 
         std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();
@@ -110,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_master_slave_req_handler_with_ack() {
-        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
+        let backend = MockMasterReqHandler {};
         let mut handler = MasterReqHandler::with_stream(backend).unwrap();
         handler.set_reply_ack_flag(true);
 
@@ -120,7 +117,7 @@ mod tests {
             panic!("failed to duplicated tx fd!");
         }
         let stream = unsafe { SystemStream::from_raw_descriptor(fd) };
-        let fs_cache = Slave::from_stream(stream);
+        let mut fs_cache = Slave::from_stream(stream);
 
         std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();
