@@ -204,9 +204,6 @@ gfxstream_stub = ["rutabaga_gfx/gfxstream_stub"]
 ## Enables 3D acceleration for the guest via the virglrenderer library over virtio-gpu.
 virgl_renderer = ["devices/virgl_renderer"]
 
-## Enables in development features of virglrenderer to support newer OpenGL versions.
-virgl_renderer_next = ["devices/virgl_renderer_next", "rutabaga_gfx/virgl_renderer_next"]
-
 #! ### Video features
 #!
 #! See [Video Device](https://crosvm.dev/book/devices/video.html) for more information.
@@ -334,7 +331,6 @@ all-default = [
     "vaapi",
     "video-decoder",
     "video-encoder",
-    "virgl_renderer_next",
     "virgl_renderer",
     "vtpm",
     "wl-dmabuf",
