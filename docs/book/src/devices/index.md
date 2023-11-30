@@ -26,6 +26,7 @@ Here is a (non-comprehensive) list of emulated devices provided by crosvm.
 - [`p9`] - Shares file systems over the 9P protocol.
 - [`pmem`] - Persistent memory.
 - [`rng`] - Entropy source used to seed guest OS's entropy pool.
+- [`scsi`] - SCSI device.
 - [`snd`] - Encodes and decodes audio streams.
 - [`tpm`] - Creates a TPM (Trusted Platform Module) device backed by vTPM daemon.
 - [`video`] - Allows the guest to leverage the host's video capabilities.
@@ -78,6 +79,7 @@ Currently, only network devices are supported.
 [`p9`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/p9.rs
 [`pmem`]: pmem.md
 [`rng`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/rng.rs
+[`scsi`]: scsi.md
 [`serial`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/serial.rs
 [`snd`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/snd/
 [`tpm`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/tpm.rs

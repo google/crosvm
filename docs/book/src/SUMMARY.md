@@ -18,6 +18,7 @@
   - [Block](./devices/block.md)
   - [Network](./devices/net.md)
   - [Balloon](./devices/balloon.md)
+  - [SCSI (experimental)](./devices/scsi.md)
   - [Fs](./devices/fs.md)
   - [Vsock](./devices/vsock.md)
   - [Pmem](./devices/pmem.md)
