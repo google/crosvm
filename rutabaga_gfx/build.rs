@@ -231,10 +231,13 @@ fn virglrenderer() -> Result<()> {
     // Use virglrenderer package from pkgconfig on ChromeOS builds
     if use_system_virglrenderer() {
         println!("cargo:warning=using system virglrenderer");
-        pkg_config::Config::new()
+        let lib = pkg_config::Config::new()
             .atleast_version("1.0.0")
             .probe("virglrenderer")
             .context("pkgconfig failed to find virglrenderer")?;
+        if lib.defines.contains_key("VIRGL_RENDERER_UNSTABLE_APIS") {
+            println!("cargo:rustc-cfg=virgl_renderer_unstable");
+        }
     } else {
         // Otherwise build from source.
         let out_dir = PathBuf::from(env::var("OUT_DIR")?).join("virglrenderer");

@@ -725,7 +725,7 @@ impl RutabagaComponent for VirglRenderer {
 
     #[allow(unused_variables)]
     fn export_fence(&self, fence_id: u64) -> RutabagaResult<RutabagaHandle> {
-        #[cfg(feature = "virgl_renderer_next")]
+        #[cfg(virgl_renderer_unstable)]
         {
             let mut fd: i32 = 0;
             // SAFETY:
@@ -742,7 +742,7 @@ impl RutabagaComponent for VirglRenderer {
                 handle_type: RUTABAGA_FENCE_HANDLE_TYPE_SYNC_FD,
             })
         }
-        #[cfg(not(feature = "virgl_renderer_next"))]
+        #[cfg(not(virgl_renderer_unstable))]
         Err(RutabagaError::Unsupported)
     }
 
