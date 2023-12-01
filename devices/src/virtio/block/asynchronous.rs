@@ -859,14 +859,12 @@ impl BlockAsync {
                 }
             }
             VIRTIO_BLK_T_DISCARD | VIRTIO_BLK_T_WRITE_ZEROES => {
-                let _trace = cros_tracing::trace_event!(
-                    VirtioBlk,
-                    if req_type == VIRTIO_BLK_T_DISCARD {
-                        "discard"
-                    } else {
-                        "write_zeroes"
-                    }
-                );
+                #[allow(clippy::if_same_then_else)]
+                let _trace = if req_type == VIRTIO_BLK_T_DISCARD {
+                    cros_tracing::trace_event!(VirtioBlk, "discard")
+                } else {
+                    cros_tracing::trace_event!(VirtioBlk, "write_zeroes")
+                };
                 if req_type == VIRTIO_BLK_T_DISCARD && !disk_state.sparse {
                     // Discard is a hint; if this is a non-sparse disk, just ignore it.
                     return Ok(());

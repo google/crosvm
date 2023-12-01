@@ -218,7 +218,7 @@ macro_rules! setup_perfetto {
         /// ```
         #[macro_export]
         macro_rules! trace_event {
-            ($category:ident, $name:expr) => {
+            ($category:ident, $name:literal) => {
                 {
                     let instances = $mod::PERFETTO_CATEGORY_INSTANCES
                         [$mod::PerfettoCategory::$category as usize]
@@ -237,6 +237,11 @@ macro_rules! setup_perfetto {
                         None
                     }
                 }
+            };
+            ($category:ident, $name:expr $(,$t:expr)+) => {
+                // Perfetto doesn't support extra detail arguments, so drop
+                // them.
+                trace_event!($category, $name)
             };
         }
 

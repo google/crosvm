@@ -46,8 +46,14 @@ pub fn init_in_process() {
     perfetto::init_tracing(perfetto::BackendType::InProcess);
 }
 
-// TODO(b/263902691): implement push_descriptors.
+// TODO(b/263902691): implement for Perfetto.
 #[macro_export]
 macro_rules! push_descriptors {
     ($fd_vec:expr) => {};
+}
+
+// TODO(b/263902691): implement for Perfetto.
+#[macro_export]
+macro_rules! trace_simple_print {
+    ($($t:tt)+) => {};
 }

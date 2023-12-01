@@ -52,7 +52,7 @@ macro_rules! push_descriptors {
 /// Prints a single non-scoped message without creating a trace context.
 /// The tagged variant lets us enable or disable individual categories.
 macro_rules! trace_simple_print {
-    ($category: ident, $($t:tt)*) => {{
+    ($category: ident, $($t:tt)+) => {{
         if($crate::ENABLED_CATEGORIES[$crate::TracedCategories::$category as usize].load(std::sync::atomic::Ordering::Relaxed)) {
             $crate::trace_simple_print!($($t)*);
         }
@@ -161,7 +161,7 @@ macro_rules! setup_trace_marker {
 /// where `$uid` will be the same unique value across those two events.
 ///
 macro_rules! trace_event {
-    ($category:ident, $name:expr, $($arg:expr),+) => {{
+    ($category:ident, $name:literal, $($arg:expr),+) => {{
         if($crate::ENABLED_CATEGORIES[$crate::TracedCategories::$category as usize].load(std::sync::atomic::Ordering::Relaxed)) {
             $crate::trace_event_begin!($category);
             let index = $crate::EVENT_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
