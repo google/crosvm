@@ -759,12 +759,12 @@ impl Worker {
     /// (false).
     async fn handle_vsock_connection_request(&self, header: virtio_vsock_hdr) -> bool {
         let port = PortPair::from_tx_header(&header);
-        info!("vsock: Received connection request for port {}", port);
+        info!("vsock: port {}: Received connection request", port);
 
         if self.connections.read_lock().await.contains_key(&port) {
             // Connection exists, nothing for us to do.
             warn!(
-                "vsock: accepting connection request on already connected port {}",
+                "vsock: port {}: accepting connection request on already connected port",
                 port
             );
             return true;
@@ -772,8 +772,9 @@ impl Worker {
 
         if self.host_guid.is_none() {
             error!(
-                "vsock: Cannot accept guest-initiated connections \
-                        without host-guid, rejecting connection"
+                "vsock: port {}: Cannot accept guest-initiated connections \
+                        without host-guid, rejecting connection",
+                port,
             );
             return false;
         }
@@ -795,6 +796,7 @@ impl Worker {
         match pipe_result {
             Ok(mut pipe_connection) => {
                 let mut buffer = Box::new([0u8; TEMP_READ_BUF_SIZE_BYTES]);
+                info!("vsock: port {}: created client pipe", port);
 
                 // Unsafe because the read could happen at any time
                 // after this function is called. We ensure safety
@@ -810,6 +812,7 @@ impl Worker {
                         }
                     }
                 }
+                info!("vsock: port {}: started read on client pipe", port);
 
                 let buf_alloc = Self::calculate_buf_alloc_from_pipe(&pipe_connection, port);
                 let connection = VsockConnection {
@@ -834,6 +837,7 @@ impl Worker {
                         port
                     )
                 });
+                info!("vsock: port {}: signaled connection ready", port);
                 true
             }
             Err(e) => {
@@ -1002,7 +1006,10 @@ impl Worker {
                     });
                     // Try to send the packet. Do not block other ports if the queue is full.
                     if let Err(e) = queue.try_send(packet) {
-                        error!("Error sending packet to queue, dropping packet: {:?}", e)
+                        error!(
+                            "vsock: port {}: error sending packet to queue, dropping packet: {:?}",
+                            port, e
+                        )
                     }
                 }
                 SelectResult::Finished(_) => {
@@ -1109,6 +1116,15 @@ impl Worker {
                 )
                 .await
                 .expect("vsock: failed to write to queue");
+                info!(
+                    "vsock: port {}: replied {} to connection request",
+                    port,
+                    if resp_op == vsock_op::VIRTIO_VSOCK_OP_RESPONSE {
+                        "success"
+                    } else {
+                        "reset"
+                    },
+                );
             }
             vsock_op::VIRTIO_VSOCK_OP_RESPONSE => {
                 // TODO(b/237811512): Implement this for host-initiated connections
@@ -1191,21 +1207,24 @@ impl Worker {
                     connection.peer_recv_cnt = header.fwd_cnt.to_native() as usize;
                     connection.peer_buf_alloc = header.buf_alloc.to_native() as usize;
                 } else {
-                    error!("vsock: got credit update on unknown port {}", port);
+                    error!("vsock: port {}: got credit update on unknown port", port);
                     is_open = false;
                 }
             }
             // A request from our peer to get *our* buffer state. We reply to the RX queue.
             vsock_op::VIRTIO_VSOCK_OP_CREDIT_REQUEST => {
                 info!(
-                    "vsock: Got credit request from peer {}; sending credit update.",
+                    "vsock: port {}: Got credit request from peer; sending credit update.",
                     port,
                 );
                 self.send_vsock_credit_update(send_queue, rx_queue_evt, header)
                     .await;
             }
             _ => {
-                error!("vsock: Unknown operation requested, dropping packet");
+                error!(
+                    "vsock: port {}: unknown operation requested, dropping packet",
+                    port
+                );
             }
         }
         is_open
@@ -1255,10 +1274,10 @@ impl Worker {
                 response.as_bytes_mut(),
             )
             .await
-            .expect("vsock: failed to write to queue");
+            .unwrap_or_else(|_| panic!("vsock: port {}: failed to write to queue", port));
         } else {
             error!(
-                "vsock: error sending credit update on unknown port {}",
+                "vsock: port {}: error sending credit update on unknown port",
                 port
             );
         }
@@ -1296,7 +1315,7 @@ impl Worker {
             .await
             .expect("failed to write to queue");
         } else {
-            error!("vsock: error closing unknown port {}", port);
+            error!("vsock: port {}: error closing unknown port", port);
         }
     }
 
@@ -1309,7 +1328,7 @@ impl Worker {
         let mut avail_desc = match queue.next_async(queue_evt).await {
             Ok(d) => d,
             Err(e) => {
-                error!("vsock: Failed to read descriptor {}", e);
+                error!("vsock: failed to read descriptor {}", e);
                 return Err(VsockError::AwaitQueue(e));
             }
         };
@@ -1329,7 +1348,7 @@ impl Worker {
                 None => return Ok(()),
             },
             Err(e) => {
-                error!("vsock: Failed to read descriptor {}", e);
+                error!("vsock: failed to read descriptor {}", e);
                 return Err(VsockError::AwaitQueue(e));
             }
         };
@@ -1360,7 +1379,7 @@ impl Worker {
             queue.trigger_interrupt(&self.interrupt);
             Ok(())
         } else {
-            error!("vsock: Failed to write bytes to queue");
+            error!("vsock: failed to write bytes to queue");
             Err(VsockError::WriteQueue(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "failed to write bytes to queue",
