@@ -852,6 +852,9 @@ pub struct SynchronizeCache10 {
 impl SynchronizeCache10 {
     async fn emulate(&self, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
         let _trace = cros_tracing::trace_event!(VirtioScsi, "SYNCHRONIZE_CACHE(10)");
+        if dev.read_only {
+            return Err(ExecuteError::ReadOnly);
+        }
         dev.disk_image.fdatasync().await.map_err(|e| {
             warn!("failed to sync: {e}");
             ExecuteError::SynchronizationError
@@ -928,6 +931,9 @@ impl WriteSame10 {
         let lba = self.lba() as u64;
         let nblocks = self.nblocks() as u64;
         let _trace = cros_tracing::trace_event!(VirtioScsi, "WRITE_SAME(10)", lba, nblocks);
+        if dev.read_only {
+            return Err(ExecuteError::ReadOnly);
+        }
         if nblocks == 0 {
             // crosvm does not allow the number of blocks to be zero.
             return Err(ExecuteError::InvalidField);
