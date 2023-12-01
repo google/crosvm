@@ -37,15 +37,12 @@ fn test_serialize_tube_new() {
     let msg_descriptors = msg_serialize.into_descriptors();
 
     // Deserialize the Tube
-    let mut msg_descriptors_safe = msg_descriptors
+    let msg_descriptors_safe = msg_descriptors
         .into_iter()
-        .map(|v| Some(unsafe { SafeDescriptor::from_raw_descriptor(v) }))
-        .collect();
-    let tube_deserialized: Tube = deserialize_with_descriptors(
-        || serde_json::from_slice(&serialized),
-        &mut msg_descriptors_safe,
-    )
-    .unwrap();
+        .map(|v| unsafe { SafeDescriptor::from_raw_descriptor(v) });
+    let tube_deserialized: Tube =
+        deserialize_with_descriptors(|| serde_json::from_slice(&serialized), msg_descriptors_safe)
+            .unwrap();
 
     // Send a message through deserialized Tube
     tube_deserialized.send(&"hi".to_string()).unwrap();

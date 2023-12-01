@@ -37,14 +37,13 @@
 //! // convert the descriptor type.
 //! let mut safe_descriptors = out_descriptors
 //!     .iter()
-//!     .map(|&v| Some(unsafe { SafeDescriptor::from_raw_descriptor(v) }))
-//!     .collect();
+//!     .map(|&v| unsafe { SafeDescriptor::from_raw_descriptor(v) });
 //! std::mem::forget(data); // Prevent double drop of tmp_f.
 //!
 //! // The deserialize_with_descriptors function is used give the descriptor deserializers access
 //! // to side channel descriptors.
 //! let res: FileSerdeWrapper =
-//!     deserialize_with_descriptors(|| serde_json::from_str(&out_json), &mut safe_descriptors)
+//!     deserialize_with_descriptors(|| serde_json::from_str(&out_json), safe_descriptors)
 //!        .expect("failed to deserialize");
 //! ```
 
@@ -305,14 +304,14 @@ where
 /// error.
 pub fn deserialize_with_descriptors<F, T, E>(
     f: F,
-    descriptors: &mut Vec<Option<SafeDescriptor>>,
+    descriptors: impl IntoIterator<Item = SafeDescriptor>,
 ) -> Result<T, E>
 where
     F: FnOnce() -> Result<T, E>,
     E: de::Error,
 {
-    let swap_descriptors = std::mem::take(descriptors);
-    set_descriptor_src(swap_descriptors).map_err(E::custom)?;
+    let descriptor_src = descriptors.into_iter().map(Option::Some).collect();
+    set_descriptor_src(descriptor_src).map_err(E::custom)?;
 
     // catch_unwind is used to ensure that set_descriptor_src is always balanced with a call to
     // take_descriptor_src afterwards.
@@ -320,7 +319,10 @@ where
 
     // unwrap is used because set_descriptor_src is always called before this, so it should never
     // panic.
-    *descriptors = take_descriptor_src().unwrap();
+    let empty_descriptors = take_descriptor_src().unwrap();
+
+    // The deserializer should have consumed every descriptor.
+    debug_assert!(empty_descriptors.into_iter().all(|d| d.is_none()));
 
     match res {
         Ok(r) => r,
@@ -460,18 +462,11 @@ mod tests {
     use super::super::SerializeDescriptors;
 
     fn deserialize<T: DeserializeOwned>(json: &str, descriptors: &[RawDescriptor]) -> T {
-        let mut safe_descriptors = descriptors
+        let safe_descriptors = descriptors
             .iter()
-            .map(|&v| Some(unsafe { SafeDescriptor::from_raw_descriptor(v) }))
-            .collect();
+            .map(|&v| unsafe { SafeDescriptor::from_raw_descriptor(v) });
 
-        let res =
-            deserialize_with_descriptors(|| serde_json::from_str(json), &mut safe_descriptors)
-                .unwrap();
-
-        assert!(safe_descriptors.iter().all(|v| v.is_none()));
-
-        res
+        deserialize_with_descriptors(|| serde_json::from_str(json), safe_descriptors).unwrap()
     }
 
     #[test]

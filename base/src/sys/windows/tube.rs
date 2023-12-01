@@ -326,38 +326,23 @@ pub fn deserialize_and_recv<T: DeserializeOwned, F: FnMut(&mut [u8]) -> io::Resu
         return Err(Error::RecvUnexpectedEmptyBody);
     }
 
-    let msg_descriptors: Vec<RawDescriptor> = if header.descriptor_json_size > 0 {
+    let descriptor_usizes: Vec<usize> = if header.descriptor_json_size > 0 {
         let mut msg_descriptors_json = vec![0u8; header.descriptor_json_size];
         perform_read(&mut read_fn, msg_descriptors_json.as_mut_slice())
             .map_err(Error::from_recv_io_error)?;
-        let descriptor_usizes: Vec<usize> =
-            serde_json::from_slice(msg_descriptors_json.as_slice()).map_err(Error::Json)?;
-
-        // Safe because the usizes are RawDescriptors that were converted to usize in the send
-        // method.
-        descriptor_usizes
-            .iter()
-            .map(|item| *item as RawDescriptor)
-            .collect()
+        serde_json::from_slice(msg_descriptors_json.as_slice()).map_err(Error::Json)?
     } else {
         Vec::new()
     };
 
-    let mut msg_descriptors_safe = msg_descriptors
-        .into_iter()
-        .map(|v| {
-            Some(unsafe {
-                // Safe because the socket returns new fds that are owned locally by this scope.
-                SafeDescriptor::from_raw_descriptor(v)
-            })
-        })
-        .collect();
+    let msg_descriptors = descriptor_usizes.into_iter().map(|item| {
+        // SAFETY: the usizes are RawDescriptors that were duplicated and converted to usize in the
+        // send method.
+        unsafe { SafeDescriptor::from_raw_descriptor(item as RawDescriptor) }
+    });
 
-    deserialize_with_descriptors(
-        || serde_json::from_slice(&msg_json),
-        &mut msg_descriptors_safe,
-    )
-    .map_err(Error::Json)
+    deserialize_with_descriptors(|| serde_json::from_slice(&msg_json), msg_descriptors)
+        .map_err(Error::Json)
 }
 
 #[derive(EventToken, Eq, PartialEq, Copy, Clone)]

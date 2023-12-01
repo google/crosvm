@@ -108,11 +108,9 @@ impl Tube {
             return Err(Error::Disconnected);
         }
 
-        let mut msg_descriptors_safe = msg_descriptors.into_iter().map(Option::Some).collect();
-
         deserialize_with_descriptors(
             || serde_json::from_slice(&msg_json[0..msg_json_size]),
-            &mut msg_descriptors_safe,
+            msg_descriptors,
         )
         .map_err(Error::Json)
     }
