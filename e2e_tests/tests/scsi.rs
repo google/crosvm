@@ -94,3 +94,56 @@ fn test_scsi_reset_disable_sandbox() {
     let config = Config::new().disable_sandbox();
     reset_scsi(config).unwrap();
 }
+
+fn write_same_scsi(config: Config) -> anyhow::Result<()> {
+    let disk = prepare_disk_img();
+    let scsi_disk = disk.path().to_str().unwrap();
+    let config = config.extra_args(vec!["--scsi-block".to_string(), scsi_disk.to_string()]);
+    println!("scsi-disk={scsi_disk}");
+
+    let mut vm = TestVm::new(config)?;
+    assert!(vm
+        .exec_in_guest("sg_write_same --16 --lba=0 --num=1 --unmap /dev/sda")
+        .is_ok());
+    assert!(vm
+        .exec_in_guest("sg_write_same --16 --lba=0 --num=1 /dev/sda")
+        .is_ok());
+    Ok(())
+}
+
+#[test]
+fn test_scsi_write_same() {
+    let config = Config::new();
+    write_same_scsi(config).unwrap();
+}
+
+#[test]
+fn test_scsi_write_same_disable_sandbox() {
+    let config = Config::new().disable_sandbox();
+    write_same_scsi(config).unwrap();
+}
+
+fn unmap_scsi(config: Config) -> anyhow::Result<()> {
+    let disk = prepare_disk_img();
+    let scsi_disk = disk.path().to_str().unwrap();
+    let config = config.extra_args(vec!["--scsi-block".to_string(), scsi_disk.to_string()]);
+    println!("scsi-disk={scsi_disk}");
+
+    let mut vm = TestVm::new(config)?;
+    assert!(vm
+        .exec_in_guest("sg_unmap --lba=0 --num=1 -f /dev/sda")
+        .is_ok());
+    Ok(())
+}
+
+#[test]
+fn test_scsi_unmap() {
+    let config = Config::new();
+    unmap_scsi(config).unwrap();
+}
+
+#[test]
+fn test_scsi_unmap_disable_sandbox() {
+    let config = Config::new().disable_sandbox();
+    unmap_scsi(config).unwrap();
+}
