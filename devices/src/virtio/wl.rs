@@ -373,6 +373,8 @@ enum WlError {
     DmabufSync(io::Error),
     #[error("failed to create shared memory from descriptor: {0}")]
     FromSharedMemory(Error),
+    #[error("failed to get seals: {0}")]
+    GetSeals(Error),
     #[error("gralloc error: {0}")]
     #[cfg(feature = "minigbm")]
     GrallocError(#[from] RutabagaError),
@@ -525,27 +527,23 @@ impl VmRequester {
                 .context("failed to dup gfx handle")
                 .map_err(WlError::ShmemMapperError)?,
             reqs.size,
+            Protection::read_write(),
         )
         .map(|info| (info, safe_descriptor, reqs))
     }
 
     fn register_shmem(&self, shm: &SharedMemory) -> WlResult<u64> {
-        self.register_memory(
-            SafeDescriptor::try_from(shm as &dyn AsRawDescriptor)
-                .context("failed to create safe descriptor")
-                .map_err(WlError::ShmemMapperError)?,
-            shm.size(),
-        )
-    }
-
-    fn register_memory(&self, descriptor: SafeDescriptor, size: u64) -> WlResult<u64> {
-        let mut state = self.state.borrow_mut();
-        let size = round_up_to_page_size(size as usize) as u64;
-
-        let prot = match FileFlags::from_file(&descriptor) {
+        let prot = match FileFlags::from_file(shm) {
             Ok(FileFlags::Read) => Protection::read(),
             Ok(FileFlags::Write) => Protection::write(),
-            Ok(FileFlags::ReadWrite) => Protection::read_write(),
+            Ok(FileFlags::ReadWrite) => {
+                let seals = shm.get_seals().map_err(WlError::GetSeals)?;
+                if seals.write_seal() {
+                    Protection::read()
+                } else {
+                    Protection::read_write()
+                }
+            }
             Err(e) => {
                 return Err(WlError::ShmemMapperError(anyhow!(
                     "failed to get file descriptor flags with error: {:?}",
@@ -553,6 +551,23 @@ impl VmRequester {
                 )))
             }
         };
+        self.register_memory(
+            SafeDescriptor::try_from(shm as &dyn AsRawDescriptor)
+                .context("failed to create safe descriptor")
+                .map_err(WlError::ShmemMapperError)?,
+            shm.size(),
+            prot,
+        )
+    }
+
+    fn register_memory(
+        &self,
+        descriptor: SafeDescriptor,
+        size: u64,
+        prot: Protection,
+    ) -> WlResult<u64> {
+        let mut state = self.state.borrow_mut();
+        let size = round_up_to_page_size(size as usize) as u64;
 
         let source = VmMemorySource::Descriptor {
             descriptor,
