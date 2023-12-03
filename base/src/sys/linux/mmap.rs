@@ -254,6 +254,13 @@ impl MemoryMapping {
                 if offset > libc::off64_t::max_value() as u64 {
                     return Err(Error::InvalidOffset);
                 }
+                // Map private for read-only seal. See below for upstream relax of the restriction.
+                // - https://lore.kernel.org/bpf/20231013103208.kdffpyerufr4ygnw@quack3/T/
+                let seals = unsafe { libc::fcntl(fd.as_raw_descriptor(), libc::F_GET_SEALS) };
+                if (seals >= 0) && (seals & libc::F_SEAL_WRITE != 0) {
+                    flags &= !libc::MAP_SHARED;
+                    flags |= libc::MAP_PRIVATE;
+                }
                 (fd.as_raw_descriptor(), offset as libc::off64_t)
             }
             None => {
