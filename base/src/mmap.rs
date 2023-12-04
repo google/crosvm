@@ -331,6 +331,7 @@ pub struct MemoryMappingBuilder<'a> {
     pub(crate) size: usize,
     pub(crate) offset: Option<u64>,
     pub(crate) protection: Option<Protection>,
+    #[cfg_attr(windows, allow(unused))]
     pub(crate) populate: bool,
 }
 
@@ -385,45 +386,6 @@ impl<'a> MemoryMappingBuilder<'a> {
     pub fn protection(mut self, protection: Protection) -> MemoryMappingBuilder<'a> {
         self.protection = Some(protection);
         self
-    }
-
-    /// Build a MemoryMapping from the provided options at a fixed address. Note this
-    /// is a separate function from build in order to isolate unsafe behavior.
-    ///
-    /// # Safety
-    ///
-    /// Function should not be called before the caller unmaps any mmap'd regions already
-    /// present at `(addr..addr+size)`. If another MemoryMapping object holds the same
-    /// address space, the destructors of those objects will conflict and the space could
-    /// be unmapped while still in use.
-    ///
-    /// WARNING: On windows, this is not compatible with from_file.
-    /// TODO(b:230901659): Find a better way to enforce this warning in code.
-    pub unsafe fn build_fixed(self, addr: *mut u8) -> Result<MemoryMapping> {
-        if self.populate {
-            // Population not supported for fixed mapping.
-            return Err(Error::InvalidArgument);
-        }
-        match self.descriptor {
-            None => MemoryMappingBuilder::wrap(
-                PlatformMmap::new_protection_fixed(
-                    addr,
-                    self.size,
-                    self.protection.unwrap_or_else(Protection::read_write),
-                )?,
-                None,
-            ),
-            Some(descriptor) => MemoryMappingBuilder::wrap(
-                PlatformMmap::from_descriptor_offset_protection_fixed(
-                    addr,
-                    descriptor,
-                    self.size,
-                    self.offset.unwrap_or(0),
-                    self.protection.unwrap_or_else(Protection::read_write),
-                )?,
-                None,
-            ),
-        }
     }
 }
 
