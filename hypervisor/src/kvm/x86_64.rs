@@ -718,12 +718,12 @@ impl VcpuX86_64 for KvmVcpu {
         if size < 0 {
             return errno_result();
         }
-        let mut xsave = Xsave::new(size as usize);
-        let ioctl_nr = if size > KVM_XSAVE_MAX_SIZE {
-            KVM_GET_XSAVE2()
+        let (ioctl_nr, size) = if size > KVM_XSAVE_MAX_SIZE {
+            (KVM_GET_XSAVE2(), size)
         } else {
-            KVM_GET_XSAVE()
+            (KVM_GET_XSAVE(), KVM_XSAVE_MAX_SIZE)
         };
+        let mut xsave = Xsave::new(size as usize);
 
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
         // correct amount of memory to our pointer, and we verify the return result.
