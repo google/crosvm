@@ -67,6 +67,7 @@ DO_NOT_RUN_WINE64 = [
     "package(base) and test(get_allocated_ranges_for_file_with_one_hole)",
     "package(base) and test(get_allocated_ranges_for_file_with_many_hole)",
     "package(gpu_display) & test(can_create_2_window_proc_threads)",
+    "package(gpu_display) & test(user_event_handler_can_call_into_wndproc)",
 ]
 
 # Avoid e2e tests and benchmarks to be automatically included as unit tests
