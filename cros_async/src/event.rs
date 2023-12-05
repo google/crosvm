@@ -21,6 +21,3 @@ impl EventAsync {
 }
 
 impl IntoAsync for Event {}
-
-// Safe because an `Event` is used underneath, which is safe to pass between threads.
-unsafe impl Send for EventAsync {}
