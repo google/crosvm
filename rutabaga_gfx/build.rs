@@ -4,18 +4,33 @@
 
 use std::env;
 use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
+use anyhow::anyhow;
 use anyhow::bail;
+use anyhow::Context;
 use anyhow::Result;
-
-const MINIGBM_SRC: &str = "../third_party/minigbm";
-const VIRGLRENDERER_SRC: &str = "../third_party/virglrenderer";
 
 fn is_native_build() -> bool {
     env::var("HOST").unwrap() == env::var("TARGET").unwrap()
+}
+
+fn use_system_minigbm() -> bool {
+    println!("cargo:rerun-if-env-changed=CROSVM_BUILD_VARIANT");
+    println!("cargo:rerun-if-env-changed=CROSVM_USE_SYSTEM_MINIGBM");
+    env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos"
+        || env::var("CROSVM_USE_SYSTEM_MINIGBM").unwrap_or_else(|_| "0".to_string()) != "0"
+}
+
+fn use_system_virglrenderer() -> bool {
+    println!("cargo:rerun-if-env-changed=CROSVM_BUILD_VARIANT");
+    println!("cargo:rerun-if-env-changed=CROSVM_USE_SYSTEM_VIRGLRENDERER");
+    env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos"
+        || env::var("CROSVM_USE_SYSTEM_VIRGLRENDERER").unwrap_or_else(|_| "0".to_string()) != "0"
 }
 
 /// Returns the target triplet prefix for gcc commands. No prefix is required
@@ -44,48 +59,113 @@ fn get_meson_cross_args() -> Vec<String> {
     }
 }
 
-fn build_minigbm(out_dir: &Path) -> Result<()> {
-    let lib_path = out_dir.join("libgbm.a");
-    if lib_path.exists() {
-        return Ok(());
-    }
+fn env_prepend_pkg_config_path(new_path: &Path) -> Result<()> {
+    const KEY: &str = "PKG_CONFIG_PATH";
+    let new_path_string = new_path
+        .to_str()
+        .ok_or(anyhow!("failed to convert path to string"))?;
+    if let Ok(original_value) = env::var(KEY) {
+        env::set_var(KEY, format!("{}:{}", new_path_string, original_value));
+    } else {
+        env::set_var(KEY, new_path);
+    };
+    Ok(())
+}
 
-    if !Path::new(MINIGBM_SRC).join(".git").exists() {
+/// Builds from pinned commit as static library and probes the generated pkgconfig file to emit
+/// cargo linking metadata
+fn build_and_probe_minigbm(out_dir: &Path) -> Result<()> {
+    const SOURCE_DIR: &str = "../third_party/minigbm";
+    let pkgconfig_file = out_dir.join("gbm.pc");
+
+    println!("cargo:rerun-if-changed={}", SOURCE_DIR);
+    println!("cargo:warning=building minigbm from source");
+
+    if !Path::new(SOURCE_DIR).join(".git").exists() {
         bail!(
             "{} source does not exist, did you forget to \
             `git submodule update --init`?",
-            MINIGBM_SRC
+            SOURCE_DIR
         );
     }
 
+    // build static library
     let make_flags = env::var("CARGO_MAKEFLAGS").unwrap();
     let status = Command::new("make")
         .env("MAKEFLAGS", make_flags)
+        .env("VERBOSE", "1")
         .env("CROSS_COMPILE", get_cross_compile_prefix())
         .arg(format!("OUT={}", out_dir.display()))
         .arg("CC_STATIC_LIBRARY(libminigbm.pie.a)")
-        .current_dir(MINIGBM_SRC)
+        .current_dir(SOURCE_DIR)
         .status()?;
     if !status.success() {
         bail!("make failed with status: {}", status);
     }
 
+    // copy headers to build output
+    let src_dir = Path::new(SOURCE_DIR);
+    fs::copy(src_dir.join("gbm.h"), out_dir.join("gbm.h"))?;
+    fs::copy(
+        src_dir.join("minigbm_helpers.h"),
+        out_dir.join("minigbm_helpers.h"),
+    )?;
+
     // minigbm will be linked using the name gbm, make sure it can be found.
     fs::copy(out_dir.join("libminigbm.pie.a"), out_dir.join("libgbm.a"))?;
+
+    // write out a custom pkgconfig
+    let mut conf = File::create(pkgconfig_file)?;
+    let contents = format!(
+        r#"prefix={install_dir}
+includedir=${{prefix}}
+libdir=${{prefix}}
+
+Name: libgbm
+Description: A small gbm implementation
+Version: 18.0.0
+Cflags: -I${{includedir}}
+Libs: -L${{libdir}} -lgbm
+Requires.private: libdrm >= 2.4.50
+"#,
+        install_dir = out_dir.display()
+    );
+    conf.write_all(contents.as_bytes())?;
+
+    // let pkg_config crate configure the cargo link metadata according to the custom pkgconfig
+    // above
+    env_prepend_pkg_config_path(out_dir)?;
+    let mut config = pkg_config::Config::new();
+    config.statik(true).probe("gbm")?;
     Ok(())
 }
 
-fn build_virglrenderer(out_dir: &Path) -> Result<()> {
-    let lib_path = out_dir.join("src/libvirglrenderer.a");
-    if lib_path.exists() {
-        return Ok(());
-    }
+fn minigbm() -> Result<()> {
+    if use_system_minigbm() {
+        println!("cargo:warning=using system minigbm");
+        pkg_config::probe_library("gbm").context("pkgconfig failed to find gbm")?;
+    } else {
+        // Otherwise build from source and emit cargo build metadata
+        let out_dir = PathBuf::from(env::var("OUT_DIR")?).join("minigbm");
+        build_and_probe_minigbm(&out_dir).context("failed building minigbm")?;
+    };
+    Ok(())
+}
 
-    if !Path::new(VIRGLRENDERER_SRC).join(".git").exists() {
+/// Builds from pinned commit as static library and probes the generated pkgconfig file to emit
+/// cargo linking metadata
+fn build_and_probe_virglrenderer(out_dir: &Path) -> Result<()> {
+    const SOURCE_DIR: &str = "../third_party/virglrenderer";
+    let install_prefix = out_dir.join("installed");
+
+    println!("cargo:rerun-if-changed={}", SOURCE_DIR);
+    println!("cargo:warning=building virglrenderer from source");
+
+    if !Path::new(SOURCE_DIR).join(".git").exists() {
         bail!(
             "{} source does not exist, did you forget to \
-            `git submodule update --init`?",
-            VIRGLRENDERER_SRC
+                `git submodule update --init`?",
+            SOURCE_DIR
         );
     }
 
@@ -94,73 +174,72 @@ fn build_virglrenderer(out_dir: &Path) -> Result<()> {
         platforms.push("glx");
     }
 
-    let minigbm_src_abs = PathBuf::from(MINIGBM_SRC).canonicalize()?;
-    let status = Command::new("meson")
-        .env("PKG_CONFIG_PATH", &minigbm_src_abs)
+    // Ensures minigbm is available and that it's pkgconfig is locatable
+    minigbm()?;
+
+    let mut setup = Command::new("meson");
+    setup
         .arg("setup")
+        .current_dir(SOURCE_DIR)
+        .arg("--prefix")
+        .arg(install_prefix.as_os_str())
+        .arg("--libdir")
+        .arg("lib")
+        .args(get_meson_cross_args())
         .arg(format!("-Dplatforms={}", platforms.join(",")))
         .arg("-Ddefault_library=static")
-        .args(get_meson_cross_args())
-        .arg(out_dir.as_os_str())
-        .current_dir(VIRGLRENDERER_SRC)
-        .status()?;
-    if !status.success() {
-        bail!("meson setup failed with status: {}", status);
+        .arg(out_dir.as_os_str());
+
+    let setup_status = setup.status()?;
+    if !setup_status.success() {
+        bail!("meson setup failed with status: {}", setup_status);
     }
 
-    // Add local minigbm paths to make sure virglrenderer can build against it.
-    let mut cmd = Command::new("meson");
-    cmd.env("CPATH", &minigbm_src_abs)
+    let mut compile = Command::new("meson");
+    compile
         .arg("compile")
         .arg("src/virglrenderer")
         .current_dir(out_dir);
-
-    let status = cmd.status()?;
-    if !status.success() {
-        bail!("meson compile failed with status: {}", status);
+    let compile_status = compile.status()?;
+    if !compile_status.success() {
+        bail!("meson compile failed with status: {}", compile_status);
     }
-    Ok(())
-}
 
-fn virglrenderer_deps() -> Result<()> {
-    // System provided runtime dependencies.
-    pkg_config::Config::new().probe("epoxy")?;
-    pkg_config::Config::new().probe("libdrm")?;
-    if env::var("CARGO_FEATURE_X").is_ok() {
-        pkg_config::Config::new().probe("x11")?;
+    let mut install = Command::new("meson");
+    install.arg("install").current_dir(out_dir);
+    let install_status = install.status()?;
+    if !install_status.success() {
+        bail!("meson install failed with status: {}", install_status);
     }
+
+    let pkg_config_path = install_prefix.join("lib/pkgconfig");
+    assert!(pkg_config_path.join("virglrenderer.pc").exists());
+
+    // let pkg_config crate configure the cargo link metadata according to the generated pkgconfig
+    env_prepend_pkg_config_path(pkg_config_path.as_path())?;
+    let mut config = pkg_config::Config::new();
+    config.statik(true).probe("virglrenderer")?;
+
     Ok(())
 }
 
 fn virglrenderer() -> Result<()> {
-    // Use virglrenderer package from pkgconfig on ChromeOS builds
-    if env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos"
-        || env::var("CROSVM_USE_SYSTEM_VIRGLRENDERER").unwrap_or_else(|_| "0".to_string()) != "0"
-    {
-        pkg_config::Config::new()
-            .atleast_version("1.0.0")
-            .probe("virglrenderer")?;
-        virglrenderer_deps()?;
-        return Ok(());
+    if use_system_virglrenderer() && !use_system_minigbm() {
+        bail!("Must use system minigbm if using system virglrenderer (try setting CROSVM_USE_SYSTEM_MINIGBM=1)");
     }
 
-    // Otherwise build from source.
-    let out_dir = PathBuf::from(env::var("OUT_DIR")?);
-    let minigbm_out = out_dir.join("minigbm");
-    let virglrenderer_out = out_dir.join("virglrenderer");
-    build_minigbm(&minigbm_out)?;
-    build_virglrenderer(&virglrenderer_out)?;
-
-    println!(
-        "cargo:rustc-link-search={}/src",
-        virglrenderer_out.display()
-    );
-    println!("cargo:rustc-link-search={}", minigbm_out.display());
-    println!("cargo:rustc-link-lib=static=virglrenderer");
-    println!("cargo:rustc-link-lib=static=gbm");
-
-    virglrenderer_deps()?;
-
+    // Use virglrenderer package from pkgconfig on ChromeOS builds
+    if use_system_virglrenderer() {
+        println!("cargo:warning=using system virglrenderer");
+        pkg_config::Config::new()
+            .atleast_version("1.0.0")
+            .probe("virglrenderer")
+            .context("pkgconfig failed to find virglrenderer")?;
+    } else {
+        // Otherwise build from source.
+        let out_dir = PathBuf::from(env::var("OUT_DIR")?).join("virglrenderer");
+        build_and_probe_virglrenderer(&out_dir)?;
+    }
     Ok(())
 }
 
@@ -198,6 +277,10 @@ fn main() -> Result<()> {
     // Skip installing dependencies when generating documents.
     if env::var("CARGO_DOC").is_ok() {
         return Ok(());
+    }
+
+    if env::var("CARGO_FEATURE_MINIGBM").is_ok() {
+        minigbm()?;
     }
 
     if env::var("CARGO_FEATURE_VIRGL_RENDERER").is_ok() {
