@@ -101,6 +101,8 @@ pub enum Error {
     MaxNestingDepthExceeded,
     #[error("failure to punch hole: {0}")]
     PunchHole(cros_async::AsyncError),
+    #[error("failure to punch hole for block device file: {0}")]
+    PunchHoleBlockDeviceFile(base::Error),
     #[cfg(feature = "qcow")]
     #[error("failure in qcow: {0}")]
     QcowError(qcow::Error),
@@ -412,6 +414,9 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
 /// A disk backed by a single file that implements `AsyncDisk` for access.
 pub struct SingleFileDisk {
     inner: IoSource<File>,
+    // Whether the backed file is a block device since the punch-hole needs different operation.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    is_block_device_file: bool,
 }
 
 impl DiskGetLen for SingleFileDisk {
@@ -476,6 +481,11 @@ impl AsyncDisk for SingleFileDisk {
     }
 
     async fn punch_hole(&self, file_offset: u64, length: u64) -> Result<()> {
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        if self.is_block_device_file {
+            return base::linux::discard_block(self.inner.as_source(), file_offset, length)
+                .map_err(Error::PunchHoleBlockDeviceFile);
+        }
         self.inner
             .punch_hole(file_offset, length)
             .await

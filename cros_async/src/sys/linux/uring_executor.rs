@@ -88,9 +88,6 @@ use crate::MemRegion;
 #[sorted]
 #[derive(Debug, ThisError)]
 pub enum Error {
-    /// Failed to check if a file is a block file.
-    #[error("Failed to check if a file is a block file.: {0}")]
-    CheckingBlockFile(base::Error),
     /// Creating a context to wait on FDs failed.
     #[error("Error creating the fd waiting context: {0}")]
     CreatingContext(io_uring::Error),
@@ -140,7 +137,6 @@ impl From<Error> for io::Error {
             Discard(e) => e.into(),
             DuplicatingFd(e) => e.into(),
             ExecutorGone => io::Error::new(io::ErrorKind::Other, ExecutorGone),
-            CheckingBlockFile(e) => e.into(),
             InvalidOffset => io::Error::new(io::ErrorKind::InvalidInput, InvalidOffset),
             InvalidSource => io::Error::new(io::ErrorKind::InvalidData, InvalidSource),
             Io(e) => e,

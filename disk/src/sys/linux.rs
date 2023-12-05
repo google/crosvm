@@ -31,9 +31,14 @@ pub fn read_from_disk(
 
 impl SingleFileDisk {
     pub fn new(disk: File, ex: &Executor) -> Result<Self> {
+        let is_block_device_file =
+            base::linux::is_block_file(&disk).map_err(Error::BlockDeviceNew)?;
         ex.async_from(disk)
             .map_err(Error::CreateSingleFileDisk)
-            .map(|inner| SingleFileDisk { inner })
+            .map(|inner| SingleFileDisk {
+                inner,
+                is_block_device_file,
+            })
     }
 }
 

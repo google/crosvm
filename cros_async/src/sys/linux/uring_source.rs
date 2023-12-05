@@ -6,11 +6,8 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
-use base::sys::discard_block;
-use base::sys::is_block_file;
 use base::sys::FallocateMode;
 use base::AsRawDescriptor;
-use once_cell::unsync::OnceCell;
 
 use super::uring_executor::RegisteredSource;
 use super::uring_executor::Result;
@@ -19,7 +16,6 @@ use crate::common_executor::RawExecutor;
 use crate::mem::BackingMemory;
 use crate::mem::MemRegion;
 use crate::mem::VecIoWrapper;
-use crate::AsyncError;
 use crate::AsyncResult;
 
 /// `UringSource` wraps FD backed IO sources for use with io_uring. It is a thin wrapper around
@@ -27,8 +23,6 @@ use crate::AsyncResult;
 pub struct UringSource<F: AsRawDescriptor> {
     registered_source: RegisteredSource,
     source: F,
-    // Caches if the backed file is a block device since the punch-hole needs different operation.
-    is_block_file: OnceCell<bool>,
 }
 
 impl<F: AsRawDescriptor> UringSource<F> {
@@ -38,7 +32,6 @@ impl<F: AsRawDescriptor> UringSource<F> {
         Ok(UringSource {
             registered_source: r,
             source: io_source,
-            is_block_file: OnceCell::new(),
         })
     }
 
@@ -127,21 +120,14 @@ impl<F: AsRawDescriptor> UringSource<F> {
         Ok(len as usize)
     }
 
-    /// Deallocates the given range of a file. Note this op blocks if the file is a block device.
+    /// Deallocates the given range of a file.
     pub async fn punch_hole(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
-        if *self.is_block_file.get_or_try_init(|| {
-            is_block_file(&self.source).map_err(super::uring_executor::Error::CheckingBlockFile)
-        })? {
-            discard_block(&self.source, file_offset, len)
-                .map_err(|e| AsyncError::Uring(super::uring_executor::Error::Discard(e)))?;
-        } else {
-            let op = self.registered_source.start_fallocate(
-                file_offset,
-                len,
-                FallocateMode::PunchHole.into(),
-            )?;
-            let _ = op.await?;
-        }
+        let op = self.registered_source.start_fallocate(
+            file_offset,
+            len,
+            FallocateMode::PunchHole.into(),
+        )?;
+        let _ = op.await?;
         Ok(())
     }
 
