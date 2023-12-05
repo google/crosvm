@@ -24,6 +24,54 @@
 mod condvar;
 mod mutex;
 
+use std::sync::Arc;
+use std::sync::WaitTimeoutResult;
+use std::time::Duration;
+
 pub use crate::condvar::Condvar;
 pub use crate::mutex::Mutex;
 pub use crate::mutex::WouldBlock;
+
+/// Waitable allows one thread to wait on a signal from another thread.
+///
+/// A Waitable is usually created with a Promise using
+/// `create_promise_and_waitable`, and the Promise is used by one thread and the
+/// Waitable can be used by another thread. Promise and Waitable do not use any
+/// OS-level synchronization primitives.
+pub struct Waitable(Arc<(Condvar, Mutex<bool>)>);
+
+impl Waitable {
+    /// Return an already-signaled Waitable.
+    pub fn signaled() -> Self {
+        Waitable(Arc::new((Condvar::new(), Mutex::new(true))))
+    }
+
+    /// Perform a blocking wait on this Waitable.
+    pub fn wait(&self, timeout: Option<Duration>) -> WaitTimeoutResult {
+        let timeout = timeout.unwrap_or(Duration::MAX);
+        let (ref condvar, ref signaled_mutex) = *self.0;
+        condvar
+            .wait_timeout_while(signaled_mutex.lock(), timeout, |signaled| !*signaled)
+            .1
+    }
+}
+
+/// Promise allows one thread to signal a waitable that another thread can wait on.
+pub struct Promise(Arc<(Condvar, Mutex<bool>)>);
+
+impl Promise {
+    /// Signal this promise, and it's associated Waitable.
+    pub fn signal(&self) {
+        let (ref condvar, ref signaled_mutex) = *self.0;
+        *signaled_mutex.lock() = true;
+        condvar.notify_all();
+    }
+}
+
+/// Create a paired Promise and Waitable.
+///
+/// Signalling the Promise will signal the Waitable.
+pub fn create_promise_and_waitable() -> (Promise, Waitable) {
+    let inner = Arc::new((Condvar::new(), Mutex::new(false)));
+    (Promise(Arc::clone(&inner)), Waitable(inner))
+}

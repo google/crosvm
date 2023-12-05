@@ -7,6 +7,7 @@ edition = "2021"
 [features]
 x = []
 kiwi = []
+vulkan_display = [ "vulkano", "ash", "rand", "protos", "protobuf", "euclid", "smallvec"]
 
 [dependencies]
 anyhow = "*"
@@ -20,6 +21,14 @@ cfg-if = "*"
 serde = { version = "1", features = [ "derive" ] }
 vm_control = { path = "../vm_control", features = ["gpu"] }
 zerocopy = { version = "0.7", features = ["derive"] }
+vulkano = { version = "0.31.1", optional = true }
+ash = { version = "0.37.0", optional = true }
+rand = { version = "0.8.5", optional = true }
+protos = { path = "../protos", optional = true }
+protobuf = { version = "3.2", optional = true }
+euclid = { version = "*", optional = true }
+smallvec = { version = "*", optional = true }
+sync = { path = "../common/sync" }
 
 [target.'cfg(windows)'.dependencies]
 cros_tracing = { path = "../cros_tracing" }
@@ -31,6 +40,7 @@ once_cell = "*"
 smallvec = "*"
 sync = { path = "../common/sync" }
 euclid = "*"
+lazy_static = "*"
 
 [build-dependencies]
 cc = "1.0.25"

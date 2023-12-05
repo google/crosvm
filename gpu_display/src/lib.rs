@@ -32,6 +32,8 @@ mod gpu_display_x;
 #[cfg(any(windows, feature = "x"))]
 mod keycode_converter;
 mod sys;
+#[cfg(feature = "vulkan_display")]
+pub mod vulkan;
 
 pub use event_device::EventDevice;
 pub use event_device::EventDeviceKind;

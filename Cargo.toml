@@ -198,6 +198,9 @@ gfxstream_stub = ["rutabaga_gfx/gfxstream_stub"]
 ## Enables 3D acceleration for the guest via the virglrenderer library over virtio-gpu.
 virgl_renderer = ["devices/virgl_renderer"]
 
+## Enables the usage of Vulkan for display on the host.
+vulkan_display = ["gpu_display/vulkan_display"]
+
 # Enables the highly experimental vulkan graphics buffer allocator.
 # see rutabaga_gfx/Cargo.toml for instructions on building with enabled.
 vulkano = ["rutabaga_gfx/vulkano"]
@@ -382,6 +385,7 @@ all-mingw64 = [
     "net",
     "slirp",
     "stats",
+    "vulkan_display",
 ]
 
 ## All features that are compiled and tested for msvc64
