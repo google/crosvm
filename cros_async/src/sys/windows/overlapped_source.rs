@@ -10,7 +10,6 @@ use std::io::Write;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
-use base::create_overlapped;
 use base::error;
 use base::AsRawDescriptor;
 use base::Descriptor;
@@ -146,8 +145,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
                 io::Error::new(io::ErrorKind::InvalidInput, "seek on non-seekable handle"),
             )));
         }
-        let overlapped = create_overlapped(file_offset, None);
-        let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
+        let mut overlapped_op = self.reg_source.register_overlapped_operation(file_offset)?;
 
         // SAFETY:
         // Safe because we pass a pointer to a valid vec and that same vector's length.
@@ -188,8 +186,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         };
 
         for region in mem_offsets.into_iter() {
-            let overlapped = create_overlapped(offset, None);
-            let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
+            let mut overlapped_op = self.reg_source.register_overlapped_operation(offset)?;
 
             let slice = mem.get_volatile_slice(region).map_err(|e| {
                 AsyncError::OverlappedSource(Error::BackingMemoryVolatileSliceFetchFailed(e))
@@ -236,8 +233,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
                 io::Error::new(io::ErrorKind::InvalidInput, "seek on non-seekable handle"),
             )));
         }
-        let overlapped = create_overlapped(file_offset, None);
-        let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
+        let mut overlapped_op = self.reg_source.register_overlapped_operation(file_offset)?;
 
         // SAFETY:
         // Safe because we pass a pointer to a valid vec and that same vector's length.
@@ -279,8 +275,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         };
 
         for region in mem_offsets.into_iter() {
-            let overlapped = create_overlapped(offset, None);
-            let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
+            let mut overlapped_op = self.reg_source.register_overlapped_operation(offset)?;
 
             let slice = mem.get_volatile_slice(region).map_err(|e| {
                 AsyncError::OverlappedSource(Error::BackingMemoryVolatileSliceFetchFailed(e))

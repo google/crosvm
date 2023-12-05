@@ -89,12 +89,22 @@ pub struct PipeConnection {
     blocking_mode: BlockingMode,
 }
 
+/// `OVERLAPPED` is allocated on the heap because it must not move while performing I/O operations.
+///
+/// Defined as a separate type so that we can mark it as `Send` and `Sync`.
+pub struct BoxedOverlapped(pub Box<OVERLAPPED>);
+
+// SAFETY: `OVERLAPPED` is not automatically `Send` because it contains a `HANDLE`, which is a raw
+// pointer, but `HANDLE`s are safe to move between threads and thus so is `OVERLAPPED`.
+unsafe impl Send for BoxedOverlapped {}
+
+// SAFETY: See the argument for `Send` above. `HANDLE`s are also safe to share between threads.
+unsafe impl Sync for BoxedOverlapped {}
+
 /// Wraps the OVERLAPPED structure. Also keeps track of whether OVERLAPPED is being used by a
 /// Readfile or WriteFile operation and holds onto the event object so it doesn't get dropped.
 pub struct OverlappedWrapper {
-    // Allocated on the heap so that the OVERLAPPED struct doesn't move when performing I/O
-    // operations.
-    overlapped: Box<OVERLAPPED>,
+    overlapped: BoxedOverlapped,
     // This field prevents the event handle from being dropped too early and allows callers to
     // be notified when a read or write overlapped operation has completed.
     h_event: Option<Event>,
@@ -130,16 +140,12 @@ impl OverlappedWrapper {
         };
 
         Ok(OverlappedWrapper {
-            overlapped: Box::new(overlapped),
+            overlapped: BoxedOverlapped(Box::new(overlapped)),
             h_event,
             in_use: false,
         })
     }
 }
-
-// SAFETY:
-// Safe because all of the contained fields may be safely sent to another thread.
-unsafe impl Send for OverlappedWrapper {}
 
 pub trait WriteOverlapped {
     /// Perform an overlapped write operation with the specified buffer and overlapped wrapper.
@@ -564,7 +570,7 @@ impl PipeConnection {
             &self.handle,
             self.blocking_mode,
             buf,
-            Some(&mut overlapped_wrapper.overlapped),
+            Some(&mut overlapped_wrapper.overlapped.0),
         )?;
         Ok(())
     }
@@ -727,7 +733,7 @@ impl PipeConnection {
         PipeConnection::write_internal(
             &self.handle,
             buf,
-            Some(&mut overlapped_wrapper.overlapped),
+            Some(&mut overlapped_wrapper.overlapped.0),
         )?;
         Ok(())
     }
@@ -850,7 +856,7 @@ impl PipeConnection {
                 self.as_raw_descriptor(),
                 // Note: The overlapped structure is only used if the pipe was opened in
                 // OVERLAPPED mode, but is necessary in that case.
-                &mut *overlapped_wrapper.overlapped,
+                &mut *overlapped_wrapper.overlapped.0,
             );
             if success_flag == 0 {
                 return match GetLastError() {
@@ -934,7 +940,7 @@ impl PipeConnection {
         fail_if_zero!(unsafe {
             GetOverlappedResult(
                 self.handle.as_raw_descriptor(),
-                &mut *overlapped_wrapper.overlapped,
+                &mut *overlapped_wrapper.overlapped.0,
                 &mut size_transferred,
                 if wait { TRUE } else { FALSE },
             )

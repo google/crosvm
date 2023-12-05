@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::sync::Weak;
 use std::task::Waker;
 
+use base::named_pipes::BoxedOverlapped;
 use base::warn;
 use base::AsRawDescriptor;
 use base::Error as SysError;
@@ -234,9 +235,9 @@ impl RegisteredOverlappedSource {
     /// in the IO call.
     pub fn register_overlapped_operation(
         &self,
-        overlapped: OVERLAPPED,
+        offset: Option<u64>,
     ) -> Result<OverlappedOperation> {
-        OverlappedOperation::new(overlapped, self.ex.clone())
+        OverlappedOperation::new(offset, self.ex.clone())
     }
 }
 
@@ -256,15 +257,15 @@ impl WeakWake for HandleReactor {
 ///        ensure the waker has been registered. (If the executor polls the IOCP before the waker
 ///        is registered, the future will stall.)
 pub(crate) struct OverlappedOperation {
-    overlapped: Pin<Box<OVERLAPPED>>,
+    overlapped: BoxedOverlapped,
     ex: Weak<RawExecutor<HandleReactor>>,
     completed: bool,
 }
 
 impl OverlappedOperation {
-    fn new(overlapped: OVERLAPPED, ex: Weak<RawExecutor<HandleReactor>>) -> Result<Self> {
+    fn new(offset: Option<u64>, ex: Weak<RawExecutor<HandleReactor>>) -> Result<Self> {
         let ret = Self {
-            overlapped: Box::pin(overlapped),
+            overlapped: BoxedOverlapped(Box::new(base::create_overlapped(offset, None))),
             ex,
             completed: false,
         };
@@ -285,12 +286,12 @@ impl OverlappedOperation {
     /// when making the overlapped IO call or the executor will not be able to wake the right
     /// future.
     pub fn get_overlapped(&mut self) -> &mut OVERLAPPED {
-        &mut self.overlapped
+        &mut self.overlapped.0
     }
 
     #[inline]
     pub fn get_token(&self) -> WakerToken {
-        WakerToken((&*self.overlapped) as *const _ as usize)
+        WakerToken((&*self.overlapped.0) as *const _ as usize)
     }
 }
 
