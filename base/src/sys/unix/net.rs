@@ -288,10 +288,6 @@ pub(in crate::sys) fn sun_path_offset() -> usize {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UnixSeqpacket(SafeDescriptor);
 
-// Safety: UnixSeqpacket is just a file descriptor, and it is safe to send FDs
-// between threads.
-unsafe impl Send for UnixSeqpacket {}
-
 impl UnixSeqpacket {
     /// Open a `SOCK_SEQPACKET` connection to socket named by `path`.
     ///
