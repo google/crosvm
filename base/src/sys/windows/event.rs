@@ -239,6 +239,12 @@ impl From<PlatformEvent> for SafeDescriptor {
     }
 }
 
+impl From<SafeDescriptor> for PlatformEvent {
+    fn from(sd: SafeDescriptor) -> Self {
+        PlatformEvent { event_handle: sd }
+    }
+}
+
 // PlatformEvent is safe for send & Sync despite containing a raw handle to its
 // file mapping object. As long as the instance to PlatformEvent stays alive, this
 // pointer will be a valid handle.

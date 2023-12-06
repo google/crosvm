@@ -15,8 +15,7 @@ use anyhow::Context;
 use argh::FromArgs;
 use base::AsRawDescriptor;
 use base::Event;
-use base::FromRawDescriptor;
-use base::IntoRawDescriptor;
+use base::SafeDescriptor;
 use cros_async::Executor;
 use data_model::Le64;
 use vhost::Vhost;
@@ -331,8 +330,7 @@ impl VhostUserSlaveReqHandler for VsockBackend {
         let index = usize::from(index);
         let file = fd.ok_or(Error::InvalidParam)?;
 
-        // Safe because the descriptor is uniquely owned by `file`.
-        let event = unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) };
+        let event = Event::from(SafeDescriptor::from(file));
 
         if index == EVENT_QUEUE {
             return Ok(());

@@ -332,17 +332,14 @@ impl VhostUserRegularOps {
             error!("failed to remove O_NONBLOCK for kick fd: {}", e);
             return Err(VhostError::InvalidParam);
         }
-
-        // Safe because we own the file.
-        Ok(unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) })
+        Ok(Event::from(SafeDescriptor::from(file)))
     }
 
     pub fn set_vring_call(_index: u8, file: Option<File>) -> VhostResult<Interrupt> {
         let file = file.ok_or(VhostError::InvalidParam)?;
-
-        // Safe because we own the file.
-        let call_evt = unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) };
-        Ok(Interrupt::new_vhost_user(call_evt))
+        Ok(Interrupt::new_vhost_user(Event::from(
+            SafeDescriptor::from(file),
+        )))
     }
 }
 

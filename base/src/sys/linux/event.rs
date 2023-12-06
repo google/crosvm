@@ -188,6 +188,12 @@ impl From<PlatformEvent> for SafeDescriptor {
     }
 }
 
+impl From<SafeDescriptor> for PlatformEvent {
+    fn from(sd: SafeDescriptor) -> Self {
+        PlatformEvent { event_handle: sd }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

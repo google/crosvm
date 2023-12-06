@@ -113,3 +113,9 @@ impl From<Event> for SafeDescriptor {
         Self::from(evt.0)
     }
 }
+
+impl From<SafeDescriptor> for Event {
+    fn from(sd: SafeDescriptor) -> Self {
+        Event(PlatformEvent::from(sd))
+    }
+}
