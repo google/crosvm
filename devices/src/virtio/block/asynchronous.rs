@@ -492,14 +492,13 @@ pub async fn run_worker(
     control_tube: &Option<AsyncTube>,
     mut worker_rx: mpsc::UnboundedReceiver<WorkerCmd>,
     kill_evt: Event,
-    resample_future: impl std::future::Future<Output = anyhow::Result<()>>,
 ) -> anyhow::Result<()> {
     // One flush timer per disk.
     let timer = Timer::new().expect("Failed to create a timer");
     let flush_timer_armed = Rc::new(RefCell::new(false));
 
     // Handles control requests.
-    let control = handle_command_tube(control_tube, interrupt, disk_state.clone()).fuse();
+    let control = handle_command_tube(control_tube, interrupt.clone(), disk_state.clone()).fuse();
     pin_mut!(control);
 
     // Handle all the queues in one sub-select call.
@@ -521,7 +520,8 @@ pub async fn run_worker(
     let kill = async_utils::await_and_exit(ex, kill_evt).fuse();
     pin_mut!(kill);
 
-    let resample_future = resample_future.fuse();
+    // Process any requests to resample the irq value.
+    let resample_future = async_utils::handle_irq_resample(ex, interrupt.clone()).fuse();
     pin_mut!(resample_future);
 
     // Running queue handlers.
@@ -1070,10 +1070,6 @@ impl VirtioDevice for BlockAsync {
                             &async_control,
                             worker_rx,
                             kill_evt,
-                            async {
-                                // Process any requests to resample the irq value.
-                                async_utils::handle_irq_resample(&ex, interrupt.clone()).await
-                            },
                         )
                         .await;
                         // Flush any in-memory disk image state to file.

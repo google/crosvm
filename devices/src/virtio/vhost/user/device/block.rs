@@ -99,9 +99,6 @@ impl BlockBackend {
                     &async_tube,
                     worker_rx,
                     kill_evt,
-                    // Use a do-nothing future for irq resampling because vhost-user handles that
-                    // elsewhere.
-                    std::future::pending(),
                 )
                 .await;
                 if let Err(e) = result {

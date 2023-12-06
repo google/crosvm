@@ -22,6 +22,9 @@ pub async fn await_and_exit(ex: &Executor, event: Event) -> Result<()> {
 
 /// Async task that resamples the status of the interrupt when the guest sends a request by
 /// signalling the resample event associated with the interrupt.
+///
+/// When called on a vhost-user `Interrupt` (i.e. from a vhost-user backend), this function does
+/// nothing, which is the correct behavior because irq resampling is handled by the frontend.
 pub async fn handle_irq_resample(ex: &Executor, interrupt: Interrupt) -> Result<()> {
     // Clone resample_evt if interrupt has one.
     if let Some(resample_evt) = interrupt.get_resample_evt() {
