@@ -18,6 +18,12 @@ pub(crate) mod tests {
         (master, Connection::from(slave_tube))
     }
 
+    pub(crate) fn create_connection_pair() -> (Connection<MasterReq>, Connection<MasterReq>) {
+        let (master_tube, slave_tube) = SystemStream::pair().unwrap();
+        let master = Connection::<MasterReq>::from(master_tube);
+        (master, Connection::from(slave_tube))
+    }
+
     pub(crate) fn create_master_slave_pair<S>(backend: S) -> (Master, SlaveReqHandler<S>)
     where
         S: VhostUserSlaveReqHandler,

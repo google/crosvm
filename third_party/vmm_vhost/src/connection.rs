@@ -97,12 +97,6 @@ impl<R: Req> Connection<R> {
         ))
     }
 
-    /// Sends bytes from a slice with optional attached file descriptors.
-    #[cfg(test)]
-    fn send_slice(&self, data: &[u8], fds: Option<&[RawDescriptor]>) -> Result<()> {
-        self.0.send_message(data, &[], &[], fds)
-    }
-
     /// Sends a header-only message with optional attached file descriptors.
     pub fn send_header_only_message(
         &self,
@@ -175,20 +169,6 @@ impl<R: Req> Connection<R> {
             }
         }
         Ok(rfds)
-    }
-
-    /// Reads bytes into a new buffer with optional attached files. Received file descriptors are
-    /// set close-on-exec and converted to `File`.
-    ///
-    /// # Return:
-    /// * - (number of bytes received, buf, [received files]) on success.
-    /// * - backend specific errors
-    #[cfg(test)]
-    pub fn recv_into_buf(&self, buf_size: usize) -> Result<(usize, Vec<u8>, Option<Vec<File>>)> {
-        let mut buf = vec![0u8; buf_size];
-        let mut slices = [IoSliceMut::new(buf.as_mut_slice())];
-        let (bytes, files) = self.0.recv_into_bufs(&mut slices, true /* allow_fd */)?;
-        Ok((bytes, buf, files))
     }
 
     /// Receive message header
@@ -272,12 +252,73 @@ impl<R: Req> AsRawDescriptor for Connection<R> {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::io::Read;
+    use std::io::Seek;
+    use std::io::SeekFrom;
+    use std::io::Write;
+
+    use tempfile::tempfile;
+
     use super::*;
+    use crate::message::VhostUserEmptyMessage;
+    use crate::message::VhostUserU64;
+
     cfg_if::cfg_if! {
         if #[cfg(unix)] {
             pub(crate) use super::unix::tests::*;
         } else if #[cfg(windows)] {
-            pub(crate) use windows::tests::*;
+            pub(crate) use super::windows::tests::*;
+        }
+    }
+
+    #[test]
+    fn send_header_only() {
+        let (master, slave) = create_connection_pair();
+        let hdr1 = VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, 0);
+        master.send_header_only_message(&hdr1, None).unwrap();
+        let (hdr2, _, files) = slave.recv_message::<VhostUserEmptyMessage>().unwrap();
+        assert_eq!(hdr1, hdr2);
+        assert!(files.is_none());
+    }
+
+    #[test]
+    fn send_data() {
+        let (master, slave) = create_connection_pair();
+        let hdr1 = VhostUserMsgHeader::new(MasterReq::SET_FEATURES, 0, 8);
+        master
+            .send_message(&hdr1, &VhostUserU64::new(0xf00dbeefdeadf00d), None)
+            .unwrap();
+        let (hdr2, body, files) = slave.recv_message::<VhostUserU64>().unwrap();
+        assert_eq!(hdr1, hdr2);
+        let value = body.value;
+        assert_eq!(value, 0xf00dbeefdeadf00d);
+        assert!(files.is_none());
+    }
+
+    #[test]
+    fn send_fd() {
+        let (master, slave) = create_connection_pair();
+
+        let mut fd = tempfile().unwrap();
+        write!(fd, "test").unwrap();
+
+        // Normal case for sending/receiving file descriptors
+        let hdr1 = VhostUserMsgHeader::new(MasterReq::SET_MEM_TABLE, 0, 0);
+        master
+            .send_header_only_message(&hdr1, Some(&[fd.as_raw_descriptor()]))
+            .unwrap();
+
+        let (hdr2, _, files) = slave.recv_message::<VhostUserEmptyMessage>().unwrap();
+        assert_eq!(hdr1, hdr2);
+        assert!(files.is_some());
+        let files = files.unwrap();
+        {
+            assert_eq!(files.len(), 1);
+            let mut file = &files[0];
+            let mut content = String::new();
+            file.seek(SeekFrom::Start(0)).unwrap();
+            file.read_to_string(&mut content).unwrap();
+            assert_eq!(content, "test");
         }
     }
 

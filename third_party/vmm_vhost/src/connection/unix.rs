@@ -31,6 +31,17 @@ pub(crate) mod tests {
         (master, slave)
     }
 
+    pub(crate) fn create_connection_pair() -> (Connection<MasterReq>, Connection<MasterReq>) {
+        let dir = temp_dir();
+        let mut path = dir.path().to_owned();
+        path.push("sock");
+        let mut listener = SocketListener::new(&path, true).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let master = Connection::<MasterReq>::connect(path).unwrap();
+        let slave = listener.accept().unwrap().unwrap();
+        (master, slave)
+    }
+
     pub(crate) fn create_master_slave_pair<S>(backend: S) -> (Master, SlaveReqHandler<S>)
     where
         S: VhostUserSlaveReqHandler,
