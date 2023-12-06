@@ -87,7 +87,7 @@ async fn run_display(
 async fn run_gpu_control_command_handler(
     mut gpu_control_tube: AsyncTube,
     state: Rc<RefCell<gpu::Frontend>>,
-    backend_req_conn_rx: oneshot::Receiver<VhostBackendReqConnection>,
+    backend_req_conn_rx: oneshot::Receiver<Arc<VhostBackendReqConnection>>,
 ) {
     let backend_req_conn = match backend_req_conn_rx.await {
         Ok(conn) => conn,
@@ -126,7 +126,7 @@ async fn run_gpu_control_command_handler(
 impl GpuBackend {
     pub fn start_platform_workers(
         &mut self,
-        backend_req_conn_rx: Option<oneshot::Receiver<VhostBackendReqConnection>>,
+        backend_req_conn_rx: Option<oneshot::Receiver<Arc<VhostBackendReqConnection>>>,
     ) -> anyhow::Result<()> {
         let state = self
             .state

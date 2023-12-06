@@ -80,7 +80,7 @@ async fn run_resource_bridge(tube: IoSource<Tube>, state: Rc<RefCell<gpu::Fronte
 impl GpuBackend {
     pub fn start_platform_workers(
         &mut self,
-        _backend_req_conn_rx: Option<oneshot::Receiver<VhostBackendReqConnection>>,
+        _backend_req_conn_rx: Option<oneshot::Receiver<Arc<VhostBackendReqConnection>>>,
     ) -> anyhow::Result<()> {
         let state = self
             .state

@@ -273,7 +273,7 @@ impl VhostUserBackend for BlockBackend {
             .expect("run_until failed")
     }
 
-    fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
+    fn set_backend_req_connection(&mut self, conn: Arc<VhostBackendReqConnection>) {
         let mut backend_req_conn = self.backend_req_conn.lock();
 
         if let VhostBackendReqConnectionState::Connected(_) = &*backend_req_conn {

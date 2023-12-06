@@ -176,9 +176,12 @@ pub trait VhostUserBackend {
     /// Accepts `VhostBackendReqConnection` to conduct Vhost backend to frontend message
     /// handling.
     ///
+    /// The backend is given an `Arc` instead of full ownership so that the framework can also use
+    /// the connection.
+    ///
     /// This method will be called when `VhostUserProtocolFeatures::SLAVE_REQ` is
     /// negotiated.
-    fn set_backend_req_connection(&mut self, _conn: VhostBackendReqConnection) {
+    fn set_backend_req_connection(&mut self, _conn: Arc<VhostBackendReqConnection>) {
         error!("set_backend_req_connection is not implemented");
     }
 
@@ -625,10 +628,10 @@ impl VhostUserSlaveReqHandler for DeviceRequestHandler {
     }
 
     fn set_slave_req_fd(&mut self, ep: Connection<SlaveReq>) {
-        let conn = VhostBackendReqConnection::new(
+        let conn = Arc::new(VhostBackendReqConnection::new(
             Slave::new(ep),
             self.backend.get_shared_memory_region().map(|r| r.id),
-        );
+        ));
         self.backend.set_backend_req_connection(conn);
     }
 
@@ -774,7 +777,7 @@ impl VhostUserSlaveReqHandler for DeviceRequestHandler {
 /// Indicates the state of backend request connection
 pub enum VhostBackendReqConnectionState {
     /// A backend request connection (`VhostBackendReqConnection`) is established
-    Connected(VhostBackendReqConnection),
+    Connected(Arc<VhostBackendReqConnection>),
     /// No backend request connection has been established yet
     NoConnection,
 }
@@ -782,7 +785,7 @@ pub enum VhostBackendReqConnectionState {
 /// Keeps track of Vhost user backend request connection.
 pub struct VhostBackendReqConnection {
     conn: Arc<Mutex<Slave>>,
-    shmem_info: Option<ShmemInfo>,
+    shmem_info: Mutex<Option<ShmemInfo>>,
 }
 
 #[derive(Clone)]
@@ -793,10 +796,10 @@ struct ShmemInfo {
 
 impl VhostBackendReqConnection {
     pub fn new(conn: Slave, shmid: Option<u8>) -> Self {
-        let shmem_info = shmid.map(|shmid| ShmemInfo {
+        let shmem_info = Mutex::new(shmid.map(|shmid| ShmemInfo {
             shmid,
             mapped_regions: BTreeMap::new(),
-        });
+        }));
         Self {
             conn: Arc::new(Mutex::new(conn)),
             shmem_info,
@@ -813,9 +816,10 @@ impl VhostBackendReqConnection {
     }
 
     /// Create a SharedMemoryMapper trait object from the ShmemInfo.
-    pub fn take_shmem_mapper(&mut self) -> anyhow::Result<Box<dyn SharedMemoryMapper>> {
+    pub fn take_shmem_mapper(&self) -> anyhow::Result<Box<dyn SharedMemoryMapper>> {
         let shmem_info = self
             .shmem_info
+            .lock()
             .take()
             .context("could not take shared memory mapper information")?;
 

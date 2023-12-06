@@ -95,8 +95,8 @@ struct GpuBackend {
     platform_workers: Rc<RefCell<Vec<TaskHandle<()>>>>,
     shmem_mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     backend_req_conn_channels: (
-        Option<oneshot::Sender<VhostBackendReqConnection>>,
-        Option<oneshot::Receiver<VhostBackendReqConnection>>,
+        Option<oneshot::Sender<Arc<VhostBackendReqConnection>>>,
+        Option<oneshot::Receiver<Arc<VhostBackendReqConnection>>>,
     ),
 }
 
@@ -263,7 +263,7 @@ impl VhostUserBackend for GpuBackend {
         self.gpu.borrow().get_shared_memory_region()
     }
 
-    fn set_backend_req_connection(&mut self, mut conn: VhostBackendReqConnection) {
+    fn set_backend_req_connection(&mut self, conn: Arc<VhostBackendReqConnection>) {
         if self
             .shmem_mapper
             .lock()
