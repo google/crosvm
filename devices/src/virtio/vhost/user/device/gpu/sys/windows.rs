@@ -46,7 +46,6 @@ use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_tr
 use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
-use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::Gpu;
 use crate::virtio::GpuDisplayParameters;
 use crate::virtio::GpuParameters;
@@ -323,7 +322,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         backend_req_conn_channels: (Some(backend_req_conn_tx), Some(backend_req_conn_rx)),
     });
 
-    let handler = DeviceRequestHandler::new(backend, Box::new(VhostUserRegularOps));
+    let handler = DeviceRequestHandler::new(backend);
 
     // TODO(b/213170185): Uncomment once sandbox is upstreamed.
     // if sandbox::is_sandbox_target() {

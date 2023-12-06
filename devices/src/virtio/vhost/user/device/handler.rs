@@ -274,45 +274,11 @@ impl Vring {
     }
 }
 
-/// Trait for defining vhost-user ops that are platform-dependent.
-pub trait VhostUserPlatformOps {
-    /// Create the guest memory for the backend.
-    ///
-    /// `contexts` and `files` must be the same size, and provide a description of the memory
-    /// regions to map as well as the file descriptors from which to obtain the memory backing these
-    /// regions, respectively.
-    ///
-    /// The returned tuple contains the constructed `GuestMemory` from these memory contexts, as
-    /// well as a vector describing all the mappings described by these contexts.
-
-    fn set_mem_table(
-        &mut self,
-        contexts: &[VhostUserMemoryRegion],
-        files: Vec<File>,
-    ) -> VhostResult<(GuestMemory, Vec<MappingInfo>)>;
-
-    /// Return an `Event` that will be signaled by the frontend whenever vring `index` should be
-    /// processed.
-    ///
-    /// For protocols that support providing that event using a file descriptor (`Regular`), it is
-    /// provided by `file`. For other protocols, `file` will be `None`.
-    fn set_vring_kick(&mut self, index: u8, file: Option<File>) -> VhostResult<Event>;
-
-    /// Return an `Interrupt` that the backend will signal whenever it puts used buffers for vring
-    /// `index`.
-    ///
-    /// For protocols that support listening to a file descriptor (`Regular`), `file` provides a
-    /// file descriptor from which the `Interrupt` should be built. For other protocols, it will be
-    /// `None`.
-    fn set_vring_call(&mut self, index: u8, file: Option<File>) -> VhostResult<Interrupt>;
-}
-
 /// Ops for running vhost-user over a stream (i.e. regular protocol).
 pub(super) struct VhostUserRegularOps;
 
-impl VhostUserPlatformOps for VhostUserRegularOps {
-    fn set_mem_table(
-        &mut self,
+impl VhostUserRegularOps {
+    pub fn set_mem_table(
         contexts: &[VhostUserMemoryRegion],
         files: Vec<File>,
     ) -> VhostResult<(GuestMemory, Vec<MappingInfo>)> {
@@ -356,7 +322,7 @@ impl VhostUserPlatformOps for VhostUserRegularOps {
         Ok((guest_mem, vmm_maps))
     }
 
-    fn set_vring_kick(&mut self, _index: u8, file: Option<File>) -> VhostResult<Event> {
+    pub fn set_vring_kick(_index: u8, file: Option<File>) -> VhostResult<Event> {
         let file = file.ok_or(VhostError::InvalidParam)?;
         // Remove O_NONBLOCK from kick_fd. Otherwise, uring_executor will fails when we read
         // values via `next_val()` later.
@@ -371,7 +337,7 @@ impl VhostUserPlatformOps for VhostUserRegularOps {
         Ok(unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) })
     }
 
-    fn set_vring_call(&mut self, _index: u8, file: Option<File>) -> VhostResult<Interrupt> {
+    pub fn set_vring_call(_index: u8, file: Option<File>) -> VhostResult<Interrupt> {
         let file = file.ok_or(VhostError::InvalidParam)?;
 
         // Safe because we own the file.
@@ -387,7 +353,6 @@ pub struct DeviceRequestHandler {
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
     backend: Box<dyn VhostUserBackend>,
-    ops: Box<dyn VhostUserPlatformOps>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -397,12 +362,8 @@ pub struct DeviceRequestHandlerSnapshot {
 }
 
 impl DeviceRequestHandler {
-    /// Creates a vhost-user handler instance for `backend` with a different set of platform ops
-    /// than the regular vhost-user ones.
-    pub(crate) fn new(
-        backend: Box<dyn VhostUserBackend>,
-        ops: Box<dyn VhostUserPlatformOps>,
-    ) -> Self {
+    /// Creates a vhost-user handler instance for `backend`.
+    pub(crate) fn new(backend: Box<dyn VhostUserBackend>) -> Self {
         let mut vrings = Vec::with_capacity(backend.max_queue_num());
         for _ in 0..backend.max_queue_num() {
             vrings.push(Vring::new(Queue::MAX_SIZE, backend.features()));
@@ -414,7 +375,6 @@ impl DeviceRequestHandler {
             vmm_maps: None,
             mem: None,
             backend,
-            ops,
         }
     }
 }
@@ -486,7 +446,7 @@ impl VhostUserSlaveReqHandler for DeviceRequestHandler {
         contexts: &[VhostUserMemoryRegion],
         files: Vec<File>,
     ) -> VhostResult<()> {
-        let (guest_mem, vmm_maps) = self.ops.set_mem_table(contexts, files)?;
+        let (guest_mem, vmm_maps) = VhostUserRegularOps::set_mem_table(contexts, files)?;
         self.mem = Some(guest_mem);
         self.vmm_maps = Some(vmm_maps);
         Ok(())
@@ -578,7 +538,7 @@ impl VhostUserSlaveReqHandler for DeviceRequestHandler {
             return Err(VhostError::InvalidOperation);
         }
 
-        let kick_evt = self.ops.set_vring_kick(index, file)?;
+        let kick_evt = VhostUserRegularOps::set_vring_kick(index, file)?;
 
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
         vring.queue.ack_features(self.backend.acked_features());
@@ -616,7 +576,7 @@ impl VhostUserSlaveReqHandler for DeviceRequestHandler {
             return Err(VhostError::InvalidParam);
         }
 
-        let doorbell = self.ops.set_vring_call(index, file)?;
+        let doorbell = VhostUserRegularOps::set_vring_call(index, file)?;
         self.vrings[index as usize].doorbell = Some(doorbell);
         Ok(())
     }
@@ -793,7 +753,10 @@ impl VhostUserSlaveReqHandler for DeviceRequestHandler {
                 let queue_evt_file = queue_evts_iter
                     .next()
                     .ok_or(VhostError::VringIndexNotFound(index))?;
-                Some(self.ops.set_vring_kick(index as u8, Some(queue_evt_file))?)
+                Some(VhostUserRegularOps::set_vring_kick(
+                    index as u8,
+                    Some(queue_evt_file),
+                )?)
             } else {
                 None
             };
@@ -1139,8 +1102,7 @@ mod tests {
         });
 
         // Device side
-        let handler =
-            DeviceRequestHandler::new(Box::new(FakeBackend::new()), Box::new(VhostUserRegularOps));
+        let handler = DeviceRequestHandler::new(Box::new(FakeBackend::new()));
 
         // Notify listener is ready.
         tx.send(()).unwrap();

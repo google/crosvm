@@ -251,13 +251,12 @@ where
 
     fn into_req_handler(
         self: Box<Self>,
-        ops: Box<dyn super::handler::VhostUserPlatformOps>,
         ex: &Executor,
     ) -> anyhow::Result<Box<dyn vmm_vhost::VhostUserSlaveReqHandler>> {
         NET_EXECUTOR.with(|thread_ex| {
             let _ = thread_ex.set(ex.clone());
         });
-        let handler = DeviceRequestHandler::new(self, ops);
+        let handler = DeviceRequestHandler::new(self);
 
         Ok(Box::new(handler))
     }

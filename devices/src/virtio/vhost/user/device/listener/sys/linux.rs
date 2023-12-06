@@ -17,8 +17,6 @@ use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::virtio::vhost::user::device::handler::sys::linux::run_handler;
-use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
-use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 
 /// On Unix we can listen to a socket.
@@ -92,22 +90,13 @@ impl VhostUserListenerTrait for VhostUserListener {
 
     /// Returns a future that runs a `VhostUserSlaveReqHandler` using this listener.
     ///
-    /// The request handler is built from the `handler_builder` closure, which is passed the
-    /// `VhostUserPlatformOps` used by this listener. `ex` is the executor on which the request
-    /// handler can schedule its own tasks.
-    fn run_req_handler<'e, F>(
+    /// `ex` is the executor on which the request handler can schedule its own tasks.
+    fn run_req_handler<'e>(
         self,
-        handler_builder: F,
+        handler: Box<dyn VhostUserSlaveReqHandler>,
         ex: &'e Executor,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>
-    where
-        F: FnOnce(Box<dyn VhostUserPlatformOps>) -> Box<dyn VhostUserSlaveReqHandler> + 'e,
-    {
-        async {
-            let handler = handler_builder(Box::new(VhostUserRegularOps));
-            run_with_handler(self.0, handler, ex).await
-        }
-        .boxed_local()
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
+        async { run_with_handler(self.0, handler, ex).await }.boxed_local()
     }
 
     fn take_parent_process_resources(&mut self) -> Option<Box<dyn std::any::Any>> {

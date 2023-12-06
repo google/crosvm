@@ -41,7 +41,7 @@ use zerocopy::AsBytes;
 use crate::virtio::device_constants::vsock::NUM_QUEUES;
 use crate::virtio::vhost::user::device::handler::vmm_va_to_gpa;
 use crate::virtio::vhost::user::device::handler::MappingInfo;
-use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
+use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::vhost::user::VhostUserDevice;
 use crate::virtio::vhost::user::VhostUserListener;
 use crate::virtio::vhost::user::VhostUserListenerTrait;
@@ -54,7 +54,6 @@ struct VsockBackend {
     queues: [QueueConfig; NUM_QUEUES],
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
-    ops: Box<dyn VhostUserPlatformOps>,
 
     handle: Vsock,
     cid: u64,
@@ -100,7 +99,6 @@ impl VhostUserDevice for VhostUserVsockDevice {
 
     fn into_req_handler(
         self: Box<Self>,
-        ops: Box<dyn VhostUserPlatformOps>,
         _ex: &Executor,
     ) -> anyhow::Result<Box<dyn vmm_vhost::VhostUserSlaveReqHandler>> {
         let backend = VsockBackend {
@@ -111,7 +109,6 @@ impl VhostUserDevice for VhostUserVsockDevice {
             ],
             vmm_maps: None,
             mem: None,
-            ops,
             handle: self.handle,
             cid: self.cid,
             protocol_features: VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG,
@@ -172,7 +169,7 @@ impl VhostUserSlaveReqHandler for VsockBackend {
         contexts: &[VhostUserMemoryRegion],
         files: Vec<File>,
     ) -> Result<()> {
-        let (guest_mem, vmm_maps) = self.ops.set_mem_table(contexts, files)?;
+        let (guest_mem, vmm_maps) = VhostUserRegularOps::set_mem_table(contexts, files)?;
 
         self.handle
             .set_mem_table(&guest_mem)
@@ -298,7 +295,7 @@ impl VhostUserSlaveReqHandler for VsockBackend {
             return Err(Error::InvalidParam);
         }
 
-        let event = self.ops.set_vring_kick(index, fd)?;
+        let event = VhostUserRegularOps::set_vring_kick(index, fd)?;
         let index = usize::from(index);
         if index != EVENT_QUEUE {
             self.handle
@@ -314,7 +311,7 @@ impl VhostUserSlaveReqHandler for VsockBackend {
             return Err(Error::InvalidParam);
         }
 
-        let doorbell = self.ops.set_vring_call(index, fd)?;
+        let doorbell = VhostUserRegularOps::set_vring_call(index, fd)?;
         let index = usize::from(index);
         let event = doorbell.get_interrupt_evt();
         if index != EVENT_QUEUE {

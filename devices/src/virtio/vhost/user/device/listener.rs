@@ -14,7 +14,6 @@ use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
-use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::VhostUserDevice;
 
 /// Trait that the platform-specific type `VhostUserListener` needs to implement. It contains all
@@ -52,16 +51,11 @@ pub trait VhostUserListenerTrait {
 
     /// Returns a `Future` that processes requests for a `VhostUserSlaveReqHandler`. The future
     /// exits when the front-end side disconnects or an error occurs.
-    ///
-    /// The `VhostUserSlaveReqHandler` is built from `handler_builder` after being passed the ops
-    /// that correspond to the kind of transport used for vhost-user.
-    fn run_req_handler<'e, F>(
+    fn run_req_handler<'e>(
         self,
-        handler_builder: F,
+        handler: Box<dyn VhostUserSlaveReqHandler>,
         ex: &'e Executor,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>
-    where
-        F: FnOnce(Box<dyn VhostUserPlatformOps>) -> Box<dyn VhostUserSlaveReqHandler> + 'e;
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>;
 
     /// Returns a `Future` that will process requests from `backend` when polled. The future exits
     /// when the front-end side disconnects or an error occurs.
@@ -75,13 +69,7 @@ pub trait VhostUserListenerTrait {
     where
         Self: Sized,
     {
-        self.run_req_handler(
-            |ops| {
-                Box::new(DeviceRequestHandler::new(backend, ops))
-                    as Box<dyn VhostUserSlaveReqHandler>
-            },
-            ex,
-        )
+        self.run_req_handler(Box::new(DeviceRequestHandler::new(backend)), ex)
     }
 
     /// Start processing requests for a `VhostUserDevice` on `listener`. Returns when the front-end
@@ -90,6 +78,6 @@ pub trait VhostUserListenerTrait {
     where
         Self: Sized,
     {
-        ex.run_until(self.run_req_handler(|ops| device.into_req_handler(ops, &ex).unwrap(), &ex))?
+        ex.run_until(self.run_req_handler(device.into_req_handler(&ex).unwrap(), &ex))?
     }
 }

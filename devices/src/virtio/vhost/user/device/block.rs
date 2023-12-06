@@ -44,7 +44,6 @@ use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
-use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::device::VhostUserDevice;
 use crate::virtio::Interrupt;
 
@@ -133,7 +132,6 @@ impl VhostUserDevice for BlockAsync {
 
     fn into_req_handler(
         mut self: Box<Self>,
-        ops: Box<dyn VhostUserPlatformOps>,
         ex: &Executor,
     ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>> {
         let avail_features = self.avail_features | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
@@ -168,7 +166,7 @@ impl VhostUserDevice for BlockAsync {
             worker: None,
         };
 
-        let handler = DeviceRequestHandler::new(Box::new(backend), ops);
+        let handler = DeviceRequestHandler::new(Box::new(backend));
         Ok(Box::new(handler))
     }
 

@@ -31,7 +31,6 @@ use crate::virtio::copy_config;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
-use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::VhostUserDevice;
@@ -77,7 +76,6 @@ impl VhostUserDevice for VhostUserConsoleDevice {
 
     fn into_req_handler(
         self: Box<Self>,
-        ops: Box<dyn VhostUserPlatformOps>,
         ex: &Executor,
     ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>> {
         if self.raw_stdin {
@@ -98,7 +96,7 @@ impl VhostUserDevice for VhostUserConsoleDevice {
             active_queues,
         };
 
-        let handler = DeviceRequestHandler::new(Box::new(backend), ops);
+        let handler = DeviceRequestHandler::new(Box::new(backend));
         Ok(Box::new(handler))
     }
 }

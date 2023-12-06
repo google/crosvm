@@ -22,7 +22,6 @@ pub use gpu::run_gpu_device;
 pub use gpu::Options as GpuOptions;
 pub use handler::VhostBackendReqConnectionState;
 pub use handler::VhostUserBackend;
-use handler::VhostUserPlatformOps;
 pub use listener::sys::VhostUserListener;
 pub use listener::VhostUserListenerTrait;
 #[cfg(feature = "net")]
@@ -69,11 +68,9 @@ pub trait VhostUserDevice {
 
     /// Turn this device into a vhost-user request handler that will run the device.
     ///
-    /// `ops` is the vhost-user platform ops (i.e. transport) that will be used. `ex` is an
-    /// executor the device can use to schedule its tasks.
+    /// `ex` is an executor the device can use to schedule its tasks.
     fn into_req_handler(
         self: Box<Self>,
-        ops: Box<dyn VhostUserPlatformOps>,
         ex: &Executor,
     ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>>;
 

@@ -51,7 +51,6 @@ use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_tr
 use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
-use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::net::run_ctrl_queue;
 use crate::virtio::vhost::user::device::net::run_tx_queue;
@@ -316,7 +315,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         .unwrap(),
     );
 
-    let handler = DeviceRequestHandler::new(dev, Box::new(VhostUserRegularOps));
+    let handler = DeviceRequestHandler::new(dev);
 
     let ex = Executor::new().context("failed to create executor")?;
 
