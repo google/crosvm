@@ -25,9 +25,16 @@ struct TransportPci {
 }
 
 enum Transport {
-    Pci { pci: TransportPci },
-    Mmio { irq_evt_edge: IrqEdgeEvent },
-    VhostUser { call_evt: Event },
+    Pci {
+        pci: TransportPci,
+    },
+    Mmio {
+        irq_evt_edge: IrqEdgeEvent,
+    },
+    VhostUser {
+        call_evt: Event,
+        signal_config_changed_fn: Box<dyn Fn() + Send + Sync>,
+    },
 }
 
 struct InterruptInner {
@@ -90,7 +97,7 @@ impl Interrupt {
                     irq_evt_edge.trigger().unwrap();
                 }
             }
-            Transport::VhostUser { call_evt } => {
+            Transport::VhostUser { call_evt, .. } => {
                 // TODO(b/187487351): To avoid sending unnecessary events, we might want to support
                 // interrupt status. For this purpose, we need a mechanism to share interrupt status
                 // between the vmm and the device process.
@@ -106,11 +113,18 @@ impl Interrupt {
 
     /// Notify the driver that the device configuration has changed.
     pub fn signal_config_changed(&self) {
-        let vector = match &self.inner.as_ref().transport {
-            Transport::Pci { pci } => pci.config_msix_vector,
-            _ => VIRTIO_MSI_NO_VECTOR,
-        };
-        self.signal(vector, INTERRUPT_STATUS_CONFIG_CHANGED)
+        match &self.inner.as_ref().transport {
+            Transport::Pci { pci } => {
+                self.signal(pci.config_msix_vector, INTERRUPT_STATUS_CONFIG_CHANGED)
+            }
+            Transport::Mmio { .. } => {
+                self.signal(VIRTIO_MSI_NO_VECTOR, INTERRUPT_STATUS_CONFIG_CHANGED)
+            }
+            Transport::VhostUser {
+                signal_config_changed_fn,
+                ..
+            } => signal_config_changed_fn(),
+        }
     }
 
     /// Get the event to signal resampling is needed if it exists.
@@ -188,12 +202,19 @@ impl Interrupt {
         }
     }
 
-    /// Create an `Interrupt` wrapping a vhost-user vring call event.
-    pub fn new_vhost_user(call_evt: Event) -> Interrupt {
+    /// Create an `Interrupt` wrapping a vhost-user vring call event and function that sends a
+    /// VHOST_USER_BACKEND_CONFIG_CHANGE_MSG to the frontend.
+    pub fn new_vhost_user(
+        call_evt: Event,
+        signal_config_changed_fn: Box<dyn Fn() + Send + Sync>,
+    ) -> Interrupt {
         Interrupt {
             inner: Arc::new(InterruptInner {
                 interrupt_status: AtomicUsize::new(0),
-                transport: Transport::VhostUser { call_evt },
+                transport: Transport::VhostUser {
+                    call_evt,
+                    signal_config_changed_fn,
+                },
                 async_intr_status: false,
             }),
         }
@@ -204,7 +225,7 @@ impl Interrupt {
         match &self.inner.as_ref().transport {
             Transport::Pci { pci } => pci.irq_evt_lvl.get_trigger(),
             Transport::Mmio { irq_evt_edge } => irq_evt_edge.get_trigger(),
-            Transport::VhostUser { call_evt } => call_evt,
+            Transport::VhostUser { call_evt, .. } => call_evt,
         }
     }
 

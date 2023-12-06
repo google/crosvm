@@ -11,14 +11,12 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
-use base::debug;
 use base::error;
 use base::warn;
 use base::Tube;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::TaskHandle;
-use futures::channel::oneshot;
 use sync::Mutex;
 pub use sys::run_gpu_device;
 pub use sys::Options;
@@ -94,10 +92,6 @@ struct GpuBackend {
     queue_workers: [Option<WorkerState<Arc<Mutex<Queue>>, ()>>; MAX_QUEUE_NUM],
     platform_workers: Rc<RefCell<Vec<TaskHandle<()>>>>,
     shmem_mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
-    backend_req_conn_channels: (
-        Option<oneshot::Sender<Arc<VhostBackendReqConnection>>>,
-        Option<oneshot::Receiver<Arc<VhostBackendReqConnection>>>,
-    ),
 }
 
 impl VhostUserBackend for GpuBackend {
@@ -177,7 +171,7 @@ impl VhostUserBackend for GpuBackend {
         let queue = Arc::new(Mutex::new(queue));
         let reader = SharedReader {
             queue: queue.clone(),
-            doorbell,
+            doorbell: doorbell.clone(),
         };
 
         let state = if let Some(s) = self.state.as_ref() {
@@ -206,8 +200,7 @@ impl VhostUserBackend for GpuBackend {
         };
 
         // Start handling platform-specific workers.
-        let backend_req_conn_rx = self.backend_req_conn_channels.1.take();
-        self.start_platform_workers(backend_req_conn_rx)?;
+        self.start_platform_workers(doorbell)?;
 
         // Start handling the control queue.
         let queue_task = self
@@ -271,13 +264,6 @@ impl VhostUserBackend for GpuBackend {
             .is_some()
         {
             warn!("Connection already established. Overwriting shmem_mapper");
-        }
-
-        match self.backend_req_conn_channels.0.take() {
-            Some(backend_req_conn_tx) => {
-                let _ = backend_req_conn_tx.send(conn);
-            }
-            None => debug!("No backend request connection sender"),
         }
     }
 

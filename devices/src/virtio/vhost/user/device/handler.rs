@@ -60,6 +60,7 @@ use anyhow::Context;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use base::clear_fd_flags;
 use base::error;
+use base::warn;
 use base::Event;
 use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
@@ -338,11 +339,16 @@ impl VhostUserRegularOps {
         Ok(Event::from(SafeDescriptor::from(file)))
     }
 
-    pub fn set_vring_call(_index: u8, file: Option<File>) -> VhostResult<Interrupt> {
+    pub fn set_vring_call(
+        _index: u8,
+        file: Option<File>,
+        signal_config_change_fn: Box<dyn Fn() + Send + Sync>,
+    ) -> VhostResult<Interrupt> {
         let file = file.ok_or(VhostError::InvalidParam)?;
-        Ok(Interrupt::new_vhost_user(Event::from(
-            SafeDescriptor::from(file),
-        )))
+        Ok(Interrupt::new_vhost_user(
+            Event::from(SafeDescriptor::from(file)),
+            signal_config_change_fn,
+        ))
     }
 }
 
@@ -353,6 +359,7 @@ pub struct DeviceRequestHandler {
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
     backend: Box<dyn VhostUserBackend>,
+    backend_req_connection: Arc<Mutex<VhostBackendReqConnectionState>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -375,6 +382,9 @@ impl DeviceRequestHandler {
             vmm_maps: None,
             mem: None,
             backend,
+            backend_req_connection: Arc::new(Mutex::new(
+                VhostBackendReqConnectionState::NoConnection,
+            )),
         }
     }
 }
@@ -576,7 +586,19 @@ impl VhostUserSlaveReqHandler for DeviceRequestHandler {
             return Err(VhostError::InvalidParam);
         }
 
-        let doorbell = VhostUserRegularOps::set_vring_call(index, file)?;
+        let backend_req_conn = self.backend_req_connection.clone();
+        let signal_config_change_fn = Box::new(move || match &*backend_req_conn.lock() {
+            VhostBackendReqConnectionState::Connected(frontend) => {
+                if let Err(e) = frontend.send_config_changed() {
+                    error!("Failed to notify config change: {:#}", e);
+                }
+            }
+            VhostBackendReqConnectionState::NoConnection => {
+                error!("No Backend request connection found");
+            }
+        });
+
+        let doorbell = VhostUserRegularOps::set_vring_call(index, file, signal_config_change_fn)?;
         self.vrings[index as usize].doorbell = Some(doorbell);
         Ok(())
     }
@@ -632,6 +654,15 @@ impl VhostUserSlaveReqHandler for DeviceRequestHandler {
             Slave::new(ep),
             self.backend.get_shared_memory_region().map(|r| r.id),
         ));
+
+        {
+            let mut backend_req_conn = self.backend_req_connection.lock();
+            if let VhostBackendReqConnectionState::Connected(_) = &*backend_req_conn {
+                warn!("Backend Request Connection already established. Overwriting");
+            }
+            *backend_req_conn = VhostBackendReqConnectionState::Connected(conn.clone());
+        }
+
         self.backend.set_backend_req_connection(conn);
     }
 

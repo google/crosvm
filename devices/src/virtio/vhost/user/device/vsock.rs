@@ -310,7 +310,15 @@ impl VhostUserSlaveReqHandler for VsockBackend {
             return Err(Error::InvalidParam);
         }
 
-        let doorbell = VhostUserRegularOps::set_vring_call(index, fd)?;
+        let doorbell = VhostUserRegularOps::set_vring_call(
+            index,
+            fd,
+            Box::new(|| {
+                // `doorbell.signal_config_changed()` is never called, so this shouldn't be
+                // reachable.
+                unreachable!()
+            }),
+        )?;
         let index = usize::from(index);
         let event = doorbell.get_interrupt_evt();
         if index != EVENT_QUEUE {

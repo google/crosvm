@@ -13,7 +13,6 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use base::error;
-use base::warn;
 use base::Event;
 use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncTube;
@@ -24,7 +23,6 @@ use futures::channel::mpsc;
 use futures::channel::oneshot;
 use serde::Deserialize;
 use serde::Serialize;
-use sync::Mutex;
 pub use sys::start_device as run_block_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
@@ -35,14 +33,11 @@ use zerocopy::AsBytes;
 use crate::virtio;
 use crate::virtio::block::asynchronous::run_worker;
 use crate::virtio::block::asynchronous::BlockAsync;
-use crate::virtio::block::asynchronous::ConfigChangeSignal;
 use crate::virtio::block::asynchronous::WorkerCmd;
 use crate::virtio::block::DiskState;
 use crate::virtio::copy_config;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
-use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
-use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::VhostUserDevice;
 use crate::virtio::Interrupt;
@@ -58,7 +53,6 @@ struct BlockBackend {
     avail_features: u64,
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
-    backend_req_conn: Arc<Mutex<VhostBackendReqConnectionState>>,
     control_tube: Option<base::Tube>,
     worker: Option<Worker>,
 }
@@ -79,11 +73,12 @@ struct Worker {
 }
 
 impl BlockBackend {
-    fn start_worker(&mut self) {
+    fn start_worker(&mut self, interrupt: &Interrupt) {
         if self.worker.is_some() {
             return;
         }
 
+        let interrupt = interrupt.clone();
         let async_tube = self
             .control_tube
             .take()
@@ -95,12 +90,11 @@ impl BlockBackend {
         let worker_task = self.ex.spawn_local({
             let ex = self.ex.clone();
             let disk_state = self.disk_state.clone();
-            let backend_req_conn = self.backend_req_conn.clone();
             let kill_evt = kill_evt.try_clone().expect("failed to clone event");
             async move {
                 let result = run_worker(
                     &ex,
-                    ConfigChangeSignal::VhostUserBackendRequest(backend_req_conn),
+                    interrupt,
                     &disk_state,
                     &async_tube,
                     worker_rx,
@@ -150,8 +144,6 @@ impl VhostUserDevice for BlockAsync {
             self.id,
         )));
 
-        let backend_req_conn = Arc::new(Mutex::new(VhostBackendReqConnectionState::NoConnection));
-
         let backend = BlockBackend {
             ex: ex.clone(),
             disk_state,
@@ -161,7 +153,6 @@ impl VhostUserDevice for BlockAsync {
             avail_features,
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
-            backend_req_conn,
             control_tube: self.control_tube,
             worker: None,
         };
@@ -237,7 +228,7 @@ impl VhostUserBackend for BlockBackend {
         doorbell: Interrupt,
     ) -> anyhow::Result<()> {
         // `start_worker` will return early if the worker has already started.
-        self.start_worker();
+        self.start_worker(&doorbell);
 
         self.worker
             .as_ref()
@@ -271,16 +262,6 @@ impl VhostUserBackend for BlockBackend {
                     .ok_or(anyhow::Error::new(DeviceError::WorkerNotFound))
             })
             .expect("run_until failed")
-    }
-
-    fn set_backend_req_connection(&mut self, conn: Arc<VhostBackendReqConnection>) {
-        let mut backend_req_conn = self.backend_req_conn.lock();
-
-        if let VhostBackendReqConnectionState::Connected(_) = &*backend_req_conn {
-            warn!("Backend Request Connection already established. Overwriting");
-        }
-
-        *backend_req_conn = VhostBackendReqConnectionState::Connected(conn);
     }
 
     fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {

@@ -26,7 +26,6 @@ use cros_async::AsyncTube;
 use cros_async::AsyncWrapper;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use futures::channel::oneshot;
 use gpu_display::EventDevice;
 use gpu_display::WindowProcedureThread;
 use gpu_display::WindowProcedureThreadBuilder;
@@ -45,10 +44,10 @@ use crate::virtio::vhost::user::device::gpu::GpuBackend;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
 use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
-use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::Gpu;
 use crate::virtio::GpuDisplayParameters;
 use crate::virtio::GpuParameters;
+use crate::virtio::Interrupt;
 
 pub mod generic;
 pub use generic as product;
@@ -87,16 +86,8 @@ async fn run_display(
 async fn run_gpu_control_command_handler(
     mut gpu_control_tube: AsyncTube,
     state: Rc<RefCell<gpu::Frontend>>,
-    backend_req_conn_rx: oneshot::Receiver<Arc<VhostBackendReqConnection>>,
+    interrupt: Interrupt,
 ) {
-    let backend_req_conn = match backend_req_conn_rx.await {
-        Ok(conn) => conn,
-        Err(e) => {
-            error!("Backend request connection receiver closed early");
-            return;
-        }
-    };
-
     'wait: loop {
         let req = match gpu_control_tube.next::<GpuControlCommand>().await {
             Ok(req) => req,
@@ -110,10 +101,7 @@ async fn run_gpu_control_command_handler(
 
         if let GpuControlResult::DisplaysUpdated = resp {
             info!("Signaling display config change");
-            if let Err(e) = backend_req_conn.send_config_changed() {
-                error!("Error occurred: {:?}", e);
-                break 'wait;
-            }
+            interrupt.signal_config_changed();
         }
 
         if let Err(e) = gpu_control_tube.send(resp).await {
@@ -124,10 +112,7 @@ async fn run_gpu_control_command_handler(
 }
 
 impl GpuBackend {
-    pub fn start_platform_workers(
-        &mut self,
-        backend_req_conn_rx: Option<oneshot::Receiver<Arc<VhostBackendReqConnection>>>,
-    ) -> anyhow::Result<()> {
+    pub fn start_platform_workers(&mut self, interrupt: Interrupt) -> anyhow::Result<()> {
         let state = self
             .state
             .as_ref()
@@ -157,7 +142,7 @@ impl GpuBackend {
             )
             .expect("gpu control tube creation"),
             state,
-            backend_req_conn_rx.expect("No backend request connection receiver"),
+            interrupt,
         ));
         self.platform_workers.borrow_mut().push(task);
 
@@ -307,8 +292,6 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     let ex = Executor::new().context("failed to create executor")?;
 
-    let (backend_req_conn_tx, backend_req_conn_rx) = oneshot::channel();
-
     let backend = Box::new(GpuBackend {
         ex: ex.clone(),
         gpu,
@@ -319,7 +302,6 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         queue_workers: Default::default(),
         platform_workers: Default::default(),
         shmem_mapper: Arc::new(Mutex::new(None)),
-        backend_req_conn_channels: (Some(backend_req_conn_tx), Some(backend_req_conn_rx)),
     });
 
     let handler = DeviceRequestHandler::new(backend);

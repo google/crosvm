@@ -9,7 +9,6 @@ use std::io::Write;
 use std::mem::size_of;
 #[cfg(windows)]
 use std::num::NonZeroU32;
-use std::ops::Deref;
 use std::rc::Rc;
 use std::result;
 use std::sync::atomic::AtomicU64;
@@ -51,7 +50,6 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::FutureExt;
 use remain::sorted;
-use sync::Mutex;
 use thiserror::Error as ThisError;
 use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use vm_control::DiskControlCommand;
@@ -83,7 +81,6 @@ use crate::virtio::device_constants::block::VIRTIO_BLK_T_GET_ID;
 use crate::virtio::device_constants::block::VIRTIO_BLK_T_IN;
 use crate::virtio::device_constants::block::VIRTIO_BLK_T_OUT;
 use crate::virtio::device_constants::block::VIRTIO_BLK_T_WRITE_ZEROES;
-use crate::virtio::vhost::user::device::VhostBackendReqConnectionState;
 use crate::virtio::DescriptorChain;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
@@ -373,14 +370,9 @@ async fn handle_queue(
     }
 }
 
-pub enum ConfigChangeSignal {
-    Interrupt(Interrupt),
-    VhostUserBackendRequest(Arc<Mutex<VhostBackendReqConnectionState>>),
-}
-
 async fn handle_command_tube(
     command_tube: &Option<AsyncTube>,
-    signal: ConfigChangeSignal,
+    interrupt: Interrupt,
     disk_state: Rc<AsyncRwLock<DiskState>>,
 ) -> Result<(), ExecuteError> {
     let command_tube = match command_tube {
@@ -403,23 +395,7 @@ async fn handle_command_tube(
                     .await
                     .map_err(ExecuteError::SendingResponse)?;
                 if let DiskControlResult::Ok = resp {
-                    match &signal {
-                        ConfigChangeSignal::Interrupt(interrupt) => {
-                            interrupt.signal_config_changed();
-                        }
-                        ConfigChangeSignal::VhostUserBackendRequest(request) => {
-                            match &request.lock().deref() {
-                                VhostBackendReqConnectionState::Connected(frontend) => {
-                                    if let Err(e) = frontend.send_config_changed() {
-                                        error!("Failed to notify config change: {:#}", e);
-                                    }
-                                }
-                                VhostBackendReqConnectionState::NoConnection => {
-                                    error!("No Backend request connection found");
-                                }
-                            }
-                        }
-                    };
+                    interrupt.signal_config_changed();
                 }
             }
             Err(e) => return Err(ExecuteError::ReceivingCommand(e)),
@@ -511,7 +487,7 @@ pub enum WorkerCmd {
 // resizing command.
 pub async fn run_worker(
     ex: &Executor,
-    signal: ConfigChangeSignal,
+    interrupt: Interrupt,
     disk_state: &Rc<AsyncRwLock<DiskState>>,
     control_tube: &Option<AsyncTube>,
     mut worker_rx: mpsc::UnboundedReceiver<WorkerCmd>,
@@ -523,7 +499,7 @@ pub async fn run_worker(
     let flush_timer_armed = Rc::new(RefCell::new(false));
 
     // Handles control requests.
-    let control = handle_command_tube(control_tube, signal, disk_state.clone()).fuse();
+    let control = handle_command_tube(control_tube, interrupt, disk_state.clone()).fuse();
     pin_mut!(control);
 
     // Handle all the queues in one sub-select call.
@@ -1089,7 +1065,7 @@ impl VirtioDevice for BlockAsync {
                     .run_until(async {
                         let r = run_worker(
                             &ex,
-                            ConfigChangeSignal::Interrupt(interrupt.clone()),
+                            interrupt.clone(),
                             &disk_state,
                             &async_control,
                             worker_rx,
