@@ -9,5 +9,7 @@ ioctl: arg1 == 0x1277
 newfstatat: 1
 openat: 1
 prctl: arg0 == PR_SET_NAME
+pread64: 1
 preadv: 1
+pwrite64: 1
 pwritev: 1
