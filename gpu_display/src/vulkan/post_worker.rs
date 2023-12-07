@@ -16,19 +16,26 @@ use anyhow::format_err;
 use anyhow::Context;
 use anyhow::Result;
 use ash::vk::UUID_SIZE;
+use ash::vk::{self};
 use base::error;
 use base::info;
 use euclid::size2;
 use euclid::Size2D;
 use rand::rngs::ThreadRng;
 use rand::seq::IteratorRandom;
+use smallvec::SmallVec;
 use vulkano::command_buffer::pool::standard::StandardCommandPoolAlloc;
 use vulkano::command_buffer::pool::CommandPool;
+use vulkano::command_buffer::pool::CommandPoolAlloc;
 use vulkano::command_buffer::pool::CommandPoolBuilderAlloc;
 use vulkano::command_buffer::pool::StandardCommandPool;
 use vulkano::command_buffer::submit::SubmitPresentBuilder;
 use vulkano::command_buffer::submit::SubmitPresentError;
+use vulkano::command_buffer::sys::CommandBufferBeginInfo;
+use vulkano::command_buffer::sys::UnsafeCommandBufferBuilder;
+use vulkano::command_buffer::BlitImageInfo;
 use vulkano::command_buffer::CommandBufferLevel;
+use vulkano::command_buffer::CommandBufferUsage;
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::Device;
 use vulkano::device::DeviceCreateInfo;
@@ -37,7 +44,10 @@ use vulkano::device::Features;
 use vulkano::device::Queue;
 use vulkano::device::QueueCreateInfo;
 use vulkano::format::Format;
+use vulkano::image::ImageAccess;
+use vulkano::image::ImageAspects;
 use vulkano::image::ImageLayout;
+use vulkano::image::ImageSubresourceRange;
 use vulkano::image::ImageUsage;
 use vulkano::image::{self};
 use vulkano::instance::Instance;
@@ -51,15 +61,26 @@ use vulkano::swapchain::PresentInfo;
 use vulkano::swapchain::PresentMode;
 use vulkano::swapchain::SwapchainCreateInfo;
 use vulkano::swapchain::{self};
+use vulkano::sync::AccessFlags;
+use vulkano::sync::DependencyInfo;
+use vulkano::sync::ExternalFenceHandleTypes;
 use vulkano::sync::Fence;
+use vulkano::sync::FenceCreateInfo;
+use vulkano::sync::ImageMemoryBarrier;
+use vulkano::sync::PipelineStages;
+use vulkano::sync::QueueFamilyTransfer;
 use vulkano::sync::Semaphore;
+use vulkano::sync::SemaphoreCreateInfo;
 use vulkano::sync::Sharing;
+use vulkano::SynchronizedVulkanObject;
 use vulkano::Version;
 use vulkano::VulkanLibrary;
 use vulkano::VulkanObject;
 
 use super::sys::Window;
 use super::ExternalImage;
+use crate::vulkan::external_image::AcquireImageMemoryBarrier;
+use crate::vulkan::external_image::ReleaseImageMemoryBarrier;
 
 type VulkanoWindow = Arc<dyn Any + Send + Sync>;
 type Surface = swapchain::Surface<VulkanoWindow>;
@@ -177,8 +198,28 @@ struct PostResource {
 }
 
 impl PostResource {
-    fn new(_device: &Arc<Device>, _command_buffer_alloc: StandardCommandPoolAlloc) -> Result<Self> {
-        unimplemented!()
+    fn new(device: &Arc<Device>, command_buffer_alloc: StandardCommandPoolAlloc) -> Result<Self> {
+        let acquire_swapchain_image_semaphore =
+            Semaphore::new(Arc::clone(device), SemaphoreCreateInfo::default())
+                .context("create semaphore for acquiring next swapchain image")?;
+        let command_complete_semaphore =
+            Semaphore::new(Arc::clone(device), SemaphoreCreateInfo::default())
+                .context("create semaphore to be signaled after the command has completed")?;
+        let command_complete_fence = Fence::new(
+            Arc::clone(device),
+            FenceCreateInfo {
+                signaled: true,
+                export_handle_types: ExternalFenceHandleTypes::empty(),
+                ..Default::default()
+            },
+        )
+        .context("create fence signaled when the command has completed")?;
+        Ok(Self {
+            acquire_swapchain_image_semaphore,
+            command_buffer_alloc,
+            command_complete_fence,
+            command_complete_semaphore,
+        })
     }
 
     /// Submit a blit of post_image to swap_chain image.
@@ -190,17 +231,299 @@ impl PostResource {
     /// then finally to PresentSrc after the blit.
     fn record_and_submit_post_command(
         &mut self,
-        _device: &Device,
-        _ash_device: &ash::Device,
-        _post_image: ExternalImage,
-        _last_layout_transition: (ImageLayout, ImageLayout),
-        _swapchain_image: Arc<SwapchainImage>,
-        _graphics_queue: &Queue,
-        _present_queue: &Queue,
-        _post_image_acquire_timepoint: Option<&Timepoint>,
-        _post_image_release_timepoint: &Timepoint,
+        device: &Device,
+        ash_device: &ash::Device,
+        post_image: ExternalImage,
+        last_layout_transition: (ImageLayout, ImageLayout),
+        swapchain_image: Arc<SwapchainImage>,
+        graphics_queue: &Queue,
+        present_queue: &Queue,
+        post_image_acquire_timepoint: Option<&Timepoint>,
+        post_image_release_timepoint: &Timepoint,
     ) -> ExternalImage {
-        unimplemented!()
+        assert_eq!(
+            device.internal_object(),
+            ash_device.handle(),
+            "The vulkano device and the ash device must refer to the same VkDevice."
+        );
+        // SAFETY: Safe because self.command_buffer_alloc outlives command_buffer_builder.
+        let mut command_buffer_builder = unsafe {
+            UnsafeCommandBufferBuilder::new(
+                self.command_buffer_alloc.inner(),
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::OneTimeSubmit,
+                    inheritance_info: None,
+                    ..Default::default()
+                },
+            )
+        }
+        .unwrap_or_else(|e| panic!("Failed to begin recording the command buffer: {:?}", e));
+        let post_image_old_layout = last_layout_transition.0;
+        // SAFETY: Safe because the image in image_access (which is eventually converted back to
+        // post_image where it still lives) outlives the command buffer.
+        let image_access = unsafe {
+            post_image.acquire(
+                &mut command_buffer_builder,
+                AcquireImageMemoryBarrier {
+                    source_stages: PipelineStages {
+                        transfer: true,
+                        ..PipelineStages::empty()
+                    },
+                    destination_stages: PipelineStages {
+                        transfer: true,
+                        ..PipelineStages::empty()
+                    },
+                    destination_access: AccessFlags {
+                        transfer_read: true,
+                        ..AccessFlags::empty()
+                    },
+                    destination_queue_family_index: graphics_queue.queue_family_index(),
+                    subresource_range: ImageSubresourceRange {
+                        aspects: ImageAspects {
+                            color: true,
+                            ..ImageAspects::empty()
+                        },
+                        mip_levels: 0..1,
+                        array_layers: 0..1,
+                    },
+                },
+                last_layout_transition,
+            )
+        };
+        let mut image_memory_barriers = SmallVec::from_vec(vec![ImageMemoryBarrier {
+            source_stages: PipelineStages {
+                transfer: true,
+                ..PipelineStages::empty()
+            },
+            source_access: AccessFlags::empty(),
+            destination_stages: PipelineStages {
+                transfer: true,
+                ..PipelineStages::empty()
+            },
+            destination_access: AccessFlags {
+                transfer_write: true,
+                ..AccessFlags::empty()
+            },
+            old_layout: ImageLayout::Undefined,
+            new_layout: ImageLayout::TransferDstOptimal,
+            // No need for ownership transfer, because we don't care about the content.
+            queue_family_transfer: None,
+            subresource_range: ImageSubresourceRange {
+                aspects: ImageAspects {
+                    color: true,
+                    ..ImageAspects::empty()
+                },
+                mip_levels: 0..1,
+                array_layers: 0..1,
+            },
+            ..ImageMemoryBarrier::image(Arc::clone(swapchain_image.inner().image))
+        }]);
+        if !matches!(
+            image_access.initial_layout_requirement(),
+            ImageLayout::TransferSrcOptimal
+        ) {
+            image_memory_barriers.push(ImageMemoryBarrier {
+                source_stages: PipelineStages {
+                    transfer: true,
+                    ..PipelineStages::empty()
+                },
+                source_access: AccessFlags {
+                    transfer_read: true,
+                    ..AccessFlags::empty()
+                },
+                destination_stages: PipelineStages {
+                    transfer: true,
+                    ..PipelineStages::empty()
+                },
+                destination_access: AccessFlags {
+                    transfer_read: true,
+                    ..AccessFlags::empty()
+                },
+                old_layout: image_access.initial_layout_requirement(),
+                new_layout: ImageLayout::TransferSrcOptimal,
+                queue_family_transfer: None,
+                subresource_range: ImageSubresourceRange {
+                    aspects: ImageAspects {
+                        color: true,
+                        ..ImageAspects::empty()
+                    },
+                    mip_levels: 0..1,
+                    array_layers: 0..1,
+                },
+                ..ImageMemoryBarrier::image(Arc::clone(image_access.inner().image))
+            });
+        }
+        // SAFETY: Safe because the image in image_access (which is eventually converted back to
+        // post_image where it still lives) outlives the command buffer.
+        unsafe {
+            command_buffer_builder.pipeline_barrier(&DependencyInfo {
+                image_memory_barriers,
+                ..Default::default()
+            });
+        }
+        let image_access = Arc::new(image_access);
+        // SAFETY: Safe because the image in image_access (which is eventually converted back to
+        // post_image where it still lives) outlives the command buffer, and because
+        // swapchain_image lives until the end of this function, thus outliving the command buffer.
+        unsafe {
+            command_buffer_builder.blit_image(&BlitImageInfo::images(
+                Arc::clone(&image_access) as Arc<_>,
+                Arc::clone(&swapchain_image) as Arc<_>,
+            ));
+        }
+        let queue_family_transfer =
+            if graphics_queue.queue_family_index() == present_queue.queue_family_index() {
+                None
+            } else {
+                Some(QueueFamilyTransfer {
+                    source_index: graphics_queue.queue_family_index(),
+                    destination_index: present_queue.queue_family_index(),
+                })
+            };
+        let mut image_memory_barriers = SmallVec::from_vec(vec![ImageMemoryBarrier {
+            source_stages: PipelineStages {
+                transfer: true,
+                ..PipelineStages::empty()
+            },
+            source_access: AccessFlags {
+                transfer_write: true,
+                ..AccessFlags::empty()
+            },
+            destination_stages: PipelineStages::empty(),
+            destination_access: AccessFlags::empty(),
+            old_layout: ImageLayout::TransferDstOptimal,
+            new_layout: ImageLayout::PresentSrc,
+            queue_family_transfer,
+            subresource_range: ImageSubresourceRange {
+                aspects: ImageAspects {
+                    color: true,
+                    ..ImageAspects::empty()
+                },
+                mip_levels: 0..1,
+                array_layers: 0..1,
+            },
+            ..ImageMemoryBarrier::image(Arc::clone(swapchain_image.inner().image))
+        }]);
+        if !matches!(
+            image_access.final_layout_requirement(),
+            ImageLayout::TransferSrcOptimal
+        ) {
+            image_memory_barriers.push(ImageMemoryBarrier {
+                source_stages: PipelineStages {
+                    transfer: true,
+                    ..PipelineStages::empty()
+                },
+                source_access: AccessFlags {
+                    transfer_read: true,
+                    ..AccessFlags::empty()
+                },
+                destination_stages: PipelineStages {
+                    transfer: true,
+                    ..PipelineStages::empty()
+                },
+                destination_access: AccessFlags {
+                    transfer_read: true,
+                    ..AccessFlags::empty()
+                },
+                old_layout: ImageLayout::TransferSrcOptimal,
+                new_layout: image_access.final_layout_requirement(),
+                queue_family_transfer: None,
+                subresource_range: ImageSubresourceRange {
+                    aspects: ImageAspects {
+                        color: true,
+                        ..ImageAspects::empty()
+                    },
+                    mip_levels: 0..1,
+                    array_layers: 0..1,
+                },
+                ..ImageMemoryBarrier::image(Arc::clone(image_access.inner().image))
+            });
+        }
+        // SAFETY: Safe because the image in image_access (which is eventually converted back to
+        // post_image where it still lives) outlives the command buffer.
+        unsafe {
+            command_buffer_builder.pipeline_barrier(&DependencyInfo {
+                image_memory_barriers,
+                ..Default::default()
+            });
+        }
+        let image_access = Arc::try_unwrap(image_access).expect("should be the sole owner");
+        // SAFETY: Safe because the image in post_image outlives the command buffer.
+        let post_image = unsafe {
+            image_access.release(
+                &mut command_buffer_builder,
+                ReleaseImageMemoryBarrier {
+                    source_stages: PipelineStages {
+                        transfer: true,
+                        ..PipelineStages::empty()
+                    },
+                    source_access: AccessFlags {
+                        transfer_read: true,
+                        ..AccessFlags::empty()
+                    },
+                    destination_stages: PipelineStages {
+                        transfer: true,
+                        ..PipelineStages::empty()
+                    },
+                    new_layout: post_image_old_layout,
+                    source_queue_family_index: graphics_queue.queue_family_index(),
+                },
+            )
+        };
+        let command_buffer = command_buffer_builder
+            .build()
+            .unwrap_or_else(|e| panic!("Failed to end the command buffer recording: {:#}", e));
+
+        assert!(self
+            .command_complete_fence
+            .is_signaled()
+            .unwrap_or_else(|e| panic!("Failed to query the status of the fence: {:?}", e)));
+        self.command_complete_fence.reset().unwrap_or_else(|e| {
+            panic!("Failed to reset the fence for the post resources: {:?}", e)
+        });
+        {
+            // The first values are not used, because they are not binary semaphores.
+            let mut wait_semaphore_values = vec![0];
+            let signal_semaphore_values = [0, post_image_release_timepoint.value];
+            let mut wait_semaphores =
+                vec![self.acquire_swapchain_image_semaphore.internal_object()];
+            let mut wait_dst_stage_mask = vec![vk::PipelineStageFlags::TRANSFER];
+            let command_buffers = [command_buffer.internal_object()];
+            let signal_semaphores = [
+                self.command_complete_semaphore.internal_object(),
+                post_image_release_timepoint.semaphore.internal_object(),
+            ];
+
+            if let Some(post_image_acquire_timepoint) = post_image_acquire_timepoint {
+                wait_semaphore_values.push(post_image_acquire_timepoint.value);
+                wait_semaphores.push(post_image_acquire_timepoint.semaphore.internal_object());
+                wait_dst_stage_mask.push(vk::PipelineStageFlags::TRANSFER);
+            }
+
+            let mut timeline_semaphore_submit_info = vk::TimelineSemaphoreSubmitInfo::builder()
+                .wait_semaphore_values(&wait_semaphore_values)
+                .signal_semaphore_values(&signal_semaphore_values)
+                .build();
+            let submit_info = vk::SubmitInfo::builder()
+                .wait_semaphores(&wait_semaphores)
+                .wait_dst_stage_mask(&wait_dst_stage_mask)
+                .command_buffers(&command_buffers)
+                .signal_semaphores(&signal_semaphores)
+                .push_next(&mut timeline_semaphore_submit_info)
+                .build();
+
+            // SAFETY: Safe because the contents of submit_info and all the things it points to
+            // outlive this function call.
+            unsafe {
+                ash_device.queue_submit(
+                    *graphics_queue.internal_object_guard(),
+                    &[submit_info],
+                    self.command_complete_fence.internal_object(),
+                )
+            }
+            .unwrap_or_else(|e| panic!("Failed to submit the command: {:?}", e));
+        }
+        post_image
     }
 }
 
