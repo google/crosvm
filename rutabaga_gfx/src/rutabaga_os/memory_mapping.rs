@@ -13,7 +13,7 @@ pub struct MemoryMapping {
 
 impl MemoryMapping {
     pub fn from_safe_descriptor(
-        descriptor: SafeDescriptor,
+        descriptor: &SafeDescriptor,
         size: usize,
         map_info: u32,
     ) -> RutabagaResult<MemoryMapping> {

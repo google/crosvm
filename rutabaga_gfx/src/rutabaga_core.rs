@@ -757,7 +757,6 @@ impl Rutabaga {
                         ));
                     }
 
-                    let clone = handle.try_clone()?;
                     let resource_size: usize = resource.size.try_into()?;
                     let map_info = resource
                         .map_info
@@ -765,7 +764,7 @@ impl Rutabaga {
 
                     // Creating the mapping closes the cloned descriptor.
                     let mapping = MemoryMapping::from_safe_descriptor(
-                        clone.os_handle,
+                        &handle.os_handle,
                         resource_size,
                         map_info,
                     )?;
