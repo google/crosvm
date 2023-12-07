@@ -5,6 +5,7 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [features]
+pci-hotplug = ["vm_control/pci-hotplug"]
 registered_events = ["vm_control/registered_events"]
 
 [lib]
