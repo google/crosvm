@@ -16,6 +16,7 @@ epoll_pwait: 1
 eventfd2: 1
 exit: 1
 exit_group: 1
+ftruncate: 1
 futex: 1
 getcwd: 1
 getpid: 1
@@ -27,6 +28,10 @@ io_uring_enter: 1
 kill: 1
 madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE || arg2 == MADV_MERGEABLE || arg2 == MADV_FREE
 membarrier: 1
+# memfd_create is used for sharing memory with wayland.
+# For normal use case, we allow arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING, with or without MFD_NOEXEC_SEAL.
+# However, we allow all the arguments here for backtrace when it panics.
+memfd_create: 1
 mremap: 1
 munmap: 1
 nanosleep: 1
@@ -61,7 +66,6 @@ shutdown: 1
 connect: 1
 getrandom: 1
 lseek: 1
-ftruncate: 1
 statx: 1
 fstat: 1
 newfstatat: 1
@@ -72,9 +76,6 @@ prctl: arg0 == PR_SET_NAME || arg0 == PR_GET_NAME
 
 # 0x6400 == DRM_IOCTL_BASE, 0x8000 = KBASE_IOCTL_TYPE (mali), 0x40086200 = DMA_BUF_IOCTL_SYNC, 0x40087543 == UDMABUF_CREATE_LIST
 ioctl: arg1 & 0x6400 || arg1 & 0x8000 || arg1 == 0x40086200 || arg1 == 0x40087543
-
-# Used for sharing memory with wayland. arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING, with or without MFD_NOEXEC_SEAL
-memfd_create: arg1 == 3 || arg1 == 11
 
 ## mmap/mprotect differ from the common_device.policy
 mmap: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ|PROT_EXEC || arg2 == PROT_WRITE || arg2 == PROT_READ

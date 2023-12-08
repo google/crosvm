@@ -2,6 +2,13 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+# This is an allow list of syscalls for most of crosvm devices.
+#
+# Note that some device policy files don't depend on this policy file
+# because of some conflicts such as gpu_common.policy.
+# If you want to modify policies for all the devices, please modify
+# not only this file but also other *_common.policy files.
+
 @frequency ./common_device.frequency
 brk: 1
 clock_gettime: 1
