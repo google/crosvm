@@ -18,10 +18,10 @@ use libc::O_NONBLOCK;
 use libc::STDIN_FILENO;
 use libc::TCSANOW;
 
-use super::add_fd_flags;
-use super::clear_fd_flags;
-use super::errno_result;
-use super::Result;
+use crate::errno::Result;
+use crate::errno_result;
+use crate::unix::add_fd_flags;
+use crate::unix::clear_fd_flags;
 
 fn modify_mode<F: FnOnce(&mut termios)>(fd: RawFd, f: F) -> Result<()> {
     // Safe because we check the return value of isatty.

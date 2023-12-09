@@ -83,8 +83,6 @@ use libc::SYS_getpid;
 use libc::SYS_getppid;
 use libc::SYS_gettid;
 use libc::EINVAL;
-use libc::F_GETFL;
-use libc::F_SETFL;
 use libc::O_CLOEXEC;
 use libc::SIGKILL;
 use libc::WNOHANG;
@@ -114,6 +112,7 @@ pub use crate::errno::Result;
 pub use crate::errno::*;
 use crate::round_up_to_page_size;
 pub use crate::sys::unix::descriptor::*;
+use crate::syscall;
 use crate::AsRawDescriptor;
 use crate::Pid;
 
@@ -121,18 +120,6 @@ use crate::Pid;
 pub type Uid = libc::uid_t;
 pub type Gid = libc::gid_t;
 pub type Mode = libc::mode_t;
-
-#[macro_export]
-macro_rules! syscall {
-    ($e:expr) => {{
-        let res = $e;
-        if res < 0 {
-            $crate::linux::errno_result()
-        } else {
-            Ok(res)
-        }
-    }};
-}
 
 /// This bypasses `libc`'s caching `getpid(2)` wrapper which can be invalid if a raw clone was used
 /// elsewhere.
@@ -501,40 +488,6 @@ pub fn poll_in<F: AsRawDescriptor>(fd: &F) -> bool {
     fds.revents & libc::POLLIN != 0
 }
 
-/// Returns the file flags set for the given `RawFD`
-///
-/// Returns an error if the OS indicates the flags can't be retrieved.
-fn get_fd_flags(fd: RawFd) -> Result<c_int> {
-    // Safe because no third parameter is expected and we check the return result.
-    syscall!(unsafe { fcntl(fd, F_GETFL) })
-}
-
-/// Sets the file flags set for the given `RawFD`.
-///
-/// Returns an error if the OS indicates the flags can't be retrieved.
-fn set_fd_flags(fd: RawFd, flags: c_int) -> Result<()> {
-    // Safe because we supply the third parameter and we check the return result.
-    // fcntlt is trusted not to modify the memory of the calling process.
-    syscall!(unsafe { fcntl(fd, F_SETFL, flags) }).map(|_| ())
-}
-
-/// Performs a logical OR of the given flags with the FD's flags, setting the given bits for the
-/// FD.
-///
-/// Returns an error if the OS indicates the flags can't be retrieved or set.
-pub fn add_fd_flags(fd: RawFd, set_flags: c_int) -> Result<()> {
-    let start_flags = get_fd_flags(fd)?;
-    set_fd_flags(fd, start_flags | set_flags)
-}
-
-/// Clears the given flags in the FD's flags.
-///
-/// Returns an error if the OS indicates the flags can't be retrieved or set.
-pub fn clear_fd_flags(fd: RawFd, clear_flags: c_int) -> Result<()> {
-    let start_flags = get_fd_flags(fd)?;
-    set_fd_flags(fd, start_flags & !clear_flags)
-}
-
 /// Return a timespec filed with the specified Duration `duration`.
 #[allow(clippy::useless_conversion)]
 pub fn duration_to_timespec(duration: Duration) -> libc::timespec {
@@ -693,6 +646,7 @@ mod tests {
     use std::os::fd::AsRawFd;
 
     use super::*;
+    use crate::unix::add_fd_flags;
 
     #[test]
     fn pipe_size_and_fill() {

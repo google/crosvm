@@ -6,6 +6,7 @@ pub mod descriptor;
 pub mod file_traits;
 #[macro_use]
 pub mod handle_eintr;
+mod fcntl;
 mod iobuf;
 pub mod net;
 mod sock_ctrl_msg;
@@ -13,6 +14,7 @@ mod stream_channel;
 pub mod system_info;
 
 pub use descriptor::*;
+pub use fcntl::*;
 pub use iobuf::IoBuf;
 pub use sock_ctrl_msg::*;
 pub use stream_channel::*;
@@ -22,3 +24,15 @@ pub use system_info::pagesize;
 
 /// Process identifier.
 pub type Pid = libc::pid_t;
+
+#[macro_export]
+macro_rules! syscall {
+    ($e:expr) => {{
+        let res = $e;
+        if res < 0 {
+            $crate::errno_result()
+        } else {
+            Ok(res)
+        }
+    }};
+}

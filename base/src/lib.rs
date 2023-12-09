@@ -90,7 +90,7 @@ cfg_if::cfg_if! {
 
         // descriptor/fd related exports.
         pub use linux::{
-            add_fd_flags, clear_fd_flags, clone_descriptor, safe_descriptor_from_path,
+            clone_descriptor, safe_descriptor_from_path,
             validate_raw_descriptor, clear_descriptor_cloexec,
         };
 
@@ -158,6 +158,8 @@ cfg_if::cfg_if! {
         pub use unix::net::UnlinkUnixSeqpacketListener;
         pub use unix::ScmSocket;
         pub use unix::SCM_SOCKET_MAX_FD_COUNT;
+        pub use unix::add_fd_flags;
+        pub use unix::clear_fd_flags;
         pub use unix::number_of_logical_cores;
         pub use unix::pagesize;
         pub use unix::Pid;
