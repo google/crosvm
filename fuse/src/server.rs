@@ -459,6 +459,7 @@ impl<F: FileSystem + Sync> Server<F> {
 
         let len = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
+            .and_then(|l| l.checked_sub(size_of::<ChromeOsTmpfileIn>()))
             .ok_or(Error::InvalidHeaderLength)?;
         let mut buf = vec![0; len];
 
