@@ -183,6 +183,12 @@ impl From<PlatformEvent> for crate::SafeDescriptor {
     }
 }
 
+impl From<crate::SafeDescriptor> for PlatformEvent {
+    fn from(_evt: crate::SafeDescriptor) -> Self {
+        todo!();
+    }
+}
+
 #[derive(Debug)]
 pub struct MemoryMapping {}
 
