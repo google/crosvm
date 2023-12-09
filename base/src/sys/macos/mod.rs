@@ -12,33 +12,6 @@ pub(in crate::sys) use net::sockaddr_un;
 pub(in crate::sys) use net::sockaddrv4_to_lib_c;
 pub(in crate::sys) use net::sockaddrv6_to_lib_c;
 
-pub mod tube {
-    #[derive(serde::Serialize, serde::Deserialize)]
-    pub struct Tube {}
-
-    impl Tube {
-        pub fn pair() -> crate::tube::Result<(Tube, Tube)> {
-            todo!();
-        }
-        #[deprecated]
-        pub fn try_clone(&self) -> crate::tube::Result<Self> {
-            todo!();
-        }
-        pub fn send<T: serde::Serialize>(&self, _msg: &T) -> crate::tube::Result<()> {
-            todo!();
-        }
-        pub fn recv<T: serde::de::DeserializeOwned>(&self) -> crate::tube::Result<T> {
-            todo!();
-        }
-    }
-
-    impl crate::ReadNotifier for Tube {
-        fn get_read_notifier(&self) -> &dyn crate::AsRawDescriptor {
-            todo!();
-        }
-    }
-}
-
 pub fn get_cpu_affinity() -> crate::errno::Result<Vec<usize>> {
     todo!();
 }

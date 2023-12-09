@@ -41,7 +41,6 @@ pub mod signal;
 mod signalfd;
 mod terminal;
 mod timer;
-pub mod tube;
 pub mod vsock;
 mod write_zeroes;
 
