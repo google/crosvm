@@ -7,6 +7,7 @@
 #![cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 
 use std::collections::BTreeMap;
+use std::fs::File;
 use std::io;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -72,7 +73,6 @@ use thiserror::Error;
 use vm_control::BatControl;
 use vm_control::BatteryType;
 use vm_memory::GuestAddress;
-#[cfg(feature = "gdb")]
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 use vm_memory::MemoryRegionOptions;
@@ -337,6 +337,30 @@ fn fdt_address(memory_end: GuestAddress, has_bios: bool) -> GuestAddress {
     }
 }
 
+fn load_kernel(
+    guest_mem: &GuestMemory,
+    kernel_start: GuestAddress,
+    mut kernel_image: &mut File,
+) -> Result<LoadedKernel> {
+    if let Ok(elf_kernel) = kernel_loader::load_elf(
+        guest_mem,
+        kernel_start,
+        &mut kernel_image,
+        AARCH64_PHYS_MEM_START,
+    ) {
+        return Ok(elf_kernel);
+    }
+
+    if let Ok(lz4_kernel) =
+        kernel_loader::load_arm64_kernel_lz4(guest_mem, kernel_start, &mut kernel_image)
+    {
+        return Ok(lz4_kernel);
+    }
+
+    kernel_loader::load_arm64_kernel(guest_mem, kernel_start, kernel_image)
+        .map_err(Error::KernelLoadFailure)
+}
+
 pub struct AArch64;
 
 impl arch::LinuxArch for AArch64 {
@@ -424,17 +448,7 @@ impl arch::LinuxArch for AArch64 {
                 }
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let loaded_kernel = if let Ok(elf_kernel) = kernel_loader::load_elf(
-                    &mem,
-                    get_kernel_addr(),
-                    kernel_image,
-                    AARCH64_PHYS_MEM_START,
-                ) {
-                    elf_kernel
-                } else {
-                    kernel_loader::load_arm64_kernel(&mem, get_kernel_addr(), kernel_image)
-                        .map_err(Error::KernelLoadFailure)?
-                };
+                let loaded_kernel = load_kernel(&mem, get_kernel_addr(), kernel_image)?;
                 let kernel_end = loaded_kernel.address_range.end;
                 initrd = match components.initrd_image {
                     Some(initrd_file) => {

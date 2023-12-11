@@ -27,6 +27,7 @@ mod elf;
 mod arm64;
 
 pub use arm64::load_arm64_kernel;
+pub use arm64::load_arm64_kernel_lz4;
 
 #[sorted]
 #[derive(Error, Debug, PartialEq, Eq)]
