@@ -170,6 +170,7 @@ pub unsafe fn ioctl_with_val(descriptor: &dyn AsRawDescriptor, nr: IoctlNr, arg:
 
 /// Run an ioctl with an immutable reference.
 /// # Safety
+///
 /// The caller is responsible for determining the safety of the particular ioctl.
 pub unsafe fn ioctl_with_ref<T>(descriptor: &dyn AsRawDescriptor, nr: IoctlNr, arg: &T) -> c_int {
     libc::ioctl(
@@ -181,6 +182,7 @@ pub unsafe fn ioctl_with_ref<T>(descriptor: &dyn AsRawDescriptor, nr: IoctlNr, a
 
 /// Run an ioctl with a mutable reference.
 /// # Safety
+///
 /// The caller is responsible for determining the safety of the particular ioctl.
 pub unsafe fn ioctl_with_mut_ref<T>(
     descriptor: &dyn AsRawDescriptor,

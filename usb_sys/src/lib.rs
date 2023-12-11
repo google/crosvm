@@ -29,18 +29,34 @@ impl<T> __IncompleteArrayField<T> {
     pub fn new() -> Self {
         __IncompleteArrayField(::std::marker::PhantomData)
     }
+    /// # Safety
+    ///
+    /// Caller must ensure that Self's size and alignment requirements matches
+    /// those of `T`s.
     #[inline]
     pub unsafe fn as_ptr(&self) -> *const T {
         ::std::mem::transmute(self)
     }
+    /// # Safety
+    ///
+    /// Caller must ensure that Self's size and alignment requirements matches
+    /// those of `T`s.
     #[inline]
     pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
         ::std::mem::transmute(self)
     }
+    /// # Safety
+    ///
+    /// Caller must ensure that Self's size and alignment requirements matches
+    /// those of `T`s.
     #[inline]
     pub unsafe fn as_slice(&self, len: usize) -> &[T] {
         ::std::slice::from_raw_parts(self.as_ptr(), len)
     }
+    /// # Safety
+    ///
+    /// Caller must ensure that Self's size and alignment requirements matches
+    /// those of `T`s.
     #[inline]
     pub unsafe fn as_mut_slice(&mut self, len: usize) -> &mut [T] {
         ::std::slice::from_raw_parts_mut(self.as_mut_ptr(), len)

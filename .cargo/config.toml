@@ -4,9 +4,6 @@
 # https://github.com/rust-lang/cargo/issues/5034
 [build]
 rustflags = [
-    # TODO(crbug/908640): To be resolved.
-    "-Aclippy::missing_safety_doc", # 26 errors
-
     # We don't care about these lints. Okay to remain suppressed globally.
     "-Aclippy::bool_assert_comparison",
     "-Aclippy::cast_lossless",

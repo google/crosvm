@@ -5,6 +5,7 @@
 #![cfg(any(target_os = "android", target_os = "linux"))]
 #![cfg(target_arch = "x86_64")]
 #![allow(non_camel_case_types)]
+#![allow(clippy::missing_safety_doc)]
 
 //! This module implements the dynamically loaded client library API used by a crosvm plugin,
 //! defined in `crosvm.h`. It implements the client half of the plugin protocol, which is defined in

@@ -17,6 +17,10 @@ pub use shm::SharedMemory;
 pub use sys::platform::descriptor::RawDescriptor;
 pub use sys::platform::shm::round_up_to_page_size;
 
+/// # Safety
+///
+/// Caller must ensure that MappedRegion's lifetime contains the lifetime of
+/// pointer returned.
 pub unsafe trait MappedRegion: Send + Sync {
     /// Returns a pointer to the beginning of the memory region. Should only be
     /// used for passing this region to ioctls for setting guest memory.

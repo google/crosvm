@@ -202,6 +202,11 @@ pub trait TapTCommon: Read + Write + AsRawDescriptor + Send + Sized {
     fn try_clone(&self) -> Result<Self>;
 
     /// Convert raw descriptor to
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure that RawDescriptor stays valid as long as the lifetime
+    /// of Self.
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Result<Self>;
 }
 

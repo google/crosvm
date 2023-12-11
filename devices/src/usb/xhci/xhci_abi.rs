@@ -682,6 +682,8 @@ impl TypedTrb for PortStatusChangeEventTrb {
     const TY: TrbType = TrbType::PortStatusChangeEvent;
 }
 
+/// # Safety
+///
 /// All trb structs have the same size. One trb could be safely casted to another, though the
 /// values might be invalid.
 pub unsafe trait TrbCast: FromBytes + AsBytes + TypedTrb {

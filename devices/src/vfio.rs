@@ -383,6 +383,9 @@ impl VfioContainer {
         }
     }
 
+    /// # Safety
+    ///
+    /// The caller is responsible for determining the safety of the VFIO_IOMMU_MAP_DMA ioctl.
     pub unsafe fn vfio_dma_map(
         &self,
         iova: u64,
@@ -401,6 +404,9 @@ impl VfioContainer {
         }
     }
 
+    /// # Safety
+    ///
+    /// The caller is responsible for determining the safety of the VFIO_IOMMU_MAP_DMA ioctl.
     unsafe fn vfio_iommu_type1_dma_map(
         &self,
         iova: u64,
@@ -1824,6 +1830,9 @@ impl VfioDevice {
     }
 
     /// Add (iova, user_addr) map into vfio container iommu table
+    /// # Safety
+    ///
+    /// The caller is responsible for determining the safety of the VFIO_IOMMU_MAP_DMA ioctl.
     pub unsafe fn vfio_dma_map(
         &self,
         iova: u64,
