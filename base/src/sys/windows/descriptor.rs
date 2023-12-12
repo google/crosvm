@@ -46,6 +46,7 @@ impl PartialEq for SafeDescriptor {
 
 impl Drop for SafeDescriptor {
     fn drop(&mut self) {
+        // SAFETY: trivially safe
         unsafe { CloseHandle(self.descriptor) };
     }
 }
@@ -61,11 +62,13 @@ static mut KERNELBASE_LIBRARY: MaybeUninit<HMODULE> = MaybeUninit::uninit();
 
 fn compare_object_handles(first: RawHandle, second: RawHandle) -> bool {
     KERNELBASE_INIT.call_once(|| {
+        // SAFETY: trivially safe
         unsafe {
             *KERNELBASE_LIBRARY.as_mut_ptr() =
                 libloaderapi::LoadLibraryW(win32_wide_string("Kernelbase").as_ptr());
         };
     });
+    // SAFETY: the return value is checked.
     let handle = unsafe { KERNELBASE_LIBRARY.assume_init() };
     if handle.is_null() {
         return first == second;
@@ -73,11 +76,13 @@ fn compare_object_handles(first: RawHandle, second: RawHandle) -> bool {
 
     let addr = CString::new("CompareObjectHandles").unwrap();
     let addr_ptr = addr.as_ptr();
+    // SAFETY: the return value is checked.
     let symbol = unsafe { libloaderapi::GetProcAddress(handle, addr_ptr) };
     if symbol.is_null() {
         return first == second;
     }
 
+    // SAFETY: trivially safe
     let func = unsafe {
         std::mem::transmute::<
             *mut winapi::shared::minwindef::__some_function,
@@ -102,6 +107,7 @@ impl SafeDescriptor {
     /// Clones this descriptor, internally creating a new descriptor. The new SafeDescriptor will
     /// share the same underlying count within the kernel.
     pub fn try_clone(&self) -> Result<SafeDescriptor> {
+        // SAFETY:
         // Safe because `duplicate_handle` will return a valid handle, or at the very least error
         // out.
         Ok(unsafe {
@@ -110,15 +116,19 @@ impl SafeDescriptor {
     }
 }
 
+// SAFETY:
 // On Windows, RawHandles are represented by raw pointers but are not used as such in
 // rust code, and are therefore safe to send between threads.
 unsafe impl Send for SafeDescriptor {}
+// SAFETY: See comments for impl Send
 unsafe impl Sync for SafeDescriptor {}
 
+// SAFETY:
 // On Windows, RawHandles are represented by raw pointers but are opaque to the
 // userspace and cannot be derefenced by rust code, and are therefore safe to
 // send between threads.
 unsafe impl Send for Descriptor {}
+// SAFETY: See comments for impl Send
 unsafe impl Sync for Descriptor {}
 
 macro_rules! AsRawDescriptor {
@@ -134,6 +144,7 @@ macro_rules! AsRawDescriptor {
 macro_rules! FromRawDescriptor {
     ($name:ident) => {
         impl FromRawDescriptor for $name {
+            // SAFETY: It is caller's responsibility to ensure that the descriptor is valid.
             unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
                 return $name::from_raw_handle(descriptor);
             }
@@ -171,6 +182,7 @@ fn clone_equality() {
     use crate::Event;
 
     let evt = Event::new().unwrap();
+    // SAFETY: Given evt is created above and is valid.
     let descriptor = unsafe { SafeDescriptor::from_raw_descriptor(evt.into_raw_descriptor()) };
 
     assert_eq!(descriptor, descriptor);
@@ -181,6 +193,7 @@ fn clone_equality() {
     );
 
     let evt2 = Event::new().unwrap();
+    // SAFETY: Given evt2 is created above and is valid.
     let another = unsafe { SafeDescriptor::from_raw_descriptor(evt2.into_raw_descriptor()) };
 
     assert_ne!(descriptor, another);

@@ -37,6 +37,7 @@ pub enum ConversionError {
 
 impl Drop for SwConverter {
     fn drop(&mut self) {
+        // SAFETY:
         // Safe because `sws_context` is valid through the life of this object.
         unsafe { ffi::sws_freeContext(self.sws_context) };
     }
@@ -53,6 +54,7 @@ impl SwConverter {
         src_pix_format: ffi::AVPixelFormat,
         dst_pix_format: ffi::AVPixelFormat,
     ) -> anyhow::Result<Self> {
+        // SAFETY:
         // Safe because we don't pass any non-null pointer to this function.
         let sws_context = unsafe {
             ffi::sws_getContext(
@@ -112,6 +114,7 @@ impl SwConverter {
             return Err(ConversionError::NotWritable);
         }
 
+        // SAFETY:
         // Safe because `sws_context`, `src_ref.data` and `dst_data` are all valid pointers, and
         // we made sure the sizes provided are within the bounds of the buffers.
         AvError::result(unsafe {

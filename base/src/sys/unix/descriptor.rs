@@ -43,6 +43,7 @@ pub fn clone_descriptor(descriptor: &dyn AsRawDescriptor) -> Result<RawDescripto
 /// `fd`. The cloned fd will have the `FD_CLOEXEC` flag set but will not share any other file
 /// descriptor flags with `fd`.
 fn clone_fd(fd: &dyn AsRawFd) -> Result<RawFd> {
+    // SAFETY:
     // Safe because this doesn't modify any memory and we check the return value.
     let ret = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
     if ret < 0 {
@@ -60,6 +61,7 @@ pub fn clear_descriptor_cloexec<A: AsRawDescriptor>(fd_owner: &A) -> Result<()> 
 /// Clears CLOEXEC flag on fd
 fn clear_fd_cloexec<A: AsRawFd>(fd_owner: &A) -> Result<()> {
     let fd = fd_owner.as_raw_fd();
+    // SAFETY:
     // Safe because fd is read only.
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
     if flags == -1 {
@@ -67,6 +69,7 @@ fn clear_fd_cloexec<A: AsRawFd>(fd_owner: &A) -> Result<()> {
     }
 
     let masked_flags = flags & !libc::FD_CLOEXEC;
+    // SAFETY:
     // Safe because this has no side effect(s) on the current process.
     if masked_flags != flags && unsafe { libc::fcntl(fd, libc::F_SETFD, masked_flags) } == -1 {
         errno_result()
@@ -77,6 +80,8 @@ fn clear_fd_cloexec<A: AsRawFd>(fd_owner: &A) -> Result<()> {
 
 impl Drop for SafeDescriptor {
     fn drop(&mut self) {
+        // SAFETY:
+        // Safe because descriptor is valid.
         let _ = unsafe { libc::close(self.descriptor) };
     }
 }
@@ -101,6 +106,7 @@ impl SafeDescriptor {
     /// Clones this descriptor, internally creating a new descriptor. The new SafeDescriptor will
     /// share the same underlying count within the kernel.
     pub fn try_clone(&self) -> Result<SafeDescriptor> {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let descriptor = unsafe { libc::fcntl(self.descriptor, libc::F_DUPFD_CLOEXEC, 0) };
         if descriptor < 0 {
@@ -113,6 +119,7 @@ impl SafeDescriptor {
 
 impl From<SafeDescriptor> for File {
     fn from(s: SafeDescriptor) -> File {
+        // SAFETY:
         // Safe because we own the SafeDescriptor at this point.
         unsafe { File::from_raw_fd(s.into_raw_descriptor()) }
     }
@@ -120,6 +127,7 @@ impl From<SafeDescriptor> for File {
 
 impl From<SafeDescriptor> for TcpListener {
     fn from(s: SafeDescriptor) -> Self {
+        // SAFETY:
         // Safe because we own the SafeDescriptor at this point.
         unsafe { Self::from_raw_fd(s.into_raw_descriptor()) }
     }
@@ -127,6 +135,7 @@ impl From<SafeDescriptor> for TcpListener {
 
 impl From<SafeDescriptor> for TcpStream {
     fn from(s: SafeDescriptor) -> Self {
+        // SAFETY:
         // Safe because we own the SafeDescriptor at this point.
         unsafe { Self::from_raw_fd(s.into_raw_descriptor()) }
     }
@@ -134,6 +143,7 @@ impl From<SafeDescriptor> for TcpStream {
 
 impl From<SafeDescriptor> for UnixStream {
     fn from(s: SafeDescriptor) -> Self {
+        // SAFETY:
         // Safe because we own the SafeDescriptor at this point.
         unsafe { Self::from_raw_fd(s.into_raw_descriptor()) }
     }

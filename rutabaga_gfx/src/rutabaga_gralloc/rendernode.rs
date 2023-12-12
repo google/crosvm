@@ -66,6 +66,8 @@ fn get_drm_device_name(fd: &File) -> RutabagaResult<String> {
         desc: null_mut(),
     };
 
+    // TODO(b/315870313): Add safety comment
+    #[allow(clippy::undocumented_unsafe_blocks)]
     // Get the length of the device name.
     unsafe {
         drm_get_version(fd.as_raw_fd(), &mut version)?;
@@ -85,6 +87,7 @@ fn get_drm_device_name(fd: &File) -> RutabagaResult<String> {
         desc: null_mut(),
     };
 
+    // SAFETY:
     // Safe as no more than name_len + 1 bytes will be written to name.
     unsafe {
         drm_get_version(fd.as_raw_fd(), &mut version)?;

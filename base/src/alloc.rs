@@ -37,6 +37,7 @@ use std::cmp::min;
 ///     let layout = Layout::from_size_align(size, mem::align_of::<Header>()).unwrap();
 ///     let mut allocation = LayoutAllocation::zeroed(layout);
 ///
+///     // SAFETY:
 ///     // Safe to obtain an exclusive reference because there are no other
 ///     // references to the allocation yet and all-zero is a valid bit pattern for
 ///     // our header.
@@ -57,10 +58,9 @@ impl LayoutAllocation {
     /// incompatible with its type, for example an uninitialized bool or enum.
     pub fn uninitialized(layout: Layout) -> Self {
         let ptr = if layout.size() > 0 {
-            unsafe {
-                // Safe as long as we guarantee layout.size() > 0.
-                alloc(layout)
-            }
+            // SAFETY:
+            // Safe as long as we guarantee layout.size() > 0.
+            unsafe { alloc(layout) }
         } else {
             layout.align() as *mut u8
         };
@@ -77,10 +77,9 @@ impl LayoutAllocation {
     /// one of the fields has type NonZeroUsize.
     pub fn zeroed(layout: Layout) -> Self {
         let ptr = if layout.size() > 0 {
-            unsafe {
-                // Safe as long as we guarantee layout.size() > 0.
-                alloc_zeroed(layout)
-            }
+            // SAFETY:
+            // Safe as long as we guarantee layout.size() > 0.
+            unsafe { alloc_zeroed(layout) }
         } else {
             layout.align() as *mut u8
         };
@@ -159,8 +158,9 @@ impl LayoutAllocation {
 impl Drop for LayoutAllocation {
     fn drop(&mut self) {
         if self.layout.size() > 0 {
+            // SAFETY:
+            // Safe as long as we guarantee layout.size() > 0.
             unsafe {
-                // Safe as long as we guarantee layout.size() > 0.
                 dealloc(self.ptr, self.layout);
             }
         }
@@ -178,6 +178,8 @@ mod tests {
     fn test_as_slice_u32() {
         let layout = Layout::from_size_align(size_of::<u32>() * 15, align_of::<u32>()).unwrap();
         let allocation = LayoutAllocation::zeroed(layout);
+        // SAFETY:
+        // Slice less than the allocation size, which will return a slice of only the requested length.
         let slice: &[u32] = unsafe { allocation.as_slice(15) };
         assert_eq!(slice.len(), 15);
         assert_eq!(slice[0], 0);
@@ -189,6 +191,7 @@ mod tests {
         let layout = Layout::from_size_align(size_of::<u32>() * 15, align_of::<u32>()).unwrap();
         let allocation = LayoutAllocation::zeroed(layout);
 
+        // SAFETY:
         // Slice less than the allocation size, which will return a slice of only the requested length.
         let slice: &[u32] = unsafe { allocation.as_slice(5) };
         assert_eq!(slice.len(), 5);
@@ -199,6 +202,7 @@ mod tests {
         let layout = Layout::from_size_align(size_of::<u32>() * 15, align_of::<u32>()).unwrap();
         let allocation = LayoutAllocation::zeroed(layout);
 
+        // SAFETY:
         // Slice more than the allocation size, which will clamp the returned slice len to the limit.
         let slice: &[u32] = unsafe { allocation.as_slice(100) };
         assert_eq!(slice.len(), 15);
@@ -210,6 +214,7 @@ mod tests {
         let layout = Layout::from_size_align(size_of::<u32>() * 15 + 2, align_of::<u32>()).unwrap();
         let allocation = LayoutAllocation::zeroed(layout);
 
+        // SAFETY:
         // Slice as many u32s as possible, which should return a slice that only includes the full
         // u32s, not the trailing 2 bytes.
         let slice: &[u32] = unsafe { allocation.as_slice(100) };

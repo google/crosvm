@@ -30,15 +30,18 @@ use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 pub fn read_from_tube_transporter(
     raw_transport_tube: RawDescriptor,
 ) -> anyhow::Result<TubeTransferDataList> {
-    // Safe because we know that raw_transport_tube is valid (passed by inheritance), and that
-    // the blocking & framing modes are accurate because we create them ourselves in the broker.
-    let tube_transporter = TubeTransporterReader::create_tube_transporter_reader(unsafe {
-        PipeConnection::from_raw_descriptor(
-            raw_transport_tube,
-            FramingMode::Message,
-            BlockingMode::Wait,
-        )
-    });
+    let tube_transporter = TubeTransporterReader::create_tube_transporter_reader(
+        // SAFETY:
+        // Safe because we know that raw_transport_tube is valid (passed by inheritance), and that
+        // the blocking & framing modes are accurate because we create them ourselves in the broker.
+        unsafe {
+            PipeConnection::from_raw_descriptor(
+                raw_transport_tube,
+                FramingMode::Message,
+                BlockingMode::Wait,
+            )
+        },
+    );
 
     tube_transporter.read_tubes().map_err(anyhow::Error::msg)
 }

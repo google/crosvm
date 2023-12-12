@@ -306,6 +306,7 @@ impl From<&MessagePacket> for WindowMessage {
                 Self::WindowPos(WindowPosMessage::WindowPosChanging { l_param })
             }
             WM_WINDOWPOSCHANGED => {
+                // SAFETY:
                 // Safe because it will live at least until we finish handling
                 // `WM_WINDOWPOSCHANGED`.
                 let window_pos: WINDOWPOS = unsafe { *(l_param as *mut WINDOWPOS) };

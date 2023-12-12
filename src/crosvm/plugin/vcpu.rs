@@ -681,15 +681,17 @@ impl PluginVcpu {
                     Layout::from_size_align(size, ALIGN_OF_MSRS).expect("impossible layout");
                 let mut allocation = LayoutAllocation::zeroed(layout);
 
+                // SAFETY:
                 // Safe to obtain an exclusive reference because there are no other
                 // references to the allocation yet and all-zero is a valid bit
                 // pattern.
                 let kvm_msrs = unsafe { allocation.as_mut::<kvm_msrs>() };
 
+                // SAFETY:
+                // Mapping the unsized array to a slice is unsafe becase the length isn't known.
+                // Providing the length used to create the struct guarantees the entire slice is
+                // valid.
                 unsafe {
-                    // Mapping the unsized array to a slice is unsafe becase the length isn't known.
-                    // Providing the length used to create the struct guarantees the entire slice is
-                    // valid.
                     let kvm_msr_entries: &mut [kvm_msr_entry] =
                         kvm_msrs.entries.as_mut_slice(request_entries.len());
                     for (msr_entry, entry) in kvm_msr_entries.iter_mut().zip(request_entries) {
@@ -728,6 +730,7 @@ impl PluginVcpu {
                         cap: capability,
                         ..Default::default()
                     };
+                    // SAFETY:
                     // Safe because the allowed capabilities don't take pointer arguments.
                     unsafe { vcpu.kvm_enable_cap(&cap) }
                 }

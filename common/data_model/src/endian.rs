@@ -19,7 +19,9 @@
 //!   assert!(b == 3);
 //!   assert!(l == 3);
 //!
+//!   // SAFETY: trivially safe
 //!   let b_trans: u32 = unsafe { std::mem::transmute(b) };
+//!   // SAFETY: trivially safe
 //!   let l_trans: u32 = unsafe { std::mem::transmute(l) };
 //!
 //!   #[cfg(target_endian = "little")]
@@ -153,6 +155,7 @@ mod tests {
                     let v = 0x0123456789ABCDEF as $old_type;
                     let endian_v: $new_type = From::from(v);
                     let endian_into: $old_type = endian_v.into();
+                    // SAFETY: trivially safe
                     let endian_transmute: $old_type = unsafe { transmute(endian_v) };
 
                     if $native {

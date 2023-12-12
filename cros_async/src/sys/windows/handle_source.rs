@@ -99,6 +99,7 @@ impl HandleWrapper {
     pub fn cancel_sync_io<T>(&mut self, ret: T) -> T {
         for handle in &self.handles {
             // There isn't much we can do if cancel fails.
+            // SAFETY: trivially safe
             if unsafe { CancelIoEx(handle.as_raw_descriptor(), null_mut()) } == 0 {
                 warn!(
                     "Cancel IO for handle:{:?} failed with {}",
@@ -188,6 +189,7 @@ impl<F: AsRawDescriptor> Drop for HandleSource<F> {
 }
 
 fn get_thread_file(descriptors: Vec<Descriptor>) -> ManuallyDrop<File> {
+    // SAFETY: trivially safe
     // Safe because all callers must exit *before* these handles will be closed (guaranteed by
     // HandleSource's Drop impl.).
     unsafe {

@@ -57,6 +57,7 @@ pub struct DisplayDataProvider;
 
 impl ProvideDisplayData for DisplayDataProvider {
     fn get_host_display_size() -> (u32, u32) {
+        // SAFETY:
         // Safe because we're passing valid values and screen size won't exceed u32 range.
         let (width, height) = unsafe {
             (

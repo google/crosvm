@@ -98,6 +98,7 @@ where
 
     let tz = std::env::var("TZ").unwrap_or_default();
 
+    // SAFETY:
     // Safe because the program is still single threaded.
     // We own the jail object and nobody else will try to reuse it.
     let pid = match unsafe { jail.fork(Some(&keep_rds)) }? {
@@ -119,6 +120,7 @@ where
                     [..std::cmp::min(MAX_THREAD_LABEL_LEN, debug_label.len())];
                 match CString::new(debug_label_trimmed) {
                     Ok(thread_name) => {
+                        // SAFETY:
                         // Safe because thread_name is a valid pointer and setting name of this
                         // thread should be safe.
                         let _ = unsafe {
@@ -150,6 +152,7 @@ where
                 None => "process.rs: no debug label".to_owned(),
             },
             // Can't use safe wrapper because jail crate depends on base
+            // SAFETY:
             // Safe because it's only doing a read within bound checked by static assert
             unsafe {*(&jail as *const Minijail as *const usize)}
         );

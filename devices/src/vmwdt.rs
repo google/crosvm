@@ -220,6 +220,7 @@ impl Vmwdt {
             .and_then(|guest_time| guest_time.parse::<u64>().ok())
             .unwrap_or(0);
 
+        // SAFETY:
         // Safe because this just returns an integer
         let ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
         Ok((gtime_ticks * 1000 / ticks_per_sec) as i64)

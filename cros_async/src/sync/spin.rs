@@ -70,6 +70,8 @@ impl<T: ?Sized> SpinLock<T> {
             hint::spin_loop();
         }
 
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         SpinLockGuard {
             lock: self,
             value: unsafe { &mut *self.value.get() },
@@ -84,13 +86,18 @@ impl<T: ?Sized> SpinLock<T> {
     /// Returns a mutable reference to the contained value. This method doesn't perform any locking
     /// as the compiler will statically guarantee that there are no other references to `self`.
     pub fn get_mut(&mut self) -> &mut T {
+        // SAFETY:
         // Safe because the compiler can statically guarantee that there are no other references to
         // `self`. This is also why we don't need to acquire the lock.
         unsafe { &mut *self.value.get() }
     }
 }
 
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl<T: ?Sized + Send> Send for SpinLock<T> {}
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl<T: ?Sized + Send> Sync for SpinLock<T> {}
 
 impl<T: ?Sized + Default> Default for SpinLock<T> {

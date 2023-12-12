@@ -46,6 +46,7 @@ impl StaticString {
 
 // Safety: pointers are safe to send between threads.
 unsafe impl Send for StaticString {}
+// SAFETY:
 // Safe to share across threads, because `register` is protected by a lock and strings inserted
 // are never removed.
 unsafe impl Sync for StaticString {}

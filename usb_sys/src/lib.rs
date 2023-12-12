@@ -160,12 +160,16 @@ pub struct usbdevfs_urb {
 
 impl Default for usbdevfs_urb {
     fn default() -> Self {
+        // SAFETY: trivially safe
         unsafe { ::std::mem::zeroed() }
     }
 }
 
+// SAFETY:
 // The structure that embeds this should ensure that this is safe.
 unsafe impl Send for usbdevfs_urb {}
+// SAFETY:
+// The structure that embeds this should ensure that this is safe.
 unsafe impl Sync for usbdevfs_urb {}
 
 #[repr(C)]
@@ -211,6 +215,7 @@ pub struct usbdevfs_streams {
 
 impl Default for usbdevfs_streams {
     fn default() -> Self {
+        // SAFETY: trivially safe
         unsafe { ::std::mem::zeroed() }
     }
 }

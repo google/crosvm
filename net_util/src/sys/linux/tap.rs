@@ -76,6 +76,7 @@ impl Tap {
     }
 
     pub fn create_tap_with_ifreq(ifreq: &mut net_sys::ifreq) -> Result<Tap> {
+        // SAFETY:
         // Open calls are safe because we give a constant nul-terminated
         // string and verify the result.
         let rd = unsafe {
@@ -88,8 +89,10 @@ impl Tap {
             return Err(Error::OpenTun(SysError::last()));
         }
 
+        // SAFETY:
         // We just checked that the fd is valid.
         let tuntap = unsafe { File::from_raw_descriptor(rd) };
+        // SAFETY:
         // ioctl is safe since we call it with a valid tap fd and check the return
         // value.
         let ret = unsafe { ioctl_with_mut_ref(&tuntap, net_sys::TUNSETIFF(), ifreq) };
@@ -98,10 +101,13 @@ impl Tap {
             return Err(Error::CreateTap(SysError::last()));
         }
 
-        // Safe since only the name is accessed, and it's copied out.
         Ok(Tap {
             tap_file: tuntap,
+            // SAFETY:
+            // Safe since only the name is accessed, and it's copied out.
             if_name: unsafe { ifreq.ifr_ifrn.ifrn_name },
+            // SAFETY:
+            // Safe since only the name is accessed, and it's copied out.
             if_flags: unsafe { ifreq.ifr_ifru.ifru_flags },
         })
     }
@@ -109,6 +115,7 @@ impl Tap {
     fn get_ifreq(&self) -> net_sys::ifreq {
         let mut ifreq: net_sys::ifreq = Default::default();
 
+        // SAFETY:
         // This sets the name of the interface, which is the only entry
         // in a single-field union.
         unsafe {
@@ -149,10 +156,11 @@ impl TapTCommon for Tap {
     }
 
     fn new_with_name(name: &[u8], vnet_hdr: bool, multi_vq: bool) -> Result<Tap> {
+        let mut ifreq: net_sys::ifreq = Default::default();
+        // SAFETY:
         // This is pretty messy because of the unions used by ifreq. Since we
         // don't call as_mut on the same union field more than once, this block
         // is safe.
-        let mut ifreq: net_sys::ifreq = Default::default();
         unsafe {
             let ifrn_name = ifreq.ifr_ifrn.ifrn_name.as_mut();
             for (dst, src) in ifrn_name
@@ -199,6 +207,7 @@ impl TapTCommon for Tap {
         let sock = create_socket()?;
         let mut ifreq = self.get_ifreq();
 
+        // SAFETY:
         // ioctl is safe. Called with a valid sock descriptor, and we check the return.
         let ret = unsafe {
             ioctl_with_mut_ref(&sock, net_sys::sockios::SIOCGIFADDR as IoctlNr, &mut ifreq)
@@ -208,6 +217,7 @@ impl TapTCommon for Tap {
             return Err(Error::IoctlError(SysError::last()));
         }
 
+        // SAFETY:
         // We only access one field of the ifru union, hence this is safe.
         let addr = unsafe { ifreq.ifr_ifru.ifru_addr };
 
@@ -221,8 +231,9 @@ impl TapTCommon for Tap {
         let mut ifreq = self.get_ifreq();
         ifreq.ifr_ifru.ifru_addr = addr;
 
-        // ioctl is safe. Called with a valid sock descriptor, and we check the return.
         let ret =
+        // SAFETY:
+        // ioctl is safe. Called with a valid sock descriptor, and we check the return.
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFADDR as IoctlNr, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
@@ -235,6 +246,7 @@ impl TapTCommon for Tap {
         let sock = create_socket()?;
         let mut ifreq = self.get_ifreq();
 
+        // SAFETY:
         // ioctl is safe. Called with a valid sock descriptor, and we check the return.
         let ret = unsafe {
             ioctl_with_mut_ref(
@@ -247,6 +259,7 @@ impl TapTCommon for Tap {
             return Err(Error::IoctlError(SysError::last()));
         }
 
+        // SAFETY:
         // We only access one field of the ifru union, hence this is safe.
         let addr = unsafe { ifreq.ifr_ifru.ifru_netmask };
 
@@ -260,8 +273,9 @@ impl TapTCommon for Tap {
         let mut ifreq = self.get_ifreq();
         ifreq.ifr_ifru.ifru_netmask = addr;
 
-        // ioctl is safe. Called with a valid sock descriptor, and we check the return.
         let ret =
+        // SAFETY:
+        // ioctl is safe. Called with a valid sock descriptor, and we check the return.
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFNETMASK as IoctlNr, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
@@ -274,6 +288,7 @@ impl TapTCommon for Tap {
         let sock = create_socket()?;
         let mut ifreq = self.get_ifreq();
 
+        // SAFETY:
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret = unsafe {
             ioctl_with_mut_ref(&sock, net_sys::sockios::SIOCGIFMTU as IoctlNr, &mut ifreq)
@@ -282,6 +297,7 @@ impl TapTCommon for Tap {
             return Err(Error::IoctlError(SysError::last()));
         }
 
+        // SAFETY:
         // We only access one field of the ifru union, hence this is safe.
         let mtu = unsafe { ifreq.ifr_ifru.ifru_mtu } as u16;
         Ok(mtu)
@@ -293,6 +309,7 @@ impl TapTCommon for Tap {
         let mut ifreq = self.get_ifreq();
         ifreq.ifr_ifru.ifru_mtu = i32::from(mtu);
 
+        // SAFETY:
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret = unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFMTU as IoctlNr, &ifreq) };
         if ret < 0 {
@@ -306,6 +323,7 @@ impl TapTCommon for Tap {
         let sock = create_socket()?;
         let mut ifreq = self.get_ifreq();
 
+        // SAFETY:
         // ioctl is safe. Called with a valid sock descriptor, and we check the return.
         let ret = unsafe {
             ioctl_with_mut_ref(
@@ -318,6 +336,7 @@ impl TapTCommon for Tap {
             return Err(Error::IoctlError(SysError::last()));
         }
 
+        // SAFETY:
         // We only access one field of the ifru union, hence this is safe.
         let sa: libc::sockaddr = unsafe { ifreq.ifr_ifru.ifru_hwaddr };
 
@@ -355,8 +374,9 @@ impl TapTCommon for Tap {
         let mut ifreq = self.get_ifreq();
         ifreq.ifr_ifru.ifru_hwaddr = sa;
 
-        // ioctl is safe. Called with a valid sock descriptor, and we check the return.
         let ret =
+        // SAFETY:
+        // ioctl is safe. Called with a valid sock descriptor, and we check the return.
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFHWADDR as IoctlNr, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
@@ -366,8 +386,9 @@ impl TapTCommon for Tap {
     }
 
     fn set_offload(&self, flags: c_uint) -> Result<()> {
-        // ioctl is safe. Called with a valid tap descriptor, and we check the return.
         let ret =
+        // SAFETY:
+        // ioctl is safe. Called with a valid tap descriptor, and we check the return.
             unsafe { ioctl_with_val(&self.tap_file, net_sys::TUNSETOFFLOAD(), flags as c_ulong) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
@@ -383,8 +404,9 @@ impl TapTCommon for Tap {
         ifreq.ifr_ifru.ifru_flags =
             (net_sys::net_device_flags::IFF_UP | net_sys::net_device_flags::IFF_RUNNING).0 as i16;
 
-        // ioctl is safe. Called with a valid sock descriptor, and we check the return.
         let ret =
+        // SAFETY:
+        // ioctl is safe. Called with a valid sock descriptor, and we check the return.
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFFLAGS as IoctlNr, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
@@ -397,6 +419,7 @@ impl TapTCommon for Tap {
         self.try_clone()
     }
 
+    // SAFETY:
     // Safe if caller provides a valid descriptor.
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Result<Self> {
         Tap::from_raw_descriptor(descriptor)
@@ -406,6 +429,7 @@ impl TapTCommon for Tap {
 impl TapTLinux for Tap {
     fn set_vnet_hdr_size(&self, size: usize) -> Result<()> {
         let size = size as c_int;
+        // SAFETY:
         // ioctl is safe. Called with a valid tap descriptor, and we check the return.
         let ret = unsafe { ioctl_with_ref(&self.tap_file, net_sys::TUNSETVNETHDRSZ(), &size) };
         if ret < 0 {
@@ -455,18 +479,22 @@ impl ReadNotifier for Tap {
 }
 
 fn create_socket() -> Result<net::UdpSocket> {
+    // SAFETY:
     // This is safe since we check the return value.
     let sock = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
     if sock >= 0 {
+        // SAFETY:
         // This is safe; nothing else will use or hold onto the raw sock descriptor.
         return Ok(unsafe { net::UdpSocket::from_raw_fd(sock) });
     }
 
     warn!("INET not supported on this machine. Trying to open an INET6 socket.");
 
+    // SAFETY:
     // Open an AF_INET6 socket
     let sock6 = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_DGRAM, 0) };
     if sock6 >= 0 {
+        // SAFETY:
         // This is safe; nothing else will use or hold onto the raw sock descriptor.
         return Ok(unsafe { net::UdpSocket::from_raw_fd(sock6) });
     }
@@ -484,16 +512,19 @@ fn create_sockaddr(ip_addr: net::Ipv4Addr) -> libc::sockaddr {
     let addr_in = libc::sockaddr_in {
         sin_family: libc::AF_INET as u16,
         sin_port: 0,
+        // SAFETY: trivially safe
         sin_addr: unsafe { mem::transmute(ip_addr.octets()) },
         sin_zero: [0; 8usize],
     };
 
+    // SAFETY: trivially safe
     unsafe { mem::transmute(addr_in) }
 }
 
 /// Extract the IPv4 address from a sockaddr. Assumes the sockaddr is a sockaddr_in.
 fn read_ipv4_addr(addr: &libc::sockaddr) -> net::Ipv4Addr {
     debug_assert_eq!(addr.sa_family as i32, libc::AF_INET);
+    // SAFETY:
     // This is safe because sockaddr and sockaddr_in are the same size, and we've checked that
     // this address is AF_INET.
     let in_addr: libc::sockaddr_in = unsafe { mem::transmute(*addr) };

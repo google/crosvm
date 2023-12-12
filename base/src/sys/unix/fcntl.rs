@@ -16,17 +16,24 @@ use crate::syscall;
 ///
 /// Returns an error if the OS indicates the flags can't be retrieved.
 fn get_fd_flags(fd: RawFd) -> Result<c_int> {
-    // Safe because no third parameter is expected and we check the return result.
-    syscall!(unsafe { fcntl(fd, F_GETFL) })
+    syscall!(
+        // SAFETY:
+        // Safe because no third parameter is expected and we check the return result.
+        unsafe { fcntl(fd, F_GETFL) }
+    )
 }
 
 /// Sets the file flags set for the given `RawFD`.
 ///
 /// Returns an error if the OS indicates the flags can't be retrieved.
 fn set_fd_flags(fd: RawFd, flags: c_int) -> Result<()> {
-    // Safe because we supply the third parameter and we check the return result.
-    // fcntlt is trusted not to modify the memory of the calling process.
-    syscall!(unsafe { fcntl(fd, F_SETFL, flags) }).map(|_| ())
+    syscall!(
+        // SAFETY:
+        // Safe because we supply the third parameter and we check the return result.
+        // fcntlt is trusted not to modify the memory of the calling process.
+        unsafe { fcntl(fd, F_SETFL, flags) }
+    )
+    .map(|_| ())
 }
 
 /// Performs a logical OR of the given flags with the FD's flags, setting the given bits for the

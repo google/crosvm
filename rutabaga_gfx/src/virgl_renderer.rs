@@ -56,6 +56,7 @@ fn import_resource(resource: &mut RutabagaResource) -> RutabagaResult<()> {
     if let Some(handle) = &resource.handle {
         if handle.handle_type == RUTABAGA_MEM_HANDLE_TYPE_DMABUF {
             let dmabuf_fd = handle.os_handle.try_clone()?.into_raw_descriptor();
+            // SAFETY:
             // Safe because we are being passed a valid fd
             unsafe {
                 let dmabuf_size = libc::lseek64(dmabuf_fd, 0, libc::SEEK_END);
@@ -95,6 +96,7 @@ impl RutabagaContext for VirglRendererContext {
             return Err(RutabagaError::InvalidCommandSize(commands.len()));
         }
         let dword_count = (commands.len() / size_of::<u32>()) as i32;
+        // SAFETY:
         // Safe because the context and buffer are valid and virglrenderer will have been
         // initialized if there are Context instances.
         let ret = unsafe {
@@ -113,6 +115,7 @@ impl RutabagaContext for VirglRendererContext {
             Err(e) => error!("importing resource failing with {}", e),
         }
 
+        // SAFETY:
         // The context id and resource id must be valid because the respective instances ensure
         // their lifetime.
         unsafe {
@@ -121,6 +124,7 @@ impl RutabagaContext for VirglRendererContext {
     }
 
     fn detach(&mut self, resource: &RutabagaResource) {
+        // SAFETY:
         // The context id and resource id must be valid because the respective instances ensure
         // their lifetime.
         unsafe {
@@ -138,6 +142,8 @@ impl RutabagaContext for VirglRendererContext {
         // this assumption.
         let flags: u32 = VIRGL_RENDERER_FENCE_FLAG_MERGEABLE;
 
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe {
             virgl_renderer_context_create_fence(
                 fence.ctx_id,
@@ -152,6 +158,7 @@ impl RutabagaContext for VirglRendererContext {
 
 impl Drop for VirglRendererContext {
     fn drop(&mut self) {
+        // SAFETY:
         // The context is safe to destroy because nothing else can be referencing it.
         unsafe {
             virgl_renderer_context_destroy(self.ctx_id);
@@ -163,6 +170,8 @@ extern "C" fn debug_callback(fmt: *const ::std::os::raw::c_char, ap: stdio::va_l
     const BUF_LEN: usize = 256;
     let mut v = [b' '; BUF_LEN];
 
+    // TODO(b/315870313): Add safety comment
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let printed_len = unsafe {
         let ptr = v.as_mut_ptr() as *mut ::std::os::raw::c_char;
         #[cfg(any(
@@ -193,6 +202,8 @@ extern "C" fn debug_callback(fmt: *const ::std::os::raw::c_char, ap: stdio::va_l
 extern "C" fn write_context_fence(cookie: *mut c_void, ctx_id: u32, ring_idx: u32, fence_id: u64) {
     catch_unwind(|| {
         assert!(!cookie.is_null());
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let cookie = unsafe { &*(cookie as *mut RutabagaCookie) };
 
         // Call fence completion callback
@@ -208,6 +219,8 @@ extern "C" fn write_context_fence(cookie: *mut c_void, ctx_id: u32, ring_idx: u3
     .unwrap_or_else(|_| abort())
 }
 
+// TODO(b/315870313): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
     catch_unwind(|| {
         assert!(!cookie.is_null());
@@ -226,6 +239,8 @@ unsafe extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
     .unwrap_or_else(|_| abort())
 }
 
+// TODO(b/315870313): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe extern "C" fn get_server_fd(cookie: *mut c_void, version: u32) -> c_int {
     catch_unwind(|| {
         assert!(!cookie.is_null());
@@ -267,8 +282,9 @@ fn export_query(resource_id: u32) -> RutabagaResult<Query> {
     query.in_resource_id = resource_id;
     query.in_export_fds = 0;
 
-    // Safe because the image parameters are stack variables of the correct type.
     let ret =
+        // SAFETY:
+        // Safe because the image parameters are stack variables of the correct type.
         unsafe { virgl_renderer_execute(&mut query as *mut _ as *mut c_void, query.hdr.size) };
 
     ret_to_res(ret)?;
@@ -282,6 +298,8 @@ impl VirglRenderer {
         render_server_fd: Option<SafeDescriptor>,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
         if cfg!(debug_assertions) {
+            // TODO(b/315870313): Add safety comment
+            #[allow(clippy::undocumented_unsafe_blocks)]
             let ret = unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
             if ret == -1 {
                 warn!(
@@ -302,7 +320,11 @@ impl VirglRenderer {
             return Err(RutabagaError::AlreadyInUse);
         }
 
-        unsafe { virgl_set_debug_callback(Some(debug_callback)) };
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+            virgl_set_debug_callback(Some(debug_callback))
+        };
 
         // Cookie is intentionally never freed because virglrenderer never gets uninitialized.
         // Otherwise, Resource and Context would become invalid because their lifetime is not tied
@@ -314,6 +336,7 @@ impl VirglRenderer {
             debug_handler: None,
         }));
 
+        // SAFETY:
         // Safe because a valid cookie and set of callbacks is used and the result is checked for
         // error.
         let ret = unsafe {
@@ -330,6 +353,8 @@ impl VirglRenderer {
 
     fn map_info(&self, resource_id: u32) -> RutabagaResult<u32> {
         let mut map_info = 0;
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe { virgl_renderer_resource_get_map_info(resource_id, &mut map_info) };
         ret_to_res(ret)?;
 
@@ -357,10 +382,13 @@ impl VirglRenderer {
     fn export_blob(&self, resource_id: u32) -> RutabagaResult<Arc<RutabagaHandle>> {
         let mut fd_type = 0;
         let mut fd = 0;
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret =
             unsafe { virgl_renderer_resource_export_blob(resource_id, &mut fd_type, &mut fd) };
         ret_to_res(ret)?;
 
+        // SAFETY:
         // Safe because the FD was just returned by a successful virglrenderer
         // call so it must be valid and owned by us.
         let handle = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
@@ -383,6 +411,7 @@ impl VirglRenderer {
 
 impl Drop for VirglRenderer {
     fn drop(&mut self) {
+        // SAFETY:
         // Safe because virglrenderer is initialized.
         //
         // This invalidates all context ids and resource ids.  It is fine because struct Rutabaga
@@ -398,6 +427,7 @@ impl RutabagaComponent for VirglRenderer {
     fn get_capset_info(&self, capset_id: u32) -> (u32, u32) {
         let mut version = 0;
         let mut size = 0;
+        // SAFETY:
         // Safe because virglrenderer is initialized by now and properly size stack variables are
         // used for the pointers.
         unsafe {
@@ -409,6 +439,7 @@ impl RutabagaComponent for VirglRenderer {
     fn get_capset(&self, capset_id: u32, version: u32) -> Vec<u8> {
         let (_, max_size) = self.get_capset_info(capset_id);
         let mut buf = vec![0u8; max_size as usize];
+        // SAFETY:
         // Safe because virglrenderer is initialized by now and the given buffer is sized properly
         // for the given cap id/version.
         unsafe {
@@ -418,19 +449,30 @@ impl RutabagaComponent for VirglRenderer {
     }
 
     fn force_ctx_0(&self) {
-        unsafe { virgl_renderer_force_ctx_0() };
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+            virgl_renderer_force_ctx_0()
+        };
     }
 
     fn create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe { virgl_renderer_create_fence(fence.fence_id as i32, fence.ctx_id) };
         ret_to_res(ret)
     }
 
     fn event_poll(&self) {
-        unsafe { virgl_renderer_poll() };
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+            virgl_renderer_poll()
+        };
     }
 
     fn poll_descriptor(&self) -> Option<SafeDescriptor> {
+        // SAFETY:
         // Safe because it can be called anytime and returns -1 in the event of an error.
         let fd = unsafe { virgl_renderer_get_poll_fd() };
         if fd >= 0 {
@@ -460,6 +502,7 @@ impl RutabagaComponent for VirglRenderer {
             flags: resource_create_3d.flags,
         };
 
+        // SAFETY:
         // Safe because virglrenderer is initialized by now, and the return value is checked before
         // returning a new resource. The backing buffers are not supplied with this call.
         let ret = unsafe { virgl_renderer_resource_create(&mut args, null_mut(), 0) };
@@ -487,6 +530,7 @@ impl RutabagaComponent for VirglRenderer {
         resource_id: u32,
         vecs: &mut Vec<RutabagaIovec>,
     ) -> RutabagaResult<()> {
+        // SAFETY:
         // Safe because the backing is into guest memory that we store a reference count for.
         let ret = unsafe {
             virgl_renderer_resource_attach_iov(
@@ -499,6 +543,7 @@ impl RutabagaComponent for VirglRenderer {
     }
 
     fn detach_backing(&self, resource_id: u32) {
+        // SAFETY:
         // Safe as we don't need the old backing iovecs returned and the reference to the guest
         // memory can be dropped as it will no longer be needed for this resource.
         unsafe {
@@ -507,6 +552,7 @@ impl RutabagaComponent for VirglRenderer {
     }
 
     fn unref_resource(&self, resource_id: u32) {
+        // SAFETY:
         // The resource is safe to unreference destroy because no user of these bindings can still
         // be holding a reference.
         unsafe {
@@ -533,6 +579,7 @@ impl RutabagaComponent for VirglRenderer {
             d: transfer.d,
         };
 
+        // SAFETY:
         // Safe because only stack variables of the appropriate type are used.
         let ret = unsafe {
             virgl_renderer_transfer_write_iov(
@@ -584,6 +631,7 @@ impl RutabagaComponent for VirglRenderer {
             None => (null_mut(), 0),
         };
 
+        // SAFETY:
         // Safe because only stack variables of the appropriate type are used.
         let ret = unsafe {
             virgl_renderer_transfer_read_iov(
@@ -628,6 +676,8 @@ impl RutabagaComponent for VirglRenderer {
             num_iovs: num_iovecs as u32,
         };
 
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe { virgl_renderer_resource_create_blob(&resource_create_args) };
         ret_to_res(ret)?;
 
@@ -653,6 +703,7 @@ impl RutabagaComponent for VirglRenderer {
     fn map(&self, resource_id: u32) -> RutabagaResult<RutabagaMapping> {
         let mut map: *mut c_void = null_mut();
         let mut size: u64 = 0;
+        // SAFETY:
         // Safe because virglrenderer wraps and validates use of GL/VK.
         let ret = unsafe { virgl_renderer_resource_map(resource_id, &mut map, &mut size) };
         if ret != 0 {
@@ -666,6 +717,7 @@ impl RutabagaComponent for VirglRenderer {
     }
 
     fn unmap(&self, resource_id: u32) -> RutabagaResult<()> {
+        // SAFETY:
         // Safe because virglrenderer is initialized by now.
         let ret = unsafe { virgl_renderer_resource_unmap(resource_id) };
         ret_to_res(ret)
@@ -675,11 +727,13 @@ impl RutabagaComponent for VirglRenderer {
     fn export_fence(&self, fence_id: u64) -> RutabagaResult<RutabagaHandle> {
         #[cfg(feature = "virgl_renderer_next")]
         {
-            // Safe because the parameters are stack variables of the correct type.
             let mut fd: i32 = 0;
+            // SAFETY:
+            // Safe because the parameters are stack variables of the correct type.
             let ret = unsafe { virgl_renderer_export_fence(fence_id, &mut fd) };
             ret_to_res(ret)?;
 
+            // SAFETY:
             // Safe because the FD was just returned by a successful virglrenderer call so it must
             // be valid and owned by us.
             let fence = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
@@ -705,6 +759,7 @@ impl RutabagaComponent for VirglRenderer {
             name = name_string;
         }
 
+        // SAFETY:
         // Safe because virglrenderer is initialized by now and the context name is statically
         // allocated. The return value is checked before returning a new context.
         let ret = unsafe {

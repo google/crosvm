@@ -184,6 +184,7 @@ impl RegisterWindowClass for GuiWindow {
             hIconSm: hicon,
         };
 
+        // SAFETY:
         // Safe because we know the lifetime of `window_class`, and we handle failures below.
         if unsafe { RegisterClassExW(&window_class) } == 0 {
             syscall_bail!("Failed to call RegisterClassExW()");
@@ -213,6 +214,7 @@ impl RegisterWindowClass for MessageOnlyWindow {
             hIconSm: null_mut(),
         };
 
+        // SAFETY:
         // Safe because we know the lifetime of `window_class`, and we handle failures below.
         if unsafe { RegisterClassExW(&window_class) } == 0 {
             syscall_bail!("Failed to call RegisterClassExW()");
@@ -301,6 +303,7 @@ impl WindowProcedureThread {
         if !self.is_message_loop_running() {
             bail!("Cannot post message to WndProc thread because message loop is not running!");
         }
+        // SAFETY:
         // Safe because the message loop is still running.
         if unsafe { PostMessageW(self.message_router_handle, msg, w_param, l_param) } == 0 {
             syscall_bail!("Failed to call PostMessageW()");
@@ -329,6 +332,7 @@ impl WindowProcedureThread {
         gpu_main_display_tube: Option<Tube>,
     ) {
         let gpu_main_display_tube = gpu_main_display_tube.map(Rc::new);
+        // SAFETY:
         // Safe because the dispatcher will take care of the lifetime of the `MessageOnlyWindow` and
         // `GuiWindow` objects.
         match unsafe { Self::create_windows() }.and_then(|(message_router_window, gui_window)| {
@@ -342,8 +346,9 @@ impl WindowProcedureThread {
                 info!("WndProc thread entering message loop");
                 message_loop_state.store(MessageLoopState::Running as i32, Ordering::SeqCst);
 
-                // Safe because we won't use the handle unless the message loop is still running.
                 let message_router_handle =
+                    // SAFETY:
+                    // Safe because we won't use the handle unless the message loop is still running.
                     unsafe { dispatcher.message_router_handle().unwrap_or(null_mut()) };
                 // HWND cannot be sent cross threads, so we cast it to u32 first.
                 if let Err(e) = message_router_handle_sender.send(Ok(message_router_handle as u32))
@@ -384,6 +389,7 @@ impl WindowProcedureThread {
         }
 
         loop {
+            // SAFETY:
             // Safe because the lifetime of handles are at least as long as the function call.
             match unsafe { msg_wait_ctx.wait() } {
                 Ok(token) => match token {
@@ -429,6 +435,7 @@ impl WindowProcedureThread {
             // Safe because if `message` is initialized, we will call `assume_init()` to extract the
             // value, which will get dropped eventually.
             let mut message = mem::MaybeUninit::uninit();
+            // SAFETY:
             // Safe because `message` lives at least as long as the function call.
             if unsafe {
                 PeekMessageW(
@@ -443,6 +450,7 @@ impl WindowProcedureThread {
                 return true;
             }
 
+            // SAFETY:
             // Safe because `PeekMessageW()` has populated `message`.
             unsafe {
                 let new_message = message.assume_init();
@@ -621,6 +629,7 @@ impl Drop for WindowProcedureThread {
     }
 }
 
+// SAFETY:
 // Since `WindowProcedureThread` does not hold anything that cannot be transferred between threads,
 // we can implement `Send` for it.
 unsafe impl Send for WindowProcedureThread {}

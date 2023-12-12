@@ -305,15 +305,19 @@ impl RawRwLock {
                 {
                     let mut set_on_release = 0;
 
-                    // Safe because we have acquired the spin lock and it provides exclusive
-                    // access to the waiter queue.
                     if wait_count < LONG_WAIT_THRESHOLD {
                         // Add the waiter to the back of the queue.
+                        // SAFETY:
+                        // Safe because we have acquired the spin lock and it provides exclusive
+                        // access to the waiter queue.
                         unsafe { (*self.waiters.get()).push_back(w.clone()) };
                     } else {
                         // This waiter has gone through the queue too many times. Put it in the
                         // front of the queue and block all other threads from acquiring the lock
                         // until this one has acquired it at least once.
+                        // SAFETY:
+                        // Safe because we have acquired the spin lock and it provides exclusive
+                        // access to the waiter queue.
                         unsafe { (*self.waiters.get()).push_front(w.clone()) };
 
                         // Set the LONG_WAIT bit to prevent all other threads from acquiring the
@@ -459,6 +463,7 @@ impl RawRwLock {
                     // to be cleared.
                     let mut clear = SPINLOCK;
 
+                    // SAFETY:
                     // Safe because the spinlock guarantees exclusive access to the waiter list and
                     // the reference does not escape this function.
                     let waiters = unsafe { &mut *self.waiters.get() };
@@ -530,6 +535,7 @@ impl RawRwLock {
             oldstate = self.state.load(Ordering::Relaxed);
         }
 
+        // SAFETY:
         // Safe because the spin lock provides exclusive access and the reference does not escape
         // this function.
         let waiters = unsafe { &mut *self.waiters.get() };
@@ -557,6 +563,7 @@ impl RawRwLock {
 
         // Don't drop the old waiter while holding the spin lock.
         let old_waiter = if waiter.is_linked() && waiting_for == WaitingFor::Mutex {
+            // SAFETY:
             // We know that the waiter is still linked and is waiting for the rwlock, which
             // guarantees that it is still linked into `self.waiters`.
             let mut cursor = unsafe { waiters.cursor_mut_from_ptr(waiter as *const Waiter) };
@@ -613,12 +620,17 @@ impl RawRwLock {
     }
 }
 
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl Send for RawRwLock {}
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl Sync for RawRwLock {}
 
 fn cancel_waiter(raw: usize, waiter: &Waiter, wake_next: bool) {
     let raw_rwlock = raw as *const RawRwLock;
 
+    // SAFETY:
     // Safe because the thread that owns the waiter that is being canceled must also own a reference
     // to the rwlock, which ensures that this pointer is valid.
     unsafe { (*raw_rwlock).cancel_waiter(waiter, wake_next) }
@@ -728,9 +740,10 @@ impl<T: ?Sized> RwLock<T> {
     pub async fn lock(&self) -> RwLockWriteGuard<'_, T> {
         self.raw.lock().await;
 
-        // Safe because we have exclusive access to `self.value`.
         RwLockWriteGuard {
             mu: self,
+            // SAFETY:
+            // Safe because we have exclusive access to `self.value`.
             value: unsafe { &mut *self.value.get() },
         }
     }
@@ -750,9 +763,10 @@ impl<T: ?Sized> RwLock<T> {
     pub async fn read_lock(&self) -> RwLockReadGuard<'_, T> {
         self.raw.read_lock().await;
 
-        // Safe because we have shared read-only access to `self.value`.
         RwLockReadGuard {
             mu: self,
+            // SAFETY:
+            // Safe because we have shared read-only access to `self.value`.
             value: unsafe { &*self.value.get() },
         }
     }
@@ -762,9 +776,10 @@ impl<T: ?Sized> RwLock<T> {
     pub(crate) async fn lock_from_cv(&self) -> RwLockWriteGuard<'_, T> {
         self.raw.lock_slow::<Exclusive>(DESIGNATED_WAKER, 0).await;
 
-        // Safe because we have exclusive access to `self.value`.
         RwLockWriteGuard {
             mu: self,
+            // SAFETY:
+            // Safe because we have exclusive access to `self.value`.
             value: unsafe { &mut *self.value.get() },
         }
     }
@@ -778,9 +793,10 @@ impl<T: ?Sized> RwLock<T> {
             .lock_slow::<Shared>(DESIGNATED_WAKER, WRITER_WAITING)
             .await;
 
-        // Safe because we have exclusive access to `self.value`.
         RwLockReadGuard {
             mu: self,
+            // SAFETY:
+            // Safe because we have exclusive access to `self.value`.
             value: unsafe { &*self.value.get() },
         }
     }
@@ -796,13 +812,18 @@ impl<T: ?Sized> RwLock<T> {
     }
 
     pub fn get_mut(&mut self) -> &mut T {
+        // SAFETY:
         // Safe because the compiler statically guarantees that are no other references to `self`.
         // This is also why we don't need to acquire the lock first.
         unsafe { &mut *self.value.get() }
     }
 }
 
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl<T: ?Sized + Send> Send for RwLock<T> {}
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl<T: ?Sized + Send> Sync for RwLock<T> {}
 
 impl<T: ?Sized + Default> Default for RwLock<T> {

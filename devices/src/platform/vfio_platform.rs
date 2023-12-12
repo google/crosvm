@@ -272,6 +272,7 @@ impl VfioPlatformDevice {
                             Err(_e) => break,
                         };
                         let host = mmap.as_ptr() as u64;
+                        // SAFETY:
                         // Safe because the given guest_map_start is valid guest bar address. and
                         // the host pointer is correct and valid guaranteed by MemoryMapping interface.
                         match unsafe {

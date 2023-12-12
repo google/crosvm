@@ -28,10 +28,18 @@ impl<T> __IncompleteArrayField<T> {
     pub fn as_mut_ptr(&mut self) -> *mut T {
         self as *mut _ as *mut T
     }
+    /// # Safety
+    ///
+    /// It is caller's responsibility to ensure that `self` exists as long as returned slice is
+    /// in use.
     #[inline]
     pub unsafe fn as_slice(&self, len: usize) -> &[T] {
         ::std::slice::from_raw_parts(self.as_ptr(), len)
     }
+    /// # Safety
+    ///
+    /// It is caller's responsibility to ensure that `self` exists as long as returned slice is
+    /// in use.
     #[inline]
     pub unsafe fn as_mut_slice(&mut self, len: usize) -> &mut [T] {
         ::std::slice::from_raw_parts_mut(self.as_mut_ptr(), len)
@@ -183,6 +191,7 @@ pub struct virtio_net_hdr_v1__bindgen_ty_1__bindgen_ty_3 {
 impl Default for virtio_net_hdr_v1__bindgen_ty_1 {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        // SAFETY: Safe because s is aligned and is initialized in the block.
         unsafe {
             ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
             s.assume_init()
@@ -192,6 +201,7 @@ impl Default for virtio_net_hdr_v1__bindgen_ty_1 {
 impl Default for virtio_net_hdr_v1 {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        // SAFETY: Safe because s is aligned and is initialized in the block.
         unsafe {
             ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
             s.assume_init()
@@ -209,6 +219,7 @@ pub struct virtio_net_hdr_v1_hash {
 impl Default for virtio_net_hdr_v1_hash {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        // SAFETY: Safe because s is aligned and is initialized in the block.
         unsafe {
             ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
             s.assume_init()

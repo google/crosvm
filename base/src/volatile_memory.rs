@@ -122,6 +122,7 @@ impl<'a> VolatileSlice<'a> {
     pub fn as_iobufs<'mem, 'slice>(
         iovs: &'slice [VolatileSlice<'mem>],
     ) -> &'slice [IoBufMut<'mem>] {
+        // SAFETY:
         // Safe because `VolatileSlice` is ABI-compatible with `IoBufMut`.
         unsafe { slice::from_raw_parts(iovs.as_ptr() as *const IoBufMut, iovs.len()) }
     }
@@ -131,6 +132,7 @@ impl<'a> VolatileSlice<'a> {
     pub fn as_iobufs_mut<'mem, 'slice>(
         iovs: &'slice mut [VolatileSlice<'mem>],
     ) -> &'slice mut [IoBufMut<'mem>] {
+        // SAFETY:
         // Safe because `VolatileSlice` is ABI-compatible with `IoBufMut`.
         unsafe { slice::from_raw_parts_mut(iovs.as_mut_ptr() as *mut IoBufMut, iovs.len()) }
     }
@@ -149,6 +151,7 @@ impl<'a> VolatileSlice<'a> {
             .checked_sub(count)
             .ok_or(VolatileMemoryError::OutOfBounds { addr: new_addr })?;
 
+        // SAFETY:
         // Safe because the memory has the same lifetime and points to a subset of the memory of the
         // original slice.
         unsafe { Ok(VolatileSlice::from_raw_parts(new_addr as *mut u8, new_size)) }
@@ -174,6 +177,7 @@ impl<'a> VolatileSlice<'a> {
             },
         )?;
 
+        // SAFETY:
         // Safe because we have verified that the new memory is a subset of the original slice.
         Ok(unsafe { VolatileSlice::from_raw_parts(new_addr as *mut u8, count) })
     }
@@ -196,6 +200,7 @@ impl<'a> VolatileSlice<'a> {
     /// # Ok(())
     /// # }
     pub fn write_bytes(&self, value: u8) {
+        // SAFETY:
         // Safe because the memory is valid and needs only byte alignment.
         unsafe {
             write_bytes(self.as_mut_ptr(), value, self.size());
@@ -230,6 +235,7 @@ impl<'a> VolatileSlice<'a> {
     {
         let mut addr = self.as_mut_ptr() as *const u8;
         for v in buf.iter_mut().take(self.size() / size_of::<T>()) {
+            // SAFETY: Safe because buf is valid, aligned to type `T` and is initialized.
             unsafe {
                 *v = read_volatile(addr as *const T);
                 addr = addr.add(size_of::<T>());
@@ -253,6 +259,7 @@ impl<'a> VolatileSlice<'a> {
     /// # }
     /// ```
     pub fn copy_to_volatile_slice(&self, slice: VolatileSlice) {
+        // SAFETY: Safe because slice is valid and is byte aligned.
         unsafe {
             copy(
                 self.as_mut_ptr() as *const u8,
@@ -293,6 +300,7 @@ impl<'a> VolatileSlice<'a> {
     {
         let mut addr = self.as_mut_ptr();
         for v in buf.iter().take(self.size() / size_of::<T>()) {
+            // SAFETY: Safe because buf is valid, aligned to type `T` and is mutable.
             unsafe {
                 write_volatile(
                     addr as *mut T,
@@ -318,11 +326,11 @@ impl<'a> VolatileSlice<'a> {
         let aligned_tail_addr = tail_addr & !MASK_4BIT;
 
         // Check 16 bytes at once. The addresses should be 16 bytes aligned for better performance.
-        // SAFETY: Each aligned_addr is within VolatileSlice
-        if (aligned_head_addr..aligned_tail_addr)
-            .step_by(16)
-            .any(|aligned_addr| unsafe { *(aligned_addr as *const u128) } != 0)
-        {
+        if (aligned_head_addr..aligned_tail_addr).step_by(16).any(
+            |aligned_addr|
+                // SAFETY: Each aligned_addr is within VolatileSlice
+                unsafe { *(aligned_addr as *const u128) } != 0,
+        ) {
             return false;
         }
 
@@ -346,7 +354,7 @@ impl<'a> VolatileSlice<'a> {
 ///
 /// This checks byte by byte.
 ///
-/// ## Safety
+/// # Safety
 ///
 /// * `head_addr` <= `tail_addr`
 /// * Bytes between `head_addr` and `tail_addr` is valid to access.
@@ -417,7 +425,10 @@ mod tests {
                 },
             )?;
 
-            Ok(unsafe { VolatileSlice::from_raw_parts(new_addr as *mut u8, count) })
+            Ok(
+                // SAFETY: trivially safe
+                unsafe { VolatileSlice::from_raw_parts(new_addr as *mut u8, count) },
+            )
         }
     }
 

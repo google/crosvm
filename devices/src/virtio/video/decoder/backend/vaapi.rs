@@ -470,6 +470,7 @@ impl<'a, T: AsBufferHandle> BufferMapping<'a, T> {
 impl<'a, T: AsBufferHandle> AsRef<[u8]> for BufferMapping<'a, T> {
     fn as_ref(&self) -> &[u8] {
         let mapping = &self.mapping;
+        // SAFETY:
         // Safe because the mapping is linear and we own it, so it will not be unmapped during
         // the lifetime of this slice.
         unsafe { std::slice::from_raw_parts(mapping.as_ptr(), mapping.size()) }
@@ -479,6 +480,7 @@ impl<'a, T: AsBufferHandle> AsRef<[u8]> for BufferMapping<'a, T> {
 impl<'a, T: AsBufferHandle> AsMut<[u8]> for BufferMapping<'a, T> {
     fn as_mut(&mut self) -> &mut [u8] {
         let mapping = &self.mapping;
+        // SAFETY:
         // Safe because the mapping is linear and we own it, so it will not be unmapped during
         // the lifetime of this slice.
         unsafe { std::slice::from_raw_parts_mut(mapping.as_ptr(), mapping.size()) }
@@ -898,6 +900,7 @@ impl DecoderSession for VaapiDecoderSession {
                 BufferDescriptor::GuestMem(GuestMemDescriptor(handle))
             }
             GuestResourceHandle::VirtioObject(handle) => {
+                // SAFETY: descriptor is expected to be valid
                 let fd = unsafe { OwnedFd::from_raw_fd(handle.desc.into_raw_descriptor()) };
                 let modifier = handle.modifier;
 

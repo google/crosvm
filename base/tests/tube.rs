@@ -135,9 +135,9 @@ fn test_serialize_tube_pair() {
     let msg_descriptors = msg_serialize.into_descriptors();
 
     // Deserialize the Tube
-    let msg_descriptors_safe = msg_descriptors
-        .into_iter()
-        .map(|v| unsafe { SafeDescriptor::from_raw_descriptor(v) });
+    let msg_descriptors_safe = msg_descriptors.into_iter().map(|v|
+            // SAFETY: `v` is expected to be valid
+            unsafe { SafeDescriptor::from_raw_descriptor(v) });
     let tube_deserialized: Tube =
         deserialize_with_descriptors(|| serde_json::from_slice(&serialized), msg_descriptors_safe)
             .unwrap();

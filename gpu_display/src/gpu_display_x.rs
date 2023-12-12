@@ -50,6 +50,8 @@ use crate::SysDisplayT;
 const BUFFER_COUNT: usize = 2;
 
 /// A wrapper for XFree that takes any type.
+/// SAFETY: It is caller's responsibility to ensure that `t` is valid for the entire duration of the
+/// call.
 unsafe fn x_free<T>(t: *mut T) {
     xlib::XFree(t as *mut c_void);
 }
@@ -59,6 +61,8 @@ struct XDisplay(Rc<NonNull<xlib::Display>>);
 impl Drop for XDisplay {
     fn drop(&mut self) {
         if Rc::strong_count(&self.0) == 1 {
+            // TODO(b/315870313): Add safety comment
+            #[allow(clippy::undocumented_unsafe_blocks)]
             unsafe {
                 xlib::XCloseDisplay(self.as_ptr());
             }
@@ -74,6 +78,8 @@ impl XDisplay {
 
     /// Sends any pending commands to the X server.
     fn flush(&self) {
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             xlib::XFlush(self.as_ptr());
         }
@@ -81,20 +87,30 @@ impl XDisplay {
 
     /// Returns true of the XShm extension is supported on this display.
     fn supports_shm(&self) -> bool {
-        unsafe { xlib::XShmQueryExtension(self.as_ptr()) != 0 }
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+            xlib::XShmQueryExtension(self.as_ptr()) != 0
+        }
     }
 
     /// Gets the default screen of this display.
     fn default_screen(&self) -> Option<XScreen> {
-        Some(XScreen(NonNull::new(unsafe {
-            xlib::XDefaultScreenOfDisplay(self.as_ptr())
-        })?))
+        Some(XScreen(NonNull::new(
+            // TODO(b/315870313): Add safety comment
+            #[allow(clippy::undocumented_unsafe_blocks)]
+            unsafe {
+                xlib::XDefaultScreenOfDisplay(self.as_ptr())
+            },
+        )?))
     }
 
     /// Blocks until the next event from the display is received and returns that event.
     ///
     /// Always flush before using this if any X commands where issued.
     fn next_event(&self) -> XEvent {
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             let mut ev = zeroed();
             xlib::XNextEvent(self.as_ptr(), &mut ev);
@@ -105,7 +121,11 @@ impl XDisplay {
 
 impl AsRawDescriptor for XDisplay {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        unsafe { xlib::XConnectionNumber(self.as_ptr()) }
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+            xlib::XConnectionNumber(self.as_ptr())
+        }
     }
 }
 
@@ -119,12 +139,20 @@ impl From<xlib::XEvent> for XEvent {
 impl XEvent {
     fn any(&self) -> xlib::XAnyEvent {
         // All events have the same xany field.
-        unsafe { self.0.xany }
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+            self.0.xany
+        }
     }
 
     fn type_(&self) -> u32 {
         // All events have the same type_ field.
-        unsafe { self.0.type_ as u32 }
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+            self.0.type_ as u32
+        }
     }
 
     fn window(&self) -> xlib::Window {
@@ -134,24 +162,52 @@ impl XEvent {
     // Some of the event types are dynamic so they need to be passed in.
     fn as_enum(&self, shm_complete_type: u32) -> XEventEnum {
         match self.type_() {
-            xlib::KeyPress | xlib::KeyRelease => XEventEnum::KeyEvent(unsafe { self.0.xkey }),
-            xlib::ButtonPress => XEventEnum::ButtonEvent {
-                event: unsafe { self.0.xbutton },
-                pressed: true,
-            },
-            xlib::ButtonRelease => XEventEnum::ButtonEvent {
-                event: unsafe { self.0.xbutton },
-                pressed: false,
-            },
-            xlib::MotionNotify => XEventEnum::Motion(unsafe { self.0.xmotion }),
+            xlib::KeyPress | xlib::KeyRelease => XEventEnum::KeyEvent(
+                // TODO(b/315870313): Add safety comment
+                #[allow(clippy::undocumented_unsafe_blocks)]
+                unsafe {
+                    self.0.xkey
+                },
+            ),
+            xlib::ButtonPress => {
+                // TODO(b/315870313): Add safety comment
+                #[allow(clippy::undocumented_unsafe_blocks)]
+                XEventEnum::ButtonEvent {
+                    event: unsafe { self.0.xbutton },
+                    pressed: true,
+                }
+            }
+            xlib::ButtonRelease => {
+                // TODO(b/315870313): Add safety comment
+                #[allow(clippy::undocumented_unsafe_blocks)]
+                XEventEnum::ButtonEvent {
+                    event: unsafe { self.0.xbutton },
+                    pressed: false,
+                }
+            }
+            xlib::MotionNotify => XEventEnum::Motion(
+                // TODO(b/315870313): Add safety comment
+                #[allow(clippy::undocumented_unsafe_blocks)]
+                unsafe {
+                    self.0.xmotion
+                },
+            ),
             xlib::Expose => XEventEnum::Expose,
             xlib::ClientMessage => {
-                XEventEnum::ClientMessage(unsafe { self.0.xclient.data.l[0] as u64 })
+                XEventEnum::ClientMessage(
+                    // TODO(b/315870313): Add safety comment
+                    #[allow(clippy::undocumented_unsafe_blocks)]
+                    unsafe {
+                        self.0.xclient.data.l[0] as u64
+                    },
+                )
             }
             t if t == shm_complete_type => {
                 // Because XShmCompletionEvent is not part of the XEvent union, simulate a union
                 // with transmute_copy. If the shm_complete_type turns out to be bogus, some of the
                 // data would be incorrect, but the common event fields would still be valid.
+                // TODO(b/315870313): Add safety comment
+                #[allow(clippy::undocumented_unsafe_blocks)]
                 let ev_completion: xlib::XShmCompletionEvent = unsafe { transmute_copy(&self.0) };
                 XEventEnum::ShmCompletionEvent(ev_completion.shmseg)
             }
@@ -183,7 +239,11 @@ impl XScreen {
 
     /// Gets the screen number of this screen.
     fn get_number(&self) -> i32 {
-        unsafe { xlib::XScreenNumberOfScreen(self.as_ptr()) }
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+            xlib::XScreenNumberOfScreen(self.as_ptr())
+        }
     }
 }
 
@@ -199,6 +259,8 @@ struct Buffer {
 
 impl Drop for Buffer {
     fn drop(&mut self) {
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             xlib::XShmDetach(self.display.as_ptr(), self.segment_info.as_mut());
             xlib::XDestroyImage(self.image);
@@ -210,14 +272,24 @@ impl Drop for Buffer {
 
 impl Buffer {
     fn as_volatile_slice(&self) -> VolatileSlice {
-        unsafe { VolatileSlice::from_raw_parts(self.segment_info.shmaddr as *mut _, self.size) }
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+            VolatileSlice::from_raw_parts(self.segment_info.shmaddr as *mut _, self.size)
+        }
     }
 
     fn stride(&self) -> usize {
-        unsafe { (*self.image).bytes_per_line as usize }
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+            (*self.image).bytes_per_line as usize
+        }
     }
 
     fn bytes_per_pixel(&self) -> usize {
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let bytes_per_pixel = unsafe { (*self.image).bits_per_pixel / 8 };
         bytes_per_pixel as usize
     }
@@ -259,6 +331,8 @@ impl XSurface {
             _ => {
                 // If there is no buffer, that means the framebuffer was never set and we should
                 // simply blank the window with arbitrary contents.
+                // TODO(b/315870313): Add safety comment
+                #[allow(clippy::undocumented_unsafe_blocks)]
                 unsafe {
                     xlib::XClearWindow(self.display.as_ptr(), self.window);
                 }
@@ -268,6 +342,8 @@ impl XSurface {
         // Mark the buffer as in use. When the XShmCompletionEvent occurs, this will get marked
         // false.
         buffer.in_use = true;
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             xlib::XShmPutImage(
                 self.display.as_ptr(),
@@ -296,6 +372,8 @@ impl XSurface {
             return self.buffers[buffer_index].as_ref();
         }
         // The buffer_index is valid and the buffer was never created, so we create it now.
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             // The docs for XShmCreateImage imply that XShmSegmentInfo must be allocated to live at
             // least as long as the XImage, which probably means it can't move either. Use a Box in
@@ -405,6 +483,7 @@ impl GpuDisplaySurface for XSurface {
 
 impl Drop for XSurface {
     fn drop(&mut self) {
+        // SAFETY:
         // Safe given it should always be of the correct type.
         unsafe {
             xlib::XFreeGC(self.display.as_ptr(), self.gc);
@@ -432,6 +511,8 @@ impl DisplayX {
 
         let keycode_translator = KeycodeTranslator::new(KeycodeTypes::XkbScancode);
 
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             // Open the display
             let display = match NonNull::new(xlib::XOpenDisplay(
@@ -508,7 +589,11 @@ impl DisplayX {
 
 impl DisplayT for DisplayX {
     fn pending_events(&self) -> bool {
-        unsafe { xlib::XPending(self.display.as_ptr()) != 0 }
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+            xlib::XPending(self.display.as_ptr()) != 0
+        }
     }
 
     fn flush(&self) {
@@ -621,6 +706,8 @@ impl DisplayT for DisplayX {
             return Err(GpuDisplayError::Unsupported);
         }
 
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             let depth = xlib::XDefaultDepthOfScreen(self.screen.as_ptr()) as u32;
 

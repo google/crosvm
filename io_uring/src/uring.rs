@@ -293,6 +293,7 @@ impl URingContext {
             ring_params.flags |= IORING_SETUP_R_DISABLED;
         }
 
+        // SAFETY:
         // The below unsafe block isolates the creation of the URingContext. Each step on it's own
         // is unsafe. Using the uring FD for the mapping and the offsets returned by the kernel for
         // base addresses maintains safety guarantees assuming the kernel API guarantees are
@@ -634,10 +635,10 @@ impl URingContext {
         } else {
             0
         };
-        let res = unsafe {
+        let res =
+            // SAFETY:
             // Safe because the only memory modified is in the completion queue.
-            io_uring_enter(self.ring_file.as_raw_fd(), added as u64, wait_nr, flags)
-        };
+            unsafe { io_uring_enter(self.ring_file.as_raw_fd(), added as u64, wait_nr, flags) };
 
         // An EINTR means we did successfully submit the events.
         if res.is_ok() || res == Err(libc::EINTR) {
@@ -653,8 +654,9 @@ impl URingContext {
             // EINTR means we were interrupted while waiting, so start waiting again.
             Err(libc::EBUSY) | Err(libc::EINTR) if wait_nr != 0 => {
                 loop {
-                    // Safe because the only memory modified is in the completion queue.
                     let res =
+                        // SAFETY:
+                        // Safe because the only memory modified is in the completion queue.
                         unsafe { io_uring_enter(self.ring_file.as_raw_fd(), 0, wait_nr, flags) };
                     if res != Err(libc::EINTR) {
                         return res.map_err(Error::RingEnter);
@@ -716,11 +718,10 @@ impl SubmitQueueEntries {
         if index >= self.len {
             return None;
         }
-        let mut_ref = unsafe {
-            // Safe because the mut borrow of self resticts to one mutable reference at a time and
-            // we trust that the kernel has returned enough memory in io_uring_setup and mmap.
-            &mut *(self.mmap.as_ptr() as *mut io_uring_sqe).add(index)
-        };
+        // SAFETY:
+        // Safe because the mut borrow of self resticts to one mutable reference at a time and
+        // we trust that the kernel has returned enough memory in io_uring_setup and mmap.
+        let mut_ref = unsafe { &mut *(self.mmap.as_ptr() as *mut io_uring_sqe).add(index) };
         // Clear any state.
         *mut_ref = io_uring_sqe::default();
         Some(mut_ref)
@@ -757,6 +758,7 @@ impl SubmitQueueState {
 
     // Sets the kernel's array entry at the given `index` to `value`.
     fn set_array_entry(&self, index: usize, value: u32) {
+        // SAFETY:
         // Safe because self being constructed from the correct mmap guaratees that the memory is
         // valid to written.
         unsafe {
@@ -803,9 +805,10 @@ impl CompleteQueueState {
     }
 
     fn get_cqe(&self, head: u32) -> &io_uring_cqe {
+        // SAFETY:
+        // Safe because we trust that the kernel has returned enough memory in io_uring_setup
+        // and mmap and index is checked within range by the ring_mask.
         unsafe {
-            // Safe because we trust that the kernel has returned enough memory in io_uring_setup
-            // and mmap and index is checked within range by the ring_mask.
             let cqes = (self.mmap.as_ptr() as *const u8).add(self.cqes_offset as usize)
                 as *const io_uring_cqe;
 
@@ -870,14 +873,17 @@ struct QueuePointers {
     tail: *const AtomicU32,
 }
 
+// SAFETY:
 // Rust pointers don't implement Send or Sync but in this case both fields are atomics and so it's
 // safe to send the pointers between threads or access them concurrently from multiple threads.
 unsafe impl Send for QueuePointers {}
+// SAFETY: See safety comments for impl Send
 unsafe impl Sync for QueuePointers {}
 
 impl QueuePointers {
     // Loads the tail pointer atomically with the given ordering.
     fn tail(&self, ordering: Ordering) -> u32 {
+        // SAFETY:
         // Safe because self being constructed from the correct mmap guaratees that the memory is
         // valid to read.
         unsafe { (*self.tail).load(ordering) }
@@ -887,6 +893,7 @@ impl QueuePointers {
     // processing entries that have been added up until the given tail pointer.
     // Always stores with release ordering as that is the only valid way to use the pointer.
     fn set_tail(&self, next_tail: u32) {
+        // SAFETY:
         // Safe because self being constructed from the correct mmap guaratees that the memory is
         // valid to read and it's used as an atomic to cover mutability concerns.
         unsafe { (*self.tail).store(next_tail, Ordering::Release) }
@@ -894,6 +901,7 @@ impl QueuePointers {
 
     // Loads the head pointer atomically with the given ordering.
     fn head(&self, ordering: Ordering) -> u32 {
+        // SAFETY:
         // Safe because self being constructed from the correct mmap guaratees that the memory is
         // valid to read.
         unsafe { (*self.head).load(ordering) }
@@ -903,6 +911,7 @@ impl QueuePointers {
     // processing entries that have been added up until the given head pointer.
     // Always stores with release ordering as that is the only valid way to use the pointer.
     fn set_head(&self, next_head: u32) {
+        // SAFETY:
         // Safe because self being constructed from the correct mmap guaratees that the memory is
         // valid to read and it's used as an atomic to cover mutability concerns.
         unsafe { (*self.head).store(next_head, Ordering::Release) }

@@ -90,6 +90,7 @@ where
         let mut inner = self.inner.lock();
         match inner.wait_state {
             WaitState::New => {
+                // SAFETY:
                 // Safe because:
                 //      a) the callback only runs when WaitForHandle is alive (we cancel it on
                 //         drop).
@@ -128,6 +129,7 @@ where
             WaitState::Woken => {
                 inner.wait_state = WaitState::Finished;
 
+                // SAFETY:
                 // Safe because:
                 // a) we know a wait was registered and hasn't been unregistered yet.
                 // b) the callback is not queued because we set WT_EXECUTEONLYONCE, and we know
@@ -161,13 +163,14 @@ where
             (inner.wait_state, inner.wait_object)
         };
 
-        // Safe because self.descriptor is valid in any state except New or Finished.
-        //
-        // Note: this method call is critical for supplying the safety guarantee relied upon by
-        // wait_for_handle_waker. Upon return, it ensures that wait_for_handle_waker is not running
-        // and won't be scheduled again, which makes it safe to drop self.inner_for_callback
-        // (wait_for_handle_waker has a non owning pointer to self.inner_for_callback).
         if current_state != WaitState::New && current_state != WaitState::Finished {
+            // SAFETY:
+            // Safe because self.descriptor is valid in any state except New or Finished.
+            //
+            // Note: this method call is critical for supplying the safety guarantee relied upon by
+            // wait_for_handle_waker. Upon return, it ensures that wait_for_handle_waker is not running
+            // and won't be scheduled again, which makes it safe to drop self.inner_for_callback
+            // (wait_for_handle_waker has a non owning pointer to self.inner_for_callback).
             unsafe { unregister_wait(wait_object) }
         }
     }

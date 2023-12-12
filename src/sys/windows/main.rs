@@ -46,10 +46,11 @@ use crate::Config;
 pub(crate) fn run_slirp(args: RunSlirpCommand) -> Result<()> {
     let raw_transport_tube = args.bootstrap as RawDescriptor;
 
-    // Safe because we know that raw_transport_tube is valid (passed by inheritance),
-    // and that the blocking & framing modes are accurate because we create them ourselves
-    // in the broker.
     let tube_transporter =
+        // SAFETY:
+        // Safe because we know that raw_transport_tube is valid (passed by inheritance),
+        // and that the blocking & framing modes are accurate because we create them ourselves
+        // in the broker.
         unsafe { TubeTransporterReader::from_raw_descriptor(raw_transport_tube) };
 
     let mut tube_data_list = tube_transporter

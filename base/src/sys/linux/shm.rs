@@ -40,6 +40,8 @@ use crate::SharedMemory;
 const MFD_CLOEXEC: c_uint = 0x0001;
 const MFD_NOEXEC_SEAL: c_uint = 0x0008;
 
+// SAFETY: It is caller's responsibility to ensure the args are valid and check the
+// return value of the function.
 unsafe fn memfd_create(name: *const c_char, flags: c_uint) -> c_int {
     syscall(SYS_memfd_create as c_long, name, flags) as c_int
 }
@@ -165,15 +167,19 @@ impl PlatformSharedMemory for SharedMemory {
         }
 
         let shm_name = debug_name.as_ptr() as *const c_char;
+        // SAFETY:
         // The following are safe because we give a valid C string and check the
         // results of the memfd_create call.
         let fd = unsafe { memfd_create(shm_name, flags) };
         if fd < 0 {
             return errno_result();
         }
+        // SAFETY: Safe because fd is valid.
         let descriptor = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
 
         // Set the size of the memfd.
+        // SAFETY: Safe because we check the return value to ftruncate64 and all the args to the
+        // function are valid.
         let ret = unsafe { ftruncate64(descriptor.as_raw_descriptor(), size as off64_t) };
         if ret < 0 {
             return errno_result();
@@ -219,6 +225,8 @@ impl SharedMemoryLinux for SharedMemory {
     }
 
     fn get_seals(&self) -> Result<MemfdSeals> {
+        // SAFETY: Safe because we check the return value to fcntl and all the args to the
+        // function are valid.
         let ret = unsafe { fcntl(self.descriptor.as_raw_descriptor(), F_GET_SEALS) };
         if ret < 0 {
             return errno_result();
@@ -227,6 +235,8 @@ impl SharedMemoryLinux for SharedMemory {
     }
 
     fn add_seals(&mut self, seals: MemfdSeals) -> Result<()> {
+        // SAFETY: Safe because we check the return value to fcntl and all the args to the
+        // function are valid.
         let ret = unsafe { fcntl(self.descriptor.as_raw_descriptor(), F_ADD_SEALS, seals) };
         if ret < 0 {
             return errno_result();

@@ -744,6 +744,7 @@ fn create_tap_for_net_device(
             Ok((tap, *mac))
         }
         NetParametersMode::TapFd { tap_fd, mac } => {
+            // SAFETY:
             // Safe because we ensure that we get a unique handle to the fd.
             let tap = unsafe {
                 Tap::from_raw_descriptor(

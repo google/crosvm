@@ -26,8 +26,10 @@ struct CpuSet(cpu_set_t);
 
 impl CpuSet {
     pub fn new() -> CpuSet {
+        // SAFETY:
         // cpu_set_t is a C struct and can be safely initialized with zeroed memory.
         let mut cpuset: cpu_set_t = unsafe { mem::MaybeUninit::zeroed().assume_init() };
+        // SAFETY:
         // Safe because we pass a valid cpuset pointer.
         unsafe { CPU_ZERO(&mut cpuset) };
         CpuSet(cpuset)
@@ -36,6 +38,7 @@ impl CpuSet {
     pub fn to_cpus(&self) -> Vec<usize> {
         let mut cpus = Vec::new();
         for i in 0..(CPU_SETSIZE as usize) {
+            // SAFETY: Safe because `i` and `self.0` are valid.
             if unsafe { CPU_ISSET(i, &self.0) } {
                 cpus.push(i);
             }
@@ -48,6 +51,7 @@ impl FromIterator<usize> for CpuSet {
     fn from_iter<I: IntoIterator<Item = usize>>(cpus: I) -> Self {
         let mut cpuset = CpuSet::new();
         for cpu in cpus {
+            // SAFETY:
             // Safe because we pass a valid cpu index and cpuset.0 is a valid pointer.
             unsafe { CPU_SET(cpu, &mut cpuset.0) };
         }
@@ -78,6 +82,7 @@ pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(cpus: I) -> Result<()> {
         })
         .collect::<Result<CpuSet>>()?;
 
+    // SAFETY:
     // Safe because we pass 0 for the current thread, and cpuset is a valid pointer and only
     // used for the duration of this call.
     crate::syscall!(unsafe { sched_setaffinity(0, mem::size_of_val(&cpuset), &cpuset) })?;
@@ -88,6 +93,7 @@ pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(cpus: I) -> Result<()> {
 pub fn get_cpu_affinity() -> Result<Vec<usize>> {
     let mut cpu_set = CpuSet::new();
 
+    // SAFETY:
     // Safe because we pass 0 for the current thread, and cpu_set.0 is a valid pointer and only
     // used for the duration of this call.
     crate::syscall!(unsafe { sched_getaffinity(0, mem::size_of_val(&cpu_set.0), &mut cpu_set.0) })?;
@@ -115,6 +121,7 @@ pub fn enable_core_scheduling() -> Result<()> {
         PIDTYPE_PGID,
     }
 
+    // SAFETY: Safe because we check the return value to prctl.
     let ret = unsafe {
         prctl(
             PR_SCHED_CORE,

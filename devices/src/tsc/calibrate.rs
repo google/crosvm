@@ -450,6 +450,7 @@ mod tests {
         }
 
         fn rdtsc_frequency_higher_than_u32() -> u64 {
+            // SAFETY: trivially safe
             unsafe { _rdtsc() }.wrapping_mul(1000)
         }
 
@@ -471,6 +472,7 @@ mod tests {
     fn test_offset_identification_core_0() {
         fn rdtsc_with_core_0_offset_by_100_000() -> u64 {
             let mut id = 0u32;
+            // SAFETY: trivially safe
             let mut value = unsafe { __rdtscp(&mut id as *mut u32) };
             if id == 0 {
                 value += 100_000;
@@ -513,6 +515,7 @@ mod tests {
     fn test_offset_identification_core_1() {
         fn rdtsc_with_core_1_offset_by_100_000() -> u64 {
             let mut id = 0u32;
+            // SAFETY: trivially safe
             let mut value = unsafe { __rdtscp(&mut id as *mut u32) };
             if id == 1 {
                 value += 100_000;

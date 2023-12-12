@@ -120,6 +120,7 @@ impl CrossDomainState {
                 Some(ControlMessageOwned::ScmRights(fds)) => {
                     fds.into_iter()
                         .map(|fd| {
+                            // SAFETY:
                             // Safe since the descriptors from recv_with_fds(..) are owned by us and valid.
                             unsafe { File::from_raw_descriptor(fd) }
                         })
@@ -210,7 +211,9 @@ impl CrossDomainContext {
                 }
 
                 let (raw_read_pipe, raw_write_pipe) = pipe()?;
+                // SAFETY: Safe because we have created the pipe above and is valid.
                 let read_pipe = unsafe { File::from_raw_descriptor(raw_read_pipe) };
+                // SAFETY: Safe because we have created the pipe above and is valid.
                 let write_pipe = unsafe { File::from_raw_descriptor(raw_write_pipe) };
 
                 *descriptor = write_pipe.as_raw_descriptor();

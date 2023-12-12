@@ -135,6 +135,7 @@ impl MemoryMapping {
         match self.mapping.size().checked_sub(offset) {
             Some(size_past_offset) => {
                 let bytes_copied = min(size_past_offset, buf.len());
+                // SAFETY:
                 // The bytes_copied equation above ensures we don't copy bytes out of range of
                 // either buf or this slice. We also know that the buffers do not overlap because
                 // slices can never occupy the same memory as a volatile slice.
@@ -151,6 +152,7 @@ impl MemoryMapping {
         match self.size().checked_sub(offset) {
             Some(size_past_offset) => {
                 let bytes_copied = min(size_past_offset, buf.len());
+                // SAFETY:
                 // The bytes_copied equation above ensures we don't copy bytes out of range of
                 // either buf or this slice. We also know that the buffers do not overlap because
                 // slices can never occupy the same memory as a volatile slice.
@@ -182,6 +184,7 @@ impl MemoryMapping {
     /// ```
     pub fn write_obj<T: AsBytes>(&self, val: T, offset: usize) -> Result<()> {
         self.mapping.range_end(offset, size_of::<T>())?;
+        // SAFETY:
         // This is safe because we checked the bounds above.
         unsafe {
             write_unaligned(self.as_ptr().add(offset) as *mut T, val);
@@ -210,6 +213,7 @@ impl MemoryMapping {
     /// ```
     pub fn read_obj<T: FromBytes>(&self, offset: usize) -> Result<T> {
         self.mapping.range_end(offset, size_of::<T>())?;
+        // SAFETY:
         // This is safe because by definition Copy types can have their bits set arbitrarily and
         // still be valid.
         unsafe {
@@ -242,6 +246,7 @@ impl MemoryMapping {
         // Make sure writes to memory have been committed before performing I/O that could
         // potentially depend on them.
         fence(Ordering::SeqCst);
+        // SAFETY:
         // This is safe because we checked the bounds above.
         unsafe {
             write_volatile(self.as_ptr().add(offset) as *mut T, val);
@@ -273,6 +278,7 @@ impl MemoryMapping {
     /// ```
     pub fn read_obj_volatile<T: FromBytes>(&self, offset: usize) -> Result<T> {
         self.mapping.range_end(offset, size_of::<T>())?;
+        // SAFETY:
         // This is safe because by definition Copy types can have their bits set arbitrarily and
         // still be valid.
         unsafe {
@@ -410,6 +416,7 @@ impl VolatileMemory for MemoryMapping {
                     offset,
                 })?;
 
+        // SAFETY:
         // Safe because we checked that offset + count was within our range and we only ever hand
         // out volatile accessors.
         Ok(unsafe { VolatileSlice::from_raw_parts(new_addr as *mut u8, count) })
@@ -422,6 +429,7 @@ impl VolatileMemory for MemoryMapping {
 /// Safe when implementers guarantee `ptr`..`ptr+size` is an mmaped region owned by this object that
 /// can't be unmapped during the `MappedRegion`'s lifetime.
 pub unsafe trait MappedRegion: Send + Sync {
+    // SAFETY:
     /// Returns a pointer to the beginning of the memory region. Should only be
     /// used for passing this region to ioctls for setting guest memory.
     fn as_ptr(&self) -> *mut u8;
@@ -456,6 +464,7 @@ pub unsafe trait MappedRegion: Send + Sync {
     }
 }
 
+// SAFETY:
 // Safe because it exclusively forwards calls to a safe implementation.
 unsafe impl MappedRegion for MemoryMapping {
     fn as_ptr(&self) -> *mut u8 {
@@ -473,6 +482,10 @@ pub struct ExternalMapping {
     pub size: usize,
 }
 
+// SAFETY:
+// `ptr`..`ptr+size` is an mmaped region and is owned by this object. Caller
+// needs to ensure that the region is not unmapped during the `MappedRegion`'s
+// lifetime.
 unsafe impl MappedRegion for ExternalMapping {
     /// used for passing this region to ioctls for setting guest memory.
     fn as_ptr(&self) -> *mut u8 {

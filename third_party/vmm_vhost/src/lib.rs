@@ -438,8 +438,9 @@ mod tests {
         #[cfg(windows)]
         let tubes = base::Tube::pair().unwrap();
         #[cfg(windows)]
-        // Safe because we will be importing the Tube in the other thread.
         let descriptor =
+            // SAFETY:
+            // Safe because we will be importing the Tube in the other thread.
             unsafe { tube_transporter::packed_tube::pack(tubes.0, std::process::id()).unwrap() };
 
         #[cfg(unix)]

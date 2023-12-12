@@ -31,6 +31,7 @@ macro_rules! volatile_impl {
     ($ty:ty) => {
         impl FileReadWriteVolatile for $ty {
             fn read_volatile(&mut self, slice: $crate::VolatileSlice) -> std::io::Result<usize> {
+                // SAFETY:
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
                 // to handle arbitrary memory for I/O.
                 let ret = unsafe {
@@ -58,6 +59,7 @@ macro_rules! volatile_impl {
                     return Ok(0);
                 }
 
+                // SAFETY:
                 // Safe because only bytes inside the buffers are accessed and the kernel is
                 // expected to handle arbitrary memory for I/O.
                 let ret = unsafe {
@@ -75,6 +77,7 @@ macro_rules! volatile_impl {
             }
 
             fn write_volatile(&mut self, slice: $crate::VolatileSlice) -> std::io::Result<usize> {
+                // SAFETY:
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
                 // to handle arbitrary memory for I/O.
                 let ret = unsafe {
@@ -102,6 +105,7 @@ macro_rules! volatile_impl {
                     return Ok(0);
                 }
 
+                // SAFETY:
                 // Safe because only bytes inside the buffers are accessed and the kernel is
                 // expected to handle arbitrary memory for I/O.
                 let ret = unsafe {
@@ -130,6 +134,7 @@ macro_rules! volatile_at_impl {
                 slice: $crate::VolatileSlice,
                 offset: u64,
             ) -> std::io::Result<usize> {
+                // SAFETY:
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
                 // to handle arbitrary memory for I/O.
                 let ret = unsafe {
@@ -160,6 +165,7 @@ macro_rules! volatile_at_impl {
                     return Ok(0);
                 }
 
+                // SAFETY:
                 // Safe because only bytes inside the buffers are accessed and the kernel is
                 // expected to handle arbitrary memory for I/O.
                 let ret = unsafe {
@@ -182,6 +188,7 @@ macro_rules! volatile_at_impl {
                 slice: $crate::VolatileSlice,
                 offset: u64,
             ) -> std::io::Result<usize> {
+                // SAFETY:
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
                 // to handle arbitrary memory for I/O.
                 let ret = unsafe {
@@ -212,6 +219,7 @@ macro_rules! volatile_at_impl {
                     return Ok(0);
                 }
 
+                // SAFETY:
                 // Safe because only bytes inside the buffers are accessed and the kernel is
                 // expected to handle arbitrary memory for I/O.
                 let ret = unsafe {

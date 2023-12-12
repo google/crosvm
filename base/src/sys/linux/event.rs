@@ -55,21 +55,24 @@ impl EventExt for crate::Event {
 impl PlatformEvent {
     /// Creates a new blocking eventfd with an initial value of 0.
     pub fn new() -> Result<PlatformEvent> {
+        // SAFETY:
         // This is safe because eventfd merely allocated an eventfd for our process and we handle
         // the error case.
         let ret = unsafe { eventfd(0, 0) };
         if ret < 0 {
             return errno_result();
         }
-        // This is safe because we checked ret for success and know the kernel gave us an fd that we
-        // own.
         Ok(PlatformEvent {
+            // SAFETY:
+            // This is safe because we checked ret for success and know the kernel gave us an fd that we
+            // own.
             event_handle: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
         })
     }
 
     /// See `EventExt::write_count`.
     pub fn write_count(&self, v: u64) -> Result<()> {
+        // SAFETY:
         // This is safe because we made this fd and the pointer we pass can not overflow because we
         // give the syscall's size parameter properly.
         let ret = unsafe {
@@ -88,9 +91,10 @@ impl PlatformEvent {
     /// See `EventExt::read_count`.
     pub fn read_count(&self) -> Result<u64> {
         let mut buf: u64 = 0;
+        // SAFETY:
+        // This is safe because we made this fd and the pointer we pass can not overflow because
+        // we give the syscall's size parameter properly.
         let ret = unsafe {
-            // This is safe because we made this fd and the pointer we pass can not overflow because
-            // we give the syscall's size parameter properly.
             read(
                 self.as_raw_descriptor(),
                 &mut buf as *mut u64 as *mut c_void,
@@ -121,6 +125,7 @@ impl PlatformEvent {
             revents: 0,
         };
         let timeoutspec: libc::timespec = duration_to_timespec(timeout);
+        // SAFETY:
         // Safe because this only modifies |pfd| and we check the return value
         let ret = unsafe {
             libc::ppoll(

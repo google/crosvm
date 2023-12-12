@@ -33,6 +33,7 @@ pub type RawDescriptor = RawHandle;
 
 impl Drop for SafeDescriptor {
     fn drop(&mut self) {
+        // SAFETY: Safe because we own the descriptor.
         unsafe { CloseHandle(self.descriptor) };
     }
 }
@@ -48,7 +49,7 @@ pub fn duplicate_handle_from_source_process(
     hndl: RawHandle,
     target_process_handle: RawHandle,
 ) -> io::Result<RawHandle> {
-    // Safe because:
+    // SAFETY: Safe because:
     // 1. We are checking the return code
     // 2. new_handle_ptr points to a valid location on the stack
     // 3. Caller guarantees hndl is a real valid handle.
@@ -76,8 +77,9 @@ fn duplicate_handle_with_target_handle(
     hndl: RawHandle,
     target_process_handle: RawHandle,
 ) -> io::Result<RawHandle> {
-    // Safe because `GetCurrentProcess` just gets the current process handle.
     duplicate_handle_from_source_process(
+        // SAFETY:
+        // Safe because `GetCurrentProcess` just gets the current process handle.
         unsafe { GetCurrentProcess() },
         hndl,
         target_process_handle,
@@ -85,6 +87,7 @@ fn duplicate_handle_with_target_handle(
 }
 
 pub fn duplicate_handle(hndl: RawHandle) -> io::Result<RawHandle> {
+    // SAFETY:
     // Safe because `GetCurrentProcess` just gets the current process handle.
     duplicate_handle_with_target_handle(hndl, unsafe { GetCurrentProcess() })
 }
@@ -103,21 +106,26 @@ impl SafeDescriptor {
     /// Clones this descriptor, internally creating a new descriptor. The new SafeDescriptor will
     /// share the same underlying count within the kernel.
     pub fn try_clone(&self) -> Result<SafeDescriptor> {
+        // SAFETY:
         // Safe because `duplicate_handle` will return a valid handle, or at the very least error
         // out.
         Ok(unsafe { SafeDescriptor::from_raw_descriptor(duplicate_handle(self.descriptor)?) })
     }
 }
 
+// SAFETY:
 // On Windows, RawHandles are represented by raw pointers but are not used as such in
 // rust code, and are therefore safe to send between threads.
 unsafe impl Send for SafeDescriptor {}
+// SAFETY: See safety comments for impl Send
 unsafe impl Sync for SafeDescriptor {}
 
+// SAFETY:
 // On Windows, RawHandles are represented by raw pointers but are opaque to the
 // userspace and cannot be derefenced by rust code, and are therefore safe to
 // send between threads.
 unsafe impl Send for Descriptor {}
+// SAFETY: See safety comments for impl Send
 unsafe impl Sync for Descriptor {}
 
 macro_rules! AsRawDescriptor {
@@ -133,6 +141,7 @@ macro_rules! AsRawDescriptor {
 macro_rules! FromRawDescriptor {
     ($name:ident) => {
         impl FromRawDescriptor for $name {
+            // SAFETY: It is caller's responsibility to ensure that the descriptor is valid.
             unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
                 return $name::from_raw_handle(descriptor);
             }

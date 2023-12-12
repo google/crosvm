@@ -52,6 +52,7 @@ mod test {
 
         assert_eq!(thread_comm, thread_name + "\n");
 
+        // SAFETY: child pid is expected to be valid and we wait on the child
         unsafe { libc::kill(child.pid, libc::SIGKILL) };
         child.wait().unwrap();
     }
@@ -75,6 +76,7 @@ mod test {
 
         assert_eq!(thread_comm, "123456789012345\n");
 
+        // SAFETY: child pid is expected to be valid and we wait on the child
         unsafe { libc::kill(child.pid, libc::SIGKILL) };
         child.wait().unwrap();
     }

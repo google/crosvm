@@ -635,6 +635,7 @@ fn monitor_process(
                         };
 
                         // TODO(b/272634283): Should just disable vmm-swap without crash.
+                        // SAFETY:
                         // Safe because the regions are from guest memory and uffd_list contains all
                         // the processes of crosvm.
                         unsafe { register_regions(&regions, uffd_list.get_list()) }
@@ -812,6 +813,7 @@ fn move_guest_to_staging(
     let mut pages = 0;
 
     let result = guest_memory.regions().try_for_each(|region| {
+        // SAFETY:
         // safe because:
         // * all the regions are registered to all userfaultfd
         // * no process access the guest memory
@@ -973,11 +975,11 @@ fn handle_vmm_swap<'scope, 'env>(
                 {
                     Command::ProcessForked { uffd, reply_tube } => {
                         debug!("new fork uffd: {:?}", uffd);
-                        // SAFETY: regions is generated from the guest memory
-                        // SAFETY: the uffd is from a new process.
-                        let result = if let Err(e) =
+                        let result = if let Err(e) = {
+                            // SAFETY: regions is generated from the guest memory
+                            // SAFETY: the uffd is from a new process.
                             unsafe { register_regions(regions, std::array::from_ref(&uffd)) }
-                        {
+                        } {
                             error!("failed to setup uffd: {:?}", e);
                             false
                         } else {

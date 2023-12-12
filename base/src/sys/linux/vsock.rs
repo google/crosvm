@@ -214,6 +214,7 @@ pub struct VsockSocket {
 
 impl VsockSocket {
     pub fn new() -> io::Result<Self> {
+        // SAFETY: trivially safe
         let fd = unsafe { libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
         if fd < 0 {
             Err(io::Error::last_os_error())
@@ -237,6 +238,7 @@ impl VsockSocket {
             ..Default::default()
         };
 
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe {
             libc::bind(
@@ -265,6 +267,7 @@ impl VsockSocket {
             ..Default::default()
         };
 
+        // SAFETY:
         // Safe because this just connects a vsock socket, and the return value is checked.
         let ret = unsafe {
             libc::connect(
@@ -282,6 +285,7 @@ impl VsockSocket {
     }
 
     pub fn listen(self) -> io::Result<VsockListener> {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe { libc::listen(self.fd, 1) };
         if ret < 0 {
@@ -295,8 +299,9 @@ impl VsockSocket {
     pub fn local_port(&self) -> io::Result<u32> {
         let mut svm: sockaddr_vm = Default::default();
 
-        // Safe because we give a valid pointer for addrlen and check the length.
         let mut addrlen = size_of::<sockaddr_vm>() as socklen_t;
+        // SAFETY:
+        // Safe because we give a valid pointer for addrlen and check the length.
         let ret = unsafe {
             // Get the socket address that was actually bound.
             libc::getsockname(
@@ -317,6 +322,7 @@ impl VsockSocket {
     }
 
     pub fn try_clone(&self) -> io::Result<Self> {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let dup_fd = unsafe { libc::fcntl(self.fd, libc::F_DUPFD_CLOEXEC, 0) };
         if dup_fd < 0 {
@@ -327,6 +333,7 @@ impl VsockSocket {
     }
 
     pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
+        // SAFETY:
         // Safe because the fd is valid and owned by this stream.
         unsafe { set_nonblocking(self.fd, nonblocking) }
     }
@@ -348,6 +355,7 @@ impl AsRawFd for VsockSocket {
 
 impl Drop for VsockSocket {
     fn drop(&mut self) {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we are the only
         // owner of the file descriptor.
         unsafe { libc::close(self.fd) };
@@ -382,6 +390,7 @@ impl VsockStream {
 
 impl io::Read for VsockStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // SAFETY:
         // Safe because this will only modify the contents of |buf| and we check the return value.
         let ret = unsafe {
             libc::read(
@@ -400,6 +409,7 @@ impl io::Read for VsockStream {
 
 impl io::Write for VsockStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe {
             libc::write(
@@ -459,8 +469,9 @@ impl VsockListener {
     pub fn accept(&self) -> io::Result<(VsockStream, SocketAddr)> {
         let mut svm: sockaddr_vm = Default::default();
 
-        // Safe because this will only modify |svm| and we check the return value.
         let mut socklen: socklen_t = size_of::<sockaddr_vm>() as socklen_t;
+        // SAFETY:
+        // Safe because this will only modify |svm| and we check the return value.
         let fd = unsafe {
             libc::accept4(
                 self.sock.as_raw_fd(),

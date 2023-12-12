@@ -13,8 +13,10 @@ impl PartialEq for SafeDescriptor {
             return true;
         }
 
+        // SAFETY:
         // safe because we only use the return value and libc says it's always successful
         let pid = unsafe { libc::getpid() };
+        // SAFETY:
         // safe because we are passing everything by value and checking the return value
         let ret = unsafe {
             libc::syscall(

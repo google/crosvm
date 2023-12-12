@@ -68,6 +68,7 @@ where
             fd: event.map_or(-1, |event| event.as_raw_descriptor()),
         };
 
+        // SAFETY:
         // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
         let ret = unsafe {

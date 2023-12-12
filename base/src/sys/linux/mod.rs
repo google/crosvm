@@ -124,6 +124,7 @@ pub type Mode = libc::mode_t;
 /// elsewhere.
 #[inline(always)]
 pub fn getpid() -> Pid {
+    // SAFETY:
     // Safe because this syscall can never fail and we give it a valid syscall number.
     unsafe { syscall(SYS_getpid as c_long) as Pid }
 }
@@ -131,12 +132,14 @@ pub fn getpid() -> Pid {
 /// Safe wrapper for the geppid Linux systemcall.
 #[inline(always)]
 pub fn getppid() -> Pid {
+    // SAFETY:
     // Safe because this syscall can never fail and we give it a valid syscall number.
     unsafe { syscall(SYS_getppid as c_long) as Pid }
 }
 
 /// Safe wrapper for the gettid Linux systemcall.
 pub fn gettid() -> Pid {
+    // SAFETY:
     // Calling the gettid() sycall is always safe.
     unsafe { syscall(SYS_gettid as c_long) as Pid }
 }
@@ -144,6 +147,7 @@ pub fn gettid() -> Pid {
 /// Safe wrapper for `geteuid(2)`.
 #[inline(always)]
 pub fn geteuid() -> Uid {
+    // SAFETY:
     // trivially safe
     unsafe { libc::geteuid() }
 }
@@ -151,6 +155,7 @@ pub fn geteuid() -> Uid {
 /// Safe wrapper for `getegid(2)`.
 #[inline(always)]
 pub fn getegid() -> Gid {
+    // SAFETY:
     // trivially safe
     unsafe { libc::getegid() }
 }
@@ -176,6 +181,7 @@ pub fn flock<F: AsRawDescriptor>(file: &F, op: FlockOperation, nonblocking: bool
         operation |= libc::LOCK_NB;
     }
 
+    // SAFETY:
     // Safe since we pass in a valid fd and flock operation, and check the return value.
     syscall!(unsafe { libc::flock(file.as_raw_descriptor(), operation) }).map(|_| ())
 }
@@ -222,6 +228,7 @@ pub fn fallocate<F: AsRawDescriptor>(
         len as libc::off64_t
     };
 
+    // SAFETY:
     // Safe since we pass in a valid fd and fallocate mode, validate offset and len,
     // and check the return value.
     syscall!(unsafe { libc::fallocate64(file.as_raw_descriptor(), mode.into(), offset, len) })
@@ -232,10 +239,12 @@ pub fn fallocate<F: AsRawDescriptor>(
 pub fn fstat<F: AsRawDescriptor>(f: &F) -> Result<libc::stat64> {
     let mut st = MaybeUninit::<libc::stat64>::zeroed();
 
+    // SAFETY:
     // Safe because the kernel will only write data in `st` and we check the return
     // value.
     syscall!(unsafe { libc::fstat64(f.as_raw_descriptor(), st.as_mut_ptr()) })?;
 
+    // SAFETY:
     // Safe because the kernel guarantees that the struct is now fully initialized.
     Ok(unsafe { st.assume_init() })
 }
@@ -252,7 +261,7 @@ ioctl_io_nr!(BLKDISCARD, BLOCK_IO_TYPE, 119);
 /// Discards the given range of a block file.
 pub fn discard_block<F: AsRawDescriptor>(file: &F, offset: u64, len: u64) -> Result<()> {
     let range: [u64; 2] = [offset, len];
-    // # Safety
+    // SAFETY:
     // Safe because
     // - we check the return value.
     // - ioctl(BLKDISCARD) does not hold the descriptor after the call.
@@ -287,6 +296,7 @@ impl AsRawPid for std::process::Child {
 pub fn wait_for_pid<A: AsRawPid>(pid: A, options: c_int) -> Result<(Option<Pid>, ExitStatus)> {
     let pid = pid.as_raw_pid();
     let mut status: c_int = 1;
+    // SAFETY:
     // Safe because status is owned and the error is checked.
     let ret = unsafe { libc::waitpid(pid, &mut status, options) };
     if ret < 0 {
@@ -324,6 +334,7 @@ pub fn wait_for_pid<A: AsRawPid>(pid: A, options: c_int) -> Result<(Option<Pid>,
 /// }
 /// ```
 pub fn reap_child() -> Result<Pid> {
+    // SAFETY:
     // Safe because we pass in no memory, prevent blocking with WNOHANG, and check for error.
     let ret = unsafe { waitpid(-1, ptr::null_mut(), WNOHANG) };
     if ret == -1 {
@@ -338,6 +349,7 @@ pub fn reap_child() -> Result<Pid> {
 /// On success, this kills all processes in the current process group, including the current
 /// process, meaning this will not return. This is equivalent to a call to `kill(0, SIGKILL)`.
 pub fn kill_process_group() -> Result<()> {
+    // SAFETY: Safe because pid is 'self group' and return value doesn't matter.
     unsafe { kill(0, SIGKILL) }?;
     // Kill succeeded, so this process never reaches here.
     unreachable!();
@@ -349,12 +361,14 @@ pub fn kill_process_group() -> Result<()> {
 pub fn pipe(close_on_exec: bool) -> Result<(File, File)> {
     let flags = if close_on_exec { O_CLOEXEC } else { 0 };
     let mut pipe_fds = [-1; 2];
+    // SAFETY:
     // Safe because pipe2 will only write 2 element array of i32 to the given pointer, and we check
     // for error.
     let ret = unsafe { pipe2(&mut pipe_fds[0], flags) };
     if ret == -1 {
         errno_result()
     } else {
+        // SAFETY:
         // Safe because both fds must be valid for pipe2 to have returned sucessfully and we have
         // exclusive ownership of them.
         Ok(unsafe {
@@ -370,6 +384,7 @@ pub fn pipe(close_on_exec: bool) -> Result<(File, File)> {
 ///
 /// Returns the new size of the pipe or an error if the OS fails to set the pipe size.
 pub fn set_pipe_size(fd: RawFd, size: usize) -> Result<usize> {
+    // SAFETY:
     // Safe because fcntl with the `F_SETPIPE_SZ` arg doesn't touch memory.
     syscall!(unsafe { fcntl(fd, libc::F_SETPIPE_SZ, size as c_int) }).map(|ret| ret as usize)
 }
@@ -450,12 +465,14 @@ pub fn validate_raw_descriptor(raw_descriptor: RawDescriptor) -> Result<RawDescr
 pub fn validate_raw_fd(raw_fd: RawFd) -> Result<RawFd> {
     // Checking that close-on-exec isn't set helps filter out FDs that were opened by
     // crosvm as all crosvm FDs are close on exec.
+    // SAFETY:
     // Safe because this doesn't modify any memory and we check the return value.
     let flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFD) };
     if flags < 0 || (flags & libc::FD_CLOEXEC) != 0 {
         return Err(Error::new(libc::EBADF));
     }
 
+    // SAFETY:
     // Duplicate the fd to ensure that we don't accidentally close an fd previously
     // opened by another subsystem.  Safe because this doesn't modify any memory and
     // we check the return value.
@@ -476,6 +493,7 @@ pub fn poll_in<F: AsRawDescriptor>(fd: &F) -> bool {
         events: libc::POLLIN,
         revents: 0,
     };
+    // SAFETY:
     // Safe because we give a valid pointer to a list (of 1) FD and check the return value.
     let ret = unsafe { libc::poll(&mut fds, 1, 0) };
     // An error probably indicates an invalid FD, or an FD that can't be polled. Returning false in
@@ -515,6 +533,7 @@ pub fn safe_descriptor_from_path<P: AsRef<Path>>(path: P) -> Result<Option<SafeD
             .ok_or_else(|| Error::new(EINVAL))?;
         let validated_fd = validate_raw_fd(raw_descriptor)?;
         Ok(Some(
+            // SAFETY:
             // Safe because nothing else has access to validated_fd after this call.
             unsafe { SafeDescriptor::from_raw_descriptor(validated_fd) },
         ))
@@ -543,9 +562,11 @@ pub fn open_file_or_duplicate<P: AsRef<Path>>(path: P, options: &OpenOptions) ->
 pub fn max_open_files() -> Result<u64> {
     let mut buf = mem::MaybeUninit::<libc::rlimit64>::zeroed();
 
+    // SAFETY:
     // Safe because this will only modify `buf` and we check the return value.
     let res = unsafe { libc::prlimit64(0, libc::RLIMIT_NOFILE, ptr::null(), buf.as_mut_ptr()) };
     if res == 0 {
+        // SAFETY:
         // Safe because the kernel guarantees that the struct is fully initialized.
         let limit = unsafe { buf.assume_init() };
         Ok(limit.rlim_max)
@@ -624,6 +645,7 @@ impl sched_attr {
 }
 
 pub fn sched_setattr(pid: Pid, attr: &mut sched_attr, flags: u32) -> Result<()> {
+    // SAFETY: Safe becuase all the args are valid and the return valud is checked.
     let ret = unsafe {
         libc::syscall(
             libc::SYS_sched_setattr,

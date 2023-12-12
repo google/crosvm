@@ -912,8 +912,9 @@ impl SharedMemoryMapper for VhostShmemMapper {
                 } => (descriptor, offset, size),
                 VmMemorySource::SharedMemory(shmem) => {
                     let size = shmem.size();
-                    // Safe because we own shmem.
                     let descriptor =
+                        // SAFETY:
+                        // Safe because we own shmem.
                         unsafe { SafeDescriptor::from_raw_descriptor(shmem.into_raw_descriptor()) };
                     (descriptor, 0, size)
                 }

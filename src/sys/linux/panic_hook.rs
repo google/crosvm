@@ -25,8 +25,8 @@ use libc::STDERR_FILENO;
 // the pipe and the old stderr as a pair of files.
 fn redirect_stderr() -> Option<(File, File)> {
     let mut fds = [-1, -1];
+    // SAFETY: Trivially safe because the return value is checked.
     unsafe {
-        // Trivially safe because the return value is checked.
         let old_stderr = dup(STDERR_FILENO);
         if old_stderr == -1 {
             return None;
@@ -57,6 +57,7 @@ fn redirect_stderr() -> Option<(File, File)> {
 fn restore_stderr(stderr: File) -> bool {
     let descriptor = stderr.into_raw_descriptor();
 
+    // SAFETY:
     // Safe because descriptor is guaranteed to be valid and replacing stderr
     // should be an atomic operation.
     unsafe { dup2(descriptor, STDERR_FILENO) != -1 }

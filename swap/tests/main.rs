@@ -29,10 +29,13 @@ mod test {
         let region = base_addr..(base_addr + 3 * pagesize());
         let regions = [region];
         let (tube_main, tube_child) = Tube::pair().unwrap();
+        // SAFETY: trivially safe
         let pid = unsafe { libc::fork() };
         if pid == 0 {
             // child process
             let uffd = create_uffd_for_test();
+            // TODO(b/315998194): Add safety comment
+            #[allow(clippy::undocumented_unsafe_blocks)]
             tube_child
                 .send(&unsafe { SafeDescriptor::from_raw_descriptor(uffd.as_raw_descriptor()) })
                 .unwrap();
@@ -43,8 +46,12 @@ mod test {
             .unwrap()
             .into_raw_descriptor();
         wait_for_pid(pid, 0).unwrap();
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let uffd_child = unsafe { Userfaultfd::from_raw_descriptor(uffd_descriptor) };
 
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let result = unsafe { register_regions(&regions, &[uffd, uffd_child]) };
 
         // no error from ENOMEM
@@ -58,10 +65,13 @@ mod test {
         let region = base_addr..(base_addr + 3 * pagesize());
         let regions = [region];
         let (tube_main, tube_child) = Tube::pair().unwrap();
+        // SAFETY: trivially safe
         let pid = unsafe { libc::fork() };
         if pid == 0 {
             // child process
             let uffd = create_uffd_for_test();
+            // TODO(b/315998194): Add safety comment
+            #[allow(clippy::undocumented_unsafe_blocks)]
             tube_child
                 .send(&unsafe { SafeDescriptor::from_raw_descriptor(uffd.as_raw_descriptor()) })
                 .unwrap();
@@ -72,9 +82,13 @@ mod test {
             .recv::<SafeDescriptor>()
             .unwrap()
             .into_raw_descriptor();
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let uffd_child = unsafe { Userfaultfd::from_raw_descriptor(uffd_descriptor) };
         let uffds = [uffd, uffd_child];
 
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe { register_regions(&regions, &uffds) }.unwrap();
         tube_main.send(&0_u8).unwrap();
         // wait until the child process die and the uffd_child become obsolete.

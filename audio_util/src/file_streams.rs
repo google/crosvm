@@ -258,6 +258,7 @@ impl AudioMemoryMapping {
             warn!("Accessing unallocated region");
             return &mut self.zero_buffer;
         }
+        // SAFETY:
         // safe because the region returned is owned by self.memory_mapping
         unsafe { slice::from_raw_parts_mut(self.memory_mapping.as_ptr().add(offset), len) }
     }

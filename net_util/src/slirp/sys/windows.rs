@@ -238,6 +238,7 @@ impl TapTCommon for Slirp {
 
 impl Read for Slirp {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+        // SAFETY:
         // Safe because we are reading simple bytes.
         unsafe {
             self.guest_pipe

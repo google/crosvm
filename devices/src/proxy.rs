@@ -291,6 +291,7 @@ impl ChildProcIntf {
             if let Some(swap_device_uffd_sender) = swap_device_uffd_sender {
                 if let Err(e) = swap_device_uffd_sender.on_process_forked() {
                     error!("failed to SwapController::on_process_forked: {:?}", e);
+                    // SAFETY:
                     // exit() is trivially safe.
                     unsafe { libc::exit(1) };
                 }
@@ -305,6 +306,7 @@ impl ChildProcIntf {
             // TODO(crbug.com/992494): Remove this once device shutdown ordering is clearly
             // defined.
             //
+            // SAFETY:
             // exit() is trivially safe.
             // ! Never returns
             unsafe { libc::exit(0) };

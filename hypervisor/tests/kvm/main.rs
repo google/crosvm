@@ -251,8 +251,15 @@ fn irqfd_resample() {
     vm.register_irqfd(4, &evtfd1, Some(&evtfd2)).unwrap();
     vm.unregister_irqfd(4, &evtfd1).unwrap();
     // Ensures the ioctl is actually reading the resamplefd.
-    vm.register_irqfd(4, &evtfd1, Some(unsafe { &Event::from_raw_descriptor(-1) }))
-        .unwrap_err();
+    vm.register_irqfd(
+        4,
+        &evtfd1,
+        Some(
+            // SAFETY: trivially safe
+            unsafe { &Event::from_raw_descriptor(-1) },
+        ),
+    )
+    .unwrap_err();
 }
 
 #[test]

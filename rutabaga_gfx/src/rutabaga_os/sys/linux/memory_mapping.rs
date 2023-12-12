@@ -28,6 +28,7 @@ pub struct MemoryMapping {
 
 impl Drop for MemoryMapping {
     fn drop(&mut self) {
+        // SAFETY:
         // This is safe because we mmap the area at addr ourselves, and nobody
         // else is holding a reference to it.
         unsafe {
@@ -51,6 +52,8 @@ impl MemoryMapping {
         };
 
         if let Some(non_zero_size) = non_zero_opt {
+            // TODO(b/315870313): Add safety comment
+            #[allow(clippy::undocumented_unsafe_blocks)]
             let addr = unsafe {
                 mmap(
                     None,

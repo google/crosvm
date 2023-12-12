@@ -62,6 +62,7 @@ impl Kvm {
     // the closest machine type for this VM. Here, we just return the maximum
     // the kernel support.
     pub fn get_vm_type(&self, protection_type: ProtectionType) -> Result<u32> {
+        // SAFETY:
         // Safe because we know self is a real kvm fd
         let ipa_size = match unsafe {
             ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into())
@@ -81,6 +82,7 @@ impl Kvm {
 
     /// Get the size of guest physical addresses (IPA) in bits.
     pub fn get_guest_phys_addr_bits(&self) -> u8 {
+        // SAFETY:
         // Safe because we know self is a real kvm fd
         match unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into()) }
         {
@@ -96,6 +98,7 @@ impl KvmVm {
     pub fn init_arch(&self, cfg: &Config) -> Result<()> {
         #[cfg(target_arch = "aarch64")]
         if cfg.mte {
+            // SAFETY:
             // Safe because it does not take pointer arguments.
             unsafe { self.enable_raw_capability(KvmCap::ArmMte, 0, &[0, 0, 0, 0])? }
         }
@@ -147,6 +150,7 @@ impl KvmVm {
             firmware_size: 0,
             reserved: [0; 7],
         };
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel won't write beyond the end of
         // the struct or keep a pointer to it.
         unsafe {
@@ -160,6 +164,7 @@ impl KvmVm {
     }
 
     fn set_protected_vm_firmware_ipa(&self, fw_addr: GuestAddress) -> Result<()> {
+        // SAFETY:
         // Safe because none of the args are pointers.
         unsafe {
             self.enable_raw_capability(
@@ -248,6 +253,7 @@ impl KvmVcpu {
                 .try_into()
                 .expect("can't represent usize as u64"),
         };
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_ONE_REG(), &onereg) };
@@ -272,6 +278,7 @@ impl KvmVcpu {
                 .expect("can't represent usize as u64"),
         };
 
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, KVM_GET_ONE_REG(), &onereg) };
@@ -530,6 +537,7 @@ impl VcpuAArch64 for KvmVcpu {
             target: KVM_ARM_TARGET_GENERIC_V8,
             features: [0; 7],
         };
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel will write exactly the size
         // of the struct.
         let ret = unsafe { ioctl_with_mut_ref(&self.vm, KVM_ARM_PREFERRED_TARGET(), &mut kvi) };
@@ -546,8 +554,9 @@ impl VcpuAArch64 for KvmVcpu {
             kvi.features[0] |= 1 << shift;
         }
 
-        // Safe because we know self.vm is a real kvm fd
         let check_extension = |ext: u32| -> bool {
+            // SAFETY:
+            // Safe because we know self.vm is a real kvm fd
             unsafe { ioctl_with_val(&self.vm, KVM_CHECK_EXTENSION(), ext.into()) == 1 }
         };
         if check_extension(KVM_CAP_ARM_PTRAUTH_ADDRESS)
@@ -557,6 +566,7 @@ impl VcpuAArch64 for KvmVcpu {
             kvi.features[0] |= 1 << KVM_ARM_VCPU_PTRAUTH_GENERIC;
         }
 
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, KVM_ARM_VCPU_INIT(), &kvi) };
@@ -579,6 +589,7 @@ impl VcpuAArch64 for KvmVcpu {
             addr: irq_addr as u64,
             flags: 0,
         };
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_HAS_DEVICE_ATTR(), &irq_attr) };
@@ -586,6 +597,7 @@ impl VcpuAArch64 for KvmVcpu {
             return errno_result();
         }
 
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &irq_attr) };
@@ -599,6 +611,7 @@ impl VcpuAArch64 for KvmVcpu {
             addr: 0,
             flags: 0,
         };
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &init_attr) };
@@ -618,6 +631,7 @@ impl VcpuAArch64 for KvmVcpu {
             addr: 0,
             flags: 0,
         };
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_HAS_DEVICE_ATTR(), &pvtime_attr) };
@@ -636,6 +650,7 @@ impl VcpuAArch64 for KvmVcpu {
             flags: 0,
         };
 
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &pvtime_attr) };
@@ -674,6 +689,7 @@ impl VcpuAArch64 for KvmVcpu {
 
     #[cfg(feature = "gdb")]
     fn get_max_hw_bps(&self) -> Result<usize> {
+        // SAFETY:
         // Safe because the kernel will only return the result of the ioctl.
         let max_hw_bps = unsafe {
             ioctl_with_val(
@@ -727,6 +743,7 @@ impl VcpuAArch64 for KvmVcpu {
             dbg.arch.dbg_bcr[i] = 0b1111_11_1;
         }
 
+        // SAFETY:
         // Safe because the kernel won't read past the end of the kvm_guest_debug struct.
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_GUEST_DEBUG(), &dbg) };
         if ret == 0 {

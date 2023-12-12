@@ -100,6 +100,7 @@ impl CmsgBuffer {
         } else {
             CmsgBuffer::Heap(
                 vec![
+                    // SAFETY:
                     // Safe because cmsghdr only contains primitive types for
                     // which zero initialization is valid.
                     unsafe { MaybeUninit::<cmsghdr>::zeroed().assume_init() };
@@ -125,6 +126,7 @@ fn raw_sendmsg(fd: RawFd, iovec: &[iovec], out_fds: &[RawFd]) -> io::Result<usiz
     let cmsg_capacity = CMSG_SPACE(size_of_val(out_fds));
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
+    // SAFETY:
     // msghdr on musl has private __pad1 and __pad2 fields that cannot be initialized.
     // Safe because msghdr only contains primitive types for which zero
     // initialization is valid.
@@ -133,6 +135,7 @@ fn raw_sendmsg(fd: RawFd, iovec: &[iovec], out_fds: &[RawFd]) -> io::Result<usiz
     msg.msg_iovlen = iovec.len().try_into().unwrap();
 
     if !out_fds.is_empty() {
+        // SAFETY:
         // msghdr on musl has an extra __pad1 field, initialize the whole struct to zero.
         // Safe because cmsghdr only contains primitive types for which zero
         // initialization is valid.
@@ -140,9 +143,12 @@ fn raw_sendmsg(fd: RawFd, iovec: &[iovec], out_fds: &[RawFd]) -> io::Result<usiz
         cmsg.cmsg_len = CMSG_LEN(size_of_val(out_fds)).try_into().unwrap();
         cmsg.cmsg_level = SOL_SOCKET;
         cmsg.cmsg_type = SCM_RIGHTS;
+        // SAFETY: See call specific comments within unsafe block.
         unsafe {
+            // SAFETY:
             // Safe because cmsg_buffer was allocated to be large enough to contain cmsghdr.
             write_unaligned(cmsg_buffer.as_mut_ptr(), cmsg);
+            // SAFETY:
             // Safe because the cmsg_buffer was allocated to be large enough to hold out_fds.len()
             // file descriptors.
             copy_nonoverlapping(
@@ -156,6 +162,7 @@ fn raw_sendmsg(fd: RawFd, iovec: &[iovec], out_fds: &[RawFd]) -> io::Result<usiz
         msg.msg_controllen = cmsg_capacity.try_into().unwrap();
     }
 
+    // SAFETY:
     // Safe because the msghdr was properly constructed from valid (or null) pointers of the
     // indicated length and we check the return value.
     let write_count = unsafe { sendmsg(fd, &msg, 0) };
@@ -178,6 +185,7 @@ fn raw_recvmsg(
     let cmsg_capacity = CMSG_SPACE(max_fds * size_of::<RawFd>());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
+    // SAFETY:
     // msghdr on musl has private __pad1 and __pad2 fields that cannot be initialized.
     // Safe because msghdr only contains primitive types for which zero
     // initialization is valid.
@@ -190,6 +198,7 @@ fn raw_recvmsg(
         msg.msg_controllen = cmsg_capacity.try_into().unwrap();
     }
 
+    // SAFETY:
     // Safe because the msghdr was properly constructed from valid (or null) pointers of the
     // indicated length and we check the return value.
     let total_read = unsafe { recvmsg(fd, &mut msg, 0) };
@@ -205,6 +214,7 @@ fn raw_recvmsg(
     let mut cmsg_ptr = msg.msg_control as *mut cmsghdr;
     let mut in_fds: Vec<SafeDescriptor> = Vec::with_capacity(max_fds);
     while !cmsg_ptr.is_null() {
+        // SAFETY:
         // Safe because we checked that cmsg_ptr was non-null, and the loop is constructed such that
         // that only happens when there is at least sizeof(cmsghdr) space after the pointer to read.
         let cmsg = unsafe { (cmsg_ptr as *mut cmsghdr).read_unaligned() };
@@ -378,6 +388,7 @@ pub unsafe trait AsIobuf: Sized {
     fn as_iobuf_mut_slice(bufs: &mut [Self]) -> &mut [iovec];
 }
 
+// SAFETY:
 // Safe because there are no other mutable references to the memory described by `IoSlice` and it is
 // guaranteed to be ABI-compatible with `iovec`.
 unsafe impl<'a> AsIobuf for IoSlice<'a> {
@@ -389,16 +400,19 @@ unsafe impl<'a> AsIobuf for IoSlice<'a> {
     }
 
     fn as_iobuf_slice(bufs: &[Self]) -> &[iovec] {
+        // SAFETY:
         // Safe because `IoSlice` is guaranteed to be ABI-compatible with `iovec`.
         unsafe { slice::from_raw_parts(bufs.as_ptr() as *const iovec, bufs.len()) }
     }
 
     fn as_iobuf_mut_slice(bufs: &mut [Self]) -> &mut [iovec] {
+        // SAFETY:
         // Safe because `IoSlice` is guaranteed to be ABI-compatible with `iovec`.
         unsafe { slice::from_raw_parts_mut(bufs.as_mut_ptr() as *mut iovec, bufs.len()) }
     }
 }
 
+// SAFETY:
 // Safe because there are no other references to the memory described by `IoSliceMut` and it is
 // guaranteed to be ABI-compatible with `iovec`.
 unsafe impl<'a> AsIobuf for IoSliceMut<'a> {
@@ -410,16 +424,19 @@ unsafe impl<'a> AsIobuf for IoSliceMut<'a> {
     }
 
     fn as_iobuf_slice(bufs: &[Self]) -> &[iovec] {
+        // SAFETY:
         // Safe because `IoSliceMut` is guaranteed to be ABI-compatible with `iovec`.
         unsafe { slice::from_raw_parts(bufs.as_ptr() as *const iovec, bufs.len()) }
     }
 
     fn as_iobuf_mut_slice(bufs: &mut [Self]) -> &mut [iovec] {
+        // SAFETY:
         // Safe because `IoSliceMut` is guaranteed to be ABI-compatible with `iovec`.
         unsafe { slice::from_raw_parts_mut(bufs.as_mut_ptr() as *mut iovec, bufs.len()) }
     }
 }
 
+// SAFETY:
 // Safe because volatile slices are only ever accessed with other volatile interfaces and the
 // pointer and size are guaranteed to be accurate.
 unsafe impl<'a> AsIobuf for VolatileSlice<'a> {
@@ -455,6 +472,7 @@ mod tests {
         ($len:literal) => {
             assert_eq!(
                 CMSG_SPACE(size_of::<[RawFd; $len]>()) as libc::c_uint,
+                // SAFETY: trivially safe
                 unsafe { libc::CMSG_SPACE(size_of::<[RawFd; $len]>() as libc::c_uint) }
             );
         };
@@ -530,6 +548,7 @@ mod tests {
         assert_ne!(file.as_raw_fd(), s2.as_raw_descriptor());
         assert_ne!(file.as_raw_fd(), evt.as_raw_descriptor());
 
+        // SAFETY: trivially safe
         file.write_all(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
             .expect("failed to write to sent fd");
 
@@ -564,6 +583,7 @@ mod tests {
 
         let mut file = File::from(files.swap_remove(0));
 
+        // SAFETY: trivially safe
         file.write_all(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
             .expect("failed to write to sent fd");
 

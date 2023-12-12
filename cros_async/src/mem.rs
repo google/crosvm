@@ -201,6 +201,7 @@ impl VecIoWrapper {
     }
 }
 
+// SAFETY:
 // Safe to implement BackingMemory as the vec is only accessible inside the wrapper and these iovecs
 // are the only thing allowed to modify it.  Nothing else can get a reference to the vec until all
 // iovecs are dropped because they borrow Self.  Nothing can borrow the owned inner vec until self
@@ -208,6 +209,7 @@ impl VecIoWrapper {
 unsafe impl BackingMemory for VecIoWrapper {
     fn get_volatile_slice(&self, mem_range: MemRegion) -> Result<VolatileSlice<'_>> {
         self.check_addrs(&mem_range)?;
+        // SAFETY:
         // Safe because the mem_range range is valid in the backing memory as checked above.
         unsafe {
             Ok(VolatileSlice::from_raw_parts(

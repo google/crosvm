@@ -210,8 +210,10 @@ impl WindowMessageDispatcher {
 
     fn attach_thread_message_router(self: Pin<&mut Self>) -> Result<()> {
         let dispatcher_ptr = &*self as *const Self;
+        // SAFETY:
         // Safe because we won't move the dispatcher out of it.
         match unsafe { &self.get_unchecked_mut().message_router_window } {
+            // SAFETY:
             // Safe because we guarantee the dispatcher outlives the thread message router.
             Some(router) => unsafe { Self::store_pointer_in_window(dispatcher_ptr, router) },
             None => bail!("Thread message router not found, cannot associate with dispatcher!"),
@@ -222,8 +224,10 @@ impl WindowMessageDispatcher {
         if !window.is_valid() {
             bail!("Window handle is invalid!");
         }
+        // SAFETY:
         // Safe because we guarantee the dispatcher outlives our GUI windows.
         unsafe { Self::store_pointer_in_window(&*self, &window)? };
+        // SAFETY:
         // Safe because we won't move the dispatcher out of it, and the dispatcher is aware of the
         // lifecycle of the window.
         unsafe {
@@ -251,6 +255,7 @@ impl WindowMessageDispatcher {
             WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL => {
                 let _trace_event =
                     trace_event!(gpu_display, "WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL");
+                // SAFETY:
                 // Safe because the sender gives up the ownership and expects the receiver to
                 // destruct the message.
                 let message = unsafe { Box::from_raw(l_param as *mut DisplaySendToWndProc) };
@@ -266,6 +271,7 @@ impl WindowMessageDispatcher {
             _ => {
                 let _trace_event =
                     trace_event!(gpu_display, "WM_OTHER_MESSAGE_ROUTER_WINDOW_MESSAGE");
+                // SAFETY:
                 // Safe because we are processing a message targeting the message router window.
                 return unsafe { DefWindowProcW(message_router_hwnd, msg, w_param, l_param) };
             }
@@ -373,6 +379,7 @@ impl WindowMessageDispatcher {
 
     fn request_exit_message_loop() {
         info!("Posting WM_QUIT");
+        // SAFETY:
         // Safe because it will always succeed.
         unsafe {
             PostQuitMessage(0);

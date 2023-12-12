@@ -198,6 +198,8 @@ impl<T: EventToken> EventContext<T> {
             // which always populates the list.
             return Err(Error::new(ERROR_INVALID_PARAMETER));
         }
+        // SAFETY: raw handles array is expected to contain valid handles and the return value of
+        // the function is checked.
         let result = unsafe {
             WaitForMultipleObjects(
                 raw_handles_list.len() as DWORD,
@@ -254,14 +256,18 @@ impl<T: EventToken> EventContext<T> {
                     if handles_offset >= handles_len {
                         break;
                     }
-                    event_index = (unsafe {
-                        WaitForMultipleObjects(
-                            (raw_handles_list.len() - handles_offset) as DWORD,
-                            raw_handles_list[handles_offset..].as_ptr(),
-                            FALSE, // return when one event is signaled
-                            0,     /* instantaneous timeout */
-                        )
-                    } - WAIT_OBJECT_0) as usize;
+                    event_index = (
+                        // SAFETY: raw handles array is expected to contain valid handles and the
+                        // return value of the function is checked.
+                        unsafe {
+                            WaitForMultipleObjects(
+                                (raw_handles_list.len() - handles_offset) as DWORD,
+                                raw_handles_list[handles_offset..].as_ptr(),
+                                FALSE, // return when one event is signaled
+                                0,     /* instantaneous timeout */
+                            )
+                        } - WAIT_OBJECT_0
+                    ) as usize;
 
                     if event_index >= (handles_len - handles_offset) {
                         // This indicates a failure condition, as return values greater than the length

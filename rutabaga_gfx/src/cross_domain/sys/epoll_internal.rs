@@ -32,6 +32,7 @@ impl EpollEvent {
     }
 
     pub fn empty() -> Self {
+        // SAFETY: trivially safe
         unsafe { mem::zeroed::<EpollEvent>() }
     }
 
@@ -52,8 +53,12 @@ impl Epoll {
     ///
     /// [`epoll_create1`](https://man7.org/linux/man-pages/man2/epoll_create1.2.html).
     pub fn new(flags: EpollCreateFlags) -> Result<Self> {
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let res = unsafe { libc::epoll_create1(flags.bits()) };
         let fd = Errno::result(res)?;
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let owned_fd = unsafe { OwnedFd::from_raw_fd(fd) };
         Ok(Self(owned_fd))
     }
@@ -83,6 +88,8 @@ impl Epoll {
     ///
     /// [`epoll_wait`](https://man7.org/linux/man-pages/man2/epoll_wait.2.html)
     pub fn wait(&self, events: &mut [EpollEvent], timeout: isize) -> Result<usize> {
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let res = unsafe {
             libc::epoll_wait(
                 self.0.as_raw_fd(),
@@ -109,6 +116,8 @@ impl Epoll {
         let ptr = event
             .map(|x| &mut x.event as *mut libc::epoll_event)
             .unwrap_or(std::ptr::null_mut());
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             Errno::result(libc::epoll_ctl(
                 self.0.as_raw_fd(),

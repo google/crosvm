@@ -162,7 +162,13 @@ fn ioapic_state() {
     assert_eq!(kvm_state.pad, 0);
     // check first 24 entries
     for i in 0..24 {
-        assert_eq!(unsafe { kvm_state.redirtbl[i].bits }, bit_repr);
+        assert_eq!(
+            {
+                // SAFETY: trivially safe
+                unsafe { kvm_state.redirtbl[i].bits }
+            },
+            bit_repr
+        );
     }
 
     // compare with a conversion back
@@ -317,6 +323,7 @@ fn enable_feature() {
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     vm.create_irq_chip().unwrap();
     let vcpu = vm.create_vcpu(0).unwrap();
+    // SAFETY: trivially safe
     unsafe { vcpu.enable_raw_capability(kvm_sys::KVM_CAP_HYPERV_SYNIC, &[0; 4]) }.unwrap();
 }
 

@@ -13,6 +13,7 @@ pub fn set_rt_prio_limit(limit: u64) -> Result<()> {
         rlim_cur: limit,
         rlim_max: limit,
     };
+    // SAFETY:
     // Safe because the kernel doesn't modify memory that is accessible to the process here.
     let res = unsafe { libc::setrlimit64(libc::RLIMIT_RTPRIO, &rt_limit_arg) };
 
@@ -25,13 +26,15 @@ pub fn set_rt_prio_limit(limit: u64) -> Result<()> {
 
 /// Sets the current thread to be scheduled using the round robin real time class with `priority`.
 pub fn set_rt_round_robin(priority: i32) -> Result<()> {
+    // SAFETY:
     // Safe because sched_param only contains primitive types for which zero
     // initialization is valid.
     let mut sched_param: libc::sched_param = unsafe { MaybeUninit::zeroed().assume_init() };
     sched_param.sched_priority = priority;
 
-    // Safe because the kernel doesn't modify memory that is accessible to the process here.
     let res =
+        // SAFETY:
+        // Safe because the kernel doesn't modify memory that is accessible to the process here.
         unsafe { libc::pthread_setschedparam(libc::pthread_self(), libc::SCHED_RR, &sched_param) };
 
     if res != 0 {

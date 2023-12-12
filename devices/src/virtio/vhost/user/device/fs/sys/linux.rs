@@ -19,11 +19,13 @@ use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 
 fn default_uidmap() -> String {
+    // SAFETY: trivially safe
     let euid = unsafe { libc::geteuid() };
     format!("{} {} 1", euid, euid)
 }
 
 fn default_gidmap() -> String {
+    // SAFETY: trivially safe
     let egid = unsafe { libc::getegid() };
     format!("{} {} 1", egid, egid)
 }
@@ -76,11 +78,13 @@ fn jail_and_fork(
     let tz = std::env::var("TZ").unwrap_or_default();
 
     // fork on the jail here
+    // SAFETY: trivially safe
     let pid = unsafe { j.fork(Some(&keep_rds))? };
 
     if pid > 0 {
         // Current FS driver jail does not use seccomp and jail_and_fork() does not have other
         // users, so we do nothing here for seccomp_trace
+        // SAFETY: trivially safe
         unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) };
     }
 
@@ -119,6 +123,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
 
     // Parent, nothing to do but wait and then exit
     if pid != 0 {
+        // SAFETY: trivially safe
         unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
         return Ok(());
     }
@@ -131,12 +136,14 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     // TODO(crbug.com/1199487): Remove this once libc provides the wrapper for all targets.
     #[cfg(target_os = "linux")]
     {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let mut securebits = unsafe { libc::prctl(libc::PR_GET_SECUREBITS) };
         if securebits < 0 {
             bail!(io::Error::last_os_error());
         }
         securebits |= SECBIT_NO_SETUID_FIXUP;
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) };
         if ret < 0 {

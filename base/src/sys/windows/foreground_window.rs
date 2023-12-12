@@ -12,6 +12,7 @@ use crate::Result;
 /// only when the emulator is in the foreground, and will persist only until the next user
 /// interaction with the window
 pub fn give_foregrounding_permission(process_id: DWORD) -> Result<()> {
+    // SAFETY:
     // Safe because this API does not modify memory, and process_id remains in scope for
     // the duration of the call.
     match unsafe { AllowSetForegroundWindow(process_id) } {

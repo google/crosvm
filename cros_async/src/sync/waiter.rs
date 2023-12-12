@@ -52,15 +52,19 @@ impl DefaultLinkOps for AtomicLink {
     const NEW: Self::Ops = AtomicLinkOps;
 }
 
+// SAFETY:
 // Safe because the only way to mutate `AtomicLink` is via the `LinkedListOps` trait whose methods
 // are all unsafe and require that the caller has first called `acquire_link` (and had it return
 // true) to use them safely.
 unsafe impl Send for AtomicLink {}
+// SAFETY: See safety comment for impl Send
 unsafe impl Sync for AtomicLink {}
 
 #[derive(Copy, Clone, Default)]
 pub struct AtomicLinkOps;
 
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl LinkOps for AtomicLinkOps {
     type LinkPtr = NonNull<AtomicLink>;
 
@@ -73,6 +77,8 @@ unsafe impl LinkOps for AtomicLinkOps {
     }
 }
 
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl LinkedListOps for AtomicLinkOps {
     unsafe fn next(&self, ptr: Self::LinkPtr) -> Option<Self::LinkPtr> {
         *ptr.as_ref().next.get()

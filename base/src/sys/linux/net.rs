@@ -143,6 +143,7 @@ impl UnixSeqpacketListener {
     ///
     /// The returned socket has the close-on-exec flag set.
     pub fn accept(&self) -> io::Result<UnixSeqpacket> {
+        // SAFETY:
         // Safe because we own this fd and the kernel will not write to null pointers.
         match unsafe {
             libc::accept4(
@@ -154,11 +155,11 @@ impl UnixSeqpacketListener {
         } {
             -1 => Err(io::Error::last_os_error()),
             fd => {
-                // Safe because we checked the return value of accept. Therefore, the return value
-                // must be a valid socket.
-                Ok(UnixSeqpacket::from(unsafe {
-                    SafeDescriptor::from_raw_descriptor(fd)
-                }))
+                Ok(UnixSeqpacket::from(
+                    // SAFETY: Safe because we checked the return value of accept. Therefore, the
+                    // return value must be a valid socket.
+                    unsafe { SafeDescriptor::from_raw_descriptor(fd) },
+                ))
             }
         }
     }

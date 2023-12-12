@@ -118,11 +118,13 @@ impl TubePlatformConnection {
 
         let files = match msg.rds.len() {
             0 => None,
-            // Safe because we own r.rd and it is guaranteed valid.
             _ => Some(
                 msg.rds
                     .iter()
-                    .map(|r| unsafe { File::from_raw_descriptor(r.rd) })
+                    .map(|r|
+                        // SAFETY:
+                        // Safe because we own r.rd and it is guaranteed valid.
+                        unsafe { File::from_raw_descriptor(r.rd) })
                     .collect::<Vec<File>>(),
             ),
         };
@@ -136,6 +138,7 @@ impl TubePlatformConnection {
 
             let copy_count = min(dest_iov.len(), msg.data.len() - bytes_read);
 
+            // SAFETY:
             // Safe because:
             //      1) msg.data and dest_iov do not overlap.
             //      2) copy_count is bounded by dest_iov's length and msg.data.len() so we can't

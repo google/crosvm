@@ -9,7 +9,7 @@ pub use crate::generated::plugin::*;
 /// Converts protobuf representation of CpuId data into KVM format.
 #[cfg(target_arch = "x86_64")]
 pub fn cpuid_proto_to_kvm(entry: &CpuidEntry) -> kvm_sys::kvm_cpuid_entry2 {
-    // Safe: C structures are expected to be zero-initialized.
+    // SAFETY: C structures are expected to be zero-initialized.
     let mut e: kvm_sys::kvm_cpuid_entry2 = unsafe { std::mem::zeroed() };
     e.function = entry.function;
     if entry.has_index {

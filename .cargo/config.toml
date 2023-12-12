@@ -25,4 +25,5 @@ rustflags = [
     "-Aclippy::unreadable_literal",
     "-Aclippy::useless_let_if_seq",
     "-Aclippy::useless_transmute",
+    "-Dclippy::undocumented_unsafe_blocks",
 ]

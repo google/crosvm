@@ -43,6 +43,7 @@ fn test_run() {
     vcpu_sregs.es.selector = 0;
     vcpu.set_sregs(&vcpu_sregs).expect("set sregs failed");
 
+    // SAFETY: trivially safe
     let mut vcpu_regs: kvm_regs = unsafe { std::mem::zeroed() };
     vcpu_regs.rip = load_addr.offset();
     vcpu_regs.rflags = 2;

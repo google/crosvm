@@ -99,8 +99,11 @@ impl GpuBackend {
         // Start handling the display.
         let display = clone_descriptor(&*state.borrow_mut().display().borrow())
             .map(|fd| {
-                // Safe because we just created this fd.
-                AsyncWrapper::new(unsafe { SafeDescriptor::from_raw_descriptor(fd) })
+                AsyncWrapper::new(
+                    // SAFETY:
+                    // Safe because we just created this fd.
+                    unsafe { SafeDescriptor::from_raw_descriptor(fd) },
+                )
             })
             .context("failed to clone inner WaitContext for gpu display")
             .and_then(|ctx| {

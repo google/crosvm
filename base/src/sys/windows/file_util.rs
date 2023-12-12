@@ -34,6 +34,7 @@ pub fn open_file_or_duplicate<P: AsRef<Path>>(path: P, options: &OpenOptions) ->
 /// # Safety
 ///    handle *must* be File. We accept all AsRawDescriptors for convenience.
 pub fn set_sparse_file<T: AsRawDescriptor>(handle: &T) -> io::Result<()> {
+    // SAFETY:
     // Safe because we check the return value and handle is guaranteed to be a
     // valid file handle by the caller.
     let result = unsafe {
@@ -60,7 +61,7 @@ struct FileAllocatedRangeBuffer {
 /// # Safety
 /// Within this scope it is not possible to use LARGE_INTEGER as something else.
 fn large_integer_as_u64(lint: &LARGE_INTEGER) -> u64 {
-    // # Safety
+    // SAFETY:
     // Safe because we use LARGE_INTEGER only as i64 or as u64 within this scope.
     unsafe { *lint.QuadPart() as u64 }
 }
@@ -90,7 +91,7 @@ pub fn get_allocated_ranges<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<Ra
     let mut ranges = vec![];
     let mut file_size = *LargeInteger::new(0);
 
-    // # Safety
+    // SAFETY:
     // Safe because we check return value.
     unsafe {
         let failed = GetFileSizeEx(descriptor.as_raw_descriptor(), &mut file_size);
@@ -114,7 +115,7 @@ pub fn get_allocated_ranges<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<Ra
 
     loop {
         let mut bytes_ret: u32 = 0;
-        // # Safety
+        // SAFETY:
         // Safe because we return error on failure and all references have
         // bounded lifetime.
         // If the `alloc_ranges` buffer is smaller than the actual allocated ranges,

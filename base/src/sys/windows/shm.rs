@@ -15,13 +15,15 @@ use crate::SharedMemory;
 
 impl PlatformSharedMemory for SharedMemory {
     fn new(_debug_name: &CStr, size: u64) -> Result<SharedMemory> {
-        // Safe because we do not provide a handle.
         let mapping_handle =
+            // SAFETY:
+            // Safe because we do not provide a handle.
             unsafe { create_file_mapping(None, size, PAGE_EXECUTE_READWRITE, None) }
                 .map_err(super::Error::from)?;
 
-        // Safe because we have exclusive ownership of mapping_handle & it is valid.
         Self::from_safe_descriptor(
+            // SAFETY:
+            // Safe because we have exclusive ownership of mapping_handle & it is valid.
             unsafe { SafeDescriptor::from_raw_descriptor(mapping_handle) },
             size,
         )

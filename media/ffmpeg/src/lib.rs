@@ -11,6 +11,7 @@ mod error;
 pub use error::*;
 mod ffi {
     #![allow(clippy::missing_safety_doc)]
+    #![allow(clippy::undocumented_unsafe_blocks)]
     #![allow(clippy::upper_case_acronyms)]
     #![allow(non_upper_case_globals)]
     #![allow(non_camel_case_types)]

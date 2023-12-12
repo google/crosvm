@@ -120,6 +120,7 @@ impl Syslog for PlatformSyslog {
 // libraries in use that hard depend on libc's syslogger. Remove this and go back to making the
 // connection directly once minjail is ready.
 fn openlog_and_get_socket() -> Result<UnixDatagram, Error> {
+    // SAFETY:
     // closelog first in case there was already a file descriptor open.  Safe because it takes no
     // arguments and just closes an open file descriptor.  Does nothing if the file descriptor
     // was not already open.
@@ -137,6 +138,7 @@ fn openlog_and_get_socket() -> Result<UnixDatagram, Error> {
         .map_err(Error::GetLowestFd)?
         .as_raw_fd();
 
+    // SAFETY: See comments for each unsafe line in the block.
     unsafe {
         // Safe because openlog accesses no pointers because `ident` is null, only valid flags are
         // used, and it returns no error.
@@ -152,6 +154,7 @@ fn openlog_and_get_socket() -> Result<UnixDatagram, Error> {
 }
 
 fn get_localtime() -> tm {
+    // SAFETY: See comments for each unsafe line in the block.
     unsafe {
         // Safe because tm is just a struct of plain data.
         let mut tm: tm = mem::zeroed();

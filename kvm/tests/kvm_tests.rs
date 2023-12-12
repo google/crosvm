@@ -308,6 +308,7 @@ fn irqfd_resample() {
     vm.register_irqfd_resample(&evtfd1, &evtfd2, 4).unwrap();
     vm.unregister_irqfd(&evtfd1, 4).unwrap();
     // Ensures the ioctl is actually reading the resamplefd.
+    // SAFETY: trivially safe
     vm.register_irqfd_resample(&evtfd1, unsafe { &Event::from_raw_descriptor(-1) }, 4)
         .unwrap_err();
 }
@@ -447,6 +448,8 @@ fn enable_feature() {
         cap: KVM_CAP_HYPERV_SYNIC,
         ..Default::default()
     };
+    // TODO(b/315998194): Add safety comment
+    #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe { vcpu.kvm_enable_cap(&cap) }.unwrap();
 }
 

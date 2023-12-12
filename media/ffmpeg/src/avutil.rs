@@ -12,6 +12,7 @@ const MAX_FFMPEG_PLANES: usize = 4;
 /// Get the maximum data alignment that may be required by FFmpeg.
 /// This could change depending on FFmpeg's build configuration (AVX etc.).
 pub fn max_buffer_alignment() -> usize {
+    // SAFETY:
     // Safe because this function has no side effects and just returns an integer.
     unsafe { ffi::av_cpu_max_align() }
 }
@@ -22,6 +23,7 @@ pub(crate) fn av_image_line_size(
     width: u32,
     plane: usize,
 ) -> Result<usize, AvError> {
+    // SAFETY:
     // Safe because format is a valid format and this function is pure computation.
     match unsafe { ffi::av_image_get_linesize(format.pix_fmt(), width as _, plane as _) } {
         i if i >= 0 => Ok(i as _),
@@ -42,6 +44,7 @@ pub(crate) fn av_image_plane_sizes<I: IntoIterator<Item = u32>>(
         planes += 1;
     }
     let mut plane_sizes_buf = [0; MAX_FFMPEG_PLANES];
+    // SAFETY:
     // Safe because plane_sizes_buf and linesizes_buf have the size specified by the API, format is
     // valid, and this function doesn't have any side effects other than writing to plane_sizes_buf.
     AvError::result(unsafe {

@@ -120,6 +120,7 @@ impl GpuBackend {
             .clone();
 
         // Start handling the display.
+        // SAFETY:
         // Safe because the raw descriptor is valid, and an event.
         let display = unsafe {
             EventAsync::clone_raw_without_reset(&*state.borrow_mut().display().borrow(), &self.ex)

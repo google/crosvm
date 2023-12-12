@@ -205,6 +205,7 @@ impl CallbackHandler for Handler {
     }
 
     fn begin_read_from_guest(&mut self) -> io::Result<()> {
+        // SAFETY:
         // Safe because we are writing simple bytes.
         unsafe {
             self.pipe
@@ -288,10 +289,14 @@ impl Drop for Handler {
 }
 
 fn last_wsa_error() -> io::Error {
-    io::Error::from_raw_os_error(unsafe { WSAGetLastError() })
+    io::Error::from_raw_os_error(
+        // SAFETY: trivially safe
+        unsafe { WSAGetLastError() },
+    )
 }
 
 fn poll_sockets(mut sockets: Vec<WSAPOLLFD>) -> io::Result<Vec<WSAPOLLFD>> {
+    // SAFETY:
     // Safe because sockets is guaranteed to be valid, and we handle error return codes below.
     let poll_result = unsafe {
         WSAPoll(
@@ -373,6 +378,7 @@ struct EventSelectedSocket<'a> {
 
 impl<'a> EventSelectedSocket<'a> {
     fn new(socket: WSAPOLLFD, event: &'a Event) -> Result<EventSelectedSocket> {
+        // SAFETY:
         // Safe because socket.fd exists, the event handle is guaranteed to exist, and we check the
         // return code below.
         let res = unsafe {
@@ -393,6 +399,7 @@ impl<'a> EventSelectedSocket<'a> {
 
 impl<'a> Drop for EventSelectedSocket<'a> {
     fn drop(&mut self) {
+        // SAFETY:
         // Safe because socket.fd exists, the event handle is guaranteed to exist, and we check the
         // return code below.
         let res = unsafe {
@@ -490,9 +497,11 @@ struct WSAContext {
 
 impl WSAContext {
     fn new() -> Result<WSAContext> {
+        // SAFETY:
         // Trivially safe (initialization of this memory is not required).
         let mut ctx: WSAContext = unsafe { std::mem::zeroed() };
 
+        // SAFETY:
         // Safe because ctx.data is guaranteed to exist, and we check the return code.
         let err = unsafe { WSAStartup(MAKEWORD(2, 0), &mut ctx.data) };
         if err != 0 {
@@ -507,6 +516,7 @@ impl WSAContext {
 
 impl Drop for WSAContext {
     fn drop(&mut self) {
+        // SAFETY: trivially safe with return value checked.
         let err = unsafe { WSACleanup() };
         if err != 0 {
             error!("WSACleanup failed: {}", last_wsa_error())
@@ -982,6 +992,8 @@ mod tests {
             .unwrap();
 
         let mut recv_buffer: [u8; 512] = [0; 512];
+        // SAFETY: safe because the buffer & overlapped wrapper are in scope for
+        // the duration of the overlapped operation.
         unsafe { guest_pipe.read_overlapped(&mut recv_buffer, &mut overlapped_wrapper) }.unwrap();
         let size = guest_pipe
             .get_overlapped_result(&mut overlapped_wrapper)

@@ -212,12 +212,14 @@ pub(crate) fn get_tsc_offset_from_msr(vcpu: &impl VcpuX86_64) -> Result<u64> {
         value: 0,
     }];
 
+    // SAFETY:
     // Safe because _rdtsc takes no arguments
     let host_before_tsc = unsafe { _rdtsc() };
 
     // get guest TSC value from our hypervisor
     vcpu.get_msrs(&mut regs)?;
 
+    // SAFETY:
     // Safe because _rdtsc takes no arguments
     let host_after_tsc = unsafe { _rdtsc() };
 
@@ -269,8 +271,10 @@ pub(crate) fn set_tsc_value_via_msr(vcpu: &impl VcpuX86_64, value: u64) -> Resul
 /// Gets host cpu max physical address bits.
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 pub(crate) fn host_phys_addr_bits() -> u8 {
+    // SAFETY: trivially safe
     let highest_ext_function = unsafe { __cpuid(0x80000000) };
     if highest_ext_function.eax >= 0x80000008 {
+        // SAFETY: trivially safe
         let addr_size = unsafe { __cpuid(0x80000008) };
         // Low 8 bits of 0x80000008 leaf: host physical address size in bits.
         addr_size.eax as u8
@@ -485,6 +489,7 @@ pub struct IoapicState {
 
 impl Default for IoapicState {
     fn default() -> IoapicState {
+        // SAFETY: trivially safe
         unsafe { std::mem::zeroed() }
     }
 }

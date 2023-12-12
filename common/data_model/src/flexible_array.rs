@@ -149,6 +149,7 @@ where
     /// mut_entries_slice instead.
     pub fn entries_slice(&self) -> &[S] {
         let valid_length = self.get_valid_len();
+        // SAFETY:
         // Safe because the length has been validated.
         unsafe { self.entries[0].get_slice(valid_length) }
     }
@@ -157,6 +158,7 @@ where
     pub fn mut_entries_slice(&mut self) -> &mut [S] {
         let valid_length = self.get_valid_len();
         self.entries[0].set_len(valid_length);
+        // SAFETY:
         // Safe because the length has been validated.
         unsafe { self.entries[0].get_mut_slice(valid_length) }
     }

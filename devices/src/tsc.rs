@@ -23,6 +23,7 @@ pub use calibrate::*;
 pub use cpuid::*;
 
 fn rdtsc_safe() -> u64 {
+    // SAFETY:
     // Safe because _rdtsc takes no arguments
     unsafe { _rdtsc() }
 }

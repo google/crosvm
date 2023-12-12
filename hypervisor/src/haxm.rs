@@ -145,19 +145,24 @@ impl HypervisorX86_64 for Haxm {
             (Feature80000001Ecx::LAHF | Feature80000001Ecx::ABM | Feature80000001Ecx::PREFETCHW)
                 .bits();
 
+        // SAFETY: trivially safe
         let result = unsafe { __cpuid(0x1) };
 
         // Filter HAXM supported cpuids by host-supported cpuids
         supported_features_1_ecx &= result.ecx;
         supported_features_1_edx &= result.edx;
 
+        // SAFETY: trivially safe
         let result = unsafe { __cpuid(0x80000001) };
 
         supported_features_80000001_edx &= result.edx;
         supported_features_80000001_ecx &= result.ecx;
 
+        // SAFETY: trivially safe
         let cpuid_7 = unsafe { __cpuid(0x7) };
+        // SAFETY: trivially safe
         let cpuid_15 = unsafe { __cpuid(0x15) };
+        // SAFETY: trivially safe
         let cpuid_16 = unsafe { __cpuid(0x16) };
 
         Ok(CpuId {

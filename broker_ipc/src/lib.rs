@@ -70,8 +70,9 @@ pub fn common_child_setup(args: CommonChildStartupArgs) -> anyhow::Result<ChildL
         ..Default::default()
     };
     if let Some(log_file_descriptor) = args.syslog_file {
-        // Safe because we are taking ownership of a SafeDescriptor.
         let log_file =
+            // SAFETY:
+            // Safe because we are taking ownership of a SafeDescriptor.
             unsafe { File::from_raw_descriptor(log_file_descriptor.into_raw_descriptor()) };
         cfg.pipe = Some(Box::new(log_file));
         cfg.log_args.stderr = false;

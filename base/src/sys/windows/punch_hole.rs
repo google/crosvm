@@ -37,6 +37,7 @@ pub(crate) fn file_punch_hole(handle: &File, offset: u64, length: u64) -> io::Re
         BeyondFinalZero: *end_offset,
     };
 
+    // SAFETY:
     // Safe because we check the return value and all values should be set
     let result = unsafe { super::ioctl::ioctl_with_ref(handle, FSCTL_SET_ZERO_DATA, &zero_data) };
 

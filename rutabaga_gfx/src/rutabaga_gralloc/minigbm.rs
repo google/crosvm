@@ -31,12 +31,16 @@ struct MinigbmDeviceInner {
     gbm: *mut gbm_device,
 }
 
+// SAFETY:
 // Safe because minigbm handles synchronization internally.
 unsafe impl Send for MinigbmDeviceInner {}
+// SAFETY:
+// Safe because minigbm handles synchronization internally.
 unsafe impl Sync for MinigbmDeviceInner {}
 
 impl Drop for MinigbmDeviceInner {
     fn drop(&mut self) {
+        // SAFETY:
         // Safe because MinigbmDeviceInner is only constructed with a valid minigbm_device.
         unsafe {
             gbm_device_destroy(self.gbm);
@@ -59,6 +63,7 @@ impl MinigbmDevice {
         let undesired: &[&str] = &["vgem", "pvr"];
         let fd = rendernode::open_device(undesired)?;
 
+        // SAFETY:
         // gbm_create_device is safe to call with a valid fd, and we check that a valid one is
         // returned.  If the fd does not refer to a DRM device, gbm_create_device will reject it.
         let gbm = unsafe { gbm_create_device(fd.as_raw_descriptor()) };
@@ -66,9 +71,13 @@ impl MinigbmDevice {
             return Err(RutabagaError::IoError(Error::last_os_error()));
         }
 
+        // SAFETY:
         // Safe because a valid minigbm device has a statically allocated string associated with
         // it, which is valid for the lifetime of the process.
         let backend_name: *const c_char = unsafe { gbm_device_get_backend_name(gbm) };
+        // SAFETY:
+        // Safe because a valid minigbm device has a statically allocated string associated with
+        // it, which is valid for the lifetime of the process.
         let c_str: &CStr = unsafe { CStr::from_ptr(backend_name) };
         let device_name: &str = c_str.to_str()?;
 
@@ -93,6 +102,8 @@ impl Gralloc for MinigbmDevice {
         &mut self,
         info: ImageAllocationInfo,
     ) -> RutabagaResult<ImageMemoryRequirements> {
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let bo = unsafe {
             gbm_bo_create(
                 self.minigbm_device.gbm,
@@ -158,6 +169,8 @@ impl Gralloc for MinigbmDevice {
             });
         }
 
+        // TODO(b/315870313): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let bo = unsafe {
             gbm_bo_create(
                 self.minigbm_device.gbm,
@@ -184,58 +197,70 @@ impl Gralloc for MinigbmDevice {
 /// An allocation from a `MinigbmDevice`.
 pub struct MinigbmBuffer(*mut gbm_bo, MinigbmDevice);
 
+// SAFETY:
 // Safe because minigbm handles synchronization internally.
 unsafe impl Send for MinigbmBuffer {}
+// SAFETY:
+// Safe because minigbm handles synchronization internally.
 unsafe impl Sync for MinigbmBuffer {}
 
 impl MinigbmBuffer {
     /// Width in pixels.
     pub fn width(&self) -> u32 {
+        // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
         unsafe { gbm_bo_get_width(self.0) }
     }
 
     /// Height in pixels.
     pub fn height(&self) -> u32 {
+        // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
         unsafe { gbm_bo_get_height(self.0) }
     }
 
     /// `DrmFormat` of the buffer.
     pub fn format(&self) -> DrmFormat {
+        // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
         unsafe { DrmFormat(gbm_bo_get_format(self.0)) }
     }
 
     /// DrmFormat modifier flags for the buffer.
     pub fn format_modifier(&self) -> u64 {
+        // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
         unsafe { gbm_bo_get_modifier(self.0) }
     }
 
     /// Number of planes present in this buffer.
     pub fn num_planes(&self) -> usize {
+        // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
         unsafe { gbm_bo_get_plane_count(self.0) as usize }
     }
 
     /// Offset in bytes for the given plane.
     pub fn plane_offset(&self, plane: usize) -> u32 {
+        // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
         unsafe { gbm_bo_get_offset(self.0, plane) }
     }
 
     /// Length in bytes of one row for the given plane.
     pub fn plane_stride(&self, plane: usize) -> u32 {
+        // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
         unsafe { gbm_bo_get_stride_for_plane(self.0, plane) }
     }
 
     /// Exports a new dmabuf/prime file descriptor.
     pub fn export(&self) -> RutabagaResult<File> {
+        // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
         match unsafe { gbm_bo_get_fd(self.0) } {
             fd if fd >= 0 => {
+                // SAFETY: fd is expected to be valid.
                 let dmabuf = unsafe { File::from_raw_descriptor(fd) };
                 Ok(dmabuf)
             }
@@ -246,6 +271,7 @@ impl MinigbmBuffer {
 
 impl Drop for MinigbmBuffer {
     fn drop(&mut self) {
+        // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
         unsafe { gbm_bo_destroy(self.0) }
     }

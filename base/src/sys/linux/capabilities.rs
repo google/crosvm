@@ -20,9 +20,10 @@ extern "C" {
 
 /// Drops all capabilities (permitted, inheritable, and effective) from the current process.
 pub fn drop_capabilities() -> Result<()> {
+    // SAFETY:
+    // Safe because we do not actually manipulate any memory handled by libcap
+    // and we check errors.
     unsafe {
-        // Safe because we do not actually manipulate any memory handled by libcap
-        // and we check errors.
         let caps = cap_init();
         if caps.is_null() {
             return errno_result();

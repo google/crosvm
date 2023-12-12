@@ -205,6 +205,7 @@ impl FfmpegEncoderSession {
                         "encoded packet does not fit in output buffer"
                     )));
                 }
+                // SAFETY:
                 // Safe because packet.as_ref().data and out_buf.as_ptr() are valid references and
                 // we did bound check above.
                 unsafe {

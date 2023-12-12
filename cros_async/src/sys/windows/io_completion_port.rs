@@ -57,7 +57,7 @@ struct Port {
     inner: RawDescriptor,
 }
 
-// # Safety
+// SAFETY:
 // Safe because the Port is dropped before IoCompletionPort goes out of scope
 unsafe impl Send for Port {}
 
@@ -90,8 +90,10 @@ unsafe fn get_completion_status(
 ) -> io::Result<CompletionPacket> {
     let mut bytes_transferred = 0;
     let mut completion_key = 0;
+    // SAFETY: trivially safe
     let mut overlapped: *mut OVERLAPPED = unsafe { std::mem::zeroed() };
 
+    // SAFETY:
     // Safe because:
     //      1. Memory of pointers passed is stack allocated and lives as long as the syscall.
     //      2. We check the error so we don't use invalid output values (e.g. overlapped).
@@ -133,7 +135,7 @@ unsafe fn get_completion_status(
 unsafe fn poll(port: RawDescriptor) -> Result<Vec<CompletionPacket>> {
     let mut completion_packets = vec![];
     completion_packets.push(
-        // Safety: caller has ensured that the handle is valid and is for io completion port
+        // SAFETY: caller has ensured that the handle is valid and is for io completion port
         unsafe {
             get_completion_status(port, INFINITE)
                 .map_err(|e| Error::IocpOperationFailed(SysError::from(e)))?
@@ -146,8 +148,9 @@ unsafe fn poll(port: RawDescriptor) -> Result<Vec<CompletionPacket>> {
     // get detailed error information for each of the returned overlapped IO operations without
     // calling GetOverlappedResult. If we have to do that, then it's cheaper to just get each
     // completion packet individually.
-    // Safety: caller has ensured that the handle is valid and is for io completion port
     while completion_packets.len() < ENTRIES_PER_POLL {
+        // SAFETY:
+        // Safety: caller has ensured that the handle is valid and is for io completion port
         match unsafe { get_completion_status(port, 0) } {
             Ok(pkt) => {
                 completion_packets.push(pkt);
@@ -168,7 +171,7 @@ fn iocp_waiter_thread(
 ) -> Result<()> {
     let port = port.lock();
     loop {
-        // Safety: caller has ensured that the handle is valid and is for io completion port
+        // SAFETY: caller has ensured that the handle is valid and is for io completion port
         let packets = unsafe { poll(port.inner)? };
         if !packets.is_empty() {
             {
@@ -265,6 +268,7 @@ impl IoCompletionPort {
 
     /// Posts a completion packet to the IO completion port.
     pub fn post_status(&self, bytes_transferred: u32, completion_key: usize) -> Result<()> {
+        // SAFETY:
         // Safe because the IOCP handle is valid.
         let res = unsafe {
             PostQueuedCompletionStatus(
@@ -296,11 +300,12 @@ impl IoCompletionPort {
         let mut overlapped_entries: SmallVec<[OVERLAPPED_ENTRY; ENTRIES_PER_POLL]> =
             smallvec!(OVERLAPPED_ENTRY::default(); ENTRIES_PER_POLL);
 
+        let mut entries_removed: ULONG = 0;
+        // SAFETY:
         // Safe because:
         //      1. IOCP is guaranteed to exist by self.
         //      2. Memory of pointers passed is stack allocated and lives as long as the syscall.
         //      3. We check the error so we don't use invalid output values (e.g. overlapped).
-        let mut entries_removed: ULONG = 0;
         let success = unsafe {
             GetQueuedCompletionStatusEx(
                 self.port.as_raw_descriptor(),
@@ -352,7 +357,7 @@ impl IoCompletionPort {
 
     /// Waits for completion events to arrive & returns the completion keys.
     pub fn poll_unthreaded(&self) -> Result<SmallVec<[CompletionPacket; ENTRIES_PER_POLL]>> {
-        // Safety: safe because port is in scope for the duration of the call.
+        // SAFETY: safe because port is in scope for the duration of the call.
         let packets = unsafe { poll(self.port.as_raw_descriptor())? };
         let mut completion_packets = SmallVec::with_capacity(ENTRIES_PER_POLL);
         for pkt in packets {
@@ -398,6 +403,7 @@ impl IoCompletionPort {
             }
 
             let mut bytes_transferred = 0;
+            // SAFETY: trivially safe with return value checked
             let success = unsafe {
                 GetOverlappedResult(
                     entry.lpCompletionKey as RawDescriptor,
@@ -442,10 +448,11 @@ fn create_iocp(
         None => null_mut(),
     };
 
-    // Safe because:
-    //      1. The file handle is open because we have a reference to it.
-    //      2. The existing IOCP (if applicable) is valid.
     let port =
+        // SAFETY:
+        // Safe because:
+        //      1. The file handle is open because we have a reference to it.
+        //      2. The existing IOCP (if applicable) is valid.
         unsafe { CreateIoCompletionPort(raw_file, raw_existing_iocp, completion_key, concurrency) };
 
     if port.is_null() {
@@ -455,6 +462,7 @@ fn create_iocp(
     if existing_iocp.is_some() {
         Ok(None)
     } else {
+        // SAFETY:
         // Safe because:
         // 1. We are creating a new IOCP.
         // 2. We exclusively own the handle.
@@ -502,6 +510,8 @@ mod tests {
 
         iocp.register_descriptor(&f).unwrap();
         let buf = [0u8; 16];
+        // SAFETY: Safe given file is valid, buffers are allocated and initialized and return value
+        // is checked.
         unsafe {
             base::windows::write_file(&f, buf.as_ptr(), buf.len(), Some(&mut overlapped)).unwrap()
         };
@@ -526,6 +536,8 @@ mod tests {
 
         iocp.register_descriptor(&f).unwrap();
         let buf = [0u8; 16];
+        // SAFETY: Safe given file is valid, buffers are allocated and initialized and return value
+        // is checked.
         unsafe {
             base::windows::write_file(&f, buf.as_ptr(), buf.len(), Some(&mut overlapped)).unwrap()
         };

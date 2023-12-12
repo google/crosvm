@@ -728,6 +728,8 @@ mod tests {
         swap_file.write_to_file(0, data).unwrap();
 
         let page = swap_file.page_content(0, false).unwrap().unwrap();
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let result = unsafe { slice::from_raw_parts(page.as_ptr(), pagesize()) };
         assert_eq!(result, data);
     }
@@ -746,6 +748,8 @@ mod tests {
 
     fn assert_page_content(swap_file: &SwapFile, idx: usize, data: &[u8]) {
         let page = swap_file.page_content(idx, false).unwrap().unwrap();
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let result = unsafe { slice::from_raw_parts(page.as_ptr(), pagesize()) };
         assert_eq!(result, data);
     }
@@ -903,6 +907,8 @@ mod tests {
         swap_file.clear_range(0..1).unwrap();
 
         let slice = swap_file.page_content(0, true).unwrap().unwrap();
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let slice = unsafe { slice::from_raw_parts(slice.as_ptr(), slice.size()) };
         assert_eq!(slice, data);
     }

@@ -15,9 +15,10 @@ use crate::WriteZeroesAt;
 
 impl FileReadWriteVolatile for File {
     fn read_volatile(&mut self, slice: VolatileSlice) -> Result<usize> {
+        let mut bytes = 0;
+        // SAFETY:
         // Safe because only bytes inside the slice are accessed and the kernel is expected
         // to handle arbitrary memory for I/O.
-        let mut bytes = 0;
         let ret = unsafe {
             winapi::um::fileapi::ReadFile(
                 self.as_raw_descriptor(),
@@ -55,9 +56,10 @@ impl FileReadWriteVolatile for File {
     }
 
     fn write_volatile(&mut self, slice: VolatileSlice) -> Result<usize> {
+        let mut bytes = 0;
+        // SAFETY:
         // Safe because only bytes inside the slice are accessed and the kernel is expected
         // to handle arbitrary memory for I/O.
-        let mut bytes = 0;
         let ret = unsafe {
             winapi::um::fileapi::WriteFile(
                 self.as_raw_descriptor(),
@@ -101,10 +103,11 @@ impl FileReadWriteAtVolatile for File {
         // The unix implementation uses pread, which doesn't modify the file
         // pointer. Windows doesn't have an option for that, unfortunately.
 
-        // Safe because only bytes inside the slice are accessed and the kernel is expected
-        // to handle arbitrary memory for I/O.
         let mut bytes = 0;
 
+        // SAFETY:
+        // Safe because only bytes inside the slice are accessed and the kernel is expected
+        // to handle arbitrary memory for I/O.
         let ret = unsafe {
             let mut overlapped: winapi::um::minwinbase::OVERLAPPED = std::mem::zeroed();
             overlapped.u.s_mut().Offset = offset as u32;
@@ -149,10 +152,11 @@ impl FileReadWriteAtVolatile for File {
         // The unix implementation uses pwrite, which doesn't modify the file
         // pointer. Windows doesn't have an option for that, unfortunately.
 
-        // Safe because only bytes inside the slice are accessed and the kernel is expected
-        // to handle arbitrary memory for I/O.
         let mut bytes = 0;
 
+        // SAFETY:
+        // Safe because only bytes inside the slice are accessed and the kernel is expected
+        // to handle arbitrary memory for I/O.
         let ret = unsafe {
             let mut overlapped: winapi::um::minwinbase::OVERLAPPED = std::mem::zeroed();
             overlapped.u.s_mut().Offset = offset as u32;

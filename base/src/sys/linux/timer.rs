@@ -37,14 +37,16 @@ impl Timer {
     /// Creates a new timerfd.  The timer is initally disarmed and must be armed by calling
     /// `reset`.
     pub fn new() -> Result<Timer> {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe { timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC) };
         if ret < 0 {
             return errno_result();
         }
 
-        // Safe because we uniquely own the file descriptor.
         Ok(Timer {
+            // SAFETY:
+            // Safe because we uniquely own the file descriptor.
             handle: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
             interval: None,
         })
@@ -61,6 +63,7 @@ impl Timer {
             it_value: duration_to_timespec(dur.unwrap_or_default()),
         };
 
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe { timerfd_settime(self.as_raw_descriptor(), 0, &spec, ptr::null_mut()) };
         if ret < 0 {
@@ -87,6 +90,7 @@ impl TimerTrait for Timer {
             revents: 0,
         };
 
+        // SAFETY:
         // Safe because this only modifies |pfd| and we check the return value
         let ret = handle_eintr_errno!(unsafe {
             libc::ppoll(
@@ -113,6 +117,7 @@ impl TimerTrait for Timer {
     fn mark_waited(&mut self) -> Result<bool> {
         let mut count = 0u64;
 
+        // SAFETY:
         // The timerfd is in non-blocking mode, so this should return immediately.
         let ret = unsafe {
             libc::read(
@@ -134,9 +139,11 @@ impl TimerTrait for Timer {
     }
 
     fn resolution(&self) -> Result<Duration> {
+        // SAFETY:
         // Safe because we are zero-initializing a struct with only primitive member fields.
         let mut res: libc::timespec = unsafe { mem::zeroed() };
 
+        // SAFETY:
         // Safe because it only modifies a local struct and we check the return value.
         let ret = unsafe { clock_getres(CLOCK_MONOTONIC, &mut res) };
 

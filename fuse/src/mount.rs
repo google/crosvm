@@ -73,6 +73,7 @@ pub fn mount<P: AsRef<OsStr>>(
     let mountpoint = CString::new(mountpoint.as_ref().as_bytes())?;
     let mount_options = CString::new(join_mount_options(options))?;
 
+    // SAFETY:
     // Safe because pointer arguments all points to null-terminiated CStrings.
     let retval = unsafe {
         libc::mount(

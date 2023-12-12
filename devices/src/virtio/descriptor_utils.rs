@@ -738,6 +738,7 @@ impl io::Write for Writer {
             }
 
             let count = cmp::min(rem.len(), b.size());
+            // SAFETY:
             // Safe because we have already verified that `vs` points to valid memory.
             unsafe {
                 copy_nonoverlapping(rem.as_ptr(), b.as_mut_ptr(), count);

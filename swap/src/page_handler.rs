@@ -79,6 +79,7 @@ pub enum Error {
 /// The memory range must be on the guest memory.
 #[deny(unsafe_op_in_unsafe_fn)]
 unsafe fn remove_memory(addr: usize, len: usize) -> std::result::Result<(), base::Error> {
+    // SAFETY:
     // Safe because the caller guarantees addr is in guest memory, so this does not affect any rust
     // managed memory.
     let ret = unsafe { libc::madvise(addr as *mut libc::c_void, len, libc::MADV_REMOVE) };
@@ -140,6 +141,7 @@ impl Task for MoveToStaging {
             copy_op.execute();
         }
         // Remove chunks of pages at once to reduce madvise(2) syscall.
+        // SAFETY:
         // Safe because the region is already backed by the file and the content will be
         // swapped in on a page fault.
         let result = unsafe {
@@ -469,6 +471,7 @@ impl<'a> PageHandler<'a> {
             let size = (data_range.end - data_range.start) as usize;
             assert!(is_page_aligned(size));
 
+            // SAFETY:
             // Safe because:
             // * src_addr is aligned with page size
             // * the data_range starting from src_addr is on the guest memory.
@@ -537,6 +540,7 @@ impl<'a> PageHandler<'a> {
                 let pages = idx_range.end - idx_range.start;
                 let slice = region.staging_memory.get_slice(idx_range.clone())?;
                 // Convert VolatileSlice to &[u8]
+                // SAFETY:
                 // Safe because the range of volatile slice is already validated.
                 let slice = unsafe { std::slice::from_raw_parts(slice.as_ptr(), slice.size()) };
                 file.write_to_file(idx_range_in_file.start, slice)?;

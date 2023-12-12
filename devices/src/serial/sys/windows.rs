@@ -256,6 +256,8 @@ mod tests {
         )
         .unwrap();
 
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             // Check that serial output is sent to the pipe
             device.write(serial_bus_address(DATA), &[b'T']);

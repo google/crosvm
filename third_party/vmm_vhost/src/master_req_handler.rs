@@ -289,6 +289,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         buf: &[u8],
     ) -> Result<T> {
         self.check_msg_size(hdr, size, mem::size_of::<T>())?;
+        // SAFETY: above check ensures that buf is `T` sized.
         let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const T) };
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);

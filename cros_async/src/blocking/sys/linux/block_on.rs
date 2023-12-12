@@ -30,6 +30,7 @@ impl ArcWake for Waker {
     fn wake_by_ref(arc_self: &Arc<Self>) {
         let state = arc_self.0.swap(WOKEN, Ordering::Release);
         if state == WAITING {
+            // SAFETY:
             // The thread hasn't already been woken up so wake it up now. Safe because this doesn't
             // modify any memory and we check the return value.
             let res = unsafe {
@@ -71,6 +72,7 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
 
             let state = thread_waker.0.swap(WAITING, Ordering::Acquire);
             if state == WAITING {
+                // SAFETY:
                 // If we weren't already woken up then wait until we are. Safe because this doesn't
                 // modify any memory and we check the return value.
                 let res = unsafe {

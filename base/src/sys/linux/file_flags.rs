@@ -24,6 +24,7 @@ pub enum FileFlags {
 
 impl FileFlags {
     pub fn from_file(file: &dyn AsRawDescriptor) -> Result<FileFlags> {
+        // SAFETY:
         // Trivially safe because fcntl with the F_GETFL command is totally safe and we check for
         // error.
         let flags = unsafe { fcntl(file.as_raw_descriptor(), F_GETFL) };

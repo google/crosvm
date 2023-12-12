@@ -23,10 +23,18 @@ impl<T> __IncompleteArrayField<T> {
     pub fn as_mut_ptr(&mut self) -> *mut T {
         self as *mut _ as *mut T
     }
+    /// # Safety
+    ///
+    /// It is caller's responsibility to ensure that `self` exists as long as returned slice is
+    /// in use.
     #[inline]
     pub unsafe fn as_slice(&self, len: usize) -> &[T] {
         ::std::slice::from_raw_parts(self.as_ptr(), len)
     }
+    /// # Safety
+    ///
+    /// It is caller's responsibility to ensure that `self` exists as long as returned slice is
+    /// in use.
     #[inline]
     pub unsafe fn as_mut_slice(&mut self, len: usize) -> &mut [T] {
         ::std::slice::from_raw_parts_mut(self.as_mut_ptr(), len)
@@ -107,6 +115,7 @@ pub union vhost_msg__bindgen_ty_1 {
 impl Default for vhost_msg__bindgen_ty_1 {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        // SAFETY: Safe because s is aligned and is initialized in the block.
         unsafe {
             ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
             s.assume_init()
@@ -116,6 +125,7 @@ impl Default for vhost_msg__bindgen_ty_1 {
 impl Default for vhost_msg {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        // SAFETY: Safe because s is aligned and is initialized in the block.
         unsafe {
             ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
             s.assume_init()
@@ -138,6 +148,7 @@ pub union vhost_msg_v2__bindgen_ty_1 {
 impl Default for vhost_msg_v2__bindgen_ty_1 {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        // SAFETY: Safe because s is aligned and is initialized in the block.
         unsafe {
             ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
             s.assume_init()
@@ -147,6 +158,7 @@ impl Default for vhost_msg_v2__bindgen_ty_1 {
 impl Default for vhost_msg_v2 {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        // SAFETY: Safe because s is aligned and is initialized in the block.
         unsafe {
             ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
             s.assume_init()
@@ -179,6 +191,7 @@ pub struct vhost_scsi_target {
 impl Default for vhost_scsi_target {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        // SAFETY: Safe because s is aligned and is initialized in the block.
         unsafe {
             ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
             s.assume_init()

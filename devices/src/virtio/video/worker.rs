@@ -404,9 +404,11 @@ impl Worker {
         let device_evt = ex
             .async_from(AsyncWrapper::new(
                 clone_descriptor(&device_wait_ctx)
+                    .map(|fd|
+                        // SAFETY:
                         // Safe because we just created this fd.
-                        .map(|fd| unsafe { SafeDescriptor::from_raw_descriptor(fd) })
-                        .map_err(Error::CloneDescriptorFailed)?,
+                        unsafe { SafeDescriptor::from_raw_descriptor(fd) })
+                    .map_err(Error::CloneDescriptorFailed)?,
             ))
             .map_err(Error::EventAsyncCreationFailed)?;
 

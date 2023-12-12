@@ -103,6 +103,7 @@ impl From<UffdError> for Error {
 pub unsafe fn register_regions(regions: &[Range<usize>], uffds: &[Userfaultfd]) -> Result<()> {
     for address_range in regions {
         for uffd in uffds {
+            // SAFETY:
             // Safe because the range is from the guest memory region.
             let result = unsafe {
                 uffd.register(address_range.start, address_range.end - address_range.start)
@@ -188,6 +189,7 @@ impl Factory {
     /// Creates a new [Userfaultfd] for this process.
     pub fn create(&self) -> anyhow::Result<Userfaultfd> {
         if let Some(dev_file) = &self.dev_file {
+            // SAFETY:
             // Safe because ioctl(2) USERFAULTFD_IOC_NEW with does not change Rust memory safety.
             let res = unsafe {
                 ioctl_with_val(
@@ -200,6 +202,7 @@ impl Factory {
                 return errno_result().context("USERFAULTFD_IOC_NEW");
             } else {
                 // Safe because the uffd is not owned by anyone in this process.
+                // SAFETY:
                 unsafe { Userfaultfd::from_raw_descriptor(res) }
             };
             let mut api = userfaultfd_sys::uffdio_api {
@@ -207,6 +210,7 @@ impl Factory {
                 features: (FeatureFlags::MISSING_SHMEM | FeatureFlags::EVENT_REMOVE).bits(),
                 ioctls: 0,
             };
+            // SAFETY:
             // Safe because ioctl(2) UFFDIO_API with does not change Rust memory safety.
             let res = unsafe { ioctl_with_mut_ref(&uffd, UFFDIO_API(), &mut api) };
             if res < 0 {
@@ -337,6 +341,7 @@ impl Userfaultfd {
     /// * `len` - the length in bytes of the page(s).
     /// * `wake` - whether or not to unblock the faulting thread.
     pub fn zero(&self, addr: usize, len: usize, wake: bool) -> Result<usize> {
+        // SAFETY:
         // safe because zeroing untouched pages does not break the Rust memory safety since "All
         // runtime-allocated memory in a Rust program begins its life as uninitialized."
         // https://doc.rust-lang.org/nomicon/uninitialized.html
@@ -352,17 +357,20 @@ impl Userfaultfd {
     /// * `data` - the starting address of the content.
     /// * `wake` - whether or not to unblock the faulting thread.
     pub fn copy(&self, addr: usize, len: usize, data: *const u8, wake: bool) -> Result<usize> {
-        // safe because filling untouched pages with data does not break the Rust memory safety
-        // since "All runtime-allocated memory in a Rust program begins its life as uninitialized."
-        // https://doc.rust-lang.org/nomicon/uninitialized.html
-        Ok(unsafe {
-            self.uffd.copy(
-                data as *const libc::c_void,
-                addr as *mut libc::c_void,
-                len,
-                wake,
-            )
-        }?)
+        Ok(
+            // SAFETY:
+            // safe because filling untouched pages with data does not break the Rust memory safety
+            // since "All runtime-allocated memory in a Rust program begins its life as uninitialized."
+            // https://doc.rust-lang.org/nomicon/uninitialized.html
+            unsafe {
+                self.uffd.copy(
+                    data as *const libc::c_void,
+                    addr as *mut libc::c_void,
+                    len,
+                    wake,
+                )
+            }?,
+        )
     }
 
     /// Wake the faulting thread blocked by the page(s).

@@ -98,6 +98,7 @@ where
 
     pub fn new_from_tap_fd(tap_fd: RawDescriptor) -> anyhow::Result<Self> {
         let tap_fd = validate_raw_descriptor(tap_fd).context("failed to validate tap fd")?;
+        // SAFETY:
         // Safe because we ensure that we get a unique handle to the fd.
         let tap = unsafe { T::from_raw_descriptor(tap_fd).context("failed to create tap device")? };
 

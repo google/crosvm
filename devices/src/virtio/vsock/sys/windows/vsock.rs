@@ -650,6 +650,7 @@ impl Worker {
                 // Start reading again so we receive the message and
                 // event signal immediately.
 
+                // SAFETY:
                 // Unsafe because the read could happen at any time
                 // after this function is called. We ensure safety
                 // by allocating the buffer and overlapped struct
@@ -798,6 +799,7 @@ impl Worker {
                 let mut buffer = Box::new([0u8; TEMP_READ_BUF_SIZE_BYTES]);
                 info!("vsock: port {}: created client pipe", port);
 
+                // SAFETY:
                 // Unsafe because the read could happen at any time
                 // after this function is called. We ensure safety
                 // by allocating the buffer and overlapped struct

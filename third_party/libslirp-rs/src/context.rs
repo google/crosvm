@@ -87,8 +87,9 @@ pub struct Context<H> {
 
 impl<H> Drop for Context<H> {
     fn drop(&mut self) {
-        // Safe because self.context is guaranteed to be valid or null upon construction.
         if !self.slirp.is_null() {
+            // SAFETY:
+            // Safe because self.context is guaranteed to be valid or null upon construction.
             unsafe {
                 slirp_cleanup(self.slirp);
             }
@@ -156,9 +157,11 @@ pub trait CallbackHandler {
 }
 
 extern "C" fn write_handler_callback(buf: *const c_void, len: usize, opaque: *mut c_void) -> isize {
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type.
     let closure = unsafe { &mut *(opaque as *mut &mut dyn FnMut(&[u8]) -> isize) };
 
+    // SAFETY:
     // Safe because libslirp provides us with a valid buffer & that buffer's length.
     let slice = unsafe { slice::from_raw_parts(buf as *const u8, len) };
 
@@ -166,9 +169,11 @@ extern "C" fn write_handler_callback(buf: *const c_void, len: usize, opaque: *mu
 }
 
 extern "C" fn read_handler_callback(buf: *mut c_void, len: usize, opaque: *mut c_void) -> isize {
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type.
     let closure = unsafe { &mut *(opaque as *mut &mut dyn FnMut(&mut [u8]) -> isize) };
 
+    // SAFETY:
     // Safe because libslirp provides us with a valid buffer & that buffer's length.
     let slice = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len) };
 
@@ -275,6 +280,7 @@ impl fmt::Debug for PollEvents {
 }
 
 extern "C" fn add_poll_handler_callback(fd: c_int, events: c_int, opaque: *mut c_void) -> c_int {
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type.
     let closure = unsafe { &mut *(opaque as *mut &mut dyn FnMut(i32, PollEvents) -> i32) };
 
@@ -282,6 +288,7 @@ extern "C" fn add_poll_handler_callback(fd: c_int, events: c_int, opaque: *mut c
 }
 
 extern "C" fn get_revents_handler_callback(idx: c_int, opaque: *mut c_void) -> c_int {
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type.
     let closure = unsafe { &mut *(opaque as *mut &mut dyn FnMut(i32) -> PollEvents) };
 
@@ -295,9 +302,11 @@ extern "C" fn send_packet_handler<H: CallbackHandler>(
     len: usize,
     opaque: *mut c_void,
 ) -> isize {
+    // SAFETY:
     // Safe because libslirp gives us a valid buffer & that buffer's length.
     let slice = unsafe { slice::from_raw_parts(buf as *const u8, len) };
 
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
     let res = unsafe {
         (*(opaque as *mut Context<H>))
@@ -315,9 +324,11 @@ extern "C" fn send_packet_handler<H: CallbackHandler>(
 }
 
 extern "C" fn guest_error_handler<H: CallbackHandler>(msg: *const c_char, opaque: *mut c_void) {
+    // SAFETY:
     // Safe because libslirp gives us a valid C string representing the error message.
     let msg = str::from_utf8(unsafe { CStr::from_ptr(msg) }.to_bytes()).unwrap_or("");
 
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
     unsafe {
         (*(opaque as *mut Context<H>))
@@ -327,6 +338,7 @@ extern "C" fn guest_error_handler<H: CallbackHandler>(msg: *const c_char, opaque
 }
 
 extern "C" fn clock_get_ns_handler<H: CallbackHandler>(opaque: *mut c_void) -> i64 {
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
     unsafe {
         (*(opaque as *mut Context<H>))
@@ -342,6 +354,7 @@ extern "C" fn timer_new_handler<H: CallbackHandler>(
 ) -> *mut c_void {
     let callback = Box::new(move || {
         if let Some(cb) = cb {
+            // SAFETY:
             // Safe because libslirp gives us a valid callback function to call.
             unsafe {
                 cb(cb_opaque);
@@ -349,6 +362,7 @@ extern "C" fn timer_new_handler<H: CallbackHandler>(
         }
     });
 
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
     let timer = unsafe {
         (*(opaque as *mut Context<H>))
@@ -360,6 +374,7 @@ extern "C" fn timer_new_handler<H: CallbackHandler>(
 }
 
 extern "C" fn timer_free_handler<H: CallbackHandler>(timer: *mut c_void, opaque: *mut c_void) {
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
     // Also, timer was created by us as exactly the type we unpack into.
     unsafe {
@@ -375,6 +390,7 @@ extern "C" fn timer_mod_handler<H: CallbackHandler>(
     expire_time: i64,
     opaque: *mut c_void,
 ) {
+    // SAFETY:
     // Safe because:
     // 1. We pass in opaque as exactly this type when constructing the Slirp object.
     // 2. timer was created by us as exactly the type we unpack into
@@ -389,6 +405,7 @@ extern "C" fn timer_mod_handler<H: CallbackHandler>(
 }
 
 extern "C" fn register_poll_fd_handler<H: CallbackHandler>(fd: c_int, opaque: *mut c_void) {
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
     unsafe {
         (*(opaque as *mut Context<H>))
@@ -398,6 +415,7 @@ extern "C" fn register_poll_fd_handler<H: CallbackHandler>(fd: c_int, opaque: *m
 }
 
 extern "C" fn unregister_poll_fd_handler<H: CallbackHandler>(fd: c_int, opaque: *mut c_void) {
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
     unsafe {
         (*(opaque as *mut Context<H>))
@@ -407,6 +425,7 @@ extern "C" fn unregister_poll_fd_handler<H: CallbackHandler>(fd: c_int, opaque: 
 }
 
 extern "C" fn notify_handler<H: CallbackHandler>(opaque: *mut c_void) {
+    // SAFETY:
     // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
     unsafe { (*(opaque as *mut Context<H>)).callback_handler.notify() }
 }
@@ -497,6 +516,7 @@ impl<H: CallbackHandler> Context<H> {
             disable_dns: false,
         };
 
+        // SAFETY:
         // Safe because we pass valid pointers (or null as appropriate) as parameters and we check
         // that the return value is valid.
         let slirp = unsafe {
@@ -529,15 +549,18 @@ impl<H: CallbackHandler> Context<H> {
     pub fn handle_guest_input(&mut self) -> Result<()> {
         loop {
             match self.callback_handler.end_read_from_guest() {
-                Ok(ethernet_frame) => unsafe {
+                Ok(ethernet_frame) => {
+                    // SAFETY:
                     // Safe because the buffer (ethernet_frame) is valid & libslirp is provided
                     // with the data's underlying length.
-                    slirp_input(
-                        self.slirp,
-                        ethernet_frame.as_ptr(),
-                        ethernet_frame.len() as i32,
-                    );
-                },
+                    unsafe {
+                        slirp_input(
+                            self.slirp,
+                            ethernet_frame.as_ptr(),
+                            ethernet_frame.len() as i32,
+                        );
+                    }
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
                     error!("error reading packet from guest: {}", e);
                 }
@@ -575,8 +598,12 @@ impl<H: CallbackHandler> Context<H> {
     }
 
     pub fn connection_info(&mut self) -> &str {
-        str::from_utf8(unsafe { CStr::from_ptr(slirp_connection_info(self.slirp)) }.to_bytes())
-            .unwrap_or("")
+        str::from_utf8(
+            // TODO(b/315998194): Add safety comment
+            #[allow(clippy::undocumented_unsafe_blocks)]
+            unsafe { CStr::from_ptr(slirp_connection_info(self.slirp)) }.to_bytes(),
+        )
+        .unwrap_or("")
     }
 
     /// Requests libslirp provide the set of sockets & events that should be polled for. These
@@ -592,6 +619,7 @@ impl<H: CallbackHandler> Context<H> {
         F: FnMut(i32, PollEvents) -> i32,
     {
         let cb = &mut (&mut add_poll_cb as &mut dyn FnMut(i32, PollEvents) -> i32);
+        // SAFETY:
         // Safe because cb is only used while slirp_pollfds_fill is running, and self.slirp is
         // guaranteed to be valid.
         unsafe {
@@ -615,6 +643,7 @@ impl<H: CallbackHandler> Context<H> {
     {
         let cb = &mut (&mut get_revents_cb as &mut dyn FnMut(i32) -> PollEvents);
 
+        // SAFETY:
         // Safe because cb is only used while slirp_pollfds_poll is running, and self.slirp is
         // guaranteed to be valid.
         unsafe {
@@ -631,9 +660,10 @@ impl<H: CallbackHandler> Context<H> {
     where
         F: FnMut(&[u8]) -> isize,
     {
+        let cb = &mut (&mut write_cb as &mut dyn FnMut(&[u8]) -> isize);
+        // SAFETY:
         // Safe because cb is only used while state_save is running, and self.slirp is
         // guaranteed to be valid.
-        let cb = &mut (&mut write_cb as &mut dyn FnMut(&[u8]) -> isize);
         unsafe {
             slirp_state_save(
                 self.slirp,
@@ -647,13 +677,14 @@ impl<H: CallbackHandler> Context<H> {
     where
         F: FnMut(&mut [u8]) -> isize,
     {
+        let cb = &mut (&mut read_cb as &mut dyn FnMut(&mut [u8]) -> isize);
+        // SAFETY:
         // Safe because cb is only used while state_load is running, and self.slirp is
         // guaranteed to be valid. While this function may fail, interpretation of the error code
         // is the responsibility of the caller.
         //
         // TODO(nkgold): if state_load becomes used by crosvm, interpretation of the error code
         // should occur here.
-        let cb = &mut (&mut read_cb as &mut dyn FnMut(&mut [u8]) -> isize);
         unsafe {
             slirp_state_load(
                 self.slirp,

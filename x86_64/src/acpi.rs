@@ -446,11 +446,13 @@ fn sync_acpi_id_from_cpuid(
             return Err(e);
         }
 
+        // SAFETY:
         // Safe because we pass 0 and 0 for this call and the host supports the
         // `cpuid` instruction
         let mut cpuid_entry: CpuidResult = unsafe { __cpuid_count(0, 0) };
 
         if cpuid_entry.eax >= 0xB {
+            // SAFETY:
             // Safe because we pass 0xB and 0 for this call and the host supports the
             // `cpuid` instruction
             cpuid_entry = unsafe { __cpuid_count(0xB, 0) };
@@ -488,6 +490,7 @@ fn sync_acpi_id_from_cpuid(
 
         if !has_leafb {
             if !get_apic_id {
+                // SAFETY:
                 // Safe because we pass 1 for this call and the host supports the
                 // `cpuid` instruction
                 cpuid_entry = unsafe { __cpuid(1) };

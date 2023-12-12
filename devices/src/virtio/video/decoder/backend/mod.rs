@@ -233,6 +233,7 @@ mod tests {
     #[allow(dead_code)]
     pub fn build_object_handle(mem: &SharedMemory) -> GuestResourceHandle {
         GuestResourceHandle::VirtioObject(VirtioObjectHandle {
+            // SAFETY:
             // Safe because we are taking ownership of a just-duplicated FD.
             desc: unsafe {
                 SafeDescriptor::from_raw_descriptor(base::clone_descriptor(mem).unwrap())
@@ -246,6 +247,7 @@ mod tests {
     #[allow(dead_code)]
     pub fn build_guest_mem_handle(mem: &SharedMemory) -> GuestResourceHandle {
         GuestResourceHandle::GuestPages(GuestMemHandle {
+            // SAFETY:
             // Safe because we are taking ownership of a just-duplicated FD.
             desc: unsafe {
                 SafeDescriptor::from_raw_descriptor(base::clone_descriptor(mem).unwrap())

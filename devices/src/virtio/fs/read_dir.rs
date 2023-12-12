@@ -32,12 +32,14 @@ pub struct ReadDir<P> {
 
 impl<P: DerefMut<Target = [u8]>> ReadDir<P> {
     pub fn new<D: AsRawDescriptor>(dir: &D, offset: libc::off64_t, mut buf: P) -> io::Result<Self> {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe { libc::lseek64(dir.as_raw_descriptor(), offset, libc::SEEK_SET) };
         if res < 0 {
             return Err(io::Error::last_os_error());
         }
 
+        // SAFETY:
         // Safe because the kernel guarantees that it will only write to `buf` and we check the
         // return value.
         let res = unsafe {
@@ -117,6 +119,7 @@ fn strip_padding(b: &[u8]) -> &CStr {
         .position(|&c| c == 0)
         .expect("`b` doesn't contain any nul bytes");
 
+    // SAFETY:
     // Safe because we are creating this string with the first nul-byte we found so we can
     // guarantee that it is nul-terminated and doesn't contain any interior nuls.
     unsafe { CStr::from_bytes_with_nul_unchecked(&b[..pos + 1]) }

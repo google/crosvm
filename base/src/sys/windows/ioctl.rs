@@ -372,6 +372,7 @@ mod tests {
         f.sync_all().expect("Failed to sync all.");
 
         // read the compression status
+        // SAFETY: safe because return value is checked.
         let ecode = unsafe {
             super::super::ioctl::ioctl_with_mut_ref(&f, FSCTL_GET_COMPRESSION, &mut compressed)
         };
@@ -396,6 +397,7 @@ mod tests {
         //   https://github.com/rust-lang/rust/blob/master/src/libstd/sys/windows/fs.rs#L260
         //   For now I'm just going to leave this test as-is.
         //
+        // SAFETY: safe because return value is checked.
         let f = unsafe {
             File::from_raw_handle(CreateFileW(
                 to_u16s(file_path).unwrap().as_ptr(),
@@ -410,6 +412,7 @@ mod tests {
         };
 
         let ecode =
+            // SAFETY: safe because return value is checked.
             unsafe { super::super::ioctl::ioctl_with_ref(&f, FSCTL_SET_COMPRESSION, &compressed) };
 
         assert_eq!(ecode, 0);
@@ -418,6 +421,7 @@ mod tests {
         // is writing anything to the compressed pointer.
         compressed = 0;
 
+        // SAFETY: safe because return value is checked.
         let ecode = unsafe {
             super::super::ioctl::ioctl_with_mut_ref(&f, FSCTL_GET_COMPRESSION, &mut compressed)
         };
@@ -462,6 +466,7 @@ mod tests {
         //   https://github.com/rust-lang/rust/blob/master/src/libstd/sys/windows/fs.rs#L260
         //   For now I'm just going to leave this test as-is.
         //
+        // SAFETY: safe because return value is checked.
         let f = unsafe {
             File::from_raw_handle(CreateFileW(
                 to_u16s(file_path).unwrap().as_ptr(),
@@ -477,6 +482,7 @@ mod tests {
 
         // now we call ioctl_with_val, which isn't particularly any more helpful than
         // ioctl_with_ref except for the cases where the input is only a word long
+        // SAFETY: safe because return value is checked.
         let ecode = unsafe {
             super::super::ioctl::ioctl_with_val(&f, FSCTL_SET_COMPRESSION, compressed.into())
         };
@@ -487,6 +493,7 @@ mod tests {
         // is writing anything to the compressed pointer.
         compressed = 0;
 
+        // SAFETY: safe because return value is checked.
         let ecode = unsafe {
             super::super::ioctl::ioctl_with_mut_ref(&f, FSCTL_GET_COMPRESSION, &mut compressed)
         };

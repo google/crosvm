@@ -106,7 +106,9 @@ impl Default for SharedDir {
             tag: Default::default(),
             kind: Default::default(),
             ugid: (None, None),
+            // SAFETY: trivially safe
             uid_map: format!("0 {} 1", unsafe { geteuid() }),
+            // SAFETY: trivially safe
             gid_map: format!("0 {} 1", unsafe { getegid() }),
             fs_cfg: Default::default(),
             p9_cfg: Default::default(),

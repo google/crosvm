@@ -269,6 +269,7 @@ impl VhostUserBackend for WlBackend {
             0 => {
                 let wlstate_ctx = clone_descriptor(wlstate.borrow().wait_ctx())
                     .map(|fd| {
+                        // SAFETY:
                         // Safe because we just created this fd.
                         AsyncWrapper::new(unsafe { SafeDescriptor::from_raw_descriptor(fd) })
                     })

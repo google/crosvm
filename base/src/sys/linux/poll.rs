@@ -61,12 +61,15 @@ pub struct EventContext<T> {
 impl<T: EventToken> EventContext<T> {
     /// Creates a new `EventContext`.
     pub fn new() -> Result<EventContext<T>> {
+        // SAFETY:
         // Safe because we check the return value.
         let epoll_fd = unsafe { epoll_create1(EPOLL_CLOEXEC) };
         if epoll_fd < 0 {
             return errno_result();
         }
         Ok(EventContext {
+            // SAFETY:
+            // Safe because epoll_fd is valid.
             epoll_ctx: unsafe { File::from_raw_descriptor(epoll_fd) },
             tokens: PhantomData,
         })
@@ -122,6 +125,7 @@ impl<T: EventToken> EventContext<T> {
             events: event_type.into(),
             u64: token.as_raw_token(),
         };
+        // SAFETY:
         // Safe because we give a valid epoll FD and FD to watch, as well as a valid epoll_event
         // structure. Then we check the return value.
         let ret = unsafe {
@@ -145,6 +149,7 @@ impl<T: EventToken> EventContext<T> {
             events: event_type.into(),
             u64: token.as_raw_token(),
         };
+        // SAFETY:
         // Safe because we give a valid epoll FD and FD to modify, as well as a valid epoll_event
         // structure. Then we check the return value.
         let ret = unsafe {
@@ -169,6 +174,7 @@ impl<T: EventToken> EventContext<T> {
     /// Failure to do so will cause the `wait` method to always return immediately, causing ~100%
     /// CPU load.
     pub fn delete(&self, fd: &dyn AsRawDescriptor) -> Result<()> {
+        // SAFETY:
         // Safe because we give a valid epoll FD and FD to stop watching. Then we check the return
         // value.
         let ret = unsafe {
@@ -203,12 +209,12 @@ impl<T: EventToken> EventContext<T> {
     /// This may return earlier than `timeout` with zero events if the duration indicated exceeds
     /// system limits.
     pub fn wait_timeout(&self, timeout: Duration) -> Result<SmallVec<[TriggeredEvent<T>; 16]>> {
-        // SAFETY:
-        // `MaybeUnint<T>` has the same layout as plain `T` (`epoll_event` in our case).
-        // We submit an uninitialized array to the `epoll_wait` system call, which returns how many
-        // elements it initialized, and then we convert only the initialized `MaybeUnint` values
-        // into `epoll_event` structures after the call.
         let mut epoll_events: [MaybeUninit<epoll_event>; EVENT_CONTEXT_MAX_EVENTS] =
+            // SAFETY:
+            // `MaybeUnint<T>` has the same layout as plain `T` (`epoll_event` in our case).
+            // We submit an uninitialized array to the `epoll_wait` system call, which returns how many
+            // elements it initialized, and then we convert only the initialized `MaybeUnint` values
+            // into `epoll_event` structures after the call.
             unsafe { MaybeUninit::uninit().assume_init() };
 
         let timeout_millis = if timeout.as_secs() as i64 == i64::max_value() {
@@ -227,6 +233,7 @@ impl<T: EventToken> EventContext<T> {
         };
         let ret = {
             let max_events = epoll_events.len() as c_int;
+            // SAFETY:
             // Safe because we give an epoll context and a properly sized epoll_events array
             // pointer, which we trust the kernel to fill in properly. The `transmute` is safe,
             // since `MaybeUnint<T>` has the same layout as `T`, and the `epoll_wait` syscall will

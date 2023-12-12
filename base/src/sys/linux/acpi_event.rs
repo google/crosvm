@@ -84,7 +84,9 @@ impl AcpiNotifyEvent {
         // https://github.com/rust-lang/rust/issues/79089,
         // before using device_class further cast it to u8.
         let device_class: &[u8; 20usize] =
+            // SAFETY: trivially safe
             unsafe { ::std::mem::transmute(&acpi_event.device_class) };
+        // SAFETY: trivially safe
         let bus_id: &[u8; 15usize] = unsafe { ::std::mem::transmute(&acpi_event.bus_id) };
 
         Ok(AcpiNotifyEvent {

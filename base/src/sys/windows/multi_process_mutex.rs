@@ -29,7 +29,7 @@ pub struct MultiProcessMutex {
 
 impl MultiProcessMutex {
     pub fn new() -> Result<Self> {
-        // Trivially safe (no memory passed, error checked).
+        // SAFETY: Trivially safe (no memory passed, error checked).
         //
         // Note that we intentionally make this handle uninheritable by default via the mutex attrs.
         let lock_handle = unsafe {
@@ -44,6 +44,7 @@ impl MultiProcessMutex {
             Err(Error::last())
         } else {
             Ok(Self {
+                // SAFETY:
                 // Safe because the handle is valid & we own it exclusively.
                 lock: unsafe { SafeDescriptor::from_raw_descriptor(lock_handle) },
             })
@@ -63,6 +64,7 @@ impl MultiProcessMutex {
     /// Tries to lock the mutex, returning a RAII guard similar to std::sync::Mutex if we obtained
     /// the lock within the timeout.
     pub fn try_lock(&self, timeout_ms: u32) -> Option<MultiProcessMutexGuard> {
+        // SAFETY:
         // Safe because the mutex handle is guaranteed to exist.
         match unsafe { WaitForSingleObject(self.lock.as_raw_descriptor(), timeout_ms) } {
             WAIT_OBJECT_0 => Some(MultiProcessMutexGuard { lock: &self.lock }),
@@ -93,6 +95,7 @@ pub struct MultiProcessMutexGuard<'a> {
 
 impl<'a> Drop for MultiProcessMutexGuard<'a> {
     fn drop(&mut self) {
+        // SAFETY: We own the descriptor and is expected to be valid.
         if unsafe { ReleaseMutex(self.lock.as_raw_descriptor()) } == 0 {
             panic!("Failed to unlock mutex: {:?}.", Error::last())
         }

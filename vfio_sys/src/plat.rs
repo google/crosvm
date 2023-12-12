@@ -162,6 +162,7 @@ pub union acpi_evt_forward_set__bindgen_ty_1 {
 impl Default for acpi_evt_forward_set__bindgen_ty_1 {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        // SAFETY: Safe because s is aligned and is initialized in the block.
         unsafe {
             ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
             s.assume_init()

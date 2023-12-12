@@ -37,6 +37,7 @@ pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(cpus: I) -> Result<usize>
 }
 
 pub fn set_cpu_affinity_mask(affinity_mask: usize) -> Result<usize> {
+    // SAFETY: trivially safe as return value is checked.
     let res: usize = unsafe {
         let thread_handle = GetCurrentThread();
         SetThreadAffinityMask(thread_handle, affinity_mask)
@@ -63,6 +64,7 @@ mod tests {
     fn cpu_affinity() {
         let mut process_affinity_mask: usize = 0;
         let mut system_affinity_mask: usize = 0;
+        // SAFETY: trivially safe as return value is checked.
         let res = unsafe {
             GetProcessAffinityMask(
                 GetCurrentProcess(),

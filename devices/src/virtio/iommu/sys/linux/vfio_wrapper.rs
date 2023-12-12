@@ -78,6 +78,7 @@ impl MemoryMapper for VfioWrapper {
                 .context("failed to find host address")? as u64,
         );
 
+        // SAFETY:
         // Safe because both guest and host address are guaranteed by
         // get_host_address_range() to be valid.
         unsafe { self.do_map(map) }

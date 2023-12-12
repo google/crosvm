@@ -460,6 +460,7 @@ pub unsafe extern "C" fn crosvm_client_usb_attach(
 
             if let Ok(UsbControlResult::Ok { port }) = do_usb_attach(socket_path, dev_path) {
                 if !out_port.is_null() {
+                    // SAFETY: trivially safe
                     unsafe { *out_port = port };
                 }
                 true
@@ -595,8 +596,11 @@ pub unsafe extern "C" fn crosvm_client_modify_battery(
             if battery_type.is_null() || property.is_null() || target.is_null() {
                 return false;
             }
+            // SAFETY: trivially safe
             let battery_type = unsafe { CStr::from_ptr(battery_type) };
+            // SAFETY: trivially safe
             let property = unsafe { CStr::from_ptr(property) };
+            // SAFETY: trivially safe
             let target = unsafe { CStr::from_ptr(target) };
 
             do_modify_battery(

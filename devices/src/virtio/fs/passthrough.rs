@@ -301,6 +301,7 @@ macro_rules! scoped_cred {
 
         impl Drop for $name {
             fn drop(&mut self) {
+                // SAFETY: trivially safe
                 let res = unsafe { libc::syscall($syscall_nr, -1, self.old, -1) };
                 if res < 0 {
                     error!(
@@ -337,6 +338,8 @@ thread_local! {
     // SAFETY: both calls take no parameters and only return an integer value. The kernel also
     // guarantees that they can never fail.
     static THREAD_EUID: libc::uid_t = unsafe { libc::syscall(SYS_GETEUID) as libc::uid_t };
+    // SAFETY: both calls take no parameters and only return an integer value. The kernel also
+    // guarantees that they can never fail.
     static THREAD_EGID: libc::gid_t = unsafe { libc::syscall(SYS_GETEGID) as libc::gid_t };
 }
 
@@ -1106,14 +1109,18 @@ impl PassthroughFs {
     ) -> io::Result<(Option<Handle>, OpenOptions)> {
         let open_flags = self.update_open_flags(flags as i32);
 
-        let fd_open = syscall!(unsafe {
-            libc::openat64(
-                parent_data.as_raw_descriptor(),
-                name.as_ptr(),
-                (open_flags | libc::O_CLOEXEC) & !(libc::O_NOFOLLOW | libc::O_DIRECT),
-            )
-        })?;
+        let fd_open = syscall!(
+            // SAFETY: return value is checked.
+            unsafe {
+                libc::openat64(
+                    parent_data.as_raw_descriptor(),
+                    name.as_ptr(),
+                    (open_flags | libc::O_CLOEXEC) & !(libc::O_NOFOLLOW | libc::O_DIRECT),
+                )
+            }
+        )?;
 
+        // SAFETY: fd_open is valid
         let file_open = unsafe { File::from_raw_descriptor(fd_open) };
         let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
         let data = HandleData {
@@ -1265,8 +1272,8 @@ impl PassthroughFs {
         let policy_size = cmp::min(arg.policy_size, size_of::<fscrypt_policy>() as u64);
         arg.policy_size = policy_size;
 
-        // SAFETY: the kernel will only write to `arg` and we check the return value.
         let res =
+            // SAFETY: the kernel will only write to `arg` and we check the return value.
             unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_GET_ENCRYPTION_POLICY_EX(), &mut arg) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
@@ -1594,9 +1601,9 @@ impl PassthroughFs {
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
-            // SAFETY: this value was initialized by us already and then overwritten by the kernel.
-            // TODO: Replace with `MaybeUninit::slice_as_ptr` once it is stabilized.
             let digest_size =
+                // SAFETY: this value was initialized by us already and then overwritten by the kernel.
+                // TODO: Replace with `MaybeUninit::slice_as_ptr` once it is stabilized.
                 unsafe { addr_of!((*(buf.as_ptr() as *const fsverity_digest)).digest_size).read() };
             let outlen = size_of::<fsverity_digest>() as u32 + u32::from(digest_size);
 
@@ -1608,16 +1615,16 @@ impl PassthroughFs {
                 ))));
             }
 
-            // SAFETY: any bit pattern is valid for `MaybeUninit<u8>` and `fsverity_digest` doesn't
-            // contain any references.
             let buf: [MaybeUninit<u8>; ROUNDED_LEN * size_of::<fsverity_digest>()] =
+                // SAFETY: any bit pattern is valid for `MaybeUninit<u8>` and `fsverity_digest`
+                // doesn't contain any references.
                 unsafe { mem::transmute(buf) };
 
-            // SAFETY: Casting to `*const [u8]` is safe because the kernel guarantees that the first
-            // `outlen` bytes of `buf` are initialized and `MaybeUninit<u8>` is guaranteed to have
-            // the same layout as `u8`.
-            // TODO: Replace with `MaybeUninit::slice_assume_init_ref` once it is stabilized.
             let buf =
+                // SAFETY: Casting to `*const [u8]` is safe because the kernel guarantees that the
+                // first `outlen` bytes of `buf` are initialized and `MaybeUninit<u8>` is guaranteed
+                // to have the same layout as `u8`.
+                // TODO: Replace with `MaybeUninit::slice_assume_init_ref` once it is stabilized.
                 unsafe { &*(&buf[..outlen as usize] as *const [MaybeUninit<u8>] as *const [u8]) };
             Ok(IoctlReply::Done(Ok(buf.to_vec())))
         }
@@ -2301,12 +2308,15 @@ impl FileSystem for PassthroughFs {
         }
 
         if valid.contains(SetattrValid::SIZE) {
-            // SAFETY: this doesn't modify any memory and we check the return value.
             syscall!(match data {
-                Data::Handle(_, fd) => unsafe { libc::ftruncate64(fd, attr.st_size) },
+                Data::Handle(_, fd) => {
+                    // SAFETY: this doesn't modify any memory and we check the return value.
+                    unsafe { libc::ftruncate64(fd, attr.st_size) }
+                }
                 _ => {
                     // There is no `ftruncateat` so we need to get a new fd and truncate it.
                     let f = self.open_inode(&inode_data, libc::O_NONBLOCK | libc::O_RDWR)?;
+                    // SAFETY: this doesn't modify any memory and we check the return value.
                     unsafe { libc::ftruncate64(f.as_raw_descriptor(), attr.st_size) }
                 }
             })?;
@@ -2542,6 +2552,7 @@ impl FileSystem for PassthroughFs {
             self.find_handle(handle, inode)?
         };
 
+        // SAFETY:
         // Since this method is called whenever an fd is closed in the client, we can emulate that
         // behavior by doing the same thing (dup-ing the fd and then immediately closing it). Safe
         // because this doesn't modify any memory and we check the return values.
@@ -2664,8 +2675,8 @@ impl FileSystem for PassthroughFs {
             let path = CString::new(format!("self/fd/{}", file.0.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-            // SAFETY: this doesn't modify any memory and we check the return value.
             syscall!(self.with_proc_chdir(|| {
+                // SAFETY: this doesn't modify any memory and we check the return value.
                 unsafe {
                     libc::setxattr(
                         path.as_ptr(),
@@ -2677,17 +2688,19 @@ impl FileSystem for PassthroughFs {
                 }
             }))?;
         } else {
-            // For regular files and directories, we can just use fsetxattr.
-            // SAFETY: this doesn't modify any memory and we check the return value.
-            syscall!(unsafe {
-                libc::fsetxattr(
-                    file.0.as_raw_descriptor(),
-                    name.as_ptr(),
-                    value.as_ptr() as *const libc::c_void,
-                    value.len() as libc::size_t,
-                    flags as c_int,
-                )
-            })?;
+            syscall!(
+                // For regular files and directories, we can just use fsetxattr.
+                // SAFETY: this doesn't modify any memory and we check the return value.
+                unsafe {
+                    libc::fsetxattr(
+                        file.0.as_raw_descriptor(),
+                        name.as_ptr(),
+                        value.as_ptr() as *const libc::c_void,
+                        value.len() as libc::size_t,
+                        flags as c_int,
+                    )
+                }
+            )?;
         }
 
         Ok(())
@@ -2788,14 +2801,15 @@ impl FileSystem for PassthroughFs {
             let path = CString::new(format!("self/fd/{}", file.0.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-            // SAFETY: this doesn't modify any memory and we check the return value.
-            syscall!(
-                self.with_proc_chdir(|| unsafe { libc::removexattr(path.as_ptr(), name.as_ptr()) })
-            )?;
+            syscall!(self.with_proc_chdir(||
+                    // SAFETY: this doesn't modify any memory and we check the return value.
+                    unsafe { libc::removexattr(path.as_ptr(), name.as_ptr()) }))?;
         } else {
             // For regular files and directories, we can just use fremovexattr.
-            // SAFETY: this doesn't modify any memory and we check the return value.
-            syscall!(unsafe { libc::fremovexattr(file.0.as_raw_descriptor(), name.as_ptr()) })?;
+            syscall!(
+                // SAFETY: this doesn't modify any memory and we check the return value.
+                unsafe { libc::fremovexattr(file.0.as_raw_descriptor(), name.as_ptr()) }
+            )?;
         }
 
         Ok(())
@@ -2967,17 +2981,21 @@ impl FileSystem for PassthroughFs {
         let src = src_data.as_raw_descriptor();
         let dst = dst_data.as_raw_descriptor();
 
-        Ok(syscall!(unsafe {
-            libc::syscall(
-                libc::SYS_copy_file_range,
-                src,
-                &offset_src,
-                dst,
-                &offset_dst,
-                length,
-                flags,
-            )
-        })? as usize)
+        Ok(syscall!(
+            // SAFETY: this call is safe because it doesn't modify any memory and we
+            // check the return value.
+            unsafe {
+                libc::syscall(
+                    libc::SYS_copy_file_range,
+                    src,
+                    &offset_src,
+                    dst,
+                    &offset_dst,
+                    length,
+                    flags,
+                )
+            }
+        )? as usize)
     }
 
     fn set_up_mapping<M: Mapper>(
@@ -3137,6 +3155,8 @@ mod tests {
         // SAFETY: both calls take no parameters and only return an integer value. The kernel also
         // guarantees that they can never fail.
         let uid = unsafe { libc::syscall(SYS_GETEUID) as libc::uid_t };
+        // SAFETY: both calls take no parameters and only return an integer value. The kernel also
+        // guarantees that they can never fail.
         let gid = unsafe { libc::syscall(SYS_GETEGID) as libc::gid_t };
         let pid = std::process::id() as libc::pid_t;
         Context { uid, gid, pid }
@@ -3265,18 +3285,23 @@ mod tests {
         let p = PassthroughFs::new("tag", cfg).expect("Failed to create PassthroughFs");
 
         // Selinux shouldn't get overwritten.
+        // SAFETY: trivially safe
         let selinux = unsafe { CStr::from_bytes_with_nul_unchecked(b"security.selinux\0") };
         assert_eq!(p.rewrite_xattr_name(selinux).to_bytes(), selinux.to_bytes());
 
         // user, trusted, and system should not be changed either.
+        // SAFETY: trivially safe
         let user = unsafe { CStr::from_bytes_with_nul_unchecked(b"user.foobar\0") };
         assert_eq!(p.rewrite_xattr_name(user).to_bytes(), user.to_bytes());
+        // SAFETY: trivially safe
         let trusted = unsafe { CStr::from_bytes_with_nul_unchecked(b"trusted.foobar\0") };
         assert_eq!(p.rewrite_xattr_name(trusted).to_bytes(), trusted.to_bytes());
+        // SAFETY: trivially safe
         let system = unsafe { CStr::from_bytes_with_nul_unchecked(b"system.foobar\0") };
         assert_eq!(p.rewrite_xattr_name(system).to_bytes(), system.to_bytes());
 
         // sehash should be re-written.
+        // SAFETY: trivially safe
         let sehash = unsafe { CStr::from_bytes_with_nul_unchecked(b"security.sehash\0") };
         assert_eq!(
             p.rewrite_xattr_name(sehash).to_bytes(),

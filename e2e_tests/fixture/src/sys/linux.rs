@@ -51,6 +51,7 @@ pub fn binary_name() -> &'static str {
 /// Safe wrapper for libc::mkfifo
 pub(crate) fn mkfifo(path: &Path) -> io::Result<()> {
     let cpath = CString::new(path.to_str().unwrap()).unwrap();
+    // SAFETY: no mutable pointer passed to function and the return value is checked.
     let result = unsafe { libc::mkfifo(cpath.as_ptr(), 0o777) };
     if result == 0 {
         Ok(())

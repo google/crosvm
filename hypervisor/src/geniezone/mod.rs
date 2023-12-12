@@ -85,6 +85,7 @@ use crate::PSCI_0_2;
 impl Geniezone {
     /// Get the size of guest physical addresses (IPA) in bits.
     pub fn get_guest_phys_addr_bits(&self) -> u8 {
+        // SAFETY:
         // Safe because we know self is a real geniezone fd
         match unsafe {
             ioctl_with_val(
@@ -105,6 +106,7 @@ impl GeniezoneVm {
     pub fn init_arch(&self, cfg: &Config) -> Result<()> {
         #[cfg(target_arch = "aarch64")]
         if cfg.mte {
+            // SAFETY:
             // Safe because it does not take pointer arguments.
             unsafe {
                 self.ctrl_geniezone_enable_capability(GeniezoneCap::ArmMte, &[0, 0, 0, 0, 0])
@@ -134,6 +136,7 @@ impl GeniezoneVm {
     }
 
     fn get_protected_vm_info(&self) -> Result<u64> {
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel won't write beyond the end of
         // the struct or keep a pointer to it.
         let cap: gzvm_enable_cap = unsafe {
@@ -146,6 +149,7 @@ impl GeniezoneVm {
     }
 
     fn set_protected_vm_firmware_ipa(&self, fw_addr: GuestAddress) -> Result<()> {
+        // SAFETY:
         // Safe because none of the args are pointers.
         unsafe {
             self.ctrl_geniezone_enable_capability(
@@ -196,6 +200,9 @@ impl VmAArch64 for GeniezoneVm {
             dtb_addr: fdt_address.offset(),
             dtb_size: fdt_size.try_into().unwrap(),
         };
+        // SAFETY:
+        // Safe because we allocated the struct and we know the kernel will modify exactly the size
+        // of the struct.
         let ret = unsafe { ioctl_with_ref(self, GZVM_SET_DTB_CONFIG(), &dtb_config) };
         if ret == 0 {
             Ok(())
@@ -221,6 +228,7 @@ impl GeniezoneVcpu {
                 .try_into()
                 .expect("can't represent usize as u64"),
         };
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, GZVM_SET_ONE_REG(), &onereg) };
@@ -249,6 +257,7 @@ impl GeniezoneVcpu {
                 .expect("can't represent usize as u64"),
         };
 
+        // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, GZVM_GET_ONE_REG(), &onereg) };
@@ -485,6 +494,7 @@ impl VcpuAArch64 for GeniezoneVcpu {
 // Wrapper around GZVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
 // from guest physical to host user pages.
 //
+// SAFETY:
 // Safe when the guest regions are guaranteed not to overlap.
 unsafe fn set_user_memory_region(
     descriptor: &SafeDescriptor,
@@ -535,14 +545,16 @@ pub enum GeniezoneCap {
 
 impl Geniezone {
     pub fn new_with_path(device_path: &Path) -> Result<Geniezone> {
-        // Open calls are safe because we give a nul-terminated string and verify the result.
         let c_path = CString::new(device_path.as_os_str().as_bytes()).unwrap();
+        // SAFETY:
+        // Open calls are safe because we give a nul-terminated string and verify the result.
         let ret = unsafe { open(c_path.as_ptr(), O_RDWR | O_CLOEXEC) };
         if ret < 0 {
             return errno_result();
         }
-        // Safe because we verify that ret is valid and we own the fd.
         Ok(Geniezone {
+            // SAFETY:
+            // Safe because we verify that ret is valid and we own the fd.
             geniezone: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
         })
     }
@@ -598,12 +610,14 @@ pub struct GeniezoneVm {
 impl GeniezoneVm {
     /// Constructs a new `GeniezoneVm` using the given `Geniezone` instance.
     pub fn new(geniezone: &Geniezone, guest_mem: GuestMemory, cfg: Config) -> Result<GeniezoneVm> {
+        // SAFETY:
         // Safe because we know gzvm is a real gzvm fd as this module is the only one that can make
         // gzvm objects.
         let ret = unsafe { ioctl(geniezone, GZVM_CREATE_VM()) };
         if ret < 0 {
             return errno_result();
         }
+        // SAFETY:
         // Safe because we verify that ret is valid and we own the fd.
         let vm_descriptor = unsafe { SafeDescriptor::from_raw_descriptor(ret) };
         for region in guest_mem.regions() {
@@ -612,8 +626,9 @@ impl GeniezoneVm {
                 MemoryRegionPurpose::ProtectedFirmwareRegion => GZVM_USER_MEM_REGION_PROTECT_FW,
                 MemoryRegionPurpose::StaticSwiotlbRegion => GZVM_USER_MEM_REGION_STATIC_SWIOTLB,
             };
+            // SAFETY:
+            // Safe because the guest regions are guaranteed not to overlap.
             unsafe {
-                // Safe because the guest regions are guaranteed not to overlap.
                 set_user_memory_region(
                     &vm_descriptor,
                     region.index as MemSlot,
@@ -642,14 +657,16 @@ impl GeniezoneVm {
         // run is a data stucture shared with ko and geniezone
         let run_mmap_size = self.geniezone.get_vcpu_mmap_size()?;
 
-        // Safe because we know that our file is a VM fd and we verify the return result.
         let fd =
+            // SAFETY:
+            // Safe because we know that our file is a VM fd and we verify the return result.
             unsafe { ioctl_with_val(self, GZVM_CREATE_VCPU(), c_ulong::try_from(id).unwrap()) };
 
         if fd < 0 {
             return errno_result();
         }
 
+        // SAFETY:
         // Wrap the vcpu now in case the following ? returns early. This is safe because we verified
         // the value of the fd and we own the fd.
         let vcpu = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
@@ -671,6 +688,7 @@ impl GeniezoneVm {
     ///
     /// See the documentation on the GZVM_CREATE_IRQCHIP ioctl.
     pub fn create_irq_chip(&self) -> Result<()> {
+        // SAFETY:
         // Safe because we know that our file is a VM fd and we verify the return result.
         let ret = unsafe { ioctl(self, GZVM_CREATE_IRQCHIP()) };
         if ret == 0 {
@@ -686,6 +704,7 @@ impl GeniezoneVm {
         irq_level.__bindgen_anon_1.irq = irq;
         irq_level.level = active as u32;
 
+        // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, GZVM_IRQ_LINE(), &irq_level) };
@@ -715,6 +734,7 @@ impl GeniezoneVm {
             irqfd.resamplefd = r_evt.as_raw_descriptor() as u32;
         }
 
+        // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, GZVM_IRQFD(), &irqfd) };
@@ -737,6 +757,7 @@ impl GeniezoneVm {
             flags: GZVM_IRQFD_FLAG_DEASSIGN,
             ..Default::default()
         };
+        // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, GZVM_IRQFD(), &irqfd) };
@@ -794,6 +815,7 @@ impl GeniezoneVm {
             flags,
             ..Default::default()
         };
+        // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, GZVM_IOEVENTFD(), &ioeventfd) };
@@ -806,9 +828,10 @@ impl GeniezoneVm {
 
     /// Checks whether a particular GZVM-specific capability is available for this VM.
     fn check_raw_capability(&self, capability: GeniezoneCap) -> bool {
+        let cap: u64 = capability as u64;
+        // SAFETY:
         // Safe because we know that our file is a GZVM fd, and if the cap is invalid GZVM assumes
         // it's an unavailable extension and returns 0.
-        let cap: u64 = capability as u64;
         unsafe {
             ioctl_with_ref(self, GZVM_CHECK_EXTENSION(), &cap);
         }
@@ -843,6 +866,9 @@ impl GeniezoneVm {
     }
 
     pub fn create_geniezone_device(&self, dev: gzvm_create_device) -> Result<()> {
+        // SAFETY:
+        // Safe because we allocated the struct and we know the kernel will modify exactly the size
+        // of the struct and the return value is checked.
         let ret = unsafe { base::ioctl_with_ref(self, GZVM_CREATE_DEVICE(), &dev) };
         if ret == 0 {
             Ok(())
@@ -922,6 +948,7 @@ impl Vm for GeniezoneVm {
         };
         let flags = 0;
 
+        // SAFETY:
         // Safe because we check that the given guest address is valid and has no overlaps. We also
         // know that the pointer and size are correct because the MemoryMapping interface ensures
         // this. We take ownership of the memory mapping so that it won't be unmapped until the slot
@@ -964,6 +991,7 @@ impl Vm for GeniezoneVm {
         if !regions.contains_key(&slot) {
             return Err(Error::new(ENOENT));
         }
+        // SAFETY:
         // Safe because the slot is checked against the list of memory slots.
         unsafe {
             set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut(), 0)?;
@@ -1104,6 +1132,8 @@ impl Vcpu for GeniezoneVcpu {
 
     #[allow(clippy::cast_ptr_alignment)]
     fn set_immediate_exit(&self, exit: bool) {
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut gzvm_vcpu_run) };
         run.immediate_exit = exit as u8;
     }
@@ -1128,12 +1158,14 @@ impl Vcpu for GeniezoneVcpu {
     // The pointer is page aligned so casting to a different type is well defined, hence the clippy
     // allow attribute.
     fn run(&mut self) -> Result<VcpuExit> {
+        // SAFETY:
         // Safe because we know that our file is a VCPU fd and we verify the return result.
         let ret = unsafe { ioctl_with_val(self, GZVM_RUN(), self.run_mmap.as_ptr() as u64) };
         if ret != 0 {
             return errno_result();
         }
 
+        // SAFETY:
         // Safe because we know we mapped enough memory to hold the gzvm_vcpu_run struct because the
         // kernel told us how large it was.
         let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut gzvm_vcpu_run) };
@@ -1145,6 +1177,7 @@ impl Vcpu for GeniezoneVcpu {
             GZVM_EXIT_EXCEPTION => Err(Error::new(EINVAL)),
             GZVM_EXIT_DEBUG => Ok(VcpuExit::Debug),
             GZVM_EXIT_FAIL_ENTRY => {
+                // SAFETY:
                 // Safe because the exit_reason (which comes from the kernel) told us which
                 // union field to use.
                 let hardware_entry_failure_reason = unsafe {
@@ -1157,6 +1190,9 @@ impl Vcpu for GeniezoneVcpu {
                 })
             }
             GZVM_EXIT_SYSTEM_EVENT => {
+                // SAFETY:
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
                 let event_type = unsafe { run.__bindgen_anon_1.system_event.type_ };
                 match event_type {
                     GZVM_SYSTEM_EVENT_SHUTDOWN => Ok(VcpuExit::SystemEventShutdown),
@@ -1176,6 +1212,7 @@ impl Vcpu for GeniezoneVcpu {
     }
 
     fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
+        // SAFETY:
         // Safe because we know we mapped enough memory to hold the gzvm_vcpu_run struct because the
         // kernel told us how large it was. The pointer is page aligned so casting to a different
         // type is well defined, hence the clippy allow attribute.
@@ -1183,9 +1220,9 @@ impl Vcpu for GeniezoneVcpu {
 
         // Verify that the handler is called in the right context.
         assert!(run.exit_reason == GZVM_EXIT_MMIO);
+        // SAFETY:
         // Safe because the exit_reason (which comes from the kernel) told us which
         // union field to use.
-
         let mmio = unsafe { &mut run.__bindgen_anon_1.mmio };
         let address = mmio.phys_addr;
 

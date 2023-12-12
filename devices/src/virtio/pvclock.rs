@@ -394,10 +394,11 @@ impl PvClockWorker {
             warn!("Suspend time already set, ignoring new suspend time");
             return;
         }
-        // Safe because _rdtsc takes no arguments, and we trust _rdtsc to not modify any other
-        // memory.
         self.suspend_time = Some(PvclockInstant {
             time: Utc::now(),
+            // SAFETY:
+            // Safe because _rdtsc takes no arguments, and we trust _rdtsc to not modify any other
+            // memory.
             tsc_value: unsafe { _rdtsc() },
         });
     }
@@ -448,10 +449,11 @@ impl PvClockWorker {
     fn set_suspended_time(&mut self) -> Result<()> {
         let (this_suspend_duration, this_suspend_tsc_delta) =
             if let Some(suspend_time) = self.suspend_time.take() {
-                // Safe because _rdtsc takes no arguments, and we trust _rdtsc to not modify any
-                // other memory.
                 (
                     Self::get_suspended_duration(&suspend_time),
+                    // SAFETY:
+                    // Safe because _rdtsc takes no arguments, and we trust _rdtsc to not modify any
+                    // other memory.
                     unsafe { _rdtsc() } - suspend_time.tsc_value,
                 )
             } else {

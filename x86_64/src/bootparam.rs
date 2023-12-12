@@ -200,6 +200,7 @@ pub struct edd_device_params__bindgen_ty_1__bindgen_ty_6 {
 }
 impl Default for edd_device_params__bindgen_ty_1 {
     fn default() -> Self {
+        // SAFETY: trivially safe
         unsafe { ::std::mem::zeroed() }
     }
 }
@@ -293,11 +294,13 @@ pub struct edd_device_params__bindgen_ty_2__bindgen_ty_10 {
 }
 impl Default for edd_device_params__bindgen_ty_2 {
     fn default() -> Self {
+        // SAFETY: trivially safe
         unsafe { ::std::mem::zeroed() }
     }
 }
 impl Default for edd_device_params {
     fn default() -> Self {
+        // SAFETY: trivially safe
         unsafe { ::std::mem::zeroed() }
     }
 }
@@ -314,6 +317,7 @@ pub struct edd_info {
 }
 impl Default for edd_info {
     fn default() -> Self {
+        // SAFETY: trivially safe
         unsafe { ::std::mem::zeroed() }
     }
 }
@@ -332,6 +336,7 @@ pub struct edid_info {
 }
 impl Default for edid_info {
     fn default() -> Self {
+        // SAFETY: trivially safe
         unsafe { ::std::mem::zeroed() }
     }
 }
@@ -458,6 +463,7 @@ pub struct boot_params {
 }
 impl Default for boot_params {
     fn default() -> Self {
+        // SAFETY: trivially safe
         unsafe { ::std::mem::zeroed() }
     }
 }

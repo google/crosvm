@@ -724,25 +724,45 @@ pub unsafe trait TrbCast: FromBytes + AsBytes + TypedTrb {
     }
 }
 
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for Trb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for NormalTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for SetupStageTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for DataStageTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for StatusStageTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for IsochTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for LinkTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for EventDataTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for NoopTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for DisableSlotCommandTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for AddressDeviceCommandTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for ConfigureEndpointCommandTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for EvaluateContextCommandTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for ResetEndpointCommandTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for StopEndpointCommandTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for SetTRDequeuePointerCommandTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for ResetDeviceCommandTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for TransferEventTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for CommandCompletionEventTrb {}
+// SAFETY: see safety comments for TrbCast
 unsafe impl TrbCast for PortStatusChangeEventTrb {}
 
 #[bitfield]

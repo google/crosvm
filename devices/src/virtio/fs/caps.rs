@@ -113,6 +113,7 @@ pub struct Caps(cap_t);
 impl Caps {
     /// Get the capabilities for the current thread.
     pub fn for_current_thread() -> io::Result<Caps> {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let caps = unsafe { cap_get_proc() };
         if caps.is_null() {
@@ -124,6 +125,7 @@ impl Caps {
 
     /// Update the capabilities described by `self` by setting or clearing `caps` in `set`.
     pub fn update(&mut self, caps: &[Capability], set: Set, value: Value) -> io::Result<()> {
+        // SAFETY:
         // Safe because this only modifies the memory pointed to by `self.0` and we check the return
         // value.
         let ret = unsafe {
@@ -146,6 +148,7 @@ impl Caps {
 
     /// Apply the capabilities described by `self` to the current thread.
     pub fn apply(&self) -> io::Result<()> {
+        // SAFETY: trivially safe
         if unsafe { cap_set_proc(self.0) } == 0 {
             Ok(())
         } else {
@@ -156,6 +159,7 @@ impl Caps {
 
 impl Drop for Caps {
     fn drop(&mut self) {
+        // SAFETY: cap_t is allocated from `Self`
         unsafe {
             cap_free(self.0);
         }

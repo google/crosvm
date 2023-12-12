@@ -24,6 +24,7 @@ See instructions from: https://rust-lang.github.io/rust-bindgen/print.html
     Suppress warnings from unaligned_references and deref_nullptr
 */
 #![allow(unaligned_references, deref_nullptr)]
+#![allow(clippy::undocumented_unsafe_blocks)]
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]

@@ -212,6 +212,7 @@ impl RutabagaComponent for Rutabaga2D {
         let resource_bpp = 4;
         let mut src_slices = Vec::with_capacity(iovecs.len());
         for iovec in &iovecs {
+            // SAFETY:
             // Safe because Rutabaga users should have already checked the iovecs.
             let slice = unsafe { std::slice::from_raw_parts(iovec.base as *mut u8, iovec.len) };
             src_slices.push(slice);

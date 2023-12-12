@@ -188,20 +188,27 @@ impl<F: FileSystem + Sync> Worker<F> {
         // cases.
         const SECBIT_NO_SETUID_FIXUP: i32 = 1 << 2;
 
-        // Safe because this doesn't modify any memory and we check the return value.
-        let mut securebits = syscall!(unsafe { libc::prctl(libc::PR_GET_SECUREBITS) })
-            .map_err(Error::GetSecurebits)?;
+        let mut securebits = syscall!(
+            // SAFETY: Safe because this doesn't modify any memory and we check the return value.
+            unsafe { libc::prctl(libc::PR_GET_SECUREBITS) }
+        )
+        .map_err(Error::GetSecurebits)?;
 
         securebits |= SECBIT_NO_SETUID_FIXUP;
 
-        // Safe because this doesn't modify any memory and we check the return value.
-        syscall!(unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) })
-            .map_err(Error::SetSecurebits)?;
+        syscall!(
+            // SAFETY: Safe because this doesn't modify any memory and we check the return value.
+            unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) }
+        )
+        .map_err(Error::SetSecurebits)?;
 
         // To avoid extra locking, unshare filesystem attributes from parent. This includes the
         // current working directory and umask.
-        // Safe because this doesn't modify any memory and we check the return value.
-        syscall!(unsafe { libc::unshare(libc::CLONE_FS) }).map_err(Error::UnshareFromParent)?;
+        syscall!(
+            // SAFETY: Safe because this doesn't modify any memory and we check the return value.
+            unsafe { libc::unshare(libc::CLONE_FS) }
+        )
+        .map_err(Error::UnshareFromParent)?;
 
         #[derive(EventToken)]
         enum Token {

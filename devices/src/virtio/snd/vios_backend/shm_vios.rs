@@ -195,8 +195,9 @@ impl VioSClient {
             expected: usize,
             received: usize,
         ) -> Result<T> {
+            // SAFETY:
+            // Safe because we transfer ownership from the SafeDescriptor to T
             unsafe {
-                // Safe because we transfer ownership from the SafeDescriptor to T
                 Ok(T::from_raw_descriptor(
                     safe_fds
                         .pop()

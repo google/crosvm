@@ -277,12 +277,14 @@ extern "C" {
 /// Returns the minimum (inclusive) real-time signal number.
 #[allow(non_snake_case)]
 pub fn SIGRTMIN() -> c_int {
+    // SAFETY: trivially safe
     unsafe { __libc_current_sigrtmin() }
 }
 
 /// Returns the maximum (inclusive) real-time signal number.
 #[allow(non_snake_case)]
 pub fn SIGRTMAX() -> c_int {
+    // SAFETY: trivially safe
     unsafe { __libc_current_sigrtmax() }
 }
 
@@ -311,11 +313,13 @@ pub unsafe fn register_signal_handler(num: c_int, handler: extern "C" fn(c_int))
 
 /// Resets the signal handler of signum `num` back to the default.
 pub fn clear_signal_handler(num: c_int) -> Result<()> {
+    // SAFETY:
     // Safe because sigaction is owned and expected to be initialized ot zeros.
     let mut sigact: sigaction = unsafe { mem::zeroed() };
     sigact.sa_flags = SA_RESTART;
     sigact.sa_sigaction = SIG_DFL;
 
+    // SAFETY:
     // Safe because sigact is owned, and this is restoring the default signal handler.
     let ret = unsafe { sigaction(num, &sigact, null_mut()) };
     if ret < 0 {
@@ -345,9 +349,11 @@ pub unsafe fn register_rt_signal_handler(num: c_int, handler: extern "C" fn(c_in
 ///
 /// This is a helper function used when we want to manipulate signals.
 pub fn create_sigset(signals: &[c_int]) -> Result<sigset_t> {
+    // SAFETY:
     // sigset will actually be initialized by sigemptyset below.
     let mut sigset: sigset_t = unsafe { mem::zeroed() };
 
+    // SAFETY:
     // Safe - return value is checked.
     let ret = unsafe { sigemptyset(&mut sigset) };
     if ret < 0 {
@@ -355,6 +361,7 @@ pub fn create_sigset(signals: &[c_int]) -> Result<sigset_t> {
     }
 
     for signal in signals {
+        // SAFETY:
         // Safe - return value is checked.
         let ret = unsafe { sigaddset(&mut sigset, *signal) };
         if ret < 0 {
@@ -373,6 +380,7 @@ pub fn wait_for_signal(signals: &[c_int], timeout: Option<Duration>) -> Result<c
     match timeout {
         Some(timeout) => {
             let ts = duration_to_timespec(timeout);
+            // SAFETY:
             // Safe - return value is checked.
             let ret = handle_eintr_errno!(unsafe { sigtimedwait(&sigset, null_mut(), &ts) });
             if ret < 0 {
@@ -383,6 +391,7 @@ pub fn wait_for_signal(signals: &[c_int], timeout: Option<Duration>) -> Result<c
         }
         None => {
             let mut ret: c_int = 0;
+            // SAFETY: Safe because args are valid and the return value is checked.
             let err = handle_eintr_rc!(unsafe { sigwait(&sigset, &mut ret as *mut c_int) });
             if err != 0 {
                 Err(ErrnoError::new(err))
@@ -397,6 +406,7 @@ pub fn wait_for_signal(signals: &[c_int], timeout: Option<Duration>) -> Result<c
 pub fn get_blocked_signals() -> SignalResult<Vec<c_int>> {
     let mut mask = Vec::new();
 
+    // SAFETY:
     // Safe - return values are checked.
     unsafe {
         let mut old_sigset: sigset_t = mem::zeroed();
@@ -422,6 +432,7 @@ pub fn get_blocked_signals() -> SignalResult<Vec<c_int>> {
 pub fn block_signal(num: c_int) -> SignalResult<()> {
     let sigset = create_sigset(&[num]).map_err(Error::CreateSigset)?;
 
+    // SAFETY:
     // Safe - return values are checked.
     unsafe {
         let mut old_sigset: sigset_t = mem::zeroed();
@@ -447,6 +458,7 @@ pub fn block_signal(num: c_int) -> SignalResult<()> {
 pub fn unblock_signal(num: c_int) -> SignalResult<()> {
     let sigset = create_sigset(&[num]).map_err(Error::CreateSigset)?;
 
+    // SAFETY:
     // Safe - return value is checked.
     let ret = unsafe { pthread_sigmask(SIG_UNBLOCK, &sigset, null_mut()) };
     if ret < 0 {
@@ -460,6 +472,7 @@ pub fn clear_signal(num: c_int) -> SignalResult<()> {
     let sigset = create_sigset(&[num]).map_err(Error::CreateSigset)?;
 
     while {
+        // SAFETY:
         // This is safe as we are rigorously checking return values
         // of libc calls.
         unsafe {
@@ -535,6 +548,7 @@ pub unsafe trait Killable {
             return Err(ErrnoError::new(EINVAL));
         }
 
+        // SAFETY:
         // Safe because we ensure we are using a valid pthread handle, a valid signal number, and
         // check the return result.
         let ret = unsafe { pthread_kill(self.pthread_handle(), num) };
@@ -545,6 +559,7 @@ pub unsafe trait Killable {
     }
 }
 
+// SAFETY:
 // Safe because we fulfill our contract of returning a genuine pthread handle.
 unsafe impl<T> Killable for JoinHandle<T> {
     fn pthread_handle(&self) -> pthread_t {

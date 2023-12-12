@@ -720,9 +720,12 @@ impl GuestMemory {
     /// ```
     pub fn get_host_address(&self, guest_addr: GuestAddress) -> Result<*const u8> {
         let (mapping, offset, _) = self.find_region(guest_addr)?;
-        // This is safe; `find_region` already checks that offset is in
-        // bounds.
-        Ok(unsafe { mapping.as_ptr().add(offset) } as *const u8)
+        Ok(
+            // SAFETY:
+            // This is safe; `find_region` already checks that offset is in
+            // bounds.
+            unsafe { mapping.as_ptr().add(offset) } as *const u8,
+        )
     }
 
     /// Convert a GuestAddress into a pointer in the address space of this
@@ -766,9 +769,12 @@ impl GuestMemory {
             return Err(Error::InvalidGuestAddress(guest_addr));
         }
 
-        // This is safe; `find_region` already checks that offset is in
-        // bounds.
-        Ok(unsafe { mapping.as_ptr().add(offset) } as *const u8)
+        Ok(
+            //SAFETY:
+            // This is safe; `find_region` already checks that offset is in
+            // bounds.
+            unsafe { mapping.as_ptr().add(offset) } as *const u8,
+        )
     }
 
     /// Returns a reference to the region that backs the given address.
@@ -916,6 +922,7 @@ struct MemorySnapshotMetadata {
     regions: Vec<(u64, usize)>,
 }
 
+// SAFETY:
 // It is safe to implement BackingMemory because GuestMemory can be mutated any time already.
 unsafe impl BackingMemory for GuestMemory {
     fn get_volatile_slice(

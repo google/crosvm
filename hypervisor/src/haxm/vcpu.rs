@@ -88,7 +88,11 @@ pub struct HaxmVcpu {
     pub(super) io_buffer: *mut c_void,
 }
 
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl Send for HaxmVcpu {}
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl Sync for HaxmVcpu {}
 
 impl AsRawDescriptor for HaxmVcpu {
@@ -101,6 +105,7 @@ impl HaxmVcpu {
     fn get_vcpu_state(&self) -> Result<VcpuState> {
         let mut state = vcpu_state_t::default();
 
+        // SAFETY: trivially safe with return value checked.
         let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_GET_REGS(), &mut state) };
         if ret != 0 {
             return errno_result();
@@ -119,6 +124,7 @@ impl HaxmVcpu {
     }
 
     fn set_vcpu_state(&self, state: &mut VcpuState) -> Result<()> {
+        // SAFETY: trivially safe with return value checked.
         let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_SET_REGS(), &mut state.state) };
         if ret != 0 {
             return errno_result();
@@ -156,6 +162,7 @@ impl Vcpu for HaxmVcpu {
 
     /// Sets the bit that requests an immediate exit.
     fn set_immediate_exit(&self, exit: bool) {
+        // SAFETY:
         // Safe because we know the tunnel is a pointer to a hax_tunnel and we know its size.
         // Crosvm's HAXM implementation does not use the _exit_reason, so it's fine if we
         // overwrite it.
@@ -182,16 +189,18 @@ impl Vcpu for HaxmVcpu {
     /// call `handle_fn` with the respective IoOperation to perform the mmio read or write,
     /// and set the return data in the vcpu so that the vcpu can resume running.
     fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
+        // SAFETY:
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
         // Verify that the handler is called for mmio context only.
         unsafe {
             assert!((*self.tunnel)._exit_status == HAX_EXIT_FAST_MMIO);
         }
-        // Safe because the exit_reason (which comes from the kernel) told us which
-        // union field to use.
         let mmio = self.io_buffer as *mut hax_fastmmio;
         let (address, size, direction) =
+            // SAFETY:
+            // Safe because the exit_reason (which comes from the kernel) told us which
+            // union field to use.
             unsafe { ((*mmio).gpa, (*mmio).size as usize, (*mmio).direction) };
 
         match direction {
@@ -201,9 +210,10 @@ impl Vcpu for HaxmVcpu {
                     size,
                     operation: IoOperation::Read,
                 }) {
+                    let data = u64::from_ne_bytes(data);
+                    // SAFETY:
                     // Safe because we know this is an mmio read, so we need to put data into the
                     // "value" field of the hax_fastmmio.
-                    let data = u64::from_ne_bytes(data);
                     unsafe {
                         (*mmio).__bindgen_anon_1.value = data;
                     }
@@ -211,6 +221,7 @@ impl Vcpu for HaxmVcpu {
                 Ok(())
             }
             HAX_EXIT_DIRECTION_MMIO_WRITE => {
+                // SAFETY:
                 // safe because we trust haxm to fill in the union properly.
                 let data = unsafe { (*mmio).__bindgen_anon_1.value };
                 handle_fn(IoParams {
@@ -233,12 +244,14 @@ impl Vcpu for HaxmVcpu {
     /// and set the return data in the vcpu so that the vcpu can resume running.
     #[allow(clippy::cast_ptr_alignment)]
     fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
+        // SAFETY:
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
         // Verify that the handler is called for io context only.
         unsafe {
             assert!((*self.tunnel)._exit_status == HAX_EXIT_IO);
         }
+        // SAFETY:
         // Safe because the exit_reason (which comes from the kernel) told us which
         // union field to use.
         let io = unsafe { (*self.tunnel).__bindgen_anon_1.io };
@@ -251,6 +264,7 @@ impl Vcpu for HaxmVcpu {
                     size,
                     operation: IoOperation::Read,
                 }) {
+                    // SAFETY:
                     // Safe because the exit_reason (which comes from the kernel) told us that
                     // this is port io, where the iobuf can be treated as a *u8
                     unsafe {
@@ -261,6 +275,7 @@ impl Vcpu for HaxmVcpu {
             }
             HAX_EXIT_DIRECTION_PIO_OUT => {
                 let mut data = [0; 8];
+                // SAFETY:
                 // safe because we check the size, from what the kernel told us is the max to copy.
                 unsafe {
                     copy_nonoverlapping(
@@ -304,12 +319,14 @@ impl Vcpu for HaxmVcpu {
     // The pointer is page aligned so casting to a different type is well defined, hence the clippy
     // allow attribute.
     fn run(&mut self) -> Result<VcpuExit> {
-        // Safe because we know that our file is a VCPU fd and we verify the return result.
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe { ioctl(self, HAX_VCPU_IOCTL_RUN()) };
         if ret != 0 {
             return errno_result();
         }
 
+        // SAFETY:
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
         let exit_status = unsafe { (*self.tunnel)._exit_status };
@@ -333,6 +350,7 @@ impl VcpuX86_64 for HaxmVcpu {
     /// Sets or clears the flag that requests the VCPU to exit when it becomes possible to inject
     /// interrupts into the guest.
     fn set_interrupt_window_requested(&self, requested: bool) {
+        // SAFETY:
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
         unsafe {
@@ -342,6 +360,7 @@ impl VcpuX86_64 for HaxmVcpu {
 
     /// Checks if we can inject an interrupt into the VCPU.
     fn ready_for_interrupt(&self) -> bool {
+        // SAFETY:
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
         unsafe { (*self.tunnel).ready_for_interrupt_injection != 0 }
@@ -349,6 +368,8 @@ impl VcpuX86_64 for HaxmVcpu {
 
     /// Injects interrupt vector `irq` into the VCPU.
     fn interrupt(&self, irq: u32) -> Result<()> {
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe { ioctl_with_ref(self, HAX_VCPU_IOCTL_INTERRUPT(), &irq) };
         if ret != 0 {
             return errno_result();
@@ -391,6 +412,8 @@ impl VcpuX86_64 for HaxmVcpu {
     /// Gets the VCPU FPU registers.
     fn get_fpu(&self) -> Result<Fpu> {
         let mut fpu = fx_layout::default();
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_GET_FPU(), &mut fpu) };
 
         if ret != 0 {
@@ -403,6 +426,8 @@ impl VcpuX86_64 for HaxmVcpu {
     /// Sets the VCPU FPU registers.
     fn set_fpu(&self, fpu: &Fpu) -> Result<()> {
         let mut current_fpu = fx_layout::default();
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_GET_FPU(), &mut current_fpu) };
 
         if ret != 0 {
@@ -415,6 +440,8 @@ impl VcpuX86_64 for HaxmVcpu {
         // fpu state's mxcsr_mask matches its current value
         new_fpu.mxcsr_mask = current_fpu.mxcsr_mask;
 
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe { ioctl_with_ref(self, HAX_VCPU_IOCTL_SET_FPU(), &new_fpu) };
 
         if ret != 0 {
@@ -483,6 +510,8 @@ impl VcpuX86_64 for HaxmVcpu {
             // Copy chunk into msr_data
             msr_data.entries[..chunk_size].copy_from_slice(&hax_chunk);
 
+            // TODO(b/315998194): Add safety comment
+            #[allow(clippy::undocumented_unsafe_blocks)]
             let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_GET_MSRS(), &mut msr_data) };
             if ret != 0 {
                 return errno_result();
@@ -518,6 +547,8 @@ impl VcpuX86_64 for HaxmVcpu {
             // Copy chunk into msr_data
             msr_data.entries[..chunk_size].copy_from_slice(&hax_chunk);
 
+            // TODO(b/315998194): Add safety comment
+            #[allow(clippy::undocumented_unsafe_blocks)]
             let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_SET_MSRS(), &mut msr_data) };
             if ret != 0 {
                 return errno_result();
@@ -532,11 +563,15 @@ impl VcpuX86_64 for HaxmVcpu {
         let total = cpuid.cpu_id_entries.len();
         let mut hax = vec_with_array_field::<hax_cpuid, hax_cpuid_entry>(total);
         hax[0].total = total as u32;
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let entries = unsafe { hax[0].entries.as_mut_slice(total) };
         for (i, e) in cpuid.cpu_id_entries.iter().enumerate() {
             entries[i] = hax_cpuid_entry::from(e);
         }
 
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe {
             ioctl_with_ptr_sized(
                 self,
@@ -607,6 +642,8 @@ struct VcpuState {
 
 impl VcpuState {
     fn get_regs(&self) -> Regs {
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             Regs {
                 rax: self
@@ -795,6 +832,8 @@ impl VcpuState {
 
 impl From<&segment_desc_t> for Segment {
     fn from(item: &segment_desc_t) -> Self {
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             Segment {
                 base: item.base,
@@ -822,6 +861,8 @@ impl From<&Segment> for segment_desc_t {
             ..Default::default()
         };
 
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             segment
                 .__bindgen_anon_1
@@ -888,7 +929,9 @@ impl From<&fx_layout> for Fpu {
             fsw: item.fsw,
             ftwx: item.ftw,
             last_opcode: item.fop,
+            // SAFETY: trivially safe
             last_ip: unsafe { item.__bindgen_anon_1.fpu_ip },
+            // SAFETY: trivially safe
             last_dp: unsafe { item.__bindgen_anon_2.fpu_dp },
             xmm: [[0; 16]; 16],
             mxcsr: item.mxcsr,

@@ -36,13 +36,14 @@ impl EventAsync {
         descriptor: &dyn AsRawDescriptor,
         ex: &Executor,
     ) -> AsyncResult<EventAsync> {
-        // Safe because:
-        // a) the underlying Event should be validated by the caller.
-        // b) we do NOT take ownership of the underlying Event. If we did that would cause an early
-        //    free (and later a double free @ the end of this scope). This is why we have to wrap
-        //    it in ManuallyDrop.
-        // c) we own the clone that is produced exclusively, so it is safe to take ownership of it.
         Self::new_without_reset(
+            // SAFETY:
+            // Safe because:
+            // a) the underlying Event should be validated by the caller.
+            // b) we do NOT take ownership of the underlying Event. If we did that would cause an early
+            //    free (and later a double free @ the end of this scope). This is why we have to wrap
+            //    it in ManuallyDrop.
+            // c) we own the clone that is produced exclusively, so it is safe to take ownership of it.
             unsafe {
                 ManuallyDrop::new(Event::from_raw_descriptor(descriptor.as_raw_descriptor()))
             }

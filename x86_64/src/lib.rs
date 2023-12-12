@@ -2279,12 +2279,14 @@ impl CpuIdCall {
 pub fn check_host_hybrid_support(cpuid: &CpuIdCall) -> std::result::Result<(), HybridSupportError> {
     // CPUID.0H.EAX returns maximum input value for basic CPUID information.
     //
+    // SAFETY:
     // Safe because we pass 0 for this call and the host supports the
     // `cpuid` instruction.
     let mut cpuid_entry = unsafe { (cpuid.cpuid)(0x0) };
     if cpuid_entry.eax < 0x1A {
         return Err(HybridSupportError::UnsupportedHostCpu);
     }
+    // SAFETY:
     // Safe because we pass 0x7 and 0 for this call and the host supports the
     // `cpuid` instruction.
     cpuid_entry = unsafe { (cpuid.cpuid_count)(0x7, 0) };
@@ -2296,6 +2298,7 @@ pub fn check_host_hybrid_support(cpuid: &CpuIdCall) -> std::result::Result<(), H
     // 0 is returned in all the registers.
     // For the CPU with hybrid support, its CPUID.1AH.EAX shouldn't be zero.
     //
+    // SAFETY:
     // Safe because we pass 0 for this call and the host supports the
     // `cpuid` instruction.
     cpuid_entry = unsafe { (cpuid.cpuid)(0x1A) };

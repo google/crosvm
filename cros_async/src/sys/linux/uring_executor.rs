@@ -158,15 +158,18 @@ impl From<Error> for io::Error {
 static IS_URING_STABLE: Lazy<bool> = Lazy::new(|| {
     let mut utsname = MaybeUninit::zeroed();
 
+    // SAFETY:
     // Safe because this will only modify `utsname` and we check the return value.
     let res = unsafe { libc::uname(utsname.as_mut_ptr()) };
     if res < 0 {
         return false;
     }
 
+    // SAFETY:
     // Safe because the kernel has initialized `utsname`.
     let utsname = unsafe { utsname.assume_init() };
 
+    // SAFETY:
     // Safe because the pointer is valid and the kernel guarantees that this is a valid C string.
     let release = unsafe { CStr::from_ptr(utsname.release.as_ptr()) };
 
@@ -423,11 +426,10 @@ impl UringReactor {
         raw: &Arc<RawExecutor<UringReactor>>,
         fd: &F,
     ) -> Result<RegisteredSource> {
-        let duped_fd = unsafe {
-            // Safe because duplicating an FD doesn't affect memory safety, and the dup'd FD
-            // will only be added to the poll loop.
-            File::from_raw_fd(dup_fd(fd.as_raw_descriptor())?)
-        };
+        // SAFETY:
+        // Safe because duplicating an FD doesn't affect memory safety, and the dup'd FD
+        // will only be added to the poll loop.
+        let duped_fd = unsafe { File::from_raw_fd(dup_fd(fd.as_raw_descriptor())?) };
 
         Ok(RegisteredSource {
             tag: self
@@ -555,6 +557,7 @@ impl UringReactor {
                 let vslice = mem
                     .get_volatile_slice(mem_range)
                     .map_err(|_| Error::InvalidOffset)?;
+                // SAFETY:
                 // Safe because we guarantee that the memory pointed to by `iovecs` lives until the
                 // transaction is complete and the completion has been returned from `wait()`.
                 Ok(unsafe { IoBufMut::from_raw_parts(vslice.as_mut_ptr(), vslice.size()) })
@@ -572,10 +575,11 @@ impl UringReactor {
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
 
+        // SAFETY:
+        // Safe because all the addresses are within the Memory that an Arc is kept for the
+        // duration to ensure the memory is valid while the kernel accesses it.
+        // Tested by `dont_drop_backing_mem_read` unit test.
         unsafe {
-            // Safe because all the addresses are within the Memory that an Arc is kept for the
-            // duration to ensure the memory is valid while the kernel accesses it.
-            // Tested by `dont_drop_backing_mem_read` unit test.
             self.ctx
                 .add_readv(
                     iovecs,
@@ -609,6 +613,7 @@ impl UringReactor {
                 let vslice = mem
                     .get_volatile_slice(mem_range)
                     .map_err(|_| Error::InvalidOffset)?;
+                // SAFETY:
                 // Safe because we guarantee that the memory pointed to by `iovecs` lives until the
                 // transaction is complete and the completion has been returned from `wait()`.
                 Ok(unsafe { IoBufMut::from_raw_parts(vslice.as_mut_ptr(), vslice.size()) })
@@ -626,10 +631,11 @@ impl UringReactor {
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
 
+        // SAFETY:
+        // Safe because all the addresses are within the Memory that an Arc is kept for the
+        // duration to ensure the memory is valid while the kernel accesses it.
+        // Tested by `dont_drop_backing_mem_write` unit test.
         unsafe {
-            // Safe because all the addresses are within the Memory that an Arc is kept for the
-            // duration to ensure the memory is valid while the kernel accesses it.
-            // Tested by `dont_drop_backing_mem_write` unit test.
             self.ctx
                 .add_writev(
                     iovecs,
@@ -800,6 +806,7 @@ impl Drop for UringReactor {
     }
 }
 
+// SAFETY:
 // Used to dup the FDs passed to the executor so there is a guarantee they aren't closed while
 // waiting in TLS to be added to the main polling context.
 unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {

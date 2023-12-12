@@ -120,9 +120,14 @@ impl KeyboardInputManager {
     fn release_any_down_keys(&self) {
         let mut events = Vec::with_capacity(256);
         let mut keyboard_state: [u8; 256] = [0; 256];
+        // SAFETY:
         // Safe because `keyboard_state` is guaranteed to exist, and is of the expected size.
         if unsafe { GetKeyboardState(keyboard_state.as_mut_ptr()) } == 0 {
-            error!("Failed in GetKeyboardState: {}", unsafe { GetLastError() });
+            error!(
+                "Failed in GetKeyboardState: {}",
+                // SAFETY: trivially safe
+                unsafe { GetLastError() }
+            );
             return;
         }
 
@@ -142,6 +147,7 @@ impl KeyboardInputManager {
                 continue;
             }
 
+            // SAFETY:
             // Trivially safe (no pointers or errors to check).
             let scancode = unsafe { MapVirtualKeyW(virtual_keycode as u32, MAPVK_VK_TO_VSC) };
             if let Some(linux_keycode) = self.keycode_translator.translate(scancode) {
@@ -180,6 +186,7 @@ struct KeyStates {
 /// On success, returns a tuple containing current state of caps lock and num lock keys.
 fn get_host_key_states() -> Option<KeyStates> {
     let mut keyboard_state: [BYTE; 256] = [0; 256];
+    // SAFETY:
     // Safe because `keyboard_state` is guaranteed to exist, and is of the expected size.
     if unsafe { GetKeyboardState(keyboard_state.as_mut_ptr()) } != 0 {
         Some(KeyStates {
@@ -187,7 +194,11 @@ fn get_host_key_states() -> Option<KeyStates> {
             num_lock_state: toggle_to_bool(keyboard_state[VK_NUMLOCK as usize]),
         })
     } else {
-        warn!("Failed in GetKeyboardState: {}", unsafe { GetLastError() });
+        warn!(
+            "Failed in GetKeyboardState: {}",
+            // SAFETY: trivially safe
+            unsafe { GetLastError() }
+        );
         None
     }
 }

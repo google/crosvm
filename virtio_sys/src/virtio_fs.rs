@@ -23,6 +23,7 @@ pub struct virtio_fs_config {
 impl Default for virtio_fs_config {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        // SAFETY: Safe because s is aligned and is initialized in the block.
         unsafe {
             ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
             s.assume_init()

@@ -215,6 +215,7 @@ ioctl_iowr_nr!(SYNC_IOC_FILE_INFO, 0x3e, 4, sync_file_info);
 
 fn is_fence(f: &File) -> bool {
     let info = sync_file_info::default();
+    // SAFETY:
     // Safe as f is a valid file
     unsafe { ioctl_with_ref(f, SYNC_IOC_FILE_INFO(), &info) == 0 }
 }
@@ -444,6 +445,7 @@ struct VmRequester {
 // The following are wrappers to avoid base dependencies in the rutabaga crate
 #[cfg(feature = "minigbm")]
 fn to_safe_descriptor(r: RutabagaDescriptor) -> SafeDescriptor {
+    // SAFETY:
     // Safe because we own the SafeDescriptor at this point.
     unsafe { SafeDescriptor::from_raw_descriptor(r.into_raw_descriptor()) }
 }
@@ -709,11 +711,13 @@ impl CtrlVfdSendVfdV2 {
             self.kind == VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL
                 || self.kind == VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU
         );
+        // SAFETY: trivially safe given we assert kind
         unsafe { self.payload.id }
     }
     #[cfg(feature = "gpu")]
     fn seqno(&self) -> Le64 {
         assert!(self.kind == VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU_FENCE);
+        // SAFETY: trivially safe given we assert kind
         unsafe { self.payload.seqno }
     }
 }
@@ -870,6 +874,7 @@ impl WlVfd {
                 let sync = dma_buf_sync {
                     flags: flags as u64,
                 };
+                // SAFETY:
                 // Safe as descriptor is a valid dmabuf and incorrect flags will return an error.
                 if unsafe { ioctl_with_ref(descriptor, DMA_BUF_IOCTL_SYNC(), &sync) } < 0 {
                     Err(WlError::DmabufSync(io::Error::last_os_error()))
@@ -1430,6 +1435,7 @@ impl WlState {
                     match self.signaled_fence.as_ref().unwrap().try_clone() {
                         Ok(dup) => {
                             *descriptor = dup.into_raw_descriptor();
+                            // SAFETY:
                             // Safe because the fd comes from a valid SafeDescriptor.
                             let file = unsafe { File::from_raw_descriptor(*descriptor) };
                             bridged_files.push(file);

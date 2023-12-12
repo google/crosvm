@@ -26,8 +26,10 @@ use crate::syslog::Log;
 use crate::syslog::Syslog;
 use crate::RawDescriptor;
 
+// SAFETY:
 // On windows RawDescriptor is !Sync + !Send, but also on windows we don't do anything with them
 unsafe impl Sync for crate::syslog::State {}
+// SAFETY: See comments for impl Sync
 unsafe impl Send for crate::syslog::State {}
 
 pub struct PlatformSyslog {}

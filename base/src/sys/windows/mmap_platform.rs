@@ -46,6 +46,7 @@ impl MemoryMapping {
     /// * `size` - Size of memory region in bytes.
     /// * `prot` - Protection (e.g. readable/writable) of the memory region.
     pub fn new_protection(size: usize, prot: Protection) -> Result<MemoryMapping> {
+        // SAFETY:
         // This is safe because we are creating an anonymous mapping in a place not already used by
         // any other area in this process.
         unsafe { MemoryMapping::try_mmap(None, size, prot.into(), None) }
@@ -64,6 +65,7 @@ impl MemoryMapping {
         file_handle: RawDescriptor,
         size: usize,
     ) -> Result<MemoryMapping> {
+        // SAFETY:
         // This is safe because we are creating an anonymous mapping in a place not already used by
         // any other area in this process.
         unsafe {
@@ -89,6 +91,7 @@ impl MemoryMapping {
         offset: u64,
         prot: Protection,
     ) -> Result<MemoryMapping> {
+        // SAFETY:
         // This is safe because we are creating an anonymous mapping in a place not already used by
         // any other area in this process.
         unsafe {
@@ -198,6 +201,7 @@ impl MemoryMapping {
     /// Calls FlushViewOfFile on the mapped memory range, ensuring all changes that would
     /// be written to disk are written immediately
     pub fn msync(&self) -> Result<()> {
+        // SAFETY:
         // Safe because self can only be created as a successful memory mapping
         unsafe {
             if FlushViewOfFile(self.addr, self.size) == 0 {
@@ -210,6 +214,7 @@ impl MemoryMapping {
 
 impl Drop for MemoryMapping {
     fn drop(&mut self) {
+        // SAFETY:
         // This is safe because we MapViewOfFile the area at addr ourselves, and nobody
         // else is holding a reference to it.
         unsafe {
@@ -240,6 +245,7 @@ mod tests {
 
     #[test]
     fn map_invalid_fd() {
+        // SAFETY: trivially safe to create an invalid File.
         let descriptor = unsafe { std::fs::File::from_raw_descriptor(ptr::null_mut()) };
         let res = MemoryMappingBuilder::new(1024)
             .from_file(&descriptor)

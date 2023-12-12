@@ -111,6 +111,7 @@ impl TryFrom<&dyn AsRawDescriptor> for SafeDescriptor {
     /// TODO(b/191800567): this API has sharp edges on Windows. We should evaluate making some
     /// adjustments to smooth those edges.
     fn try_from(rd: &dyn AsRawDescriptor) -> std::result::Result<Self, Self::Error> {
+        // SAFETY:
         // Safe because the underlying raw descriptor is guaranteed valid by rd's existence.
         //
         // Note that we are cloning the underlying raw descriptor since we have no guarantee of
@@ -129,6 +130,7 @@ impl TryFrom<&dyn AsRawDescriptor> for SafeDescriptor {
 
 impl From<File> for SafeDescriptor {
     fn from(f: File) -> SafeDescriptor {
+        // SAFETY:
         // Safe because we own the File at this point.
         unsafe { SafeDescriptor::from_raw_descriptor(f.into_raw_descriptor()) }
     }

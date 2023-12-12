@@ -34,6 +34,7 @@ static mut NT_LIBRARY: MaybeUninit<HMODULE> = MaybeUninit::uninit();
 #[inline]
 fn init_ntdll() -> Result<HINSTANCE> {
     NT_INIT.call_once(|| {
+        // SAFETY: return value is checked.
         unsafe {
             *NT_LIBRARY.as_mut_ptr() =
                 libloaderapi::LoadLibraryW(win32_wide_string("ntdll").as_ptr());
@@ -44,6 +45,7 @@ fn init_ntdll() -> Result<HINSTANCE> {
         };
     });
 
+    // SAFETY: NT_LIBRARY initialized above.
     let handle = unsafe { NT_LIBRARY.assume_init() };
     if handle.is_null() {
         Err(Error::from(io::Error::new(
@@ -56,6 +58,7 @@ fn init_ntdll() -> Result<HINSTANCE> {
 }
 
 fn get_symbol(handle: HMODULE, proc_name: &str) -> Result<*mut minwindef::__some_function> {
+    // SAFETY: return value is checked.
     let symbol = unsafe { libloaderapi::GetProcAddress(handle, win32_string(proc_name).as_ptr()) };
     if symbol.is_null() {
         Err(Error::last())
@@ -68,6 +71,7 @@ fn get_symbol(handle: HMODULE, proc_name: &str) -> Result<*mut minwindef::__some
 pub fn nt_query_timer_resolution() -> Result<(Duration, Duration)> {
     let handle = init_ntdll()?;
 
+    // SAFETY: trivially safe
     let func = unsafe {
         std::mem::transmute::<
             *mut minwindef::__some_function,
@@ -99,6 +103,7 @@ pub fn nt_query_timer_resolution() -> Result<(Duration, Duration)> {
 
 pub fn nt_set_timer_resolution(resolution: Duration) -> Result<()> {
     let handle = init_ntdll()?;
+    // SAFETY: trivially safe
     let func = unsafe {
         std::mem::transmute::<
             *mut minwindef::__some_function,
@@ -150,10 +155,11 @@ pub fn set_time_period(res: Duration, begin: bool) -> Result<()> {
         panic!("time(Begin|End)Period does not support values above u32::MAX.",);
     }
 
-    // Trivially safe. Note that the casts are safe because we know res is within u32's range.
     let ret = if begin {
+        // SAFETY: Trivially safe. Note that the casts are safe because we know res is within u32's range.
         unsafe { timeBeginPeriod(res.as_millis() as u32) }
     } else {
+        // SAFETY: Trivially safe. Note that the casts are safe because we know res is within u32's range.
         unsafe { timeEndPeriod(res.as_millis() as u32) }
     };
     if ret != TIMERR_NOERROR {

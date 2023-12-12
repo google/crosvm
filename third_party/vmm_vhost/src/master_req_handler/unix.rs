@@ -26,9 +26,11 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     pub fn with_stream(backend: S) -> Result<Self> {
         Self::new(
             backend,
-            Box::new(|stream| unsafe {
+            Box::new(|stream|
+                // SAFETY:
                 // Safe because we own the raw fd.
-                SafeDescriptor::from_raw_descriptor(stream.into_raw_fd())
+                unsafe {
+                    SafeDescriptor::from_raw_descriptor(stream.into_raw_fd())
             }),
         )
     }
@@ -82,10 +84,12 @@ mod tests {
         let mut handler = MasterReqHandler::with_stream(backend).unwrap();
 
         let tx_descriptor = handler.take_tx_descriptor();
+        // SAFETY: return value of dup is checked.
         let fd = unsafe { libc::dup(tx_descriptor.as_raw_descriptor()) };
         if fd < 0 {
             panic!("failed to duplicated tx fd!");
         }
+        // SAFETY: fd is created above and is valid
         let stream = unsafe { SystemStream::from_raw_descriptor(fd) };
         let mut fs_cache = Slave::from_stream(stream);
 
@@ -112,10 +116,13 @@ mod tests {
         handler.set_reply_ack_flag(true);
 
         let tx_descriptor = handler.take_tx_descriptor();
+        // SAFETY: return value of dup is checked.
         let fd = unsafe { libc::dup(tx_descriptor.as_raw_descriptor()) };
         if fd < 0 {
             panic!("failed to duplicated tx fd!");
         }
+
+        // SAFETY: fd is created above and is valid
         let stream = unsafe { SystemStream::from_raw_descriptor(fd) };
         let mut fs_cache = Slave::from_stream(stream);
 

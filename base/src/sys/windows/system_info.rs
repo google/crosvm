@@ -19,6 +19,7 @@ struct SystemInfo {
 }
 
 static SYSTEM_INFO: Lazy<SystemInfo> = Lazy::new(|| {
+    // SAFETY:
     // Safe because this is a universally available call on modern Windows systems.
     let sysinfo = unsafe {
         let mut sysinfo = MaybeUninit::<SYSTEM_INFO>::uninit();
@@ -51,6 +52,7 @@ pub fn allocation_granularity() -> u64 {
 /// Cross-platform wrapper around getting the current process id.
 #[inline(always)]
 pub fn getpid() -> Pid {
+    // SAFETY:
     // Safe because we only use the return value.
     unsafe { GetCurrentProcessId() }
 }

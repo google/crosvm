@@ -74,6 +74,7 @@ impl HaxmVm {
     /// Constructs a new `HaxmVm` using the given `Haxm` instance.
     pub fn new(haxm: &Haxm, guest_mem: GuestMemory) -> Result<HaxmVm> {
         let mut vm_id: u32 = 0;
+        // SAFETY:
         // Safe because we know descriptor is a real haxm descriptor as this module is the only
         // one that can make Haxm objects.
         let ret = unsafe { ioctl_with_mut_ref(haxm, HAX_IOCTL_CREATE_VM(), &mut vm_id) };
@@ -85,8 +86,9 @@ impl HaxmVm {
         let vm_descriptor = open_haxm_vm_device(USE_GHAXM.load(Ordering::Relaxed), vm_id)?;
 
         for region in guest_mem.regions() {
+            // SAFETY:
+            // Safe because the guest regions are guaranteed not to overlap.
             unsafe {
-                // Safe because the guest regions are guaranteed not to overlap.
                 set_user_memory_region(
                     &vm_descriptor,
                     false,
@@ -111,6 +113,8 @@ impl HaxmVm {
     pub fn check_raw_capability(&self, cap: u32) -> bool {
         let mut capability_info = hax_capabilityinfo::default();
         let ret =
+            // SAFETY:
+            // Safe because we know that our file is a VM fd and we verify the return result.
             unsafe { ioctl_with_mut_ref(&self.haxm, HAX_IOCTL_CAPABILITY(), &mut capability_info) };
 
         if ret != 0 {
@@ -136,6 +140,8 @@ impl HaxmVm {
             let wstring = &win32_wide_string(path);
             log_file.path[..wstring.len()].clone_from_slice(wstring);
 
+            // SAFETY:
+            // Safe because we know that our file is a VM fd and we verify the return result.
             let ret = unsafe { ioctl_with_ref(self, HAX_VM_IOCTL_REGISTER_LOG_FILE(), &log_file) };
 
             if ret != 0 {
@@ -184,6 +190,8 @@ unsafe fn set_user_memory_region(
         ..Default::default()
     };
 
+    // SAFETY:
+    // Safe because we know that our file is a VM fd and we verify the return result.
     let ret = ioctl_with_ref(descriptor, HAX_VM_IOCTL_SET_RAM2(), &ram_info);
     if ret != 0 {
         return errno_result();
@@ -235,6 +243,7 @@ impl Vm for HaxmVm {
             None => (regions.len() + self.guest_mem.num_regions() as usize) as MemSlot,
         };
 
+        // SAFETY:
         // Safe because we check that the given guest address is valid and has no overlaps. We also
         // know that the pointer and size are correct because the MemoryMapping interface ensures
         // this. We take ownership of the memory mapping so that it won't be unmapped until the slot
@@ -273,6 +282,7 @@ impl Vm for HaxmVm {
         let mut regions = self.mem_regions.lock();
 
         if let Some((guest_addr, mem)) = regions.get(&slot) {
+            // SAFETY:
             // Safe because the slot is checked against the list of memory slots.
             unsafe {
                 set_user_memory_region(
@@ -416,6 +426,7 @@ impl VmX86_64 for HaxmVm {
     }
 
     fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuX86_64>> {
+        // SAFETY:
         // Safe because we know that our file is a VM fd and we verify the return result.
         let fd = unsafe { ioctl_with_ref(self, HAX_VM_IOCTL_VCPU_CREATE(), &(id as u32)) };
         if fd < 0 {
@@ -427,6 +438,7 @@ impl VmX86_64 for HaxmVm {
 
         let mut tunnel_info = hax_tunnel_info::default();
 
+        // SAFETY:
         // Safe because we created tunnel_info and we check the return code for errors
         let ret = unsafe {
             ioctl_with_mut_ref(&descriptor, HAX_VCPU_IOCTL_SETUP_TUNNEL(), &mut tunnel_info)

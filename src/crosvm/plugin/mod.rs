@@ -116,6 +116,7 @@ pub enum CommError {
 
 fn new_seqpacket_pair() -> SysResult<(UnixDatagram, UnixDatagram)> {
     let mut fds = [0, 0];
+    // SAFETY: trivially safe as we check the return value
     unsafe {
         let ret = socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds.as_mut_ptr());
         if ret == 0 {
@@ -143,6 +144,7 @@ fn new_pipe_pair() -> SysResult<VcpuPipe> {
     // Increasing the pipe size can be a nice-to-have to make sure that
     // messages get across atomically (and made sure that writes don't block),
     // though it's not necessary a hard requirement for things to work.
+    // SAFETY: safe because no memory is modified and we check return value.
     let flags = unsafe {
         fcntl(
             to_crosvm.0.as_raw_descriptor(),
@@ -157,6 +159,7 @@ fn new_pipe_pair() -> SysResult<VcpuPipe> {
             SysError::last()
         );
     }
+    // SAFETY: safe because no memory is modified and we check return value.
     let flags = unsafe {
         fcntl(
             to_plugin.0.as_raw_descriptor(),
@@ -279,9 +282,10 @@ pub fn run_vcpus(
     // SIGRTMIN each time it runs the VM, so this mode should be avoided.
 
     if use_kvm_signals {
+        // SAFETY:
+        // Our signal handler does nothing and is trivially async signal safe.
         unsafe {
             extern "C" fn handle_signal(_: c_int) {}
-            // Our signal handler does nothing and is trivially async signal safe.
             // We need to install this signal handler even though we do block
             // the signal below, to ensure that this signal will interrupt
             // execution of KVM_RUN (this is implementation issue).
@@ -291,6 +295,7 @@ pub fn run_vcpus(
         // We do not really want the signal handler to run...
         block_signal(SIGRTMIN() + 0).expect("failed to block signal");
     } else {
+        // SAFETY: trivially safe as we check return value.
         unsafe {
             extern "C" fn handle_signal(_: c_int) {
                 Vcpu::set_local_immediate_exit(true);
@@ -585,6 +590,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 tap_interfaces.push(tap);
             }
             NetParametersMode::TapFd { tap_fd, mac } => {
+                // SAFETY:
                 // Safe because we ensure that we get a unique handle to the fd.
                 let tap = unsafe {
                     Tap::from_raw_descriptor(

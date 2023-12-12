@@ -189,6 +189,7 @@ impl Condvar {
             oldstate = self.state.load(Ordering::Relaxed);
         }
 
+        // SAFETY:
         // Safe because the spin lock guarantees exclusive access and the reference does not escape
         // this function.
         let mu = unsafe { &mut *self.mu.get() };
@@ -200,6 +201,7 @@ impl Condvar {
             _ => panic!("Attempting to use Condvar with more than one RwLock at the same time"),
         }
 
+        // SAFETY:
         // Safe because the spin lock guarantees exclusive access.
         unsafe { (*self.waiters.get()).push_back(waiter) };
 
@@ -241,12 +243,14 @@ impl Condvar {
             oldstate = self.state.load(Ordering::Relaxed);
         }
 
+        // SAFETY:
         // Safe because the spin lock guarantees exclusive access and the reference does not escape
         // this function.
         let waiters = unsafe { &mut *self.waiters.get() };
         let wake_list = get_wake_list(waiters);
 
         let newstate = if waiters.is_empty() {
+            // SAFETY:
             // Also clear the rwlock associated with this Condvar since there are no longer any
             // waiters.  Safe because the spin lock guarantees exclusive access.
             unsafe { *self.mu.get() = 0 };
@@ -299,9 +303,11 @@ impl Condvar {
             oldstate = self.state.load(Ordering::Relaxed);
         }
 
+        // SAFETY:
         // Safe because the spin lock guarantees exclusive access to `self.waiters`.
         let wake_list = unsafe { (*self.waiters.get()).take() };
 
+        // SAFETY:
         // Clear the rwlock associated with this Condvar since there are no longer any waiters. Safe
         // because we the spin lock guarantees exclusive access.
         unsafe { *self.mu.get() = 0 };
@@ -337,6 +343,7 @@ impl Condvar {
             oldstate = self.state.load(Ordering::Relaxed);
         }
 
+        // SAFETY:
         // Safe because the spin lock provides exclusive access and the reference does not escape
         // this function.
         let waiters = unsafe { &mut *self.waiters.get() };
@@ -344,6 +351,7 @@ impl Condvar {
         let waiting_for = waiter.is_waiting_for();
         // Don't drop the old waiter now as we're still holding the spin lock.
         let old_waiter = if waiter.is_linked() && waiting_for == WaitingFor::Condvar {
+            // SAFETY:
             // Safe because we know that the waiter is still linked and is waiting for the Condvar,
             // which guarantees that it is still in `self.waiters`.
             let mut cursor = unsafe { waiters.cursor_mut_from_ptr(waiter as *const Waiter) };
@@ -361,6 +369,7 @@ impl Condvar {
         };
 
         let set_on_release = if waiters.is_empty() {
+            // SAFETY:
             // Clear the rwlock associated with this Condvar since there are no longer any waiters. Safe
             // because we the spin lock guarantees exclusive access.
             unsafe { *self.mu.get() = 0 };
@@ -381,7 +390,11 @@ impl Condvar {
     }
 }
 
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl Send for Condvar {}
+// TODO(b/315998194): Add safety comment
+#[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl Sync for Condvar {}
 
 impl Default for Condvar {
@@ -446,6 +459,7 @@ fn get_wake_list(waiters: &mut WaiterList) -> WaiterList {
 fn cancel_waiter(cv: usize, waiter: &Waiter, wake_next: bool) {
     let condvar = cv as *const Condvar;
 
+    // SAFETY:
     // Safe because the thread that owns the waiter being canceled must also own a reference to the
     // Condvar, which guarantees that this pointer is valid.
     unsafe { (*condvar).cancel_waiter(waiter, wake_next) }
@@ -640,6 +654,7 @@ mod test {
             while *count == 0 {
                 count = cv.wait_read(count).await;
             }
+            // SAFETY: Safe because count is valid and is byte aligned.
             let _ = unsafe { ptr::read_volatile(&*count as *const usize) };
         }
 

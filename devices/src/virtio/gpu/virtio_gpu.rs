@@ -71,11 +71,13 @@ use crate::virtio::resource_bridge::ResourceResponse;
 use crate::virtio::SharedMemoryMapper;
 
 pub fn to_rutabaga_descriptor(s: SafeDescriptor) -> RutabagaDescriptor {
+    // SAFETY:
     // Safe because we own the SafeDescriptor at this point.
     unsafe { RutabagaDescriptor::from_raw_descriptor(s.into_raw_descriptor()) }
 }
 
 fn to_safe_descriptor(r: RutabagaDescriptor) -> SafeDescriptor {
+    // SAFETY:
     // Safe because we own the SafeDescriptor at this point.
     unsafe { SafeDescriptor::from_raw_descriptor(r.into_raw_descriptor()) }
 }
@@ -357,9 +359,10 @@ impl VirtioGpuScanout {
         let mut transfer = Transfer3D::new_2d(0, 0, self.width, self.height);
         transfer.stride = fb.stride();
         let fb_slice = fb.as_volatile_slice();
-        let buf = IoSliceMut::new(unsafe {
-            std::slice::from_raw_parts_mut(fb_slice.as_mut_ptr(), fb_slice.size())
-        });
+        let buf = IoSliceMut::new(
+            // SAFETY: trivially safe
+            unsafe { std::slice::from_raw_parts_mut(fb_slice.as_mut_ptr(), fb_slice.size()) },
+        );
         rutabaga.transfer_read(0, resource.resource_id, transfer, Some(buf))?;
 
         display.flip(surface_id);
@@ -930,7 +933,10 @@ impl VirtioGpu {
         buf: Option<VolatileSlice>,
     ) -> VirtioGpuResult {
         let buf = buf.map(|vs| {
-            IoSliceMut::new(unsafe { std::slice::from_raw_parts_mut(vs.as_mut_ptr(), vs.size()) })
+            IoSliceMut::new(
+                // SAFETY: trivially safe
+                unsafe { std::slice::from_raw_parts_mut(vs.as_mut_ptr(), vs.size()) },
+            )
         });
         self.rutabaga
             .transfer_read(ctx_id, resource_id, transfer, buf)?;

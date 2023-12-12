@@ -12,6 +12,7 @@ use crate::Result;
 /// Safe wrapper for `sysconf(_SC_IOV_MAX)`.
 #[inline(always)]
 pub fn iov_max() -> usize {
+    // SAFETY:
     // Trivially safe
     unsafe { sysconf(_SC_IOV_MAX) as usize }
 }
@@ -19,6 +20,7 @@ pub fn iov_max() -> usize {
 /// Safe wrapper for `sysconf(_SC_PAGESIZE)`.
 #[inline(always)]
 pub fn pagesize() -> usize {
+    // SAFETY:
     // Trivially safe
     unsafe { sysconf(_SC_PAGESIZE) as usize }
 }
@@ -26,6 +28,7 @@ pub fn pagesize() -> usize {
 /// Returns the number of online logical cores on the system.
 #[inline(always)]
 pub fn number_of_logical_cores() -> Result<usize> {
+    // SAFETY:
     // Safe because we pass a flag for this call and the host supports this system call
     Ok(unsafe { sysconf(_SC_NPROCESSORS_CONF) } as usize)
 }

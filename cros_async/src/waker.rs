@@ -62,6 +62,8 @@ unsafe fn drop_weak_raw<W: WeakWake>(data: *const ()) {
 }
 
 pub(crate) fn new_waker<W: WeakWake>(w: Weak<W>) -> Waker {
+    // TODO(b/315998194): Add safety comment
+    #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe {
         Waker::from_raw(RawWaker::new(
             w.into_raw() as *const (),

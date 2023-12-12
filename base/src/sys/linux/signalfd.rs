@@ -67,6 +67,7 @@ impl SignalFd {
     pub fn new(signal: c_int) -> Result<SignalFd> {
         let sigset = signal::create_sigset(&[signal]).map_err(Error::CreateSigset)?;
 
+        // SAFETY:
         // This is safe as we check the return value and know that fd is valid.
         let fd = unsafe { signalfd(-1, &sigset, SFD_CLOEXEC | SFD_NONBLOCK) };
         if fd < 0 {
@@ -76,6 +77,7 @@ impl SignalFd {
         // Mask out the normal handler for the signal.
         signal::block_signal(signal).map_err(Error::CreateBlockSignal)?;
 
+        // SAFETY:
         // This is safe because we checked fd for success and know the
         // kernel gave us an fd that we own.
         unsafe {
@@ -88,10 +90,12 @@ impl SignalFd {
 
     /// Read a siginfo struct from the signalfd, if available.
     pub fn read(&self) -> Result<Option<signalfd_siginfo>> {
+        // SAFETY:
         // signalfd_siginfo doesn't have a default, so just zero it.
         let mut siginfo: signalfd_siginfo = unsafe { mem::zeroed() };
         let siginfo_size = mem::size_of::<signalfd_siginfo>();
 
+        // SAFETY:
         // This read is safe since we've got the space allocated for a
         // single signalfd_siginfo, and that's exactly how much we're
         // reading. Handling of EINTR is not required since SFD_NONBLOCK
@@ -166,6 +170,7 @@ mod tests {
         let sigid = SIGRTMIN() + 1;
         let sigrt_fd = SignalFd::new(sigid).unwrap();
 
+        // SAFETY: Safe because sigid is valid and return value is checked.
         let ret = unsafe { raise(sigid) };
         assert_eq!(ret, 0);
 
@@ -178,6 +183,7 @@ mod tests {
         let sigid = SIGRTMIN() + 2;
 
         let sigrt_fd = SignalFd::new(sigid).unwrap();
+        // SAFETY: Safe because sigset and sigid are valid and return value is checked.
         unsafe {
             let mut sigset: sigset_t = mem::zeroed();
             pthread_sigmask(0, null(), &mut sigset as *mut sigset_t);
@@ -187,6 +193,7 @@ mod tests {
         mem::drop(sigrt_fd);
 
         // The signal should no longer be masked.
+        // SAFETY: Safe because sigset and sigid are valid and return value is checked.
         unsafe {
             let mut sigset: sigset_t = mem::zeroed();
             pthread_sigmask(0, null(), &mut sigset as *mut sigset_t);

@@ -44,7 +44,10 @@ pub struct RutabagaIovec {
     pub len: usize,
 }
 
+// SAFETY: trivially safe
 unsafe impl Send for RutabagaIovec {}
+
+// SAFETY: trivially safe
 unsafe impl Sync for RutabagaIovec {}
 
 /// 3D resource creation parameters.  Also used to create 2D resource.  Constants based on Mesa's
@@ -149,10 +152,15 @@ pub struct RutabagaDebug {
     pub message: *const c_char,
 }
 
+// SAFETY:
 // This is sketchy, since `message` is a C-string and there's no locking + atomics.  However,
 // the current use case is to mirror the C-API.  If the `RutabagaDebugHandler` is used with
 // by Rust code, a different struct should be used.
 unsafe impl Send for RutabagaDebug {}
+// SAFETY:
+// This is sketchy, since `message` is a C-string and there's no locking + atomics.  However,
+// the current use case is to mirror the C-API.  If the `RutabagaDebugHandler` is used with
+// by Rust code, a different struct should be used.
 unsafe impl Sync for RutabagaDebug {}
 
 /// Mapped memory caching flags (see virtio_gpu spec)

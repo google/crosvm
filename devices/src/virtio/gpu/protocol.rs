@@ -355,6 +355,7 @@ pub struct virtio_gpu_ctx_create {
 
 impl Default for virtio_gpu_ctx_create {
     fn default() -> Self {
+        // SAFETY: trivially safe
         unsafe { ::std::mem::zeroed() }
     }
 }

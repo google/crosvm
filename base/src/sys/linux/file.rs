@@ -21,6 +21,7 @@ fn lseek(fd: &dyn AsRawDescriptor, offset: u64, option: LseekOption) -> Result<u
         LseekOption::Data => libc::SEEK_DATA,
         LseekOption::Hole => libc::SEEK_HOLE,
     };
+    // SAFETY:
     // safe because this doesn't modify any memory.
     let ret = unsafe { libc::lseek64(fd.as_raw_descriptor(), offset as i64, whence) };
     if ret < 0 {

@@ -70,6 +70,7 @@ const DEFAULT_SMBIOS_MANUFACTURER: &str = "ChromiumOS";
 const DEFAULT_SMBIOS_PRODUCT_NAME: &str = "crosvm";
 
 fn compute_checksum<T: Copy>(v: &T) -> u8 {
+    // SAFETY:
     // Safe because we are only reading the bytes within the size of the `T` reference `v`.
     let v_slice = unsafe { slice::from_raw_parts(v as *const T as *const u8, mem::size_of::<T>()) };
     let mut checksum: u8 = 0;

@@ -305,6 +305,7 @@ impl Process {
     /// Waits without blocking for the plugin process to exit and returns the status.
     pub fn try_wait(&mut self) -> SysResult<ProcessStatus> {
         let mut status = 0;
+        // SAFETY:
         // Safe because waitpid is given a valid pointer of correct size and mutability, and the
         // return value is checked.
         let ret = unsafe { waitpid(self.plugin_pid, &mut status, WNOHANG) };
@@ -649,6 +650,7 @@ impl Process {
             response_fds.push(self.kill_evt.as_raw_descriptor());
             Ok(())
         } else if request.has_check_extension() {
+            // SAFETY:
             // Safe because the Cap enum is not read by the check_extension method. In that method,
             // cap is cast back to an integer and fed to an ioctl. If the extension name is actually
             // invalid, the kernel will safely reject the extension under the assumption that the

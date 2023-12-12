@@ -41,6 +41,7 @@ impl dyn MappedRegion {
     pub fn msync(&self, offset: usize, size: usize) -> Result<()> {
         validate_includes_range(self.size(), offset, size)?;
 
+        // SAFETY:
         // Safe because the MemoryMapping/MemoryMappingArena interface ensures our pointer and size
         // are correct, and we've validated that `offset`..`offset+size` is in the range owned by
         // this `MappedRegion`.
@@ -68,11 +69,13 @@ pub struct MemoryMapping {
     pub(crate) size: usize,
 }
 
+// SAFETY:
 // Send and Sync aren't automatically inherited for the raw address pointer.
 // Accessing that pointer is only done through the stateless interface which
 // allows the object to be shared by multiple threads without a decrease in
 // safety.
 unsafe impl Send for MemoryMapping {}
+// SAFETY: See comments for impl Send
 unsafe impl Sync for MemoryMapping {}
 
 impl MemoryMapping {
@@ -123,6 +126,9 @@ impl MemoryMapping {
     }
 }
 
+// SAFETY:
+// Safe because the pointer and size point to a memory range owned by this MemoryMapping that won't
+// be unmapped until it's Dropped.
 unsafe impl MappedRegion for MemoryMapping {
     fn as_ptr(&self) -> *mut u8 {
         self.addr as *mut u8
@@ -171,6 +177,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                     // handle for it first. That handle is then provided to Self::wrap, which
                     // performs the actual mmap (creating a mapped view).
                     //
+                    // SAFETY:
                     // Safe because self.descriptor is guaranteed to be a valid handle.
                     let mapping_handle = unsafe {
                         create_file_mapping(
@@ -182,6 +189,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                     }
                     .map_err(Error::StdSyscallFailed)?;
 
+                    // SAFETY:
                     // The above comment block is why the SafeDescriptor wrap is safe.
                     Some(unsafe { SafeDescriptor::from_raw_descriptor(mapping_handle) })
                 } else {
@@ -219,6 +227,7 @@ impl<'a> MemoryMappingBuilder<'a> {
         file_descriptor: Option<&'a dyn AsRawDescriptor>,
     ) -> Result<CrateMemoryMapping> {
         let file_descriptor = match file_descriptor {
+            // SAFETY:
             // Safe because `duplicate_handle` will return a handle or at least error out.
             Some(descriptor) => unsafe {
                 Some(SafeDescriptor::from_raw_descriptor(
@@ -280,6 +289,7 @@ mod tests {
         let shm = SharedMemory::new("test", 1028).unwrap();
         let m = to_crate_mmap(MemoryMapping::from_descriptor(&shm, 5).unwrap());
         let s = m.get_slice(2, 3).unwrap();
+        // SAFETY: trivially safe
         assert_eq!(s.as_ptr(), unsafe { m.as_ptr().offset(2) });
     }
 

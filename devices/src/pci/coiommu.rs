@@ -361,22 +361,25 @@ fn gfn_to_dtt_pte(
 
         mem.get_host_address(GuestAddress(pt_gpa + index))
             .context(Error::GetDTTEntry)?
-    } else {
+    } else if gfn > dtt_iter.gfn {
+        // SAFETY:
         // Safe because we checked that dtt_iter.ptr is valid and that the dtt_pte
         // for gfn lies on the same dtt page as the dtt_pte for dtt_iter.gfn, which
         // means the calculated ptr will point to the same page as dtt_iter.ptr
-        if gfn > dtt_iter.gfn {
-            unsafe {
-                dtt_iter
-                    .ptr
-                    .add(mem::size_of::<AtomicU32>() * (gfn - dtt_iter.gfn) as usize)
-            }
-        } else {
-            unsafe {
-                dtt_iter
-                    .ptr
-                    .sub(mem::size_of::<AtomicU32>() * (dtt_iter.gfn - gfn) as usize)
-            }
+        unsafe {
+            dtt_iter
+                .ptr
+                .add(mem::size_of::<AtomicU32>() * (gfn - dtt_iter.gfn) as usize)
+        }
+    } else {
+        // SAFETY:
+        // Safe because we checked that dtt_iter.ptr is valid and that the dtt_pte
+        // for gfn lies on the same dtt page as the dtt_pte for dtt_iter.gfn, which
+        // means the calculated ptr will point to the same page as dtt_iter.ptr
+        unsafe {
+            dtt_iter
+                .ptr
+                .sub(mem::size_of::<AtomicU32>() * (dtt_iter.gfn - gfn) as usize)
         }
     };
 
@@ -403,6 +406,7 @@ fn pin_page(
         .get_host_address_range(GuestAddress(gpa), PAGE_SIZE_4K as usize)
         .context("failed to get host address")? as u64;
 
+    // SAFETY:
     // Safe because ptr is valid and guaranteed by the gfn_to_dtt_pte.
     // Test PINNED flag
     if (unsafe { (*leaf_entry).load(Ordering::Relaxed) } & DTTE_PINNED_FLAG) != 0 {
@@ -410,9 +414,11 @@ fn pin_page(
         return Ok(());
     }
 
+    // SAFETY:
     // Safe because the gpa is valid from the gfn_to_dtt_pte and the host_addr
     // is guaranteed by MemoryMapping interface.
     if unsafe { vfio_map(vfio_container, gpa, PAGE_SIZE_4K, host_addr) } {
+        // SAFETY:
         // Safe because ptr is valid and guaranteed by the gfn_to_dtt_pte.
         // set PINNED flag
         unsafe { (*leaf_entry).fetch_or(DTTE_PINNED_FLAG, Ordering::SeqCst) };
@@ -467,6 +473,7 @@ fn unpin_page(
     };
 
     if force {
+        // SAFETY:
         // Safe because leaf_entry is valid and guaranteed by the gfn_to_dtt_pte.
         // This case is for balloon to evict pages so these pages should
         // already been locked by balloon and no device driver in VM is
@@ -475,6 +482,7 @@ fn unpin_page(
         unsafe { (*leaf_entry).fetch_and(!DTTE_ACCESSED_FLAG, Ordering::SeqCst) };
     }
 
+    // SAFETY:
     // Safe because leaf_entry is valid and guaranteed by the gfn_to_dtt_pte.
     if let Err(entry) = unsafe {
         (*leaf_entry).compare_exchange(DTTE_PINNED_FLAG, 0, Ordering::SeqCst, Ordering::SeqCst)
@@ -488,6 +496,7 @@ fn unpin_page(
             UnpinResult::NotPinned
         } else {
             if !force {
+                // SAFETY:
                 // Safe because leaf_entry is valid and guaranteed by the gfn_to_dtt_pte.
                 // The ACCESSED_FLAG is set by the guest if guest requires DMA map for
                 // this page. It represents whether or not this page is touched by the
@@ -526,6 +535,7 @@ fn unpin_page(
         if vfio_unmap(vfio_container, gpa, PAGE_SIZE_4K) {
             UnpinResult::Unpinned
         } else {
+            // SAFETY:
             // Safe because leaf_entry is valid and guaranteed by the gfn_to_dtt_pte.
             // make sure the pinned flag is set
             unsafe { (*leaf_entry).fetch_or(DTTE_PINNED_FLAG, Ordering::SeqCst) };

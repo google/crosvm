@@ -343,6 +343,8 @@ impl Child for SandboxedChild {
     }
 
     fn kill(&mut self) -> std::io::Result<()> {
+        // TODO(b/315998194): Add safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         if unsafe { TerminateProcess(self.0.as_raw_descriptor(), KILL_CHILD_EXIT_CODE) == 0 } {
             Err(std::io::Error::last_os_error())
         } else {

@@ -106,6 +106,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
     }
 }
 
+/// SAFETY:
 /// Safety requirements:
 ///     Same as base::windows::read_file.
 unsafe fn read(
@@ -119,6 +120,7 @@ unsafe fn read(
         .map_err(|e| AsyncError::OverlappedSource(Error::StdIoReadError(e)))
 }
 
+/// SAFETY:
 /// Safety requirements:
 ///     Same as base::windows::write_file.
 unsafe fn write(
@@ -147,6 +149,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         let overlapped = create_overlapped(file_offset, None);
         let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
 
+        // SAFETY:
         // Safe because we pass a pointer to a valid vec and that same vector's length.
         unsafe {
             read(
@@ -192,6 +195,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
                 AsyncError::OverlappedSource(Error::BackingMemoryVolatileSliceFetchFailed(e))
             })?;
 
+            // SAFETY:
             // Safe because we're passing a volatile slice (valid ptr), and the size of the memory region it refers to.
             unsafe {
                 read(
@@ -235,6 +239,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         let overlapped = create_overlapped(file_offset, None);
         let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
 
+        // SAFETY:
         // Safe because we pass a pointer to a valid vec and that same vector's length.
         unsafe {
             write(
@@ -281,6 +286,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
                 AsyncError::OverlappedSource(Error::BackingMemoryVolatileSliceFetchFailed(e))
             })?;
 
+            // SAFETY:
             // Safe because we're passing a volatile slice (valid ptr), and the size of the memory region it refers to.
             unsafe {
                 write(
@@ -313,6 +319,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
                 ),
             )));
         }
+        // SAFETY:
         // Safe because self.source lives as long as file.
         let file = ManuallyDrop::new(unsafe {
             File::from_raw_descriptor(self.source.as_raw_descriptor())
@@ -335,6 +342,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
                 ),
             )));
         }
+        // SAFETY:
         // Safe because self.source lives as long as file.
         let mut file = ManuallyDrop::new(unsafe {
             File::from_raw_descriptor(self.source.as_raw_descriptor())
@@ -348,6 +356,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
 
     /// Sync all completed write operations to the backing storage.
     pub async fn fsync(&self) -> AsyncResult<()> {
+        // SAFETY:
         // Safe because self.source lives at least as long as the blocking pool thread. Note that
         // if the blocking pool stalls and shutdown fails, the thread could outlive the file;
         // however, this would mean things are already badly broken and we have a similar risk in

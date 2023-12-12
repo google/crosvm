@@ -38,8 +38,9 @@ impl AvError {
 impl Display for AvError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut buffer = [0u8; 255];
-        // Safe because we are passing valid bounds for the buffer.
         let ret =
+            // SAFETY:
+            // Safe because we are passing valid bounds for the buffer.
             unsafe { ffi::av_strerror(self.0, buffer.as_mut_ptr() as *mut c_char, buffer.len()) };
         match ret {
             ret if ret >= 0 => {
@@ -79,12 +80,14 @@ pub struct Dimensions {
 impl AvCodec {
     /// Returns whether the codec is a decoder.
     pub fn is_decoder(&self) -> bool {
+        // SAFETY:
         // Safe because `av_codec_is_decoder` is called on a valid static `AVCodec` reference.
         (unsafe { ffi::av_codec_is_decoder(self.0) } != 0)
     }
 
     /// Returns whether the codec is an encoder.
     pub fn is_encoder(&self) -> bool {
+        // SAFETY:
         // Safe because `av_codec_is_encoder` is called on a valid static `AVCodec` reference.
         (unsafe { ffi::av_codec_is_encoder(self.0) } != 0)
     }
@@ -93,6 +96,7 @@ impl AvCodec {
     pub fn name(&self) -> &'static str {
         const INVALID_CODEC_STR: &str = "invalid codec";
 
+        // SAFETY:
         // Safe because `CStr::from_ptr` is called on a valid zero-terminated C string.
         unsafe { CStr::from_ptr(self.0.name).to_str() }.unwrap_or(INVALID_CODEC_STR)
     }
@@ -142,6 +146,8 @@ impl AvCodec {
     /// Internal helper for `build_decoder` to allocate an [`AvCodecContext`]. This needs to be
     /// paired with a later call to [`AvCodecContext::init`].
     fn alloc_context(&self) -> Result<AvCodecContext, AvCodecOpenError> {
+        // TODO(b:315859322): add safety doc string
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let context = unsafe { ffi::avcodec_alloc_context3(self.0).as_mut() }
             .ok_or(AvCodecOpenError::ContextAllocation)?;
 
@@ -169,6 +175,7 @@ impl DecoderContextBuilder {
         get_buffer2: unsafe extern "C" fn(*mut ffi::AVCodecContext, *mut ffi::AVFrame, i32) -> i32,
         opaque: *mut libc::c_void,
     ) {
+        // SAFETY:
         // Safe because self.context.0 is a pointer to a live AVCodecContext allocation.
         let context = unsafe { &mut *(self.context.0) };
         context.get_buffer2 = Some(get_buffer2);
@@ -193,6 +200,8 @@ pub struct EncoderContextBuilder {
 impl EncoderContextBuilder {
     /// Set the width of input frames for this encoding context.
     pub fn set_dimensions(&mut self, dimensions: Dimensions) {
+        // TODO(b:315859322): add safety doc string
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let context = unsafe { &mut *(self.context.0) };
         context.width = dimensions.width as _;
         context.height = dimensions.height as _;
@@ -200,12 +209,16 @@ impl EncoderContextBuilder {
 
     /// Set the time base for this encoding context.
     pub fn set_time_base(&mut self, time_base: ffi::AVRational) {
+        // TODO(b:315859322): add safety doc string
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let context = unsafe { &mut *(self.context.0) };
         context.time_base = time_base;
     }
 
     /// Set the input pixel format for this encoding context.
     pub fn set_pix_fmt(&mut self, fmt: AvPixelFormat) {
+        // TODO(b:315859322): add safety doc string
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let context = unsafe { &mut *(self.context.0) };
         context.pix_fmt = fmt.pix_fmt();
     }
@@ -237,6 +250,7 @@ impl Iterator for AvCodecIterator {
     type Item = AvCodec;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // SAFETY:
         // Safe because our pointer was initialized to `NULL` and we only use it with
         // `av_codec_iterate`, which will update it to a valid value.
         unsafe { ffi::av_codec_iterate(&mut self.0 as *mut *mut libc::c_void).as_ref() }
@@ -257,6 +271,7 @@ impl AvProfile {
     pub fn name(&self) -> &'static str {
         const INVALID_PROFILE_STR: &str = "invalid profile";
 
+        // SAFETY:
         // Safe because `CStr::from_ptr` is called on a valid zero-terminated C string.
         unsafe { CStr::from_ptr(self.0.name).to_str() }.unwrap_or(INVALID_PROFILE_STR)
     }
@@ -281,6 +296,7 @@ impl Iterator for AvProfileIterator {
     type Item = AvProfile;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // SAFETY:
         // Safe because the contract of `new` stipulates we have received a valid `AVCodec`
         // reference, thus the `profiles` pointer must either be NULL or point to a valid array
         // or `VAProfile`s.
@@ -290,6 +306,7 @@ impl Iterator for AvProfileIterator {
                 match profile.profile {
                     ffi::FF_PROFILE_UNKNOWN => None,
                     _ => {
+                        // SAFETY:
                         // Safe because we have been initialized to a static, valid profiles array
                         // which is terminated by FF_PROFILE_UNKNOWN.
                         self.0 = unsafe { self.0.offset(1) };
@@ -310,8 +327,10 @@ impl AvPixelFormat {
     pub fn name(&self) -> &'static str {
         const INVALID_FORMAT_STR: &str = "invalid pixel format";
 
+        // SAFETY:
         // Safe because `av_get_pix_fmt_name` returns either NULL or a valid C string.
         let pix_fmt_name = unsafe { ffi::av_get_pix_fmt_name(self.0) };
+        // SAFETY:
         // Safe because `pix_fmt_name` is a valid pointer to a C string.
         match unsafe {
             pix_fmt_name
@@ -332,6 +351,7 @@ impl AvPixelFormat {
 
     /// Return the fourcc of the pixel format, or a series of zeros if its fourcc is unknown.
     pub fn fourcc(&self) -> [u8; 4] {
+        // SAFETY:
         // Safe because `avcodec_pix_fmt_to_codec_tag` does not take any pointer as input and
         // handles any value passed as argument.
         unsafe { ffi::avcodec_pix_fmt_to_codec_tag(self.0) }.to_le_bytes()
@@ -392,6 +412,7 @@ impl Iterator for AvPixelFormatIterator {
     type Item = AvPixelFormat;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // SAFETY:
         // Safe because the contract of `AvCodec::new` and `AvCodec::pixel_format_iter` guarantees
         // that we have been built from a valid `AVCodec` reference, which `pix_fmts` pointer
         // must either be NULL or point to a valid array or `VAPixelFormat`s.
@@ -402,6 +423,7 @@ impl Iterator for AvPixelFormatIterator {
                     // Array of pixel formats is terminated by AV_PIX_FMT_NONE.
                     ffi::AVPixelFormat_AV_PIX_FMT_NONE => None,
                     _ => {
+                        // SAFETY:
                         // Safe because we have been initialized to a static, valid profiles array
                         // which is terminated by AV_PIX_FMT_NONE.
                         self.0 = unsafe { self.0.offset(1) };
@@ -418,6 +440,7 @@ pub struct AvCodecContext(*mut ffi::AVCodecContext);
 
 impl Drop for AvCodecContext {
     fn drop(&mut self) {
+        // SAFETY:
         // Safe because our context member is properly allocated and owned by us.
         // Note: `avcodec_open2` might not have been called in case we're wrapped by a
         //       `DecoderContextBuilder` but avcodec_free_context works on both opened and closed
@@ -428,6 +451,7 @@ impl Drop for AvCodecContext {
 
 impl AsRef<ffi::AVCodecContext> for AvCodecContext {
     fn as_ref(&self) -> &ffi::AVCodecContext {
+        // SAFETY:
         // Safe because our context member is properly initialized and fully owned by us.
         unsafe { &*self.0 }
     }
@@ -442,6 +466,7 @@ pub enum TryReceiveResult {
 impl AvCodecContext {
     /// Internal helper for [`DecoderContextBuilder`] to initialize the context.
     fn init(&mut self, codec: *const ffi::AVCodec) -> Result<(), AvCodecOpenError> {
+        // SAFETY:
         // Safe because `codec` is a valid static AVCodec reference, and `self.0` is a valid
         // AVCodecContext allocation.
         if unsafe { ffi::avcodec_open2(self.0, codec, std::ptr::null_mut()) } < 0 {
@@ -460,6 +485,7 @@ impl AvCodecContext {
     /// Error codes are the same as those returned by `avcodec_send_packet` with the exception of
     /// EAGAIN which is converted into `Ok(false)` as it is not actually an error.
     pub fn try_send_packet(&mut self, packet: &AvPacket) -> Result<bool, AvError> {
+        // SAFETY:
         // Safe because the context is valid through the life of this object, and `packet`'s
         // lifetime properties ensures its memory area is readable.
         match unsafe { ffi::avcodec_send_packet(self.0, &packet.packet) } {
@@ -479,6 +505,7 @@ impl AvCodecContext {
     /// Error codes are the same as those returned by `avcodec_receive_frame` with the exception of
     /// EAGAIN and EOF which are handled as `TryAgain` and `FlushCompleted` respectively.
     pub fn try_receive_frame(&mut self, frame: &mut AvFrame) -> Result<TryReceiveResult, AvError> {
+        // SAFETY:
         // Safe because the context is valid through the life of this object, and `avframe` is
         // guaranteed to contain a properly initialized frame.
         match unsafe { ffi::avcodec_receive_frame(self.0, frame.0) } {
@@ -498,6 +525,8 @@ impl AvCodecContext {
     /// Error codes are the same as those returned by `avcodec_send_frame` with the exception of
     /// EAGAIN which is converted into `Ok(false)` as it is not actually an error.
     pub fn try_send_frame(&mut self, frame: &AvFrame) -> Result<bool, AvError> {
+        // TODO(b:315859322): add safety doc string
+        #[allow(clippy::undocumented_unsafe_blocks)]
         match unsafe { ffi::avcodec_send_frame(self.0, frame.0 as *const _) } {
             AVERROR_EAGAIN => Ok(false),
             ret if ret >= 0 => Ok(true),
@@ -518,6 +547,7 @@ impl AvCodecContext {
         &mut self,
         packet: &mut AvPacket,
     ) -> Result<TryReceiveResult, AvError> {
+        // SAFETY:
         // Safe because the context is valid through the life of this object, and `avframe` is
         // guaranteed to contain a properly initialized frame.
         match unsafe { ffi::avcodec_receive_packet(self.0, &mut packet.packet) } {
@@ -531,6 +561,7 @@ impl AvCodecContext {
     /// Reset the internal codec state/flush internal buffers.
     /// Should be called e.g. when seeking or switching to a different stream.
     pub fn reset(&mut self) {
+        // SAFETY:
         // Safe because the context is valid through the life of this object.
         unsafe { ffi::avcodec_flush_buffers(self.0) }
     }
@@ -540,6 +571,7 @@ impl AvCodecContext {
     ///
     /// The flush process is complete when `try_receive_frame` returns `FlushCompleted`,
     pub fn flush_decoder(&mut self) -> Result<(), AvError> {
+        // SAFETY:
         // Safe because the context is valid through the life of this object.
         AvError::result(unsafe { ffi::avcodec_send_packet(self.0, std::ptr::null()) })
     }
@@ -549,24 +581,31 @@ impl AvCodecContext {
     ///
     /// The flush process is complete when `try_receive_packet` returns `FlushCompleted`,
     pub fn flush_encoder(&mut self) -> Result<(), AvError> {
+        // SAFETY:
         // Safe because the context is valid through the life of this object.
         AvError::result(unsafe { ffi::avcodec_send_frame(self.0, std::ptr::null()) })
     }
 
     /// Set the time base for this context.
     pub fn set_time_base(&mut self, time_base: AVRational) {
+        // TODO(b:315859322): add safety doc string
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let context = unsafe { &mut *(self.0) };
         context.time_base = time_base;
     }
 
     /// Set the bit rate for this context.
     pub fn set_bit_rate(&mut self, bit_rate: u64) {
+        // TODO(b:315859322): add safety doc string
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let context = unsafe { &mut *(self.0) };
         context.bit_rate = bit_rate as _;
     }
 
     /// Set the max bit rate (rc_max_rate) for this context.
     pub fn set_max_bit_rate(&mut self, bit_rate: u64) {
+        // TODO(b:315859322): add safety doc string
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let context = unsafe { &mut *(self.0) };
         context.rc_max_rate = bit_rate as _;
     }
@@ -609,11 +648,13 @@ impl AvBuffer {
         let mut storage = Box::new(source);
 
         extern "C" fn avbuffer_free<D>(opaque: *mut c_void, _data: *mut u8) {
+            // SAFETY:
             // Safe because `opaque` has been created from `Box::into_raw`. `storage` will be
             // dropped immediately which will release any resources held by the storage.
             let _ = unsafe { Box::from_raw(opaque as *mut D) };
         }
 
+        // SAFETY:
         // Safe because storage points to valid data throughout the lifetime of AVBuffer and we are
         // checking the return value against NULL, which signals an error.
         Some(Self(unsafe {
@@ -630,6 +671,7 @@ impl AvBuffer {
 
     /// Return a slice to the data contained in this buffer.
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        // SAFETY:
         // Safe because the data has been initialized from valid storage in the constructor.
         unsafe { std::slice::from_raw_parts_mut((*self.0).data, (*self.0).size) }
     }
@@ -647,6 +689,7 @@ impl AvBuffer {
 
 impl Drop for AvBuffer {
     fn drop(&mut self) {
+        // SAFETY:
         // Safe because `self.0` is a valid pointer to an AVBufferRef.
         unsafe { ffi::av_buffer_unref(&mut self.0) };
     }
@@ -660,6 +703,7 @@ pub struct AvPacket<'a> {
 
 impl<'a> Drop for AvPacket<'a> {
     fn drop(&mut self) {
+        // SAFETY:
         // Safe because `self.packet` is a valid `AVPacket` instance.
         unsafe {
             ffi::av_packet_unref(&mut self.packet);
@@ -684,6 +728,7 @@ impl<'a> AvPacket<'a> {
                 pts: AV_NOPTS_VALUE as i64,
                 dts: AV_NOPTS_VALUE as i64,
                 pos: -1,
+                // SAFETY:
                 // Safe because all the other elements of this struct can be zeroed.
                 ..unsafe { std::mem::zeroed() }
             },
@@ -705,6 +750,7 @@ impl<'a> AvPacket<'a> {
                 size: input_data.len() as c_int,
                 side_data: std::ptr::null_mut(),
                 pos: -1,
+                // SAFETY:
                 // Safe because all the other elements of this struct can be zeroed.
                 ..unsafe { std::mem::zeroed() }
             },
@@ -730,6 +776,7 @@ impl<'a> AvPacket<'a> {
                 size,
                 side_data: std::ptr::null_mut(),
                 pos: -1,
+                // SAFETY:
                 // Safe because all the other elements of this struct can be zeroed.
                 ..unsafe { std::mem::zeroed() }
             },
@@ -779,6 +826,7 @@ impl AvFrame {
     /// decoded into.
     pub fn new() -> Result<Self, AvFrameError> {
         Ok(Self(
+            // SAFETY:
             // Safe because `av_frame_alloc` does not take any input.
             unsafe { ffi::av_frame_alloc().as_mut() }.ok_or(AvFrameError::FrameAllocationFailed)?,
         ))
@@ -805,6 +853,7 @@ impl AvFrame {
 
     /// Set the picture type (I-frame, P-frame etc.) on this frame.
     pub fn set_pict_type(&mut self, ty: AVPictureType) {
+        // SAFETY:
         // Safe because self.0 is a valid AVFrame reference.
         unsafe {
             (*self.0).pict_type = ty;
@@ -813,6 +862,7 @@ impl AvFrame {
 
     /// Set the presentation timestamp (PTS) of this frame.
     pub fn set_pts(&mut self, ts: i64) {
+        // SAFETY:
         // Safe because self.0 is a valid AVFrame reference.
         unsafe {
             (*self.0).pts = ts;
@@ -821,6 +871,7 @@ impl AvFrame {
 
     /// Query if this AvFrame is writable, i.e. it is refcounted and the refcounts are 1.
     pub fn is_writable(&self) -> bool {
+        // SAFETY:
         // Safe because self.0 is a valid AVFrame reference.
         unsafe { ffi::av_frame_is_writable(self.0) != 0 }
     }
@@ -830,6 +881,7 @@ impl AvFrame {
     ///
     /// [`is_writable`]: AvFrame::is_writable
     pub fn make_writable(&mut self) -> Result<(), AvFrameError> {
+        // SAFETY:
         // Safe because self.0 is a valid AVFrame reference.
         AvError::result(unsafe { ffi::av_frame_make_writable(self.0) }).map_err(Into::into)
     }
@@ -840,6 +892,7 @@ impl AvFrameBuilder {
     ///
     /// The dimensions must not be greater than `i32::MAX`.
     pub fn set_dimensions(&mut self, dimensions: Dimensions) -> Result<(), AvFrameError> {
+        // SAFETY:
         // Safe because self.0 is a valid AVFrame instance and width and height are in range.
         unsafe {
             (*self.0 .0).width = dimensions
@@ -856,6 +909,7 @@ impl AvFrameBuilder {
 
     /// Set the frame's format.
     pub fn set_format(&mut self, format: AvPixelFormat) -> Result<(), AvFrameError> {
+        // SAFETY:
         // Safe because self.0 is a valid AVFrame instance and format is a valid pixel format.
         unsafe {
             (*self.0 .0).format = format.pix_fmt();
@@ -919,6 +973,8 @@ impl AvFrameBuilder {
             if stride < format.line_size(self.0.dimensions().width, plane)? {
                 return Err(AvFrameError::InvalidStride);
             }
+            // TODO(b:315859322): add safety doc string
+            #[allow(clippy::undocumented_unsafe_blocks)]
             unsafe {
                 (*self.0 .0).data[plane] =
                     buffers[buffer_index].as_mut_slice()[offset..].as_mut_ptr();
@@ -946,6 +1002,7 @@ impl AvFrameBuilder {
         }
 
         for (i, buf) in buffers.into_iter().enumerate() {
+            // SAFETY:
             // Safe because self.0 is a valid AVFrame instance and buffers contains valid AvBuffers.
             unsafe {
                 (*self.0 .0).buf[i] = buf.into_raw();
@@ -957,6 +1014,7 @@ impl AvFrameBuilder {
 
 impl AsRef<ffi::AVFrame> for AvFrame {
     fn as_ref(&self) -> &ffi::AVFrame {
+        // SAFETY:
         // Safe because the AVFrame has been properly initialized during construction.
         unsafe { &*self.0 }
     }
@@ -966,6 +1024,7 @@ impl Deref for AvFrame {
     type Target = ffi::AVFrame;
 
     fn deref(&self) -> &Self::Target {
+        // SAFETY:
         // Safe because the AVFrame has been properly initialized during construction.
         unsafe { self.0.as_ref().unwrap() }
     }
@@ -973,6 +1032,7 @@ impl Deref for AvFrame {
 
 impl Drop for AvFrame {
     fn drop(&mut self) {
+        // SAFETY:
         // Safe because the AVFrame is valid through the life of this object and fully owned by us.
         unsafe { ffi::av_frame_free(&mut self.0) };
     }

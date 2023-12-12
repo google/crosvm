@@ -73,6 +73,7 @@ impl EventExt for Event {
 
 impl PlatformEvent {
     pub fn new_with_manual_reset(manual_reset: bool) -> Result<PlatformEvent> {
+        // SAFETY: Safe because return value is checked.
         let handle = unsafe {
             CreateEventA(
                 SecurityAttributes::new_with_security_descriptor(
@@ -89,12 +90,15 @@ impl PlatformEvent {
             return errno_result();
         }
         Ok(PlatformEvent {
-            event_handle: unsafe { SafeDescriptor::from_raw_descriptor(handle) },
+            event_handle:
+            // SAFETY: Safe because the descriptor is valid.
+            unsafe { SafeDescriptor::from_raw_descriptor(handle) },
         })
     }
 
     pub fn create_event_with_name(name: &str) -> Result<PlatformEvent> {
         let event_str = CString::new(String::from(name)).unwrap();
+        // SAFETY: Safe because return value is checked.
         let handle = unsafe {
             CreateEventA(
                 SecurityAttributes::new_with_security_descriptor(
@@ -111,7 +115,9 @@ impl PlatformEvent {
             return errno_result();
         }
         Ok(PlatformEvent {
-            event_handle: unsafe { SafeDescriptor::from_raw_descriptor(handle) },
+            event_handle:
+            // SAFETY: Safe because the descriptor is valid.
+            unsafe { SafeDescriptor::from_raw_descriptor(handle) },
         })
     }
 
@@ -122,17 +128,21 @@ impl PlatformEvent {
 
     pub fn open(name: &str) -> Result<PlatformEvent> {
         let event_str = CString::new(String::from(name)).unwrap();
+        // SAFETY: Safe because return value is checked.
         let handle = unsafe { OpenEventA(EVENT_MODIFY_STATE, FALSE, event_str.as_ptr()) };
         if handle.is_null() {
             return errno_result();
         }
         Ok(PlatformEvent {
-            event_handle: unsafe { SafeDescriptor::from_raw_descriptor(handle) },
+            event_handle:
+            // SAFETY: Safe because the descriptor is valid.
+            unsafe { SafeDescriptor::from_raw_descriptor(handle) },
         })
     }
 
     /// See `Event::signal`.
     pub fn signal(&self) -> Result<()> {
+        // SAFETY: Safe because the descriptor is valid.
         let event_result = unsafe { SetEvent(self.event_handle.as_raw_descriptor()) };
         if event_result == 0 {
             return errno_result();
@@ -141,6 +151,7 @@ impl PlatformEvent {
     }
 
     pub fn reset(&self) -> Result<()> {
+        // SAFETY: Safe because the descriptor is valid.
         let res = unsafe { ResetEvent(self.event_handle.as_raw_descriptor()) };
         if res == 0 {
             errno_result()
@@ -156,6 +167,7 @@ impl PlatformEvent {
             None => INFINITE,
         };
 
+        // SAFETY:
         // Safe because we pass an event object handle owned by this PlatformEvent.
         let wait_result = match unsafe {
             WaitForSingleObject(self.event_handle.as_raw_descriptor(), milliseconds)
@@ -189,6 +201,7 @@ impl PlatformEvent {
 
     pub fn try_clone(&self) -> Result<PlatformEvent> {
         let mut event_clone: HANDLE = MaybeUninit::uninit().as_mut_ptr();
+        // SAFETY: Safe because return value is checked.
         let duplicate_result = unsafe {
             DuplicateHandle(
                 GetCurrentProcess(),
@@ -203,7 +216,10 @@ impl PlatformEvent {
         if duplicate_result == 0 {
             return errno_result();
         }
-        Ok(unsafe { PlatformEvent::from_raw_descriptor(event_clone) })
+        Ok(
+            // SAFETY: Safe because the descriptor is valid.
+            unsafe { PlatformEvent::from_raw_descriptor(event_clone) },
+        )
     }
 }
 
@@ -214,6 +230,7 @@ impl AsRawDescriptor for PlatformEvent {
 }
 
 impl FromRawDescriptor for PlatformEvent {
+    // SAFETY: Safe because the descriptor is expected to be valid.
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
         PlatformEvent {
             event_handle: SafeDescriptor::from_raw_descriptor(descriptor),
@@ -245,10 +262,12 @@ impl From<SafeDescriptor> for PlatformEvent {
     }
 }
 
+// Safety:
 // PlatformEvent is safe for send & Sync despite containing a raw handle to its
 // file mapping object. As long as the instance to PlatformEvent stays alive, this
 // pointer will be a valid handle.
 unsafe impl Send for PlatformEvent {}
+// Safety: See comments for impl Send
 unsafe impl Sync for PlatformEvent {}
 
 #[cfg(test)]
@@ -277,10 +296,12 @@ mod tests {
         evt.signal().unwrap();
 
         // Wait for the notification.
+        // SAFETY: Safe because return value is checked.
         let result = unsafe { WaitForSingleObject(evt.as_raw_descriptor(), INFINITE) };
         assert_eq!(result, WAIT_OBJECT_0);
 
         // The notification should have reset since we already received it.
+        // SAFETY: Safe because return value is checked.
         let result = unsafe { WaitForSingleObject(evt.as_raw_descriptor(), 0) };
         assert_eq!(result, WAIT_TIMEOUT);
     }
@@ -291,15 +312,18 @@ mod tests {
         evt.signal().unwrap();
 
         // Wait for the notification.
+        // SAFETY: Safe because return value is checked.
         let result = unsafe { WaitForSingleObject(evt.as_raw_descriptor(), INFINITE) };
         assert_eq!(result, WAIT_OBJECT_0);
 
         // The notification should still be active because read wasn't called.
+        // SAFETY: Safe because return value is checked.
         let result = unsafe { WaitForSingleObject(evt.as_raw_descriptor(), 0) };
         assert_eq!(result, WAIT_OBJECT_0);
 
         // Read and ensure the notification has cleared.
         evt.wait().expect("Failed to read event.");
+        // SAFETY: Safe because return value is checked.
         let result = unsafe { WaitForSingleObject(evt.as_raw_descriptor(), 0) };
         assert_eq!(result, WAIT_TIMEOUT);
     }

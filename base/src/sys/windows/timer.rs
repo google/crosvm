@@ -38,6 +38,7 @@ impl Timer {
     /// `reset`. Note that this timer MAY wake/trigger early due to limitations on
     /// SetWaitableTimer (see <https://github.com/rust-lang/rust/issues/43376>).
     pub fn new() -> Result<Timer> {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let handle = unsafe {
             CreateWaitableTimerA(
@@ -59,8 +60,9 @@ impl Timer {
             return errno_result();
         }
 
-        // Safe because we uniquely own the file descriptor.
         Ok(Timer {
+            // SAFETY:
+            // Safe because we uniquely own the file descriptor.
             handle: unsafe { SafeDescriptor::from_raw_descriptor(handle) },
             interval: None,
         })
@@ -100,6 +102,7 @@ impl TimerTrait for Timer {
             None => 0,
         };
 
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe {
             SetWaitableTimer(
@@ -119,6 +122,7 @@ impl TimerTrait for Timer {
     }
 
     fn wait(&mut self) -> Result<()> {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe { WaitForSingleObject(self.as_raw_descriptor(), INFINITE) };
 
@@ -137,6 +141,7 @@ impl TimerTrait for Timer {
     }
 
     fn clear(&mut self) -> Result<()> {
+        // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe { CancelWaitableTimer(self.as_raw_descriptor()) };
 

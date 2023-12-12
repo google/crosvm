@@ -205,6 +205,7 @@ pub struct virtio_video_stream_create {
 }
 impl Default for virtio_video_stream_create {
     fn default() -> Self {
+        // SAFETY: trivially safe
         unsafe { ::std::mem::zeroed() }
     }
 }

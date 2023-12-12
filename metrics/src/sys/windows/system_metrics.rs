@@ -249,6 +249,7 @@ impl Worker {
 
         let mut counters = PROCESS_MEMORY_COUNTERS_EX::default();
 
+        // SAFETY:
         // Safe because we own the process handle and all memory was allocated.
         let result = unsafe {
             GetProcessMemoryInfo(
@@ -280,6 +281,7 @@ impl Worker {
         let mut process_time: ProcessCpuTime = Default::default();
         let sys_time_success: i32;
 
+        // SAFETY:
         // Safe because memory is allocated for sys_time before the windows call.
         // And the value were initilized to 0s.
         unsafe {
@@ -294,6 +296,7 @@ impl Worker {
             // Query current process cpu time.
             let process_handle = CoreWinMetrics::get_process_handle()?;
             let process_time_success: i32;
+            // SAFETY:
             // Safe because memory is allocated for process_time before the windows call.
             // And the value were initilized to 0s.
             unsafe {
@@ -328,6 +331,7 @@ impl Worker {
     fn get_io_metrics(&self) -> SysResult<ProcessIo> {
         let process_handle = CoreWinMetrics::get_process_handle()?;
         let mut io_counters = IO_COUNTERS::default();
+        // SAFETY:
         // Safe because we own the process handle and all memory was allocated.
         let result = unsafe {
             GetProcessIoCounters(
@@ -454,6 +458,7 @@ impl Worker {
 }
 
 fn compute_filetime_subtraction(fta: FILETIME, ftb: FILETIME) -> LONGLONG {
+    // SAFETY:
     // safe because we are initializing the struct to 0s.
     unsafe {
         let mut a: LARGE_INTEGER = mem::zeroed::<LARGE_INTEGER>();
@@ -584,6 +589,7 @@ impl CoreWinMetrics {
     }
 
     fn get_process_handle() -> SysResult<SafeDescriptor> {
+        // SAFETY:
         // Safe because we own the current process.
         let process_handle = unsafe {
             OpenProcess(
@@ -595,6 +601,7 @@ impl CoreWinMetrics {
         if process_handle.is_null() {
             return Err(SysError::last());
         }
+        // SAFETY:
         // Safe as the SafeDescriptor is the only thing with access to the handle after this.
         Ok(unsafe { SafeDescriptor::from_raw_descriptor(process_handle) })
     }

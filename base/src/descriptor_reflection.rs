@@ -398,7 +398,9 @@ pub mod with_as_descriptor {
     {
         super::deserialize_descriptor(de)
             .map(IntoRawDescriptor::into_raw_descriptor)
-            .map(|rd| unsafe { T::from_raw_descriptor(rd) })
+            .map(|rd|
+                // SAFETY: rd is expected to be valid for the duration of the call.
+                unsafe { T::from_raw_descriptor(rd) })
     }
 }
 
@@ -462,9 +464,9 @@ mod tests {
     use super::super::SerializeDescriptors;
 
     fn deserialize<T: DeserializeOwned>(json: &str, descriptors: &[RawDescriptor]) -> T {
-        let safe_descriptors = descriptors
-            .iter()
-            .map(|&v| unsafe { SafeDescriptor::from_raw_descriptor(v) });
+        let safe_descriptors = descriptors.iter().map(|&v|
+                // SAFETY: `descriptor` is expected to be valid.
+                unsafe { SafeDescriptor::from_raw_descriptor(v) });
 
         deserialize_with_descriptors(|| serde_json::from_str(json), safe_descriptors).unwrap()
     }

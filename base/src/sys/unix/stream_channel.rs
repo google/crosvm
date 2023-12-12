@@ -91,6 +91,7 @@ impl StreamChannel {
             // (see sys::decode_error_kind) on Windows, so we preserve this behavior on POSIX even
             // though one could argue ErrorKind::UnexpectedEof is a closer match to the true error.
             SocketType::Message(sock) => {
+                // SAFETY:
                 // Safe because buf is valid, we pass buf's size to recv to bound the return
                 // length, and we check the return code.
                 let retval = unsafe {

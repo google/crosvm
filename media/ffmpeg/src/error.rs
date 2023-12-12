@@ -23,6 +23,8 @@ mod test {
 
     fn test_averror(averror: c_int, expected_message: &str) {
         let mut buffer = [0u8; 255];
+        // TODO(b:315859322): add safety doc string
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let ret =
             unsafe { ffi::av_strerror(averror, buffer.as_mut_ptr() as *mut c_char, buffer.len()) };
         assert_eq!(ret, 0);

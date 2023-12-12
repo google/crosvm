@@ -17,6 +17,7 @@ pub type CpuidCountFn = unsafe fn(u32, u32) -> CpuidResult;
 ///   combination. `std::arch::x86_64::__cpuid_count` may be used to provide the CPUID information
 ///   from the host.
 pub fn tsc_frequency_cpuid(cpuid_count: CpuidCountFn) -> Option<hypervisor::CpuIdEntry> {
+    // SAFETY:
     // Safe because we pass 0 and 0 for this call and the host supports the `cpuid` instruction.
     let result = unsafe { cpuid_count(0, 0) };
     if result.eax < 0x15 {
@@ -35,6 +36,7 @@ pub fn tsc_frequency_cpuid(cpuid_count: CpuidCountFn) -> Option<hypervisor::CpuI
             edx: 0,
         },
     };
+    // SAFETY:
     // Safe because we pass 0 and 0 for this call and the host supports the `cpuid` instruction.
     tsc_freq.cpuid = unsafe { cpuid_count(tsc_freq.function, tsc_freq.index) };
 
@@ -44,6 +46,7 @@ pub fn tsc_frequency_cpuid(cpuid_count: CpuidCountFn) -> Option<hypervisor::CpuI
         // The core crystal frequency is missing. Old kernels (<5.3) don't try to derive it from the
         // CPU base clock speed. Here, we essentially implement
         // https://lore.kernel.org/patchwork/patch/1064690/ so that old kernels can calibrate TSC.
+        // SAFETY:
         // Safe because the host supports `cpuid` instruction.
         let cpu_clock = unsafe {
             // 0x16 is the base clock frequency leaf.

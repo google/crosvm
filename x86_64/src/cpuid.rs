@@ -145,6 +145,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
                 entry.cpuid.ebx |= EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT;
 
                 // Expose HT flag to Guest.
+                // SAFETY: trivially safe
                 let result = unsafe { (ctx.cpuid)(entry.function) };
                 entry.cpuid.edx |= result.edx & (1 << EDX_HTT_SHIFT);
                 return;
@@ -164,9 +165,13 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
         2 | // Cache and TLB Descriptor information
         0x80000002 | 0x80000003 | 0x80000004 | // Processor Brand String
         0x80000005 | 0x80000006 // L1 and L2 cache information
-            => entry.cpuid = unsafe { (ctx.cpuid)(entry.function) },
+            => entry.cpuid = {
+                // SAFETY: trivially safe
+                unsafe { (ctx.cpuid)(entry.function) }},
         4 => {
-            entry.cpuid = unsafe { (ctx.cpuid_count)(entry.function, entry.index) };
+            entry.cpuid = {
+                // SAFETY: trivially safe
+                unsafe { (ctx.cpuid_count)(entry.function, entry.index) }};
 
             if ctx.cpu_config.host_cpu_topology {
                 return;
@@ -185,9 +190,11 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
             }
         }
         6 => {
-            // Safe because we pass 6 for this call and the host
-            // supports the `cpuid` instruction
-            let result = unsafe { (ctx.cpuid)(entry.function) };
+            let result = {
+                // SAFETY:
+                // Safe because we pass 6 for this call and the host
+                // supports the `cpuid` instruction
+                unsafe { (ctx.cpuid)(entry.function) }};
 
             if ctx.cpu_config.enable_hwp {
                 entry.cpuid.eax |= result.eax & (1 << EAX_HWP_SHIFT);
@@ -202,6 +209,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
         }
         7 => {
             if ctx.cpu_config.host_cpu_topology && entry.index == 0 {
+                // SAFETY:
                 // Safe because we pass 7 and 0 for this call and the host supports the
                 // `cpuid` instruction
                 let result = unsafe { (ctx.cpuid_count)(entry.function, entry.index) };
@@ -220,6 +228,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
         0x1A => {
             // Hybrid information leaf.
             if ctx.cpu_config.host_cpu_topology {
+                // SAFETY:
                 // Safe because we pass 0x1A for this call and the host supports the
                 // `cpuid` instruction
                 entry.cpuid = unsafe { (ctx.cpuid)(entry.function) };
@@ -355,6 +364,7 @@ const INTEL_EDX: u32 = u32::from_le_bytes([b'i', b'n', b'e', b'I']);
 const INTEL_ECX: u32 = u32::from_le_bytes([b'n', b't', b'e', b'l']);
 
 pub fn cpu_manufacturer() -> CpuManufacturer {
+    // SAFETY:
     // safe because MANUFACTURER_ID_FUNCTION is a well known cpuid function,
     // and we own the result value afterwards.
     let result = unsafe { __cpuid(MANUFACTURER_ID_FUNCTION) };

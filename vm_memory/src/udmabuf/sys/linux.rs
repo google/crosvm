@@ -113,6 +113,7 @@ impl UdmabufDriverTrait for UnixUdmabufDriver {
             items[i].size = len as u64;
         }
 
+        // SAFETY:
         // Safe because we always allocate enough space for `udmabuf_create_list`.
         let fd = unsafe {
             let create_list = list.as_mut_ptr();
@@ -124,6 +125,7 @@ impl UdmabufDriverTrait for UnixUdmabufDriver {
             return Err(UdmabufError::DmabufCreationFail(IoError::last_os_error()));
         }
 
+        // SAFETY:
         // Safe because we validated the file exists.
         Ok(unsafe { SafeDescriptor::from_raw_descriptor(fd) })
     }

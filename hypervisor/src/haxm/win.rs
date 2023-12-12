@@ -17,6 +17,7 @@ use winapi::um::winnt::GENERIC_READ;
 use winapi::um::winnt::GENERIC_WRITE;
 
 pub(super) fn open_haxm_device(use_ghaxm: bool) -> Result<SafeDescriptor> {
+    // SAFETY:
     // Open calls are safe because we give a constant nul-terminated string and verify the
     // result.
     let ret = unsafe {
@@ -39,6 +40,7 @@ pub(super) fn open_haxm_device(use_ghaxm: bool) -> Result<SafeDescriptor> {
     if ret == INVALID_HANDLE_VALUE {
         return errno_result();
     }
+    // SAFETY:
     // Safe because we verify that ret is valid and we own the fd.
     Ok(unsafe { SafeDescriptor::from_raw_descriptor(ret) })
 }
@@ -49,6 +51,7 @@ pub(super) fn open_haxm_vm_device(use_ghaxm: bool, vm_id: u32) -> Result<SafeDes
     } else {
         format!("\\\\.\\hax_vm{:02}", vm_id)
     };
+    // SAFETY:
     // Open calls are safe because we give a constant nul-terminated string and verify the
     // result.
     let ret = unsafe {
@@ -66,6 +69,7 @@ pub(super) fn open_haxm_vm_device(use_ghaxm: bool, vm_id: u32) -> Result<SafeDes
     if ret == INVALID_HANDLE_VALUE {
         return errno_result();
     }
+    // SAFETY:
     // Safe because we verify that ret is valid and we own the fd.
     Ok(unsafe { SafeDescriptor::from_raw_descriptor(ret) })
 }
@@ -80,6 +84,7 @@ pub(super) fn open_haxm_vcpu_device(
     } else {
         format!("\\\\.\\hax_vm{:02}_vcpu{:02}", vm_id, vcpu_id)
     };
+    // SAFETY:
     // Open calls are safe because we give a constant nul-terminated string and verify the
     // result.
     let ret = unsafe {
@@ -97,6 +102,7 @@ pub(super) fn open_haxm_vcpu_device(
     if ret == INVALID_HANDLE_VALUE {
         return errno_result();
     }
+    // SAFETY:
     // Safe because we verify that ret is valid and we own the fd.
     Ok(unsafe { SafeDescriptor::from_raw_descriptor(ret) })
 }

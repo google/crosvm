@@ -35,6 +35,7 @@ pub struct IoBufMut<'a> {
 
 impl<'a> IoBufMut<'a> {
     pub fn new(buf: &mut [u8]) -> IoBufMut<'a> {
+        // SAFETY:
         // Safe because buf's memory is of the supplied length, and
         // guaranteed to exist for the lifetime of the returned value.
         unsafe { Self::from_raw_parts(buf.as_mut_ptr(), buf.len()) }
@@ -74,6 +75,7 @@ impl<'a> IoBufMut<'a> {
 
         self.iobuf.set_len(self.len() - count);
 
+        // SAFETY:
         // Safe because we've checked that `count <= self.len()` so both the starting and resulting
         // pointer are within the bounds of the allocation.
         self.iobuf.set_ptr(unsafe { self.as_mut_ptr().add(count) });
@@ -114,6 +116,7 @@ impl<'a> IoBufMut<'a> {
     #[allow(clippy::wrong_self_convention)]
     #[inline]
     pub fn as_iobufs<'slice>(iovs: &'slice [IoBufMut<'_>]) -> &'slice [IoBuf] {
+        // SAFETY:
         // Safe because `IoBufMut` is ABI-compatible with `IoBuf`.
         unsafe { slice::from_raw_parts(iovs.as_ptr() as *const IoBuf, iovs.len()) }
     }
@@ -121,6 +124,7 @@ impl<'a> IoBufMut<'a> {
     /// Converts a mutable slice of `IoBufMut`s into a mutable slice of `IoBuf`s.
     #[inline]
     pub fn as_iobufs_mut<'slice>(iovs: &'slice mut [IoBufMut<'_>]) -> &'slice mut [IoBuf] {
+        // SAFETY:
         // Safe because `IoBufMut` is ABI-compatible with `IoBuf`.
         unsafe { slice::from_raw_parts_mut(iovs.as_mut_ptr() as *mut IoBuf, iovs.len()) }
     }
@@ -138,11 +142,13 @@ impl<'a> AsMut<IoBuf> for IoBufMut<'a> {
     }
 }
 
+// SAFETY:
 // It's safe to implement Send + Sync for this type for the same reason that `std::io::IoSliceMut`
 // is Send + Sync. Internally, it contains a pointer and a length. The integer length is safely Send
 // + Sync.  There's nothing wrong with sending a pointer between threads and de-referencing the
 // pointer requires an unsafe block anyway. See also https://github.com/rust-lang/rust/pull/70342.
 unsafe impl<'a> Send for IoBufMut<'a> {}
+// SAFETY: See comments for impl Send
 unsafe impl<'a> Sync for IoBufMut<'a> {}
 
 impl<'a> Debug for IoBufMut<'a> {

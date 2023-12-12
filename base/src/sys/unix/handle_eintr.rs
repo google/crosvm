@@ -189,6 +189,7 @@ mod tests {
             libc::__error()
         }
 
+        // SAFETY: trivially safe
         unsafe {
             *errno_location() = e;
         }

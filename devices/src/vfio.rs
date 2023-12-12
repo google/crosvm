@@ -218,6 +218,7 @@ impl KvmVfioPviommu {
             addr: 0,
         };
 
+        // SAFETY:
         // Safe as we are the owner of vfio_dev_attr, which is valid.
         let ret = unsafe {
             ioctl_with_ref(
@@ -248,6 +249,7 @@ impl KvmVfioPviommu {
             vsid,
         };
 
+        // SAFETY:
         // Safe as we are the owner of device and config which are valid, and we verify the return
         // value.
         let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_PVIOMMU_SET_CONFIG, &config) };
@@ -280,6 +282,7 @@ impl KvmVfioPviommu {
             addr: addr_of_mut!(info) as usize as u64,
         };
 
+        // SAFETY:
         // Safe as we are the owner of vfio_dev_attr, which is valid.
         let ret = unsafe {
             ioctl_with_ref(
@@ -344,6 +347,7 @@ impl VfioContainer {
 
     // Construct a VfioContainer from an exist container file.
     pub fn new_from_container(container: File) -> Result<Self> {
+        // SAFETY:
         // Safe as file is vfio container descriptor and ioctl is defined by kernel.
         let version = unsafe { ioctl(&container, VFIO_GET_API_VERSION()) };
         if version as u8 != VFIO_API_VERSION {
@@ -362,12 +366,14 @@ impl VfioContainer {
     }
 
     fn check_extension(&self, val: IommuType) -> bool {
+        // SAFETY:
         // Safe as file is vfio container and make sure val is valid.
         let ret = unsafe { ioctl_with_val(self, VFIO_CHECK_EXTENSION(), val as c_ulong) };
         ret != 0
     }
 
     fn set_iommu(&mut self, val: IommuType) -> i32 {
+        // SAFETY:
         // Safe as file is vfio container and make sure val is valid.
         unsafe { ioctl_with_val(self, VFIO_SET_IOMMU(), val as c_ulong) }
     }
@@ -455,6 +461,7 @@ impl VfioContainer {
             ..Default::default()
         };
 
+        // SAFETY:
         // Safe as file is vfio container, dma_unmap is constructed by us, and
         // we check the return value
         let ret = unsafe { ioctl_with_mut_ref(self, VFIO_IOMMU_UNMAP_DMA(), &mut dma_unmap) };
@@ -485,6 +492,7 @@ impl VfioContainer {
             ..Default::default()
         };
 
+        // SAFETY:
         // Safe as file is vfio container, iommu_info has valid values,
         // and we check the return value
         let ret = unsafe { ioctl_with_mut_ref(self, VFIO_IOMMU_GET_INFO(), &mut iommu_info) };
@@ -516,6 +524,7 @@ impl VfioContainer {
             ..Default::default()
         };
 
+        // SAFETY:
         // Safe as file is vfio container, iommu_info_argsz has valid values,
         // and we check the return value
         let ret = unsafe { ioctl_with_mut_ref(self, VFIO_IOMMU_GET_INFO(), &mut iommu_info_argsz) };
@@ -531,14 +540,16 @@ impl VfioContainer {
             iommu_info_argsz.argsz as usize - mem::size_of::<vfio_iommu_type1_info>(),
         );
         iommu_info[0].argsz = iommu_info_argsz.argsz;
-        // Safe as file is vfio container, iommu_info has valid values,
-        // and we check the return value
         let ret =
+            // SAFETY:
+            // Safe as file is vfio container, iommu_info has valid values,
+            // and we check the return value
             unsafe { ioctl_with_mut_ptr(self, VFIO_IOMMU_GET_INFO(), iommu_info.as_mut_ptr()) };
         if ret != 0 {
             return Err(VfioError::IommuGetInfo(get_error()));
         }
 
+        // SAFETY:
         // Safe because we initialized iommu_info with enough space, u8 has less strict
         // alignment, and since it will no longer be mutated.
         let info_bytes = unsafe {
@@ -622,6 +633,7 @@ impl VfioContainer {
                 IommuDevType::CoIommu | IommuDevType::PkvmPviommu | IommuDevType::VirtioIommu => {}
                 IommuDevType::NoIommu => {
                     for region in vm.get_memory().regions() {
+                        // SAFETY:
                         // Safe because the guest regions are guaranteed not to overlap
                         unsafe {
                             self.vfio_dma_map(
@@ -691,6 +703,8 @@ impl VfioContainer {
     }
 
     pub fn clone_as_raw_descriptor(&self) -> Result<RawDescriptor> {
+        // SAFETY: this call is safe because it doesn't modify any memory and we
+        // check the return value.
         let raw_descriptor = unsafe { libc::dup(self.container.as_raw_descriptor()) };
         if raw_descriptor < 0 {
             Err(VfioError::ContainerDupError)
@@ -729,8 +743,9 @@ impl VfioGroup {
             argsz: mem::size_of::<vfio_group_status>() as u32,
             flags: 0,
         };
-        // Safe as we are the owner of group_file and group_status which are valid value.
         let mut ret =
+            // SAFETY:
+            // Safe as we are the owner of group_file and group_status which are valid value.
             unsafe { ioctl_with_mut_ref(&group_file, VFIO_GROUP_GET_STATUS(), &mut group_status) };
         if ret < 0 {
             return Err(VfioError::GetGroupStatus(get_error()));
@@ -740,9 +755,10 @@ impl VfioGroup {
             return Err(VfioError::GroupViable);
         }
 
+        let container_raw_descriptor = container.as_raw_descriptor();
+        // SAFETY:
         // Safe as we are the owner of group_file and container_raw_descriptor which are valid value,
         // and we verify the ret value
-        let container_raw_descriptor = container.as_raw_descriptor();
         ret = unsafe {
             ioctl_with_ref(
                 &group_file,
@@ -796,6 +812,7 @@ impl VfioGroup {
             },
         };
 
+        // SAFETY:
         // Safe as we are the owner of vfio_dev_descriptor and vfio_dev_attr which are valid value,
         // and we verify the return value.
         if 0 != unsafe {
@@ -815,12 +832,14 @@ impl VfioGroup {
         let path: CString = CString::new(name.as_bytes()).expect("CString::new() failed");
         let path_ptr = path.as_ptr();
 
+        // SAFETY:
         // Safe as we are the owner of self and path_ptr which are valid value.
         let ret = unsafe { ioctl_with_ptr(self, VFIO_GROUP_GET_DEVICE_FD(), path_ptr) };
         if ret < 0 {
             return Err(VfioError::GroupGetDeviceFD(get_error()));
         }
 
+        // SAFETY:
         // Safe as ret is valid descriptor
         Ok(unsafe { File::from_raw_descriptor(ret) })
     }
@@ -1177,6 +1196,7 @@ impl VfioDevice {
         let mut device_feature = vec_with_array_field::<vfio_device_feature, u8>(0);
         device_feature[0].argsz = mem::size_of::<vfio_device_feature>() as u32;
         device_feature[0].flags = VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY;
+        // SAFETY:
         // Safe as we are the owner of self and power_management which are valid value
         let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_FEATURE(), &device_feature[0]) };
         if ret < 0 {
@@ -1197,8 +1217,9 @@ impl VfioDevice {
         device_feature[0].argsz = (mem::size_of::<vfio_device_feature>() + payload_size) as u32;
         device_feature[0].flags =
             VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY_WITH_WAKEUP;
+        // SAFETY:
+        // Safe as we know vfio_device_low_power_entry_with_wakeup has two 32-bit int fields
         unsafe {
-            // Safe as we know vfio_device_low_power_entry_with_wakeup has two 32-bit int fields
             device_feature[0]
                 .data
                 .as_mut_slice(payload_size)
@@ -1207,6 +1228,7 @@ impl VfioDevice {
                         .as_slice(),
                 );
         }
+        // SAFETY:
         // Safe as we are the owner of self and power_management which are valid value
         let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_FEATURE(), &device_feature[0]) };
         if ret < 0 {
@@ -1221,6 +1243,7 @@ impl VfioDevice {
         let mut device_feature = vec_with_array_field::<vfio_device_feature, u8>(0);
         device_feature[0].argsz = mem::size_of::<vfio_device_feature>() as u32;
         device_feature[0].flags = VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_LOW_POWER_EXIT;
+        // SAFETY:
         // Safe as we are the owner of self and power_management which are valid value
         let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_FEATURE(), &device_feature[0]) };
         if ret < 0 {
@@ -1236,15 +1259,18 @@ impl VfioDevice {
         let mut dsm = vec_with_array_field::<vfio_acpi_dsm, u8>(count);
         dsm[0].argsz = (mem::size_of::<vfio_acpi_dsm>() + mem::size_of_val(args)) as u32;
         dsm[0].padding = 0;
+        // SAFETY:
         // Safe as we allocated enough space to hold args
         unsafe {
             dsm[0].args.as_mut_slice(count).clone_from_slice(args);
         }
+        // SAFETY:
         // Safe as we are the owner of self and dsm which are valid value
         let ret = unsafe { ioctl_with_mut_ref(&self.dev, VFIO_DEVICE_ACPI_DSM(), &mut dsm[0]) };
         if ret < 0 {
             Err(VfioError::VfioAcpiDsm(get_error()))
         } else {
+            // SAFETY:
             // Safe as we allocated enough space to hold args
             let res = unsafe { dsm[0].args.as_slice(count) };
             Ok(res.to_vec())
@@ -1267,10 +1293,12 @@ impl VfioDevice {
         irq_set[0].start = 0;
         irq_set[0].count = count as u32;
 
+        // SAFETY:
         // It is safe as enough space is reserved through vec_with_array_field(u32)<count>.
         let data = unsafe { irq_set[0].data.as_mut_slice(count * u32_size) };
         data.copy_from_slice(&acpi_notification_eventfd.as_raw_descriptor().to_ne_bytes()[..]);
 
+        // SAFETY:
         // Safe as we are the owner of self and irq_set which are valid value
         let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
@@ -1289,6 +1317,7 @@ impl VfioDevice {
         irq_set[0].start = 0;
         irq_set[0].count = 0;
 
+        // SAFETY:
         // Safe as we are the owner of self and irq_set which are valid value
         let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
@@ -1310,10 +1339,12 @@ impl VfioDevice {
         irq_set[0].start = 0;
         irq_set[0].count = 1;
 
+        // SAFETY:
         // It is safe as enough space is reserved through vec_with_array_field(u32)<count>.
         let data = unsafe { irq_set[0].data.as_mut_slice(u32_size) };
         data.copy_from_slice(&val.to_ne_bytes()[..]);
 
+        // SAFETY:
         // Safe as we are the owner of self and irq_set which are valid value
         let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
@@ -1345,6 +1376,7 @@ impl VfioDevice {
         irq_set[0].start = subindex;
         irq_set[0].count = count as u32;
 
+        // SAFETY:
         // irq_set.data could be none, bool or descriptor according to flags, so irq_set.data
         // is u8 default, here irq_set.data is descriptor as u32, so 4 default u8 are combined
         // together as u32. It is safe as enough space is reserved through
@@ -1359,6 +1391,7 @@ impl VfioDevice {
             data = right;
         }
 
+        // SAFETY:
         // Safe as we are the owner of self and irq_set which are valid value
         let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
@@ -1386,6 +1419,7 @@ impl VfioDevice {
         irq_set[0].count = 1;
 
         {
+            // SAFETY:
             // irq_set.data could be none, bool or descriptor according to flags, so irq_set.data is
             // u8 default, here irq_set.data is descriptor as u32, so 4 default u8 are combined
             // together as u32. It is safe as enough space is reserved through
@@ -1394,6 +1428,7 @@ impl VfioDevice {
             descriptors.copy_from_slice(&descriptor.as_raw_descriptor().to_le_bytes()[..]);
         }
 
+        // SAFETY:
         // Safe as we are the owner of self and irq_set which are valid value
         let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
@@ -1412,6 +1447,7 @@ impl VfioDevice {
         irq_set[0].start = 0;
         irq_set[0].count = 0;
 
+        // SAFETY:
         // Safe as we are the owner of self and irq_set which are valid value
         let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
@@ -1430,6 +1466,7 @@ impl VfioDevice {
         irq_set[0].start = 0;
         irq_set[0].count = 1;
 
+        // SAFETY:
         // Safe as we are the owner of self and irq_set which are valid value
         let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
@@ -1448,6 +1485,7 @@ impl VfioDevice {
         irq_set[0].start = 0;
         irq_set[0].count = 1;
 
+        // SAFETY:
         // Safe as we are the owner of self and irq_set which are valid value
         let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
@@ -1467,6 +1505,7 @@ impl VfioDevice {
             ..Default::default()
         };
 
+        // SAFETY:
         // Safe as we are the owner of device_file and dev_info which are valid value,
         // and we verify the return value.
         let ret = unsafe { ioctl_with_mut_ref(device_file, VFIO_DEVICE_GET_INFO(), &mut dev_info) };
@@ -1504,6 +1543,7 @@ impl VfioDevice {
                 index: i,
                 count: 0,
             };
+            // SAFETY:
             // Safe as we are the owner of dev and irq_info which are valid value,
             // and we verify the return value.
             let ret = unsafe {
@@ -1539,9 +1579,10 @@ impl VfioDevice {
                 size: 0,
                 offset: 0,
             };
-            // Safe as we are the owner of dev and reg_info which are valid value,
-            // and we verify the return value.
             let ret =
+                // SAFETY:
+                // Safe as we are the owner of dev and reg_info which are valid value,
+                // and we verify the return value.
                 unsafe { ioctl_with_mut_ref(dev, VFIO_DEVICE_GET_REGION_INFO(), &mut reg_info) };
             if ret < 0 {
                 continue;
@@ -1559,6 +1600,7 @@ impl VfioDevice {
                 region_with_cap[0].region_info.cap_offset = 0;
                 region_with_cap[0].region_info.size = 0;
                 region_with_cap[0].region_info.offset = 0;
+                // SAFETY:
                 // Safe as we are the owner of dev and region_info which are valid value,
                 // and we verify the return value.
                 let ret = unsafe {
@@ -1593,27 +1635,33 @@ impl VfioDevice {
                     if offset + cap_header_sz > region_info_sz {
                         break;
                     }
+                    // SAFETY:
                     // Safe, as cap_header struct is in this function allocated region_with_cap
                     // vec.
                     let cap_ptr = unsafe { info_ptr.offset(offset as isize) };
+                    // SAFETY:
+                    // Safe, as cap_header struct is in this function allocated region_with_cap
+                    // vec.
                     let cap_header = unsafe { &*(cap_ptr as *const vfio_info_cap_header) };
                     if cap_header.id as u32 == VFIO_REGION_INFO_CAP_SPARSE_MMAP {
                         if offset + mmap_cap_sz > region_info_sz {
                             break;
                         }
                         // cap_ptr is vfio_region_info_cap_sparse_mmap here
-                        // Safe, this vfio_region_info_cap_sparse_mmap is in this function allocated
-                        // region_with_cap vec.
                         let sparse_mmap =
+                            // SAFETY:
+                            // Safe, this vfio_region_info_cap_sparse_mmap is in this function
+                            // allocated region_with_cap vec.
                             unsafe { &*(cap_ptr as *const vfio_region_info_cap_sparse_mmap) };
 
                         let area_num = sparse_mmap.nr_areas;
                         if offset + mmap_cap_sz + area_num * mmap_area_sz > region_info_sz {
                             break;
                         }
-                        // Safe, these vfio_region_sparse_mmap_area are in this function allocated
-                        // region_with_cap vec.
                         let areas =
+                            // SAFETY:
+                            // Safe, these vfio_region_sparse_mmap_area are in this function allocated
+                            // region_with_cap vec.
                             unsafe { sparse_mmap.areas.as_slice(sparse_mmap.nr_areas as usize) };
                         for area in areas.iter() {
                             mmaps.push(*area);
@@ -1623,9 +1671,10 @@ impl VfioDevice {
                             break;
                         }
                         // cap_ptr is vfio_region_info_cap_type here
-                        // Safe, this vfio_region_info_cap_type is in this function allocated
-                        // region_with_cap vec
                         let cap_type_info =
+                            // SAFETY:
+                            // Safe, this vfio_region_info_cap_type is in this function allocated
+                            // region_with_cap vec
                             unsafe { &*(cap_ptr as *const vfio_region_info_cap_type) };
 
                         cap_info = Some((cap_type_info.type_, cap_type_info.subtype));
@@ -1776,10 +1825,12 @@ impl VfioDevice {
     /// Reads a value from the specified `VfioRegionAddr.addr` + `offset`.
     pub fn region_read_from_addr<T: FromBytes>(&self, addr: &VfioRegionAddr, offset: u64) -> T {
         let mut val = mem::MaybeUninit::zeroed();
-        // Safe because we have zero-initialized `size_of::<T>()` bytes.
         let buf =
+            // SAFETY:
+            // Safe because we have zero-initialized `size_of::<T>()` bytes.
             unsafe { slice::from_raw_parts_mut(val.as_mut_ptr() as *mut u8, mem::size_of::<T>()) };
         self.region_read(addr.index, buf, addr.addr + offset);
+        // SAFETY:
         // Safe because any bit pattern is valid for a type that implements FromBytes.
         unsafe { val.assume_init() }
     }

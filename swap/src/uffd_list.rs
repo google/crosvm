@@ -192,10 +192,16 @@ mod tests {
 
             self.list.borrow_mut().push((raw_desc, false));
 
-            unsafe { Userfaultfd::from_raw_descriptor(raw_desc) }
+            // TODO(b/315998194): Add safety comment
+            #[allow(clippy::undocumented_unsafe_blocks)]
+            unsafe {
+                Userfaultfd::from_raw_descriptor(raw_desc)
+            }
         }
 
         fn make_readable(&self, raw_desc: RawDescriptor) {
+            // TODO(b/315998194): Add safety comment
+            #[allow(clippy::undocumented_unsafe_blocks)]
             let ev = unsafe { Event::from_raw_descriptor(raw_desc) };
             ev.signal().unwrap();
             // Keep the file descriptor opened. The generated fake Userfaultfd has the actual

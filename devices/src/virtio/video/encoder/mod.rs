@@ -669,6 +669,7 @@ impl<T: Encoder> EncoderDevice<T> {
                             return Err(VideoError::InvalidArgument);
                         }
                         GuestResource::from_virtio_object_entry(
+                            // SAFETY:
                             // Safe because we confirmed the correct type for the resource.
                             // unwrap() is also safe here because we just tested above that `entries` had
                             // exactly one element.
@@ -679,6 +680,7 @@ impl<T: Encoder> EncoderDevice<T> {
                         .map_err(|_| VideoError::InvalidArgument)?
                     }
                     ResourceType::GuestPages => GuestResource::from_virtio_guest_mem_entry(
+                        // SAFETY:
                         // Safe because we confirmed the correct type for the resource.
                         unsafe {
                             std::slice::from_raw_parts(
@@ -717,6 +719,7 @@ impl<T: Encoder> EncoderDevice<T> {
                             return Err(VideoError::InvalidArgument);
                         }
                         GuestResource::from_virtio_object_entry(
+                            // SAFETY:
                             // Safe because we confirmed the correct type for the resource.
                             // unwrap() is also safe here because we just tested above that `entries` had
                             // exactly one element.
@@ -727,6 +730,7 @@ impl<T: Encoder> EncoderDevice<T> {
                         .map_err(|_| VideoError::InvalidArgument)?
                     }
                     ResourceType::GuestPages => GuestResource::from_virtio_guest_mem_entry(
+                        // SAFETY:
                         // Safe because we confirmed the correct type for the resource.
                         unsafe {
                             std::slice::from_raw_parts(

@@ -18,8 +18,10 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     pub fn with_tube(backend: S, backend_pid: u32) -> Result<Self> {
         Self::new(
             backend,
-            Box::new(move |tube| unsafe {
+            Box::new(move |tube|
+                // SAFETY:
                 // Safe because we expect the tube to be unpacked in the other process.
+                unsafe {
                 packed_tube::pack(tube, backend_pid).expect("packed tube")
             }),
         )
@@ -86,6 +88,7 @@ mod tests {
 
         let event = base::Event::new().unwrap();
         let tx_descriptor = handler.take_tx_descriptor();
+        // SAFETY:
         // Safe because we only do it once.
         let stream = unsafe { packed_tube::unpack(tx_descriptor).unwrap() };
         let mut fs_cache = Slave::from_stream(stream);
@@ -117,6 +120,7 @@ mod tests {
 
         let event = base::Event::new().unwrap();
         let tx_descriptor = handler.take_tx_descriptor();
+        // SAFETY:
         // Safe because we only do it once.
         let stream = unsafe { packed_tube::unpack(tx_descriptor).unwrap() };
         let mut fs_cache = Slave::from_stream(stream);

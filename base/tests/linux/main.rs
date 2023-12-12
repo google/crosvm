@@ -52,10 +52,12 @@ fn safe_descriptor_from_path_none() {
 #[test]
 #[allow(clippy::eq_op)]
 fn clone_equality() {
+    // SAFETY: Safe because return value is checked.
     let ret = unsafe { libc::eventfd(0, 0) };
     if ret < 0 {
         panic!("failed to create eventfd");
     }
+    // SAFETY: Safe because ret is valid and return value is checked.
     let descriptor = unsafe { SafeDescriptor::from_raw_descriptor(ret) };
 
     assert_eq!(descriptor, descriptor);
@@ -65,10 +67,13 @@ fn clone_equality() {
         descriptor.try_clone().expect("failed to clone eventfd")
     );
 
+    // SAFETY: Safe because return value is checked.
     let ret = unsafe { libc::eventfd(0, 0) };
     if ret < 0 {
         panic!("failed to create eventfd");
     }
+
+    // SAFETY: Safe because ret is valid and return value is checked.
     let another = unsafe { SafeDescriptor::from_raw_descriptor(ret) };
 
     assert_ne!(descriptor, another);

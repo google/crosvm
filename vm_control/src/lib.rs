@@ -389,6 +389,7 @@ pub enum VmMemorySource {
 
 // The following are wrappers to avoid base dependencies in the rutabaga crate
 fn to_rutabaga_desciptor(s: SafeDescriptor) -> RutabagaDescriptor {
+    // SAFETY:
     // Safe because we own the SafeDescriptor at this point.
     unsafe { RutabagaDescriptor::from_raw_descriptor(s.into_raw_descriptor()) }
 }
@@ -403,6 +404,10 @@ impl RutabagaMemoryRegion {
     }
 }
 
+// SAFETY:
+//
+// Self guarantees `ptr`..`ptr+size` is an mmaped region owned by this object that
+// can't be unmapped during the `MappedRegion`'s lifetime.
 unsafe impl MappedRegion for RutabagaMemoryRegion {
     fn as_ptr(&self) -> *mut u8 {
         self.region.as_ptr()

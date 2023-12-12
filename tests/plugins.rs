@@ -141,6 +141,8 @@ fn test_plugin(src: &str) {
 }
 
 fn keep_fd_on_exec<F: AsRawDescriptor>(f: &F) {
+    // SAFETY: safe because function doesn't modify memory and we don't care about the return
+    // value.
     unsafe {
         ioctl(f, 0x5450 /* FIONCLEX */);
     }

@@ -190,6 +190,7 @@ fn set_vcpu_thread_local(vcpu: Option<&dyn VcpuArch>, signal_num: c_int) {
 }
 
 pub fn setup_vcpu_signal_handler() -> Result<()> {
+    // SAFETY: trivially safe as we check return value.
     unsafe {
         extern "C" fn handle_signal(_: c_int) {
             // Use LocalKey::try_with() so we don't panic if a signal happens while the destructor
