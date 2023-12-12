@@ -188,7 +188,7 @@ impl DeviceType {
     /// implemented by a spec-compliant device.
     pub fn min_queues(&self) -> usize {
         match self {
-            DeviceType::Net => 2,           // rx, tx
+            DeviceType::Net => 3,           // rx, tx (TODO: b/314353246: ctrl is optional)
             DeviceType::Block => 1,         // request queue
             DeviceType::Console => 2,       // receiveq, transmitq
             DeviceType::Rng => 1,           // request queue
