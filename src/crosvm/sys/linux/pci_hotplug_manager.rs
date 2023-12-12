@@ -5,6 +5,7 @@
 //! A high-level manager for hotplug PCI devices.
 
 // TODO(b/243767476): Support aarch64.
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -39,8 +40,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// PciHotPlugManager manages hotplug ports, and handles PCI device hot plug and hot removal.
 pub struct PciHotPlugManager {
-    /// map of downstream bus number to corresponding PortStub
-    ports: HashMap<u8, PortStub>,
+    /// map of empty ports available.
+    ///
+    /// empty ports are sorted such to ensure the ordering of the hotplugged devices. Specifically,
+    /// if multiple devices are hotplugged before PCI enumeration, they will appear in the guest OS
+    /// in the same order hotplug_device is called.
+    available_ports: BTreeMap<PciAddress, PortStub>,
+    /// map of occupied ports, indexed by downstream bus number
+    occupied_ports: HashMap<u8, PortStub>,
     /// JailWarden for jailing hotplug devices
     jail_warden: Box<dyn JailWarden>,
     /// control channel to root bus
@@ -49,10 +56,23 @@ pub struct PciHotPlugManager {
 
 /// PortStub contains a hotplug port and set of hotplug devices on it.
 struct PortStub {
+    /// PCI address of the port (at upstream)
+    pci_address: PciAddress,
+    /// index of downstream bus
+    downstream_bus: u8,
     /// hotplug port
     port: Arc<Mutex<dyn HotPlugBus>>,
     /// Map of hotplugged devices, and system resources that can be released when device is removed.
     devices: HashMap<PciAddress, RecoverableResource>,
+}
+
+impl PortStub {
+    /// Sends hotplug signal on the port.
+    fn send_hotplug_signal(&mut self) -> Result<()> {
+        let base_pci_address = PciAddress::new(0, self.downstream_bus.into(), 0, 0)?;
+        self.port.lock().hot_plug(base_pci_address);
+        Ok(())
+    }
 }
 
 /// System resources that can be released when a hotplugged device is removed.
@@ -92,7 +112,8 @@ impl PciHotPlugManager {
             ),
         };
         Ok(Self {
-            ports: HashMap::new(),
+            available_ports: BTreeMap::new(),
+            occupied_ports: HashMap::new(),
             jail_warden,
             rootbus_controller: None,
         })
@@ -115,26 +136,33 @@ impl PciHotPlugManager {
     ///
     /// PciHotPlugManager assumes exclusive control for adding and removing devices to this port.
     pub fn add_port(&mut self, port: Arc<Mutex<dyn HotPlugBus>>) -> Result<()> {
+        let port_lock = port.lock();
         // Rejects hotplug bus with downstream devices.
-        if !port.lock().is_empty() {
+        if !port_lock.is_empty() {
             bail!("invalid hotplug bus");
         }
-        let downstream_bus = port
-            .lock()
+        let pci_address = port_lock
+            .get_address()
+            .context("Hotplug bus PCI address missing")?;
+        // Reject hotplug buses not on rootbus, since otherwise the order of enumeration depends on
+        // the topology of PCI.
+        if pci_address.bus != 0 {
+            bail!("hotplug port on non-root bus not supported");
+        }
+        let downstream_bus = port_lock
             .get_secondary_bus_number()
             .ok_or(anyhow!("cannot get downstream bus"))?;
-        if self.ports.get(&downstream_bus).is_some() {
-            Err(anyhow!("downstream bus already used for hotplug"))
-        } else {
-            self.ports.insert(
+        drop(port_lock);
+        self.available_ports.insert(
+            pci_address,
+            PortStub {
+                pci_address,
                 downstream_bus,
-                PortStub {
-                    port,
-                    devices: HashMap::new(),
-                },
-            );
-            Ok(())
-        }
+                port,
+                devices: HashMap::new(),
+            },
+        );
+        Ok(())
     }
 
     /// hotplugs up to 8 PCI devices as "functions of a device" (in PCI Bus Device Function sense).
@@ -147,17 +175,24 @@ impl PciHotPlugManager {
         resources: &mut SystemAllocator,
     ) -> Result<u8> {
         if resource_carriers.len() > 8 || resource_carriers.is_empty() {
-            bail!("PCI function has to be 1-8 inclusive");
+            bail!("PCI function count has to be 1 to 8 inclusive");
         }
-        let bus = self.find_empty_bus()?;
+        let (_, mut port_stub) = self
+            .available_ports
+            .pop_first()
+            .ok_or(anyhow!("no available ports"))?;
+        let downstream_bus = port_stub.downstream_bus;
+        if self.occupied_ports.contains_key(&downstream_bus) {
+            bail!("Downstream bus {} already used", downstream_bus);
+        }
         for (func_num, mut resource_carrier) in resource_carriers.into_iter().enumerate() {
-            let device_address = PciAddress::new(0, bus as u32, 0, func_num as u32)?;
+            let device_address = PciAddress::new(0, downstream_bus as u32, 0, func_num as u32)?;
             let hotplug_key = HotPlugKey::GuestDevice {
                 guest_addr: device_address,
             };
             resource_carrier.allocate_address(device_address, resources)?;
             let irq_evt = IrqLevelEvent::new()?;
-            let (pin, irq_num) = match bus % 4 {
+            let (pin, irq_num) = match downstream_bus % 4 {
                 0 => (PciInterruptPin::IntA, 0),
                 1 => (PciInterruptPin::IntB, 1),
                 2 => (PciInterruptPin::IntC, 2),
@@ -187,10 +222,6 @@ impl PciHotPlugManager {
                 .as_ref()
                 .ok_or(anyhow!("root bus controller not initialized"))?
                 .send(PciRootCommand::Add(device_address, proxy_device))?;
-            let port_stub = self
-                .ports
-                .get_mut(&bus)
-                .ok_or(anyhow!("invalid hotplug bus number"))?;
             port_stub
                 .port
                 .lock()
@@ -200,8 +231,9 @@ impl PciHotPlugManager {
                 .insert(device_address, RecoverableResource { irq_num, irq_evt });
         }
         // Send hotplug signal after all functions are added.
-        self.send_hotplug_signal(bus)?;
-        Ok(bus)
+        port_stub.send_hotplug_signal()?;
+        self.occupied_ports.insert(downstream_bus, port_stub);
+        Ok(downstream_bus)
     }
 
     /// Removes all hotplugged devices on the hotplug bus.
@@ -214,7 +246,7 @@ impl PciHotPlugManager {
         // Unlike hotplug, HotPlugBus removes all downstream devices when eject signal is sent.
         self.remove_device_from_port(bus)?;
         let port_stub = self
-            .ports
+            .occupied_ports
             .get_mut(&bus)
             .ok_or(anyhow!("invalid hotplug bus number"))?;
         // Remove all devices on the hotplug bus.
@@ -231,41 +263,23 @@ impl PciHotPlugManager {
                 &recoverable_resource.irq_evt,
             )?;
         }
-        Ok(())
-    }
-
-    /// Find a bus number available for hotplug.
-    fn find_empty_bus(&self) -> Result<u8> {
-        for (bus_num, port_stub) in &self.ports {
-            if port_stub.devices.is_empty() {
-                return Ok(*bus_num);
-            }
-        }
-        bail!("no ports available");
-    }
-
-    /// Sends hotplug signal on the port.
-    fn send_hotplug_signal(&self, bus: u8) -> Result<()> {
-        if let Some(port_stub) = self.ports.get(&bus) {
-            let base_pci_address = PciAddress::new(0, bus as u32, 0, 0)?;
-            port_stub.port.lock().hot_plug(base_pci_address);
-            Ok(())
+        if let Some(port_stub) = self.occupied_ports.remove(&bus) {
+            self.available_ports
+                .insert(port_stub.pci_address, port_stub);
         } else {
-            bail!("invalid hotplug bus number");
+            bail!("Failed to release bus {}", bus);
         }
+        Ok(())
     }
 
     /// Sends eject signal on the port, and removes downstream devices on the port.
     fn remove_device_from_port(&self, bus: u8) -> Result<()> {
-        if let Some(port_stub) = self.ports.get(&bus) {
-            if port_stub.devices.is_empty() {
-                bail!("invalid hotplug bus number");
-            }
+        if let Some(port_stub) = self.occupied_ports.get(&bus) {
             let base_pci_address = PciAddress::new(0, bus as u32, 0, 0)?;
             port_stub.port.lock().hot_unplug(base_pci_address);
             Ok(())
         } else {
-            bail!("invalid hotplug bus number");
+            bail!("invalid bus number for device removal: {}", bus);
         }
     }
 }

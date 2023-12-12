@@ -222,6 +222,8 @@ pub trait HotPlugBus {
     /// - 'None': hotplug bus isn't match with host pci device
     /// - 'Some(bus_num)': hotplug bus is match and put the device at bus_num
     fn is_match(&self, host_addr: PciAddress) -> Option<u8>;
+    /// Gets the upstream PCI Address of the hotplug bus
+    fn get_address(&self) -> Option<PciAddress>;
     /// Gets the secondary bus number of this bus
     fn get_secondary_bus_number(&self) -> Option<u8>;
     /// Add hotplug device into this bus

@@ -120,6 +120,10 @@ impl HotPlugBus for PcieRootPort {
         self.hotplug_out_begin = true;
     }
 
+    fn get_address(&self) -> Option<PciAddress> {
+        self.pcie_port.get_address()
+    }
+
     fn get_secondary_bus_number(&self) -> Option<u8> {
         Some(self.pcie_port.get_bus_range()?.secondary)
     }

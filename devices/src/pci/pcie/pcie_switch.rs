@@ -102,6 +102,10 @@ impl HotPlugBus for PcieUpstreamPort {
         self.downstream_devices.insert(guest_addr, hotplug_key);
     }
 
+    fn get_address(&self) -> Option<PciAddress> {
+        self.pcie_port.get_address()
+    }
+
     fn get_hotplug_device(&self, hotplug_key: HotPlugKey) -> Option<PciAddress> {
         for (guest_address, host_info) in self.downstream_devices.iter() {
             if hotplug_key == *host_info {
@@ -235,6 +239,10 @@ impl HotPlugBus for PcieDownstreamPort {
         }
 
         self.hotplug_out_begin = true;
+    }
+
+    fn get_address(&self) -> Option<PciAddress> {
+        self.pcie_port.get_address()
     }
 
     fn get_secondary_bus_number(&self) -> Option<u8> {
