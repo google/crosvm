@@ -138,7 +138,7 @@ fn is_valid_node_name(name: &str) -> bool {
 }
 
 // An implementation of FDT header.
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct FdtHeader {
     magic: u32,             // magic word
     total_size: u32,        // total size of DT block
@@ -220,6 +220,9 @@ impl FdtHeader {
             size_dt_strings: rdu32(input)?,
             size_dt_struct: rdu32(input)?,
         };
+        if header.magic != Self::MAGIC {
+            return Err(Error::FdtParseError("invalid header magic".into()));
+        }
         if header.version < Self::VERSION {
             return Err(Error::FdtParseError("unsupported FDT version".into()));
         }
@@ -230,14 +233,24 @@ impl FdtHeader {
                 "invalid reserved memory offset".into(),
             ));
         }
-        if header.off_dt_struct >= header.off_dt_strings {
-            return Err(Error::FdtParseError("invalid DT struct offset".into()));
+
+        let off_dt_struct_end = header
+            .off_dt_struct
+            .checked_add(header.size_dt_struct)
+            .ok_or_else(|| Error::FdtParseError("struct end offset must fit in 32 bits".into()))?;
+        if off_dt_struct_end > header.off_dt_strings {
+            return Err(Error::FdtParseError("struct and strings overlap".into()));
         }
-        if header.magic != Self::MAGIC {
-            Err(Error::FdtParseError("invalid header magic".into()))
-        } else {
-            Ok(header)
+
+        let off_dt_strings_end = header
+            .off_dt_strings
+            .checked_add(header.size_dt_strings)
+            .ok_or_else(|| Error::FdtParseError("strings end offset must fit in 32 bits".into()))?;
+        if off_dt_strings_end > header.total_size {
+            return Err(Error::FdtParseError("strings data past total size".into()));
         }
+
+        Ok(header)
     }
 }
 
@@ -670,7 +683,10 @@ impl Fdt {
     ///
     /// `input` - byte slice from which to load the FDT.
     pub fn from_blob(input: Blob) -> Result<Self> {
-        let header = FdtHeader::from_blob(&input[..FdtHeader::SIZE])?;
+        let header = input
+            .get(..FdtHeader::SIZE)
+            .ok_or_else(|| Error::FdtParseError("cannot extract header, input too small".into()))?;
+        let header = FdtHeader::from_blob(header)?;
         if header.total_size as usize != input.len() {
             return Err(Error::FdtParseError("input size doesn't match".into()));
         }
@@ -940,6 +956,57 @@ mod tests {
         assert_eq!(header.boot_cpuid_phys, 0);
         assert_eq!(header.size_dt_strings, 0);
         assert_eq!(header.size_dt_struct, 0x10);
+    }
+
+    #[test]
+    fn fdt_load_invalid_header() {
+        // HEADER is valid
+        const HEADER: [u8; 40] = [
+            0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
+            0x00, 0x00, 0x00, 0xda, // 0004: totalsize (0xda)
+            0x00, 0x00, 0x00, 0x58, // 0008: off_dt_struct (0x58)
+            0x00, 0x00, 0x00, 0xb2, // 000C: off_dt_strings (0xb2)
+            0x00, 0x00, 0x00, 0x28, // 0010: off_mem_rsvmap (0x28)
+            0x00, 0x00, 0x00, 0x11, // 0014: version (0x11 = 17)
+            0x00, 0x00, 0x00, 0x10, // 0018: last_comp_version (0x10 = 16)
+            0x00, 0x00, 0x00, 0x00, // 001C: boot_cpuid_phys (0)
+            0x00, 0x00, 0x00, 0x28, // 0020: size_dt_strings (0x28)
+            0x00, 0x00, 0x00, 0x5a, // 0024: size_dt_struct (0x5a)
+        ];
+
+        FdtHeader::from_blob(&HEADER).unwrap();
+
+        // Header too small
+        assert!(FdtHeader::from_blob(&HEADER[..FdtHeader::SIZE - 4]).is_err());
+        assert!(FdtHeader::from_blob(&[]).is_err());
+
+        let mut invalid_header = HEADER;
+        invalid_header[0x00] = 0x00; // change magic to (0x000dfeed)
+        FdtHeader::from_blob(&invalid_header).expect_err("invalid magic");
+
+        let mut invalid_header = HEADER;
+        invalid_header[0x07] = 0x10; // make totalsize too small
+        FdtHeader::from_blob(&invalid_header).expect_err("invalid totalsize");
+
+        let mut invalid_header = HEADER;
+        invalid_header[0x0b] = 0x60; // increase off_dt_struct
+        FdtHeader::from_blob(&invalid_header).expect_err("dt struct overlaps with strings");
+
+        let mut invalid_header = HEADER;
+        invalid_header[0x27] = 0x5c; // increase size_dt_struct
+        FdtHeader::from_blob(&invalid_header).expect_err("dt struct overlaps with strings");
+
+        let mut invalid_header = HEADER;
+        invalid_header[0x13] = 0x20; // decrease off_mem_rsvmap
+        FdtHeader::from_blob(&invalid_header).expect_err("reserved memory overlaps with header");
+
+        let mut invalid_header = HEADER;
+        invalid_header[0x0f] = 0x50; // decrease off_dt_strings
+        FdtHeader::from_blob(&invalid_header).expect_err("strings start before struct");
+
+        let mut invalid_header = HEADER;
+        invalid_header[0x23] = 0x50; // increase size_dt_strings
+        FdtHeader::from_blob(&invalid_header).expect_err("strings go past totalsize");
     }
 
     #[test]
