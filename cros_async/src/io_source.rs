@@ -31,6 +31,8 @@ pub enum IoSource<F: base::AsRawDescriptor> {
     Overlapped(OverlappedSource<F>),
 }
 
+static_assertions::assert_impl_all!(IoSource<std::fs::File>: Send, Sync);
+
 /// Invoke a method on the underlying source type and await the result.
 ///
 /// `await_on_inner(io_source, method, ...)` => `inner_source.method(...).await`

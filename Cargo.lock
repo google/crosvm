@@ -578,6 +578,7 @@ dependencies = [
  "serde_keyvalue",
  "slab",
  "smallvec",
+ "static_assertions",
  "sync",
  "tempfile",
  "thiserror",
