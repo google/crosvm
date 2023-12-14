@@ -2252,6 +2252,7 @@ pub fn run_config_for_broker(raw_tube_transporter: RawDescriptor) -> Result<Exit
             .recv::<Event>()
             .exit_context(Exit::TubeFailure, "failed to read bootstrap tube")?,
     );
+    #[cfg(feature = "crash-report")]
     let crash_tube_map = bootstrap_tube
         .recv::<HashMap<ProcessType, Vec<SendTube>>>()
         .exit_context(Exit::TubeFailure, "failed to read bootstrap tube")?;

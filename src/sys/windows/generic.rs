@@ -3,13 +3,16 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
+use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use anyhow::Result;
 use arch::RunnableLinuxVm;
 use arch::VcpuArch;
 use arch::VirtioDeviceStub;
 use arch::VmArch;
+use base::info;
 use base::AsRawDescriptor;
 use base::CloseNotifier;
 use base::Event;
@@ -296,6 +299,8 @@ pub(super) fn virtio_sound_enabled() -> bool {
 }
 
 pub(crate) fn run_metrics(_args: RunMetricsCommand) -> Result<()> {
+    info!("sleep forever. We will get killed by broker");
+    thread::sleep(Duration::MAX);
     Ok(())
 }
 

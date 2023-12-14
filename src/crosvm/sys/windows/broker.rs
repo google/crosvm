@@ -701,31 +701,35 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
     )?;
 
     #[cfg(feature = "gpu")]
-    let _gpu_child = if !cfg
-        .vhost_user
-        .iter()
-        .any(|opt| opt.type_ == DeviceType::Gpu)
-    {
-        // Pass both backend and frontend configs to main process.
-        cfg.gpu_backend_config = Some(gpu_cfg.0);
-        cfg.gpu_vmm_config = Some(gpu_cfg.1);
-        None
+    let _gpu_child = if let Some(gpu_cfg) = gpu_cfg {
+        if !cfg
+            .vhost_user
+            .iter()
+            .any(|opt| opt.type_ == DeviceType::Gpu)
+        {
+            // Pass both backend and frontend configs to main process.
+            cfg.gpu_backend_config = Some(gpu_cfg.0);
+            cfg.gpu_vmm_config = Some(gpu_cfg.1);
+            None
+        } else {
+            Some(start_up_gpu(
+                &mut cfg,
+                &log_args,
+                gpu_cfg,
+                &mut input_event_split_config,
+                &mut main_child,
+                &mut children,
+                &mut wait_ctx,
+                &mut metric_tubes,
+                window_procedure_thread_builder
+                    .take()
+                    .ok_or_else(|| anyhow!("window_procedure_thread_builder is missing."))?,
+                #[cfg(feature = "process-invariants")]
+                &process_invariants,
+            )?)
+        }
     } else {
-        Some(start_up_gpu(
-            &mut cfg,
-            &log_args,
-            gpu_cfg,
-            &mut input_event_split_config,
-            &mut main_child,
-            &mut children,
-            &mut wait_ctx,
-            &mut metric_tubes,
-            window_procedure_thread_builder
-                .take()
-                .ok_or_else(|| anyhow!("window_procedure_thread_builder is missing."))?,
-            #[cfg(feature = "process-invariants")]
-            &process_invariants,
-        )?)
+        None
     };
 
     #[cfg(feature = "gpu")]
@@ -1740,7 +1744,10 @@ fn platform_create_gpu(
     exit_evt_wrtube: SendTube,
     gpu_control_host_tube: Tube,
     gpu_control_device_tube: Tube,
-) -> Result<(GpuBackendConfig, GpuVmmConfig)> {
+) -> Result<Option<(GpuBackendConfig, GpuVmmConfig)>> {
+    if cfg.gpu_parameters.is_none() {
+        return Ok(None);
+    }
     let exit_event = Event::new().exit_context(Exit::CreateEvent, "failed to create exit event")?;
     exit_events.push(
         exit_event
@@ -1770,7 +1777,7 @@ fn platform_create_gpu(
         product_config: vmm_config_product,
     };
 
-    Ok((backend_config, vmm_config))
+    Ok(Some((backend_config, vmm_config)))
 }
 
 #[cfg(feature = "gpu")]
