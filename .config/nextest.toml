@@ -9,3 +9,6 @@ retries = 2
 [profile.postsubmit]
 # Do not retry tests in postsubmit to detect flaky tests.
 retries = 0
+
+[profile.presubmit]
+# Use default settings for presubmit

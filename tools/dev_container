@@ -72,8 +72,6 @@ COMMON_ARGS = [
     "--device /dev/kvm" if Path("/dev/kvm").is_char_device() else None,
     # Enable terminal colors
     f"--env TERM={os.environ.get('TERM', 'xterm-256color')}",
-    # Pass through NEXTEST_PROFILE for use by run_tests.
-    f"--env NEXTEST_PROFILE",
 ]
 
 DOCKER_ARGS = [
@@ -86,6 +84,11 @@ PODMAN_ARGS = [
     "--group-add keep-groups" if os.name == "posix" else None,
     # Increase number of PIDs the container can spawn (we run a lot of test processes in parallel)
     "--pids-limit=4096" if os.name == "posix" else None,
+]
+
+# Environment variables to pass through to the container if they are specified.
+ENV_PASSTHROUGH = [
+    "NEXTEST_PROFILE",
 ]
 
 
@@ -273,6 +276,14 @@ def main(argv: List[str]):
     else:
         docker_args.append(DEV_IMAGE_NAME + ":" + DEV_IMAGE_VERSION)
 
+    # Add environment variables to command line
+    exec_args: List[str] = []
+    for key in ENV_PASSTHROUGH:
+        value = os.environ.get(key)
+        if value is not None:
+            exec_args.append("--env")
+            exec_args.append(f"{key}={quoted(value)}")
+
     if args.self_test:
         TestDevContainer.docker = docker
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(TestDevContainer)
@@ -307,14 +318,14 @@ def main(argv: List[str]):
     if args.hermetic:
         # cmd is passed to entrypoint
         quoted_cmd = list(map(quoted, command))
-        docker(f"run --rm", *tty_args, *docker_args, *quoted_cmd).fg()
+        docker(f"run --rm", *tty_args, *docker_args, *exec_args, *quoted_cmd).fg()
     else:
         # cmd is executed directly
         cid = ensure_container_is_alive(docker, docker_args, args.cros)
         if not command:
             command = ("/bin/bash",)
         quoted_cmd = list(map(quoted, command))
-        docker("exec", *tty_args, cid, *quoted_cmd).fg()
+        docker("exec", *tty_args, *exec_args, cid, *quoted_cmd).fg()
 
 
 class TestDevContainer(unittest.TestCase):

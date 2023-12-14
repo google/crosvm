@@ -163,7 +163,6 @@ def get_vm_arch(triple: Triple):
     "--features",
     help=f"List of comma separated features to be passed to cargo. Defaults to `all-$platform`",
 )
-@argh.arg("--profile", help="Select nextest profile.")
 @argh.arg("--no-parallel", help="Do not parallelize integration tests. Slower but more stable.")
 @argh.arg("--repetitions", help="Repeat all tests, useful for checking test stability.")
 def main(
@@ -177,7 +176,6 @@ def main(
     no_strip: bool = False,
     run_root_tests: bool = False,
     features: Optional[str] = None,
-    profile: Optional[str] = None,
     no_parallel: bool = False,
     repetitions: int = 1,
 ):
