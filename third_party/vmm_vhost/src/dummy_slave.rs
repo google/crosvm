@@ -285,7 +285,7 @@ impl VhostUserSlaveReqHandler for DummySlaveReqHandler {
         Ok(Vec::new())
     }
 
-    fn restore(&mut self, _data_bytes: &[u8], _queue_evts: Option<Vec<File>>) -> Result<()> {
+    fn restore(&mut self, _data_bytes: &[u8], _queue_evts: Vec<File>) -> Result<()> {
         Ok(())
     }
 }

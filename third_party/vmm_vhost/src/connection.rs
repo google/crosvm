@@ -143,9 +143,9 @@ impl<R: Req> Connection<R> {
     /// cursor needs to be moved by `advance_slices_mut()`.
     /// Once `IoSliceMut::advance_slices()` becomes stable, this should be updated.
     /// <https://github.com/rust-lang/rust/issues/62726>.
-    fn recv_into_bufs_all(&self, mut bufs: &mut [&mut [u8]]) -> Result<Option<Vec<File>>> {
+    fn recv_into_bufs_all(&self, mut bufs: &mut [&mut [u8]]) -> Result<Vec<File>> {
         let mut first_read = true;
-        let mut rfds = None;
+        let mut rfds = Vec::new();
 
         // Guarantee that `bufs` becomes empty if it doesn't contain any data.
         advance_slices_mut(&mut bufs, 0);
@@ -158,7 +158,9 @@ impl<R: Req> Connection<R> {
                 Ok((n, fds)) => {
                     if first_read {
                         first_read = false;
-                        rfds = fds;
+                        if let Some(fds) = fds {
+                            rfds = fds;
+                        }
                     }
                     advance_slices_mut(&mut bufs, n);
                 }
@@ -177,7 +179,7 @@ impl<R: Req> Connection<R> {
     ///
     /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be accepted and all
     /// other file descriptor will be discard silently.
-    pub fn recv_header(&self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
+    pub fn recv_header(&self) -> Result<(VhostUserMsgHeader<R>, Vec<File>)> {
         let mut hdr = VhostUserMsgHeader::default();
         let files = self.recv_into_bufs_all(&mut [hdr.as_bytes_mut()])?;
         if !hdr.is_valid() {
@@ -192,7 +194,7 @@ impl<R: Req> Connection<R> {
         // works as expected.
         let mut body = vec![0; hdr.get_size().try_into().unwrap()];
         let files = self.recv_into_bufs_all(&mut [&mut body[..]])?;
-        if files.is_some() {
+        if !files.is_empty() {
             return Err(Error::InvalidMessage);
         }
         Ok(body)
@@ -206,7 +208,7 @@ impl<R: Req> Connection<R> {
     /// accepted and all other file descriptor will be discard silently.
     pub fn recv_message<T: AsBytes + FromBytes + VhostUserMsgValidator>(
         &self,
-    ) -> Result<(VhostUserMsgHeader<R>, T, Option<Vec<File>>)> {
+    ) -> Result<(VhostUserMsgHeader<R>, T, Vec<File>)> {
         let mut hdr = VhostUserMsgHeader::default();
         let mut body = T::new_zeroed();
         let mut slices = [hdr.as_bytes_mut(), body.as_bytes_mut()];
@@ -228,7 +230,7 @@ impl<R: Req> Connection<R> {
     /// other file descriptor will be discard silently.
     pub fn recv_message_with_payload<T: AsBytes + FromBytes + VhostUserMsgValidator>(
         &self,
-    ) -> Result<(VhostUserMsgHeader<R>, T, Vec<u8>, Option<Vec<File>>)> {
+    ) -> Result<(VhostUserMsgHeader<R>, T, Vec<u8>, Vec<File>)> {
         let (hdr, files) = self.recv_header()?;
 
         let mut body = T::new_zeroed();
@@ -236,7 +238,7 @@ impl<R: Req> Connection<R> {
         let mut buf: Vec<u8> = vec![0; payload_size];
         let mut slices = [body.as_bytes_mut(), buf.as_bytes_mut()];
         let more_files = self.recv_into_bufs_all(&mut slices)?;
-        if !body.is_valid() || more_files.is_some() {
+        if !body.is_valid() || !more_files.is_empty() {
             return Err(Error::InvalidMessage);
         }
 
@@ -278,7 +280,7 @@ pub(crate) mod tests {
         master.send_header_only_message(&hdr1, None).unwrap();
         let (hdr2, _, files) = slave.recv_message::<VhostUserEmptyMessage>().unwrap();
         assert_eq!(hdr1, hdr2);
-        assert!(files.is_none());
+        assert!(files.is_empty());
     }
 
     #[test]
@@ -292,7 +294,7 @@ pub(crate) mod tests {
         assert_eq!(hdr1, hdr2);
         let value = body.value;
         assert_eq!(value, 0xf00dbeefdeadf00d);
-        assert!(files.is_none());
+        assert!(files.is_empty());
     }
 
     #[test]
@@ -310,16 +312,12 @@ pub(crate) mod tests {
 
         let (hdr2, _, files) = slave.recv_message::<VhostUserEmptyMessage>().unwrap();
         assert_eq!(hdr1, hdr2);
-        assert!(files.is_some());
-        let files = files.unwrap();
-        {
-            assert_eq!(files.len(), 1);
-            let mut file = &files[0];
-            let mut content = String::new();
-            file.seek(SeekFrom::Start(0)).unwrap();
-            file.read_to_string(&mut content).unwrap();
-            assert_eq!(content, "test");
-        }
+        assert_eq!(files.len(), 1);
+        let mut file = &files[0];
+        let mut content = String::new();
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.read_to_string(&mut content).unwrap();
+        assert_eq!(content, "test");
     }
 
     #[test]

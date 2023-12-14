@@ -447,7 +447,7 @@ impl VhostUserSlaveReqHandler for VsockBackend {
         Ok(Vec::new())
     }
 
-    fn restore(&mut self, _data_bytes: &[u8], _queue_evts: Option<Vec<File>>) -> Result<()> {
+    fn restore(&mut self, _data_bytes: &[u8], _queue_evts: Vec<File>) -> Result<()> {
         base::warn!("restore not implemented for vsock.");
         Ok(())
     }

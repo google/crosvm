@@ -12,8 +12,8 @@ use zerocopy::FromBytes;
 use zerocopy::Ref;
 
 use crate::connection::to_system_stream;
+use crate::into_single_file;
 use crate::message::*;
-use crate::take_single_file;
 use crate::Connection;
 use crate::Error;
 use crate::MasterReq;
@@ -86,7 +86,7 @@ pub trait VhostUserSlaveReqHandler {
     /// device is already awake.
     fn wake(&mut self) -> Result<()>;
     fn snapshot(&mut self) -> Result<Vec<u8>>;
-    fn restore(&mut self, data_bytes: &[u8], queue_evts: Option<Vec<File>>) -> Result<()>;
+    fn restore(&mut self, data_bytes: &[u8], queue_evts: Vec<File>) -> Result<()>;
 }
 
 impl<T> VhostUserSlaveReqHandler for T
@@ -222,7 +222,7 @@ where
         self.as_mut().snapshot()
     }
 
-    fn restore(&mut self, data_bytes: &[u8], queue_evts: Option<Vec<File>>) -> Result<()> {
+    fn restore(&mut self, data_bytes: &[u8], queue_evts: Vec<File>) -> Result<()> {
         self.as_mut().restore(data_bytes, queue_evts)
     }
 }
@@ -304,7 +304,7 @@ impl SlaveReqHelper {
     pub fn handle_vring_fd_request(
         &mut self,
         buf: &[u8],
-        files: Option<Vec<File>>,
+        files: Vec<File>,
     ) -> Result<(u8, Option<File>)> {
         let msg = VhostUserU64::read_from_prefix(buf).ok_or(Error::InvalidMessage)?;
         if !msg.is_valid() {
@@ -319,7 +319,7 @@ impl SlaveReqHelper {
         // If Bit 8 is unset, the data must contain a file descriptor.
         let has_fd = (msg.value & 0x100u64) == 0;
 
-        let file = take_single_file(files);
+        let file = into_single_file(files);
 
         if has_fd && file.is_none() || !has_fd && file.is_some() {
             return Err(Error::InvalidMessage);
@@ -430,7 +430,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
     ///   slave_req_handler.process_message(&hdr, &files).unwrap();
     /// }
     /// ```
-    pub fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<MasterReq>, Option<Vec<File>>)> {
+    pub fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<MasterReq>, Vec<File>)> {
         // The underlying communication channel is a Unix domain socket in
         // stream mode, and recvmsg() is a little tricky here. To successfully
         // receive attached file descriptors, we need to receive messages and
@@ -481,7 +481,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
     pub fn process_message(
         &mut self,
         hdr: VhostUserMsgHeader<MasterReq>,
-        files: Option<Vec<File>>,
+        files: Vec<File>,
     ) -> Result<()> {
         let buf = self.slave_req_helper.connection.recv_body_bytes(&hdr)?;
         let size = buf.len();
@@ -664,7 +664,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 {
                     return Err(Error::InvalidOperation);
                 }
-                let file = take_single_file(files).ok_or(Error::IncorrectFds)?;
+                let file = into_single_file(files).ok_or(Error::IncorrectFds)?;
                 let msg = self.extract_request_body::<VhostUserInflight>(&hdr, size, &buf)?;
                 let res = self.backend.set_inflight_fd(&msg, file);
                 self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
@@ -689,13 +689,10 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 {
                     return Err(Error::InvalidOperation);
                 }
-                let mut files = files.ok_or(Error::InvalidParam)?;
-                if files.len() != 1 {
-                    return Err(Error::InvalidParam);
-                }
+                let file = into_single_file(files).ok_or(Error::InvalidParam)?;
                 let msg =
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
-                let res = self.backend.add_mem_region(&msg, files.swap_remove(0));
+                let res = self.backend.add_mem_region(&msg, file);
                 self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
@@ -762,7 +759,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         hdr: &VhostUserMsgHeader<MasterReq>,
         size: usize,
         buf: &[u8],
-        files: Option<Vec<File>>,
+        files: Vec<File>,
     ) -> Result<()> {
         self.check_request_size(hdr, size, hdr.get_size() as usize)?;
 
@@ -773,7 +770,6 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         }
 
         // validate number of fds matching number of memory regions
-        let files = files.ok_or(Error::InvalidMessage)?;
         if files.len() != msg.num_regions as usize {
             return Err(Error::InvalidMessage);
         }
@@ -850,8 +846,8 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         self.backend.set_config(msg.offset, payload, flags)
     }
 
-    fn set_slave_req_fd(&mut self, files: Option<Vec<File>>) -> Result<()> {
-        let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
+    fn set_slave_req_fd(&mut self, files: Vec<File>) -> Result<()> {
+        let file = into_single_file(files).ok_or(Error::InvalidMessage)?;
         let fd = file.into();
         // SAFETY: Safe because the protocol promises the file represents the appropriate file type
         // for the platform.
@@ -863,7 +859,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
     fn handle_vring_fd_request(
         &mut self,
         buf: &[u8],
-        files: Option<Vec<File>>,
+        files: Vec<File>,
     ) -> Result<(u8, Option<File>)> {
         self.slave_req_helper.handle_vring_fd_request(buf, files)
     }
@@ -887,7 +883,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
     fn check_attached_files(
         &self,
         hdr: &VhostUserMsgHeader<MasterReq>,
-        files: &Option<Vec<File>>,
+        files: &[File],
     ) -> Result<()> {
         match hdr.get_code() {
             Ok(MasterReq::SET_MEM_TABLE)
@@ -901,7 +897,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             | Ok(MasterReq::RESTORE)
             | Ok(MasterReq::ADD_MEM_REG) => Ok(()),
             Err(_) => Err(Error::InvalidMessage),
-            _ if files.is_some() => Err(Error::InvalidMessage),
+            _ if !files.is_empty() => Err(Error::InvalidMessage),
             _ => Ok(()),
         }
     }

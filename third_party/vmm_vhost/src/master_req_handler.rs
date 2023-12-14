@@ -198,7 +198,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
                 let msg = self.extract_msg_body::<VhostUserShmemMapMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
-                    .shmem_map(&msg, &files.unwrap()[0])
+                    .shmem_map(&msg, &files[0])
                     .map_err(Error::ReqHandlerError)
             }
             Ok(SlaveReq::SHMEM_UNMAP) => {
@@ -211,7 +211,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
-                    .fs_slave_map(&msg, &files.unwrap()[0])
+                    .fs_slave_map(&msg, &files[0])
                     .map_err(Error::ReqHandlerError)
             }
             Ok(SlaveReq::FS_UNMAP) => {
@@ -230,14 +230,14 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
-                    .fs_slave_io(&msg, &files.unwrap()[0])
+                    .fs_slave_io(&msg, &files[0])
                     .map_err(Error::ReqHandlerError)
             }
             Ok(SlaveReq::GPU_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserGpuMapMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
-                    .gpu_map(&msg, &files.unwrap()[0])
+                    .gpu_map(&msg, &files[0])
                     .map_err(Error::ReqHandlerError)
             }
             _ => Err(Error::InvalidMessage),
@@ -267,18 +267,18 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     fn check_attached_files(
         &self,
         hdr: &VhostUserMsgHeader<SlaveReq>,
-        files: &Option<Vec<File>>,
+        files: &[File],
     ) -> Result<()> {
-        match hdr.get_code().map_err(|_| Error::InvalidMessage)? {
-            SlaveReq::SHMEM_MAP | SlaveReq::FS_MAP | SlaveReq::FS_IO | SlaveReq::GPU_MAP => {
-                // Expect a single file is passed.
-                match files {
-                    Some(files) if files.len() == 1 => Ok(()),
-                    _ => Err(Error::InvalidMessage),
-                }
-            }
-            _ if files.is_some() => Err(Error::InvalidMessage),
-            _ => Ok(()),
+        let expected_num_files = match hdr.get_code().map_err(|_| Error::InvalidMessage)? {
+            // Expect a single file is passed.
+            SlaveReq::SHMEM_MAP | SlaveReq::FS_MAP | SlaveReq::FS_IO | SlaveReq::GPU_MAP => 1,
+            _ => 0,
+        };
+
+        if files.len() == expected_num_files {
+            Ok(())
+        } else {
+            Err(Error::InvalidMessage)
         }
     }
 
