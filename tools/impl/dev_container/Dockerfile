@@ -6,8 +6,6 @@
 #
 # Provides all dependencies specified in install-deps with some additonal
 # logic to cache cargo data in CI runs.
-#
-# Note, if you are using docker, you will probably be using "Dockerfile.user".
 
 # Build catapult dashboard upload tool in a builder container
 FROM docker.io/golang:bullseye AS gobuilder
