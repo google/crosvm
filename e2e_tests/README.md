@@ -5,17 +5,24 @@ kernel and rootfs, which is downloaded from google cloud storage.
 
 The e2e_tests can be executed by:
 
-`$ ./tools/run_tests --dut=vm -E 'rdeps(e2e_tests)'`
+```sh
+$ ./tools/run_tests --dut=vm -E 'rdeps(e2e_tests)'
+```
 
 ## Running with locally built kernel/rootfs
 
-If the test needs to run offline, or you want to make changes to the kernel or rootfs, you have to
-specify the environment variables `CROSVM_CARGO_TEST_KERNEL_BINARY` and
-`CROSVM_CARGO_TEST_ROOTFS_IMAGE` to point to the right files.
+If you want to make changes to the kernel or rootfs, you have to specify the environment variables
+`CROSVM_CARGO_TEST_KERNEL_BINARY` and `CROSVM_CARGO_TEST_ROOTFS_IMAGE` to point to the right files
+and then run `cargo test`.
 
 The use_local_build.sh script does this for you:
 
-`$ source guest_under_test/use_local_build.sh`
+```sh
+$ source guest_under_test/use_local_build.sh
+$ cargo test
+```
+
+Note: The custom images cannot be used with `tools/run_tests`.
 
 ## Uploading prebuilts
 
