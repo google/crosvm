@@ -257,7 +257,7 @@ pub struct VhostUserMsgHeader<R: Req> {
 
 impl<R: Req> Debug for VhostUserMsgHeader<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Point")
+        f.debug_struct("VhostUserMsgHeader")
             .field("request", &{ self.request })
             .field("flags", &{ self.flags })
             .field("size", &{ self.size })
