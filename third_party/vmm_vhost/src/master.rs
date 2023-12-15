@@ -138,12 +138,10 @@ impl Master {
         }
 
         let body = VhostUserMemory::new(ctx.regions.len() as u32);
-        // SAFETY: trivially safe
-        let (_, payload, _) = unsafe { ctx.regions.align_to::<u8>() };
         let hdr = self.send_request_with_payload(
             MasterReq::SET_MEM_TABLE,
             &body,
-            payload,
+            ctx.regions.as_bytes(),
             Some(ctx.fds.as_slice()),
         )?;
         self.wait_for_ack(&hdr)
