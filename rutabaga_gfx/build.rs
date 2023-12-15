@@ -79,7 +79,6 @@ fn build_and_probe_minigbm(out_dir: &Path) -> Result<()> {
     let pkgconfig_file = out_dir.join("gbm.pc");
 
     println!("cargo:rerun-if-changed={}", SOURCE_DIR);
-    println!("cargo:warning=building minigbm from source");
 
     if !Path::new(SOURCE_DIR).join(".git").exists() {
         bail!(
@@ -142,7 +141,6 @@ Requires.private: libdrm >= 2.4.50
 
 fn minigbm() -> Result<()> {
     if use_system_minigbm() {
-        println!("cargo:warning=using system minigbm");
         pkg_config::probe_library("gbm").context("pkgconfig failed to find gbm")?;
     } else {
         // Otherwise build from source and emit cargo build metadata
@@ -159,7 +157,6 @@ fn build_and_probe_virglrenderer(out_dir: &Path) -> Result<()> {
     let install_prefix = out_dir.join("installed");
 
     println!("cargo:rerun-if-changed={}", SOURCE_DIR);
-    println!("cargo:warning=building virglrenderer from source");
 
     if !Path::new(SOURCE_DIR).join(".git").exists() {
         bail!(
@@ -230,7 +227,6 @@ fn virglrenderer() -> Result<()> {
 
     // Use virglrenderer package from pkgconfig on ChromeOS builds
     if use_system_virglrenderer() {
-        println!("cargo:warning=using system virglrenderer");
         let lib = pkg_config::Config::new()
             .atleast_version("1.0.0")
             .probe("virglrenderer")
