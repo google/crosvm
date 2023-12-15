@@ -10,10 +10,10 @@ use libc::O_RDONLY;
 use libc::O_RDWR;
 use libc::O_WRONLY;
 
-use super::errno_result;
-use super::Error;
-use super::Result;
+use crate::errno_result;
 use crate::AsRawDescriptor;
+use crate::Error;
+use crate::Result;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileFlags {
@@ -43,8 +43,8 @@ impl FileFlags {
 
 #[cfg(test)]
 mod tests {
-    use super::super::pipe;
     use super::*;
+    use crate::sys::pipe;
     use crate::Event;
 
     #[test]

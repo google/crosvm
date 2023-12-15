@@ -7,6 +7,7 @@ pub mod file_traits;
 #[macro_use]
 pub mod handle_eintr;
 mod fcntl;
+mod file_flags;
 mod iobuf;
 pub mod net;
 mod sock_ctrl_msg;
@@ -16,6 +17,7 @@ pub mod tube;
 
 pub use descriptor::*;
 pub use fcntl::*;
+pub use file_flags::*;
 pub use iobuf::IoBuf;
 pub use sock_ctrl_msg::*;
 pub use stream_channel::*;
