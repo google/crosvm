@@ -178,7 +178,7 @@ mod tests {
         let mut fs_cache = Slave::from_stream(p1);
         let master = Connection::from(p2);
 
-        let len = mem::size_of::<VhostUserFSSlaveMsg>();
+        let len = mem::size_of::<VhostUserU64>();
         let mut hdr = VhostUserMsgHeader::new(
             SlaveReq::FS_MAP,
             VhostUserHeaderFlag::REPLY.bits(),
