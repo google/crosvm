@@ -54,6 +54,8 @@ macro_rules! ScmSocketTryFrom {
                 let set = 1;
                 let set_ptr = &set as *const c_int as *const c_void;
                 let size = size_of::<c_int>() as socklen_t;
+                // SAFETY:  because we are taking ownership of the file descriptor, and `set_ptr`
+                // has at least `size` data available.
                 let res = unsafe {
                     setsockopt(
                         socket.as_raw_descriptor(),
@@ -105,14 +107,15 @@ pub(crate) fn sockaddrv6_to_lib_c(s: &SocketAddrV6) -> sockaddr_in6 {
 }
 
 fn cloexec_or_close<Raw: AsRawDescriptor>(raw: Raw) -> io::Result<Raw> {
+    // SAFETY: `raw` owns a file descriptor, there are no actions with memory. This potentially
+    // races with `fork()` calls in other threads, but on MacOS it's the best we have.
     let res = unsafe { fcntl(raw.as_raw_descriptor(), F_SETFD, FD_CLOEXEC) };
     if res >= 0 {
         Ok(raw)
     } else {
         let err = io::Error::last_os_error();
-        unsafe {
-            close(raw.as_raw_descriptor());
-        }
+        // SAFETY: `raw` owns this file descriptor.
+        unsafe { close(raw.as_raw_descriptor()) };
         Err(err)
     }
 }
@@ -190,15 +193,15 @@ impl UnixSeqpacketListener {
     ///
     /// The returned socket has the close-on-exec flag set.
     pub fn accept(&self) -> io::Result<UnixSeqpacket> {
-        // Safe because we own this fd and the kernel will not write to null pointers.
-        match unsafe { libc::accept(self.as_raw_descriptor(), null_mut(), null_mut()) } {
+        // SAFETY: we own this fd and the kernel will not write to null pointers.
+        let fd = unsafe { libc::accept(self.as_raw_descriptor(), null_mut(), null_mut()) };
+        match fd {
             -1 => Err(io::Error::last_os_error()),
             fd => {
-                // Safe because we checked the return value of accept. Therefore, the return value
+                // SAFETY: we checked the return value of accept. Therefore, the return value
                 // must be a valid socket.
-                Ok(UnixSeqpacket::from(cloexec_or_close(unsafe {
-                    SafeDescriptor::from_raw_descriptor(fd)
-                })?))
+                let safe_desc = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
+                Ok(UnixSeqpacket::from(cloexec_or_close(safe_desc)?))
             }
         }
     }

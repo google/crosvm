@@ -334,9 +334,11 @@ impl MemoryMapping {
 pub struct MemoryMappingBuilder<'a> {
     pub(crate) descriptor: Option<&'a dyn AsRawDescriptor>,
     pub(crate) is_file_descriptor: bool,
+    #[cfg_attr(target_os = "macos", allow(unused))]
     pub(crate) size: usize,
     pub(crate) offset: Option<u64>,
     pub(crate) protection: Option<Protection>,
+    #[cfg_attr(target_os = "macos", allow(unused))]
     #[cfg_attr(windows, allow(unused))]
     pub(crate) populate: bool,
 }

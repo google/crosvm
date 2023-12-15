@@ -182,6 +182,9 @@ impl MemoryMapping {
     ) -> Result<MemoryMapping, MmapError> {
         todo!();
     }
+    /// # Safety
+    ///
+    /// unimplemented, always aborts
     pub unsafe fn from_descriptor_offset_protection_fixed(
         _addr: *mut u8,
         _fd: &dyn crate::AsRawDescriptor,
@@ -193,6 +196,7 @@ impl MemoryMapping {
     }
 }
 
+// SAFETY: Unimplemented, always aborts
 unsafe impl crate::MappedRegion for MemoryMapping {
     fn as_ptr(&self) -> *mut u8 {
         todo!();
@@ -202,23 +206,20 @@ unsafe impl crate::MappedRegion for MemoryMapping {
     }
 }
 
-impl<'a> crate::MemoryMappingBuilder<'a> {
-    pub(crate) fn wrap(
-        _mapping: MemoryMapping,
-        _file_descriptor: Option<&'a dyn crate::AsRawDescriptor>,
-    ) -> Result<crate::MemoryMapping, MmapError> {
-        todo!();
-    }
-}
-
 pub mod ioctl {
     pub type IoctlNr = std::ffi::c_ulong;
+    /// # Safety
+    ///
+    /// unimplemented, always aborts
     pub unsafe fn ioctl<F: crate::AsRawDescriptor>(
         _descriptor: &F,
         _nr: IoctlNr,
     ) -> std::ffi::c_int {
         todo!();
     }
+    /// # Safety
+    ///
+    /// unimplemented, always aborts
     pub unsafe fn ioctl_with_val(
         _descriptor: &dyn crate::AsRawDescriptor,
         _nr: IoctlNr,
@@ -226,6 +227,9 @@ pub mod ioctl {
     ) -> std::ffi::c_int {
         todo!();
     }
+    /// # Safety
+    ///
+    /// unimplemented, always aborts
     pub unsafe fn ioctl_with_ref<T>(
         _descriptor: &dyn crate::AsRawDescriptor,
         _nr: IoctlNr,
@@ -233,6 +237,9 @@ pub mod ioctl {
     ) -> std::ffi::c_int {
         todo!();
     }
+    /// # Safety
+    ///
+    /// unimplemented, always aborts
     pub unsafe fn ioctl_with_mut_ref<T>(
         _descriptor: &dyn crate::AsRawDescriptor,
         _nr: IoctlNr,
@@ -240,6 +247,9 @@ pub mod ioctl {
     ) -> std::ffi::c_int {
         todo!();
     }
+    /// # Safety
+    ///
+    /// unimplemented, always aborts
     pub unsafe fn ioctl_with_ptr<T>(
         _descriptor: &dyn crate::AsRawDescriptor,
         _nr: IoctlNr,
@@ -247,6 +257,9 @@ pub mod ioctl {
     ) -> std::ffi::c_int {
         todo!();
     }
+    /// # Safety
+    ///
+    /// unimplemented, always aborts
     pub unsafe fn ioctl_with_mut_ptr<T>(
         _descriptor: &dyn crate::AsRawDescriptor,
         _nr: IoctlNr,
