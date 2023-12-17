@@ -4,23 +4,10 @@
 
 mod sys;
 
-use std::rc::Rc;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
-use base::error;
-use base::Event;
-use cros_async::sync::RwLock as AsyncRwLock;
-use cros_async::AsyncTube;
 use cros_async::Executor;
-use cros_async::ExecutorKind;
-use cros_async::TaskHandle;
-use futures::channel::mpsc;
-use futures::channel::oneshot;
 use serde::Deserialize;
 use serde::Serialize;
 pub use sys::start_device as run_block_device;
@@ -28,33 +15,23 @@ pub use sys::Options;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::*;
 use vmm_vhost::VhostUserSlaveReqHandler;
-use zerocopy::AsBytes;
 
 use crate::virtio;
-use crate::virtio::block::asynchronous::run_worker;
 use crate::virtio::block::asynchronous::BlockAsync;
-use crate::virtio::block::asynchronous::WorkerCmd;
-use crate::virtio::block::DiskState;
-use crate::virtio::copy_config;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
-use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::VhostUserDevice;
 use crate::virtio::Interrupt;
+use crate::virtio::VirtioDevice;
 
 const NUM_QUEUES: u16 = 16;
 
 struct BlockBackend {
-    ex: Executor,
-    disk_state: Rc<AsyncRwLock<DiskState>>,
-    disk_size: Arc<AtomicU64>,
-    block_size: u32,
-    seg_max: u32,
+    inner: Box<BlockAsync>,
+
     avail_features: u64,
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
-    control_tube: Option<base::Tube>,
-    worker: Option<Worker>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -66,100 +43,24 @@ struct BlockBackendSnapshot {
     acked_protocol_features: u64,
 }
 
-struct Worker {
-    worker_task: TaskHandle<Option<base::Tube>>,
-    worker_tx: mpsc::UnboundedSender<WorkerCmd>,
-    kill_evt: Event,
-}
-
-impl BlockBackend {
-    fn start_worker(&mut self, interrupt: &Interrupt) {
-        if self.worker.is_some() {
-            return;
-        }
-
-        let interrupt = interrupt.clone();
-        let async_tube = self
-            .control_tube
-            .take()
-            .map(|t| AsyncTube::new(&self.ex, t))
-            .transpose()
-            .expect("failed to create async tube");
-        let kill_evt = Event::new().expect("failed to create kill_evt");
-        let (worker_tx, worker_rx) = mpsc::unbounded();
-        let worker_task = self.ex.spawn_local({
-            let ex = self.ex.clone();
-            let disk_state = self.disk_state.clone();
-            let kill_evt = kill_evt.try_clone().expect("failed to clone event");
-            async move {
-                let result = run_worker(
-                    &ex,
-                    interrupt,
-                    &disk_state,
-                    &async_tube,
-                    worker_rx,
-                    kill_evt,
-                )
-                .await;
-                if let Err(e) = result {
-                    error!("run_worker failed: {}", e);
-                }
-                async_tube.map(base::Tube::from)
-            }
-        });
-
-        self.worker = Some(Worker {
-            worker_task,
-            worker_tx,
-            kill_evt,
-        });
-    }
-}
-
 impl VhostUserDevice for BlockAsync {
     fn max_queue_num(&self) -> usize {
         NUM_QUEUES as usize
     }
 
     fn into_req_handler(
-        mut self: Box<Self>,
-        ex: &Executor,
+        self: Box<Self>,
+        _ex: &Executor,
     ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>> {
         let avail_features = self.avail_features | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
-
-        let disk_image = match self.disk_image.take() {
-            Some(disk_image) => disk_image,
-            None => bail!("cannot create a vhost-user backend from an empty disk image"),
-        };
-        let async_image = disk_image.to_async_disk(ex)?;
-
-        let disk_state = Rc::new(AsyncRwLock::new(DiskState::new(
-            async_image,
-            Arc::clone(&self.disk_size),
-            self.read_only,
-            self.sparse,
-            self.id,
-        )));
-
         let backend = BlockBackend {
-            ex: ex.clone(),
-            disk_state,
-            disk_size: Arc::clone(&self.disk_size),
-            block_size: self.block_size,
-            seg_max: self.seg_max,
+            inner: self,
             avail_features,
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
-            control_tube: self.control_tube,
-            worker: None,
         };
-
         let handler = DeviceRequestHandler::new(Box::new(backend));
         Ok(Box::new(handler))
-    }
-
-    fn executor_kind(&self) -> Option<ExecutorKind> {
-        Some(self.executor_kind)
     }
 }
 
@@ -206,72 +107,32 @@ impl VhostUserBackend for BlockBackend {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        let config_space = {
-            let disk_size = self.disk_size.load(Ordering::Relaxed);
-            BlockAsync::build_config_space(disk_size, self.seg_max, self.block_size, NUM_QUEUES)
-        };
-        copy_config(data, 0, config_space.as_bytes(), offset);
+        self.inner.read_config(offset, data)
     }
 
     fn reset(&mut self) {
-        panic!("Unsupported call to reset");
+        self.inner.reset();
     }
 
     fn start_queue(
         &mut self,
         idx: usize,
         queue: virtio::Queue,
-        _mem: GuestMemory,
+        mem: GuestMemory,
         doorbell: Interrupt,
     ) -> anyhow::Result<()> {
-        // `start_worker` will return early if the worker has already started.
-        self.start_worker(&doorbell);
-
-        self.worker
-            .as_ref()
-            .expect("worker not started")
-            .worker_tx
-            .unbounded_send(WorkerCmd::StartQueue {
-                index: idx,
-                queue,
-                interrupt: doorbell,
-            })
-            .unwrap_or_else(|_| panic!("worker channel closed early"));
-        Ok(())
+        self.inner.start_queue(idx, queue, mem, doorbell)
     }
 
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
-        let (response_tx, response_rx) = oneshot::channel();
-        self.worker
-            .as_ref()
-            .expect("worker not started")
-            .worker_tx
-            .unbounded_send(WorkerCmd::StopQueue {
-                index: idx,
-                response_tx,
-            })
-            .unwrap_or_else(|_| panic!("worker channel closed early"));
-        self.ex
-            .run_until(async {
-                response_rx
-                    .await
-                    .expect("response_rx closed early")
-                    .ok_or(anyhow::Error::new(DeviceError::WorkerNotFound))
-            })
-            .expect("run_until failed")
+        self.inner.stop_queue(idx)
     }
 
     fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
-        // TODO: this also stops all queues as a byproduct which is fine given how it is currently
-        // used but might be unexpected so i should at least tweak the trait docs to mention it
-        if let Some(worker) = self.worker.take() {
-            worker.kill_evt.signal().unwrap();
-            self.control_tube = self
-                .ex
-                .run_until(worker.worker_task)
-                .expect("run_until failed");
-        }
-
+        // TODO: This assumes that `reset` only stops workers which might not be true in the
+        // future. Consider moving the `reset` code into a `stop_all_workers` method or, maybe,
+        // make `stop_queue` implicitly stop a worker thread when there is no active queue.
+        self.inner.reset();
         Ok(())
     }
 

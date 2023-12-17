@@ -186,7 +186,8 @@ pub trait VhostUserBackend {
         error!("set_backend_req_connection is not implemented");
     }
 
-    /// Used to stop non queue workers that `VhostUserBackend::stop_queue` can't stop.
+    /// Used to stop non queue workers that `VhostUserBackend::stop_queue` can't stop. May or may
+    /// not also stop all queue workers.
     fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
         error!("sleep not implemented for vhost user device");
         // TODO(rizhang): Return error once basic devices support this.

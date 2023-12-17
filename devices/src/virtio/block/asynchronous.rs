@@ -486,7 +486,7 @@ pub enum WorkerCmd {
 // `disk_state` is wrapped by `AsyncRwLock`, which provides both shared and exclusive locks. It's
 // because the state can be read from the virtqueue task while the control task is processing a
 // resizing command.
-pub async fn run_worker(
+async fn run_worker(
     ex: &Executor,
     interrupt: Interrupt,
     disk_state: &Rc<AsyncRwLock<DiskState>>,
