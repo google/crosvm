@@ -52,7 +52,7 @@ impl VhostUserDevice for BlockAsync {
         self: Box<Self>,
         _ex: &Executor,
     ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>> {
-        let avail_features = self.avail_features | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
+        let avail_features = self.features() | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
         let backend = BlockBackend {
             inner: self,
             avail_features,

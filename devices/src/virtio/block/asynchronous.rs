@@ -91,7 +91,7 @@ use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
 
 const DEFAULT_QUEUE_SIZE: u16 = 256;
-pub const DEFAULT_NUM_QUEUES: u16 = 16;
+const DEFAULT_NUM_QUEUES: u16 = 16;
 
 const SECTOR_SHIFT: u8 = 9;
 const SECTOR_SIZE: u64 = 0x01 << SECTOR_SHIFT;
@@ -107,7 +107,7 @@ const DISCARD_SECTOR_ALIGNMENT: u32 = 128;
 
 #[sorted]
 #[derive(ThisError, Debug)]
-pub enum ExecuteError {
+enum ExecuteError {
     #[error("failed to copy ID string: {0}")]
     CopyId(io::Error),
     #[error("failed to perform discard or write zeroes; sector={sector} num_sectors={num_sectors} flags={flags}; {ioerr:?}")]
@@ -196,33 +196,27 @@ impl ExecuteError {
 /// This includes errors during resize and flush operations.
 #[sorted]
 #[derive(ThisError, Debug)]
-pub enum ControlError {
-    #[error("couldn't create an async resample event: {0}")]
-    AsyncResampleCreate(AsyncError),
-    #[error("couldn't clone the resample event: {0}")]
-    CloneResampleEvent(base::Error),
+enum ControlError {
     #[error("couldn't get a value from a timer for flushing: {0}")]
     FlushTimer(AsyncError),
     #[error("failed to fsync the disk: {0}")]
     FsyncDisk(disk::Error),
-    #[error("couldn't read the resample event: {0}")]
-    ReadResampleEvent(AsyncError),
 }
 
 /// Maximum length of the virtio-block ID string field.
-pub const ID_LEN: usize = 20;
+const ID_LEN: usize = 20;
 
 /// Virtio block device identifier.
 /// This is an ASCII string terminated by a \0, unless all 20 bytes are used,
 /// in which case the \0 terminator is omitted.
-pub type BlockId = [u8; ID_LEN];
+type BlockId = [u8; ID_LEN];
 
 /// Tracks the state of an anynchronous disk.
-pub struct DiskState {
-    pub disk_image: Box<dyn AsyncDisk>,
-    pub read_only: bool,
-    pub sparse: bool,
-    pub id: Option<BlockId>,
+struct DiskState {
+    disk_image: Box<dyn AsyncDisk>,
+    read_only: bool,
+    sparse: bool,
+    id: Option<BlockId>,
     /// A DiskState is owned by each worker's executor and cannot be shared by workers, thus
     /// `worker_shared_state` holds the state shared by workers in Arc.
     worker_shared_state: Arc<AsyncRwLock<WorkerSharedState>>,
@@ -231,25 +225,6 @@ pub struct DiskState {
 /// Disk state which can be modified by other worker threads
 struct WorkerSharedState {
     disk_size: Arc<AtomicU64>,
-}
-
-impl DiskState {
-    /// Creates a `DiskState` with the given params.
-    pub fn new(
-        disk_image: Box<dyn AsyncDisk>,
-        disk_size: Arc<AtomicU64>,
-        read_only: bool,
-        sparse: bool,
-        id: Option<BlockId>,
-    ) -> DiskState {
-        DiskState {
-            disk_image,
-            read_only,
-            sparse,
-            id,
-            worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState { disk_size })),
-        }
-    }
 }
 
 async fn process_one_request(
@@ -296,7 +271,7 @@ async fn process_one_request(
 }
 
 /// Process one descriptor chain asynchronously.
-pub async fn process_one_chain(
+async fn process_one_chain(
     queue: &RefCell<Queue>,
     mut avail_desc: DescriptorChain,
     disk_state: &AsyncRwLock<DiskState>,
@@ -466,7 +441,7 @@ async fn flush_disk(
     }
 }
 
-pub enum WorkerCmd {
+enum WorkerCmd {
     StartQueue {
         index: usize,
         queue: Queue,
@@ -609,21 +584,19 @@ async fn run_worker(
 pub struct BlockAsync {
     // We need to make boot_index public bc the field is used by the main crate to determine boot
     // order
-    pub boot_index: Option<usize>,
-    // We keep these members crate-public as they are accessed by the vhost-user device.
-    //
+    boot_index: Option<usize>,
     // `None` iff `self.worker_per_queue == false` and the worker thread is running.
-    pub(crate) disk_image: Option<Box<dyn DiskFile>>,
-    pub(crate) disk_size: Arc<AtomicU64>,
-    pub(crate) avail_features: u64,
-    pub(crate) read_only: bool,
-    pub(crate) sparse: bool,
-    pub(crate) seg_max: u32,
-    pub(crate) block_size: u32,
-    pub(crate) id: Option<BlockId>,
-    pub(crate) control_tube: Option<Tube>,
-    pub(crate) queue_sizes: Vec<u16>,
-    pub(crate) executor_kind: ExecutorKind,
+    disk_image: Option<Box<dyn DiskFile>>,
+    disk_size: Arc<AtomicU64>,
+    avail_features: u64,
+    read_only: bool,
+    sparse: bool,
+    seg_max: u32,
+    block_size: u32,
+    id: Option<BlockId>,
+    control_tube: Option<Tube>,
+    queue_sizes: Vec<u16>,
+    pub(super) executor_kind: ExecutorKind,
     // If `worker_per_queue == true`, `worker_threads` contains the worker for each running queue
     // by index. Otherwise, contains the monolithic worker for all queues at index 0.
     worker_threads: BTreeMap<
@@ -641,7 +614,7 @@ pub struct BlockAsync {
     // worker cmd to stop all at once, then we can delete this field.
     activated_queues: BTreeSet<usize>,
     #[cfg(windows)]
-    pub(crate) io_concurrency: u32,
+    pub(super) io_concurrency: u32,
 }
 
 impl BlockAsync {
@@ -947,7 +920,7 @@ impl BlockAsync {
     }
 
     /// Builds and returns the config structure used to specify block features.
-    pub fn build_config_space(
+    fn build_config_space(
         disk_size: u64,
         seg_max: u32,
         block_size: u32,
