@@ -198,6 +198,18 @@ impl FromStr for SharedDir {
             SharedDirKind::FS => {
                 shared_dir.fs_cfg = from_key_values(&type_opts.join(","))
                     .map_err(|e| anyhow!("failed to parse fs config '{:?}': {e}", type_opts))?;
+
+                if shared_dir.fs_cfg.ascii_casefold && !shared_dir.fs_cfg.negative_timeout.is_zero()
+                {
+                    // Disallow the combination of `ascii_casefold` and `negative_timeout` because
+                    // negative dentry caches doesn't wort well in scenarios like the following:
+                    // 1. Lookup "foo", an non-existing file. Negative dentry is cached on the
+                    //    guest.
+                    // 2. Create "FOO".
+                    // 3. Lookup "foo". This needs to be successful on the casefold directory,
+                    //    but the lookup can fail due the negative cache created at 1.
+                    bail!("'negative_timeout' cannot be used with 'ascii_casefold'");
+                }
             }
             SharedDirKind::P9 => {
                 shared_dir.p9_cfg = type_opts
