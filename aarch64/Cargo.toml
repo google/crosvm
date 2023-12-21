@@ -13,8 +13,8 @@ arch = { path = "../arch" }
 cros_fdt = { path = "../cros_fdt" }
 data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }
-gdbstub = { version = "0.6.3", optional = true }
-gdbstub_arch = { version = "0.2.4", optional = true }
+gdbstub = { version = "0.7.0", optional = true }
+gdbstub_arch = { version = "0.3.0", optional = true }
 hypervisor = { path = "../hypervisor" }
 jail = { path = "../jail" }
 kernel_cmdline = { path = "../kernel_cmdline" }
