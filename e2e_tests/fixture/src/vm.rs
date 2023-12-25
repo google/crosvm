@@ -25,6 +25,7 @@ use delegate::wire_format::ProgramExit;
 use log::info;
 use log::Level;
 use prebuilts::download_file;
+use readclock::ClockValues;
 use url::Url;
 
 use crate::sys::SerialArgs;
@@ -609,6 +610,13 @@ impl TestVm {
     pub fn swap_command(&mut self, command: &str) -> Result<Vec<u8>> {
         self.sys
             .crosvm_command("swap", vec![command.to_string()], self.sudo)
+    }
+
+    pub fn guest_clock_values(&mut self) -> Result<ClockValues> {
+        let output = self
+            .exec_in_guest("readclock")
+            .context("Failed to execute readclock binary")?;
+        serde_json::from_str(&output.stdout).context("Failed to parse result")
     }
 }
 

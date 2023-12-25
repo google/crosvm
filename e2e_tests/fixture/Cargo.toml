@@ -20,3 +20,4 @@ url = "2.3"
 delegate = {path = "../guest_under_test/rootfs/delegate"}
 serde = {version = "*", features = ["derive"]}
 serde_json = "*"
+readclock = { path = "../guest_under_test/rootfs/readclock" }

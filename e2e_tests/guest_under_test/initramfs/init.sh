@@ -11,7 +11,7 @@ mount_root () {
     fi
 }
 
-mount -t proc none /proc
+mount -t proc /proc -t proc
 mount -t sysfs none /sys
 mount -t devtmpfs none /dev
 
