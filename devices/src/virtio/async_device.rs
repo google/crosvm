@@ -78,11 +78,33 @@ impl<T: 'static> AsyncQueueState<T> {
     ///
     /// Returns `true` if the queue was running, `false` if it wasn't.
     pub fn stop(&mut self) -> AsyncResult<bool> {
+        // TODO: schuffelen - All callers should use stop_async instead.
         match std::mem::replace(self, AsyncQueueState::Broken) {
             AsyncQueueState::Running((task, ex, handle)) => {
                 // Abort the task and run it to completion to retrieve the queue's resource.
                 handle.abort();
                 let resource = ex.run_until(task)?;
+                *self = AsyncQueueState::Stopped(resource);
+                Ok(true)
+            }
+            state => {
+                *self = state;
+                Ok(false)
+            }
+        }
+    }
+    /// Stops a previously started queue.
+    ///
+    /// The executor on which the task has been started will be run if needed in order to retrieve
+    /// the queue's resource.
+    ///
+    /// Returns `true` if the queue was running, `false` if it wasn't.
+    pub async fn stop_async(&mut self) -> AsyncResult<bool> {
+        match std::mem::replace(self, AsyncQueueState::Broken) {
+            AsyncQueueState::Running((task, _, handle)) => {
+                // Abort the task and run it to completion to retrieve the queue's resource.
+                handle.abort();
+                let resource = task.await;
                 *self = AsyncQueueState::Stopped(resource);
                 Ok(true)
             }

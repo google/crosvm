@@ -534,9 +534,15 @@ impl VirtioDevice for AsyncConsole {
                 async_utils::await_and_exit(&ex, kill_evt).await?;
                 let port = &mut console.port0;
                 if let Some(input) = port.input.as_mut() {
-                    input.stop().context("failed to stop rx queue")?;
+                    input
+                        .stop_async()
+                        .await
+                        .context("failed to stop rx queue")?;
                 }
-                port.output.stop().context("failed to stop tx queue")?;
+                port.output
+                    .stop_async()
+                    .await
+                    .context("failed to stop tx queue")?;
 
                 Ok(console)
             })?
