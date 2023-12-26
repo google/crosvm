@@ -26,4 +26,8 @@ if [ -f ${ROOTFS_IMAGE} ] ; then
     export CROSVM_CARGO_TEST_ROOTFS_IMAGE="${ROOTFS_IMAGE}"
 fi
 
-
+INITRD_IMAGE=${TARGET_DIR}/initramfs.cpio.gz
+if [ -f ${INITRD_IMAGE} ] ; then
+    echo "Initrd image overrided: ${INITRD_IMAGE}"
+    export CROSVM_CARGO_TEST_INITRD_IMAGE="${INITRD_IMAGE}"
+fi
