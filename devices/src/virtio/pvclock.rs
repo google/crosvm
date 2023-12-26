@@ -4,10 +4,44 @@
 
 //! Virtio version of a linux pvclock clocksource.
 //!
-//! See the driver source here:
+//! Driver source is here:
 //! <https://android.googlesource.com/kernel/common/+/ebaa2c516811825b141de844cee7a38653058ef5/drivers/virtio/virtio_pvclock.c>
 //!
-//! For more information about this device, please visit <go/virtio-pvclock>.
+//! # Background
+//!
+//! Userland applications often rely on CLOCK_MONOTONIC to be relatively continuous.
+//! Large jumps can signal problems (e.g., triggering Android watchdogs).
+//! This assumption breaks down in virtualized environments, where a VM's suspension isn't
+//! inherently linked to the guest kernel's concept of "suspend".
+//! Since fixing all userland code is impractical, virtio-pvclock allows the VMM and guest kernel
+//! to collaborate on emulating the expected clock behavior around suspend/resume.
+//!
+//! # How it works
+//!
+//! ## Core functions of virtio-pvclock device:
+//!
+//! 1. Adjusts hardware clocksource offsets to make the guest clocks appear suspended when the VM is
+//!    suspended.
+//!   - This is achieved through the pvclock mechanism implemented in x86 KVM used by kvm-clock.
+//! 2. Provides the guest kernel with the duration of VM suspension, allowing the guest to adjust
+//!    its clocks accordingly.
+//!   - Since the offset between the CLOCK_MONOTONIC and CLOCK_BOOTTIME is maintained by the guest
+//!     kernel, applying the adjustment is the guest driver's responsibility.
+//!
+//! ## Expected guest clock behaviors under virtio-pvclock is enabled
+//!
+//! - Monotonicity of CLOCK_MONOTONIC and CLOCK_BOOTTIME is maintained.
+//! - CLOCK_MONOTONIC will not include the time passed during crosvm is suspended from its run mode
+//!   perspective.
+//! - CLOCK_BOOTTIME will be adjusted to include the time passed during crosvm is suspended.
+//!
+//! # Why it is needed
+//!
+//! Because the existing solution does not cover some expectations we need.
+//!
+//! kvm-clock is letting the host to manage the offsets of CLOCK_MONOTONIC.
+//! However, it doesn't address the difference between CLOCK_BOOTTIME and CLOCK_MONOTONIC related
+//! to host's suspend/resume, as it is designed to maintain the CLOCK_REALTIME in sync mainly.
 
 use std::arch::x86_64::_rdtsc;
 use std::collections::BTreeMap;
@@ -76,10 +110,14 @@ const VIRTIO_PVCLOCK_S_IOERR: u8 = 1;
 
 const VIRTIO_PVCLOCK_CLOCKSOURCE_RATING: u32 = 450;
 
+// The config structure being exposed to the guest to tell them how much suspend time should be
+// injected to the guest's CLOCK_BOOTTIME.
 #[derive(Debug, Clone, Copy, Default, AsBytes, FromZeroes, FromBytes)]
+#[allow(non_camel_case_types)]
 #[repr(C)]
 struct virtio_pvclock_config {
-    // Number of nanoseconds the VM has been suspended without guest suspension.
+    // Total duration the VM has been paused while the guest kernel is not in the suspended state
+    // (from the power management and timekeeping perspective).
     suspend_time_ns: Le64,
     // Device-suggested rating of the pvclock clocksource.
     clocksource_rating: Le32,
@@ -87,6 +125,7 @@ struct virtio_pvclock_config {
 }
 
 #[derive(Debug, Clone, Copy, Default, FromZeroes, FromBytes, AsBytes)]
+#[allow(non_camel_case_types)]
 #[repr(C)]
 struct virtio_pvclock_set_pvclock_page_req {
     // Physical address of pvclock page.
@@ -389,7 +428,7 @@ struct PvClockWorker {
     suspend_time: Option<PvclockInstant>,
     // The total time the vm has been suspended, this is in an Arc<AtomicU64>> because it's set
     // by the PvClockWorker thread but read by PvClock from the mmio bus in the main thread.
-    total_suspend_ns: Arc<AtomicU64>,
+    total_injected_ns: Arc<AtomicU64>,
     // The total change in the TSC value over suspensions.
     total_suspend_tsc_delta: u64,
     // Pvclock shared data.
@@ -398,11 +437,11 @@ struct PvClockWorker {
 }
 
 impl PvClockWorker {
-    pub fn new(tsc_frequency: u64, total_suspend_ns: Arc<AtomicU64>, mem: GuestMemory) -> Self {
+    pub fn new(tsc_frequency: u64, total_injected_ns: Arc<AtomicU64>, mem: GuestMemory) -> Self {
         PvClockWorker {
             tsc_frequency,
             suspend_time: None,
-            total_suspend_ns,
+            total_injected_ns,
             total_suspend_tsc_delta: 0,
             pvclock_shared_data: None,
             mem,
@@ -411,14 +450,14 @@ impl PvClockWorker {
 
     fn from_snapshot(
         tsc_frequency: u64,
-        total_suspend_ns: Arc<AtomicU64>,
+        total_injected_ns: Arc<AtomicU64>,
         snap: PvClockWorkerSnapshot,
         mem: GuestMemory,
     ) -> Self {
         PvClockWorker {
             tsc_frequency,
             suspend_time: snap.suspend_time,
-            total_suspend_ns,
+            total_injected_ns,
             total_suspend_tsc_delta: snap.total_suspend_tsc_delta,
             pvclock_shared_data: snap
                 .pvclock_shared_data_base_address
@@ -538,7 +577,7 @@ impl PvClockWorker {
         );
 
         // update total suspend ns
-        self.total_suspend_ns
+        self.total_injected_ns
             .fetch_add(this_suspend_duration.as_nanos() as u64, Ordering::SeqCst);
 
         Ok(())

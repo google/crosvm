@@ -35,6 +35,8 @@ use devices::virtio::ipc_memory_mapper::create_ipc_mapper;
 use devices::virtio::ipc_memory_mapper::CreateIpcMapperRet;
 use devices::virtio::memory_mapper::BasicMemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
+#[cfg(feature = "pvclock")]
+use devices::virtio::pvclock::PvClock;
 use devices::virtio::scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
@@ -668,6 +670,25 @@ pub fn create_balloon_device(
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
         jail: simple_jail(jail_config, "balloon_device")?,
+    })
+}
+
+#[cfg(feature = "pvclock")]
+pub fn create_pvclock_device(
+    protection_type: ProtectionType,
+    jail_config: &Option<JailConfig>,
+    tsc_frequency: u64,
+    suspend_tube: Tube,
+) -> DeviceResult {
+    let dev = PvClock::new(
+        virtio::base_features(protection_type),
+        tsc_frequency,
+        suspend_tube,
+    );
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: simple_jail(jail_config, "pvclock_device")?,
     })
 }
 

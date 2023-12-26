@@ -1851,11 +1851,11 @@ pub struct RunCommand {
     ///     [--pstore <path=PATH,size=SIZE>]
     pub pstore: Option<Pstore>,
 
-    #[cfg(windows)]
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
     /// enable virtio-pvclock.
+    /// Only available when crosvm is built with feature 'pvclock'.
     pub pvclock: Option<bool>,
 
     #[argh(option, long = "restore", arg_name = "PATH")]
@@ -2806,6 +2806,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             pmem.read_only = read_only;
             cfg.pmem_devices.push(pmem);
         }
+        cfg.pvclock = cmd.pvclock.unwrap_or_default();
 
         #[cfg(windows)]
         {
@@ -2825,7 +2826,6 @@ impl TryFrom<RunCommand> for super::config::Config {
 
                 cfg.process_invariants_data_size = cmd.process_invariants_size;
             }
-            cfg.pvclock = cmd.pvclock.unwrap_or_default();
             #[cfg(windows)]
             {
                 cfg.service_pipe_name = cmd.service_pipe_name;

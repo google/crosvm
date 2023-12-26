@@ -155,6 +155,9 @@ net = ["devices/net"]
 ## Enables PCI hotplug. Only available on Linux, and currently only for x86/x86-64.
 pci-hotplug = ["devices/pci-hotplug", "vm_control/pci-hotplug"]
 
+## Enables virtio-pvclock. Only available on Linux, and currently only for x86/x86-64.
+pvclock = ["devices/pvclock"]
+
 ## Enables the use of the qcow format for block devices.
 qcow = ["disk/qcow"]
 
@@ -361,6 +364,7 @@ all-riscv64 = [
 all-x86_64 = [
     "all-default",
     "plugin",
+    "pvclock",
     "scudo"
 ]
 

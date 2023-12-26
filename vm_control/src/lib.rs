@@ -1253,7 +1253,7 @@ pub struct HotPlugDeviceInfo {
 }
 
 /// Message for communicating a suspend or resume to the virtio-pvclock device.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PvClockCommand {
     Suspend,
     Resume,

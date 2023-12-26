@@ -16,7 +16,7 @@ mod interrupt;
 mod iommu;
 #[cfg(feature = "net")]
 pub mod net;
-#[cfg(target_arch = "x86_64")]
+#[cfg(feature = "pvclock")]
 pub mod pvclock;
 mod queue;
 mod rng;
@@ -107,6 +107,8 @@ pub use self::virtio_pci_device::PciCapabilityType;
 pub use self::virtio_pci_device::VirtioPciCap;
 pub use self::virtio_pci_device::VirtioPciDevice;
 pub use self::virtio_pci_device::VirtioPciShmCap;
+#[cfg(feature = "pvclock")]
+pub use self::DeviceType::Pvclock;
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {

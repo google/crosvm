@@ -75,6 +75,8 @@ use cros_async::Executor;
 use device_helpers::*;
 use devices::create_devices_worker_thread;
 use devices::serial_device::SerialHardware;
+#[cfg(feature = "pvclock")]
+use devices::tsc::get_tsc_sync_mitigations;
 use devices::vfio::VfioCommonSetup;
 use devices::vfio::VfioCommonTrait;
 #[cfg(feature = "gpu")]
@@ -225,6 +227,7 @@ fn create_virtio_devices(
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     #[cfg(feature = "gpu")] has_vfio_gfx_device: bool,
     #[cfg(feature = "registered_events")] registered_evt_q: &SendTube,
+    #[cfg(feature = "pvclock")] pvclock_device_tube: Option<Tube>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -399,6 +402,27 @@ fn create_virtio_devices(
 
     if cfg.rng {
         devs.push(create_rng_device(cfg.protection_type, &cfg.jail_config)?);
+    }
+
+    #[cfg(feature = "pvclock")]
+    if let Some(suspend_tube) = pvclock_device_tube {
+        let tsc_state = devices::tsc::tsc_state()?;
+        let tsc_sync_mitigations =
+            get_tsc_sync_mitigations(&tsc_state, cfg.vcpu_count.unwrap_or(1));
+        if tsc_state.core_grouping.size() > 1 {
+            // Host TSCs are not in sync. Log what mitigations are applied.
+            warn!(
+                "Host TSCs are not in sync, applying the following mitigations: {:?}",
+                tsc_sync_mitigations
+            );
+        }
+        devs.push(create_pvclock_device(
+            cfg.protection_type,
+            &cfg.jail_config,
+            tsc_state.frequency,
+            suspend_tube,
+        )?);
+        info!("virtio-pvclock is enabled for this vm");
     }
 
     #[cfg(feature = "vtpm")]
@@ -712,6 +736,7 @@ fn create_devices(
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     iova_max_addr: &mut Option<u64>,
     #[cfg(feature = "registered_events")] registered_evt_q: &SendTube,
+    #[cfg(feature = "pvclock")] pvclock_device_tube: Option<Tube>,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     #[cfg(feature = "balloon")]
@@ -854,6 +879,8 @@ fn create_devices(
         has_vfio_gfx_device,
         #[cfg(feature = "registered_events")]
         registered_evt_q,
+        #[cfg(feature = "pvclock")]
+        pvclock_device_tube,
     )?;
 
     for stub in stubs {
@@ -1839,6 +1866,19 @@ where
         BTreeMap::new();
     let mut iova_max_addr: Option<u64> = None;
 
+    // pvclock gets a tube for handling suspend/resume requests from the main thread.
+    #[cfg(feature = "pvclock")]
+    let (pvclock_host_tube, pvclock_device_tube) = if cfg.pvclock {
+        let (host, device) = Tube::pair().context("failed to create tube")?;
+        (Some(host), Some(device))
+    } else {
+        (None, None)
+    };
+    #[cfg(not(feature = "pvclock"))]
+    if cfg.pvclock {
+        bail!("pvclock device is only supported when crosvm is built with a feature 'pvclock'");
+    }
+
     #[cfg(feature = "registered_events")]
     let (reg_evt_wrtube, reg_evt_rdtube) =
         Tube::directional_pair().context("failed to create registered event tube")?;
@@ -1868,6 +1908,8 @@ where
         &mut iova_max_addr,
         #[cfg(feature = "registered_events")]
         &reg_evt_wrtube,
+        #[cfg(feature = "pvclock")]
+        pvclock_device_tube,
     )?;
 
     #[cfg(feature = "pci-hotplug")]
@@ -2143,6 +2185,8 @@ where
         #[cfg(feature = "registered_events")]
         reg_evt_rdtube,
         guest_suspended_cvar,
+        #[cfg(feature = "pvclock")]
+        pvclock_host_tube,
     )
 }
 
@@ -2677,6 +2721,24 @@ pub fn trigger_vm_suspend_and_wait_for_entry(
     }
 }
 
+#[cfg(feature = "pvclock")]
+fn send_pvclock_cmd(tube: &Tube, command: PvClockCommand) -> Result<()> {
+    tube.send(&command)
+        .with_context(|| format!("failed to send pvclock command {:?}", command))?;
+    let resp = tube
+        .recv::<PvClockCommandResponse>()
+        .context("failed to receive pvclock command response")?;
+    if let PvClockCommandResponse::Err(e) = resp {
+        bail!("pvclock encountered error on {:?}: {}", command, e);
+    }
+    if let PvClockCommandResponse::DeviceInactive = resp {
+        warn!("Tried to send {command:?} but pvclock device was inactive");
+    } else {
+        info!("{command:?} completed with {resp:?}");
+    }
+    Ok(())
+}
+
 #[cfg(target_arch = "x86_64")]
 fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
@@ -2753,6 +2815,8 @@ struct ControlLoopState<'a, V: VmArch, Vcpu: VcpuArch> {
     vm_memory_handler_control: &'a Tube,
     #[cfg(feature = "registered_events")]
     registered_evt_tubes: &'a mut HashMap<RegisteredEvent, HashSet<AddressedProtoTube>>,
+    #[cfg(feature = "pvclock")]
+    pvclock_host_tube: Option<Arc<Tube>>,
 }
 
 fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
@@ -2918,10 +2982,8 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         .restore(image, state.linux.vcpu_count)
                 },
             );
-
-            // For non s2idle guest suspension we are done
-            if let VmRequest::SuspendVcpus = request {
-                if state.cfg.force_s2idle {
+            if state.cfg.force_s2idle {
+                if let VmRequest::SuspendVcpus = request {
                     suspend_requested = true;
 
                     // Spawn s2idle wait thread.
@@ -2943,6 +3005,26 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             )
                         })
                         .context("failed to spawn s2idle_wait thread")?;
+                }
+            } else {
+                // if not doing s2idle, the guest clock should
+                // behave as the host does, so let the guest
+                // know about the suspend / resume via
+                // virtio-pvclock.
+                #[cfg(feature = "pvclock")]
+                if let Some(ref pvclock_host_tube) = state.pvclock_host_tube {
+                    let cmd = match request {
+                        VmRequest::SuspendVcpus => Some(PvClockCommand::Suspend),
+                        VmRequest::ResumeVcpus => Some(PvClockCommand::Resume),
+                        _ => None,
+                    };
+                    if let Some(cmd) = cmd {
+                        if let Err(e) = send_pvclock_cmd(pvclock_host_tube, cmd.clone()) {
+                            error!("{:?} command failed: {:#}", cmd, e);
+                        } else {
+                            info!("{:?} command successfully processed", cmd);
+                        }
+                    }
                 }
             }
             response
@@ -3170,6 +3252,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     mut swap_controller: Option<SwapController>,
     #[cfg(feature = "registered_events")] reg_evt_rdtube: RecvTube,
     guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
+    #[cfg(feature = "pvclock")] pvclock_host_tube: Option<Tube>,
 ) -> Result<ExitState> {
     #[derive(EventToken)]
     enum Token {
@@ -3346,6 +3429,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     } else {
         (run_mode, run_mode)
     };
+
+    #[cfg(feature = "pvclock")]
+    let pvclock_host_tube = pvclock_host_tube.map(Arc::new);
 
     // Architecture-specific code must supply a vcpu_init element for each VCPU.
     assert_eq!(vcpus.len(), linux.vcpu_init.len());
@@ -3705,6 +3791,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             vm_memory_handler_control: &vm_memory_handler_control,
                             #[cfg(feature = "registered_events")]
                             registered_evt_tubes: &mut registered_evt_tubes,
+                            #[cfg(feature = "pvclock")]
+                            pvclock_host_tube: pvclock_host_tube.clone(),
                         };
                         let (exit_requested, mut ids_to_remove, add_tubes) =
                             process_vm_control_event(&mut state, id, socket)?;
