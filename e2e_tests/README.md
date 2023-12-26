@@ -12,14 +12,23 @@ $ ./tools/run_tests --dut=vm -E 'rdeps(e2e_tests)'
 ## Running with locally built kernel/rootfs
 
 If you want to make changes to the kernel or rootfs, you have to specify the environment variables
-`CROSVM_CARGO_TEST_KERNEL_BINARY` and `CROSVM_CARGO_TEST_ROOTFS_IMAGE` to point to the right files
+`CROSVM_CARGO_TEST_KERNEL_IMAGE` and `CROSVM_CARGO_TEST_ROOTFS_IMAGE` to point to the right files
 and then run `cargo test`.
 
-The use_local_build.sh script does this for you:
+With use_local_build.sh script, e2e_tests can be executed with custom kernel/rootfs as follows:
 
 ```sh
+$ cd /path/to/crosvm
+$ cd e2e_tests
 $ source guest_under_test/use_local_build.sh
 $ cargo test
+```
+
+Unsetting the variables will bring back you to the original behavior.
+
+```sh
+unset CROSVM_CARGO_TEST_KERNEL_IMAGE
+unset CROSVM_CARGO_TEST_ROOTFS_IMAGE
 ```
 
 Note: The custom images cannot be used with `tools/run_tests`.

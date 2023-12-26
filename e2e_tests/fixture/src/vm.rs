@@ -22,6 +22,7 @@ use delegate::wire_format::ExitStatus;
 use delegate::wire_format::GuestToHostMessage;
 use delegate::wire_format::HostToGuestMessage;
 use delegate::wire_format::ProgramExit;
+use log::info;
 use log::Level;
 use prebuilts::download_file;
 use url::Url;
@@ -193,7 +194,7 @@ impl Default for Config {
 impl Config {
     /// Creates a new `run` command with `extra_args`.
     pub fn new() -> Self {
-        Default::default()
+        Self::from_env()
     }
 
     /// Uses extra arguments for `crosvm run`.
@@ -227,12 +228,15 @@ impl Config {
             cfg.log_level = Level::Debug;
         }
         if let Ok(kernel_url) = env::var("CROSVM_CARGO_TEST_KERNEL_IMAGE") {
+            info!("Using overrided kernel from env CROSVM_CARGO_TEST_KERNEL_IMAGE={kernel_url}");
             cfg.kernel_url = Url::from_file_path(kernel_url).unwrap();
         }
         if let Ok(initrd_url) = env::var("CROSVM_CARGO_TEST_INITRD_IMAGE") {
+            info!("Using overrided kernel from env CROSVM_CARGO_TEST_INITRD_IMAGE={initrd_url}");
             cfg.initrd_url = Some(Url::from_file_path(initrd_url).unwrap());
         }
         if let Ok(rootfs_url) = env::var("CROSVM_CARGO_TEST_ROOTFS_IMAGE") {
+            info!("Using overrided kernel from env CROSVM_CARGO_TEST_ROOTFS_IMAGE={rootfs_url}");
             cfg.rootfs_url = Some(Url::from_file_path(rootfs_url).unwrap());
         }
         cfg
