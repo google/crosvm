@@ -637,7 +637,7 @@ impl Frontend {
                 let resource_id = info.resource_id.to_native();
                 let virtio_gpu_format = info.format.to_native();
                 let width = info.width.to_native();
-                let height = info.width.to_native();
+                let height = info.height.to_native();
                 let mut strides: [u32; 4] = [0; 4];
                 let mut offsets: [u32; 4] = [0; 4];
 
