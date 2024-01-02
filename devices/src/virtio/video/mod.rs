@@ -193,8 +193,8 @@ impl VirtioDevice for VideoDevice {
 
     fn device_type(&self) -> DeviceType {
         match &self.device_type {
-            VideoDeviceType::Decoder => DeviceType::VideoDec,
-            VideoDeviceType::Encoder => DeviceType::VideoEnc,
+            VideoDeviceType::Decoder => DeviceType::VideoDecoder,
+            VideoDeviceType::Encoder => DeviceType::VideoEncoder,
         }
     }
 

@@ -171,10 +171,8 @@ pub enum DeviceType {
     Pmem = virtio_ids::VIRTIO_ID_PMEM,
     #[serde(rename = "mac80211-hwsim")]
     Mac80211HwSim = virtio_ids::VIRTIO_ID_MAC80211_HWSIM,
-    #[serde(rename = "video-encoder")]
-    VideoEnc = virtio_ids::VIRTIO_ID_VIDEO_ENCODER,
-    #[serde(rename = "video-decoder")]
-    VideoDec = virtio_ids::VIRTIO_ID_VIDEO_DECODER,
+    VideoEncoder = virtio_ids::VIRTIO_ID_VIDEO_ENCODER,
+    VideoDecoder = virtio_ids::VIRTIO_ID_VIDEO_DECODER,
     Scmi = virtio_ids::VIRTIO_ID_SCMI,
     Wl = virtio_ids::VIRTIO_ID_WL,
     Tpm = virtio_ids::VIRTIO_ID_TPM,
@@ -203,8 +201,8 @@ impl DeviceType {
             DeviceType::Fs => 2,            // hiprio, request queue
             DeviceType::Pmem => 1,          // request queue
             DeviceType::Mac80211HwSim => 2, // tx, rx
-            DeviceType::VideoEnc => 2,      // cmdq, eventq
-            DeviceType::VideoDec => 2,      // cmdq, eventq
+            DeviceType::VideoEncoder => 2,  // cmdq, eventq
+            DeviceType::VideoDecoder => 2,  // cmdq, eventq
             DeviceType::Scmi => 2,          // cmdq, eventq
             DeviceType::Wl => 2,            // in, out
             DeviceType::Tpm => 1,           // request queue
@@ -234,8 +232,8 @@ impl std::fmt::Display for DeviceType {
             DeviceType::Wl => write!(f, "wl"),
             DeviceType::Tpm => write!(f, "tpm"),
             DeviceType::Pvclock => write!(f, "pvclock"),
-            DeviceType::VideoDec => write!(f, "video-decoder"),
-            DeviceType::VideoEnc => write!(f, "video-encoder"),
+            DeviceType::VideoDecoder => write!(f, "video-decoder"),
+            DeviceType::VideoEncoder => write!(f, "video-encoder"),
             DeviceType::Mac80211HwSim => write!(f, "mac80211-hwsim"),
             DeviceType::Scmi => write!(f, "scmi"),
         }

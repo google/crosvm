@@ -1816,8 +1816,8 @@ mod tests {
         test_device_type("fs", DeviceType::Fs);
         test_device_type("pmem", DeviceType::Pmem);
         test_device_type("mac80211-hwsim", DeviceType::Mac80211HwSim);
-        test_device_type("video-encoder", DeviceType::VideoEnc);
-        test_device_type("video-decoder", DeviceType::VideoDec);
+        test_device_type("video-encoder", DeviceType::VideoEncoder);
+        test_device_type("video-decoder", DeviceType::VideoDecoder);
         test_device_type("scmi", DeviceType::Scmi);
         test_device_type("wl", DeviceType::Wl);
         test_device_type("tpm", DeviceType::Tpm);

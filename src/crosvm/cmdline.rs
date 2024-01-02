@@ -3223,7 +3223,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                 .chain(vu(cmd.vhost_user_mac80211_hwsim, DeviceType::Mac80211HwSim))
                 .chain(vu(cmd.vhost_user_net, DeviceType::Net))
                 .chain(vu(cmd.vhost_user_snd, DeviceType::Sound))
-                .chain(vu(cmd.vhost_user_video_decoder, DeviceType::VideoDec))
+                .chain(vu(cmd.vhost_user_video_decoder, DeviceType::VideoDecoder))
                 .chain(vu(cmd.vhost_user_vsock, DeviceType::Vsock))
                 .chain(vu(cmd.vhost_user_wl, DeviceType::Wl)),
         );
