@@ -335,6 +335,32 @@ fn modify_virtio_net(cmd: cmdline::VirtioNetCommand) -> std::result::Result<(), 
 }
 
 #[cfg(feature = "composite-disk")]
+fn parse_composite_partition_arg(
+    partition_arg: &str,
+) -> std::result::Result<(String, String, bool), ()> {
+    let mut partition_fields = partition_arg.split(":");
+
+    let label = partition_fields.next();
+    let path = partition_fields.next();
+    let opt = partition_fields.next();
+
+    if let (Some(label), Some(path)) = (label, path) {
+        // By default, composite disk is read-only
+        let writable = match opt {
+            None => false,
+            Some(opt) => opt.contains("writable"),
+        };
+        Ok((label.to_owned(), path.to_owned(), writable))
+    } else {
+        error!(
+            "Must specify label and path for partition '{}', like LABEL:PARTITION",
+            partition_arg
+        );
+        Err(())
+    }
+}
+
+#[cfg(feature = "composite-disk")]
 fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result<(), ()> {
     use std::fs::File;
     use std::path::PathBuf;
@@ -391,37 +417,32 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
         .partitions
         .into_iter()
         .map(|partition_arg| {
-            if let [label, path] = partition_arg.split(":").collect::<Vec<_>>()[..] {
-                let partition_file = File::open(path)
-                    .map_err(|e| error!("Failed to open partition image: {}", e))?;
+            let (label, path, writable) = parse_composite_partition_arg(&partition_arg)?;
 
-                // Sparseness for composite disks is not user provided on Linux
-                // (e.g. via an option), and it has no runtime effect.
-                let size = create_disk_file(
-                    partition_file,
-                    /* is_sparse_file= */ true,
-                    disk::MAX_NESTING_DEPTH,
-                    Path::new(path),
-                )
-                .map_err(|e| error!("Failed to create DiskFile instance: {}", e))?
-                .get_len()
-                .map_err(|e| error!("Failed to get length of partition image: {}", e))?;
-                Ok(PartitionInfo {
-                    label: label.to_owned(),
-                    path: Path::new(path).to_owned(),
-                    partition_type: ImagePartitionType::LinuxFilesystem,
-                    writable: false,
-                    size,
-                })
-            } else {
-                error!(
-                    "Must specify label and path for partition '{}', like LABEL:PATH",
-                    partition_arg
-                );
-                Err(())
-            }
+            let partition_file =
+                File::open(&path).map_err(|e| error!("Failed to open partition image: {}", e))?;
+
+            // Sparseness for composite disks is not user provided on Linux
+            // (e.g. via an option), and it has no runtime effect.
+            let size = create_disk_file(
+                partition_file,
+                /* is_sparse_file= */ true,
+                disk::MAX_NESTING_DEPTH,
+                Path::new(&path),
+            )
+            .map_err(|e| error!("Failed to create DiskFile instance: {}", e))?
+            .get_len()
+            .map_err(|e| error!("Failed to get length of partition image: {}", e))?;
+
+            Ok(PartitionInfo {
+                label,
+                path: Path::new(&path).to_owned(),
+                partition_type: ImagePartitionType::LinuxFilesystem,
+                writable,
+                size,
+            })
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<PartitionInfo>, ()>>()?;
 
     create_composite_disk(
         &partitions,
@@ -955,5 +976,31 @@ mod tests {
         let res = crosvm_main(args.iter().map(|s| s.to_string()));
         let status = res.expect("arg parsing should succeed");
         assert_eq!(status, CommandStatus::InvalidArgs);
+    }
+
+    #[test]
+    #[cfg(feature = "composite-disk")]
+    fn parse_composite_disk_arg() {
+        let arg1 = String::from("LABEL1:/partition1.img:writable");
+        let res1 = parse_composite_partition_arg(&arg1);
+        assert_eq!(
+            res1,
+            Ok((
+                String::from("LABEL1"),
+                String::from("/partition1.img"),
+                true
+            ))
+        );
+
+        let arg2 = String::from("LABEL2:/partition2.img");
+        let res2 = parse_composite_partition_arg(&arg2);
+        assert_eq!(
+            res2,
+            Ok((
+                String::from("LABEL2"),
+                String::from("/partition2.img"),
+                false
+            ))
+        );
     }
 }
