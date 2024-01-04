@@ -23,6 +23,8 @@ use libc::STDERR_FILENO;
 
 // Opens a pipe and puts the write end into the stderr FD slot. On success, returns the read end of
 // the pipe and the old stderr as a pair of files.
+//
+// This may fail if, for example, the file descriptor numbers have been exhausted.
 fn redirect_stderr() -> Option<(File, File)> {
     let mut fds = [-1, -1];
     // SAFETY: Trivially safe because the return value is checked.
@@ -75,7 +77,13 @@ fn log_panic_info(default_panic: &(dyn Fn(&PanicInfo) + Sync + Send + 'static), 
     let (mut read_file, old_stderr) = match redirect_stderr() {
         Some(f) => f,
         None => {
-            error!("failed to capture stderr during panic");
+            error!(
+                "failed to capture stderr during panic: {}",
+                std::io::Error::last_os_error()
+            );
+            // Fallback to stderr only panic logging.
+            env::set_var("RUST_BACKTRACE", "1");
+            default_panic(info);
             return;
         }
     };
