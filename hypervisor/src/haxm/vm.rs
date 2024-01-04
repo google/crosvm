@@ -216,8 +216,15 @@ impl Vm for HaxmVm {
         })
     }
 
-    fn check_capability(&self, _c: VmCap) -> bool {
-        false
+    fn check_capability(&self, c: VmCap) -> bool {
+        match c {
+            VmCap::DirtyLog => false,
+            VmCap::PvClock => false,
+            VmCap::Protected => false,
+            VmCap::EarlyInitCpuid => false,
+            VmCap::BusLockDetect => false,
+            VmCap::ReadOnlyMemoryRegion => true,
+        }
     }
 
     fn get_memory(&self) -> &GuestMemory {

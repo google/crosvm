@@ -52,4 +52,6 @@ pub enum VmCap {
     /// VM can detect the bus lock
     #[cfg(target_arch = "x86_64")]
     BusLockDetect,
+    /// Supports read-only memory regions.
+    ReadOnlyMemoryRegion,
 }

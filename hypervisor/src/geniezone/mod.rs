@@ -911,6 +911,7 @@ impl Vm for GeniezoneVm {
             VmCap::PvClock => false,
             VmCap::Protected => self.check_raw_capability(GeniezoneCap::ArmProtectedVm),
             VmCap::EarlyInitCpuid => false,
+            VmCap::ReadOnlyMemoryRegion => false,
         }
     }
 

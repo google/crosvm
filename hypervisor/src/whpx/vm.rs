@@ -515,6 +515,7 @@ impl Vm for WhpxVm {
             VmCap::EarlyInitCpuid => true,
             #[cfg(target_arch = "x86_64")]
             VmCap::BusLockDetect => false,
+            VmCap::ReadOnlyMemoryRegion => true,
         }
     }
 

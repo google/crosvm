@@ -1980,10 +1980,18 @@ where
             expose_with_viommu: false,
         });
 
+        let supports_readonly_mapping = linux.vm.supports_readonly_mapping();
         let pci_root = linux.root_config.clone();
         std::thread::Builder::new()
             .name("pci_root".to_string())
-            .spawn(move || start_pci_root_worker(pci_root, hp_worker_tube, hp_vm_mem_worker_tube))?
+            .spawn(move || {
+                start_pci_root_worker(
+                    supports_readonly_mapping,
+                    pci_root,
+                    hp_worker_tube,
+                    hp_vm_mem_worker_tube,
+                )
+            })?
     };
 
     let gralloc = RutabagaGralloc::new().context("failed to create gralloc")?;
@@ -2033,17 +2041,23 @@ where
 // worker thread and push all work that locks pci root to this thread.
 #[cfg(target_arch = "x86_64")]
 fn start_pci_root_worker(
+    supports_readonly_mapping: bool,
     pci_root: Arc<Mutex<PciRoot>>,
     hp_device_tube: mpsc::Receiver<PciRootCommand>,
     vm_control_tube: Tube,
 ) {
     struct PciMmioMapperTube {
+        supports_readonly_mapping: bool,
         vm_control_tube: Tube,
         registered_regions: BTreeMap<u32, VmMemoryRegionId>,
         next_id: u32,
     }
 
     impl PciMmioMapper for PciMmioMapperTube {
+        fn supports_readonly_mapping(&self) -> bool {
+            self.supports_readonly_mapping
+        }
+
         fn add_mapping(&mut self, addr: GuestAddress, shmem: &SharedMemory) -> anyhow::Result<u32> {
             let shmem = shmem
                 .try_clone()
@@ -2068,6 +2082,7 @@ fn start_pci_root_worker(
     }
 
     let mut mapper = PciMmioMapperTube {
+        supports_readonly_mapping,
         vm_control_tube,
         registered_regions: BTreeMap::new(),
         next_id: 0,

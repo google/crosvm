@@ -111,6 +111,11 @@ impl KvmVm {
         Ok(())
     }
 
+    /// Whether running under pKVM.
+    pub fn is_pkvm(&self) -> bool {
+        self.get_protected_vm_info().is_ok()
+    }
+
     /// Checks if a particular `VmCap` is available, or returns None if arch-independent
     /// Vm.check_capability() should handle the check.
     pub fn check_capability_arch(&self, _c: VmCap) -> Option<bool> {
@@ -145,6 +150,12 @@ impl KvmVm {
         Err(Error::new(ENXIO))
     }
 
+    /// Get pKVM hypervisor details, e.g. the firmware size.
+    ///
+    /// Returns `Err` if not running under pKVM.
+    ///
+    /// Uses `KVM_ENABLE_CAP` internally, but it is only a getter, there should be no side effects
+    /// in KVM.
     fn get_protected_vm_info(&self) -> Result<KvmProtectedVmInfo> {
         let mut info = KvmProtectedVmInfo {
             firmware_size: 0,
