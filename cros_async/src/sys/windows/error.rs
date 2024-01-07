@@ -13,6 +13,9 @@ pub enum AsyncErrorSys {
     HandleSource(#[from] super::handle_source::Error),
     #[error("An error with a handle source: {0}")]
     OverlappedSource(#[from] super::overlapped_source::Error),
+    #[cfg(feature = "tokio")]
+    #[error("Tokio source error: {0}")]
+    Tokio(#[from] super::tokio_source::Error),
 }
 
 impl From<AsyncErrorSys> for io::Error {
@@ -21,6 +24,8 @@ impl From<AsyncErrorSys> for io::Error {
             AsyncErrorSys::HandleExecutor(e) => e.into(),
             AsyncErrorSys::HandleSource(e) => e.into(),
             AsyncErrorSys::OverlappedSource(e) => e.into(),
+            #[cfg(feature = "tokio")]
+            AsyncErrorSys::Tokio(e) => e.into(),
         }
     }
 }
