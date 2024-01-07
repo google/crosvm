@@ -29,9 +29,18 @@ use crate::AsyncResult;
 use crate::IntoAsync;
 use crate::IoSource;
 
+cfg_if::cfg_if! {
+    if #[cfg(feature = "tokio")] {
+        use crate::tokio_executor::TokioExecutor;
+        use crate::tokio_executor::TokioTaskHandle;
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExecutorKind {
     SysVariants(ExecutorKindSys),
+    #[cfg(feature = "tokio")]
+    Tokio,
 }
 
 impl From<ExecutorKindSys> for ExecutorKind {
@@ -40,16 +49,9 @@ impl From<ExecutorKindSys> for ExecutorKind {
     }
 }
 
-// TODO: schuffelen - Remove after adding a platform-independent Executor
-impl From<ExecutorKind> for ExecutorKindSys {
-    fn from(e: ExecutorKind) -> ExecutorKindSys {
-        match e {
-            ExecutorKind::SysVariants(inner) => inner,
-        }
-    }
-}
-
-/// If set, [`Executor::new()`] is created with `ExecutorKindSys` of `DEFAULT_EXECUTOR_KIND`.
+/// If set, [`ExecutorKind::default()`] returns the value of `DEFAULT_EXECUTOR_KIND`.
+/// If not set, [`ExecutorKind::default()`] returns a statically-chosen default value, and
+/// [`ExecutorKind::default()`] initializes `DEFAULT_EXECUTOR_KIND` with that value.
 static DEFAULT_EXECUTOR_KIND: OnceCell<ExecutorKind> = OnceCell::new();
 
 impl Default for ExecutorKind {
@@ -107,6 +109,8 @@ impl FromArgValue for ExecutorKind {
                     }
                     .into()
                 }
+                #[cfg(feature = "tokio")]
+                ("tokio", None) => ExecutorKind::Tokio,
                 (_identifier, _next) => {
                     let kind = ErrorKind::SerdeError("unexpected kind".to_string());
                     return Err(des.error_here(kind));
@@ -127,6 +131,8 @@ impl serde::Serialize for ExecutorKind {
     {
         match self {
             ExecutorKind::SysVariants(sv) => sv.serialize(serializer),
+            #[cfg(feature = "tokio")]
+            ExecutorKind::Tokio => "tokio".serialize(serializer),
         }
     }
 }
@@ -155,6 +161,8 @@ pub enum TaskHandle<R> {
     Uring(common_executor::RawTaskHandle<linux::UringReactor, R>),
     #[cfg(windows)]
     Handle(common_executor::RawTaskHandle<windows::HandleReactor, R>),
+    #[cfg(feature = "tokio")]
+    Tokio(TokioTaskHandle<R>),
 }
 
 impl<R: Send + 'static> TaskHandle<R> {
@@ -166,6 +174,8 @@ impl<R: Send + 'static> TaskHandle<R> {
             TaskHandle::Uring(u) => u.detach(),
             #[cfg(windows)]
             TaskHandle::Handle(h) => h.detach(),
+            #[cfg(feature = "tokio")]
+            TaskHandle::Tokio(t) => t.detach(),
         }
     }
 
@@ -179,6 +189,8 @@ impl<R: Send + 'static> TaskHandle<R> {
             TaskHandle::Uring(u) => u.cancel().await,
             #[cfg(windows)]
             TaskHandle::Handle(h) => h.cancel().await,
+            #[cfg(feature = "tokio")]
+            TaskHandle::Tokio(t) => t.cancel().await,
         }
     }
 }
@@ -194,6 +206,8 @@ impl<R: 'static> Future for TaskHandle<R> {
             TaskHandle::Uring(u) => Pin::new(u).poll(cx),
             #[cfg(windows)]
             TaskHandle::Handle(h) => Pin::new(h).poll(cx),
+            #[cfg(feature = "tokio")]
+            TaskHandle::Tokio(t) => Pin::new(t).poll(cx),
         }
     }
 }
@@ -325,6 +339,8 @@ pub enum Executor {
     Handle(Arc<RawExecutor<windows::HandleReactor>>),
     #[cfg(windows)]
     Overlapped(Arc<RawExecutor<windows::HandleReactor>>),
+    #[cfg(feature = "tokio")]
+    Tokio(TokioExecutor),
 }
 
 impl Executor {
@@ -354,6 +370,8 @@ impl Executor {
                 };
                 Executor::Overlapped(RawExecutor::new_with(reactor)?)
             }
+            #[cfg(feature = "tokio")]
+            ExecutorKind::Tokio => Executor::Tokio(TokioExecutor::new()?),
         })
     }
 
@@ -393,6 +411,8 @@ impl Executor {
             Executor::Handle(ex) => ex.async_from(f),
             #[cfg(windows)]
             Executor::Overlapped(ex) => ex.async_from(f),
+            #[cfg(feature = "tokio")]
+            Executor::Tokio(ex) => ex.async_from(f),
         }
     }
 
@@ -454,6 +474,8 @@ impl Executor {
             Executor::Handle(ex) => ex.spawn(f),
             #[cfg(windows)]
             Executor::Overlapped(ex) => ex.spawn(f),
+            #[cfg(feature = "tokio")]
+            Executor::Tokio(ex) => ex.spawn(f),
         }
     }
 
@@ -498,6 +520,8 @@ impl Executor {
             Executor::Handle(ex) => ex.spawn_local(f),
             #[cfg(windows)]
             Executor::Overlapped(ex) => ex.spawn_local(f),
+            #[cfg(feature = "tokio")]
+            Executor::Tokio(ex) => ex.spawn_local(f),
         }
     }
 
@@ -544,6 +568,8 @@ impl Executor {
             Executor::Handle(ex) => ex.spawn_blocking(f),
             #[cfg(windows)]
             Executor::Overlapped(ex) => ex.spawn_blocking(f),
+            #[cfg(feature = "tokio")]
+            Executor::Tokio(ex) => ex.spawn_blocking(f),
         }
     }
 
@@ -621,6 +647,8 @@ impl Executor {
             Executor::Handle(ex) => ex.run_until(f),
             #[cfg(windows)]
             Executor::Overlapped(ex) => ex.run_until(f),
+            #[cfg(feature = "tokio")]
+            Executor::Tokio(ex) => ex.run_until(f),
         }
     }
 }
@@ -631,6 +659,8 @@ impl AsRawDescriptors for Executor {
         match self {
             Executor::Fd(ex) => ex.as_raw_descriptors(),
             Executor::Uring(ex) => ex.as_raw_descriptors(),
+            #[cfg(feature = "tokio")]
+            Executor::Tokio(ex) => ex.as_raw_descriptors(),
         }
     }
 }

@@ -9,6 +9,8 @@ pub mod executor;
 pub mod fd_executor;
 pub mod poll_source;
 mod timer;
+#[cfg(feature = "tokio")]
+pub mod tokio_source;
 pub mod uring_executor;
 pub mod uring_source;
 

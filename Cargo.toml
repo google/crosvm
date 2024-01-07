@@ -171,6 +171,9 @@ swap = ["aarch64/swap", "arch/swap", "devices/swap", "vm_control/swap", "x86_64/
 ## Enables collection of VM statistics.
 stats = ["devices/stats"]
 
+## Supports tokio as an asynchronous executor.
+tokio = ["cros_async/tokio"]
+
 ## Enables USB host device passthrough via an emulated XHCI controller.
 ## USB is supported only on unix/linux. The feature is a no-op on windows.
 usb = ["devices/usb"]
@@ -348,6 +351,7 @@ all-default = [
     "registered_events",
     "slirp",
     "swap",
+    "tokio",
     "trace_marker",
     "vaapi",
     "video-decoder",

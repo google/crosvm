@@ -9,6 +9,9 @@ use std::io;
 pub enum AsyncErrorSys {
     #[error("Poll source error: {0}")]
     Poll(#[from] super::poll_source::Error),
+    #[cfg(feature = "tokio")]
+    #[error("Tokio source error: {0}")]
+    Tokio(#[from] super::tokio_source::Error),
     #[error("Uring source error: {0}")]
     Uring(#[from] super::uring_executor::Error),
 }
@@ -17,6 +20,8 @@ impl From<AsyncErrorSys> for io::Error {
     fn from(err: AsyncErrorSys) -> Self {
         match err {
             AsyncErrorSys::Poll(e) => e.into(),
+            #[cfg(feature = "tokio")]
+            AsyncErrorSys::Tokio(e) => e.into(),
             AsyncErrorSys::Uring(e) => e.into(),
         }
     }
