@@ -23,7 +23,7 @@ mod capabilities;
 mod descriptor;
 mod event;
 mod file;
-pub mod file_traits;
+mod file_traits;
 mod get_filesystem_type;
 mod mmap;
 mod net;
