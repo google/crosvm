@@ -74,6 +74,9 @@ pub enum Error {
     /// Error happened in FUSE.
     #[error("fuse error: {0}")]
     FuseError(fuse::Error),
+    /// Failed to get the uids for the worker thread.
+    #[error("failed to get uids for the worker thread: {0}")]
+    GetResuid(SysError),
     /// Failed to get the securebits for the worker thread.
     #[error("failed to get securebits for the worker thread: {0}")]
     GetSecurebits(SysError),

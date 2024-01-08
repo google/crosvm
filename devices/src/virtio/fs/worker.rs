@@ -183,24 +183,36 @@ impl<F: FileSystem + Sync> Worker<F> {
     }
 
     pub fn run(&mut self, kill_evt: Event, watch_resample_event: bool) -> Result<()> {
-        // We need to set the no setuid fixup secure bit so that we don't drop capabilities when
-        // changing the thread uid/gid. Without this, creating new entries can fail in some corner
-        // cases.
-        const SECBIT_NO_SETUID_FIXUP: i32 = 1 << 2;
+        let mut ruid: libc::uid_t = 0;
+        let mut euid: libc::uid_t = 0;
+        let mut suid: libc::uid_t = 0;
+        // SAFETY: Safe because this doesn't modify any memory and we check the return value.
+        syscall!(unsafe { libc::getresuid(&mut ruid, &mut euid, &mut suid) })
+            .map_err(Error::GetResuid)?;
 
-        let mut securebits = syscall!(
-            // SAFETY: Safe because this doesn't modify any memory and we check the return value.
-            unsafe { libc::prctl(libc::PR_GET_SECUREBITS) }
-        )
-        .map_err(Error::GetSecurebits)?;
+        // Only need to set SECBIT_NO_SETUID_FIXUP for threads which could change uid.
+        if ruid == 0 || ruid != euid || ruid != suid {
+            // We need to set the no setuid fixup secure bit so that we don't drop capabilities when
+            // changing the thread uid/gid. Without this, creating new entries can fail in some
+            // corner cases.
+            const SECBIT_NO_SETUID_FIXUP: i32 = 1 << 2;
 
-        securebits |= SECBIT_NO_SETUID_FIXUP;
+            let mut securebits = syscall!(
+                // SAFETY:
+                // Safe because this doesn't modify any memory and we check the return value.
+                unsafe { libc::prctl(libc::PR_GET_SECUREBITS) }
+            )
+            .map_err(Error::GetSecurebits)?;
 
-        syscall!(
-            // SAFETY: Safe because this doesn't modify any memory and we check the return value.
-            unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) }
-        )
-        .map_err(Error::SetSecurebits)?;
+            securebits |= SECBIT_NO_SETUID_FIXUP;
+
+            syscall!(
+                // SAFETY:
+                // Safe because this doesn't modify any memory and we check the return value.
+                unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) }
+            )
+            .map_err(Error::SetSecurebits)?;
+        }
 
         // To avoid extra locking, unshare filesystem attributes from parent. This includes the
         // current working directory and umask.
