@@ -58,6 +58,8 @@ pub const VHOST_BACKEND_F_IOTLB_MSG_V2: u32 = 1;
 pub const VHOST_BACKEND_F_IOTLB_BATCH: u32 = 2;
 pub const VHOST_BACKEND_F_IOTLB_ASID: u32 = 3;
 pub const VHOST_BACKEND_F_SUSPEND: u32 = 4;
+pub const VHOST_BACKEND_F_RESUME: u32 = 5;
+pub const VHOST_BACKEND_F_ENABLE_AFTER_DRIVER_OK: u32 = 6;
 pub const VHOST_FILE_UNBIND: i32 = -1;
 pub const VHOST_VIRTIO: u32 = 175;
 pub const VHOST_VRING_LITTLE_ENDIAN: u32 = 0;
@@ -83,6 +85,17 @@ pub struct vhost_vring_addr {
     pub used_user_addr: u64,
     pub avail_user_addr: u64,
     pub log_guest_addr: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vhost_worker_state {
+    pub worker_id: ::std::os::raw::c_uint,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vhost_vring_worker {
+    pub index: ::std::os::raw::c_uint,
+    pub worker_id: ::std::os::raw::c_uint,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]

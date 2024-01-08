@@ -104,10 +104,15 @@ pub const VFIO_DEVICE_FLAGS_CCW: u32 = 16;
 pub const VFIO_DEVICE_FLAGS_AP: u32 = 32;
 pub const VFIO_DEVICE_FLAGS_FSL_MC: u32 = 64;
 pub const VFIO_DEVICE_FLAGS_CAPS: u32 = 128;
+pub const VFIO_DEVICE_FLAGS_CDX: u32 = 256;
 pub const VFIO_DEVICE_INFO_CAP_ZPCI_BASE: u32 = 1;
 pub const VFIO_DEVICE_INFO_CAP_ZPCI_GROUP: u32 = 2;
 pub const VFIO_DEVICE_INFO_CAP_ZPCI_UTIL: u32 = 3;
 pub const VFIO_DEVICE_INFO_CAP_ZPCI_PFIP: u32 = 4;
+pub const VFIO_DEVICE_INFO_CAP_PCI_ATOMIC_COMP: u32 = 5;
+pub const VFIO_PCI_ATOMIC_COMP32: u32 = 1;
+pub const VFIO_PCI_ATOMIC_COMP64: u32 = 2;
+pub const VFIO_PCI_ATOMIC_COMP128: u32 = 4;
 pub const VFIO_REGION_INFO_FLAG_READ: u32 = 1;
 pub const VFIO_REGION_INFO_FLAG_WRITE: u32 = 2;
 pub const VFIO_REGION_INFO_FLAG_MMAP: u32 = 4;
@@ -151,6 +156,10 @@ pub const VFIO_IRQ_SET_ACTION_UNMASK: u32 = 16;
 pub const VFIO_IRQ_SET_ACTION_TRIGGER: u32 = 32;
 pub const VFIO_IRQ_SET_DATA_TYPE_MASK: u32 = 7;
 pub const VFIO_IRQ_SET_ACTION_TYPE_MASK: u32 = 56;
+pub const VFIO_PCI_DEVID_OWNED: u32 = 0;
+pub const VFIO_PCI_DEVID_NOT_OWNED: i32 = -1;
+pub const VFIO_PCI_HOT_RESET_FLAG_DEV_ID: u32 = 1;
+pub const VFIO_PCI_HOT_RESET_FLAG_DEV_ID_OWNED: u32 = 2;
 pub const VFIO_GFX_PLANE_TYPE_PROBE: u32 = 1;
 pub const VFIO_GFX_PLANE_TYPE_DMABUF: u32 = 2;
 pub const VFIO_GFX_PLANE_TYPE_REGION: u32 = 4;
@@ -166,6 +175,7 @@ pub const VFIO_DEVICE_FEATURE_PROBE: u32 = 262144;
 pub const VFIO_DEVICE_FEATURE_PCI_VF_TOKEN: u32 = 0;
 pub const VFIO_MIGRATION_STOP_COPY: u32 = 1;
 pub const VFIO_MIGRATION_P2P: u32 = 2;
+pub const VFIO_MIGRATION_PRE_COPY: u32 = 4;
 pub const VFIO_DEVICE_FEATURE_MIGRATION: u32 = 1;
 pub const VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE: u32 = 2;
 pub const VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY: u32 = 3;
@@ -174,6 +184,7 @@ pub const VFIO_DEVICE_FEATURE_LOW_POWER_EXIT: u32 = 5;
 pub const VFIO_DEVICE_FEATURE_DMA_LOGGING_START: u32 = 6;
 pub const VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP: u32 = 7;
 pub const VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT: u32 = 8;
+pub const VFIO_DEVICE_FEATURE_MIG_DATA_SIZE: u32 = 9;
 pub const VFIO_IOMMU_INFO_PGSIZES: u32 = 1;
 pub const VFIO_IOMMU_INFO_CAPS: u32 = 2;
 pub const VFIO_IOMMU_TYPE1_INFO_CAP_IOVA_RANGE: u32 = 1;
@@ -225,6 +236,14 @@ pub struct vfio_device_info {
     pub num_regions: u32,
     pub num_irqs: u32,
     pub cap_offset: u32,
+    pub pad: u32,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_info_cap_pci_atomic_comp {
+    pub header: vfio_info_cap_header,
+    pub flags: u32,
+    pub reserved: u32,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -333,21 +352,56 @@ pub const VFIO_CCW_CRW_IRQ_INDEX: _bindgen_ty_4 = 1;
 pub const VFIO_CCW_REQ_IRQ_INDEX: _bindgen_ty_4 = 2;
 pub const VFIO_CCW_NUM_IRQS: _bindgen_ty_4 = 3;
 pub type _bindgen_ty_4 = ::std::os::raw::c_uint;
+pub const VFIO_AP_REQ_IRQ_INDEX: _bindgen_ty_5 = 0;
+pub const VFIO_AP_NUM_IRQS: _bindgen_ty_5 = 1;
+pub type _bindgen_ty_5 = ::std::os::raw::c_uint;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct vfio_pci_dependent_device {
-    pub group_id: u32,
+    pub __bindgen_anon_1: vfio_pci_dependent_device__bindgen_ty_1,
     pub segment: u16,
     pub bus: u8,
     pub devfn: u8,
 }
 #[repr(C)]
-#[derive(Debug, Default)]
+#[derive(Copy, Clone)]
+pub union vfio_pci_dependent_device__bindgen_ty_1 {
+    pub group_id: u32,
+    pub devid: u32,
+}
+impl Default for vfio_pci_dependent_device__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for vfio_pci_dependent_device {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
 pub struct vfio_pci_hot_reset_info {
     pub argsz: u32,
     pub flags: u32,
     pub count: u32,
     pub devices: __IncompleteArrayField<vfio_pci_dependent_device>,
+}
+impl Default for vfio_pci_hot_reset_info {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -417,6 +471,27 @@ pub struct vfio_device_feature {
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_bind_iommufd {
+    pub argsz: u32,
+    pub flags: u32,
+    pub iommufd: i32,
+    pub out_devid: u32,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_attach_iommufd_pt {
+    pub argsz: u32,
+    pub flags: u32,
+    pub pt_id: u32,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_detach_iommufd_pt {
+    pub argsz: u32,
+    pub flags: u32,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct vfio_device_feature_migration {
     pub flags: u64,
 }
@@ -432,7 +507,17 @@ pub const vfio_device_mig_state_VFIO_DEVICE_STATE_RUNNING: vfio_device_mig_state
 pub const vfio_device_mig_state_VFIO_DEVICE_STATE_STOP_COPY: vfio_device_mig_state = 3;
 pub const vfio_device_mig_state_VFIO_DEVICE_STATE_RESUMING: vfio_device_mig_state = 4;
 pub const vfio_device_mig_state_VFIO_DEVICE_STATE_RUNNING_P2P: vfio_device_mig_state = 5;
+pub const vfio_device_mig_state_VFIO_DEVICE_STATE_PRE_COPY: vfio_device_mig_state = 6;
+pub const vfio_device_mig_state_VFIO_DEVICE_STATE_PRE_COPY_P2P: vfio_device_mig_state = 7;
 pub type vfio_device_mig_state = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_precopy_info {
+    pub argsz: u32,
+    pub flags: u32,
+    pub initial_bytes: u64,
+    pub dirty_bytes: u64,
+}
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct vfio_device_low_power_entry_with_wakeup {
@@ -463,11 +548,17 @@ pub struct vfio_device_feature_dma_logging_report {
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_feature_mig_data_size {
+    pub stop_copy_length: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct vfio_iommu_type1_info {
     pub argsz: u32,
     pub flags: u32,
     pub iova_pgsizes: u64,
     pub cap_offset: u32,
+    pub pad: u32,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]

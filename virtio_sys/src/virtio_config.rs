@@ -25,4 +25,5 @@ pub const VIRTIO_F_RING_PACKED: u32 = 34;
 pub const VIRTIO_F_IN_ORDER: u32 = 35;
 pub const VIRTIO_F_ORDER_PLATFORM: u32 = 36;
 pub const VIRTIO_F_SR_IOV: u32 = 37;
+pub const VIRTIO_F_NOTIFICATION_DATA: u32 = 38;
 pub const VIRTIO_F_RING_RESET: u32 = 40;

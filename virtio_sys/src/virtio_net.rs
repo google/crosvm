@@ -65,8 +65,13 @@ pub const VIRTIO_NET_F_CTRL_RX_EXTRA: u32 = 20;
 pub const VIRTIO_NET_F_GUEST_ANNOUNCE: u32 = 21;
 pub const VIRTIO_NET_F_MQ: u32 = 22;
 pub const VIRTIO_NET_F_CTRL_MAC_ADDR: u32 = 23;
+pub const VIRTIO_NET_F_VQ_NOTF_COAL: u32 = 52;
 pub const VIRTIO_NET_F_NOTF_COAL: u32 = 53;
+pub const VIRTIO_NET_F_GUEST_USO4: u32 = 54;
+pub const VIRTIO_NET_F_GUEST_USO6: u32 = 55;
+pub const VIRTIO_NET_F_HOST_USO: u32 = 56;
 pub const VIRTIO_NET_F_HASH_REPORT: u32 = 57;
+pub const VIRTIO_NET_F_GUEST_HDRLEN: u32 = 59;
 pub const VIRTIO_NET_F_RSS: u32 = 60;
 pub const VIRTIO_NET_F_RSC_EXT: u32 = 61;
 pub const VIRTIO_NET_F_STANDBY: u32 = 62;
@@ -90,6 +95,7 @@ pub const VIRTIO_NET_HDR_GSO_NONE: u32 = 0;
 pub const VIRTIO_NET_HDR_GSO_TCPV4: u32 = 1;
 pub const VIRTIO_NET_HDR_GSO_UDP: u32 = 3;
 pub const VIRTIO_NET_HDR_GSO_TCPV6: u32 = 4;
+pub const VIRTIO_NET_HDR_GSO_UDP_L4: u32 = 5;
 pub const VIRTIO_NET_HDR_GSO_ECN: u32 = 128;
 pub const VIRTIO_NET_HASH_REPORT_NONE: u32 = 0;
 pub const VIRTIO_NET_HASH_REPORT_IPv4: u32 = 1;
@@ -129,6 +135,8 @@ pub const VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET: u32 = 0;
 pub const VIRTIO_NET_CTRL_NOTF_COAL: u32 = 6;
 pub const VIRTIO_NET_CTRL_NOTF_COAL_TX_SET: u32 = 0;
 pub const VIRTIO_NET_CTRL_NOTF_COAL_RX_SET: u32 = 1;
+pub const VIRTIO_NET_CTRL_NOTF_COAL_VQ_SET: u32 = 2;
+pub const VIRTIO_NET_CTRL_NOTF_COAL_VQ_GET: u32 = 3;
 pub type __le16 = u16;
 pub type __le32 = u32;
 pub type __virtio16 = u16;
@@ -274,4 +282,17 @@ pub struct virtio_net_ctrl_coal_tx {
 pub struct virtio_net_ctrl_coal_rx {
     pub rx_max_packets: __le32,
     pub rx_usecs: __le32,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_ctrl_coal {
+    pub max_packets: __le32,
+    pub max_usecs: __le32,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_ctrl_coal_vq {
+    pub vqn: __le16,
+    pub reserved: __le16,
+    pub coal: virtio_net_ctrl_coal,
 }

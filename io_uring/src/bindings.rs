@@ -96,7 +96,11 @@ pub const IORING_SETUP_SQE128: u32 = 1024;
 pub const IORING_SETUP_CQE32: u32 = 2048;
 pub const IORING_SETUP_SINGLE_ISSUER: u32 = 4096;
 pub const IORING_SETUP_DEFER_TASKRUN: u32 = 8192;
+pub const IORING_SETUP_NO_MMAP: u32 = 16384;
+pub const IORING_SETUP_REGISTERED_FD_ONLY: u32 = 32768;
+pub const IORING_SETUP_NO_SQARRAY: u32 = 65536;
 pub const IORING_URING_CMD_FIXED: u32 = 1;
+pub const IORING_URING_CMD_POLLED: u32 = 2147483648;
 pub const IORING_FSYNC_DATASYNC: u32 = 1;
 pub const IORING_TIMEOUT_ABS: u32 = 1;
 pub const IORING_TIMEOUT_UPDATE: u32 = 2;
@@ -104,6 +108,7 @@ pub const IORING_TIMEOUT_BOOTTIME: u32 = 4;
 pub const IORING_TIMEOUT_REALTIME: u32 = 8;
 pub const IORING_LINK_TIMEOUT_UPDATE: u32 = 16;
 pub const IORING_TIMEOUT_ETIME_SUCCESS: u32 = 32;
+pub const IORING_TIMEOUT_MULTISHOT: u32 = 64;
 pub const IORING_TIMEOUT_CLOCK_MASK: u32 = 12;
 pub const IORING_TIMEOUT_UPDATE_MASK: u32 = 18;
 pub const IORING_POLL_ADD_MULTI: u32 = 1;
@@ -114,6 +119,8 @@ pub const IORING_ASYNC_CANCEL_ALL: u32 = 1;
 pub const IORING_ASYNC_CANCEL_FD: u32 = 2;
 pub const IORING_ASYNC_CANCEL_ANY: u32 = 4;
 pub const IORING_ASYNC_CANCEL_FD_FIXED: u32 = 8;
+pub const IORING_ASYNC_CANCEL_USERDATA: u32 = 16;
+pub const IORING_ASYNC_CANCEL_OP: u32 = 32;
 pub const IORING_RECVSEND_POLL_FIRST: u32 = 1;
 pub const IORING_RECV_MULTISHOT: u32 = 2;
 pub const IORING_RECVSEND_FIXED_BUF: u32 = 4;
@@ -121,6 +128,7 @@ pub const IORING_SEND_ZC_REPORT_USAGE: u32 = 8;
 pub const IORING_NOTIF_USAGE_ZC_COPIED: u32 = 2147483648;
 pub const IORING_ACCEPT_MULTISHOT: u32 = 1;
 pub const IORING_MSG_RING_CQE_SKIP: u32 = 1;
+pub const IORING_MSG_RING_FLAGS_PASS: u32 = 2;
 pub const IORING_CQE_F_BUFFER: u32 = 1;
 pub const IORING_CQE_F_MORE: u32 = 2;
 pub const IORING_CQE_F_SOCK_NONEMPTY: u32 = 4;
@@ -128,6 +136,9 @@ pub const IORING_CQE_F_NOTIF: u32 = 8;
 pub const IORING_OFF_SQ_RING: u32 = 0;
 pub const IORING_OFF_CQ_RING: u32 = 134217728;
 pub const IORING_OFF_SQES: u32 = 268435456;
+pub const IORING_OFF_PBUF_RING: u32 = 2147483648;
+pub const IORING_OFF_PBUF_SHIFT: u32 = 16;
+pub const IORING_OFF_MMAP_MASK: u32 = 4160749568;
 pub const IORING_SQ_NEED_WAKEUP: u32 = 1;
 pub const IORING_SQ_CQ_OVERFLOW: u32 = 2;
 pub const IORING_SQ_TASKRUN: u32 = 4;
@@ -150,6 +161,7 @@ pub const IORING_FEAT_NATIVE_WORKERS: u32 = 512;
 pub const IORING_FEAT_RSRC_TAGS: u32 = 1024;
 pub const IORING_FEAT_CQE_SKIP: u32 = 2048;
 pub const IORING_FEAT_LINKED_FILE: u32 = 4096;
+pub const IORING_FEAT_REG_REG_RING: u32 = 8192;
 pub const IORING_RSRC_REGISTER_SPARSE: u32 = 1;
 pub const IORING_REGISTER_FILES_SKIP: i32 = -2;
 pub const IO_URING_OP_SUPPORTED: u32 = 1;
@@ -388,7 +400,7 @@ pub struct io_sqring_offsets {
     pub dropped: u32,
     pub array: u32,
     pub resv1: u32,
-    pub resv2: u64,
+    pub user_addr: u64,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -401,7 +413,7 @@ pub struct io_cqring_offsets {
     pub cqes: u32,
     pub flags: u32,
     pub resv1: u32,
-    pub resv2: u64,
+    pub user_addr: u64,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -444,6 +456,7 @@ pub const IORING_UNREGISTER_PBUF_RING: _bindgen_ty_4 = 23;
 pub const IORING_REGISTER_SYNC_CANCEL: _bindgen_ty_4 = 24;
 pub const IORING_REGISTER_FILE_ALLOC_RANGE: _bindgen_ty_4 = 25;
 pub const IORING_REGISTER_LAST: _bindgen_ty_4 = 26;
+pub const IORING_REGISTER_USE_REGISTERED_RING: _bindgen_ty_4 = 2147483648;
 pub type _bindgen_ty_4 = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -477,21 +490,6 @@ pub struct io_uring_rsrc_update2 {
     pub tags: u64,
     pub nr: u32,
     pub resv2: u32,
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct io_uring_notification_slot {
-    pub tag: u64,
-    pub resv: [u64; 3usize],
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct io_uring_notification_register {
-    pub nr_slots: u32,
-    pub resv: u32,
-    pub resv2: u64,
-    pub data: u64,
-    pub resv3: u64,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -602,15 +600,15 @@ pub struct io_uring_buf_reg {
     pub ring_addr: u64,
     pub ring_entries: u32,
     pub bgid: u16,
-    pub pad: u16,
+    pub flags: u16,
     pub resv: [u64; 3usize],
 }
-pub const IORING_RESTRICTION_REGISTER_OP: _bindgen_ty_6 = 0;
-pub const IORING_RESTRICTION_SQE_OP: _bindgen_ty_6 = 1;
-pub const IORING_RESTRICTION_SQE_FLAGS_ALLOWED: _bindgen_ty_6 = 2;
-pub const IORING_RESTRICTION_SQE_FLAGS_REQUIRED: _bindgen_ty_6 = 3;
-pub const IORING_RESTRICTION_LAST: _bindgen_ty_6 = 4;
-pub type _bindgen_ty_6 = ::std::os::raw::c_uint;
+pub const IORING_RESTRICTION_REGISTER_OP: _bindgen_ty_7 = 0;
+pub const IORING_RESTRICTION_SQE_OP: _bindgen_ty_7 = 1;
+pub const IORING_RESTRICTION_SQE_FLAGS_ALLOWED: _bindgen_ty_7 = 2;
+pub const IORING_RESTRICTION_SQE_FLAGS_REQUIRED: _bindgen_ty_7 = 3;
+pub const IORING_RESTRICTION_LAST: _bindgen_ty_7 = 4;
+pub type _bindgen_ty_7 = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct io_uring_getevents_arg {
@@ -626,7 +624,9 @@ pub struct io_uring_sync_cancel_reg {
     pub fd: i32,
     pub flags: u32,
     pub timeout: __kernel_timespec,
-    pub pad: [u64; 4usize],
+    pub opcode: u8,
+    pub pad: [u8; 7usize],
+    pub pad2: [u64; 3usize],
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]

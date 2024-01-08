@@ -36,7 +36,6 @@ pub mod x86 {
     ioctl_iowr_nr!(KVM_GET_MSR_INDEX_LIST, KVMIO, 0x02, kvm_msr_list);
     ioctl_iowr_nr!(KVM_GET_SUPPORTED_CPUID, KVMIO, 0x05, kvm_cpuid2);
     ioctl_iowr_nr!(KVM_GET_EMULATED_CPUID, KVMIO, 0x09, kvm_cpuid2);
-    ioctl_iow_nr!(KVM_SET_MEMORY_ALIAS, KVMIO, 0x43, kvm_memory_alias);
     ioctl_iow_nr!(KVM_XEN_HVM_CONFIG, KVMIO, 0x7a, kvm_xen_hvm_config);
     ioctl_ior_nr!(KVM_GET_PIT2, KVMIO, 0x9f, kvm_pit_state2);
     ioctl_iow_nr!(KVM_SET_PIT2, KVMIO, 0xa0, kvm_pit_state2);

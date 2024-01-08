@@ -177,6 +177,17 @@ pub const HWCAP2_SME_FA64: u32 = 1073741824;
 pub const HWCAP2_WFXT: u32 = 2147483648;
 pub const HWCAP2_EBF16: u64 = 4294967296;
 pub const HWCAP2_SVE_EBF16: u64 = 8589934592;
+pub const HWCAP2_CSSC: u64 = 17179869184;
+pub const HWCAP2_RPRFM: u64 = 34359738368;
+pub const HWCAP2_SVE2P1: u64 = 68719476736;
+pub const HWCAP2_SME2: u64 = 137438953472;
+pub const HWCAP2_SME2P1: u64 = 274877906944;
+pub const HWCAP2_SME_I16I32: u64 = 549755813888;
+pub const HWCAP2_SME_BI32I32: u64 = 1099511627776;
+pub const HWCAP2_SME_B16B16: u64 = 2199023255552;
+pub const HWCAP2_SME_F16F16: u64 = 4398046511104;
+pub const HWCAP2_MOPS: u64 = 8796093022208;
+pub const HWCAP2_HBC: u64 = 17592186044416;
 pub const __SVE_VQ_BYTES: u32 = 16;
 pub const __SVE_VQ_MIN: u32 = 1;
 pub const __SVE_VQ_MAX: u32 = 512;
@@ -229,6 +240,7 @@ pub const SVE_PT_VL_ONEXEC: u32 = 4;
 pub const ZA_PT_VL_INHERIT: u32 = 2;
 pub const ZA_PT_VL_ONEXEC: u32 = 4;
 pub const KVM_COALESCED_MMIO_PAGE_OFFSET: u32 = 1;
+pub const KVM_DIRTY_LOG_PAGE_OFFSET: u32 = 64;
 pub const KVM_ARM_TARGET_AEM_V8: u32 = 0;
 pub const KVM_ARM_TARGET_FOUNDATION_V8: u32 = 1;
 pub const KVM_ARM_TARGET_CORTEX_A57: u32 = 2;
@@ -254,6 +266,7 @@ pub const KVM_ARM_VCPU_PMU_V3: u32 = 3;
 pub const KVM_ARM_VCPU_SVE: u32 = 4;
 pub const KVM_ARM_VCPU_PTRAUTH_ADDRESS: u32 = 5;
 pub const KVM_ARM_VCPU_PTRAUTH_GENERIC: u32 = 6;
+pub const KVM_ARM_VCPU_HAS_EL2: u32 = 7;
 pub const KVM_ARM_MAX_DBG_REGS: u32 = 16;
 pub const KVM_DEBUG_ARCH_HSR_HIGH_VALID: u32 = 1;
 pub const KVM_GUESTDBG_USE_SW_BP: u32 = 65536;
@@ -305,6 +318,8 @@ pub const KVM_ARM64_SVE_VQ_MIN: u32 = 1;
 pub const KVM_ARM64_SVE_VQ_MAX: u32 = 512;
 pub const KVM_ARM64_SVE_VLS_WORDS: u32 = 8;
 pub const KVM_REG_ARM_FW_FEAT_BMAP: u32 = 1441792;
+pub const KVM_ARM_VM_SMCCC_CTRL: u32 = 0;
+pub const KVM_ARM_VM_SMCCC_FILTER: u32 = 0;
 pub const KVM_DEV_ARM_VGIC_GRP_ADDR: u32 = 0;
 pub const KVM_DEV_ARM_VGIC_GRP_DIST_REGS: u32 = 1;
 pub const KVM_DEV_ARM_VGIC_GRP_CPU_REGS: u32 = 2;
@@ -338,6 +353,8 @@ pub const KVM_ARM_VCPU_PMU_V3_SET_PMU: u32 = 3;
 pub const KVM_ARM_VCPU_TIMER_CTRL: u32 = 1;
 pub const KVM_ARM_VCPU_TIMER_IRQ_VTIMER: u32 = 0;
 pub const KVM_ARM_VCPU_TIMER_IRQ_PTIMER: u32 = 1;
+pub const KVM_ARM_VCPU_TIMER_IRQ_HVTIMER: u32 = 2;
+pub const KVM_ARM_VCPU_TIMER_IRQ_HPTIMER: u32 = 3;
 pub const KVM_ARM_VCPU_PVTIME_CTRL: u32 = 2;
 pub const KVM_ARM_VCPU_PVTIME_IPA: u32 = 0;
 pub const KVM_ARM_IRQ_VCPU2_SHIFT: u32 = 28;
@@ -362,6 +379,8 @@ pub const KVM_PSCI_RET_INVAL: i32 = -2;
 pub const KVM_PSCI_RET_DENIED: i32 = -3;
 pub const KVM_SYSTEM_EVENT_RESET_FLAG_PSCI_RESET2: u32 = 1;
 pub const KVM_EXIT_FAIL_ENTRY_CPU_UNSUPPORTED: u32 = 1;
+pub const KVM_HYPERCALL_EXIT_SMC: u32 = 1;
+pub const KVM_HYPERCALL_EXIT_16BIT: u32 = 2;
 pub const KVM_API_VERSION: u32 = 12;
 pub const KVM_TRC_SHIFT: u32 = 16;
 pub const KVM_TRC_ENTRYEXIT: u32 = 65536;
@@ -465,6 +484,7 @@ pub const KVM_SYSTEM_EVENT_SEV_TERM: u32 = 6;
 pub const KVM_MSR_EXIT_REASON_INVAL: u32 = 1;
 pub const KVM_MSR_EXIT_REASON_UNKNOWN: u32 = 2;
 pub const KVM_MSR_EXIT_REASON_FILTER: u32 = 4;
+pub const KVM_MSR_EXIT_REASON_VALID_MASK: u32 = 7;
 pub const KVM_NOTIFY_CONTEXT_INVALID: u32 = 1;
 pub const SYNC_REGS_SIZE_BYTES: u32 = 2048;
 pub const KVM_S390_MEMOP_LOGICAL_READ: u32 = 0;
@@ -473,9 +493,12 @@ pub const KVM_S390_MEMOP_SIDA_READ: u32 = 2;
 pub const KVM_S390_MEMOP_SIDA_WRITE: u32 = 3;
 pub const KVM_S390_MEMOP_ABSOLUTE_READ: u32 = 4;
 pub const KVM_S390_MEMOP_ABSOLUTE_WRITE: u32 = 5;
+pub const KVM_S390_MEMOP_ABSOLUTE_CMPXCHG: u32 = 6;
 pub const KVM_S390_MEMOP_F_CHECK_ONLY: u32 = 1;
 pub const KVM_S390_MEMOP_F_INJECT_EXCEPTION: u32 = 2;
 pub const KVM_S390_MEMOP_F_SKEY_PROTECTION: u32 = 4;
+pub const KVM_S390_MEMOP_EXTENSION_CAP_BASE: u32 = 1;
+pub const KVM_S390_MEMOP_EXTENSION_CAP_CMPXCHG: u32 = 2;
 pub const KVM_MP_STATE_RUNNABLE: u32 = 0;
 pub const KVM_MP_STATE_UNINITIALIZED: u32 = 1;
 pub const KVM_MP_STATE_INIT_RECEIVED: u32 = 2;
@@ -740,6 +763,12 @@ pub const KVM_CAP_VM_DISABLE_NX_HUGE_PAGES: u32 = 220;
 pub const KVM_CAP_S390_ZPCI_OP: u32 = 221;
 pub const KVM_CAP_S390_CPU_TOPOLOGY: u32 = 222;
 pub const KVM_CAP_DIRTY_LOG_RING_ACQ_REL: u32 = 223;
+pub const KVM_CAP_S390_PROTECTED_ASYNC_DISABLE: u32 = 224;
+pub const KVM_CAP_DIRTY_LOG_RING_WITH_BITMAP: u32 = 225;
+pub const KVM_CAP_PMU_EVENT_MASKED_EVENTS: u32 = 226;
+pub const KVM_CAP_COUNTER_OFFSET: u32 = 227;
+pub const KVM_CAP_ARM_EAGER_SPLIT_CHUNK_SIZE: u32 = 228;
+pub const KVM_CAP_ARM_SUPPORTED_BLOCK_SIZES: u32 = 229;
 pub const KVM_CAP_GET_CUR_CPUFREQ: u32 = 512;
 pub const KVM_CAP_UTIL_HINT: u32 = 513;
 pub const KVM_CAP_GET_CPUFREQ_TBL: u32 = 514;
@@ -778,6 +807,9 @@ pub const KVM_REG_SIZE_U1024: u64 = 31525197391593472;
 pub const KVM_REG_SIZE_U2048: u64 = 36028797018963968;
 pub const KVM_MSI_VALID_DEVID: u32 = 1;
 pub const KVM_CREATE_DEVICE_TEST: u32 = 1;
+pub const KVM_DEV_VFIO_FILE: u32 = 1;
+pub const KVM_DEV_VFIO_FILE_ADD: u32 = 1;
+pub const KVM_DEV_VFIO_FILE_DEL: u32 = 2;
 pub const KVM_DEV_VFIO_GROUP: u32 = 1;
 pub const KVM_DEV_VFIO_GROUP_ADD: u32 = 1;
 pub const KVM_DEV_VFIO_GROUP_DEL: u32 = 2;
@@ -792,6 +824,7 @@ pub const KVM_XEN_ATTR_TYPE_SHARED_INFO: u32 = 1;
 pub const KVM_XEN_ATTR_TYPE_UPCALL_VECTOR: u32 = 2;
 pub const KVM_XEN_ATTR_TYPE_EVTCHN: u32 = 3;
 pub const KVM_XEN_ATTR_TYPE_XEN_VERSION: u32 = 4;
+pub const KVM_XEN_ATTR_TYPE_RUNSTATE_UPDATE_FLAG: u32 = 5;
 pub const KVM_XEN_VCPU_ATTR_TYPE_VCPU_INFO: u32 = 0;
 pub const KVM_XEN_VCPU_ATTR_TYPE_VCPU_TIME_INFO: u32 = 1;
 pub const KVM_XEN_VCPU_ATTR_TYPE_RUNSTATE_ADDR: u32 = 2;
@@ -822,7 +855,6 @@ pub const KVM_HYPERV_CONN_ID_MASK: u32 = 16777215;
 pub const KVM_HYPERV_EVENTFD_DEASSIGN: u32 = 1;
 pub const KVM_DIRTY_LOG_MANUAL_PROTECT_ENABLE: u32 = 1;
 pub const KVM_DIRTY_LOG_INITIALLY_SET: u32 = 2;
-pub const KVM_DIRTY_LOG_PAGE_OFFSET: u32 = 0;
 pub const KVM_DIRTY_GFN_F_MASK: u32 = 3;
 pub const KVM_BUS_LOCK_DETECTION_OFF: u32 = 1;
 pub const KVM_BUS_LOCK_DETECTION_EXIT: u32 = 2;
@@ -853,6 +885,8 @@ pub const KVM_X86_NOTIFY_VMEXIT_USER: u32 = 2;
 pub const KVM_S390_ZPCIOP_REG_AEN: u32 = 0;
 pub const KVM_S390_ZPCIOP_DEREG_AEN: u32 = 1;
 pub const KVM_S390_ZPCIOP_REGAEN_HOST: u32 = 1;
+pub type __s128 = i128;
+pub type __u128 = u128;
 pub type __le16 = u16;
 pub type __be16 = u16;
 pub type __le32 = u32;
@@ -1018,6 +1052,12 @@ impl Default for kvm_arm_copy_mte_tags {
         }
     }
 }
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_arm_counter_offset {
+    pub counter_offset: u64,
+    pub reserved: u64,
+}
 pub const KVM_REG_ARM_STD_BIT_TRNG_V1_0: _bindgen_ty_1 = 0;
 pub type _bindgen_ty_1 = ::std::os::raw::c_uint;
 pub const KVM_REG_ARM_STD_HYP_BIT_PV_TIME: _bindgen_ty_2 = 0;
@@ -1025,6 +1065,18 @@ pub type _bindgen_ty_2 = ::std::os::raw::c_uint;
 pub const KVM_REG_ARM_VENDOR_HYP_BIT_FUNC_FEAT: _bindgen_ty_3 = 0;
 pub const KVM_REG_ARM_VENDOR_HYP_BIT_PTP: _bindgen_ty_3 = 1;
 pub type _bindgen_ty_3 = ::std::os::raw::c_uint;
+pub const kvm_smccc_filter_action_KVM_SMCCC_FILTER_HANDLE: kvm_smccc_filter_action = 0;
+pub const kvm_smccc_filter_action_KVM_SMCCC_FILTER_DENY: kvm_smccc_filter_action = 1;
+pub const kvm_smccc_filter_action_KVM_SMCCC_FILTER_FWD_TO_USER: kvm_smccc_filter_action = 2;
+pub type kvm_smccc_filter_action = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_smccc_filter {
+    pub base: u32,
+    pub nr_functions: u32,
+    pub action: u8,
+    pub pad: [u8; 15usize],
+}
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct kvm_user_trace_setup {
@@ -1045,14 +1097,6 @@ pub struct kvm_debug_guest {
     pub pad: u32,
     pub breakpoints: [kvm_breakpoint; 4usize],
     pub singlestep: u32,
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct kvm_memory_region {
-    pub slot: u32,
-    pub flags: u32,
-    pub guest_phys_addr: u64,
-    pub memory_size: u64,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -1358,13 +1402,36 @@ pub struct kvm_run__bindgen_ty_1__bindgen_ty_6 {
     pub is_write: u8,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_7 {
     pub nr: u64,
     pub args: [u64; 6usize],
     pub ret: u64,
+    pub __bindgen_anon_1: kvm_run__bindgen_ty_1__bindgen_ty_7__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union kvm_run__bindgen_ty_1__bindgen_ty_7__bindgen_ty_1 {
     pub longmode: u32,
-    pub pad: u32,
+    pub flags: u64,
+}
+impl Default for kvm_run__bindgen_ty_1__bindgen_ty_7__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for kvm_run__bindgen_ty_1__bindgen_ty_7 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -1689,6 +1756,8 @@ pub union kvm_s390_mem_op__bindgen_ty_1 {
 pub struct kvm_s390_mem_op__bindgen_ty_1__bindgen_ty_1 {
     pub ar: u8,
     pub key: u8,
+    pub pad1: [u8; 6usize],
+    pub old_addr: u64,
 }
 impl Default for kvm_s390_mem_op__bindgen_ty_1 {
     fn default() -> Self {
@@ -2212,7 +2281,8 @@ pub const kvm_device_type_KVM_DEV_TYPE_ARM_VGIC_V3: kvm_device_type = 7;
 pub const kvm_device_type_KVM_DEV_TYPE_ARM_VGIC_ITS: kvm_device_type = 8;
 pub const kvm_device_type_KVM_DEV_TYPE_XIVE: kvm_device_type = 9;
 pub const kvm_device_type_KVM_DEV_TYPE_ARM_PV_TIME: kvm_device_type = 10;
-pub const kvm_device_type_KVM_DEV_TYPE_MAX: kvm_device_type = 11;
+pub const kvm_device_type_KVM_DEV_TYPE_RISCV_AIA: kvm_device_type = 11;
+pub const kvm_device_type_KVM_DEV_TYPE_MAX: kvm_device_type = 12;
 pub type kvm_device_type = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -2326,6 +2396,8 @@ pub const pv_cmd_id_KVM_PV_PREP_RESET: pv_cmd_id = 5;
 pub const pv_cmd_id_KVM_PV_UNSHARE_ALL: pv_cmd_id = 6;
 pub const pv_cmd_id_KVM_PV_INFO: pv_cmd_id = 7;
 pub const pv_cmd_id_KVM_PV_DUMP: pv_cmd_id = 8;
+pub const pv_cmd_id_KVM_PV_ASYNC_CLEANUP_PREPARE: pv_cmd_id = 9;
+pub const pv_cmd_id_KVM_PV_ASYNC_CLEANUP_PERFORM: pv_cmd_id = 10;
 pub type pv_cmd_id = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -2349,6 +2421,7 @@ pub struct kvm_xen_hvm_attr {
 pub union kvm_xen_hvm_attr__bindgen_ty_1 {
     pub long_mode: u8,
     pub vector: u8,
+    pub runstate_update_flag: u8,
     pub shared_info: kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_1,
     pub evtchn: kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_2,
     pub xen_version: u32,

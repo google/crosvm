@@ -20,6 +20,8 @@ pub const TUN_F_TSO4: u32 = 2;
 pub const TUN_F_TSO6: u32 = 4;
 pub const TUN_F_TSO_ECN: u32 = 8;
 pub const TUN_F_UFO: u32 = 16;
+pub const TUN_F_USO4: u32 = 32;
+pub const TUN_F_USO6: u32 = 64;
 pub const TUN_PKT_STRIP: u32 = 1;
 pub const TUN_FLT_ALLMULTI: u32 = 1;
 #[repr(C)]
