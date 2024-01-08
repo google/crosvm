@@ -558,7 +558,7 @@ pub struct io_uring_buf_ring {
 #[repr(C)]
 pub struct io_uring_buf_ring__bindgen_ty_1 {
     pub __bindgen_anon_1: __BindgenUnionField<io_uring_buf_ring__bindgen_ty_1__bindgen_ty_1>,
-    pub bufs: __BindgenUnionField<[io_uring_buf; 0usize]>,
+    pub __bindgen_anon_2: __BindgenUnionField<io_uring_buf_ring__bindgen_ty_1__bindgen_ty_2>,
     pub bindgen_union_field: [u64; 2usize],
 }
 #[repr(C)]
@@ -569,6 +569,15 @@ pub struct io_uring_buf_ring__bindgen_ty_1__bindgen_ty_1 {
     pub resv3: u16,
     pub tail: u16,
 }
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct io_uring_buf_ring__bindgen_ty_1__bindgen_ty_2 {
+    pub __empty_bufs: io_uring_buf_ring__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1,
+    pub bufs: __IncompleteArrayField<io_uring_buf>,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct io_uring_buf_ring__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1 {}
 impl Default for io_uring_buf_ring__bindgen_ty_1 {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
