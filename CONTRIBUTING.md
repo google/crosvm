@@ -79,8 +79,8 @@ git checkout -b myfeature --track origin/main
 ```
 
 After making the necessary changes, and testing them via
-[Presubmit Checks](https://crosvm.dev/book/building_crosvm.html#presubmit-checks), you can commit
-and upload them:
+[Presubmit Checks](https://crosvm.dev/book/building_crosvm/linux.html#presubmit-checks), you can
+commit and upload them:
 
 ```bash
 git commit
@@ -119,8 +119,8 @@ Once one of the [crosvm owners] has voted "Code-Review+2" on your change, you ca
 CQ" button, which will trigger the test process.
 
 Gerrit will show any test failures. Refer to
-[Building Crosvm](https://crosvm.dev/book/building_crosvm.html) for information on how to run the
-same tests locally.
+[Building Crosvm](https://crosvm.dev/book/building_crosvm/) for information on how to run the same
+tests locally.
 
 Each individual change in a patch series must build and pass the tests. If you are working on a
 series of related changes, ensure that each incremental commit does not cause test regressions or
