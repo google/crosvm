@@ -3201,7 +3201,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     }
                 }
                 Token::VmControl { id } => {
-                    #[cfg(target_arch = "x86_64")]
+                    #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
                     let mut add_tubes = Vec::new();
                     #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
                     let mut add_irq_control_tubes = Vec::new();
