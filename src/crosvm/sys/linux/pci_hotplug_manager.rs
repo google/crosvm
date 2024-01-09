@@ -124,6 +124,8 @@ impl PciHotPlugManager {
     /// rootbus_controller cannot be intialized at PciHotPlugManager::new, which must be called in
     /// a single-threaded context. However, rootbus_controller is only available after VM boots,
     /// by which time crosvm is multi-threaded.
+    /// TODO(293801301): Remove unused after aarch64 support
+    #[allow(unused)]
     pub fn set_rootbus_controller(
         &mut self,
         rootbus_controller: mpsc::Sender<PciRootCommand>,
@@ -135,6 +137,8 @@ impl PciHotPlugManager {
     /// Adds a hotplug capable port to manage.
     ///
     /// PciHotPlugManager assumes exclusive control for adding and removing devices to this port.
+    /// TODO(293801301): Remove unused_variables after aarch64 support
+    #[allow(unused)]
     pub fn add_port(&mut self, port: Arc<Mutex<dyn HotPlugBus>>) -> Result<()> {
         let port_lock = port.lock();
         // Rejects hotplug bus with downstream devices.

@@ -1545,6 +1545,8 @@ where
     }
     // hotplug_manager must be created before vm is started since it forks jail warden process.
     #[cfg(feature = "pci-hotplug")]
+    // TODO(293801301): Remove unused_mut after aarch64 support
+    #[allow(unused_mut)]
     let mut hotplug_manager = if cfg.pci_hotplug_slots.is_some() {
         Some(PciHotPlugManager::new(
             vm.get_memory().clone(),
@@ -1754,6 +1756,8 @@ where
     )?;
 
     #[cfg(feature = "pci-hotplug")]
+    // TODO(293801301): Remove unused_variables after aarch64 support
+    #[allow(unused_variables)]
     let pci_hotplug_slots = cfg.pci_hotplug_slots;
     #[cfg(not(feature = "pci-hotplug"))]
     #[allow(unused_variables)]

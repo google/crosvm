@@ -324,6 +324,7 @@ all-default = [
     "libvda-stub",
     "net",
     "panic-memfd",
+    "pci-hotplug",
     "power-monitor-powerd",
     "slirp",
     "swap",
@@ -351,7 +352,6 @@ all-riscv64 = [
 ## All features that are compiled and tested for x86_64
 all-x86_64 = [
     "all-default",
-    "pci-hotplug",
     "plugin",
     "scudo"
 ]
