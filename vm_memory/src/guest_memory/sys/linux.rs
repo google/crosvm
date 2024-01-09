@@ -2,15 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::linux::FileDataIterator;
 use base::linux::MemfdSeals;
 use base::linux::MemoryMappingUnix;
 use base::linux::SharedMemoryLinux;
+use base::MappedRegion;
 use base::SharedMemory;
 use bitflags::bitflags;
 
 use crate::Error;
 use crate::GuestAddress;
 use crate::GuestMemory;
+use crate::MemoryRegion;
 use crate::Result;
 
 bitflags! {
@@ -80,6 +83,41 @@ impl GuestMemory {
         for region in self.regions.iter() {
             region.mapping.use_dontfork()?;
         }
+        Ok(())
+    }
+}
+
+impl MemoryRegion {
+    /// Attempts to determine which ranges of memory are holes (unallocated memory, all zeroes).
+    /// True indicates a hole and the `usize` is the size of the range.
+    ///
+    /// For example, if there were three bytes and the second byte was a hole, the return would be
+    /// `[(false, 1), (true, 1), (false, 1)]` (in practice these are probably always at least page
+    /// sized).
+    pub(crate) fn scan_for_hole_ranges(&self) -> anyhow::Result<Vec<(bool, usize)>> {
+        let mut ranges = Vec::new();
+        let mut cur = self.obj_offset;
+        for r in FileDataIterator::new(
+            &self.shared_obj,
+            self.obj_offset,
+            u64::try_from(self.mapping.size()).unwrap(),
+        ) {
+            if r.start > cur {
+                ranges.push((true, (r.start - cur).try_into().unwrap()));
+            }
+            ranges.push((false, (r.end - r.start).try_into().unwrap()));
+            cur = r.end;
+        }
+        let end = self.obj_offset + u64::try_from(self.mapping.size()).unwrap();
+        if cur < end {
+            ranges.push((true, (end - cur).try_into().unwrap()));
+        }
+
+        Ok(ranges)
+    }
+
+    pub(crate) fn zero_range(&self, offset: usize, size: usize) -> anyhow::Result<()> {
+        self.mapping.remove_range(offset, size)?;
         Ok(())
     }
 }
