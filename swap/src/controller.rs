@@ -130,6 +130,9 @@ pub struct SwapController {
     // Keep 1 page dummy mmap in the main process to make it present in all the descendant
     // processes.
     _dead_uffd_checker: DeadUffdCheckerImpl,
+    // Keep the cloned [GuestMemory] in the main process not to free it before the monitor process
+    // exits.
+    _guest_memory: GuestMemory,
 }
 
 impl SwapController {
@@ -148,6 +151,8 @@ impl SwapController {
         jail_config: &Option<JailConfig>,
     ) -> anyhow::Result<Self> {
         info!("vmm-swap is enabled. launch monitor process.");
+
+        let preserved_guest_memory = guest_memory.clone();
 
         let uffd_factory = UffdFactory::new();
         let uffd = uffd_factory.create().context("create userfaultfd")?;
@@ -277,6 +282,7 @@ impl SwapController {
             command_tube: command_tube_main,
             num_static_devices: 0,
             _dead_uffd_checker: dead_uffd_checker,
+            _guest_memory: preserved_guest_memory,
         })
     }
 
