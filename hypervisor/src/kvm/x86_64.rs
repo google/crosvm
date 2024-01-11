@@ -63,7 +63,7 @@ use crate::Xsave;
 use crate::NUM_IOAPIC_PINS;
 
 type KvmCpuId = kvm::CpuId;
-const KVM_XSAVE_MAX_SIZE: i32 = 4096;
+const KVM_XSAVE_MAX_SIZE: usize = 4096;
 const MSR_IA32_APICBASE: u32 = 0x0000001b;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -582,6 +582,28 @@ impl KvmVcpu {
     pub fn system_event_reset(&self, _event_flags: u64) -> Result<VcpuExit> {
         Ok(VcpuExit::SystemEventReset)
     }
+
+    fn xsave_size(&self) -> Result<usize> {
+        let size = {
+            // SAFETY:
+            // Safe because we know that our file is a VM fd, we know that the
+            // kernel will only read correct amount of memory from our pointer, and
+            // get size from KVM_CAP_XSAVE2. Will return at least 4096 as a value if XSAVE2 is not
+            // supported or if no extensions are enabled. Otherwise it will return a value higher than
+            // 4096.
+            unsafe { ioctl_with_val(&self.vm, KVM_CHECK_EXTENSION(), KVM_CAP_XSAVE2 as u64) }
+        };
+        if size < 0 {
+            return errno_result();
+        }
+        // Safe to unwrap since we already tested for negative values
+        let size = size.try_into().unwrap();
+        if size > KVM_XSAVE_MAX_SIZE {
+            Ok(size)
+        } else {
+            Ok(KVM_XSAVE_MAX_SIZE)
+        }
+    }
 }
 
 impl VcpuX86_64 for KvmVcpu {
@@ -747,22 +769,13 @@ impl VcpuX86_64 for KvmVcpu {
 
     /// If the VM reports using XSave2, the function will call XSave2.
     fn get_xsave(&self) -> Result<Xsave> {
-        let size =
-            // SAFETY:
-            // Safe because we know that our file is a VM fd, we know that the
-            // kernel will only read correct amount of memory from our pointer, and
-            // we verify the return result.
-            // Get the size of Xsave in bytes. Values are of type u32.
-            unsafe { ioctl_with_val(&self.vm, KVM_CHECK_EXTENSION(), KVM_CAP_XSAVE2 as u64) };
-        if size < 0 {
-            return errno_result();
-        }
-        let (ioctl_nr, size) = if size > KVM_XSAVE_MAX_SIZE {
-            (KVM_GET_XSAVE2(), size)
+        let size = self.xsave_size()?;
+        let ioctl_nr = if size > KVM_XSAVE_MAX_SIZE {
+            KVM_GET_XSAVE2()
         } else {
-            (KVM_GET_XSAVE(), KVM_XSAVE_MAX_SIZE)
+            KVM_GET_XSAVE()
         };
-        let mut xsave = Xsave::new(size as usize);
+        let mut xsave = Xsave::new(size);
 
         // SAFETY:
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
@@ -776,21 +789,10 @@ impl VcpuX86_64 for KvmVcpu {
     }
 
     fn set_xsave(&self, xsave: &Xsave) -> Result<()> {
-        let size = {
-            // SAFETY:
-            // Safe because we know that our file is a VM fd, we know that the
-            // kernel will only read correct amount of memory from our pointer, and
-            // get size from KVM_CAP_XSAVE2. Will return at least 4096 as a value if XSAVE2 is not
-            // supported or if no extensions are enabled. Otherwise it will return a value higher than
-            // 4096.
-            unsafe { ioctl_with_val(&self.vm, KVM_CHECK_EXTENSION(), KVM_CAP_XSAVE2 as u64) }
-        };
-        if size < 0 {
-            return errno_result();
-        }
+        let size = self.xsave_size()?;
         // Ensure xsave is the same size as used in get_xsave.
         // Return err if sizes don't match => not the same extensions are enabled for CPU.
-        if xsave.len() != size as usize {
+        if xsave.len() != size {
             return Err(Error::new(EIO));
         }
 
