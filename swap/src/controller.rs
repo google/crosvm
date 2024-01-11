@@ -35,6 +35,7 @@ use base::RawDescriptor;
 use base::SendTube;
 use base::SharedMemory;
 use base::Tube;
+use base::TubeError;
 use base::WaitContext;
 use jail::create_base_minijail;
 use jail::create_sandbox_minijail;
@@ -226,7 +227,16 @@ impl SwapController {
                     #[cfg(feature = "log_page_fault")]
                     page_fault_logger,
                 ) {
-                    panic!("page_fault_handler_thread exited with error: {:#}", e)
+                    if e.is::<TubeError>() {
+                        // Tube can cause TubeError if the main process unexpectedly dies. This is
+                        // not a bug of swap monitor, but the other feature on the main process.
+                        // Even if the tube itself is broken and the main process is alive, the main
+                        // process catch that the swap monitor process exits unexpectedly and
+                        // terminates itself.
+                        error!("page_fault_handler_thread exited with tube error: {:#}", e);
+                    } else {
+                        panic!("page_fault_handler_thread exited with error: {:#}", e);
+                    }
                 }
             })
             .context("fork monitor process")?;
