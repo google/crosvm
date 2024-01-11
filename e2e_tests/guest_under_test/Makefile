@@ -56,12 +56,14 @@ x86_64_initramfs: $(TARGET)/initramfs
 
 delegate: $(TARGET)/rootfs-build/delegate
 
+readclock: $(TARGET)/rootfs-build/readclock
+
 ################################################################################
 # Build rootfs
 rootfs : ${TARGET}/rootfs
 
 # Build rootfs from Dockerfile and export into squashfs
-$(TARGET)/rootfs: $(TARGET)/rootfs-build/delegate rootfs/Dockerfile
+$(TARGET)/rootfs: $(TARGET)/rootfs-build/delegate $(TARGET)/rootfs-build/readclock rootfs/Dockerfile
 	# Build image from Dockerfile
 	DOCKER_BUILDKIT=1 docker build -t crosvm_e2e_test_guest $(TARGET)/rootfs-build \
 		-f rootfs/Dockerfile --build-arg ARCH=$(DOCKER_ARCH)
@@ -84,6 +86,13 @@ $(TARGET)/rootfs-build/delegate: rootfs/delegate/Cargo.toml rootfs/delegate/src/
 	CARGO_TARGET_DIR=$(TARGET) RUSTFLAGS=$(RUSTFLAGS) cargo build --target $(RUST_TARGET) --release --manifest-path=rootfs/delegate/Cargo.toml
 	mkdir -p $(TARGET)/rootfs-build
 	cp $(TARGET)/$(RUST_TARGET)/release/delegate $(TARGET)/rootfs-build/delegate
+
+# Build and copy readclock binary into rootfs build directory
+$(TARGET)/rootfs-build/readclock: rootfs/readclock/Cargo.toml rootfs/readclock/src/main.rs rootfs/readclock/src/lib.rs
+	rustup target add $(RUST_TARGET)
+	CARGO_TARGET_DIR=$(TARGET) RUSTFLAGS=$(RUSTFLAGS) cargo build --target $(RUST_TARGET) --release --manifest-path=rootfs/readclock/Cargo.toml
+	mkdir -p $(TARGET)/rootfs-build
+	cp $(TARGET)/$(RUST_TARGET)/release/readclock $(TARGET)/rootfs-build/readclock
 
 ################################################################################
 # Build initramfs

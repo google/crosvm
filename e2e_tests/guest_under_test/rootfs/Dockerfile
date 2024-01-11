@@ -11,4 +11,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private \
 
 # Note: This docker file is run from the $(target)/rootfs directory specified in
 #       the Makefile.
+
+# Copy helper binaries
 COPY ./delegate /bin/delegate
+COPY ./readclock /bin/readclock
