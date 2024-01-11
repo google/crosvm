@@ -15,7 +15,7 @@ If you are using the chroot for ChromiumOS development, you already have the ker
 Otherwise, you can clone it:
 
 ```bash
-git clone --depth 1 -b chromeos-6.1 https://chromium.googlesource.com/chromiumos/third_party/kernel
+git clone --depth 1 -b chromeos-6.6 https://chromium.googlesource.com/chromiumos/third_party/kernel
 ```
 
 Either way that you get the kernel, the next steps are to configure and build the bzImage:
