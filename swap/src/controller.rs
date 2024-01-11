@@ -227,7 +227,20 @@ impl SwapController {
                     #[cfg(feature = "log_page_fault")]
                     page_fault_logger,
                 ) {
-                    if e.is::<TubeError>() {
+                    if let Some(PageHandlerError::Userfaultfd(UffdError::UffdClosed)) =
+                        e.downcast_ref::<PageHandlerError>()
+                    {
+                        // Userfaultfd can cause UffdError::UffdClosed if the main process
+                        // unexpectedly while it is swapping in. This is not a bug of swap monitor,
+                        // but the other feature on the main process.
+                        // Note that UffdError::UffdClosed from other processes than the main
+                        // process are derived from PageHandler::handle_page_fault() only and
+                        // handled in the loop of handle_vmm_swap().
+                        error!(
+                            "page_fault_handler_thread exited with userfaultfd closed error: {:#}",
+                            e
+                        );
+                    } else if e.is::<TubeError>() {
                         // Tube can cause TubeError if the main process unexpectedly dies. This is
                         // not a bug of swap monitor, but the other feature on the main process.
                         // Even if the tube itself is broken and the main process is alive, the main
