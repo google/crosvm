@@ -7,10 +7,14 @@ use std::arch::x86_64::CpuidResult;
 use std::arch::x86_64::__cpuid;
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 use std::arch::x86_64::_rdtsc;
+use std::collections::HashMap;
+use std::collections::HashSet;
 
+use anyhow::Context;
 use base::custom_serde::deserialize_seq_to_arr;
 use base::custom_serde::serialize_arr;
 use base::error;
+use base::warn;
 use base::Result;
 use bit_field::*;
 use downcast_rs::impl_downcast;
@@ -25,6 +29,20 @@ use crate::IrqSource;
 use crate::IrqSourceChip;
 use crate::Vcpu;
 use crate::Vm;
+
+const MSR_F15H_PERF_CTL0: u32 = 0xc0010200;
+const MSR_F15H_PERF_CTL1: u32 = 0xc0010202;
+const MSR_F15H_PERF_CTL2: u32 = 0xc0010204;
+const MSR_F15H_PERF_CTL3: u32 = 0xc0010206;
+const MSR_F15H_PERF_CTL4: u32 = 0xc0010208;
+const MSR_F15H_PERF_CTL5: u32 = 0xc001020a;
+const MSR_F15H_PERF_CTR0: u32 = 0xc0010201;
+const MSR_F15H_PERF_CTR1: u32 = 0xc0010203;
+const MSR_F15H_PERF_CTR2: u32 = 0xc0010205;
+const MSR_F15H_PERF_CTR3: u32 = 0xc0010207;
+const MSR_F15H_PERF_CTR4: u32 = 0xc0010209;
+const MSR_F15H_PERF_CTR5: u32 = 0xc001020b;
+const MSR_IA32_PERF_CAPABILITIES: u32 = 0x00000345;
 
 /// A trait for managing cpuids for an x86_64 hypervisor and for checking its capabilities.
 pub trait HypervisorX86_64: Hypervisor {
@@ -172,12 +190,54 @@ pub trait VcpuX86_64: Vcpu {
         snapshot: &VcpuSnapshot,
         host_tsc_reference_moment: u64,
     ) -> anyhow::Result<()> {
+        // List of MSRs that may fail to restore due to lack of support in the host kernel.
+        // Some hosts are may be running older kernels which do not support all MSRs, but
+        // get_all_msrs will still fetch the MSRs supported by the CPU. Trying to set those MSRs
+        // will result in failures, so they will throw a warning instead.
+        let msr_allowlist = HashSet::from([
+            MSR_F15H_PERF_CTL0,
+            MSR_F15H_PERF_CTL1,
+            MSR_F15H_PERF_CTL2,
+            MSR_F15H_PERF_CTL3,
+            MSR_F15H_PERF_CTL4,
+            MSR_F15H_PERF_CTL5,
+            MSR_F15H_PERF_CTR0,
+            MSR_F15H_PERF_CTR1,
+            MSR_F15H_PERF_CTR2,
+            MSR_F15H_PERF_CTR3,
+            MSR_F15H_PERF_CTR4,
+            MSR_F15H_PERF_CTR5,
+            MSR_IA32_PERF_CAPABILITIES,
+        ]);
         assert_eq!(snapshot.vcpu_id, self.id());
         self.set_regs(&snapshot.regs)?;
         self.set_sregs(&snapshot.sregs)?;
         self.set_debugregs(&snapshot.debug_regs)?;
         self.set_xcrs(&snapshot.xcrs)?;
-        self.set_msrs(&snapshot.msrs)?;
+
+        let mut msrs = HashMap::new();
+        for reg in self.get_all_msrs()? {
+            msrs.insert(reg.id, reg.value);
+        }
+
+        for &msr in snapshot.msrs.iter() {
+            if Some(&msr.value) == msrs.get(&msr.id) {
+                continue; // no need to set MSR since the values are the same.
+            }
+            if let Err(e) = self.set_msrs(&[msr]) {
+                if msr_allowlist.contains(&msr.id) {
+                    warn!(
+                        "Failed to set MSR. MSR might not be supported in this kernel. Err: {}",
+                        e
+                    );
+                } else {
+                    return Err(e).context(
+                        "Failed to set MSR. MSR might not be supported by the CPU or by the kernel,
+                         and was not allow-listed.",
+                    );
+                }
+            };
+        }
         self.set_xsave(&snapshot.xsave)?;
         self.set_interrupt_state(snapshot.hypervisor_data.clone())?;
         self.restore_timekeeping(host_tsc_reference_moment, snapshot.tsc_offset)?;
