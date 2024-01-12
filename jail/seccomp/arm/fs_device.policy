@@ -28,7 +28,7 @@ getdents64: 1
 getegid32: 1
 geteuid32: 1
 getrandom: 1
-getresuid: 1
+getresuid32: 1
 # Use constants for verity ioctls since minijail doesn't understand them yet.
 # 0x40806685 = FS_IOC_ENABLE_VERITY
 # 0xc0046686 = FS_IOC_MEASURE_VERITY
