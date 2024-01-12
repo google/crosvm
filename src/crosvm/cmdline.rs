@@ -723,6 +723,9 @@ pub struct SnapshotTakeCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
     pub socket_path: String,
+    #[argh(switch)]
+    /// compress the ram snapshot.
+    pub compress_memory: bool,
 }
 
 #[derive(FromArgs)]

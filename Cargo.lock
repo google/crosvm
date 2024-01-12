@@ -2964,6 +2964,7 @@ dependencies = [
  "cros_async",
  "data_model",
  "libc",
+ "lz4_flex",
  "remain",
  "serde",
  "serde_json",

@@ -618,11 +618,12 @@ fn modify_usb(cmd: cmdline::UsbCommand) -> std::result::Result<(), ()> {
 fn snapshot_vm(cmd: cmdline::SnapshotCommand) -> std::result::Result<(), ()> {
     use cmdline::SnapshotSubCommands::*;
     let (socket_path, request) = match cmd.snapshot_command {
-        Take(path) => {
+        Take(take_cmd) => {
             let req = VmRequest::Snapshot(SnapshotCommand::Take {
-                snapshot_path: path.snapshot_path,
+                snapshot_path: take_cmd.snapshot_path,
+                compress_memory: take_cmd.compress_memory,
             });
-            (path.socket_path, req)
+            (take_cmd.socket_path, req)
         }
         Restore(path) => {
             let req = VmRequest::Restore(RestoreCommand::Apply {

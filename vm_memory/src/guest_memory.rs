@@ -871,41 +871,60 @@ impl GuestMemory {
     /// Returns a JSON object that contains metadata about the underlying memory regions to allow
     /// validation checks at restore time.
     #[deny(unsafe_op_in_unsafe_fn)]
-    pub unsafe fn snapshot<T: Write>(&self, w: &mut T) -> anyhow::Result<serde_json::Value> {
-        let mut metadata = MemorySnapshotMetadata {
-            regions: Vec::new(),
-        };
-
-        for region in self.regions.iter() {
-            let data_ranges = region
-                .find_data_ranges()
-                .context("find_data_ranges failed")?;
-            for range in &data_ranges {
-                let region_vslice = region
-                    .mapping
-                    .get_slice(range.start, range.end - range.start)?;
-                // SAFETY:
-                // 1. The data is guaranteed to be present & of expected length by the
-                //    `VolatileSlice`.
-                // 2. Aliasing the `VolatileSlice`'s memory is safe because a. The only mutable
-                //    reference to it is held by the guest, and the guest's VCPUs are stopped
-                //    (guaranteed by caller), so that mutable reference can be ignored (aliasing is
-                //    only an issue if temporal overlap occurs, and it does not here). b. Some host
-                //    code does manipulate guest memory through raw pointers. This aliases the
-                //    underlying memory of the slice, so we must ensure that host code is not
-                //    running (the caller guarantees this).
-                w.write_all(unsafe {
-                    std::slice::from_raw_parts(region_vslice.as_ptr(), region_vslice.size())
-                })?;
+    pub unsafe fn snapshot<T: Write>(
+        &self,
+        w: &mut T,
+        compress: bool,
+    ) -> anyhow::Result<serde_json::Value> {
+        fn go(
+            this: &GuestMemory,
+            w: &mut impl Write,
+        ) -> anyhow::Result<Vec<MemoryRegionSnapshotMetadata>> {
+            let mut regions = Vec::new();
+            for region in this.regions.iter() {
+                let data_ranges = region
+                    .find_data_ranges()
+                    .context("find_data_ranges failed")?;
+                for range in &data_ranges {
+                    let region_vslice = region
+                        .mapping
+                        .get_slice(range.start, range.end - range.start)?;
+                    // SAFETY:
+                    // 1. The data is guaranteed to be present & of expected length by the
+                    //    `VolatileSlice`.
+                    // 2. Aliasing the `VolatileSlice`'s memory is safe because a. The only mutable
+                    //    reference to it is held by the guest, and the guest's VCPUs are stopped
+                    //    (guaranteed by caller), so that mutable reference can be ignored (aliasing
+                    //    is only an issue if temporal overlap occurs, and it does not here). b.
+                    //    Some host code does manipulate guest memory through raw pointers. This
+                    //    aliases the underlying memory of the slice, so we must ensure that host
+                    //    code is not running (the caller guarantees this).
+                    w.write_all(unsafe {
+                        std::slice::from_raw_parts(region_vslice.as_ptr(), region_vslice.size())
+                    })?;
+                }
+                regions.push(MemoryRegionSnapshotMetadata {
+                    guest_base: region.guest_base.0,
+                    size: region.mapping.size(),
+                    data_ranges,
+                });
             }
-            metadata.regions.push(MemoryRegionSnapshotMetadata {
-                guest_base: region.guest_base.0,
-                size: region.mapping.size(),
-                data_ranges,
-            });
+            Ok(regions)
         }
 
-        Ok(serde_json::to_value(metadata)?)
+        let regions = if compress {
+            let mut w = lz4_flex::frame::FrameEncoder::new(w);
+            let regions = go(self, &mut w)?;
+            w.finish()?;
+            regions
+        } else {
+            go(self, w)?
+        };
+
+        Ok(serde_json::to_value(MemorySnapshotMetadata {
+            regions,
+            compressed: compress,
+        })?)
     }
 
     /// Restore the guest memory using the bytes from `r`.
@@ -923,6 +942,13 @@ impl GuestMemory {
         r: &mut T,
     ) -> anyhow::Result<()> {
         let metadata: MemorySnapshotMetadata = serde_json::from_value(metadata)?;
+
+        let mut r: Box<dyn Read> = if metadata.compressed {
+            Box::new(lz4_flex::frame::FrameDecoder::new(r))
+        } else {
+            Box::new(r)
+        };
+
         if self.regions.len() != metadata.regions.len() {
             bail!(
                 "snapshot expected {} memory regions but VM has {}",
@@ -985,6 +1011,7 @@ impl GuestMemory {
 #[derive(Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct MemorySnapshotMetadata {
     regions: Vec<MemoryRegionSnapshotMetadata>,
+    compressed: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1223,7 +1250,7 @@ mod tests {
         let mut data = tempfile::tempfile().unwrap();
         // SAFETY:
         // no vm is running
-        let metadata_json = unsafe { gm.snapshot(&mut data).unwrap() };
+        let metadata_json = unsafe { gm.snapshot(&mut data, false).unwrap() };
         let metadata: MemorySnapshotMetadata =
             serde_json::from_value(metadata_json.clone()).unwrap();
 
@@ -1258,6 +1285,7 @@ mod tests {
                         data_ranges: vec![0x00000..0x01000],
                     }
                 ],
+                compressed: false,
             }
         );
         // We can't detect the holes on Windows yet.
@@ -1292,6 +1320,7 @@ mod tests {
                         data_ranges: vec![0x00000..0x01000],
                     }
                 ],
+                compressed: false,
             }
         );
 

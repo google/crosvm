@@ -313,7 +313,10 @@ impl Display for UsbControlResult {
 /// Commands for snapshot feature
 #[derive(Serialize, Deserialize, Debug)]
 pub enum SnapshotCommand {
-    Take { snapshot_path: PathBuf },
+    Take {
+        snapshot_path: PathBuf,
+        compress_memory: bool,
+    },
 }
 
 /// Commands for restore feature
@@ -327,8 +330,13 @@ pub enum RestoreCommand {
 pub enum DeviceControlCommand {
     SleepDevices,
     WakeDevices,
-    SnapshotDevices { snapshot_writer: SnapshotWriter },
-    RestoreDevices { snapshot_reader: SnapshotReader },
+    SnapshotDevices {
+        snapshot_writer: SnapshotWriter,
+        compress_memory: bool,
+    },
+    RestoreDevices {
+        snapshot_reader: SnapshotReader,
+    },
     GetDevicesState,
     Exit,
 }
@@ -1948,7 +1956,10 @@ impl VmRequest {
             VmRequest::HotPlugNetCommand(ref _net_cmd) => {
                 VmResponse::ErrString("hot plug not supported".to_owned())
             }
-            VmRequest::Snapshot(SnapshotCommand::Take { ref snapshot_path }) => {
+            VmRequest::Snapshot(SnapshotCommand::Take {
+                ref snapshot_path,
+                compress_memory,
+            }) => {
                 info!("Starting crosvm snapshot");
                 match do_snapshot(
                     snapshot_path.to_path_buf(),
@@ -1957,6 +1968,7 @@ impl VmRequest {
                     device_control_tube,
                     vcpu_size,
                     snapshot_irqchip,
+                    compress_memory,
                 ) {
                     Ok(()) => {
                         info!("Finished crosvm snapshot successfully");
@@ -2013,6 +2025,7 @@ fn do_snapshot(
     device_control_tube: &Tube,
     vcpu_size: usize,
     snapshot_irqchip: impl Fn() -> anyhow::Result<serde_json::Value>,
+    compress_memory: bool,
 ) -> anyhow::Result<()> {
     let _vcpu_guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
     let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
@@ -2089,7 +2102,10 @@ fn do_snapshot(
     // Snapshot devices
     info!("Devices snapshotting...");
     device_control_tube
-        .send(&DeviceControlCommand::SnapshotDevices { snapshot_writer })
+        .send(&DeviceControlCommand::SnapshotDevices {
+            snapshot_writer,
+            compress_memory,
+        })
         .context("send command to devices control socket")?;
     let resp: VmResponse = device_control_tube
         .recv()
