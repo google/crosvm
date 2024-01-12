@@ -1,0 +1,590 @@
+From 7f8eba774852bad453f9015ca408612337acc86d Mon Sep 17 00:00:00 2001
+From: Hikaru Nishida <hikalium@chromium.org>
+Date: Wed, 24 Jan 2024 14:23:40 +0900
+Subject: [PATCH] CHROMIUM: virtio_pvclock: port driver impl from Android
+
+Initial virtio_pvclock device driver implementation from Android.
+
+This is a squash of aosp/1959549, aosp/1962079, aosp/2395934:
+- ANDROID: virtio: virtio_pvclock: initial driver impl
+- ANDROID: virtio: virtio_pvclock: call vclocks_set_used
+- ANDROID: virtio: virtio_pvclock: fix rating decl
+
+BUG=b:271057959, b:295256641
+TEST=make O=../v5.10-arcvm_build x86_64_arcvm_defconfig
+TEST=make -j`nproc` O=../v5.10-arcvm_build bzImage
+TEST=tast run ${DUT} arc.PlayStore.vm arc.Suspend.*
+UPSTREAM-TASK=b:321618282
+
+Change-Id: I068da510e17283b13791e3ae51542b74d4601975
+Signed-off-by: Hikaru Nishida <hikalium@chromium.org>
+---
+ arch/x86/entry/vdso/vma.c           |   1 +
+ arch/x86/kernel/pvclock.c           |   2 +
+ drivers/virtio/Kconfig              |  36 +++
+ drivers/virtio/Makefile             |   1 +
+ drivers/virtio/virtio_pvclock.c     | 345 ++++++++++++++++++++++++++++
+ include/uapi/linux/virtio_ids.h     |   3 +
+ include/uapi/linux/virtio_pvclock.h |  74 ++++++
+ kernel/time/timekeeping.c           |   4 +
+ 8 files changed, 466 insertions(+)
+ create mode 100644 drivers/virtio/virtio_pvclock.c
+ create mode 100644 include/uapi/linux/virtio_pvclock.h
+
+diff --git a/arch/x86/entry/vdso/vma.c b/arch/x86/entry/vdso/vma.c
+index 128866139..51520db4a 100644
+--- a/arch/x86/entry/vdso/vma.c
++++ b/arch/x86/entry/vdso/vma.c
+@@ -39,6 +39,7 @@ struct vdso_data *arch_get_vdso_data(void *vvar_page)
+ #undef EMIT_VVAR
+ 
+ unsigned int vclocks_used __read_mostly;
++EXPORT_SYMBOL_GPL(vclocks_used);
+ 
+ #if defined(CONFIG_X86_64)
+ unsigned int __read_mostly vdso64_enabled = 1;
+diff --git a/arch/x86/kernel/pvclock.c b/arch/x86/kernel/pvclock.c
+index eda37df01..54b41d759 100644
+--- a/arch/x86/kernel/pvclock.c
++++ b/arch/x86/kernel/pvclock.c
+@@ -109,6 +109,7 @@ u64 pvclock_clocksource_read(struct pvclock_vcpu_time_info *src)
+ 
+ 	return ret;
+ }
++EXPORT_SYMBOL_GPL(pvclock_clocksource_read);
+ 
+ void pvclock_read_wallclock(struct pvclock_wall_clock *wall_clock,
+ 			    struct pvclock_vcpu_time_info *vcpu_time,
+@@ -148,6 +149,7 @@ void pvclock_set_pvti_cpu0_va(struct pvclock_vsyscall_time_info *pvti)
+ 	WARN_ON(vclock_was_used(VDSO_CLOCKMODE_PVCLOCK));
+ 	pvti_cpu0_va = pvti;
+ }
++EXPORT_SYMBOL_GPL(pvclock_set_pvti_cpu0_va);
+ 
+ struct pvclock_vsyscall_time_info *pvclock_get_pvti_cpu0_va(void)
+ {
+diff --git a/drivers/virtio/Kconfig b/drivers/virtio/Kconfig
+index 0a53a6123..72921084e 100644
+--- a/drivers/virtio/Kconfig
++++ b/drivers/virtio/Kconfig
+@@ -173,4 +173,40 @@ config VIRTIO_DMA_SHARED_BUFFER
+ 	 This option adds a flavor of dma buffers that are backed by
+ 	 virtio resources.
+ 
++config VIRTIO_PVCLOCK
++	tristate "Virtio pvclock driver"
++	depends on VIRTIO
++	depends on X86
++	select PARAVIRT_CLOCK
++	help
++	 This driver supports virtio pvclock devices.
++	 It helps emulating CLOCK_BOOTTIME behavior around host's suspend / resume
++	 without actually suspends the guest with the hypervisor's support.
++
++	 If unsure, say M.
++
++config VIRTIO_PVCLOCK
++	tristate "Virtio pvclock driver"
++	depends on VIRTIO
++	depends on X86
++	select PARAVIRT_CLOCK
++	help
++	 This driver supports virtio pvclock devices.
++	 It helps emulating CLOCK_BOOTTIME behavior around host's suspend / resume
++	 without actually suspends the guest with the hypervisor's support.
++
++	 If unsure, say M.
++
++config VIRTIO_PVCLOCK
++	tristate "Virtio pvclock driver"
++	depends on VIRTIO
++	depends on X86
++	select PARAVIRT_CLOCK
++	help
++	 This driver supports virtio pvclock devices.
++	 It helps emulating CLOCK_BOOTTIME behavior around host's suspend / resume
++	 without actually suspends the guest with the hypervisor's support.
++
++	 If unsure, say M.
++
+ endif # VIRTIO_MENU
+diff --git a/drivers/virtio/Makefile b/drivers/virtio/Makefile
+index 8e98d2491..79e6dea7c 100644
+--- a/drivers/virtio/Makefile
++++ b/drivers/virtio/Makefile
+@@ -12,3 +12,4 @@ obj-$(CONFIG_VIRTIO_INPUT) += virtio_input.o
+ obj-$(CONFIG_VIRTIO_VDPA) += virtio_vdpa.o
+ obj-$(CONFIG_VIRTIO_MEM) += virtio_mem.o
+ obj-$(CONFIG_VIRTIO_DMA_SHARED_BUFFER) += virtio_dma_buf.o
++obj-$(CONFIG_VIRTIO_PVCLOCK) += virtio_pvclock.o
+diff --git a/drivers/virtio/virtio_pvclock.c b/drivers/virtio/virtio_pvclock.c
+new file mode 100644
+index 000000000..7d6fd0b52
+--- /dev/null
++++ b/drivers/virtio/virtio_pvclock.c
+@@ -0,0 +1,345 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * Virtio pvclock implementation.
++ *
++ *  Copyright (C) 2021 Google, Inc.
++ */
++
++#include <linux/clocksource.h>
++#include <linux/dma-mapping.h>
++#include <linux/module.h>
++#include <linux/slab.h>
++#include <linux/virtio.h>
++#include <linux/virtio_pvclock.h>
++#include <linux/workqueue.h>
++#include <asm/pvclock.h>
++
++enum virtio_pvclock_vq {
++	VIRTIO_PVCLOCK_VQ_SET_PVCLOCK_PAGE,
++	VIRTIO_PVCLOCK_VQ_MAX
++};
++
++struct virtio_pvclock {
++	struct virtio_device *vdev;
++	struct virtqueue *set_pvclock_page_vq;
++	struct virtio_pvclock_set_pvclock_page_req set_page_request;
++
++	/* Updating the suspend time happens via scheduled work. */
++	struct work_struct update_suspend_time_work;
++	/* Creating the clocksource happens via scheduled work. */
++	struct work_struct create_clocksource_work;
++
++	/* Synchronize access/update to injected_suspend_ns. */
++	struct mutex inject_suspend_lock;
++	/* Total ns injected as sleep time. */
++	u64 injected_suspend_ns;
++
++	/* DMA address of virtio_pvclock_page. */
++	dma_addr_t pvclock_page_dma_addr;
++};
++
++/* CPU accessible pointer to pvclock page. */
++static struct pvclock_vsyscall_time_info *virtio_pvclock_page;
++
++static struct virtio_device_id id_table[] = {
++	{ VIRTIO_ID_PVCLOCK, VIRTIO_DEV_ANY_ID },
++	{ 0 },
++};
++
++void update_suspend_time(struct work_struct *work)
++{
++	u64 suspend_ns, suspend_time_delta = 0;
++	struct timespec64 inject_time;
++	struct virtio_pvclock *vp;
++
++	vp = container_of(work, struct virtio_pvclock,
++			  update_suspend_time_work);
++
++	virtio_cread(vp->vdev, struct virtio_pvclock_config, suspend_time_ns,
++		     &suspend_ns);
++
++	mutex_lock(&vp->inject_suspend_lock);
++	if (suspend_ns > vp->injected_suspend_ns) {
++		suspend_time_delta = suspend_ns - vp->injected_suspend_ns;
++		vp->injected_suspend_ns = suspend_ns;
++	}
++	mutex_unlock(&vp->inject_suspend_lock);
++
++	if (suspend_time_delta == 0) {
++		dev_err(&vp->vdev->dev,
++			"%s: suspend_time_ns is less than injected_suspend_ns\n",
++			__func__);
++		return;
++	}
++
++	inject_time = ns_to_timespec64(suspend_time_delta);
++
++	timekeeping_inject_sleeptime64(&inject_time);
++
++	dev_info(&vp->vdev->dev, "injected sleeptime: %llu ns\n",
++		 suspend_time_delta);
++}
++
++static u64 virtio_pvclock_clocksource_read(struct clocksource *cs)
++{
++	u64 ret;
++
++	preempt_disable_notrace();
++	ret = pvclock_clocksource_read(&virtio_pvclock_page->pvti);
++	preempt_enable_notrace();
++	return ret;
++}
++
++static int virtio_pvclock_cs_enable(struct clocksource *cs)
++{
++	if (cs->vdso_clock_mode == VDSO_CLOCKMODE_PVCLOCK)
++		vclocks_set_used(VDSO_CLOCKMODE_PVCLOCK);
++	return 0;
++}
++
++static struct clocksource virtio_pvclock_clocksource = {
++	.name = "virtio-pvclock",
++	.rating = 200, /* default rating, updated by virtpvclock_validate */
++	.read = virtio_pvclock_clocksource_read,
++	.mask = CLOCKSOURCE_MASK(64),
++	.flags = CLOCK_SOURCE_IS_CONTINUOUS,
++	.enable = virtio_pvclock_cs_enable,
++};
++
++static void set_pvclock_page_callback(struct virtqueue *vq)
++{
++	struct virtio_pvclock *vp = vq->vdev->priv;
++
++	if (vp->set_page_request.status != VIRTIO_PVCLOCK_S_OK) {
++		dev_err(&vq->vdev->dev,
++			"%s: set_pvclock_page req status is %u\n", __func__,
++			vp->set_page_request.status);
++		return;
++	}
++
++	/*
++	 * Create the actual clocksource via a work queue because we're in an
++	 * interrupt handler right now.
++	 */
++	schedule_work(&vp->create_clocksource_work);
++}
++
++static void create_clocksource(struct work_struct *work)
++{
++	struct virtio_pvclock *vp;
++
++	vp = container_of(work, struct virtio_pvclock, create_clocksource_work);
++
++	/*
++	 * VDSO pvclock can only be used if the TSCs are stable. The device also
++	 * must set PVCLOCK_TSC_STABLE_BIT in the pvclock flags field.
++	 */
++	if (virtio_has_feature(vp->vdev, VIRTIO_PVCLOCK_F_TSC_STABLE)) {
++		pvclock_set_pvti_cpu0_va(virtio_pvclock_page);
++		virtio_pvclock_clocksource.vdso_clock_mode =
++			VDSO_CLOCKMODE_PVCLOCK;
++	}
++
++	clocksource_register_hz(&virtio_pvclock_clocksource, NSEC_PER_SEC);
++
++	dev_info(&vp->vdev->dev, "registered clocksource\n");
++}
++
++static void virtpvclock_changed(struct virtio_device *vdev)
++{
++	struct virtio_pvclock *vp = vdev->priv;
++
++	schedule_work(&vp->update_suspend_time_work);
++}
++
++static int set_pvclock_page(struct virtio_pvclock *vp)
++{
++	struct scatterlist sg;
++	int err;
++
++	vp->set_page_request.pvclock_page_pa = vp->pvclock_page_dma_addr;
++	vp->set_page_request.system_time = ktime_get();
++	vp->set_page_request.tsc_timestamp = rdtsc_ordered();
++
++	sg_init_one(&sg, &vp->set_page_request, sizeof(vp->set_page_request));
++	err = virtqueue_add_outbuf(vp->set_pvclock_page_vq, &sg, 1, vp,
++				   GFP_KERNEL);
++
++	if (err) {
++		dev_err(&vp->vdev->dev, "%s: failed to add output\n", __func__);
++		return err;
++	}
++	virtqueue_kick(vp->set_pvclock_page_vq);
++
++	return 0;
++}
++
++static int init_vqs(struct virtio_pvclock *vp)
++{
++	vq_callback_t *callbacks[VIRTIO_PVCLOCK_VQ_MAX];
++	struct virtqueue *vqs[VIRTIO_PVCLOCK_VQ_MAX];
++	const char *names[VIRTIO_PVCLOCK_VQ_MAX];
++	int err;
++
++	callbacks[VIRTIO_PVCLOCK_VQ_SET_PVCLOCK_PAGE] =
++		set_pvclock_page_callback;
++	names[VIRTIO_PVCLOCK_VQ_SET_PVCLOCK_PAGE] = "set_pvclock_page";
++
++	err = vp->vdev->config->find_vqs(vp->vdev, VIRTIO_PVCLOCK_VQ_MAX, vqs,
++					 callbacks, names, NULL, NULL);
++	if (err)
++		return err;
++
++	vp->set_pvclock_page_vq = vqs[VIRTIO_PVCLOCK_VQ_SET_PVCLOCK_PAGE];
++
++	return set_pvclock_page(vp);
++}
++
++static int virtpvclock_probe(struct virtio_device *vdev)
++{
++	struct virtio_pvclock *vp;
++	int err;
++
++	if (!vdev->config->get) {
++		dev_err(&vdev->dev, "%s: config access disabled\n", __func__);
++		return -EINVAL;
++	}
++
++	vp = kzalloc(sizeof(*vp), GFP_KERNEL);
++	if (!vp) {
++		err = -ENOMEM;
++		goto out;
++	}
++
++	virtio_pvclock_page =
++		dma_alloc_coherent(vdev->dev.parent,
++				   sizeof(*virtio_pvclock_page),
++				   &vp->pvclock_page_dma_addr, GFP_KERNEL);
++
++	if (!virtio_pvclock_page) {
++		err = -ENOMEM;
++		goto out_free_vp;
++	}
++
++	INIT_WORK(&vp->update_suspend_time_work, update_suspend_time);
++	INIT_WORK(&vp->create_clocksource_work, create_clocksource);
++	mutex_init(&vp->inject_suspend_lock);
++
++	vp->vdev = vdev;
++	vdev->priv = vp;
++
++	err = init_vqs(vp);
++	if (err)
++		goto out_free_pvclock_page;
++
++	virtio_device_ready(vdev);
++
++	return 0;
++
++out_free_pvclock_page:
++	dma_free_coherent(vdev->dev.parent, sizeof(*virtio_pvclock_page),
++			  virtio_pvclock_page, vp->pvclock_page_dma_addr);
++
++out_free_vp:
++	kfree(vp);
++out:
++	return err;
++}
++
++static void remove_common(struct virtio_pvclock *vp)
++{
++	/* Now we reset the device so we can clean up the queues. */
++	vp->vdev->config->reset(vp->vdev);
++
++	vp->vdev->config->del_vqs(vp->vdev);
++}
++
++static void virtpvclock_remove(struct virtio_device *vdev)
++{
++	struct virtio_pvclock *vp = vdev->priv;
++
++	remove_common(vp);
++
++	dma_free_coherent(vdev->dev.parent, sizeof(*virtio_pvclock_page),
++			  virtio_pvclock_page, vp->pvclock_page_dma_addr);
++
++	kfree(vp);
++}
++
++#ifdef CONFIG_PM_SLEEP
++static int virtpvclock_freeze(struct virtio_device *vdev)
++{
++	struct virtio_pvclock *vp = vdev->priv;
++
++	/*
++	 * The workqueue is already frozen by the PM core before this
++	 * function is called.
++	 */
++	remove_common(vp);
++	return 0;
++}
++
++static int virtpvclock_restore(struct virtio_device *vdev)
++{
++	int ret;
++
++	ret = init_vqs(vdev->priv);
++	if (ret)
++		return ret;
++
++	virtio_device_ready(vdev);
++
++	return 0;
++}
++#endif
++
++#define MAX_CLOCKSOURCE_RATING 450
++
++static int virtpvclock_validate(struct virtio_device *vdev)
++{
++	uint32_t rating;
++
++	if (!virtio_has_feature(vdev, VIRTIO_PVCLOCK_F_CLOCKSOURCE_RATING))
++		return 0;
++
++	rating = virtio_cread32(vdev, offsetof(struct virtio_pvclock_config,
++					       clocksource_rating));
++	if (rating > MAX_CLOCKSOURCE_RATING) {
++		dev_warn(
++			&vdev->dev,
++			"device clocksource rating too high: %u, using max rating: %u\n",
++			rating, MAX_CLOCKSOURCE_RATING);
++		__virtio_clear_bit(vdev, VIRTIO_PVCLOCK_F_CLOCKSOURCE_RATING);
++		virtio_pvclock_clocksource.rating = (int)MAX_CLOCKSOURCE_RATING;
++	} else {
++		dev_info(&vdev->dev, "clocksource rating set to %u\n", rating);
++		virtio_pvclock_clocksource.rating = (int)rating;
++	}
++
++	return 0;
++}
++
++static unsigned int features[] = { VIRTIO_PVCLOCK_F_TSC_STABLE,
++				   VIRTIO_PVCLOCK_F_INJECT_SLEEP,
++				   VIRTIO_PVCLOCK_F_CLOCKSOURCE_RATING };
++
++static struct virtio_driver virtio_pvclock_driver = {
++	.feature_table = features,
++	.feature_table_size = ARRAY_SIZE(features),
++	.driver.name = KBUILD_MODNAME,
++	.driver.owner = THIS_MODULE,
++	.id_table = id_table,
++	.validate = virtpvclock_validate,
++	.probe = virtpvclock_probe,
++	.remove = virtpvclock_remove,
++	.config_changed = virtpvclock_changed,
++#ifdef CONFIG_PM_SLEEP
++	.freeze = virtpvclock_freeze,
++	.restore = virtpvclock_restore,
++#endif
++};
++
++module_virtio_driver(virtio_pvclock_driver);
++MODULE_DEVICE_TABLE(virtio, id_table);
++MODULE_DESCRIPTION("Virtio pvclock driver");
++MODULE_LICENSE("GPL");
+diff --git a/include/uapi/linux/virtio_ids.h b/include/uapi/linux/virtio_ids.h
+index 7aa2eb766..c4ce86b44 100644
+--- a/include/uapi/linux/virtio_ids.h
++++ b/include/uapi/linux/virtio_ids.h
+@@ -69,6 +69,9 @@
+ #define VIRTIO_ID_BT			40 /* virtio bluetooth */
+ #define VIRTIO_ID_GPIO			41 /* virtio gpio */
+ 
++/* Chrome OS-specific devices */
++#define VIRTIO_ID_PVCLOCK		61 /* virtio pvclock (experimental id) */
++
+ /*
+  * Virtio Transitional IDs
+  */
+diff --git a/include/uapi/linux/virtio_pvclock.h b/include/uapi/linux/virtio_pvclock.h
+new file mode 100644
+index 000000000..808d47b21
+--- /dev/null
++++ b/include/uapi/linux/virtio_pvclock.h
+@@ -0,0 +1,74 @@
++/* SPDX-License-Identifier: (GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause */
++/* This header is BSD licensed so anyone can use the definitions to implement
++ * compatible drivers/servers.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. Neither the name of IBM nor the names of its contributors
++ *    may be used to endorse or promote products derived from this software
++ *    without specific prior written permission.
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL IBM OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#ifndef _LINUX_VIRTIO_PVCLOCK_H
++#define _LINUX_VIRTIO_PVCLOCK_H
++
++#include <linux/types.h>
++#include <linux/virtio_types.h>
++#include <linux/virtio_ids.h>
++#include <linux/virtio_config.h>
++
++/* The feature bitmap for virtio pvclock */
++/* TSC is stable */
++#define VIRTIO_PVCLOCK_F_TSC_STABLE 0
++/* Inject sleep for suspend */
++#define VIRTIO_PVCLOCK_F_INJECT_SLEEP 1
++/* Use device clocksource rating */
++#define VIRTIO_PVCLOCK_F_CLOCKSOURCE_RATING 2
++
++struct virtio_pvclock_config {
++	/* Number of ns the VM has been suspended without guest suspension. */
++	__u64 suspend_time_ns;
++	/* Device-suggested rating of the pvclock clocksource. */
++	__u32 clocksource_rating;
++	__u32 padding;
++};
++
++/* Status values for a virtio_pvclock request. */
++#define VIRTIO_PVCLOCK_S_OK 0
++#define VIRTIO_PVCLOCK_S_IOERR 1
++#define VIRTIO_PVCLOCK_S_UNSUPP 2
++
++/*
++ * Virtio pvclock set pvclock page request. Sets up the shared memory
++ * pvclock_vsyscall_time_info struct.
++ */
++struct virtio_pvclock_set_pvclock_page_req {
++	/* Physical address of pvclock_vsyscall_time_info. */
++	__u64 pvclock_page_pa;
++	/* Current system time. */
++	__u64 system_time;
++	/* Current tsc value. */
++	__u64 tsc_timestamp;
++	/* Status of this request, one of VIRTIO_PVCLOCK_S_*. */
++	__u8 status;
++	__u8 padding[7];
++};
++
++#endif /* _LINUX_VIRTIO_PVCLOCK_H */
+diff --git a/kernel/time/timekeeping.c b/kernel/time/timekeeping.c
+index 221c8c404..3fd9bb166 100644
+--- a/kernel/time/timekeeping.c
++++ b/kernel/time/timekeeping.c
+@@ -1735,7 +1735,10 @@ bool timekeeping_rtc_skipsuspend(void)
+ {
+ 	return persistent_clock_exists;
+ }
++#endif
+ 
++#if (defined(CONFIG_PM_SLEEP) && defined(CONFIG_RTC_HCTOSYS_DEVICE)) || \
++	defined(CONFIG_VIRTIO_PVCLOCK)
+ /**
+  * timekeeping_inject_sleeptime64 - Adds suspend interval to timeekeeping values
+  * @delta: pointer to a timespec64 delta value
+@@ -1769,6 +1772,7 @@ void timekeeping_inject_sleeptime64(const struct timespec64 *delta)
+ 	/* Signal hrtimers about time change */
+ 	clock_was_set(CLOCK_SET_WALL | CLOCK_SET_BOOT);
+ }
++EXPORT_SYMBOL_GPL(timekeeping_inject_sleeptime64);
+ #endif
+ 
+ /**
+-- 
+2.43.0.429.g432eaa2c6b-goog
+
