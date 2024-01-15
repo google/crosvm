@@ -8,6 +8,10 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
+// Added by virtio_sys/bindgen.sh
+pub const VIRTIO_CONFIG_S_SUSPEND: u32 = 16;
+pub const VIRTIO_F_SUSPEND: u32 = 42;
+
 pub const VIRTIO_CONFIG_S_ACKNOWLEDGE: u32 = 1;
 pub const VIRTIO_CONFIG_S_DRIVER: u32 = 2;
 pub const VIRTIO_CONFIG_S_DRIVER_OK: u32 = 4;

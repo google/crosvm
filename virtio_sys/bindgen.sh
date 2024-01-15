@@ -19,7 +19,12 @@ bindgen_generate \
     | replace_linux_int_types \
     > virtio_sys/src/vhost.rs
 
+VIRTIO_CONFIG_EXTRA="// Added by virtio_sys/bindgen.sh
+pub const VIRTIO_CONFIG_S_SUSPEND: u32 = 16;
+pub const VIRTIO_F_SUSPEND: u32 = 42;"
+
 bindgen_generate \
+    --raw-line "${VIRTIO_CONFIG_EXTRA}" \
     --allowlist-var='VIRTIO_.*' \
     --allowlist-type='virtio_.*' \
     "${BINDGEN_LINUX_X86_HEADERS}/include/linux/virtio_config.h" \

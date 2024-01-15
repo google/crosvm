@@ -37,6 +37,7 @@ use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER_OK;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FAILED;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FEATURES_OK;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_NEEDS_RESET;
+use virtio_sys::virtio_config::VIRTIO_CONFIG_S_SUSPEND;
 use vm_control::api::VmMemoryClient;
 use vm_control::VmMemoryDestination;
 use vm_control::VmMemoryRegionId;
@@ -459,6 +460,10 @@ impl VirtioPciDevice {
             && self.common_config.driver_status & VIRTIO_CONFIG_S_FAILED as u8 == 0
     }
 
+    fn is_device_suspended(&self) -> bool {
+        (self.common_config.driver_status & VIRTIO_CONFIG_S_SUSPEND as u8) != 0
+    }
+
     /// Determines if the driver has requested the device reset itself
     fn is_reset_requested(&self) -> bool {
         self.common_config.driver_status == DEVICE_RESET as u8
@@ -547,9 +552,8 @@ impl VirtioPciDevice {
             Some(self.msix_config.clone()),
             self.common_config.msix_config,
             #[cfg(target_arch = "x86_64")]
-            Some(PmWakeupEvent::new(
-                self.vm_control_tube.clone(),
-                self.pm_config.clone(),
+            Some((
+                PmWakeupEvent::new(self.vm_control_tube.clone(), self.pm_config.clone()),
                 MetricEventType::VirtioWakeup {
                     virtio_id: self.device.device_type() as u32,
                 },
@@ -846,6 +850,8 @@ impl PciDevice for VirtioPciDevice {
     }
 
     fn write_bar(&mut self, bar_index: usize, offset: u64, data: &[u8]) {
+        let was_suspended = self.is_device_suspended();
+
         if bar_index == self.settings_bar {
             match offset {
                 COMMON_CONFIG_BAR_OFFSET..=COMMON_CONFIG_LAST => self.common_config.write(
@@ -900,6 +906,13 @@ impl PciDevice for VirtioPciDevice {
         if !self.device_activated && self.is_driver_ready() {
             if let Err(e) = self.activate() {
                 error!("failed to activate device: {:#}", e);
+            }
+        }
+
+        let is_suspended = self.is_device_suspended();
+        if is_suspended != was_suspended {
+            if let Some(interrupt) = self.interrupt.as_mut() {
+                interrupt.set_suspended(is_suspended);
             }
         }
 
@@ -1313,9 +1326,8 @@ impl Suspendable for VirtioPciDevice {
                 self.common_config.msix_config,
                 deser_interrupt,
                 #[cfg(target_arch = "x86_64")]
-                Some(PmWakeupEvent::new(
-                    self.vm_control_tube.clone(),
-                    self.pm_config.clone(),
+                Some((
+                    PmWakeupEvent::new(self.vm_control_tube.clone(), self.pm_config.clone()),
                     MetricEventType::VirtioWakeup {
                         virtio_id: self.device.device_type() as u32,
                     },
