@@ -1809,16 +1809,7 @@ impl FileSystem for PassthroughFs {
         // response.
         if let Err(e) = &res {
             if e.kind() == std::io::ErrorKind::NotFound && !self.cfg.negative_timeout.is_zero() {
-                let attr = MaybeUninit::<libc::stat64>::zeroed();
-                res = Ok(Entry {
-                    inode: 0, // Using 0 for negative entry
-                    entry_timeout: self.cfg.negative_timeout,
-                    // Zero-fill other fields that won't be used.
-                    attr_timeout: Duration::from_secs(0),
-                    generation: 0,
-                    // SAFETY: zero-initialized `stat64` is a valid value.
-                    attr: unsafe { attr.assume_init() },
-                });
+                res = Ok(Entry::new_negative(self.cfg.negative_timeout));
             }
         }
 
@@ -3113,6 +3104,14 @@ impl FileSystem for PassthroughFs {
                     self.create(ctx, parent, name, mode, flags, umask, security_ctx)?;
                 opts |= OpenOptions::FILE_CREATED;
                 return Ok((entry, handler, opts));
+            } else if e.kind() == std::io::ErrorKind::NotFound
+                && !self.cfg.negative_timeout.is_zero()
+            {
+                return Ok((
+                    Entry::new_negative(self.cfg.negative_timeout),
+                    None,
+                    OpenOptions::empty(),
+                ));
             }
             return Err(e);
         }

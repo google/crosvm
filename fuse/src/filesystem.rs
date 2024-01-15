@@ -2,11 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! Data structures and traits for the fuse filesystem.
+
+#![deny(missing_docs)]
+
 use std::convert::TryInto;
 use std::ffi::CStr;
 use std::fs::File;
 use std::io;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::time::Duration;
 
 use crate::server::Mapper;
@@ -62,6 +67,33 @@ impl From<Entry> for sys::EntryOut {
             entry_valid_nsec: entry.entry_timeout.subsec_nanos(),
             attr_valid_nsec: entry.attr_timeout.subsec_nanos(),
             attr: entry.attr.into(),
+        }
+    }
+}
+
+impl Entry {
+    /// Creates a new negative cache entry. A negative d_entry has an inode number of 0, and is
+    /// valid for the duration of `negative_timeout`.
+    ///
+    /// # Arguments
+    ///
+    /// * `negative_timeout` - The duration for which this negative d_entry
+    ///     should be considered valid. After the timeout expires, the d_entry
+    ///     will be invalidated.
+    ///
+    /// # Returns
+    ///
+    /// A new negative entry with provided entry timeout and 0 attr timeout.
+    pub fn new_negative(negative_timeout: Duration) -> Entry {
+        let attr = MaybeUninit::<libc::stat64>::zeroed();
+        Entry {
+            inode: 0, // Using 0 for negative entry
+            entry_timeout: negative_timeout,
+            // Zero-fill other fields that won't be used.
+            attr_timeout: Duration::from_secs(0),
+            generation: 0,
+            // SAFETY: zero-initialized `stat64` is a valid value.
+            attr: unsafe { attr.assume_init() },
         }
     }
 }
