@@ -283,7 +283,7 @@ version = "0.68.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "726e4313eb6ec35d2730258ad4e15b547ee75d6afaa1361a922e78e59b7d8078"
 dependencies = [
- "bitflags 2.3.2",
+ "bitflags 2.4.0",
  "cexpr",
  "clang-sys",
  "lazy_static",
@@ -321,9 +321,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.3.2"
+version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dbe3c979c178231552ecba20214a8272df4e09f232a87aef4320cf06539aded"
+checksum = "b4682ae6287fcf752ecaabbfcc7b6f9b72aa33933dc23a554d853aea8eea8635"
 
 [[package]]
 name = "bitreader"
@@ -1112,7 +1112,7 @@ name = "fuse"
 version = "0.1.0"
 dependencies = [
  "base",
- "bitflags 2.3.2",
+ "bitflags 2.4.0",
  "cros_tracing",
  "crossbeam-utils",
  "data_model",
@@ -1219,7 +1219,7 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09a8b954f9d02b74fe8e89a1c77bd9a6b8206713ebf1b272bfad9573b4a86f88"
 dependencies = [
- "bitflags 2.3.2",
+ "bitflags 2.4.0",
  "cfg-if",
  "log",
  "managed",
@@ -1322,7 +1322,7 @@ dependencies = [
  "anyhow",
  "base",
  "bit_field",
- "bitflags 2.3.2",
+ "bitflags 2.4.0",
  "cros_fdt",
  "data_model",
  "downcast-rs",
@@ -1800,7 +1800,7 @@ version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
 dependencies = [
- "bitflags 2.3.2",
+ "bitflags 2.4.0",
  "cfg-if",
  "libc",
  "memoffset 0.9.0",
@@ -2708,11 +2708,11 @@ dependencies = [
 
 [[package]]
 name = "userfaultfd"
-version = "0.7.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6a38c7e24af201e66f02659492f86ccd5efa9fd62f2c851fff3961a60e81966"
+checksum = "18d8b176d4d3e420685e964f87c25df5fdd5b26d7eb0d0e7c892d771f5b81035"
 dependencies = [
- "bitflags 2.3.2",
+ "bitflags 2.4.0",
  "cfg-if",
  "libc",
  "nix 0.27.1",
@@ -2826,7 +2826,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base",
- "bitflags 2.3.2",
+ "bitflags 2.4.0",
  "cfg-if",
  "cros_async",
  "data_model",
@@ -2844,7 +2844,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base",
- "bitflags 2.3.2",
+ "bitflags 2.4.0",
  "cfg-if",
  "data_model",
  "enumn",
