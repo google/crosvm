@@ -9,6 +9,7 @@ edition = "2021"
 anyhow = "1.0.75"
 argh = "*"
 libtracecmd = "0.2"
+log = "*"
 once_cell = "1.18.0"
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"

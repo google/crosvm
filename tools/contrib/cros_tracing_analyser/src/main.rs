@@ -13,6 +13,7 @@ use libtracecmd::Event;
 use libtracecmd::Handler;
 use libtracecmd::Input;
 use libtracecmd::Record;
+use log::warn;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -148,6 +149,11 @@ impl EventData {
                         }
                     }
                 }
+            }
+
+            if count == 0 {
+                warn!("No exit event found for {}", event);
+                continue;
             }
             let latency = sum_time / count;
             values.insert(String::from(event), (latency, count));
