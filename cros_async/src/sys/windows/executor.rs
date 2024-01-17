@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use once_cell::sync::OnceCell;
@@ -12,11 +11,11 @@ use serde::Serialize;
 use thiserror::Error as ThisError;
 
 use super::HandleReactor;
-use crate::common_executor;
 use crate::common_executor::RawExecutor;
 use crate::AsyncResult;
 use crate::IntoAsync;
 use crate::IoSource;
+use crate::TaskHandle;
 
 pub const DEFAULT_IO_CONCURRENCY: u32 = 1;
 
@@ -151,42 +150,6 @@ pub enum SetDefaultExecutorKindError {
     /// The default executor kind is set more than once.
     #[error("The default executor kind is already set to {0:?}")]
     SetMoreThanOnce(ExecutorKindSys),
-}
-
-/// Reference to a task managed by the executor.
-///
-/// Dropping a `TaskHandle` attempts to cancel the associated task. Call `detach` to allow it to
-/// continue running the background.
-///
-/// `await`ing the `TaskHandle` waits for the task to finish and yields its result.
-pub enum TaskHandle<R> {
-    Handle(common_executor::TaskHandle<HandleReactor, R>),
-}
-
-impl<R: Send + 'static> TaskHandle<R> {
-    pub fn detach(self) {
-        match self {
-            TaskHandle::Handle(x) => x.detach(),
-        }
-    }
-
-    // Cancel the task and wait for it to stop. Returns the result of the task if it was already
-    // finished.
-    pub async fn cancel(self) -> Option<R> {
-        match self {
-            TaskHandle::Handle(x) => x.cancel().await,
-        }
-    }
-}
-
-impl<R: 'static> Future for TaskHandle<R> {
-    type Output = R;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context) -> std::task::Poll<Self::Output> {
-        match self.get_mut() {
-            TaskHandle::Handle(x) => Pin::new(x).poll(cx),
-        }
-    }
 }
 
 impl Executor {

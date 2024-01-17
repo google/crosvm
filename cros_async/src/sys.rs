@@ -17,4 +17,3 @@ pub use platform::event;
 pub use platform::executor::Executor;
 pub use platform::executor::ExecutorKindSys;
 pub use platform::executor::SetDefaultExecutorKindError;
-pub use platform::executor::TaskHandle;

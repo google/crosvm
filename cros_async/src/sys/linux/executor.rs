@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use base::debug;
@@ -20,11 +19,11 @@ use super::uring_executor::check_uring_availability;
 use super::uring_executor::is_uring_stable;
 use super::uring_executor::Error as UringError;
 use super::uring_executor::UringReactor;
-use crate::common_executor;
 use crate::common_executor::RawExecutor;
 use crate::AsyncResult;
 use crate::IntoAsync;
 use crate::IoSource;
+use crate::TaskHandle;
 
 /// An executor for scheduling tasks that poll futures to completion.
 ///
@@ -163,46 +162,6 @@ pub enum SetDefaultExecutorKindError {
     /// but is not limited to that.
     #[error("io_uring is unavailable: {0}")]
     UringUnavailable(UringError),
-}
-
-/// Reference to a task managed by the executor.
-///
-/// Dropping a `TaskHandle` attempts to cancel the associated task. Call `detach` to allow it to
-/// continue running the background.
-///
-/// `await`ing the `TaskHandle` waits for the task to finish and yields its result.
-pub enum TaskHandle<R> {
-    Uring(common_executor::TaskHandle<UringReactor, R>),
-    Fd(common_executor::TaskHandle<EpollReactor, R>),
-}
-
-impl<R: Send + 'static> TaskHandle<R> {
-    pub fn detach(self) {
-        match self {
-            TaskHandle::Uring(x) => x.detach(),
-            TaskHandle::Fd(x) => x.detach(),
-        }
-    }
-
-    // Cancel the task and wait for it to stop. Returns the result of the task if it was already
-    // finished.
-    pub async fn cancel(self) -> Option<R> {
-        match self {
-            TaskHandle::Uring(x) => x.cancel().await,
-            TaskHandle::Fd(x) => x.cancel().await,
-        }
-    }
-}
-
-impl<R: 'static> Future for TaskHandle<R> {
-    type Output = R;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context) -> std::task::Poll<Self::Output> {
-        match self.get_mut() {
-            TaskHandle::Uring(x) => Pin::new(x).poll(cx),
-            TaskHandle::Fd(x) => Pin::new(x).poll(cx),
-        }
-    }
 }
 
 impl Executor {

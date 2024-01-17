@@ -14,8 +14,10 @@ pub mod uring_source;
 
 pub use error::AsyncErrorSys;
 pub use executor::ExecutorKindSys;
+pub(crate) use fd_executor::EpollReactor;
 pub use poll_source::Error as PollSourceError;
 pub use poll_source::PollSource;
+pub(crate) use uring_executor::UringReactor;
 pub use uring_source::UringSource;
 
 use crate::Error;
