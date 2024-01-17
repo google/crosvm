@@ -83,6 +83,12 @@ impl From<Error> for io::Error {
     }
 }
 
+impl From<Error> for AsyncError {
+    fn from(e: Error) -> AsyncError {
+        AsyncError::SysVariants(e.into())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Used to shutdown IO running on a CancellableBlockingPool.
@@ -185,7 +191,8 @@ impl<F: AsRawDescriptor> HandleSource<F> {
         let handles = HandleWrapper::new(self.source_descriptor);
         let descriptors = self.source_descriptor;
 
-        self.blocking_pool
+        Ok(self
+            .blocking_pool
             .spawn(
                 move || {
                     let mut file = get_thread_file(descriptors);
@@ -200,8 +207,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
                 },
                 move || Err(handles.lock().cancel_sync_io(Error::OperationCancelled)),
             )
-            .await
-            .map_err(AsyncError::HandleSource)
+            .await?)
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
@@ -215,7 +221,8 @@ impl<F: AsRawDescriptor> HandleSource<F> {
         let handles = HandleWrapper::new(self.source_descriptor);
         let descriptors = self.source_descriptor;
 
-        self.blocking_pool
+        Ok(self
+            .blocking_pool
             .spawn(
                 move || {
                     let mut file = get_thread_file(descriptors);
@@ -232,8 +239,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
                 },
                 move || Err(handles.lock().cancel_sync_io(Error::OperationCancelled)),
             )
-            .await
-            .map_err(AsyncError::HandleSource)
+            .await?)
     }
 
     /// Wait for the handle of `self` to be readable.
@@ -255,7 +261,8 @@ impl<F: AsRawDescriptor> HandleSource<F> {
         let handles = HandleWrapper::new(self.source_descriptor);
         let descriptors = self.source_descriptor;
 
-        self.blocking_pool
+        Ok(self
+            .blocking_pool
             .spawn(
                 move || {
                     let mut file = get_thread_file(descriptors);
@@ -270,8 +277,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
                 },
                 move || Err(handles.lock().cancel_sync_io(Error::OperationCancelled)),
             )
-            .await
-            .map_err(AsyncError::HandleSource)
+            .await?)
     }
 
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
@@ -285,7 +291,8 @@ impl<F: AsRawDescriptor> HandleSource<F> {
         let handles = HandleWrapper::new(self.source_descriptor);
         let descriptors = self.source_descriptor;
 
-        self.blocking_pool
+        Ok(self
+            .blocking_pool
             .spawn(
                 move || {
                     let mut file = get_thread_file(descriptors);
@@ -302,15 +309,15 @@ impl<F: AsRawDescriptor> HandleSource<F> {
                 },
                 move || Err(handles.lock().cancel_sync_io(Error::OperationCancelled)),
             )
-            .await
-            .map_err(AsyncError::HandleSource)
+            .await?)
     }
 
     /// Deallocates the given range of a file.
     pub async fn punch_hole(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
         let handles = HandleWrapper::new(self.source_descriptor);
         let descriptors = self.source_descriptor;
-        self.blocking_pool
+        Ok(self
+            .blocking_pool
             .spawn(
                 move || {
                     let file = get_thread_file(descriptors);
@@ -320,15 +327,15 @@ impl<F: AsRawDescriptor> HandleSource<F> {
                 },
                 move || Err(handles.lock().cancel_sync_io(Error::OperationCancelled)),
             )
-            .await
-            .map_err(AsyncError::HandleSource)
+            .await?)
     }
 
     /// Fills the given range with zeroes.
     pub async fn write_zeroes_at(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
         let handles = HandleWrapper::new(self.source_descriptor);
         let descriptors = self.source_descriptor;
-        self.blocking_pool
+        Ok(self
+            .blocking_pool
             .spawn(
                 move || {
                     let mut file = get_thread_file(descriptors);
@@ -340,8 +347,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
                 },
                 move || Err(handles.lock().cancel_sync_io(Error::OperationCancelled)),
             )
-            .await
-            .map_err(AsyncError::HandleSource)
+            .await?)
     }
 
     /// Sync all completed write operations to the backing storage.
@@ -349,7 +355,8 @@ impl<F: AsRawDescriptor> HandleSource<F> {
         let handles = HandleWrapper::new(self.source_descriptor);
         let descriptors = self.source_descriptor;
 
-        self.blocking_pool
+        Ok(self
+            .blocking_pool
             .spawn(
                 move || {
                     let mut file = get_thread_file(descriptors);
@@ -357,8 +364,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
                 },
                 move || Err(handles.lock().cancel_sync_io(Error::OperationCancelled)),
             )
-            .await
-            .map_err(AsyncError::HandleSource)
+            .await?)
     }
 
     /// Sync all data of completed write operations to the backing storage. Currently, the
@@ -389,7 +395,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
     pub async fn wait_for_handle(&self) -> AsyncResult<()> {
         let waiter =
             super::WaitForHandle::new(self.source.as_ref().expect("`source` should not be `None`"));
-        waiter.await.map_err(AsyncError::HandleSource)
+        Ok(waiter.await?)
     }
 }
 

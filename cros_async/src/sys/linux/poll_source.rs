@@ -72,6 +72,12 @@ impl From<Error> for io::Error {
     }
 }
 
+impl From<Error> for AsyncError {
+    fn from(e: Error) -> AsyncError {
+        AsyncError::SysVariants(e.into())
+    }
+}
+
 /// Async wrapper for an IO source that uses the FD executor to drive async operations.
 pub struct PollSource<F> {
     registered_source: RegisteredSource<F>,
@@ -315,30 +321,30 @@ impl<F: AsRawDescriptor> PollSource<F> {
         if ret == 0 {
             Ok(())
         } else {
-            Err(AsyncError::Poll(Error::Fsync(base::Error::last())))
+            Err(Error::Fsync(base::Error::last()).into())
         }
     }
 
     /// punch_hole
     pub async fn punch_hole(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
-        fallocate(
+        Ok(fallocate(
             &self.registered_source.duped_fd,
             FallocateMode::PunchHole,
             file_offset,
             len,
         )
-        .map_err(|e| AsyncError::Poll(Error::Fallocate(e)))
+        .map_err(Error::Fallocate)?)
     }
 
     /// write_zeroes_at
     pub async fn write_zeroes_at(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
-        fallocate(
+        Ok(fallocate(
             &self.registered_source.duped_fd,
             FallocateMode::ZeroRange,
             file_offset,
             len,
         )
-        .map_err(|e| AsyncError::Poll(Error::Fallocate(e)))
+        .map_err(Error::Fallocate)?)
     }
 
     /// Sync all data of completed write operations to the backing storage, avoiding updating extra
@@ -349,7 +355,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
         if ret == 0 {
             Ok(())
         } else {
-            Err(AsyncError::Poll(Error::Fdatasync(base::Error::last())))
+            Err(Error::Fdatasync(base::Error::last()).into())
         }
     }
 

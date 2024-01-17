@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 pub mod async_types;
+mod error;
 pub mod event;
 pub mod executor;
 pub mod handle_executor;
@@ -12,6 +13,7 @@ pub mod overlapped_source;
 mod timer;
 pub mod wait_for_handle;
 
+pub use error::AsyncErrorSys;
 pub use handle_executor::HandleReactor;
 pub use handle_source::HandleSource;
 pub use handle_source::HandleWrapper;

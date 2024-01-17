@@ -70,6 +70,13 @@ impl From<Error> for io::Error {
         }
     }
 }
+
+impl From<Error> for AsyncError {
+    fn from(e: Error) -> AsyncError {
+        AsyncError::SysVariants(e.into())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Async IO source for Windows that uses a multi-threaded, multi-handle approach to provide fast IO
@@ -95,10 +102,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
     ) -> AsyncResult<Self> {
         Ok(Self {
             blocking_pool: BlockingPool::default(),
-            reg_source: ex
-                .reactor
-                .register_overlapped_source(ex, &source)
-                .map_err(AsyncError::HandleExecutor)?,
+            reg_source: ex.reactor.register_overlapped_source(ex, &source)?,
             source,
             seek_forbidden,
         })
@@ -114,9 +118,11 @@ unsafe fn read(
     buf_len: usize,
     overlapped: &mut OVERLAPPED,
 ) -> AsyncResult<()> {
-    base::windows::read_file(&Descriptor(file), buf, buf_len, Some(overlapped))
-        .map(|_len| ())
-        .map_err(|e| AsyncError::OverlappedSource(Error::StdIoReadError(e)))
+    Ok(
+        base::windows::read_file(&Descriptor(file), buf, buf_len, Some(overlapped))
+            .map(|_len| ())
+            .map_err(Error::StdIoReadError)?,
+    )
 }
 
 /// SAFETY:
@@ -128,9 +134,11 @@ unsafe fn write(
     buf_len: usize,
     overlapped: &mut OVERLAPPED,
 ) -> AsyncResult<()> {
-    base::windows::write_file(&Descriptor(file), buf, buf_len, Some(overlapped))
-        .map(|_len| ())
-        .map_err(|e| AsyncError::OverlappedSource(Error::StdIoWriteError(e)))
+    Ok(
+        base::windows::write_file(&Descriptor(file), buf, buf_len, Some(overlapped))
+            .map(|_len| ())
+            .map_err(Error::StdIoWriteError)?,
+    )
 }
 
 impl<F: AsRawDescriptor> OverlappedSource<F> {
@@ -141,9 +149,11 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         mut vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         if self.seek_forbidden && file_offset.is_some() {
-            return Err(AsyncError::OverlappedSource(Error::IoSeekError(
-                io::Error::new(io::ErrorKind::InvalidInput, "seek on non-seekable handle"),
-            )));
+            return Err(Error::IoSeekError(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "seek on non-seekable handle",
+            ))
+            .into());
         }
         let mut overlapped_op = self.reg_source.register_overlapped_operation(file_offset)?;
 
@@ -158,9 +168,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
             )?
         };
         let overlapped_result = overlapped_op.await?;
-        let bytes_read = overlapped_result
-            .result
-            .map_err(|e| AsyncError::OverlappedSource(Error::IoReadError(e)))?;
+        let bytes_read = overlapped_result.result.map_err(Error::IoReadError)?;
         Ok((bytes_read, vec))
     }
 
@@ -179,18 +187,20 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
             // subsequent read calls will just read the same bytes into each of the memory regions.
             None => Some(0),
             _ => {
-                return Err(AsyncError::OverlappedSource(Error::IoSeekError(
-                    io::Error::new(io::ErrorKind::InvalidInput, "seek on non-seekable handle"),
-                )))
+                return Err(Error::IoSeekError(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "seek on non-seekable handle",
+                ))
+                .into())
             }
         };
 
         for region in mem_offsets.into_iter() {
             let mut overlapped_op = self.reg_source.register_overlapped_operation(offset)?;
 
-            let slice = mem.get_volatile_slice(region).map_err(|e| {
-                AsyncError::OverlappedSource(Error::BackingMemoryVolatileSliceFetchFailed(e))
-            })?;
+            let slice = mem
+                .get_volatile_slice(region)
+                .map_err(Error::BackingMemoryVolatileSliceFetchFailed)?;
 
             // SAFETY:
             // Safe because we're passing a volatile slice (valid ptr), and the size of the memory region it refers to.
@@ -203,9 +213,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
                 )?
             };
             let overlapped_result = overlapped_op.await?;
-            let bytes_read = overlapped_result
-                .result
-                .map_err(|e| AsyncError::OverlappedSource(Error::IoReadError(e)))?;
+            let bytes_read = overlapped_result.result.map_err(Error::IoReadError)?;
             offset = offset.map(|offset| offset + bytes_read as u64);
             total_bytes_read += bytes_read;
         }
@@ -229,9 +237,11 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         if self.seek_forbidden && file_offset.is_some() {
-            return Err(AsyncError::OverlappedSource(Error::IoSeekError(
-                io::Error::new(io::ErrorKind::InvalidInput, "seek on non-seekable handle"),
-            )));
+            return Err(Error::IoSeekError(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "seek on non-seekable handle",
+            ))
+            .into());
         }
         let mut overlapped_op = self.reg_source.register_overlapped_operation(file_offset)?;
 
@@ -246,10 +256,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
             )?
         };
 
-        let bytes_written = overlapped_op
-            .await?
-            .result
-            .map_err(|e| AsyncError::OverlappedSource(Error::IoWriteError(e)))?;
+        let bytes_written = overlapped_op.await?.result.map_err(Error::IoWriteError)?;
         Ok((bytes_written, vec))
     }
 
@@ -268,18 +275,20 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
             // subsequent read calls will just read the same bytes into each of the memory regions.
             None => Some(0),
             _ => {
-                return Err(AsyncError::OverlappedSource(Error::IoSeekError(
-                    io::Error::new(io::ErrorKind::InvalidInput, "seek on non-seekable handle"),
-                )))
+                return Err(Error::IoSeekError(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "seek on non-seekable handle",
+                ))
+                .into())
             }
         };
 
         for region in mem_offsets.into_iter() {
             let mut overlapped_op = self.reg_source.register_overlapped_operation(offset)?;
 
-            let slice = mem.get_volatile_slice(region).map_err(|e| {
-                AsyncError::OverlappedSource(Error::BackingMemoryVolatileSliceFetchFailed(e))
-            })?;
+            let slice = mem
+                .get_volatile_slice(region)
+                .map_err(Error::BackingMemoryVolatileSliceFetchFailed)?;
 
             // SAFETY:
             // Safe because we're passing a volatile slice (valid ptr), and the size of the memory region it refers to.
@@ -291,10 +300,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
                     overlapped_op.get_overlapped(),
                 )?
             };
-            let bytes_written = overlapped_op
-                .await?
-                .result
-                .map_err(|e| AsyncError::OverlappedSource(Error::IoReadError(e)))?;
+            let bytes_written = overlapped_op.await?.result.map_err(Error::IoReadError)?;
             offset = offset.map(|offset| offset + bytes_written as u64);
             total_bytes_written += bytes_written;
         }
@@ -307,12 +313,11 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
     /// little wrapper work, we can make overlapped DeviceIoControl calls instead.
     pub async fn punch_hole(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
         if self.seek_forbidden {
-            return Err(AsyncError::OverlappedSource(Error::IoSeekError(
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "fallocate cannot be called on a non-seekable handle",
-                ),
-            )));
+            return Err(Error::IoSeekError(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "fallocate cannot be called on a non-seekable handle",
+            ))
+            .into());
         }
         // SAFETY:
         // Safe because self.source lives as long as file.
@@ -320,7 +325,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
             File::from_raw_descriptor(self.source.as_raw_descriptor())
         });
         file.punch_hole(file_offset, len)
-            .map_err(|e| AsyncError::OverlappedSource(Error::IoPunchHoleError(e)))?;
+            .map_err(Error::IoPunchHoleError)?;
         Ok(())
     }
 
@@ -330,12 +335,11 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
     /// little wrapper work, we can make overlapped DeviceIoControl calls instead.
     pub async fn write_zeroes_at(&self, file_offset: u64, len: u64) -> AsyncResult<()> {
         if self.seek_forbidden {
-            return Err(AsyncError::OverlappedSource(Error::IoSeekError(
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "write_zeroes_at cannot be called on a non-seekable handle",
-                ),
-            )));
+            return Err(Error::IoSeekError(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "write_zeroes_at cannot be called on a non-seekable handle",
+            ))
+            .into());
         }
         // SAFETY:
         // Safe because self.source lives as long as file.
@@ -345,7 +349,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         // ZeroRange calls `punch_hole` which doesn't extend the File size if it needs to.
         // Will fix if it becomes a problem.
         file.write_zeroes_at(file_offset, len as usize)
-            .map_err(|e| AsyncError::OverlappedSource(Error::IoWriteZeroesError(e)))?;
+            .map_err(Error::IoWriteZeroesError)?;
         Ok(())
     }
 
@@ -359,13 +363,13 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         let mut file = unsafe {
             ManuallyDrop::new(File::from_raw_descriptor(self.source.as_raw_descriptor()))
                 .try_clone()
-                .map_err(|e| AsyncError::OverlappedSource(Error::HandleDuplicationFailed(e)))?
+                .map_err(Error::HandleDuplicationFailed)?
         };
 
-        self.blocking_pool
+        Ok(self
+            .blocking_pool
             .spawn(move || file.flush().map_err(Error::IoFlushError))
-            .await
-            .map_err(AsyncError::OverlappedSource)
+            .await?)
     }
 
     /// Sync all data of completed write operations to the backing storage. Currently, the
@@ -395,7 +399,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
 
     pub async fn wait_for_handle(&self) -> AsyncResult<()> {
         let waiter = super::WaitForHandle::new(&self.source);
-        waiter.await.map_err(AsyncError::HandleSource)
+        Ok(waiter.await?)
     }
 }
 

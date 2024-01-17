@@ -11,96 +11,29 @@ use base::AsRawDescriptor;
 use base::RawDescriptor;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use base::UnixSeqpacket;
-use remain::sorted;
-use thiserror::Error as ThisError;
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
-#[sorted]
-#[derive(ThisError, Debug)]
-pub enum Error {
-    /// An error with EventAsync.
+use crate::sys::platform::AsyncErrorSys;
+
+#[remain::sorted]
+#[derive(Debug, thiserror::Error)]
+pub enum AsyncError {
     #[error("An error with an EventAsync: {0}")]
     EventAsync(base::Error),
     #[error("IO error: {0}")]
     Io(std::io::Error),
-    /// An error with a polled(FD) source.
-    #[error("An error with a poll source: {0}")]
-    Poll(crate::sys::linux::poll_source::Error),
-    /// An error with a uring source.
-    #[error("An error with a uring source: {0}")]
-    Uring(crate::sys::linux::uring_executor::Error),
+    #[error("Platform-specific error: {0}")]
+    SysVariants(#[from] AsyncErrorSys),
 }
 
-#[cfg(windows)]
-#[sorted]
-#[derive(ThisError, Debug)]
-pub enum Error {
-    #[error("An error with an EventAsync: {0}")]
-    EventAsync(base::Error),
-    #[error("An error with a handle executor: {0}")]
-    HandleExecutor(crate::sys::windows::handle_executor::Error),
-    #[error("An error with a handle source: {0}")]
-    HandleSource(crate::sys::windows::handle_source::Error),
-    #[error("IO error: {0}")]
-    Io(std::io::Error),
-    #[error("An error with a handle source: {0}")]
-    OverlappedSource(crate::sys::windows::overlapped_source::Error),
-}
+pub type AsyncResult<T> = std::result::Result<T, AsyncError>;
 
-pub type Result<T> = std::result::Result<T, Error>;
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-impl From<crate::sys::linux::uring_executor::Error> for Error {
-    fn from(err: crate::sys::linux::uring_executor::Error) -> Self {
-        Error::Uring(err)
-    }
-}
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-impl From<crate::sys::linux::poll_source::Error> for Error {
-    fn from(err: crate::sys::linux::poll_source::Error) -> Self {
-        Error::Poll(err)
-    }
-}
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-impl From<Error> for io::Error {
-    fn from(e: Error) -> Self {
-        use Error::*;
+impl From<AsyncError> for io::Error {
+    fn from(e: AsyncError) -> Self {
         match e {
-            EventAsync(e) => e.into(),
-            Io(e) => e,
-            Poll(e) => e.into(),
-            Uring(e) => e.into(),
+            AsyncError::EventAsync(e) => e.into(),
+            AsyncError::Io(e) => e,
+            AsyncError::SysVariants(e) => e.into(),
         }
-    }
-}
-
-#[cfg(windows)]
-impl From<Error> for io::Error {
-    fn from(e: Error) -> Self {
-        use Error::*;
-        match e {
-            EventAsync(e) => e.into(),
-            HandleExecutor(e) => e.into(),
-            HandleSource(e) => e.into(),
-            Io(e) => e,
-            OverlappedSource(e) => e.into(),
-        }
-    }
-}
-
-#[cfg(windows)]
-impl From<crate::sys::windows::handle_source::Error> for Error {
-    fn from(err: crate::sys::windows::handle_source::Error) -> Self {
-        Error::HandleSource(err)
-    }
-}
-
-#[cfg(windows)]
-impl From<crate::sys::windows::handle_executor::Error> for Error {
-    fn from(err: crate::sys::windows::handle_executor::Error) -> Self {
-        Error::HandleExecutor(err)
     }
 }
 

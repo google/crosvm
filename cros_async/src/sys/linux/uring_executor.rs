@@ -81,6 +81,7 @@ use crate::common_executor::Reactor;
 use crate::mem::BackingMemory;
 use crate::waker::WakerToken;
 use crate::waker::WeakWake;
+use crate::AsyncError;
 use crate::AsyncResult;
 use crate::IoSource;
 use crate::MemRegion;
@@ -148,6 +149,12 @@ impl From<Error> for io::Error {
             EnablingContext(e) => e.into(),
             RegisteringURingRestriction(e) => e.into(),
         }
+    }
+}
+
+impl From<Error> for AsyncError {
+    fn from(e: Error) -> AsyncError {
+        AsyncError::SysVariants(e.into())
     }
 }
 

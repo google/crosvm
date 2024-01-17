@@ -3,16 +3,19 @@
 // found in the LICENSE file.
 
 pub mod async_types;
+mod error;
 pub mod event;
 pub mod executor;
 pub mod fd_executor;
 pub mod poll_source;
+mod timer;
 pub mod uring_executor;
 pub mod uring_source;
+
+pub use error::AsyncErrorSys;
 pub use poll_source::Error as PollSourceError;
 pub use poll_source::PollSource;
 pub use uring_source::UringSource;
-mod timer;
 
 use crate::Error;
 
