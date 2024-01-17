@@ -45,8 +45,7 @@ impl AsyncTube {
             .await
             .map_err(|e| TubeError::Recv(io::Error::new(io::ErrorKind::Other, e)))?;
         let tube = Arc::clone(&self.inner);
-        let handles =
-            HandleWrapper::new(vec![Descriptor(tube.lock().unwrap().as_raw_descriptor())]);
+        let handles = HandleWrapper::new(Descriptor(tube.lock().unwrap().as_raw_descriptor()));
         unblock(
             move || tube.lock().unwrap().recv(),
             move || Err(handles.lock().cancel_sync_io(TubeError::OperationCancelled)),
@@ -56,8 +55,7 @@ impl AsyncTube {
 
     pub async fn send<T: 'static + Serialize + Send + Sync>(&self, msg: T) -> TubeResult<()> {
         let tube = Arc::clone(&self.inner);
-        let handles =
-            HandleWrapper::new(vec![Descriptor(tube.lock().unwrap().as_raw_descriptor())]);
+        let handles = HandleWrapper::new(Descriptor(tube.lock().unwrap().as_raw_descriptor()));
         unblock(
             move || tube.lock().unwrap().send(&msg),
             move || Err(handles.lock().cancel_sync_io(TubeError::OperationCancelled)),

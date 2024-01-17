@@ -205,9 +205,7 @@ impl common_executor::Reactor for HandleReactor {
         _ex: &Arc<RawExecutor<Self>>,
         f: F,
     ) -> AsyncResult<IoSource<F>> {
-        Ok(IoSource::Handle(super::HandleSource::new(
-            vec![f].into_boxed_slice(),
-        )?))
+        Ok(IoSource::Handle(super::HandleSource::new(f)?))
     }
 }
 
