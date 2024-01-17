@@ -143,7 +143,7 @@ pub trait ShmStream: Send {
     /// # Return value
     ///
     /// Returns `Some(request)` where `request` is an object that implements the
-    /// [`ServerRequest`](ServerRequest) trait and which can be used to get the
+    /// [`ServerRequest`] trait and which can be used to get the
     /// number of bytes requested for playback streams or that have already been
     /// written to shm for capture streams.
     ///
@@ -180,7 +180,7 @@ pub trait SharedMemory {
 
 /// `ShmStreamSource` creates streams for playback or capture of audio.
 pub trait ShmStreamSource<E: std::error::Error>: Send {
-    /// Creates a new [`ShmStream`](ShmStream)
+    /// Creates a new [`ShmStream`]
     ///
     /// Creates a new `ShmStream` object, which allows:
     /// * Waiting until the server has communicated that data is ready or requested that we make

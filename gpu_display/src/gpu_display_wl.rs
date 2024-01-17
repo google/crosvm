@@ -198,6 +198,7 @@ pub struct DisplayWl {
 /// # Safety
 ///
 /// safe because it must be passed a valid pointer to null-terminated c-string.
+#[allow(clippy::unnecessary_cast)]
 unsafe extern "C" fn error_callback(message: *const ::std::os::raw::c_char) {
     catch_unwind(|| {
         assert!(!message.is_null());

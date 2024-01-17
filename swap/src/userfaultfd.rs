@@ -296,7 +296,7 @@ impl Userfaultfd {
     ///
     /// # Safety
     ///
-    /// [addr, addr+len) must lie within a [MemoryMapping](base::MemoryMapping), and that mapping
+    /// [addr, addr+len) must lie within a [MemoryMapping], and that mapping
     /// must live for the lifespan of the userfaultfd kernel object (which may be distinct from the
     /// `Userfaultfd` rust object in this process).
     pub unsafe fn register(&self, addr: usize, len: usize) -> Result<IoctlFlags> {
