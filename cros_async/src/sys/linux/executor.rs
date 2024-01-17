@@ -134,21 +134,21 @@ pub enum Executor {
     Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, serde_keyvalue::FromKeyValues,
 )]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub enum ExecutorKind {
+pub enum ExecutorKindSys {
     Uring,
     // For command-line parsing, user-friendly "epoll" is chosen instead of fd.
     #[serde(rename = "epoll")]
     Fd,
 }
 
-/// If set, [`ExecutorKind::default()`] returns the value of `DEFAULT_EXECUTOR_KIND`.
-/// If not set, [`ExecutorKind::default()`] returns a statically-chosen default value, and
-/// [`ExecutorKind::default()`] initializes `DEFAULT_EXECUTOR_KIND` with that value.
-static DEFAULT_EXECUTOR_KIND: OnceCell<ExecutorKind> = OnceCell::new();
+/// If set, [`ExecutorKindSys::default()`] returns the value of `DEFAULT_EXECUTOR_KIND`.
+/// If not set, [`ExecutorKindSys::default()`] returns a statically-chosen default value, and
+/// [`ExecutorKindSys::default()`] initializes `DEFAULT_EXECUTOR_KIND` with that value.
+static DEFAULT_EXECUTOR_KIND: OnceCell<ExecutorKindSys> = OnceCell::new();
 
-impl Default for ExecutorKind {
+impl Default for ExecutorKindSys {
     fn default() -> Self {
-        *DEFAULT_EXECUTOR_KIND.get_or_init(|| ExecutorKind::Fd)
+        *DEFAULT_EXECUTOR_KIND.get_or_init(|| ExecutorKindSys::Fd)
     }
 }
 
@@ -157,7 +157,7 @@ impl Default for ExecutorKind {
 pub enum SetDefaultExecutorKindError {
     /// The default executor kind is set more than once.
     #[error("The default executor kind is already set to {0:?}")]
-    SetMoreThanOnce(ExecutorKind),
+    SetMoreThanOnce(ExecutorKindSys),
 
     /// io_uring is unavailable. The reason might be the lack of the kernel support,
     /// but is not limited to that.
@@ -208,14 +208,14 @@ impl<R: 'static> Future for TaskHandle<R> {
 impl Executor {
     /// Create a new `Executor`.
     pub fn new() -> AsyncResult<Self> {
-        Executor::with_executor_kind(ExecutorKind::default())
+        Executor::with_executor_kind(ExecutorKindSys::default())
     }
 
     /// Create a new `Executor` of the given `ExecutorKind`.
-    pub fn with_executor_kind(kind: ExecutorKind) -> AsyncResult<Self> {
+    pub fn with_executor_kind(kind: ExecutorKindSys) -> AsyncResult<Self> {
         match kind {
-            ExecutorKind::Uring => RawExecutor::new().map(Executor::Uring),
-            ExecutorKind::Fd => RawExecutor::new().map(Executor::Fd),
+            ExecutorKindSys::Uring => RawExecutor::new().map(Executor::Uring),
+            ExecutorKindSys::Fd => RawExecutor::new().map(Executor::Fd),
         }
     }
 
@@ -224,9 +224,9 @@ impl Executor {
     /// returns `Ok(())`. Otherwise, it returns `SetDefaultExecutorKindError::SetMoreThanOnce`
     /// which contains the existing ExecutorKind value configured by the first call.
     pub fn set_default_executor_kind(
-        executor_kind: ExecutorKind,
+        executor_kind: ExecutorKindSys,
     ) -> Result<(), SetDefaultExecutorKindError> {
-        if executor_kind == ExecutorKind::Uring {
+        if executor_kind == ExecutorKindSys::Uring {
             check_uring_availability().map_err(SetDefaultExecutorKindError::UringUnavailable)?;
             if !is_uring_stable() {
                 warn!(

@@ -128,20 +128,20 @@ pub enum Executor {
     Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, serde_keyvalue::FromKeyValues,
 )]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub enum ExecutorKind {
+pub enum ExecutorKindSys {
     Handle,
     Overlapped,
 }
 
-/// If set, [`Executor::new()`] is created with `ExecutorKind` of `DEFAULT_EXECUTOR_KIND`.
-static DEFAULT_EXECUTOR_KIND: OnceCell<ExecutorKind> = OnceCell::new();
+/// If set, [`Executor::new()`] is created with `ExecutorKindSys` of `DEFAULT_EXECUTOR_KIND`.
+static DEFAULT_EXECUTOR_KIND: OnceCell<ExecutorKindSys> = OnceCell::new();
 
-impl Default for ExecutorKind {
+impl Default for ExecutorKindSys {
     fn default() -> Self {
         DEFAULT_EXECUTOR_KIND
             .get()
             .copied()
-            .unwrap_or(ExecutorKind::Handle)
+            .unwrap_or(ExecutorKindSys::Handle)
     }
 }
 
@@ -150,7 +150,7 @@ impl Default for ExecutorKind {
 pub enum SetDefaultExecutorKindError {
     /// The default executor kind is set more than once.
     #[error("The default executor kind is already set to {0:?}")]
-    SetMoreThanOnce(ExecutorKind),
+    SetMoreThanOnce(ExecutorKindSys),
 }
 
 /// Reference to a task managed by the executor.
@@ -192,24 +192,24 @@ impl<R: 'static> Future for TaskHandle<R> {
 impl Executor {
     /// Create a new `Executor`.
     pub fn new() -> AsyncResult<Self> {
-        Executor::with_executor_kind(ExecutorKind::default())
+        Executor::with_executor_kind(ExecutorKindSys::default())
     }
 
-    /// Create a new `Executor` of the given `ExecutorKind`.
-    pub fn with_executor_kind(kind: ExecutorKind) -> AsyncResult<Self> {
+    /// Create a new `Executor` of the given `ExecutorKindSys`.
+    pub fn with_executor_kind(kind: ExecutorKindSys) -> AsyncResult<Self> {
         match kind {
-            ExecutorKind::Handle => Ok(Executor::Handle(RawExecutor::<HandleReactor>::new()?)),
-            ExecutorKind::Overlapped => {
+            ExecutorKindSys::Handle => Ok(Executor::Handle(RawExecutor::<HandleReactor>::new()?)),
+            ExecutorKindSys::Overlapped => {
                 Ok(Executor::Overlapped(RawExecutor::<HandleReactor>::new()?))
             }
         }
     }
 
     /// Create a new `Executor` of the given `ExecutorKind`.
-    pub fn with_kind_and_concurrency(kind: ExecutorKind, concurrency: u32) -> AsyncResult<Self> {
+    pub fn with_kind_and_concurrency(kind: ExecutorKindSys, concurrency: u32) -> AsyncResult<Self> {
         match kind {
-            ExecutorKind::Handle => Ok(Executor::Handle(RawExecutor::<HandleReactor>::new()?)),
-            ExecutorKind::Overlapped => Ok(Executor::Overlapped(
+            ExecutorKindSys::Handle => Ok(Executor::Handle(RawExecutor::<HandleReactor>::new()?)),
+            ExecutorKindSys::Overlapped => Ok(Executor::Overlapped(
                 RawExecutor::<HandleReactor>::new_with(HandleReactor::new_with(concurrency)?)?,
             )),
         }
@@ -243,7 +243,7 @@ impl Executor {
     /// returns `Ok(())`. Otherwise, it returns `SetDefaultExecutorKindError::SetMoreThanOnce`
     /// which contains the existing ExecutorKind value configured by the first call.
     pub fn set_default_executor_kind(
-        executor_kind: ExecutorKind,
+        executor_kind: ExecutorKindSys,
     ) -> Result<(), SetDefaultExecutorKindError> {
         DEFAULT_EXECUTOR_KIND.set(executor_kind).map_err(|_|
             // `expect` succeeds since this closure runs only when DEFAULT_EXECUTOR_KIND is set.

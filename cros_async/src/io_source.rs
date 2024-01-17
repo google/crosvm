@@ -173,15 +173,16 @@ mod tests {
     use crate::mem::VecIoWrapper;
     #[cfg(any(target_os = "android", target_os = "linux"))]
     use crate::sys::linux::uring_executor::is_uring_stable;
+    use crate::sys::ExecutorKindSys;
     use crate::Executor;
     use crate::ExecutorKind;
     use crate::MemRegion;
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
     fn all_kinds() -> Vec<ExecutorKind> {
-        let mut kinds = vec![ExecutorKind::Fd];
+        let mut kinds = vec![ExecutorKindSys::Fd.into()];
         if is_uring_stable() {
-            kinds.push(ExecutorKind::Uring);
+            kinds.push(ExecutorKindSys::Uring.into());
         }
         kinds
     }
@@ -189,7 +190,7 @@ mod tests {
     fn all_kinds() -> Vec<ExecutorKind> {
         // TODO: Test OverlappedSource. It requires files to be opened specially, so this test
         // fixture needs to be refactored first.
-        vec![ExecutorKind::Handle]
+        vec![ExecutorKindSys::Handle.into()]
     }
 
     fn tmpfile_with_contents(bytes: &[u8]) -> File {
@@ -213,7 +214,7 @@ mod tests {
             }
 
             let f = tmpfile_with_contents("data".as_bytes());
-            let ex = Executor::with_executor_kind(kind).unwrap();
+            let ex = Executor::with_executor_kind(kind.into()).unwrap();
             let source = ex.async_from(f).unwrap();
             ex.run_until(go(source)).unwrap();
         }
@@ -231,7 +232,7 @@ mod tests {
             }
 
             let mut f = tmpfile_with_contents(&[]);
-            let ex = Executor::with_executor_kind(kind).unwrap();
+            let ex = Executor::with_executor_kind(kind.into()).unwrap();
             let source = ex.async_from(f.try_clone().unwrap()).unwrap();
             ex.run_until(go(source)).unwrap();
 
@@ -265,7 +266,7 @@ mod tests {
             }
 
             let f = tmpfile_with_contents("data".as_bytes());
-            let ex = Executor::with_executor_kind(kind).unwrap();
+            let ex = Executor::with_executor_kind(kind.into()).unwrap();
             let source = ex.async_from(f).unwrap();
             ex.run_until(go(source)).unwrap();
         }
@@ -291,7 +292,7 @@ mod tests {
             }
 
             let mut f = tmpfile_with_contents(&[]);
-            let ex = Executor::with_executor_kind(kind).unwrap();
+            let ex = Executor::with_executor_kind(kind.into()).unwrap();
             let source = ex.async_from(f.try_clone().unwrap()).unwrap();
             ex.run_until(go(source)).unwrap();
 
@@ -314,7 +315,7 @@ mod tests {
             }
 
             let f = tempfile::tempfile().unwrap();
-            let ex = Executor::with_executor_kind(kind).unwrap();
+            let ex = Executor::with_executor_kind(kind.into()).unwrap();
             let source = ex.async_from(f).unwrap();
 
             ex.run_until(go(source)).unwrap();
@@ -345,7 +346,7 @@ mod tests {
             f.write_all(&[0xBB; 32]).unwrap();
             f.rewind().unwrap();
 
-            let ex = Executor::with_executor_kind(kind).unwrap();
+            let ex = Executor::with_executor_kind(kind.into()).unwrap();
             let source = ex.async_from(f).unwrap();
 
             ex.run_until(go(source)).unwrap();
@@ -368,7 +369,7 @@ mod tests {
             }
 
             let f = tempfile::tempfile().unwrap();
-            let ex = Executor::with_executor_kind(kind).unwrap();
+            let ex = Executor::with_executor_kind(kind.into()).unwrap();
             let source = ex.async_from(f).unwrap();
 
             ex.run_until(go(source)).unwrap();
@@ -392,7 +393,7 @@ mod tests {
             f.write_all(&[0xffu8; 32]).unwrap();
             f.rewind().unwrap();
 
-            let ex = Executor::with_executor_kind(kind).unwrap();
+            let ex = Executor::with_executor_kind(kind.into()).unwrap();
             let source = ex.async_from(f).unwrap();
 
             ex.run_until(go(source)).unwrap();
@@ -418,7 +419,7 @@ mod tests {
             }
 
             let mut f = tempfile::tempfile().unwrap();
-            let ex = Executor::with_executor_kind(kind).unwrap();
+            let ex = Executor::with_executor_kind(kind.into()).unwrap();
             let source = ex.async_from(f.try_clone().unwrap()).unwrap();
 
             ex.run_until(go(source)).unwrap();

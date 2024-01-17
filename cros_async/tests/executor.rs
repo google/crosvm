@@ -2,26 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use cros_async::sys::ExecutorKindSys;
 use cros_async::Executor;
 use cros_async::ExecutorKind;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 fn all_kinds() -> Vec<ExecutorKind> {
-    let mut kinds = vec![ExecutorKind::Fd];
+    let mut kinds = vec![ExecutorKindSys::Fd.into()];
     if cros_async::is_uring_stable() {
-        kinds.push(ExecutorKind::Uring);
+        kinds.push(ExecutorKindSys::Uring.into());
     }
     kinds
 }
 #[cfg(windows)]
 fn all_kinds() -> Vec<ExecutorKind> {
-    vec![ExecutorKind::Handle]
+    vec![ExecutorKindSys::Handle.into()]
 }
 
 #[test]
 fn cancel_pending_task() {
     for kind in all_kinds() {
-        let ex = Executor::with_executor_kind(kind).unwrap();
+        let ex = Executor::with_executor_kind(kind.into()).unwrap();
         let task = ex.spawn(std::future::pending::<()>());
         assert_eq!(ex.run_until(task.cancel()).unwrap(), None);
     }
@@ -33,7 +34,7 @@ fn cancel_pending_task() {
 #[test]
 fn cancel_ready_task() {
     for kind in all_kinds() {
-        let ex = Executor::with_executor_kind(kind).unwrap();
+        let ex = Executor::with_executor_kind(kind.into()).unwrap();
         let (s, r) = futures::channel::oneshot::channel();
         let mut s = Some(s);
         let task = ex.spawn(futures::future::poll_fn(move |_| {

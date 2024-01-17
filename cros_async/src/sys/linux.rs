@@ -13,6 +13,7 @@ pub mod uring_executor;
 pub mod uring_source;
 
 pub use error::AsyncErrorSys;
+pub use executor::ExecutorKindSys;
 pub use poll_source::Error as PollSourceError;
 pub use poll_source::PollSource;
 pub use uring_source::UringSource;

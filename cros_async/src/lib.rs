@@ -59,6 +59,7 @@ pub mod audio_streams_async;
 mod blocking;
 mod complete;
 mod event;
+mod executor;
 mod io_ext;
 mod io_source;
 pub mod mem;
@@ -69,7 +70,6 @@ pub mod sys;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use sys::linux::uring_executor::is_uring_stable;
 pub use sys::Executor;
-pub use sys::ExecutorKind;
 pub use sys::TaskHandle;
 mod common_executor;
 mod timer;
@@ -89,6 +89,7 @@ pub use blocking::BlockingPool;
 pub use blocking::CancellableBlockingPool;
 pub use blocking::TimeoutAction;
 pub use event::EventAsync;
+pub use executor::ExecutorKind;
 #[cfg(windows)]
 pub use futures::executor::block_on;
 use futures::stream::FuturesUnordered;

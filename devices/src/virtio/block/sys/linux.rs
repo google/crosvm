@@ -61,6 +61,7 @@ impl DiskOption {
 
 impl BlockAsync {
     pub fn create_executor(&self) -> Executor {
-        Executor::with_executor_kind(self.executor_kind).expect("Failed to create an executor")
+        Executor::with_executor_kind(self.executor_kind.into())
+            .expect("Failed to create an executor")
     }
 }

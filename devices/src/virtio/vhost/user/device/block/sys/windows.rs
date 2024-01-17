@@ -15,8 +15,8 @@ use base::Event;
 use base::RawDescriptor;
 use broker_ipc::common_child_setup;
 use broker_ipc::CommonChildStartupArgs;
+use cros_async::sys::windows::ExecutorKindSys;
 use cros_async::Executor;
-use cros_async::ExecutorKind;
 use crosvm_cli::sys::windows::exit::Exit;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
@@ -67,13 +67,10 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
 
     info!("using {} IO handles.", disk_option.io_concurrency.get());
 
-    let ex = Executor::with_executor_kind(
-        *disk_option
-            .async_executor
-            .as_ref()
-            .unwrap_or(&ExecutorKind::Handle),
-    )
-    .context("failed to create executor")?;
+    let kind = disk_option
+        .async_executor
+        .unwrap_or(ExecutorKindSys::Handle.into());
+    let ex = Executor::with_executor_kind(kind.into()).context("failed to create executor")?;
 
     let block = Box::new(BlockAsync::new(
         base_features(ProtectionType::Unprotected),

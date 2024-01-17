@@ -8,8 +8,8 @@ use std::os::windows::fs::OpenOptionsExt;
 
 use anyhow::Context;
 use base::warn;
+use cros_async::sys::windows::ExecutorKindSys;
 use cros_async::Executor;
-use cros_async::ExecutorKind;
 use winapi::um::winbase::FILE_FLAG_NO_BUFFERING;
 use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
 use winapi::um::winnt::FILE_SHARE_READ;
@@ -38,7 +38,7 @@ impl DiskOption {
             flags |= FILE_FLAG_NO_BUFFERING;
         }
 
-        if self.async_executor == Some(ExecutorKind::Overlapped) {
+        if self.async_executor == Some(ExecutorKindSys::Overlapped.into()) {
             warn!("Opening disk file for overlapped IO");
             flags |= FILE_FLAG_OVERLAPPED;
         }
@@ -50,8 +50,10 @@ impl DiskOption {
         let file = open_option
             .open(&self.path)
             .context("Failed to open disk file")?;
-        let image_type =
-            disk::detect_image_type(&file, self.async_executor == Some(ExecutorKind::Overlapped))?;
+        let image_type = disk::detect_image_type(
+            &file,
+            self.async_executor == Some(ExecutorKindSys::Overlapped.into()),
+        )?;
         Ok(disk::create_disk_file_of_type(
             file,
             self.sparse,
@@ -64,7 +66,7 @@ impl DiskOption {
 
 impl BlockAsync {
     pub fn create_executor(&self) -> Executor {
-        Executor::with_kind_and_concurrency(self.executor_kind, self.io_concurrency)
+        Executor::with_kind_and_concurrency(self.executor_kind.into(), self.io_concurrency)
             .expect("Failed to create an executor")
     }
 }

@@ -1600,7 +1600,7 @@ fn get_default_hypervisor() -> Option<HypervisorKind> {
 
 pub fn run_config(cfg: Config) -> Result<ExitState> {
     if let Some(async_executor) = cfg.async_executor {
-        Executor::set_default_executor_kind(async_executor)
+        Executor::set_default_executor_kind(async_executor.into())
             .context("Failed to set the default async executor")?;
     }
 
@@ -4231,7 +4231,7 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
 
     // Executor must be created before jail in order to prevent the jailed process from creating
     // unrestricted io_urings.
-    let ex = Executor::with_executor_kind(device.executor_kind().unwrap_or_default())
+    let ex = Executor::with_executor_kind(device.executor_kind().unwrap_or_default().into())
         .context("Failed to create an Executor")?;
     keep_rds.extend(ex.as_raw_descriptors());
 
@@ -4350,7 +4350,7 @@ fn start_vhost_user_control_server(
 
 pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
     if let Some(async_executor) = opts.async_executor {
-        Executor::set_default_executor_kind(async_executor)
+        Executor::set_default_executor_kind(async_executor.into())
             .context("Failed to set the default async executor")?;
     }
 

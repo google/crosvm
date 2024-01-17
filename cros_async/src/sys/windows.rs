@@ -14,6 +14,7 @@ mod timer;
 pub mod wait_for_handle;
 
 pub use error::AsyncErrorSys;
+pub use executor::ExecutorKindSys;
 pub use handle_executor::HandleReactor;
 pub use handle_source::HandleSource;
 pub use handle_source::HandleWrapper;
