@@ -318,7 +318,9 @@ impl Default for CancellableBlockingPool {
 
 impl Drop for CancellableBlockingPool {
     fn drop(&mut self) {
-        let _ = self.shutdown();
+        if let Err(e) = self.shutdown() {
+            base::error!("CancellableBlockingPool::shutdown failed: {}", e);
+        }
     }
 }
 

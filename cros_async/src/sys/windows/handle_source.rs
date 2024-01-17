@@ -117,7 +117,7 @@ impl HandleWrapper {
 
 /// Async IO source for Windows, such as a file.
 pub struct HandleSource<F: AsRawDescriptor> {
-    source: Option<F>,
+    source: F,
     source_descriptor: Descriptor,
     blocking_pool: CancellableBlockingPool,
 }
@@ -141,7 +141,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
         let source_descriptor = Descriptor(source.as_raw_descriptor());
 
         Ok(Self {
-            source: Some(source),
+            source,
             source_descriptor,
             blocking_pool: CancellableBlockingPool::new(
                 // WARNING: this is a safety requirement! Threads are 1:1 with sources.
@@ -163,14 +163,6 @@ impl<F: AsRawDescriptor> HandleSource<F> {
                     .map_err(Error::BackingMemoryVolatileSliceFetchFailed)
             })
             .collect::<Result<SmallVec<[VolatileSlice; 16]>>>()
-    }
-}
-
-impl<F: AsRawDescriptor> Drop for HandleSource<F> {
-    fn drop(&mut self) {
-        if let Err(e) = self.blocking_pool.shutdown() {
-            error!("failed to clean up HandleSource: {}", e);
-        }
     }
 }
 
@@ -375,26 +367,25 @@ impl<F: AsRawDescriptor> HandleSource<F> {
     }
 
     /// Yields the underlying IO source.
-    pub fn into_source(mut self) -> F {
-        self.source.take().expect("`source` should not be `None`")
+    pub fn into_source(self) -> F {
+        self.source
     }
 
     /// Provides a mutable ref to the underlying IO source.
     pub fn as_source_mut(&mut self) -> &mut F {
-        self.source.as_mut().expect("`source` should not be `None`")
+        &mut self.source
     }
 
     /// Provides a ref to the underlying IO source.
     ///
     /// If sources are not interchangeable, behavior is undefined.
     pub fn as_source(&self) -> &F {
-        self.source.as_ref().expect("`source` should not be `None`")
+        &self.source
     }
 
     /// If sources are not interchangeable, behavior is undefined.
     pub async fn wait_for_handle(&self) -> AsyncResult<()> {
-        let waiter =
-            super::WaitForHandle::new(self.source.as_ref().expect("`source` should not be `None`"));
+        let waiter = super::WaitForHandle::new(&self.source);
         Ok(waiter.await?)
     }
 }
