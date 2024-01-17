@@ -145,10 +145,13 @@ pub trait IntoUnixStream {
 
 impl<'a> IntoUnixStream for &'a Path {
     fn into_unix_stream(self) -> Result<UnixStream> {
-        if let Some(fd) = safe_descriptor_from_path(self).context("failed to open event device")? {
+        if let Some(fd) = safe_descriptor_from_path(self)
+            .with_context(|| format!("failed to open event device '{}'", self.display()))?
+        {
             Ok(fd.into())
         } else {
-            UnixStream::connect(self).context("failed to open event device")
+            UnixStream::connect(self)
+                .with_context(|| format!("failed to open event device '{}'", self.display()))
         }
     }
 }
