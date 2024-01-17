@@ -232,14 +232,27 @@ pub fn parse_vhost_user_fs_option(param: &str) -> Result<VhostUserFsOption, Stri
 pub const DEFAULT_TOUCH_DEVICE_HEIGHT: u32 = 1024;
 pub const DEFAULT_TOUCH_DEVICE_WIDTH: u32 = 1280;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct TouchDeviceOption {
     path: PathBuf,
     width: Option<u32>,
     height: Option<u32>,
     name: Option<String>,
+
+    #[serde(skip, default = "default_touch_device_width")]
     default_width: u32,
+
+    #[serde(skip, default = "default_touch_device_height")]
     default_height: u32,
+}
+
+fn default_touch_device_width() -> u32 {
+    DEFAULT_TOUCH_DEVICE_WIDTH
+}
+
+fn default_touch_device_height() -> u32 {
+    DEFAULT_TOUCH_DEVICE_HEIGHT
 }
 
 impl TouchDeviceOption {
@@ -299,23 +312,45 @@ impl TouchDeviceOption {
     }
 }
 
-impl FromStr for TouchDeviceOption {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut it = s.split(':');
-        let mut touch_spec = TouchDeviceOption::new(PathBuf::from(it.next().unwrap().to_owned()));
-        if let Some(width) = it.next() {
-            touch_spec.set_width(width.trim().parse().unwrap());
-        }
-        if let Some(height) = it.next() {
-            touch_spec.set_height(height.trim().parse().unwrap());
-        }
-        if let Some(name) = it.next() {
-            touch_spec.set_name(name.trim().to_string());
-        }
-        Ok(touch_spec)
+/// Try to parse a colon-separated touch device option.
+///
+/// The expected format is "PATH:WIDTH:HEIGHT:NAME", with all fields except PATH being optional.
+fn parse_touch_device_option_legacy(s: &str) -> Option<TouchDeviceOption> {
+    let mut it = s.split(':');
+    let mut touch_spec = TouchDeviceOption::new(PathBuf::from(it.next()?.to_owned()));
+    if let Some(width) = it.next() {
+        touch_spec.set_width(width.trim().parse().ok()?);
     }
+    if let Some(height) = it.next() {
+        touch_spec.set_height(height.trim().parse().ok()?);
+    }
+    if let Some(name) = it.next() {
+        touch_spec.set_name(name.trim().to_string());
+    }
+    if it.next().is_some() {
+        return None;
+    }
+
+    Some(touch_spec)
+}
+
+/// Parse virtio-input touch device options from a string.
+///
+/// This function only exists to enable the use of the deprecated colon-separated form
+/// ("PATH:WIDTH:HEIGHT:NAME"); once the deprecation period is over, this function should be removed
+/// in favor of using the derived `FromKeyValues` function directly.
+pub fn parse_touch_device_option(s: &str) -> Result<TouchDeviceOption, String> {
+    if s.contains(':') {
+        if let Some(touch_spec) = parse_touch_device_option_legacy(s) {
+            log::warn!(
+                "colon-separated touch device options are deprecated; \
+                please use key=value form instead"
+            );
+            return Ok(touch_spec);
+        }
+    }
+
+    from_key_values::<TouchDeviceOption>(s)
 }
 
 #[derive(Debug, Serialize, Deserialize, FromKeyValues)]
@@ -1926,5 +1961,43 @@ mod tests {
         );
 
         from_key_values::<SmbiosOptions>("uuid=zzzz").expect_err("expected error parsing uuid");
+    }
+
+    #[test]
+    fn parse_touch_legacy() {
+        let cfg = TryInto::<Config>::try_into(
+            crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--multi-touch", "my_socket:867:5309", "bzImage"],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(cfg.virtio_multi_touch.len(), 1);
+        let touch = &cfg.virtio_multi_touch[0];
+        assert_eq!(touch.path.to_str(), Some("my_socket"));
+        assert_eq!(touch.width, Some(867));
+        assert_eq!(touch.height, Some(5309));
+        assert_eq!(touch.name, None);
+    }
+
+    #[test]
+    fn parse_touch() {
+        let cfg = TryInto::<Config>::try_into(
+            crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--multi-touch", r"C:\path,width=867,height=5309", "bzImage"],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(cfg.virtio_multi_touch.len(), 1);
+        let touch = &cfg.virtio_multi_touch[0];
+        assert_eq!(touch.path.to_str(), Some(r"C:\path"));
+        assert_eq!(touch.width, Some(867));
+        assert_eq!(touch.height, Some(5309));
+        assert_eq!(touch.name, None);
     }
 }

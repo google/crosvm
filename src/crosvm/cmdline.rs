@@ -80,6 +80,7 @@ use crate::crosvm::config::parse_memory_region;
 use crate::crosvm::config::parse_mmio_address_range;
 use crate::crosvm::config::parse_pflash_parameters;
 use crate::crosvm::config::parse_serial_options;
+use crate::crosvm::config::parse_touch_device_option;
 use crate::crosvm::config::parse_vhost_user_fs_option;
 use crate::crosvm::config::BatteryConfig;
 use crate::crosvm::config::CpuOptions;
@@ -1504,7 +1505,11 @@ pub struct RunCommand {
     /// enable the Memory Tagging Extension in the guest
     pub mte: Option<bool>,
 
-    #[argh(option, arg_name = "PATH:WIDTH:HEIGHT:NAME")]
+    #[argh(
+        option,
+        arg_name = "[path=]PATH[,width=WIDTH][,height=HEIGHT][,name=NAME]",
+        from_str_fn(parse_touch_device_option)
+    )]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
     /// path to a socket from where to read multi touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280) and a name for the input device
@@ -2014,7 +2019,11 @@ pub struct RunCommand {
     ///     and give CAP_SETUID/CAP_SETGID to the crosvm.
     pub shared_dir: Vec<SharedDir>,
 
-    #[argh(option, arg_name = "PATH:WIDTH:HEIGHT:NAME")]
+    #[argh(
+        option,
+        arg_name = "[path=]PATH[,width=WIDTH][,height=HEIGHT][,name=NAME]",
+        from_str_fn(parse_touch_device_option)
+    )]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
     /// path to a socket from where to read single touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280) and a name for the input device
@@ -2139,7 +2148,11 @@ pub struct RunCommand {
     /// comma-separated names of the task profiles to apply to all threads in crosvm including the vCPU threads
     pub task_profiles: Vec<String>,
 
-    #[argh(option, arg_name = "PATH:WIDTH:HEIGHT:NAME")]
+    #[argh(
+        option,
+        arg_name = "[path=]PATH[,width=WIDTH][,height=HEIGHT][,name=NAME]",
+        from_str_fn(parse_touch_device_option)
+    )]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
     /// path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280) and a name for the input device
