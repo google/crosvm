@@ -214,7 +214,7 @@ mod tests {
             }
 
             let f = tmpfile_with_contents("data".as_bytes());
-            let ex = Executor::with_executor_kind(kind.into()).unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
             let source = ex.async_from(f).unwrap();
             ex.run_until(go(source)).unwrap();
         }
@@ -232,7 +232,7 @@ mod tests {
             }
 
             let mut f = tmpfile_with_contents(&[]);
-            let ex = Executor::with_executor_kind(kind.into()).unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
             let source = ex.async_from(f.try_clone().unwrap()).unwrap();
             ex.run_until(go(source)).unwrap();
 
@@ -266,7 +266,7 @@ mod tests {
             }
 
             let f = tmpfile_with_contents("data".as_bytes());
-            let ex = Executor::with_executor_kind(kind.into()).unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
             let source = ex.async_from(f).unwrap();
             ex.run_until(go(source)).unwrap();
         }
@@ -292,7 +292,7 @@ mod tests {
             }
 
             let mut f = tmpfile_with_contents(&[]);
-            let ex = Executor::with_executor_kind(kind.into()).unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
             let source = ex.async_from(f.try_clone().unwrap()).unwrap();
             ex.run_until(go(source)).unwrap();
 
@@ -315,7 +315,7 @@ mod tests {
             }
 
             let f = tempfile::tempfile().unwrap();
-            let ex = Executor::with_executor_kind(kind.into()).unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
             let source = ex.async_from(f).unwrap();
 
             ex.run_until(go(source)).unwrap();
@@ -346,7 +346,7 @@ mod tests {
             f.write_all(&[0xBB; 32]).unwrap();
             f.rewind().unwrap();
 
-            let ex = Executor::with_executor_kind(kind.into()).unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
             let source = ex.async_from(f).unwrap();
 
             ex.run_until(go(source)).unwrap();
@@ -369,7 +369,7 @@ mod tests {
             }
 
             let f = tempfile::tempfile().unwrap();
-            let ex = Executor::with_executor_kind(kind.into()).unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
             let source = ex.async_from(f).unwrap();
 
             ex.run_until(go(source)).unwrap();
@@ -393,7 +393,7 @@ mod tests {
             f.write_all(&[0xffu8; 32]).unwrap();
             f.rewind().unwrap();
 
-            let ex = Executor::with_executor_kind(kind.into()).unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
             let source = ex.async_from(f).unwrap();
 
             ex.run_until(go(source)).unwrap();
@@ -419,7 +419,7 @@ mod tests {
             }
 
             let mut f = tempfile::tempfile().unwrap();
-            let ex = Executor::with_executor_kind(kind.into()).unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
             let source = ex.async_from(f.try_clone().unwrap()).unwrap();
 
             ex.run_until(go(source)).unwrap();

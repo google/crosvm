@@ -678,8 +678,8 @@ impl VirtioDevice for Controller {
 
         let intr = interrupt.clone();
         let worker_thread = WorkerThread::start("v_scsi_ctrlq", move |kill_evt| {
-            let ex = Executor::with_executor_kind(executor_kind.into())
-                .expect("Failed to create an executor");
+            let ex =
+                Executor::with_executor_kind(executor_kind).expect("Failed to create an executor");
             if let Err(err) = ex
                 .run_until(run_worker(
                     &ex,
@@ -701,7 +701,7 @@ impl VirtioDevice for Controller {
             let interrupt = interrupt.clone();
             let worker_thread =
                 WorkerThread::start(format!("v_scsi_req_{}", i + 2), move |kill_evt| {
-                    let ex = Executor::with_executor_kind(executor_kind.into())
+                    let ex = Executor::with_executor_kind(executor_kind)
                         .expect("Failed to create an executor");
                     let async_logical_unit = targets
                         .0

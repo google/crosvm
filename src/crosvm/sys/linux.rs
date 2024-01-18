@@ -1628,7 +1628,7 @@ fn get_default_hypervisor() -> Option<HypervisorKind> {
 
 pub fn run_config(cfg: Config) -> Result<ExitState> {
     if let Some(async_executor) = cfg.async_executor {
-        Executor::set_default_executor_kind(async_executor.into())
+        Executor::set_default_executor_kind(async_executor)
             .context("Failed to set the default async executor")?;
     }
 
@@ -4514,7 +4514,7 @@ fn start_vhost_user_control_server(
 
 pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
     if let Some(async_executor) = opts.async_executor {
-        Executor::set_default_executor_kind(async_executor.into())
+        Executor::set_default_executor_kind(async_executor)
             .context("Failed to set the default async executor")?;
     }
 

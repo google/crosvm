@@ -4,8 +4,18 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use base::warn;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use base::AsRawDescriptors;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use base::RawDescriptor;
+use once_cell::sync::OnceCell;
 
 use crate::common_executor;
+use crate::common_executor::RawExecutor;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use crate::sys::linux;
 #[cfg(windows)]
@@ -30,12 +40,6 @@ pub enum ExecutorKind {
     SysVariants(ExecutorKindSys),
 }
 
-impl Default for ExecutorKind {
-    fn default() -> ExecutorKind {
-        ExecutorKind::SysVariants(ExecutorKindSys::default())
-    }
-}
-
 impl From<ExecutorKindSys> for ExecutorKind {
     fn from(e: ExecutorKindSys) -> ExecutorKind {
         ExecutorKind::SysVariants(e)
@@ -49,6 +53,33 @@ impl From<ExecutorKind> for ExecutorKindSys {
             ExecutorKind::SysVariants(inner) => inner,
         }
     }
+}
+
+/// If set, [`Executor::new()`] is created with `ExecutorKindSys` of `DEFAULT_EXECUTOR_KIND`.
+static DEFAULT_EXECUTOR_KIND: OnceCell<ExecutorKind> = OnceCell::new();
+
+impl Default for ExecutorKind {
+    fn default() -> Self {
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        let default_fn = || ExecutorKindSys::Fd.into();
+        #[cfg(windows)]
+        let default_fn = || ExecutorKindSys::Handle.into();
+        *DEFAULT_EXECUTOR_KIND.get_or_init(default_fn)
+    }
+}
+
+/// The error type for [`Executor::set_default_executor_kind()`].
+#[derive(thiserror::Error, Debug)]
+pub enum SetDefaultExecutorKindError {
+    /// The default executor kind is set more than once.
+    #[error("The default executor kind is already set to {0:?}")]
+    SetMoreThanOnce(ExecutorKind),
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    /// io_uring is unavailable. The reason might be the lack of the kernel support,
+    /// but is not limited to that.
+    #[error("io_uring is unavailable: {0}")]
+    UringUnavailable(linux::uring_executor::Error),
 }
 
 /// Reference to a task managed by the executor.
@@ -105,6 +136,27 @@ impl<R: 'static> Future for TaskHandle<R> {
             TaskHandle::Handle(h) => Pin::new(h).poll(cx),
         }
     }
+}
+
+pub(crate) trait ExecutorTrait {
+    fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>>;
+
+    fn spawn<F>(&self, f: F) -> TaskHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static;
+
+    fn spawn_blocking<F, R>(&self, f: F) -> TaskHandle<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static;
+
+    fn spawn_local<F>(&self, f: F) -> TaskHandle<F::Output>
+    where
+        F: Future + 'static,
+        F::Output: 'static;
+
+    fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output>;
 }
 
 /// An executor for scheduling tasks that poll futures to completion.
@@ -203,11 +255,108 @@ impl<R: 'static> Future for TaskHandle<R> {
 /// #[cfg(any(target_os = "android", target_os = "linux"))]
 /// # do_it().unwrap();
 /// ```
-pub(crate) trait ExecutorTrait {
+#[derive(Clone)]
+pub enum Executor {
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    Fd(Arc<RawExecutor<linux::EpollReactor>>),
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    Uring(Arc<RawExecutor<linux::UringReactor>>),
+    #[cfg(windows)]
+    Handle(Arc<RawExecutor<windows::HandleReactor>>),
+    #[cfg(windows)]
+    Overlapped(Arc<RawExecutor<windows::HandleReactor>>),
+}
+
+impl Executor {
+    /// Create a new `Executor`.
+    pub fn new() -> AsyncResult<Self> {
+        Executor::with_executor_kind(ExecutorKind::default())
+    }
+
+    /// Create a new `Executor` of the given `ExecutorKind`.
+    pub fn with_executor_kind(kind: ExecutorKind) -> AsyncResult<Self> {
+        Ok(match kind {
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            ExecutorKind::SysVariants(ExecutorKindSys::Fd) => Executor::Fd(RawExecutor::new()?),
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            ExecutorKind::SysVariants(ExecutorKindSys::Uring) => {
+                Executor::Uring(RawExecutor::new()?)
+            }
+            #[cfg(windows)]
+            ExecutorKind::SysVariants(ExecutorKindSys::Handle) => {
+                Executor::Handle(RawExecutor::new()?)
+            }
+            #[cfg(windows)]
+            ExecutorKind::SysVariants(ExecutorKindSys::Overlapped) => {
+                Executor::Overlapped(RawExecutor::new()?)
+            }
+        })
+    }
+
+    /// Create a new `Executor` of the given `ExecutorKind`.
+    pub fn with_kind_and_concurrency(kind: ExecutorKind, _concurrency: u32) -> AsyncResult<Self> {
+        Ok(match kind {
+            #[cfg(windows)]
+            ExecutorKind::SysVariants(ExecutorKindSys::Overlapped) => {
+                let reactor = windows::HandleReactor::new_with(_concurrency)?;
+                Executor::Overlapped(RawExecutor::new_with(reactor)?)
+            }
+            _ => Executor::with_executor_kind(kind)?,
+        })
+    }
+
+    /// Set the default ExecutorKind for [`Self::new()`]. This call is effective only once.
+    pub fn set_default_executor_kind(
+        executor_kind: ExecutorKind,
+    ) -> Result<(), SetDefaultExecutorKindError> {
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        if executor_kind == ExecutorKind::SysVariants(ExecutorKindSys::Uring) {
+            linux::uring_executor::check_uring_availability()
+                .map_err(SetDefaultExecutorKindError::UringUnavailable)?;
+            if !crate::is_uring_stable() {
+                warn!(
+                    "Enabling io_uring executor on the kernel version where io_uring is unstable"
+                );
+            }
+        }
+        DEFAULT_EXECUTOR_KIND.set(executor_kind).map_err(|_|
+            // `expect` succeeds since this closure runs only when DEFAULT_EXECUTOR_KIND is set.
+            SetDefaultExecutorKindError::SetMoreThanOnce(
+                *DEFAULT_EXECUTOR_KIND
+                    .get()
+                    .expect("Failed to get DEFAULT_EXECUTOR_KIND"),
+            ))
+    }
+
     /// Create a new `IoSource<F>` associated with `self`. Callers may then use the returned
     /// `IoSource` to directly start async operations without needing a separate reference to the
     /// executor.
-    fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>>;
+    pub fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
+        match self {
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            Executor::Fd(ex) => ex.async_from(f),
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            Executor::Uring(ex) => ex.async_from(f),
+            #[cfg(windows)]
+            Executor::Handle(ex) => ex.async_from(f),
+            #[cfg(windows)]
+            Executor::Overlapped(ex) => ex.async_from(f),
+        }
+    }
+
+    /// Create a new overlapped `IoSource<F>` associated with `self`. Callers may then use the
+    /// If the executor is not overlapped, then Handle source is returned.
+    /// returned `IoSource` to directly start async operations without needing a separate reference
+    /// to the executor.
+    #[cfg(windows)]
+    pub fn async_overlapped_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
+        match self {
+            Executor::Overlapped(ex) => Ok(IoSource::Overlapped(windows::OverlappedSource::new(
+                f, ex, false,
+            )?)),
+            _ => self.async_from(f),
+        }
+    }
 
     /// Spawn a new future for this executor to run to completion. Callers may use the returned
     /// `TaskHandle` to await on the result of `f`. Dropping the returned `TaskHandle` will cancel
@@ -239,10 +388,66 @@ pub(crate) trait ExecutorTrait {
     ///
     /// # example_spawn().unwrap();
     /// ```
-    fn spawn<F>(&self, f: F) -> TaskHandle<F::Output>
+    pub fn spawn<F>(&self, f: F) -> TaskHandle<F::Output>
     where
         F: Future + Send + 'static,
-        F::Output: Send + 'static;
+        F::Output: Send + 'static,
+    {
+        match self {
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            Executor::Fd(ex) => ex.spawn(f),
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            Executor::Uring(ex) => ex.spawn(f),
+            #[cfg(windows)]
+            Executor::Handle(ex) => ex.spawn(f),
+            #[cfg(windows)]
+            Executor::Overlapped(ex) => ex.spawn(f),
+        }
+    }
+
+    /// Spawn a thread-local task for this executor to drive to completion. Like `spawn` but without
+    /// requiring `Send` on `F` or `F::Output`. This method should only be called from the same
+    /// thread where `run()` or `run_until()` is called.
+    ///
+    /// # Panics
+    ///
+    /// `Executor::run` and `Executor::run_util` will panic if they try to poll a future that was
+    /// added by calling `spawn_local` from a different thread.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cros_async::AsyncResult;
+    /// # fn example_spawn_local() -> AsyncResult<()> {
+    /// #      use cros_async::Executor;
+    ///
+    /// #      let ex = Executor::new()?;
+    ///
+    ///        let task = ex.spawn_local(async { 7 + 13 });
+    ///
+    ///        let result = ex.run_until(task)?;
+    ///        assert_eq!(result, 20);
+    ///        Ok(())
+    /// # }
+    ///
+    /// # example_spawn_local().unwrap();
+    /// ```
+    pub fn spawn_local<F>(&self, f: F) -> TaskHandle<F::Output>
+    where
+        F: Future + 'static,
+        F::Output: 'static,
+    {
+        match self {
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            Executor::Fd(ex) => ex.spawn_local(f),
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            Executor::Uring(ex) => ex.spawn_local(f),
+            #[cfg(windows)]
+            Executor::Handle(ex) => ex.spawn_local(f),
+            #[cfg(windows)]
+            Executor::Overlapped(ex) => ex.spawn_local(f),
+        }
+    }
 
     /// Run the provided closure on a dedicated thread where blocking is allowed.
     ///
@@ -273,42 +478,59 @@ pub(crate) trait ExecutorTrait {
     /// # let ex = Executor::new().unwrap();
     /// # ex.run_until(do_it(&ex)).unwrap();
     /// ```
-    fn spawn_blocking<F, R>(&self, f: F) -> TaskHandle<R>
+    pub fn spawn_blocking<F, R>(&self, f: F) -> TaskHandle<R>
     where
         F: FnOnce() -> R + Send + 'static,
-        R: Send + 'static;
+        R: Send + 'static,
+    {
+        match self {
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            Executor::Fd(ex) => ex.spawn_blocking(f),
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            Executor::Uring(ex) => ex.spawn_blocking(f),
+            #[cfg(windows)]
+            Executor::Handle(ex) => ex.spawn_blocking(f),
+            #[cfg(windows)]
+            Executor::Overlapped(ex) => ex.spawn_blocking(f),
+        }
+    }
 
-    /// Spawn a thread-local task for this executor to drive to completion. Like `spawn` but without
-    /// requiring `Send` on `F` or `F::Output`. This method should only be called from the same
-    /// thread where `run()` or `run_until()` is called.
+    /// Run the executor indefinitely, driving all spawned futures to completion. This method will
+    /// block the current thread and only return in the case of an error.
     ///
     /// # Panics
     ///
-    /// `Executor::run` and `Executor::run_util` will panic if they try to poll a future that was
-    /// added by calling `spawn_local` from a different thread.
+    /// Once this method has been called on a thread, it may only be called on that thread from that
+    /// point on. Attempting to call it from another thread will panic.
     ///
     /// # Examples
     ///
     /// ```
     /// # use cros_async::AsyncResult;
-    /// # fn example_spawn_local() -> AsyncResult<()> {
-    /// #      use cros_async::Executor;
+    /// # fn example_run() -> AsyncResult<()> {
+    ///       use std::thread;
     ///
-    /// #      let ex = Executor::new()?;
+    ///       use cros_async::Executor;
+    ///       use futures::executor::block_on;
     ///
-    ///        let task = ex.spawn_local(async { 7 + 13 });
+    ///       let ex = Executor::new()?;
     ///
-    ///        let result = ex.run_until(task)?;
-    ///        assert_eq!(result, 20);
-    ///        Ok(())
+    ///       // Spawn a thread that runs the executor.
+    ///       let ex2 = ex.clone();
+    ///       thread::spawn(move || ex2.run());
+    ///
+    ///       let task = ex.spawn(async { 7 + 13 });
+    ///
+    ///       let result = block_on(task);
+    ///       assert_eq!(result, 20);
+    /// #     Ok(())
     /// # }
     ///
-    /// # example_spawn_local().unwrap();
+    /// # example_run().unwrap();
     /// ```
-    fn spawn_local<F>(&self, f: F) -> TaskHandle<F::Output>
-    where
-        F: Future + 'static,
-        F::Output: 'static;
+    pub fn run(&self) -> AsyncResult<()> {
+        self.run_until(std::future::pending())
+    }
 
     /// Drive all futures spawned in this executor until `f` completes. This method will block the
     /// current thread only until `f` is complete and there may still be unfinished futures in the
@@ -337,5 +559,26 @@ pub(crate) trait ExecutorTrait {
     ///
     /// # example_run_until().unwrap();
     /// ```
-    fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output>;
+    pub fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output> {
+        match self {
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            Executor::Fd(ex) => ex.run_until(f),
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            Executor::Uring(ex) => ex.run_until(f),
+            #[cfg(windows)]
+            Executor::Handle(ex) => ex.run_until(f),
+            #[cfg(windows)]
+            Executor::Overlapped(ex) => ex.run_until(f),
+        }
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+impl AsRawDescriptors for Executor {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        match self {
+            Executor::Fd(ex) => ex.as_raw_descriptors(),
+            Executor::Uring(ex) => ex.as_raw_descriptors(),
+        }
+    }
 }

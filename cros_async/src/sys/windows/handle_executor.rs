@@ -27,7 +27,6 @@ use winapi::um::minwinbase::OVERLAPPED;
 use crate::common_executor;
 use crate::common_executor::RawExecutor;
 use crate::common_executor::RawTaskHandle;
-use crate::sys::windows::executor::DEFAULT_IO_CONCURRENCY;
 use crate::sys::windows::io_completion_port::CompletionPacket;
 use crate::sys::windows::io_completion_port::IoCompletionPort;
 use crate::waker::WakerToken;
@@ -36,6 +35,8 @@ use crate::AsyncError;
 use crate::AsyncResult;
 use crate::IoSource;
 use crate::TaskHandle;
+
+const DEFAULT_IO_CONCURRENCY: u32 = 1;
 
 #[derive(Debug, ThisError)]
 pub enum Error {
