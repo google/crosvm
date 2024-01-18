@@ -60,8 +60,7 @@ fn collect_phandle_refs_from_props(fixup_node: &FdtNode, tree_node: &FdtNode) ->
     Ok(phandles)
 }
 
-// For a given path, traverse its parents, itself, and the children, and collect
-// phandle reference values.
+// Traverse all nodes along given node path, and collect phandle reference values from properties.
 fn collect_all_references_by_path(
     path: &Path,
     root: &FdtNode,
@@ -86,26 +85,6 @@ fn collect_all_references_by_path(
         // Look for references (phandle values) in properties along path; add them to set.
         phandle_refs.extend(collect_phandle_refs_from_props(fixup_node, tree_node)?);
     }
-
-    // After we have collected all phandle values in parents, collect them also in all
-    // children of the node the `path` argument points to.
-    let mut nodes_to_visit = VecDeque::<(&FdtNode, &FdtNode)>::new();
-    nodes_to_visit.push_back((fixup_node, tree_node));
-
-    while let Some((fixup_node, tree_node)) = nodes_to_visit.pop_front() {
-        // Again look for phandle references in properties child nodes and add them to the set.
-        phandle_refs.extend(collect_phandle_refs_from_props(fixup_node, tree_node)?);
-        // Add children to the queue.
-        for child_fixup_node in fixup_node.iter_subnodes() {
-            nodes_to_visit.push_back((
-                child_fixup_node,
-                tree_node.subnode(&child_fixup_node.name).ok_or_else(|| {
-                    Error::InvalidPath(format!("cannot find subnode {}", &child_fixup_node.name))
-                })?,
-            ));
-        }
-    }
-
     Ok(phandle_refs)
 }
 
@@ -184,7 +163,6 @@ fn do_overlay_filter(filtered_paths: Vec<Path>, overlay: &mut Fdt) {
                 .expect("filtered paths reference valid nodes");
             tgt_node.props = src_node.props.clone();
         }
-        tgt_node.subnodes = src_node.subnodes.clone();
     }
     overlay.root = new_root;
 }
@@ -896,23 +874,10 @@ mod tests {
     #[test]
     fn fdt_collect_filtered_paths() {
         // /node1/node1-2/node1-2-1:prop:0 => /node2/node2-3/node2-3-1 (phandle=11)
-        let fdt = make_fdt_with_local_refs(&[("/node1/node1-2/node1-2-1:prop:0", 11)]).unwrap();
-        let (_, paths) = prepare_filtered_symbols(["node1"], &fdt).unwrap();
-        let filtered = collect_all_filtered_paths(paths, &fdt).unwrap();
-
-        // This is referenced by the symbol that was given.
-        assert!(filtered.contains(&"/node1".parse().unwrap()));
-        // This is referenced by a node in a subtree of the given symbol.
-        assert!(filtered.contains(&"/node2/node2-3/node2-3-1".parse().unwrap()));
-    }
-
-    #[test]
-    fn fdt_collect_filtered_paths_circular() {
-        // /node1/node1-2/node1-2-1:prop:0 => /node2/node2-3/node2-3-1 (phandle=11)
-        // /node2/node2-3:prop:0 => /node1/node1-1 (phandle=2)
+        // /node1:prop:0 => /node3 (phandle=12)
         let fdt = make_fdt_with_local_refs(&[
             ("/node1/node1-2/node1-2-1:prop:0", 11),
-            ("/node2/node2-3:prop:0", 2),
+            ("/node1:prop:0", 12),
         ])
         .unwrap();
         let (_, paths) = prepare_filtered_symbols(["node1"], &fdt).unwrap();
@@ -920,7 +885,24 @@ mod tests {
 
         // This is referenced by the symbol that was given.
         assert!(filtered.contains(&"/node1".parse().unwrap()));
-        // This is referenced by a node in a subtree of the given symbol.
+        // This is referenced by the phandle value stored in the property.
+        assert!(filtered.contains(&"/node3".parse().unwrap()));
+        // References that appeart in the subtree of the filtered node are not included.
+        assert!(!filtered.contains(&"/node2/node2-3/node2-3-1".parse().unwrap()));
+    }
+
+    #[test]
+    fn fdt_collect_filtered_paths_circular() {
+        // /node1:prop:0 => /node2/node2-3/node2-3-1 (phandle=11)
+        // /node2/node2-3:prop:0 => /node1/node1-1 (phandle=2)
+        let fdt = make_fdt_with_local_refs(&[("/node1:prop:0", 11), ("/node2/node2-3:prop:0", 2)])
+            .unwrap();
+        let (_, paths) = prepare_filtered_symbols(["node1-1"], &fdt).unwrap();
+        let filtered = collect_all_filtered_paths(paths, &fdt).unwrap();
+
+        // This is referenced by the symbol that was given.
+        assert!(filtered.contains(&"/node1/node1-1".parse().unwrap()));
+        // This is referenced by a parent node of the given symbol.
         assert!(filtered.contains(&"/node2/node2-3/node2-3-1".parse().unwrap()));
         // Above two paths cover all references
         assert_eq!(filtered.len(), 2);
@@ -928,12 +910,11 @@ mod tests {
 
     #[test]
     fn fdt_collect_filtered_paths_dangling() {
+        // /node1:prop:0 => /node2/node2-3/node2-3-1 (phandle=11)
         // /node2/node2-3:prop:0 => dangling phandle=200
-        let fdt = make_fdt_with_local_refs(&[
-            ("/node1/node1-2/node1-2-1:prop:0", 11),
-            ("/node2/node2-3:prop:0", 200),
-        ])
-        .unwrap();
+        let fdt =
+            make_fdt_with_local_refs(&[("/node1:prop:0", 11), ("/node2/node2-3:prop:0", 200)])
+                .unwrap();
         let (_, paths) = prepare_filtered_symbols(["node1"], &fdt).unwrap();
         collect_all_filtered_paths(paths, &fdt).expect_err("dangling phandle");
     }
@@ -988,12 +969,12 @@ mod tests {
 
     #[test]
     fn fdt_do_filter_subnodes() {
-        let l1: Path = "/node1".parse().unwrap();
+        let l1: Path = "/node1/node1-1".parse().unwrap();
         let fdt = &mut make_fdt_with_local_refs(&[]).unwrap();
 
         do_overlay_filter([l1.clone()].into(), fdt);
         assert!(fdt.get_node(l1).is_some());
-        assert_eq!(count_nodes(&fdt.root), 7);
+        assert_eq!(count_nodes(&fdt.root), 3);
     }
 
     #[test]
@@ -1072,20 +1053,23 @@ mod tests {
         let overlay = load_fdt(include_bytes!("../test-files/overlay.dtb").as_slice()).unwrap();
         apply_overlay(&mut base, overlay, ["mydev"]).unwrap();
         assert!(base.get_node("/mydev@8000000").is_some());
+        assert!(base.get_node("/mydev@8000000/devnode1").is_none());
         assert!(base.get_node("/mydev@8001000").is_none());
-        assert_eq!(count_nodes(&base.root), 9);
+        assert_eq!(count_nodes(&base.root), 8);
 
         let overlay = load_fdt(include_bytes!("../test-files/overlay.dtb").as_slice()).unwrap();
         apply_overlay(&mut base, overlay, ["mydev"]).unwrap();
         assert!(base.get_node("/mydev@8000000").is_some());
         assert!(base.get_node("/mydev@8001000").is_none());
-        assert_eq!(count_nodes(&base.root), 9);
+        assert_eq!(count_nodes(&base.root), 8);
 
         let overlay = load_fdt(include_bytes!("../test-files/overlay.dtb").as_slice()).unwrap();
         apply_overlay(&mut base, overlay, ["mydev2"]).unwrap();
         assert!(base.get_node("/mydev@8000000").is_some());
         assert!(base.get_node("/mydev@8001000").is_some());
-        assert_eq!(count_nodes(&base.root), 11);
+        assert!(base.get_node("/mydev@8000000/devnode1").is_none());
+        assert!(base.get_node("/mydev@8001000/devnode1").is_none());
+        assert_eq!(count_nodes(&base.root), 9);
     }
 
     #[test]
@@ -1109,5 +1093,18 @@ mod tests {
         assert!(base.get_node("/n0-2/n2").is_none());
         let n = base.get_node("/n0-2/n1").unwrap();
         assert_eq!(n.get_prop::<u32>("prop1"), Some(5));
+    }
+
+    #[test]
+    fn fdt_overlay_skips_children() {
+        let mut base =
+            load_fdt(include_bytes!("../test-files/external_refs_base.dtb").as_slice()).unwrap();
+        let overlay =
+            load_fdt(include_bytes!("../test-files/external_refs_overlay.dtb").as_slice()).unwrap();
+        apply_overlay(&mut base, overlay, ["n1"]).unwrap();
+        assert_eq!(count_nodes(&base.root), 6);
+        assert!(base.get_node("/node1").is_some());
+        assert!(base.get_node("/node1/node2").is_none());
+        assert!(base.get_node("/node1/node3").is_none());
     }
 }
