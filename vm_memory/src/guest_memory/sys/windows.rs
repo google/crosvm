@@ -32,14 +32,13 @@ impl GuestMemory {
 }
 
 impl MemoryRegion {
-    /// Attempts to determine which ranges of memory are holes (unallocated memory, all zeroes).
-    /// True indicates a hole and the `usize` is the size of the range.
+    /// Finds ranges of memory that might have non-zero data (i.e. not unallocated memory). The
+    /// ranges are offsets into the region's mmap, not offsets into the backing file.
     ///
     /// For example, if there were three bytes and the second byte was a hole, the return would be
-    /// `[(false, 1), (true, 1), (false, 1)]` (in practice these are probably always at least page
-    /// sized).
-    pub(crate) fn scan_for_hole_ranges(&self) -> anyhow::Result<Vec<(bool, usize)>> {
-        Ok(vec![(false, self.mapping.size())])
+    /// `[1..2]` (in practice these are probably always at least page sized).
+    pub(crate) fn find_data_ranges(&self) -> anyhow::Result<Vec<std::ops::Range<usize>>> {
+        Ok(vec![0..self.mapping.size()])
     }
 
     pub(crate) fn zero_range(&self, offset: usize, size: usize) -> anyhow::Result<()> {

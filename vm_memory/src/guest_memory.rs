@@ -865,21 +865,19 @@ impl GuestMemory {
         };
 
         for region in self.regions.iter() {
-            let hole_ranges = region
-                .scan_for_hole_ranges()
-                .context("scan_for_hole_ranges failed")?;
-            let mut offset = 0;
-            for &(is_hole, size) in &hole_ranges {
-                if !is_hole {
-                    let region_vslice = region.mapping.get_slice(offset, size)?;
-                    w.write_all_volatile(region_vslice)?;
-                }
-                offset = offset.checked_add(size).unwrap();
+            let data_ranges = region
+                .find_data_ranges()
+                .context("find_data_ranges failed")?;
+            for range in &data_ranges {
+                let region_vslice = region
+                    .mapping
+                    .get_slice(range.start, range.end - range.start)?;
+                w.write_all_volatile(region_vslice)?;
             }
             metadata.regions.push(MemoryRegionSnapshotMetadata {
                 guest_base: region.guest_base.0,
                 size: region.mapping.size(),
-                hole_ranges,
+                data_ranges,
             });
         }
 
@@ -910,21 +908,35 @@ impl GuestMemory {
             let MemoryRegionSnapshotMetadata {
                 guest_base,
                 size,
-                hole_ranges,
+                data_ranges,
             } = metadata;
             if region.guest_base.0 != *guest_base || region.mapping.size() != *size {
                 bail!("snapshot memory regions don't match VM memory regions");
             }
 
-            let mut offset = 0;
-            for &(is_hole, size) in hole_ranges {
-                if !is_hole {
-                    let region_vslice = region.mapping.get_slice(offset, size)?;
-                    r.read_exact_volatile(region_vslice)?;
-                } else {
-                    region.zero_range(offset, size)?;
+            let mut prev_end = 0;
+            for range in data_ranges {
+                let hole_size = range
+                    .start
+                    .checked_sub(prev_end)
+                    .context("invalid data range")?;
+                if hole_size > 0 {
+                    region.zero_range(prev_end, hole_size)?;
                 }
-                offset = offset.checked_add(size).unwrap();
+                let region_vslice = region
+                    .mapping
+                    .get_slice(range.start, range.end - range.start)?;
+                r.read_exact_volatile(region_vslice)?;
+
+                prev_end = range.end;
+            }
+            let hole_size = region
+                .mapping
+                .size()
+                .checked_sub(prev_end)
+                .context("invalid data range")?;
+            if hole_size > 0 {
+                region.zero_range(prev_end, hole_size)?;
             }
         }
 
@@ -947,8 +959,9 @@ struct MemorySnapshotMetadata {
 struct MemoryRegionSnapshotMetadata {
     guest_base: u64,
     size: usize,
-    // (is_hole, size) ranges. The memory snapshot file will only store the non-hole ranges.
-    hole_ranges: Vec<(bool, usize)>,
+    // Ranges of the mmap that are stored in the snapshot file. All other ranges of the region are
+    // zeros.
+    data_ranges: Vec<std::ops::Range<usize>>,
 }
 
 // SAFETY:
@@ -1188,27 +1201,27 @@ mod tests {
                     MemoryRegionSnapshotMetadata {
                         guest_base: 0,
                         size: 0x10000,
-                        hole_ranges: vec![(true, 0xF000), (false, 0x1000)]
+                        data_ranges: vec![0x0F000..0x10000],
                     },
                     MemoryRegionSnapshotMetadata {
                         guest_base: 0x10000,
                         size: 0x10000,
-                        hole_ranges: vec![(false, 0x1000), (true, 0xF000)]
+                        data_ranges: vec![0x00000..0x01000],
                     },
                     MemoryRegionSnapshotMetadata {
                         guest_base: 0x20000,
                         size: 0x10000,
-                        hole_ranges: vec![(true, 0x9000), (false, 0x1000), (true, 0x6000)]
+                        data_ranges: vec![0x09000..0x0A000],
                     },
                     MemoryRegionSnapshotMetadata {
                         guest_base: 0x30000,
                         size: 0x10000,
-                        hole_ranges: vec![(true, 0x10000)]
+                        data_ranges: vec![],
                     },
                     MemoryRegionSnapshotMetadata {
                         guest_base: 0x40000,
                         size: 0x1000,
-                        hole_ranges: vec![(false, 0x1000)]
+                        data_ranges: vec![0x00000..0x01000],
                     }
                 ],
             }
@@ -1222,27 +1235,27 @@ mod tests {
                     MemoryRegionSnapshotMetadata {
                         guest_base: 0,
                         size: 0x10000,
-                        hole_ranges: vec![(false, 0x10000)]
+                        data_ranges: vec![0x00000..0x10000],
                     },
                     MemoryRegionSnapshotMetadata {
                         guest_base: 0x10000,
                         size: 0x10000,
-                        hole_ranges: vec![(false, 0x10000)]
+                        data_ranges: vec![0x00000..0x10000],
                     },
                     MemoryRegionSnapshotMetadata {
                         guest_base: 0x20000,
                         size: 0x10000,
-                        hole_ranges: vec![(false, 0x10000)]
+                        data_ranges: vec![0x00000..0x10000],
                     },
                     MemoryRegionSnapshotMetadata {
                         guest_base: 0x30000,
                         size: 0x10000,
-                        hole_ranges: vec![(false, 0x10000)]
+                        data_ranges: vec![0x00000..0x10000],
                     },
                     MemoryRegionSnapshotMetadata {
                         guest_base: 0x40000,
                         size: 0x1000,
-                        hole_ranges: vec![(false, 0x1000)]
+                        data_ranges: vec![0x00000..0x01000],
                     }
                 ],
             }

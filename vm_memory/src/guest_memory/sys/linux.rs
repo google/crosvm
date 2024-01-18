@@ -88,32 +88,23 @@ impl GuestMemory {
 }
 
 impl MemoryRegion {
-    /// Attempts to determine which ranges of memory are holes (unallocated memory, all zeroes).
-    /// True indicates a hole and the `usize` is the size of the range.
+    /// Finds ranges of memory that might have non-zero data (i.e. not unallocated memory). The
+    /// ranges are offsets into the region's mmap, not offsets into the backing file.
     ///
     /// For example, if there were three bytes and the second byte was a hole, the return would be
-    /// `[(false, 1), (true, 1), (false, 1)]` (in practice these are probably always at least page
-    /// sized).
-    pub(crate) fn scan_for_hole_ranges(&self) -> anyhow::Result<Vec<(bool, usize)>> {
-        let mut ranges = Vec::new();
-        let mut cur = self.obj_offset;
-        for r in FileDataIterator::new(
+    /// `[1..2]` (in practice these are probably always at least page sized).
+    pub(crate) fn find_data_ranges(&self) -> anyhow::Result<Vec<std::ops::Range<usize>>> {
+        Ok(FileDataIterator::new(
             &self.shared_obj,
             self.obj_offset,
             u64::try_from(self.mapping.size()).unwrap(),
-        ) {
-            if r.start > cur {
-                ranges.push((true, (r.start - cur).try_into().unwrap()));
-            }
-            ranges.push((false, (r.end - r.start).try_into().unwrap()));
-            cur = r.end;
-        }
-        let end = self.obj_offset + u64::try_from(self.mapping.size()).unwrap();
-        if cur < end {
-            ranges.push((true, (end - cur).try_into().unwrap()));
-        }
-
-        Ok(ranges)
+        )
+        // Convert from file offsets to mmap offsets.
+        .map(|range| {
+            usize::try_from(range.start - self.obj_offset).unwrap()
+                ..usize::try_from(range.end - self.obj_offset).unwrap()
+        })
+        .collect())
     }
 
     pub(crate) fn zero_range(&self, offset: usize, size: usize) -> anyhow::Result<()> {
