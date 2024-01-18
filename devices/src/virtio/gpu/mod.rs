@@ -1140,6 +1140,7 @@ impl DisplayBackend {
                     /* win_metrics= */ None,
                     display_properties.clone(),
                     gpu_display_wait_descriptor_ctrl,
+                    None,
                 ),
                 None => {
                     error!("wndproc_thread is none");

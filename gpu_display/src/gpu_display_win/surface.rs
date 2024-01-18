@@ -3,7 +3,13 @@
 // found in the LICENSE file.
 
 use std::ops::ControlFlow;
+use std::ops::Deref;
+#[cfg(feature = "gfxstream")]
+use std::os::raw::c_int;
+#[cfg(feature = "gfxstream")]
+use std::os::raw::c_void;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::Weak;
 use std::time::Instant;
 
@@ -14,8 +20,10 @@ use base::info;
 use base::warn;
 use base::Tube;
 use euclid::size2;
+use euclid::Box2D;
 use euclid::Size2D;
 use metrics::sys::windows::Metrics;
+use sync::Mutex;
 use win_util::keys_down;
 use winapi::shared::minwindef::HIWORD;
 use winapi::shared::minwindef::LOWORD;
@@ -31,6 +39,8 @@ use super::keyboard_input_manager::KeyboardInputManager;
 use super::math_util::Size2DCheckedCast;
 use super::mouse_input_manager::MouseInputManager;
 use super::virtual_display_manager::NoopVirtualDisplayManager as VirtualDisplayManager;
+#[cfg(feature = "gfxstream")]
+use super::window::BasicWindow;
 use super::window::GuiWindow;
 use super::window_manager::NoopWindowManager as WindowManager;
 use super::window_message_processor::GeneralMessage;
@@ -42,7 +52,55 @@ use super::DisplayProperties;
 use super::HostWindowSpace;
 use super::MouseMode;
 use super::VirtualDisplaySpace;
+use super::VulkanDisplayWrapper;
 use crate::EventDeviceKind;
+
+#[cfg(feature = "gfxstream")]
+#[link(name = "gfxstream_backend")]
+extern "C" {
+    fn gfxstream_backend_setup_window(
+        hwnd: *const c_void,
+        window_x: c_int,
+        window_y: c_int,
+        window_width: c_int,
+        window_height: c_int,
+        fb_width: c_int,
+        fb_height: c_int,
+    );
+}
+
+// Updates the rectangle in the window's client area to which gfxstream renders.
+fn update_virtual_display_projection(
+    #[allow(unused)] vulkan_display: impl Deref<Target = VulkanDisplayWrapper>,
+    #[allow(unused)] window: &GuiWindow,
+    #[allow(unused)] projection_box: &Box2D<i32, HostWindowSpace>,
+) {
+    #[cfg(feature = "vulkan_display")]
+    if let VulkanDisplayWrapper::Initialized(ref vulkan_display) = *vulkan_display {
+        if let Err(err) = vulkan_display
+            .move_window(&projection_box.cast_unit())
+            .with_context(|| "move the subwindow")
+        {
+            error!("{:?}", err);
+        }
+        #[cfg(feature = "gfxstream")]
+        return;
+    }
+
+    // Safe because `Window` object won't outlive the HWND.
+    #[cfg(feature = "gfxstream")]
+    unsafe {
+        gfxstream_backend_setup_window(
+            window.handle() as *const c_void,
+            projection_box.min.x,
+            projection_box.min.y,
+            projection_box.width(),
+            projection_box.height(),
+            projection_box.width(),
+            projection_box.height(),
+        );
+    }
+}
 
 pub struct Surface {
     surface_id: u32,
@@ -51,6 +109,7 @@ pub struct Surface {
     virtual_display_manager: VirtualDisplayManager,
     #[allow(dead_code)]
     gpu_main_display_tube: Option<Rc<Tube>>,
+    vulkan_display: Arc<Mutex<VulkanDisplayWrapper>>,
 }
 
 impl Surface {
@@ -61,6 +120,7 @@ impl Surface {
         _metrics: Option<Weak<Metrics>>,
         display_properties: &DisplayProperties,
         resources: SurfaceResources,
+        vulkan_display: Arc<Mutex<VulkanDisplayWrapper>>,
     ) -> Result<Self> {
         static CONTEXT_MESSAGE: &str = "When creating Surface";
         info!(
@@ -73,7 +133,9 @@ impl Surface {
         let virtual_display_manager =
             VirtualDisplayManager::new(&initial_host_viewport_size, virtual_display_size);
         // This will make gfxstream initialize the child window to which it will render.
-        window.update_virtual_display_projection(
+        update_virtual_display_projection(
+            vulkan_display.lock(),
+            window,
             &virtual_display_manager.get_virtual_display_projection_box(),
         );
 
@@ -101,6 +163,7 @@ impl Surface {
             .context(CONTEXT_MESSAGE)?,
             virtual_display_manager,
             gpu_main_display_tube,
+            vulkan_display,
         })
     }
 
@@ -146,7 +209,11 @@ impl Surface {
         let virtual_display_projection_box = self
             .virtual_display_manager
             .get_virtual_display_projection_box();
-        window.update_virtual_display_projection(&virtual_display_projection_box);
+        update_virtual_display_projection(
+            self.vulkan_display.lock(),
+            window,
+            &virtual_display_projection_box,
+        );
         self.mouse_input.update_host_to_guest_transform(
             *self.virtual_display_manager.get_host_to_guest_transform(),
         );

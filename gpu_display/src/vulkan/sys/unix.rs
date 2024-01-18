@@ -36,7 +36,7 @@ impl Window for StubWindow {
     }
 }
 
-pub(crate) struct StubWindowEventLoop<AppState: ApplicationState>(PhantomData<AppState>);
+pub struct StubWindowEventLoop<AppState: ApplicationState>(PhantomData<AppState>);
 
 impl<AppState: ApplicationState> WindowEventLoop<AppState> for StubWindowEventLoop<AppState> {
     type WindowType = StubWindow;

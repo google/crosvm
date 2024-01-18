@@ -11,6 +11,7 @@ mod dwl;
 
 use std::cell::Cell;
 use std::cmp::max;
+use std::collections::HashMap;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem::zeroed;
@@ -19,6 +20,7 @@ use std::path::Path;
 use std::process::abort;
 use std::ptr::null;
 
+use anyhow::bail;
 use base::error;
 use base::round_up_to_page_size;
 use base::AsRawDescriptor;
@@ -29,15 +31,18 @@ use base::SharedMemory;
 use base::VolatileMemory;
 use dwl::*;
 use linux_input_sys::virtio_input_event;
+use sync::Waitable;
 
+use crate::DisplayExternalResourceImport;
 use crate::DisplayT;
 use crate::EventDeviceKind;
+use crate::FlipToExtraInfo;
 use crate::GpuDisplayError;
 use crate::GpuDisplayEvents;
 use crate::GpuDisplayFramebuffer;
-use crate::GpuDisplayImport;
 use crate::GpuDisplayResult;
 use crate::GpuDisplaySurface;
+use crate::SemaphoreTimepoint;
 use crate::SurfaceType;
 use crate::SysDisplayT;
 
@@ -67,8 +72,6 @@ impl AsRawDescriptor for DwlContext {
 }
 
 struct DwlDmabuf(*mut dwl_dmabuf);
-
-impl GpuDisplayImport for DwlDmabuf {}
 
 impl Drop for DwlDmabuf {
     fn drop(&mut self) {
@@ -157,10 +160,17 @@ impl GpuDisplaySurface for WaylandSurface {
         }
     }
 
-    fn flip_to(&mut self, import_id: u32) {
+    fn flip_to(
+        &mut self,
+        import_id: u32,
+        _acquire_timepoint: Option<SemaphoreTimepoint>,
+        _release_timepoint: Option<SemaphoreTimepoint>,
+        _extra_info: Option<FlipToExtraInfo>,
+    ) -> anyhow::Result<Waitable> {
         // SAFETY:
         // Safe because only a valid surface and import_id is used.
-        unsafe { dwl_surface_flip_to(self.surface(), import_id) }
+        unsafe { dwl_surface_flip_to(self.surface(), import_id) };
+        Ok(Waitable::signaled())
     }
 
     fn commit(&mut self) -> GpuDisplayResult<()> {
@@ -188,6 +198,7 @@ impl GpuDisplaySurface for WaylandSurface {
 /// descriptor. When the connection is readable, `dispatch_events` can be called to process it.
 
 pub struct DisplayWl {
+    dmabufs: HashMap<u32, DwlDmabuf>,
     ctx: DwlContext,
     current_event: Option<dwl_event>,
     mt_tracking_id: u16,
@@ -249,6 +260,7 @@ impl DisplayWl {
         }
 
         Ok(DisplayWl {
+            dmabufs: HashMap::new(),
             ctx,
             current_event: None,
             mt_tracking_id: 0u16,
@@ -422,40 +434,56 @@ impl DisplayT for DisplayWl {
         }))
     }
 
-    fn import_memory(
+    fn import_resource(
         &mut self,
         import_id: u32,
-        descriptor: &dyn AsRawDescriptor,
-        offset: u32,
-        stride: u32,
-        modifiers: u64,
-        width: u32,
-        height: u32,
-        fourcc: u32,
-    ) -> GpuDisplayResult<Box<dyn GpuDisplayImport>> {
-        // SAFETY:
-        // Safe given that the context pointer is valid. Any other invalid parameters would be
-        // rejected by dwl_context_dmabuf_new safely. We check that the resulting dmabuf is valid
-        // before filing it away.
-        let dmabuf = DwlDmabuf(unsafe {
-            dwl_context_dmabuf_new(
-                self.ctx(),
-                import_id,
-                descriptor.as_raw_descriptor(),
-                offset,
-                stride,
-                modifiers,
-                width,
-                height,
-                fourcc,
-            )
-        });
+        _surface_id: u32,
+        external_display_resource: DisplayExternalResourceImport,
+    ) -> anyhow::Result<()> {
+        // This let pattern is always true if the vulkan_display feature is disabled.
+        #[allow(irrefutable_let_patterns)]
+        if let DisplayExternalResourceImport::Dmabuf {
+            descriptor,
+            offset,
+            stride,
+            modifiers,
+            width,
+            height,
+            fourcc,
+        } = external_display_resource
+        {
+            // SAFETY:
+            // Safe given that the context pointer is valid. Any other invalid parameters would be
+            // rejected by dwl_context_dmabuf_new safely. We check that the resulting dmabuf is
+            // valid before filing it away.
+            let dmabuf = DwlDmabuf(unsafe {
+                dwl_context_dmabuf_new(
+                    self.ctx(),
+                    import_id,
+                    descriptor.as_raw_descriptor(),
+                    offset,
+                    stride,
+                    modifiers,
+                    width,
+                    height,
+                    fourcc,
+                )
+            });
 
-        if dmabuf.0.is_null() {
-            return Err(GpuDisplayError::FailedImport);
+            if dmabuf.0.is_null() {
+                bail!("dmabuf import failed.");
+            }
+
+            self.dmabufs.insert(import_id, dmabuf);
+
+            Ok(())
+        } else {
+            bail!("gpu_display_wl only supports Dmabuf imports");
         }
+    }
 
-        Ok(Box::new(dmabuf))
+    fn release_import(&mut self, _surface_id: u32, import_id: u32) {
+        self.dmabufs.remove(&import_id);
     }
 }
 

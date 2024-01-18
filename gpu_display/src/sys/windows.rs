@@ -19,6 +19,7 @@ use crate::EventDevice;
 use crate::GpuDisplay;
 use crate::GpuDisplayExt;
 use crate::GpuDisplayResult;
+use crate::VulkanCreateParams;
 use crate::WindowProcedureThread;
 
 pub(crate) trait WinDisplayT: DisplayT {
@@ -66,6 +67,7 @@ pub trait WinGpuDisplayExt {
         win_metrics: Option<Weak<Metrics>>,
         display_properties: DisplayProperties,
         gpu_display_wait_descriptor_ctrl: SendTube,
+        vulkan_display_create_params: Option<VulkanCreateParams>,
     ) -> GpuDisplayResult<GpuDisplay>;
 }
 
@@ -75,12 +77,14 @@ impl WinGpuDisplayExt for GpuDisplay {
         win_metrics: Option<Weak<Metrics>>,
         display_properties: DisplayProperties,
         gpu_display_wait_descriptor_ctrl: SendTube,
+        vulkan_display_create_params: Option<VulkanCreateParams>,
     ) -> GpuDisplayResult<GpuDisplay> {
         let display = DisplayWin::new(
             wndproc_thread,
             win_metrics,
             display_properties,
             gpu_display_wait_descriptor_ctrl,
+            vulkan_display_create_params,
         )?;
 
         let wait_ctx = WaitContext::new()?;
@@ -91,7 +95,6 @@ impl WinGpuDisplayExt for GpuDisplay {
             next_id: 1,
             event_devices: Default::default(),
             surfaces: Default::default(),
-            imports: Default::default(),
             wait_ctx,
         })
     }

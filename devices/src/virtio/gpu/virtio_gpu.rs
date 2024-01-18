@@ -351,9 +351,15 @@ impl VirtioGpuScanout {
         };
 
         if let Some(import_id) =
-            VirtioGpuScanout::import_resource_to_display(display, resource, rutabaga)
+            VirtioGpuScanout::import_resource_to_display(display, surface_id, resource, rutabaga)
         {
-            display.borrow_mut().flip_to(surface_id, import_id)?;
+            display
+                .borrow_mut()
+                .flip_to(surface_id, import_id, None, None, None)
+                .map_err(|e| {
+                    error!("flip_to failed: {:#}", e);
+                    ErrUnspec
+                })?;
             return Ok(OkNoData);
         }
 
@@ -384,6 +390,7 @@ impl VirtioGpuScanout {
 
     fn import_resource_to_display(
         display: &Rc<RefCell<GpuDisplay>>,
+        surface_id: u32,
         resource: &mut VirtioGpuResource,
         rutabaga: &mut Rutabaga,
     ) -> Option<u32> {
@@ -413,14 +420,17 @@ impl VirtioGpuScanout {
 
         let import_id = display
             .borrow_mut()
-            .import_memory(
-                &dmabuf,
-                offset,
-                stride,
-                query.modifier,
-                width,
-                height,
-                format,
+            .import_resource(
+                surface_id,
+                DisplayExternalResourceImport::Dmabuf {
+                    descriptor: &dmabuf,
+                    offset,
+                    stride,
+                    modifiers: query.modifier,
+                    width,
+                    height,
+                    fourcc: format,
+                },
             )
             .ok()?;
         resource.display_import = Some(import_id);

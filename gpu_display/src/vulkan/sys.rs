@@ -26,18 +26,18 @@ use vulkano::swapchain;
 
 type Surface = swapchain::Surface<Arc<dyn Any + Send + Sync>>;
 
-pub(crate) trait Window: Any + Send + Sync {
+pub trait Window: Any + Send + Sync {
     fn get_inner_size(&self) -> Result<Size2D<u32, UnknownUnit>>;
     fn create_vulkan_surface(self: Arc<Self>, instance: Arc<Instance>) -> Result<Arc<Surface>>;
 }
 
-pub(crate) trait ApplicationState {
+pub trait ApplicationState {
     type UserEvent: Send + 'static;
 
     fn process_event(&self, event: WindowEvent<Self::UserEvent>);
 }
 
-pub(crate) trait ApplicationStateBuilder: Send + 'static {
+pub trait ApplicationStateBuilder: Send + 'static {
     type Target: ApplicationState;
 
     fn build<T: Window>(self, window: Arc<T>) -> Result<Self::Target>;
@@ -45,12 +45,12 @@ pub(crate) trait ApplicationStateBuilder: Send + 'static {
 
 // Some platform may not support all the events.
 #[allow(dead_code)]
-pub(crate) enum WindowEvent<T: Send> {
+pub enum WindowEvent<T: Send> {
     Resized,
     User(T),
 }
 
-pub(crate) trait WindowEventLoop<State: ApplicationState>: Sized {
+pub trait WindowEventLoop<State: ApplicationState>: Sized + Send {
     type WindowType: Window;
 
     /// # Safety

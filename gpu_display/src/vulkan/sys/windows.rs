@@ -99,7 +99,7 @@ struct MessagePacket {
     l_param: LPARAM,
 }
 
-pub(crate) struct Window {
+pub struct Window {
     hwnd: isize,
     hmodule: isize,
     owner_thread_id: ThreadId,
@@ -489,11 +489,14 @@ where
     Ok(hwnd)
 }
 
-pub(crate) struct WindowsWindowEventLoop<AppState: ApplicationState> {
+pub struct WindowsWindowEventLoop<AppState: ApplicationState> {
     hwnd: HWND,
     user_event_tx: SyncSender<AppState::UserEvent>,
     event_loop_thread: Option<thread::JoinHandle<()>>,
 }
+
+// SAFETY: Safe because HWND handle can be used from multiple threads.
+unsafe impl<T: ApplicationState> Send for WindowsWindowEventLoop<T> {}
 
 impl<AppState: ApplicationState> WindowEventLoop<AppState> for WindowsWindowEventLoop<AppState> {
     type WindowType = Window;

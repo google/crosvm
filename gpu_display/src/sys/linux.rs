@@ -62,7 +62,6 @@ impl UnixGpuDisplayExt for GpuDisplay {
             next_id: 1,
             event_devices: Default::default(),
             surfaces: Default::default(),
-            imports: Default::default(),
             wait_ctx,
         })
     }

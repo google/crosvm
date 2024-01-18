@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![allow(dead_code)]
+#![cfg_attr(unix, allow(dead_code))]
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -18,7 +18,6 @@ use anyhow::ensure;
 use anyhow::format_err;
 use anyhow::Context;
 use anyhow::Result;
-use ash::vk::Extent3D;
 use ash::vk::UUID_SIZE;
 use ash::vk::{self};
 use base::error;
@@ -63,15 +62,12 @@ use self::sys::platform::import_semaphore_from_descriptor;
 use self::sys::platform::NativeWindowType;
 use self::sys::ApplicationState;
 use self::sys::ApplicationStateBuilder;
-use self::sys::PlatformWindowEventLoop;
+pub(crate) use self::sys::PlatformWindowEventLoop;
 use self::sys::Window;
 use self::sys::WindowEvent;
 use self::sys::WindowEventLoop;
-
-pub struct SemaphoreTimepoint {
-    pub import_id: u32,
-    pub value: u64,
-}
+use crate::SemaphoreTimepoint;
+use crate::VulkanDisplayImageImportMetadata;
 
 /// Vulkan Safety Notes:
 /// Most vulkan APIs are unsafe, but even the wrapper APIs like ash and vulkano will mark their
@@ -82,33 +78,10 @@ pub struct SemaphoreTimepoint {
 ///
 /// If the function is unsafe for any other reason we will still note why it's safe.
 
-pub struct VulkanDisplayImageImportMetadata {
-    // These fields go into a VkImageCreateInfo
-    pub flags: u32,
-    pub image_type: i32,
-    pub format: i32,
-    pub extent: Extent3D,
-    pub mip_levels: u32,
-    pub array_layers: u32,
-    pub samples: u32,
-    pub tiling: i32,
-    pub usage: u32,
-    pub sharing_mode: i32,
-    pub queue_family_indices: Vec<u32>,
-    pub initial_layout: i32,
-
-    // These fields go into a VkMemoryAllocateInfo
-    pub allocation_size: u64,
-    pub memory_type_index: u32,
-
-    // Additional information
-    pub dedicated_allocation: bool,
-}
-
 pub type SemaphoreId = u32;
 pub type ImageId = u32;
 
-pub(crate) enum UserEvent {
+pub enum UserEvent {
     GetVulkanDevice(Sender<Arc<Device>>),
     PostCommand {
         image: ExternalImage,
@@ -120,7 +93,7 @@ pub(crate) enum UserEvent {
     },
 }
 
-pub(crate) struct VulkanState {
+pub struct VulkanState {
     // Post worker submits renders and posts to vulkan. It needs to be in a RefCell because
     // process_event cannot take a mutable reference to ApplicationState.
     post_worker: RefCell<PostWorker>,
@@ -199,7 +172,7 @@ impl ApplicationStateBuilder for VulkanStateBuilder {
     }
 }
 
-pub(crate) struct VulkanDisplayImpl<T: WindowEventLoop<VulkanState>> {
+pub struct VulkanDisplayImpl<T: WindowEventLoop<VulkanState>> {
     ash_device: ash::Device,
     device: Arc<Device>,
     window_event_loop: T,
@@ -468,7 +441,7 @@ impl<T: WindowEventLoop<VulkanState>> VulkanDisplayImpl<T> {
     pub fn post(
         &mut self,
         image_id: ImageId,
-        last_layout_transition: (vk::ImageLayout, vk::ImageLayout),
+        last_layout_transition: (i32, i32),
         acquire_semaphore: Option<SemaphoreTimepoint>,
         release_semaphore: SemaphoreTimepoint,
     ) -> Result<Waitable> {
@@ -511,18 +484,22 @@ impl<T: WindowEventLoop<VulkanState>> VulkanDisplayImpl<T> {
         };
 
         let last_layout_transition: (ImageLayout, ImageLayout) = (
-            last_layout_transition.0.try_into().map_err(|_| {
-                anyhow!(
-                    "Failed to convert {:#x} to a valid image layout.",
-                    last_layout_transition.0.as_raw()
-                )
-            })?,
-            last_layout_transition.1.try_into().map_err(|_| {
-                anyhow!(
-                    "Failed to convert {:#x} to a valid image layout.",
-                    last_layout_transition.1.as_raw()
-                )
-            })?,
+            ash::vk::ImageLayout::from_raw(last_layout_transition.0)
+                .try_into()
+                .map_err(|_| {
+                    anyhow!(
+                        "Failed to convert {:#x} to a valid image layout.",
+                        last_layout_transition.0
+                    )
+                })?,
+            ash::vk::ImageLayout::from_raw(last_layout_transition.1)
+                .try_into()
+                .map_err(|_| {
+                    anyhow!(
+                        "Failed to convert {:#x} to a valid image layout.",
+                        last_layout_transition.1
+                    )
+                })?,
         );
 
         let (promise, waitable) = create_promise_and_waitable();

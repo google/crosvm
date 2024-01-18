@@ -5,8 +5,6 @@
 use std::convert::From;
 use std::fmt;
 use std::mem;
-#[cfg(feature = "gfxstream")]
-use std::os::raw::c_int;
 use std::os::raw::c_void;
 use std::ptr::null_mut;
 
@@ -18,7 +16,6 @@ use base::info;
 use base::warn;
 use euclid::point2;
 use euclid::size2;
-use euclid::Box2D;
 use euclid::Point2D;
 use euclid::Size2D;
 use win_util::syscall_bail;
@@ -118,20 +115,6 @@ use winapi::um::winuser::WM_SIZING;
 
 use super::math_util::*;
 use super::HostWindowSpace;
-
-#[cfg(feature = "gfxstream")]
-#[link(name = "gfxstream_backend")]
-extern "C" {
-    fn gfxstream_backend_setup_window(
-        hwnd: *const c_void,
-        window_x: c_int,
-        window_y: c_int,
-        window_width: c_int,
-        window_height: c_int,
-        fb_width: c_int,
-        fb_height: c_int,
-    );
-}
 
 // Windows desktop's default DPI at default scaling settings is 96.
 // (https://docs.microsoft.com/en-us/previous-versions/windows/desktop/mpc/pixel-density-and-usability)
@@ -382,26 +365,6 @@ impl GuiWindow {
         // SAFETY:
         // Safe because it is called from the same thread the created the window.
         unsafe { IsWindow(self.hwnd) != 0 }
-    }
-
-    /// Updates the rectangle in the window's client area to which gfxstream renders.
-    pub fn update_virtual_display_projection(
-        &self,
-        #[allow(unused)] projection_box: &Box2D<i32, HostWindowSpace>,
-    ) {
-        // Safe because `GuiWindow` object won't outlive the HWND.
-        #[cfg(feature = "gfxstream")]
-        unsafe {
-            gfxstream_backend_setup_window(
-                self.hwnd as *const c_void,
-                projection_box.min.x,
-                projection_box.min.y,
-                projection_box.width(),
-                projection_box.height(),
-                projection_box.width(),
-                projection_box.height(),
-            );
-        }
     }
 
     /// Calls `GetWindowLongPtrW()` internally.
