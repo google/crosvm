@@ -114,10 +114,10 @@ fn suspend_resume_system(disabled_sandbox: bool) -> anyhow::Result<()> {
     vm.resume_full().unwrap();
     assert_eq!("42", echo_cmd.wait_ok(&mut vm).unwrap().stdout.trim());
 
-    // shut down VM
-    // restore VM
     println!("restoring VM - to clean state");
 
+    // shut down VM
+    drop(vm);
     // Start up VM with cold restore.
     let mut vm = TestVm::new_cold_restore(new_config().extra_args(vec![
         "--restore".to_string(),
@@ -198,6 +198,7 @@ fn snapshot_vhost_user() {
         // suspend VM
         vm.suspend_full().unwrap();
         vm.snapshot(&snap_path).unwrap();
+        drop(vm);
     }
 
     let (_block_vu_device, _net_vu_device, block_socket, net_socket) = spin_up_vhost_user_devices();

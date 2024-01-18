@@ -88,6 +88,7 @@ fn host_to_guest_snapshot_restore() {
             "--no-usb".to_string(),
         ])
         .with_stdout_hardware("legacy-virtio-console");
+    drop(vm);
     vm = TestVm::new_cold_restore(config).unwrap();
     host_to_guest_connection(&mut vm, guest_cid, guest_port);
 }
@@ -117,6 +118,7 @@ fn host_to_guest_disable_sandbox_snapshot_restore() {
             "--no-usb".to_string(),
         ])
         .with_stdout_hardware("legacy-virtio-console");
+    drop(vm);
     vm = TestVm::new_cold_restore(config.disable_sandbox()).unwrap();
     host_to_guest_connection(&mut vm, guest_cid, guest_port);
 }
@@ -196,6 +198,7 @@ fn guest_to_host_snapshot_restore() {
             snap.to_str().unwrap().to_string(),
         ])
         .with_stdout_hardware("legacy-virtio-console");
+    drop(vm);
     vm = TestVm::new_cold_restore(config).unwrap();
     guest_to_host_connection(&mut vm, host_port);
 }
@@ -226,6 +229,7 @@ fn guest_to_host_disable_sandbox_snapshot_restore() {
             snap.to_str().unwrap().to_string(),
         ])
         .with_stdout_hardware("legacy-virtio-console");
+    drop(vm);
     vm = TestVm::new_cold_restore(config.disable_sandbox()).unwrap();
     guest_to_host_connection(&mut vm, host_port);
 }
