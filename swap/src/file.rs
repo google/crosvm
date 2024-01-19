@@ -821,9 +821,9 @@ mod tests {
         assert_page_content(&swap_file, 3, &vec![2; pagesize()]);
         assert!(swap_file.page_content(4, false).unwrap().is_none());
 
-        let data =
-            FileDataIterator::new(&file, 0, file.metadata().unwrap().len()).collect::<Vec<_>>();
-        assert_eq!(data, vec![0..4 * pagesize() as u64]);
+        let data = FileDataIterator::new(&file, 0, file.metadata().unwrap().len())
+            .collect::<std::result::Result<Vec<_>, _>>();
+        assert_eq!(data, Ok(vec![0..4 * pagesize() as u64]));
 
         buf[..pagesize()].fill(6);
         buf[pagesize()..2 * pagesize()].fill(7);
@@ -836,9 +836,9 @@ mod tests {
         assert_page_content(&swap_file, 4, &vec![8; pagesize()]);
         assert!(swap_file.page_content(5, false).unwrap().is_none());
 
-        let data =
-            FileDataIterator::new(&file, 0, file.metadata().unwrap().len()).collect::<Vec<_>>();
-        assert_eq!(data, vec![0..5 * pagesize() as u64]);
+        let data = FileDataIterator::new(&file, 0, file.metadata().unwrap().len())
+            .collect::<std::result::Result<Vec<_>, _>>();
+        assert_eq!(data, Ok(vec![0..5 * pagesize() as u64]));
     }
 
     #[test]
@@ -1010,9 +1010,9 @@ mod tests {
         assert_page_content(&swap_file, 8, &vec![3; pagesize()]);
         assert!(swap_file.page_content(9, true).unwrap().is_none());
 
-        let data =
-            FileDataIterator::new(&file, 0, file.metadata().unwrap().len()).collect::<Vec<_>>();
-        assert_eq!(data, vec![0..6 * pagesize() as u64]);
+        let data = FileDataIterator::new(&file, 0, file.metadata().unwrap().len())
+            .collect::<std::result::Result<Vec<_>, _>>();
+        assert_eq!(data, Ok(vec![0..6 * pagesize() as u64]));
     }
 
     #[test]

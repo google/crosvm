@@ -94,17 +94,18 @@ impl MemoryRegion {
     /// For example, if there were three bytes and the second byte was a hole, the return would be
     /// `[1..2]` (in practice these are probably always at least page sized).
     pub(crate) fn find_data_ranges(&self) -> anyhow::Result<Vec<std::ops::Range<usize>>> {
-        Ok(FileDataIterator::new(
+        FileDataIterator::new(
             &self.shared_obj,
             self.obj_offset,
             u64::try_from(self.mapping.size()).unwrap(),
         )
-        // Convert from file offsets to mmap offsets.
         .map(|range| {
-            usize::try_from(range.start - self.obj_offset).unwrap()
-                ..usize::try_from(range.end - self.obj_offset).unwrap()
+            let range = range?;
+            // Convert from file offsets to mmap offsets.
+            Ok(usize::try_from(range.start - self.obj_offset).unwrap()
+                ..usize::try_from(range.end - self.obj_offset).unwrap())
         })
-        .collect())
+        .collect()
     }
 
     pub(crate) fn zero_range(&self, offset: usize, size: usize) -> anyhow::Result<()> {

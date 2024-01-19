@@ -67,6 +67,9 @@ pub enum Error {
     #[error("userfaultfd failed : {0:?}")]
     /// userfaultfd operation failed
     Userfaultfd(#[from] UffdError),
+    #[error("failed to iterate data ranges: {0:?}")]
+    /// FileDataIterator failed
+    FileDataIterator(#[from] base::Error),
 }
 
 /// Remove the memory range on the guest memory.
@@ -425,7 +428,13 @@ impl<'a> PageHandler<'a> {
         let mut remaining_batch_size = hugepage_size;
         let mut batch_head_offset = 0;
         let mut cur_data = None;
-        while let Some(data_range) = cur_data.take().or_else(|| file_data.next()) {
+        while let Some(data_range) = cur_data
+            .take()
+            .map(Ok)
+            .or_else(|| file_data.next())
+            .transpose()
+            .map_err(Error::FileDataIterator)?
+        {
             // Assert offset is page aligned
             let offset = (data_range.start - base_offset) as usize;
             assert!(is_page_aligned(offset));

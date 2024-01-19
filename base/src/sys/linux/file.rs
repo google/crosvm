@@ -6,7 +6,6 @@
 
 use std::ops::Range;
 
-use crate::error;
 use crate::AsRawDescriptor;
 use crate::Error;
 use crate::Result;
@@ -70,6 +69,7 @@ pub struct FileDataIterator<'a> {
     fd: &'a dyn AsRawDescriptor,
     offset: u64,
     end: u64,
+    failed: bool,
 }
 
 impl<'a> FileDataIterator<'a> {
@@ -85,24 +85,28 @@ impl<'a> FileDataIterator<'a> {
             fd,
             offset,
             end: offset + len,
+            failed: false,
         }
     }
 }
 
 impl<'a> Iterator for FileDataIterator<'a> {
-    type Item = Range<u64>;
+    type Item = Result<Range<u64>>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.failed {
+            return None;
+        }
         match find_next_data(self.fd, self.offset, self.end - self.offset) {
             Ok(data_range) => {
                 if let Some(ref data_range) = data_range {
                     self.offset = data_range.end;
                 }
-                data_range
+                data_range.map(Ok)
             }
             Err(e) => {
-                error!("failed to get data range: {:?}", e);
-                None
+                self.failed = true;
+                Some(Err(e))
             }
         }
     }
@@ -125,7 +129,7 @@ mod tests {
 
         let iter = FileDataIterator::new(&file, 0, 4 * pagesize() as u64);
 
-        let result: Vec<Range<u64>> = iter.collect();
+        let result = iter.collect::<Result<Vec<Range<u64>>>>().unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], 0..(pagesize() as u64));
         assert_eq!(result[1], (2 * pagesize() as u64)..(4 * pagesize() as u64));
@@ -142,7 +146,7 @@ mod tests {
 
         let iter = FileDataIterator::new(&file, pagesize() as u64, pagesize() as u64);
 
-        let result: Vec<Range<u64>> = iter.collect();
+        let result = iter.collect::<Result<Vec<Range<u64>>>>().unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], (pagesize() as u64)..(2 * pagesize() as u64));
     }

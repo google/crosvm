@@ -84,8 +84,17 @@ const MAX_TRIM_PAGES: usize = 1024;
 fn count_resident_pages(guest_memory: &GuestMemory) -> usize {
     let mut pages = 0;
     for region in guest_memory.regions() {
-        let file_data = FileDataIterator::new(region.shm, region.shm_offset, region.size as u64);
-        let resident_bytes: u64 = file_data.map(|range| range.end - range.start).sum();
+        let mut resident_bytes = 0u64;
+        for range in FileDataIterator::new(region.shm, region.shm_offset, region.size as u64) {
+            let range = match range {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("failed to iterate data ranges: {e:?}");
+                    return 0;
+                }
+            };
+            resident_bytes += range.end - range.start;
+        }
         let resident_bytes = match resident_bytes.try_into() {
             Ok(n) => n,
             Err(e) => {
