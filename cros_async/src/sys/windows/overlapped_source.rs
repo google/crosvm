@@ -381,7 +381,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
 
     /// Yields the underlying IO source.
     pub fn into_source(self) -> F {
-        unimplemented!("`into_source` is not supported on Windows.")
+        self.source
     }
 
     /// Provides a mutable ref to the underlying IO source.
