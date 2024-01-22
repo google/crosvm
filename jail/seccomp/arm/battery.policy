@@ -5,8 +5,10 @@
 @include /usr/share/policy/crosvm/common_device.policy
 
 # Syscalls used by power_monitor's powerd implementation.
+clock_getres_time64: 1
 connect: 1
 geteuid32: 1
+getrandom: 1
 getresgid32: 1
 getresuid32: 1
 getsockname: 1
