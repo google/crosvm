@@ -34,7 +34,8 @@ Libs: -L${libdir} -lrutabaga_gfx_ffi
 
     // Write the .pc file to the output directory
     let mut pc_file = File::create(format!(
-        "target/{}/rutabaga_gfx_ffi.pc",
+        "{}/{}/rutabaga_gfx_ffi.pc",
+        env::var("CARGO_TARGET_DIR").as_deref().unwrap_or("target"),
         env::var("PROFILE").unwrap()
     ))
     .unwrap();
