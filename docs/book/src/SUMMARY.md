@@ -16,6 +16,7 @@
   - [Fuzzing](./testing/fuzzing.md)
 - [Devices](./devices/index.md)
   - [Block](./devices/block.md)
+  - [Input](./devices/input.md)
   - [Network](./devices/net.md)
   - [Balloon](./devices/balloon.md)
   - [SCSI (experimental)](./devices/scsi.md)

@@ -119,6 +119,7 @@ use win_util::ProcessType;
 use winapi::shared::winerror::ERROR_ACCESS_DENIED;
 use winapi::um::processthreadsapi::TerminateProcess;
 
+use crate::crosvm::config::InputDeviceOption;
 #[cfg(feature = "gpu")]
 use crate::sys::windows::get_gpu_product_configs;
 #[cfg(feature = "audio")]
@@ -1681,20 +1682,24 @@ fn platform_create_input_event_config(cfg: &Config) -> Result<InputEventSplitCon
     let mut mouse_pipes = vec![];
     let mut keyboard_pipes = vec![];
 
-    for _ in cfg.virtio_multi_touch.iter() {
-        let (event_device_pipe, virtio_input_pipe) =
-            StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
-                .exit_context(Exit::EventDeviceSetup, "failed to set up EventDevice")?;
-        event_devices.push(EventDevice::touchscreen(event_device_pipe));
-        multi_touch_pipes.push(virtio_input_pipe);
-    }
-
-    for _ in cfg.virtio_mice.iter() {
-        let (event_device_pipe, virtio_input_pipe) =
-            StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
-                .exit_context(Exit::EventDeviceSetup, "failed to set up EventDevice")?;
-        event_devices.push(EventDevice::mouse(event_device_pipe));
-        mouse_pipes.push(virtio_input_pipe);
+    for input in &cfg.virtio_input {
+        match input {
+            InputDeviceOption::MultiTouch { .. } => {
+                let (event_device_pipe, virtio_input_pipe) =
+                    StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
+                        .exit_context(Exit::EventDeviceSetup, "failed to set up EventDevice")?;
+                event_devices.push(EventDevice::touchscreen(event_device_pipe));
+                multi_touch_pipes.push(virtio_input_pipe);
+            }
+            InputDeviceOption::Mouse { .. } => {
+                let (event_device_pipe, virtio_input_pipe) =
+                    StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
+                        .exit_context(Exit::EventDeviceSetup, "failed to set up EventDevice")?;
+                event_devices.push(EventDevice::mouse(event_device_pipe));
+                mouse_pipes.push(virtio_input_pipe);
+            }
+            _ => {}
+        }
     }
 
     // One keyboard

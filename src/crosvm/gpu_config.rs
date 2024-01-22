@@ -137,12 +137,8 @@ pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
         let is_4k_uhd_enabled = false;
         let (width, height) =
             gpu_parameters.display_params[0].get_virtual_display_size_4k_uhd(is_4k_uhd_enabled);
-        if let Some(virtio_multi_touch) = cfg.virtio_multi_touch.first_mut() {
-            virtio_multi_touch.set_default_size(width, height);
-        }
-        if let Some(virtio_single_touch) = cfg.virtio_single_touch.first_mut() {
-            virtio_single_touch.set_default_size(width, height);
-        }
+        cfg.display_input_width = Some(width);
+        cfg.display_input_height = Some(height);
     }
     Ok(())
 }

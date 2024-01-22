@@ -188,7 +188,10 @@ use crate::crosvm::config::Config;
 use crate::crosvm::config::Executable;
 use crate::crosvm::config::FileBackedMappingParameters;
 use crate::crosvm::config::HypervisorKind;
+use crate::crosvm::config::InputDeviceOption;
 use crate::crosvm::config::IrqChipKind;
+use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_HEIGHT;
+use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_WIDTH;
 #[cfg(feature = "gdb")]
 use crate::crosvm::gdb::gdb_thread;
 #[cfg(feature = "gdb")]
@@ -287,14 +290,29 @@ fn create_virtio_devices(
                 let (event_device_socket, virtio_dev_socket) =
                     StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
                         .context("failed to create socket")?;
-                let multi_touch_spec = cfg.virtio_multi_touch.first();
-                let (multi_touch_width, multi_touch_height) = multi_touch_spec
-                    .as_ref()
-                    .map(|multi_touch_spec| multi_touch_spec.get_size())
-                    .unwrap_or((gpu_display_w, gpu_display_h));
-                let multi_touch_name = multi_touch_spec
-                    .as_ref()
-                    .and_then(|multi_touch_spec| multi_touch_spec.get_name());
+                let mut multi_touch_width = gpu_display_w;
+                let mut multi_touch_height = gpu_display_h;
+                let mut multi_touch_name = None;
+                for input in &cfg.virtio_input {
+                    if let InputDeviceOption::MultiTouch {
+                        width,
+                        height,
+                        name,
+                        ..
+                    } = input
+                    {
+                        if let Some(width) = width {
+                            multi_touch_width = *width;
+                        }
+                        if let Some(height) = height {
+                            multi_touch_height = *height;
+                        }
+                        if let Some(name) = name {
+                            multi_touch_name = Some(name.as_str());
+                        }
+                        break;
+                    }
+                }
                 let dev = virtio::input::new_multi_touch(
                     // u32::MAX is the least likely to collide with the indices generated above for
                     // the multi_touch options, which begin at 0.
@@ -392,75 +410,134 @@ fn create_virtio_devices(
         }
     }
 
-    for (idx, single_touch_spec) in cfg.virtio_single_touch.iter().enumerate() {
-        devs.push(create_single_touch_device(
-            cfg.protection_type,
-            &cfg.jail_config,
-            single_touch_spec,
-            idx as u32,
-        )?);
-    }
-
-    for (idx, multi_touch_spec) in cfg.virtio_multi_touch.iter().enumerate() {
-        devs.push(create_multi_touch_device(
-            cfg.protection_type,
-            &cfg.jail_config,
-            multi_touch_spec,
-            idx as u32,
-        )?);
-    }
-
-    for (idx, trackpad_spec) in cfg.virtio_trackpad.iter().enumerate() {
-        devs.push(create_trackpad_device(
-            cfg.protection_type,
-            &cfg.jail_config,
-            trackpad_spec,
-            idx as u32,
-        )?);
-    }
-
-    for (idx, mouse_socket) in cfg.virtio_mice.iter().enumerate() {
-        devs.push(create_mouse_device(
-            cfg.protection_type,
-            &cfg.jail_config,
-            mouse_socket,
-            idx as u32,
-        )?);
-    }
-
-    for (idx, keyboard_socket) in cfg.virtio_keyboard.iter().enumerate() {
-        devs.push(create_keyboard_device(
-            cfg.protection_type,
-            &cfg.jail_config,
-            keyboard_socket,
-            idx as u32,
-        )?);
-    }
-
-    for (idx, switches_socket) in cfg.virtio_switches.iter().enumerate() {
-        devs.push(create_switches_device(
-            cfg.protection_type,
-            &cfg.jail_config,
-            switches_socket,
-            idx as u32,
-        )?);
-    }
-
-    for (idx, rotary_socket) in cfg.virtio_rotary.iter().enumerate() {
-        devs.push(create_rotary_device(
-            cfg.protection_type,
-            &cfg.jail_config,
-            rotary_socket,
-            idx as u32,
-        )?);
-    }
-
-    for dev_path in &cfg.virtio_input_evdevs {
-        devs.push(create_vinput_device(
-            cfg.protection_type,
-            &cfg.jail_config,
-            dev_path,
-        )?);
+    let mut keyboard_idx = 0;
+    let mut mouse_idx = 0;
+    let mut rotary_idx = 0;
+    let mut switches_idx = 0;
+    let mut multi_touch_idx = 0;
+    let mut single_touch_idx = 0;
+    let mut trackpad_idx = 0;
+    for input in &cfg.virtio_input {
+        let input_dev = match input {
+            InputDeviceOption::Evdev { path } => {
+                create_vinput_device(cfg.protection_type, &cfg.jail_config, path.as_path())?
+            }
+            InputDeviceOption::Keyboard { path } => {
+                let dev = create_keyboard_device(
+                    cfg.protection_type,
+                    &cfg.jail_config,
+                    path.as_path(),
+                    keyboard_idx,
+                )?;
+                keyboard_idx += 1;
+                dev
+            }
+            InputDeviceOption::Mouse { path } => {
+                let dev = create_mouse_device(
+                    cfg.protection_type,
+                    &cfg.jail_config,
+                    path.as_path(),
+                    mouse_idx,
+                )?;
+                mouse_idx += 1;
+                dev
+            }
+            InputDeviceOption::MultiTouch {
+                path,
+                width,
+                height,
+                name,
+            } => {
+                let mut width = *width;
+                let mut height = *height;
+                if multi_touch_idx == 0 {
+                    if width.is_none() {
+                        width = cfg.display_input_width;
+                    }
+                    if height.is_none() {
+                        height = cfg.display_input_height;
+                    }
+                }
+                let dev = create_multi_touch_device(
+                    cfg.protection_type,
+                    &cfg.jail_config,
+                    path.as_path(),
+                    width.unwrap_or(DEFAULT_TOUCH_DEVICE_WIDTH),
+                    height.unwrap_or(DEFAULT_TOUCH_DEVICE_HEIGHT),
+                    name.as_deref(),
+                    multi_touch_idx,
+                )?;
+                multi_touch_idx += 1;
+                dev
+            }
+            InputDeviceOption::Rotary { path } => {
+                let dev = create_rotary_device(
+                    cfg.protection_type,
+                    &cfg.jail_config,
+                    path.as_path(),
+                    rotary_idx,
+                )?;
+                rotary_idx += 1;
+                dev
+            }
+            InputDeviceOption::SingleTouch {
+                path,
+                width,
+                height,
+                name,
+            } => {
+                let mut width = *width;
+                let mut height = *height;
+                if single_touch_idx == 0 {
+                    if width.is_none() {
+                        width = cfg.display_input_width;
+                    }
+                    if height.is_none() {
+                        height = cfg.display_input_height;
+                    }
+                }
+                let dev = create_single_touch_device(
+                    cfg.protection_type,
+                    &cfg.jail_config,
+                    path.as_path(),
+                    width.unwrap_or(DEFAULT_TOUCH_DEVICE_WIDTH),
+                    height.unwrap_or(DEFAULT_TOUCH_DEVICE_HEIGHT),
+                    name.as_deref(),
+                    single_touch_idx,
+                )?;
+                single_touch_idx += 1;
+                dev
+            }
+            InputDeviceOption::Switches { path } => {
+                let dev = create_switches_device(
+                    cfg.protection_type,
+                    &cfg.jail_config,
+                    path.as_path(),
+                    switches_idx,
+                )?;
+                switches_idx += 1;
+                dev
+            }
+            InputDeviceOption::Trackpad {
+                path,
+                width,
+                height,
+                name,
+            } => {
+                let dev = create_trackpad_device(
+                    cfg.protection_type,
+                    &cfg.jail_config,
+                    path.as_path(),
+                    width.unwrap_or(DEFAULT_TOUCH_DEVICE_WIDTH),
+                    height.unwrap_or(DEFAULT_TOUCH_DEVICE_HEIGHT),
+                    name.as_deref(),
+                    trackpad_idx,
+                )?;
+                trackpad_idx += 1;
+                dev
+            }
+        };
+        devs.push(input_dev);
     }
 
     #[cfg(feature = "balloon")]

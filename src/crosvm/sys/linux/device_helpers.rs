@@ -84,7 +84,6 @@ use sync::Mutex;
 use vm_control::api::VmMemoryClient;
 use vm_memory::GuestAddress;
 
-use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::config::VhostUserFrontendOption;
 use crate::crosvm::config::VhostUserFsOption;
 
@@ -459,19 +458,19 @@ pub fn create_vtpm_proxy_device(
     })
 }
 
-pub fn create_single_touch_device(
+pub fn create_single_touch_device<T: IntoUnixStream>(
     protection_type: ProtectionType,
     jail_config: &Option<JailConfig>,
-    single_touch_spec: &TouchDeviceOption,
+    single_touch_socket: T,
+    width: u32,
+    height: u32,
+    name: Option<&str>,
     idx: u32,
 ) -> DeviceResult {
-    let socket = single_touch_spec
-        .get_path()
+    let socket = single_touch_socket
         .into_unix_stream()
         .context("failed configuring virtio single touch")?;
 
-    let (width, height) = single_touch_spec.get_size();
-    let name = single_touch_spec.get_name();
     let dev = virtio::input::new_single_touch(
         idx,
         socket,
@@ -487,19 +486,19 @@ pub fn create_single_touch_device(
     })
 }
 
-pub fn create_multi_touch_device(
+pub fn create_multi_touch_device<T: IntoUnixStream>(
     protection_type: ProtectionType,
     jail_config: &Option<JailConfig>,
-    multi_touch_spec: &TouchDeviceOption,
+    multi_touch_socket: T,
+    width: u32,
+    height: u32,
+    name: Option<&str>,
     idx: u32,
 ) -> DeviceResult {
-    let socket = multi_touch_spec
-        .get_path()
+    let socket = multi_touch_socket
         .into_unix_stream()
         .context("failed configuring virtio multi touch")?;
 
-    let (width, height) = multi_touch_spec.get_size();
-    let name = multi_touch_spec.get_name();
     let dev = virtio::input::new_multi_touch(
         idx,
         socket,
@@ -516,19 +515,19 @@ pub fn create_multi_touch_device(
     })
 }
 
-pub fn create_trackpad_device(
+pub fn create_trackpad_device<T: IntoUnixStream>(
     protection_type: ProtectionType,
     jail_config: &Option<JailConfig>,
-    trackpad_spec: &TouchDeviceOption,
+    trackpad_socket: T,
+    width: u32,
+    height: u32,
+    name: Option<&str>,
     idx: u32,
 ) -> DeviceResult {
-    let socket = trackpad_spec
-        .get_path()
+    let socket = trackpad_socket
         .into_unix_stream()
         .context("failed configuring virtio trackpad")?;
 
-    let (width, height) = trackpad_spec.get_size();
-    let name = trackpad_spec.get_name();
     let dev = virtio::input::new_trackpad(
         idx,
         socket,

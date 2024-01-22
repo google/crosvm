@@ -88,6 +88,7 @@ use crate::crosvm::config::DtboOption;
 use crate::crosvm::config::Executable;
 use crate::crosvm::config::FileBackedMappingParameters;
 use crate::crosvm::config::HypervisorKind;
+use crate::crosvm::config::InputDeviceOption;
 use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::config::MemOptions;
 use crate::crosvm::config::TouchDeviceOption;
@@ -1419,6 +1420,24 @@ pub struct RunCommand {
     #[merge(strategy = overwrite_option)]
     /// initial ramdisk to load
     pub initrd: Option<PathBuf>,
+
+    #[argh(option, arg_name = "TYPE[OPTIONS]")]
+    #[serde(default)]
+    #[merge(strategy = append)]
+    /// virtio-input device
+    /// TYPE is an input device type, and OPTIONS are key=value
+    /// pairs specific to the device type:
+    ///     evdev[path=PATH]
+    ///     keyboard[path=PATH]
+    ///     mouse[path=PATH]
+    ///     multi-touch[path=PATH,width=W,height=H,name=N]
+    ///     rotary[path=PATH]
+    ///     single-touch[path=PATH,width=W,height=H,name=N]
+    ///     switches[path=PATH]
+    ///     trackpad[path=PATH,width=W,height=H,name=N]
+    /// See <https://crosvm.dev/book/devices/input.html> for more
+    /// information.
+    pub input: Vec<InputDeviceOption>,
 
     #[argh(option, arg_name = "kernel|split|userspace")]
     #[merge(strategy = overwrite_option)]
@@ -2908,14 +2927,97 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.vtpm_proxy = cmd.vtpm_proxy.unwrap_or_default();
         }
 
-        cfg.virtio_single_touch = cmd.single_touch;
-        cfg.virtio_multi_touch = cmd.multi_touch;
-        cfg.virtio_trackpad = cmd.trackpad;
-        cfg.virtio_mice = cmd.mouse;
-        cfg.virtio_keyboard = cmd.keyboard;
-        cfg.virtio_switches = cmd.switches;
-        cfg.virtio_rotary = cmd.rotary;
-        cfg.virtio_input_evdevs = cmd.evdev;
+        cfg.virtio_input = cmd.input;
+
+        if !cmd.single_touch.is_empty() {
+            log::warn!("`--single-touch` is deprecated; please use `--input single-touch[...]`");
+            cfg.virtio_input
+                .extend(
+                    cmd.single_touch
+                        .into_iter()
+                        .map(|touch| InputDeviceOption::SingleTouch {
+                            path: touch.path,
+                            width: touch.width,
+                            height: touch.height,
+                            name: touch.name,
+                        }),
+                );
+        }
+
+        if !cmd.multi_touch.is_empty() {
+            log::warn!("`--multi-touch` is deprecated; please use `--input multi-touch[...]`");
+            cfg.virtio_input
+                .extend(
+                    cmd.multi_touch
+                        .into_iter()
+                        .map(|touch| InputDeviceOption::MultiTouch {
+                            path: touch.path,
+                            width: touch.width,
+                            height: touch.height,
+                            name: touch.name,
+                        }),
+                );
+        }
+
+        if !cmd.trackpad.is_empty() {
+            log::warn!("`--trackpad` is deprecated; please use `--input trackpad[...]`");
+            cfg.virtio_input
+                .extend(
+                    cmd.trackpad
+                        .into_iter()
+                        .map(|trackpad| InputDeviceOption::Trackpad {
+                            path: trackpad.path,
+                            width: trackpad.width,
+                            height: trackpad.height,
+                            name: trackpad.name,
+                        }),
+                );
+        }
+
+        if !cmd.mouse.is_empty() {
+            log::warn!("`--mouse` is deprecated; please use `--input mouse[...]`");
+            cfg.virtio_input.extend(
+                cmd.mouse
+                    .into_iter()
+                    .map(|path| InputDeviceOption::Mouse { path }),
+            );
+        }
+
+        if !cmd.keyboard.is_empty() {
+            log::warn!("`--keyboard` is deprecated; please use `--input keyboard[...]`");
+            cfg.virtio_input.extend(
+                cmd.keyboard
+                    .into_iter()
+                    .map(|path| InputDeviceOption::Keyboard { path }),
+            )
+        }
+
+        if !cmd.switches.is_empty() {
+            log::warn!("`--switches` is deprecated; please use `--input switches[...]`");
+            cfg.virtio_input.extend(
+                cmd.switches
+                    .into_iter()
+                    .map(|path| InputDeviceOption::Switches { path }),
+            );
+        }
+
+        if !cmd.rotary.is_empty() {
+            log::warn!("`--rotary` is deprecated; please use `--input rotary[...]`");
+            cfg.virtio_input.extend(
+                cmd.rotary
+                    .into_iter()
+                    .map(|path| InputDeviceOption::Rotary { path }),
+            );
+        }
+
+        if !cmd.evdev.is_empty() {
+            log::warn!("`--evdev` is deprecated; please use `--input evdev[...]`");
+            cfg.virtio_input.extend(
+                cmd.evdev
+                    .into_iter()
+                    .map(|path| InputDeviceOption::Evdev { path }),
+            );
+        }
 
         cfg.irq_chip = cmd.irqchip;
 

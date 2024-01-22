@@ -7,7 +7,6 @@ use std::arch::x86_64::__cpuid;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::__cpuid_count;
 use std::collections::BTreeMap;
-use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -235,81 +234,10 @@ pub const DEFAULT_TOUCH_DEVICE_WIDTH: u32 = 1280;
 #[derive(Serialize, Deserialize, Debug, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct TouchDeviceOption {
-    path: PathBuf,
-    width: Option<u32>,
-    height: Option<u32>,
-    name: Option<String>,
-
-    #[serde(skip, default = "default_touch_device_width")]
-    default_width: u32,
-
-    #[serde(skip, default = "default_touch_device_height")]
-    default_height: u32,
-}
-
-fn default_touch_device_width() -> u32 {
-    DEFAULT_TOUCH_DEVICE_WIDTH
-}
-
-fn default_touch_device_height() -> u32 {
-    DEFAULT_TOUCH_DEVICE_HEIGHT
-}
-
-impl TouchDeviceOption {
-    pub fn new(path: PathBuf) -> TouchDeviceOption {
-        TouchDeviceOption {
-            path,
-            width: None,
-            height: None,
-            name: None,
-            default_width: DEFAULT_TOUCH_DEVICE_WIDTH,
-            default_height: DEFAULT_TOUCH_DEVICE_HEIGHT,
-        }
-    }
-
-    /// Getter for the path to the input event streams.
-    #[cfg_attr(windows, allow(unused))]
-    pub fn get_path(&self) -> &Path {
-        self.path.as_path()
-    }
-
-    /// When a user specifies the parameters for a touch device, width and height are optional.
-    /// If the width and height are missing, default values are used. Default values can be set
-    /// dynamically, for example from the display sizes specified by the gpu argument.
-    #[cfg(feature = "gpu")]
-    pub fn set_default_size(&mut self, width: u32, height: u32) {
-        self.default_width = width;
-        self.default_height = height;
-    }
-
-    /// Setter for the width specified by the user.
-    pub fn set_width(&mut self, width: u32) {
-        self.width.replace(width);
-    }
-
-    /// Setter for the height specified by the user.
-    pub fn set_height(&mut self, height: u32) {
-        self.height.replace(height);
-    }
-
-    /// If the user specifies the size, use it. Otherwise, use the default values.
-    #[cfg(any(unix, feature = "gpu"))]
-    pub fn get_size(&self) -> (u32, u32) {
-        (
-            self.width.unwrap_or(self.default_width),
-            self.height.unwrap_or(self.default_height),
-        )
-    }
-
-    /// Setter for the input device's name specified by the user.
-    pub fn set_name(&mut self, name: String) {
-        self.name.replace(name);
-    }
-
-    /// Getter for the input device's name
-    pub fn get_name(&self) -> Option<&str> {
-        self.name.as_deref()
-    }
+    pub path: PathBuf,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub name: Option<String>,
 }
 
 /// Try to parse a colon-separated touch device option.
@@ -317,21 +245,28 @@ impl TouchDeviceOption {
 /// The expected format is "PATH:WIDTH:HEIGHT:NAME", with all fields except PATH being optional.
 fn parse_touch_device_option_legacy(s: &str) -> Option<TouchDeviceOption> {
     let mut it = s.split(':');
-    let mut touch_spec = TouchDeviceOption::new(PathBuf::from(it.next()?.to_owned()));
-    if let Some(width) = it.next() {
-        touch_spec.set_width(width.trim().parse().ok()?);
-    }
-    if let Some(height) = it.next() {
-        touch_spec.set_height(height.trim().parse().ok()?);
-    }
-    if let Some(name) = it.next() {
-        touch_spec.set_name(name.trim().to_string());
-    }
+    let path = PathBuf::from(it.next()?.to_owned());
+    let width = if let Some(width) = it.next() {
+        Some(width.trim().parse().ok()?)
+    } else {
+        None
+    };
+    let height = if let Some(height) = it.next() {
+        Some(height.trim().parse().ok()?)
+    } else {
+        None
+    };
+    let name = it.next().map(|name| name.trim().to_string());
     if it.next().is_some() {
         return None;
     }
 
-    Some(touch_spec)
+    Some(TouchDeviceOption {
+        path,
+        width,
+        height,
+        name,
+    })
 }
 
 /// Parse virtio-input touch device options from a string.
@@ -344,13 +279,52 @@ pub fn parse_touch_device_option(s: &str) -> Result<TouchDeviceOption, String> {
         if let Some(touch_spec) = parse_touch_device_option_legacy(s) {
             log::warn!(
                 "colon-separated touch device options are deprecated; \
-                please use key=value form instead"
+                please use --input instead"
             );
             return Ok(touch_spec);
         }
     }
 
     from_key_values::<TouchDeviceOption>(s)
+}
+
+/// virtio-input device configuration
+#[derive(Serialize, Deserialize, Debug, FromKeyValues, Eq, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub enum InputDeviceOption {
+    Evdev {
+        path: PathBuf,
+    },
+    Keyboard {
+        path: PathBuf,
+    },
+    Mouse {
+        path: PathBuf,
+    },
+    MultiTouch {
+        path: PathBuf,
+        width: Option<u32>,
+        height: Option<u32>,
+        name: Option<String>,
+    },
+    Rotary {
+        path: PathBuf,
+    },
+    SingleTouch {
+        path: PathBuf,
+        width: Option<u32>,
+        height: Option<u32>,
+        name: Option<String>,
+    },
+    Switches {
+        path: PathBuf,
+    },
+    Trackpad {
+        path: PathBuf,
+        width: Option<u32>,
+        height: Option<u32>,
+        name: Option<String>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, FromKeyValues)]
@@ -682,6 +656,8 @@ pub struct Config {
     pub device_tree_overlay: Vec<DtboOption>,
     pub disable_virtio_intx: bool,
     pub disks: Vec<DiskOption>,
+    pub display_input_height: Option<u32>,
+    pub display_input_width: Option<u32>,
     pub display_window_keyboard: bool,
     pub display_window_mouse: bool,
     pub dump_device_tree_blob: Option<PathBuf>,
@@ -829,17 +805,10 @@ pub struct Config {
     ))]
     pub virt_cpufreq: bool,
     pub virt_cpufreq_socket: Option<PathBuf>,
-    pub virtio_input_evdevs: Vec<PathBuf>,
-    pub virtio_keyboard: Vec<PathBuf>,
-    pub virtio_mice: Vec<PathBuf>,
-    pub virtio_multi_touch: Vec<TouchDeviceOption>,
-    pub virtio_rotary: Vec<PathBuf>,
-    pub virtio_single_touch: Vec<TouchDeviceOption>,
+    pub virtio_input: Vec<InputDeviceOption>,
     #[cfg(feature = "audio")]
     #[serde(skip)]
     pub virtio_snds: Vec<SndParameters>,
-    pub virtio_switches: Vec<PathBuf>,
-    pub virtio_trackpad: Vec<TouchDeviceOption>,
     pub vsock: Option<VsockConfig>,
     #[cfg(feature = "vtpm")]
     pub vtpm_proxy: bool,
@@ -887,6 +856,8 @@ impl Default for Config {
             device_tree_overlay: Vec::new(),
             disks: Vec::new(),
             disable_virtio_intx: false,
+            display_input_height: None,
+            display_input_width: None,
             display_window_keyboard: false,
             display_window_mouse: false,
             dump_device_tree_blob: None,
@@ -1036,16 +1007,9 @@ impl Default for Config {
             ))]
             virt_cpufreq: false,
             virt_cpufreq_socket: None,
-            virtio_input_evdevs: Vec::new(),
-            virtio_keyboard: Vec::new(),
-            virtio_mice: Vec::new(),
-            virtio_multi_touch: Vec::new(),
-            virtio_rotary: Vec::new(),
-            virtio_single_touch: Vec::new(),
+            virtio_input: Vec::new(),
             #[cfg(feature = "audio")]
             virtio_snds: Vec::new(),
-            virtio_switches: Vec::new(),
-            virtio_trackpad: Vec::new(),
             #[cfg(feature = "vtpm")]
             vtpm_proxy: false,
             wayland_socket_paths: BTreeMap::new(),
@@ -1976,12 +1940,21 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(cfg.virtio_multi_touch.len(), 1);
-        let touch = &cfg.virtio_multi_touch[0];
-        assert_eq!(touch.path.to_str(), Some("my_socket"));
-        assert_eq!(touch.width, Some(867));
-        assert_eq!(touch.height, Some(5309));
-        assert_eq!(touch.name, None);
+        assert_eq!(cfg.virtio_input.len(), 1);
+        let multi_touch = cfg
+            .virtio_input
+            .iter()
+            .find(|input| matches!(input, InputDeviceOption::MultiTouch { .. }))
+            .unwrap();
+        assert_eq!(
+            *multi_touch,
+            InputDeviceOption::MultiTouch {
+                path: PathBuf::from("my_socket"),
+                width: Some(867),
+                height: Some(5309),
+                name: None
+            }
+        );
     }
 
     #[test]
@@ -1995,11 +1968,235 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(cfg.virtio_multi_touch.len(), 1);
-        let touch = &cfg.virtio_multi_touch[0];
-        assert_eq!(touch.path.to_str(), Some(r"C:\path"));
-        assert_eq!(touch.width, Some(867));
-        assert_eq!(touch.height, Some(5309));
-        assert_eq!(touch.name, None);
+        assert_eq!(cfg.virtio_input.len(), 1);
+        let multi_touch = cfg
+            .virtio_input
+            .iter()
+            .find(|input| matches!(input, InputDeviceOption::MultiTouch { .. }))
+            .unwrap();
+        assert_eq!(
+            *multi_touch,
+            InputDeviceOption::MultiTouch {
+                path: PathBuf::from(r"C:\path"),
+                width: Some(867),
+                height: Some(5309),
+                name: None
+            }
+        );
+    }
+
+    #[test]
+    fn single_touch_spec_and_track_pad_spec_default_size() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--single-touch",
+                "/dev/single-touch-test",
+                "--trackpad",
+                "/dev/single-touch-test",
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let single_touch = config
+            .virtio_input
+            .iter()
+            .find(|input| matches!(input, InputDeviceOption::SingleTouch { .. }))
+            .unwrap();
+        let trackpad = config
+            .virtio_input
+            .iter()
+            .find(|input| matches!(input, InputDeviceOption::Trackpad { .. }))
+            .unwrap();
+
+        assert_eq!(
+            *single_touch,
+            InputDeviceOption::SingleTouch {
+                path: PathBuf::from("/dev/single-touch-test"),
+                width: None,
+                height: None,
+                name: None
+            }
+        );
+        assert_eq!(
+            *trackpad,
+            InputDeviceOption::Trackpad {
+                path: PathBuf::from("/dev/single-touch-test"),
+                width: None,
+                height: None,
+                name: None
+            }
+        );
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn single_touch_spec_default_size_from_gpu() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--single-touch",
+                "/dev/single-touch-test",
+                "--gpu",
+                "width=1024,height=768",
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let single_touch = config
+            .virtio_input
+            .iter()
+            .find(|input| matches!(input, InputDeviceOption::SingleTouch { .. }))
+            .unwrap();
+        assert_eq!(
+            *single_touch,
+            InputDeviceOption::SingleTouch {
+                path: PathBuf::from("/dev/single-touch-test"),
+                width: None,
+                height: None,
+                name: None
+            }
+        );
+
+        assert_eq!(config.display_input_width, Some(1024));
+        assert_eq!(config.display_input_height, Some(768));
+    }
+
+    #[test]
+    fn single_touch_spec_and_track_pad_spec_with_size() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--single-touch",
+                "/dev/single-touch-test:12345:54321",
+                "--trackpad",
+                "/dev/single-touch-test:5678:9876",
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let single_touch = config
+            .virtio_input
+            .iter()
+            .find(|input| matches!(input, InputDeviceOption::SingleTouch { .. }))
+            .unwrap();
+        let trackpad = config
+            .virtio_input
+            .iter()
+            .find(|input| matches!(input, InputDeviceOption::Trackpad { .. }))
+            .unwrap();
+
+        assert_eq!(
+            *single_touch,
+            InputDeviceOption::SingleTouch {
+                path: PathBuf::from("/dev/single-touch-test"),
+                width: Some(12345),
+                height: Some(54321),
+                name: None
+            }
+        );
+        assert_eq!(
+            *trackpad,
+            InputDeviceOption::Trackpad {
+                path: PathBuf::from("/dev/single-touch-test"),
+                width: Some(5678),
+                height: Some(9876),
+                name: None
+            }
+        );
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn single_touch_spec_with_size_independent_from_gpu() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--single-touch",
+                "/dev/single-touch-test:12345:54321",
+                "--gpu",
+                "width=1024,height=768",
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let single_touch = config
+            .virtio_input
+            .iter()
+            .find(|input| matches!(input, InputDeviceOption::SingleTouch { .. }))
+            .unwrap();
+
+        assert_eq!(
+            *single_touch,
+            InputDeviceOption::SingleTouch {
+                path: PathBuf::from("/dev/single-touch-test"),
+                width: Some(12345),
+                height: Some(54321),
+                name: None
+            }
+        );
+
+        assert_eq!(config.display_input_width, Some(1024));
+        assert_eq!(config.display_input_height, Some(768));
+    }
+
+    #[test]
+    fn virtio_switches() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--switches", "/dev/switches-test", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let switches = config
+            .virtio_input
+            .iter()
+            .find(|input| matches!(input, InputDeviceOption::Switches { .. }))
+            .unwrap();
+
+        assert_eq!(
+            *switches,
+            InputDeviceOption::Switches {
+                path: PathBuf::from("/dev/switches-test")
+            }
+        );
+    }
+
+    #[test]
+    fn virtio_rotary() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--rotary", "/dev/rotary-test", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let rotary = config
+            .virtio_input
+            .iter()
+            .find(|input| matches!(input, InputDeviceOption::Rotary { .. }))
+            .unwrap();
+
+        assert_eq!(
+            *rotary,
+            InputDeviceOption::Rotary {
+                path: PathBuf::from("/dev/rotary-test")
+            }
+        );
     }
 }

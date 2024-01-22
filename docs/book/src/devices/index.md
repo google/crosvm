@@ -73,7 +73,7 @@ Currently, only network devices are supported.
 [`fs`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/fs/
 [`gpu`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/gpu/
 [`i8042`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/i8042.rs
-[`input`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/input/
+[`input`]: input.md
 [`iommu`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/iommu.rs
 [`net`]: net.md
 [`p9`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/p9.rs
