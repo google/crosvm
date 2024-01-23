@@ -194,7 +194,7 @@ def create_pgo_profile():
     dev_container(
         f"cargo profdata -- merge -o /workspace/profiles/benchmarks.profdata /workspace/{tmpdirname}"
     ).fg()
-    dev_container("xz -9e -T 0 /workspace/profiles/benchmarks.profdata").fg()
+    dev_container("xz -f -9e -T 0 /workspace/profiles/benchmarks.profdata").fg()
 
 
 ####################################################################################################
