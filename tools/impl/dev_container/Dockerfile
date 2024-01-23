@@ -41,19 +41,24 @@ RUN dpkg --add-architecture arm64 \
 
 # Install dependencies (APT and cargo packages are cached between image builds for faster iterative builds).
 COPY --chmod=555 tools/install-deps tools/install-aarch64-deps tools/install-armhf-deps tools/install-mingw64-deps tools/setup-wine64 rust-toolchain /tools/
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt \
-    --mount=type=cache,target=/scratch/cargo_target \
-    cd /tools \
+RUN cd /tools \
     && apt-get update \
     && apt-get install --yes sudo curl \
     && ./install-deps \
-    && ./install-aarch64-deps \
-    && ./install-armhf-deps \
-    && ./install-mingw64-deps \
     # We only use the nightly toolchain for rustfmt, remove other parts to save space.
     && rustup component remove --toolchain nightly rust-std \
     && rustup component remove --toolchain nightly cargo
+
+# HACK ALERT!
+# libc6:arm64 postinstall will attempt to call telinit to restart services. This will block
+# indefinitely in the container with no init running. Replace telinit with true to make it
+# a no-op. See b/322015733
+RUN rm /usr/sbin/telinit && cp /bin/true /usr/sbin/telinit
+
+RUN cd /tools \
+    && ./install-aarch64-deps \
+    && ./install-armhf-deps \
+    && ./install-mingw64-deps
 
 # Add wine64 to PATH, as debian removed alternative entry to wine64
 ENV PATH=/usr/lib/wine:$PATH
