@@ -21,6 +21,7 @@ use base::SharedMemory;
 use base::Tube;
 use data_model::Le32;
 use hypervisor::Datamatch;
+use hypervisor::MemCacheType;
 use libc::ERANGE;
 use resources::Alloc;
 use resources::AllocOptions;
@@ -1398,6 +1399,7 @@ impl SharedMemoryMapper for VmRequester {
         source: VmMemorySource,
         offset: u64,
         prot: Protection,
+        cache: MemCacheType,
     ) -> anyhow::Result<()> {
         if self.needs_prepare {
             self.vm_memory_client
@@ -1415,6 +1417,7 @@ impl SharedMemoryMapper for VmRequester {
                     offset,
                 },
                 prot,
+                cache,
             )
             .context("register_memory failed")?;
 

@@ -11,6 +11,7 @@ use base::RawDescriptor;
 use base::Tube;
 use base::TubeError;
 use hypervisor::Datamatch;
+use hypervisor::MemCacheType;
 use remain::sorted;
 use resources::Alloc;
 use serde::Deserialize;
@@ -84,8 +85,14 @@ impl VmMemoryClient {
         source: VmMemorySource,
         dest: VmMemoryDestination,
         prot: Protection,
+        cache: MemCacheType,
     ) -> Result<VmMemoryRegionId> {
-        self.request_register_memory(&VmMemoryRequest::RegisterMemory { source, dest, prot })
+        self.request_register_memory(&VmMemoryRequest::RegisterMemory {
+            source,
+            dest,
+            prot,
+            cache,
+        })
     }
 
     /// Call hypervisor to free the given memory range.

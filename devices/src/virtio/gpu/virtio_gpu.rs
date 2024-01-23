@@ -21,6 +21,7 @@ use base::Protection;
 use base::SafeDescriptor;
 use base::VolatileSlice;
 use gpu_display::*;
+use hypervisor::MemCacheType;
 use libc::c_void;
 use rutabaga_gfx::ResourceCreate3D;
 use rutabaga_gfx::ResourceCreateBlob;
@@ -38,6 +39,7 @@ use rutabaga_gfx::RUTABAGA_MAP_ACCESS_MASK;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_READ;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_RW;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_WRITE;
+use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_MASK;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD;
@@ -1039,11 +1041,17 @@ impl VirtioGpu {
             _ => return Err(ErrUnspec),
         };
 
+        let cache = if map_info & RUTABAGA_MAP_CACHE_MASK != RUTABAGA_MAP_CACHE_CACHED {
+            MemCacheType::CacheNonCoherent
+        } else {
+            MemCacheType::CacheCoherent
+        };
+
         self.mapper
             .lock()
             .as_mut()
             .expect("No backend request connection found")
-            .add_mapping(source.unwrap(), offset, prot)
+            .add_mapping(source.unwrap(), offset, prot, cache)
             .map_err(|_| ErrUnspec)?;
 
         resource.shmem_offset = Some(offset);

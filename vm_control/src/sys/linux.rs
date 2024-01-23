@@ -18,6 +18,7 @@ use base::Protection;
 use base::SafeDescriptor;
 use base::Tube;
 use base::UnixSeqpacket;
+use hypervisor::MemCacheType;
 use hypervisor::MemSlot;
 use hypervisor::Vm;
 use libc::EINVAL;
@@ -173,7 +174,13 @@ pub fn prepare_shared_memory_region(
                 _ => return Err(SysError::new(EINVAL)),
             };
 
-            match vm.add_memory_region(GuestAddress(range.start), Box::new(arena), false, false) {
+            match vm.add_memory_region(
+                GuestAddress(range.start),
+                Box::new(arena),
+                false,
+                false,
+                MemCacheType::CacheCoherent,
+            ) {
                 Ok(slot) => Ok((range.start >> 12, slot)),
                 Err(e) => Err(e),
             }

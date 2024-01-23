@@ -61,6 +61,7 @@ pub use fdt::DtbOverlay;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
 use hypervisor::IoEventAddress;
+use hypervisor::MemCacheType;
 use hypervisor::Vm;
 #[cfg(windows)]
 use jail::FakeMinijailStub as Minijail;
@@ -1160,6 +1161,7 @@ pub fn generate_pci_root(
                     Box::new(mmap),
                     false,
                     false,
+                    MemCacheType::CacheCoherent,
                 );
             }
         }

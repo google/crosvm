@@ -81,6 +81,7 @@ use crate::IoParams;
 use crate::IrqRoute;
 use crate::IrqSource;
 use crate::MPState;
+use crate::MemCacheType;
 use crate::MemSlot;
 use crate::Vcpu;
 use crate::VcpuExit;
@@ -99,6 +100,7 @@ unsafe fn set_user_memory_region(
     slot: MemSlot,
     read_only: bool,
     log_dirty_pages: bool,
+    cache: MemCacheType,
     guest_addr: u64,
     memory_size: u64,
     userspace_addr: *mut u8,
@@ -106,6 +108,9 @@ unsafe fn set_user_memory_region(
     let mut flags = if read_only { KVM_MEM_READONLY } else { 0 };
     if log_dirty_pages {
         flags |= KVM_MEM_LOG_DIRTY_PAGES;
+    }
+    if cache == MemCacheType::CacheNonCoherent {
+        flags |= KVM_MEM_NON_COHERENT_DMA;
     }
     let region = kvm_userspace_memory_region {
         slot,
@@ -255,6 +260,7 @@ impl KvmVm {
                     region.index as MemSlot,
                     false,
                     false,
+                    MemCacheType::CacheCoherent,
                     region.guest_addr.offset(),
                     region.size as u64,
                     region.host_addr as *mut u8,
@@ -565,6 +571,7 @@ impl Vm for KvmVm {
             // When pKVM is the hypervisor, read-only memslots aren't supported, even for
             // non-protected VMs.
             VmCap::ReadOnlyMemoryRegion => !self.is_pkvm(),
+            VmCap::MemNoncoherentDma => self.check_raw_capability(KvmCap::MemNoncoherentDma),
         }
     }
 
@@ -599,6 +606,7 @@ impl Vm for KvmVm {
         mem: Box<dyn MappedRegion>,
         read_only: bool,
         log_dirty_pages: bool,
+        cache: MemCacheType,
     ) -> Result<MemSlot> {
         let pgsz = pagesize() as u64;
         // KVM require to set the user memory region with page size aligned size. Safe to extend
@@ -618,6 +626,12 @@ impl Vm for KvmVm {
             None => (regions.len() + self.guest_mem.num_regions() as usize) as MemSlot,
         };
 
+        let cache_type = if self.check_capability(VmCap::MemNoncoherentDma) {
+            cache
+        } else {
+            MemCacheType::CacheCoherent
+        };
+
         // SAFETY:
         // Safe because we check that the given guest address is valid and has no overlaps. We also
         // know that the pointer and size are correct because the MemoryMapping interface ensures
@@ -629,6 +643,7 @@ impl Vm for KvmVm {
                 slot,
                 read_only,
                 log_dirty_pages,
+                cache_type,
                 guest_addr.offset(),
                 size,
                 mem.as_ptr(),
@@ -663,7 +678,16 @@ impl Vm for KvmVm {
         // SAFETY:
         // Safe because the slot is checked against the list of memory slots.
         unsafe {
-            set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut())?;
+            set_user_memory_region(
+                &self.vm,
+                slot,
+                false,
+                false,
+                MemCacheType::CacheCoherent,
+                0,
+                0,
+                std::ptr::null_mut(),
+            )?;
         }
         self.mem_slot_gaps.lock().push(Reverse(slot));
         // This remove will always succeed because of the contains_key check above.

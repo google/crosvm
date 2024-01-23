@@ -15,6 +15,7 @@ use base::Event;
 use base::Protection;
 use base::SafeDescriptor;
 use base::WorkerThread;
+use hypervisor::MemCacheType;
 use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserConfigFlags;
@@ -452,6 +453,7 @@ impl VhostUserMasterReqHandler for BackendReqHandlerImpl {
             },
             req.shm_offset,
             Protection::from(req.flags),
+            MemCacheType::CacheCoherent,
         ) {
             Ok(()) => Ok(0),
             Err(e) => {
@@ -510,6 +512,7 @@ impl VhostUserMasterReqHandler for BackendReqHandlerImpl {
             },
             req.shm_offset,
             Protection::read_write(),
+            MemCacheType::CacheCoherent,
         ) {
             Ok(()) => Ok(0),
             Err(e) => {

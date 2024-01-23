@@ -116,6 +116,7 @@ where
             ),
             false,
             true,
+            MemCacheType::CacheCoherent,
         )
         .expect("failed to register memory");
 

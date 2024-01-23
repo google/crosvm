@@ -68,6 +68,7 @@ use base::Protection;
 use base::SafeDescriptor;
 use base::SharedMemory;
 use cros_async::TaskHandle;
+use hypervisor::MemCacheType;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -877,6 +878,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
         source: VmMemorySource,
         offset: u64,
         prot: Protection,
+        _cache: MemCacheType,
     ) -> anyhow::Result<()> {
         // True if we should send gpu_map instead of shmem_map.
         let is_gpu = matches!(&source, &VmMemorySource::Vulkan { .. });

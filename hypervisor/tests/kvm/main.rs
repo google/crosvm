@@ -25,6 +25,7 @@ use hypervisor::Datamatch;
 use hypervisor::Hypervisor;
 use hypervisor::HypervisorCap;
 use hypervisor::IoEventAddress;
+use hypervisor::MemCacheType::CacheCoherent;
 use hypervisor::Vm;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use hypervisor::VmAArch64;
@@ -125,14 +126,21 @@ fn add_memory() {
     let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let mem_size = 0x1000;
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
-    vm.add_memory_region(GuestAddress(pagesize() as u64), Box::new(mem), false, false)
-        .unwrap();
+    vm.add_memory_region(
+        GuestAddress(pagesize() as u64),
+        Box::new(mem),
+        false,
+        false,
+        CacheCoherent,
+    )
+    .unwrap();
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
     vm.add_memory_region(
         GuestAddress(0x10 * pagesize() as u64),
         Box::new(mem),
         false,
         false,
+        CacheCoherent,
     )
     .unwrap();
 }
@@ -144,8 +152,14 @@ fn add_memory_ro() {
     let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let mem_size = 0x1000;
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
-    vm.add_memory_region(GuestAddress(pagesize() as u64), Box::new(mem), true, false)
-        .unwrap();
+    vm.add_memory_region(
+        GuestAddress(pagesize() as u64),
+        Box::new(mem),
+        true,
+        false,
+        CacheCoherent,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -157,7 +171,13 @@ fn remove_memory() {
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
     let mem_ptr = mem.as_ptr();
     let slot = vm
-        .add_memory_region(GuestAddress(pagesize() as u64), Box::new(mem), false, false)
+        .add_memory_region(
+            GuestAddress(pagesize() as u64),
+            Box::new(mem),
+            false,
+            false,
+            CacheCoherent,
+        )
         .unwrap();
     let removed_mem = vm.remove_memory_region(slot).unwrap();
     assert_eq!(removed_mem.size(), mem_size);
@@ -184,7 +204,8 @@ fn overlap_memory() {
             GuestAddress(2 * pagesize() as u64),
             Box::new(mem),
             false,
-            false
+            false,
+            CacheCoherent,
         )
         .is_err());
 }
@@ -201,7 +222,13 @@ fn sync_memory() {
     let mem_size = pagesize();
     let mem = MemoryMappingArena::new(mem_size).unwrap();
     let slot = vm
-        .add_memory_region(GuestAddress(pagesize() as u64), Box::new(mem), false, false)
+        .add_memory_region(
+            GuestAddress(pagesize() as u64),
+            Box::new(mem),
+            false,
+            false,
+            CacheCoherent,
+        )
         .unwrap();
     vm.msync_memory_region(slot, mem_size, 0).unwrap();
     assert!(vm.msync_memory_region(slot, mem_size + 1, 0).is_err());

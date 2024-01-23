@@ -50,6 +50,7 @@ use hypervisor::CpuConfigAArch64;
 use hypervisor::DeviceKind;
 use hypervisor::Hypervisor;
 use hypervisor::HypervisorCap;
+use hypervisor::MemCacheType;
 use hypervisor::ProtectionType;
 use hypervisor::VcpuAArch64;
 use hypervisor::VcpuFeature;
@@ -522,6 +523,7 @@ impl arch::LinuxArch for AArch64 {
                 Box::new(pvtime_mem),
                 false,
                 false,
+                MemCacheType::CacheCoherent,
             )
             .map_err(Error::MapPvtimeError)?;
         }

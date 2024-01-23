@@ -11,6 +11,7 @@ use anyhow::Result;
 use base::Event;
 use base::Protection;
 use base::RawDescriptor;
+use hypervisor::MemCacheType;
 use sync::Mutex;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
@@ -42,7 +43,13 @@ pub struct SharedMemoryRegion {
 /// Trait for mapping memory into the device's shared memory region.
 pub trait SharedMemoryMapper: Send {
     /// Maps the given |source| into the shared memory region at |offset|.
-    fn add_mapping(&mut self, source: VmMemorySource, offset: u64, prot: Protection) -> Result<()>;
+    fn add_mapping(
+        &mut self,
+        source: VmMemorySource,
+        offset: u64,
+        prot: Protection,
+        cache: MemCacheType,
+    ) -> Result<()>;
 
     /// Removes the mapping beginning at |offset|.
     fn remove_mapping(&mut self, offset: u64) -> Result<()>;

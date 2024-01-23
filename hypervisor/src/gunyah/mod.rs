@@ -438,6 +438,7 @@ impl Vm for GunyahVm {
             #[cfg(target_arch = "x86_64")]
             VmCap::BusLockDetect => false,
             VmCap::ReadOnlyMemoryRegion => false,
+            VmCap::MemNoncoherentDma => false,
         }
     }
 
@@ -455,6 +456,7 @@ impl Vm for GunyahVm {
         mem_region: Box<dyn MappedRegion>,
         read_only: bool,
         _log_dirty_pages: bool,
+        _cache: MemCacheType,
     ) -> Result<MemSlot> {
         let pgsz = pagesize() as u64;
         // Gunyah require to set the user memory region with page size aligned size. Safe to extend

@@ -45,6 +45,7 @@ use crate::Datamatch;
 use crate::DeviceKind;
 use crate::Hypervisor;
 use crate::IoEventAddress;
+use crate::MemCacheType;
 use crate::MemSlot;
 use crate::VcpuX86_64;
 use crate::Vm;
@@ -224,6 +225,7 @@ impl Vm for HaxmVm {
             VmCap::EarlyInitCpuid => false,
             VmCap::BusLockDetect => false,
             VmCap::ReadOnlyMemoryRegion => false,
+            VmCap::MemNoncoherentDma => false,
         }
     }
 
@@ -237,6 +239,7 @@ impl Vm for HaxmVm {
         mem: Box<dyn MappedRegion>,
         read_only: bool,
         _log_dirty_pages: bool,
+        _cache: MemCacheType,
     ) -> Result<MemSlot> {
         let size = mem.size() as u64;
         let end_addr = guest_addr.checked_add(size).ok_or(Error::new(EOVERFLOW))?;
@@ -623,7 +626,13 @@ mod tests {
             .unwrap();
         let mem_ptr = mem.as_ptr();
         let slot = vm
-            .add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
+            .add_memory_region(
+                GuestAddress(0x1000),
+                Box::new(mem),
+                false,
+                false,
+                MemCacheType::CacheCoherent,
+            )
             .unwrap();
         let removed_mem = vm.remove_memory_region(slot).unwrap();
         assert_eq!(removed_mem.size(), mem_size);

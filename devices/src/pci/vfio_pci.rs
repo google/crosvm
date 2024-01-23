@@ -28,6 +28,7 @@ use base::RawDescriptor;
 use base::Tube;
 use base::WaitContext;
 use base::WorkerThread;
+use hypervisor::MemCacheType;
 use resources::AddressRange;
 use resources::Alloc;
 use resources::AllocOptions;
@@ -1182,6 +1183,7 @@ impl VfioPciDevice {
                     },
                     VmMemoryDestination::GuestPhysicalAddress(guest_map_start),
                     Protection::read_write(),
+                    MemCacheType::CacheCoherent,
                 ) {
                     Ok(id) => {
                         mmaps_ids.push(id);

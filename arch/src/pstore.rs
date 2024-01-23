@@ -8,6 +8,7 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::MemoryMappingBuilder;
+use hypervisor::MemCacheType;
 use hypervisor::Vm;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
@@ -52,6 +53,7 @@ pub fn create_memory_region(
         Box::new(memory_mapping),
         false,
         false,
+        MemCacheType::CacheCoherent,
     )
     .context("failed to add pstore region")?;
 

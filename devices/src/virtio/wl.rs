@@ -88,6 +88,7 @@ use base::WaitContext;
 use base::WorkerThread;
 use data_model::Le32;
 use data_model::Le64;
+use hypervisor::MemCacheType;
 #[cfg(feature = "minigbm")]
 use libc::EBADF;
 #[cfg(feature = "minigbm")]
@@ -584,7 +585,10 @@ impl VmRequester {
             .context("failed to allocate offset")
             .map_err(WlError::ShmemMapperError)?;
 
-        match state.mapper.add_mapping(source, offset, prot) {
+        match state
+            .mapper
+            .add_mapping(source, offset, prot, MemCacheType::CacheCoherent)
+        {
             Ok(()) => {
                 state.allocs.insert(offset, alloc);
                 Ok(offset)

@@ -68,6 +68,7 @@ use crate::HypervisorCap;
 use crate::IoEventAddress;
 use crate::IoOperation;
 use crate::IoParams;
+use crate::MemCacheType;
 use crate::MemSlot;
 use crate::PsciVersion;
 use crate::Vcpu;
@@ -912,6 +913,7 @@ impl Vm for GeniezoneVm {
             VmCap::Protected => self.check_raw_capability(GeniezoneCap::ArmProtectedVm),
             VmCap::EarlyInitCpuid => false,
             VmCap::ReadOnlyMemoryRegion => false,
+            VmCap::MemNoncoherentDma => false,
         }
     }
 
@@ -929,6 +931,7 @@ impl Vm for GeniezoneVm {
         mem: Box<dyn MappedRegion>,
         read_only: bool,
         log_dirty_pages: bool,
+        _cache: MemCacheType,
     ) -> Result<MemSlot> {
         let pgsz = pagesize() as u64;
         // GZVM require to set the user memory region with page size aligned size. Safe to extend

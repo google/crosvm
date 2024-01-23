@@ -66,6 +66,7 @@ use devices::VfioPciDevice;
 use devices::VfioPlatformDevice;
 #[cfg(feature = "vtpm")]
 use devices::VtpmProxy;
+use hypervisor::MemCacheType;
 use hypervisor::ProtectionType;
 use hypervisor::Vm;
 use jail::*;
@@ -1131,6 +1132,7 @@ pub fn create_pmem_device(
             Box::new(arena),
             /* read_only = */ disk.read_only,
             /* log_dirty_pages = */ false,
+            MemCacheType::CacheCoherent,
         )
         .context("failed to add pmem device memory")?;
 

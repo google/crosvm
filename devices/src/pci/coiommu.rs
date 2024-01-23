@@ -49,6 +49,7 @@ use base::TubeError;
 use base::WaitContext;
 use base::WorkerThread;
 use hypervisor::Datamatch;
+use hypervisor::MemCacheType;
 use resources::Alloc;
 use resources::AllocOptions;
 use resources::SystemAllocator;
@@ -1139,6 +1140,7 @@ impl CoIommuDev {
                 },
                 VmMemoryDestination::GuestPhysicalAddress(gpa),
                 prot,
+                MemCacheType::CacheCoherent,
             )
             .context("register_mmap register_memory failed")?;
         Ok(())

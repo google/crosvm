@@ -19,6 +19,7 @@ use base::RawDescriptor;
 use base::SendTube;
 use base::SharedMemory;
 use base::VmEventType;
+use hypervisor::MemCacheType;
 use hypervisor::Vm;
 use resources::SystemAllocator;
 use serde::Deserialize;
@@ -591,8 +592,14 @@ impl<T: Vm> PciMmioMapper for T {
             .protection(Protection::read())
             .build()
             .context("failed to map shmem")?;
-        self.add_memory_region(addr, Box::new(mapping), true, false)
-            .context("failed to create vm mapping")
+        self.add_memory_region(
+            addr,
+            Box::new(mapping),
+            true,
+            false,
+            MemCacheType::CacheCoherent,
+        )
+        .context("failed to create vm mapping")
     }
 }
 

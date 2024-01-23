@@ -21,6 +21,7 @@ use base::linux::MemoryMappingBuilderUnix;
 #[cfg(windows)]
 use base::MemoryMappingBuilderWindows;
 use hypervisor::BalloonEvent;
+use hypervisor::MemCacheType;
 use hypervisor::MemRegion;
 
 #[cfg(feature = "balloon")]
@@ -533,6 +534,8 @@ pub enum VmMemoryRequest {
         dest: VmMemoryDestination,
         /// Whether to map the memory read only (true) or read-write (false).
         prot: Protection,
+        /// Cache attribute for guest memory setting
+        cache: MemCacheType,
     },
     /// Call hypervisor to free the given memory range.
     DynamicallyFreeMemoryRange {
@@ -683,7 +686,12 @@ impl VmMemoryRequest {
                     Err(e) => VmMemoryResponse::Err(e),
                 }
             }
-            RegisterMemory { source, dest, prot } => {
+            RegisterMemory {
+                source,
+                dest,
+                prot,
+                cache,
+            } => {
                 if let Some(resp) = handle_prepared_region(vm, region_state, &source, &dest, &prot)
                 {
                     return resp;
@@ -706,6 +714,7 @@ impl VmMemoryRequest {
                     mapped_region,
                     prot == Protection::read(),
                     false,
+                    cache,
                 ) {
                     Ok(slot) => slot,
                     Err(e) => return VmMemoryResponse::Err(e),

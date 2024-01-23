@@ -23,6 +23,7 @@ use base::MemoryMappingBuilder;
 use base::MemoryMappingBuilderWindows;
 use base::Protection;
 use base::RawDescriptor;
+use hypervisor::MemCacheType;
 use hypervisor::Vm;
 use resources::SystemAllocator;
 use vfio_sys::*;
@@ -214,7 +215,13 @@ impl VfioPlatformDevice {
 
             let host = mmap.as_ptr();
             let guest_addr = GuestAddress(guest_map_start);
-            if let Err(e) = vm.add_memory_region(guest_addr, Box::new(mmap), false, false) {
+            if let Err(e) = vm.add_memory_region(
+                guest_addr,
+                Box::new(mmap),
+                false,
+                false,
+                MemCacheType::CacheCoherent,
+            ) {
                 error!("{e}, index: {index}, guest_addr:{guest_addr}, host:{host:?}");
                 break;
             }
@@ -258,6 +265,7 @@ impl VfioPlatformDevice {
                     },
                     VmMemoryDestination::GuestPhysicalAddress(guest_map_start),
                     Protection::read_write(),
+                    MemCacheType::CacheCoherent,
                 ) {
                     Ok(_region) => {
                         // Even if vm has mapped this region, but it is in vm main process,

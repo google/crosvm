@@ -56,6 +56,12 @@ pub struct MemRegion {
     pub size: u64,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MemCacheType {
+    CacheCoherent,
+    CacheNonCoherent,
+}
+
 /// This is intended for use with virtio-balloon, where a guest driver determines unused ranges and
 /// requests they be freed. Use without the guest's knowledge is sure to break something.
 pub enum BalloonEvent {
@@ -121,12 +127,20 @@ pub trait Vm: Send {
     ///
     /// If `log_dirty_pages` is true, the slot number can be used to retrieve the pages written to
     /// by the guest with `get_dirty_log`.
+    ///
+    /// `cache` can be used to set guest mem cache attribute if supported. Default is cache coherent
+    /// memory. Noncoherent memory means this memory might not be coherent from all access points,
+    /// e.g this could be the case when host GPU doesn't set the memory to be coherent with CPU
+    /// access. Setting this attribute would allow hypervisor to adjust guest mem control to ensure
+    /// synchronized guest access in noncoherent DMA case.
+    ///
     fn add_memory_region(
         &mut self,
         guest_addr: GuestAddress,
         mem_region: Box<dyn MappedRegion>,
         read_only: bool,
         log_dirty_pages: bool,
+        cache: MemCacheType,
     ) -> Result<MemSlot>;
 
     /// Does a synchronous msync of the memory mapped at `slot`, syncing `size` bytes starting at

@@ -54,6 +54,7 @@ use crate::DestinationMode;
 use crate::DeviceKind;
 use crate::IoEventAddress;
 use crate::LapicState;
+use crate::MemCacheType;
 use crate::MemSlot;
 use crate::TriggerMode;
 use crate::VcpuX86_64;
@@ -529,6 +530,7 @@ impl Vm for WhpxVm {
         mem: Box<dyn MappedRegion>,
         read_only: bool,
         log_dirty_pages: bool,
+        _cache: MemCacheType,
     ) -> Result<MemSlot> {
         let size = mem.size() as u64;
         let end_addr = guest_addr.checked_add(size).ok_or(Error::new(EOVERFLOW))?;
@@ -1002,8 +1004,14 @@ mod tests {
             .from_shared_memory(&shm)
             .build()
             .unwrap();
-        vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), true, false)
-            .unwrap();
+        vm.add_memory_region(
+            GuestAddress(0x1000),
+            Box::new(mem),
+            true,
+            false,
+            MemCacheType::CacheCoherent,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1023,7 +1031,13 @@ mod tests {
             .unwrap();
         let mem_ptr = mem.as_ptr();
         let slot = vm
-            .add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
+            .add_memory_region(
+                GuestAddress(0x1000),
+                Box::new(mem),
+                false,
+                false,
+                MemCacheType::CacheCoherent,
+            )
             .unwrap();
         let removed_mem = vm.remove_memory_region(slot).unwrap();
         assert_eq!(removed_mem.size(), mem_size);
@@ -1058,7 +1072,13 @@ mod tests {
             .build()
             .unwrap();
         assert!(vm
-            .add_memory_region(GuestAddress(0x2000), Box::new(mem), false, false)
+            .add_memory_region(
+                GuestAddress(0x2000),
+                Box::new(mem),
+                false,
+                false,
+                MemCacheType::CacheCoherent
+            )
             .is_err());
     }
 
@@ -1078,7 +1098,13 @@ mod tests {
             .build()
             .unwrap();
         let slot = vm
-            .add_memory_region(GuestAddress(0x10000), Box::new(mem), false, false)
+            .add_memory_region(
+                GuestAddress(0x10000),
+                Box::new(mem),
+                false,
+                false,
+                MemCacheType::CacheCoherent,
+            )
             .unwrap();
         vm.msync_memory_region(slot, mem_size - 1, 0).unwrap();
         vm.msync_memory_region(slot, 0, mem_size).unwrap();

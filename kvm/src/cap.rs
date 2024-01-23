@@ -125,4 +125,5 @@ pub enum Cap {
     ArmMte = KVM_CAP_ARM_MTE,
     #[cfg(target_arch = "x86_64")]
     BusLockDetect = KVM_CAP_X86_BUS_LOCK_EXIT,
+    MemNoncoherentDma = KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA,
 }
