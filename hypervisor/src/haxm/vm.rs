@@ -223,7 +223,7 @@ impl Vm for HaxmVm {
             VmCap::Protected => false,
             VmCap::EarlyInitCpuid => false,
             VmCap::BusLockDetect => false,
-            VmCap::ReadOnlyMemoryRegion => true,
+            VmCap::ReadOnlyMemoryRegion => false,
         }
     }
 
