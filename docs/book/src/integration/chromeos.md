@@ -15,8 +15,7 @@ These commits can be found in
 The crosvm team is submitting these merges through the ChromeOS CQ regularly, which happens
 **roughly once per week**, but time can vary depending on CQ health.
 
-Googlers can find more information on the merge process at
-[go/crosvm/playbook](http://go/crosvm/playbook)
+Googlers can find more information on the merge process at [go/crosvm-uprev-playbook].
 
 ## Building crosvm for ChromeOS
 
@@ -90,8 +89,7 @@ have been merged into the [chromiumos/platform/crosvm] repository.
 The merge will also contain all `BUG=` references that will notify your bugs about when the change
 is submitted.
 
-For more details on the process, please see [go/crosvm-playbook](http://go/crosvm-playbook) (Google
-only).
+For more details on the process, please see [go/crosvm-uprev-playbook] (Googlers only).
 
 ## Cq-Depend
 
@@ -148,3 +146,4 @@ For googlers, see go/cdg-site
 
 [chromiumos/platform/crosvm]: https://chromium.googlesource.com/chromiumos/platform/crosvm
 [crosvm/crosvm]: https://chromium.googlesource.com/crosvm/crosvm
+[go/crosvm-uprev-playbook]: http://go/crosvm-uprev-playbook
