@@ -9,7 +9,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.79"
-libc = "0.2.152"
+anyhow = "*"
+libc = "*"
 serde = {version = "*", features = ["derive"]}
 serde_json = "*"
