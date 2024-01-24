@@ -5,6 +5,7 @@
 ///! C-bindings for the rutabaga_gfx crate
 extern crate rutabaga_gfx;
 
+use std::cell::RefCell;
 use std::convert::TryInto;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -19,33 +20,32 @@ use std::ptr::null;
 use std::ptr::null_mut;
 use std::slice::from_raw_parts;
 use std::slice::from_raw_parts_mut;
-use std::sync::Mutex;
 
 use libc::iovec;
 use libc::EINVAL;
 use libc::ESRCH;
-use once_cell::sync::OnceCell;
 use rutabaga_gfx::*;
 
 const NO_ERROR: i32 = 0;
 const RUTABAGA_WSI_SURFACELESS: u64 = 1;
 
-static S_DEBUG_HANDLER: OnceCell<Mutex<RutabagaDebugHandler>> = OnceCell::new();
+thread_local! {
+    static S_DEBUG_HANDLER: RefCell<Option<RutabagaDebugHandler>> = const { RefCell::new(None) };
+}
 
 fn log_error(debug_string: String) {
-    // Although this should be only called from a single-thread environment, add locking to
-    // to reduce the amount of unsafe code blocks.
-    if let Some(ref handler_mutex) = S_DEBUG_HANDLER.get() {
-        let cstring = CString::new(debug_string.as_str()).expect("CString creation failed");
+    S_DEBUG_HANDLER.with(|handler_cell| {
+        if let Some(handler) = &*handler_cell.borrow() {
+            let cstring = CString::new(debug_string.as_str()).expect("CString creation failed");
 
-        let debug = RutabagaDebug {
-            debug_type: RUTABAGA_DEBUG_ERROR,
-            message: cstring.as_ptr(),
-        };
+            let debug = RutabagaDebug {
+                debug_type: RUTABAGA_DEBUG_ERROR,
+                message: cstring.as_ptr(),
+            };
 
-        let handler = handler_mutex.lock().unwrap();
-        handler.call(debug);
-    }
+            handler.call(debug);
+        }
+    });
 }
 
 fn return_result<T>(result: RutabagaResult<T>) -> i32 {
@@ -191,9 +191,9 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
 
         if let Some(func) = (*builder).debug_cb {
             let debug_handler = create_ffi_debug_handler((*builder).user_data, func);
-            S_DEBUG_HANDLER
-                .set(Mutex::new(debug_handler.clone()))
-                .expect("once_cell set failed");
+            S_DEBUG_HANDLER.with(|handler_cell| {
+                *handler_cell.borrow_mut() = Some(debug_handler.clone());
+            });
             debug_handler_opt = Some(debug_handler);
         }
 
