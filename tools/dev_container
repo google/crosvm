@@ -89,6 +89,8 @@ PODMAN_ARGS = [
 # Environment variables to pass through to the container if they are specified.
 ENV_PASSTHROUGH = [
     "NEXTEST_PROFILE",
+    "http_proxy",
+    "https_proxy",
 ]
 
 
