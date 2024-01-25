@@ -34,7 +34,7 @@ pub type RawDescriptor = RawHandle;
 impl Drop for SafeDescriptor {
     fn drop(&mut self) {
         // SAFETY: Safe because we own the descriptor.
-        unsafe { CloseHandle(self.descriptor) };
+        unsafe { CloseHandle(self.descriptor as _) };
     }
 }
 
@@ -54,12 +54,12 @@ pub fn duplicate_handle_from_source_process(
     // 2. new_handle_ptr points to a valid location on the stack
     // 3. Caller guarantees hndl is a real valid handle.
     unsafe {
-        let mut new_handle: RawHandle = std::ptr::null_mut();
+        let new_handle: RawHandle = std::ptr::null_mut();
         let success_flag = DuplicateHandle(
-            /* hSourceProcessHandle= */ source_process_handle,
-            /* hSourceHandle= */ hndl,
-            /* hTargetProcessHandle= */ target_process_handle,
-            /* lpTargetHandle= */ &mut new_handle,
+            /* hSourceProcessHandle= */ source_process_handle as _,
+            /* hSourceHandle= */ hndl as _,
+            /* hTargetProcessHandle= */ target_process_handle as _,
+            /* lpTargetHandle= */ new_handle as _,
             /* dwDesiredAccess= */ 0,
             /* bInheritHandle= */ TRUE,
             /* dwOptions= */ DUPLICATE_SAME_ACCESS,
@@ -80,7 +80,7 @@ fn duplicate_handle_with_target_handle(
     duplicate_handle_from_source_process(
         // SAFETY:
         // Safe because `GetCurrentProcess` just gets the current process handle.
-        unsafe { GetCurrentProcess() },
+        unsafe { GetCurrentProcess() as _ },
         hndl,
         target_process_handle,
     )
@@ -89,7 +89,7 @@ fn duplicate_handle_with_target_handle(
 pub fn duplicate_handle(hndl: RawHandle) -> io::Result<RawHandle> {
     // SAFETY:
     // Safe because `GetCurrentProcess` just gets the current process handle.
-    duplicate_handle_with_target_handle(hndl, unsafe { GetCurrentProcess() })
+    duplicate_handle_with_target_handle(hndl, unsafe { GetCurrentProcess() as _ })
 }
 
 impl TryFrom<&dyn AsRawHandle> for SafeDescriptor {
