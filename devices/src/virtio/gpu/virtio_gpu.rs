@@ -1041,7 +1041,9 @@ impl VirtioGpu {
             _ => return Err(ErrUnspec),
         };
 
-        let cache = if map_info & RUTABAGA_MAP_CACHE_MASK != RUTABAGA_MAP_CACHE_CACHED {
+        let cache = if cfg!(feature = "noncoherent-dma")
+            && map_info & RUTABAGA_MAP_CACHE_MASK != RUTABAGA_MAP_CACHE_CACHED
+        {
             MemCacheType::CacheNonCoherent
         } else {
             MemCacheType::CacheCoherent

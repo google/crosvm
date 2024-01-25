@@ -10,6 +10,7 @@ whpx = []
 gdb = ["gdbstub", "gdbstub_arch"]
 geniezone = []
 gunyah = []
+noncoherent-dma = []
 
 [dependencies]
 anyhow = "*"

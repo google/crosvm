@@ -30,6 +30,7 @@ seccomp_trace = []
 swap = ["swap/enable"]
 whpx = []
 pci-hotplug = []
+noncoherent-dma = []
 
 [dependencies]
 argh = "0.1.7"

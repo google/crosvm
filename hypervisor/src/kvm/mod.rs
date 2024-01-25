@@ -571,7 +571,10 @@ impl Vm for KvmVm {
             // When pKVM is the hypervisor, read-only memslots aren't supported, even for
             // non-protected VMs.
             VmCap::ReadOnlyMemoryRegion => !self.is_pkvm(),
-            VmCap::MemNoncoherentDma => self.check_raw_capability(KvmCap::MemNoncoherentDma),
+            VmCap::MemNoncoherentDma => {
+                cfg!(feature = "noncoherent-dma")
+                    && self.check_raw_capability(KvmCap::MemNoncoherentDma)
+            }
         }
     }
 
