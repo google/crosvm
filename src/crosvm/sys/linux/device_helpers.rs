@@ -836,6 +836,7 @@ pub fn create_balloon_device(
     tube: Tube,
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
+    vm_memory_client: VmMemoryClient,
     enabled_features: u64,
     #[cfg(feature = "registered_events")] registered_evt_q: Option<SendTube>,
     ws_num_bins: u8,
@@ -843,6 +844,7 @@ pub fn create_balloon_device(
     let dev = virtio::Balloon::new(
         virtio::base_features(protection_type),
         tube,
+        vm_memory_client,
         inflate_tube,
         init_balloon_size,
         enabled_features,

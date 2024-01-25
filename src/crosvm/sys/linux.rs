@@ -700,12 +700,25 @@ fn create_virtio_devices(
             0
         };
 
+        // The balloon device also needs a tube to communicate back to the main process to
+        // handle remapping memory dynamically.
+        let (dynamic_mapping_host_tube, dynamic_mapping_device_tube) =
+            Tube::pair().context("failed to create tube")?;
+        add_control_tube(
+            VmMemoryTube {
+                tube: dynamic_mapping_host_tube,
+                expose_with_viommu: false,
+            }
+            .into(),
+        );
+
         devs.push(create_balloon_device(
             cfg.protection_type,
             &cfg.jail_config,
             balloon_device_tube,
             balloon_inflate_tube,
             init_balloon_size,
+            VmMemoryClient::new(dynamic_mapping_device_tube),
             balloon_features,
             #[cfg(feature = "registered_events")]
             Some(

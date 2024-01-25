@@ -3,21 +3,33 @@
 // found in the LICENSE file.
 
 use base::warn;
+use vm_control::api::VmMemoryClient;
 use vm_memory::GuestAddress;
-use vm_memory::GuestMemory;
 
 pub(in crate::virtio::balloon) fn free_memory(
     guest_address: &GuestAddress,
     len: u64,
-    mem: &GuestMemory,
+    vm_memory_client: &VmMemoryClient,
 ) {
-    if let Err(e) = mem.remove_range(*guest_address, len) {
-        warn!("Marking pages unused failed: {}, addr={}", e, guest_address);
+    if let Err(e) = vm_memory_client.dynamically_free_memory_range(*guest_address, len) {
+        warn!(
+            "Failed to dynamically free memory range. Marking pages unused failed: {}, addr={}",
+            e, guest_address
+        );
     }
 }
 
 // no-op
-pub(in crate::virtio::balloon) fn reclaim_memory(_guest_address: &GuestAddress, _len: u64) {}
+pub(in crate::virtio::balloon) fn reclaim_memory(
+    _guest_address: &GuestAddress,
+    _len: u64,
+    _vm_memory_client: &VmMemoryClient,
+) {
+}
 
 // no-op
-pub(in crate::virtio::balloon) fn balloon_target_reached(_size: u64) {}
+pub(in crate::virtio::balloon) fn balloon_target_reached(
+    _size: u64,
+    _vm_memory_client: &VmMemoryClient,
+) {
+}
