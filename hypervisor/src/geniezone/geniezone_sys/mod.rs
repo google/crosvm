@@ -9,7 +9,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-#[cfg(any(target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 pub mod aarch64 {
     pub mod bindings;
     use base::ioctl_io_nr;
@@ -47,5 +47,5 @@ pub mod aarch64 {
     ioctl_iow_nr!(GZVM_SET_DTB_CONFIG, GZVM_IOC_MAGIC, 0xff, gzvm_dtb_config);
 }
 
-#[cfg(any(target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 pub use aarch64::*;

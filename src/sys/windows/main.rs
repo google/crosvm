@@ -25,7 +25,7 @@ use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 use metrics::protos::event_details::EmulatorDllDetails;
 use metrics::protos::event_details::RecordDetails;
 use metrics::MetricEventType;
-#[cfg(all(feature = "slirp"))]
+#[cfg(feature = "slirp")]
 use net_util::slirp::sys::windows::SlirpStartupConfig;
 use tube_transporter::TubeToken;
 use tube_transporter::TubeTransporterReader;
@@ -36,13 +36,13 @@ use crate::crosvm::cmdline::RunCommand;
 use crate::crosvm::sys::cmdline::Commands;
 use crate::crosvm::sys::cmdline::DeviceSubcommand;
 use crate::crosvm::sys::cmdline::RunMainCommand;
-#[cfg(all(feature = "slirp"))]
+#[cfg(feature = "slirp")]
 use crate::crosvm::sys::cmdline::RunSlirpCommand;
 use crate::sys::windows::product::run_metrics;
 use crate::CommandStatus;
 use crate::Config;
 
-#[cfg(all(feature = "slirp"))]
+#[cfg(feature = "slirp")]
 pub(crate) fn run_slirp(args: RunSlirpCommand) -> Result<()> {
     let raw_transport_tube = args.bootstrap as RawDescriptor;
 
