@@ -1954,12 +1954,11 @@ fn create_whpx_split_irq_chip(
     )
 }
 
-fn create_userspace_irq_chip<Vm, Vcpu>(
+fn create_userspace_irq_chip<Vcpu>(
     vcpu_count: usize,
     ioapic_device_tube: Tube,
 ) -> base::Result<UserspaceIrqChip<Vcpu>>
 where
-    Vm: VmArch + 'static,
     Vcpu: VcpuArch + 'static,
 {
     info!("Creating userspace irqchip");
@@ -2328,10 +2327,8 @@ fn run_config_inner(
             let vm = create_haxm_vm(haxm, guest_mem, &cfg.kernel_log_file)?;
             let (ioapic_host_tube, ioapic_device_tube) =
                 Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
-            let irq_chip = create_userspace_irq_chip::<HaxmVm, HaxmVcpu>(
-                components.vcpu_count,
-                ioapic_device_tube,
-            )?;
+            let irq_chip =
+                create_userspace_irq_chip::<HaxmVcpu>(components.vcpu_count, ioapic_device_tube)?;
             run_vm::<HaxmVcpu, HaxmVm>(
                 cfg,
                 components,
@@ -2388,7 +2385,7 @@ fn run_config_inner(
                     WindowsIrqChip::WhpxSplit(create_whpx_split_irq_chip(&vm, ioapic_device_tube)?)
                 }
                 IrqChipKind::Userspace => {
-                    WindowsIrqChip::Userspace(create_userspace_irq_chip::<WhpxVm, WhpxVcpu>(
+                    WindowsIrqChip::Userspace(create_userspace_irq_chip::<WhpxVcpu>(
                         components.vcpu_count,
                         ioapic_device_tube,
                     )?)
@@ -2421,7 +2418,7 @@ fn run_config_inner(
                     let (host_tube, ioapic_device_tube) =
                         Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
                     ioapic_host_tube = Some(host_tube);
-                    WindowsIrqChip::Userspace(create_userspace_irq_chip::<GvmVm, GvmVcpu>(
+                    WindowsIrqChip::Userspace(create_userspace_irq_chip::<GvmVcpu>(
                         components.vcpu_count,
                         ioapic_device_tube,
                     )?)
