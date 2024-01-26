@@ -54,6 +54,7 @@ use super::Interrupt;
 use super::Queue;
 use super::Reader;
 use super::VirtioDevice;
+use crate::PciAddress;
 
 /// The maximum buffer size when segmentation offload is enabled. This
 /// includes the 12-byte virtio net header.
@@ -205,6 +206,7 @@ pub struct NetParameters {
     pub vhost_net: Option<VhostNetParameters>,
     #[serde(default)]
     pub packed_queue: bool,
+    pub pci_address: Option<PciAddress>,
 }
 
 impl FromStr for NetParameters {
@@ -482,6 +484,7 @@ pub struct Net<T: TapT + ReadNotifier + 'static> {
     avail_features: u64,
     acked_features: u64,
     mtu: u16,
+    pci_address: Option<PciAddress>,
     #[cfg(windows)]
     slirp_kill_evt: Option<Event>,
 }
@@ -504,6 +507,7 @@ where
         vq_pairs: u16,
         mac_addr: Option<MacAddress>,
         use_packed_queue: bool,
+        pci_address: Option<PciAddress>,
     ) -> Result<Net<T>, NetError> {
         let taps = tap.into_mq_taps(vq_pairs).map_err(NetError::TapOpen)?;
 
@@ -550,6 +554,7 @@ where
             avail_features,
             mtu,
             mac_addr,
+            pci_address,
             #[cfg(windows)]
             None,
         )
@@ -560,6 +565,7 @@ where
         avail_features: u64,
         mtu: u16,
         mac_addr: Option<MacAddress>,
+        pci_address: Option<PciAddress>,
         #[cfg(windows)] slirp_kill_evt: Option<Event>,
     ) -> Result<Self, NetError> {
         let net = Self {
@@ -570,6 +576,7 @@ where
             avail_features,
             acked_features: 0u64,
             mtu,
+            pci_address,
             #[cfg(windows)]
             slirp_kill_evt: None,
         };
@@ -739,6 +746,10 @@ where
         Ok(())
     }
 
+    fn pci_address(&self) -> Option<PciAddress> {
+        self.pci_address
+    }
+
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         if self.worker_threads.is_empty() {
             return Ok(None);
@@ -852,7 +863,8 @@ mod tests {
                     tap_name: "tap".to_string(),
                     mac: None
                 },
-                packed_queue: false
+                packed_queue: false,
+                pci_address: None,
             }
         );
 
@@ -867,7 +879,8 @@ mod tests {
                     tap_name: "tap".to_string(),
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
                 },
-                packed_queue: false
+                packed_queue: false,
+                pci_address: None,
             }
         );
 
@@ -883,6 +896,7 @@ mod tests {
                     mac: None
                 },
                 packed_queue: false,
+                pci_address: None,
             }
         );
 
@@ -897,7 +911,8 @@ mod tests {
                     tap_fd: 12,
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
                 },
-                packed_queue: false
+                packed_queue: false,
+                pci_address: None,
             }
         );
 
@@ -916,9 +931,33 @@ mod tests {
                     netmask: Ipv4Addr::from_str("255.255.255.0").unwrap(),
                     mac: MacAddress::from_str("3d:70:eb:61:1a:91").unwrap(),
                 },
-                packed_queue: false
+                packed_queue: false,
+                pci_address: None,
             }
         );
+
+        let params = from_net_arg("tap-fd=12,pci-address=00:01.1").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                vhost_net: None,
+                vq_pairs: None,
+                mode: NetParametersMode::TapFd {
+                    tap_fd: 12,
+                    mac: None,
+                },
+                packed_queue: false,
+                pci_address: Some(PciAddress {
+                    bus: 0,
+                    dev: 1,
+                    func: 1,
+                }),
+            }
+        );
+
+        // wrong pci format
+        assert!(from_net_arg("tap-fd=12,pci-address=hello").is_err());
 
         // missing netmask
         assert!(from_net_arg("host-ip=\"192.168.10.1\",mac=\"3d:70:eb:61:1a:91\"").is_err());
@@ -949,7 +988,8 @@ mod tests {
                     netmask: Ipv4Addr::from_str("255.255.255.0").unwrap(),
                     mac: MacAddress::from_str("3d:70:eb:61:1a:91").unwrap(),
                 },
-                packed_queue: false
+                packed_queue: false,
+                pci_address: None,
             }
         );
 
@@ -963,7 +1003,8 @@ mod tests {
                     tap_fd: 3,
                     mac: None
                 },
-                packed_queue: false
+                packed_queue: false,
+                pci_address: None,
             }
         );
 
@@ -977,7 +1018,8 @@ mod tests {
                     tap_name: "crosvm_tap".to_owned(),
                     mac: None
                 },
-                packed_queue: false
+                packed_queue: false,
+                pci_address: None,
             }
         );
 
@@ -992,7 +1034,8 @@ mod tests {
                     tap_name: "crosvm_tap".to_owned(),
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
                 },
-                packed_queue: false
+                packed_queue: false,
+                pci_address: None,
             }
         );
 
@@ -1007,7 +1050,8 @@ mod tests {
                     tap_name: "tap".to_string(),
                     mac: None
                 },
-                packed_queue: true
+                packed_queue: true,
+                pci_address: None,
             }
         );
 
@@ -1022,7 +1066,27 @@ mod tests {
                     tap_name: "tap".to_string(),
                     mac: None
                 },
-                packed_queue: true
+                packed_queue: true,
+                pci_address: None,
+            }
+        );
+
+        let params = from_net_arg("vhost-net,tap-name=crosvm_tap,pci-address=00:01.1").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                vhost_net: Some(Default::default()),
+                vq_pairs: None,
+                mode: NetParametersMode::TapName {
+                    tap_name: "crosvm_tap".to_owned(),
+                    mac: None,
+                },
+                packed_queue: false,
+                pci_address: Some(PciAddress {
+                    bus: 0,
+                    dev: 1,
+                    func: 1,
+                }),
             }
         );
 

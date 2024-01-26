@@ -694,13 +694,21 @@ impl VirtioDeviceBuilder for &NetParameters {
                     tap,
                     mac,
                     self.packed_queue,
+                    self.pci_address,
                 )
                 .context("failed to set up virtio-vhost networking")?,
             ) as Box<dyn VirtioDevice>
         } else {
             Box::new(
-                virtio::Net::new(features, tap, vq_pairs, mac, self.packed_queue)
-                    .context("failed to set up virtio networking")?,
+                virtio::Net::new(
+                    features,
+                    tap,
+                    vq_pairs,
+                    mac,
+                    self.packed_queue,
+                    self.pci_address,
+                )
+                .context("failed to set up virtio networking")?,
             ) as Box<dyn VirtioDevice>
         })
     }

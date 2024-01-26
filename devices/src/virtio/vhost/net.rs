@@ -34,6 +34,7 @@ use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
+use crate::PciAddress;
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -49,6 +50,7 @@ pub struct Net<T: TapT + 'static, U: VhostNetT<T> + 'static> {
     acked_features: u64,
     request_tube: Tube,
     response_tube: Option<Tube>,
+    pci_address: Option<PciAddress>,
 }
 
 impl<T, U> Net<T, U>
@@ -64,6 +66,7 @@ where
         tap: T,
         mac_addr: Option<MacAddress>,
         use_packed_queue: bool,
+        pci_address: Option<PciAddress>,
     ) -> Result<Net<T, U>> {
         // Set offload flags to match the virtio features below.
         tap.set_offload(
@@ -112,6 +115,7 @@ where
             acked_features: 0u64,
             request_tube,
             response_tube: Some(response_tube),
+            pci_address,
         })
     }
 }
@@ -247,6 +251,10 @@ where
         Ok(())
     }
 
+    fn pci_address(&self) -> Option<PciAddress> {
+        self.pci_address
+    }
+
     fn on_device_sandboxed(&mut self) {
         // ignore the error but to log the error. We don't need to do
         // anything here because when activate, the other vhost set up
@@ -361,8 +369,15 @@ pub mod tests {
         tap.enable().unwrap();
 
         let features = base_features(ProtectionType::Unprotected);
-        Net::<FakeTap, FakeNet<FakeTap>>::new(&PathBuf::from(""), features, tap, Some(mac), false)
-            .unwrap()
+        Net::<FakeTap, FakeNet<FakeTap>>::new(
+            &PathBuf::from(""),
+            features,
+            tap,
+            Some(mac),
+            false,
+            None,
+        )
+        .unwrap()
     }
 
     #[test]

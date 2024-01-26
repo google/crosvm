@@ -1518,7 +1518,7 @@ pub struct RunCommand {
     #[cfg(all(unix, feature = "net"))]
     #[argh(
         option,
-        arg_name = "(tap-name=TAP_NAME,mac=MAC_ADDRESS|tap-fd=TAP_FD,mac=MAC_ADDRESS|host-ip=IP,netmask=NETMASK,mac=MAC_ADDRESS),vhost-net=VHOST_NET,vq-pairs=N"
+        arg_name = "(tap-name=TAP_NAME,mac=MAC_ADDRESS|tap-fd=TAP_FD,mac=MAC_ADDRESS|host-ip=IP,netmask=NETMASK,mac=MAC_ADDRESS),vhost-net=VHOST_NET,vq-pairs=N,pci-address=ADDR"
     )]
     #[serde(default)]
     #[merge(strategy = append)]
@@ -1557,6 +1557,8 @@ pub struct RunCommand {
     ///                       If not set or set to false, it will
     ///                       use split virtqueue.
     ///                       Default: false.  [Optional]
+    ///   pci-address     - preferred PCI address, e.g. "00:01.0"
+    ///                       Default: automatic PCI address assignment. [Optional]
     ///
     /// Either one tap_name, one tap_fd or a triplet of host_ip,
     /// netmask and mac must be specified.
@@ -3027,6 +3029,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     vhost_net: vhost_net_config.clone(),
                     vq_pairs: cmd.net_vq_pairs,
                     packed_queue: false,
+                    pci_address: None,
                 });
             }
 
@@ -3040,6 +3043,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     vhost_net: vhost_net_config.clone(),
                     vq_pairs: cmd.net_vq_pairs,
                     packed_queue: false,
+                    pci_address: None,
                 });
             }
 
@@ -3078,6 +3082,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     vhost_net: vhost_net_config,
                     vq_pairs: cmd.net_vq_pairs,
                     packed_queue: false,
+                    pci_address: None,
                 });
             }
 

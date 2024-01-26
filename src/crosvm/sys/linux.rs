@@ -2349,6 +2349,7 @@ fn handle_hotplug_net_add<V: VmArch, Vcpu: VcpuArch>(
         vhost_net: None,
         vq_pairs: None,
         packed_queue: false,
+        pci_address: None,
     };
     let ret = add_hotplug_net(
         linux,
