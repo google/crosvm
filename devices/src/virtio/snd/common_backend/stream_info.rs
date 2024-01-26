@@ -106,7 +106,7 @@ pub struct StreamInfo {
     #[cfg(windows)]
     pub(crate) playback_stream_cache: Option<(
         Arc<AsyncRwLock<Box<dyn audio_streams::AsyncPlaybackBufferStream>>>,
-        Arc<AsyncRwLock<Box<dyn PlaybackBufferWriter>>>,
+        Rc<AsyncRwLock<Box<dyn PlaybackBufferWriter>>>,
     )>,
 }
 

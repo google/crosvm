@@ -6,6 +6,7 @@
 // will be in win_audio now
 use std::io;
 use std::io::Read;
+use std::rc::Rc;
 use std::slice;
 use std::sync::Arc;
 
@@ -56,7 +57,7 @@ pub(crate) type SysBufferReader = WinBufferReader;
 pub struct SysDirectionOutput {
     pub async_playback_buffer_stream:
         Arc<AsyncRwLock<Box<dyn audio_streams::AsyncPlaybackBufferStream>>>,
-    pub buffer_writer: Arc<AsyncRwLock<Box<dyn PlaybackBufferWriter>>>,
+    pub buffer_writer: Rc<AsyncRwLock<Box<dyn PlaybackBufferWriter>>>,
 }
 
 pub(crate) struct SysAsyncStreamObjects {
@@ -160,7 +161,7 @@ impl StreamInfo {
 
             self.playback_stream_cache = Some((
                 Arc::new(AsyncRwLock::new(async_playback_buffer_stream)),
-                Arc::new(AsyncRwLock::new(Box::new(buffer_writer))),
+                Rc::new(AsyncRwLock::new(Box::new(buffer_writer))),
             ));
         }
         let playback_stream_cache = self
