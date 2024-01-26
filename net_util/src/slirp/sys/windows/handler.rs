@@ -300,7 +300,7 @@ fn poll_sockets(mut sockets: Vec<WSAPOLLFD>) -> io::Result<Vec<WSAPOLLFD>> {
     // Safe because sockets is guaranteed to be valid, and we handle error return codes below.
     let poll_result = unsafe {
         WSAPoll(
-            sockets.as_mut_ptr() as *mut WSAPOLLFD,
+            sockets.as_mut_ptr(),
             sockets.len() as u32,
             1, /* timeout in ms */
         )
