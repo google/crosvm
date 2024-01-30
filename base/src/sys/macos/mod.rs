@@ -2,7 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fs::File;
+
+use crate::descriptor::FromRawDescriptor;
 use crate::sys::unix::RawDescriptor;
+use crate::unix::set_descriptor_cloexec;
 use crate::MmapError;
 
 mod net;
@@ -351,3 +355,32 @@ pub(crate) use libc::pread;
 pub(crate) use libc::preadv;
 pub(crate) use libc::pwrite;
 pub(crate) use libc::pwritev;
+
+/// Spawns a pipe pair where the first pipe is the read end and the second pipe is the write end.
+///
+/// The `O_CLOEXEC` flag will be applied after pipe creation.
+pub fn pipe() -> crate::errno::Result<(File, File)> {
+    let mut pipe_fds = [-1; 2];
+    // SAFETY:
+    // Safe because pipe will only write 2 element array of i32 to the given pointer, and we check
+    // for error.
+    let ret = unsafe { libc::pipe(pipe_fds.as_mut_ptr()) };
+    if ret == -1 {
+        return crate::errno::errno_result();
+    }
+
+    // SAFETY:
+    // Safe because both fds must be valid for pipe to have returned sucessfully and we have
+    // exclusive ownership of them.
+    let pipes = unsafe {
+        (
+            File::from_raw_descriptor(pipe_fds[0]),
+            File::from_raw_descriptor(pipe_fds[1]),
+        )
+    };
+
+    set_descriptor_cloexec(&pipes.0)?;
+    set_descriptor_cloexec(&pipes.1)?;
+
+    Ok(pipes)
+}
