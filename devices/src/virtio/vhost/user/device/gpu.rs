@@ -153,59 +153,71 @@ impl VhostUserBackend for GpuBackend {
             self.stop_queue(idx)?;
         }
 
-        match idx {
-            // ctrl queue.
-            0 => {}
-            // We don't currently handle the cursor queue.
-            1 => return Ok(()),
-            _ => bail!("attempted to start unknown queue: {}", idx),
-        }
-
-        let kick_evt = queue
-            .event()
-            .try_clone()
-            .context("failed to clone queue event")?;
-        let kick_evt = EventAsync::new(kick_evt, &self.ex)
-            .context("failed to create EventAsync for kick_evt")?;
-
+        // Create a refcounted queue. The GPU control queue uses a SharedReader which allows us to
+        // handle fences in the RutabagaFenceHandler, and also handle queue messages in
+        // `run_ctrl_queue`.
+        // For the cursor queue, we still create the refcounted queue to support retrieving the
+        // queue for snapshotting (but don't handle any messages).
         let queue = Arc::new(Mutex::new(queue));
-        let reader = SharedReader {
-            queue: queue.clone(),
-            doorbell: doorbell.clone(),
-        };
 
-        let state = if let Some(s) = self.state.as_ref() {
-            s.clone()
-        } else {
-            let fence_handler_resources =
-                Arc::new(Mutex::new(Some(gpu::FenceHandlerActivationResources {
-                    mem: mem.clone(),
-                    ctrl_queue: reader.clone(),
-                })));
-            let fence_handler =
-                gpu::create_fence_handler(fence_handler_resources, self.fence_state.clone());
+        // Spawn a worker for the queue.
+        let queue_task = match idx {
+            0 => {
+                // Set up worker for the control queue.
+                let kick_evt = queue
+                    .lock()
+                    .event()
+                    .try_clone()
+                    .context("failed to clone queue event")?;
+                let kick_evt = EventAsync::new(kick_evt, &self.ex)
+                    .context("failed to create EventAsync for kick_evt")?;
+                let reader = SharedReader {
+                    queue: queue.clone(),
+                    doorbell: doorbell.clone(),
+                };
 
-            let state = Rc::new(RefCell::new(
-                self.gpu
-                    .borrow_mut()
-                    .initialize_frontend(
+                let state = if let Some(s) = self.state.as_ref() {
+                    s.clone()
+                } else {
+                    let fence_handler_resources =
+                        Arc::new(Mutex::new(Some(gpu::FenceHandlerActivationResources {
+                            mem: mem.clone(),
+                            ctrl_queue: reader.clone(),
+                        })));
+                    let fence_handler = gpu::create_fence_handler(
+                        fence_handler_resources,
                         self.fence_state.clone(),
-                        fence_handler,
-                        Arc::clone(&self.shmem_mapper),
-                    )
-                    .ok_or_else(|| anyhow!("failed to initialize gpu frontend"))?,
-            ));
-            self.state = Some(state.clone());
-            state
+                    );
+
+                    let state = Rc::new(RefCell::new(
+                        self.gpu
+                            .borrow_mut()
+                            .initialize_frontend(
+                                self.fence_state.clone(),
+                                fence_handler,
+                                Arc::clone(&self.shmem_mapper),
+                            )
+                            .ok_or_else(|| anyhow!("failed to initialize gpu frontend"))?,
+                    ));
+                    self.state = Some(state.clone());
+                    state
+                };
+
+                // Start handling platform-specific workers.
+                self.start_platform_workers(doorbell)?;
+
+                // Start handling the control queue.
+                self.ex
+                    .spawn_local(run_ctrl_queue(reader, mem, kick_evt, state))
+            }
+            1 => {
+                // For the cursor queue, spawn an empty worker, as we don't process it at all.
+                // We don't handle the cursor queue because no current users of vhost-user GPU pass
+                // any messages on it.
+                self.ex.spawn_local(async {})
+            }
+            _ => bail!("attempted to start unknown queue: {}", idx),
         };
-
-        // Start handling platform-specific workers.
-        self.start_platform_workers(doorbell)?;
-
-        // Start handling the control queue.
-        let queue_task = self
-            .ex
-            .spawn_local(run_ctrl_queue(reader, mem, kick_evt, state));
 
         self.queue_workers[idx] = Some(WorkerState { queue_task, queue });
         Ok(())
@@ -216,8 +228,16 @@ impl VhostUserBackend for GpuBackend {
             // Wait for queue_task to be aborted.
             let _ = self.ex.run_until(worker.queue_task.cancel());
 
-            // Valid as the GPU device has a single Queue, so clearing the state here is ok.
-            self.state = None;
+            if idx == 0 {
+                // Stop the non-queue workers if this is the control queue (where we start them).
+                self.stop_non_queue_workers()?;
+
+                // After we stop all workers, we have only one reference left to self.state.
+                // Clearing it allows the GPU state to be destroyed, which gets rid of the
+                // remaining control queue reference from RutabagaFenceHandler.
+                // This allows our worker.queue to be recovered as it has no further references.
+                self.state = None;
+            }
 
             let queue = match Arc::try_unwrap(worker.queue) {
                 Ok(queue_mutex) => queue_mutex.into_inner(),
