@@ -1316,6 +1316,8 @@ pub struct RunCommand {
     ///     implicit-render-server[=true|=false] - If the render
     ///        server process should be allowed to autostart
     ///        (ignored when sandboxing is enabled)
+    ///     fixed-blob-mapping[=true|=false] - if gpu memory blobs
+    ///        should use fixed address mapping.
     ///
     /// Possible key values for GpuDisplayParameters:
     ///     mode=(borderless_full_screen|windowed[width,height]) -

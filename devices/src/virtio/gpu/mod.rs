@@ -243,6 +243,7 @@ fn build(
     rutabaga: Rutabaga,
     mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     external_blob: bool,
+    fixed_blob_mapping: bool,
     #[cfg(windows)] wndproc_thread: &mut Option<WindowProcedureThread>,
     udmabuf: bool,
     #[cfg(windows)] gpu_display_wait_descriptor_ctrl_wr: SendTube,
@@ -280,6 +281,7 @@ fn build(
         rutabaga,
         mapper,
         external_blob,
+        fixed_blob_mapping,
         udmabuf,
     )
 }
@@ -1172,6 +1174,7 @@ pub struct Gpu {
     pci_address: Option<PciAddress>,
     pci_bar_size: u64,
     external_blob: bool,
+    fixed_blob_mapping: bool,
     rutabaga_component: RutabagaComponentType,
     #[cfg(windows)]
     wndproc_thread: Option<WindowProcedureThread>,
@@ -1283,6 +1286,7 @@ impl Gpu {
             pci_address: gpu_parameters.pci_address,
             pci_bar_size: gpu_parameters.pci_bar_size,
             external_blob: gpu_parameters.external_blob,
+            fixed_blob_mapping: gpu_parameters.fixed_blob_mapping,
             rutabaga_component: component,
             #[cfg(windows)]
             wndproc_thread: Some(wndproc_thread),
@@ -1327,6 +1331,7 @@ impl Gpu {
             rutabaga,
             mapper,
             self.external_blob,
+            self.fixed_blob_mapping,
             #[cfg(windows)]
             &mut self.wndproc_thread,
             self.udmabuf,
@@ -1371,6 +1376,7 @@ impl Gpu {
         let display_event = self.display_event.clone();
         let event_devices = self.event_devices.take().expect("missing event_devices");
         let external_blob = self.external_blob;
+        let fixed_blob_mapping = self.fixed_blob_mapping;
         let udmabuf = self.udmabuf;
         let fence_state = Arc::new(Mutex::new(Default::default()));
 
@@ -1436,6 +1442,7 @@ impl Gpu {
                 rutabaga,
                 mapper,
                 external_blob,
+                fixed_blob_mapping,
                 #[cfg(windows)]
                 &mut wndproc_thread,
                 udmabuf,
@@ -1765,7 +1772,8 @@ impl VirtioDevice for Gpu {
     }
 
     fn expose_shmem_descriptors_with_viommu(&self) -> bool {
-        true
+        // TODO(b/323368701): integrate with fixed_blob_mapping so this can always return true.
+        !self.fixed_blob_mapping
     }
 
     // Notes on sleep/wake/snapshot/restore functionality.

@@ -69,6 +69,9 @@ pub struct GpuParameters {
     // enforce that blob resources MUST be exportable as file descriptors
     pub external_blob: bool,
     pub system_blob: bool,
+    // enable use of descriptor mapping to fixed host VA within a prepared vMMU mapping (e.g. kvm
+    // user memslot)
+    pub fixed_blob_mapping: bool,
     #[serde(rename = "implicit-render-server")]
     pub allow_implicit_render_server_exec: bool,
 }
@@ -94,6 +97,7 @@ impl Default for GpuParameters {
             capset_mask: 0,
             external_blob: false,
             system_blob: false,
+            fixed_blob_mapping: false,
             allow_implicit_render_server_exec: false,
         }
     }

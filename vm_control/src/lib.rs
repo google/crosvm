@@ -614,7 +614,7 @@ impl Default for VmMemoryRegionState {
     }
 }
 
-fn handle_prepared_region(
+fn try_map_to_prepared_region(
     vm: &mut impl Vm,
     region_state: &mut VmMemoryRegionState,
     source: &VmMemorySource,
@@ -688,9 +688,13 @@ impl VmMemoryRequest {
         use self::VmMemoryRequest::*;
         match self {
             PrepareSharedMemoryRegion { alloc } => {
-                // Currently the iommu_client is only used by virtio-gpu, and virtio-gpu
-                // is incompatible with PrepareSharedMemoryRegion because we can't use
-                // add_fd_mapping with VmMemorySource::Vulkan.
+                // Currently the iommu_client is only used by virtio-gpu when used alongside GPU
+                // pci-passthrough.
+                //
+                // TODO(b/323368701): Make compatible with iommu_client by ensuring that
+                // VirtioIOMMUVfioCommand::VfioDmabufMap is submitted for both dynamic mappings and
+                // fixed mappings (i.e. whether or not try_map_to_prepared_region succeeds in
+                // RegisterMemory case below).
                 assert!(iommu_client.is_none());
 
                 if !sys::should_prepare_memory_region() {
@@ -711,7 +715,8 @@ impl VmMemoryRequest {
                 prot,
                 cache,
             } => {
-                if let Some(resp) = handle_prepared_region(vm, region_state, &source, &dest, &prot)
+                if let Some(resp) =
+                    try_map_to_prepared_region(vm, region_state, &source, &dest, &prot)
                 {
                     return resp;
                 }

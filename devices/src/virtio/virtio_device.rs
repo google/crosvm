@@ -180,6 +180,7 @@ pub trait VirtioDevice: Send {
     /// PCI bar into their IO address space with virtio-iommu.
     ///
     /// NOTE: Not all vm_control::VmMemorySource types are supported.
+    /// NOTE: Not yet compatible with PrepareSharedMemoryRegion (aka fixed mapping).
     fn expose_shmem_descriptors_with_viommu(&self) -> bool {
         false
     }

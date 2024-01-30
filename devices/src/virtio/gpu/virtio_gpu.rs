@@ -427,6 +427,7 @@ pub struct VirtioGpu {
     rutabaga: Rutabaga,
     resources: Map<u32, VirtioGpuResource>,
     external_blob: bool,
+    fixed_blob_mapping: bool,
     udmabuf_driver: Option<UdmabufDriver>,
 }
 
@@ -500,6 +501,7 @@ impl VirtioGpu {
         rutabaga: Rutabaga,
         mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
         external_blob: bool,
+        fixed_blob_mapping: bool,
         udmabuf: bool,
     ) -> Option<VirtioGpu> {
         let mut udmabuf_driver = None;
@@ -532,6 +534,7 @@ impl VirtioGpu {
             rutabaga,
             resources: Default::default(),
             external_blob,
+            fixed_blob_mapping,
             udmabuf_driver,
         })
     }
@@ -1019,9 +1022,10 @@ impl VirtioGpu {
             }
         }
 
-        // fallback to ExternalMapping via rutabaga if sandboxing (hence external_blob) is disabled.
+        // fallback to ExternalMapping via rutabaga if sandboxing (hence external_blob) and fixed
+        // mapping are both disabled as neither is currently compatible.
         if source.is_none() {
-            if self.external_blob {
+            if self.external_blob || self.fixed_blob_mapping {
                 return Err(ErrUnspec);
             }
 
