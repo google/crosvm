@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-mod sys;
-
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::io::Write;
@@ -847,6 +845,18 @@ impl From<Box<PausedQueues>> for BTreeMap<usize, Queue> {
     }
 }
 
+fn free_memory(vm_memory_client: &VmMemoryClient, guest_address: GuestAddress, len: u64) {
+    if let Err(e) = vm_memory_client.dynamically_free_memory_range(guest_address, len) {
+        warn!("Failed to dynamically free memory range (addr={guest_address} len={len}): {e:#}");
+    }
+}
+
+fn reclaim_memory(vm_memory_client: &VmMemoryClient, guest_address: GuestAddress, len: u64) {
+    if let Err(e) = vm_memory_client.dynamically_reclaim_memory_range(guest_address, len) {
+        warn!("Failed to dynamically reclaim memory range (addr={guest_address} len={len}): {e:#}");
+    }
+}
+
 /// Stores data from the worker when it stops so that data can be re-used when
 /// the worker is restarted.
 struct WorkerReturn {
@@ -898,7 +908,7 @@ fn run_worker(
             inflate_queue,
             EventAsync::new(inflate_queue_evt, &ex).expect("failed to create async event"),
             release_memory_tube.as_ref(),
-            |guest_address, len| sys::free_memory(&guest_address, len, &vm_memory_client),
+            |guest_address, len| free_memory(&vm_memory_client, guest_address, len),
             stop_rx,
         );
         let inflate = inflate.fuse();
@@ -914,7 +924,7 @@ fn run_worker(
             deflate_queue,
             EventAsync::new(deflate_queue_evt, &ex).expect("failed to create async event"),
             None,
-            |guest_address, len| sys::reclaim_memory(&guest_address, len, &vm_memory_client),
+            |guest_address, len| reclaim_memory(&vm_memory_client, guest_address, len),
             stop_rx,
         );
         let deflate = deflate.fuse();
@@ -958,7 +968,7 @@ fn run_worker(
                 reporting_queue,
                 EventAsync::new(reporting_queue_evt, &ex).expect("failed to create async event"),
                 release_memory_tube.as_ref(),
-                |guest_address, len| sys::free_memory(&guest_address, len, &vm_memory_client),
+                |guest_address, len| free_memory(&vm_memory_client, guest_address, len),
                 stop_rx,
             )
             .left_future()
@@ -1128,7 +1138,9 @@ async fn handle_target_reached(
         let _ = event_async.next_val().await;
         // Send the message to vm_control on the event. We don't have to read the current
         // size yet.
-        sys::balloon_target_reached(0, vm_memory_client);
+        if let Err(e) = vm_memory_client.balloon_target_reached(0) {
+            warn!("Failed to send or receive allocation complete request: {e:#}");
+        }
     }
     // The above loop will never terminate and there is no reason to terminate it either. However,
     // the function is used in an executor that expects a Result<> return. Make sure that clippy
