@@ -722,7 +722,8 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             }
             Ok(MasterReq::SLEEP) => {
                 let res = self.backend.sleep();
-                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                let msg = VhostUserSuccess::new(res.is_ok());
+                self.slave_req_helper.send_reply_message(&hdr, &msg)?;
             }
             Ok(MasterReq::WAKE) => {
                 let res = self.backend.wake();

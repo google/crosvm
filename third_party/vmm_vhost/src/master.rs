@@ -251,7 +251,14 @@ impl Master {
     /// Put the device to sleep.
     pub fn sleep(&self) -> Result<()> {
         let hdr = self.send_request_header(MasterReq::SLEEP, None)?;
-        self.wait_for_ack(&hdr)
+        let reply = self.recv_reply::<VhostUserSuccess>(&hdr)?;
+        if !reply.success() {
+            Err(VhostUserError::SleepError(anyhow!(
+                "Device process responded with a failure on SLEEP."
+            )))
+        } else {
+            Ok(())
+        }
     }
 
     /// Wake the device up.
