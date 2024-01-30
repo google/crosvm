@@ -139,8 +139,8 @@ struct VcpuPipe {
 }
 
 fn new_pipe_pair() -> SysResult<VcpuPipe> {
-    let to_crosvm = pipe(true)?;
-    let to_plugin = pipe(true)?;
+    let to_crosvm = pipe()?;
+    let to_plugin = pipe()?;
     // Increasing the pipe size can be a nice-to-have to make sure that
     // messages get across atomically (and made sure that writes don't block),
     // though it's not necessary a hard requirement for things to work.
@@ -488,7 +488,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let sigchld_fd = SignalFd::new(SIGCHLD).context("failed to create signalfd")?;
 
     // Create a pipe to capture error messages from plugin and minijail.
-    let (mut stderr_rd, stderr_wr) = pipe(true).context("failed to create stderr pipe")?;
+    let (mut stderr_rd, stderr_wr) = pipe().context("failed to create stderr pipe")?;
     add_fd_flags(stderr_rd.as_raw_descriptor(), O_NONBLOCK)
         .context("error marking stderr nonblocking")?;
 

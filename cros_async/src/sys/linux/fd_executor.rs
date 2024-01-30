@@ -405,7 +405,7 @@ mod test {
     #[test]
     fn test_it() {
         async fn do_test(ex: &Arc<RawExecutor<EpollReactor>>) {
-            let (r, _w) = base::pipe(true).unwrap();
+            let (r, _w) = base::pipe().unwrap();
             let done = Box::pin(async { 5usize });
             let source = RegisteredSource::new(ex, r).unwrap();
             let pending = source.wait_readable().unwrap();
@@ -448,7 +448,7 @@ mod test {
             }
         }
 
-        let (mut rx, tx) = base::pipe(true).expect("Pipe failed");
+        let (mut rx, tx) = base::pipe().expect("Pipe failed");
 
         let ex = RawExecutor::<EpollReactor>::new().unwrap();
 

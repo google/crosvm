@@ -463,7 +463,7 @@ fn wake_with_nop() {
     const BUF_DATA: [u8; 16] = [0xf4; 16];
 
     let uring = URingContext::new(4, None).map(Arc::new).unwrap();
-    let (pipe_out, mut pipe_in) = pipe(true).unwrap();
+    let (pipe_out, mut pipe_in) = pipe().unwrap();
     let (tx, rx) = channel();
 
     let uring2 = uring.clone();

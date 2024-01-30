@@ -269,7 +269,7 @@ mod tests {
         use futures::future::Either;
 
         async fn do_test(ex: &Arc<RawExecutor<UringReactor>>) {
-            let (read_source, mut w) = base::pipe(true).unwrap();
+            let (read_source, mut w) = base::pipe().unwrap();
             let source = UringSource::new(read_source, ex).unwrap();
             let done = Box::pin(async { 5usize });
             let pending = Box::pin(read_u64(&source));

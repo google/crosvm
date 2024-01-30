@@ -390,7 +390,7 @@ mod tests {
             let _ = source.wait_readable().await;
         }
 
-        let (rx, _tx) = base::pipe(true).unwrap();
+        let (rx, _tx) = base::pipe().unwrap();
         let ex = RawExecutor::<EpollReactor>::new().unwrap();
         let source = PollSource::new(rx, &ex).unwrap();
         ex.spawn_local(owns_poll_source(source)).detach();

@@ -49,7 +49,7 @@ mod tests {
 
     #[test]
     fn pipe_pair() {
-        let (read_pipe, write_pipe) = pipe(true).unwrap();
+        let (read_pipe, write_pipe) = pipe().unwrap();
         assert_eq!(FileFlags::from_file(&read_pipe).unwrap(), FileFlags::Read);
         assert_eq!(FileFlags::from_file(&write_pipe).unwrap(), FileFlags::Write);
     }

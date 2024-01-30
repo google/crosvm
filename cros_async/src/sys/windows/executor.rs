@@ -88,7 +88,7 @@ pub const DEFAULT_IO_CONCURRENCY: u32 = 1;
 /// # fn do_it() -> Result<(), Box<dyn Error>> {
 ///     let ex = Executor::new()?;
 ///
-///     let (rx, tx) = base::pipe(true)?;
+///     let (rx, tx) = base::pipe()?;
 ///     let zero = File::open("/dev/zero")?;
 ///     let zero_bytes = CHUNK_SIZE * 7;
 ///     let zero_to_pipe = transfer_data(

@@ -891,7 +891,7 @@ impl WlVfd {
     }
 
     fn pipe_remote_read_local_write() -> WlResult<WlVfd> {
-        let (read_pipe, write_pipe) = pipe(true).map_err(WlError::NewPipe)?;
+        let (read_pipe, write_pipe) = pipe().map_err(WlError::NewPipe)?;
         let mut vfd = WlVfd::default();
         vfd.remote_pipe = Some(read_pipe);
         vfd.local_pipe = Some((VIRTIO_WL_VFD_WRITE, write_pipe));
@@ -899,7 +899,7 @@ impl WlVfd {
     }
 
     fn pipe_remote_write_local_read() -> WlResult<WlVfd> {
-        let (read_pipe, write_pipe) = pipe(true).map_err(WlError::NewPipe)?;
+        let (read_pipe, write_pipe) = pipe().map_err(WlError::NewPipe)?;
         let mut vfd = WlVfd::default();
         vfd.remote_pipe = Some(write_pipe);
         vfd.local_pipe = Some((VIRTIO_WL_VFD_READ, read_pipe));

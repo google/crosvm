@@ -357,14 +357,13 @@ pub fn kill_process_group() -> Result<()> {
 
 /// Spawns a pipe pair where the first pipe is the read end and the second pipe is the write end.
 ///
-/// If `close_on_exec` is true, the `O_CLOEXEC` flag will be set during pipe creation.
-pub fn pipe(close_on_exec: bool) -> Result<(File, File)> {
-    let flags = if close_on_exec { O_CLOEXEC } else { 0 };
+/// The `O_CLOEXEC` flag will be set during pipe creation.
+pub fn pipe() -> Result<(File, File)> {
     let mut pipe_fds = [-1; 2];
     // SAFETY:
     // Safe because pipe2 will only write 2 element array of i32 to the given pointer, and we check
     // for error.
-    let ret = unsafe { pipe2(&mut pipe_fds[0], flags) };
+    let ret = unsafe { pipe2(&mut pipe_fds[0], O_CLOEXEC) };
     if ret == -1 {
         errno_result()
     } else {
@@ -395,7 +394,7 @@ pub fn set_pipe_size(fd: RawFd, size: usize) -> Result<usize> {
 pub fn new_pipe_full() -> Result<(File, File)> {
     use std::io::Write;
 
-    let (rx, mut tx) = pipe(true)?;
+    let (rx, mut tx) = pipe()?;
     // The smallest allowed size of a pipe is the system page size on linux.
     let page_size = set_pipe_size(tx.as_raw_descriptor(), round_up_to_page_size(1))?;
 
