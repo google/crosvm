@@ -99,7 +99,7 @@ impl<Re: Reactor> RawExecutor<Re> {
     }
 
     fn wake(&self) {
-        let oldstate = self.state.swap(WOKEN, Ordering::Release);
+        let oldstate = self.state.swap(WOKEN, Ordering::AcqRel);
         if oldstate == WAITING {
             self.reactor.wake();
         }
@@ -179,7 +179,7 @@ impl<Re: Reactor> RawExecutor<Re> {
             let oldstate = self.state.compare_exchange(
                 PROCESSING,
                 WAITING,
-                Ordering::Acquire,
+                Ordering::AcqRel,
                 Ordering::Acquire,
             );
             if let Err(oldstate) = oldstate {
