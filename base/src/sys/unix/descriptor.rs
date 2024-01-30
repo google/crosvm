@@ -53,25 +53,37 @@ fn clone_fd(fd: &dyn AsRawFd) -> Result<RawFd> {
     }
 }
 
-/// Clears CLOEXEC flag on descriptor
-pub fn clear_descriptor_cloexec<A: AsRawDescriptor>(fd_owner: &A) -> Result<()> {
-    clear_fd_cloexec(&fd_owner.as_raw_descriptor())
+/// Adds CLOEXEC flag on descriptor
+pub fn set_descriptor_cloexec<A: AsRawDescriptor>(fd_owner: &A) -> Result<()> {
+    modify_descriptor_flags(fd_owner.as_raw_descriptor(), |flags| {
+        flags | libc::FD_CLOEXEC
+    })
 }
 
-/// Clears CLOEXEC flag on fd
-fn clear_fd_cloexec<A: AsRawFd>(fd_owner: &A) -> Result<()> {
-    let fd = fd_owner.as_raw_fd();
+/// Clears CLOEXEC flag on descriptor
+pub fn clear_descriptor_cloexec<A: AsRawDescriptor>(fd_owner: &A) -> Result<()> {
+    modify_descriptor_flags(fd_owner.as_raw_descriptor(), |flags| {
+        flags & !libc::FD_CLOEXEC
+    })
+}
+
+/// Apply the specified modification to the file descriptor's flags.
+fn modify_descriptor_flags(
+    desc: RawDescriptor,
+    modify_flags: impl FnOnce(libc::c_int) -> libc::c_int,
+) -> Result<()> {
     // SAFETY:
     // Safe because fd is read only.
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    let flags = unsafe { libc::fcntl(desc, libc::F_GETFD) };
     if flags == -1 {
         return errno_result();
     }
 
-    let masked_flags = flags & !libc::FD_CLOEXEC;
+    let new_flags = modify_flags(flags);
+
     // SAFETY:
     // Safe because this has no side effect(s) on the current process.
-    if masked_flags != flags && unsafe { libc::fcntl(fd, libc::F_SETFD, masked_flags) } == -1 {
+    if new_flags != flags && unsafe { libc::fcntl(desc, libc::F_SETFD, new_flags) } == -1 {
         errno_result()
     } else {
         Ok(())
