@@ -5,6 +5,7 @@
 //! Linux arm64 kernel loader.
 //! <https://www.kernel.org/doc/Documentation/arm64/booting.txt>
 
+use std::cmp::max;
 use std::io;
 use std::io::BufRead;
 use std::io::Read;
@@ -12,6 +13,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::mem::size_of_val;
 
+use base::warn;
 use base::FileGetLen;
 use base::FileReadWriteAtVolatile;
 use base::VolatileSlice;
@@ -67,6 +69,7 @@ impl Arm64ImageHeader {
         let image_size: u64 = self.image_size.into();
 
         if image_size == 0 {
+            warn!("arm64 Image header has an effective size of zero");
             // arm64/booting.txt:
             // "Where image_size is zero, text_offset can be assumed to be 0x80000."
             text_offset = ARM64_TEXT_OFFSET_DEFAULT;
@@ -95,6 +98,7 @@ where
 
     let file_size = kernel_image.get_len().map_err(|_| Error::SeekKernelEnd)?;
     let load_size = usize::try_from(file_size).map_err(|_| Error::InvalidKernelSize)?;
+    let range_size = max(file_size, u64::from(header.image_size));
 
     let guest_slice = guest_mem
         .get_slice_at_addr(load_addr, load_size)
@@ -105,7 +109,7 @@ where
 
     Ok(LoadedKernel {
         size: file_size,
-        address_range: AddressRange::from_start_and_size(load_addr.offset(), file_size)
+        address_range: AddressRange::from_start_and_size(load_addr.offset(), range_size)
             .ok_or(Error::InvalidKernelSize)?,
         entry: load_addr,
     })
@@ -156,9 +160,10 @@ fn load_arm64_kernel_from_reader<F: BufRead>(
     }
 
     let file_size = current_addr.offset_from(load_addr);
+    let range_size = max(file_size, u64::from(header.image_size));
     Ok(LoadedKernel {
         size: file_size,
-        address_range: AddressRange::from_start_and_size(load_addr.offset(), file_size)
+        address_range: AddressRange::from_start_and_size(load_addr.offset(), range_size)
             .ok_or(Error::InvalidKernelSize)?,
         entry: load_addr,
     })
