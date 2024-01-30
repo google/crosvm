@@ -155,6 +155,9 @@ pub enum Error {
     /// Error from invalid vring index.
     #[error("Vring index not found: {0}")]
     VringIndexNotFound(usize),
+    /// Failure to run device specific wake.
+    #[error("Failed to run device specific wake: {0}")]
+    WakeError(anyhow::Error),
 }
 
 impl From<base::TubeError> for Error {
