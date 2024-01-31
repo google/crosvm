@@ -183,10 +183,7 @@ impl Executor {
     /// `IoSource` to directly start async operations without needing a separate reference to the
     /// executor.
     pub fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
-        match self {
-            Executor::Handle(ex) => ex.async_from(f),
-            Executor::Overlapped(ex) => ex.async_from(f),
-        }
+        ExecutorTrait::async_from(self, f)
     }
 
     /// Create a new overlapped `IoSource<F>` associated with `self`. Callers may then use the
@@ -253,10 +250,7 @@ impl Executor {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        match self {
-            Executor::Handle(ex) => ex.spawn(f),
-            Executor::Overlapped(ex) => ex.spawn(f),
-        }
+        ExecutorTrait::spawn(self, f)
     }
 
     /// Spawn a thread-local task for this executor to drive to completion. Like `spawn` but without
@@ -291,10 +285,7 @@ impl Executor {
         F: Future + 'static,
         F::Output: 'static,
     {
-        match self {
-            Executor::Handle(ex) => ex.spawn_local(f),
-            Executor::Overlapped(ex) => ex.spawn_local(f),
-        }
+        ExecutorTrait::spawn_local(self, f)
     }
 
     /// Run the executor indefinitely, driving all spawned futures to completion. This method will
@@ -331,7 +322,7 @@ impl Executor {
     /// # example_run().unwrap();
     /// ```
     pub fn run(&self) -> AsyncResult<()> {
-        self.run_until(std::future::pending())
+        ExecutorTrait::run_until(self, std::future::pending())
     }
 
     /// Drive all futures spawned in this executor until `f` completes. This method will block the
@@ -362,6 +353,49 @@ impl Executor {
     /// # example_run_until().unwrap();
     /// ```
     pub fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output> {
+        ExecutorTrait::run_until(self, f)
+    }
+}
+
+impl ExecutorTrait for Executor {
+    fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
+        match self {
+            Executor::Handle(ex) => ex.async_from(f),
+            Executor::Overlapped(ex) => ex.async_from(f),
+        }
+    }
+
+    fn spawn_blocking<F, R>(&self, _f: F) -> TaskHandle<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        todo!()
+    }
+
+    fn spawn<F>(&self, f: F) -> TaskHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        match self {
+            Executor::Handle(ex) => ex.spawn(f),
+            Executor::Overlapped(ex) => ex.spawn(f),
+        }
+    }
+
+    fn spawn_local<F>(&self, f: F) -> TaskHandle<F::Output>
+    where
+        F: Future + 'static,
+        F::Output: 'static,
+    {
+        match self {
+            Executor::Handle(ex) => ex.spawn_local(f),
+            Executor::Overlapped(ex) => ex.spawn_local(f),
+        }
+    }
+
+    fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output> {
         match self {
             Executor::Handle(ex) => ex.run_until(f),
             Executor::Overlapped(ex) => ex.run_until(f),

@@ -209,10 +209,7 @@ impl Executor {
     /// `IoSource` to directly start async operations without needing a separate reference to the
     /// executor.
     pub fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
-        match self {
-            Executor::Uring(ex) => ex.async_from(f),
-            Executor::Fd(ex) => ex.async_from(f),
-        }
+        ExecutorTrait::async_from(self, f)
     }
 
     /// Spawn a new future for this executor to run to completion. Callers may use the returned
@@ -250,10 +247,7 @@ impl Executor {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        match self {
-            Executor::Uring(ex) => ex.spawn(f),
-            Executor::Fd(ex) => ex.spawn(f),
-        }
+        ExecutorTrait::spawn(self, f)
     }
 
     /// Spawn a thread-local task for this executor to drive to completion. Like `spawn` but without
@@ -288,10 +282,7 @@ impl Executor {
         F: Future + 'static,
         F::Output: 'static,
     {
-        match self {
-            Executor::Uring(ex) => ex.spawn_local(f),
-            Executor::Fd(ex) => ex.spawn_local(f),
-        }
+        ExecutorTrait::spawn_local(self, f)
     }
 
     /// Run the provided closure on a dedicated thread where blocking is allowed.
@@ -328,10 +319,7 @@ impl Executor {
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
-        match self {
-            Executor::Uring(ex) => ex.spawn_blocking(f),
-            Executor::Fd(ex) => ex.spawn_blocking(f),
-        }
+        ExecutorTrait::spawn_blocking(self, f)
     }
 
     /// Run the executor indefinitely, driving all spawned futures to completion. This method will
@@ -399,6 +387,52 @@ impl Executor {
     /// # example_run_until().unwrap();
     /// ```
     pub fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output> {
+        ExecutorTrait::run_until(self, f)
+    }
+}
+
+impl ExecutorTrait for Executor {
+    fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
+        match self {
+            Executor::Uring(ex) => ex.async_from(f),
+            Executor::Fd(ex) => ex.async_from(f),
+        }
+    }
+
+    fn spawn<F>(&self, f: F) -> TaskHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        match self {
+            Executor::Uring(ex) => ex.spawn(f),
+            Executor::Fd(ex) => ex.spawn(f),
+        }
+    }
+
+    fn spawn_local<F>(&self, f: F) -> TaskHandle<F::Output>
+    where
+        F: Future + 'static,
+        F::Output: 'static,
+    {
+        match self {
+            Executor::Uring(ex) => ex.spawn_local(f),
+            Executor::Fd(ex) => ex.spawn_local(f),
+        }
+    }
+
+    fn spawn_blocking<F, R>(&self, f: F) -> TaskHandle<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        match self {
+            Executor::Uring(ex) => ex.spawn_blocking(f),
+            Executor::Fd(ex) => ex.spawn_blocking(f),
+        }
+    }
+
+    fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output> {
         match self {
             Executor::Uring(ex) => Ok(ex.run_until(f)?),
             Executor::Fd(ex) => Ok(ex.run_until(f)?),
