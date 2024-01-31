@@ -422,6 +422,19 @@ unsafe impl MappedRegion for RutabagaMemoryRegion {
     }
 }
 
+impl Display for VmMemorySource {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::VmMemorySource::*;
+
+        match self {
+            SharedMemory(..) => write!(f, "VmMemorySource::SharedMemory"),
+            Descriptor { .. } => write!(f, "VmMemorySource::Descriptor"),
+            Vulkan { .. } => write!(f, "VmMemorySource::Vulkan"),
+            ExternalMapping { .. } => write!(f, "VmMemorySource::ExternalMapping"),
+        }
+    }
+}
+
 impl VmMemorySource {
     /// Map the resource and return its mapping and size in bytes.
     pub fn map(
@@ -628,7 +641,13 @@ fn handle_prepared_region(
             let size = shm.size() as usize;
             (Descriptor(shm.as_raw_descriptor()), 0, size)
         }
-        _ => return Some(VmMemoryResponse::Err(SysError::new(EINVAL))),
+        _ => {
+            error!(
+                "source {} is not compatible with fixed mapping into prepared memory region",
+                source
+            );
+            return Some(VmMemoryResponse::Err(SysError::new(EINVAL)));
+        }
     };
     if let Err(err) = vm.add_fd_mapping(
         *slot,
