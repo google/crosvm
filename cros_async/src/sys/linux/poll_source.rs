@@ -385,6 +385,7 @@ mod tests {
     use std::fs::File;
 
     use super::*;
+    use crate::ExecutorTrait;
 
     #[test]
     fn memory_leak() {

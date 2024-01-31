@@ -89,6 +89,7 @@ pub use blocking::CancellableBlockingPool;
 pub use blocking::TimeoutAction;
 pub use event::EventAsync;
 pub use executor::ExecutorKind;
+pub(crate) use executor::ExecutorTrait;
 pub use executor::TaskHandle;
 #[cfg(windows)]
 pub use futures::executor::block_on;

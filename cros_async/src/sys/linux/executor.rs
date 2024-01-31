@@ -21,6 +21,7 @@ use super::uring_executor::Error as UringError;
 use super::uring_executor::UringReactor;
 use crate::common_executor::RawExecutor;
 use crate::AsyncResult;
+use crate::ExecutorTrait;
 use crate::IntoAsync;
 use crate::IoSource;
 use crate::TaskHandle;
@@ -209,8 +210,8 @@ impl Executor {
     /// executor.
     pub fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
         match self {
-            Executor::Uring(ex) => ex.new_source(f),
-            Executor::Fd(ex) => ex.new_source(f),
+            Executor::Uring(ex) => ex.async_from(f),
+            Executor::Fd(ex) => ex.async_from(f),
         }
     }
 
@@ -250,8 +251,8 @@ impl Executor {
         F::Output: Send + 'static,
     {
         match self {
-            Executor::Uring(ex) => TaskHandle::Uring(ex.spawn(f)),
-            Executor::Fd(ex) => TaskHandle::Fd(ex.spawn(f)),
+            Executor::Uring(ex) => ex.spawn(f),
+            Executor::Fd(ex) => ex.spawn(f),
         }
     }
 
@@ -288,8 +289,8 @@ impl Executor {
         F::Output: 'static,
     {
         match self {
-            Executor::Uring(ex) => TaskHandle::Uring(ex.spawn_local(f)),
-            Executor::Fd(ex) => TaskHandle::Fd(ex.spawn_local(f)),
+            Executor::Uring(ex) => ex.spawn_local(f),
+            Executor::Fd(ex) => ex.spawn_local(f),
         }
     }
 
@@ -328,8 +329,8 @@ impl Executor {
         R: Send + 'static,
     {
         match self {
-            Executor::Uring(ex) => TaskHandle::Uring(ex.spawn_blocking(f)),
-            Executor::Fd(ex) => TaskHandle::Fd(ex.spawn_blocking(f)),
+            Executor::Uring(ex) => ex.spawn_blocking(f),
+            Executor::Fd(ex) => ex.spawn_blocking(f),
         }
     }
 

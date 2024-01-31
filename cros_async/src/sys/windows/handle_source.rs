@@ -400,6 +400,7 @@ mod tests {
     use super::super::HandleReactor;
     use super::*;
     use crate::common_executor::RawExecutor;
+    use crate::ExecutorTrait;
 
     #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]

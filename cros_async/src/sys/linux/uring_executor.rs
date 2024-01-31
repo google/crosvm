@@ -77,6 +77,7 @@ use sync::Mutex;
 use thiserror::Error as ThisError;
 
 use crate::common_executor::RawExecutor;
+use crate::common_executor::RawTaskHandle;
 use crate::common_executor::Reactor;
 use crate::mem::BackingMemory;
 use crate::waker::WakerToken;
@@ -85,6 +86,7 @@ use crate::AsyncError;
 use crate::AsyncResult;
 use crate::IoSource;
 use crate::MemRegion;
+use crate::TaskHandle;
 
 #[sorted]
 #[derive(Debug, ThisError)]
@@ -786,6 +788,10 @@ impl Reactor for UringReactor {
     ) -> AsyncResult<IoSource<F>> {
         Ok(IoSource::Uring(super::UringSource::new(f, ex)?))
     }
+
+    fn wrap_task_handle<R>(task: RawTaskHandle<UringReactor, R>) -> TaskHandle<R> {
+        TaskHandle::Uring(task)
+    }
 }
 
 impl AsRawDescriptor for UringReactor {
@@ -895,6 +901,7 @@ mod tests {
     use crate::mem::MemRegion;
     use crate::mem::VecIoWrapper;
     use crate::BlockingPool;
+    use crate::ExecutorTrait;
 
     // A future that returns ready when the uring queue is empty.
     struct UringQueueEmpty<'a> {

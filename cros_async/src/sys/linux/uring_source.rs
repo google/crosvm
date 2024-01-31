@@ -204,6 +204,7 @@ mod tests {
     use super::*;
     use crate::sys::linux::ExecutorKindSys;
     use crate::Executor;
+    use crate::ExecutorTrait;
     use crate::IoSource;
 
     async fn read_u64<T: AsRawDescriptor>(source: &UringSource<T>) -> u64 {

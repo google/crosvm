@@ -27,7 +27,10 @@ use crate::AsyncError;
 use crate::AsyncResult;
 use crate::BlockingPool;
 use crate::DetachedTasks;
+use crate::ExecutorTrait;
+use crate::IntoAsync;
 use crate::IoSource;
+use crate::TaskHandle;
 
 /// Abstraction for IO backends.
 pub trait Reactor: Send + Sync + Sized {
@@ -62,6 +65,8 @@ pub trait Reactor: Send + Sync + Sized {
         ex: &Arc<RawExecutor<Self>>,
         f: F,
     ) -> AsyncResult<IoSource<F>>;
+
+    fn wrap_task_handle<R>(task: RawTaskHandle<Self, R>) -> TaskHandle<R>;
 }
 
 // Indicates the executor is either within or about to make a `Reactor::wait_for_work` call. When a
@@ -105,59 +110,7 @@ impl<Re: Reactor> RawExecutor<Re> {
         }
     }
 
-    pub fn new_source<F: AsRawDescriptor>(self: &Arc<Self>, f: F) -> AsyncResult<IoSource<F>> {
-        self.reactor.new_source(self, f)
-    }
-
-    pub fn spawn<F>(self: &Arc<Self>, f: F) -> TaskHandle<Re, F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        let raw = Arc::downgrade(self);
-        let schedule = move |runnable| {
-            if let Some(r) = raw.upgrade() {
-                r.queue.push_back(runnable);
-                r.wake();
-            }
-        };
-        let (runnable, task) = async_task::spawn(f, schedule);
-        runnable.schedule();
-        TaskHandle {
-            task,
-            raw: Arc::downgrade(self),
-        }
-    }
-
-    pub fn spawn_local<F>(self: &Arc<Self>, f: F) -> TaskHandle<Re, F::Output>
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-    {
-        let raw = Arc::downgrade(self);
-        let schedule = move |runnable| {
-            if let Some(r) = raw.upgrade() {
-                r.queue.push_back(runnable);
-                r.wake();
-            }
-        };
-        let (runnable, task) = async_task::spawn_local(f, schedule);
-        runnable.schedule();
-        TaskHandle {
-            task,
-            raw: Arc::downgrade(self),
-        }
-    }
-
-    pub fn spawn_blocking<F, R>(self: &Arc<Self>, f: F) -> TaskHandle<Re, R>
-    where
-        F: FnOnce() -> R + Send + 'static,
-        R: Send + 'static,
-    {
-        self.spawn(self.blocking_pool.spawn(f))
-    }
-
-    fn run<F: Future>(&self, cx: &mut Context, done: F) -> AsyncResult<F::Output> {
+    fn run_internal<F: Future>(&self, cx: &mut Context, done: F) -> AsyncResult<F::Output> {
         self.reactor.on_thread_start();
 
         pin_mut!(done);
@@ -193,12 +146,66 @@ impl<Re: Reactor> RawExecutor<Re> {
                 .map_err(AsyncError::Io)?;
         }
     }
+}
 
-    pub fn run_until<F: Future>(self: &Arc<Self>, f: F) -> AsyncResult<F::Output> {
+impl<Re: Reactor + 'static> ExecutorTrait for Arc<RawExecutor<Re>> {
+    fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
+        self.reactor.new_source(self, f)
+    }
+
+    fn spawn<F>(&self, f: F) -> TaskHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let raw = Arc::downgrade(self);
+        let schedule = move |runnable| {
+            if let Some(r) = raw.upgrade() {
+                r.queue.push_back(runnable);
+                r.wake();
+            }
+        };
+        let (runnable, task) = async_task::spawn(f, schedule);
+        runnable.schedule();
+        Re::wrap_task_handle(RawTaskHandle {
+            task,
+            raw: Arc::downgrade(self),
+        })
+    }
+
+    fn spawn_local<F>(&self, f: F) -> TaskHandle<F::Output>
+    where
+        F: Future + 'static,
+        F::Output: 'static,
+    {
+        let raw = Arc::downgrade(self);
+        let schedule = move |runnable| {
+            if let Some(r) = raw.upgrade() {
+                r.queue.push_back(runnable);
+                r.wake();
+            }
+        };
+        let (runnable, task) = async_task::spawn_local(f, schedule);
+        runnable.schedule();
+        Re::wrap_task_handle(RawTaskHandle {
+            task,
+            raw: Arc::downgrade(self),
+        })
+    }
+
+    fn spawn_blocking<F, R>(&self, f: F) -> TaskHandle<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        self.spawn(self.blocking_pool.spawn(f))
+    }
+
+    fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output> {
         let waker = super::waker::new_waker(Arc::downgrade(self));
         let mut ctx = Context::from_waker(&waker);
 
-        self.run(&mut ctx, f)
+        self.run_internal(&mut ctx, f)
     }
 }
 
@@ -222,18 +229,18 @@ impl<Re: Reactor> Drop for RawExecutor<Re> {
 
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
-        if let Err(e) = self.run(&mut cx, final_future) {
+        if let Err(e) = self.run_internal(&mut cx, final_future) {
             warn!("Failed to drive RawExecutor to completion: {}", e);
         }
     }
 }
 
-pub struct TaskHandle<Re: Reactor + 'static, R> {
+pub struct RawTaskHandle<Re: Reactor + 'static, R> {
     task: Task<R>,
     raw: Weak<RawExecutor<Re>>,
 }
 
-impl<Re: Reactor, R: Send + 'static> TaskHandle<Re, R> {
+impl<Re: Reactor, R: Send + 'static> RawTaskHandle<Re, R> {
     pub fn detach(self) {
         if let Some(raw) = self.raw.upgrade() {
             raw.detached_tasks.lock().push(self.task);
@@ -245,7 +252,7 @@ impl<Re: Reactor, R: Send + 'static> TaskHandle<Re, R> {
     }
 }
 
-impl<Re: Reactor, R: 'static> Future for TaskHandle<Re, R> {
+impl<Re: Reactor, R: 'static> Future for RawTaskHandle<Re, R> {
     type Output = R;
 
     fn poll(

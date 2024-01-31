@@ -13,6 +13,7 @@ use thiserror::Error as ThisError;
 use super::HandleReactor;
 use crate::common_executor::RawExecutor;
 use crate::AsyncResult;
+use crate::ExecutorTrait;
 use crate::IntoAsync;
 use crate::IoSource;
 use crate::TaskHandle;
@@ -183,8 +184,8 @@ impl Executor {
     /// executor.
     pub fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
         match self {
-            Executor::Handle(ex) => ex.new_source(f),
-            Executor::Overlapped(ex) => ex.new_source(f),
+            Executor::Handle(ex) => ex.async_from(f),
+            Executor::Overlapped(ex) => ex.async_from(f),
         }
     }
 
@@ -194,7 +195,7 @@ impl Executor {
     /// to the executor.
     pub fn async_overlapped_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
         match self {
-            Executor::Handle(ex) => ex.new_source(f),
+            Executor::Handle(ex) => ex.async_from(f),
             Executor::Overlapped(ex) => Ok(IoSource::Overlapped(super::OverlappedSource::new(
                 f, ex, false,
             )?)),
@@ -253,8 +254,8 @@ impl Executor {
         F::Output: Send + 'static,
     {
         match self {
-            Executor::Handle(ex) => TaskHandle::Handle(ex.spawn(f)),
-            Executor::Overlapped(ex) => TaskHandle::Handle(ex.spawn(f)),
+            Executor::Handle(ex) => ex.spawn(f),
+            Executor::Overlapped(ex) => ex.spawn(f),
         }
     }
 
@@ -291,8 +292,8 @@ impl Executor {
         F::Output: 'static,
     {
         match self {
-            Executor::Handle(ex) => TaskHandle::Handle(ex.spawn_local(f)),
-            Executor::Overlapped(ex) => TaskHandle::Handle(ex.spawn_local(f)),
+            Executor::Handle(ex) => ex.spawn_local(f),
+            Executor::Overlapped(ex) => ex.spawn_local(f),
         }
     }
 
@@ -362,8 +363,8 @@ impl Executor {
     /// ```
     pub fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output> {
         match self {
-            Executor::Handle(ex) => Ok(ex.run_until(f)?),
-            Executor::Overlapped(ex) => Ok(ex.run_until(f)?),
+            Executor::Handle(ex) => ex.run_until(f),
+            Executor::Overlapped(ex) => ex.run_until(f),
         }
     }
 }
