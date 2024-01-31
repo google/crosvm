@@ -828,6 +828,7 @@ pub struct Config {
         any(target_os = "android", target_os = "linux")
     ))]
     pub virt_cpufreq: bool,
+    pub virt_cpufreq_socket: Option<PathBuf>,
     pub virtio_input_evdevs: Vec<PathBuf>,
     pub virtio_keyboard: Vec<PathBuf>,
     pub virtio_mice: Vec<PathBuf>,
@@ -1034,6 +1035,7 @@ impl Default for Config {
                 any(target_os = "android", target_os = "linux")
             ))]
             virt_cpufreq: false,
+            virt_cpufreq_socket: None,
             virtio_input_evdevs: Vec::new(),
             virtio_keyboard: Vec::new(),
             virtio_mice: Vec::new(),

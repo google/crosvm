@@ -652,6 +652,10 @@ impl arch::LinuxArch for AArch64 {
 
         #[cfg(any(target_os = "android", target_os = "linux"))]
         if !components.cpu_frequencies.is_empty() {
+            // TODO: Revisit and optimization after benchmarking
+            let socket = components
+                .virt_cpufreq_socket
+                .map(|s| Arc::new(Mutex::new(s)));
             for vcpu in 0..vcpu_count {
                 let vcpu_affinity = match components.vcpu_affinity.clone() {
                     Some(VcpuAffinity::Global(v)) => v,
@@ -661,6 +665,7 @@ impl arch::LinuxArch for AArch64 {
 
                 let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreq::new(
                     vcpu_affinity[0].try_into().unwrap(),
+                    socket.clone(),
                 )));
 
                 if vcpu as u64 * AARCH64_VIRTFREQ_SIZE + AARCH64_VIRTFREQ_SIZE

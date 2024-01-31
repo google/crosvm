@@ -2362,6 +2362,16 @@ pub struct RunCommand {
     /// enable a virtual cpu freq device
     pub virt_cpufreq: Option<bool>,
 
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
+    #[argh(option, arg_name = "SOCKET_PATH")]
+    #[serde(skip)]
+    #[merge(strategy = overwrite_option)]
+    /// (EXPERIMENTAL) use UDS for a virtual cpu freq device
+    pub virt_cpufreq_socket: Option<PathBuf>,
+
     #[cfg(feature = "audio")]
     #[argh(
         option,
@@ -2556,6 +2566,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         ))]
         {
             cfg.virt_cpufreq = cmd.virt_cpufreq.unwrap_or_default();
+            cfg.virt_cpufreq_socket = cmd.virt_cpufreq_socket;
         }
 
         cfg.vcpu_cgroup_path = cmd.vcpu_cgroup_path;

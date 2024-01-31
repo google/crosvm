@@ -375,6 +375,11 @@ pub struct VmComponents {
     pub swiotlb: Option<u64>,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub vcpu_count: usize,
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
+    pub virt_cpufreq_socket: Option<std::os::unix::net::UnixStream>,
     pub vm_image: VmImage,
 }
 
