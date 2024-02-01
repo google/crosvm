@@ -97,7 +97,7 @@ impl Default for GpuParameters {
             capset_mask: 0,
             external_blob: false,
             system_blob: false,
-            fixed_blob_mapping: false,
+            fixed_blob_mapping: true,
             allow_implicit_render_server_exec: false,
         }
     }

@@ -219,6 +219,7 @@ fn create_virtio_devices(
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "gpu")] gpu_control_tube: Tube,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
+    #[cfg(feature = "gpu")] has_vfio_gfx_device: bool,
     #[cfg(feature = "registered_events")] registered_evt_q: &SendTube,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
@@ -336,6 +337,7 @@ fn create_virtio_devices(
                 gpu_control_tube,
                 resource_bridges,
                 render_server_fd,
+                has_vfio_gfx_device,
                 event_devices,
             )?);
         }
@@ -636,6 +638,8 @@ fn create_devices(
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     #[cfg(feature = "balloon")]
     let mut balloon_inflate_tube: Option<Tube> = None;
+    #[cfg(feature = "gpu")]
+    let mut has_vfio_gfx_device = false;
     if !cfg.vfio.is_empty() {
         let mut coiommu_attached_endpoints = Vec::new();
 
@@ -661,6 +665,11 @@ fn create_devices(
                         vfio_pci_device.get_max_iova(),
                         iova_max_addr.unwrap_or(0),
                     ));
+
+                    #[cfg(feature = "gpu")]
+                    if vfio_pci_device.is_gfx() {
+                        has_vfio_gfx_device = true;
+                    }
 
                     if let Some(viommu_mapper) = viommu_mapper {
                         iommu_attached_endpoints.insert(
@@ -763,6 +772,8 @@ fn create_devices(
         gpu_control_tube,
         #[cfg(feature = "gpu")]
         render_server_fd,
+        #[cfg(feature = "gpu")]
+        has_vfio_gfx_device,
         #[cfg(feature = "registered_events")]
         registered_evt_q,
     )?;

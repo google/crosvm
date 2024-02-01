@@ -88,11 +88,32 @@ pub fn create_gpu_device(
     gpu_control_tube: Tube,
     resource_bridges: Vec<Tube>,
     render_server_fd: Option<SafeDescriptor>,
+    has_vfio_gfx_device: bool,
     event_devices: Vec<EventDevice>,
 ) -> DeviceResult {
     let is_sandboxed = cfg.jail_config.is_some();
     let mut gpu_params = cfg.gpu_parameters.clone().unwrap();
-    gpu_params.external_blob = is_sandboxed;
+
+    if gpu_params.fixed_blob_mapping {
+        if has_vfio_gfx_device {
+            // TODO(b/323368701): make fixed_blob_mapping compatible with vfio dma_buf mapping for
+            // GPU pci passthrough.
+            debug!("gpu fixed blob mapping disabled: not compatible with passthrough GPU.");
+            gpu_params.fixed_blob_mapping = false;
+        } else if cfg!(feature = "vulkano") {
+            // TODO(b/244591751): make fixed_blob_mapping compatible with vulkano for opaque_fd blob
+            // mapping.
+            debug!("gpu fixed blob mapping disabled: not compatible with vulkano");
+            gpu_params.fixed_blob_mapping = false;
+        }
+    }
+
+    // external_blob must be enforced to ensure that a blob can be exported to a mappable descriptor
+    // (dma_buf, shmem, ...), since:
+    //   - is_sandboxed implies that blob mapping will be done out-of-process by the crosvm
+    //     hypervisor process.
+    //   - fixed_blob_mapping is not yet compatible with VmMemorySource::ExternalMapping
+    gpu_params.external_blob = is_sandboxed || gpu_params.fixed_blob_mapping;
 
     // Implicit launch is not allowed when sandboxed. A socket fd from a separate sandboxed
     // render_server process must be provided instead.
