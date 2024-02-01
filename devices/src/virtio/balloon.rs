@@ -243,11 +243,14 @@ struct virtio_balloon_op {
 
 fn invoke_desc_handler<F>(ranges: Vec<(u64, u64)>, desc_handler: &mut F)
 where
-    F: FnMut(GuestAddress, u64),
+    F: FnMut(Vec<(GuestAddress, u64)>),
 {
-    for range in ranges {
-        desc_handler(GuestAddress(range.0), range.1);
-    }
+    desc_handler(
+        ranges
+            .into_iter()
+            .map(|range| (GuestAddress(range.0), range.1))
+            .collect(),
+    );
 }
 
 // Release a list of guest memory ranges back to the host system.
@@ -259,7 +262,7 @@ fn release_ranges<F>(
     desc_handler: &mut F,
 ) -> anyhow::Result<()>
 where
-    F: FnMut(GuestAddress, u64),
+    F: FnMut(Vec<(GuestAddress, u64)>),
 {
     if let Some(tube) = release_memory_tube {
         let unpin_ranges = inflate_ranges
@@ -299,7 +302,7 @@ fn handle_address_chain<F>(
     desc_handler: &mut F,
 ) -> anyhow::Result<()>
 where
-    F: FnMut(GuestAddress, u64),
+    F: FnMut(Vec<(GuestAddress, u64)>),
 {
     // In a long-running system, there is no reason to expect that
     // a significant number of freed pages are consecutive. However,
@@ -348,7 +351,7 @@ async fn handle_queue<F>(
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Queue
 where
-    F: FnMut(GuestAddress, u64),
+    F: FnMut(Vec<(GuestAddress, u64)>),
 {
     loop {
         let mut avail_desc = match queue
@@ -379,7 +382,7 @@ fn handle_reported_buffer<F>(
     desc_handler: &mut F,
 ) -> anyhow::Result<()>
 where
-    F: FnMut(GuestAddress, u64),
+    F: FnMut(Vec<(GuestAddress, u64)>),
 {
     let reported_ranges: Vec<(u64, u64)> = avail_desc
         .reader
@@ -400,7 +403,7 @@ async fn handle_reporting_queue<F>(
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Queue
 where
-    F: FnMut(GuestAddress, u64),
+    F: FnMut(Vec<(GuestAddress, u64)>),
 {
     loop {
         let avail_desc = match queue
@@ -845,15 +848,15 @@ impl From<Box<PausedQueues>> for BTreeMap<usize, Queue> {
     }
 }
 
-fn free_memory(vm_memory_client: &VmMemoryClient, guest_address: GuestAddress, len: u64) {
-    if let Err(e) = vm_memory_client.dynamically_free_memory_range(guest_address, len) {
-        warn!("Failed to dynamically free memory range (addr={guest_address} len={len}): {e:#}");
+fn free_memory(vm_memory_client: &VmMemoryClient, ranges: Vec<(GuestAddress, u64)>) {
+    if let Err(e) = vm_memory_client.dynamically_free_memory_ranges(ranges) {
+        warn!("Failed to dynamically free memory ranges: {e:#}");
     }
 }
 
-fn reclaim_memory(vm_memory_client: &VmMemoryClient, guest_address: GuestAddress, len: u64) {
-    if let Err(e) = vm_memory_client.dynamically_reclaim_memory_range(guest_address, len) {
-        warn!("Failed to dynamically reclaim memory range (addr={guest_address} len={len}): {e:#}");
+fn reclaim_memory(vm_memory_client: &VmMemoryClient, ranges: Vec<(GuestAddress, u64)>) {
+    if let Err(e) = vm_memory_client.dynamically_reclaim_memory_ranges(ranges) {
+        warn!("Failed to dynamically reclaim memory range: {e:#}");
     }
 }
 
@@ -908,7 +911,7 @@ fn run_worker(
             inflate_queue,
             EventAsync::new(inflate_queue_evt, &ex).expect("failed to create async event"),
             release_memory_tube.as_ref(),
-            |guest_address, len| free_memory(&vm_memory_client, guest_address, len),
+            |ranges| free_memory(&vm_memory_client, ranges),
             stop_rx,
         );
         let inflate = inflate.fuse();
@@ -924,7 +927,7 @@ fn run_worker(
             deflate_queue,
             EventAsync::new(deflate_queue_evt, &ex).expect("failed to create async event"),
             None,
-            |guest_address, len| reclaim_memory(&vm_memory_client, guest_address, len),
+            |ranges| reclaim_memory(&vm_memory_client, ranges),
             stop_rx,
         );
         let deflate = deflate.fuse();
@@ -968,7 +971,7 @@ fn run_worker(
                 reporting_queue,
                 EventAsync::new(reporting_queue_evt, &ex).expect("failed to create async event"),
                 release_memory_tube.as_ref(),
-                |guest_address, len| free_memory(&vm_memory_client, guest_address, len),
+                |ranges| free_memory(&vm_memory_client, ranges),
                 stop_rx,
             )
             .left_future()
@@ -1525,8 +1528,8 @@ mod tests {
         .expect("create_descriptor_chain failed");
 
         let mut addrs = Vec::new();
-        let res = handle_address_chain(None, &mut chain, &mut |guest_address, len| {
-            addrs.push((guest_address, len));
+        let res = handle_address_chain(None, &mut chain, &mut |mut ranges| {
+            addrs.append(&mut ranges)
         });
         assert!(res.is_ok());
         assert_eq!(addrs.len(), 2);

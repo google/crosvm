@@ -126,28 +126,17 @@ impl VmMemoryClient {
         }
     }
 
-    /// Call hypervisor to free the given memory range.
-    pub fn dynamically_free_memory_range(
-        &self,
-        guest_address: GuestAddress,
-        size: u64,
-    ) -> Result<()> {
-        self.request_unit(&VmMemoryRequest::DynamicallyFreeMemoryRange {
-            guest_address,
-            size,
-        })
+    /// Call hypervisor to free the given memory ranges.
+    pub fn dynamically_free_memory_ranges(&self, ranges: Vec<(GuestAddress, u64)>) -> Result<()> {
+        self.request_unit(&VmMemoryRequest::DynamicallyFreeMemoryRanges { ranges })
     }
 
     /// Call hypervisor to reclaim a priorly freed memory range.
-    pub fn dynamically_reclaim_memory_range(
+    pub fn dynamically_reclaim_memory_ranges(
         &self,
-        guest_address: GuestAddress,
-        size: u64,
+        ranges: Vec<(GuestAddress, u64)>,
     ) -> Result<()> {
-        self.request_unit(&VmMemoryRequest::DynamicallyReclaimMemoryRange {
-            guest_address,
-            size,
-        })
+        self.request_unit(&VmMemoryRequest::DynamicallyReclaimMemoryRanges { ranges })
     }
 
     /// Unregister the given memory slot that was previously registered with `RegisterMemory`.

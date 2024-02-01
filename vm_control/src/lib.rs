@@ -596,15 +596,9 @@ pub enum VmMemoryRequest {
         num_file_mappings: usize,
     },
     /// Call hypervisor to free the given memory range.
-    DynamicallyFreeMemoryRange {
-        guest_address: GuestAddress,
-        size: u64,
-    },
+    DynamicallyFreeMemoryRanges { ranges: Vec<(GuestAddress, u64)> },
     /// Call hypervisor to reclaim a priorly freed memory range.
-    DynamicallyReclaimMemoryRange {
-        guest_address: GuestAddress,
-        size: u64,
-    },
+    DynamicallyReclaimMemoryRanges { ranges: Vec<(GuestAddress, u64)> },
     /// Balloon allocation/deallocation target reached.
     BalloonTargetReached { size: u64 },
     /// Unregister the given memory slot that was previously registered with `RegisterMemory`.
@@ -961,26 +955,38 @@ impl VmMemoryRequest {
                 }
                 None => VmMemoryResponse::Err(SysError::new(EINVAL)),
             },
-            DynamicallyFreeMemoryRange {
-                guest_address,
-                size,
-            } => match vm.handle_balloon_event(BalloonEvent::Inflate(MemRegion {
-                guest_address,
-                size,
-            })) {
-                Ok(_) => VmMemoryResponse::Ok,
-                Err(e) => VmMemoryResponse::Err(e),
-            },
-            DynamicallyReclaimMemoryRange {
-                guest_address,
-                size,
-            } => match vm.handle_balloon_event(BalloonEvent::Deflate(MemRegion {
-                guest_address,
-                size,
-            })) {
-                Ok(_) => VmMemoryResponse::Ok,
-                Err(e) => VmMemoryResponse::Err(e),
-            },
+            DynamicallyFreeMemoryRanges { ranges } => {
+                let mut r = VmMemoryResponse::Ok;
+                for (guest_address, size) in ranges {
+                    match vm.handle_balloon_event(BalloonEvent::Inflate(MemRegion {
+                        guest_address,
+                        size,
+                    })) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            r = VmMemoryResponse::Err(e);
+                            break;
+                        }
+                    }
+                }
+                r
+            }
+            DynamicallyReclaimMemoryRanges { ranges } => {
+                let mut r = VmMemoryResponse::Ok;
+                for (guest_address, size) in ranges {
+                    match vm.handle_balloon_event(BalloonEvent::Deflate(MemRegion {
+                        guest_address,
+                        size,
+                    })) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            r = VmMemoryResponse::Err(e);
+                            break;
+                        }
+                    }
+                }
+                r
+            }
             BalloonTargetReached { size } => {
                 match vm.handle_balloon_event(BalloonEvent::BalloonTargetReached(size)) {
                     Ok(_) => VmMemoryResponse::Ok,
