@@ -230,7 +230,7 @@ fn inject_gpe(cmd: cmdline::GpeCommand) -> std::result::Result<(), ()> {
 fn balloon_vms(cmd: cmdline::BalloonCommand) -> std::result::Result<(), ()> {
     let command = BalloonControlCommand::Adjust {
         num_bytes: cmd.num_bytes,
-        wait_for_success: false,
+        wait_for_success: cmd.wait,
     };
     vms_request(&VmRequest::BalloonCommand(command), cmd.socket_path)
 }

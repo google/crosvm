@@ -176,6 +176,9 @@ pub struct BalloonCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
     pub socket_path: String,
+    /// wait for response
+    #[argh(switch)]
+    pub wait: bool,
 }
 
 #[derive(argh::FromArgs)]
