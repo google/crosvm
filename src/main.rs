@@ -681,6 +681,19 @@ fn prepare_argh_args<I: IntoIterator<Item = String>>(args_iter: I) -> Vec<String
     args
 }
 
+fn shorten_usage(help: &str) -> String {
+    let mut lines = help.lines().collect::<Vec<_>>();
+    let first_line = lines[0].split(char::is_whitespace).collect::<Vec<_>>();
+
+    // Shorten the usage line if it's for `crovm run` command that has so many options.
+    let run_usage = format!("Usage: {} run <options> KERNEL", first_line[1]);
+    if first_line[0] == "Usage:" && first_line[2] == "run" {
+        lines[0] = &run_usage;
+    }
+
+    lines.join("\n")
+}
+
 fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus> {
     let _library_watcher = sys::get_library_watcher();
 
@@ -700,7 +713,8 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
         Err(e) if e.status.is_ok() => {
             // If parsing succeeded and the user requested --help, print the usage message to stdout
             // and exit with success.
-            println!("{}", e.output);
+            let help = shorten_usage(&e.output);
+            println!("{help}");
             return Ok(CommandStatus::SuccessOrVmStop);
         }
         Err(e) => {
@@ -1001,6 +1015,19 @@ mod tests {
                 String::from("/partition2.img"),
                 false
             ))
+        );
+    }
+
+    #[test]
+    fn test_shorten_run_usage() {
+        let help = r"Usage: crosvm run [<KERNEL>] [options] <very long line>...
+
+Start a new crosvm instance";
+        assert_eq!(
+            shorten_usage(help),
+            r"Usage: crosvm run <options> KERNEL
+
+Start a new crosvm instance"
         );
     }
 }

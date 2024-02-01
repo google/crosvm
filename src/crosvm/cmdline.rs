@@ -2375,7 +2375,7 @@ pub struct RunCommand {
     #[cfg(feature = "audio")]
     #[argh(
         option,
-        arg_name = "[capture=true,backend=BACKEND,num_output_devices=1,
+        arg_name = "[capture=true,backend=BACKEND,num_output_devices=1,\
         num_input_devices=1,num_output_streams=1,num_input_streams=1]"
     )]
     #[serde(skip)] // TODO(b/255223604)
