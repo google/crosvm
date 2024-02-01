@@ -685,6 +685,7 @@ pub struct VfioPciDevice {
     activated: bool,
     acpi_notifier_val: Arc<Mutex<Vec<u32>>>,
     gpe: Option<u32>,
+    base_class_code: PciClassCode,
 }
 
 impl VfioPciDevice {
@@ -732,6 +733,8 @@ impl VfioPciDevice {
         let mut cap_next: u32 = config.read_config::<u8>(PCI_CAPABILITY_LIST).into();
         let vendor_id: u16 = config.read_config(PCI_VENDOR_ID);
         let device_id: u16 = config.read_config(PCI_DEVICE_ID);
+        let base_class_code = PciClassCode::try_from(config.read_config::<u8>(PCI_BASE_CLASS_CODE))
+            .unwrap_or(PciClassCode::Other);
 
         let pci_id = PciId::new(vendor_id, device_id);
 
@@ -812,10 +815,8 @@ impl VfioPciDevice {
             ext_caps.reverse();
         }
 
-        let class_code: u8 = config.read_config(PCI_BASE_CLASS_CODE);
-
-        let is_intel_gfx = vendor_id == PCI_VENDOR_ID_INTEL
-            && class_code == PciClassCode::DisplayController.get_register_value();
+        let is_intel_gfx =
+            base_class_code == PciClassCode::DisplayController && vendor_id == PCI_VENDOR_ID_INTEL;
         let device_data = if is_intel_gfx {
             Some(DeviceData::IntelGfxData {
                 opregion_index: u32::max_value(),
@@ -852,6 +853,7 @@ impl VfioPciDevice {
             activated: false,
             acpi_notifier_val: Arc::new(Mutex::new(Vec::new())),
             gpe: None,
+            base_class_code,
         })
     }
 
@@ -860,16 +862,12 @@ impl VfioPciDevice {
         self.pci_address
     }
 
+    pub fn is_gfx(&self) -> bool {
+        self.base_class_code == PciClassCode::DisplayController
+    }
+
     fn is_intel_gfx(&self) -> bool {
-        let mut ret = false;
-
-        if let Some(device_data) = &self.device_data {
-            match *device_data {
-                DeviceData::IntelGfxData { .. } => ret = true,
-            }
-        }
-
-        ret
+        matches!(self.device_data, Some(DeviceData::IntelGfxData { .. }))
     }
 
     fn enable_acpi_notification(&mut self) -> Result<(), PciDeviceError> {
