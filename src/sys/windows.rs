@@ -106,6 +106,8 @@ use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventSplitConf
 use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventVmmConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::gpu::sys::windows::product::GpuBackendConfig as GpuBackendConfigProduct;
+#[cfg(feature = "gpu")]
+use devices::virtio::vhost::user::gpu::sys::windows::run_gpu_device_worker;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::snd::sys::windows::product::SndBackendConfig as SndBackendConfigProduct;
 #[cfg(feature = "balloon")]
@@ -331,39 +333,6 @@ fn create_vhost_user_gpu_device(base_features: u64, vhost_user_tube: Tube) -> De
     .exit_context(
         Exit::VhostUserGpuDeviceNew,
         "failed to set up vhost-user gpu device",
-    )?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: None,
-    })
-}
-
-#[cfg(feature = "gpu")]
-fn create_gpu_device(
-    cfg: &Config,
-    gpu_parameters: &GpuParameters,
-    vm_evt_wrtube: &SendTube,
-    gpu_control_tube: Tube,
-    resource_bridges: Vec<Tube>,
-    event_devices: Vec<EventDevice>,
-    wndproc_thread: WindowProcedureThread,
-    product_args: GpuBackendConfigProduct,
-) -> DeviceResult {
-    let display_backends = vec![virtio::DisplayBackend::WinApi(
-        (&gpu_parameters.display_params[0]).into(),
-    )];
-    let features = virtio::base_features(cfg.protection_type);
-    let dev = product::create_gpu(
-        vm_evt_wrtube,
-        gpu_control_tube,
-        resource_bridges,
-        display_backends,
-        gpu_parameters,
-        event_devices,
-        features,
-        product_args,
-        wndproc_thread,
     )?;
 
     Ok(VirtioDeviceStub {
@@ -779,39 +748,29 @@ fn create_virtio_gpu_device(
 
     product::push_gpu_control_tubes(control_tubes, &mut gpu_vmm_config);
 
-    match cfg.gpu_backend_config.take() {
-        None => {
-            // No backend config present means the backend is running in another process.
-            create_vhost_user_gpu_device(
-                virtio::base_features(cfg.protection_type),
-                gpu_vmm_config
-                    .main_vhost_user_tube
-                    .take()
-                    .expect("GPU VMM vhost-user tube should be set"),
-            )
-            .context("create vhost-user GPU device")
-        }
-        Some(backend_config) => {
-            // Backend config present, so initialize GPU in this process.
-            create_gpu_device(
-                cfg,
-                &backend_config.params,
-                &backend_config.exit_evt_wrtube,
-                backend_config.gpu_control_device_tube,
-                resource_bridges,
-                event_devices.ok_or_else(|| {
-                    anyhow!(
-                        "event devices are missing when creating virtio-gpu in the current process."
-                    )
-                })?,
-                wndproc_thread
-                    .take()
-                    .ok_or_else(|| anyhow!("Window procedure thread is missing."))?,
-                backend_config.product_config,
-            )
-            .context("create GPU device")
-        }
+    // If the GPU backend is passed, start up the vhost-user worker in the main process.
+    if let Some(backend_config) = cfg.gpu_backend_config.take() {
+        let event_devices = event_devices.ok_or_else(|| {
+            anyhow!("event devices are missing when creating virtio-gpu in the current process.")
+        })?;
+        let wndproc_thread = wndproc_thread
+            .take()
+            .ok_or_else(|| anyhow!("Window procedure thread is missing."))?;
+
+        std::thread::spawn(move || {
+            run_gpu_device_worker(backend_config, event_devices, wndproc_thread)
+        });
     }
+
+    // The GPU is always vhost-user, even if running in the main process.
+    create_vhost_user_gpu_device(
+        virtio::base_features(cfg.protection_type),
+        gpu_vmm_config
+            .main_vhost_user_tube
+            .take()
+            .expect("GPU VMM vhost-user tube should be set"),
+    )
+    .context("create vhost-user GPU device")
 }
 
 fn create_devices(

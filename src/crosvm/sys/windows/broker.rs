@@ -679,10 +679,6 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         Tube::directional_pair().context("failed to create vm event tube")?;
 
     #[cfg(feature = "gpu")]
-    let (gpu_control_host_tube, gpu_control_device_tube) =
-        Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
-
-    #[cfg(feature = "gpu")]
     let mut input_event_split_config = platform_create_input_event_config(&cfg)
         .context("create input event devices for virtio-gpu device")?;
 
@@ -697,12 +693,10 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         vm_evt_wrtube
             .try_clone()
             .exit_context(Exit::CloneEvent, "failed to clone event")?,
-        gpu_control_host_tube,
-        gpu_control_device_tube,
     )?;
 
     #[cfg(feature = "gpu")]
-    let _gpu_child = if let Some(gpu_cfg) = gpu_cfg {
+    let _gpu_child = if let Some(mut gpu_cfg) = gpu_cfg {
         if !cfg
             .vhost_user
             .iter()
@@ -713,6 +707,10 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
             cfg.gpu_vmm_config = Some(gpu_cfg.1);
             None
         } else {
+            // If we are running in a separate process, turn on external blobs (memory will be
+            // exported, sent to VMM for import, then mapped).
+            gpu_cfg.0.params.external_blob = true;
+
             Some(start_up_gpu(
                 &mut cfg,
                 &log_args,
@@ -1747,8 +1745,6 @@ fn platform_create_gpu(
     #[allow(unused_variables)] main_child: &mut ChildProcess,
     exit_events: &mut Vec<Event>,
     exit_evt_wrtube: SendTube,
-    gpu_control_host_tube: Tube,
-    gpu_control_device_tube: Tube,
 ) -> Result<Option<(GpuBackendConfig, GpuVmmConfig)>> {
     if cfg.gpu_parameters.is_none() {
         return Ok(None);
@@ -1763,8 +1759,19 @@ fn platform_create_gpu(
     let (backend_config_product, vmm_config_product) =
         get_gpu_product_configs(cfg, main_child.alias_pid)?;
 
+    let (mut main_vhost_user_tube, mut device_host_user_tube) =
+        Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
+    // Start off the vhost-user tube assuming it is in the main process.
+    main_vhost_user_tube.set_target_pid(main_child.alias_pid);
+    device_host_user_tube.set_target_pid(main_child.alias_pid);
+
+    let (mut gpu_control_host_tube, mut gpu_control_device_tube) =
+        Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
+    gpu_control_host_tube.set_target_pid(main_child.alias_pid);
+    gpu_control_device_tube.set_target_pid(main_child.alias_pid);
+
     let backend_config = GpuBackendConfig {
-        device_vhost_user_tube: None,
+        device_vhost_user_tube: Some(device_host_user_tube),
         exit_event,
         exit_evt_wrtube,
         gpu_control_device_tube,
@@ -1777,7 +1784,7 @@ fn platform_create_gpu(
     };
 
     let vmm_config = GpuVmmConfig {
-        main_vhost_user_tube: None,
+        main_vhost_user_tube: Some(main_vhost_user_tube),
         gpu_control_host_tube: Some(gpu_control_host_tube),
         product_config: vmm_config_product,
     };
@@ -1799,10 +1806,7 @@ fn start_up_gpu(
     wndproc_thread_builder: WindowProcedureThreadBuilder,
     #[cfg(feature = "process-invariants")] process_invariants: &EmulatorProcessInvariants,
 ) -> Result<ChildProcess> {
-    let (mut backend_cfg, mut vmm_cfg) = gpu_cfg;
-
-    let (mut main_vhost_user_tube, mut device_host_user_tube) =
-        Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
+    let (backend_cfg, mut vmm_cfg) = gpu_cfg;
 
     let gpu_child = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
@@ -1838,21 +1842,14 @@ fn start_up_gpu(
         .take()
         .expect("The window procedure thread builder is missing");
     cfg.window_procedure_thread_split_config = Some(wndproc_thread_cfg);
-    // Update target PIDs to new child.
-    device_host_user_tube.set_target_pid(main_child.alias_pid);
-    main_vhost_user_tube.set_target_pid(gpu_child.alias_pid);
-    backend_cfg
-        .gpu_control_device_tube
-        .set_target_pid(main_child.alias_pid);
-    vmm_cfg
-        .gpu_control_host_tube
-        .as_mut()
-        .unwrap()
-        .set_target_pid(gpu_child.alias_pid);
 
-    // Insert vhost-user tube to backend / frontend configs.
-    backend_cfg.device_vhost_user_tube = Some(device_host_user_tube);
-    vmm_cfg.main_vhost_user_tube = Some(main_vhost_user_tube);
+    // Update target PIDs to new child.
+    if let Some(tube) = &mut vmm_cfg.main_vhost_user_tube {
+        tube.set_target_pid(gpu_child.alias_pid);
+    }
+    if let Some(tube) = &mut vmm_cfg.gpu_control_host_tube {
+        tube.set_target_pid(gpu_child.alias_pid);
+    }
 
     // Send VMM config to main process. Note we don't set gpu_backend_config and
     // input_event_backend_config, since it is passed to the child.

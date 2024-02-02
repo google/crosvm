@@ -253,6 +253,19 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         .start_thread()
         .context("Failed to create window procedure thread for vhost GPU")?;
 
+    run_gpu_device_worker(
+        config,
+        input_event_backend_config.event_devices,
+        wndproc_thread,
+    )
+}
+
+/// Run the GPU device worker.
+pub fn run_gpu_device_worker(
+    mut config: GpuBackendConfig,
+    event_devices: Vec<EventDevice>,
+    wndproc_thread: WindowProcedureThread,
+) -> anyhow::Result<()> {
     let vhost_user_tube = config
         .device_vhost_user_tube
         .expect("vhost-user gpu tube must be set");
@@ -270,9 +283,6 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     let mut gpu_params = config.params.clone();
 
-    // Required to share memory across processes.
-    gpu_params.external_blob = true;
-
     // Fallback for when external_blob is not available on the machine. Currently always off.
     gpu_params.system_blob = false;
 
@@ -285,7 +295,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         display_backends,
         &gpu_params,
         /* render_server_descriptor */ None,
-        input_event_backend_config.event_devices,
+        event_devices,
         base_features,
         /* channels= */ &Default::default(),
         wndproc_thread,
