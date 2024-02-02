@@ -95,6 +95,11 @@ pub trait VhostUserMasterReqHandler {
     ) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
+
+    /// Handle external memory region mapping requests.
+    fn external_map(&mut self, _req: &VhostUserExternalMapMsg) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
 }
 
 /// The [MasterReqHandler] acts as a server on the master side, to handle service requests from
@@ -240,6 +245,12 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
                     .gpu_map(&msg, &files[0])
                     .map_err(Error::ReqHandlerError)
             }
+            Ok(SlaveReq::EXTERNAL_MAP) => {
+                let msg = self.extract_msg_body::<VhostUserExternalMapMsg>(&hdr, size, &buf)?;
+                self.backend
+                    .external_map(&msg)
+                    .map_err(Error::ReqHandlerError)
+            }
             _ => Err(Error::InvalidMessage),
         };
 
@@ -313,6 +324,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         if code == SlaveReq::SHMEM_MAP
             || code == SlaveReq::SHMEM_UNMAP
             || code == SlaveReq::GPU_MAP
+            || code == SlaveReq::EXTERNAL_MAP
             || (self.reply_ack_negotiated && req.is_need_reply())
         {
             let hdr = self.new_reply_header::<VhostUserU64>(req)?;

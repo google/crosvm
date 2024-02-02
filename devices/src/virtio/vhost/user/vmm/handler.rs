@@ -19,6 +19,7 @@ use hypervisor::MemCacheType;
 use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserConfigFlags;
+use vmm_vhost::message::VhostUserExternalMapMsg;
 use vmm_vhost::message::VhostUserGpuMapMsg;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserShmemMapMsg;
@@ -508,6 +509,35 @@ impl VhostUserMasterReqHandler for BackendReqHandlerImpl {
                 memory_idx: req.memory_idx,
                 device_uuid: req.device_uuid,
                 driver_uuid: req.driver_uuid,
+                size: req.len,
+            },
+            req.shm_offset,
+            Protection::read_write(),
+            MemCacheType::CacheCoherent,
+        ) {
+            Ok(()) => Ok(0),
+            Err(e) => {
+                error!("failed to create mapping {:?}", e);
+                Err(std::io::Error::from_raw_os_error(libc::EINVAL))
+            }
+        }
+    }
+
+    fn external_map(&mut self, req: &VhostUserExternalMapMsg) -> HandlerResult<u64> {
+        let shared_mapper_state = self
+            .shared_mapper_state
+            .as_mut()
+            .ok_or_else(|| std::io::Error::from_raw_os_error(libc::EINVAL))?;
+        if req.shmid != shared_mapper_state.shmid {
+            error!(
+                "bad shmid {}, expected {}",
+                req.shmid, shared_mapper_state.shmid
+            );
+            return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
+        }
+        match shared_mapper_state.mapper.add_mapping(
+            VmMemorySource::ExternalMapping {
+                ptr: req.ptr,
                 size: req.len,
             },
             req.shm_offset,

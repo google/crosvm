@@ -77,6 +77,7 @@ impl Slave {
         if code != SlaveReq::SHMEM_MAP
             && code != SlaveReq::SHMEM_UNMAP
             && code != SlaveReq::GPU_MAP
+            && code != SlaveReq::EXTERNAL_MAP
             && !self.reply_ack_negotiated
         {
             return Ok(0);
@@ -153,6 +154,11 @@ impl VhostUserMasterReqHandler for Slave {
             req,
             Some(&[descriptor.as_raw_descriptor()]),
         )
+    }
+
+    /// Handle external memory region mapping requests.
+    fn external_map(&mut self, req: &VhostUserExternalMapMsg) -> HandlerResult<u64> {
+        self.send_message(SlaveReq::EXTERNAL_MAP, req, None)
     }
 }
 

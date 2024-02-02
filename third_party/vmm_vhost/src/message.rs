@@ -196,6 +196,8 @@ pub enum SlaveReq {
     FS_IO = 11,
     /// Indicates a request to map GPU memory into a shared memory region.
     GPU_MAP = 12,
+    /// Indicates a request to map external memory into a shared memory region.
+    EXTERNAL_MAP = 13,
 }
 
 impl From<SlaveReq> for u32 {
@@ -1036,6 +1038,40 @@ impl VhostUserGpuMapMsg {
     }
 }
 
+/// Slave request message to map external memory into a shared memory region.
+#[repr(C, packed)]
+#[derive(Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
+pub struct VhostUserExternalMapMsg {
+    /// Shared memory region id.
+    pub shmid: u8,
+    padding: [u8; 7],
+    /// Offset into the shared memory region.
+    pub shm_offset: u64,
+    /// Size of region to map.
+    pub len: u64,
+    /// Pointer to the memory.
+    pub ptr: u64,
+}
+
+impl VhostUserMsgValidator for VhostUserExternalMapMsg {
+    fn is_valid(&self) -> bool {
+        self.len > 0
+    }
+}
+
+impl VhostUserExternalMapMsg {
+    /// New instance of VhostUserExternalMapMsg struct
+    pub fn new(shmid: u8, shm_offset: u64, len: u64, ptr: u64) -> Self {
+        Self {
+            shmid,
+            padding: [0; 7],
+            shm_offset,
+            len,
+            ptr,
+        }
+    }
+}
+
 /// Slave request message to unmap part of a shared memory region.
 #[repr(C, packed)]
 #[derive(Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
@@ -1238,7 +1274,7 @@ mod tests {
     #[test]
     fn check_slave_request_code() {
         SlaveReq::try_from(0).expect_err("invalid value");
-        SlaveReq::try_from(13).expect_err("invalid value");
+        SlaveReq::try_from(14).expect_err("invalid value");
         SlaveReq::try_from(10000).expect_err("invalid value");
 
         let code = SlaveReq::try_from(SlaveReq::CONFIG_CHANGE_MSG as u32).unwrap();

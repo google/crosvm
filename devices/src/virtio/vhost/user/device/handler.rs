@@ -79,6 +79,7 @@ use vm_memory::GuestMemory;
 use vm_memory::MemoryRegion;
 use vmm_vhost::message::VhostSharedMemoryRegion;
 use vmm_vhost::message::VhostUserConfigFlags;
+use vmm_vhost::message::VhostUserExternalMapMsg;
 use vmm_vhost::message::VhostUserGpuMapMsg;
 use vmm_vhost::message::VhostUserInflight;
 use vmm_vhost::message::VhostUserMemoryRegion;
@@ -880,61 +881,73 @@ impl SharedMemoryMapper for VhostShmemMapper {
         prot: Protection,
         _cache: MemCacheType,
     ) -> anyhow::Result<()> {
-        // True if we should send gpu_map instead of shmem_map.
-        let is_gpu = matches!(&source, &VmMemorySource::Vulkan { .. });
-
-        let size = if is_gpu {
-            match source {
-                VmMemorySource::Vulkan {
-                    descriptor,
-                    handle_type,
-                    memory_idx,
-                    device_uuid,
-                    driver_uuid,
-                    size,
-                } => {
-                    let msg = VhostUserGpuMapMsg::new(
-                        self.shmem_info.shmid,
-                        offset,
-                        size,
-                        memory_idx,
-                        handle_type,
-                        device_uuid,
-                        driver_uuid,
-                    );
-                    self.conn
-                        .lock()
-                        .gpu_map(&msg, &descriptor)
-                        .context("failed to map memory")?;
-                    size
-                }
-                _ => unreachable!("inconsistent pattern match"),
-            }
-        } else {
-            let (descriptor, fd_offset, size) = match source {
-                VmMemorySource::Descriptor {
-                    descriptor,
+        let size = match source {
+            VmMemorySource::Vulkan {
+                descriptor,
+                handle_type,
+                memory_idx,
+                device_uuid,
+                driver_uuid,
+                size,
+            } => {
+                let msg = VhostUserGpuMapMsg::new(
+                    self.shmem_info.shmid,
                     offset,
                     size,
-                } => (descriptor, offset, size),
-                VmMemorySource::SharedMemory(shmem) => {
-                    let size = shmem.size();
-                    let descriptor =
-                        // SAFETY:
-                        // Safe because we own shmem.
-                        unsafe { SafeDescriptor::from_raw_descriptor(shmem.into_raw_descriptor()) };
-                    (descriptor, 0, size)
-                }
-                _ => bail!("unsupported source"),
-            };
-            let flags = VhostUserShmemMapMsgFlags::from(prot);
-            let msg =
-                VhostUserShmemMapMsg::new(self.shmem_info.shmid, offset, fd_offset, size, flags);
-            self.conn
-                .lock()
-                .shmem_map(&msg, &descriptor)
-                .context("failed to map memory")?;
-            size
+                    memory_idx,
+                    handle_type,
+                    device_uuid,
+                    driver_uuid,
+                );
+                self.conn
+                    .lock()
+                    .gpu_map(&msg, &descriptor)
+                    .context("failed to map memory")?;
+                size
+            }
+            VmMemorySource::ExternalMapping { ptr, size } => {
+                let msg = VhostUserExternalMapMsg::new(self.shmem_info.shmid, offset, size, ptr);
+                self.conn
+                    .lock()
+                    .external_map(&msg)
+                    .context("failed to map memory")?;
+                size
+            }
+            source => {
+                // The last two sources use the same VhostUserShmemMapMsg, continue matching here
+                // on the aliased `source` above.
+                let (descriptor, fd_offset, size) = match source {
+                    VmMemorySource::Descriptor {
+                        descriptor,
+                        offset,
+                        size,
+                    } => (descriptor, offset, size),
+                    VmMemorySource::SharedMemory(shmem) => {
+                        let size = shmem.size();
+                        let descriptor =
+                            // SAFETY:
+                            // Safe because we own shmem.
+                            unsafe {
+                                SafeDescriptor::from_raw_descriptor(shmem.into_raw_descriptor())
+                            };
+                        (descriptor, 0, size)
+                    }
+                    _ => bail!("unsupported source"),
+                };
+                let flags = VhostUserShmemMapMsgFlags::from(prot);
+                let msg = VhostUserShmemMapMsg::new(
+                    self.shmem_info.shmid,
+                    offset,
+                    fd_offset,
+                    size,
+                    flags,
+                );
+                self.conn
+                    .lock()
+                    .shmem_map(&msg, &descriptor)
+                    .context("failed to map memory")?;
+                size
+            }
         };
 
         self.shmem_info.mapped_regions.insert(offset, size);
