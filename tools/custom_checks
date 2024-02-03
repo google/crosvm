@@ -94,6 +94,7 @@ KNOWN_DISABLED_FEATURES = [
     "default-no-sandbox",
     "libvda",
     "seccomp_trace",
+    "vulkano",
     "whpx",
 ]
 
