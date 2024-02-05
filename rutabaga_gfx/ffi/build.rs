@@ -26,7 +26,7 @@ libdir=${exec_prefix}/lib
 
 Name: rutabaga_gfx_ffi
 Description: C FFI bindings to Rutabaga VGI
-Version: 0.1.2
+Version: 0.1.3
 Cflags: -I${includedir}
 Libs: -L${libdir} -lrutabaga_gfx_ffi
 "###,

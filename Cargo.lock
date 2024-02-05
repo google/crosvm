@@ -2325,7 +2325,7 @@ dependencies = [
 
 [[package]]
 name = "rutabaga_gfx"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "cfg-if",

@@ -1,9 +1,9 @@
 [package]
 name = "rutabaga_gfx"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["The ChromiumOS Authors + Android Open Source Project"]
 edition = "2021"
-description = "[highly unstable] Handling virtio-gpu protocols"
+description = "Handling virtio-gpu protocols"
 license-file = "LICENSE"
 
 [features]

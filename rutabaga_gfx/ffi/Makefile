@@ -39,7 +39,7 @@ ifeq ($(shell pkg-config --exists $(GFXSTREAM_DEP) && echo 1),1)
     gfxstream_feature :=--features=gfxstream
 endif
 
-RUTABAGA_VERSION := $(RUTABAGA_VERSION_MAJOR).1.2
+RUTABAGA_VERSION := $(RUTABAGA_VERSION_MAJOR).1.3
 
 all: build
 
