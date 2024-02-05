@@ -605,11 +605,23 @@ impl VmMemoryRequestIommuClient {
     }
 }
 
+enum RegisteredMemory {
+    FixedMapping {
+        slot: MemSlot,
+        offset: usize,
+        size: usize,
+    },
+    DynamicMapping {
+        slot: MemSlot,
+    },
+}
+
 pub struct VmMemoryRegionState {
     // alloc -> (pfn, slot)
     slot_map: HashMap<Alloc, (u64, MemSlot)>,
+
     // id -> (slot, Option<offset, size>)
-    mapped_regions: BTreeMap<VmMemoryRegionId, (MemSlot, Option<(usize, usize)>)>,
+    mapped_regions: BTreeMap<VmMemoryRegionId, RegisteredMemory>,
 }
 
 impl VmMemoryRegionState {
@@ -675,7 +687,11 @@ fn try_map_to_prepared_region(
     let pfn = pfn + (offset >> 12);
     region_state.mapped_regions.insert(
         VmMemoryRegionId(pfn),
-        (*slot, Some((*offset as usize, size))),
+        RegisteredMemory::FixedMapping {
+            slot: *slot,
+            offset: *offset as usize,
+            size,
+        },
     );
     Some(VmMemoryResponse::RegisterMemory(VmMemoryRegionId(pfn)))
 }
@@ -780,13 +796,16 @@ impl VmMemoryRequest {
                 }
 
                 let pfn = guest_addr.0 >> 12;
-                region_state
-                    .mapped_regions
-                    .insert(VmMemoryRegionId(pfn), (slot, None));
+                region_state.mapped_regions.insert(
+                    VmMemoryRegionId(pfn),
+                    RegisteredMemory::DynamicMapping { slot },
+                );
                 VmMemoryResponse::RegisterMemory(VmMemoryRegionId(pfn))
             }
             UnregisterMemory(id) => match region_state.mapped_regions.remove(&id) {
-                Some((slot, None)) => match vm.remove_memory_region(slot) {
+                Some(RegisteredMemory::DynamicMapping { slot }) => match vm
+                    .remove_memory_region(slot)
+                {
                     Ok(_) => {
                         if let Some(iommu_client) = iommu_client {
                             if iommu_client.gpu_memory.remove(&slot) {
@@ -812,10 +831,12 @@ impl VmMemoryRequest {
                     }
                     Err(e) => VmMemoryResponse::Err(e),
                 },
-                Some((slot, Some((offset, size)))) => match vm.remove_mapping(slot, offset, size) {
-                    Ok(()) => VmMemoryResponse::Ok,
-                    Err(e) => VmMemoryResponse::Err(e),
-                },
+                Some(RegisteredMemory::FixedMapping { slot, offset, size }) => {
+                    match vm.remove_mapping(slot, offset, size) {
+                        Ok(()) => VmMemoryResponse::Ok,
+                        Err(e) => VmMemoryResponse::Err(e),
+                    }
+                }
                 None => VmMemoryResponse::Err(SysError::new(EINVAL)),
             },
             DynamicallyFreeMemoryRange {
