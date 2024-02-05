@@ -24,8 +24,8 @@ pub const CROSS_DOMAIN_CMD_WRITE: u8 = 7;
 pub const CROSS_DOMAIN_CHANNEL_TYPE_WAYLAND: u32 = 0x0001;
 pub const CROSS_DOMAIN_CHANNEL_TYPE_CAMERA: u32 = 0x0002;
 
-/// The maximum number of identifiers (value inspired by wp_linux_dmabuf)
-pub const CROSS_DOMAIN_MAX_IDENTIFIERS: usize = 4;
+/// The maximum number of identifiers
+pub const CROSS_DOMAIN_MAX_IDENTIFIERS: usize = 28;
 
 /// virtgpu memory resource ID.  Also works with non-blob memory resources, despite the name.
 pub const CROSS_DOMAIN_ID_TYPE_VIRTGPU_BLOB: u32 = 1;
