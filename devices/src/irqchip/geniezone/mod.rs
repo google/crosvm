@@ -9,7 +9,6 @@ use base::Error;
 use base::Event;
 use base::Result;
 use hypervisor::geniezone::geniezone_sys::*;
-use hypervisor::geniezone::GeniezoneVcpu;
 use hypervisor::geniezone::GeniezoneVm;
 use hypervisor::DeviceKind;
 use hypervisor::IrqRoute;
@@ -45,7 +44,6 @@ fn default_irq_routing_table() -> Vec<IrqRoute> {
 /// This implementation will use the GZVM API to create and configure the in-kernel irqchip.
 pub struct GeniezoneKernelIrqChip {
     pub(super) vm: GeniezoneVm,
-    pub(super) vcpus: Arc<Mutex<Vec<Option<GeniezoneVcpu>>>>,
     device_kind: DeviceKind,
     pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
 }
@@ -110,7 +108,6 @@ impl GeniezoneKernelIrqChip {
 
         Ok(GeniezoneKernelIrqChip {
             vm,
-            vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
             device_kind,
             routes: Arc::new(Mutex::new(default_irq_routing_table())),
         })
@@ -119,7 +116,6 @@ impl GeniezoneKernelIrqChip {
     pub(super) fn arch_try_clone(&self) -> Result<Self> {
         Ok(GeniezoneKernelIrqChip {
             vm: self.vm.try_clone()?,
-            vcpus: self.vcpus.clone(),
             device_kind: self.device_kind,
             routes: self.routes.clone(),
         })
@@ -151,11 +147,7 @@ impl IrqChipAArch64 for GeniezoneKernelIrqChip {
 /// This IrqChip only works with Geniezone so we only implement it for GeniezoneVcpu.
 impl IrqChip for GeniezoneKernelIrqChip {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: &dyn Vcpu) -> Result<()> {
-        let vcpu: &GeniezoneVcpu = vcpu
-            .downcast_ref()
-            .expect("GeniezoneKernelIrqChip::add_vcpu called with non-GeniezoneVcpu");
-        self.vcpus.lock()[vcpu_id] = Some(vcpu.try_clone()?);
+    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: &dyn Vcpu) -> Result<()> {
         Ok(())
     }
 
