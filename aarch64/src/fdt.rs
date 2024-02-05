@@ -162,9 +162,17 @@ fn create_cpu_nodes(
         if let Some(capacity) = cpu_capacity.get(&(cpu_id as usize)) {
             cpu_node.set_prop("capacity-dmips-mhz", *capacity)?;
         }
-
-        if !cpu_frequencies.is_empty() {
+        // Placed inside cpu nodes for ease of parsing for some secure firmwares(PvmFw).
+        if let Some(frequencies) = cpu_frequencies.get(&(cpu_id as usize)) {
             cpu_node.set_prop("operating-points-v2", PHANDLE_OPP_DOMAIN_BASE + cpu_id)?;
+            let opp_table_node = cpu_node.subnode_mut(&format!("opp_table{}", cpu_id))?;
+            opp_table_node.set_prop("phandle", PHANDLE_OPP_DOMAIN_BASE + cpu_id)?;
+            opp_table_node.set_prop("compatible", "operating-points-v2")?;
+            for freq in frequencies.iter() {
+                let opp_hz = (*freq) as u64 * 1000;
+                let opp_node = opp_table_node.subnode_mut(&format!("opp{}", opp_hz))?;
+                opp_node.set_prop("opp-hz", opp_hz)?;
+            }
         }
     }
 
@@ -175,21 +183,6 @@ fn create_cpu_nodes(
             for (core_idx, cpu_id) in cpus.iter().enumerate() {
                 let core_node = cluster_node.subnode_mut(&format!("core{}", core_idx))?;
                 core_node.set_prop("cpu", PHANDLE_CPU0 + *cpu_id as u32)?;
-            }
-        }
-    }
-
-    if !cpu_frequencies.is_empty() {
-        for cpu_id in 0..num_cpus {
-            if let Some(frequencies) = cpu_frequencies.get(&(cpu_id as usize)) {
-                let opp_table_node = root_node.subnode_mut(&format!("opp_table{}", cpu_id))?;
-                opp_table_node.set_prop("phandle", PHANDLE_OPP_DOMAIN_BASE + cpu_id)?;
-                opp_table_node.set_prop("compatible", "operating-points-v2")?;
-                for freq in frequencies.iter() {
-                    let opp_hz = (*freq) as u64 * 1000;
-                    let opp_node = opp_table_node.subnode_mut(&format!("opp{}", opp_hz))?;
-                    opp_node.set_prop("opp-hz", opp_hz)?;
-                }
             }
         }
     }
