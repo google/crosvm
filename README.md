@@ -2,7 +2,7 @@
 
 crosvm is a virtual machine monitor (VMM) based on Linux’s KVM hypervisor, with a focus on
 simplicity, security, and speed. crosvm is intended to run Linux guests, originally as a security
-boundary for running native applications on the ChromeOS platform. Compared to QEMU, crosvm doesn’t
+boundary for running native applications on the ChromeOS platform, but now also powers Google Play Games for Windows. Compared to QEMU, crosvm doesn’t
 emulate architectures or real hardware, instead concentrating on paravirtualized devices, such as
 the virtio standard.
 
