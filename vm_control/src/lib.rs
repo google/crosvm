@@ -2039,6 +2039,7 @@ fn do_snapshot(
     let snapshot_writer = SnapshotWriter::new(snapshot_path)?;
 
     // Snapshot Vcpus
+    info!("VCPUs snapshotting...");
     let (send_chan, recv_chan) = mpsc::channel();
     kick_vcpus(VcpuControl::Snapshot(
         snapshot_writer.add_namespace("vcpu")?,
@@ -2051,14 +2052,18 @@ fn do_snapshot(
             .context("Failed to recv Vcpu snapshot response")?
             .context("Failed to snapshot Vcpu")?;
     }
+    info!("VCPUs snapshotted.");
 
     // Snapshot irqchip
+    info!("Snapshotting irqchip...");
     let irqchip_snap = snapshot_irqchip()?;
     snapshot_writer
         .write_fragment("irqchip", &irqchip_snap)
         .context("Failed to write irqchip state")?;
+    info!("Snapshotted irqchip.");
 
     // Snapshot devices
+    info!("Devices snapshotting...");
     device_control_tube
         .send(&DeviceControlCommand::SnapshotDevices { snapshot_writer })
         .context("send command to devices control socket")?;
@@ -2068,6 +2073,7 @@ fn do_snapshot(
     if !matches!(resp, VmResponse::Ok) {
         bail!("unexpected SnapshotDevices response: {resp}");
     }
+    info!("Devices snapshotted.");
     Ok(())
 }
 
