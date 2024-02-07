@@ -220,3 +220,38 @@ pub fn create_vu_block_config(cmd_type: CmdType, socket: &Path, disk: &Path) -> 
         ]),
     }
 }
+
+pub fn create_vu_console_multiport_config(
+    socket: &Path,
+    file_path: Vec<(PathBuf, PathBuf)>,
+) -> VuConfig {
+    let socket_path = socket.to_str().unwrap();
+
+    let mut args = vec![
+        "console".to_string(),
+        "--socket".to_string(),
+        socket_path.to_string(),
+    ];
+
+    for (i, (output_file, input_file)) in file_path.iter().enumerate() {
+        args.push("--port".to_string());
+        match input_file.file_name().is_some() {
+            true => {
+                args.push(format!(
+                    "type=file,hardware=virtio-console,name=port{},path={},input={}",
+                    i,
+                    output_file.to_str().unwrap(),
+                    input_file.to_str().unwrap(),
+                ));
+            }
+            false => {
+                args.push(format!(
+                    "type=file,hardware=virtio-console,name=port{},path={}",
+                    i,
+                    output_file.to_str().unwrap(),
+                ));
+            }
+        };
+    }
+    VuConfig::new(CmdType::Device, "console").extra_args(args)
+}
