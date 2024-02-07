@@ -130,6 +130,10 @@ pub struct MemoryRegionOptions {
     /// which memory region is used for protected firwmare, static swiotlb,
     /// or general purpose guest memory.
     pub purpose: MemoryRegionPurpose,
+    /// Alignment for the mapping of this region. This intends to be used for
+    /// arm64 KVM support where a block alignment is required for transparent
+    /// huge-pages support
+    pub align: u64,
 }
 
 impl MemoryRegionOptions {
@@ -139,6 +143,11 @@ impl MemoryRegionOptions {
 
     pub fn purpose(mut self, purpose: MemoryRegionPurpose) -> Self {
         self.purpose = purpose;
+        self
+    }
+
+    pub fn align(mut self, alignment: u64) -> Self {
+        self.align = alignment;
         self
     }
 }
@@ -286,6 +295,7 @@ impl GuestMemory {
             let mapping = MemoryMappingBuilder::new(size)
                 .from_shared_memory(shm.as_ref())
                 .offset(offset)
+                .align(range.2.align)
                 .build()
                 .map_err(Error::MemoryMappingFailed)?;
 

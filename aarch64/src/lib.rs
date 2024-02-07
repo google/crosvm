@@ -364,6 +364,16 @@ fn load_kernel(
 
 pub struct AArch64;
 
+fn get_block_size() -> u64 {
+    let page_size = base::pagesize();
+    // Each PTE entry being 8 bytes long, we can fit in one page (page_size / 8)
+    // entries.
+    let ptes_per_page = page_size / 8;
+    let block_size = page_size * ptes_per_page;
+
+    block_size as u64
+}
+
 impl arch::LinuxArch for AArch64 {
     type Error = Error;
 
@@ -376,7 +386,7 @@ impl arch::LinuxArch for AArch64 {
         let mut memory_regions = vec![(
             GuestAddress(AARCH64_PHYS_MEM_START),
             components.memory_size,
-            Default::default(),
+            MemoryRegionOptions::new().align(get_block_size()),
         )];
 
         // Allocate memory for the pVM firmware.
