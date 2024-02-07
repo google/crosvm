@@ -646,7 +646,11 @@ fn try_map_to_prepared_region(
     dest: &VmMemoryDestination,
     prot: &Protection,
 ) -> Option<VmMemoryResponse> {
-    let VmMemoryDestination::ExistingAllocation { allocation, offset } = dest else {
+    let VmMemoryDestination::ExistingAllocation {
+        allocation,
+        offset: dest_offset,
+    } = dest
+    else {
         return None;
     };
 
@@ -676,7 +680,7 @@ fn try_map_to_prepared_region(
     };
     if let Err(err) = vm.add_fd_mapping(
         *slot,
-        *offset as usize,
+        *dest_offset as usize,
         size,
         &descriptor,
         file_offset,
@@ -684,12 +688,12 @@ fn try_map_to_prepared_region(
     ) {
         return Some(VmMemoryResponse::Err(err));
     }
-    let pfn = pfn + (offset >> 12);
+    let pfn = pfn + (dest_offset >> 12);
     region_state.mapped_regions.insert(
         VmMemoryRegionId(pfn),
         RegisteredMemory::FixedMapping {
             slot: *slot,
-            offset: *offset as usize,
+            offset: *dest_offset as usize,
             size,
         },
     );
