@@ -11,6 +11,7 @@ use std::sync::Weak;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
+use std::time::Instant;
 
 use base::error;
 use base::AsRawDescriptor;
@@ -41,7 +42,7 @@ use winapi::um::winnt::SYNCHRONIZE;
 use crate::log_metric;
 use crate::sys::windows::Error;
 use crate::sys::windows::Result;
-use crate::sys::windows::METRIC_UPLOAD_INTERVAL_SECONDS;
+use crate::sys::windows::METRICS_UPLOAD_INTERVAL;
 use crate::MetricEventType;
 
 const BYTES_PER_MB: usize = 1024 * 1024;
@@ -73,7 +74,7 @@ impl Worker {
                     return;
                 }
             };
-        let mut last_metric_upload_time = Local::now();
+        let mut last_metric_upload_time = Instant::now();
         'poll: loop {
             let events = match event_ctx.wait_timeout(WORKER_REPORT_INTERVAL) {
                 Ok(events) => events,
@@ -107,9 +108,8 @@ impl Worker {
         );
     }
 
-    fn upload_metrics(&self, last_metric_upload_time: &mut DateTime<Local>) {
-        let time_elapsed = (Local::now() - *last_metric_upload_time).num_seconds();
-        if time_elapsed >= METRIC_UPLOAD_INTERVAL_SECONDS {
+    fn upload_metrics(&self, last_metric_upload_time: &mut Instant) {
+        if last_metric_upload_time.elapsed() >= METRICS_UPLOAD_INTERVAL {
             let mut memory_acc = self.memory_acc.lock().unwrap();
             if let Some(acc) = &*memory_acc {
                 let mem = acc.accumulated.physical / acc.accumulated_count / BYTES_PER_MB;
@@ -166,7 +166,7 @@ impl Worker {
                 }
             }
             *io = None;
-            *last_metric_upload_time = Local::now();
+            *last_metric_upload_time = Instant::now();
         }
     }
 

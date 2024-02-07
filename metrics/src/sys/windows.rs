@@ -7,13 +7,15 @@ pub mod gpu_metrics;
 pub mod system_metrics;
 pub mod wmi;
 
+use std::time::Duration;
+
 pub use gpu_metrics::*;
 pub(crate) use system_metrics::*;
 use win_util::ProcessType;
 
 use crate::protos::event_details::EmulatorProcessType;
 
-pub const METRIC_UPLOAD_INTERVAL_SECONDS: i64 = 60;
+pub const METRICS_UPLOAD_INTERVAL: Duration = Duration::from_secs(60);
 pub const API_GUEST_ANGLE_VK_ENUM_NAME: &str = "API_GUEST_ANGLE_VK";
 pub const API_HOST_ANGLE_D3D_ENUM_NAME: &str = "API_HOST_ANGLE_D3D";
 pub const API_UNKNOWN_ENUM_NAME: &str = "API_UNKNOWN";
