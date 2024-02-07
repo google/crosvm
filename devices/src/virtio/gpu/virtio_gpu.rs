@@ -286,14 +286,11 @@ impl VirtioGpuScanout {
 
         let surface_id = display.create_surface(
             self.parent_surface_id,
+            self.scanout_id,
             self.width,
             self.height,
             self.scanout_type,
         )?;
-
-        if let Some(scanout_id) = self.scanout_id {
-            display.set_scanout_id(surface_id, scanout_id)?;
-        }
 
         self.surface_id = Some(surface_id);
 

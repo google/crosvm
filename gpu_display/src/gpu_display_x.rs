@@ -698,6 +698,7 @@ impl DisplayT for DisplayX {
         &mut self,
         parent_surface_id: Option<u32>,
         _surface_id: u32,
+        _scanout_id: Option<u32>,
         width: u32,
         height: u32,
         _surf_type: SurfaceType,

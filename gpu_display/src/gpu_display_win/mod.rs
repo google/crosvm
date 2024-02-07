@@ -207,6 +207,7 @@ impl DisplayT for DisplayWin {
         &mut self,
         parent_surface_id: Option<u32>,
         _surface_id: u32,
+        _scanout_id: Option<u32>,
         virtual_display_width: u32,
         virtual_display_height: u32,
         surface_type: SurfaceType,

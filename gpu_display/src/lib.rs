@@ -243,11 +243,6 @@ trait GpuDisplaySurface {
     fn on_shm_completion(&mut self, _shm_complete: u64) {
         // no-op
     }
-
-    /// Sets the scanout ID for the surface.
-    fn set_scanout_id(&mut self, _scanout_id: u32) {
-        // no-op
-    }
 }
 
 struct GpuDisplayEvents {
@@ -285,6 +280,7 @@ trait DisplayT: AsRawDescriptor {
         &mut self,
         parent_surface_id: Option<u32>,
         surface_id: u32,
+        scanout_id: Option<u32>,
         width: u32,
         height: u32,
         surf_type: SurfaceType,
@@ -455,6 +451,7 @@ impl GpuDisplay {
     pub fn create_surface(
         &mut self,
         parent_surface_id: Option<u32>,
+        scanout_id: Option<u32>,
         width: u32,
         height: u32,
         surf_type: SurfaceType,
@@ -469,6 +466,7 @@ impl GpuDisplay {
         let new_surface = self.inner.create_surface(
             parent_surface_id,
             new_surface_id,
+            scanout_id,
             width,
             height,
             surf_type,
@@ -596,17 +594,6 @@ impl GpuDisplay {
             .ok_or(GpuDisplayError::InvalidSurfaceId)?;
 
         surface.set_position(x, y);
-        Ok(())
-    }
-
-    /// Associates the scanout id with the given surface.
-    pub fn set_scanout_id(&mut self, surface_id: u32, scanout_id: u32) -> GpuDisplayResult<()> {
-        let surface = self
-            .surfaces
-            .get_mut(&surface_id)
-            .ok_or(GpuDisplayError::InvalidSurfaceId)?;
-
-        surface.set_scanout_id(scanout_id);
         Ok(())
     }
 }

@@ -13,7 +13,13 @@ mod platform {
     pub fn run() -> Result<()> {
         let mut disp = GpuDisplay::open_wayland(None::<&str>).context("open_wayland")?;
         let surface_id = disp
-            .create_surface(None, 1280, 1024, SurfaceType::Scanout)
+            .create_surface(
+                None,
+                /* scanout_id= */ Some(0),
+                1280,
+                1024,
+                SurfaceType::Scanout,
+            )
             .context("create_surface")?;
         disp.flip(surface_id);
         disp.commit(surface_id).context("commit")?;

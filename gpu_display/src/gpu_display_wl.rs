@@ -180,14 +180,6 @@ impl GpuDisplaySurface for WaylandSurface {
             dwl_surface_set_position(self.surface(), x, y);
         }
     }
-
-    fn set_scanout_id(&mut self, scanout_id: u32) {
-        // SAFETY:
-        // Safe because only a valid surface is used.
-        unsafe {
-            dwl_surface_set_scanout_id(self.surface(), scanout_id);
-        }
-    }
 }
 
 /// A connection to the compositor and associated collection of state.
@@ -370,6 +362,7 @@ impl DisplayT for DisplayWl {
         &mut self,
         parent_surface_id: Option<u32>,
         surface_id: u32,
+        scanout_id: Option<u32>,
         width: u32,
         height: u32,
         surf_type: SurfaceType,
@@ -409,6 +402,14 @@ impl DisplayT for DisplayWl {
 
         if surface.0.is_null() {
             return Err(GpuDisplayError::CreateSurface);
+        }
+
+        if let Some(scanout_id) = scanout_id {
+            // SAFETY:
+            // Safe because only a valid surface is used.
+            unsafe {
+                dwl_surface_set_scanout_id(surface.0, scanout_id);
+            }
         }
 
         Ok(Box::new(WaylandSurface {
