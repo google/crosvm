@@ -102,19 +102,24 @@ impl MemoryMapping {
     /// # Arguments
     /// * `size` - Size of memory region in bytes.
     pub fn new(size: usize) -> Result<MemoryMapping> {
-        MemoryMapping::new_protection(size, Protection::read_write())
+        MemoryMapping::new_protection(size, None, Protection::read_write())
     }
 
     /// Creates an anonymous shared mapping of `size` bytes with `prot` protection.
     ///
     /// # Arguments
     /// * `size` - Size of memory region in bytes.
+    /// * `align` - Optional alignment for MemoryMapping::addr.
     /// * `prot` - Protection (e.g. readable/writable) of the memory region.
-    pub fn new_protection(size: usize, prot: Protection) -> Result<MemoryMapping> {
+    pub fn new_protection(
+        size: usize,
+        align: Option<u64>,
+        prot: Protection,
+    ) -> Result<MemoryMapping> {
         // SAFETY:
         // This is safe because we are creating an anonymous mapping in a place not already used by
         // any other area in this process.
-        unsafe { MemoryMapping::try_mmap(None, size, prot.into(), None) }
+        unsafe { MemoryMapping::try_mmap(None, size, align, prot.into(), None) }
     }
 
     /// Maps the first `size` bytes of the given `fd` as read/write.
@@ -147,7 +152,7 @@ impl MemoryMapping {
         offset: u64,
         prot: Protection,
     ) -> Result<MemoryMapping> {
-        MemoryMapping::from_fd_offset_protection_populate(fd, size, offset, prot, false)
+        MemoryMapping::from_fd_offset_protection_populate(fd, size, offset, 0, prot, false)
     }
 
     /// Maps `size` bytes starting at `offset` from the given `fd` as read/write, and requests
@@ -156,12 +161,14 @@ impl MemoryMapping {
     /// * `fd` - File descriptor to mmap from.
     /// * `size` - Size of memory region in bytes.
     /// * `offset` - Offset in bytes from the beginning of `fd` to start the mmap.
+    /// * `align` - Alignment for MemoryMapping::addr.
     /// * `prot` - Protection (e.g. readable/writable) of the memory region.
     /// * `populate` - Populate (prefault) page tables for a mapping.
     pub fn from_fd_offset_protection_populate(
         fd: &dyn AsRawDescriptor,
         size: usize,
         offset: u64,
+        align: u64,
         prot: Protection,
         populate: bool,
     ) -> Result<MemoryMapping> {
@@ -169,7 +176,14 @@ impl MemoryMapping {
         // This is safe because we are creating an anonymous mapping in a place not already used
         // by any other area in this process.
         unsafe {
-            MemoryMapping::try_mmap_populate(None, size, prot.into(), Some((fd, offset)), populate)
+            MemoryMapping::try_mmap_populate(
+                None,
+                size,
+                Some(align),
+                prot.into(),
+                Some((fd, offset)),
+                populate,
+            )
         }
     }
 
@@ -190,7 +204,7 @@ impl MemoryMapping {
         size: usize,
         prot: Protection,
     ) -> Result<MemoryMapping> {
-        MemoryMapping::try_mmap(Some(addr), size, prot.into(), None)
+        MemoryMapping::try_mmap(Some(addr), size, None, prot.into(), None)
     }
 
     /// Maps the `size` bytes starting at `offset` bytes of the given `fd` with
@@ -215,17 +229,18 @@ impl MemoryMapping {
         offset: u64,
         prot: Protection,
     ) -> Result<MemoryMapping> {
-        MemoryMapping::try_mmap(Some(addr), size, prot.into(), Some((fd, offset)))
+        MemoryMapping::try_mmap(Some(addr), size, None, prot.into(), Some((fd, offset)))
     }
 
     /// Helper wrapper around try_mmap_populate when without MAP_POPULATE
     unsafe fn try_mmap(
         addr: Option<*mut u8>,
         size: usize,
+        align: Option<u64>,
         prot: c_int,
         fd: Option<(&dyn AsRawDescriptor, u64)>,
     ) -> Result<MemoryMapping> {
-        MemoryMapping::try_mmap_populate(addr, size, prot, fd, false)
+        MemoryMapping::try_mmap_populate(addr, size, align, prot, fd, false)
     }
 
     /// Helper wrapper around libc::mmap that does some basic validation, and calls
@@ -233,6 +248,7 @@ impl MemoryMapping {
     unsafe fn try_mmap_populate(
         addr: Option<*mut u8>,
         size: usize,
+        align: Option<u64>,
         prot: c_int,
         fd: Option<(&dyn AsRawDescriptor, u64)>,
         populate: bool,
@@ -252,6 +268,45 @@ impl MemoryMapping {
             }
             None => null_mut(),
         };
+
+        // mmap already PAGE_SIZE align the returned address.
+        let align = if align.unwrap_or(0) == pagesize() as u64 {
+            Some(0)
+        } else {
+            align
+        };
+
+        // Add an address if an alignment is requested.
+        let (addr, orig_addr, orig_size) = match align {
+            None | Some(0) => (addr, None, None),
+            Some(align) => {
+                if !addr.is_null() || !align.is_power_of_two() {
+                    return Err(Error::InvalidAlignment);
+                }
+                let orig_size = size + align as usize;
+                let orig_addr = libc::mmap64(
+                    null_mut(),
+                    orig_size,
+                    prot,
+                    libc::MAP_PRIVATE | libc::MAP_NORESERVE | libc::MAP_ANONYMOUS,
+                    -1,
+                    0,
+                );
+                if orig_addr == libc::MAP_FAILED {
+                    return Err(Error::SystemCallFailed(ErrnoError::last()));
+                }
+
+                flags |= libc::MAP_FIXED;
+
+                let mask = align - 1;
+                (
+                    (orig_addr.wrapping_add(mask as usize) as u64 & !mask) as *mut libc::c_void,
+                    Some(orig_addr),
+                    Some(orig_size),
+                )
+            }
+        };
+
         // If fd is provided, validate fd offset is within bounds. If not, it's anonymous mapping
         // and set the (ANONYMOUS | NORESERVE) flag.
         let (fd, offset) = match fd {
@@ -279,6 +334,26 @@ impl MemoryMapping {
         if addr == libc::MAP_FAILED {
             return Err(Error::SystemCallFailed(ErrnoError::last()));
         }
+
+        // If an original mmap exists, we can now remove the unused regions
+        if let Some(orig_addr) = orig_addr {
+            let mut unmap_start = orig_addr as usize;
+            let mut unmap_end = addr as usize;
+            let mut unmap_size = unmap_end - unmap_start;
+
+            if unmap_size > 0 {
+                libc::munmap(orig_addr, unmap_size);
+            }
+
+            unmap_start = addr as usize + size;
+            unmap_end = orig_addr as usize + orig_size.unwrap();
+            unmap_size = unmap_end - unmap_start;
+
+            if unmap_size > 0 {
+                libc::munmap(unmap_start as *mut libc::c_void, unmap_size);
+            }
+        }
+
         // This is safe because we call madvise with a valid address and size.
         let _ = libc::madvise(addr, size, libc::MADV_DONTDUMP);
 
@@ -561,7 +636,7 @@ impl MemoryMappingArena {
     /// * `size` - Size of memory region in bytes.
     pub fn new(size: usize) -> Result<MemoryMappingArena> {
         // Reserve the arena's memory using an anonymous read-only mmap.
-        MemoryMapping::new_protection(size, Protection::read()).map(From::from)
+        MemoryMapping::new_protection(size, None, Protection::read()).map(From::from)
     }
 
     /// Anonymously maps `size` bytes at `offset` bytes from the start of the arena
@@ -834,6 +909,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                 MemoryMappingBuilder::wrap(
                     MemoryMapping::new_protection(
                         self.size,
+                        self.align,
                         self.protection.unwrap_or_else(Protection::read_write),
                     )?,
                     None,
@@ -844,6 +920,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                     descriptor,
                     self.size,
                     self.offset.unwrap_or(0),
+                    self.align.unwrap_or(0),
                     self.protection.unwrap_or_else(Protection::read_write),
                     self.populate,
                 )?,

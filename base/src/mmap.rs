@@ -36,6 +36,8 @@ pub enum Error {
     AddFdMappingIsUnsupported,
     #[error("requested memory out of range")]
     InvalidAddress,
+    #[error("requested alignment is incompatible")]
+    InvalidAlignment,
     #[error("invalid argument provided when creating mapping")]
     InvalidArgument,
     #[error("requested offset is out of range of off_t")]
@@ -337,6 +339,7 @@ pub struct MemoryMappingBuilder<'a> {
     #[cfg_attr(target_os = "macos", allow(unused))]
     pub(crate) size: usize,
     pub(crate) offset: Option<u64>,
+    pub(crate) align: Option<u64>,
     pub(crate) protection: Option<Protection>,
     #[cfg_attr(target_os = "macos", allow(unused))]
     #[cfg_attr(windows, allow(unused))]
@@ -352,6 +355,7 @@ impl<'a> MemoryMappingBuilder<'a> {
             size,
             is_file_descriptor: false,
             offset: None,
+            align: None,
             protection: None,
             populate: false,
         }
@@ -393,6 +397,14 @@ impl<'a> MemoryMappingBuilder<'a> {
     /// Default: Read/write
     pub fn protection(mut self, protection: Protection) -> MemoryMappingBuilder<'a> {
         self.protection = Some(protection);
+        self
+    }
+
+    /// Alignment of the memory region mapping in bytes.
+    ///
+    /// Default: No alignment
+    pub fn align(mut self, alignment: u64) -> MemoryMappingBuilder<'a> {
+        self.align = Some(alignment);
         self
     }
 }
