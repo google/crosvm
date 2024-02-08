@@ -55,6 +55,8 @@ use winapi::um::winnt::WCHAR;
 
 pub use crate::dll_notification::*;
 
+pub mod dpapi;
+
 #[macro_export]
 macro_rules! syscall_bail {
     ($details:expr) => {
