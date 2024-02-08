@@ -248,7 +248,12 @@ fn gfxstream() -> Result<()> {
         println!("cargo:rustc-link-search={}", gfxstream_path);
         Ok(())
     } else {
-        pkg_config::Config::new().probe("gfxstream_backend")?;
+        let gfxstream_lib = pkg_config::Config::new().probe("gfxstream_backend")?;
+
+        if gfxstream_lib.defines.contains_key("GFXSTREAM_UNSTABLE") {
+            println!("cargo:rustc-cfg=gfxstream_unstable");
+        }
+
         pkg_config::Config::new().probe("aemu_base")?;
         pkg_config::Config::new().probe("aemu_host_common")?;
         pkg_config::Config::new().probe("aemu_logging")?;

@@ -1246,7 +1246,7 @@ impl VirtioGpu {
             rutabaga: {
                 let mut buffer = std::io::Cursor::new(Vec::new());
                 self.rutabaga
-                    .snapshot(&mut buffer)
+                    .snapshot(&mut buffer, "")
                     .context("failed to snapshot rutabaga")?;
                 buffer.into_inner()
             },
@@ -1286,7 +1286,7 @@ impl VirtioGpu {
         )?;
 
         self.rutabaga
-            .restore(&mut &snapshot.rutabaga[..])
+            .restore(&mut &snapshot.rutabaga[..], "")
             .context("failed to restore rutabaga")?;
 
         for (id, s) in snapshot.resources.into_iter() {

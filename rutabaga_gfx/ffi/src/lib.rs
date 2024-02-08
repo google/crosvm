@@ -625,12 +625,13 @@ pub extern "C" fn rutabaga_create_fence(ptr: &mut rutabaga, fence: &rutabaga_fen
 pub extern "C" fn rutabaga_snapshot(ptr: &mut rutabaga, dir: *const c_char) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
         // SAFETY: Caller guarantees a valid C string.
-        let dir = match unsafe { CStr::from_ptr(dir) }.to_str() {
-            Ok(x) => x,
-            Err(_) => return -EINVAL,
-        };
-        let file = return_on_io_error!(File::create(Path::new(dir).join("snapshot")));
-        let result = ptr.snapshot(&mut std::io::BufWriter::new(file));
+        let c_str_slice = unsafe { CStr::from_ptr(dir) };
+
+        let result = c_str_slice.to_str();
+        let directory = return_on_error!(result);
+
+        let file = return_on_io_error!(File::create(Path::new(directory).join("snapshot")));
+        let result = ptr.snapshot(&mut std::io::BufWriter::new(file), directory);
         return_result(result)
     }))
     .unwrap_or(-ESRCH)
@@ -640,13 +641,13 @@ pub extern "C" fn rutabaga_snapshot(ptr: &mut rutabaga, dir: *const c_char) -> i
 pub extern "C" fn rutabaga_restore(ptr: &mut rutabaga, dir: *const c_char) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
         // SAFETY: Caller guarantees a valid C string.
-        let dir = unsafe { CStr::from_ptr(dir) };
-        let dir = match dir.to_str() {
-            Ok(x) => x,
-            Err(_) => return -EINVAL,
-        };
-        let file = return_on_io_error!(File::open(Path::new(dir).join("snapshot")));
-        let result = ptr.restore(&mut std::io::BufReader::new(file));
+        let c_str_slice = unsafe { CStr::from_ptr(dir) };
+
+        let result = c_str_slice.to_str();
+        let directory = return_on_error!(result);
+
+        let file = return_on_io_error!(File::open(Path::new(directory).join("snapshot")));
+        let result = ptr.restore(&mut std::io::BufReader::new(file), directory);
         return_result(result)
     }))
     .unwrap_or(-ESRCH)
