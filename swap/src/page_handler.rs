@@ -699,7 +699,7 @@ impl SwapInContext<'_> {
             let PageHandleContext { regions, file, .. } = &mut *ctx;
             for region in regions.iter_mut() {
                 let region_tail_idx_in_file = region.base_page_idx_in_file + region.num_pages;
-                if idx_range_in_file.start > region_tail_idx_in_file {
+                if idx_range_in_file.start >= region_tail_idx_in_file {
                     continue;
                 } else if idx_range_in_file.start < region.base_page_idx_in_file {
                     return Err(Error::File(FileError::OutOfRange));
