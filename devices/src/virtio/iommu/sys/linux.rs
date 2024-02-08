@@ -31,8 +31,6 @@ use crate::virtio::iommu::State;
 use crate::virtio::IommuError;
 use crate::VfioContainer;
 
-const VIRTIO_IOMMU_PAGE_SHIFT: u32 = 12;
-
 impl State {
     pub(in crate::virtio::iommu) fn handle_add_vfio_device(
         &mut self,
@@ -74,10 +72,14 @@ impl State {
     pub(in crate::virtio::iommu) fn handle_map_dmabuf(
         &mut self,
         mem_slot: MemSlot,
-        gfn: u64,
+        gpa: u64,
         size: u64,
         dma_buf: File,
     ) -> VirtioIOMMUVfioResult {
+        if gpa & self.page_mask != 0 {
+            error!("cannot map dmabuf to non-page-aligned guest physical address");
+            return VirtioIOMMUVfioResult::InvalidParam;
+        }
         let mmap = match MemoryMappingBuilder::new(size as usize)
             .from_file(&dma_buf)
             .build()
@@ -89,11 +91,11 @@ impl State {
             }
         };
         self.dmabuf_mem.insert(
-            gfn << VIRTIO_IOMMU_PAGE_SHIFT,
+            gpa,
             DmabufRegionEntry {
                 mmap,
                 mem_slot,
-                len: size,
+                size,
             },
         );
 
@@ -141,10 +143,10 @@ impl State {
             VfioDeviceDel { endpoint_addr } => self.handle_del_vfio_device(endpoint_addr),
             VfioDmabufMap {
                 mem_slot,
-                gfn,
+                gpa,
                 size,
                 dma_buf,
-            } => self.handle_map_dmabuf(mem_slot, gfn, size, File::from(dma_buf)),
+            } => self.handle_map_dmabuf(mem_slot, gpa, size, File::from(dma_buf)),
             VfioDmabufUnmap(mem_slot) => self.handle_unmap_dmabuf(mem_slot),
         };
         VirtioIOMMUResponse::VfioResponse(vfio_result)

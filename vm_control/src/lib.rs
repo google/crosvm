@@ -781,7 +781,7 @@ impl VmMemoryRequest {
                     let request =
                         VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDmabufMap {
                             mem_slot: slot,
-                            gfn: guest_addr.0 >> 12,
+                            gpa: guest_addr.0,
                             size,
                             dma_buf: descriptor,
                         });
@@ -2376,7 +2376,7 @@ pub enum VirtioIOMMUVfioCommand {
     // Map a dma-buf into vfio iommu table
     VfioDmabufMap {
         mem_slot: MemSlot,
-        gfn: u64,
+        gpa: u64,
         size: u64,
         dma_buf: SafeDescriptor,
     },

@@ -161,7 +161,7 @@ type DomainMap = BTreeMap<u32, (u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>)>;
 struct DmabufRegionEntry {
     mmap: MemoryMapping,
     mem_slot: MemSlot,
-    len: u64,
+    size: u64,
 }
 
 // Shared state for the virtio-iommu device.
@@ -359,12 +359,22 @@ impl State {
     ) -> Result<usize> {
         let req: virtio_iommu_req_map = reader.read_obj().map_err(IommuError::GuestMemoryRead)?;
 
+        let phys_start = u64::from(req.phys_start);
+        let virt_start = u64::from(req.virt_start);
+        let virt_end = u64::from(req.virt_end);
+
+        // enforce driver requirement: virt_end MUST be strictly greater than virt_start.
+        if virt_start >= virt_end {
+            tail.status = VIRTIO_IOMMU_S_INVAL;
+            return Ok(0);
+        }
+
         // If virt_start, phys_start or (virt_end + 1) is not aligned
         // on the page granularity, the device SHOULD reject the
         // request and set status to VIRTIO_IOMMU_S_RANGE
-        if self.page_mask & u64::from(req.phys_start) != 0
-            || self.page_mask & u64::from(req.virt_start) != 0
-            || self.page_mask & (u64::from(req.virt_end) + 1) != 0
+        if self.page_mask & phys_start != 0
+            || self.page_mask & virt_start != 0
+            || self.page_mask & (virt_end + 1) != 0
         {
             tail.status = VIRTIO_IOMMU_S_RANGE;
             return Ok(0);
@@ -390,19 +400,26 @@ impl State {
         let write_en = u32::from(req.flags) & VIRTIO_IOMMU_MAP_F_WRITE != 0;
 
         if let Some(mapper) = self.domain_map.get(&domain) {
-            let size = u64::from(req.virt_end) - u64::from(req.virt_start) + 1u64;
+            let gpa = phys_start;
+            let iova = virt_start;
+            let Some(size) = u64::checked_add(virt_end - virt_start, 1) else {
+                // implementation doesn't support unlikely request for size == U64::MAX+1
+                tail.status = VIRTIO_IOMMU_S_DEVERR;
+                return Ok(0);
+            };
 
-            let dmabuf_map = self
-                .dmabuf_mem
-                .range(..=u64::from(req.phys_start))
-                .next_back()
-                .and_then(|(addr, region)| {
-                    if u64::from(req.phys_start) + size <= addr + region.len {
-                        Some(region.mmap.as_ptr() as u64 + (u64::from(req.phys_start) - addr))
-                    } else {
-                        None
-                    }
-                });
+            let dmabuf_map =
+                self.dmabuf_mem
+                    .range(..=gpa)
+                    .next_back()
+                    .and_then(|(base_gpa, region)| {
+                        if gpa + size <= base_gpa + region.size {
+                            let offset = gpa - base_gpa;
+                            Some(region.mmap.as_ptr() as u64 + offset)
+                        } else {
+                            None
+                        }
+                    });
 
             let prot = match write_en {
                 true => Protection::read_write(),
@@ -414,14 +431,11 @@ impl State {
                 // Safe because [dmabuf_map, dmabuf_map + size) refers to an external mmap'ed
                 // region.
                 Some(dmabuf_map) => unsafe {
-                    mapper
-                        .1
-                        .lock()
-                        .vfio_dma_map(req.virt_start.into(), dmabuf_map, size, prot)
+                    mapper.1.lock().vfio_dma_map(iova, dmabuf_map, size, prot)
                 },
                 None => mapper.1.lock().add_map(MappingInfo {
-                    iova: req.virt_start.into(),
-                    gpa: GuestAddress(req.phys_start.into()),
+                    iova,
+                    gpa: GuestAddress(gpa),
                     size,
                     prot,
                 }),
