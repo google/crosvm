@@ -114,6 +114,12 @@ pub trait VcpuAArch64: Vcpu {
     /// Gets the value of a register on this VCPU.
     fn get_one_reg(&self, reg_id: VcpuRegAArch64) -> Result<u64>;
 
+    /// Sets the value of a Neon vector register (V0-V31) on this VCPU.
+    fn set_vector_reg(&self, reg_num: u8, data: u128) -> Result<()>;
+
+    /// Gets the value of a Neon vector register (V0-V31) on this VCPU.
+    fn get_vector_reg(&self, reg_num: u8) -> Result<u128>;
+
     /// Gets the value of MPIDR_EL1 on this VCPU.
     fn get_mpidr(&self) -> Result<u64> {
         const RES1: u64 = 1 << 31;

@@ -213,6 +213,14 @@ impl VcpuAArch64 for GunyahVcpu {
         Err(Error::new(ENOTSUP))
     }
 
+    fn set_vector_reg(&self, _reg_num: u8, _data: u128) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn get_vector_reg(&self, _reg_num: u8) -> Result<u128> {
+        unimplemented!()
+    }
+
     fn get_psci_version(&self) -> Result<PsciVersion> {
         Ok(PSCI_0_2)
     }
