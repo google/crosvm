@@ -97,7 +97,8 @@ impl Default for GpuParameters {
             capset_mask: 0,
             external_blob: false,
             system_blob: false,
-            fixed_blob_mapping: true,
+            // TODO(b/324649619): not yet fully compatible with other platforms (windows)
+            fixed_blob_mapping: cfg!(target_os = "linux"),
             allow_implicit_render_server_exec: false,
         }
     }
