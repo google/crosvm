@@ -23,10 +23,18 @@ use std::ptr::null_mut;
 use std::slice::from_raw_parts;
 use std::slice::from_raw_parts_mut;
 
+#[cfg(unix)]
 use libc::iovec;
 use libc::EINVAL;
 use libc::ESRCH;
 use rutabaga_gfx::*;
+
+#[cfg(not(unix))]
+#[repr(C)]
+pub struct iovec {
+    pub iov_base: *mut c_void,
+    pub iov_len: usize,
+}
 
 const NO_ERROR: i32 = 0;
 const RUTABAGA_WSI_SURFACELESS: u64 = 1;
@@ -500,6 +508,10 @@ pub unsafe extern "C" fn rutabaga_resource_create_blob(
         }
 
         let mut handle_opt: Option<RutabagaHandle> = None;
+
+        // Only needed on Unix, since there is no way to create a handle from guest memory on
+        // Windows.
+        #[cfg(unix)]
         if let Some(hnd) = handle {
             handle_opt = Some(RutabagaHandle {
                 os_handle: RutabagaDescriptor::from_raw_descriptor(
