@@ -539,7 +539,7 @@ pub struct IoEventUpdateRequest {
 pub enum VmMemoryRequest {
     /// Prepare a shared memory region to make later operations more efficient. This
     /// may be a no-op depending on underlying platform support.
-    PrepareSharedMemoryRegion { alloc: Alloc },
+    PrepareSharedMemoryRegion { alloc: Alloc, cache: MemCacheType },
     RegisterMemory {
         /// Source of the memory to register (mapped file descriptor, shared memory region, etc.)
         source: VmMemorySource,
@@ -687,7 +687,7 @@ impl VmMemoryRequest {
     ) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
         match self {
-            PrepareSharedMemoryRegion { alloc } => {
+            PrepareSharedMemoryRegion { alloc, cache } => {
                 // Currently the iommu_client is only used by virtio-gpu when used alongside GPU
                 // pci-passthrough.
                 //
@@ -701,7 +701,7 @@ impl VmMemoryRequest {
                     return VmMemoryResponse::Ok;
                 }
 
-                match sys::prepare_shared_memory_region(vm, sys_allocator, alloc) {
+                match sys::prepare_shared_memory_region(vm, sys_allocator, alloc, cache) {
                     Ok(info) => {
                         region_state.slot_map.insert(alloc, info);
                         VmMemoryResponse::Ok

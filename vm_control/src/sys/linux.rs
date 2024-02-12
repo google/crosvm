@@ -158,6 +158,7 @@ pub fn prepare_shared_memory_region(
     vm: &mut dyn Vm,
     allocator: &mut SystemAllocator,
     alloc: Alloc,
+    cache: MemCacheType,
 ) -> Result<(u64, MemSlot), SysError> {
     if !matches!(alloc, Alloc::PciBar { .. }) {
         return Err(SysError::new(EINVAL));
@@ -179,7 +180,7 @@ pub fn prepare_shared_memory_region(
                 Box::new(arena),
                 false,
                 false,
-                MemCacheType::CacheCoherent,
+                cache,
             ) {
                 Ok(slot) => Ok((range.start >> 12, slot)),
                 Err(e) => Err(e),
@@ -216,7 +217,12 @@ impl FsMappingRequest {
         use self::FsMappingRequest::*;
         match *self {
             AllocateSharedMemoryRegion(alloc) => {
-                match prepare_shared_memory_region(vm, allocator, alloc) {
+                match prepare_shared_memory_region(
+                    vm,
+                    allocator,
+                    alloc,
+                    MemCacheType::CacheCoherent,
+                ) {
                     Ok((pfn, slot)) => VmResponse::RegisterMemory { pfn, slot },
                     Err(e) => VmResponse::Err(e),
                 }

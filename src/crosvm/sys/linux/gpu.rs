@@ -105,10 +105,6 @@ pub fn create_gpu_device(
             // mapping.
             debug!("gpu fixed blob mapping disabled: not compatible with vulkano");
             gpu_params.fixed_blob_mapping = false;
-        } else if cfg!(feature = "noncoherent-dma") {
-            // TODO(b/246334944): make fixed_blob_mapping compatible with noncoherent-dma.
-            debug!("gpu fixed blob mapping disabled: not compatible with noncoherent-dma");
-            gpu_params.fixed_blob_mapping = false;
         }
     }
 

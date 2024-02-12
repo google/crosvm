@@ -68,8 +68,8 @@ impl VmMemoryClient {
 
     /// Prepare a shared memory region to make later operations more efficient. This
     /// may be a no-op depending on underlying platform support.
-    pub fn prepare_shared_memory_region(&self, alloc: Alloc) -> Result<()> {
-        self.request_unit(&VmMemoryRequest::PrepareSharedMemoryRegion { alloc })
+    pub fn prepare_shared_memory_region(&self, alloc: Alloc, cache: MemCacheType) -> Result<()> {
+        self.request_unit(&VmMemoryRequest::PrepareSharedMemoryRegion { alloc, cache })
     }
 
     pub fn register_memory(

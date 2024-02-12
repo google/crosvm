@@ -17,6 +17,7 @@ use base::named_pipes::OverlappedWrapper;
 use base::Error;
 use base::Event;
 use base::PipeTube;
+use hypervisor::MemCacheType;
 use hypervisor::MemSlot;
 use hypervisor::Vm;
 use resources::Alloc;
@@ -111,6 +112,7 @@ pub fn prepare_shared_memory_region(
     _vm: &mut dyn Vm,
     _allocator: &mut SystemAllocator,
     _alloc: Alloc,
+    _cache: MemCacheType,
 ) -> std::result::Result<(u64, MemSlot), Error> {
     unimplemented!()
 }

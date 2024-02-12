@@ -1417,7 +1417,7 @@ impl SharedMemoryMapper for VmRequester {
     ) -> anyhow::Result<()> {
         if self.needs_prepare {
             self.vm_memory_client
-                .prepare_shared_memory_region(self.alloc)
+                .prepare_shared_memory_region(self.alloc, cache)
                 .context("prepare_shared_memory_region failed")?;
             self.needs_prepare = false;
         }
