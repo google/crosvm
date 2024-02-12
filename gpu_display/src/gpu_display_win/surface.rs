@@ -24,12 +24,13 @@ use winapi::shared::minwindef::LPARAM;
 use winapi::shared::minwindef::LRESULT;
 use winapi::shared::minwindef::TRUE;
 use winapi::shared::minwindef::WPARAM;
-use winapi::um::winuser::*;
+use winapi::um::winuser::VK_F4;
+use winapi::um::winuser::VK_MENU;
+use winapi::um::winuser::WM_CLOSE;
 
 use super::math_util::Size2DCheckedCast;
 use super::mouse_input_manager::NoopMouseInputManager as MouseInputManager;
 use super::virtual_display_manager::NoopVirtualDisplayManager as VirtualDisplayManager;
-use super::window::BasicWindow;
 use super::window::GuiWindow;
 use super::window_manager::NoopWindowManager as WindowManager;
 use super::window_message_processor::SurfaceResources;
@@ -41,6 +42,7 @@ use super::HostWindowSpace;
 use super::VirtualDisplaySpace;
 
 pub struct Surface {
+    surface_id: u32,
     mouse_input: MouseInputManager,
     window_manager: WindowManager,
     virtual_display_manager: VirtualDisplayManager,
@@ -49,7 +51,8 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn create(
+    pub fn new(
+        surface_id: u32,
         window: &GuiWindow,
         virtual_display_size: &Size2D<i32, VirtualDisplaySpace>,
         _metrics: Option<Weak<Metrics>>,
@@ -57,7 +60,11 @@ impl Surface {
         resources: SurfaceResources,
     ) -> Result<Self> {
         static CONTEXT_MESSAGE: &str = "When creating Surface";
-        info!("Creating Surface");
+        info!(
+            "Creating surface {} to associate with scanout {}",
+            surface_id,
+            window.scanout_id()
+        );
 
         let initial_host_viewport_size = window.get_client_rect().context(CONTEXT_MESSAGE)?.size;
         let virtual_display_manager =
@@ -86,6 +93,7 @@ impl Surface {
         };
 
         Ok(Surface {
+            surface_id,
             mouse_input,
             window_manager: WindowManager::new(
                 window,
@@ -97,6 +105,10 @@ impl Surface {
             virtual_display_manager,
             gpu_main_display_tube,
         })
+    }
+
+    pub fn surface_id(&self) -> u32 {
+        self.surface_id
     }
 
     fn handle_key_event(
@@ -192,7 +204,6 @@ impl Surface {
             WindowMessage::HostViewportChange { l_param } => {
                 self.on_host_viewport_change(window, l_param)
             }
-            WindowMessage::WindowClose => self.on_close(window),
             // The following messages are handled by other modules.
             WindowMessage::WindowActivate { .. }
             | WindowMessage::Mouse(_)
@@ -231,12 +242,5 @@ impl Surface {
     fn on_host_viewport_change(&mut self, window: &GuiWindow, l_param: LPARAM) {
         let new_size = size2(LOWORD(l_param as u32) as i32, HIWORD(l_param as u32) as i32);
         self.update_host_viewport_size(window, &new_size);
-    }
-
-    #[inline]
-    fn on_close(&mut self, window: &GuiWindow) {
-        if let Err(e) = window.destroy() {
-            error!("Failed to destroy window on WM_CLOSE: {:?}", e);
-        }
     }
 }

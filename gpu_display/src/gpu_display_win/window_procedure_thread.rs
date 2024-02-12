@@ -63,6 +63,11 @@ use super::window_message_processor::*;
 // The default app icon id, which is defined in crosvm-manifest.rc.
 const APP_ICON_ID: u16 = 1;
 
+// The number of GUI windows to pre-create when booting KiwiVM. At most this
+// number of guest displays and host windows can be used concurrently.
+// TODO(b/314984693): The service or the config file should specify this number.
+const MAX_NUM_WINDOWS: usize = 1;
+
 #[derive(Debug)]
 enum MessageLoopState {
     /// The initial state.
@@ -229,7 +234,7 @@ pub struct WindowProcedureThread {
     thread: Option<JoinHandle<()>>,
     message_router_handle: HWND,
     message_loop_state: Option<Arc<AtomicI32>>,
-    thread_terminated_event: Event,
+    close_requested_event: Event,
 }
 
 impl WindowProcedureThread {
@@ -246,24 +251,30 @@ impl WindowProcedureThread {
     fn start_thread(gpu_main_display_tube: Option<Tube>) -> Result<Self> {
         let (message_router_handle_sender, message_router_handle_receiver) = channel();
         let message_loop_state = Arc::new(AtomicI32::new(MessageLoopState::NotStarted as i32));
-        let thread_terminated_event = Event::new().unwrap();
+        let close_requested_event = Event::new().unwrap();
 
         let message_loop_state_clone = Arc::clone(&message_loop_state);
-        let thread_terminated_event_clone = thread_terminated_event
+        let close_requested_event_clone = close_requested_event
             .try_clone()
-            .map_err(|e| anyhow!("Failed to clone thread_terminated_event: {}", e))?;
+            .map_err(|e| anyhow!("Failed to clone close_requested_event: {}", e))?;
 
         let thread = match ThreadBuilder::new()
             .name("gpu_display_wndproc".into())
             .spawn(move || {
-                Self::run_message_loop(
-                    message_router_handle_sender,
-                    message_loop_state_clone,
-                    gpu_main_display_tube,
-                );
-
-                if let Err(e) = thread_terminated_event_clone.signal() {
-                    error!("Failed to signal thread terminated event: {}", e);
+                match close_requested_event_clone.try_clone() {
+                    Ok(close_requested_event) => Self::run_message_loop(
+                        message_router_handle_sender,
+                        message_loop_state_clone,
+                        gpu_main_display_tube,
+                        close_requested_event,
+                    ),
+                    Err(e) => error!("Failed to clone close_requested_event: {}", e),
+                }
+                // The close requested event should have been signaled at this point, unless we hit
+                // some edge cases, e.g. the WndProc thread terminates unexpectedly during startup.
+                // We want to make sure it is signaled in all cases.
+                if let Err(e) = close_requested_event_clone.signal() {
+                    error!("Failed to signal close requested event: {}", e);
                 }
             }) {
             Ok(thread) => thread,
@@ -276,7 +287,7 @@ impl WindowProcedureThread {
                     thread: Some(thread),
                     message_router_handle: message_router_handle as HWND,
                     message_loop_state: Some(message_loop_state),
-                    thread_terminated_event,
+                    close_requested_event,
                 }),
                 Err(e) => bail!("WndProc internal failure: {:?}", e),
             },
@@ -284,10 +295,10 @@ impl WindowProcedureThread {
         }
     }
 
-    pub fn try_clone_thread_terminated_event(&self) -> Result<Event> {
-        self.thread_terminated_event
+    pub fn try_clone_close_requested_event(&self) -> Result<Event> {
+        self.close_requested_event
             .try_clone()
-            .map_err(|e| anyhow!("Failed to clone thread_terminated_event: {}", e))
+            .map_err(|e| anyhow!("Failed to clone close_requested_event: {}", e))
     }
 
     pub fn post_display_command(&self, message: DisplaySendToWndProc) -> Result<()> {
@@ -330,16 +341,18 @@ impl WindowProcedureThread {
         message_router_handle_sender: Sender<Result<u32>>,
         message_loop_state: Arc<AtomicI32>,
         gpu_main_display_tube: Option<Tube>,
+        close_requested_event: Event,
     ) {
         let gpu_main_display_tube = gpu_main_display_tube.map(Rc::new);
         // SAFETY:
         // Safe because the dispatcher will take care of the lifetime of the `MessageOnlyWindow` and
         // `GuiWindow` objects.
-        match unsafe { Self::create_windows() }.and_then(|(message_router_window, gui_window)| {
-            WindowMessageDispatcher::create(
+        match unsafe { Self::create_windows() }.and_then(|(message_router_window, gui_windows)| {
+            WindowMessageDispatcher::new(
                 message_router_window,
-                gui_window,
+                gui_windows,
                 gpu_main_display_tube.clone(),
+                close_requested_event,
             )
         }) {
             Ok(dispatcher) => {
@@ -491,22 +504,22 @@ impl WindowProcedureThread {
         })
     }
 
-    /// In the normal case, when all windows are closed by the user, the WndProc thread exits the
-    /// message loop and terminates naturally. If we have to shutdown the VM before all windows are
-    /// closed because of errors, this function will post a message to let the WndProc thread kill
-    /// all windows and terminate.
+    /// Normally the WndProc thread should still be running when the `WindowProcedureThread` struct
+    /// is dropped, and this function will post a message to notify that thread to destroy all
+    /// windows and release all resources. If the WndProc thread has encountered fatal errors and
+    /// has already terminated, we don't need to post this message anymore.
     fn signal_exit_message_loop_if_needed(&self) {
         if !self.is_message_loop_running() {
             return;
         }
 
-        info!("WndProc thread is still in message loop before dropping. Signaling killing windows");
+        info!("WndProc thread is still in message loop before dropping. Signaling shutting down");
         if let Err(e) = self.post_message_to_thread(
-            WM_USER_WNDPROC_THREAD_DROP_KILL_WINDOW_INTERNAL,
+            WM_USER_SHUTDOWN_WNDPROC_THREAD_INTERNAL,
             /* w_param */ 0,
             /* l_param */ 0,
         ) {
-            error!("Failed to signal WndProc thread to kill windows: {:?}", e);
+            error!("Failed to signal WndProc thread to shut down: {:?}", e);
         }
     }
 
@@ -532,7 +545,7 @@ impl WindowProcedureThread {
     /// # Safety
     /// The owner of the returned window objects is responsible for dropping them before we finish
     /// processing `WM_NCDESTROY`, because the window handle will become invalid afterwards.
-    unsafe fn create_windows() -> Result<(MessageOnlyWindow, GuiWindow)> {
+    unsafe fn create_windows() -> Result<(MessageOnlyWindow, Vec<GuiWindow>)> {
         let message_router_window = MessageOnlyWindow::new(
             /* class_name */
             Self::get_window_class_name::<MessageOnlyWindow>()
@@ -549,22 +562,26 @@ impl WindowProcedureThread {
         // window may use the background brush to clear the gfxstream window client area when
         // drawing occurs. This caused the screen flickering issue during resizing.
         // See b/197786842 for details.
-        let gui_window = GuiWindow::new(
-            /* class_name */
-            Self::get_window_class_name::<GuiWindow>()
-                .with_context(|| {
-                    format!(
-                        "retrieve the window class name for GuiWindow of {}",
-                        type_name::<Self>()
-                    )
-                })?
-                .as_str(),
-            /* title */ Self::get_window_title().as_str(),
-            WS_POPUP | WS_CLIPCHILDREN,
-            // The window size and style can be adjusted later when `Surface` is created.
-            &size2(1, 1),
-        )?;
-        Ok((message_router_window, gui_window))
+        let mut gui_windows = Vec::with_capacity(MAX_NUM_WINDOWS);
+        for scanout_id in 0..MAX_NUM_WINDOWS {
+            gui_windows.push(GuiWindow::new(
+                scanout_id as u32,
+                /* class_name */
+                Self::get_window_class_name::<GuiWindow>()
+                    .with_context(|| {
+                        format!(
+                            "retrieve the window class name for GuiWindow of {}",
+                            type_name::<Self>()
+                        )
+                    })?
+                    .as_str(),
+                /* title */ Self::get_window_title().as_str(),
+                /* dw_style */ WS_POPUP | WS_CLIPCHILDREN,
+                // The window size and style can be adjusted later when `Surface` is created.
+                &size2(1, 1),
+            )?);
+        }
+        Ok((message_router_window, gui_windows))
     }
 
     unsafe extern "system" fn wnd_proc(

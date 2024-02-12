@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::marker::PhantomPinned;
 use std::os::raw::c_void;
@@ -15,14 +15,20 @@ use anyhow::Context;
 use anyhow::Result;
 use base::error;
 use base::info;
+use base::Event;
 use base::Tube;
 use cros_tracing::trace_event;
 use linux_input_sys::virtio_input_event;
 #[cfg(feature = "kiwi")]
 use vm_control::ServiceSendToGpu;
+use win_util::win32_wide_string;
 use winapi::shared::minwindef::LRESULT;
 use winapi::shared::windef::HWND;
-use winapi::um::winuser::*;
+use winapi::um::winuser::DefWindowProcW;
+use winapi::um::winuser::PostQuitMessage;
+use winapi::um::winuser::RemovePropW;
+use winapi::um::winuser::WM_CLOSE;
+use winapi::um::winuser::WM_NCDESTROY;
 
 use super::keyboard_input_manager::KeyboardInputManager;
 use super::window::BasicWindow;
@@ -42,7 +48,7 @@ pub(crate) const DISPATCHER_PROPERTY_NAME: &str = "PROP_WND_MSG_DISPATCHER";
 /// can be routed back to the window for processing.
 #[derive(Clone)]
 pub struct DisplayEventDispatcher {
-    event_devices: Rc<RefCell<BTreeMap<ObjectId, EventDevice>>>,
+    event_devices: Rc<RefCell<HashMap<ObjectId, EventDevice>>>,
 }
 
 impl DisplayEventDispatcher {
@@ -107,10 +113,16 @@ impl Default for DisplayEventDispatcher {
 /// dropped.
 pub(crate) struct WindowMessageDispatcher {
     message_router_window: Option<MessageOnlyWindow>,
-    message_processor: Option<WindowMessageProcessor>,
+    vacant_gui_windows: HashMap<HWND, WindowResources>,
+    in_use_gui_windows: HashMap<HWND, WindowMessageProcessor>,
+    // We have a one-to-one mapping between virtio-gpu scanouts and GUI window surfaces. The index
+    // of the GUI window in this Vec will be the same as the associated scanout's id.
+    // These handles are only used for hashmap queries. Do not directly call Windows APIs on them.
+    gui_window_handles: Vec<HWND>,
     keyboard_input_manager: KeyboardInputManager,
     display_event_dispatcher: DisplayEventDispatcher,
     gpu_main_display_tube: Option<Rc<Tube>>,
+    close_requested_event: Event,
     // The dispatcher is pinned so that its address in the memory won't change, and it is always
     // safe to use the pointer to it stored in the window.
     _pinned_marker: PhantomPinned,
@@ -118,22 +130,34 @@ pub(crate) struct WindowMessageDispatcher {
 
 impl WindowMessageDispatcher {
     /// This function should only be called once from the WndProc thread. It will take the ownership
-    /// of the `GuiWindow` object, and drop it before the underlying window is completely gone.
+    /// of the `GuiWindow` objects, and drop them before the underlying windows are completely gone.
     /// TODO(b/238680252): This should be good enough for supporting multi-windowing, but we should
     /// revisit it if we also want to manage some child windows of the crosvm window.
-    pub fn create(
+    pub fn new(
         message_router_window: MessageOnlyWindow,
-        gui_window: GuiWindow,
+        gui_windows: Vec<GuiWindow>,
         gpu_main_display_tube: Option<Rc<Tube>>,
+        close_requested_event: Event,
     ) -> Result<Pin<Box<Self>>> {
         static CONTEXT_MESSAGE: &str = "When creating WindowMessageDispatcher";
         let display_event_dispatcher = DisplayEventDispatcher::new();
+        let gui_window_handles = gui_windows
+            .iter()
+            .map(|window| {
+                // SAFETY:
+                // Safe because we will only use these handles to query hashmaps.
+                unsafe { window.handle() }
+            })
+            .collect();
         let mut dispatcher = Box::pin(Self {
             message_router_window: Some(message_router_window),
-            message_processor: Default::default(),
+            vacant_gui_windows: Default::default(), // To be updated.
+            in_use_gui_windows: Default::default(),
+            gui_window_handles,
             keyboard_input_manager: KeyboardInputManager::new(display_event_dispatcher.clone()),
             display_event_dispatcher,
             gpu_main_display_tube,
+            close_requested_event,
             _pinned_marker: PhantomPinned,
         });
         dispatcher
@@ -142,7 +166,7 @@ impl WindowMessageDispatcher {
             .context(CONTEXT_MESSAGE)?;
         dispatcher
             .as_mut()
-            .create_message_processor(gui_window)
+            .create_window_resources(gui_windows)
             .context(CONTEXT_MESSAGE)?;
         Ok(dispatcher)
     }
@@ -157,10 +181,23 @@ impl WindowMessageDispatcher {
 
     #[cfg(feature = "kiwi")]
     pub fn process_service_message(self: Pin<&mut Self>, message: &ServiceSendToGpu) {
+        if matches!(message, ServiceSendToGpu::Shutdown) {
+            info!("Processing ShutdownRequest from service");
+            // Safe because we won't move the dispatcher out of the returned mutable reference.
+            unsafe { self.get_unchecked_mut().request_shutdown_gpu_display() };
+            return;
+        }
+
+        // TODO(b/306024335): `ServiceSendToGpu` should specify the targeted display id.
         // Safe because we won't move the dispatcher out of the returned mutable reference.
-        match unsafe { self.get_unchecked_mut().message_processor.as_mut() } {
+        let primary_window_handle = self.primary_window_handle();
+        match unsafe {
+            self.get_unchecked_mut()
+                .in_use_gui_windows
+                .get_mut(&primary_window_handle)
+        } {
             Some(processor) => processor.handle_service_message(message),
-            None => error!("Cannot handle service message because there is no message processor!"),
+            None => error!("Cannot handle service message because primary window is not in-use!"),
         }
     }
 
@@ -170,42 +207,27 @@ impl WindowMessageDispatcher {
         hwnd: HWND,
         packet: &MessagePacket,
     ) -> Option<LRESULT> {
-        // `WM_NCDESTROY` is sent at the end of the window destruction, and is the last message the
-        // window will receive before its handle becomes invalid. So, we will perform final cleanups
-        // when this message is received.
-        //
         // First, check if the message is targeting the wndproc thread itself.
         if let Some(router) = &self.message_router_window {
             if router.is_same_window(hwnd) {
-                let ret = self.process_simulated_thread_message(hwnd, packet);
-                // If the destruction of thread message router completes, exit the message loop and
-                // terminate the wndproc thread.
-                if packet.msg == WM_NCDESTROY {
-                    if let Some(router_window) = &self.message_router_window {
-                        Self::remove_pointer_from_window(router_window);
-                    }
-                    self.message_router_window = None;
-                    Self::request_exit_message_loop();
-                }
-                return Some(ret);
+                return Some(self.process_simulated_thread_message(hwnd, packet));
             }
         }
 
-        // Second, check if the message is targeting our GUI window.
-        if let Some(processor) = &mut self.message_processor {
-            if processor.window().is_same_window(hwnd) {
-                let ret = processor.process_message(packet, &self.keyboard_input_manager);
-                // If the destruction of window completes, drop the message processor so that
-                // associated resources can be cleaned up before the window is completely gone.
-                if packet.msg == WM_NCDESTROY {
-                    Self::remove_pointer_from_window(processor.window());
-                    self.message_processor = None;
-                    self.request_destroy_message_router_window();
-                }
-                return Some(ret);
-            }
+        // Second, check if this message indicates any lifetime events of GUI windows.
+        if let Some(ret) = self.handle_gui_window_lifetime_message(hwnd, packet) {
+            return Some(ret);
         }
-        None
+
+        // Third, check if the message is targeting an in-use GUI window.
+        self.in_use_gui_windows
+            .get_mut(&hwnd)
+            .map(|processor| processor.process_message(packet, &self.keyboard_input_manager))
+    }
+
+    // TODO(b/306407787): We won't need this once we have full support for multi-window.
+    fn primary_window_handle(&self) -> HWND {
+        self.gui_window_handles[0]
     }
 
     fn attach_thread_message_router(self: Pin<&mut Self>) -> Result<()> {
@@ -220,20 +242,29 @@ impl WindowMessageDispatcher {
         }
     }
 
-    fn create_message_processor(self: Pin<&mut Self>, window: GuiWindow) -> Result<()> {
-        if !window.is_valid() {
-            bail!("Window handle is invalid!");
-        }
+    fn create_window_resources(self: Pin<&mut Self>, windows: Vec<GuiWindow>) -> Result<()> {
         // SAFETY:
-        // Safe because we guarantee the dispatcher outlives our GUI windows.
-        unsafe { Self::store_pointer_in_window(&*self, &window)? };
-        // SAFETY:
-        // Safe because we won't move the dispatcher out of it, and the dispatcher is aware of the
-        // lifecycle of the window.
-        unsafe {
-            self.get_unchecked_mut()
-                .message_processor
-                .replace(WindowMessageProcessor::new(window));
+        // because we won't move the dispatcher out of it.
+        let pinned_dispatcher = unsafe { self.get_unchecked_mut() };
+        for window in windows.into_iter() {
+            if !window.is_valid() {
+                // SAFETY:
+                // Safe because we are just logging the handle value.
+                bail!("Window {:p} is invalid!", unsafe { window.handle() });
+            }
+
+            // SAFETY:
+            // because we guarantee the dispatcher outlives our GUI windows.
+            unsafe { Self::store_pointer_in_window(&*pinned_dispatcher, &window)? };
+
+            pinned_dispatcher.vacant_gui_windows.insert(
+                // SAFETY:
+                // Safe because this handle is only used as the hashmap kay.
+                unsafe { window.handle() },
+                // SAFETY:
+                // Safe the dispatcher will take care of the lifetime of the window.
+                unsafe { WindowResources::new(window) },
+            );
         }
         Ok(())
     }
@@ -261,12 +292,10 @@ impl WindowMessageDispatcher {
                 let message = unsafe { Box::from_raw(l_param as *mut DisplaySendToWndProc) };
                 self.handle_display_message(*message);
             }
-            WM_USER_WNDPROC_THREAD_DROP_KILL_WINDOW_INTERNAL => {
-                let _trace_event = trace_event!(
-                    gpu_display,
-                    "WM_USER_WNDPROC_THREAD_DROP_KILL_WINDOW_INTERNAL"
-                );
-                self.request_destory_gui_window();
+            WM_USER_SHUTDOWN_WNDPROC_THREAD_INTERNAL => {
+                let _trace_event =
+                    trace_event!(gpu_display, "WM_USER_SHUTDOWN_WNDPROC_THREAD_INTERNAL");
+                self.shutdown();
             }
             _ => {
                 let _trace_event =
@@ -281,9 +310,14 @@ impl WindowMessageDispatcher {
 
     fn handle_display_message(&mut self, message: DisplaySendToWndProc) {
         match message {
-            DisplaySendToWndProc::CreateSurface { function, callback } => {
-                callback(self.create_surface(function));
+            DisplaySendToWndProc::CreateSurface {
+                scanout_id,
+                function,
+                callback,
+            } => {
+                callback(self.create_surface(scanout_id, function));
             }
+            DisplaySendToWndProc::ReleaseSurface { surface_id } => self.release_surface(surface_id),
             DisplaySendToWndProc::ImportEventDevice {
                 event_device_id,
                 event_device,
@@ -298,7 +332,11 @@ impl WindowMessageDispatcher {
     }
 
     fn handle_event_device(&mut self, event_device_id: ObjectId) {
-        match &mut self.message_processor {
+        // TODO(b/306407787): Events should be routed to the correct window.
+        match self
+            .in_use_gui_windows
+            .get_mut(&self.primary_window_handle())
+        {
             Some(processor) => {
                 if let Some((kind, event)) = self
                     .display_event_dispatcher
@@ -308,34 +346,91 @@ impl WindowMessageDispatcher {
                 }
             }
             None => {
-                error!("Cannot handle event device because there is no message processor!")
+                error!("Cannot handle event device because primary window is not in-use!")
             }
         }
     }
 
     /// Returns true if the surface is created successfully.
-    fn create_surface(&mut self, create_surface_func: CreateSurfaceFunction) -> bool {
-        match &mut self.message_processor {
-            Some(processor) => {
-                let resources = SurfaceResources {
-                    display_event_dispatcher: self.display_event_dispatcher.clone(),
-                    gpu_main_display_tube: self.gpu_main_display_tube.clone(),
-                };
-                match processor.create_surface(create_surface_func, resources) {
-                    Ok(_) => return true,
-                    Err(e) => error!("Failed to create surface: {:?}", e),
-                }
-            }
+    fn create_surface(
+        &mut self,
+        scanout_id: u32,
+        create_surface_func: CreateSurfaceFunction,
+    ) -> bool {
+        // virtio-gpu prefers to use the lowest available scanout id when creating a new surface, so
+        // here we implictly prefer the primary window (associated with scanout 0).
+        let hwnd = match self.gui_window_handles.get(scanout_id as usize) {
+            Some(hwnd) => *hwnd,
             None => {
-                error!("Cannot create surface because there is no message processor!")
+                error!("Invalid scanout id {}!", scanout_id);
+                return false;
             }
+        };
+        let window_resources = match self.vacant_gui_windows.remove(&hwnd) {
+            Some(resources) => resources,
+            None => {
+                error!(
+                    "GUI window associated with scanout {} is not vacant!",
+                    scanout_id
+                );
+                return false;
+            }
+        };
+        let surface_resources = SurfaceResources {
+            display_event_dispatcher: self.display_event_dispatcher.clone(),
+            gpu_main_display_tube: self.gpu_main_display_tube.clone(),
+        };
+        // SAFETY:
+        // Safe because the dispatcher will take care of the lifetime of the window.
+        match unsafe {
+            WindowMessageProcessor::new(create_surface_func, surface_resources, window_resources)
+        } {
+            Ok(processor) => {
+                self.in_use_gui_windows.insert(hwnd, processor);
+                self.in_use_gui_windows
+                    .get_mut(&hwnd)
+                    .expect("It is just inserted")
+                    .on_message_dispatcher_attached();
+                true
+            }
+            Err(e) => {
+                error!("Failed to create surface: {:?}", e);
+                false
+            }
+        }
+    }
+
+    fn release_surface(&mut self, surface_id: u32) {
+        match self
+            .in_use_gui_windows
+            .iter()
+            .find(|(_, processor)| processor.surface_id() == surface_id)
+        {
+            Some(iter) => {
+                self.try_release_surface_and_dissociate_gui_window(*iter.0);
+            }
+            None => error!(
+                "Can't release surface {} because there is no window associated with it!",
+                surface_id
+            ),
+        }
+    }
+
+    /// Returns true if `hwnd` points to an in-use GUI window.
+    fn try_release_surface_and_dissociate_gui_window(&mut self, hwnd: HWND) -> bool {
+        if let Some(processor) = self.in_use_gui_windows.remove(&hwnd) {
+            // SAFETY:
+            // Safe because the dispatcher will take care of the lifetime of the window.
+            self.vacant_gui_windows.insert(hwnd, unsafe {
+                processor.release_surface_and_take_window_resources()
+            });
+            return true;
         }
         false
     }
 
     /// # Safety
-    /// The caller is responsible for keeping the pointer valid until `remove_pointer_from_window()`
-    /// is called.
+    /// The caller is responsible for keeping the pointer valid until it is removed from the window.
     unsafe fn store_pointer_in_window(
         pointer: *const Self,
         window: &dyn BasicWindow,
@@ -345,42 +440,98 @@ impl WindowMessageDispatcher {
             .context("When storing message dispatcher pointer")
     }
 
-    /// When the window is being destroyed, we must remove all entries added to the property list
-    /// before `WM_NCDESTROY` returns.
-    fn remove_pointer_from_window(window: &dyn BasicWindow) {
-        if let Err(e) = window.remove_property(DISPATCHER_PROPERTY_NAME) {
-            error!("Failed to remove message dispatcher pointer: {:?}", e);
-        }
-    }
-
-    fn request_destory_gui_window(&self) {
-        info!("Destroying GUI window on WndProc thread drop");
-        match &self.message_processor {
-            Some(processor) => {
-                if let Err(e) = processor.window().destroy() {
-                    error!("Failed to destroy GUI window: {:?}", e);
+    /// Returns Some if this is a GUI window lifetime related message and if we have handled it.
+    fn handle_gui_window_lifetime_message(
+        &mut self,
+        hwnd: HWND,
+        packet: &MessagePacket,
+    ) -> Option<LRESULT> {
+        // Windows calls WndProc as a subroutine when we call `DestroyWindow()`. So, when handling
+        // WM_DESTROY/WM_NCDESTROY for one window, we would avoid calling `DestroyWindow()` on
+        // another window to avoid recursively mutably borrowing self. Instead, we do
+        // `DestroyWindow()` and clean up all associated resources on WM_CLOSE. The long-term fix is
+        // tracked by b/314379499.
+        match packet.msg {
+            WM_CLOSE => {
+                // If the window is in-use, return it to the vacant window pool.
+                // TODO(b/314309389): This only frees the `Surface` in WndProc thread, while the
+                // corresponding guest display isn't unplugged. We might need to figure out a way to
+                // inform `gpu_control_tube` to remove that display.
+                if self.try_release_surface_and_dissociate_gui_window(hwnd) {
+                    // If the service isn't connnected (e.g. when debugging the emulator alone), we
+                    // would request shutdown if no window is in-use anymore.
+                    if self.gpu_main_display_tube.is_none() && self.in_use_gui_windows.is_empty() {
+                        self.request_shutdown_gpu_display();
+                    }
+                    return Some(0);
                 }
             }
-            None => error!("No GUI window to destroy!"),
+            // Don't use any reference to `self` when handling WM_DESTROY/WM_NCDESTROY, since it is
+            // likely already mutably borrowed when handling WM_CLOSE on the same stack.
+            WM_NCDESTROY => {
+                info!("Window {:p} destroyed", hwnd);
+                // We don't care if removing the dispatcher pointer succeeds, since this window will
+                // be completely gone right after this function returns.
+                let property = win32_wide_string(DISPATCHER_PROPERTY_NAME);
+                // SAFETY:
+                // Safe because `hwnd` is valid, and `property` lives longer than the function call.
+                unsafe { RemovePropW(hwnd, property.as_ptr()) };
+                return Some(0);
+            }
+            _ => (),
+        }
+        None
+    }
+
+    /// Signals GpuDisplay to close. This is not going to release any resources right away, but the
+    /// closure of GpuDisplay will trigger shutting down the entire VM, and all resources will be
+    /// released by then.
+    fn request_shutdown_gpu_display(&self) {
+        if let Err(e) = self.close_requested_event.signal() {
+            error!("Failed to signal close requested event: {}", e);
         }
     }
 
-    fn request_destroy_message_router_window(&self) {
-        info!("Destroying thread message router on WndProc thread drop");
-        match &self.message_router_window {
-            Some(router) => {
-                if let Err(e) = router.destroy() {
-                    error!("Failed to destroy thread message router: {:?}", e);
+    /// Destroys all GUI windows and the message router window, and requests exiting message loop.
+    fn shutdown(&mut self) {
+        info!("Shutting down all windows and message loop");
+
+        // Destroy all GUI windows.
+        // Note that Windows calls WndProc as a subroutine when we call `DestroyWindow()`, we have
+        // to store window handles in a Vec and query the hashmaps every time rather than simply
+        // iterating through the hashmaps.
+        let in_use_handles: Vec<HWND> = self.in_use_gui_windows.keys().cloned().collect();
+        for hwnd in in_use_handles.iter() {
+            if let Some(processor) = self.in_use_gui_windows.remove(hwnd) {
+                // SAFETY:
+                // Safe because we are dropping the `WindowResources` before the window is gone.
+                let resources = unsafe { processor.release_surface_and_take_window_resources() };
+                if let Err(e) = resources.window().destroy() {
+                    error!("Failed to destroy in-use GUI window: {:?}", e);
                 }
             }
-            None => error!("No thread message router to destroy!"),
         }
-    }
 
-    fn request_exit_message_loop() {
-        info!("Posting WM_QUIT");
+        let vacant_handles: Vec<HWND> = self.vacant_gui_windows.keys().cloned().collect();
+        for hwnd in vacant_handles.iter() {
+            if let Some(resources) = self.vacant_gui_windows.remove(hwnd) {
+                if let Err(e) = resources.window().destroy() {
+                    error!("Failed to destroy vacant GUI window: {:?}", e);
+                }
+            }
+        }
+
+        // Destroy the message router window.
+        if let Some(window) = self.message_router_window.take() {
+            if let Err(e) = window.destroy() {
+                error!("Failed to destroy thread message router: {:?}", e);
+            }
+        }
+
+        // Exit the message loop.
+        //
         // SAFETY:
-        // Safe because it will always succeed.
+        // Safe because this function takes in no memory managed by us, and it always succeeds.
         unsafe {
             PostQuitMessage(0);
         }

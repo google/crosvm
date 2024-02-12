@@ -52,7 +52,65 @@ use winapi::um::shellscalingapi::MDT_RAW_DPI;
 use winapi::um::wingdi::GetStockObject;
 use winapi::um::wingdi::BLACK_BRUSH;
 use winapi::um::winnt::LPCWSTR;
-use winapi::um::winuser::*;
+use winapi::um::winuser::AdjustWindowRectExForDpi;
+use winapi::um::winuser::ClientToScreen;
+use winapi::um::winuser::CreateWindowExW;
+use winapi::um::winuser::DefWindowProcW;
+use winapi::um::winuser::DestroyWindow;
+use winapi::um::winuser::GetActiveWindow;
+use winapi::um::winuser::GetClientRect;
+use winapi::um::winuser::GetDpiForSystem;
+use winapi::um::winuser::GetForegroundWindow;
+use winapi::um::winuser::GetMonitorInfoW;
+use winapi::um::winuser::GetSystemMetrics;
+use winapi::um::winuser::GetWindowLongPtrW;
+use winapi::um::winuser::GetWindowPlacement;
+use winapi::um::winuser::GetWindowRect;
+use winapi::um::winuser::IsIconic;
+use winapi::um::winuser::IsWindow;
+use winapi::um::winuser::IsWindowVisible;
+use winapi::um::winuser::IsZoomed;
+use winapi::um::winuser::LoadCursorW;
+use winapi::um::winuser::LoadIconW;
+use winapi::um::winuser::MonitorFromWindow;
+use winapi::um::winuser::PostMessageW;
+use winapi::um::winuser::RemovePropW;
+use winapi::um::winuser::ScreenToClient;
+use winapi::um::winuser::SetForegroundWindow;
+use winapi::um::winuser::SetPropW;
+use winapi::um::winuser::SetWindowLongPtrW;
+use winapi::um::winuser::SetWindowPlacement;
+use winapi::um::winuser::SetWindowPos;
+use winapi::um::winuser::ShowWindow;
+use winapi::um::winuser::GWL_EXSTYLE;
+use winapi::um::winuser::HWND_MESSAGE;
+use winapi::um::winuser::MAKEINTRESOURCEW;
+use winapi::um::winuser::MONITORINFO;
+use winapi::um::winuser::MONITOR_DEFAULTTONEAREST;
+use winapi::um::winuser::MONITOR_DEFAULTTONULL;
+use winapi::um::winuser::MSG;
+use winapi::um::winuser::SM_REMOTESESSION;
+use winapi::um::winuser::SWP_FRAMECHANGED;
+use winapi::um::winuser::SWP_HIDEWINDOW;
+use winapi::um::winuser::SWP_NOACTIVATE;
+use winapi::um::winuser::SWP_NOMOVE;
+use winapi::um::winuser::SWP_NOSIZE;
+use winapi::um::winuser::SWP_NOZORDER;
+use winapi::um::winuser::SW_RESTORE;
+use winapi::um::winuser::SW_SHOW;
+use winapi::um::winuser::WINDOWPLACEMENT;
+use winapi::um::winuser::WMSZ_BOTTOM;
+use winapi::um::winuser::WMSZ_BOTTOMLEFT;
+use winapi::um::winuser::WMSZ_BOTTOMRIGHT;
+use winapi::um::winuser::WMSZ_LEFT;
+use winapi::um::winuser::WMSZ_RIGHT;
+use winapi::um::winuser::WMSZ_TOP;
+use winapi::um::winuser::WMSZ_TOPLEFT;
+use winapi::um::winuser::WMSZ_TOPRIGHT;
+use winapi::um::winuser::WM_ENTERSIZEMOVE;
+use winapi::um::winuser::WM_EXITSIZEMOVE;
+use winapi::um::winuser::WM_MOVING;
+use winapi::um::winuser::WM_SIZING;
 
 use super::math_util::*;
 use super::HostWindowSpace;
@@ -257,6 +315,7 @@ pub(crate) trait BasicWindow {
 /// (2) Dropping the `GuiWindow` object before the underlying window is completely gone.
 pub struct GuiWindow {
     hwnd: HWND,
+    scanout_id: u32,
     size_move_loop_state: SizeMoveLoopState,
 }
 
@@ -265,12 +324,13 @@ impl GuiWindow {
     /// The owner of `GuiWindow` object is responsible for dropping it before we finish processing
     /// `WM_NCDESTROY`, because the window handle will become invalid afterwards.
     pub unsafe fn new(
+        scanout_id: u32,
         class_name: &str,
         title: &str,
         dw_style: DWORD,
         initial_window_size: &Size2D<i32, HostWindowSpace>,
     ) -> Result<Self> {
-        info!("Creating GUI window");
+        info!("Creating GUI window for scanout {}", scanout_id);
         static CONTEXT_MESSAGE: &str = "When creating Window";
 
         let hinstance = get_current_module_handle();
@@ -286,8 +346,13 @@ impl GuiWindow {
         .context(CONTEXT_MESSAGE)?;
         Ok(Self {
             hwnd,
+            scanout_id,
             size_move_loop_state: SizeMoveLoopState::new(),
         })
+    }
+
+    pub fn scanout_id(&self) -> u32 {
+        self.scanout_id
     }
 
     pub fn update_states(&mut self, msg: UINT, w_param: WPARAM) {
@@ -507,6 +572,20 @@ impl GuiWindow {
         }
     }
 
+    /// Calls `SetWindowPos()` internally. Returns false if the window is already hidden and thus
+    /// this operation is skipped.
+    pub fn hide_if_visible(&self) -> Result<bool> {
+        Ok(if self.is_visible()? {
+            self.set_pos(
+                &Rect::zero(),
+                SWP_HIDEWINDOW | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER,
+            )?;
+            true
+        } else {
+            false
+        })
+    }
+
     /// Calls `ShowWindow()` internally to restore a minimized window.
     pub fn restore(&self) {
         // SAFETY:
@@ -581,10 +660,10 @@ impl GuiWindow {
     /// Calls `DwmEnableBlurBehindWindow()` internally. This is only used for a top-level window.
     /// Even though the name of Windows API suggests that it blurs the background, beginning with
     /// Windows 8, it does not blur it, but only makes the window semi-transparent.
-    pub fn set_transparency(&self, is_transparent: bool) -> Result<()> {
+    pub fn set_backgound_transparency(&self, semi_transparent: bool) -> Result<()> {
         let blur_behind = DWM_BLURBEHIND {
             dwFlags: DWM_BB_ENABLE,
-            fEnable: if is_transparent { TRUE } else { FALSE },
+            fEnable: if semi_transparent { TRUE } else { FALSE },
             hRgnBlur: null_mut(),
             fTransitionOnMaximized: FALSE,
         };
@@ -596,8 +675,8 @@ impl GuiWindow {
             0 => Ok(()),
             _ => bail!(
                 "Failed to call DwmEnableBlurBehindWindow() when setting \
-                window transparency to {} (Error code {})",
-                is_transparent,
+                window background transparency to {} (Error code {})",
+                semi_transparent,
                 errno
             ),
         }
@@ -705,16 +784,6 @@ impl GuiWindow {
                 syscall_bail!("Failed to call GetStockObject()");
             }
             Ok(hobject as HBRUSH)
-        }
-    }
-}
-
-impl Drop for GuiWindow {
-    fn drop(&mut self) {
-        // SAFETY:
-        // Safe because it is called from the same thread the created the window.
-        if unsafe { IsWindow(self.hwnd) } == 0 {
-            error!("The underlying HWND is invalid when Window is being dropped!")
         }
     }
 }

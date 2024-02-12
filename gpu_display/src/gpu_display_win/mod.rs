@@ -14,6 +14,7 @@ mod window_message_processor;
 pub mod window_procedure_thread;
 
 use std::num::NonZeroU32;
+use std::rc::Rc;
 use std::sync::mpsc::channel;
 use std::sync::Weak;
 use std::time::Duration;
@@ -21,6 +22,8 @@ use std::time::Duration;
 use anyhow::bail;
 use anyhow::Result;
 use base::error;
+use base::info;
+use base::warn;
 use base::AsRawDescriptor;
 use base::Descriptor;
 use base::Event;
@@ -76,8 +79,8 @@ impl From<&DisplayParameters> for DisplayProperties {
 }
 
 pub struct DisplayWin {
-    wndproc_thread: WindowProcedureThread,
-    display_closed_event: Event,
+    wndproc_thread: Rc<WindowProcedureThread>,
+    close_requested_event: Event,
     win_metrics: Option<Weak<Metrics>>,
     display_properties: DisplayProperties,
     is_surface_created: bool,
@@ -93,17 +96,16 @@ impl DisplayWin {
         display_properties: DisplayProperties,
         gpu_display_wait_descriptor_ctrl: SendTube,
     ) -> Result<DisplayWin, GpuDisplayError> {
-        // The display should be closed once the WndProc thread terminates.
-        let display_closed_event =
+        let close_requested_event =
             wndproc_thread
-                .try_clone_thread_terminated_event()
+                .try_clone_close_requested_event()
                 .map_err(|e| {
                     error!("Failed to create DisplayWin: {:?}", e);
                     GpuDisplayError::Allocate
                 })?;
         Ok(Self {
-            wndproc_thread,
-            display_closed_event,
+            wndproc_thread: Rc::new(wndproc_thread),
+            close_requested_event,
             win_metrics,
             display_properties,
             is_surface_created: false,
@@ -116,6 +118,8 @@ impl DisplayWin {
     /// to check the result.
     fn create_surface_internal(
         &mut self,
+        surface_id: u32,
+        scanout_id: u32,
         virtual_display_size: Size2D<i32, VirtualDisplaySpace>,
     ) -> Result<()> {
         let metrics = self.win_metrics.clone();
@@ -127,8 +131,10 @@ impl DisplayWin {
         // Post a message to the WndProc thread to create the surface.
         self.wndproc_thread
             .post_display_command(DisplaySendToWndProc::CreateSurface {
+                scanout_id,
                 function: Box::new(move |window, display_event_dispatcher| {
-                    Surface::create(
+                    Surface::new(
+                        surface_id,
                         window,
                         &virtual_display_size,
                         metrics,
@@ -171,7 +177,7 @@ impl DisplayWin {
                         event_device,
                     },
                 ) {
-                    bail!("Failed to send ImportEventDevice message: {:?}", e);
+                    bail!("Failed to post ImportEventDevice message: {:?}", e);
                 }
 
                 if self.is_surface_created {
@@ -198,7 +204,7 @@ impl AsRawDescriptor for DisplayWin {
     /// Windows GUI system works, we have to do that on the WndProc thread instead, and we only
     /// notify the event loop in the GPU worker thread of the display closure event.
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.display_closed_event.as_raw_descriptor()
+        self.close_requested_event.as_raw_descriptor()
     }
 }
 
@@ -206,8 +212,8 @@ impl DisplayT for DisplayWin {
     fn create_surface(
         &mut self,
         parent_surface_id: Option<u32>,
-        _surface_id: u32,
-        _scanout_id: Option<u32>,
+        surface_id: u32,
+        scanout_id: Option<u32>,
         virtual_display_width: u32,
         virtual_display_height: u32,
         surface_type: SurfaceType,
@@ -222,17 +228,15 @@ impl DisplayT for DisplayWin {
 
         // Gfxstream allows for attaching a window only once along the initialization, so we only
         // create the surface once. See details in b/179319775.
-        if !self.is_surface_created {
-            match self.create_surface_internal(
-                size2(virtual_display_width, virtual_display_height).checked_cast(),
-            ) {
-                Ok(_) => self.is_surface_created = true,
-                Err(e) => {
-                    error!("Failed to create surface: {:?}", e);
-                    return Err(GpuDisplayError::Allocate);
-                }
-            }
+        if let Err(e) = self.create_surface_internal(
+            surface_id,
+            scanout_id.expect("scanout id is required"),
+            size2(virtual_display_width, virtual_display_height).checked_cast(),
+        ) {
+            error!("Failed to create surface: {:?}", e);
+            return Err(GpuDisplayError::Allocate);
         }
+        self.is_surface_created = true;
 
         // Now that the window is ready, we can start listening for inbound (guest -> host) events
         // on our event devices.
@@ -247,8 +251,10 @@ impl DisplayT for DisplayWin {
         }
 
         Ok(Box::new(SurfaceWin {
-            display_closed_event: self.display_closed_event.try_clone().map_err(|e| {
-                error!("Failed to clone display_closed_event: {}", e);
+            surface_id,
+            wndproc_thread: Rc::downgrade(&self.wndproc_thread),
+            close_requested_event: self.close_requested_event.try_clone().map_err(|e| {
+                error!("Failed to clone close_requested_event: {}", e);
                 GpuDisplayError::Allocate
             })?,
         }))
@@ -295,7 +301,9 @@ impl SysDisplayT for DisplayWin {
 /// not handled on the GPU worker thread, but handled by `Surface` class that lives in the WndProc
 /// thread. `SurfaceWin` will live in the GPU worker thread and provide limited functionalities.
 pub(crate) struct SurfaceWin {
-    display_closed_event: Event,
+    surface_id: u32,
+    wndproc_thread: std::rc::Weak<WindowProcedureThread>,
+    close_requested_event: Event,
 }
 
 impl GpuDisplaySurface for SurfaceWin {
@@ -303,7 +311,7 @@ impl GpuDisplaySurface for SurfaceWin {
     /// until we know our display is expected to be closed.
     fn close_requested(&self) -> bool {
         match self
-            .display_closed_event
+            .close_requested_event
             .wait_timeout(Duration::from_secs(0))
         {
             Ok(EventWaitResult::Signaled) => true,
@@ -311,6 +319,28 @@ impl GpuDisplaySurface for SurfaceWin {
             Err(e) => {
                 error!("Failed to read whether display is closed: {}", e);
                 false
+            }
+        }
+    }
+}
+
+impl Drop for SurfaceWin {
+    fn drop(&mut self) {
+        info!("Dropping surface {}", self.surface_id);
+        // Let the WndProc thread release `Surface` and return the associated window to the pool.
+        // If the WndProc thread has already done so and has shut down, it is benign to hit an error
+        // below since we can no longer deliver this notification.
+        if let Some(wndproc_thread) = self.wndproc_thread.upgrade() {
+            if let Err(e) =
+                wndproc_thread.post_display_command(DisplaySendToWndProc::ReleaseSurface {
+                    surface_id: self.surface_id,
+                })
+            {
+                warn!(
+                    "Failed to post ReleaseSurface message (benign if message loop has \
+                    shut down): {:?}",
+                    e
+                );
             }
         }
     }
