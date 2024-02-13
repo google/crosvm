@@ -126,7 +126,7 @@ impl JailWardenImpl {
                     #[cfg(feature = "swap")]
                     swap_device_helper,
                 ) {
-                    panic!("jail_worker_process exited with error: {:?}", e);
+                    error!("jail_worker_process exited with error: {:#}", e);
                 }
             })?;
         Ok(Self {
