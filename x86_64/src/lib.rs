@@ -252,6 +252,8 @@ pub enum Error {
     ReservePcieCfgMmio(resources::Error),
     #[error("failed to set a hardware breakpoint: {0}")]
     SetHwBreakpoint(base::Error),
+    #[error("failed to set identity map addr: {0}")]
+    SetIdentityMapAddr(base::Error),
     #[error("failed to set interrupts: {0}")]
     SetLint(interrupts::Error),
     #[error("failed to set tss addr: {0}")]
@@ -340,7 +342,8 @@ const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 const HIGH_MMIO_MAX_END: u64 = (1u64 << 46) - 1;
 pub const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
 pub const ZERO_PAGE_OFFSET: u64 = 0x7000;
-const TSS_ADDR: u64 = 0xfffb_d000;
+// Set BIOS max size to 16M: this is used only when `unrestricted guest` is disabled
+const BIOS_MAX_SIZE: u64 = 0x1000000;
 
 pub const KERNEL_START_OFFSET: u64 = 0x20_0000;
 const CMDLINE_OFFSET: u64 = 0x2_0000;
@@ -435,6 +438,21 @@ fn bios_start(bios_size: u64) -> GuestAddress {
     GuestAddress(FIRST_ADDR_PAST_32BITS - bios_size)
 }
 
+fn identity_map_addr_start() -> GuestAddress {
+    // Set Identity map address 4 pages before the max BIOS size
+    GuestAddress(FIRST_ADDR_PAST_32BITS - BIOS_MAX_SIZE - 4 * 0x1000)
+}
+
+fn tss_addr_start() -> GuestAddress {
+    // Set TSS address one page after identity map address
+    GuestAddress(identity_map_addr_start().offset() + 0x1000)
+}
+
+fn tss_addr_end() -> GuestAddress {
+    // Set TSS address section to have 3 pages
+    GuestAddress(tss_addr_start().offset() + 0x3000)
+}
+
 fn configure_system(
     guest_mem: &GuestMemory,
     kernel_addr: GuestAddress,
@@ -496,6 +514,16 @@ fn configure_system(
     add_e820_entry(
         &mut params,
         X8664arch::get_pcie_vcfg_mmio_range(guest_mem, &pcie_cfg_mmio_range),
+        E820Type::Reserved,
+    )?;
+
+    // Reserve memory section for Identity map and TSS
+    add_e820_entry(
+        &mut params,
+        AddressRange {
+            start: identity_map_addr_start().offset(),
+            end: tss_addr_end().offset() - 1,
+        },
         E820Type::Reserved,
     )?;
 
@@ -708,8 +736,11 @@ impl arch::LinuxArch for X8664arch {
 
         let vcpu_count = components.vcpu_count;
 
-        let tss_addr = GuestAddress(TSS_ADDR);
-        vm.set_tss_addr(tss_addr).map_err(Error::SetTssAddr)?;
+        vm.set_identity_map_addr(identity_map_addr_start())
+            .map_err(Error::SetIdentityMapAddr)?;
+
+        vm.set_tss_addr(tss_addr_start())
+            .map_err(Error::SetTssAddr)?;
 
         // Use IRQ info in ACPI if provided by the user.
         let mut mptable = true;

@@ -22,7 +22,8 @@ see the source. All addresses are in hexadecimal.
 | [`END_ADDR_BEFORE_32BITS`]   | `D000_0000`   | `F400_0000`     | 576 MiB   | Low (\<4G) MMIO allocation area                                                          |
 | [`PCIE_CFG_MMIO_START`]      | `F400_0000`   | `F800_0000`     | 64 MiB    | PCIe enhanced config (ECAM)                                                              |
 | [`RESERVED_MEM_SIZE`]        | `F800_0000`   | `1_0000_0000`   | 128 MiB   | LAPIC/IOAPIC/HPET/…                                                                      |
-| [`TSS_ADDR`]                 | `FFFB_D000`   |                 |           | Boot task state segment                                                                  |
+| [`IDENTITY_MAP_ADDR`]        | `FEFF_C000`   |                 |           | Identity map segment                                                                     |
+| [`TSS_ADDR`]                 | `FEFF_D000`   |                 |           | Boot task state segment                                                                  |
 |                              | `1_0000_0000` |                 |           | RAM (>4G)                                                                                |
 |                              | (end of RAM)  |                 |           | High (>4G) MMIO allocation area                                                          |
 
@@ -40,7 +41,8 @@ see the source. All addresses are in hexadecimal.
 [`end_addr_before_32bits`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=230?q=END_ADDR_BEFORE_32BITS
 [`pcie_cfg_mmio_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=400?q=PCIE_CFG_MMIO_START
 [`reserved_mem_size`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=395?q=RESERVED_MEM_SIZE
-[`tss_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=339?q=TSS_ADDR
+[`identity_map_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=339?q=identity_map_addr_start
+[`tss_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=339?q=tss_addr_start
 
 ## aarch64 guest physical memory map
 
