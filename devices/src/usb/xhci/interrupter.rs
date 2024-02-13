@@ -169,15 +169,13 @@ impl Interrupter {
     }
 
     /// Set event ring dequeue pointer.
-    pub fn set_event_ring_dequeue_pointer(&mut self, addr: GuestAddress) -> Result<()> {
-        xhci_trace!("interrupter set_dequeue_pointer(addr = {:#x})", addr.0);
+    pub fn set_event_ring_dequeue_pointer(&mut self, addr: GuestAddress, busy: bool) -> Result<()> {
+        xhci_trace!(
+            "interrupter set_dequeue_pointer(addr = {:#x}, busy = {})",
+            addr.0,
+            busy
+        );
         self.event_ring.set_dequeue_pointer(addr);
-        self.interrupt_if_needed()
-    }
-
-    /// Set event hander busy.
-    pub fn set_event_handler_busy(&mut self, busy: bool) -> Result<()> {
-        xhci_trace!("set_event_handler_busy({})", busy);
         self.event_handler_busy = busy;
         self.interrupt_if_needed()
     }
@@ -192,8 +190,7 @@ impl Interrupter {
     }
 
     fn interrupt_if_needed(&mut self) -> Result<()> {
-        // TODO(dverkamp): re-add !self.event_handler_busy after solving https://crbug.com/1082930
-        if self.enabled && !self.event_ring.is_empty() {
+        if self.enabled && !self.event_ring.is_empty() && !self.event_handler_busy {
             self.interrupt()?;
         }
         Ok(())

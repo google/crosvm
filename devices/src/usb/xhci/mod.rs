@@ -72,11 +72,9 @@ pub enum Error {
     RingDoorbell(DeviceSlotError),
     #[error("failed to send interrupt: {0}")]
     SendInterrupt(InterrupterError),
-    #[error("failed to set event handler busy: {0}")]
-    SetEventHandlerBusy(InterrupterError),
     #[error("failed to set interrupter moderation: {0}")]
     SetModeration(InterrupterError),
-    #[error("failed to setup event ring: {0}")]
+    #[error("failed to setup event ring and event handler busy: {0}")]
     SetupEventRing(InterrupterError),
     #[error("failed to start event loop: {0}")]
     StartEventLoop(UtilsError),
@@ -392,13 +390,13 @@ impl Xhci {
     // Callback for erdp register write.
     fn erdp_callback(&self, value: u64) -> Result<()> {
         let _trace = cros_tracing::trace_event!(USB, "erdp_callback", value);
-        let mut interrupter = self.interrupter.lock();
-        interrupter
-            .set_event_ring_dequeue_pointer(GuestAddress(value & ERDP_EVENT_RING_DEQUEUE_POINTER))
-            .map_err(Error::SetupEventRing)?;
-        interrupter
-            .set_event_handler_busy((value & ERDP_EVENT_HANDLER_BUSY) > 0)
-            .map_err(Error::SetEventHandlerBusy)
+        self.interrupter
+            .lock()
+            .set_event_ring_dequeue_pointer(
+                GuestAddress(value & ERDP_EVENT_RING_DEQUEUE_POINTER),
+                (value & ERDP_EVENT_HANDLER_BUSY) > 0,
+            )
+            .map_err(Error::SetupEventRing)
     }
 
     fn reset(&self) {
