@@ -1166,7 +1166,7 @@ fn vm_memory_handler_thread(
             .context("failed to add descriptor to wait context")?;
     }
 
-    let mut region_state = VmMemoryRegionState::new();
+    let mut region_state: VmMemoryRegionState = Default::default();
 
     'wait: loop {
         let events = {
@@ -1501,7 +1501,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     }
 
     let mut exit_state = ExitState::Stop;
-    let mut region_state = VmMemoryRegionState::new();
+    let mut region_state: VmMemoryRegionState = Default::default();
 
     'poll: loop {
         let events = {

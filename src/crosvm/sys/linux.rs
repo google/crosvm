@@ -4337,7 +4337,7 @@ fn vm_memory_handler_thread(
             .context("failed to add descriptor to wait context")?;
     }
 
-    let mut region_state = VmMemoryRegionState::new();
+    let mut region_state: VmMemoryRegionState = Default::default();
 
     'wait: loop {
         let events = {

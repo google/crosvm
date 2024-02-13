@@ -19,12 +19,12 @@ use base::Error;
 use base::Event;
 use base::PipeTube;
 use hypervisor::MemCacheType;
-use hypervisor::MemSlot;
 use hypervisor::Vm;
 use resources::Alloc;
 use resources::SystemAllocator;
 
 use crate::client::HandleRequestResult;
+use crate::VmMappedMemoryRegion;
 use crate::VmRequest;
 
 pub const SERVICE_MESSAGE_HEADER_SIZE: usize = size_of::<u32>();
@@ -127,7 +127,7 @@ pub fn prepare_shared_memory_region(
     _allocator: &mut SystemAllocator,
     _alloc: Alloc,
     _cache: MemCacheType,
-) -> std::result::Result<(u64, MemSlot), Error> {
+) -> std::result::Result<VmMappedMemoryRegion, Error> {
     unimplemented!()
 }
 

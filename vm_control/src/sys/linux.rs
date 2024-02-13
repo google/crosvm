@@ -31,6 +31,7 @@ use serde::Serialize;
 use vm_memory::GuestAddress;
 
 use crate::client::HandleRequestResult;
+use crate::VmMappedMemoryRegion;
 use crate::VmRequest;
 use crate::VmResponse;
 
@@ -187,7 +188,7 @@ pub fn prepare_shared_memory_region(
     allocator: &mut SystemAllocator,
     alloc: Alloc,
     cache: MemCacheType,
-) -> Result<(u64, MemSlot), SysError> {
+) -> Result<VmMappedMemoryRegion, SysError> {
     if !matches!(alloc, Alloc::PciBar { .. }) {
         return Err(SysError::new(EINVAL));
     }
@@ -210,7 +211,10 @@ pub fn prepare_shared_memory_region(
                 false,
                 cache,
             ) {
-                Ok(slot) => Ok((range.start >> 12, slot)),
+                Ok(slot) => Ok(VmMappedMemoryRegion {
+                    gfn: range.start >> 12,
+                    slot,
+                }),
                 Err(e) => Err(e),
             }
         }
@@ -251,7 +255,9 @@ impl FsMappingRequest {
                     alloc,
                     MemCacheType::CacheCoherent,
                 ) {
-                    Ok((pfn, slot)) => VmResponse::RegisterMemory { pfn, slot },
+                    Ok(VmMappedMemoryRegion { gfn, slot }) => {
+                        VmResponse::RegisterMemory { gfn, slot }
+                    }
                     Err(e) => VmResponse::Err(e),
                 }
             }
