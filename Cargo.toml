@@ -154,9 +154,6 @@ gdb = [
 ## Enables virtio-net and vhost-user-net backend.
 net = ["devices/net"]
 
-## Enables a panic handler that writes panic info to the `RUST_PANIC_SIG` memfd.
-panic-memfd = []
-
 ## Enables PCI hotplug. Only available on Linux, and currently only for x86/x86-64.
 pci-hotplug = ["devices/pci-hotplug", "vm_control/pci-hotplug"]
 
@@ -334,7 +331,6 @@ all-default = [
     "libvda-stub",
     "net",
     "noncoherent-dma",
-    "panic-memfd",
     "pci-hotplug",
     "power-monitor-powerd",
     "slirp",
@@ -395,7 +391,7 @@ all-mingw64 = [
 all-msvc64 = [ "all-mingw64" ]
 
 ## All features that are enabled in ChromeOS builds.
-all-chromeos = ["audio_cras", "panic-memfd", "arc_quota", "vtpm", "registered_events"]
+all-chromeos = ["audio_cras", "arc_quota", "vtpm", "registered_events"]
 
 # Deprecated feature flag. Remove after ChromeOS-side is updated.
 chromeos = ["all-chromeos"]

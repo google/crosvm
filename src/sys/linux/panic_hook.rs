@@ -121,8 +121,4 @@ pub fn set_panic_hook() {
         // Abort to trigger the crash reporter so that a minidump is generated.
         abort();
     }));
-
-    // Install the memfd handler last so it will run before the panic hook above that calls abort().
-    #[cfg(feature = "panic-memfd")]
-    base::sys::linux::panic_handler::install_memfd_handler();
 }

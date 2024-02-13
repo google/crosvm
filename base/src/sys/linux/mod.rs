@@ -29,7 +29,6 @@ mod mmap;
 mod net;
 mod netlink;
 mod notifiers;
-pub mod panic_handler;
 pub mod platform_timer_resolution;
 mod poll;
 mod priority;
