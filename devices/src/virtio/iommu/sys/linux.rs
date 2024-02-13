@@ -15,12 +15,12 @@ use base::MemoryMappingBuilder;
 use base::TubeError;
 use cros_async::AsyncTube;
 use cros_async::Executor;
-use hypervisor::MemSlot;
 use sync::Mutex;
 use vm_control::VirtioIOMMURequest;
 use vm_control::VirtioIOMMUResponse;
 use vm_control::VirtioIOMMUVfioCommand;
 use vm_control::VirtioIOMMUVfioResult;
+use vm_control::VmMemoryRegionId;
 
 use self::vfio_wrapper::VfioWrapper;
 use crate::virtio::iommu::ipc_memory_mapper::IommuRequest;
@@ -71,7 +71,7 @@ impl State {
 
     pub(in crate::virtio::iommu) fn handle_map_dmabuf(
         &mut self,
-        mem_slot: MemSlot,
+        region_id: VmMemoryRegionId,
         gpa: u64,
         size: u64,
         dma_buf: File,
@@ -94,7 +94,7 @@ impl State {
             gpa,
             DmabufRegionEntry {
                 mmap,
-                mem_slot,
+                region_id,
                 size,
             },
         );
@@ -104,12 +104,12 @@ impl State {
 
     pub(in crate::virtio::iommu) fn handle_unmap_dmabuf(
         &mut self,
-        mem_slot: MemSlot,
+        region_id: VmMemoryRegionId,
     ) -> VirtioIOMMUVfioResult {
         if let Some(range) = self
             .dmabuf_mem
             .iter()
-            .find(|(_, dmabuf_entry)| dmabuf_entry.mem_slot == mem_slot)
+            .find(|(_, dmabuf_entry)| dmabuf_entry.region_id == region_id)
             .map(|entry| *entry.0)
         {
             self.dmabuf_mem.remove(&range);
@@ -142,12 +142,12 @@ impl State {
             },
             VfioDeviceDel { endpoint_addr } => self.handle_del_vfio_device(endpoint_addr),
             VfioDmabufMap {
-                mem_slot,
+                region_id,
                 gpa,
                 size,
                 dma_buf,
-            } => self.handle_map_dmabuf(mem_slot, gpa, size, File::from(dma_buf)),
-            VfioDmabufUnmap(mem_slot) => self.handle_unmap_dmabuf(mem_slot),
+            } => self.handle_map_dmabuf(region_id, gpa, size, File::from(dma_buf)),
+            VfioDmabufUnmap(region_id) => self.handle_unmap_dmabuf(region_id),
         };
         VirtioIOMMUResponse::VfioResponse(vfio_result)
     }

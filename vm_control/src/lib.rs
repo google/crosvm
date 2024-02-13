@@ -592,7 +592,7 @@ pub enum VmMemoryRequest {
 /// Struct for managing `VmMemoryRequest`s IOMMU related state.
 pub struct VmMemoryRequestIommuClient {
     tube: Arc<Mutex<Tube>>,
-    gpu_memory: BTreeSet<MemSlot>,
+    registered_memory: BTreeSet<VmMemoryRegionId>,
 }
 
 impl VmMemoryRequestIommuClient {
@@ -600,7 +600,7 @@ impl VmMemoryRequestIommuClient {
     pub fn new(tube: Arc<Mutex<Tube>>) -> Self {
         Self {
             tube,
-            gpu_memory: BTreeSet::new(),
+            registered_memory: BTreeSet::new(),
         }
     }
 }
@@ -767,10 +767,11 @@ impl VmMemoryRequest {
                     Err(e) => return VmMemoryResponse::Err(e),
                 };
 
+                let region_id = VmMemoryRegionId(guest_addr.0 >> 12);
                 if let (Some(descriptor), Some(iommu_client)) = (descriptor, iommu_client) {
                     let request =
                         VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDmabufMap {
-                            mem_slot: slot,
+                            region_id,
                             gpa: guest_addr.0,
                             size,
                             dma_buf: descriptor,
@@ -786,10 +787,9 @@ impl VmMemoryRequest {
                         }
                     };
 
-                    iommu_client.gpu_memory.insert(slot);
+                    iommu_client.registered_memory.insert(region_id);
                 }
 
-                let region_id = VmMemoryRegionId(guest_addr.0 >> 12);
                 region_state
                     .registered_memory
                     .insert(region_id, RegisteredMemory::DynamicMapping { slot });
@@ -801,9 +801,9 @@ impl VmMemoryRequest {
                 {
                     Ok(_) => {
                         if let Some(iommu_client) = iommu_client {
-                            if iommu_client.gpu_memory.remove(&slot) {
+                            if iommu_client.registered_memory.remove(&id) {
                                 let request = VirtioIOMMURequest::VfioCommand(
-                                    VirtioIOMMUVfioCommand::VfioDmabufUnmap(slot),
+                                    VirtioIOMMUVfioCommand::VfioDmabufUnmap(id),
                                 );
 
                                 match virtio_iommu_request(&iommu_client.tube.lock(), &request) {
@@ -2364,13 +2364,13 @@ pub enum VirtioIOMMUVfioCommand {
     },
     // Map a dma-buf into vfio iommu table
     VfioDmabufMap {
-        mem_slot: MemSlot,
+        region_id: VmMemoryRegionId,
         gpa: u64,
         size: u64,
         dma_buf: SafeDescriptor,
     },
     // Unmap a dma-buf from vfio iommu table
-    VfioDmabufUnmap(MemSlot),
+    VfioDmabufUnmap(VmMemoryRegionId),
 }
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -45,10 +45,10 @@ use cros_async::Executor;
 use data_model::Le64;
 use futures::select;
 use futures::FutureExt;
-use hypervisor::MemSlot;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
+use vm_control::VmMemoryRegionId;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
@@ -160,7 +160,7 @@ type DomainMap = BTreeMap<u32, (u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>)>;
 
 struct DmabufRegionEntry {
     mmap: MemoryMapping,
-    mem_slot: MemSlot,
+    region_id: VmMemoryRegionId,
     size: u64,
 }
 
