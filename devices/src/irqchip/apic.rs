@@ -1331,6 +1331,7 @@ mod tests {
 
         // Top 8 bits of ICR high are the destination.
         a.write(Reg::INTERRUPT_COMMAND_HI as u64, &[0, 0, 0, 42]);
+        #[rustfmt::skip]
         let msg = a.write(
             Reg::INTERRUPT_COMMAND_LO as u64,
             &[

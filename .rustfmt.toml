@@ -1,6 +1,8 @@
 imports_granularity = "item"
 group_imports = "StdExternalCrate"
 unstable_features = true
+wrap_comments = true
+comment_width = 100
 use_field_init_shorthand = true
 use_try_shorthand = true
 edition = "2021"
