@@ -215,24 +215,26 @@ impl<T: EventToken> EventContext<T> {
             WAIT_OBJECT_0..=MAXIMUM_WAIT_OBJECTS_U32 => {
                 let mut event_index = (result - WAIT_OBJECT_0) as usize;
                 if event_index >= handles_len {
-                    // This is not a valid index and should return an error. This case should not be possible
-                    // and will likely not return a meaningful system error code, but is still an invalid case.
+                    // This is not a valid index and should return an error. This case should not be
+                    // possible and will likely not return a meaningful system
+                    // error code, but is still an invalid case.
                     error!("Wait returned index out of range");
                     return errno_result();
                 }
                 if event_index == 0 {
-                    // The handles list has been modified and triggered the wait, try again with the updated
-                    // handles list. Note it is possible the list was modified again after the wait which will
-                    // trigger the handles_modified_event again, but that will only err towards the safe side
+                    // The handles list has been modified and triggered the wait, try again with the
+                    // updated handles list. Note it is possible the list was
+                    // modified again after the wait which will trigger the
+                    // handles_modified_event again, but that will only err towards the safe side
                     // of recursing an extra time.
                     let _ = self.handles_modified_event.wait();
                     return self.wait_timeout(timeout);
                 }
 
                 let mut events_to_return = SmallVec::<[TriggeredEvent<T>; 16]>::new();
-                // Multiple events may be triggered at once, but WaitForMultipleObjects will only return one.
-                // Once it returns, loop through the remaining triggers checking each to ensure they haven't
-                // also been triggered.
+                // Multiple events may be triggered at once, but WaitForMultipleObjects will only
+                // return one. Once it returns, loop through the remaining triggers
+                // checking each to ensure they haven't also been triggered.
                 let mut handles_offset: usize = 0;
                 loop {
                     let event_to_return = raw_handles_list[event_index + handles_offset];
@@ -270,8 +272,9 @@ impl<T: EventToken> EventContext<T> {
                     ) as usize;
 
                     if event_index >= (handles_len - handles_offset) {
-                        // This indicates a failure condition, as return values greater than the length
-                        // of the provided array are reserved for failures.
+                        // This indicates a failure condition, as return values greater than the
+                        // length of the provided array are reserved for
+                        // failures.
                         break;
                     }
                 }

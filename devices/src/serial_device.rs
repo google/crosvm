@@ -175,7 +175,7 @@ impl SerialParameters {
     /// # Arguments
     /// * `evt` - event used for interrupt events
     /// * `keep_rds` - Vector of FDs required by this device if it were sandboxed in a child
-    ///                process. `evt` will always be added to this vector by this function.
+    ///   process. `evt` will always be added to this vector by this function.
     pub fn create_serial_device<T: SerialDevice>(
         &self,
         protection_type: ProtectionType,

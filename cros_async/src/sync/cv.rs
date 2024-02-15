@@ -370,8 +370,8 @@ impl Condvar {
 
         let set_on_release = if waiters.is_empty() {
             // SAFETY:
-            // Clear the rwlock associated with this Condvar since there are no longer any waiters. Safe
-            // because we the spin lock guarantees exclusive access.
+            // Clear the rwlock associated with this Condvar since there are no longer any waiters.
+            // Safe because we the spin lock guarantees exclusive access.
             unsafe { *self.mu.get() = 0 };
 
             0

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// TODO(b:240716507): There is huge chunk for code which depends on haxm, whpx or gvm to be enabled but
-// isn't marked so. Remove this when we do so.
+// TODO(b:240716507): There is huge chunk for code which depends on haxm, whpx or gvm to be enabled
+// but isn't marked so. Remove this when we do so.
 #![allow(dead_code, unused_imports, unused_variables, unreachable_code)]
 
 pub(crate) mod control_server;
@@ -1991,7 +1991,7 @@ where
 {
     info!("Creating userspace irqchip");
     let irq_chip =
-        UserspaceIrqChip::new(vcpu_count, ioapic_device_tube, /*ioapic_pins:*/ None)?;
+        UserspaceIrqChip::new(vcpu_count, ioapic_device_tube, /* ioapic_pins: */ None)?;
     Ok(irq_chip)
 }
 
@@ -2633,7 +2633,7 @@ where
         irq_chip,
         &mut vcpu_ids,
         cfg.dump_device_tree_blob.clone(),
-        /*debugcon_jail=*/ None,
+        /* debugcon_jail= */ None,
         None,
         None,
         dt_overlays,

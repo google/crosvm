@@ -22,15 +22,15 @@ pub enum CachePolicy {
     /// the FUSE client (i.e., the file system does not have exclusive access to the directory).
     Never,
 
-    /// The client is free to choose when and how to cache file data. This is the default policy and
-    /// uses close-to-open consistency as described in the enum documentation.
+    /// The client is free to choose when and how to cache file data. This is the default policy
+    /// and uses close-to-open consistency as described in the enum documentation.
     #[default]
     Auto,
 
     /// The client should always cache file data. This means that the FUSE client will not
     /// invalidate any cached data that was returned by the file system the last time the file was
-    /// opened. This policy should only be selected when the file system has exclusive access to the
-    /// directory.
+    /// opened. This policy should only be selected when the file system has exclusive access to
+    /// the directory.
     Always,
 }
 
@@ -108,17 +108,17 @@ pub struct Config {
     #[serde(default, alias = "cache")]
     pub cache_policy: CachePolicy,
 
-    /// Whether the file system should enabled writeback caching. This can improve performance as it
-    /// allows the FUSE client to cache and coalesce multiple writes before sending them to the file
-    /// system. However, enabling this option can increase the risk of data corruption if the file
-    /// contents can change without the knowledge of the FUSE client (i.e., the server does **NOT**
-    /// have exclusive access). Additionally, the file system should have read access to all files
-    /// in the directory it is serving as the FUSE client may send read requests even for files
-    /// opened with `O_WRONLY`.
+    /// Whether the file system should enabled writeback caching. This can improve performance as
+    /// it allows the FUSE client to cache and coalesce multiple writes before sending them to
+    /// the file system. However, enabling this option can increase the risk of data corruption
+    /// if the file contents can change without the knowledge of the FUSE client (i.e., the
+    /// server does **NOT** have exclusive access). Additionally, the file system should have
+    /// read access to all files in the directory it is serving as the FUSE client may send
+    /// read requests even for files opened with `O_WRONLY`.
     ///
     /// Therefore callers should only enable this option when they can guarantee that: 1) the file
-    /// system has exclusive access to the directory and 2) the file system has read permissions for
-    /// all files in that directory.
+    /// system has exclusive access to the directory and 2) the file system has read permissions
+    /// for all files in that directory.
     ///
     /// The default value for this option is `false`.
     #[serde(default)]
@@ -127,8 +127,8 @@ pub struct Config {
     /// Controls whether security.* xattrs (except for security.selinux) are re-written. When this
     /// is set to true, the server will add a "user.virtiofs" prefix to xattrs in the security
     /// namespace. Setting these xattrs requires CAP_SYS_ADMIN in the namespace where the file
-    /// system was mounted and since the server usually runs in an unprivileged user namespace, it's
-    /// unlikely to have that capability.
+    /// system was mounted and since the server usually runs in an unprivileged user namespace,
+    /// it's unlikely to have that capability.
     ///
     /// The default value for this option is `false`.
     #[serde(default, alias = "rewrite-security-xattrs")]
@@ -140,21 +140,21 @@ pub struct Config {
     #[serde(default)]
     pub ascii_casefold: bool,
 
-    // UIDs which are privileged to perform quota-related operations. We cannot perform a CAP_FOWNER
-    // check so we consult this list when the VM tries to set the project quota and the process uid
-    // doesn't match the owner uid. In that case, all uids in this list are treated as if they have
-    // CAP_FOWNER.
+    // UIDs which are privileged to perform quota-related operations. We cannot perform a
+    // CAP_FOWNER check so we consult this list when the VM tries to set the project quota and
+    // the process uid doesn't match the owner uid. In that case, all uids in this list are
+    // treated as if they have CAP_FOWNER.
     #[cfg(feature = "arc_quota")]
     #[serde(default, deserialize_with = "deserialize_privileged_quota_uids")]
     pub privileged_quota_uids: Vec<libc::uid_t>,
 
     /// Use DAX for shared files.
     ///
-    /// Enabling DAX can improve performance for frequently accessed files by mapping regions of the
-    /// file directly into the VM's memory region, allowing direct access with the cost of slightly
-    /// increased latency the first time the file is accessed. Additionally, since the mapping is
-    /// shared directly from the host kernel's file cache, enabling DAX can improve performance even
-    /// when the cache policy is `Never`.
+    /// Enabling DAX can improve performance for frequently accessed files by mapping regions of
+    /// the file directly into the VM's memory region, allowing direct access with the cost of
+    /// slightly increased latency the first time the file is accessed. Additionally, since the
+    /// mapping is shared directly from the host kernel's file cache, enabling DAX can improve
+    /// performance even when the cache policy is `Never`.
     ///
     /// The default value for this option is `false`.
     #[serde(default, alias = "dax")]

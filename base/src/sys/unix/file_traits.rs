@@ -13,8 +13,8 @@ use std::os::unix::net::UnixStream;
 use crate::FileReadWriteAtVolatile;
 use crate::FileReadWriteVolatile;
 
-// This module allows the below macros to refer to $crate::unix::file_traits::lib::X and ensures other
-// crates don't need to add additional crates to their Cargo.toml.
+// This module allows the below macros to refer to $crate::unix::file_traits::lib::X and ensures
+// other crates don't need to add additional crates to their Cargo.toml.
 pub mod lib {
     pub use libc::c_int;
     pub use libc::c_void;

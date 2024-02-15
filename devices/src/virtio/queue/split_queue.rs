@@ -345,11 +345,11 @@ impl SplitQueue {
     /// (similar to how DC circuits are analyzed).
     ///
     /// The two distances are as follows:
-    ///  * `A` is the distance between the driver's requested notification
-    ///    point, and the current position in the ring.
+    ///  * `A` is the distance between the driver's requested notification point, and the current
+    ///    position in the ring.
     ///
-    ///  * `B` is the distance between the last time we notified the guest,
-    ///    and the current position in the ring.
+    ///  * `B` is the distance between the last time we notified the guest, and the current position
+    ///    in the ring.
     ///
     /// If we graph these distances for the situation where we want to notify
     /// the guest, and when we don't want to notify the guest, we see that
@@ -389,15 +389,13 @@ impl SplitQueue {
     /// anymore. (Notifications will never be sent.) But why is that? The algebra
     /// here *appears* to work out, but all semantic meaning is lost. There are
     /// two explanations for why this happens:
-    /// * The intuitive one: the terms in the inequality are not actually
-    ///   separable; in other words, (next_used - last_used) is an inseparable
-    ///   term, so subtracting next_used from both sides of the original
-    ///   inequality and zeroing them out is semantically invalid. But why aren't
+    /// * The intuitive one: the terms in the inequality are not actually separable; in other words,
+    ///   (next_used - last_used) is an inseparable term, so subtracting next_used from both sides
+    ///   of the original inequality and zeroing them out is semantically invalid. But why aren't
     ///   they separable? See below.
-    /// * The theoretical one: canceling like terms relies a vector space law:
-    ///   a + x = b + x => a = b (cancellation law). For congruences / equality
-    ///   under modulo, this law is satisfied, but for inequalities under mod, it
-    ///   is not; therefore, we cannot cancel like terms.
+    /// * The theoretical one: canceling like terms relies a vector space law: a + x = b + x => a =
+    ///   b (cancellation law). For congruences / equality under modulo, this law is satisfied, but
+    ///   for inequalities under mod, it is not; therefore, we cannot cancel like terms.
     ///
     /// ```text
     /// ┌──────────────────────────────────┐

@@ -389,8 +389,8 @@ impl IrqChip for WhpxSplitIrqChip {
             vcpu.interrupt(vector as u32)?;
         }
 
-        // The second interrupt request should be handled immediately, so ask vCPU to exit as soon as
-        // possible.
+        // The second interrupt request should be handled immediately, so ask vCPU to exit as soon
+        // as possible.
         if self.interrupt_requested(vcpu_id) {
             vcpu.set_interrupt_window_requested(true);
         }

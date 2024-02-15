@@ -1686,7 +1686,8 @@ impl X8664arch {
     }
 
     fn get_pcie_vcfg_mmio_range(mem: &GuestMemory, pcie_cfg_mmio: &AddressRange) -> AddressRange {
-        // Put PCIe VCFG region at a 2MB boundary after physical memory or 4gb, whichever is greater.
+        // Put PCIe VCFG region at a 2MB boundary after physical memory or 4gb, whichever is
+        // greater.
         let ram_end_round_2mb = (mem.end_addr().offset() + 2 * MB - 1) / (2 * MB) * (2 * MB);
         let start = std::cmp::max(ram_end_round_2mb, 4 * GB);
         // Each pci device's ECAM size is 4kb and its vcfg size is 8kb
@@ -1865,16 +1866,14 @@ impl X8664arch {
     /// # Arguments
     ///
     /// * - `io_bus` the I/O bus to add the devices to
-    /// * - `resources` the SystemAllocator to allocate IO and MMIO for acpi
-    ///                devices.
+    /// * - `resources` the SystemAllocator to allocate IO and MMIO for acpi devices.
     /// * - `suspend_evt` the event object which used to suspend the vm
     /// * - `sdts` ACPI system description tables
     /// * - `irq_chip` the IrqChip object for registering irq events
     /// * - `battery` indicate whether to create the battery
     /// * - `mmio_bus` the MMIO bus to add the devices to
-    /// * - `pci_irqs` IRQ assignment of PCI devices. Tuples of (PCI address,
-    ///               gsi, PCI interrupt pin). Note that this matches one of
-    ///               the return values of generate_pci_root.
+    /// * - `pci_irqs` IRQ assignment of PCI devices. Tuples of (PCI address, gsi, PCI interrupt
+    ///   pin). Note that this matches one of the return values of generate_pci_root.
     pub fn setup_acpi_devices(
         pci_root: Arc<Mutex<PciRoot>>,
         mem: &GuestMemory,
@@ -2278,8 +2277,8 @@ impl CpuIdCall {
 
 /// Check if host supports hybrid CPU feature. The check include:
 ///     1. Check if CPUID.1AH exists. CPUID.1AH is hybrid information enumeration leaf.
-///     2. Check if CPUID.07H.00H:EDX[bit 15] sets. This bit means the processor is
-///        identified as a hybrid part.
+///     2. Check if CPUID.07H.00H:EDX[bit 15] sets. This bit means the processor is identified as a
+///        hybrid part.
 ///     3. Check if CPUID.1AH:EAX sets. The hybrid core type is set in EAX.
 ///
 /// # Arguments

@@ -22,8 +22,7 @@ use crate::BlockingPool;
 /// This is convenient, though not preferred. Pros/cons:
 /// + It avoids passing executor all the way to each call sites.
 /// + The call site can assume that executor will never shutdown.
-/// + Provides similar functionality as async_task with a few improvements
-///   around ability to cancel.
+/// + Provides similar functionality as async_task with a few improvements around ability to cancel.
 /// - Globals are harder to reason about.
 static EXECUTOR: Lazy<CancellableBlockingPool> =
     Lazy::new(|| CancellableBlockingPool::new(256, Duration::from_secs(10)));
@@ -279,7 +278,6 @@ impl CancellableBlockingPool {
     /// This will block until all work that has been started by the worker threads is finished. Any
     /// work that was added to the `CancellableBlockingPool` but not yet picked up by a worker
     /// thread will not complete and `await`ing on the `Task` for that work will panic.
-    ///
     pub fn shutdown(&self) -> Result<(), Error> {
         self.shutdown_with_timeout(DEFAULT_SHUTDOWN_TIMEOUT)
     }

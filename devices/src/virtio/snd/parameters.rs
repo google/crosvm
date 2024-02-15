@@ -38,7 +38,8 @@ pub enum Error {
     /// Failed to parse parameters.
     #[error("Invalid snd parameter: {0}")]
     UnknownParameter(String),
-    /// Invalid PCM device config index. Happens when the length of PCM device config is less than the number of PCM devices.
+    /// Invalid PCM device config index. Happens when the length of PCM device config is less than
+    /// the number of PCM devices.
     #[error("Invalid PCM device config index: {0}")]
     InvalidPCMDeviceConfigIndex(usize),
     /// Invalid PCM info direction (VIRTIO_SND_D_OUTPUT = 0, VIRTIO_SND_D_INPUT = 1)

@@ -245,8 +245,8 @@ pub struct CreateQcow2Command {
     /// desired size of the image in bytes; required if not using --backing-file
     pub size: Option<u64>,
     #[argh(option)]
-    /// path to backing file; if specified, the image will be the same size as the backing file, and
-    /// SIZE may not be specified
+    /// path to backing file; if specified, the image will be the same size as the backing file,
+    /// and SIZE may not be specified
     pub backing_file: Option<String>,
 }
 
@@ -1066,7 +1066,8 @@ pub struct RunCommand {
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
     /// comma-separated list of CPUs or CPU ranges to run VCPUs on (e.g. 0,1-3,5)
-    /// or colon-separated list of assignments of guest to host CPU assignments (e.g. 0=0:1=1:2=2) (default: no mask)
+    /// or colon-separated list of assignments of guest to host CPU assignments (e.g. 0=0:1=1:2=2)
+    /// (default: no mask)
     pub cpu_affinity: Option<VcpuAffinity>,
 
     #[argh(
@@ -1213,7 +1214,8 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
-    /// path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host
+    /// path to an event device node. The device will be grabbed (unusable from the host) and made
+    /// available to the guest with the same configuration it shows on the host
     pub evdev: Vec<PathBuf>,
 
     #[cfg(windows)]
@@ -1389,7 +1391,8 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// string representation of the host guid in registry format, for namespacing vsock connections.
+    /// string representation of the host guid in registry format, for namespacing vsock
+    /// connections.
     pub host_guid: Option<String>,
 
     #[cfg(all(unix, feature = "net"))]
@@ -1447,7 +1450,8 @@ pub struct RunCommand {
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// allow to enable ITMT scheduling feature in VM. The success of enabling depends on HWP and ACPI CPPC support on hardware
+    /// allow to enable ITMT scheduling feature in VM. The success of enabling depends on HWP and
+    /// ACPI CPPC support on hardware
     pub itmt: Option<bool>,
 
     #[argh(positional, arg_name = "KERNEL")]
@@ -1486,14 +1490,16 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// redirect logs to the supplied log file at PATH rather than stderr. For multi-process mode, use --logs-directory instead
+    /// redirect logs to the supplied log file at PATH rather than stderr. For multi-process mode,
+    /// use --logs-directory instead
     pub log_file: Option<String>,
 
     #[cfg(windows)]
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// path to the logs directory used for crosvm processes. Logs will be sent to stderr if unset, and stderr/stdout will be uncaptured
+    /// path to the logs directory used for crosvm processes. Logs will be sent to stderr if unset,
+    /// and stderr/stdout will be uncaptured
     pub logs_directory: Option<String>,
 
     #[cfg(all(unix, feature = "net"))]
@@ -1536,7 +1542,9 @@ pub struct RunCommand {
     )]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
-    /// path to a socket from where to read multi touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280) and a name for the input device
+    /// path to a socket from where to read multi touch input events (such as those from a
+    /// touchscreen) and write status updates to, optionally followed by width and height (defaults
+    /// to 800x1280) and a name for the input device
     pub multi_touch: Vec<TouchDeviceOption>,
 
     #[cfg(all(unix, feature = "net"))]
@@ -1693,8 +1701,8 @@ pub struct RunCommand {
     )]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// comma-seperated key-value pair for setting up the pflash device, which provides space to store UEFI variables.
-    /// block_size defaults to 4K.
+    /// comma-seperated key-value pair for setting up the pflash device, which provides space to
+    /// store UEFI variables. block_size defaults to 4K.
     /// [--pflash <path=PATH,[block_size=SIZE]>]
     pub pflash: Option<PflashParameters>,
 
@@ -1722,7 +1730,8 @@ pub struct RunCommand {
     #[argh(option)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// path to the file listing supplemental GIDs that should be mapped in plugin jail.  Can be given more than once
+    /// path to the file listing supplemental GIDs that should be mapped in plugin jail.  Can be
+    /// given more than once
     pub plugin_gid_map_file: Option<PathBuf>,
 
     #[cfg(feature = "plugin")]
@@ -1736,7 +1745,8 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// path to the file listing paths be mounted into the plugin's root filesystem.  Can be given more than once
+    /// path to the file listing paths be mounted into the plugin's root filesystem.  Can be given
+    /// more than once
     pub plugin_mount_file: Option<PathBuf>,
 
     #[cfg(feature = "plugin")]
@@ -1763,7 +1773,8 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// size of the serialized EmulatorProcessInvariants proto pointed at by process-invariants-handle
+    /// size of the serialized EmulatorProcessInvariants proto pointed at by
+    /// process-invariants-handle
     pub process_invariants_size: Option<usize>,
 
     #[cfg(windows)]
@@ -2052,14 +2063,17 @@ pub struct RunCommand {
     )]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
-    /// path to a socket from where to read single touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280) and a name for the input device
+    /// path to a socket from where to read single touch input events (such as those from a
+    /// touchscreen) and write status updates to, optionally followed by width and height (defaults
+    /// to 800x1280) and a name for the input device
     pub single_touch: Vec<TouchDeviceOption>,
 
     #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// redirects slirp network packets to the supplied log file rather than the current directory as `slirp_capture_packets.pcap`
+    /// redirects slirp network packets to the supplied log file rather than the current directory
+    /// as `slirp_capture_packets.pcap`
     pub slirp_capture_file: Option<String>,
 
     #[cfg(target_arch = "x86_64")]
@@ -2131,14 +2145,15 @@ pub struct RunCommand {
     #[argh(option, long = "swap", arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// enable vmm-swap via an unnamed temporary file on the filesystem which contains the specified
-    /// directory.
+    /// enable vmm-swap via an unnamed temporary file on the filesystem which contains the
+    /// specified directory.
     pub swap_dir: Option<PathBuf>,
 
     #[argh(option, arg_name = "N")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// (EXPERIMENTAL) Size of virtio swiotlb buffer in MiB (default: 64 if `--protected-vm` or `--protected-vm-without-firmware` is present)
+    /// (EXPERIMENTAL) Size of virtio swiotlb buffer in MiB (default: 64 if `--protected-vm` or
+    /// `--protected-vm-without-firmware` is present)
     pub swiotlb: Option<u64>,
 
     #[argh(option, arg_name = "PATH")]
@@ -2157,21 +2172,24 @@ pub struct RunCommand {
     #[argh(option)]
     #[serde(skip)] // Deprecated - use `net` instead.
     #[merge(strategy = append)]
-    /// file descriptor for configured tap device. A different virtual network card will be added each time this argument is given
+    /// file descriptor for configured tap device. A different virtual network card will be added
+    /// each time this argument is given
     pub tap_fd: Vec<RawDescriptor>,
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(option)]
     #[serde(skip)] // Deprecated - use `net` instead.
     #[merge(strategy = append)]
-    /// name of a configured persistent TAP interface to use for networking. A different virtual network card will be added each time this argument is given
+    /// name of a configured persistent TAP interface to use for networking. A different virtual
+    /// network card will be added each time this argument is given
     pub tap_name: Vec<String>,
 
     #[cfg(target_os = "android")]
     #[argh(option, arg_name = "NAME[,...]")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
-    /// comma-separated names of the task profiles to apply to all threads in crosvm including the vCPU threads
+    /// comma-separated names of the task profiles to apply to all threads in crosvm including the
+    /// vCPU threads
     pub task_profiles: Vec<String>,
 
     #[argh(
@@ -2181,7 +2199,9 @@ pub struct RunCommand {
     )]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
-    /// path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280) and a name for the input device
+    /// path to a socket from where to read trackpad input events and write status updates to,
+    /// optionally followed by screen width and height (defaults to 800x1280) and a name for the
+    /// input device
     pub trackpad: Vec<TouchDeviceOption>,
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -2446,7 +2466,8 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH[,name=NAME]", from_str_fn(parse_wayland_sock))]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
-    /// path to the Wayland socket to use. The unnamed one is used for displaying virtual screens. Named ones are only for IPC
+    /// path to the Wayland socket to use. The unnamed one is used for displaying virtual screens.
+    /// Named ones are only for IPC
     pub wayland_sock: Vec<(String, PathBuf)>,
 
     #[cfg(any(target_os = "android", target_os = "linux"))]

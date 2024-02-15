@@ -274,7 +274,6 @@ impl URingAllowlist {
 /// let (user_data, res) = uring.wait().unwrap().next().unwrap();
 /// assert_eq!(user_data, 454 as io_uring::UserData);
 /// assert_eq!(res.unwrap(), 1 as u32);
-///
 /// ```
 pub struct URingContext {
     ring_file: File, // Holds the io_uring context FD returned from io_uring_setup.
@@ -306,8 +305,8 @@ impl URingContext {
 
             // Register the restrictions if it's given
             if let Some(restrictions) = allowlist {
-                // safe because IORING_REGISTER_RESTRICTIONS does not modify the memory and `restrictions`
-                // contains a valid pointer and length.
+                // safe because IORING_REGISTER_RESTRICTIONS does not modify the memory and
+                // `restrictions` contains a valid pointer and length.
                 io_uring_register(
                     fd,
                     IORING_REGISTER_RESTRICTIONS,
@@ -672,10 +671,10 @@ impl URingContext {
         self.enter(0)
     }
 
-    /// Sends operations added with the `add_*` functions to the kernel and return an iterator to any
-    /// completed operations. `wait` blocks until at least one completion is ready.  If called
-    /// without any new events added, this simply waits for any existing events to complete and
-    /// returns as soon an one or more is ready.
+    /// Sends operations added with the `add_*` functions to the kernel and return an iterator to
+    /// any completed operations. `wait` blocks until at least one completion is ready.  If
+    /// called without any new events added, this simply waits for any existing events to
+    /// complete and returns as soon an one or more is ready.
     pub fn wait(&self) -> Result<impl Iterator<Item = (UserData, std::io::Result<u32>)> + '_> {
         // We only want to wait for events if there aren't already events in the completion queue.
         let wait_nr = if self.complete_ring.num_ready() > 0 {

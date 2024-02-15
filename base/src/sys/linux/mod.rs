@@ -575,7 +575,6 @@ pub fn max_open_files() -> Result<u64> {
 }
 
 /// Moves the requested PID/TID to a particular cgroup
-///
 pub fn move_to_cgroup(cgroup_path: PathBuf, id_to_write: Pid, cgroup_file: &str) -> Result<()> {
     use std::io::Write;
 

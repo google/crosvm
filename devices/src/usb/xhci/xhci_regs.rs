@@ -385,7 +385,7 @@ pub fn init_xhci_mmio_space_and_regs() -> (RegisterSpace, XhciRegs) {
         guest_write_1_to_clear_mask: 0,);
     mmio.add_register_array(&doorbells);
 
-    /*Runtime Registers */
+    /* Runtime Registers */
 
     mmio.add_register(
         // mfindex

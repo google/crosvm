@@ -334,7 +334,8 @@ impl CrossDomainWorker {
                             .take(num_files);
 
                         for (((identifier, identifier_type), identifier_size), mut file) in iter {
-                            // Safe since the descriptors from receive_msg(..) are owned by us and valid.
+                            // Safe since the descriptors from receive_msg(..) are owned by us and
+                            // valid.
                             descriptor_analysis(&mut file, identifier_type, identifier_size)?;
 
                             *identifier = match *identifier_type {
@@ -686,9 +687,10 @@ impl RutabagaContext for CrossDomainContext {
                         return Err(RutabagaError::SpecViolation("blob size mismatch"));
                     }
 
-                    // Strictly speaking, it's against the virtio-gpu spec to allocate memory in the context
-                    // create blob function, which says "the actual allocation is done via
-                    // VIRTIO_GPU_CMD_SUBMIT_3D."  However, atomic resource creation is easiest for the
+                    // Strictly speaking, it's against the virtio-gpu spec to allocate memory in the
+                    // context create blob function, which says "the actual
+                    // allocation is done via VIRTIO_GPU_CMD_SUBMIT_3D."
+                    // However, atomic resource creation is easiest for the
                     // cross-domain use case, so whatever.
                     let hnd = match handle_opt {
                         Some(handle) => handle,

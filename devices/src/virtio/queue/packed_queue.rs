@@ -212,8 +212,8 @@ impl PackedQueue {
 
     /// Set the device event suppression
     ///
-    // This field is used to specify the timing of when the driver notifies the
-    // device that the descriptor table is ready to be processed.
+    /// This field is used to specify the timing of when the driver notifies the
+    /// device that the descriptor table is ready to be processed.
     fn set_avail_event(&mut self, event: PackedDescEvent) {
         fence(Ordering::SeqCst);
         self.mem

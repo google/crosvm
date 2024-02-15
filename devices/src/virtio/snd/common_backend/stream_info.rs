@@ -56,7 +56,8 @@ pub struct StreamInfoBuilder {
 impl StreamInfoBuilder {
     /// Creates a StreamInfoBuilder with minimal required fields:
     ///
-    /// * `stream_source_generator`: Generator which generates stream source in [`StreamInfo::prepare()`].
+    /// * `stream_source_generator`: Generator which generates stream source in
+    ///   [`StreamInfo::prepare()`].
     pub fn new(stream_source_generator: Arc<SysAudioStreamSourceGenerator>) -> Self {
         StreamInfoBuilder {
             stream_source_generator,
@@ -64,8 +65,8 @@ impl StreamInfoBuilder {
         }
     }
 
-    /// Set the [`StreamEffect`]s to use when creating a stream from the stream source in [`StreamInfo::prepare()`].
-    /// The default value is no effects.
+    /// Set the [`StreamEffect`]s to use when creating a stream from the stream source in
+    /// [`StreamInfo::prepare()`]. The default value is no effects.
     pub fn effects(mut self, effects: Vec<StreamEffect>) -> Self {
         self.effects = effects;
         self
@@ -392,7 +393,8 @@ impl StreamInfo {
             buffer_bytes: self.buffer_bytes,
             period_bytes: self.period_bytes,
             direction: self.direction, // VIRTIO_SND_D_*
-            state: self.state, // VIRTIO_SND_R_PCM_SET_PARAMS -> VIRTIO_SND_R_PCM_STOP, or 0 (uninitialized)
+            // VIRTIO_SND_R_PCM_SET_PARAMS -> VIRTIO_SND_R_PCM_STOP, or 0 (uninitialized)
+            state: self.state,
             effects: self.effects.clone(),
             just_reset: self.just_reset,
         }

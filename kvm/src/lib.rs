@@ -1427,7 +1427,8 @@ impl Vcpu {
         Ok(cpuid)
     }
 
-    /// X86 specific call to get the state of the "Local Advanced Programmable Interrupt Controller".
+    /// X86 specific call to get the state of the "Local Advanced Programmable Interrupt
+    /// Controller".
     ///
     /// See the documentation for KVM_GET_LAPIC.
     #[cfg(target_arch = "x86_64")]
@@ -1446,7 +1447,8 @@ impl Vcpu {
         Ok(klapic)
     }
 
-    /// X86 specific call to set the state of the "Local Advanced Programmable Interrupt Controller".
+    /// X86 specific call to set the state of the "Local Advanced Programmable Interrupt
+    /// Controller".
     ///
     /// See the documentation for KVM_SET_LAPIC.
     #[cfg(target_arch = "x86_64")]
@@ -1506,7 +1508,6 @@ impl Vcpu {
     /// Gets the vcpu's currently pending exceptions, interrupts, NMIs, etc
     ///
     /// See the documentation for KVM_GET_VCPU_EVENTS.
-    ///
     #[cfg(target_arch = "x86_64")]
     pub fn get_vcpu_events(&self) -> Result<kvm_vcpu_events> {
         // SAFETY: trivially safe
@@ -1525,7 +1526,6 @@ impl Vcpu {
     /// Sets the vcpu's currently pending exceptions, interrupts, NMIs, etc
     ///
     /// See the documentation for KVM_SET_VCPU_EVENTS.
-    ///
     #[cfg(target_arch = "x86_64")]
     pub fn set_vcpu_events(&self, events: &kvm_vcpu_events) -> Result<()> {
         let ret = {

@@ -62,7 +62,8 @@ struct PortStub {
     downstream_bus: u8,
     /// hotplug port
     port: Arc<Mutex<dyn HotPlugBus>>,
-    /// Map of hotplugged devices, and system resources that can be released when device is removed.
+    /// Map of hotplugged devices, and system resources that can be released when device is
+    /// removed.
     devices: HashMap<PciAddress, RecoverableResource>,
 }
 

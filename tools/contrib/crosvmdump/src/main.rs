@@ -226,8 +226,8 @@ fn main() -> Result<()> {
     println!("{:?}", shared_dir_params);
     println!("{:?}", disk_params);
 
-    // Parsed command line for paths to virtio disk blocks. Concierge gives links to /proc/self/fd, translate
-    // them to actual end paths after resolving symlinks.
+    // Parsed command line for paths to virtio disk blocks. Concierge gives links to /proc/self/fd,
+    // translate them to actual end paths after resolving symlinks.
     let disk_blocks: Vec<_> = disk_params
         .par_iter()
         .map(|disk| {

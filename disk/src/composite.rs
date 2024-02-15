@@ -219,7 +219,8 @@ impl CompositeDiskFile {
                 };
                 let comp_file = open_file_or_duplicate(
                     &path,
-                    OpenOptions::new().read(true).write(writable), // TODO(b/190435784): add support for O_DIRECT.
+                    OpenOptions::new().read(true).write(writable), /* TODO(b/190435784): add
+                                                                    * support for O_DIRECT. */
                 )
                 .map_err(|e| Error::OpenFile(e.into(), disk.file_path.to_string()))?;
 
@@ -1302,8 +1303,8 @@ mod tests {
             // Write to the RW part so that some fsync operation will occur.
             composite.write_zeroes_at(0, 20).await.unwrap();
 
-            // This is the test's assert. fsyncing should NOT touch a read-only disk part. On Windows,
-            // this would be an error.
+            // This is the test's assert. fsyncing should NOT touch a read-only disk part. On
+            // Windows, this would be an error.
             composite.fsync().await.expect(
                 "Failed to fsync composite disk. \
                      This can happen if the disk writable state is wrong.",

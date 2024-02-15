@@ -671,8 +671,8 @@ impl<T: Encoder> EncoderDevice<T> {
                         GuestResource::from_virtio_object_entry(
                             // SAFETY:
                             // Safe because we confirmed the correct type for the resource.
-                            // unwrap() is also safe here because we just tested above that `entries` had
-                            // exactly one element.
+                            // unwrap() is also safe here because we just tested above that
+                            // `entries` had exactly one element.
                             unsafe { entries.get(0).unwrap().object },
                             &self.resource_bridge,
                             &stream.src_params,
@@ -721,8 +721,8 @@ impl<T: Encoder> EncoderDevice<T> {
                         GuestResource::from_virtio_object_entry(
                             // SAFETY:
                             // Safe because we confirmed the correct type for the resource.
-                            // unwrap() is also safe here because we just tested above that `entries` had
-                            // exactly one element.
+                            // unwrap() is also safe here because we just tested above that
+                            // `entries` had exactly one element.
                             unsafe { entries.get(0).unwrap().object },
                             &self.resource_bridge,
                             &stream.dst_params,
@@ -866,9 +866,9 @@ impl<T: Encoder> EncoderDevice<T> {
                 let buffer_size = dst_resource.resource.planes[0].size as u32;
 
                 // Stores an output buffer to notify EOS.
-                // This is necessary because libvda is unable to indicate EOS along with returned buffers.
-                // For now, when a `Flush()` completes, this saved resource will be returned as a zero-sized
-                // buffer with the EOS flag.
+                // This is necessary because libvda is unable to indicate EOS along with returned
+                // buffers. For now, when a `Flush()` completes, this saved resource
+                // will be returned as a zero-sized buffer with the EOS flag.
                 if stream.eos_manager.try_reserve_eos_buffer(resource_id) {
                     return Ok(VideoCmdResponseType::Async(AsyncCmdTag::Queue {
                         stream_id,

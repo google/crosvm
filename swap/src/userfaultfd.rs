@@ -360,8 +360,8 @@ impl Userfaultfd {
         Ok(
             // SAFETY:
             // safe because filling untouched pages with data does not break the Rust memory safety
-            // since "All runtime-allocated memory in a Rust program begins its life as uninitialized."
-            // https://doc.rust-lang.org/nomicon/uninitialized.html
+            // since "All runtime-allocated memory in a Rust program begins its life as
+            // uninitialized." https://doc.rust-lang.org/nomicon/uninitialized.html
             unsafe {
                 self.uffd.copy(
                     data as *const libc::c_void,
@@ -433,7 +433,8 @@ pub trait DeadUffdChecker {
 ///
 /// [DeadUffdCheckerImpl] uses `UFFD_ZERO` on a dummy mmap page to check the liveness.
 ///
-/// This must keep alive on the main process to make the dummy mmap present in all descendant processes.
+/// This must keep alive on the main process to make the dummy mmap present in all descendant
+/// processes.
 pub struct DeadUffdCheckerImpl {
     dummy_mmap: MemoryMapping,
 }

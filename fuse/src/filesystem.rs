@@ -77,9 +77,8 @@ impl Entry {
     ///
     /// # Arguments
     ///
-    /// * `negative_timeout` - The duration for which this negative d_entry
-    ///     should be considered valid. After the timeout expires, the d_entry
-    ///     will be invalidated.
+    /// * `negative_timeout` - The duration for which this negative d_entry should be considered
+    ///   valid. After the timeout expires, the d_entry will be invalidated.
     ///
     /// # Returns
     ///
@@ -101,8 +100,8 @@ impl Entry {
 /// Represents information about an entry in a directory.
 pub struct DirEntry<'a> {
     /// The inode number for this entry. This does NOT have to be the same as the `Inode` for this
-    /// directory entry. However, it must be the same as the `attr.st_ino` field of the `Entry` that
-    /// would be returned by a `lookup` request in the parent directory for `name`.
+    /// directory entry. However, it must be the same as the `attr.st_ino` field of the `Entry`
+    /// that would be returned by a `lookup` request in the parent directory for `name`.
     pub ino: libc::ino64_t,
 
     /// Any non-zero value that the kernel can use to identify the current point in the directory
@@ -127,8 +126,8 @@ pub enum GetxattrReply {
 
     /// The size of the buffer needed to hold the value of the requested extended attribute. Should
     /// be returned when the `size` parameter is 0. Callers should note that it is still possible
-    /// for the size of the value to change in between `getxattr` calls and should not assume that a
-    /// subsequent call to `getxattr` with the returned count will always succeed.
+    /// for the size of the value to change in between `getxattr` calls and should not assume that
+    /// a subsequent call to `getxattr` with the returned count will always succeed.
     Count(u32),
 }
 
@@ -142,17 +141,17 @@ pub enum ListxattrReply {
     /// This size of the buffer needed to hold the full list of extended attribute names associated
     /// with this `Inode`. Should be returned when the `size` parameter is 0. Callers should note
     /// that it is still possible for the set of extended attributes to change between `listxattr`
-    /// calls and so should not assume that a subsequent call to `listxattr` with the returned count
-    /// will always succeed.
+    /// calls and so should not assume that a subsequent call to `listxattr` with the returned
+    /// count will always succeed.
     Count(u32),
 }
 
 /// A reply to an `ioctl` method call.
 pub enum IoctlReply {
     /// Indicates that the ioctl should be retried. This is only a valid reply when the `flags`
-    /// field of the ioctl request contains `IoctlFlags::UNRESTRICTED`. The kernel will read in data
-    /// and prepare output buffers as specified in the `input` and `output` fields before re-sending
-    /// the ioctl message.
+    /// field of the ioctl request contains `IoctlFlags::UNRESTRICTED`. The kernel will read in
+    /// data and prepare output buffers as specified in the `input` and `output` fields before
+    /// re-sending the ioctl message.
     Retry {
         /// Data that should be read by the kernel module and sent to the server when the ioctl is
         /// retried.
@@ -1030,7 +1029,6 @@ pub trait FileSystem {
     ///
     /// The lookup count for `Inode`s associated with the returned directory entries is **NOT**
     /// affected by this method.
-    ///
     fn readdir(
         &self,
         ctx: Context,

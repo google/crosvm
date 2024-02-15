@@ -404,8 +404,8 @@ pub extern "C" fn rutabaga_resource_create_3d(
 /// - If `iovecs` is not null, the caller must ensure `(*iovecs).iovecs` points to a valid array of
 ///   iovecs of size `(*iovecs).num_iovecs`.
 /// - Each iovec must point to valid memory starting at `iov_base` with length `iov_len`.
-/// - Each iovec must valid until the resource's backing is explictly detached or the resource is
-///   is unreferenced.
+/// - Each iovec must valid until the resource's backing is explictly detached or the resource is is
+///   unreferenced.
 #[no_mangle]
 pub unsafe extern "C" fn rutabaga_resource_attach_backing(
     ptr: &mut rutabaga,
@@ -482,8 +482,8 @@ pub extern "C" fn rutabaga_resource_transfer_write(
 ///   iovecs of size `(*iovecs).num_iovecs`.
 /// - If `handle` is not null, the caller must ensure it is a valid OS-descriptor.  Ownership is
 ///   transfered to rutabaga.
-/// - Each iovec must valid until the resource's backing is explictly detached or the resource is
-///   is unreferenced.
+/// - Each iovec must valid until the resource's backing is explictly detached or the resource is is
+///   unreferenced.
 #[no_mangle]
 pub unsafe extern "C" fn rutabaga_resource_create_blob(
     ptr: &mut rutabaga,

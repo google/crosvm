@@ -59,17 +59,17 @@ const MAJOR_VERSION: u16 = 1;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, AsBytes, FromZeroes, FromBytes)]
 struct SparseHeader {
-    magic: Le32,          /* SPARSE_HEADER_MAGIC */
-    major_version: Le16,  /* (0x1) - reject images with higher major versions */
-    minor_version: Le16,  /* (0x0) - allow images with higer minor versions */
-    file_hdr_sz: Le16,    /* 28 bytes for first revision of the file format */
-    chunk_hdr_size: Le16, /* 12 bytes for first revision of the file format */
-    blk_sz: Le32,         /* block size in bytes, must be a multiple of 4 (4096) */
-    total_blks: Le32,     /* total blocks in the non-sparse output image */
-    total_chunks: Le32,   /* total chunks in the sparse input image */
-    image_checksum: Le32, /* CRC32 checksum of the original data, counting "don't care" */
-                          /* as 0. Standard 802.3 polynomial, use a Public Domain */
-                          /* table implementation */
+    magic: Le32,          // SPARSE_HEADER_MAGIC
+    major_version: Le16,  // (0x1) - reject images with higher major versions
+    minor_version: Le16,  // (0x0) - allow images with higer minor versions
+    file_hdr_sz: Le16,    // 28 bytes for first revision of the file format
+    chunk_hdr_size: Le16, // 12 bytes for first revision of the file format
+    blk_sz: Le32,         // block size in bytes, must be a multiple of 4 (4096)
+    total_blks: Le32,     // total blocks in the non-sparse output image
+    total_chunks: Le32,   // total chunks in the sparse input image
+    // CRC32 checksum of the original data, counting "don't care" as 0. Standard 802.3 polynomial,
+    // use a Public Domain table implementation
+    image_checksum: Le32,
 }
 
 const CHUNK_TYPE_RAW: u16 = 0xCAC1;

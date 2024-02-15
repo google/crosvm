@@ -557,15 +557,15 @@ pub fn start_slirp(
 
     'slirp: loop {
         // Request the FDs that we should poll from Slirp. Slirp provides them to us by way of a
-        // callback, which is invoked for each FD. This callback requires us to assign each FD an index
-        // which will be used by a subsequent Slirp call to get the poll events for each FD. The data
-        // flow can be thought of as follows:
-        //    1. pollfds_fill creates a map of index -> fd inside Slirp based on the return values from
-        //       the pollfds_fill callback.
+        // callback, which is invoked for each FD. This callback requires us to assign each FD an
+        // index which will be used by a subsequent Slirp call to get the poll events for
+        // each FD. The data flow can be thought of as follows:
+        //    1. pollfds_fill creates a map of index -> fd inside Slirp based on the return values
+        //       from the pollfds_fill callback.
         //    2. crosvm invokes poll on the FDs provided by Slirp.
         //    3. crosvm notifies Slirp via pollfds_poll that polling completed for the provided FDs.
-        //    4. Slirp calls into crosvm via the pollfds_poll callback and asks for the statuses using
-        //       the fd indicies registered in step #1.
+        //    4. Slirp calls into crosvm via the pollfds_poll callback and asks for the statuses
+        //       using the fd indicies registered in step #1.
         let mut poll_fds = Vec::new();
         // We'd like to sleep as long as possible (assuming no actionable notifications arrive).
         let mut timeout_ms: u32 = u32::MAX;
@@ -578,8 +578,8 @@ pub fn start_slirp(
             (poll_fds.len() - 1) as i32
         });
 
-        // There are relatively few concurrent timer_callbacks used by libslirp, so we set the small vector
-        // size low.
+        // There are relatively few concurrent timer_callbacks used by libslirp, so we set the small
+        // vector size low.
         let timer_callbacks = context
             .get_timers()
             .map(|timer| Descriptor(*timer))
@@ -890,7 +890,7 @@ mod tests {
         start_slirp(
             host_pipe,
             event_fd.try_clone().unwrap(),
-            /* disable_access_to_host=*/ false,
+            /* disable_access_to_host= */ false,
             #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
             None,
         )
@@ -907,8 +907,8 @@ mod tests {
         0x02, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x0a, 0x00, 0x02, 0x0f,
     ];
 
-    // TCP SYN from 52:55:0A:00:02:0F to 52:55:0A:00:02:01 (latter MAC should be arbitrary with Slirp)
-    // IP 10.0.2.15(5678) -> 127.0.0.1(19422)
+    // TCP SYN from 52:55:0A:00:02:0F to 52:55:0A:00:02:01 (latter MAC should be arbitrary with
+    // Slirp) IP 10.0.2.15(5678) -> 127.0.0.1(19422)
     // Note: MAC addresses in Slirp are arbitrary
     const VETH_TCP_SYN: [u8; 66] = [
         // VETH header
@@ -951,7 +951,7 @@ mod tests {
             start_slirp(
                 host_pipe,
                 shutdown_receiver,
-                /* disable_access_to_host=*/ false,
+                /* disable_access_to_host= */ false,
                 #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
                 None,
             )

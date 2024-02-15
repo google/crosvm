@@ -453,8 +453,8 @@ pub trait LinuxArch {
     /// # Arguments
     ///
     /// * `components` - Parts to use to build the VM.
-    /// * `vm_evt_wrtube` - Tube used by sub-devices to request that crosvm exit because guest
-    ///     wants to stop/shut down or requested reset.
+    /// * `vm_evt_wrtube` - Tube used by sub-devices to request that crosvm exit because guest wants
+    ///   to stop/shut down or requested reset.
     /// * `system_allocator` - Allocator created by this trait's implementation of
     ///   `get_system_allocator_config`.
     /// * `serial_parameters` - Definitions for how the serial devices should be configured.
@@ -1288,8 +1288,8 @@ where
 /// * `image` - The file containing the image to be loaded.
 /// * `min_guest_addr` - The minimum address of the start of the image.
 /// * `max_guest_addr` - The address to load the last byte of the image.
-/// * `align` - The minimum alignment of the start address of the image in bytes
-///   (must be a power of two).
+/// * `align` - The minimum alignment of the start address of the image in bytes (must be a power of
+///   two).
 ///
 /// The guest address and size in bytes of the loaded image are returned.
 pub fn load_image_high<F>(

@@ -192,9 +192,11 @@ where
     let initrd_image = None;
 
     // alternatively, load a real initrd and kernel from disk
+    // ```
     // let initrd_image = Some(File::open("/mnt/host/source/src/avd/ramdisk.img").expect("failed to open ramdisk"));
     // let mut kernel_image = File::open("/mnt/host/source/src/avd/vmlinux.uncompressed").expect("failed to open kernel");
     // let (params, kernel_end) = X8664arch::load_kernel(&guest_mem, &mut kernel_image).expect("failed to load kernel");
+    // ````
 
     let max_bus = (read_pcie_cfg_mmio().len().unwrap() / 0x100000 - 1) as u8;
     let suspend_evt = Event::new().unwrap();

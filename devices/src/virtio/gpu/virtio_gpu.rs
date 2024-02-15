@@ -548,7 +548,8 @@ impl VirtioGpu {
         &self.display
     }
 
-    /// Gets the list of supported display resolutions as a slice of `(width, height, enabled)` tuples.
+    /// Gets the list of supported display resolutions as a slice of `(width, height, enabled)`
+    /// tuples.
     pub fn display_info(&self) -> Vec<(u32, u32, bool)> {
         (0..VIRTIO_GPU_MAX_SCANOUTS)
             .map(|scanout_id| scanout_id as u32)

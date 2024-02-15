@@ -96,10 +96,10 @@ struct OutEventSnapshot {
 }
 
 /// Snapshot of [Ioapic] state. Some fields were intentionally excluded:
-/// * [Ioapic::resample_events]: these will get re-registered when the VM is
-///   created (e.g. prior to restoring a snapshot).
-/// * [Ioapic::out_events]: this isn't serializable as it contains Events.
-///   Replaced by [IoapicSnapshot::out_event_snapshots].
+/// * [Ioapic::resample_events]: these will get re-registered when the VM is created (e.g. prior to
+///   restoring a snapshot).
+/// * [Ioapic::out_events]: this isn't serializable as it contains Events. Replaced by
+///   [IoapicSnapshot::out_event_snapshots].
 /// * [Ioapic::irq_tube]: will be set up as part of creating the VM.
 ///
 /// See [Ioapic] for descriptions of fields by the same names.
@@ -131,8 +131,8 @@ pub struct Ioapic {
     ioregsel: u8,
     /// ioapicid register. Bits 24 - 27 contain the APIC ID for this device.
     ioapicid: u32,
-    /// Remote IRR for Edge Triggered Real Time Clock interrupts, which allows the CMOS to know when
-    /// one of its interrupts is being coalesced.
+    /// Remote IRR for Edge Triggered Real Time Clock interrupts, which allows the CMOS to know
+    /// when one of its interrupts is being coalesced.
     rtc_remote_irr: bool,
     /// Outgoing irq events that are used to inject MSI interrupts.
     /// Also contains the serializable form used for snapshotting.

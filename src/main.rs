@@ -753,8 +753,8 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
                 // but also indicates whether the guest requested reset or stop.
                 run_vm(cmd, log_config)
             } else if let CrossPlatformCommands::Device(cmd) = command {
-                // On windows, the device command handles its own logging setup, so we can't handle it below
-                // otherwise logging will double init.
+                // On windows, the device command handles its own logging setup, so we can't handle
+                // it below otherwise logging will double init.
                 if cfg!(unix) {
                     syslog::init_with(log_config).context("failed to initialize syslog")?;
                 }

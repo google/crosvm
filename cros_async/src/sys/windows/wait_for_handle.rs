@@ -168,9 +168,10 @@ where
             // Safe because self.descriptor is valid in any state except New or Finished.
             //
             // Note: this method call is critical for supplying the safety guarantee relied upon by
-            // wait_for_handle_waker. Upon return, it ensures that wait_for_handle_waker is not running
-            // and won't be scheduled again, which makes it safe to drop self.inner_for_callback
-            // (wait_for_handle_waker has a non owning pointer to self.inner_for_callback).
+            // wait_for_handle_waker. Upon return, it ensures that wait_for_handle_waker is not
+            // running and won't be scheduled again, which makes it safe to drop
+            // self.inner_for_callback (wait_for_handle_waker has a non owning pointer
+            // to self.inner_for_callback).
             unsafe { unregister_wait(wait_object) }
         }
     }

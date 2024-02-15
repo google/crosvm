@@ -662,8 +662,9 @@ impl VcpuX86_64 for KvmVcpu {
         let mut regs: kvm_regs = Default::default();
         let ret = {
             // SAFETY:
-            // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
-            // correct amount of memory from our pointer, and we verify the return result.
+            // Safe because we know that our file is a VCPU fd, we know the kernel will only read
+            // the correct amount of memory from our pointer, and we verify the return
+            // result.
             unsafe { ioctl_with_mut_ref(self, KVM_GET_REGS(), &mut regs) }
         };
         if ret == 0 {
@@ -677,8 +678,9 @@ impl VcpuX86_64 for KvmVcpu {
         let regs = kvm_regs::from(regs);
         let ret = {
             // SAFETY:
-            // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
-            // correct amount of memory from our pointer, and we verify the return result.
+            // Safe because we know that our file is a VCPU fd, we know the kernel will only read
+            // the correct amount of memory from our pointer, and we verify the return
+            // result.
             unsafe { ioctl_with_ref(self, KVM_SET_REGS(), &regs) }
         };
         if ret == 0 {
@@ -692,8 +694,9 @@ impl VcpuX86_64 for KvmVcpu {
         let mut regs: kvm_sregs = Default::default();
         let ret = {
             // SAFETY:
-            // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
-            // correct amount of memory to our pointer, and we verify the return result.
+            // Safe because we know that our file is a VCPU fd, we know the kernel will only write
+            // the correct amount of memory to our pointer, and we verify the return
+            // result.
             unsafe { ioctl_with_mut_ref(self, KVM_GET_SREGS(), &mut regs) }
         };
         if ret == 0 {
@@ -816,8 +819,9 @@ impl VcpuX86_64 for KvmVcpu {
         let mut vcpu_evts: kvm_vcpu_events = Default::default();
         let ret = {
             // SAFETY:
-            // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
-            // correct amount of memory to our pointer, and we verify the return result.
+            // Safe because we know that our file is a VCPU fd, we know the kernel will only write
+            // the correct amount of memory to our pointer, and we verify the return
+            // result.
             unsafe { ioctl_with_mut_ref(self, KVM_GET_VCPU_EVENTS(), &mut vcpu_evts) }
         };
         if ret == 0 {
@@ -840,8 +844,9 @@ impl VcpuX86_64 for KvmVcpu {
             })?);
         let ret = {
             // SAFETY:
-            // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
-            // correct amount of memory from our pointer, and we verify the return result.
+            // Safe because we know that our file is a VCPU fd, we know the kernel will only read
+            // the correct amount of memory from our pointer, and we verify the return
+            // result.
             unsafe { ioctl_with_ref(self, KVM_SET_VCPU_EVENTS(), &vcpu_events) }
         };
         if ret == 0 {
@@ -1073,7 +1078,8 @@ impl VcpuX86_64 for KvmVcpu {
 }
 
 impl KvmVcpu {
-    /// X86 specific call to get the state of the "Local Advanced Programmable Interrupt Controller".
+    /// X86 specific call to get the state of the "Local Advanced Programmable Interrupt
+    /// Controller".
     ///
     /// See the documentation for KVM_GET_LAPIC.
     pub fn get_lapic(&self) -> Result<kvm_lapic_state> {
@@ -1091,7 +1097,8 @@ impl KvmVcpu {
         Ok(klapic)
     }
 
-    /// X86 specific call to set the state of the "Local Advanced Programmable Interrupt Controller".
+    /// X86 specific call to set the state of the "Local Advanced Programmable Interrupt
+    /// Controller".
     ///
     /// See the documentation for KVM_SET_LAPIC.
     pub fn set_lapic(&self, klapic: &kvm_lapic_state) -> Result<()> {
@@ -1162,8 +1169,9 @@ impl KvmVcpu {
         if ret >= 0 {
             regs.interrupt_bitmap = interrupt_bitmap;
             // SAFETY:
-            // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
-            // correct amount of memory from our pointer, and we verify the return result.
+            // Safe because we know that our file is a VCPU fd, we know the kernel will only read
+            // the correct amount of memory from our pointer, and we verify the return
+            // result.
             let ret = unsafe { ioctl_with_ref(self, KVM_SET_SREGS(), &regs) };
             if ret >= 0 {
                 Ok(())

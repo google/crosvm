@@ -135,7 +135,8 @@ pub struct TestVmSys {
         >,
     >,
     pub(crate) to_guest: Arc<Mutex<PipeConnection>>,
-    pub(crate) process: Option<Child>, // Use `Option` to allow taking the ownership in `Drop::drop()`.
+    pub(crate) process: Option<Child>, /* Use `Option` to allow taking the ownership in
+                                        * `Drop::drop()`. */
 }
 
 impl TestVmSys {
@@ -148,8 +149,7 @@ impl TestVmSys {
     }
 
     // Adds 2 serial devices:
-    // - ttyS0: Console device which prints kernel log / debug output of the
-    //          delegate binary.
+    // - ttyS0: Console device which prints kernel log / debug output of the delegate binary.
     // - ttyS1: Serial device attached to the named pipes.
     fn configure_serial_devices(
         command: &mut Command,

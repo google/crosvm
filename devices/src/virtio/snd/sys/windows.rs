@@ -115,9 +115,10 @@ impl StreamInfo {
                 self.channels as usize,
                 self.format,
                 self.frame_rate as usize,
-                // `buffer_size` in `audio_streams` API indicates the buffer size in bytes that the stream
-                // consumes (or transmits) each time (next_playback/capture_buffer).
-                // `period_bytes` in virtio-snd device (or ALSA) indicates the device transmits (or
+                // `buffer_size` in `audio_streams` API indicates the buffer size in bytes that the
+                // stream consumes (or transmits) each time
+                // (next_playback/capture_buffer). `period_bytes` in virtio-snd
+                // device (or ALSA) indicates the device transmits (or
                 // consumes) for each PCM message.
                 // Therefore, `buffer_size` in `audio_streams` == `period_bytes` in virtio-snd.
                 self.period_bytes / frame_size,

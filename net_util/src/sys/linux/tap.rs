@@ -51,8 +51,8 @@ pub struct Tap {
 
 impl Tap {
     /// # Safety
-    /// 1. descriptor's ownership must be released by the caller. It is now owned by
-    ///    the returned value (`Tap`), or is closed (if an error is returned).
+    /// 1. descriptor's ownership must be released by the caller. It is now owned by the returned
+    ///    value (`Tap`), or is closed (if an error is returned).
     pub unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Result<Tap> {
         let tap_file = File::from_raw_descriptor(descriptor);
 

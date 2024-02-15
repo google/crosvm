@@ -35,7 +35,6 @@
 //!   Ok(())
 //! }
 //! ```
-//!
 // Implementation note:
 // This code lets us take advantage of the vmm_vhost low level implementation of the vhost user
 // protocol. DeviceRequestHandler implements the VhostUserSlaveReqHandler trait from vmm_vhost,

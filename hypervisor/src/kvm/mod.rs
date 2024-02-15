@@ -1241,8 +1241,9 @@ impl KvmVcpu {
         let mut state: kvm_mp_state = unsafe { std::mem::zeroed() };
         let ret = {
             // SAFETY:
-            // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
-            // correct amount of memory to our pointer, and we verify the return result.
+            // Safe because we know that our file is a VCPU fd, we know the kernel will only write
+            // the correct amount of memory to our pointer, and we verify the return
+            // result.
             unsafe { ioctl_with_mut_ref(self, KVM_GET_MP_STATE(), &mut state) }
         };
         if ret < 0 {

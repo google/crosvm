@@ -64,8 +64,8 @@ impl PlatformEvent {
         }
         Ok(PlatformEvent {
             // SAFETY:
-            // This is safe because we checked ret for success and know the kernel gave us an fd that we
-            // own.
+            // This is safe because we checked ret for success and know the kernel gave us an fd
+            // that we own.
             event_handle: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
         })
     }

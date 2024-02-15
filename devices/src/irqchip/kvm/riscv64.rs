@@ -170,8 +170,8 @@ impl AiaDescriptor {
             addr: raw_aplic_addr as u64,
             flags: 0,
         };
-        // Safe because we allocated the struct that's being passed in, and raw_aplic_addr is pointing
-        // to a uniquely owned local, mutable variable.
+        // Safe because we allocated the struct that's being passed in, and raw_aplic_addr is
+        // pointing to a uniquely owned local, mutable variable.
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR(), &kvm_attr) };
         if ret != 0 {
             return errno_result();

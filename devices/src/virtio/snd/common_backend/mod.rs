@@ -727,11 +727,12 @@ async fn notify_reset_signal(reset_signal: &(AsyncRwLock<bool>, Condvar)) {
 
 /// Runs all workers once and exit if any worker exit.
 ///
-/// Returns [`LoopState::Break`] if the worker `f_kill` or `f_resample` exit, or something went wrong
-/// on shutdown process. The caller should not run the worker again and should exit the main loop.
+/// Returns [`LoopState::Break`] if the worker `f_kill` or `f_resample` exit, or something went
+/// wrong on shutdown process. The caller should not run the worker again and should exit the main
+/// loop.
 ///
-/// If this function returns [`LoopState::Continue`], the caller can continue the main loop by resetting
-/// the streams and run the worker again.
+/// If this function returns [`LoopState::Continue`], the caller can continue the main loop by
+/// resetting the streams and run the worker again.
 fn run_worker_once(
     ex: &Executor,
     streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,

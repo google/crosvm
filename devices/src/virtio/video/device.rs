@@ -32,6 +32,7 @@ pub enum Token {
 }
 
 /// A tag for commands being processed asynchronously in the back-end device.
+///
 /// TODO(b/149720783): Remove this enum by using async primitives.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub enum AsyncCmdTag {
@@ -102,11 +103,13 @@ pub enum VideoEvtResponseType {
 
 pub trait Device {
     /// Processes a virtio-video command.
-    /// If the command expects a synchronous response, it returns a response as `VideoCmdResponseType::Sync`.
-    /// Otherwise, it returns a name of the descriptor chain that will be used when a response is prepared.
-    /// Implementations of this method is passed a WaitContext object which can be used to add or remove
-    /// descriptors to wait on. It is expected that only Token::Event items would be added. When a Token::Event
-    /// event arrives, process_event() will be invoked.
+    /// If the command expects a synchronous response, it returns a response as
+    /// `VideoCmdResponseType::Sync`. Otherwise, it returns a name of the descriptor chain that
+    /// will be used when a response is prepared. Implementations of this method is passed a
+    /// WaitContext object which can be used to add or remove descriptors to wait on. It is
+    /// expected that only Token::Event items would be added. When a Token::Event event arrives,
+    /// process_event() will be invoked.
+    ///
     /// TODO(b/149720783): Make this an async function.
     fn process_cmd(
         &mut self,
@@ -119,8 +122,10 @@ pub trait Device {
 
     /// Processes an available `Token::Event` event and returns a list of `VideoEvtResponseType`
     /// responses. It returns None if an invalid event comes.
-    /// For responses to be sent via command queue, the return type is `VideoEvtResponseType::AsyncCmd`.
-    /// For responses to be sent via event queue, the return type is `VideoEvtResponseType::Event`.
+    /// For responses to be sent via command queue, the return type is
+    /// `VideoEvtResponseType::AsyncCmd`. For responses to be sent via event queue, the return
+    /// type is `VideoEvtResponseType::Event`.
+    ///
     /// TODO(b/149720783): Make this an async function.
     fn process_event(
         &mut self,

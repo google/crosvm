@@ -458,7 +458,8 @@ impl PrepareFork for SwapController {
     }
 }
 
-/// Helper to create [SwapDeviceUffdSender] from child processes (e.g. JailWarden for hotplug devices).
+/// Helper to create [SwapDeviceUffdSender] from child processes (e.g. JailWarden for hotplug
+/// devices).
 pub struct SwapDeviceHelper {
     uffd_factory: UffdFactory,
     command_tube: SendTube,

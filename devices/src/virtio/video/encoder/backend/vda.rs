@@ -121,7 +121,8 @@ impl LibvdaEncoder {
         let mut parsed_formats: BTreeMap<Format, ParsedFormat> = BTreeMap::new();
 
         for output_format in output_formats.iter() {
-            // TODO(alexlau): Consider using `max_framerate_numerator` and `max_framerate_denominator`.
+            // TODO(alexlau): Consider using `max_framerate_numerator` and
+            // `max_framerate_denominator`.
             let libvda::encode::OutputProfile {
                 profile: libvda_profile,
                 max_width,

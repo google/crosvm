@@ -116,7 +116,6 @@
 //!         self.0 << 4
 //!     }
 //! }
-//!
 //! ```
 //!
 //! Finally, fields may be of user-defined enum types. The enum must satisfy one of the following

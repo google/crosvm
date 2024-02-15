@@ -262,8 +262,8 @@ pub struct KeyValueDeserializer<'de> {
     /// Whether the '=' sign has been parsed after a key. The absence of '=' is only valid for
     /// boolean fields, in which case the field's value will be `true`.
     has_equal: bool,
-    /// Whether the top structure has been parsed yet or not. The top structure is the only one that
-    /// does not require to be enclosed within braces.
+    /// Whether the top structure has been parsed yet or not. The top structure is the only one
+    /// that does not require to be enclosed within braces.
     top_struct_parsed: bool,
 }
 

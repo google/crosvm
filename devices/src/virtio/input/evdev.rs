@@ -238,8 +238,8 @@ pub fn abs_info<T: AsRawDescriptor>(descriptor: &T) -> BTreeMap<u16, virtio_inpu
 }
 
 /// Grabs an event device (see EVIOCGGRAB ioctl for details). After this function succeeds the given
-/// descriptor has exclusive access to the device, effectively making it unusable for any other process in
-/// the host.
+/// descriptor has exclusive access to the device, effectively making it unusable for any other
+/// process in the host.
 pub fn grab_evdev<T: AsRawDescriptor>(descriptor: &mut T) -> Result<()> {
     let val: u32 = 1;
     let ret = {

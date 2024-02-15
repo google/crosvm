@@ -265,7 +265,7 @@ impl Token {
             OpenThreadToken(
                 thread_handle,
                 TOKEN_ALL_ACCESS,
-                /*OpenAsSelf=*/ TRUE,
+                /* OpenAsSelf= */ TRUE,
                 &mut token,
             ) == 0
         } {

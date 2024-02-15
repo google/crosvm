@@ -611,8 +611,8 @@ impl IrqChip for KvmSplitIrqChip {
             vcpu.interrupt(vector)?;
         }
 
-        // The second interrupt request should be handled immediately, so ask vCPU to exit as soon as
-        // possible.
+        // The second interrupt request should be handled immediately, so ask vCPU to exit as soon
+        // as possible.
         if self.interrupt_requested(vcpu_id) {
             vcpu.set_interrupt_window_requested(true);
         }

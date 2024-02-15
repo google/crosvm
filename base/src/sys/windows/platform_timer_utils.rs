@@ -156,10 +156,12 @@ pub fn set_time_period(res: Duration, begin: bool) -> Result<()> {
     }
 
     let ret = if begin {
-        // SAFETY: Trivially safe. Note that the casts are safe because we know res is within u32's range.
+        // SAFETY: Trivially safe. Note that the casts are safe because we know res is within u32's
+        // range.
         unsafe { timeBeginPeriod(res.as_millis() as u32) }
     } else {
-        // SAFETY: Trivially safe. Note that the casts are safe because we know res is within u32's range.
+        // SAFETY: Trivially safe. Note that the casts are safe because we know res is within u32's
+        // range.
         unsafe { timeEndPeriod(res.as_millis() as u32) }
     };
     if ret != TIMERR_NOERROR {

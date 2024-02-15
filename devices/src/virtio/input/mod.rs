@@ -214,9 +214,9 @@ impl virtio_input_bitmap {
             if byte_pos < ret.len() {
                 ret.bitmap[byte_pos] |= bit_byte;
             } else {
-                // This would only happen if new event codes (or types, or ABS_*, etc) are defined to be
-                // larger than or equal to 1024, in which case a new version of the virtio input
-                // protocol needs to be defined.
+                // This would only happen if new event codes (or types, or ABS_*, etc) are defined
+                // to be larger than or equal to 1024, in which case a new version
+                // of the virtio input protocol needs to be defined.
                 // There is nothing we can do about this error except log it.
                 error!("Attempted to set an out of bounds bit: {}", idx);
             }

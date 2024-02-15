@@ -196,8 +196,8 @@ struct MiniPlugin {
     // The nasm syntax 16-bit assembly code that will assembled and loaded into guest memory.
     assembly_src: &'static str,
     // The C source code that will be included in the mini_plugin_template.c file. This code must
-    // define the forward declarations above the {src} line so that the completed plugin source will
-    // compile.
+    // define the forward declarations above the {src} line so that the completed plugin source
+    // will compile.
     src: &'static str,
 }
 

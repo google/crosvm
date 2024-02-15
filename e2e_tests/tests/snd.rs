@@ -15,8 +15,8 @@ use tempfile::TempDir;
 /// Tests audio playback on virtio-snd with file backend
 ///
 /// 1. Create a temporal directory for the audio file.
-/// 2. Start a VM with a virtiofs device for the temporal directory
-///    and a virtio-snd device with file backend.
+/// 2. Start a VM with a virtiofs device for the temporal directory and a virtio-snd device with
+///    file backend.
 /// 3. Create a raw audio file in the temporal directory with sox.
 /// 4. Do playback with aplay.
 /// 5. Compare the generated audio file and the output from virtio-snd.

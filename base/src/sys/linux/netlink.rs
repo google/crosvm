@@ -366,9 +366,14 @@ fn parse_ctrl_group_name_and_id(
 ///
 /// # Arguments
 ///
-/// * `nl_attr_area`    - Nested attributes area (CTRL_ATTR_MCAST_GROUPS data), where nl_attr's
-///                       corresponding to specific groups are embed
-/// * `group_name`      - String with group_name for which we are looking group_id
+/// * `nl_attr_area`
+///
+///     Nested attributes area (CTRL_ATTR_MCAST_GROUPS data), where nl_attr's corresponding to
+///     specific groups are embed
+///
+/// * `group_name`
+///
+///     String with group_name for which we are looking group_id
 ///
 /// the CTRL_ATTR_MCAST_GROUPS data has nested attributes. Each of nested attribute is per
 /// multicast group attributes, which have another nested attributes: CTRL_ATTR_MCAST_GRP_NAME and
@@ -473,7 +478,6 @@ impl NetlinkGenericRead {
     ///      ...
     ///     }
     ///   }
-    ///
     pub fn get_multicast_group_id(&self, group_name: String) -> Option<u32> {
         for netlink_msg in self.iter() {
             debug_pr!(

@@ -21,8 +21,8 @@
 //! * Derive implementations of AsBytes and FromBytes for each struct as needed.
 //! * Added GET_PARAMS_EXT and SET_PARAMS_EXT to allow querying and changing the resource type
 //!   dynamically.
-//! * Moved some definitions such as virtio_video_config to device_constants to make them visible
-//!   to vhost-user modules, and also pub-use them.
+//! * Moved some definitions such as virtio_video_config to device_constants to make them visible to
+//!   vhost-user modules, and also pub-use them.
 
 #![allow(dead_code, non_snake_case, non_camel_case_types)]
 

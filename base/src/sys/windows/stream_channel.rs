@@ -219,8 +219,8 @@ impl StreamChannel {
             // the notifier though, then we have to be sure, so we'll proceed to the next section.
             let byte_count = self.get_readable_byte_count()?;
             if byte_count > 0 {
-                // It's always safe to set the read notifier here because we know there is data in the
-                // pipe, and no one else could read it out from under us.
+                // It's always safe to set the read notifier here because we know there is data in
+                // the pipe, and no one else could read it out from under us.
                 self.read_notify.signal().map_err(|e| {
                     io::Error::new(
                         io::ErrorKind::Other,

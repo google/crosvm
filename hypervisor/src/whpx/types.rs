@@ -592,19 +592,16 @@ impl From<&WhpxDebugRegs> for DebugRegs {
 /// Registers that store pending interrupts and interrupt state.
 ///
 /// There are four critical registers:
-/// * WHvRegisterPendingInterruption (u64; HTLFS page 55): contains
-///   interrupts which are pending, but not yet delivered.
-/// * WHvRegisterInterruptState (u64; HTLFS page 55): contains the
-///   interrupt state for the VCPU (e.g. masking nmis, etc).
-/// * WHvX64RegisterDeliverabilityNotifications (u64; WHPX docs only):
-///   allows us to request a VCPU exit once injection of interrupts is
-///   possible.
-/// * WHvRegisterInternalActivityState (u64; WHPX docs only): this register
-///   is unspecified except for its existence, so we consider it to be
-///   opaque. From experimentation, we believe it contains some kind of
-///   state required by SMP guests, because snapshotting/restoring without
-///   it causes all APs to freeze (the BSP does exit periodically, but also
-///   seems to be very unhappy).
+/// * WHvRegisterPendingInterruption (u64; HTLFS page 55): contains interrupts which are pending,
+///   but not yet delivered.
+/// * WHvRegisterInterruptState (u64; HTLFS page 55): contains the interrupt state for the VCPU
+///   (e.g. masking nmis, etc).
+/// * WHvX64RegisterDeliverabilityNotifications (u64; WHPX docs only): allows us to request a VCPU
+///   exit once injection of interrupts is possible.
+/// * WHvRegisterInternalActivityState (u64; WHPX docs only): this register is unspecified except
+///   for its existence, so we consider it to be opaque. From experimentation, we believe it
+///   contains some kind of state required by SMP guests, because snapshotting/restoring without it
+///   causes all APs to freeze (the BSP does exit periodically, but also seems to be very unhappy).
 #[derive(Default)]
 pub(super) struct WhpxInterruptRegs {
     register_values: [WHV_REGISTER_VALUE; 4],

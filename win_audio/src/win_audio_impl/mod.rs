@@ -91,7 +91,8 @@ const AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY: u32 = 0x08000000;
 
 thread_local!(static THREAD_ONCE_INIT: Once = Once::new());
 
-// Used to differentiate between S_FALSE and S_OK. This means `CoInitializeEx` did not get called. Mainly used for testing.
+// Used to differentiate between S_FALSE and S_OK. This means `CoInitializeEx` did not get called.
+// Mainly used for testing.
 const S_SKIPPED_COINIT: i32 = 2;
 
 const ACTIVATE_AUDIO_EVENT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -113,8 +114,9 @@ impl WinAudio {
             once.call_once(|| {
                 // Safe because all variables passed into `CoInitializeEx` are hardcoded
                 unsafe {
-                    // Initializes the COM library for use by the calling thread. Needed so that `CoCreateInstance`
-                    // can be called to create a device enumerator object.
+                    // Initializes the COM library for use by the calling thread. Needed so that
+                    // `CoCreateInstance` can be called to create a device
+                    // enumerator object.
                     //
                     // TODO(b/217413370): `CoUninitialize` is never called at any point in KiwiVm.
                     // It might make sense for all VCPU threads to call `CoInitializeEx` when
@@ -370,8 +372,8 @@ pub(crate) enum RendererStream {
     Device(
         (
             DeviceRenderer,
-            // Buffer that contains a sample rate converter and also helps with managing differing periods
-            // between the guest and the host.
+            // Buffer that contains a sample rate converter and also helps with managing differing
+            // periods between the guest and the host.
             PlaybackResamplerBuffer,
         ),
     ),
@@ -527,7 +529,8 @@ impl DeviceRendererWrapper {
 
     fn get_intermediate_async_buffer(&mut self) -> Result<AsyncPlaybackBuffer, RenderError> {
         let guest_frame_size = self.num_channels * self.guest_bit_depth.sample_bytes();
-        // Safe since `intermediate_buffer` doesn't get mutated by `Self` after this slice is created.
+        // Safe since `intermediate_buffer` doesn't get mutated by `Self` after this slice is
+        // created.
         let slice = unsafe {
             std::slice::from_raw_parts_mut(
                 self.intermediate_buffer.as_mut_ptr(),
@@ -540,8 +543,8 @@ impl DeviceRendererWrapper {
 
 unsafe impl Send for DeviceRendererWrapper {}
 
-// Implementation of buffer generator object. Used to get a buffer from WASAPI for crosvm to copy audio
-// bytes from the guest memory into.
+// Implementation of buffer generator object. Used to get a buffer from WASAPI for crosvm to copy
+// audio bytes from the guest memory into.
 pub(crate) struct DeviceRenderer {
     audio_render_client: ComPtr<IAudioRenderClient>,
     audio_client: ComPtr<IAudioClient>,
@@ -803,7 +806,8 @@ impl DeviceRenderer {
 }
 
 impl BufferCommit for DeviceRenderer {
-    // Called after buffer from WASAPI is filled. This will allow the audio bytes to be played as sound.
+    // Called after buffer from WASAPI is filled. This will allow the audio bytes to be played as
+    // sound.
     fn commit(&mut self, nframes: usize) {
         // Safe because `audio_render_client` is initialized and parameters passed
         // into `ReleaseBuffer()` are valid
@@ -1362,8 +1366,8 @@ fn create_audio_client(dataflow: EDataFlow) -> Result<ComPtr<IAudioClient>, WinA
         unsafe { ComPtr::from_raw(device_enumerator as *mut IMMDeviceEnumerator) };
 
     let mut device: *mut IMMDevice = null_mut();
-    // Safe because `device_enumerator` is guaranteed to be initialized otherwise this method would've
-    // exited
+    // Safe because `device_enumerator` is guaranteed to be initialized otherwise this method
+    // would've exited
     let hr = unsafe { device_enumerator.GetDefaultAudioEndpoint(dataflow, eConsole, &mut device) };
     check_hresult!(
         hr,
@@ -1414,11 +1418,10 @@ fn create_audio_client(dataflow: EDataFlow) -> Result<ComPtr<IAudioClient>, WinA
 //
 // This function will pretty much works as follows:
 // 1. Create the parameters to pass into `ActivateAudioInterfaceAsync`
-// 2. Call `ActivateAudioInterfaceAsync` which will run asynchrnously and will call
-//    a callback when completed.
+// 2. Call `ActivateAudioInterfaceAsync` which will run asynchrnously and will call a callback when
+//    completed.
 // 3. Wait on an event that will be notified when that callback is triggered.
-// 4. Return an IActivateAudioInterfaceAsyncOperation which can be used to retrived the
-//    AudioClient.
+// 4. Return an IActivateAudioInterfaceAsyncOperation which can be used to retrived the AudioClient.
 fn enable_auto_stream_routing_and_wait(
     is_render: bool,
 ) -> Result<ComPtr<IActivateAudioInterfaceAsyncOperation>, WinAudioError> {
@@ -1613,7 +1616,8 @@ fn create_and_set_audio_client_event(
 fn get_device_period_in_frames(audio_client: &IAudioClient, format: &WaveAudioFormat) -> usize {
     let mut shared_default_size_in_100nanoseconds: i64 = 0;
     let mut exclusive_min: i64 = 0;
-    // Safe because `GetDevicePeriod` are taking in intialized valid i64's on the stack created above.
+    // Safe because `GetDevicePeriod` are taking in intialized valid i64's on the stack created
+    // above.
     unsafe {
         audio_client.GetDevicePeriod(
             &mut shared_default_size_in_100nanoseconds,

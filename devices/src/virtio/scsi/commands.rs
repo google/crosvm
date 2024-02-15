@@ -374,7 +374,8 @@ impl Inquiry {
             0xb2 => {
                 // Page length
                 outbuf[3] = 4;
-                // skip outbuf[4]: crosvm does not support logical block provisioning threshold sets.
+                // skip outbuf[4]: crosvm does not support logical block provisioning threshold
+                // sets.
                 const UNMAP: u8 = 1 << 7;
                 const WRITE_SAME_16: u8 = 1 << 6;
                 const WRITE_SAME_10: u8 = 1 << 5;

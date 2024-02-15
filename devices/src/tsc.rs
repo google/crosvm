@@ -118,8 +118,8 @@ fn tsc_sync_mitigations_inner(
         let host_tsc_now = rdtsc();
 
         for i in 0..num_vcpus {
-            // This handles the case where num_vcpus > num_cores, even though we try to avoid that in
-            // practice.
+            // This handles the case where num_vcpus > num_cores, even though we try to avoid that
+            // in practice.
             let pinned_core = i % num_cores;
 
             mitigations.affinities[i] = Some(vec![pinned_core]);

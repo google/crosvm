@@ -72,9 +72,9 @@ pub struct WhpxVm {
     /// A min heap of MemSlot numbers that were used and then removed and can now be re-used
     mem_slot_gaps: Arc<Mutex<BinaryHeap<Reverse<MemSlot>>>>,
     // WHPX's implementation of ioevents makes several assumptions about how crosvm uses ioevents:
-    //   1. All ioevents are registered during device setup, and thus can be cloned when the vm
-    //      is cloned instead of locked in an Arc<Mutex<>>. This will make handling ioevents in
-    //      each vcpu thread easier because no locks will need to be acquired.
+    //   1. All ioevents are registered during device setup, and thus can be cloned when the vm is
+    //      cloned instead of locked in an Arc<Mutex<>>. This will make handling ioevents in each
+    //      vcpu thread easier because no locks will need to be acquired.
     //   2. All ioevents use Datamatch::AnyLength. We don't bother checking the datamatch, which
     //      will make this faster.
     //   3. We only ever register one eventfd to each address. This simplifies our data structure.
@@ -398,7 +398,7 @@ impl WhpxVm {
         // ReclaimVirtualMemory. The call will fail if:
         // - If the range is not currently "offered"
         // - The range is outside of current guest mem (GuestMemory will fail to convert the
-        //    address)
+        //   address)
         // In short, security is guaranteed by ensuring the guest can never reclaim ranges it
         // hadn't previously forfeited (and even then, the contents will be zeroed).
         //
@@ -764,19 +764,22 @@ impl VmX86_64 for WhpxVm {
     }
 
     /// Sets the address of the three-page region in the VM's address space.
-    /// This function is only necessary for unrestricted_guest_mode=0, which we do not support for WHPX.
+    /// This function is only necessary for unrestricted_guest_mode=0, which we do not support for
+    /// WHPX.
     fn set_tss_addr(&self, _addr: GuestAddress) -> Result<()> {
         Ok(())
     }
 
     /// Sets the address of a one-page region in the VM's address space.
-    /// This function is only necessary for unrestricted_guest_mode=0, which we do not support for WHPX.
+    /// This function is only necessary for unrestricted_guest_mode=0, which we do not support for
+    /// WHPX.
     fn set_identity_map_addr(&self, _addr: GuestAddress) -> Result<()> {
         Ok(())
     }
 }
 
-// NOTE: WHPX Tests need to be run serially as otherwise it barfs unless we map new regions of guest memory.
+// NOTE: WHPX Tests need to be run serially as otherwise it barfs unless we map new regions of guest
+// memory.
 #[cfg(test)]
 mod tests {
     use std::thread;

@@ -231,7 +231,8 @@ fn create_vu_multi_port_device(
             let port = x
                 .create_serial_device::<ConsolePort>(
                     ProtectionType::Unprotected,
-                    // We need to pass an event as per Serial Device API but we don't really use it anyway.
+                    // We need to pass an event as per Serial Device API but we don't really use it
+                    // anyway.
                     &Event::new()?,
                     keep_rds,
                 )

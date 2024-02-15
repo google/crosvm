@@ -83,8 +83,8 @@ pub(in crate::sys) fn sockaddr_un<P: AsRef<Path>>(
 
     // Check if the input path is valid. Since
     // * The pathname in sun_path should be null-terminated.
-    // * The length of the pathname, including the terminating null byte,
-    //   should not exceed the size of sun_path.
+    // * The length of the pathname, including the terminating null byte, should not exceed the size
+    //   of sun_path.
     //
     // and our input is a `Path`, we only need to check
     // * If the string size of `Path` should less than sizeof(sun_path)

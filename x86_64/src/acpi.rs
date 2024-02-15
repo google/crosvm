@@ -523,20 +523,16 @@ fn sync_acpi_id_from_cpuid(
 ///
 /// * `guest_mem` - The guest memory where the tables will be stored.
 /// * `num_cpus` - Used to construct the MADT.
-/// * `sci_irq` - Used to fill the FACP SCI_INTERRUPT field, which
-///               is going to be used by the ACPI drivers to register
-///               sci handler.
+/// * `sci_irq` - Used to fill the FACP SCI_INTERRUPT field, which is going to be used by the ACPI
+///   drivers to register sci handler.
 /// * `acpi_dev_resource` - resouces needed by the ACPI devices for creating tables.
-/// * `host_cpus` - The CPU affinity per CPU used to get corresponding CPUs' apic
-///                 id and set these apic id in MADT if `--host-cpu-topology`
-///                 option is set.
+/// * `host_cpus` - The CPU affinity per CPU used to get corresponding CPUs' apic id and set these
+///   apic id in MADT if `--host-cpu-topology` option is set.
 /// * `apic_ids` - The apic id for vCPU will be sent to KVM by KVM_CREATE_VCPU ioctl.
-/// * `pci_rqs` - PCI device to IRQ number assignments as returned by
-///               `arch::generate_pci_root()` (device address, IRQ number, and PCI
-///               interrupt pin assignment).
+/// * `pci_rqs` - PCI device to IRQ number assignments as returned by `arch::generate_pci_root()`
+///   (device address, IRQ number, and PCI interrupt pin assignment).
 /// * `pcie_cfg_mmio` - Base address for the pcie enhanced configuration access mechanism
-/// *  `max_bus` - Max bus number in MCFG table
-///
+/// * `max_bus` - Max bus number in MCFG table
 
 pub fn create_acpi_tables(
     guest_mem: &GuestMemory,

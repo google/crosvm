@@ -161,7 +161,8 @@ fn exit_to_index(exit: &base::Result<VcpuExit>) -> usize {
     }
 }
 
-/// Give human readable names for each exit type that we've mapped to an exit index in exit_to_index.
+/// Give human readable names for each exit type that we've mapped to an exit index in
+/// exit_to_index.
 fn exit_index_to_str(exit: usize) -> String {
     (match exit {
         0 => "Io",

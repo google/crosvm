@@ -757,8 +757,8 @@ impl VfioGroup {
 
         let container_raw_descriptor = container.as_raw_descriptor();
         // SAFETY:
-        // Safe as we are the owner of group_file and container_raw_descriptor which are valid value,
-        // and we verify the ret value
+        // Safe as we are the owner of group_file and container_raw_descriptor which are valid
+        // value, and we verify the ret value
         ret = unsafe {
             ioctl_with_ref(
                 &group_file,
@@ -1355,10 +1355,10 @@ impl VfioDevice {
     }
 
     /// Enable vfio device's irq and associate Irqfd Event with device.
-    /// When MSIx is enabled, multi vectors will be supported, and vectors starting from subindex to subindex +
-    /// descriptors length will be assigned with irqfd in the descriptors array.
-    /// when index = VFIO_PCI_REQ_IRQ_INDEX, kernel vfio will trigger this event when physical device
-    /// is removed.
+    /// When MSIx is enabled, multi vectors will be supported, and vectors starting from subindex to
+    /// subindex + descriptors length will be assigned with irqfd in the descriptors array.
+    /// when index = VFIO_PCI_REQ_IRQ_INDEX, kernel vfio will trigger this event when physical
+    /// device is removed.
     /// If descriptor is None, -1 is assigned to the irq. A value of -1 is used to either de-assign
     /// interrupts if already assigned or skip un-assigned interrupts.
     pub fn irq_enable(

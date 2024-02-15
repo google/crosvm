@@ -55,8 +55,8 @@ struct InputBuffer {
     mapping: MemoryMappingArena,
     /// Resource ID that we will signal using `NotifyEndOfBitstreamBuffer` upon destruction.
     resource_id: u32,
-    /// Pointer to the event queue to send the `NotifyEndOfBitstreamBuffer` event to. The event will
-    /// not be sent if the pointer becomes invalid.
+    /// Pointer to the event queue to send the `NotifyEndOfBitstreamBuffer` event to. The event
+    /// will not be sent if the pointer becomes invalid.
     event_queue: Weak<SyncEventQueue<DecoderEvent>>,
 }
 

@@ -159,8 +159,9 @@ impl<F: AsRawDescriptor> PollSource<F> {
         loop {
             let res = if let Some(offset) = file_offset {
                 // SAFETY:
-                // Safe because we trust the kernel not to write path the length given and the length is
-                // guaranteed to be valid from the pointer by io_slice_mut.
+                // Safe because we trust the kernel not to write path the length given and the
+                // length is guaranteed to be valid from the pointer by
+                // io_slice_mut.
                 unsafe {
                     libc::preadv64(
                         self.registered_source.duped_fd.as_raw_fd(),
@@ -171,8 +172,9 @@ impl<F: AsRawDescriptor> PollSource<F> {
                 }
             } else {
                 // SAFETY:
-                // Safe because we trust the kernel not to write path the length given and the length is
-                // guaranteed to be valid from the pointer by io_slice_mut.
+                // Safe because we trust the kernel not to write path the length given and the
+                // length is guaranteed to be valid from the pointer by
+                // io_slice_mut.
                 unsafe {
                     libc::readv(
                         self.registered_source.duped_fd.as_raw_fd(),
@@ -272,8 +274,9 @@ impl<F: AsRawDescriptor> PollSource<F> {
         loop {
             let res = if let Some(offset) = file_offset {
                 // SAFETY:
-                // Safe because we trust the kernel not to write path the length given and the length is
-                // guaranteed to be valid from the pointer by io_slice_mut.
+                // Safe because we trust the kernel not to write path the length given and the
+                // length is guaranteed to be valid from the pointer by
+                // io_slice_mut.
                 unsafe {
                     libc::pwritev64(
                         self.registered_source.duped_fd.as_raw_fd(),
@@ -284,8 +287,9 @@ impl<F: AsRawDescriptor> PollSource<F> {
                 }
             } else {
                 // SAFETY:
-                // Safe because we trust the kernel not to write path the length given and the length is
-                // guaranteed to be valid from the pointer by io_slice_mut.
+                // Safe because we trust the kernel not to write path the length given and the
+                // length is guaranteed to be valid from the pointer by
+                // io_slice_mut.
                 unsafe {
                     libc::writev(
                         self.registered_source.duped_fd.as_raw_fd(),

@@ -112,9 +112,10 @@ const IWIN_AUDIO_COMPLETION_HANDLER_VTBL: &IActivateAudioInterfaceCompletionHand
     &IActivateAudioInterfaceCompletionHandlerVtbl {
             parent: IUnknownVtbl {
                 QueryInterface: {
-                    /// Safe because if `this` is not implemented (fails the RIID check) this function
-                    /// will just return. If it valid, it should be able to safely increment the ref
-                    /// counter and set the pointer `ppv_object`.
+                    /// Safe because if `this` is not implemented (fails the RIID check) this
+                    /// function will just return. If it valid, it should be
+                    /// able to safely increment the ref counter and set the
+                    /// pointer `ppv_object`.
                     unsafe extern "system" fn query_interface(
                         this: *mut IUnknown,
                         riid: REFIID,
@@ -162,8 +163,8 @@ const IWIN_AUDIO_COMPLETION_HANDLER_VTBL: &IActivateAudioInterfaceCompletionHand
                     /// if `release` is called more than `add_ref`.
                     ///
                     /// This is safe because `this` is
-                    /// originally a `WinAudioActivateAudioInterfaceCompletionHandler and isn't called
-                    /// more than `add_ref`.
+                    /// originally a `WinAudioActivateAudioInterfaceCompletionHandler and isn't
+                    /// called more than `add_ref`.
                     unsafe extern "system" fn release(this: *mut IUnknown) -> ULONG {
                         info!("Releasing ref in IActivateAudioInterfaceCompletionHandler.");
                         // Decrementing will free the `this` pointer if it's ref_count becomes 0.

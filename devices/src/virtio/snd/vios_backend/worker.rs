@@ -252,7 +252,8 @@ impl Worker {
                                 } else {
                                     (
                                         VIRTIO_SND_S_OK,
-                                        // Safe to unwrap because we just ensured all the ids are valid
+                                        // Safe to unwrap because we just ensured all the ids are
+                                        // valid
                                         (start_id..end_id)
                                             .map(|id| {
                                                 self.vios_client.lock().jack_info(id).unwrap()
@@ -319,7 +320,8 @@ impl Worker {
                                 } else {
                                     (
                                         VIRTIO_SND_S_OK,
-                                        // Safe to unwrap because we just ensured all the ids are valid
+                                        // Safe to unwrap because we just ensured all the ids are
+                                        // valid
                                         (start_id..end_id)
                                             .map(|id| {
                                                 self.vios_client.lock().chmap_info(id).unwrap()
@@ -348,7 +350,8 @@ impl Worker {
                                 } else {
                                     (
                                         VIRTIO_SND_S_OK,
-                                        // Safe to unwrap because we just ensured all the ids are valid
+                                        // Safe to unwrap because we just ensured all the ids are
+                                        // valid
                                         (start_id..end_id)
                                             .map(|id| {
                                                 self.vios_client.lock().stream_info(id).unwrap()

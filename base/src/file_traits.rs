@@ -172,7 +172,8 @@ pub trait FileReadWriteAtVolatile {
     /// method must behave as a single call to `read_at_volatile` with the buffers concatenated
     /// would. The default implementation calls `read_at_volatile` with either the first nonempty
     /// buffer provided, or returns `Ok(0)` if none exists.
-    /// On Windows file pointer will update with the read, but on Linux the file pointer will not change.
+    /// On Windows file pointer will update with the read, but on Linux the file pointer will not
+    /// change.
     fn read_vectored_at_volatile(&mut self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
         if let Some(&slice) = bufs.first() {
             self.read_at_volatile(slice, offset)
@@ -182,8 +183,8 @@ pub trait FileReadWriteAtVolatile {
     }
 
     /// Reads bytes from this file at `offset` into the given slice until all bytes in the slice are
-    /// read, or an error is returned. On Windows file pointer will update with the read, but on Linux the
-    /// file pointer will not change.
+    /// read, or an error is returned. On Windows file pointer will update with the read, but on
+    /// Linux the file pointer will not change.
     fn read_exact_at_volatile(&mut self, mut slice: VolatileSlice, mut offset: u64) -> Result<()> {
         while slice.size() > 0 {
             match self.read_at_volatile(slice, offset) {
@@ -209,7 +210,8 @@ pub trait FileReadWriteAtVolatile {
     /// consumed. This method must behave as a call to `write_at_volatile` with the buffers
     /// concatenated would. The default implementation calls `write_at_volatile` with either the
     /// first nonempty buffer provided, or returns `Ok(0)` if none exists.
-    /// On Windows file pointer will update with the write, but on Linux the file pointer will not change.
+    /// On Windows file pointer will update with the write, but on Linux the file pointer will not
+    /// change.
     fn write_vectored_at_volatile(&mut self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
         if let Some(&slice) = bufs.first() {
             self.write_at_volatile(slice, offset)

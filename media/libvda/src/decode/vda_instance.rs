@@ -82,13 +82,15 @@ impl VdaInstance {
         // Safe because `vda_cap_ptr` is not NULL.
         let vda_cap = unsafe { *vda_cap_ptr };
 
-        // Safe because `input_formats` is valid for |`num_input_formats`| elements if both are valid.
+        // Safe because `input_formats` is valid for |`num_input_formats`| elements if both are
+        // valid.
         let input_formats = unsafe {
             InputFormat::from_raw_parts(vda_cap.input_formats, vda_cap.num_input_formats)?
         };
 
         // Output formats
-        // Safe because `output_formats` is valid for |`num_output_formats`| elements if both are valid.
+        // Safe because `output_formats` is valid for |`num_output_formats`| elements if both are
+        // valid.
         let output_formats = unsafe {
             PixelFormat::from_raw_parts(vda_cap.output_formats, vda_cap.num_output_formats)?
         };

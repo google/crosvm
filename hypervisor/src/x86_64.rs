@@ -300,13 +300,12 @@ pub(crate) fn get_tsc_offset_from_msr(vcpu: &impl VcpuX86_64) -> Result<u64> {
 ///
 /// Note: TSC_OFFSET, host TSC, guest TSC, and TSC MSR are all different
 /// concepts.
-/// * When a guest executes rdtsc, the value (guest TSC) returned is
-///   host_tsc * TSC_MULTIPLIER + TSC_OFFSET + TSC_ADJUST.
-/// * The TSC MSR is a special MSR that when written to by the host, will cause
-///   TSC_OFFSET to be set accordingly by the hypervisor.
-/// * When the guest *writes* to TSC MSR, it actually changes the TSC_ADJUST MSR
-///   *for the guest*. Generally this is only happens if the guest is trying to
-///   re-zero or synchronize TSCs.
+/// * When a guest executes rdtsc, the value (guest TSC) returned is host_tsc * TSC_MULTIPLIER +
+///   TSC_OFFSET + TSC_ADJUST.
+/// * The TSC MSR is a special MSR that when written to by the host, will cause TSC_OFFSET to be set
+///   accordingly by the hypervisor.
+/// * When the guest *writes* to TSC MSR, it actually changes the TSC_ADJUST MSR *for the guest*.
+///   Generally this is only happens if the guest is trying to re-zero or synchronize TSCs.
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 pub(crate) fn set_tsc_offset_via_msr(vcpu: &impl VcpuX86_64, offset: u64) -> Result<()> {
     // SAFETY: _rdtsc takes no arguments.
@@ -607,8 +606,8 @@ pub struct PicState {
     /// initialization. use_4_byte_icw is true if 4 bytes of ICW are needed.
     pub use_4_byte_icw: bool,
     /// "Edge/Level Control Registers", for edge trigger selection.
-    /// When a particular bit is set, the corresponding IRQ is in level-triggered mode. Otherwise it
-    /// is in edge-triggered mode.
+    /// When a particular bit is set, the corresponding IRQ is in level-triggered mode. Otherwise
+    /// it is in edge-triggered mode.
     pub elcr: u8,
     pub elcr_mask: u8,
 }
@@ -1025,7 +1024,8 @@ pub enum CpuHybridType {
 pub struct Xsave {
     data: Vec<u32>,
 
-    // Actual length in bytes. May be smaller than data if a non-u32 multiple of bytes is requested.
+    // Actual length in bytes. May be smaller than data if a non-u32 multiple of bytes is
+    // requested.
     len: usize,
 }
 

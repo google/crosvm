@@ -74,7 +74,8 @@ pub trait VhostUserDevice {
         ex: &Executor,
     ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>>;
 
-    /// The preferred ExecutorKind of an Executor to accept by [`VhostUserDevice::into_req_handler()`].
+    /// The preferred ExecutorKind of an Executor to accept by
+    /// [`VhostUserDevice::into_req_handler()`].
     fn executor_kind(&self) -> Option<ExecutorKind> {
         None
     }

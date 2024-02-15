@@ -411,7 +411,8 @@ impl State {
 
             let vfio_map_result = match dmabuf_map {
                 // SAFETY:
-                // Safe because [dmabuf_map, dmabuf_map + size) refers to an external mmap'ed region.
+                // Safe because [dmabuf_map, dmabuf_map + size) refers to an external mmap'ed
+                // region.
                 Some(dmabuf_map) => unsafe {
                     mapper
                         .1

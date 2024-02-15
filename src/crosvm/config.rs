@@ -1359,7 +1359,8 @@ mod tests {
 
     #[test]
     fn parse_cpu_set_repeated() {
-        // For now, allow duplicates - they will be handled gracefully by the vec to cpu_set_t conversion.
+        // For now, allow duplicates - they will be handled gracefully by the vec to cpu_set_t
+        // conversion.
         assert_eq!(
             CpuSet::from_str("1,1,1").expect("parse failed"),
             CpuSet::new([1, 1, 1])

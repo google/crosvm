@@ -452,8 +452,8 @@ impl PvClockWorker {
                 (
                     Self::get_suspended_duration(&suspend_time),
                     // SAFETY:
-                    // Safe because _rdtsc takes no arguments, and we trust _rdtsc to not modify any
-                    // other memory.
+                    // Safe because _rdtsc takes no arguments, and we trust _rdtsc to not modify
+                    // any other memory.
                     unsafe { _rdtsc() } - suspend_time.tsc_value,
                 )
             } else {

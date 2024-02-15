@@ -398,9 +398,9 @@ struct VsockConnection {
     prev_recv_cnt: usize,
 
     // Total auxiliary buffer space available to receive packets from the driver, not including
-    // the virtqueue itself. For us, this is tx buffer on the named pipe into which we drain packets
-    // for the connection. Note that if the named pipe has a grow on demand TX buffer, we use
-    // DEFAULT_BUF_ALLOC instead.
+    // the virtqueue itself. For us, this is tx buffer on the named pipe into which we drain
+    // packets for the connection. Note that if the named pipe has a grow on demand TX buffer,
+    // we use DEFAULT_BUF_ALLOC instead.
     buf_alloc: usize,
 
     // Peer (driver) total free-running count of received bytes.
@@ -1155,7 +1155,8 @@ impl Worker {
                         fwd_cnt: 0.into(),
                         ..Default::default()
                     };
-                    // Safe because virtio_vsock_hdr is a simple data struct and converts cleanly to bytes
+                    // Safe because virtio_vsock_hdr is a simple data struct and converts cleanly to
+                    // bytes
                     self.write_bytes_to_queue(
                         &mut *send_queue.lock().await,
                         rx_queue_evt,

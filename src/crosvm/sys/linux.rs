@@ -969,8 +969,8 @@ fn create_file_backed_mappings(
         ) {
             // OutOfSpace just means that this mapping is not in the MMIO regions at all, so don't
             // consider it an error.
-            // TODO(b/222769529): Reserve this region in a global memory address space allocator once
-            // we have that so nothing else can accidentally overlap with it.
+            // TODO(b/222769529): Reserve this region in a global memory address space allocator
+            // once we have that so nothing else can accidentally overlap with it.
             Ok(()) | Err(resources::Error::OutOfSpace) => {}
             e => e.context("failed to allocate guest address for file-backed mapping")?,
         }

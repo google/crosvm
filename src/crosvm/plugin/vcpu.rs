@@ -607,7 +607,8 @@ impl PluginVcpu {
                     None => Err(SysError::new(EPROTO)),
                 }
             } else if wait_reason.is_some() {
-                // Any request other than getting the wait_reason while there is one pending is invalid.
+                // Any request other than getting the wait_reason while there is one pending is
+                // invalid.
                 self.wait_reason.set(wait_reason);
                 Err(SysError::new(EPROTO))
             } else if request.has_resume() {

@@ -281,13 +281,13 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     let gpu = Rc::new(RefCell::new(Gpu::new(
         config.exit_evt_wrtube,
         config.gpu_control_device_tube,
-        /*resource_bridges=*/ Vec::new(),
+        /* resource_bridges= */ Vec::new(),
         display_backends,
         &gpu_params,
-        /*render_server_descriptor*/ None,
+        /* render_server_descriptor */ None,
         input_event_backend_config.event_devices,
         base_features,
-        /*channels=*/ &Default::default(),
+        /* channels= */ &Default::default(),
         wndproc_thread,
     )));
 

@@ -121,7 +121,8 @@ impl CrossDomainState {
                     fds.into_iter()
                         .map(|fd| {
                             // SAFETY:
-                            // Safe since the descriptors from recv_with_fds(..) are owned by us and valid.
+                            // Safe since the descriptors from recv_with_fds(..) are owned by us and
+                            // valid.
                             unsafe { File::from_raw_descriptor(fd) }
                         })
                         .collect()
@@ -224,14 +225,15 @@ impl CrossDomainContext {
 
                 // For Wayland read pipes, the guest guesses which identifier the host will use to
                 // avoid waiting for the host to generate one.  Validate guess here.  This works
-                // because of the way Sommelier copy + paste works.  If the Sommelier sequence of events
-                // changes, it's always possible to wait for the host response.
+                // because of the way Sommelier copy + paste works.  If the Sommelier sequence of
+                // events changes, it's always possible to wait for the host
+                // response.
                 if read_pipe_id != *identifier {
                     return Err(RutabagaError::InvalidCrossDomainItemId);
                 }
 
-                // The write pipe needs to be dropped after the send_msg(..) call is complete, so the read pipe
-                // can receive subsequent hang-up events.
+                // The write pipe needs to be dropped after the send_msg(..) call is complete, so
+                // the read pipe can receive subsequent hang-up events.
                 write_pipe_opt = Some(write_pipe);
                 read_pipe_id_opt = Some(read_pipe_id);
             } else {

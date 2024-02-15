@@ -105,9 +105,9 @@ pub struct FfmpegEncoderSession {
     output_queue: VecDeque<(OutputBufferId, MemoryMappingArena)>,
     /// `true` if a flush is pending. While a pending flush exist, input buffers are temporarily
     /// held on and not sent to the encoder. An actual flush call will be issued when we run out of
-    /// output buffers (to defend against FFmpeg bugs), and we'll try to receive outputs again until
-    /// we receive another code indicating the flush has completed, at which point this flag will
-    /// be reset.
+    /// output buffers (to defend against FFmpeg bugs), and we'll try to receive outputs again
+    /// until we receive another code indicating the flush has completed, at which point this
+    /// flag will be reset.
     is_flushing: bool,
 
     /// The libav context for this session.

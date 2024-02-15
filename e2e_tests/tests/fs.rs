@@ -49,10 +49,8 @@ fn copy_file() {
 
 /// Tests file ownership seen by the VM.
 ///
-/// 1. Create `user_file.txt` owned by the current user of the host on a
-///    temporal directory.
-/// 2. Set virtiofs options: uidmap=<mapped-uid> <current-uid> 1,
-///    uid=<mapped-uid>.
+/// 1. Create `user_file.txt` owned by the current user of the host on a temporal directory.
+/// 2. Set virtiofs options: uidmap=<mapped-uid> <current-uid> 1, uid=<mapped-uid>.
 /// 3. Start a VM with a virtiofs device for the temporal directory.
 /// 4. Check that `user_file.txt`'s uid is <mapped-uid> in the VM.
 /// 5. Verify gid similarly.

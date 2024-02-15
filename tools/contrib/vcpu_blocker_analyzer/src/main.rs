@@ -207,7 +207,8 @@ fn update_durations(
     proc_names: &mut HashMap<i32, String>,
 ) -> Result<()> {
     match event.name.as_str() {
-        // Update the VCPU process state duration and the VCPU-blocking time of a process which waked up a VCPU process.
+        // Update the VCPU process state duration and the VCPU-blocking time of a process which
+        // waked up a VCPU process.
         "sched_waking" => {
             let sched_waking = parse_sched_waking(&event.details)?;
             if !sched_waking.waked_proc_name.starts_with(VCPU_PROC_PREFIX) {
@@ -232,7 +233,8 @@ fn update_durations(
                 proc_names,
             );
         }
-        // Update the VCPU process state duration and the VCPU-preemption time of a process if it preempted a VCPU process.
+        // Update the VCPU process state duration and the VCPU-preemption time of a process if it
+        // preempted a VCPU process.
         "sched_switch" => {
             let sched_switch = parse_sched_switch(&event.details)?;
             if sched_switch.prev_proc_name.starts_with(VCPU_PROC_PREFIX) {

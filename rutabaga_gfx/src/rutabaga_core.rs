@@ -1119,8 +1119,8 @@ impl RutabagaBuilder {
                         rutabaga_capsets.push(*capset);
                     }
                 } else {
-                    // Unconditionally push capset -- this should eventually be deleted when context types are
-                    // always specified by crosvm launchers.
+                    // Unconditionally push capset -- this should eventually be deleted when context
+                    // types are always specified by crosvm launchers.
                     rutabaga_capsets.push(*capset);
                 }
             };

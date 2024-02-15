@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! The mmap module provides a safe interface to map memory and ensures UnmapViewOfFile is called when the
-//! mmap object leaves scope.
+//! The mmap module provides a safe interface to map memory and ensures UnmapViewOfFile is called
+//! when the mmap object leaves scope.
 
 use libc::c_void;
 use win_util::get_high_order;

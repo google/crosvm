@@ -161,7 +161,8 @@ pub trait IrqChip: Send {
     /// Add a vcpu to the irq chip.
     fn add_vcpu(&mut self, vcpu_id: usize, vcpu: &dyn Vcpu) -> Result<()>;
 
-    /// Register an event with edge-trigger semantic that can trigger an interrupt for a particular GSI.
+    /// Register an event with edge-trigger semantic that can trigger an interrupt for a particular
+    /// GSI.
     fn register_edge_irq_event(
         &mut self,
         irq: u32,
@@ -172,7 +173,8 @@ pub trait IrqChip: Send {
     /// Unregister an event with edge-trigger semantic for a particular GSI.
     fn unregister_edge_irq_event(&mut self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()>;
 
-    /// Register an event with level-trigger semantic that can trigger an interrupt for a particular GSI.
+    /// Register an event with level-trigger semantic that can trigger an interrupt for a particular
+    /// GSI.
     fn register_level_irq_event(
         &mut self,
         irq: u32,

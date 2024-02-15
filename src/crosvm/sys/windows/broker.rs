@@ -419,8 +419,8 @@ impl Drop for ChildCleanup {
 /// Represents a child process spawned by the broker.
 struct ChildProcess {
     // This is unused, but we hold it open to avoid an EPIPE in the child if it doesn't
-    // immediately read its startup information. We don't use FlushFileBuffers to avoid this because
-    // that would require blocking the startup sequence.
+    // immediately read its startup information. We don't use FlushFileBuffers to avoid this
+    // because that would require blocking the startup sequence.
     tube_transporter: TubeTransporter,
 
     // Used to set up the child process. Unused in steady state.
@@ -1043,10 +1043,10 @@ impl Supervisor {
 
                         // Save the child's exit code (to pass through to the broker's exit code) if
                         // none has been saved or if the previously saved exit code was
-                        // KilledBySignal.  We overwrite KilledBySignal because the child exit may
-                        // race with the sigterm from the service, esp if child exit is slowed by a Crashpad
-                        // dump, and we don't want to lose the child's exit code if it was the
-                        // initial cause of the emulator failing.
+                        // KilledBySignal. We overwrite KilledBySignal because the child exit may
+                        // race with the sigterm from the service, esp if child exit is slowed by a
+                        // Crashpad dump, and we don't want to lose the child's exit code if it was
+                        // the initial cause of the emulator failing.
                         if exit_code != 0
                             && (first_nonzero_exitcode.is_none()
                                 || matches!(first_nonzero_exitcode, Some(KILLED_BY_SIGNAL)))

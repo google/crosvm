@@ -344,8 +344,8 @@ impl Stream {
 
 impl Drop for Stream {
     fn drop(&mut self) {
-        // Try to stop and release the stream in case it was playing, these operations will fail if the
-        // stream is already released, just ignore that failure
+        // Try to stop and release the stream in case it was playing, these operations will fail if
+        // the stream is already released, just ignore that failure
         let _ = self.vios_client.lock().stop_stream(self.stream_id);
         let _ = self.vios_client.lock().release_stream(self.stream_id);
 

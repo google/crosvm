@@ -185,9 +185,9 @@ impl Vcpu for HaxmVcpu {
 
     /// This function should be called after `Vcpu::run` returns `VcpuExit::Mmio`.
     ///
-    /// Once called, it will determine whether a mmio read or mmio write was the reason for the mmio exit,
-    /// call `handle_fn` with the respective IoOperation to perform the mmio read or write,
-    /// and set the return data in the vcpu so that the vcpu can resume running.
+    /// Once called, it will determine whether a mmio read or mmio write was the reason for the mmio
+    /// exit, call `handle_fn` with the respective IoOperation to perform the mmio read or
+    /// write, and set the return data in the vcpu so that the vcpu can resume running.
     fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
         // SAFETY:
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the

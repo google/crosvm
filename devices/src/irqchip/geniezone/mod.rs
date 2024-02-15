@@ -214,8 +214,8 @@ impl IrqChip for GeniezoneKernelIrqChip {
 
     /// Return a vector of all registered irq numbers and their associated events and event
     /// indices. These should be used by the main thread to wait for irq events.
-    /// For the GeniezoneKernelIrqChip, the kernel handles listening to irq events being triggered by
-    /// devices, so this function always returns an empty Vec.
+    /// For the GeniezoneKernelIrqChip, the kernel handles listening to irq events being triggered
+    /// by devices, so this function always returns an empty Vec.
     fn irq_event_tokens(&self) -> Result<Vec<(IrqEventIndex, IrqEventSource, Event)>> {
         Ok(Vec::new())
     }

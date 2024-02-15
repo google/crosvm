@@ -169,7 +169,8 @@ impl DecoderContextBuilder {
     /// `get_buffer2` is a function that decides which buffer is used to render a frame (see
     /// libavcodec's documentation for `get_buffer2` for more details). If provided, this function
     /// must be thread-safe.
-    /// `opaque` is a pointer that will be passed as first argument to `get_buffer2` when it is called.
+    /// `opaque` is a pointer that will be passed as first argument to `get_buffer2` when it is
+    /// called.
     pub fn set_get_buffer_2(
         &mut self,
         get_buffer2: unsafe extern "C" fn(*mut ffi::AVCodecContext, *mut ffi::AVFrame, i32) -> i32,
@@ -924,10 +925,10 @@ impl AvFrameBuilder {
     ///
     /// This function checks that:
     /// - Each plane fits inside the bounds of the associated buffer.
-    /// - Different planes do not overlap each other's buffer slice.
-    ///   In this check, all planes are assumed to be potentially mutable, regardless of whether
-    ///   the AvFrame is actually used for read or write access. Aliasing reference to the same
-    ///   buffer will be rejected, since it can potentially allow routines to overwrite each
+    /// - Different planes do not overlap each other's buffer slice. In this check, all planes are
+    ///   assumed to be potentially mutable, regardless of whether the AvFrame is actually used for
+    ///   read or write access. Aliasing reference to the same buffer will be rejected, since it can
+    ///   potentially allow routines to overwrite each
     //    other's result.
     ///   An exception to this is when the same buffer is passed multiple times in `buffers`. In
     ///   this case, each buffer is treated as a different buffer. Since clones have to be made to

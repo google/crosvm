@@ -102,8 +102,8 @@ enum OpStatus {
     WakeEvent,
 }
 
-// An IO source previously registered with an EpollReactor. Used to initiate asynchronous IO with the
-// associated executor.
+// An IO source previously registered with an EpollReactor. Used to initiate asynchronous IO with
+// the associated executor.
 pub struct RegisteredSource<F> {
     pub(crate) source: F,
     ex: Weak<RawExecutor<EpollReactor>>,

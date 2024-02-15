@@ -27,8 +27,8 @@ use crate::Result;
 /// - Uses eventfd on Linux.
 /// - Uses synchapi event objects on Windows.
 /// - The `Event` and `WaitContext` APIs together cannot easily be implemented with the same
-///   semantics on all platforms. In particular, it is difficult to support multiple readers, so only
-///   a single reader is allowed for now. Multiple readers will result in undefined behavior.
+///   semantics on all platforms. In particular, it is difficult to support multiple readers, so
+///   only a single reader is allowed for now. Multiple readers will result in undefined behavior.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Event(pub(crate) PlatformEvent);

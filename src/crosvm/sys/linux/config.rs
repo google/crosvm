@@ -126,13 +126,11 @@ impl FromStr for SharedDir {
         // * type=TYPE - must be one of "p9" or "fs" (default: p9)
         // * uidmap=UIDMAP - a uid map in the format "inner outer count[,inner outer count]"
         //   (default: "0 <current euid> 1")
-        // * gidmap=GIDMAP - a gid map in the same format as uidmap
-        //   (default: "0 <current egid> 1")
+        // * gidmap=GIDMAP - a gid map in the same format as uidmap (default: "0 <current egid> 1")
         // * privileged_quota_uids=UIDS - Space-separated list of privileged uid values. When
-        //   performing quota-related operations, these UIDs are treated as if they have
-        //   CAP_FOWNER.
-        // * timeout=TIMEOUT - a timeout value in seconds, which indicates how long attributes
-        //   and directory contents should be considered valid (default: 5)
+        //   performing quota-related operations, these UIDs are treated as if they have CAP_FOWNER.
+        // * timeout=TIMEOUT - a timeout value in seconds, which indicates how long attributes and
+        //   directory contents should be considered valid (default: 5)
         // * cache=CACHE - one of "never", "always", or "auto" (default: auto)
         // * writeback=BOOL - indicates whether writeback caching should be enabled (default: false)
         // * uid=UID - uid of the device process in the user namespace created by minijail.
@@ -206,8 +204,8 @@ impl FromStr for SharedDir {
                     // 1. Lookup "foo", an non-existing file. Negative dentry is cached on the
                     //    guest.
                     // 2. Create "FOO".
-                    // 3. Lookup "foo". This needs to be successful on the casefold directory,
-                    //    but the lookup can fail due the negative cache created at 1.
+                    // 3. Lookup "foo". This needs to be successful on the casefold directory, but
+                    //    the lookup can fail due the negative cache created at 1.
                     bail!("'negative_timeout' cannot be used with 'ascii_casefold'");
                 }
             }

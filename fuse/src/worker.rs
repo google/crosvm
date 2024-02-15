@@ -164,7 +164,7 @@ impl Mapper for DevFuseMapper {
 /// * `dev_fuse` - A `File` object of /dev/fuse
 /// * `input_buffer_size` - Maximum bytes of the buffer when reads from /dev/fuse.
 /// * `output_buffer_size` - Maximum bytes of the buffer when writes to /dev/fuse. Must be large
-///                          enough (usually equal) to `n` in `MountOption::MaxRead(n)`.
+///   enough (usually equal) to `n` in `MountOption::MaxRead(n)`.
 ///
 /// [deprecated(note="Please migrate to the `FuseConfig` builder API"]
 pub fn start_message_loop<F: FileSystem + Sync>(

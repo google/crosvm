@@ -275,9 +275,9 @@ fn duplicate_handle(desc: RawHandle, target_pid: Option<u32>) -> Result<RawHandl
 }
 
 /// Reads a part of a Tube packet asserting that it was correctly read. This means:
-/// * Treats partial "message" (transport framing) reads are Ok, as long as we filled our buffer.
-///   We use this to ignore errors when reading the message header, which has the lengths we need
-///   to allocate our buffers for the remainder of the message.
+/// * Treats partial "message" (transport framing) reads are Ok, as long as we filled our buffer. We
+///   use this to ignore errors when reading the message header, which has the lengths we need to
+///   allocate our buffers for the remainder of the message.
 /// * We filled the supplied buffer.
 fn perform_read<F: FnMut(&mut [u8]) -> io::Result<usize>>(
     read_fn: &mut F,

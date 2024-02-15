@@ -45,7 +45,8 @@ pub unsafe trait Terminal {
             & !(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
 
         // SAFETY:
-        // Safe because the syscall will only read the extent of mode and we check the return result.
+        // Safe because the syscall will only read the extent of mode and we check the return
+        // result.
         if unsafe { SetConsoleMode(descriptor, new_mode) } == 0 {
             return Err(Error::last());
         }
@@ -56,7 +57,8 @@ pub unsafe trait Terminal {
     /// Set this terminal's mode to a previous state returned by `set_raw_mode()`.
     fn restore_mode(&self, mode: DWORD) -> Result<()> {
         // SAFETY:
-        // Safe because the syscall will only read the extent of mode and we check the return result.
+        // Safe because the syscall will only read the extent of mode and we check the return
+        // result.
         if unsafe { SetConsoleMode(self.terminal_descriptor(), mode) } == 0 {
             Err(Error::last())
         } else {

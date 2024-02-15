@@ -12,8 +12,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-// Fallback main function to make the library's serialize / deserialize implementation usable on the e2etest side
-// (which may not be Linux environment).
+// Fallback main function to make the library's serialize / deserialize implementation usable on the
+// e2etest side (which may not be Linux environment).
 // This workaround is needed due to cargo's dependency limitations.
 // c.f. https://github.com/rust-lang/cargo/issues/1982
 #[cfg(not(any(target_os = "linux", target_os = "android")))]

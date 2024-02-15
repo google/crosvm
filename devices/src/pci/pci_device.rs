@@ -395,8 +395,8 @@ pub trait PciDevice: Send + Suspendable {
         Ok(())
     }
 
-    /// Gets a reference to the API client for sending VmMemoryRequest. Any devices that uses ioevents
-    /// must provide this.
+    /// Gets a reference to the API client for sending VmMemoryRequest. Any devices that uses
+    /// ioevents must provide this.
     fn get_vm_memory_client(&self) -> Option<&VmMemoryClient> {
         None
     }

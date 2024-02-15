@@ -140,8 +140,8 @@ impl VcpuRunThread {
     fn whpx_configure_vcpu(vcpu: &mut dyn VcpuArch, irq_chip: &mut dyn IrqChipArch) {
         // only apply to actual WhpxVcpu instances
         if let Some(whpx_vcpu) = vcpu.downcast_mut::<WhpxVcpu>() {
-            // WhpxVcpu instances need to know the TSC and Lapic frequencies to handle Hyper-V MSR reads
-            // and writes.
+            // WhpxVcpu instances need to know the TSC and Lapic frequencies to handle Hyper-V MSR
+            // reads and writes.
             let tsc_freq = devices::tsc::tsc_frequency()
                 .map_err(|e| {
                     error!(
@@ -175,8 +175,8 @@ impl VcpuRunThread {
         let mut vcpu = match vcpu {
             Some(v) => v,
             None => {
-                // If vcpu is None, it means this arch/hypervisor requires create_vcpu to be called from
-                // the vcpu thread.
+                // If vcpu is None, it means this arch/hypervisor requires create_vcpu to be called
+                // from the vcpu thread.
                 match vm
                     .create_vcpu(cpu_id)
                     .exit_context(Exit::CreateVcpu, "failed to create vcpu")?

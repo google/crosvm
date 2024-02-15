@@ -48,7 +48,8 @@ impl<'a, T: Token, D: DeadUffdChecker> UffdList<'a, T, D> {
 
     /// Set the count of static devices.
     ///
-    /// Devices attached after guest booting are treated as dynamic device which can be detached (e.g. hotplug devices)
+    /// Devices attached after guest booting are treated as dynamic device which can be detached
+    /// (e.g. hotplug devices)
     pub fn set_num_static_devices(&mut self, num_static_devices: u32) -> bool {
         if self.num_static_uffd.is_some() {
             return false;

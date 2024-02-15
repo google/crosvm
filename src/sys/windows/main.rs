@@ -149,7 +149,8 @@ pub(crate) fn run_vm_for_broker(args: RunMainCommand) -> Result<()> {
 
 pub(crate) fn cleanup() {
     // We've already cleaned everything up by waiting for all the vcpu threads on windows.
-    // TODO: b/142733266. When we sandbox each device, have a way to terminate the other sandboxed processes.
+    // TODO: b/142733266. When we sandbox each device, have a way to terminate the other sandboxed
+    // processes.
 }
 
 fn run_broker(cmd: RunCommand, log_args: LogArgs) -> Result<()> {

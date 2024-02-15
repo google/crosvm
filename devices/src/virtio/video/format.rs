@@ -186,8 +186,8 @@ impl PlaneFormat {
                 },
                 // UV plane, 1 sample per group of 4 pixels for U and V.
                 PlaneFormat {
-                    // Add one vertical line so odd resolutions result in an extra UV line to cover all the
-                    // Y samples.
+                    // Add one vertical line so odd resolutions result in an extra UV line to cover
+                    // all the Y samples.
                     plane_size: width * half_height,
                     stride: width,
                 },

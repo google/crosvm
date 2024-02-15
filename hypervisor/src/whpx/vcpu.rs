@@ -65,7 +65,8 @@ impl SafeInstructionEmulator {
             WHvEmulatorTranslateGvaPage: Some(SafeInstructionEmulator::translate_gva_page_cb),
         };
         let mut handle: WHV_EMULATOR_HANDLE = std::ptr::null_mut();
-        // safe because pass in valid callbacks and a emulator handle for the kernel to place the allocated handle into.
+        // safe because pass in valid callbacks and a emulator handle for the kernel to place the
+        // allocated handle into.
         check_whpx!(unsafe { WHvEmulatorCreateEmulator(&EMULATOR_CALLBACKS, &mut handle) })?;
 
         Ok(SafeInstructionEmulator { handle })
@@ -524,7 +525,8 @@ impl Vcpu for WhpxVcpu {
     /// Exits the vcpu immediately if exit is true
     fn set_immediate_exit(&self, exit: bool) {
         if exit {
-            // safe because we own this whpx virtual processor index, and assume the vm partition is still valid
+            // safe because we own this whpx virtual processor index, and assume the vm partition is
+            // still valid
             unsafe {
                 WHvCancelRunVirtualProcessor(self.vm_partition.partition, self.index, 0);
             }
@@ -547,9 +549,9 @@ impl Vcpu for WhpxVcpu {
 
     /// This function should be called after `Vcpu::run` returns `VcpuExit::Mmio`.
     ///
-    /// Once called, it will determine whether a mmio read or mmio write was the reason for the mmio exit,
-    /// call `handle_fn` with the respective IoOperation to perform the mmio read or write,
-    /// and set the return data in the vcpu so that the vcpu can resume running.
+    /// Once called, it will determine whether a mmio read or mmio write was the reason for the mmio
+    /// exit, call `handle_fn` with the respective IoOperation to perform the mmio read or
+    /// write, and set the return data in the vcpu so that the vcpu can resume running.
     fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
         let mut status: WHV_EMULATOR_STATUS = Default::default();
         let mut ctx = InstructionEmulatorContext {
@@ -632,7 +634,8 @@ impl Vcpu for WhpxVcpu {
 
     #[allow(non_upper_case_globals)]
     fn run(&mut self) -> Result<VcpuExit> {
-        // safe because we own this whpx virtual processor index, and assume the vm partition is still valid
+        // safe because we own this whpx virtual processor index, and assume the vm partition is
+        // still valid
         let exit_context_ptr = Arc::as_ptr(&self.last_exit_context);
         check_whpx!(unsafe {
             WHvRunVirtualProcessor(

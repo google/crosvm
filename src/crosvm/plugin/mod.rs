@@ -203,7 +203,6 @@ fn mmap_to_sys_err(e: MmapError) -> SysError {
 /// Each such object has an ID associated with it that exists in an ID space shared by every variant
 /// of `PluginObject`. This allows all the objects to be indexed in a single map, and allows for a
 /// common destroy method.
-///
 
 /// In addition to the destory method, each object may have methods specific to its variant type.
 /// These variant methods must be done by matching the variant to the expected type for that method.

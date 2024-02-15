@@ -169,9 +169,8 @@ pub struct CreateIpcMapperRet {
 /// # Arguments
 ///
 /// * `endpoint_id` - For the remote iommu to identify the device/ipc mapper.
-/// * `request_tx` - A tube to send `TranslateRequest` to a remote iommu. This
-///                  should be cloned and shared between different ipc mappers
-///                  with different `endpoint_id`s.
+/// * `request_tx` - A tube to send `TranslateRequest` to a remote iommu. This should be cloned and
+///   shared between different ipc mappers with different `endpoint_id`s.
 pub fn create_ipc_mapper(endpoint_id: u32, request_tx: Tube) -> CreateIpcMapperRet {
     let (response_tx, response_rx) = Tube::pair().expect("failed to create tube pair");
     CreateIpcMapperRet {

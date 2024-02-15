@@ -259,8 +259,8 @@ impl WeakWake for HandleReactor {
 ///     1. The reactor in use is a HandleReactor.
 ///     2. Immediately after the IO syscall, this future MUST be awaited. We rely on the fact that
 ///        the executor cannot poll the IOCP before this future is polled for the first time to
-///        ensure the waker has been registered. (If the executor polls the IOCP before the waker
-///        is registered, the future will stall.)
+///        ensure the waker has been registered. (If the executor polls the IOCP before the waker is
+///        registered, the future will stall.)
 pub(crate) struct OverlappedOperation {
     overlapped: BoxedOverlapped,
     ex: Weak<RawExecutor<HandleReactor>>,

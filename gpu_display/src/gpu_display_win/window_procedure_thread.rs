@@ -401,8 +401,8 @@ impl WindowProcedureThread {
                     }
                     Token::ServiceMessage => Self::read_and_dispatch_service_message(
                         &mut message_dispatcher,
-                        // We never use this token if `gpu_main_display_tube` is None, so `expect()`
-                        // should always succeed.
+                        // We never use this token if `gpu_main_display_tube` is None, so
+                        // `expect()` should always succeed.
                         gpu_main_display_tube
                             .as_ref()
                             .expect("Service message tube is None"),

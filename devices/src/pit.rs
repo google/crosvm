@@ -684,12 +684,12 @@ impl PitCounter {
         speaker.set_output(self.get_output().into());
         speaker.set_iochk_nmi(0);
         speaker.set_serr_nmi(0);
-        speaker.get(/*offset=*/ 0, /*width=*/ 8) as u8
+        speaker.get(/* offset= */ 0, /* width= */ 8) as u8
     }
 
     fn write_speaker(&mut self, datum: u8) {
         let mut speaker = SpeakerPortFields::new();
-        speaker.set(/*offset=*/ 0, /*width=*/ 8, datum.into());
+        speaker.set(/* offset= */ 0, /* width= */ 8, datum.into());
         let new_gate = speaker.get_gate() != 0;
         match self.get_command_mode() {
             Some(CommandMode::CommandInterrupt) | Some(CommandMode::CommandSWStrobe) => (),

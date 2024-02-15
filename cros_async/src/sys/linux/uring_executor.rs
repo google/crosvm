@@ -30,8 +30,8 @@
 //! What if the kernel's reference to the buffer outlives the buffer itself?  This could happen if a
 //! read operation was submitted, then the memory is dropped.  To solve this, the executor takes an
 //! Arc to the backing memory. Vecs being read to are also wrapped in an Arc before being passed to
-//! the executor.  The executor holds the Arc and ensures all operations are complete before dropping
-//! it, that guarantees the memory is valid for the duration.
+//! the executor.  The executor holds the Arc and ensures all operations are complete before
+//! dropping it, that guarantees the memory is valid for the duration.
 //!
 //! The buffers _have_ to be on the heap. Because we don't have a way to cancel a future if it is
 //! dropped(can't rely on drop running), there is no way to ensure the kernel's buffer remains valid
@@ -936,8 +936,8 @@ mod tests {
             .register_source(&ex, &rx)
             .expect("register source failed");
 
-        // Submit the op to the kernel. Next, test that the source keeps its Arc open for the duration
-        // of the op.
+        // Submit the op to the kernel. Next, test that the source keeps its Arc open for the
+        // duration of the op.
         let pending_op = registered_source
             .start_read_to_mem(None, Arc::clone(&bm), [MemRegion { offset: 0, len: 8 }])
             .expect("failed to start read to mem");
@@ -983,8 +983,8 @@ mod tests {
             .register_source(&ex, &tx)
             .expect("register source failed");
 
-        // Submit the op to the kernel. Next, test that the source keeps its Arc open for the duration
-        // of the op.
+        // Submit the op to the kernel. Next, test that the source keeps its Arc open for the
+        // duration of the op.
         let pending_op = registered_source
             .start_write_from_mem(None, Arc::clone(&bm), [MemRegion { offset: 0, len: 8 }])
             .expect("failed to start write to mem");

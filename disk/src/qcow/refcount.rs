@@ -25,7 +25,8 @@ pub enum Error {
     /// `NeedCluster` - Handle this error by reading the cluster and calling the function again.
     #[error("cluster with addr={0} needs to be read")]
     NeedCluster(u64),
-    /// `NeedNewCluster` - Handle this error by allocating a cluster and calling the function again.
+    /// `NeedNewCluster` - Handle this error by allocating a cluster and calling the function
+    /// again.
     #[error("new cluster needs to be allocated for refcounts")]
     NeedNewCluster,
     /// `ReadingRefCounts` - Error reading the file in to the refcount cache.

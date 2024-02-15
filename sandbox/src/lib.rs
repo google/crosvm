@@ -698,7 +698,8 @@ impl<'a> TargetPolicy<'a> {
 
     /// Adds a handle that will be shared with the target process.
     ///
-    /// Takes a `&mut self` because `sbox_add_handle_to_share()` mutates the underlying policy object.
+    /// Takes a `&mut self` because `sbox_add_handle_to_share()` mutates the underlying policy
+    /// object.
     pub fn add_handle_to_share(&mut self, handle: &'a dyn AsRawDescriptor) {
         // Safe because TargetPolicy can only be constructed with a non-null policy pointer.
         unsafe {
@@ -735,9 +736,8 @@ impl<'a> TargetPolicy<'a> {
     ///
     /// # Arguments:
     /// * `package_name`: the name of the profile to use.
-    /// * `create_profile`: Specifying `true` for `create_profile` ensures
-    ///   the profile exists, if set to `false` process creation will fail if the
-    ///   profile has not already been created.
+    /// * `create_profile`: Specifying `true` for `create_profile` ensures the profile exists, if
+    ///   set to `false` process creation will fail if the profile has not already been created.
     ///
     /// Takes a `&mut self` because `sbox_add_dll_to_unload` mutates the
     /// underlying policy object.

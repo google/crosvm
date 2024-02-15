@@ -7,8 +7,7 @@
 // words, the sequence of events looks like this:
 //    1. Rust creates a closure C.
 //    2. Rust calls Slirp and gives it callback CB (a Rust func.), and opaque data that contains C.
-//    3. (0...n times) CB runs and unpacks C from the opaque data.
-//          a. CB calls C.
+//    3. (0...n times) CB runs and unpacks C from the opaque data. a. CB calls C.
 //    4. The call from #2 completes.
 // Closures are represented as trait objects, and trait object references are wide/fat pointers
 // (2x machine pointer size) that contain pointers to the closure's struct & its vtable. Since wide
@@ -77,8 +76,8 @@ use crate::Result;
 /// 2. An ethernet frame arrives to the host, and gets demuxed by the host kernel into one of the
 ///    host sockets opened by libslirp.
 /// 3. The slirp loop receives a notification that data has arrived on one of the libslirp sockets,
-///    and invokes `ctx.pollfds_poll` to notify libslirp.
-///    a. libslirp calls into `h.send_packet` to deliver the packet to the consumer.
+///    and invokes `ctx.pollfds_poll` to notify libslirp. a. libslirp calls into `h.send_packet` to
+///    deliver the packet to the consumer.
 pub struct Context<H> {
     slirp: *mut Slirp,
     callbacks: SlirpCb,
@@ -106,8 +105,8 @@ impl<H> Drop for Context<H> {
 ///
 /// Example data flow for timer creation/modification (`timer_new`/`timer_mod`/`timer_free`):
 /// 1. libslirp calls into `timer_new` to request a new timer. `timer_new` creates some entity to
-///    represent the timer and boxes it. A pointer to that boxed entity is returned to libslirp,
-///    and is how libslirp will refer to the timer in the future.
+///    represent the timer and boxes it. A pointer to that boxed entity is returned to libslirp, and
+///    is how libslirp will refer to the timer in the future.
 /// 2. The timer's expire time can be changed when timer_mod is called by libslirp. A pointer to the
 ///    boxed timer is passed in by libslirp.
 /// 3. The implementor of `CallbackHandler` is responsible for ensuring that the timer's callback as

@@ -179,7 +179,8 @@ mod tests {
         let layout = Layout::from_size_align(size_of::<u32>() * 15, align_of::<u32>()).unwrap();
         let allocation = LayoutAllocation::zeroed(layout);
         // SAFETY:
-        // Slice less than the allocation size, which will return a slice of only the requested length.
+        // Slice less than the allocation size, which will return a slice of only the requested
+        // length.
         let slice: &[u32] = unsafe { allocation.as_slice(15) };
         assert_eq!(slice.len(), 15);
         assert_eq!(slice[0], 0);
@@ -192,7 +193,8 @@ mod tests {
         let allocation = LayoutAllocation::zeroed(layout);
 
         // SAFETY:
-        // Slice less than the allocation size, which will return a slice of only the requested length.
+        // Slice less than the allocation size, which will return a slice of only the requested
+        // length.
         let slice: &[u32] = unsafe { allocation.as_slice(5) };
         assert_eq!(slice.len(), 5);
     }
@@ -203,7 +205,8 @@ mod tests {
         let allocation = LayoutAllocation::zeroed(layout);
 
         // SAFETY:
-        // Slice more than the allocation size, which will clamp the returned slice len to the limit.
+        // Slice more than the allocation size, which will clamp the returned slice len to the
+        // limit.
         let slice: &[u32] = unsafe { allocation.as_slice(100) };
         assert_eq!(slice.len(), 15);
     }

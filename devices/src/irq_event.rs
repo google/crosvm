@@ -52,8 +52,9 @@ pub struct IrqLevelEvent {
     /// An event used by the device backend to signal hypervisor/VM about data or new unit
     /// of work being available.
     trigger_evt: Event,
-    /// An event used by the hypervisor to signal device backend that it completed processing a unit
-    /// of work and that device should re-raise `trigger_evt` if additional work needs to be done.
+    /// An event used by the hypervisor to signal device backend that it completed processing a
+    /// unit of work and that device should re-raise `trigger_evt` if additional work needs to
+    /// be done.
     resample_evt: Event,
 }
 

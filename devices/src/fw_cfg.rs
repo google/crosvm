@@ -670,7 +670,8 @@ mod tests {
 
     #[test]
     #[should_panic]
-    // Attempt to add a file to an fw_cfg device w/ no fileslots and assert that nothing gets inserted
+    // Attempt to add a file to an fw_cfg device w/ no fileslots and assert that nothing gets
+    // inserted
     fn write_file_one_slot_expect_nop() {
         let mut fw_cfg = FwCfgDevice::new(0, default_params()).unwrap();
         let data = vec![MAGIC_BYTE];
@@ -681,7 +682,8 @@ mod tests {
 
     #[test]
     #[should_panic]
-    // Attempt to add two files to an fw_cfg w/ only one fileslot and assert only first insert succeeds.
+    // Attempt to add two files to an fw_cfg w/ only one fileslot and assert only first insert
+    // succeeds.
     fn write_two_files_no_slots_expect_nop_on_second() {
         let mut fw_cfg = FwCfgDevice::new(1, default_params()).unwrap();
         let data = vec![MAGIC_BYTE];
@@ -706,8 +708,8 @@ mod tests {
     fn read_fw_cfg_signature() {
         let mut data: Vec<u8> = vec![0];
         let (mut device, bai) = setup_read(&FILENAMES, &get_contents(), FW_CFG_SIGNATURE_SELECTOR);
-        // To logically compare the revison vector to FW_CFG_REVISION byte-by-byte, we must use to_be_bytes()
-        // since we are comparing byte arrays, not integers.
+        // To logically compare the revison vector to FW_CFG_REVISION byte-by-byte, we must use
+        // to_be_bytes() since we are comparing byte arrays, not integers.
         let signature = read_u32(&mut device, bai, &mut data[..]).to_be_bytes();
         assert_eq!(signature, FW_CFG_SIGNATURE);
     }
@@ -717,8 +719,8 @@ mod tests {
     fn read_fw_cfg_revision() {
         let mut data: Vec<u8> = vec![0];
         let (mut device, bai) = setup_read(&FILENAMES, &get_contents(), FW_CFG_REVISION_SELECTOR);
-        // To logically compare the revison vector to FW_CFG_REVISION byte-by-byte, we must use to_be_bytes()
-        // since we are comparing byte arrays, not integers.
+        // To logically compare the revison vector to FW_CFG_REVISION byte-by-byte, we must use
+        // to_be_bytes() since we are comparing byte arrays, not integers.
         let revision = read_u32(&mut device, bai, &mut data[..]).to_be_bytes();
         assert_eq!(revision, FW_CFG_REVISION);
     }

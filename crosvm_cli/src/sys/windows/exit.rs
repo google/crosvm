@@ -427,10 +427,10 @@ use bitmasks::*;
 ///
 /// This function packs bits in NTSTATUS results (generally what a Windows exit code should be).
 /// There are three primary cases it deals with:
-///   1. Vendor specific exits. These are error codes we generate explicitly in crosvm. We will
-///      pack these codes with the lower 6 "facility" bits ([21, 16]) set so they can't collide
-///      with the other cases (this makes our facility value > FACILITY_MAXIMUM_VALUE). The top
-///      6 bits of the facility field ([27, 22]) will be clear at this point.
+///   1. Vendor specific exits. These are error codes we generate explicitly in crosvm. We will pack
+///      these codes with the lower 6 "facility" bits ([21, 16]) set so they can't collide with the
+///      other cases (this makes our facility value > FACILITY_MAXIMUM_VALUE). The top 6 bits of the
+///      facility field ([27, 22]) will be clear at this point.
 ///
 ///   2. Non vendor NTSTATUS exits. These are error codes which come from Windows. We flip the
 ///      vendor bit on these because we're going to pack the facility field, and leaving it unset
@@ -440,9 +440,8 @@ use bitmasks::*;
 ///      however, if for some reason we see a non vendor code with any of those bits set, we will
 ///      fall through to case #3.
 ///
-///   3. Non NTSTATUS errors. We detect these with two heuristics:
-///      a) Reserved field is set.
-///      b) The facility field has exceeded the bottom six bits ([21, 16]).
+///   3. Non NTSTATUS errors. We detect these with two heuristics: a) Reserved field is set. b) The
+///      facility field has exceeded the bottom six bits ([21, 16]).
 ///
 ///      For such cases, we pack as much of the error as we can into the lower 6 bits of the
 ///      facility field, and code field (2 bytes). In this case, the most significant bit of the

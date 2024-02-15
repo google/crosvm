@@ -368,14 +368,15 @@ pub extern "C" fn crosvm_client_max_usb_devices() -> usize {
     USB_CONTROL_MAX_PORTS
 }
 
-/// Returns all USB devices passed through the crosvm instance whose control socket is listening on `socket_path`.
+/// Returns all USB devices passed through the crosvm instance whose control socket is listening on
+/// `socket_path`.
 ///
 /// The function returns the amount of entries written.
 /// # Arguments
 ///
 /// * `socket_path` - Path to the crosvm control socket
 /// * `entries` - Pointer to an array of `UsbDeviceEntry` where the details about the attached
-///               devices will be written to
+///   devices will be written to
 /// * `entries_length` - Amount of entries in the array specified by `entries`
 ///
 /// Use the value returned by [`crosvm_client_max_usb_devices()`] to determine the size of the input
@@ -863,7 +864,8 @@ pub struct BalloonWSRConfigFfi {
     report_threshold: u64,
 }
 
-/// Returns balloon working set of the crosvm instance whose control socket is listening on socket_path.
+/// Returns balloon working set of the crosvm instance whose control socket is listening on
+/// socket_path.
 ///
 /// The function returns true on success or false if an error occurred.
 ///

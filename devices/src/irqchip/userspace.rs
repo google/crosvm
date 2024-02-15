@@ -673,7 +673,7 @@ impl<V: VcpuX86_64 + 'static> IrqChip for UserspaceIrqChip<V> {
     /// `wait_until_runnable` calls go back to waiting for runnability normally.
     fn kick_halted_vcpus(&self) {
         for waiter in self.waiters.iter() {
-            waiter.set_and_notify(/*interrupted=*/ true);
+            waiter.set_and_notify(/* interrupted= */ true);
         }
     }
 

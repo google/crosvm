@@ -312,10 +312,10 @@ impl GoldfishBattery {
     /// Create GoldfishBattery device model
     ///
     /// * `mmio_base` - The 32-bit mmio base address.
-    /// * `irq_num` - The corresponding interrupt number of the irq_evt
-    ///               which will be put into the ACPI DSDT.
-    /// * `irq_evt` - The interrupt event used to notify driver about
-    ///               the battery properties changing.
+    /// * `irq_num` - The corresponding interrupt number of the irq_evt which will be put into the
+    ///   ACPI DSDT.
+    /// * `irq_evt` - The interrupt event used to notify driver about the battery properties
+    ///   changing.
     /// * `socket` - Battery control socket
     pub fn new(
         mmio_base: u64,

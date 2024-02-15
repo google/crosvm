@@ -62,9 +62,9 @@ pub struct HaxmVm {
     /// A min heap of MemSlot numbers that were used and then removed and can now be re-used
     mem_slot_gaps: Arc<Mutex<BinaryHeap<Reverse<MemSlot>>>>,
     // HAXM's implementation of ioevents makes several assumptions about how crosvm uses ioevents:
-    //   1. All ioevents are registered during device setup, and thus can be cloned when the vm
-    //      is cloned instead of locked in an Arc<Mutex<>>. This will make handling ioevents in
-    //      each vcpu thread easier because no locks will need to be acquired.
+    //   1. All ioevents are registered during device setup, and thus can be cloned when the vm is
+    //      cloned instead of locked in an Arc<Mutex<>>. This will make handling ioevents in each
+    //      vcpu thread easier because no locks will need to be acquired.
     //   2. All ioevents use Datamatch::AnyLength. We don't bother checking the datamatch, which
     //      will make this faster.
     //   3. We only ever register one eventfd to each address. This simplifies our data structure.
@@ -132,8 +132,9 @@ impl HaxmVm {
             let mut log_file = hax_log_file::default();
 
             // Although it would be more efficient to do this check prior to allocating the log_file
-            // struct, the code would be more complex and less maintainable. This is only ever called
-            // once per-vm so the extra temporary memory and time shouldn't be a problem.
+            // struct, the code would be more complex and less maintainable. This is only ever
+            // called once per-vm so the extra temporary memory and time shouldn't be a
+            // problem.
             if path.len() >= log_file.path.len() {
                 return Err(Error::new(E2BIG));
             }

@@ -169,7 +169,8 @@ mod tests {
 
         let res = packet_rb.add_packet(buf, start_time);
 
-        // Should error because rb size is 19 bytes, but packet will take 20 bytes (4 bytes in buffer + 16 bytes from Packet header)
+        // Should error because rb size is 19 bytes, but packet will take 20 bytes (4 bytes in
+        // buffer + 16 bytes from Packet header)
         assert!(res.is_err());
 
         assert_eq!(

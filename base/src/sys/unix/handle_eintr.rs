@@ -33,8 +33,10 @@ impl<T> InterruptibleResult for io::Result<T> {
 ///
 /// The given expression `$x` can return
 ///
-/// * `crate::linux::Result` in which case the expression is retried if the `Error::errno()` is `EINTR`.
-/// * `std::io::Result` in which case the expression is retried if the `ErrorKind` is `ErrorKind::Interrupted`.
+/// * `crate::linux::Result` in which case the expression is retried if the `Error::errno()` is
+///   `EINTR`.
+/// * `std::io::Result` in which case the expression is retried if the `ErrorKind` is
+///   `ErrorKind::Interrupted`.
 ///
 /// Note that if expression returns i32 (i.e. either -1 or error code), then handle_eintr_errno()
 /// or handle_eintr_rc() should be used instead.

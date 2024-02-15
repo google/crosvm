@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Generated with bindgen --default-enum-style=rust --allowlist-function='gbm_.*' --allowlist-type='gbm_.*' minigbm/gbm.h
-// Then modified manually
+// Generated with bindgen --default-enum-style=rust --allowlist-function='gbm_.*'
+// --allowlist-type='gbm_.*' minigbm/gbm.h Then modified manually
 
 #![cfg(feature = "minigbm")]
 /* Added below line manually */

@@ -285,8 +285,8 @@ pub enum MouseMessage {
     MiddleMouseButton { is_down: bool },
     /// `WM_MOUSEWHEEL`, "sent to the focus window when the mouse wheel is rotated."
     MouseWheel { w_param: WPARAM, l_param: LPARAM },
-    /// `WM_SETCURSOR`, "sent to a window if the mouse causes the cursor to move within a window and
-    /// mouse input is not captured."
+    /// `WM_SETCURSOR`, "sent to a window if the mouse causes the cursor to move within a window
+    /// and mouse input is not captured."
     SetCursor,
 }
 

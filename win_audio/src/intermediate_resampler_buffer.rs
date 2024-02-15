@@ -159,9 +159,8 @@ impl<T: BitDepth> ResamplerContainer<T> {
     ///   2. `r8b_process` sets `converted_buffer_raw` to point to a valid buffer and
     ///      `samples_available` is accurate.
     ///   3. `channel` remains alive when `converted_buffer_raw` is being processed.
-    ///      `converted_buffer_raw` could point to the input `channel.as_mut_ptr()`. This is why
-    ///       the param `channel` is passed as a reference instead of the vector being moved in
-    ///       here.
+    ///      `converted_buffer_raw` could point to the input `channel.as_mut_ptr()`. This is why the
+    ///      param `channel` is passed as a reference instead of the vector being moved in here.
     unsafe fn sample_rate_convert_one_channel(
         channel: &mut Vec<f64>,
         resampler: CR8BResampler,
@@ -368,8 +367,8 @@ impl PlaybackResamplerBuffer {
 
 /// Similar to `ResamplerBuffer` except for audio capture. This structure assumes:
 ///
-/// 1. That the format coming from the Window's audio enginer will be a 32bit float, any
-///    sample rate, and any number of channels.
+/// 1. That the format coming from the Window's audio enginer will be a 32bit float, any sample
+///    rate, and any number of channels.
 /// 2. The format Android requires is always 16bit int, 48kHz, and 2 channels.
 pub struct CaptureResamplerBuffer {
     resampler_container: ResamplerContainer<i16>,

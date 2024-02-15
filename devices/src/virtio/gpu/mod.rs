@@ -1182,9 +1182,9 @@ pub struct Gpu {
     udmabuf: bool,
     rutabaga_server_descriptor: Option<SafeDescriptor>,
     #[cfg(windows)]
-    /// Because the Windows GpuDisplay can't expose an epollfd, it has to inform the GPU worker which
-    /// descriptors to add to its wait context. That's what this Tube is used for (it is provided
-    /// to each display backend.
+    /// Because the Windows GpuDisplay can't expose an epollfd, it has to inform the GPU worker
+    /// which descriptors to add to its wait context. That's what this Tube is used for (it is
+    /// provided to each display backend.
     gpu_display_wait_descriptor_ctrl_wr: SendTube,
     #[cfg(windows)]
     /// The GPU worker uses this Tube to receive the descriptors that should be added to its wait

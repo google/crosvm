@@ -133,7 +133,6 @@ pub trait Vm: Send {
     /// e.g this could be the case when host GPU doesn't set the memory to be coherent with CPU
     /// access. Setting this attribute would allow hypervisor to adjust guest mem control to ensure
     /// synchronized guest access in noncoherent DMA case.
-    ///
     fn add_memory_region(
         &mut self,
         guest_addr: GuestAddress,
@@ -563,9 +562,9 @@ pub enum ProtectionType {
     /// The VM should be run in protected mode, but booted directly without pVM firmware. The host
     /// will still be unable to access the VM memory, but it won't be given any secrets.
     ProtectedWithoutFirmware,
-    /// The VM should be run in unprotected mode, but with the same memory layout as protected mode,
-    /// protected VM firmware loaded, and simulating protected mode as much as possible. This is
-    /// useful for debugging the protected VM firmware and other protected mode issues.
+    /// The VM should be run in unprotected mode, but with the same memory layout as protected
+    /// mode, protected VM firmware loaded, and simulating protected mode as much as possible.
+    /// This is useful for debugging the protected VM firmware and other protected mode issues.
     UnprotectedWithFirmware,
 }
 

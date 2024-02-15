@@ -436,9 +436,9 @@ impl VirtioDevice for Console {
         match queues_state {
             None => Ok(()),
             Some((mem, interrupt, queues)) => {
-                // TODO(khei): activate is just what we want at the moment, but we should probably move
-                // it into a "start workers" function to make it obvious that it isn't strictly
-                // used for activate events.
+                // TODO(khei): activate is just what we want at the moment, but we should probably
+                // move it into a "start workers" function to make it obvious that
+                // it isn't strictly used for activate events.
                 self.activate(mem, interrupt, queues)?;
                 Ok(())
             }

@@ -113,9 +113,9 @@ pub enum ProcessStatus {
 
 /// Creates, owns, and handles messages from a plugin process.
 ///
-/// A plugin process has control over a single VM and a fixed number of VCPUs via a set of pipes & unix
-/// domain socket connections and a protocol defined in `protos::plugin`. The plugin process is run
-/// in an unprivileged manner as a child process spawned via a path to a arbitrary executable.
+/// A plugin process has control over a single VM and a fixed number of VCPUs via a set of pipes &
+/// unix domain socket connections and a protocol defined in `protos::plugin`. The plugin process is
+/// run in an unprivileged manner as a child process spawned via a path to a arbitrary executable.
 pub struct Process {
     started: bool,
     plugin_pid: pid_t,

@@ -108,8 +108,8 @@ pub struct DiskOption {
     )]
     pub io_concurrency: NonZeroU32,
     #[serde(default)]
-    /// Experimental option to run multiple worker threads in parallel. If false, only single thread
-    /// runs by default. Note this option is not effective for vhost-user blk device.
+    /// Experimental option to run multiple worker threads in parallel. If false, only single
+    /// thread runs by default. Note this option is not effective for vhost-user blk device.
     pub multiple_workers: bool,
     #[serde(default, alias = "async_executor")]
     /// The async executor kind to simulate the block device with. This option takes

@@ -172,8 +172,8 @@ impl EventLoop {
             .map_err(Error::WaitContextAddDescriptor)
     }
 
-    /// Removes event for this `descriptor`. This function is safe to call even when the `descriptor`
-    /// is not actively being polled because it's been paused.
+    /// Removes event for this `descriptor`. This function is safe to call even when the
+    /// `descriptor` is not actively being polled because it's been paused.
     ///
     /// EventLoop does not guarantee all events for `descriptor` is handled.
     pub fn remove_event_for_descriptor(&self, descriptor: &dyn AsRawDescriptor) -> Result<()> {

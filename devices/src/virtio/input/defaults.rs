@@ -64,7 +64,8 @@ pub fn new_keyboard_config(idx: u32) -> VirtioInputConfig {
     )
 }
 
-/// Instantiates a VirtioInputConfig object with the default configuration for a collection of switches.
+/// Instantiates a VirtioInputConfig object with the default configuration for a collection of
+/// switches.
 pub fn new_switches_config(idx: u32) -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),
@@ -76,7 +77,8 @@ pub fn new_switches_config(idx: u32) -> VirtioInputConfig {
     )
 }
 
-/// Instantiates a VirtioInputConfig object with the default configuration for a collection of rotary.
+/// Instantiates a VirtioInputConfig object with the default configuration for a collection of
+/// rotary.
 pub fn new_rotary_config(idx: u32) -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),

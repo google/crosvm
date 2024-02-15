@@ -96,7 +96,6 @@ pub fn push_descriptors_internal(keep_rds: &mut Vec<RawDescriptor>) {
 /// Categories that are enabled will have their events traced at runtime via
 /// `trace_event_begin!()`, `trace_event_end!()`, or `trace_event!()` scoped tracing.
 /// The categories that are marked as false will have their events skipped.
-///
 macro_rules! setup_trace_marker {
  ($(($cat:ident, $enabled:literal)),+) => {
      #[allow(non_camel_case_types, missing_docs)]
@@ -159,7 +158,6 @@ macro_rules! setup_trace_marker {
 ///   - `$uid: Exit: exec`
 ///
 /// where `$uid` will be the same unique value across those two events.
-///
 macro_rules! trace_event {
     ($category:ident, $name:literal, $($arg:expr),+) => {{
         if($crate::ENABLED_CATEGORIES[$crate::TracedCategories::$category as usize].load(std::sync::atomic::Ordering::Relaxed)) {

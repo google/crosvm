@@ -42,8 +42,6 @@
 //!
 //! init_with(cfg).unwrap();
 //! error!("something went horribly wrong: {}", "out of RAMs");
-//!
-//!
 //! ```
 //!
 //!
@@ -372,7 +370,7 @@ pub fn init() -> Result<(), Error> {
 ///
 /// Arguments:
 /// * filter: See <https://docs.rs/env_logger/0.9/env_logger/index.html> for example filter
-///     specifications
+///   specifications
 /// * stderr: If set will output to stderr (in addition)
 /// * file:  If set will output to this file (in addition)
 /// * proc_name: proc name for Syslog implementation

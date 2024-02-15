@@ -218,9 +218,10 @@ impl Serial {
                     for event in events.iter() {
                         match event.token {
                             Token::Kill => {
-                                // Ignore the kill event until there are no other events to process so that
-                                // we drain `rx` as much as possible. The next `wait_ctx.wait()` call will
-                                // immediately re-entry this case since we don't call `kill_evt.wait()`.
+                                // Ignore the kill event until there are no other events to process
+                                // so that we drain `rx` as much as possible. The next
+                                // `wait_ctx.wait()` call will immediately re-entry this case since
+                                // we don't call `kill_evt.wait()`.
                                 if events.iter().all(|e| matches!(e.token, Token::Kill)) {
                                     return rx;
                                 }
@@ -262,7 +263,8 @@ impl Serial {
                                         }
                                     }
                                     Err(e) => {
-                                        // Being interrupted is not an error, but everything else is.
+                                        // Being interrupted is not an error, but everything else
+                                        // is.
                                         if e.kind() != io::ErrorKind::Interrupted {
                                             error!(
                                                 "failed to read for bytes to queue into serial device: {}",

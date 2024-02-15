@@ -162,10 +162,10 @@ ioctl_iowr_nr!(FS_IOC_GET_ENCRYPTION_POLICY_EX, 'f' as u32, 22, [u8; 9]);
 #[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 struct fsxattr {
     fsx_xflags: u32,     /* xflags field value (get/set) */
-    fsx_extsize: u32,    /* extsize field value (get/set)*/
-    fsx_nextents: u32,   /* nextents field value (get)	*/
+    fsx_extsize: u32,    /* extsize field value (get/set) */
+    fsx_nextents: u32,   /* nextents field value (get) */
     fsx_projid: u32,     /* project identifier (get/set) */
-    fsx_cowextsize: u32, /* CoW extsize field value (get/set)*/
+    fsx_cowextsize: u32, /* CoW extsize field value (get/set) */
     fsx_pad: [u8; 8],
 }
 
@@ -1506,9 +1506,10 @@ impl PassthroughFs {
             let data = self.find_handle(handle, inode)?;
 
             {
-                // We can't enable verity while holding a writable fd. We don't know whether the file
-                // was opened for writing so check it here. We don't expect this to be a frequent
-                // operation so the extra latency should be fine.
+                // We can't enable verity while holding a writable fd. We don't know whether the
+                // file was opened for writing so check it here. We don't expect
+                // this to be a frequent operation so the extra latency should be
+                // fine.
                 let mut file = data.file.lock();
                 let flags = FileFlags::from_file(&*file).map_err(io::Error::from)?;
                 match flags {
@@ -3712,7 +3713,8 @@ mod tests {
             );
         }
 
-        // atomic_open with flag O_RDWR | O_CREATE | O_EXCL, should return positive dentry and file handler
+        // atomic_open with flag O_RDWR | O_CREATE | O_EXCL, should return positive dentry and file
+        // handler
         let res = atomic_open(
             &fs,
             &temp_dir.path().join("dir/c.txt"),

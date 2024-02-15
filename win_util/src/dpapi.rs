@@ -71,9 +71,8 @@ pub fn crypt_protect_data(plaintext: &mut [u8]) -> Result<LocalAllocBuffer> {
 
     // SAFETY: the FFI call is safe because
     // 1. plaintext_blob lives longer than the call.
-    // 2. ciphertext_blob lives longer than the call, and we later give
-    //    ownership of the memory the kernel allocates to LocalAllocBuffer
-    //    which guarantees it is freed.
+    // 2. ciphertext_blob lives longer than the call, and we later give ownership of the memory the
+    //    kernel allocates to LocalAllocBuffer which guarantees it is freed.
     let res = unsafe {
         CryptProtectData(
             &mut plaintext_blob as *mut _,
@@ -116,9 +115,8 @@ pub fn crypt_unprotect_data(ciphertext: &mut [u8]) -> Result<LocalAllocBuffer> {
 
     // SAFETY: the FFI call is safe because
     // 1. ciphertext_blob lives longer than the call.
-    // 2. plaintext_blob lives longer than the call, and we later give
-    //    ownership of the memory the kernel allocates to LocalAllocBuffer
-    //    which guarantees it is freed.
+    // 2. plaintext_blob lives longer than the call, and we later give ownership of the memory the
+    //    kernel allocates to LocalAllocBuffer which guarantees it is freed.
     let res = unsafe {
         CryptUnprotectData(
             &mut ciphertext_blob as *mut _,

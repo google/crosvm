@@ -122,11 +122,9 @@ pub unsafe fn from_ptr_win32_wide_string(wide: *const u16) -> String {
 /// `UNICODE_STRING` struct.
 pub fn unicode_string_to_os_string(unicode_string: &UNICODE_STRING) -> OsString {
     // Safe because:
-    // * Buffer is guaranteed to be properly aligned and valid for the
-    //   entire length of the string.
-    // * The slice is only temporary, until we perform the `from_wide`
-    //   conversion with `OsString`, so the memory referenced by the slice is
-    //   not modified during that duration.
+    // * Buffer is guaranteed to be properly aligned and valid for the entire length of the string.
+    // * The slice is only temporary, until we perform the `from_wide` conversion with `OsString`,
+    //   so the memory referenced by the slice is not modified during that duration.
     OsString::from_wide(unsafe {
         slice::from_raw_parts(
             unicode_string.Buffer,
@@ -334,8 +332,8 @@ pub enum ProcessPriority {
     UnknwonPriority,
     /// Crosvm critical process. In absence of this process crosvm cannot function normally.
     Critical,
-    /// Non-critical process - the process is safe to restart. Crosvm/guest may continue to function
-    /// normally when such process dies.
+    /// Non-critical process - the process is safe to restart. Crosvm/guest may continue to
+    /// function normally when such process dies.
     NonCritical,
 }
 

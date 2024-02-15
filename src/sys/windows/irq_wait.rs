@@ -211,7 +211,8 @@ impl IrqWaitWorker {
                                 Ok(request) => {
                                     let response = {
                                         let irq_chip = &mut self.irq_chip;
-                                        // TODO(b/229262201): Refactor the closure into a standalone function to reduce indentation.
+                                        // TODO(b/229262201): Refactor the closure into a standalone
+                                        // function to reduce indentation.
                                         request.execute(
                                             |setup| match setup {
                                                 IrqSetup::Event(

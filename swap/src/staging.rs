@@ -66,8 +66,8 @@ impl CopyOp {
         // Safe because:
         // * the source memory is in guest memory and no processes access it.
         // * src_addr and dst_addr are aligned with the page size.
-        // * src and dst does not overlap since src_addr is from the guest memory and dst_addr
-        //   is from the staging memory.
+        // * src and dst does not overlap since src_addr is from the guest memory and dst_addr is
+        //   from the staging memory.
         unsafe {
             copy_nonoverlapping(self.src_addr, self.dst_addr, self.size);
         }

@@ -21,7 +21,8 @@ pub fn set_audio_thread_priority() -> Result<SafeMultimediaHandle> {
     let multimedia_handle = unsafe {
         let mut task_index: u32 = 0;
         // "Pro Audio" is defined in:
-        // HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Pro Audio
+        // HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows
+        // NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Pro Audio
         let pro_audio = std::ffi::CString::new("Pro Audio").unwrap();
         AvSetMmThreadCharacteristicsA(pro_audio.as_ptr(), &mut task_index)
     };
@@ -58,8 +59,8 @@ impl Drop for SafeMultimediaHandle {
     fn drop(&mut self) {
         // SAFETY:
         // Safe because we `multimedia_handle` is defined in the same thread and is created in the
-        // function above. `multimedia_handle` needs be created from `AvSetMmThreadCharacteristicsA`.
-        // This will also drop the `mulitmedia_handle`.
+        // function above. `multimedia_handle` needs be created from
+        // `AvSetMmThreadCharacteristicsA`. This will also drop the `mulitmedia_handle`.
         if unsafe { AvRevertMmThreadCharacteristics(self.multimedia_handle) } == FALSE {
             warn!(
                 "Failed to revert audio thread. Error: {}",

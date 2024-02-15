@@ -155,26 +155,24 @@ pub enum AddMapResult {
 /// the virtio request that triggered the fault.
 ///
 /// As such, the flow of a fault is:
-///  1) The guest sends an virtio-iommu message that triggers a fault. Faults can
-///     be triggered by unmap or detach messages, or by attach messages if such
-///     messages are re-attaching an endpoint to a new domain. One example of
-///     a guest event that can trigger such a message is a userspace VVU device
-///     process crashing and triggering the guest kernel to re-attach the VVU
+///  1) The guest sends an virtio-iommu message that triggers a fault. Faults can be triggered by
+///     unmap or detach messages, or by attach messages if such messages are re-attaching an
+///     endpoint to a new domain. One example of a guest event that can trigger such a message is a
+///     userspace VVU device process crashing and triggering the guest kernel to re-attach the VVU
 ///     device to the null endpoint.
 ///  2) The viommu device removes an exported mapping from the mapper.
-///  3) The mapper signals the IOMMU fault eventfd and returns the fault
-///     resolution event to the viommu device.
-///  4) The viommu device starts waiting on the fault resolution event. Note that
-///     although the viommu device and mapper are both running on the same
-///     executor, this wait is async. This means that although further processing
-///     of virtio-iommu requests is paused, the mapper continues to run.
+///  3) The mapper signals the IOMMU fault eventfd and returns the fault resolution event to the
+///     viommu device.
+///  4) The viommu device starts waiting on the fault resolution event. Note that although the
+///     viommu device and mapper are both running on the same executor, this wait is async. This
+///     means that although further processing of virtio-iommu requests is paused, the mapper
+///     continues to run.
 ///  5) The client receives the IOMMU fault.
 ///  6) The client releases all exported regions.
-///  7) Once the mapper receives the final release message from the client,
-///     it signals the fault resolution event that the viommu device is
-///     waiting on.
-///  8) The viommu device finishes processing the original virtio iommu
-///     request and sends a reply to the guest.
+///  7) Once the mapper receives the final release message from the client, it signals the fault
+///     resolution event that the viommu device is waiting on.
+///  8) The viommu device finishes processing the original virtio iommu request and sends a reply to
+///     the guest.
 pub trait MemoryMapper: Send {
     /// Creates a new mapping. If the mapping overlaps with an existing
     /// mapping, return Ok(false).

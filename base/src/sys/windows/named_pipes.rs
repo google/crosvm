@@ -68,14 +68,14 @@ use crate::WaitContext;
 ///
 /// The general rule is this should be *at least* as big as the largest message, otherwise
 /// unexpected blocking behavior can result; for example, if too small, this can interact badly with
-/// crate::windows::StreamChannel, which expects to be able to make a complete write before releasing
-/// a lock that the opposite side needs to complete a read. This means that if the buffer is too
-/// small:
+/// crate::windows::StreamChannel, which expects to be able to make a complete write before
+/// releasing a lock that the opposite side needs to complete a read. This means that if the buffer
+/// is too small:
 ///     * The writer can't complete its write and release the lock because the buffer is too small.
-///     * The reader can't start reading because the lock is held by the writer, so it can't
-///       relieve buffer pressure. Note that for message pipes, the reader couldn't do anything
-///       to help anyway, because a message mode pipe should NOT have a partial read (which is
-///       what we would need to relieve pressure).
+///     * The reader can't start reading because the lock is held by the writer, so it can't relieve
+///       buffer pressure. Note that for message pipes, the reader couldn't do anything to help
+///       anyway, because a message mode pipe should NOT have a partial read (which is what we would
+///       need to relieve pressure).
 ///     * Conditions for deadlock are met, and both the reader & writer enter circular waiting.
 pub const DEFAULT_BUFFER_SIZE: usize = 50 * 1024;
 
@@ -294,17 +294,15 @@ pub fn pair(
 /// # Arguments
 ///
 /// * `framing_mode`  - Whether the system should provide a simple byte stream (Byte) or an
-///                     automatically framed sequence of messages (Message). In message mode it's an
-///                     error to read fewer bytes than were sent in a message from the other end of
-///                     the pipe.
+///   automatically framed sequence of messages (Message). In message mode it's an error to read
+///   fewer bytes than were sent in a message from the other end of the pipe.
 /// * `blocking_mode` - Whether the system should wait on read() until data is available (Wait) or
-///                     return immediately if there is nothing available (NoWait).
-/// * `timeout`       - A timeout to apply for socket operations, in milliseconds.
-///                     Setting this to zero will create sockets with the system
-///                     default timeout.
+///   return immediately if there is nothing available (NoWait).
+/// * `timeout`       - A timeout to apply for socket operations, in milliseconds. Setting this to
+///   zero will create sockets with the system default timeout.
 /// * `buffer_size`   - The default buffer size for the named pipe. The system should expand the
-///                     buffer automatically as needed, except in the case of NOWAIT pipes, where
-///                     it will just fail writes that don't fit in the buffer.
+///   buffer automatically as needed, except in the case of NOWAIT pipes, where it will just fail
+///   writes that don't fit in the buffer.
 /// # Return value
 ///
 /// Returns a pair of pipes, of the form (server, client). Note that for some winapis, such as
@@ -354,19 +352,17 @@ pub fn pair_with_buffer_size(
 /// # Arguments
 ///
 /// * `pipe_name`     - The path of the named pipe to create. Should be in the form
-///                     `\\.\pipe\<some-name>`.
+///   `\\.\pipe\<some-name>`.
 /// * `framing_mode`  - Whether the system should provide a simple byte stream (Byte) or an
-///                     automatically framed sequence of messages (Message). In message mode it's an
-///                     error to read fewer bytes than were sent in a message from the other end of
-///                     the pipe.
+///   automatically framed sequence of messages (Message). In message mode it's an error to read
+///   fewer bytes than were sent in a message from the other end of the pipe.
 /// * `blocking_mode` - Whether the system should wait on read() until data is available (Wait) or
-///                     return immediately if there is nothing available (NoWait).
-/// * `timeout`       - A timeout to apply for socket operations, in milliseconds.
-///                     Setting this to zero will create sockets with the system
-///                     default timeout.
+///   return immediately if there is nothing available (NoWait).
+/// * `timeout`       - A timeout to apply for socket operations, in milliseconds. Setting this to
+///   zero will create sockets with the system default timeout.
 /// * `buffer_size`   - The default buffer size for the named pipe. The system should expand the
-///                     buffer automatically as needed, except in the case of NOWAIT pipes, where
-///                     it will just fail writes that don't fit in the buffer.
+///   buffer automatically as needed, except in the case of NOWAIT pipes, where it will just fail
+///   writes that don't fit in the buffer.
 /// * `overlapped`    - Sets whether overlapped mode is set on the pipe.
 pub fn create_server_pipe(
     pipe_name: &str,
@@ -433,13 +429,12 @@ pub fn create_server_pipe(
 /// # Arguments
 ///
 /// * `pipe_name`     - The path of the named pipe to create. Should be in the form
-///                     `\\.\pipe\<some-name>`.
+///   `\\.\pipe\<some-name>`.
 /// * `framing_mode`  - Whether the system should provide a simple byte stream (Byte) or an
-///                     automatically framed sequence of messages (Message). In message mode it's an
-///                     error to read fewer bytes than were sent in a message from the other end of
-///                     the pipe.
+///   automatically framed sequence of messages (Message). In message mode it's an error to read
+///   fewer bytes than were sent in a message from the other end of the pipe.
 /// * `blocking_mode` - Whether the system should wait on read() until data is available (Wait) or
-///                     return immediately if there is nothing available (NoWait).
+///   return immediately if there is nothing available (NoWait).
 /// * `overlapped`    - Sets whether the pipe is opened in overlapped mode.
 pub fn create_client_pipe(
     pipe_name: &str,
@@ -711,9 +706,9 @@ impl PipeConnection {
     /// (can be created with `OverlappedWrapper::new`) will be passed into
     /// `WriteFile`. That event will be triggered when the write operation is complete.
     ///
-    /// In order to get how many bytes were written, call `get_overlapped_result`. That function will
-    /// also help with waiting until the write operation is complete. The pipe must be opened in
-    /// overlapped otherwise there may be unexpected behavior.
+    /// In order to get how many bytes were written, call `get_overlapped_result`. That function
+    /// will also help with waiting until the write operation is complete. The pipe must be
+    /// opened in overlapped otherwise there may be unexpected behavior.
     ///
     /// # Safety
     /// * buf & overlapped_wrapper MUST live until the overlapped operation is complete.
@@ -1070,8 +1065,8 @@ pub struct NamedPipeInfo {
 /// we ensure that the variable size message is written/read right after writing/reading
 /// fixed size header. For example it avoid sending or receiving in messages in order like
 /// H1, H2, M1, M2
-///   - where header H1 and its message M1 are sent by one event loop and H2 and its
-///     message M2 are sent by another event loop.
+///   - where header H1 and its message M1 are sent by one event loop and H2 and its message M2 are
+///     sent by another event loop.
 ///
 /// Do not expose direct access to reader or writer pipes.
 ///

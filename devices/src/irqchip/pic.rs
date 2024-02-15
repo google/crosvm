@@ -801,7 +801,7 @@ mod tests {
         icw_init_both(&mut data.pic);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 12, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 12, /* level= */ true);
 
         // Check that IRQ is requesting acknowledgment.
         assert_eq!(data.pic.pics[PicSelect::Secondary as usize].irr, (1 << 4));
@@ -830,12 +830,12 @@ mod tests {
         icw_init_both_with_icw4(&mut data.pic, FULLY_NESTED_NO_AUTO_EOI);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 12, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 12, /* level= */ true);
         assert_eq!(data.pic.get_external_interrupt(), Some(0x70 + 4));
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
         // Request higher-priority IRQ on secondary.
-        data.pic.service_irq(/*irq=*/ 8, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 8, /* level= */ true);
         assert_eq!(data.pic.get_external_interrupt(), Some(0x70 + 0));
 
         // Check that IRQ is ack'd and EOI is automatically done.
@@ -859,10 +859,10 @@ mod tests {
         icw_init_both_with_icw4(&mut data.pic, 0x01);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 12, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 12, /* level= */ true);
         assert_eq!(data.pic.get_external_interrupt(), Some(0x70 + 4));
 
-        data.pic.service_irq(/*irq=*/ 8, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 8, /* level= */ true);
         // Primary cannot get any IRQ, so this should not provide any interrupt.
         assert_eq!(data.pic.get_external_interrupt(), None);
 
@@ -899,7 +899,7 @@ mod tests {
         // OCW2: Mask IRQ line 6 on secondary (IRQ 14).
         data.pic.write(pic_bus_address(PIC_SECONDARY_DATA), &[0x40]);
 
-        data.pic.service_irq(/*irq=*/ 14, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 14, /* level= */ true);
         assert_eq!(data.pic.get_external_interrupt(), None);
 
         assert_eq!(data.pic.pics[PicSelect::Secondary as usize].irr, 1 << 6);
@@ -932,9 +932,9 @@ mod tests {
         data.pic.write(pic_bus_address(PIC_PRIMARY_DATA), &[0xff]);
         data.pic.write(pic_bus_address(PIC_SECONDARY_DATA), &[0xff]);
 
-        data.pic.service_irq(/*irq=*/ 14, /*level=*/ true);
-        data.pic.service_irq(/*irq=*/ 4, /*level=*/ true);
-        data.pic.service_irq(/*irq=*/ 12, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 14, /* level= */ true);
+        data.pic.service_irq(/* irq= */ 4, /* level= */ true);
+        data.pic.service_irq(/* irq= */ 12, /* level= */ true);
 
         // Primary cannot get any IRQs since they're all masked.
         assert_eq!(data.pic.get_external_interrupt(), None);
@@ -968,8 +968,8 @@ mod tests {
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
         // Poplate some data on irr/isr. IRQ4 will be in isr and IRQ5 in irr.
-        data.pic.service_irq(/*irq=*/ 5, /*level=*/ true);
-        data.pic.service_irq(/*irq=*/ 4, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 5, /* level= */ true);
+        data.pic.service_irq(/* irq= */ 4, /* level= */ true);
         assert_eq!(data.pic.get_external_interrupt(), Some(0x08 + 4));
 
         // Read primary IRR.
@@ -1010,7 +1010,7 @@ mod tests {
         icw_init_both_with_icw4(&mut data.pic, FULLY_NESTED_NO_AUTO_EOI);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 2, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 2, /* level= */ true);
         // 0x70 is secondary IRQ base, 7 is for a spurious IRQ.
         assert_eq!(data.pic.get_external_interrupt(), Some(0x70 + 7));
     }
@@ -1022,11 +1022,11 @@ mod tests {
         icw_init_both_with_icw4(&mut data.pic, FULLY_NESTED_NO_AUTO_EOI);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 4, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 4, /* level= */ true);
         // get_external_interrupt clears the irr so it is possible to request the same IRQ again.
         assert_eq!(data.pic.get_external_interrupt(), Some(0x08 + 4));
 
-        data.pic.service_irq(/*irq=*/ 4, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 4, /* level= */ true);
 
         // In edge triggered mode, there should be no IRQ after this EOI.
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
@@ -1044,11 +1044,11 @@ mod tests {
         data.pic.write(pic_bus_address(PIC_PRIMARY_ELCR), &[0x10]);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 4, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 4, /* level= */ true);
         // get_external_interrupt clears the irr so it is possible to request the same IRQ again.
         assert_eq!(data.pic.get_external_interrupt(), Some(0x08 + 4));
 
-        data.pic.service_irq(/*irq=*/ 4, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 4, /* level= */ true);
 
         // In level-triggered mode, there should be another IRQ request after this EOI.
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
@@ -1063,7 +1063,7 @@ mod tests {
         icw_init_both_with_icw4(&mut data.pic, FULLY_NESTED_NO_AUTO_EOI);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 4, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 4, /* level= */ true);
         assert_eq!(data.pic.get_external_interrupt(), Some(0x08 + 4));
 
         // Specific EOI command on IRQ3. Primary PIC's ISR should be unaffected since it's targeted
@@ -1089,9 +1089,9 @@ mod tests {
             .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x00]);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 5, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 5, /* level= */ true);
         assert_eq!(data.pic.get_external_interrupt(), Some(0x08 + 5));
-        data.pic.service_irq(/*irq=*/ 5, /*level=*/ false);
+        data.pic.service_irq(/* irq= */ 5, /* level= */ false);
 
         // EOI automatically happened. Now priority should not be rotated.
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].isr, 0);
@@ -1104,9 +1104,9 @@ mod tests {
             .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x80]);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 5, /*level*/ true);
+        data.pic.service_irq(/* irq= */ 5, /* level */ true);
         assert_eq!(data.pic.get_external_interrupt(), Some(0x08 + 5));
-        data.pic.service_irq(/*irq=*/ 5, /*level=*/ false);
+        data.pic.service_irq(/* irq= */ 5, /* level= */ false);
 
         // EOI automatically happened, and the priority *should* be rotated.
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].isr, 0);
@@ -1120,9 +1120,9 @@ mod tests {
         icw_init_both_with_icw4(&mut data.pic, FULLY_NESTED_NO_AUTO_EOI);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 5, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 5, /* level= */ true);
         assert_eq!(data.pic.get_external_interrupt(), Some(0x08 + 5));
-        data.pic.service_irq(/*irq=*/ 5, /*level=*/ false);
+        data.pic.service_irq(/* irq= */ 5, /* level= */ false);
 
         // Rotate on specific EOI IRQ4. Since this is a different IRQ number, Should not have an
         // effect on isr.
@@ -1146,9 +1146,9 @@ mod tests {
         icw_init_both_with_icw4(&mut data.pic, FULLY_NESTED_NO_AUTO_EOI);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 5, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 5, /* level= */ true);
         assert_eq!(data.pic.get_external_interrupt(), Some(0x08 + 5));
-        data.pic.service_irq(/*irq=*/ 5, /*level=*/ false);
+        data.pic.service_irq(/* irq= */ 5, /* level= */ false);
 
         // Rotate on non-specific EOI.
         data.pic
@@ -1166,7 +1166,7 @@ mod tests {
         icw_init_both_with_icw4(&mut data.pic, FULLY_NESTED_NO_AUTO_EOI);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 12, /*level=*/ true);
+        data.pic.service_irq(/* irq= */ 12, /* level= */ true);
 
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].irr, 1 << 2);
         assert_eq!(data.pic.pics[PicSelect::Secondary as usize].irr, 1 << 4);

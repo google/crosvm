@@ -181,8 +181,8 @@ impl Worker {
     /// # Arguments
     ///
     /// * `device` - Instance of backend device
-    /// * `wait_ctx` - `device` may register a new `Token::Event` for a new stream session
-    ///   to `wait_ctx`
+    /// * `wait_ctx` - `device` may register a new `Token::Event` for a new stream session to
+    ///   `wait_ctx`
     /// * `desc` - `DescriptorChain` to handle
     fn handle_command_desc(
         &mut self,
@@ -266,8 +266,8 @@ impl Worker {
     /// # Arguments
     ///
     /// * `device` - Instance of backend device
-    /// * `wait_ctx` - `device` may register a new `Token::Event` for a new stream session
-    ///   to `wait_ctx`
+    /// * `wait_ctx` - `device` may register a new `Token::Event` for a new stream session to
+    ///   `wait_ctx`
     fn handle_command_queue(
         &mut self,
         device: &mut dyn Device,
@@ -286,8 +286,8 @@ impl Worker {
     ///
     /// * `device` - Instance of backend device
     /// * `stream_id` - Stream session ID of the event
-    /// * `wait_ctx` - `device` may register a new `Token::Buffer` for a new stream session
-    ///   to `wait_ctx`
+    /// * `wait_ctx` - `device` may register a new `Token::Buffer` for a new stream session to
+    ///   `wait_ctx`
     fn handle_event(
         &mut self,
         device: &mut dyn Device,

@@ -219,8 +219,8 @@ impl HypervisorX86_64 for Whpx {
                 // to the host value here assuming that the leaves above 0x15 probably won't hurt
                 // the guest.
                 cpuid_entry_from_host(0, 0),
-                // crosvm overrides the entirety of leaves 2, 0x80000005, and 0x80000006 to the host
-                // value, so we just return the host value here.
+                // crosvm overrides the entirety of leaves 2, 0x80000005, and 0x80000006 to the
+                // host value, so we just return the host value here.
                 cpuid_entry_from_host(2, 0),
                 cpuid_entry_from_host(0x80000005, 0),
                 cpuid_entry_from_host(0x80000006, 0),
