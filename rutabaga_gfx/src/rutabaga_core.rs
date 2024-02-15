@@ -356,7 +356,7 @@ impl Rutabaga {
                 .get(&self.default_component)
                 .ok_or(RutabagaError::InvalidComponent)?;
 
-            component.snapshot(directory)?
+            component.snapshot(directory)
         } else if self.default_component == RutabagaComponentType::Rutabaga2D {
             let snapshot = RutabagaSnapshot {
                 resources: self
@@ -380,9 +380,9 @@ impl Rutabaga {
             };
 
             return snapshot.serialize_to(w).map_err(RutabagaError::IoError);
+        } else {
+            Err(RutabagaError::Unsupported)
         }
-
-        Err(RutabagaError::Unsupported)
     }
 
     /// Restore Rutabaga to a previously snapshot'd state.
@@ -412,7 +412,8 @@ impl Rutabaga {
                 .components
                 .get_mut(&self.default_component)
                 .ok_or(RutabagaError::InvalidComponent)?;
-            component.restore(directory)?
+
+            component.restore(directory)
         } else if self.default_component == RutabagaComponentType::Rutabaga2D {
             let snapshot = RutabagaSnapshot::deserialize_from(r).map_err(RutabagaError::IoError)?;
 
@@ -450,9 +451,9 @@ impl Rutabaga {
                 .collect();
 
             return Ok(());
+        } else {
+            Err(RutabagaError::Unsupported)
         }
-
-        Err(RutabagaError::Unsupported)
     }
 
     fn capset_id_to_component_type(&self, capset_id: u32) -> RutabagaResult<RutabagaComponentType> {
