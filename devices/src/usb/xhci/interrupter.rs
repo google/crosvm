@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::time::Duration;
+use std::time::Instant;
+
+use base::Clock;
 use base::Error as SysError;
 use base::Event;
 use remain::sorted;
@@ -54,11 +58,14 @@ pub struct Interrupter {
     moderation_interval: u16,
     moderation_counter: u16,
     event_ring: EventRing,
+    last_interrupt_time: Instant,
+    clock: Clock,
 }
 
 impl Interrupter {
     /// Create a new interrupter.
     pub fn new(mem: GuestMemory, irq_evt: Event, regs: &XhciRegs) -> Self {
+        let clock = Clock::new();
         Interrupter {
             interrupt_evt: irq_evt,
             usbsts: regs.usbsts.clone(),
@@ -66,9 +73,11 @@ impl Interrupter {
             erdp: regs.erdp.clone(),
             event_handler_busy: false,
             enabled: false,
-            moderation_interval: 0,
-            moderation_counter: 0,
+            moderation_interval: 4000, // default to 1ms as per xhci 5.5.2.2
+            moderation_counter: 0,     // xhci specs leave this as undefined
             event_ring: EventRing::new(mem),
+            last_interrupt_time: clock.now(),
+            clock,
         }
     }
 
@@ -146,7 +155,7 @@ impl Interrupter {
 
     /// Set interrupt moderation.
     pub fn set_moderation(&mut self, interval: u16, counter: u16) -> Result<()> {
-        // TODO(jkwang) Moderation is not implemented yet.
+        xhci_trace!("interrupter set_moderation({}, {})", interval, counter);
         self.moderation_interval = interval;
         self.moderation_counter = counter;
         self.interrupt_if_needed()
@@ -186,11 +195,23 @@ impl Interrupter {
         self.usbsts.set_bits(USB_STS_EVENT_INTERRUPT);
         self.iman.set_bits(IMAN_INTERRUPT_PENDING);
         self.erdp.set_bits(ERDP_EVENT_HANDLER_BUSY);
+        self.moderation_counter = self.moderation_interval;
+        self.last_interrupt_time = self.clock.now();
         self.interrupt_evt.signal().map_err(Error::SendInterrupt)
     }
 
+    fn interrupt_interval(&self) -> Duration {
+        // Formula from xhci spec 4.17.2 in nanoseconds, but we use the imodc value instead of the
+        // imodi value because our implementation automatically adjusts the range of the duration
+        // based on the remaining time left in the moderation counter, which may be software
+        // defined.
+        Duration::new(0, 250 * u32::from(self.moderation_counter))
+    }
+
     fn interrupt_if_needed(&mut self) -> Result<()> {
-        if self.enabled && !self.event_ring.is_empty() && !self.event_handler_busy {
+        let can_interrupt = self.last_interrupt_time.elapsed() >= self.interrupt_interval();
+        if self.enabled && can_interrupt && !self.event_ring.is_empty() && !self.event_handler_busy
+        {
             self.interrupt()?;
         }
         Ok(())
