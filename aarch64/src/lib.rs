@@ -871,7 +871,7 @@ impl arch::LinuxArch for AArch64 {
     fn get_host_cpu_clusters() -> std::result::Result<Vec<CpuSet>, Self::Error> {
         let cluster_ids = Self::collect_for_each_cpu(base::logical_core_cluster_id)
             .map_err(Error::CpuTopology)?;
-        Ok(cluster_ids
+        let mut unique_clusters: Vec<CpuSet> = cluster_ids
             .iter()
             .map(|&vcpu_cluster_id| {
                 cluster_ids
@@ -881,7 +881,10 @@ impl arch::LinuxArch for AArch64 {
                     .map(|(cpu_id, _)| cpu_id)
                     .collect()
             })
-            .collect())
+            .collect();
+        unique_clusters.sort_unstable();
+        unique_clusters.dedup();
+        Ok(unique_clusters)
     }
 }
 

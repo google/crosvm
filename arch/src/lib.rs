@@ -140,7 +140,7 @@ pub struct Pstore {
 }
 
 /// Set of CPU cores.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CpuSet(Vec<usize>);
 
 impl CpuSet {
