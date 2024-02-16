@@ -717,7 +717,12 @@ impl Frontend {
         let mut gpu_response = match resp {
             Ok(gpu_response) => gpu_response,
             Err(gpu_response) => {
-                debug!("{:?} -> {:?}", gpu_cmd, gpu_response);
+                if let Some(gpu_cmd) = gpu_cmd {
+                    error!(
+                        "error processing gpu command {:?}: {:?}",
+                        gpu_cmd, gpu_response
+                    );
+                }
                 gpu_response
             }
         };
