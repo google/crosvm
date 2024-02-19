@@ -1967,8 +1967,7 @@ pub struct RunCommand {
     ///     input=PATH - The path to the file to read from when not
     ///        stdin
     ///     console - Use this serial device as the guest console.
-    ///        Can only be given once. Will default to first
-    ///        serial port if not provided.
+    ///        Will default to first serial port if not provided.
     ///     earlycon - Use this serial device as the early console.
     ///        Can only be given once.
     ///     stdin - Direct standard input to this serial device.
@@ -2669,17 +2668,6 @@ impl TryFrom<RunCommand> for super::config::Config {
                     "serial hardware {} num {}",
                     serial_params.hardware, num,
                 ));
-            }
-
-            if serial_params.console {
-                for params in cfg.serial_parameters.values() {
-                    if params.console {
-                        return Err(format!(
-                            "{} device {} already set as console",
-                            params.hardware, params.num,
-                        ));
-                    }
-                }
             }
 
             if serial_params.earlycon {

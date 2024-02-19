@@ -178,25 +178,24 @@ pub fn get_serial_cmdline(
     serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
     serial_io_type: &str,
 ) -> GetSerialCmdlineResult<()> {
-    match serial_parameters
+    for serial_parameter in serial_parameters
         .iter()
         .filter(|(_, p)| p.console)
         .map(|(k, _)| k)
-        .next()
     {
-        Some((SerialHardware::Serial, num)) => {
-            cmdline
-                .insert("console", &format!("ttyS{}", num - 1))
-                .map_err(GetSerialCmdlineError::KernelCmdline)?;
+        match serial_parameter {
+            (SerialHardware::Serial, num) => {
+                cmdline
+                    .insert("console", &format!("ttyS{}", num - 1))
+                    .map_err(GetSerialCmdlineError::KernelCmdline)?;
+            }
+            (SerialHardware::VirtioConsole, num) | (SerialHardware::LegacyVirtioConsole, num) => {
+                cmdline
+                    .insert("console", &format!("hvc{}", num - 1))
+                    .map_err(GetSerialCmdlineError::KernelCmdline)?;
+            }
+            (SerialHardware::Debugcon, _) => {}
         }
-        Some((SerialHardware::VirtioConsole, num))
-        | Some((SerialHardware::LegacyVirtioConsole, num)) => {
-            cmdline
-                .insert("console", &format!("hvc{}", num - 1))
-                .map_err(GetSerialCmdlineError::KernelCmdline)?;
-        }
-        Some((SerialHardware::Debugcon, _)) => {}
-        None => {}
     }
 
     match serial_parameters
