@@ -319,7 +319,6 @@ all-default = [
     "android-sparse",
     "arc_quota",
     "audio_cras",
-    "chromeos",
     "composite-disk",
     "crash-report",
     "default",
@@ -333,6 +332,7 @@ all-default = [
     "noncoherent-dma",
     "pci-hotplug",
     "power-monitor-powerd",
+    "registered_events",
     "slirp",
     "swap",
     "trace_marker",
@@ -389,12 +389,6 @@ all-mingw64 = [
 
 ## All features that are compiled and tested for msvc64
 all-msvc64 = [ "all-mingw64" ]
-
-## All features that are enabled in ChromeOS builds.
-all-chromeos = ["audio_cras", "arc_quota", "vtpm", "registered_events"]
-
-# Deprecated feature flag. Remove after ChromeOS-side is updated.
-chromeos = ["all-chromeos"]
 
 [dependencies]
 anyhow = "1.0.32"
