@@ -38,7 +38,7 @@ $(shell mkdir -p $(TARGET))
 
 # Parameteters for building the kernel locally
 KERNEL_REPO ?= https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
-KERNEL_BRANCH ?= linux-6.1.y
+KERNEL_BRANCH ?= v6.1.59
 KERNEL_SRC_BASE ?= $(TARGET)/kernel-source-$(KERNEL_BRANCH)
 KERNEL_SRC_PATCHED ?= $(KERNEL_SRC_BASE)-patched
 KERNEL_BUILD ?= $(TARGET)/kernel-build
