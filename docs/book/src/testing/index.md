@@ -19,7 +19,8 @@ unit tests:
 - Avoid accessing kernel devices
 - Avoid global state in unit tests
 
-This allows us to execute unit tests for any platform using emulators such as qemu-static or wine64.
+This allows us to execute unit tests for any platform using emulators such as qemu-user-static or
+wine64.
 
 ### Documentation tests
 
@@ -79,17 +80,17 @@ processes.
 The platforms below can all be tested using `tools/run_tests -p $platform`. The table indicates how
 these tests are executed:
 
-| Platform                    | Build |          Unit Tests           | Integration Tests | E2E Tests |
-| :-------------------------- | :---: | :---------------------------: | :---------------: | :-------: |
-| x86_64 (linux)              |   ✅   |               ✅               |         ✅         |     ✅     |
-| aarch64 (linux)             |   ✅   | ✅ (qemu-static[^qemu-static]) |  ✅ (qemu[^qemu])  |     ❌     |
-| armhf (linux)               |   ✅   | ✅ (qemu-static[^qemu-static]) |         ❌         |     ❌     |
-| mingw64[^windows] (linux)   |   🚧   |          🚧 (wine64)           |         ❌         |     ❌     |
-| mingw64[^windows] (windows) |   🚧   |               🚧               |         🚧         |     ❌     |
+| Platform                    | Build |        Unit Tests         | Integration Tests | E2E Tests |
+| :-------------------------- | :---: | :-----------------------: | :---------------: | :-------: |
+| x86_64 (linux)              |   ✅   |             ✅             |         ✅         |     ✅     |
+| aarch64 (linux)             |   ✅   | ✅ (qemu-user[^qemu-user]) |  ✅ (qemu[^qemu])  |     ❌     |
+| armhf (linux)               |   ✅   | ✅ (qemu-user[^qemu-user]) |         ❌         |     ❌     |
+| mingw64[^windows] (linux)   |   🚧   |        🚧 (wine64)         |         ❌         |     ❌     |
+| mingw64[^windows] (windows) |   🚧   |             🚧             |         🚧         |     ❌     |
 
 Crosvm CI will use the same configuration as `tools/run_tests`.
 
-[^qemu-static]: qemu-static-aarch64 or qemu-static-arm translate instructions into x86 and executes them on the
+[^qemu-user]: qemu-aarch64-static or qemu-arm-static translate instructions into x86 and executes them on the
     host kernel. This works well for unit tests, but will fail when interacting with platform
     specific kernel features.
 
