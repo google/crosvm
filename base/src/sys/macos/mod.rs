@@ -7,6 +7,7 @@ use std::fs::File;
 use crate::descriptor::FromRawDescriptor;
 use crate::sys::unix::RawDescriptor;
 use crate::unix::set_descriptor_cloexec;
+use crate::unix::Pid;
 use crate::MmapError;
 
 mod net;
@@ -24,13 +25,7 @@ pub fn get_filesystem_type(_file: &std::fs::File) -> crate::errno::Result<i64> {
     todo!();
 }
 
-pub struct Pid {}
-
 pub fn getpid() -> Pid {
-    todo!();
-}
-
-pub fn number_of_logical_cores() -> crate::errno::Result<usize> {
     todo!();
 }
 
@@ -38,10 +33,6 @@ pub fn open_file_or_duplicate<P: AsRef<std::path::Path>>(
     _path: P,
     _options: &std::fs::OpenOptions,
 ) -> crate::Result<std::fs::File> {
-    todo!();
-}
-
-pub fn pagesize() -> usize {
     todo!();
 }
 
