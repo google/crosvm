@@ -23,7 +23,7 @@ sync = { path = "../common/sync" } # provided by ebuild
 
 cfg-if = "*"
 chrono = "0.4.19"
-env_logger = "0.9.0"
+env_logger = { version = "0.9.0", default-features = false }
 libc = "*"
 log = "0.4"
 once_cell = "1.7"
@@ -49,6 +49,3 @@ protobuf = "3.2"
 rand = "0.8"
 winapi = "*"
 win_util = { path = "../win_util"}
-
-[target.'cfg(windows)'.dev-dependencies]
-regex = "*"

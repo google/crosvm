@@ -30,13 +30,6 @@
 //! use std::io::Write;
 //!
 //! let mut cfg = LogConfig::default();
-//! cfg.pipe_formatter = Some(Box::new(|buf, rec| {
-//!     let mut level_style = buf.style();
-//!     level_style.set_color(fmt::Color::Green);
-//!     let mut style = buf.style();
-//!     style.set_color(fmt::Color::Red).set_bold(true);
-//!     writeln!(buf, "{}:{}", level_style.value(rec.level()), style.value(rec.args()))
-//! }));
 //! cfg.log_args.stderr = true;
 //! cfg.log_args.filter = String::from("info,base=debug,base::syslog=error,serial_console=false");
 //!
