@@ -473,7 +473,7 @@ mod tests {
     }
 
     fn timestamp_to_datetime(timestamp: i64) -> DateTime<Utc> {
-        DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(timestamp, 0), Utc)
+        Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(timestamp, 0).unwrap())
     }
 
     fn test_now_party_like_its_1999() -> DateTime<Utc> {

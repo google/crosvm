@@ -22,7 +22,7 @@ data_model = { path = "../common/data_model" } # provided by ebuild
 sync = { path = "../common/sync" } # provided by ebuild
 
 cfg-if = "*"
-chrono = "0.4.19"
+chrono = { version = "0.4.19", features = ["clock"], default-features = false }
 env_logger = { version = "0.9.0", default-features = false }
 libc = "*"
 log = "0.4"
