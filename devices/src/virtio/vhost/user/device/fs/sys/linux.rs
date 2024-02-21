@@ -75,8 +75,6 @@ fn jail_and_fork(
     keep_rds.sort_unstable();
     keep_rds.dedup();
 
-    let tz = std::env::var("TZ").unwrap_or_default();
-
     // fork on the jail here
     // SAFETY: trivially safe
     let pid = unsafe { j.fork(Some(&keep_rds))? };
@@ -86,11 +84,6 @@ fn jail_and_fork(
         // users, so we do nothing here for seccomp_trace
         // SAFETY: trivially safe
         unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) };
-    }
-
-    if pid == 0 {
-        // Preserve TZ for `chrono::Local` (b/257987535).
-        std::env::set_var("TZ", tz);
     }
 
     if pid < 0 {

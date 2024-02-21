@@ -4306,8 +4306,6 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
         .context("failed to create the vhost listener")?;
     let parent_resources = listener.take_parent_process_resources();
 
-    let tz = std::env::var("TZ").unwrap_or_default();
-
     // Executor must be created before jail in order to prevent the jailed process from creating
     // unrestricted io_urings.
     let ex = Executor::with_executor_kind(device.executor_kind().unwrap_or_default().into())
@@ -4342,9 +4340,6 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
             // Safe because we trimmed the name to 15 characters (and pthread_setname_np will return
             // an error if we don't anyway).
             let _ = unsafe { libc::pthread_setname_np(libc::pthread_self(), thread_name.as_ptr()) };
-
-            // Preserve TZ for `chrono::Local` (b/257987535).
-            std::env::set_var("TZ", tz);
 
             // Run the device loop and terminate the child process once it exits.
             let res = match listener.run_device(ex, device) {

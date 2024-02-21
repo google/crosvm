@@ -96,8 +96,6 @@ where
     keep_rds.sort_unstable();
     keep_rds.dedup();
 
-    let tz = std::env::var("TZ").unwrap_or_default();
-
     // SAFETY:
     // Safe because the program is still single threaded.
     // We own the jail object and nobody else will try to reuse it.
@@ -132,9 +130,6 @@ where
                     }
                 }
             }
-
-            // Preserve TZ for `chrono::Local` (b/257987535).
-            std::env::set_var("TZ", tz);
 
             post_fork_cb();
             // ! Never returns
