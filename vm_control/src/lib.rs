@@ -1263,6 +1263,7 @@ pub enum PvClockCommand {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum PvClockCommandResponse {
     Ok,
+    DeviceInactive,
     Err(SysError),
 }
 
