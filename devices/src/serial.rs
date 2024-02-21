@@ -425,7 +425,7 @@ impl Serial {
         };
 
         if self.out_timestamp && self.last_write_was_newline {
-            write!(out, "{}", chrono::Local::now().format(TIMESTAMP_PREFIX_FMT))?;
+            write!(out, "{}", chrono::Utc::now().format(TIMESTAMP_PREFIX_FMT))?;
         }
 
         self.last_write_was_newline = v == b'\n';
