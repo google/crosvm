@@ -8,6 +8,7 @@ use std::convert::AsRef;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::Read;
+use std::io::Write;
 use std::marker::Send;
 use std::marker::Sync;
 use std::result;
@@ -19,7 +20,6 @@ use base::pagesize;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::Error as SysError;
-use base::FileReadWriteVolatile;
 use base::MappedRegion;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
@@ -854,12 +854,14 @@ impl GuestMemory {
 
     /// Copy all guest memory into `w`.
     ///
-    /// Assumes exclusive access to the guest memory for the duration of the call (e.g. all vCPUs
-    /// and devices must be stopped).
+    /// # Safety
+    /// Must have exclusive access to the guest memory for the duration of the
+    /// call (e.g. all vCPUs and devices must be stopped).
     ///
     /// Returns a JSON object that contains metadata about the underlying memory regions to allow
     /// validation checks at restore time.
-    pub fn snapshot(&self, w: &mut std::fs::File) -> anyhow::Result<serde_json::Value> {
+    #[deny(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn snapshot<T: Write>(&self, w: &mut T) -> anyhow::Result<serde_json::Value> {
         let mut metadata = MemorySnapshotMetadata {
             regions: Vec::new(),
         };
@@ -872,7 +874,19 @@ impl GuestMemory {
                 let region_vslice = region
                     .mapping
                     .get_slice(range.start, range.end - range.start)?;
-                w.write_all_volatile(region_vslice)?;
+                // SAFETY:
+                // 1. The data is guaranteed to be present & of expected length by the
+                //    `VolatileSlice`.
+                // 2. Aliasing the `VolatileSlice`'s memory is safe because a. The only mutable
+                //    reference to it is held by the guest, and the guest's VCPUs are stopped
+                //    (guaranteed by caller), so that mutable reference can be ignored (aliasing is
+                //    only an issue if temporal overlap occurs, and it does not here). b. Some host
+                //    code does manipulate guest memory through raw pointers. This aliases the
+                //    underlying memory of the slice, so we must ensure that host code is not
+                //    running (the caller guarantees this).
+                w.write_all(unsafe {
+                    std::slice::from_raw_parts(region_vslice.as_ptr(), region_vslice.size())
+                })?;
             }
             metadata.regions.push(MemoryRegionSnapshotMetadata {
                 guest_base: region.guest_base.0,
@@ -886,15 +900,17 @@ impl GuestMemory {
 
     /// Restore the guest memory using the bytes from `r`.
     ///
-    /// Assumes exclusive access to the guest memory for the duration of the call (e.g. all vCPUs
-    /// and devices must be stopped).
+    /// # Safety
+    /// Must have exclusive access to the guest memory for the duration of the
+    /// call (e.g. all vCPUs and devices must be stopped).
     ///
     /// Returns an error if `metadata` doesn't match the configuration of the `GuestMemory` or if
     /// `r` doesn't produce exactly as many bytes as needed.
-    pub fn restore(
+    #[deny(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn restore<T: Read>(
         &self,
         metadata: serde_json::Value,
-        r: &mut std::fs::File,
+        r: &mut T,
     ) -> anyhow::Result<()> {
         let metadata: MemorySnapshotMetadata = serde_json::from_value(metadata)?;
         if self.regions.len() != metadata.regions.len() {
@@ -926,7 +942,13 @@ impl GuestMemory {
                 let region_vslice = region
                     .mapping
                     .get_slice(range.start, range.end - range.start)?;
-                r.read_exact_volatile(region_vslice)?;
+
+                // SAFETY:
+                // See `Self::snapshot` for the detailed safety statement, and
+                // note that both mutable and non-mutable aliasing is safe.
+                r.read_exact(unsafe {
+                    std::slice::from_raw_parts_mut(region_vslice.as_mut_ptr(), region_vslice.size())
+                })?;
 
                 prev_end = range.end;
             }
@@ -1189,7 +1211,9 @@ mod tests {
         }
 
         let mut data = tempfile::tempfile().unwrap();
-        let metadata_json = gm.snapshot(&mut data).unwrap();
+        // SAFETY:
+        // no vm is running
+        let metadata_json = unsafe { gm.snapshot(&mut data).unwrap() };
         let metadata: MemorySnapshotMetadata =
             serde_json::from_value(metadata_json.clone()).unwrap();
 
@@ -1271,7 +1295,9 @@ mod tests {
 
         use std::io::Seek;
         data.seek(std::io::SeekFrom::Start(0)).unwrap();
-        gm2.restore(metadata_json, &mut data).unwrap();
+        // SAFETY:
+        // no vm is running
+        unsafe { gm2.restore(metadata_json, &mut data).unwrap() };
 
         assert_eq!(gm2.read_obj_from_addr::<u64>(hole_addr).unwrap(), 0);
         for &(addr, value) in writes {

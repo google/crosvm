@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 use std::fs::File;
+use std::io::Read;
+use std::io::Write;
 use std::path::PathBuf;
 
 use anyhow::Context;
@@ -33,8 +35,8 @@ impl SnapshotWriter {
         Ok(Self { dir: root })
     }
 
-    /// Creates a snapshot fragment and get access to the `File` representing it.
-    pub fn raw_fragment(&self, name: &str) -> Result<File> {
+    /// Creates a snapshot fragment and get access to the `Write` impl representing it.
+    pub fn raw_fragment(&self, name: &str) -> Result<impl Write> {
         let path = self.dir.join(name);
         let file = File::options()
             .write(true)
@@ -80,8 +82,8 @@ impl SnapshotReader {
         Ok(Self { dir: root })
     }
 
-    /// Gets access to the `File` representing a fragment.
-    pub fn raw_fragment(&self, name: &str) -> Result<File> {
+    /// Gets access to a `Read` impl that represents a fragment.
+    pub fn raw_fragment(&self, name: &str) -> Result<impl Read> {
         let path = self.dir.join(name);
         let file = File::open(&path).with_context(|| {
             format!(

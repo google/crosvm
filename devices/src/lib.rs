@@ -257,9 +257,13 @@ async fn snapshot_handler(
     guest_memory: &GuestMemory,
     buses: &[&Bus],
 ) -> anyhow::Result<()> {
-    let guest_memory_metadata = guest_memory
-        .snapshot(&mut snapshot_writer.raw_fragment("mem")?)
-        .context("failed to snapshot memory")?;
+    // SAFETY:
+    // VM & devices are stopped.
+    let guest_memory_metadata = unsafe {
+        guest_memory
+            .snapshot(&mut snapshot_writer.raw_fragment("mem")?)
+            .context("failed to snapshot memory")?
+    };
     snapshot_writer.write_fragment("mem_metadata", &guest_memory_metadata)?;
     for (i, bus) in buses.iter().enumerate() {
         bus.snapshot_devices(&snapshot_writer.add_namespace(&format!("bus{i}"))?)
@@ -278,10 +282,14 @@ async fn restore_handler(
     buses: &[&Bus],
 ) -> anyhow::Result<()> {
     let guest_memory_metadata = snapshot_reader.read_fragment("mem_metadata")?;
-    guest_memory.restore(
-        guest_memory_metadata,
-        &mut snapshot_reader.raw_fragment("mem")?,
-    )?;
+    // SAFETY:
+    // VM & devices are stopped.
+    unsafe {
+        guest_memory.restore(
+            guest_memory_metadata,
+            &mut snapshot_reader.raw_fragment("mem")?,
+        )?
+    };
     for (i, bus) in buses.iter().enumerate() {
         bus.restore_devices(&snapshot_reader.namespace(&format!("bus{i}"))?)
             .context("failed to restore bus devices")?;
