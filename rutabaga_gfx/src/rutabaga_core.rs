@@ -878,7 +878,7 @@ impl Rutabaga {
         component.export_fence(fence_id)
     }
 
-    /// Creates snapshotth the given `ctx_id` and `context_init` variable.
+    /// Creates a context with the given `ctx_id` and `context_init` variable.
     /// `context_init` is used to determine which rutabaga component creates the context.
     pub fn create_context(
         &mut self,

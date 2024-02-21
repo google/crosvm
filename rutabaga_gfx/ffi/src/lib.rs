@@ -621,11 +621,12 @@ pub extern "C" fn rutabaga_create_fence(ptr: &mut rutabaga, fence: &rutabaga_fen
     .unwrap_or(-ESRCH)
 }
 
+/// # Safety
+/// - `dir` must be a null-terminated C-string.
 #[no_mangle]
-pub extern "C" fn rutabaga_snapshot(ptr: &mut rutabaga, dir: *const c_char) -> i32 {
+pub unsafe extern "C" fn rutabaga_snapshot(ptr: &mut rutabaga, dir: *const c_char) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        // SAFETY: Caller guarantees a valid C string.
-        let c_str_slice = unsafe { CStr::from_ptr(dir) };
+        let c_str_slice = CStr::from_ptr(dir);
 
         let result = c_str_slice.to_str();
         let directory = return_on_error!(result);
@@ -637,11 +638,12 @@ pub extern "C" fn rutabaga_snapshot(ptr: &mut rutabaga, dir: *const c_char) -> i
     .unwrap_or(-ESRCH)
 }
 
+/// # Safety
+/// - `dir` must be a null-terminated C-string.
 #[no_mangle]
-pub extern "C" fn rutabaga_restore(ptr: &mut rutabaga, dir: *const c_char) -> i32 {
+pub unsafe extern "C" fn rutabaga_restore(ptr: &mut rutabaga, dir: *const c_char) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        // SAFETY: Caller guarantees a valid C string.
-        let c_str_slice = unsafe { CStr::from_ptr(dir) };
+        let c_str_slice = CStr::from_ptr(dir);
 
         let result = c_str_slice.to_str();
         let directory = return_on_error!(result);
