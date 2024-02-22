@@ -164,6 +164,7 @@ pub struct rutabaga_builder<'a> {
     pub fence_cb: rutabaga_fence_callback,
     pub debug_cb: Option<rutabaga_debug_callback>,
     pub channels: Option<&'a rutabaga_channels>,
+    pub renderer_features: *const c_char,
 }
 
 fn create_ffi_fence_handler(
@@ -240,6 +241,16 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
             rutabaga_channels_opt = Some(rutabaga_channels);
         }
 
+        let mut renderer_features_opt = None;
+        let renderer_features_ptr = (*builder).renderer_features;
+        if !renderer_features_ptr.is_null() {
+            let c_str_slice = CStr::from_ptr(renderer_features_ptr);
+            let result = c_str_slice.to_str();
+            let str_slice = return_on_error!(result);
+            let string = str_slice.to_owned();
+            renderer_features_opt = Some(string);
+        }
+
         let mut component_type = RutabagaComponentType::CrossDomain;
         if (*builder).capset_mask == 0 {
             component_type = RutabagaComponentType::Rutabaga2D;
@@ -256,6 +267,7 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
             .set_wsi(rutabaga_wsi)
             .set_debug_handler(debug_handler_opt)
             .set_rutabaga_channels(rutabaga_channels_opt)
+            .set_renderer_features(renderer_features_opt)
             .build(fence_handler, None);
 
         let rtbg = return_on_error!(result);

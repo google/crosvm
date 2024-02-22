@@ -74,6 +74,8 @@ pub struct GpuParameters {
     pub fixed_blob_mapping: bool,
     #[serde(rename = "implicit-render-server")]
     pub allow_implicit_render_server_exec: bool,
+    // Passthrough parameters sent to the underlying renderer in a renderer-specific format.
+    pub renderer_features: Option<String>,
 }
 
 impl Default for GpuParameters {
@@ -100,6 +102,7 @@ impl Default for GpuParameters {
             // TODO(b/324649619): not yet fully compatible with other platforms (windows)
             fixed_blob_mapping: cfg!(target_os = "linux"),
             allow_implicit_render_server_exec: false,
+            renderer_features: None,
         }
     }
 }

@@ -218,6 +218,9 @@ struct rutabaga_builder {
 
     // Optional and platform specific
     struct rutabaga_channels *channels;
+
+    // Optional, renderer specific, null-terminated C-string.
+    const char *renderer_features;
 };
 
 /**

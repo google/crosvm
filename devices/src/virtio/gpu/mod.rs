@@ -1271,7 +1271,8 @@ impl Gpu {
             .set_wsi(rutabaga_wsi)
             .set_use_external_blob(gpu_parameters.external_blob)
             .set_use_system_blob(gpu_parameters.system_blob)
-            .set_use_render_server(use_render_server);
+            .set_use_render_server(use_render_server)
+            .set_renderer_features(gpu_parameters.renderer_features.clone());
 
         #[cfg(windows)]
         let (gpu_display_wait_descriptor_ctrl_wr, gpu_display_wait_descriptor_ctrl_rd) =
