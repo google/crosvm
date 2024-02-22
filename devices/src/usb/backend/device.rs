@@ -255,6 +255,10 @@ impl XhciBackendDevice for BackendDeviceType {
     fn free_streams(&self, ep: u8) -> Result<()> {
         multi_dispatch!(self, BackendDeviceType, HostDevice, free_streams, ep)
     }
+
+    fn stop(&mut self) {
+        multi_dispatch!(self, BackendDeviceType, HostDevice, stop)
+    }
 }
 
 pub struct DeviceState {

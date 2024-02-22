@@ -381,6 +381,10 @@ impl XhciBackendDevice for HostDevice {
             .free_streams(ep)
             .map_err(Error::FreeStreams)
     }
+
+    fn stop(&mut self) {
+        // NOOP, nothing to do
+    }
 }
 
 impl BackendTransfer for Transfer {

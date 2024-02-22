@@ -94,14 +94,17 @@ impl UsbPort {
         self.port_id
     }
 
-    /// Detach current connected backend. Returns false when there is no backend connected.
+    /// Detach current connected backend. Returns an error when there is no backend connected.
     pub fn detach(&self) -> Result<()> {
-        let mut locked = self.backend_device();
-        if locked.is_none() {
-            return Err(Error::AlreadyDetached(self.port_id));
-        }
+        match self.backend_device().take() {
+            Some(backend_device) => {
+                backend_device.lock().stop();
+            }
+            None => {
+                return Err(Error::AlreadyDetached(self.port_id));
+            }
+        };
         info!("usb_hub: device detached from port {}", self.port_id);
-        *locked = None;
         self.portsc.clear_bits(PORTSC_PORT_SPEED_MASK);
         self.send_device_disconnected_event()
             .map_err(|reason| Error::Detach {

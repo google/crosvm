@@ -34,4 +34,6 @@ pub trait XhciBackendDevice: Send + Sync {
     fn alloc_streams(&self, ep: u8, num_streams: u16) -> Result<()>;
     /// Free streams for the endpoint
     fn free_streams(&self, ep: u8) -> Result<()>;
+    /// Stop the backend device, allowing it to execute cleanup routines.
+    fn stop(&mut self);
 }
