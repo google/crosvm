@@ -641,11 +641,6 @@ pub fn logical_core_capacity(cpu_id: usize) -> Result<u32> {
     }
 }
 
-/// Returns the cluster ID of a given logical core.
-pub fn logical_core_cluster_id(cpu_id: usize) -> Result<u32> {
-    parse_sysfs_cpu_info(cpu_id, "topology/physical_package_id")
-}
-
 /// Returns the maximum frequency (in kHz) of a given logical core.
 fn logical_core_max_freq_khz(cpu_id: usize) -> Result<u32> {
     parse_sysfs_cpu_info(cpu_id, "cpufreq/cpuinfo_max_freq")
