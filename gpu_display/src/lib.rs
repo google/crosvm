@@ -19,6 +19,7 @@ use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
+use vm_control::gpu::MouseMode;
 
 mod event_device;
 mod gpu_display_stub;
@@ -217,6 +218,11 @@ trait GpuDisplaySurface {
     /// Commits the surface to the compositor.
     fn commit(&mut self) -> GpuDisplayResult<()> {
         Ok(())
+    }
+
+    /// Sets the mouse mode used on this surface.
+    fn set_mouse_mode(&mut self, _mouse_mode: MouseMode) {
+        // no-op
     }
 
     /// Sets the position of the identified subsurface relative to its parent.
@@ -581,6 +587,21 @@ impl GpuDisplay {
         }
 
         surface.flip_to(import_id);
+        Ok(())
+    }
+
+    /// Sets the mouse mode used on this surface.
+    pub fn set_mouse_mode(
+        &mut self,
+        surface_id: u32,
+        mouse_mode: MouseMode,
+    ) -> GpuDisplayResult<()> {
+        let surface = self
+            .surfaces
+            .get_mut(&surface_id)
+            .ok_or(GpuDisplayError::InvalidSurfaceId)?;
+
+        surface.set_mouse_mode(mouse_mode);
         Ok(())
     }
 

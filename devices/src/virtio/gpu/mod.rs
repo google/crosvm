@@ -50,6 +50,7 @@ pub use vm_control::gpu::DisplayMode as GpuDisplayMode;
 pub use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
 use vm_control::gpu::GpuControlCommand;
 use vm_control::gpu::GpuControlResult;
+pub use vm_control::gpu::MouseMode as GpuMouseMode;
 pub use vm_control::gpu::DEFAULT_DISPLAY_HEIGHT;
 pub use vm_control::gpu::DEFAULT_DISPLAY_WIDTH;
 pub use vm_control::gpu::DEFAULT_REFRESH_RATE;

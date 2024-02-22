@@ -2882,6 +2882,8 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 &mut state.linux.pm,
                 #[cfg(feature = "gpu")]
                 Some(state.gpu_control_tube),
+                #[cfg(not(feature = "gpu"))]
+                None,
                 #[cfg(feature = "usb")]
                 Some(state.usb_control_tube),
                 #[cfg(not(feature = "usb"))]

@@ -39,6 +39,7 @@ use super::window::GuiWindow;
 use super::window::MessageOnlyWindow;
 use super::window::MessagePacket;
 use super::window_message_processor::*;
+use super::MouseMode;
 use super::ObjectId;
 use crate::EventDevice;
 use crate::EventDeviceKind;
@@ -400,6 +401,10 @@ impl WindowMessageDispatcher {
             DisplaySendToWndProc::HandleEventDevice(event_device_id) => {
                 self.handle_event_device(event_device_id)
             }
+            DisplaySendToWndProc::SetMouseMode {
+                surface_id,
+                mouse_mode,
+            } => self.set_mouse_mode(surface_id, mouse_mode),
         }
     }
 
@@ -426,6 +431,23 @@ impl WindowMessageDispatcher {
             None => {
                 error!("Cannot handle event device because primary window is not in-use!")
             }
+        }
+    }
+
+    fn set_mouse_mode(&mut self, surface_id: u32, mouse_mode: MouseMode) {
+        match self
+            .in_use_gui_windows
+            .iter_mut()
+            .find(|(_, processor)| processor.surface_id() == surface_id)
+        {
+            Some(iter) => iter.1.process_general_message(
+                GeneralMessage::SetMouseMode(mouse_mode),
+                &self.keyboard_input_manager,
+            ),
+            None => error!(
+                "Can't set mouse mode for surface {} because it is not in-use!",
+                surface_id
+            ),
         }
     }
 

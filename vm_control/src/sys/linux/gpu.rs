@@ -4,8 +4,16 @@
 
 use serde::Deserialize;
 use serde::Serialize;
+use serde_keyvalue::FromKeyValues;
 
 use crate::gpu::DisplayModeTrait;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, FromKeyValues)]
+#[serde(rename_all = "snake_case")]
+pub enum UnixMouseMode {
+    /// Sends multi-touch events to the guest.
+    Touchscreen,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

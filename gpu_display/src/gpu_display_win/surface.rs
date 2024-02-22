@@ -40,6 +40,7 @@ use super::window_message_processor::WindowPosMessage;
 use super::window_message_processor::HANDLE_WINDOW_MESSAGE_TIMEOUT;
 use super::DisplayProperties;
 use super::HostWindowSpace;
+use super::MouseMode;
 use super::VirtualDisplaySpace;
 use crate::EventDeviceKind;
 
@@ -125,6 +126,11 @@ impl Surface {
                 error!("Failed to post WM_CLOSE: {:?}", e);
             }
         }
+    }
+
+    fn set_mouse_mode(&mut self, window: &GuiWindow, mouse_mode: MouseMode) {
+        self.mouse_input
+            .handle_change_mouse_mode_request(window, mouse_mode);
     }
 
     fn update_host_viewport_size(
@@ -235,6 +241,7 @@ impl Surface {
                     keyboard_input_manager.handle_guest_event(window, *event);
                 }
             }
+            GeneralMessage::SetMouseMode(mode) => self.set_mouse_mode(window, *mode),
         }
     }
 

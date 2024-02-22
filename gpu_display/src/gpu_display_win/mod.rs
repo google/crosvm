@@ -48,6 +48,7 @@ use crate::EventDevice;
 use crate::GpuDisplayError;
 use crate::GpuDisplayResult;
 use crate::GpuDisplaySurface;
+use crate::MouseMode;
 use crate::SurfaceType;
 use crate::SysDisplayT;
 
@@ -319,6 +320,19 @@ impl GpuDisplaySurface for SurfaceWin {
             Err(e) => {
                 error!("Failed to read whether display is closed: {}", e);
                 false
+            }
+        }
+    }
+
+    fn set_mouse_mode(&mut self, mouse_mode: MouseMode) {
+        if let Some(wndproc_thread) = self.wndproc_thread.upgrade() {
+            if let Err(e) =
+                wndproc_thread.post_display_command(DisplaySendToWndProc::SetMouseMode {
+                    surface_id: self.surface_id,
+                    mouse_mode,
+                })
+            {
+                warn!("Failed to post SetMouseMode message: {:?}", e);
             }
         }
     }

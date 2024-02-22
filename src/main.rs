@@ -59,6 +59,8 @@ use vm_control::client::do_gpu_display_add;
 use vm_control::client::do_gpu_display_list;
 #[cfg(feature = "gpu")]
 use vm_control::client::do_gpu_display_remove;
+#[cfg(feature = "gpu")]
+use vm_control::client::do_gpu_set_display_mouse_mode;
 use vm_control::client::do_modify_battery;
 #[cfg(feature = "pci-hotplug")]
 use vm_control::client::do_net_add;
@@ -557,11 +559,17 @@ fn gpu_display_remove(cmd: cmdline::GpuRemoveDisplaysCommand) -> ModifyGpuResult
 }
 
 #[cfg(feature = "gpu")]
+fn gpu_set_display_mouse_mode(cmd: cmdline::GpuSetDisplayMouseModeCommand) -> ModifyGpuResult {
+    do_gpu_set_display_mouse_mode(cmd.socket_path, cmd.display_id, cmd.mouse_mode)
+}
+
+#[cfg(feature = "gpu")]
 fn modify_gpu(cmd: cmdline::GpuCommand) -> std::result::Result<(), ()> {
     let result = match cmd.command {
         cmdline::GpuSubCommand::AddDisplays(cmd) => gpu_display_add(cmd),
         cmdline::GpuSubCommand::ListDisplays(cmd) => gpu_display_list(cmd),
         cmdline::GpuSubCommand::RemoveDisplays(cmd) => gpu_display_remove(cmd),
+        cmdline::GpuSubCommand::SetDisplayMouseMode(cmd) => gpu_set_display_mouse_mode(cmd),
     };
     match result {
         Ok(response) => {

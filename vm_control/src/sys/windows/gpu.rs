@@ -7,6 +7,7 @@ use std::marker::PhantomData;
 use base::info;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_keyvalue::FromKeyValues;
 use winapi::um::winuser::GetSystemMetrics;
 use winapi::um::winuser::SM_CXSCREEN;
 use winapi::um::winuser::SM_CYSCREEN;
@@ -18,6 +19,15 @@ const DISPLAY_HEIGHT_SOFT_MAX: u32 = 1080;
 
 const DISPLAY_WIDTH_SOFT_MAX_4K_UHD_ENABLED: u32 = 3840;
 const DISPLAY_HEIGHT_SOFT_MAX_4K_UHD_ENABLED: u32 = 2160;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, FromKeyValues)]
+#[serde(rename_all = "snake_case")]
+pub enum WinMouseMode {
+    /// Sends relative motion & mouse button events to the guest (captured only).
+    Relative,
+    /// Sends multi-touch events to the guest.
+    Touchscreen,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

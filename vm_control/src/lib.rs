@@ -1305,8 +1305,8 @@ pub enum VmRequest {
     },
     /// Command to use controller.
     UsbCommand(UsbControlCommand),
-    #[cfg(feature = "gpu")]
     /// Command to modify the gpu.
+    #[cfg(feature = "gpu")]
     GpuCommand(GpuControlCommand),
     /// Command to set battery.
     BatCommand(BatteryType, BatControlCommand),
@@ -1606,7 +1606,7 @@ impl VmRequest {
         run_mode: &mut Option<VmRunMode>,
         disk_host_tubes: &[Tube],
         pm: &mut Option<Arc<Mutex<dyn PmResource + Send>>>,
-        #[cfg(feature = "gpu")] gpu_control_tube: Option<&Tube>,
+        gpu_control_tube: Option<&Tube>,
         usb_control_tube: Option<&Tube>,
         bat_control: &mut Option<BatControl>,
         kick_vcpus: impl Fn(VcpuControl),

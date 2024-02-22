@@ -889,6 +889,8 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             &mut guest_os.pm,
             #[cfg(feature = "gpu")]
             gpu_control_tube,
+            #[cfg(not(feature = "gpu"))]
+            None,
             None,
             &mut None,
             |msg| {

@@ -15,8 +15,6 @@ use euclid::point2;
 use euclid::size2;
 use euclid::Rect;
 use linux_input_sys::virtio_input_event;
-#[cfg(feature = "kiwi")]
-use vm_control::ServiceSendToGpu;
 use winapi::shared::minwindef::LPARAM;
 use winapi::shared::minwindef::LRESULT;
 use winapi::shared::minwindef::UINT;
@@ -59,6 +57,7 @@ use super::window::GuiWindow;
 use super::window::MessagePacket;
 use super::window_message_dispatcher::DisplayEventDispatcher;
 use super::HostWindowSpace;
+use super::MouseMode;
 use super::ObjectId;
 use super::Surface;
 use crate::EventDevice;
@@ -112,6 +111,10 @@ pub enum DisplaySendToWndProc {
     },
     /// Handle a guest -> host input_event.
     HandleEventDevice(ObjectId),
+    SetMouseMode {
+        surface_id: u32,
+        mouse_mode: MouseMode,
+    },
 }
 
 /// This struct wraps a `GuiWindow` that is currently not associated with any `Surface`.
@@ -419,4 +422,5 @@ pub enum GeneralMessage {
         event_device_kind: EventDeviceKind,
         event: virtio_input_event,
     },
+    SetMouseMode(MouseMode),
 }

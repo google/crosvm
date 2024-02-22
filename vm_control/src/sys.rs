@@ -10,11 +10,15 @@ cfg_if::cfg_if! {
         #[cfg(feature = "gpu")]
         pub use platform::gpu::UnixDisplayMode as DisplayMode;
         pub use platform::handle_request_with_timeout;
+        #[cfg(feature = "gpu")]
+        pub use platform::gpu::UnixMouseMode as MouseMode;
     } else if #[cfg(windows)] {
         pub mod windows;
         pub use windows as platform;
         #[cfg(feature = "gpu")]
         pub type DisplayMode = platform::gpu::WinDisplayMode<platform::gpu::DisplayDataProvider>;
+        #[cfg(feature = "gpu")]
+        pub use platform::gpu::WinMouseMode as MouseMode;
     } else {
         compile_error!("Unsupported platform");
     }

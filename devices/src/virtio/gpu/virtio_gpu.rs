@@ -49,6 +49,7 @@ use sync::Mutex;
 use vm_control::gpu::DisplayParameters;
 use vm_control::gpu::GpuControlCommand;
 use vm_control::gpu::GpuControlResult;
+use vm_control::gpu::MouseMode;
 use vm_control::VmMemorySource;
 use vm_memory::udmabuf::UdmabufDriver;
 use vm_memory::udmabuf::UdmabufDriverTrait;
@@ -303,6 +304,19 @@ impl VirtioGpuScanout {
         }
 
         self.surface_id = None;
+    }
+
+    fn set_mouse_mode(
+        &mut self,
+        display: &Rc<RefCell<GpuDisplay>>,
+        mouse_mode: MouseMode,
+    ) -> VirtioGpuResult {
+        if let Some(surface_id) = self.surface_id {
+            display
+                .borrow_mut()
+                .set_mouse_mode(surface_id, mouse_mode)?;
+        }
+        Ok(OkNoData)
     }
 
     fn set_position(
@@ -636,12 +650,30 @@ impl VirtioGpu {
             })
     }
 
+    fn set_display_mouse_mode(
+        &mut self,
+        display_id: u32,
+        mouse_mode: MouseMode,
+    ) -> GpuControlResult {
+        match self.scanouts.get_mut(&display_id) {
+            Some(scanout) => match scanout.set_mouse_mode(&self.display, mouse_mode) {
+                Ok(_) => GpuControlResult::DisplayMouseModeSet,
+                Err(e) => GpuControlResult::ErrString(e.to_string()),
+            },
+            None => GpuControlResult::NoSuchDisplay { display_id },
+        }
+    }
+
     /// Performs the given command to interact with or modify the device.
     pub fn process_gpu_control_command(&mut self, cmd: GpuControlCommand) -> GpuControlResult {
         match cmd {
             GpuControlCommand::AddDisplays { displays } => self.add_displays(displays),
             GpuControlCommand::ListDisplays => self.list_displays(),
             GpuControlCommand::RemoveDisplays { display_ids } => self.remove_displays(display_ids),
+            GpuControlCommand::SetDisplayMouseMode {
+                display_id,
+                mouse_mode,
+            } => self.set_display_mouse_mode(display_id, mouse_mode),
         }
     }
 

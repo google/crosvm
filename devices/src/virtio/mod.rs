@@ -65,6 +65,8 @@ pub use self::gpu::GpuDisplayParameters;
 #[cfg(feature = "gpu")]
 pub use self::gpu::GpuMode;
 #[cfg(feature = "gpu")]
+pub use self::gpu::GpuMouseMode;
+#[cfg(feature = "gpu")]
 pub use self::gpu::GpuParameters;
 #[cfg(feature = "gpu")]
 pub use self::gpu::GpuWsi;

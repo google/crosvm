@@ -11,6 +11,7 @@ use std::ptr::null_mut;
 use anyhow::Context;
 use anyhow::Result;
 use base::error;
+use base::info;
 use base::warn;
 use euclid::point2;
 use euclid::size2;
@@ -69,6 +70,7 @@ use super::window_message_processor::MouseMessage;
 use super::window_message_processor::WindowMessage;
 use super::window_message_processor::WindowPosMessage;
 use super::HostWindowSpace;
+use super::MouseMode;
 use super::VirtualDisplaySpace;
 use crate::EventDeviceKind;
 
@@ -423,6 +425,25 @@ impl MouseInputManager {
         }
     }
 
+    fn set_mouse_mode(&mut self, window: &GuiWindow, mode: MouseMode) {
+        info!(
+            "requested mouse mode switch to {:?} (current mode is: {:?})",
+            mode, self.mouse_mode
+        );
+        if mode == self.mouse_mode {
+            return;
+        }
+
+        self.mouse_mode = mode;
+        self.mouse_pos = None;
+        if let Err(e) = self.adjust_cursor_capture(window) {
+            error!(
+                "Failed to adjust cursor capture on mouse mode change: {:?}",
+                e
+            )
+        }
+    }
+
     fn handle_mouse_wheel(
         &mut self,
         window: &GuiWindow,
@@ -561,6 +582,10 @@ impl MouseInputManager {
         ControlFlow::Continue(())
     }
 
+    pub fn handle_change_mouse_mode_request(&mut self, window: &GuiWindow, mouse_mode: MouseMode) {
+        self.set_mouse_mode(window, mouse_mode);
+    }
+
     /// Confines/releases the cursor to/from `window`, depending on the current mouse mode and
     /// window states.
     fn adjust_cursor_capture(&mut self, window: &GuiWindow) -> Result<()> {
@@ -665,12 +690,4 @@ fn get_primary_monitor_rect(is_virtual_desktop: bool) -> Rect {
         }
     };
     Rect::new(origin, size)
-}
-
-#[derive(Eq, PartialEq, Clone, Copy, Debug)]
-pub enum MouseMode {
-    /// Sends relative motion & mouse button events to the guest (captured only).
-    Relative,
-    /// Sends multi-touch events to the guest.
-    Touchscreen,
 }

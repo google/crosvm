@@ -40,6 +40,8 @@ use devices::virtio::DeviceType;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuDisplayParameters;
 #[cfg(feature = "gpu")]
+use devices::virtio::GpuMouseMode;
+#[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
 #[cfg(all(unix, feature = "net"))]
 use devices::virtio::NetParameters;
@@ -560,6 +562,7 @@ pub enum GpuSubCommand {
     AddDisplays(GpuAddDisplaysCommand),
     ListDisplays(GpuListDisplaysCommand),
     RemoveDisplays(GpuRemoveDisplaysCommand),
+    SetDisplayMouseMode(GpuSetDisplayMouseModeCommand),
 }
 
 #[cfg(feature = "gpu")]
@@ -594,6 +597,22 @@ pub struct GpuRemoveDisplaysCommand {
     #[argh(option)]
     /// display id
     pub display_id: Vec<u32>,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[cfg(feature = "gpu")]
+#[derive(FromArgs)]
+/// Sets the mouse mode of a display attached to the GPU device.
+#[argh(subcommand, name = "set-mouse-mode")]
+pub struct GpuSetDisplayMouseModeCommand {
+    #[argh(option)]
+    /// display id
+    pub display_id: u32,
+    #[argh(option)]
+    /// display mouse mode
+    pub mouse_mode: GpuMouseMode,
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
     pub socket_path: String,
