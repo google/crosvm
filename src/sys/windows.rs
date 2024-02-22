@@ -2541,30 +2541,8 @@ where
         .and_then(|config| config.gpu_control_host_tube.take());
     let product_args = product::get_run_control_args(&mut cfg);
 
-    let virtio_snd_state_device_tube = create_snd_state_tube(&mut control_tubes)?;
-
-    let (virtio_snd_host_mute_tube, virtio_snd_device_mute_tube) = create_snd_mute_tube_pair()?;
-
-    let pci_devices = create_devices(
-        &mut cfg,
-        vm.get_memory(),
-        &vm_evt_wrtube,
-        &mut irq_control_tubes,
-        &mut vm_memory_control_tubes,
-        &mut control_tubes,
-        &mut disk_device_tubes,
-        balloon_device_tube,
-        pvclock_device_tube,
-        dynamic_mapping_device_tube,
-        /* inflate_tube= */ None,
-        init_balloon_size,
-        tsc_state.frequency,
-        virtio_snd_state_device_tube,
-        virtio_snd_device_mute_tube,
-    )?;
-
-    let mut vcpu_ids = Vec::new();
-
+    // We open these files before lowering the token, as in the future a stricter policy may
+    // prevent it.
     let dt_overlays = cfg
         .device_tree_overlay
         .iter()
@@ -2577,33 +2555,6 @@ where
             })
         })
         .collect::<Result<Vec<DtbOverlay>>>()?;
-
-    let windows = Arch::build_vm::<V, Vcpu>(
-        components,
-        &vm_evt_wrtube,
-        &mut sys_allocator,
-        &cfg.serial_parameters,
-        None,
-        (cfg.battery_config.as_ref().map(|t| t.type_), None),
-        vm,
-        ramoops_region,
-        pci_devices,
-        irq_chip,
-        &mut vcpu_ids,
-        cfg.dump_device_tree_blob.clone(),
-        /* debugcon_jail= */ None,
-        None,
-        None,
-        dt_overlays,
-    )
-    .exit_context(Exit::BuildVm, "the architecture failed to build the vm")?;
-
-    #[cfg(feature = "stats")]
-    let stats = if cfg.exit_stats {
-        Some(Arc::new(Mutex::new(StatisticsCollector::new())))
-    } else {
-        None
-    };
 
     // Lower the token, locking the main process down to a stricter security policy.
     //
@@ -2633,6 +2584,57 @@ where
             .expect("Could not create sandbox!")
             .lower_token();
     }
+
+    let virtio_snd_state_device_tube = create_snd_state_tube(&mut control_tubes)?;
+
+    let (virtio_snd_host_mute_tube, virtio_snd_device_mute_tube) = create_snd_mute_tube_pair()?;
+
+    let pci_devices = create_devices(
+        &mut cfg,
+        vm.get_memory(),
+        &vm_evt_wrtube,
+        &mut irq_control_tubes,
+        &mut vm_memory_control_tubes,
+        &mut control_tubes,
+        &mut disk_device_tubes,
+        balloon_device_tube,
+        pvclock_device_tube,
+        dynamic_mapping_device_tube,
+        /* inflate_tube= */ None,
+        init_balloon_size,
+        tsc_state.frequency,
+        virtio_snd_state_device_tube,
+        virtio_snd_device_mute_tube,
+    )?;
+
+    let mut vcpu_ids = Vec::new();
+
+    let windows = Arch::build_vm::<V, Vcpu>(
+        components,
+        &vm_evt_wrtube,
+        &mut sys_allocator,
+        &cfg.serial_parameters,
+        None,
+        (cfg.battery_config.as_ref().map(|t| t.type_), None),
+        vm,
+        ramoops_region,
+        pci_devices,
+        irq_chip,
+        &mut vcpu_ids,
+        cfg.dump_device_tree_blob.clone(),
+        /* debugcon_jail= */ None,
+        None,
+        None,
+        dt_overlays,
+    )
+    .exit_context(Exit::BuildVm, "the architecture failed to build the vm")?;
+
+    #[cfg(feature = "stats")]
+    let stats = if cfg.exit_stats {
+        Some(Arc::new(Mutex::new(StatisticsCollector::new())))
+    } else {
+        None
+    };
 
     run_control(
         windows,

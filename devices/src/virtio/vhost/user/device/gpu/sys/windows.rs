@@ -249,6 +249,15 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     ) = bootstrap_tube
         .recv()
         .context("failed to parse GPU backend config from bootstrap tube")?;
+
+    // TODO(b/213170185): Uncomment once sandbox is upstreamed.
+    // if sandbox::is_sandbox_target() {
+    //     sandbox::TargetServices::get()
+    //         .expect("failed to get target services")
+    //         .unwrap()
+    //         .lower_token();
+    // }
+
     let wndproc_thread = wndproc_thread_builder
         .start_thread()
         .context("Failed to create window procedure thread for vhost GPU")?;
@@ -316,14 +325,6 @@ pub fn run_gpu_device_worker(
     });
 
     let handler = DeviceRequestHandler::new(backend);
-
-    // TODO(b/213170185): Uncomment once sandbox is upstreamed.
-    // if sandbox::is_sandbox_target() {
-    //     sandbox::TargetServices::get()
-    //         .expect("failed to get target services")
-    //         .unwrap()
-    //         .lower_token();
-    // }
 
     info!("vhost-user gpu device ready, starting run loop...");
 
