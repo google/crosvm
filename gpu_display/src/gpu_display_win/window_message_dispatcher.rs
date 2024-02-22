@@ -25,9 +25,12 @@ use win_util::win32_wide_string;
 use winapi::shared::minwindef::LRESULT;
 use winapi::shared::windef::HWND;
 use winapi::um::winuser::DefWindowProcW;
+use winapi::um::winuser::GetForegroundWindow;
 use winapi::um::winuser::PostQuitMessage;
 use winapi::um::winuser::RemovePropW;
+use winapi::um::winuser::HRAWINPUT;
 use winapi::um::winuser::WM_CLOSE;
+use winapi::um::winuser::WM_INPUT;
 use winapi::um::winuser::WM_NCDESTROY;
 
 use super::keyboard_input_manager::KeyboardInputManager;
@@ -262,7 +265,24 @@ impl WindowMessageDispatcher {
         // First, check if the message is targeting the wndproc thread itself.
         if let Some(router) = &self.message_router_window {
             if router.is_same_window(hwnd) {
-                return Some(self.process_simulated_thread_message(hwnd, packet));
+                return if packet.msg == WM_INPUT {
+                    // The message router window is the sink for all WM_INPUT messages targeting
+                    // this application. We would reroute WM_INPUT to the current foreground window.
+                    // SAFETY: trivially safe
+                    let foreground_hwnd = unsafe { GetForegroundWindow() };
+                    if let Some(processor) = self.in_use_gui_windows.get_mut(&foreground_hwnd) {
+                        processor.process_general_message(
+                            GeneralMessage::RawInputEvent(packet.l_param as HRAWINPUT),
+                            &self.keyboard_input_manager,
+                        );
+                    }
+                    // Always do default processing "so the system can perform cleanup".
+                    // https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-input#parameters
+                    router.default_process_message(packet);
+                    Some(0)
+                } else {
+                    Some(self.process_simulated_thread_message(hwnd, packet))
+                };
             }
         }
 
@@ -274,7 +294,7 @@ impl WindowMessageDispatcher {
         // Third, check if the message is targeting an in-use GUI window.
         self.in_use_gui_windows
             .get_mut(&hwnd)
-            .map(|processor| processor.process_message(packet, &self.keyboard_input_manager))
+            .map(|processor| processor.process_window_message(packet, &self.keyboard_input_manager))
     }
 
     // TODO(b/306407787): We won't need this once we have full support for multi-window.
@@ -390,11 +410,17 @@ impl WindowMessageDispatcher {
             .get_mut(&self.primary_window_handle())
         {
             Some(processor) => {
-                if let Some((kind, event)) = self
+                if let Some((event_device_kind, event)) = self
                     .display_event_dispatcher
                     .read_from_device(event_device_id)
                 {
-                    processor.handle_event_device(kind, event, &self.keyboard_input_manager);
+                    processor.process_general_message(
+                        GeneralMessage::GuestEvent {
+                            event_device_kind,
+                            event,
+                        },
+                        &self.keyboard_input_manager,
+                    );
                 }
             }
             None => {
@@ -442,7 +468,10 @@ impl WindowMessageDispatcher {
                 self.in_use_gui_windows
                     .get_mut(&hwnd)
                     .expect("It is just inserted")
-                    .on_message_dispatcher_attached();
+                    .process_general_message(
+                        GeneralMessage::MessageDispatcherAttached,
+                        &self.keyboard_input_manager,
+                    );
                 true
             }
             Err(e) => {

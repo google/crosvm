@@ -145,6 +145,36 @@ impl virtio_input_event {
     }
 
     #[inline]
+    pub fn left_click(has_contact: bool) -> virtio_input_event {
+        Self::key(BTN_LEFT, has_contact, false)
+    }
+
+    #[inline]
+    pub fn wheel(delta: i32) -> virtio_input_event {
+        Self::relative(REL_WHEEL, delta)
+    }
+
+    #[inline]
+    pub fn right_click(has_contact: bool) -> virtio_input_event {
+        Self::key(BTN_RIGHT, has_contact, false)
+    }
+
+    #[inline]
+    pub fn middle_click(has_contact: bool) -> virtio_input_event {
+        Self::key(BTN_MIDDLE, has_contact, false)
+    }
+
+    #[inline]
+    pub fn forward_click(has_contact: bool) -> virtio_input_event {
+        Self::key(BTN_FORWARD, has_contact, false)
+    }
+
+    #[inline]
+    pub fn back_click(has_contact: bool) -> virtio_input_event {
+        Self::key(BTN_BACK, has_contact, false)
+    }
+
+    #[inline]
     pub fn finger_tool(active: bool) -> virtio_input_event {
         Self::key(BTN_TOOL_FINGER, active, false)
     }

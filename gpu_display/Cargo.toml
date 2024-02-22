@@ -26,6 +26,8 @@ metrics = { path = "../metrics" }
 num-traits = "*"
 winapi = "*"
 win_util = { path = "../win_util" }
+once_cell = "*"
+smallvec = "*"
 sync = { path = "../common/sync" }
 euclid = "*"
 vm_control = { path = "../vm_control", features = ["gpu"] }

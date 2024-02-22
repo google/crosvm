@@ -481,9 +481,7 @@ impl WindowProcedureThread {
         gpu_main_display_tube: &Tube,
     ) {
         match gpu_main_display_tube.recv::<ServiceSendToGpu>() {
-            Ok(message) => message_dispatcher
-                .as_mut()
-                .process_service_message(&message),
+            Ok(message) => message_dispatcher.as_mut().process_service_message(message),
             Err(e) => {
                 error!("Failed to receive service message through the tube: {}", e)
             }

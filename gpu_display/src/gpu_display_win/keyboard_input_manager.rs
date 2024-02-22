@@ -30,7 +30,7 @@ use crate::EventDeviceKind;
 const LINUX_CAPS_LOCK_KEY: u16 = 58;
 const LINUX_NUM_LOCK_KEY: u16 = 69;
 
-pub(crate) struct KeyboardInputManager {
+pub struct KeyboardInputManager {
     display_event_dispatcher: DisplayEventDispatcher,
     keycode_translator: KeycodeTranslator,
     guest_key_states: Mutex<KeyStates>,

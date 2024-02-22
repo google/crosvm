@@ -21,6 +21,8 @@ use winapi::shared::minwindef::LPARAM;
 use winapi::shared::minwindef::LRESULT;
 use winapi::shared::minwindef::UINT;
 use winapi::shared::minwindef::WPARAM;
+use winapi::um::winuser::HRAWINPUT;
+use winapi::um::winuser::MK_XBUTTON1;
 use winapi::um::winuser::SWP_HIDEWINDOW;
 use winapi::um::winuser::SWP_SHOWWINDOW;
 use winapi::um::winuser::WINDOWPOS;
@@ -28,7 +30,6 @@ use winapi::um::winuser::WM_ACTIVATE;
 use winapi::um::winuser::WM_DISPLAYCHANGE;
 use winapi::um::winuser::WM_ENTERSIZEMOVE;
 use winapi::um::winuser::WM_EXITSIZEMOVE;
-use winapi::um::winuser::WM_INPUT;
 use winapi::um::winuser::WM_KEYDOWN;
 use winapi::um::winuser::WM_KEYUP;
 use winapi::um::winuser::WM_LBUTTONDOWN;
@@ -49,8 +50,11 @@ use winapi::um::winuser::WM_SYSKEYUP;
 use winapi::um::winuser::WM_USER;
 use winapi::um::winuser::WM_WINDOWPOSCHANGED;
 use winapi::um::winuser::WM_WINDOWPOSCHANGING;
+use winapi::um::winuser::WM_XBUTTONDOWN;
+use winapi::um::winuser::WM_XBUTTONUP;
 
 use super::keyboard_input_manager::KeyboardInputManager;
+use super::window::BasicWindow;
 use super::window::GuiWindow;
 use super::window::MessagePacket;
 use super::window_message_dispatcher::DisplayEventDispatcher;
@@ -180,35 +184,7 @@ impl WindowMessageProcessor {
         resources
     }
 
-    /// This should be called once when it is safe to assume all future messages targeting the GUI
-    /// window will be dispatched to this `WindowMessageProcessor`.
-    pub fn on_message_dispatcher_attached(&mut self) {
-        let window = &self.window_resources.window;
-        self.surface.on_message_dispatcher_attached(window);
-        #[cfg(feature = "kiwi")]
-        if let Some(ime_handler) = self.window_resources.ime_handler.as_mut() {
-            ime_handler.on_message_dispatcher_attached(window);
-        }
-    }
-
-    pub fn handle_event_device(
-        &mut self,
-        event_device_kind: EventDeviceKind,
-        event: virtio_input_event,
-        keyboard_input_manager: &KeyboardInputManager,
-    ) {
-        if event_device_kind == EventDeviceKind::Keyboard {
-            keyboard_input_manager.handle_guest_event(&self.window_resources.window, event);
-        }
-    }
-
-    #[cfg(feature = "kiwi")]
-    pub fn handle_service_message(&mut self, message: &ServiceSendToGpu) {
-        self.surface
-            .handle_service_message(&self.window_resources.window, message);
-    }
-
-    pub fn process_message(
+    pub fn process_window_message(
         &mut self,
         packet: &MessagePacket,
         keyboard_input_manager: &KeyboardInputManager,
@@ -224,6 +200,18 @@ impl WindowMessageProcessor {
         self.surface
             .handle_window_message(window, window_message)
             .unwrap_or_else(|| window.default_process_message(packet))
+    }
+
+    pub fn process_general_message(
+        &mut self,
+        message: GeneralMessage,
+        keyboard_input_manager: &KeyboardInputManager,
+    ) {
+        self.surface.handle_general_message(
+            &self.window_resources.window,
+            &message,
+            keyboard_input_manager,
+        );
     }
 
     #[allow(clippy::if_same_then_else)]
@@ -258,6 +246,7 @@ impl From<UINT> for WindowVisibilityChange {
 
 /// General window messages that multiple modules may want to process, such as the window manager,
 /// input manager, IME handler, etc.
+#[derive(Debug)]
 pub enum WindowMessage {
     /// `WM_ACTIVATE`, "sent to both the window being activated and the window being deactivated."
     WindowActivate { is_activated: bool },
@@ -284,6 +273,7 @@ pub enum WindowMessage {
 }
 
 /// Window location and size related window messages.
+#[derive(Debug)]
 pub enum WindowPosMessage {
     /// `WM_WINDOWPOSCHANGING`, "sent to a window whose size, position, or place in the Z order is
     /// about to change."
@@ -320,12 +310,11 @@ impl std::fmt::Display for WindowPosMessage {
 }
 
 /// Mouse related window messages.
+#[derive(Debug)]
 pub enum MouseMessage {
     /// `WM_MOUSEACTIVATE`, "sent when the cursor is in an inactive window and the user presses a
     /// mouse button."
     MouseActivate { l_param: LPARAM },
-    /// `WM_INPUT`, "sent to the window that is getting raw input."
-    RawInput { l_param: LPARAM },
     /// `WM_MOUSEMOVE`, "posted to a window when the cursor moves."
     MouseMove { w_param: WPARAM, l_param: LPARAM },
     /// `WM_LBUTTONDOWN` or `WM_LBUTTONUP`, "posted when the user presses/releases the left mouse
@@ -337,6 +326,12 @@ pub enum MouseMessage {
     /// `WM_MBUTTONDOWN` or `WM_MBUTTONUP`, "posted when the user presses/releases the middle mouse
     /// button while the cursor is in the client area of a window."
     MiddleMouseButton { is_down: bool },
+    /// `WM_XBUTTONDOWN` or `WM_XBUTTONUP`, "posted when the user presses/releases the forward
+    /// mouse button while the cursor is in the client area of a window."
+    ForwardMouseButton { is_down: bool },
+    /// `WM_XBUTTONDOWN` or `WM_XBUTTONUP`, "posted when the user presses/releases the back mouse
+    /// button while the cursor is in the client area of a window."
+    BackMouseButton { is_down: bool },
     /// `WM_MOUSEWHEEL`, "sent to the focus window when the mouse wheel is rotated."
     MouseWheel { w_param: WPARAM, l_param: LPARAM },
     /// `WM_SETCURSOR`, "sent to a window if the mouse causes the cursor to move within a window
@@ -377,7 +372,6 @@ impl From<&MessagePacket> for WindowMessage {
             WM_ENTERSIZEMOVE => Self::WindowPos(WindowPosMessage::EnterSizeMove),
             WM_EXITSIZEMOVE => Self::WindowPos(WindowPosMessage::ExitSizeMove),
             WM_MOUSEACTIVATE => Self::Mouse(MouseMessage::MouseActivate { l_param }),
-            WM_INPUT => Self::Mouse(MouseMessage::RawInput { l_param }),
             WM_MOUSEMOVE => Self::Mouse(MouseMessage::MouseMove { w_param, l_param }),
             WM_LBUTTONDOWN | WM_LBUTTONUP => Self::Mouse(MouseMessage::LeftMouseButton {
                 is_down: msg == WM_LBUTTONDOWN,
@@ -388,6 +382,15 @@ impl From<&MessagePacket> for WindowMessage {
             }),
             WM_MBUTTONDOWN | WM_MBUTTONUP => Self::Mouse(MouseMessage::MiddleMouseButton {
                 is_down: msg == WM_MBUTTONDOWN,
+            }),
+            WM_XBUTTONDOWN | WM_XBUTTONUP => Self::Mouse(if w_param & MK_XBUTTON1 == MK_XBUTTON1 {
+                MouseMessage::ForwardMouseButton {
+                    is_down: msg == WM_XBUTTONDOWN,
+                }
+            } else {
+                MouseMessage::BackMouseButton {
+                    is_down: msg == WM_XBUTTONDOWN,
+                }
             }),
             WM_MOUSEWHEEL => Self::Mouse(MouseMessage::MouseWheel { w_param, l_param }),
             WM_SETCURSOR => Self::Mouse(MouseMessage::SetCursor),
@@ -403,4 +406,17 @@ impl From<&MessagePacket> for WindowMessage {
             _ => Self::Other(*packet),
         }
     }
+}
+
+/// Messages that are either rerouted from other windows (e.g. WM_INPUT), or not sent/posted by the
+/// system.
+pub enum GeneralMessage {
+    /// This should be sent once when it is safe to assume all future messages targeting the GUI
+    /// window will be dispatched to this `WindowMessageProcessor`.
+    MessageDispatcherAttached,
+    RawInputEvent(HRAWINPUT),
+    GuestEvent {
+        event_device_kind: EventDeviceKind,
+        event: virtio_input_event,
+    },
 }

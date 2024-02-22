@@ -7,7 +7,6 @@ use std::rc::Rc;
 use std::sync::Weak;
 use std::time::Instant;
 
-use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::error;
@@ -28,11 +27,13 @@ use winapi::um::winuser::VK_F4;
 use winapi::um::winuser::VK_MENU;
 use winapi::um::winuser::WM_CLOSE;
 
+use super::keyboard_input_manager::KeyboardInputManager;
 use super::math_util::Size2DCheckedCast;
-use super::mouse_input_manager::NoopMouseInputManager as MouseInputManager;
+use super::mouse_input_manager::MouseInputManager;
 use super::virtual_display_manager::NoopVirtualDisplayManager as VirtualDisplayManager;
 use super::window::GuiWindow;
 use super::window_manager::NoopWindowManager as WindowManager;
+use super::window_message_processor::GeneralMessage;
 use super::window_message_processor::SurfaceResources;
 use super::window_message_processor::WindowMessage;
 use super::window_message_processor::WindowPosMessage;
@@ -40,6 +41,7 @@ use super::window_message_processor::HANDLE_WINDOW_MESSAGE_TIMEOUT;
 use super::DisplayProperties;
 use super::HostWindowSpace;
 use super::VirtualDisplaySpace;
+use crate::EventDeviceKind;
 
 pub struct Surface {
     surface_id: u32,
@@ -79,18 +81,12 @@ impl Surface {
             gpu_main_display_tube,
         } = resources;
 
-        let mouse_input = match MouseInputManager::new(
+        let mouse_input = MouseInputManager::new(
             window,
             *virtual_display_manager.get_host_to_guest_transform(),
             virtual_display_size.checked_cast(),
             display_event_dispatcher,
-        ) {
-            Ok(mouse_input) => mouse_input,
-            Err(e) => bail!(
-                "Failed to create MouseInputManager during Surface creation: {:?}",
-                e
-            ),
-        };
+        );
 
         Ok(Surface {
             surface_id,
@@ -167,7 +163,7 @@ impl Surface {
 
     /// Called once when it is safe to assume all future messages targeting `window` will be
     /// dispatched to this `Surface`.
-    pub fn on_message_dispatcher_attached(&mut self, window: &GuiWindow) {
+    fn on_message_dispatcher_attached(&mut self, window: &GuiWindow) {
         // `WindowManager` relies on window messages to properly set initial window pos.
         // We might see a suboptimal UI if any error occurs here, such as having black bars. Instead
         // of crashing the emulator, we would just log the error and still allow the user to
@@ -179,6 +175,7 @@ impl Surface {
 
     /// Called whenever any window message is retrieved. Returns None if `DefWindowProcW()` should
     /// be called after our processing.
+    #[inline]
     pub fn handle_window_message(
         &mut self,
         window: &GuiWindow,
@@ -214,6 +211,31 @@ impl Surface {
             }
         }
         ret
+    }
+
+    #[inline]
+    pub fn handle_general_message(
+        &mut self,
+        window: &GuiWindow,
+        message: &GeneralMessage,
+        keyboard_input_manager: &KeyboardInputManager,
+    ) {
+        match message {
+            GeneralMessage::MessageDispatcherAttached => {
+                self.on_message_dispatcher_attached(window)
+            }
+            GeneralMessage::RawInputEvent(raw_input) => {
+                self.mouse_input.handle_raw_input_event(window, *raw_input)
+            }
+            GeneralMessage::GuestEvent {
+                event_device_kind,
+                event,
+            } => {
+                if let EventDeviceKind::Keyboard = event_device_kind {
+                    keyboard_input_manager.handle_guest_event(window, *event);
+                }
+            }
+        }
     }
 
     /// Returns None if `DefWindowProcW()` should be called after our processing.

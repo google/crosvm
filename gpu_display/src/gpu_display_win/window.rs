@@ -74,6 +74,8 @@ use winapi::um::winuser::LoadCursorW;
 use winapi::um::winuser::LoadIconW;
 use winapi::um::winuser::MonitorFromWindow;
 use winapi::um::winuser::PostMessageW;
+use winapi::um::winuser::RegisterRawInputDevices;
+use winapi::um::winuser::RegisterTouchWindow;
 use winapi::um::winuser::RemovePropW;
 use winapi::um::winuser::ScreenToClient;
 use winapi::um::winuser::SetForegroundWindow;
@@ -89,6 +91,8 @@ use winapi::um::winuser::MONITORINFO;
 use winapi::um::winuser::MONITOR_DEFAULTTONEAREST;
 use winapi::um::winuser::MONITOR_DEFAULTTONULL;
 use winapi::um::winuser::MSG;
+use winapi::um::winuser::PCRAWINPUTDEVICE;
+use winapi::um::winuser::RAWINPUTDEVICE;
 use winapi::um::winuser::SM_REMOTESESSION;
 use winapi::um::winuser::SWP_FRAMECHANGED;
 use winapi::um::winuser::SWP_HIDEWINDOW;
@@ -271,6 +275,13 @@ pub(crate) trait BasicWindow {
         hwnd == unsafe { self.handle() }
     }
 
+    /// Calls `DefWindowProcW()` internally.
+    fn default_process_message(&self, packet: &MessagePacket) -> LRESULT {
+        // SAFETY:
+        // Safe because the window object won't outlive the HWND.
+        unsafe { DefWindowProcW(self.handle(), packet.msg, packet.w_param, packet.l_param) }
+    }
+
     /// Calls `SetPropW()` internally.
     /// # Safety
     /// The caller is responsible for keeping the data pointer valid until `remove_property()` is
@@ -331,24 +342,23 @@ impl GuiWindow {
         initial_window_size: &Size2D<i32, HostWindowSpace>,
     ) -> Result<Self> {
         info!("Creating GUI window for scanout {}", scanout_id);
-        static CONTEXT_MESSAGE: &str = "When creating Window";
-
-        let hinstance = get_current_module_handle();
 
         let hwnd = create_sys_window(
-            hinstance,
+            get_current_module_handle(),
             class_name,
             title,
             dw_style,
             /* hwnd_parent */ null_mut(),
             initial_window_size,
         )
-        .context(CONTEXT_MESSAGE)?;
-        Ok(Self {
+        .context("When creating GuiWindow")?;
+        let window = Self {
             hwnd,
             scanout_id,
             size_move_loop_state: SizeMoveLoopState::new(),
-        })
+        };
+        window.register_touch();
+        Ok(window)
     }
 
     pub fn scanout_id(&self) -> u32 {
@@ -741,13 +751,6 @@ impl GuiWindow {
         Ok(())
     }
 
-    /// Calls `DefWindowProcW()` internally.
-    pub fn default_process_message(&self, packet: &MessagePacket) -> LRESULT {
-        // SAFETY:
-        // Safe because `GuiWindow` object won't outlive the HWND.
-        unsafe { DefWindowProcW(self.hwnd, packet.msg, packet.w_param, packet.l_param) }
-    }
-
     /// Calls `LoadIconW()` internally.
     pub(crate) fn load_custom_icon(hinstance: HINSTANCE, resource_id: WORD) -> Result<HICON> {
         // SAFETY:
@@ -786,6 +789,16 @@ impl GuiWindow {
             Ok(hobject as HBRUSH)
         }
     }
+
+    /// Calls `RegisterTouchWindow()` internally.
+    fn register_touch(&self) {
+        // SAFETY: Safe because `GuiWindow` object won't outlive the HWND.
+        if unsafe { RegisterTouchWindow(self.handle(), 0) } == 0 {
+            // For now, we register touch only to get stats. It is ok if the registration fails.
+            // SAFETY: trivially-safe
+            warn!("failed to register touch: {}", unsafe { GetLastError() });
+        }
+    }
 }
 
 impl BasicWindow for GuiWindow {
@@ -812,17 +825,45 @@ impl MessageOnlyWindow {
         info!("Creating message-only window");
         static CONTEXT_MESSAGE: &str = "When creating MessageOnlyWindow";
 
-        let hinstance = get_current_module_handle();
-        let hwnd = create_sys_window(
-            hinstance,
-            class_name,
-            title,
-            /* dw_style */ 0,
-            HWND_MESSAGE,
-            /* initial_window_size */ &size2(0, 0),
-        )
-        .context(CONTEXT_MESSAGE)?;
-        Ok(Self { hwnd })
+        let window = Self {
+            hwnd: create_sys_window(
+                get_current_module_handle(),
+                class_name,
+                title,
+                /* dw_style */ 0,
+                HWND_MESSAGE,
+                /* initial_window_size */ &size2(0, 0),
+            )
+            .context(CONTEXT_MESSAGE)?,
+        };
+        window.register_raw_input_mouse().context(CONTEXT_MESSAGE)?;
+        Ok(window)
+    }
+
+    /// Registers this window as the receiver of raw mouse input events.
+    ///
+    /// On Windows, an application can only have one window that receives raw input events, so we
+    /// make `MessageOnlyWindow` take on this role and reroute events to the foreground `GuiWindow`.
+    fn register_raw_input_mouse(&self) -> Result<()> {
+        let mouse_device = RAWINPUTDEVICE {
+            usUsagePage: 1, // Generic
+            usUsage: 2,     // Mouse
+            dwFlags: 0,
+            // SAFETY: Safe because `self` won't outlive the HWND.
+            hwndTarget: unsafe { self.handle() },
+        };
+        // SAFETY: Safe because `mouse_device` lives longer than this function call.
+        if unsafe {
+            RegisterRawInputDevices(
+                &mouse_device as PCRAWINPUTDEVICE,
+                1,
+                mem::size_of::<RAWINPUTDEVICE>() as u32,
+            )
+        } == 0
+        {
+            syscall_bail!("Relative mouse is broken. Failed to call RegisterRawInputDevices()");
+        }
+        Ok(())
     }
 }
 
