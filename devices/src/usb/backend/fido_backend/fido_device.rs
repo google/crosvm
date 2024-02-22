@@ -21,7 +21,9 @@ use zerocopy::FromZeroes;
 use crate::usb::backend::fido_backend::constants;
 use crate::usb::backend::fido_backend::error::Error;
 use crate::usb::backend::fido_backend::error::Result;
+use crate::usb::backend::fido_backend::fido_guest::FidoGuestKey;
 use crate::usb::backend::fido_backend::fido_transaction::TransactionManager;
+use crate::usb::backend::fido_backend::poll_thread::PollTimer;
 use crate::utils::EventLoop;
 
 #[derive(FromZeroes, FromBytes, Debug)]
@@ -60,6 +62,8 @@ impl InitPacket {
 
 /// A virtual representation of a FidoDevice emulated on the Host.
 pub struct FidoDevice {
+    /// Guest representation of the virtual security key device
+    pub guest_key: Arc<Mutex<FidoGuestKey>>,
     /// The `TransactionManager` which handles starting and stopping u2f transactions
     pub transaction_manager: Arc<Mutex<TransactionManager>>,
     /// Marks whether the current device is active in a transaction. If it is not active, the fd
@@ -70,6 +74,8 @@ pub struct FidoDevice {
     pub is_device_lost: bool,
     /// Backend provider event loop to attach/detach the monitored fd.
     event_loop: Arc<EventLoop>,
+    /// Timer to poll for active USB transfers
+    pub transfer_timer: PollTimer,
     /// fd of the actual hidraw device
     pub fd: Arc<Mutex<File>>,
 }
@@ -83,11 +89,17 @@ impl AsRawDescriptor for FidoDevice {
 impl FidoDevice {
     pub fn new(hidraw: File, event_loop: Arc<EventLoop>) -> Result<FidoDevice> {
         // TODO: Add code to verify that the hid device is an actual fido key
+        let timer = PollTimer::new(
+            "USB transfer timer".to_string(),
+            std::time::Duration::from_millis(constants::USB_POLL_RATE_MILLIS),
+        )?;
         Ok(FidoDevice {
+            guest_key: Arc::new(Mutex::new(FidoGuestKey::new()?)),
             transaction_manager: Arc::new(Mutex::new(TransactionManager::new()?)),
             is_active: false,
             is_device_lost: false,
             event_loop,
+            transfer_timer: timer,
             fd: Arc::new(Mutex::new(hidraw)),
         })
     }
@@ -131,7 +143,8 @@ impl FidoDevice {
             .lock()
             .start_transaction(packet.cid, nonce)
         {
-            // TODO: start timer for transaction expiration once implemented
+            // Enable the timer that polls for transactions to expire
+            self.transaction_manager.lock().transaction_timer.arm()?;
         }
 
         // Transition the low level device to active for a response from the host
@@ -185,7 +198,10 @@ impl FidoDevice {
                         // In case of an error command we can let it through, otherwise we drop the
                         // response.
                         if packet.cmd != constants::U2FHID_ERROR_CMD {
-                            warn!("u2f: received a broadcast transaction with mismatched nonce. Ignoring.");
+                            warn!(
+                                "u2f: received a broadcast transaction with mismatched nonce.\
+                                Ignoring transaction."
+                            );
                             return Ok(());
                         }
                     }
@@ -238,7 +254,17 @@ impl FidoDevice {
             }
         }
 
-        // TODO: Implement virtual guest key device to send u2f packets to the guest
+        let mut guest_key = self.guest_key.lock();
+        if guest_key.pending_in_packets.is_empty() {
+            // We start polling waiting to send the data back to the guest.
+            if let Err(e) = guest_key.timer.arm() {
+                error!(
+                    "Unable to start U2F guest key timer. U2F packets may be lost. {}",
+                    e
+                );
+            }
+        }
+        guest_key.pending_in_packets.push_back(packet);
 
         Ok(())
     }

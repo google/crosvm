@@ -4,11 +4,29 @@
 
 use usb_util::DescriptorType;
 
+// How long it takes for the security key to become inactive and time out all previously pending
+// transactions since last activity.
+pub const TRANSACTION_TIMEOUT_MILLIS: u64 = 120_000;
+
+// How long to wait before timing out and canceling a USB transfer from the guest if the host
+// security key is unresponsive.
+pub const USB_TRANSFER_TIMEOUT_MILLIS: u64 = 5_000;
+
+// 5ms is the default USB interrupt polling rate according to specs.
+pub const USB_POLL_RATE_MILLIS: u64 = 5;
+
+// Some applications expect a very short RTT when handling packets between host key and guest, half
+// a millisecond seems like a decent compromise.
+pub const PACKET_POLL_RATE_NANOS: u64 = 50_000;
+
 // Total max number of transactions we can hold in our key. Any more transactions will push older
 // transactions away from the stack.
 pub const MAX_TRANSACTIONS: usize = 4;
-pub const U2FHID_PACKET_SIZE: usize = 64;
 
+// Max number of incoming packets still to be processed by the guest
+pub const U2FHID_MAX_IN_PENDING: usize = 32;
+
+pub const U2FHID_PACKET_SIZE: usize = 64;
 pub const PACKET_INIT_HEADER_SIZE: usize = 7;
 pub const PACKET_CONT_HEADER_SIZE: usize = 5;
 pub const PACKET_INIT_DATA_SIZE: usize = U2FHID_PACKET_SIZE - PACKET_INIT_HEADER_SIZE;

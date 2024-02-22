@@ -3,12 +3,22 @@
 // found in the LICENSE file.
 
 use std::collections::VecDeque;
+use std::time::Instant;
 
 use base::error;
 use base::warn;
 
+cfg_if::cfg_if! {
+    if #[cfg(test)] {
+        use base::FakeClock as Clock;
+    } else {
+        use base::Clock;
+    }
+}
+
 use crate::usb::backend::fido_backend::constants;
 use crate::usb::backend::fido_backend::error::Result;
+use crate::usb::backend::fido_backend::poll_thread::PollTimer;
 
 /// Struct representation of a u2f-hid transaction according to the U2FHID protocol standard.
 #[derive(Clone, Copy, Debug)]
@@ -22,19 +32,37 @@ pub struct FidoTransaction {
     /// Unique nonce for broadcast transactions.
     /// The nonce size is 8 bytes, if no nonce is given it's empty
     pub nonce: [u8; constants::NONCE_SIZE],
+    /// Timestamp of the transaction submission time.
+    submission_time: Instant,
 }
 
 /// Struct to keep track of all active transactions. It cycles through them, starts, stops and
 /// removes outdated ones as they expire.
 pub struct TransactionManager {
+    /// Sorted (by age) list of transactions.
     transactions: VecDeque<FidoTransaction>,
-    // TODO: Implement transaction timestamp and expiration timer
+    /// Timestamp of the latest transaction.
+    last_transaction_time: Instant,
+    /// Timer used to poll for expired transactions.
+    pub transaction_timer: PollTimer,
+    /// Clock representation, overridden for testing.
+    clock: Clock,
 }
 
 impl TransactionManager {
     pub fn new() -> Result<TransactionManager> {
+        let timer = PollTimer::new(
+            "transaction timer".to_string(),
+            // Transactions expire after 120 seconds, polling a tenth of the time
+            // sounds acceptable
+            std::time::Duration::from_millis(constants::TRANSACTION_TIMEOUT_MILLIS / 10),
+        )?;
+        let clock = Clock::new();
         Ok(TransactionManager {
             transactions: VecDeque::new(),
+            last_transaction_time: clock.now(),
+            clock,
+            transaction_timer: timer,
         })
     }
 
@@ -71,14 +99,40 @@ impl TransactionManager {
             resp_bcnt: 0,
             resp_size: 0,
             nonce,
+            submission_time: self.clock.now(),
         };
 
         // Remove the oldest transaction
         if self.transactions.len() >= constants::MAX_TRANSACTIONS {
             let _ = self.pop_transaction();
         }
+        self.last_transaction_time = transaction.submission_time;
         self.transactions.push_back(transaction);
         if self.transactions.len() == 1 {
+            return true;
+        }
+        false
+    }
+
+    /// Tests the transaction expiration time. If the latest transaction time is beyond the
+    /// acceptable timeout, it removes all transactions and signals to reset the device (returns
+    /// true).
+    pub fn expire_transactions(&mut self) -> bool {
+        // We have no transactions pending, so we can just return true
+        if self.transactions.is_empty() {
+            return true;
+        }
+
+        // The transaction manager resets if transactions took too long. We use duration_since
+        // instead of elapsed so we can work with fake clocks in tests.
+        if self
+            .clock
+            .now()
+            .duration_since(self.last_transaction_time)
+            .as_millis()
+            >= constants::TRANSACTION_TIMEOUT_MILLIS.into()
+        {
+            self.reset();
             return true;
         }
         false
@@ -87,6 +141,13 @@ impl TransactionManager {
     /// Resets the `TransactionManager`, dropping all pending transactions.
     pub fn reset(&mut self) {
         self.transactions = VecDeque::new();
+        self.last_transaction_time = self.clock.now();
+        if let Err(e) = self.transaction_timer.clear() {
+            error!(
+                "Unable to clear transaction manager timer, silently failing. {}",
+                e
+            );
+        }
     }
 
     /// Updates the bcnt and size of the first transaction that matches the given CID.
@@ -175,6 +236,7 @@ mod tests {
 
     use crate::usb::backend::fido_backend::constants::EMPTY_NONCE;
     use crate::usb::backend::fido_backend::constants::MAX_TRANSACTIONS;
+    use crate::usb::backend::fido_backend::constants::TRANSACTION_TIMEOUT_MILLIS;
     use crate::usb::backend::fido_backend::fido_transaction::TransactionManager;
 
     #[test]
@@ -184,9 +246,13 @@ mod tests {
 
         assert!(manager.start_transaction(cid, EMPTY_NONCE));
         assert_eq!(manager.transactions.len(), 1);
+        assert_eq!(manager.last_transaction_time, manager.clock.now());
+
+        manager.clock.add_ns(100);
 
         assert!(!manager.start_transaction(cid, EMPTY_NONCE));
         assert_eq!(manager.transactions.len(), 2);
+        assert_eq!(manager.last_transaction_time, manager.clock.now());
 
         manager.reset();
 
@@ -244,5 +310,24 @@ mod tests {
 
         assert_eq!(transaction.resp_bcnt, bcnt);
         assert_eq!(transaction.resp_size, size);
+    }
+
+    #[test]
+    fn test_expire_transactions() {
+        let mut manager = TransactionManager::new().unwrap();
+        let cid = 1234;
+
+        // No transactions, so it defaults to true
+        assert!(manager.expire_transactions());
+
+        manager.start_transaction(cid, EMPTY_NONCE);
+        assert!(!manager.expire_transactions());
+
+        // Advance clock beyond expiration time, convert milliseconds to nanoseconds
+        manager
+            .clock
+            .add_ns(TRANSACTION_TIMEOUT_MILLIS * 1000000 + 1);
+        assert!(manager.expire_transactions());
+        assert_eq!(manager.transactions.len(), 0);
     }
 }

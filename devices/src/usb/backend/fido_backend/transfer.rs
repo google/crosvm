@@ -3,14 +3,17 @@
 // found in the LICENSE file.
 
 use std::sync::Weak;
+use std::time::Instant;
 
 use base::error;
+use base::Clock;
 use sync::Mutex;
 use usb_util::TransferBuffer;
 use usb_util::TransferStatus;
 
 use crate::usb::backend::error::Error as BackendError;
 use crate::usb::backend::error::Result as BackendResult;
+use crate::usb::backend::fido_backend::constants::USB_TRANSFER_TIMEOUT_MILLIS;
 use crate::usb::backend::transfer::BackendTransfer;
 use crate::usb::backend::transfer::BackendTransferType;
 use crate::usb::backend::transfer::GenericTransferHandle;
@@ -27,17 +30,21 @@ pub struct FidoTransfer {
     pub actual_length: usize,
     /// USB endpoint associated with this transfer.
     pub endpoint: u8,
+    /// Timestamp of the transfer submission time.
+    submission_time: Instant,
     /// Callback to be executed once the transfer has completed, to signal the xhci layer.
     pub callback: Option<Box<dyn Fn(FidoTransfer) + Send + Sync>>,
 }
 
 impl FidoTransfer {
     pub fn new(endpoint: u8, buffer: TransferBuffer) -> FidoTransfer {
+        let clock = Clock::new();
         FidoTransfer {
             buffer,
             status: TransferStatus::Error, // Default to error
             actual_length: 0,
             endpoint,
+            submission_time: clock.now(),
             callback: None,
         }
     }
@@ -46,6 +53,11 @@ impl FidoTransfer {
     /// cannot continue and the device should be detached.
     pub fn signal_device_lost(&mut self) {
         self.status = TransferStatus::NoDevice;
+    }
+
+    /// Checks if the current transfer should time out or not
+    pub fn timeout_expired(&self) -> bool {
+        self.submission_time.elapsed().as_millis() >= USB_TRANSFER_TIMEOUT_MILLIS.into()
     }
 
     /// Finalizes the transfer by setting the right status and then calling the callback to signal

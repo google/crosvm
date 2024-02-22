@@ -12,6 +12,7 @@ access: 1
 faccessat: 1
 faccessat2: 1
 timerfd_create: 1
+timerfd_settime: 1
 getsockname: 1
 pipe: 1
 setsockopt: 1

@@ -6,6 +6,7 @@
 
 lstat: 1
 timerfd_create: 1
+timerfd_settime: 1
 name_to_handle_at: 1
 access: 1
 faccessat: 1
