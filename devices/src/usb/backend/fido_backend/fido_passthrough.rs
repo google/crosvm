@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::io::Error as IOError;
+use std::io::ErrorKind;
+use std::io::Read;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -35,6 +38,7 @@ use crate::usb::backend::error::Result as BackendResult;
 use crate::usb::backend::fido_backend::constants;
 use crate::usb::backend::fido_backend::error::Error;
 use crate::usb::backend::fido_backend::error::Result;
+use crate::usb::backend::fido_backend::fido_device::FidoDevice;
 use crate::usb::backend::fido_backend::transfer::FidoTransfer;
 use crate::usb::backend::fido_backend::transfer::FidoTransferHandle;
 use crate::usb::backend::transfer::BackendTransferHandle;
@@ -50,6 +54,8 @@ use crate::utils::EventLoop;
 /// Host-level fido passthrough device that handles USB operations and relays them to the
 /// appropriate virtual fido device.
 pub struct FidoPassthroughDevice {
+    /// The virtual FIDO device implementation.
+    device: Arc<Mutex<FidoDevice>>,
     /// The state of the device as seen by the backend provider.
     state: Arc<RwLock<DeviceState>>,
     /// The state of the control transfer exchange with the xhci layer.
@@ -58,7 +64,11 @@ pub struct FidoPassthroughDevice {
 }
 
 impl FidoPassthroughDevice {
-    pub fn new(state: DeviceState, event_loop: Arc<EventLoop>) -> Result<Self> {
+    pub fn new(
+        device: Arc<Mutex<FidoDevice>>,
+        state: DeviceState,
+        event_loop: Arc<EventLoop>,
+    ) -> Result<Self> {
         let control_transfer_state = ControlTransferState {
             ctl_ep_state: ControlEndpointState::SetupStage,
             control_request_setup: UsbRequestSetup::new(0, 0, 0, 0, 0),
@@ -66,6 +76,7 @@ impl FidoPassthroughDevice {
         };
         let job_queue = AsyncJobQueue::init(&event_loop).map_err(Error::StartAsyncFidoQueue)?;
         Ok(FidoPassthroughDevice {
+            device,
             state: Arc::new(RwLock::new(state)),
             control_transfer_state: Arc::new(RwLock::new(control_transfer_state)),
             transfer_job_queue: job_queue,
@@ -74,9 +85,51 @@ impl FidoPassthroughDevice {
 
     /// This function is called from the low-level event handler when the monitored `fd` is ready
     /// to transmit data from the host to the guest.
-    pub fn read_hidraw_file(&mut self) {
-        // TODO: Implement reading hidraw file for virtual security key
-        unimplemented!();
+    pub fn read_hidraw_file(&mut self) -> Result<()> {
+        let mut device = self.device.lock();
+        // Device has already stopped working, just return early.
+        if device.is_device_lost {
+            return Ok(());
+        }
+        if !device.is_active {
+            // We should NEVER be polling on the fd and wake up if no transactions have been
+            // initiated from the guest first.
+            error!("Fido device received fd poll event from inactive device. This is a bug.");
+            return Err(Error::InconsistentFidoDeviceState);
+        }
+
+        let mut packet = vec![0; constants::U2FHID_PACKET_SIZE * 2];
+
+        // TODO: Check that the packet queue is not full
+
+        let read_result = device.fd.lock().read(&mut packet);
+        match read_result {
+            Ok(n) => {
+                // We read too much, the device is misbehaving
+                if n != constants::U2FHID_PACKET_SIZE {
+                    return Err(Error::ReadHidrawDevice(IOError::new(
+                        ErrorKind::Other,
+                        format!(
+                            "Read too many bytes ({}), the hidraw device is misbehaving.",
+                            n
+                        ),
+                    )));
+                }
+                // This is safe because we just checked the size of n is exactly U2FHID_PACKET_SIZE
+                device
+                    .recv_from_host(packet[..constants::U2FHID_PACKET_SIZE].try_into().unwrap())?;
+            }
+            Err(e) => {
+                error!(
+                    "U2F hidraw read error: {}, resetting and detaching device",
+                    e
+                );
+                device.set_active(false);
+                device.is_device_lost = true;
+                return Err(Error::ReadHidrawDevice(e));
+            }
+        }
+        Ok(())
     }
 
     /// This function is called by a queued job to handle all communication related to USB control
@@ -139,18 +192,44 @@ impl FidoPassthroughDevice {
         transfer.buffer = TransferBuffer::Vector(request_setup_out);
         Ok(())
     }
+
+    /// This function is called by a queued job to handle all USB OUT requests from the guest down
+    /// to the host by writing the given `FidoTransfer` data into the hidraw file.
+    pub fn handle_interrupt_out(
+        transfer: &mut FidoTransfer,
+        device: &Arc<Mutex<FidoDevice>>,
+    ) -> Result<()> {
+        let mut packet = [0u8; constants::U2FHID_PACKET_SIZE];
+        let buffer = match &transfer.buffer {
+            TransferBuffer::Vector(v) => v,
+            _ => {
+                return Err(Error::UnsupportedTransferBufferType);
+            }
+        };
+        if buffer.len() > constants::U2FHID_PACKET_SIZE {
+            error!(
+                "Buffer size is bigger than u2f-hid packet size: {}",
+                buffer.len()
+            );
+            return Err(Error::InvalidDataBufferSize);
+        }
+        packet.copy_from_slice(buffer);
+        let written = device.lock().recv_from_guest(packet)?;
+        transfer.actual_length = written;
+        Ok(())
+    }
 }
 
 impl Drop for FidoPassthroughDevice {
     fn drop(&mut self) {
-        // Nothing to do
+        self.device.lock().is_device_lost = true;
+        // TODO: Send kill signal to poll thread once implemented
     }
 }
 
 impl AsRawDescriptor for FidoPassthroughDevice {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        // TODO: Return host security key fd once FidoDevice is implemented
-        unimplemented!();
+        self.device.lock().as_raw_descriptor()
     }
 }
 
@@ -170,7 +249,6 @@ impl BackendDevice for FidoPassthroughDevice {
             weak_transfer: Arc::downgrade(&arc_transfer),
         };
 
-        // TODO: Implement endpoint/transfer logic
         match endpoint {
             constants::U2FHID_CONTROL_ENDPOINT => {
                 let arc_transfer_local = arc_transfer.clone();
@@ -198,8 +276,33 @@ impl BackendDevice for FidoPassthroughDevice {
                     }).map_err(BackendError::QueueAsyncJob)?;
             }
             constants::U2FHID_OUT_ENDPOINT => {
-                unimplemented!();
+                let arc_transfer_local = arc_transfer.clone();
+                let fido_device = self.device.clone();
+                self.transfer_job_queue
+                    .queue_job(move || {
+                        let mut lock = arc_transfer_local.lock();
+                        match lock.take() {
+                            Some(mut transfer) => {
+                                if let Err(e) = FidoPassthroughDevice::handle_interrupt_out(
+                                    &mut transfer,
+                                    &fido_device,
+                                ) {
+                                    error!("Fido device handle interrupt out failed, cancelling transfer: {}", e);
+                                    drop(lock);
+                                    if let Err(e) = cancel_handle.cancel() {
+                                        error!("Failed to cancel transfer, dropping request: {}", e);
+                                        return;
+                                    }
+                                }
+                                transfer.complete_transfer();
+                            }
+                            None => {
+                                error!("Interrupt out transfer disappeared. Dropping request.");
+                            }
+                        }
+                    }).map_err(BackendError::QueueAsyncJob)?;
             }
+            // TODO: Implement IN_ENDPOINT logic
             constants::U2FHID_IN_ENDPOINT => {
                 unimplemented!();
             }
@@ -216,7 +319,7 @@ impl BackendDevice for FidoPassthroughDevice {
     }
 
     fn detach_event_handler(&self, _event_loop: &Arc<EventLoop>) -> BackendResult<()> {
-        // TODO: Detach fd poll once it's implemented
+        self.device.lock().set_active(false);
         Ok(())
     }
 
@@ -369,7 +472,9 @@ impl XhciBackendDevice for FidoPassthroughDevice {
     }
 
     fn reset(&mut self) -> BackendResult<()> {
-        // TODO: Implement logic to reset fido device state
+        let mut device_lock = self.device.lock();
+        device_lock.set_active(false);
+        device_lock.transaction_manager.lock().reset();
         Ok(())
     }
 
@@ -391,6 +496,6 @@ impl XhciBackendDevice for FidoPassthroughDevice {
         // Transition the FIDO device into inactive mode and mark device as lost.
         // The FIDO device cannot error on reset so we can unwrap safely.
         self.reset().unwrap();
-        // TODO: Implement logic to mark fido device state as stopped
+        self.device.lock().is_device_lost = true;
     }
 }

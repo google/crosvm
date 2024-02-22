@@ -11,6 +11,7 @@ use crate::usb::backend::device::BackendDeviceType;
 use crate::usb::backend::device::DeviceState;
 use crate::usb::backend::error::Error;
 use crate::usb::backend::error::Result;
+use crate::usb::backend::fido_backend::fido_device::FidoDevice;
 use crate::usb::backend::fido_backend::fido_passthrough::FidoPassthroughDevice;
 use crate::usb::backend::utils::UsbUtilEventHandler;
 use crate::utils::EventHandler;
@@ -19,13 +20,15 @@ use crate::utils::EventLoop;
 /// Utility function to attach a security key device to the backend provider. It initializes a
 /// `FidoPassthroughDevice` and returns it with its `EventHandler` to the backend.
 pub fn attach_security_key(
-    _hidraw: File,
+    hidraw: File,
     event_loop: Arc<EventLoop>,
     device_state: DeviceState,
 ) -> Result<(Arc<Mutex<BackendDeviceType>>, Arc<dyn EventHandler>)> {
-    // TODO: Create low-level FidoDevice and read hidraw file
-    let passthrough_device = FidoPassthroughDevice::new(device_state, event_loop)
-        .map_err(Error::CreateFidoBackendDevice)?;
+    let device =
+        FidoDevice::new(hidraw, event_loop.clone()).map_err(Error::CreateFidoBackendDevice)?;
+    let passthrough_device =
+        FidoPassthroughDevice::new(Arc::new(Mutex::new(device)), device_state, event_loop)
+            .map_err(Error::CreateFidoBackendDevice)?;
     let device_impl = BackendDeviceType::FidoDevice(passthrough_device);
     let arc_mutex_device = Arc::new(Mutex::new(device_impl));
 

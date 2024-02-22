@@ -72,10 +72,9 @@ impl EventHandler for UsbUtilEventHandler {
                 .lock()
                 .poll_transfers()
                 .context("UsbUtilEventHandler poll_transfers failed"),
-            BackendDeviceType::FidoDevice(fido_device) => {
-                fido_device.read_hidraw_file();
-                Ok(())
-            }
+            BackendDeviceType::FidoDevice(fido_device) => fido_device
+                .read_hidraw_file()
+                .context("FidoDeviceEventHandler failed to read hidraw device"),
         }
     }
 }

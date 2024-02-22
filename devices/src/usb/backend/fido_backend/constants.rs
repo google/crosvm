@@ -4,6 +4,24 @@
 
 use usb_util::DescriptorType;
 
+// Total max number of transactions we can hold in our key. Any more transactions will push older
+// transactions away from the stack.
+pub const MAX_TRANSACTIONS: usize = 4;
+pub const U2FHID_PACKET_SIZE: usize = 64;
+
+pub const PACKET_INIT_HEADER_SIZE: usize = 7;
+pub const PACKET_CONT_HEADER_SIZE: usize = 5;
+pub const PACKET_INIT_DATA_SIZE: usize = U2FHID_PACKET_SIZE - PACKET_INIT_HEADER_SIZE;
+pub const PACKET_CONT_DATA_SIZE: usize = U2FHID_PACKET_SIZE - PACKET_CONT_HEADER_SIZE;
+pub const BROADCAST_CID: u32 = 0xFFFFFFFF;
+
+pub const NONCE_SIZE: usize = 8;
+pub const EMPTY_NONCE: [u8; NONCE_SIZE] = [0u8; NONCE_SIZE];
+
+// It's a valid init packet only if the 7th bit of the cmd field is set
+pub const PACKET_INIT_VALID_CMD: u8 = 0b1000_0000;
+pub const U2FHID_ERROR_CMD: u8 = 0xBF;
+
 pub const U2FHID_CONTROL_ENDPOINT: u8 = 0x00;
 pub const U2FHID_IN_ENDPOINT: u8 = 0x81;
 pub const U2FHID_OUT_ENDPOINT: u8 = 0x01;

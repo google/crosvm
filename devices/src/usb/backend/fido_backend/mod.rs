@@ -4,6 +4,8 @@
 
 mod constants;
 pub mod error;
+pub mod fido_device;
 pub mod fido_passthrough;
 pub mod fido_provider;
+pub mod fido_transaction;
 pub mod transfer;
