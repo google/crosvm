@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 mod constants;
+pub mod error;
 pub mod fido_passthrough;
 pub mod fido_provider;
 pub mod transfer;

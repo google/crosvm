@@ -398,9 +398,25 @@ impl BackendDeviceType {
                                 }
                             }
                         }
-                        BackendDeviceType::FidoDevice(_) => {
-                            error!("Fido device control transfer has not been implemented yet.");
-                            (TransferStatus::Stalled, 0)
+                        BackendDeviceType::FidoDevice(fido_passthrough) => {
+                            match fido_passthrough
+                                .get_config_descriptor_by_index(control_request_setup.value as u8)
+                            {
+                                Ok(descriptor_tree) => {
+                                    let device_descriptor =
+                                        fido_passthrough.get_device_descriptor_tree()?;
+                                    let offset = descriptor_tree.offset();
+                                    let data = device_descriptor.raw()
+                                        [offset..offset + descriptor_tree.wTotalLength as usize]
+                                        .to_vec();
+                                    let bytes = buffer.write(&data).map_err(Error::WriteBuffer)?;
+                                    (TransferStatus::Completed, bytes as u32)
+                                }
+                                Err(e) => {
+                                    error!("get fido descriptor error: {}", e);
+                                    (TransferStatus::Stalled, 0)
+                                }
+                            }
                         }
                     }
                 } else {

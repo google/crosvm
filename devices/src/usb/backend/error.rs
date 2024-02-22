@@ -7,6 +7,7 @@ use remain::sorted;
 use thiserror::Error;
 use usb_util::Error as UsbUtilError;
 
+use crate::usb::backend::fido_backend::error::Error as FidoError;
 use crate::usb::xhci::scatter_gather_buffer::Error as BufferError;
 use crate::usb::xhci::xhci_transfer::Error as XhciTransferError;
 use crate::utils::Error as UtilsError;
@@ -30,6 +31,8 @@ pub enum Error {
     CreateBuffer(XhciTransferError),
     #[error("failed to create control tube: {0}")]
     CreateControlTube(TubeError),
+    #[error("failed to create fido backend device: {0}")]
+    CreateFidoBackendDevice(FidoError),
     #[error("failed to create host backend usb device: {0}")]
     CreateHostUsbDevice(UsbUtilError),
     #[error("failed to create libusb context: {0}")]

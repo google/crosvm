@@ -9,14 +9,22 @@ use base::error;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
 use sync::Mutex;
+use usb_util::parse_usbfs_descriptors;
 use usb_util::ConfigDescriptorTree;
+use usb_util::ControlRequestDataPhaseTransferDirection;
+use usb_util::ControlRequestRecipient;
+use usb_util::ControlRequestType;
+use usb_util::DescriptorType;
 use usb_util::DeviceDescriptorTree;
 use usb_util::DeviceSpeed;
 use usb_util::EndpointDirection;
 use usb_util::EndpointType;
+use usb_util::Error as UsbUtilError;
 use usb_util::TransferBuffer;
 use usb_util::TransferStatus;
 use usb_util::UsbRequestSetup;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::usb::backend::device::BackendDevice;
 use crate::usb::backend::device::DeviceState;
@@ -25,14 +33,18 @@ use crate::usb::backend::endpoint::UsbEndpoint;
 use crate::usb::backend::error::Error as BackendError;
 use crate::usb::backend::error::Result as BackendResult;
 use crate::usb::backend::fido_backend::constants;
+use crate::usb::backend::fido_backend::error::Error;
+use crate::usb::backend::fido_backend::error::Result;
 use crate::usb::backend::fido_backend::transfer::FidoTransfer;
 use crate::usb::backend::fido_backend::transfer::FidoTransferHandle;
 use crate::usb::backend::transfer::BackendTransferHandle;
 use crate::usb::backend::transfer::BackendTransferType;
 use crate::usb::backend::transfer::ControlTransferState;
+use crate::usb::backend::transfer::GenericTransferHandle;
 use crate::usb::xhci::xhci_backend_device::BackendType;
 use crate::usb::xhci::xhci_backend_device::UsbDeviceAddress;
 use crate::usb::xhci::xhci_backend_device::XhciBackendDevice;
+use crate::utils::AsyncJobQueue;
 use crate::utils::EventLoop;
 
 /// Host-level fido passthrough device that handles USB operations and relays them to the
@@ -42,19 +54,22 @@ pub struct FidoPassthroughDevice {
     state: Arc<RwLock<DeviceState>>,
     /// The state of the control transfer exchange with the xhci layer.
     control_transfer_state: Arc<RwLock<ControlTransferState>>,
+    transfer_job_queue: Arc<AsyncJobQueue>,
 }
 
 impl FidoPassthroughDevice {
-    pub fn new(state: DeviceState, _event_loop: Arc<EventLoop>) -> Self {
+    pub fn new(state: DeviceState, event_loop: Arc<EventLoop>) -> Result<Self> {
         let control_transfer_state = ControlTransferState {
             ctl_ep_state: ControlEndpointState::SetupStage,
             control_request_setup: UsbRequestSetup::new(0, 0, 0, 0, 0),
             executed: false,
         };
-        FidoPassthroughDevice {
+        let job_queue = AsyncJobQueue::init(&event_loop).map_err(Error::StartAsyncFidoQueue)?;
+        Ok(FidoPassthroughDevice {
             state: Arc::new(RwLock::new(state)),
             control_transfer_state: Arc::new(RwLock::new(control_transfer_state)),
-        }
+            transfer_job_queue: job_queue,
+        })
     }
 
     /// This function is called from the low-level event handler when the monitored `fd` is ready
@@ -62,6 +77,67 @@ impl FidoPassthroughDevice {
     pub fn read_hidraw_file(&mut self) {
         // TODO: Implement reading hidraw file for virtual security key
         unimplemented!();
+    }
+
+    /// This function is called by a queued job to handle all communication related to USB control
+    /// transfer packets between the guest and the virtual security key.
+    pub fn handle_control(transfer: &mut FidoTransfer) -> Result<()> {
+        transfer.actual_length = 0;
+        let request_setup = match &transfer.buffer {
+            TransferBuffer::Vector(v) => {
+                UsbRequestSetup::read_from_prefix(v).ok_or_else(|| Error::InvalidDataBufferSize)?
+            }
+            _ => {
+                return Err(Error::UnsupportedTransferBufferType);
+            }
+        };
+
+        let mut request_setup_out = request_setup.as_bytes().to_vec();
+        let is_device_to_host =
+            request_setup.get_direction() == ControlRequestDataPhaseTransferDirection::DeviceToHost;
+        let descriptor_type = (request_setup.value >> 8) as u8;
+
+        // Get Device Descriptor request
+        if descriptor_type == (DescriptorType::Device as u8) && is_device_to_host {
+            // If the descriptor is larger than the actual requested data, we only allocate space
+            // for the request size. This is common for USB3 control setup to request only the
+            // initial 8 bytes instead of the full descriptor.
+            let buf_size = std::cmp::min(
+                request_setup.length.into(),
+                constants::U2FHID_DEVICE_DESC.len(),
+            );
+            let mut buffer: Vec<u8> = constants::U2FHID_DEVICE_DESC[..buf_size].to_vec();
+            transfer.actual_length = buffer.len();
+            request_setup_out.append(&mut buffer);
+        }
+
+        if request_setup.get_recipient() == ControlRequestRecipient::Interface {
+            // It's a request for the HID report descriptor
+            if is_device_to_host && descriptor_type == constants::HID_GET_REPORT_DESC {
+                let mut buffer: Vec<u8> = constants::HID_REPORT_DESC.to_vec();
+                transfer.actual_length = buffer.len();
+                request_setup_out.append(&mut buffer);
+            }
+        }
+
+        if request_setup.get_type() == ControlRequestType::Class {
+            // HID GET_IDLE
+            if request_setup.request == constants::HID_GET_IDLE {
+                let mut buffer: Vec<u8> = vec![0u8, 1];
+                // TODO: Query the actual fido device for idle state once implemented
+                buffer[0] = 1;
+                transfer.actual_length = 1;
+                request_setup_out.append(&mut buffer);
+            }
+            // HID SET_IDLE
+            if request_setup.request == constants::HID_SET_IDLE {
+                // TODO: Set the actual idle state for the fido device once implemented
+            }
+        }
+
+        // Store the response
+        transfer.buffer = TransferBuffer::Vector(request_setup_out);
+        Ok(())
     }
 }
 
@@ -90,14 +166,36 @@ impl BackendDevice for FidoPassthroughDevice {
 
         let endpoint = transfer.endpoint;
         let arc_transfer = Arc::new(Mutex::new(Some(transfer)));
-        let _cancel_handle = FidoTransferHandle {
+        let cancel_handle = FidoTransferHandle {
             weak_transfer: Arc::downgrade(&arc_transfer),
         };
 
         // TODO: Implement endpoint/transfer logic
         match endpoint {
             constants::U2FHID_CONTROL_ENDPOINT => {
-                unimplemented!();
+                let arc_transfer_local = arc_transfer.clone();
+                self.transfer_job_queue
+                    .queue_job(move || {
+                        let mut lock = arc_transfer_local.lock();
+                        match lock.take() {
+                            Some(mut transfer) => {
+                                if let Err(e) =
+                                    FidoPassthroughDevice::handle_control(&mut transfer)
+                                {
+                                    error!("Fido device handle control failed, cancelling transfer: {}", e);
+                                    drop(lock);
+                                    if let Err(e) = cancel_handle.cancel() {
+                                        error!("Failed to cancel transfer, dropping request: {}", e);
+                                        return;
+                                    }
+                                }
+                                transfer.complete_transfer();
+                            }
+                            None => {
+                                error!("USB transfer disappeared in handle_control. Dropping request.");
+                            }
+                        }
+                    }).map_err(BackendError::QueueAsyncJob)?;
             }
             constants::U2FHID_OUT_ENDPOINT => {
                 unimplemented!();
@@ -107,9 +205,14 @@ impl BackendDevice for FidoPassthroughDevice {
             }
             _ => {
                 error!("Wrong endpoint requested: {}", endpoint);
-                Err(BackendError::MalformedBackendTransfer)
+                return Err(BackendError::MalformedBackendTransfer);
             }
-        }
+        };
+
+        let cancel_handle = FidoTransferHandle {
+            weak_transfer: Arc::downgrade(&arc_transfer),
+        };
+        Ok(BackendTransferHandle::new(cancel_handle))
     }
 
     fn detach_event_handler(&self, _event_loop: &Arc<EventLoop>) -> BackendResult<()> {
@@ -150,32 +253,69 @@ impl BackendDevice for FidoPassthroughDevice {
         self.state.clone()
     }
 
-    // TODO: Implement config descriptor code
     fn get_active_config_descriptor(&mut self) -> BackendResult<ConfigDescriptorTree> {
-        unimplemented!();
+        // There is only a config descriptor for u2f virtual keys.
+        self.get_config_descriptor_by_index(0)
     }
 
-    fn get_config_descriptor(&mut self, _config: u8) -> BackendResult<ConfigDescriptorTree> {
-        unimplemented!();
+    fn get_config_descriptor(&mut self, config: u8) -> BackendResult<ConfigDescriptorTree> {
+        let device_descriptor = self.get_device_descriptor_tree()?;
+        if let Some(config_descriptor) = device_descriptor.get_config_descriptor(config) {
+            return Ok(config_descriptor.clone());
+        }
+        Err(BackendError::GetConfigDescriptor(
+            UsbUtilError::DescriptorParse,
+        ))
     }
 
     fn get_config_descriptor_by_index(
         &mut self,
-        _config_index: u8,
+        config_index: u8,
     ) -> BackendResult<ConfigDescriptorTree> {
-        unimplemented!();
+        let device_descriptor = self.get_device_descriptor_tree()?;
+        if let Some(config_descriptor) =
+            device_descriptor.get_config_descriptor_by_index(config_index)
+        {
+            return Ok(config_descriptor.clone());
+        }
+        Err(BackendError::GetConfigDescriptor(
+            UsbUtilError::DescriptorParse,
+        ))
     }
 
     fn get_device_descriptor_tree(&mut self) -> BackendResult<DeviceDescriptorTree> {
-        unimplemented!();
+        // Skip the first two fields of length and descriptor type as we don't need them in our
+        // DeviceDescriptor structure.
+        let mut descbuf: Vec<u8> = constants::U2FHID_DEVICE_DESC.to_vec();
+        let mut configbuf: Vec<u8> = constants::U2FHID_CONFIG_DESC.to_vec();
+        descbuf.append(&mut configbuf);
+        parse_usbfs_descriptors(&descbuf).map_err(BackendError::GetDeviceDescriptor)
     }
 
     fn get_active_configuration(&mut self) -> BackendResult<u8> {
-        unimplemented!();
+        let descriptor_tree = self.get_device_descriptor_tree()?;
+        if descriptor_tree.bNumConfigurations != 1 {
+            error!(
+                "Fido devices should only have one configuration, found {}",
+                descriptor_tree.bNumConfigurations
+            );
+        } else if let Some(config_descriptor) = descriptor_tree.get_config_descriptor_by_index(0) {
+            return Ok(config_descriptor.bConfigurationValue);
+        }
+        Err(BackendError::GetActiveConfig(UsbUtilError::DescriptorParse))
     }
 
-    fn set_active_configuration(&mut self, _config: u8) -> BackendResult<()> {
-        unimplemented!();
+    fn set_active_configuration(&mut self, config: u8) -> BackendResult<()> {
+        // Fido devices only have one configuration so we should do nothing here.
+        // Return an error if the configuration number is unexpected.
+        if config != 0 {
+            error!(
+                "Requested to set fido active configuration of {}, but only 0 is allowed.",
+                config
+            );
+            return Err(BackendError::BadBackendProviderState);
+        }
+        Ok(())
     }
 
     fn clear_feature(&mut self, _value: u16, _index: u16) -> BackendResult<TransferStatus> {

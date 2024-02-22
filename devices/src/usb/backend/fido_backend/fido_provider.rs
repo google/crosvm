@@ -9,6 +9,7 @@ use sync::Mutex;
 
 use crate::usb::backend::device::BackendDeviceType;
 use crate::usb::backend::device::DeviceState;
+use crate::usb::backend::error::Error;
 use crate::usb::backend::error::Result;
 use crate::usb::backend::fido_backend::fido_passthrough::FidoPassthroughDevice;
 use crate::usb::backend::utils::UsbUtilEventHandler;
@@ -23,7 +24,8 @@ pub fn attach_security_key(
     device_state: DeviceState,
 ) -> Result<(Arc<Mutex<BackendDeviceType>>, Arc<dyn EventHandler>)> {
     // TODO: Create low-level FidoDevice and read hidraw file
-    let passthrough_device = FidoPassthroughDevice::new(device_state, event_loop);
+    let passthrough_device = FidoPassthroughDevice::new(device_state, event_loop)
+        .map_err(Error::CreateFidoBackendDevice)?;
     let device_impl = BackendDeviceType::FidoDevice(passthrough_device);
     let arc_mutex_device = Arc::new(Mutex::new(device_impl));
 
