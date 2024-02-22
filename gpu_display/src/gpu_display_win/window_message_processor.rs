@@ -198,7 +198,7 @@ impl WindowMessageProcessor {
         keyboard_input_manager: &KeyboardInputManager,
     ) {
         if event_device_kind == EventDeviceKind::Keyboard {
-            keyboard_input_manager.handle_guest_event(event);
+            keyboard_input_manager.handle_guest_event(&self.window_resources.window, event);
         }
     }
 
@@ -220,7 +220,7 @@ impl WindowMessageProcessor {
         let _trace_event = Self::new_trace_event(packet.msg);
 
         let window_message: WindowMessage = packet.into();
-        keyboard_input_manager.handle_window_message(&window_message);
+        keyboard_input_manager.handle_window_message(window, &window_message);
         self.surface
             .handle_window_message(window, window_message)
             .unwrap_or_else(|| window.default_process_message(packet))

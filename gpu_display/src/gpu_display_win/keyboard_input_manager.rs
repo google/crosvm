@@ -12,8 +12,14 @@ use winapi::shared::minwindef::BYTE;
 use winapi::shared::minwindef::LPARAM;
 use winapi::shared::minwindef::WPARAM;
 use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::winuser::*;
+use winapi::um::winuser::GetKeyboardState;
+use winapi::um::winuser::MapVirtualKeyW;
+use winapi::um::winuser::MAPVK_VK_TO_VSC;
+use winapi::um::winuser::VK_CAPITAL;
+use winapi::um::winuser::VK_NUMLOCK;
+use winapi::um::winuser::VK_SCROLL;
 
+use super::window::GuiWindow;
 use super::window_message_dispatcher::DisplayEventDispatcher;
 use crate::gpu_display_win::window_message_processor::WindowMessage;
 use crate::keycode_converter::KeycodeTranslator;
@@ -42,49 +48,55 @@ impl KeyboardInputManager {
         }
     }
 
-    pub fn handle_window_message(&self, message: &WindowMessage) {
+    pub fn handle_window_message(&self, window: &GuiWindow, message: &WindowMessage) {
         match message {
             WindowMessage::WindowActivate { is_activated } => {
-                self.handle_window_activate(*is_activated)
+                self.handle_window_activate(window, *is_activated)
             }
-            WindowMessage::KeyboardFocus => self.sync_key_states(),
+            WindowMessage::KeyboardFocus => self.sync_key_states(window),
             WindowMessage::Key {
                 is_sys_key: _,
                 is_down,
                 w_param,
                 l_param,
-            } => self.handle_host_key_event(*is_down, *w_param, *l_param),
+            } => self.handle_host_key_event(window, *is_down, *w_param, *l_param),
             _ => (),
         }
     }
 
-    pub fn handle_guest_event(&self, event: virtio_input_event) {
+    pub fn handle_guest_event(&self, window: &GuiWindow, event: virtio_input_event) {
         if let Some(numlock_on) = event.get_led_state(LED_NUML) {
             self.guest_key_states.lock().num_lock_state = numlock_on;
-            self.sync_key_states();
+            self.sync_key_states(window);
         } else if let Some(capslock_on) = event.get_led_state(LED_CAPSL) {
             self.guest_key_states.lock().caps_lock_state = capslock_on;
-            self.sync_key_states();
+            self.sync_key_states(window);
         }
     }
 
     #[inline]
-    fn handle_window_activate(&self, is_activated: bool) {
-        // To avoid sticky keys, we release keys when our window is deactivated. This prevents
-        // common shortcuts like Alt+Tab from leaving a stuck alt key in the guest.
+    fn handle_window_activate(&self, window: &GuiWindow, is_activated: bool) {
         if !is_activated {
-            self.release_any_down_keys();
+            // To avoid sticky keys, we release keys when our window is deactivated. This prevents
+            // common shortcuts like Alt+Tab from leaving a stuck alt key in the guest.
+            self.release_any_down_keys(window);
         }
         // If either caps lock or num lock is set, reflect that change in the guest.
-        self.sync_key_states();
+        self.sync_key_states(window);
     }
 
     #[inline]
-    fn handle_host_key_event(&self, key_down: bool, _w_param: WPARAM, l_param: LPARAM) {
+    fn handle_host_key_event(
+        &self,
+        window: &GuiWindow,
+        key_down: bool,
+        _w_param: WPARAM,
+        l_param: LPARAM,
+    ) {
         let scancode = win_util::scancode_from_lparam(l_param);
         let is_repeat = key_down && get_previous_key_down_from_lparam(l_param);
         if let Some(linux_keycode) = self.keycode_translator.translate(scancode) {
-            self.dispatch_linux_key_event(linux_keycode, key_down, is_repeat)
+            self.dispatch_linux_key_event(window, linux_keycode, key_down, is_repeat)
         } else {
             error!("Unhandled scancode while handling key event.");
         }
@@ -92,7 +104,7 @@ impl KeyboardInputManager {
 
     /// Checks if the caps lock and num lock key states differ between the guest & host. If they do,
     /// send keys to the guest to resync it with the host.
-    fn sync_key_states(&self) {
+    fn sync_key_states(&self, window: &GuiWindow) {
         if let Some(host_key_states) = get_host_key_states() {
             let mut toggle_caps_lock = false;
             let mut toggle_num_lock = false;
@@ -106,10 +118,10 @@ impl KeyboardInputManager {
                 }
             }
             if toggle_caps_lock {
-                self.press_and_release_key(LINUX_CAPS_LOCK_KEY);
+                self.press_and_release_key(window, LINUX_CAPS_LOCK_KEY);
             }
             if toggle_num_lock {
-                self.press_and_release_key(LINUX_NUM_LOCK_KEY);
+                self.press_and_release_key(window, LINUX_NUM_LOCK_KEY);
             }
         }
     }
@@ -117,7 +129,7 @@ impl KeyboardInputManager {
     /// Releases any keys that are down when the surface is no longer active. Should be called when
     /// the display window becomes inactive to avoid sticky keys.
     #[inline]
-    fn release_any_down_keys(&self) {
+    fn release_any_down_keys(&self, window: &GuiWindow) {
         let mut events = Vec::with_capacity(256);
         let mut keyboard_state: [u8; 256] = [0; 256];
         // SAFETY:
@@ -158,20 +170,34 @@ impl KeyboardInputManager {
         }
 
         if !events.is_empty() {
-            self.display_event_dispatcher
-                .dispatch(events.as_slice(), EventDeviceKind::Keyboard);
+            self.display_event_dispatcher.dispatch(
+                window,
+                events.as_slice(),
+                EventDeviceKind::Keyboard,
+            );
         }
     }
 
     /// Sends a key press and release event to Linux/Android.
-    fn press_and_release_key(&self, key: u16) {
-        self.dispatch_linux_key_event(key, /* key_down= */ true, /* is_repeat= */ false);
-        self.dispatch_linux_key_event(key, /* key_down= */ false, /* is_repeat= */ false);
+    fn press_and_release_key(&self, window: &GuiWindow, key: u16) {
+        self.dispatch_linux_key_event(
+            window, key, /* key_down= */ true, /* is_repeat= */ false,
+        );
+        self.dispatch_linux_key_event(
+            window, key, /* key_down= */ false, /* is_repeat= */ false,
+        );
     }
 
     /// Directly dispatches a Linux input keycode to the guest.
-    fn dispatch_linux_key_event(&self, linux_keycode: u16, key_down: bool, is_repeat: bool) {
+    fn dispatch_linux_key_event(
+        &self,
+        window: &GuiWindow,
+        linux_keycode: u16,
+        key_down: bool,
+        is_repeat: bool,
+    ) {
         self.display_event_dispatcher.dispatch(
+            window,
             &[virtio_input_event::key(linux_keycode, key_down, is_repeat)],
             EventDeviceKind::Keyboard,
         );

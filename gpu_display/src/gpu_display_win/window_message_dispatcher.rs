@@ -43,30 +43,41 @@ use crate::EventDeviceKind;
 /// The pointer to dispatcher will be stored with HWND using `SetPropW()` with the following name.
 pub(crate) const DISPATCHER_PROPERTY_NAME: &str = "PROP_WND_MSG_DISPATCHER";
 
+/// Tracks the ids of all event devices in one kind. For each kind, we either have one event device
+/// shared by all scanouts (guest displays), or one per scanout.
+enum EventDeviceIds {
+    GlobalDevice(ObjectId),
+    PerScanoutDevices(Vec<ObjectId>),
+}
+
 /// This class is used to dispatch input events from the display to the guest input device. It is
 /// also used to receive events from the input device (e.g. guest) on behalf of the window so they
 /// can be routed back to the window for processing.
 #[derive(Clone)]
 pub struct DisplayEventDispatcher {
     event_devices: Rc<RefCell<HashMap<ObjectId, EventDevice>>>,
+    event_device_ids: Rc<RefCell<HashMap<EventDeviceKind, EventDeviceIds>>>,
 }
 
 impl DisplayEventDispatcher {
     pub fn new() -> Self {
         Self {
             event_devices: Default::default(),
+            event_device_ids: Default::default(),
         }
     }
 
-    pub fn dispatch(&self, events: &[virtio_input_event], device_type: EventDeviceKind) {
-        for event_device in self
-            .event_devices
-            .borrow_mut()
-            .values_mut()
-            .filter(|event_device| event_device.kind() == device_type)
-        {
-            if let Err(e) = event_device.send_report(events.iter().cloned()) {
-                error!("Failed to send events to event device: {}", e);
+    pub fn dispatch(
+        &self,
+        window: &GuiWindow,
+        events: &[virtio_input_event],
+        device_kind: EventDeviceKind,
+    ) {
+        if let Some(event_device_id) = self.find_event_device_id(device_kind, window.scanout_id()) {
+            if let Some(event_device) = self.event_devices.borrow_mut().get_mut(&event_device_id) {
+                if let Err(e) = event_device.send_report(events.iter().cloned()) {
+                    error!("Failed to send events to event device: {}", e);
+                }
             }
         }
     }
@@ -79,7 +90,10 @@ impl DisplayEventDispatcher {
             match device.recv_event_encoded() {
                 Ok(event) => return Some((device.kind(), event)),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => return None,
-                Err(e) => error!("failed to read from event device: {:?}", e),
+                Err(e) => error!(
+                    "failed to read from event device {}: {:?}",
+                    event_device_id, e
+                ),
             }
         } else {
             error!(
@@ -92,9 +106,47 @@ impl DisplayEventDispatcher {
 
     fn import_event_device(&mut self, event_device_id: ObjectId, event_device: EventDevice) {
         info!("Importing {:?} (ID: {:?})", event_device, event_device_id);
+        let device_kind = event_device.kind();
+        let same_kind_device_ids = match device_kind {
+            EventDeviceKind::Touchscreen => {
+                // Temporarily removing from `self.event_device_ids`. Will be reinserted after
+                // adding `event_device_id`.
+                let mut per_scanout_device_ids = self
+                    .event_device_ids
+                    .borrow_mut()
+                    .remove(&device_kind)
+                    .and_then(|imported_device_ids| match imported_device_ids {
+                        EventDeviceIds::PerScanoutDevices(ids) => Some(ids),
+                        _ => unreachable!(),
+                    })
+                    .unwrap_or_default();
+                per_scanout_device_ids.push(event_device_id);
+                EventDeviceIds::PerScanoutDevices(per_scanout_device_ids)
+            }
+            _ => EventDeviceIds::GlobalDevice(event_device_id),
+        };
+        self.event_device_ids
+            .borrow_mut()
+            .insert(device_kind, same_kind_device_ids);
         self.event_devices
             .borrow_mut()
             .insert(event_device_id, event_device);
+    }
+
+    fn find_event_device_id(
+        &self,
+        device_kind: EventDeviceKind,
+        scanout_id: u32,
+    ) -> Option<ObjectId> {
+        self.event_device_ids
+            .borrow()
+            .get(&device_kind)
+            .and_then(|same_kind_device_ids| match same_kind_device_ids {
+                EventDeviceIds::GlobalDevice(event_device_id) => Some(*event_device_id),
+                EventDeviceIds::PerScanoutDevices(event_device_ids) => {
+                    event_device_ids.get(scanout_id as usize).cloned()
+                }
+            })
     }
 }
 

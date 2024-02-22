@@ -38,7 +38,7 @@ const EVENT_BUFFER_LEN_MAX: usize = 64 * EVENT_SIZE;
 //     }
 // }
 
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum EventDeviceKind {
     /// Produces relative mouse motions, wheel, and button clicks while the real mouse is captured.
     Mouse,
