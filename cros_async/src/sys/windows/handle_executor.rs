@@ -95,7 +95,7 @@ impl HandleReactor {
         })
     }
 
-    fn new() -> Result<Self> {
+    pub fn new() -> Result<Self> {
         Self::new_with(DEFAULT_IO_CONCURRENCY)
     }
 

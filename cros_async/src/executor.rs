@@ -13,6 +13,10 @@ use base::AsRawDescriptors;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use base::RawDescriptor;
 use once_cell::sync::OnceCell;
+use serde::Deserialize;
+use serde_keyvalue::argh::FromArgValue;
+use serde_keyvalue::ErrorKind;
+use serde_keyvalue::KeyValueDeserializer;
 
 use crate::common_executor;
 use crate::common_executor::RawExecutor;
@@ -25,17 +29,7 @@ use crate::AsyncResult;
 use crate::IntoAsync;
 use crate::IoSource;
 
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    serde_keyvalue::FromKeyValues,
-)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case", untagged)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExecutorKind {
     SysVariants(ExecutorKindSys),
 }
@@ -80,6 +74,72 @@ pub enum SetDefaultExecutorKindError {
     /// but is not limited to that.
     #[error("io_uring is unavailable: {0}")]
     UringUnavailable(linux::uring_executor::Error),
+}
+
+impl FromArgValue for ExecutorKind {
+    fn from_arg_value(value: &str) -> std::result::Result<ExecutorKind, String> {
+        // `from_arg_value` returns a `String` as error, but our deserializer API defines its own
+        // error type. Perform parsing from a closure so we can easily map returned errors.
+        let builder = move || {
+            let mut des = KeyValueDeserializer::from(value);
+
+            let kind: ExecutorKind = match (des.parse_identifier()?, des.next_char()) {
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                ("epoll", None) => ExecutorKindSys::Fd.into(),
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                ("uring", None) => ExecutorKindSys::Uring.into(),
+                #[cfg(windows)]
+                ("handle", None) => ExecutorKindSys::Handle.into(),
+                #[cfg(windows)]
+                ("overlapped", None) => ExecutorKindSys::Overlapped { concurrency: None }.into(),
+                #[cfg(windows)]
+                ("overlapped", Some(',')) => {
+                    if des.parse_identifier()? != "concurrency" {
+                        let kind = ErrorKind::SerdeError("expected `concurrency`".to_string());
+                        return Err(des.error_here(kind));
+                    }
+                    if des.next_char() != Some('=') {
+                        return Err(des.error_here(ErrorKind::ExpectedEqual));
+                    }
+                    let concurrency = des.parse_number()?;
+                    ExecutorKindSys::Overlapped {
+                        concurrency: Some(concurrency),
+                    }
+                    .into()
+                }
+                (_identifier, _next) => {
+                    let kind = ErrorKind::SerdeError("unexpected kind".to_string());
+                    return Err(des.error_here(kind));
+                }
+            };
+            des.finish()?;
+            Ok(kind)
+        };
+
+        builder().map_err(|e| e.to_string())
+    }
+}
+
+impl serde::Serialize for ExecutorKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ExecutorKind::SysVariants(sv) => sv.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutorKind {
+    fn deserialize<D>(deserializer: D) -> Result<ExecutorKind, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        base::error!("ExecutorKind::deserialize");
+        let string = String::deserialize(deserializer)?;
+        ExecutorKind::from_arg_value(&string).map_err(serde::de::Error::custom)
+    }
 }
 
 /// Reference to a task managed by the executor.
@@ -287,21 +347,13 @@ impl Executor {
                 Executor::Handle(RawExecutor::new()?)
             }
             #[cfg(windows)]
-            ExecutorKind::SysVariants(ExecutorKindSys::Overlapped) => {
-                Executor::Overlapped(RawExecutor::new()?)
-            }
-        })
-    }
-
-    /// Create a new `Executor` of the given `ExecutorKind`.
-    pub fn with_kind_and_concurrency(kind: ExecutorKind, _concurrency: u32) -> AsyncResult<Self> {
-        Ok(match kind {
-            #[cfg(windows)]
-            ExecutorKind::SysVariants(ExecutorKindSys::Overlapped) => {
-                let reactor = windows::HandleReactor::new_with(_concurrency)?;
+            ExecutorKind::SysVariants(ExecutorKindSys::Overlapped { concurrency }) => {
+                let reactor = match concurrency {
+                    Some(concurrency) => windows::HandleReactor::new_with(concurrency)?,
+                    None => windows::HandleReactor::new()?,
+                };
                 Executor::Overlapped(RawExecutor::new_with(reactor)?)
             }
-            _ => Executor::with_executor_kind(kind)?,
         })
     }
 

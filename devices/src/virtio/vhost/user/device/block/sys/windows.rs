@@ -65,7 +65,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let _raise_timer_resolution =
         enable_high_res_timers().context("failed to set timer resolution")?;
 
-    info!("using {} IO handles.", disk_option.io_concurrency.get());
+    info!("using {:?} executor.", disk_option.async_executor);
 
     let kind = disk_option
         .async_executor

@@ -102,6 +102,7 @@ pub struct DiskOption {
         deserialize_with = "deserialize_disk_id"
     )]
     pub id: Option<[u8; DISK_ID_LEN]>,
+    // Deprecated: Use async_executor=overlapped[concurrency=N]"
     // camel_case variant allowed for backward compatibility.
     #[cfg(windows)]
     #[serde(
@@ -446,6 +447,51 @@ mod tests {
                     io_concurrency: NonZeroU32::new(4).unwrap(),
                     multiple_workers: false,
                     async_executor: None,
+                    packed_queue: false,
+                    bootindex: None,
+                    pci_address: None,
+                }
+            );
+            let params = from_block_arg("/some/path.img,async-executor=overlapped").unwrap();
+            assert_eq!(
+                params,
+                DiskOption {
+                    path: "/some/path.img".into(),
+                    read_only: false,
+                    root: false,
+                    sparse: true,
+                    direct: false,
+                    block_size: 512,
+                    id: None,
+                    io_concurrency: NonZeroU32::new(1).unwrap(),
+                    multiple_workers: false,
+                    async_executor: Some(ExecutorKindSys::Overlapped { concurrency: None }.into()),
+                    packed_queue: false,
+                    bootindex: None,
+                    pci_address: None,
+                }
+            );
+            let params =
+                from_block_arg("/some/path.img,async-executor=\"overlapped,concurrency=4\"")
+                    .unwrap();
+            assert_eq!(
+                params,
+                DiskOption {
+                    path: "/some/path.img".into(),
+                    read_only: false,
+                    root: false,
+                    sparse: true,
+                    direct: false,
+                    block_size: 512,
+                    id: None,
+                    io_concurrency: NonZeroU32::new(1).unwrap(),
+                    multiple_workers: false,
+                    async_executor: Some(
+                        ExecutorKindSys::Overlapped {
+                            concurrency: Some(4)
+                        }
+                        .into()
+                    ),
                     packed_queue: false,
                     bootindex: None,
                     pci_address: None,
