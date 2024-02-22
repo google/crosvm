@@ -204,3 +204,64 @@ fn tap_hotplug_add_remove_add_impl() {
 fn tap_hotplug_add_remove_add() {
     call_test_with_sudo("tap_hotplug_add_remove_add_impl");
 }
+
+/// Implementation for tap_hotplug_add_remove_rapid_add
+///
+/// This test will fail by itself due to permission.
+#[ignore = "Only to be called by tap_hotplug_add_remove_rapid_add"]
+#[test]
+fn tap_hotplug_add_remove_rapid_add_impl() {
+    let wait_timeout = Duration::from_secs(5);
+    // Setup VM start parameter.
+    let config = Config::new().extra_args(vec!["--pci-hotplug-slots".to_owned(), "1".to_owned()]);
+    let mut vm = TestVm::new(config).unwrap();
+
+    //Setup test tap
+    let tap_name = "test_tap";
+    setup_tap_device(
+        tap_name.as_bytes(),
+        "100.115.92.5".parse().unwrap(),
+        "255.255.255.252".parse().unwrap(),
+        "a0:b0:c0:d0:e0:f0".parse().unwrap(),
+    );
+
+    assert!(poll_until_true(
+        &mut vm,
+        |vm| { count_virtio_net_devices(vm) == 0 },
+        wait_timeout
+    ));
+    // Hotplug tap.
+    vm.hotplug_tap(tap_name).unwrap();
+    // Wait until virtio-net device appears in guest OS.
+    assert!(poll_until_true(
+        &mut vm,
+        |vm| { count_virtio_net_devices(vm) == 1 },
+        wait_timeout
+    ));
+
+    // Remove hotplugged tap device, then hotplug again without waiting for guest.
+    vm.remove_pci_device(1).unwrap();
+    vm.hotplug_tap(tap_name).unwrap();
+
+    // Wait for a while that the guest likely noticed the removal.
+    thread::sleep(Duration::from_millis(500));
+    // Wait until virtio-net device reappears in guest OS. This assertion would fail if the device
+    // added later is not recognized.
+    assert!(poll_until_true(
+        &mut vm,
+        |vm| { count_virtio_net_devices(vm) == 1 },
+        wait_timeout
+    ));
+
+    drop(vm);
+    Command::new("ip")
+        .args(["link", "delete", tap_name])
+        .status()
+        .unwrap();
+}
+
+/// Checks tap hotplug works with a device added, removed, then rapidly added again.
+#[test]
+fn tap_hotplug_add_remove_rapid_add() {
+    call_test_with_sudo("tap_hotplug_add_remove_rapid_add_impl");
+}
