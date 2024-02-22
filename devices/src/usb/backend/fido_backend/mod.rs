@@ -9,5 +9,6 @@ pub mod fido_guest;
 pub mod fido_passthrough;
 pub mod fido_provider;
 pub mod fido_transaction;
+pub mod hid_utils;
 pub mod poll_thread;
 pub mod transfer;

@@ -28,6 +28,8 @@ pub enum Error {
     InconsistentFidoDeviceState,
     #[error("Invalid data buffer size")]
     InvalidDataBufferSize,
+    #[error("The given hidraw device is not a security key")]
+    InvalidHidrawDevice,
     #[error("The u2f init packet is invalid")]
     InvalidInitPacket,
     #[error("The u2f init packet contains invalid data size for the nonce")]

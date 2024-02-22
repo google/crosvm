@@ -49,6 +49,8 @@ pub const HID_GET_IDLE: u8 = 0x02;
 pub const HID_SET_IDLE: u8 = 0x0A;
 pub const HID_GET_REPORT_DESC: u8 = 0x22;
 
+pub const HID_MAX_DESCRIPTOR_SIZE: usize = 4096;
+
 // Descriptor data taken from: https://github.com/gl-sergei/u2f-token/blob/master/src/usb-hid.c
 // With minor modifications for our own PID and VID and other strings
 pub const U2FHID_DEVICE_DESC: &[u8] = &[
@@ -72,6 +74,11 @@ pub const U2FHID_DEVICE_DESC: &[u8] = &[
     0,
     0,
     1,
+];
+
+pub const HID_REPORT_DESC_HEADER: &[u8] = &[
+    0x06, 0xd0, 0xf1, // Usage Page (FIDO)
+    0x09, 0x01, // Usage (FIDO)
 ];
 
 pub const U2FHID_CONFIG_DESC: &[u8] = &[

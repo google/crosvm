@@ -23,6 +23,7 @@ use crate::usb::backend::fido_backend::error::Error;
 use crate::usb::backend::fido_backend::error::Result;
 use crate::usb::backend::fido_backend::fido_guest::FidoGuestKey;
 use crate::usb::backend::fido_backend::fido_transaction::TransactionManager;
+use crate::usb::backend::fido_backend::hid_utils::verify_is_fido_device;
 use crate::usb::backend::fido_backend::poll_thread::PollTimer;
 use crate::utils::EventLoop;
 
@@ -88,7 +89,7 @@ impl AsRawDescriptor for FidoDevice {
 
 impl FidoDevice {
     pub fn new(hidraw: File, event_loop: Arc<EventLoop>) -> Result<FidoDevice> {
-        // TODO: Add code to verify that the hid device is an actual fido key
+        verify_is_fido_device(&hidraw)?;
         let timer = PollTimer::new(
             "USB transfer timer".to_string(),
             std::time::Duration::from_millis(constants::USB_POLL_RATE_MILLIS),
