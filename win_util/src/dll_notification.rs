@@ -65,9 +65,9 @@ mod dll_notification_sys {
     pub const LDR_DLL_NOTIFICATION_REASON_LOADED: ULONG = 1;
     pub const LDR_DLL_NOTIFICATION_REASON_UNLOADED: ULONG = 2;
 
-    const NTDLL: &'static [u8] = b"ntdll\0";
-    const LDR_REGISTER_DLL_NOTIFICATION: &'static [u8] = b"LdrRegisterDllNotification\0";
-    const LDR_UNREGISTER_DLL_NOTIFICATION: &'static [u8] = b"LdrUnregisterDllNotification\0";
+    const NTDLL: &[u8] = b"ntdll\0";
+    const LDR_REGISTER_DLL_NOTIFICATION: &[u8] = b"LdrRegisterDllNotification\0";
+    const LDR_UNREGISTER_DLL_NOTIFICATION: &[u8] = b"LdrUnregisterDllNotification\0";
 
     pub type LdrDllNotification = unsafe extern "C" fn(
         NotificationReason: ULONG,
@@ -98,11 +98,9 @@ mod dll_notification_sys {
     ) -> io::Result<()> {
         let proc_addr = GetProcAddress(
             /* hModule= */
-            GetModuleHandleA(
-                /* lpModuleName= */ NTDLL.as_ptr() as *const u8 as *const CHAR,
-            ),
+            GetModuleHandleA(/* lpModuleName= */ NTDLL.as_ptr() as *const CHAR),
             /* lpProcName= */
-            LDR_REGISTER_DLL_NOTIFICATION.as_ptr() as *const u8 as *const CHAR,
+            LDR_REGISTER_DLL_NOTIFICATION.as_ptr() as *const CHAR,
         );
         if proc_addr.is_null() {
             return Err(std::io::Error::last_os_error());
@@ -128,11 +126,9 @@ mod dll_notification_sys {
     pub unsafe fn LdrUnregisterDllNotification(Cookie: PVOID) -> io::Result<()> {
         let proc_addr = GetProcAddress(
             /* hModule= */
-            GetModuleHandleA(
-                /* lpModuleName= */ NTDLL.as_ptr() as *const u8 as *const CHAR,
-            ),
+            GetModuleHandleA(/* lpModuleName= */ NTDLL.as_ptr() as *const CHAR),
             /* lpProcName= */
-            LDR_UNREGISTER_DLL_NOTIFICATION.as_ptr() as *const u8 as *const CHAR,
+            LDR_UNREGISTER_DLL_NOTIFICATION.as_ptr() as *const CHAR,
         );
         if proc_addr.is_null() {
             return Err(std::io::Error::last_os_error());
@@ -206,33 +202,30 @@ where
         notification_data: PLDR_DLL_NOTIFICATION_DATA,
         context: PVOID,
     ) {
-        // Safe because the DLLWatcher guarantees that the CallbackContext
-        // instance is not null and that we have exclusive access to it.
         let callback_context =
+            // SAFETY: The DLLWatcher guarantees that the CallbackContext instance is not null and
+            // that we have exclusive access to it.
             unsafe { (context as *mut Self).as_mut() }.expect("context was null");
 
         assert!(!notification_data.is_null());
 
         match notification_reason {
             LDR_DLL_NOTIFICATION_REASON_LOADED => {
-                // Safe because we know that the LDR_DLL_NOTIFICATION_DATA union
-                // contains the LDR_DLL_LOADED_NOTIFICATION_DATA because we got
-                // LDR_DLL_NOTIFICATION_REASON_LOADED as the notification
-                // reason.
+                // SAFETY: We know that the LDR_DLL_NOTIFICATION_DATA union contains the
+                // LDR_DLL_LOADED_NOTIFICATION_DATA because we got
+                // LDR_DLL_NOTIFICATION_REASON_LOADED as the notification reason.
                 let loaded = unsafe { &mut (*notification_data).Loaded };
 
                 assert!(!loaded.BaseDllName.is_null());
 
-                // Safe because we assert that the pointer is not null and
-                // expect that the OS has provided a valid UNICODE_STRING
-                // struct.
+                // SAFETY: We assert that the pointer is not null and expect that the OS has
+                // provided a valid UNICODE_STRING struct.
                 let base_dll_name = unsafe { unicode_string_to_os_string(&*loaded.BaseDllName) };
 
                 assert!(!loaded.FullDllName.is_null());
 
-                // Safe because we assert that the pointer is not null and
-                // expect that the OS has provided a valid UNICODE_STRING
-                // struct.
+                // SAFETY: We assert that the pointer is not null and expect that the OS has
+                // provided a valid UNICODE_STRING struct.
                 let full_dll_name = unsafe { unicode_string_to_os_string(&*loaded.FullDllName) };
 
                 (callback_context.loaded_callback)(DllNotificationData {
@@ -241,24 +234,21 @@ where
                 });
             }
             LDR_DLL_NOTIFICATION_REASON_UNLOADED => {
-                // Safe because we know that the LDR_DLL_NOTIFICATION_DATA union
-                // contains the LDR_DLL_UNLOADED_NOTIFICATION_DATA because we got
-                // LDR_DLL_NOTIFICATION_REASON_UNLOADED as the notification
-                // reason.
+                // SAFETY: We know that the LDR_DLL_NOTIFICATION_DATA union contains the
+                // LDR_DLL_UNLOADED_NOTIFICATION_DATA because we got
+                // LDR_DLL_NOTIFICATION_REASON_UNLOADED as the notification reason.
                 let unloaded = unsafe { &mut (*notification_data).Unloaded };
 
                 assert!(!unloaded.BaseDllName.is_null());
 
-                // Safe because we assert that the pointer is not null and
-                // expect that the OS has provided a valid UNICODE_STRING
-                // struct.
+                // SAFETY: We assert that the pointer is not null and expect that the OS has
+                // provided a valid UNICODE_STRING struct.
                 let base_dll_name = unsafe { unicode_string_to_os_string(&*unloaded.BaseDllName) };
 
                 assert!(!unloaded.FullDllName.is_null());
 
-                // Safe because we assert that the pointer is not null and
-                // expect that the OS has provided a valid UNICODE_STRING
-                // struct.
+                // SAFETY: We assert that the pointer is not null and expect that the OS has
+                // provided a valid UNICODE_STRING struct.
                 let full_dll_name = unsafe { unicode_string_to_os_string(&*unloaded.FullDllName) };
 
                 (callback_context.unloaded_callback)(DllNotificationData {
@@ -298,8 +288,8 @@ where
             cookie: None,
         };
         let mut cookie: PVOID = ptr::null_mut();
-        // Safe because we guarantee that the notification function that we
-        // register will have exclusive access to the context.
+        // SAFETY: We guarantee that the notification function that we register will have exclusive
+        // access to the context.
         unsafe {
             LdrRegisterDllNotification(
                 /* Flags= */ 0,
@@ -314,16 +304,13 @@ where
     }
 
     fn unregister_dll_notification(&mut self) -> io::Result<()> {
-        match self.cookie {
-            Some(c) => {
-                // Safe because we guarantee that `Cookie` was previously initialized.
-                unsafe {
-                    LdrUnregisterDllNotification(/* Cookie= */ c.as_ptr() as PVOID)?
-                }
-                self.cookie = None;
+        if let Some(c) = self.cookie.take() {
+            // SAFETY: We guarantee that `Cookie` was previously initialized.
+            unsafe {
+                LdrUnregisterDllNotification(/* Cookie= */ c.as_ptr() as PVOID)?
             }
-            None => {}
         }
+
         Ok(())
     }
 }
@@ -365,8 +352,8 @@ mod tests {
     // same process, it can be hard to rely on the OS to clean up the DLL loaded
     // by one test before the other test runs. Using a different DLL makes the
     // tests more independent.
-    const TEST_DLL_NAME_1: &'static str = "Imagehlp.dll";
-    const TEST_DLL_NAME_2: &'static str = "dbghelp.dll";
+    const TEST_DLL_NAME_1: &str = "Imagehlp.dll";
+    const TEST_DLL_NAME_2: &str = "dbghelp.dll";
 
     #[test]
     fn load_dll() {
@@ -380,7 +367,7 @@ mod tests {
                 |_data| (),
             )
             .expect("failed to create DllWatcher");
-            // Safe because we pass a valid C string in to the function.
+            // SAFETY: We pass a valid C string in to the function.
             unsafe { LoadLibraryA(test_dll_name.as_ptr()) }
         };
         assert!(
@@ -390,7 +377,7 @@ mod tests {
             io::Error::last_os_error()
         );
         assert!(
-            loaded_dlls.len() >= 1,
+            !loaded_dlls.is_empty(),
             "no DLL loads recorded by DLL watcher"
         );
         assert!(
@@ -398,7 +385,7 @@ mod tests {
             "{} load wasn't recorded by DLL watcher",
             TEST_DLL_NAME_1
         );
-        // Safe because we initialized h_module with a LoadLibraryA call.
+        // SAFETY: We initialized h_module with a LoadLibraryA call.
         let success = unsafe { FreeLibrary(h_module) } > 0;
         assert!(
             success,
@@ -411,8 +398,8 @@ mod tests {
     #[test]
     fn unload_dll() {
         let mut unloaded_dlls: HashSet<OsString> = HashSet::new();
-        // Safe as no pointers are passed. The handle may leak if the test fails.
         let event =
+            // SAFETY: No pointers are passed. The handle may leak if the test fails.
             unsafe { CreateEventA(std::ptr::null_mut(), TRUE, FALSE, std::ptr::null_mut()) };
         assert!(
             !event.is_null(),
@@ -425,12 +412,12 @@ mod tests {
                 |_data| (),
                 |data| {
                     unloaded_dlls.insert(data.base_dll_name);
-                    // Safe as we assert that the event is valid above.
+                    // SAFETY: We assert that the event is valid above.
                     unsafe { SetEvent(event) };
                 },
             )
             .expect("failed to create DllWatcher");
-            // Safe because we pass a valid C string in to the function.
+            // SAFETY: We pass a valid C string in to the function.
             let h_module = unsafe { LoadLibraryA(test_dll_name.as_ptr()) };
             assert!(
                 !h_module.is_null(),
@@ -438,7 +425,7 @@ mod tests {
                 TEST_DLL_NAME_2,
                 io::Error::last_os_error()
             );
-            // Safe because we initialized h_module with a LoadLibraryA call.
+            // SAFETY: We initialized h_module with a LoadLibraryA call.
             let success = unsafe { FreeLibrary(h_module) } > 0;
             assert!(
                 success,
@@ -447,10 +434,10 @@ mod tests {
                 io::Error::last_os_error(),
             )
         };
-        // Safe as we assert that the event is valid above.
+        // SAFETY: We assert that the event is valid above.
         assert_eq!(unsafe { WaitForSingleObject(event, 5000) }, WAIT_OBJECT_0);
         assert!(
-            unloaded_dlls.len() >= 1,
+            !unloaded_dlls.is_empty(),
             "no DLL unloads recorded by DLL watcher"
         );
         assert!(
@@ -458,7 +445,7 @@ mod tests {
             "{} unload wasn't recorded by DLL watcher",
             TEST_DLL_NAME_2
         );
-        // Safe as we assert that the event is valid above.
+        // SAFETY: We assert that the event is valid above.
         unsafe { CloseHandle(event) };
     }
 }

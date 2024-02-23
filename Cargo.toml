@@ -106,7 +106,6 @@ exclude = [
     "tube_transporter",
     "perfetto",
     "win_audio",
-    "win_util",
 
     # This crate depends on optional features and is compiled via dependencies when enabled.
     "media/libvda",

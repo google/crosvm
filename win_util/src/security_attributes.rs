@@ -138,7 +138,7 @@ impl<T: TokenClass> TokenInformation<T> {
         let token_handle = token.get();
         // Retrieve the size of the struct.
         let mut size: u32 = 0;
-        // Safe because size is valid, and TokenInformation is optional and allowed to be null.
+        // SAFETY: size is valid, and TokenInformation is optional and allowed to be null.
         if unsafe {
             // The idiomatic usage of GetTokenInformation() requires two calls
             // to the function: the first to get the length of the data that the
@@ -174,7 +174,7 @@ impl<T: TokenClass> TokenInformation<T> {
         let layout = Layout::from_size_align(size as usize, size_of::<LPVOID>())
             .expect("Failed to create layout");
         assert!(layout.size() > 0, "Failed to create valid layout");
-        // Safe as we assert that layout's size is non-zero.
+        // SAFETY: We assert that layout's size is non-zero.
         let token_info = unsafe { alloc_zeroed(layout) } as *mut T;
         if token_info.is_null() {
             handle_alloc_error(layout);
@@ -182,7 +182,7 @@ impl<T: TokenClass> TokenInformation<T> {
 
         let token_info = TokenInformation::<T> { token_info, layout };
 
-        // Safe because token_user and size are valid.
+        // SAFETY: token_user and size are valid.
         if unsafe {
             GetTokenInformation(
                 /* TokenHandle= */ token_handle,
@@ -201,28 +201,26 @@ impl<T: TokenClass> TokenInformation<T> {
 
 impl<T> AsRef<T> for TokenInformation<T> {
     fn as_ref(&self) -> &T {
-        // Safe because the underlying pointer is guaranteed to be properly
-        // aligned, dereferenceable, and point to a valid T. The underlying
-        // value will not be modified through the pointer and can only be
-        // accessed through these returned references.
+        // SAFETY: The underlying pointer is guaranteed to be properly aligned, dereferenceable, and
+        // point to a valid T. The underlying value will not be modified through the pointer and can
+        // only be accessed through these returned references.
         unsafe { &*self.token_info }
     }
 }
 
 impl<T> AsMut<T> for TokenInformation<T> {
     fn as_mut(&mut self) -> &mut T {
-        // Safe because the underlying pointer is guaranteed to be properly
-        // aligned, dereferenceable, and point to a valid T. The underlying
-        // value will not be modified through the pointer and can only be
-        // accessed through these returned references.
+        // SAFETY: The underlying pointer is guaranteed to be properly aligned, dereferenceable, and
+        // point to a valid T. The underlying value will not be modified through the pointer and can
+        // only be accessed through these returned references.
         unsafe { &mut *self.token_info }
     }
 }
 
 impl<T> Drop for TokenInformation<T> {
     fn drop(&mut self) {
-        // Safe because we ensure the pointer is valid in the constructor, and
-        // we are using the same layout struct as during the allocation.
+        // SAFETY: We ensure the pointer is valid in the constructor, and we are using the same
+        // layout struct as during the allocation.
         unsafe { dealloc(self.token_info as *mut u8, self.layout) }
     }
 }
@@ -234,7 +232,7 @@ pub struct Token {
 impl Token {
     /// Open the current process's token.
     pub fn new_for_process() -> io::Result<Self> {
-        // Safe because GetCurrentProcess is an alias for -1.
+        // SAFETY: GetCurrentProcess is an alias for -1.
         Self::from_process(unsafe { GetCurrentProcess() })
     }
 
@@ -242,7 +240,7 @@ impl Token {
     pub fn from_process(proc_handle: RawHandle) -> io::Result<Self> {
         let mut token: RawHandle = ptr::null_mut();
 
-        // Safe because token is valid.
+        // SAFETY: Token is valid.
         if unsafe {
             OpenProcessToken(
                 /* ProcessHandle= */ proc_handle,
@@ -259,7 +257,7 @@ impl Token {
     pub fn from_thread(thread_handle: RawHandle) -> io::Result<Self> {
         let mut token: RawHandle = ptr::null_mut();
 
-        // Safe because token is valid. We use OpenAsSelf to ensure the token access is measured
+        // SAFETY: Token is valid. We use OpenAsSelf to ensure the token access is measured
         // using the caller's non-impersonated identity.
         if unsafe {
             OpenThreadToken(
@@ -281,7 +279,7 @@ impl Token {
 
 impl Drop for Token {
     fn drop(&mut self) {
-        // Safe as token is valid, but the call should be safe regardless.
+        // SAFETY: Token is valid, but the call should be safe regardless.
         unsafe {
             CloseHandle(self.token);
         }
@@ -323,7 +321,7 @@ impl AbsoluteSecurityDescriptor {
 
         let ptr = security_descriptor.as_mut_ptr();
 
-        // Safe because security_descriptor is valid but uninitialized, and
+        // SAFETY: security_descriptor is valid but uninitialized, and
         // InitializeSecurityDescriptor will initialize it.
         if unsafe {
             InitializeSecurityDescriptor(
@@ -335,7 +333,7 @@ impl AbsoluteSecurityDescriptor {
             return Err(io::Error::last_os_error());
         }
 
-        // Safe because ea and acl are valid and OldAcl is allowed to be null.
+        // SAFETY: ea and acl are valid and OldAcl is allowed to be null.
         if unsafe {
             SetEntriesInAclA(
                 /* cCountOfExplicitEntries= */ 1,
@@ -349,12 +347,12 @@ impl AbsoluteSecurityDescriptor {
             return Err(io::Error::last_os_error());
         }
 
-        // Safe because security_descriptor is valid and initialized after
+        // SAFETY: security_descriptor is valid and initialized after
         // InitializeSecurityDescriptor() and SetEntriesInAclA().
         let mut security_descriptor = unsafe { security_descriptor.assume_init() };
         let sd = &mut security_descriptor.descriptor as *mut SECURITY_DESCRIPTOR;
 
-        // Safe because the descriptor is valid, and acl is valid after SetEntriesInAclA()
+        // SAFETY: The descriptor is valid, and acl is valid after SetEntriesInAclA()
         if unsafe {
             SetSecurityDescriptorDacl(
                 /* pSecurityDescriptor= */ sd as PSECURITY_DESCRIPTOR,
@@ -378,8 +376,7 @@ impl SecurityDescriptor for AbsoluteSecurityDescriptor {
 
 impl Drop for AbsoluteSecurityDescriptor {
     fn drop(&mut self) {
-        // Safe because we guarantee that on creation acl is initialized to a
-        // pointer that can be freed.
+        // SAFETY: We guarantee that on creation acl is initialized to a pointer that can be freed.
         unsafe { LocalFree(self.acl as HLOCAL) };
     }
 }
@@ -391,13 +388,14 @@ pub struct SelfRelativeSecurityDescriptor {
 
 impl Drop for SelfRelativeSecurityDescriptor {
     fn drop(&mut self) {
+        // SAFETY: We own self.descriptor and guarantee it is a valid pointer.
         unsafe { dealloc(self.descriptor as *mut u8, self.layout) }
     }
 }
 
 impl Clone for SelfRelativeSecurityDescriptor {
     fn clone(&self) -> Self {
-        // Safe because we know that the layout's size is non-zero.
+        // SAFETY: We know that the layout's size is non-zero.
         let descriptor = unsafe { alloc_zeroed(self.layout) } as *mut SECURITY_DESCRIPTOR;
         if descriptor.is_null() {
             handle_alloc_error(self.layout);
@@ -406,7 +404,7 @@ impl Clone for SelfRelativeSecurityDescriptor {
             descriptor,
             layout: self.layout,
         };
-        // Safe because:
+        // SAFETY:
         //  * `src` is at least `count` bytes, as it was allocated using the above layout.
         //  * `dst` is at least `count` bytes, as we just allocated it using the above layout.
         //  * `src` and `dst` are aligned according to the layout, and we are copying byte-wise.
@@ -429,8 +427,8 @@ impl TryFrom<AbsoluteSecurityDescriptor> for SelfRelativeSecurityDescriptor {
         let mut size: u32 = 0;
         let descriptor = &sd.descriptor as *const SECURITY_DESCRIPTOR;
 
-        // Safe because descriptor and size are valid, and pSelfRelativeSD is
-        // optional and allowed to be null.
+        // SAFETY: Descriptor and size are valid, and pSelfRelativeSD is optional and allowed to be
+        // null.
         if unsafe {
             MakeSelfRelativeSD(
                 /* pAbsoluteSD= */ descriptor as PSECURITY_DESCRIPTOR,
@@ -461,7 +459,7 @@ impl TryFrom<AbsoluteSecurityDescriptor> for SelfRelativeSecurityDescriptor {
         let layout = Layout::from_size_align(size as usize, size_of::<LPVOID>())
             .expect("Failed to create layout");
         assert!(layout.size() > 0, "Failed to create valid layout");
-        // Safe as we assert that layout's size is non-zero.
+        // SAFETY: We assert that layout's size is non-zero.
         let self_relative_sd = unsafe { alloc_zeroed(layout) } as *mut SECURITY_DESCRIPTOR;
         if self_relative_sd.is_null() {
             handle_alloc_error(layout);
@@ -472,8 +470,8 @@ impl TryFrom<AbsoluteSecurityDescriptor> for SelfRelativeSecurityDescriptor {
             layout,
         };
 
-        // Safe because descriptor is valid, the newly allocated
-        // self_relative_sd descriptor is valid, and size is valid.
+        // SAFETY: Descriptor is valid, the newly allocated self_relative_sd descriptor is valid,
+        // and size is valid.
         if unsafe {
             MakeSelfRelativeSD(
                 /* pAbsoluteSD= */ descriptor as PSECURITY_DESCRIPTOR,
@@ -514,10 +512,9 @@ impl SecurityDescriptor for SelfRelativeSecurityDescriptor {
     }
 }
 
-// Safe because the descriptor and ACLs are treated as immutable by consuming
-// functions and can be safely shared between threads.
+// SAFETY: The descriptor and ACLs are treated as immutable by consuming functions and can be safely
+// shared between threads.
 unsafe impl Send for SelfRelativeSecurityDescriptor {}
 
-// Safe because the descriptor and ACLs are treated as immutable by consuming
-// functions.
+//SAFETY: The descriptor and ACLs are treated as immutable by consuming functions.
 unsafe impl Sync for SelfRelativeSecurityDescriptor {}

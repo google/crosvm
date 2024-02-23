@@ -12,9 +12,9 @@ pub struct LargeInteger {
 
 impl LargeInteger {
     pub fn new(value: i64) -> LargeInteger {
-        // Safe because we are zero-initializing a struct with only primitive member fields.
+        // SAFETY: We are zero-initializing a struct with only primitive member fields.
         let mut large_integer_val: LARGE_INTEGER = unsafe { std::mem::zeroed() };
-        // Safe because we uniquely own this variable
+        // SAFETY: We uniquely own this variable
         let large_integer_val_mut: &mut i64 = unsafe { large_integer_val.QuadPart_mut() };
         *large_integer_val_mut = value;
 

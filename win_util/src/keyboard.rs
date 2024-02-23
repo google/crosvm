@@ -37,7 +37,7 @@ fn keys_state(keys: &[i32]) -> Option<bool> {
     let mut all_down: Option<bool> = None;
     for key in keys {
         // If the high order bit is set, the key is down
-        // Trivially safe (no pointers, return code is checked).
+        // SAFETY: Trivially safe (no pointers, return code is checked).
         let key_down = unsafe { GetKeyState(*key) } >> 15 & 0x1 == 0x1;
         match all_down {
             Some(other_keys_down) => {
