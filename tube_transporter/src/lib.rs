@@ -88,14 +88,14 @@ impl TubeTransporter {
         alias_pid: Option<u32>,
         dh_tube: Option<Tube>,
     ) -> TubeTransporter {
-        return TubeTransporter {
+        TubeTransporter {
             pipe_connection,
             transport_data: TransportData {
                 dh_tube,
                 alias_pid,
                 tube_transfer_data_list,
             },
-        };
+        }
     }
 
     /// Sends tubes to the other end of the pipe. Note that you must provide the destination
@@ -132,6 +132,7 @@ impl TubeTransporterReader {
 
     pub fn read_tubes(&self) -> TransportTubeResult<TubeTransferDataList> {
         let res: TransportData =
+            // SAFETY: We provide a valid buffer to `read()`
             deserialize_and_recv(|buf| unsafe { self.reader_pipe_connection.read(buf) })
                 .map_err(TubeTransportError::DeserializeRecvError)?;
 
@@ -142,7 +143,7 @@ impl TubeTransporterReader {
         if let Some(alias_pid) = res.alias_pid {
             set_alias_pid(alias_pid);
         }
-        return Ok(TubeTransferDataList(res.tube_transfer_data_list));
+        Ok(TubeTransferDataList(res.tube_transfer_data_list))
     }
 }
 
@@ -213,12 +214,11 @@ mod tests {
                 let child_process_pipe = child_process_pipe;
                 let transporter_reader =
                     TubeTransporterReader::create_tube_transporter_reader(child_process_pipe);
-                let tube_data_list = transporter_reader.read_tubes().unwrap();
-                return tube_data_list;
+                transporter_reader.read_tubes().unwrap()
             })
             .unwrap();
 
-        // Safe because this kernel function just returns the current PID.
+        // SAFETY: This kernel function just returns the current PID.
         //
         // We want to get the current PID as a sanity check for the `OpenProcess` call
         // when duplicating a handle through a Tube.
@@ -286,11 +286,11 @@ mod tests {
 
         let duped_handle = main_tube_1.recv::<Event>().unwrap();
 
-        event_handle.write(1).unwrap();
+        event_handle.signal().unwrap();
 
         assert!(matches!(
             duped_handle
-                .read_timeout(std::time::Duration::from_millis(2000))
+                .wait_timeout(std::time::Duration::from_millis(2000))
                 .unwrap(),
             EventWaitResult::Signaled
         ));

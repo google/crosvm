@@ -103,7 +103,6 @@ exclude = [
     "sandbox",
     "tools/audio_streams_conformance_test",
     "tools/examples/baremetal",
-    "tube_transporter",
     "perfetto",
 
     # This crate depends on optional features and is compiled via dependencies when enabled.

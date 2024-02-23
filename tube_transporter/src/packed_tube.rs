@@ -101,9 +101,10 @@ mod tests {
     /// Tests packing and unpacking.
     fn test_pack_unpack() {
         let (tube_server, tube_client) = Tube::pair().unwrap();
+        // SAFETY: we provide a valid descriptor for pack()
         let packed_tube = unsafe { packed_tube::pack(tube_client, std::process::id()).unwrap() };
 
-        // Safe because get_descriptor clones the underlying pipe.
+        // SAFETY: get_descriptor clones the underlying pipe.
         let recovered_tube = unsafe { packed_tube::unpack(packed_tube).unwrap() };
 
         let test_message = "Test message".to_string();
