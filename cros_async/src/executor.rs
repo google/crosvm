@@ -5,6 +5,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use base::warn;
@@ -12,7 +13,6 @@ use base::warn;
 use base::AsRawDescriptors;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use base::RawDescriptor;
-use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde_keyvalue::argh::FromArgValue;
 use serde_keyvalue::ErrorKind;
@@ -52,7 +52,7 @@ impl From<ExecutorKindSys> for ExecutorKind {
 /// If set, [`ExecutorKind::default()`] returns the value of `DEFAULT_EXECUTOR_KIND`.
 /// If not set, [`ExecutorKind::default()`] returns a statically-chosen default value, and
 /// [`ExecutorKind::default()`] initializes `DEFAULT_EXECUTOR_KIND` with that value.
-static DEFAULT_EXECUTOR_KIND: OnceCell<ExecutorKind> = OnceCell::new();
+static DEFAULT_EXECUTOR_KIND: OnceLock<ExecutorKind> = OnceLock::new();
 
 impl Default for ExecutorKind {
     fn default() -> Self {

@@ -12,8 +12,8 @@ use std::io;
 use std::mem::size_of;
 use std::os::windows::io::RawHandle;
 use std::ptr;
+use std::sync::OnceLock;
 
-use once_cell::sync::OnceCell;
 use winapi::shared::minwindef::FALSE;
 use winapi::shared::minwindef::HLOCAL;
 use winapi::shared::minwindef::LPDWORD;
@@ -496,8 +496,8 @@ impl SelfRelativeSecurityDescriptor {
 
     /// Gets a copy of a singleton `SelfRelativeSecurityDescriptor`.
     pub fn get_singleton() -> SelfRelativeSecurityDescriptor {
-        static DEFAULT_SECURITY_DESCRIPTOR: OnceCell<SelfRelativeSecurityDescriptor> =
-            OnceCell::new();
+        static DEFAULT_SECURITY_DESCRIPTOR: OnceLock<SelfRelativeSecurityDescriptor> =
+            OnceLock::new();
         DEFAULT_SECURITY_DESCRIPTOR
             .get_or_init(|| {
                 SelfRelativeSecurityDescriptor::new().expect("Failed to create security descriptor")

@@ -6,6 +6,7 @@ use std::ffi::CStr;
 use std::fs::File;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::sync::LazyLock;
 
 use libc::c_char;
 use libc::c_int;
@@ -25,7 +26,6 @@ use libc::F_SEAL_SEAL;
 use libc::F_SEAL_SHRINK;
 use libc::F_SEAL_WRITE;
 use libc::MFD_ALLOW_SEALING;
-use once_cell::sync::Lazy;
 
 use crate::errno_result;
 use crate::shm::PlatformSharedMemory;
@@ -126,7 +126,7 @@ impl MemfdSeals {
     }
 }
 
-static MFD_NOEXEC_SEAL_SUPPORTED: Lazy<bool> = Lazy::new(|| {
+static MFD_NOEXEC_SEAL_SUPPORTED: LazyLock<bool> = LazyLock::new(|| {
     // SAFETY: We pass a valid zero-terminated C string and check the result.
     let fd = unsafe {
         // The memfd name used here does not need to be unique, since duplicates are allowed and

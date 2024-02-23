@@ -7,10 +7,10 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::time::Duration;
 use std::time::Instant;
 
-use once_cell::sync::Lazy;
 use sync::Condvar;
 use sync::Mutex;
 use thiserror::Error as ThisError;
@@ -24,8 +24,8 @@ use crate::BlockingPool;
 /// + The call site can assume that executor will never shutdown.
 /// + Provides similar functionality as async_task with a few improvements around ability to cancel.
 /// - Globals are harder to reason about.
-static EXECUTOR: Lazy<CancellableBlockingPool> =
-    Lazy::new(|| CancellableBlockingPool::new(256, Duration::from_secs(10)));
+static EXECUTOR: LazyLock<CancellableBlockingPool> =
+    LazyLock::new(|| CancellableBlockingPool::new(256, Duration::from_secs(10)));
 
 const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 

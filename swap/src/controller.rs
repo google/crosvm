@@ -13,6 +13,7 @@ use std::io::stdout;
 use std::ops::Range;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
+use std::sync::LazyLock;
 use std::thread::Scope;
 use std::thread::ScopedJoinHandle;
 use std::time::Duration;
@@ -42,7 +43,6 @@ use jail::fork::Child;
 use jail::JailConfig;
 use jail::SandboxConfig;
 use jail::MAX_OPEN_FILES_DEFAULT;
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -203,7 +203,7 @@ impl SwapController {
         keep_rds.extend(uffd_factory.as_raw_descriptors());
 
         // Load and cache transparent hugepage size from sysfs before jumping into sandbox.
-        Lazy::force(&THP_SIZE);
+        LazyLock::force(&THP_SIZE);
 
         let mut jail = if let Some(jail_config) = jail_config {
             let config = SandboxConfig::new(jail_config, "swap_monitor");

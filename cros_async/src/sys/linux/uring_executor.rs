@@ -54,6 +54,7 @@ use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::Weak;
 use std::task::Context;
 use std::task::Poll;
@@ -70,7 +71,6 @@ use base::RawDescriptor;
 use io_uring::URingAllowlist;
 use io_uring::URingContext;
 use io_uring::URingOperation;
-use once_cell::sync::Lazy;
 use remain::sorted;
 use slab::Slab;
 use sync::Mutex;
@@ -160,7 +160,7 @@ impl From<Error> for AsyncError {
     }
 }
 
-static IS_URING_STABLE: Lazy<bool> = Lazy::new(|| {
+static IS_URING_STABLE: LazyLock<bool> = LazyLock::new(|| {
     let mut utsname = MaybeUninit::zeroed();
 
     // SAFETY:

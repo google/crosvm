@@ -6,6 +6,7 @@
 pub(crate) mod gpu;
 
 use std::path::Path;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use base::error;
@@ -23,7 +24,6 @@ use hypervisor::MemSlot;
 use hypervisor::Vm;
 use libc::EINVAL;
 use libc::ERANGE;
-use once_cell::sync::Lazy;
 use resources::Alloc;
 use resources::SystemAllocator;
 use serde::Deserialize;
@@ -222,7 +222,7 @@ pub fn prepare_shared_memory_region(
     }
 }
 
-static SHOULD_PREPARE_MEMORY_REGION: Lazy<bool> = Lazy::new(|| {
+static SHOULD_PREPARE_MEMORY_REGION: LazyLock<bool> = LazyLock::new(|| {
     if cfg!(target_arch = "x86_64") {
         // The legacy x86 MMU allocates an rmap and a page tracking array
         // that take 2.5MiB per 1GiB of user memory region address space,

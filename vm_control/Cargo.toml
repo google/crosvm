@@ -24,7 +24,6 @@ hypervisor = { path = "../hypervisor" }
 libc = "0.2"
 metrics = { path = "../metrics" }
 metrics_events = { path = "../metrics_events" }
-once_cell = "1.7.2"
 protos = { path = "../protos", optional = true }
 remain = "0.2"
 resources = { path = "../resources" }

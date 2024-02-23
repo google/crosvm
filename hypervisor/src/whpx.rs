@@ -6,12 +6,12 @@
 
 use core::ffi::c_void;
 use std::arch::x86_64::__cpuid_count;
+use std::sync::LazyLock;
 
 use base::error;
 use base::warn;
 use base::Error;
 use base::Result;
-use once_cell::sync::Lazy;
 use thiserror::Error as ThisError;
 use winapi::shared::winerror::S_OK;
 
@@ -154,9 +154,9 @@ impl Whpx {
     }
 
     pub fn check_whpx_feature(feature: WhpxFeature) -> WhpxResult<bool> {
-        // use Lazy to cache the results of the get_capability call
-        static FEATURES: Lazy<WhpxResult<WHV_CAPABILITY>> =
-            Lazy::new(|| Whpx::get_capability(WHV_CAPABILITY_CODE_WHvCapabilityCodeFeatures));
+        // use LazyLock to cache the results of the get_capability call
+        static FEATURES: LazyLock<WhpxResult<WHV_CAPABILITY>> =
+            LazyLock::new(|| Whpx::get_capability(WHV_CAPABILITY_CODE_WHvCapabilityCodeFeatures));
 
         Ok((unsafe { (*FEATURES)?.Features.AsUINT64 } & feature as u64) != 0)
     }

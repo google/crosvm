@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::mem::MaybeUninit;
+use std::sync::LazyLock;
 
-use once_cell::sync::Lazy;
 use winapi::um::processthreadsapi::GetCurrentProcessId;
 use winapi::um::sysinfoapi::GetNativeSystemInfo;
 use winapi::um::sysinfoapi::SYSTEM_INFO;
@@ -18,7 +18,7 @@ struct SystemInfo {
     allocation_granularity: u64,
 }
 
-static SYSTEM_INFO: Lazy<SystemInfo> = Lazy::new(|| {
+static SYSTEM_INFO: LazyLock<SystemInfo> = LazyLock::new(|| {
     // SAFETY:
     // Safe because this is a universally available call on modern Windows systems.
     let sysinfo = unsafe {

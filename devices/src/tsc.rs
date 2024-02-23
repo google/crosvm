@@ -8,12 +8,12 @@
 #![allow(dead_code)]
 
 use std::arch::x86_64::_rdtsc;
+use std::sync::LazyLock;
 
 use anyhow::anyhow;
 use anyhow::Result;
 use base::debug;
 use base::error;
-use once_cell::sync::Lazy;
 
 mod calibrate;
 mod cpuid;
@@ -29,7 +29,7 @@ fn rdtsc_safe() -> u64 {
 }
 
 // Singleton for getting the state of the host TSCs, to avoid calibrating multiple times.
-static TSC_STATE: Lazy<Option<TscState>> = Lazy::new(|| match calibrate_tsc_state() {
+static TSC_STATE: LazyLock<Option<TscState>> = LazyLock::new(|| match calibrate_tsc_state() {
     Ok(tsc_state) => {
         debug!("Using calibrated tsc frequency: {} Hz", tsc_state.frequency);
         for (core, offset) in tsc_state.offsets.iter().enumerate() {

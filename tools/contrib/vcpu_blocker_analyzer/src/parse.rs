@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::sync::OnceLock;
+
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use once_cell::sync::OnceCell;
 use regex::Regex;
 
 use crate::ProcState;
@@ -29,7 +30,7 @@ impl PartialEq for Event {
     }
 }
 
-static EVENT_PATTERN: OnceCell<Regex> = OnceCell::new();
+static EVENT_PATTERN: OnceLock<Regex> = OnceLock::new();
 
 pub fn parse_event(line: &str) -> Option<Event> {
     let event_pattern = EVENT_PATTERN.get_or_init(|| {
@@ -50,7 +51,7 @@ pub fn parse_event(line: &str) -> Option<Event> {
     })
 }
 
-static VCPU_ID_PATTERN: OnceCell<Regex> = OnceCell::new();
+static VCPU_ID_PATTERN: OnceLock<Regex> = OnceLock::new();
 
 pub fn parse_vcpu_id(proc_name: &str) -> Result<usize> {
     let vcpu_id_pattern = VCPU_ID_PATTERN.get_or_init(|| Regex::new(r"crosvm_vcpu(\d+)").unwrap());
@@ -74,7 +75,7 @@ pub struct SchedWaking {
     pub waked_pid: i32,
 }
 
-static SCHED_WAKING_PATTERN: OnceCell<Regex> = OnceCell::new();
+static SCHED_WAKING_PATTERN: OnceLock<Regex> = OnceLock::new();
 
 pub fn parse_sched_waking(details: &str) -> Result<SchedWaking> {
     let sched_waking_pattern = SCHED_WAKING_PATTERN
@@ -100,7 +101,7 @@ pub struct SchedSwitch {
     pub new_pid: i32,
 }
 
-static SCHED_SWITCH_PATTERN: OnceCell<Regex> = OnceCell::new();
+static SCHED_SWITCH_PATTERN: OnceLock<Regex> = OnceLock::new();
 
 pub fn parse_sched_switch(details: &str) -> Result<SchedSwitch> {
     let sched_switch_pattern = SCHED_SWITCH_PATTERN.get_or_init(|| Regex::new(r"(?P<prev>.*):(?P<prev_pid>\d+) \[-?\d+\] (?P<state>\S+) ==> (?P<new>.*):(?P<new_pid>\d+) \[-?\d+\]").expect("failed to compile regex"));
@@ -136,7 +137,7 @@ pub fn parse_sched_switch(details: &str) -> Result<SchedSwitch> {
     })
 }
 
-static TASK_RENAME_PATTERN: OnceCell<Regex> = OnceCell::new();
+static TASK_RENAME_PATTERN: OnceLock<Regex> = OnceLock::new();
 
 pub fn parse_task_rename(details: &str) -> Result<String> {
     // Match a line like "newcomm=D-Bus Thread oom_score_adj="

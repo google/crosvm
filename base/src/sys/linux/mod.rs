@@ -56,6 +56,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitStatus;
 use std::ptr;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 pub use acpi_event::*;
@@ -87,7 +88,6 @@ pub(in crate::sys) use net::sockaddr_un;
 pub(in crate::sys) use net::sockaddrv4_to_lib_c;
 pub(in crate::sys) use net::sockaddrv6_to_lib_c;
 pub use netlink::*;
-use once_cell::sync::OnceCell;
 pub use poll::EventContext;
 pub use priority::*;
 pub use sched::*;
@@ -665,7 +665,7 @@ fn parse_sysfs_cpu_info(cpu_id: usize, property: &str) -> Result<u32> {
 
 /// Returns the capacity (measure of performance) of a given logical core.
 pub fn logical_core_capacity(cpu_id: usize) -> Result<u32> {
-    static CPU_MAX_FREQS: OnceCell<Option<Vec<u32>>> = OnceCell::new();
+    static CPU_MAX_FREQS: OnceLock<Option<Vec<u32>>> = OnceLock::new();
 
     let cpu_capacity = parse_sysfs_cpu_info(cpu_id, "cpu_capacity")?;
 

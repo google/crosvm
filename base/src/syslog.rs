@@ -43,13 +43,13 @@
 use std::fmt::Display;
 use std::io;
 use std::io::Write;
+use std::sync::LazyLock;
 use std::sync::MutexGuard;
 
 use chrono::Utc;
 pub use env_logger::fmt;
 pub use env_logger::{self};
 pub use log::*;
-use once_cell::sync::Lazy;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
@@ -336,7 +336,7 @@ impl Default for State {
     }
 }
 
-static STATE: Lazy<Mutex<State>> = Lazy::new(|| {
+static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
     let mut state = State::new(LogConfig::default()).expect("failed to configure minimal logging");
     state.early_init = true;
     Mutex::new(state)

@@ -7,6 +7,7 @@
 
 use std::path::Path;
 use std::str;
+use std::sync::LazyLock;
 
 use anyhow::bail;
 use anyhow::Context;
@@ -19,7 +20,6 @@ use base::geteuid;
 use base::warn;
 use libc::c_ulong;
 use minijail::Minijail;
-use once_cell::sync::Lazy;
 #[cfg(feature = "seccomp_trace")]
 use static_assertions::const_assert;
 #[cfg(feature = "seccomp_trace")]
@@ -29,8 +29,8 @@ use zerocopy::IntoBytes;
 
 use crate::config::JailConfig;
 
-static EMBEDDED_BPFS: Lazy<std::collections::HashMap<&str, Vec<u8>>> =
-    Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/bpf_includes.in")));
+static EMBEDDED_BPFS: LazyLock<std::collections::HashMap<&str, Vec<u8>>> =
+    LazyLock::new(|| include!(concat!(env!("OUT_DIR"), "/bpf_includes.in")));
 
 /// Most devices don't need to open many fds.
 pub const MAX_OPEN_FILES_DEFAULT: u64 = 1024;

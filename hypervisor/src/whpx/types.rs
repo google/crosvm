@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -729,7 +729,7 @@ pub(super) const MSR_PRED_CMD: u32 = 0x00000049;
 // the valid msrs for whpx, converting from the x86 efer id's to the whpx register name value.
 // https://docs.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/whvvirtualprocessordatatypes
 #[rustfmt::skip]
-pub(super) static VALID_MSRS: Lazy<HashMap<u32, WHV_REGISTER_NAME>> = Lazy::new(|| {
+pub(super) static VALID_MSRS: LazyLock<HashMap<u32, WHV_REGISTER_NAME>> = LazyLock::new(|| {
     [
         (MSR_TSC,WHV_REGISTER_NAME_WHvX64RegisterTsc),
         (MSR_EFER,WHV_REGISTER_NAME_WHvX64RegisterEfer),

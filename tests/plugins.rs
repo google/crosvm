@@ -14,18 +14,18 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::LazyLock;
 use std::thread::sleep;
 use std::time::Duration;
 
 use base::ioctl;
 use base::AsRawDescriptor;
 use net_util::TapTCommon;
-use once_cell::sync::Lazy;
 use rand::random;
 use tempfile::tempfile;
 
-static TAP_AVAILABLE: Lazy<bool> =
-    Lazy::new(|| net_util::sys::linux::Tap::new(true, false).is_ok());
+static TAP_AVAILABLE: LazyLock<bool> =
+    LazyLock::new(|| net_util::sys::linux::Tap::new(true, false).is_ok());
 
 struct RemovePath(PathBuf);
 impl Drop for RemovePath {

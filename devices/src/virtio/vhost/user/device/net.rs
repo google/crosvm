@@ -4,6 +4,8 @@
 
 pub mod sys;
 
+use std::cell::OnceCell;
+
 use anyhow::anyhow;
 use anyhow::Context;
 use base::error;
@@ -17,7 +19,6 @@ use futures::pin_mut;
 use futures::select_biased;
 use futures::FutureExt;
 use net_util::TapT;
-use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;

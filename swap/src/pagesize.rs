@@ -11,15 +11,15 @@
 
 use std::fs;
 use std::str;
+use std::sync::LazyLock;
 
 use anyhow::Context;
 use base::info;
 use base::pagesize;
-use once_cell::sync::Lazy;
 
 const TRANSPARENT_HUGEPAGE_SIZE_PATH: &str = "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size";
 
-static PAGESIZE_SHIFT: Lazy<u8> = Lazy::new(|| {
+static PAGESIZE_SHIFT: LazyLock<u8> = LazyLock::new(|| {
     let pagesize_shift = pagesize().trailing_zeros();
     // pagesize() should be power of 2 in almost all cases. vmm-swap feature does not support
     // systems in which page size is not power of 2.
@@ -33,7 +33,7 @@ static PAGESIZE_SHIFT: Lazy<u8> = Lazy::new(|| {
 /// The transparent hugepage size loaded from /sys/kernel/mm/transparent_hugepage/hpage_pmd_size.
 ///
 /// If it fails to load the hugepage size, it fallbacks to use 2MB.
-pub static THP_SIZE: Lazy<usize> = Lazy::new(|| {
+pub static THP_SIZE: LazyLock<usize> = LazyLock::new(|| {
     match load_transparent_hugepage_size() {
         Ok(transparent_hugepage_size) => transparent_hugepage_size,
         Err(e) => {
