@@ -50,7 +50,6 @@ pub use env_logger::fmt;
 pub use env_logger::{self};
 pub use log::*;
 use once_cell::sync::Lazy;
-use once_cell::sync::OnceCell;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
@@ -343,7 +342,7 @@ static STATE: Lazy<Mutex<State>> = Lazy::new(|| {
     Mutex::new(state)
 });
 static LOGGING_FACADE: LoggingFacade = LoggingFacade {};
-static EARLY_INIT_CALLED: OnceCell<()> = OnceCell::new();
+static EARLY_INIT_CALLED: Mutex<bool> = Mutex::new(false);
 
 /// Initialize the syslog connection and internal variables.
 ///
@@ -385,15 +384,10 @@ pub fn init_with(cfg: LogConfig) -> Result<(), Error> {
 /// Performs early (as in, moment of process start) logging initialization. Any logging prior to
 /// this call will be SILENTLY discarded. Calling more than once per process will panic.
 pub fn early_init() {
-    let mut first_init = false;
-    let _ = EARLY_INIT_CALLED
-        .get_or_try_init(|| -> Result<(), ()> {
-            first_init = true;
-            Ok(())
-        })
-        .unwrap();
-    if first_init {
+    let mut early_init_called = EARLY_INIT_CALLED.lock();
+    if !*early_init_called {
         apply_logging_state(&LOGGING_FACADE);
+        *early_init_called = true;
     } else {
         panic!("double early init of the logging system is not permitted.");
     }
@@ -403,15 +397,10 @@ pub fn early_init() {
 /// share module state, we need a way to make sure it has been initialized
 /// with *some* configuration.
 pub fn test_only_ensure_inited() -> Result<(), Error> {
-    let mut first_init = false;
-    let _ = EARLY_INIT_CALLED
-        .get_or_try_init(|| -> Result<(), ()> {
-            first_init = true;
-            Ok(())
-        })
-        .unwrap();
-    if first_init {
+    let mut early_init_called = EARLY_INIT_CALLED.lock();
+    if !*early_init_called {
         apply_logging_state(&LOGGING_FACADE);
+        *early_init_called = true;
     }
     Ok(())
 }
