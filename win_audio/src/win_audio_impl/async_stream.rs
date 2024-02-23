@@ -312,6 +312,7 @@ impl DeviceRendererWrapper {
         let format = device_renderer.audio_shared_format;
         let shared_audio_engine_period_bytes = format.get_shared_audio_engine_period_in_bytes();
 
+        // SAFETY: win_buffer is a valid pointer to shared_audio_engine_period_bytes of data
         let win_buffer_slice = unsafe {
             std::slice::from_raw_parts_mut(
                 device_renderer.win_buffer,
@@ -320,6 +321,7 @@ impl DeviceRendererWrapper {
         };
 
         win_buffer_slice.copy_from_slice(slice_to_write);
+        // SAFETY: We own the buffer
         unsafe {
             let hr = device_renderer
                 .audio_render_client

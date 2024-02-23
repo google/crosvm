@@ -112,7 +112,7 @@ impl WinAudio {
         let mut hr = S_SKIPPED_COINIT;
         THREAD_ONCE_INIT.with(|once| {
             once.call_once(|| {
-                // Safe because all variables passed into `CoInitializeEx` are hardcoded
+                // SAFETY: All variables passed into `CoInitializeEx` are hardcoded
                 unsafe {
                     // Initializes the COM library for use by the calling thread. Needed so that
                     // `CoCreateInstance` can be called to create a device
@@ -303,7 +303,7 @@ impl DeviceNotifier {
 
         // Creates a device enumerator in order to select our default audio device.
         //
-        // Safe because only `device_enumerator` is being modified and we own it.
+        // SAFETY: Only `device_enumerator` is being modified and we own it.
         let hr = unsafe {
             CoCreateInstance(
                 &CLSID_MMDeviceEnumerator as REFCLSID,
@@ -321,15 +321,15 @@ impl DeviceNotifier {
              IMMNotificationClient."
         )?;
 
-        // Safe because we know `device_enumerator` is a valid pointer, otherwise, we would've
-        // returned with an error earlier.
         let device_enumerator =
+            // SAFETY: We know `device_enumerator` is a valid pointer, otherwise, we would've
+            // returned with an error earlier.
             unsafe { ComPtr::from_raw(device_enumerator as *mut IMMDeviceEnumerator) };
 
         let imm_notification_client =
             WinIMMNotificationClient::create_com_ptr(is_device_available, dataflow);
 
-        // Safe because the creation of `imm_notification_client` is always valid.
+        // SAFETY: The creation of `imm_notification_client` is always valid.
         let hr = unsafe {
             device_enumerator.RegisterEndpointNotificationCallback(imm_notification_client.as_raw())
         };
@@ -350,7 +350,7 @@ impl Drop for DeviceNotifier {
     // `device_enumerator` and `imm_notification_client` will call `Release` when they are dropped
     // since they are `ComPtr`s.
     fn drop(&mut self) {
-        // Safe because the `notification_client` is a valid `IMMNotificationClient`.
+        // SAFETY: The `notification_client` is a valid `IMMNotificationClient`.
         unsafe {
             self.device_enumerator
                 .UnregisterEndpointNotificationCallback(self.imm_notification_client.as_raw());
@@ -529,7 +529,7 @@ impl DeviceRendererWrapper {
 
     fn get_intermediate_async_buffer(&mut self) -> Result<AsyncPlaybackBuffer, RenderError> {
         let guest_frame_size = self.num_channels * self.guest_bit_depth.sample_bytes();
-        // Safe since `intermediate_buffer` doesn't get mutated by `Self` after this slice is
+        // SAFETY: `intermediate_buffer` doesn't get mutated by `Self` after this slice is
         // created.
         let slice = unsafe {
             std::slice::from_raw_parts_mut(
@@ -541,6 +541,7 @@ impl DeviceRendererWrapper {
     }
 }
 
+// SAFETY: DeviceRendererWrapper is safe to send between threads
 unsafe impl Send for DeviceRendererWrapper {}
 
 // Implementation of buffer generator object. Used to get a buffer from WASAPI for crosvm to copy
@@ -578,7 +579,7 @@ impl DeviceRenderer {
 
         let format = get_valid_mix_format(&audio_client).map_err(RenderError::WinAudioError)?;
 
-        // Safe because `audio_client` is initialized
+        // SAFETY: `audio_client` is initialized
         let hr = unsafe {
             // Intializes the audio client by setting the buffer size in 100-nanoseconds and
             // specifying the format the audio bytes will be passed in as.
@@ -625,7 +626,7 @@ impl DeviceRenderer {
             );
         }
 
-        // Safe because `audio_client` is initialized
+        // SAFETY: `audio_client` is initialized
         let hr = unsafe {
             // Starts the audio stream for playback
             audio_client.Start()
@@ -656,7 +657,7 @@ impl DeviceRenderer {
     ) -> Result<ComPtr<IAudioRenderClient>, RenderError> {
         let mut audio_render_client: *mut c_void = null_mut();
 
-        // Safe because `audio_client` is initialized
+        // SAFETY: `audio_client` is initialized
         let hr = unsafe {
             audio_client.GetService(
                 &IID_IAudioRenderClient as *const GUID,
@@ -670,7 +671,7 @@ impl DeviceRenderer {
         )
         .map_err(RenderError::WinAudioError)?;
 
-        // Safe because `audio_render_client` is guaranteed to be initialized
+        // SAFETY: `audio_render_client` is guaranteed to be initialized
         unsafe {
             Ok(ComPtr::from_raw(
                 audio_render_client as *mut IAudioRenderClient,
@@ -683,7 +684,7 @@ impl DeviceRenderer {
         // We will wait for windows to tell us when it is ready to take in the next set of
         // audio samples from the guest
         loop {
-            // Safe because `ready_to_read_event` is guarenteed to be properly initialized
+            // SAFETY: `ready_to_read_event` is guaranteed to be properly initialized
             // and `num_frames_padding` is property initliazed as an empty pointer.
             unsafe {
                 let res = WaitForSingleObject(
@@ -711,9 +712,9 @@ impl DeviceRenderer {
     /// Returns true if the number of frames avaialble in the Windows playback buffer is at least
     /// the size of one full period worth of audio samples.
     fn enough_available_frames(&mut self) -> Result<bool, RenderError> {
-        // Safe because `num_frames_padding` is an u32 and `GetCurrentPadding` is a simple
-        // Windows function that shouldn't fail.
         let mut num_frames_padding = 0u32;
+        // SAFETY: `num_frames_padding` is an u32 and `GetCurrentPadding` is a simple
+        // Windows function that shouldn't fail.
         let hr = unsafe { self.audio_client.GetCurrentPadding(&mut num_frames_padding) };
         check_hresult!(
             hr,
@@ -738,6 +739,7 @@ impl DeviceRenderer {
 
         // This unsafe block will get the playback buffer and return the size of the buffer
         //
+        // SAFETY:
         // This is safe because the contents of `win_buffer` will be
         // released when `ReleaseBuffer` is called in the `BufferCommit` implementation.
         unsafe {
@@ -758,7 +760,7 @@ impl DeviceRenderer {
     }
 
     fn playback_buffer(&mut self) -> Result<PlaybackBuffer, RenderError> {
-        // Safe because `win_buffer` is allocated and retrieved from WASAPI. The size requested,
+        // SAFETY: `win_buffer` is allocated and retrieved from WASAPI. The size requested,
         // which we specified in `next_win_buffer` is exactly
         // `shared_audio_engine_period_in_frames`, so the size parameter should be valid.
         let (frame_size_bytes, buffer_slice) = unsafe {
@@ -809,7 +811,7 @@ impl BufferCommit for DeviceRenderer {
     // Called after buffer from WASAPI is filled. This will allow the audio bytes to be played as
     // sound.
     fn commit(&mut self, nframes: usize) {
-        // Safe because `audio_render_client` is initialized and parameters passed
+        // SAFETY: `audio_render_client` is initialized and parameters passed
         // into `ReleaseBuffer()` are valid
         unsafe {
             let hr = self.audio_render_client.ReleaseBuffer(nframes as u32, 0);
@@ -824,6 +826,10 @@ impl BufferCommit for DeviceRenderer {
 
 impl Drop for DeviceRenderer {
     fn drop(&mut self) {
+        // SAFETY:
+        // audio_client and audio_render_client will be released by ComPtr when dropped. Most likely
+        // safe to Release() if audio_client fails to stop. The MSDN doc does not mention that it
+        // will crash and this should be done anyways to prevent memory leaks
         unsafe {
             let hr = self.audio_client.Stop();
             let _ = check_hresult!(
@@ -831,13 +837,11 @@ impl Drop for DeviceRenderer {
                 WinAudioError::from(hr),
                 "Audio Render Client Stop() failed."
             );
-            // audio_client and audio_render_client will be released by ComPtr when dropped. Most
-            // likely safe to Release() if audio_client fails to stop. The MSDN doc does not mention
-            // that it will crash and this should be done anyways to prevent memory leaks
         }
     }
 }
 
+// SAFETY: DeviceRenderer is safe to send between threads
 unsafe impl Send for DeviceRenderer {}
 
 pub(crate) struct WinAudioCapturer {
@@ -1000,7 +1004,7 @@ impl DeviceCapturerWrapper {
     ) -> Result<AsyncCaptureBuffer<'a>, CaptureError> {
         match capture_resampler_buffer.get_next_period() {
             Some(next_period) => {
-                // Safe because `next_period`'s buffer is owned by `capture_resampler_buffer`,
+                // SAFETY: `next_period`'s buffer is owned by `capture_resampler_buffer`,
                 // and the buffer won't be cleared until
                 // `capture_resampler_buffer.get_next_period` is called again. That means the
                 // clearing won't happen until `next_slice` has been written into the rx queue.
@@ -1075,6 +1079,7 @@ impl DeviceCapturerWrapper {
     }
 }
 
+// SAFETY: DeviceCapturerWrapper can be sent between threads safely
 unsafe impl Send for DeviceCapturerWrapper {}
 
 pub(crate) struct DeviceCapturer {
@@ -1106,7 +1111,7 @@ impl DeviceCapturer {
 
         let format = get_valid_mix_format(&audio_client).map_err(CaptureError::WinAudioError)?;
 
-        // Safe because `audio_client` is initialized
+        // SAFETY: `audio_client` is initialized
         let hr = unsafe {
             // Intializes the audio client by setting the buffer size in 100-nanoseconds and
             // specifying the format the audio bytes will be passed in as.
@@ -1153,7 +1158,7 @@ impl DeviceCapturer {
         check_endpoint_buffer_size(&audio_client, shared_audio_engine_period_in_frames)
             .map_err(CaptureError::WinAudioError)?;
 
-        // Safe because `audio_client` is initialized
+        // SAFETY: `audio_client` is initialized
         let hr = unsafe {
             // Starts the audio stream for capture
             audio_client.Start()
@@ -1182,7 +1187,7 @@ impl DeviceCapturer {
     ) -> Result<ComPtr<IAudioCaptureClient>, CaptureError> {
         let mut audio_capture_client: *mut c_void = null_mut();
 
-        // Safe because `audio_client` is initialized
+        // SAFETY: `audio_client` is initialized
         let hr = unsafe {
             audio_client.GetService(
                 &IID_IAudioCaptureClient as *const GUID,
@@ -1196,7 +1201,7 @@ impl DeviceCapturer {
         )
         .map_err(CaptureError::WinAudioError)?;
 
-        // Safe because `audio_capture_client` is guaranteed to be initialized
+        // SAFETY: `audio_capture_client` is guaranteed to be initialized
         unsafe {
             Ok(ComPtr::from_raw(
                 audio_capture_client as *mut IAudioCaptureClient,
@@ -1236,7 +1241,7 @@ impl DeviceCapturer {
 
     // Drain the capture buffer and store the bytes in `win_buffer`.
     fn get_buffer(&mut self) -> Result<(), CaptureError> {
-        // Safe because:
+        // SAFETY:
         //   - `GetBuffer` only take output parameters that are all defined in this unsafe block.
         //   - `ReleaseBuffer` is called after the audio bytes are copied to `win_buffer`, so the
         //     audio bytes from `GetBuffer` will remain valid long enough.
@@ -1310,7 +1315,7 @@ impl DeviceCapturer {
 
     fn next_packet_size(&self) -> Result<u32, CaptureError> {
         let mut len = 0;
-        // Safe because `len` is a valid u32.
+        // SAFETY: `len` is a valid u32.
         let hr = unsafe { self.audio_capture_client.GetNextPacketSize(&mut len) };
         check_hresult!(
             hr,
@@ -1336,6 +1341,7 @@ impl DeviceCapturer {
     }
 }
 
+// SAFETY: DeviceCapturer can be sent between threads safely
 unsafe impl Send for DeviceCapturer {}
 
 // Create the `IAudioClient` which is used to create `IAudioRenderClient`, which is used for
@@ -1345,7 +1351,7 @@ fn create_audio_client(dataflow: EDataFlow) -> Result<ComPtr<IAudioClient>, WinA
 
     // Creates a device enumerator in order to select our default audio device.
     //
-    // Safe because only `device_enumerator` is being modified and we own it.
+    // SAFETY: Only `device_enumerator` is being modified and we own it.
     let hr = unsafe {
         CoCreateInstance(
             &CLSID_MMDeviceEnumerator as REFCLSID,
@@ -1361,12 +1367,12 @@ fn create_audio_client(dataflow: EDataFlow) -> Result<ComPtr<IAudioClient>, WinA
         "Win audio create client CoCreateInstance() failed."
     )?;
 
-    // Safe because `device_enumerator` is guaranteed to be initialized
     let device_enumerator =
+        // SAFETY: `device_enumerator` is guaranteed to be initialized
         unsafe { ComPtr::from_raw(device_enumerator as *mut IMMDeviceEnumerator) };
 
     let mut device: *mut IMMDevice = null_mut();
-    // Safe because `device_enumerator` is guaranteed to be initialized otherwise this method
+    // SAFETY: `device_enumerator` is guaranteed to be initialized otherwise this method
     // would've exited
     let hr = unsafe { device_enumerator.GetDefaultAudioEndpoint(dataflow, eConsole, &mut device) };
     check_hresult!(
@@ -1375,7 +1381,7 @@ fn create_audio_client(dataflow: EDataFlow) -> Result<ComPtr<IAudioClient>, WinA
         "Device Enumerator GetDefaultAudioEndpoint() failed."
     )?;
 
-    // Safe because `device` is guaranteed to be initialized
+    // SAFETY: `device` is guaranteed to be initialized
     let device = unsafe { ComPtr::from_raw(device) };
     print_device_info(&device)?;
 
@@ -1387,7 +1393,7 @@ fn create_audio_client(dataflow: EDataFlow) -> Result<ComPtr<IAudioClient>, WinA
 
     let mut factory: *mut IUnknown = null_mut();
 
-    // Safe because `async_op` should be initialized at this point.
+    // SAFETY: `async_op` should be initialized at this point.
     let activate_result_hr = unsafe {
         let mut activate_result_hr = 0;
         let hr = (*async_op).GetActivateResult(&mut activate_result_hr, &mut factory);
@@ -1406,7 +1412,7 @@ fn create_audio_client(dataflow: EDataFlow) -> Result<ComPtr<IAudioClient>, WinA
         "activateResult is an error. Cannot retrieve factory to create the Audio Client."
     )?;
 
-    // Safe because `factory` is guaranteed to be initialized.
+    // SAFETY: `factory` is guaranteed to be initialized.
     let factory = unsafe { ComPtr::from_raw(factory) };
 
     factory.cast().map_err(WinAudioError::from)
@@ -1447,7 +1453,7 @@ fn enable_auto_stream_routing_and_wait(
     // as a result Windows will always route sound to the default device. Likewise,
     // `DEVINTERFACE_AUDIO_CAPTURE` represents the default audio capture device.
     //
-    // Safe because we own `audio_direction_guid_string`.
+    // SAFETY: We own `audio_direction_guid_string`.
     let hr = unsafe {
         if is_render {
             StringFromIID(
@@ -1479,7 +1485,7 @@ fn enable_auto_stream_routing_and_wait(
     // `IAudioClient` from the callback to the scope here, so we use an
     // event to wait for the callback.
     //
-    // Safe because we own async_op and the completion handler.
+    // SAFETY: We own async_op and the completion handler.
     let hr = unsafe {
         ActivateAudioInterfaceAsync(
             audio_direction_guid_string,
@@ -1493,7 +1499,7 @@ fn enable_auto_stream_routing_and_wait(
     // We want to free memory before error checking for `ActivateAudioInterfaceAsync` to prevent
     // a memory leak.
     //
-    // Safe because `audio_direction_guid_string` should have valid memory
+    // SAFETY: `audio_direction_guid_string` should have valid memory
     // and we are freeing up memory here.
     unsafe {
         CoTaskMemFree(audio_direction_guid_string as *mut std::ffi::c_void);
@@ -1519,7 +1525,7 @@ fn enable_auto_stream_routing_and_wait(
         }
     }
 
-    // Safe because we own `async_op` and it shouldn't be null if the activate audio event
+    // SAFETY: We own `async_op` and it shouldn't be null if the activate audio event
     // fired.
     unsafe { Ok(ComPtr::from_raw(async_op)) }
 }
@@ -1533,7 +1539,7 @@ struct SafePropVariant {
 
 impl Drop for SafePropVariant {
     fn drop(&mut self) {
-        // Safe when `prop_variant` is set to a valid `PROPVARIANT` and won't be dropped elsewhere.
+        // SAFETY: `prop_variant` is set to a valid `PROPVARIANT` and won't be dropped elsewhere.
         unsafe {
             PropVariantClear(&mut self.prop_variant);
         }
@@ -1544,7 +1550,7 @@ impl Drop for SafePropVariant {
 // Safe when `device` is guaranteed to be successfully initialized.
 fn print_device_info(device: &IMMDevice) -> Result<(), WinAudioError> {
     let mut props: *mut IPropertyStore = null_mut();
-    // Safe because `device` is guaranteed to be initialized
+    // SAFETY: `device` is guaranteed to be initialized
     let hr = unsafe { device.OpenPropertyStore(STGM_READ, &mut props) };
     check_hresult!(
         hr,
@@ -1552,11 +1558,11 @@ fn print_device_info(device: &IMMDevice) -> Result<(), WinAudioError> {
         "Win audio OpenPropertyStore failed."
     )?;
 
-    // Safe because `props` is guaranteed to be initialized
+    // SAFETY: `props` is guaranteed to be initialized
     let props = unsafe { ComPtr::from_raw(props) };
 
     let mut prop_variant: PROPVARIANT = Default::default();
-    // Safe because `props` is guaranteed to be initialized
+    // SAFETY: `props` is guaranteed to be initialized
     let hr = unsafe { props.GetValue(&PKEY_Device_FriendlyName, &mut prop_variant) };
     check_hresult!(
         hr,
@@ -1565,12 +1571,12 @@ fn print_device_info(device: &IMMDevice) -> Result<(), WinAudioError> {
     )?;
     let safe_prop_variant = SafePropVariant { prop_variant };
 
-    // Safe because `val` was populated by a successful GetValue call that returns a pwszVal
+    // SAFETY: `val` was populated by a successful GetValue call that returns a pwszVal
     if unsafe { safe_prop_variant.prop_variant.data.pwszVal().is_null() } {
         warn!("Win audio property store GetValue returned a null string");
         return Err(WinAudioError::GenericError);
     }
-    // Safe because `val` was populated by a successful GetValue call that returned a non-null
+    // SAFETY: `val` was populated by a successful GetValue call that returned a non-null
     // null-terminated pwszVal
     let device_name = unsafe {
         win_util::from_ptr_win32_wide_string(*(safe_prop_variant.prop_variant).data.pwszVal())
@@ -1586,7 +1592,7 @@ fn create_and_set_audio_client_event(
     ex: &Option<&dyn audio_streams::AudioStreamsExecutor>,
 ) -> Result<(Event, Option<Box<dyn EventAsyncWrapper>>), WinAudioError> {
     let ready_event = Event::new_auto_reset().unwrap();
-    // Safe because `ready_event` will be initialized and also it will have the same
+    // SAFETY: `ready_event` will be initialized and also it will have the same
     // lifetime as `audio_client` because they are owned by DeviceRenderer or DeviceCapturer on
     // return.
     let hr = unsafe { audio_client.SetEventHandle(ready_event.as_raw_descriptor()) };
@@ -1597,6 +1603,7 @@ fn create_and_set_audio_client_event(
     )?;
 
     let async_ready_event = if let Some(ex) = ex {
+        // SAFETY:
         // Unsafe if `ready_event` and `async_ready_event` have different
         // lifetimes because both can close the underlying `RawDescriptor`. However, both
         // will be stored in the `DeviceRenderer` or `DeviceCapturer` fields, so this should be
@@ -1616,8 +1623,7 @@ fn create_and_set_audio_client_event(
 fn get_device_period_in_frames(audio_client: &IAudioClient, format: &WaveAudioFormat) -> usize {
     let mut shared_default_size_in_100nanoseconds: i64 = 0;
     let mut exclusive_min: i64 = 0;
-    // Safe because `GetDevicePeriod` are taking in intialized valid i64's on the stack created
-    // above.
+    // SAFETY: `GetDevicePeriod` is taking in intialized valid i64's on the stack created above.
     unsafe {
         audio_client.GetDevicePeriod(
             &mut shared_default_size_in_100nanoseconds,
@@ -1633,7 +1639,7 @@ fn check_endpoint_buffer_size(
     shared_audio_engine_period_in_frames: usize,
 ) -> Result<u32, WinAudioError> {
     let mut audio_client_buffer_frame_count: u32 = 0;
-    // Safe because audio_client_buffer_frame_count is created above.
+    // SAFETY: audio_client_buffer_frame_count is created above.
     let hr = unsafe { audio_client.GetBufferSize(&mut audio_client_buffer_frame_count) };
     check_hresult!(
         hr,
@@ -1816,6 +1822,7 @@ mod tests {
     struct SafeCoInit;
     impl SafeCoInit {
         fn new_coinitialize() -> Self {
+            // SAFETY: We pass valid parameters to CoInitializeEx.
             unsafe {
                 CoInitializeEx(null_mut(), COINIT_APARTMENTTHREADED);
             }
@@ -1825,6 +1832,7 @@ mod tests {
 
     impl Drop for SafeCoInit {
         fn drop(&mut self) {
+            // SAFETY: We initialized COM, so it is safe to uninitialize it here.
             unsafe {
                 CoUninitialize();
             }
@@ -1952,6 +1960,7 @@ mod tests {
         assert_eq!(WinAudio::co_init_once_per_thread(), S_OK);
         // Without thread local once_only this should fail
         assert_eq!(WinAudio::co_init_once_per_thread(), S_SKIPPED_COINIT);
+        // SAFETY: We initialized COM, so it is safe to uninitialize it here.
         unsafe {
             CoUninitialize();
         }
@@ -2019,9 +2028,10 @@ mod tests {
         let _co_init = SafeCoInit::new_coinitialize();
         let audio_client = create_audio_client(eRender).unwrap();
         let mut format_ptr: *mut WAVEFORMATEX = std::ptr::null_mut();
+        // SAFETY: `&mut format_ptr` is valid.
         let _hr = unsafe { audio_client.GetMixFormat(&mut format_ptr) };
 
-        // Safe because `format_ptr` is not a null pointer, since it is set by `GetMixFormat`.
+        // SAFETY: `format_ptr` is not a null pointer, since it is set by `GetMixFormat`.
         let format = unsafe { WaveAudioFormat::new(format_ptr) };
 
         // Test format from `GetMixFormat`. This should ALWAYS be valid.
@@ -2048,7 +2058,7 @@ mod tests {
             SubFormat: KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         };
 
-        // Safe because `GetMixFormat` casts `WAVEFORMATEXTENSIBLE` into a `WAVEFORMATEX` like so.
+        // SAFETY: `GetMixFormat` casts `WAVEFORMATEXTENSIBLE` into a `WAVEFORMATEX` like so.
         // Also this is casting from a bigger to a smaller struct, so it shouldn't be possible for
         // this contructor to access memory it shouldn't.
         let format = unsafe { WaveAudioFormat::new((&format) as *const _ as *mut WAVEFORMATEX) };
@@ -2078,7 +2088,7 @@ mod tests {
             SubFormat: KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         };
 
-        // Safe because `GetMixFormat` casts `WAVEFORMATEXTENSIBLE` into a `WAVEFORMATEX` like so.
+        // SAFETY: `GetMixFormat` casts `WAVEFORMATEXTENSIBLE` into a `WAVEFORMATEX` like so.
         // Also this is casting from a bigger to a smaller struct, so it shouldn't be possible for
         // this contructor to access memory it shouldn't.
         let format = unsafe { WaveAudioFormat::new((&format) as *const _ as *mut WAVEFORMATEX) };

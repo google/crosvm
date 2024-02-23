@@ -240,7 +240,7 @@ impl WaveAudioFormat {
         match self {
             WaveAudioFormat::WaveFormat(wave_format) => wave_format,
             WaveAudioFormat::WaveFormatExtensible(wave_format_extensible) => {
-                // Safe because `wave_format_extensible` can't be a null pointer, otherwise the
+                // SAFETY: `wave_format_extensible` can't be a null pointer, otherwise the
                 // constructor would've failed. This will also give the caller ownership of this
                 // struct.
                 unsafe { *(&wave_format_extensible as *const _ as *const WAVEFORMATEX) }
@@ -334,12 +334,14 @@ impl PartialEq for WaveAudioFormat {
             other_format_pointer: *const u8,
             cb_size: usize,
         ) -> bool {
+            // SAFETY: wave_format_pointer is valid for the given size.
             let wave_format_bytes: &[u8] = unsafe {
                 std::slice::from_raw_parts(
                     wave_format_pointer,
                     std::mem::size_of::<WAVEFORMATEX>() + cb_size,
                 )
             };
+            // SAFETY: other_format_pointer is valid for the given size.
             let other_bytes: &[u8] = unsafe {
                 std::slice::from_raw_parts(
                     other_format_pointer,
@@ -448,7 +450,7 @@ impl From<&WaveAudioFormat> for WaveFormatProto {
 pub(crate) fn get_valid_mix_format(
     audio_client: &ComPtr<IAudioClient>,
 ) -> Result<WaveAudioFormat, WinAudioError> {
-    // Safe because `format_ptr` is owned by this unsafe block. `format_ptr` is guarenteed to
+    // SAFETY: `format_ptr` is owned by this unsafe block. `format_ptr` is guarenteed to
     // be not null by the time it reached `WaveAudioFormat::new` (check_hresult! should make
     // sure of that), which is also release the pointer passed in.
     let mut format = unsafe {
@@ -493,7 +495,7 @@ pub(crate) fn check_format(
     event_code: MetricEventType,
 ) -> Result<(), WinAudioError> {
     let mut closest_match_format: *mut WAVEFORMATEX = std::ptr::null_mut();
-    // Safe because all values passed into `IsFormatSupport` is owned by us and we will
+    // SAFETY: All values passed into `IsFormatSupport` is owned by us and we will
     // guarentee they won't be dropped and are valid.
     let hr = unsafe {
         audio_client.IsFormatSupported(
@@ -506,7 +508,7 @@ pub(crate) fn check_format(
     // If the audio engine does not support the format.
     if hr != S_OK {
         if hr == S_FALSE {
-            // Safe because if the `hr` value is `S_FALSE`, then `IsFormatSupported` must've
+            // SAFETY: If the `hr` value is `S_FALSE`, then `IsFormatSupported` must've
             // given us a closest match.
             let closest_match_enum = unsafe { WaveAudioFormat::new(closest_match_format) };
             wave_format_details.closest_matched =
@@ -609,7 +611,7 @@ mod tests {
             SubFormat: KSDATAFORMAT_SUBTYPE_PCM,
         };
 
-        // Safe because `GetMixFormat` casts `WAVEFORMATEXTENSIBLE` into a `WAVEFORMATEX` like so.
+        // SAFETY: `GetMixFormat` casts `WAVEFORMATEXTENSIBLE` into a `WAVEFORMATEX` like so.
         // Also this is casting from a bigger to a smaller struct, so it shouldn't be possible for
         // this contructor to access memory it shouldn't.
         let mut format = unsafe {
@@ -621,7 +623,7 @@ mod tests {
             /* ks_data_format= */ KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         );
 
-        // Safe because we know the format is originally a `WAVEFORMATEXTENSIBLE`.
+        // SAFETY: We know the format is originally a `WAVEFORMATEXTENSIBLE`.
         let surround_sound_format = format.take_waveformatextensible();
 
         // WAVE_FORMAT_EXTENSIBLE uses the #[repr(packed)] flag so the compiler might unalign
@@ -663,9 +665,9 @@ mod tests {
             cbSize: 0,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
-        // pointer can be safely deferenced.
         let mut format =
+            // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+            // pointer can be safely deferenced.
             unsafe { WaveAudioFormat::new((&format) as *const WAVEFORMATEX as *mut WAVEFORMATEX) };
 
         format.modify_mix_format(
@@ -691,9 +693,9 @@ mod tests {
             cbSize: 0,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
-        // pointer can be safely deferenced.
         let mut format =
+            // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+            // pointer can be safely deferenced.
             unsafe { WaveAudioFormat::new((&format) as *const WAVEFORMATEX as *mut WAVEFORMATEX) };
 
         format.modify_mix_format(
@@ -718,9 +720,9 @@ mod tests {
             cbSize: 0,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
-        // pointer can be safely deferenced.
         let format =
+            // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+            // pointer can be safely deferenced.
             unsafe { WaveAudioFormat::new((&format) as *const WAVEFORMATEX as *mut WAVEFORMATEX) };
 
         let expected = WAVEFORMATEX {
@@ -733,6 +735,8 @@ mod tests {
             cbSize: 0,
         };
 
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+        // pointer can be safely deferenced.
         let expected = unsafe {
             WaveAudioFormat::new((&expected) as *const WAVEFORMATEX as *mut WAVEFORMATEX)
         };
@@ -757,7 +761,7 @@ mod tests {
             SubFormat: KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the
         // pointer can be safely deferenced.
         let format = unsafe {
             WaveAudioFormat::new((&format) as *const WAVEFORMATEXTENSIBLE as *mut WAVEFORMATEX)
@@ -778,6 +782,8 @@ mod tests {
             SubFormat: KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         };
 
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+        // pointer can be safely deferenced.
         let expected = unsafe {
             WaveAudioFormat::new((&expected) as *const WAVEFORMATEXTENSIBLE as *mut WAVEFORMATEX)
         };
@@ -797,9 +803,9 @@ mod tests {
             cbSize: 0,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
-        // pointer can be safely deferenced.
         let format =
+            // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+            // pointer can be safely deferenced.
             unsafe { WaveAudioFormat::new((&format) as *const WAVEFORMATEX as *mut WAVEFORMATEX) };
 
         let expected = WAVEFORMATEX {
@@ -813,6 +819,8 @@ mod tests {
             cbSize: 0,
         };
 
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+        // pointer can be safely deferenced.
         let expected = unsafe {
             WaveAudioFormat::new((&expected) as *const WAVEFORMATEX as *mut WAVEFORMATEX)
         };
@@ -837,7 +845,7 @@ mod tests {
             SubFormat: KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the
         // pointer can be safely deferenced.
         let format = unsafe {
             WaveAudioFormat::new((&format) as *const WAVEFORMATEXTENSIBLE as *mut WAVEFORMATEX)
@@ -859,6 +867,8 @@ mod tests {
             SubFormat: KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         };
 
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+        // pointer can be safely deferenced.
         let expected = unsafe {
             WaveAudioFormat::new((&expected) as *const WAVEFORMATEXTENSIBLE as *mut WAVEFORMATEX)
         };
@@ -886,7 +896,7 @@ mod tests {
             SubFormat: KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the
         // pointer can be safely deferenced.
         let mut format = unsafe {
             WaveAudioFormat::new((&format) as *const WAVEFORMATEXTENSIBLE as *mut WAVEFORMATEX)
@@ -913,6 +923,8 @@ mod tests {
             SubFormat: KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         };
 
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+        // pointer can be safely deferenced.
         let expected = unsafe {
             WaveAudioFormat::new((&expected) as *const WAVEFORMATEXTENSIBLE as *mut WAVEFORMATEX)
         };
@@ -933,9 +945,9 @@ mod tests {
             cbSize: 0,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
-        // pointer can be safely deferenced.
         let mut format =
+            // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+            // pointer can be safely deferenced.
             unsafe { WaveAudioFormat::new((&format) as *const WAVEFORMATEX as *mut WAVEFORMATEX) };
 
         format.modify_mix_format(
@@ -954,6 +966,8 @@ mod tests {
             cbSize: 0,
         };
 
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+        // pointer can be safely deferenced.
         let expected = unsafe {
             WaveAudioFormat::new((&expected) as *const WAVEFORMATEX as *mut WAVEFORMATEX)
         };
@@ -973,9 +987,9 @@ mod tests {
             cbSize: 0,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
-        // pointer can be safely deferenced.
         let mut format =
+            // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+            // pointer can be safely deferenced.
             unsafe { WaveAudioFormat::new((&format) as *const WAVEFORMATEX as *mut WAVEFORMATEX) };
 
         format.modify_mix_format(
@@ -1000,9 +1014,9 @@ mod tests {
             cbSize: 0,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
-        // pointer can be safely deferenced.
         let mut format =
+            // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+            // pointer can be safely deferenced.
             unsafe { WaveAudioFormat::new((&format) as *const WAVEFORMATEX as *mut WAVEFORMATEX) };
 
         format.modify_mix_format(
@@ -1044,7 +1058,7 @@ mod tests {
             cbSize: 0,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the
         // pointer can be safely deferenced.
         let format = unsafe {
             WaveAudioFormat::new((&wave_format) as *const WAVEFORMATEX as *mut WAVEFORMATEX)
@@ -1086,7 +1100,7 @@ mod tests {
             SubFormat: KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the
         // pointer can be safely deferenced.
         let format = unsafe {
             WaveAudioFormat::new((&wave_format_extensible) as *const _ as *mut WAVEFORMATEX)
@@ -1130,9 +1144,9 @@ mod tests {
             cbSize: 0,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
-        // pointer can be safely deferenced.
         let wave_audio_format =
+            // SAFETY: We can convert a struct to a pointer declared above. Also that means the
+            // pointer can be safely deferenced.
             unsafe { WaveAudioFormat::new((&wave_format) as *const _ as *mut WAVEFORMATEX) };
 
         // Testing the `into`.
@@ -1167,8 +1181,8 @@ mod tests {
             SubFormat: KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         };
 
-        // Safe because we can convert a struct to a pointer declared above. Also that means the
-        // pointer can be safely deferenced.
+        // SAFETY: We can convert a struct to a pointer declared above. Also that means the pointer
+        // can be safely deferenced.
         let wave_audio_format = unsafe {
             WaveAudioFormat::new((&wave_format_extensible) as *const _ as *mut WAVEFORMATEX)
         };

@@ -60,7 +60,7 @@ impl WinIMMNotificationClient {
         // match `IMMNotificationClient`. Since `win_imm_notification_client.cast_to_com_ptr()`
         // does, this is safe.
         //
-        // Safe because we are passing in a valid COM object that implements `IUnknown` into
+        // SAFETY: We are passing in a valid COM object that implements `IUnknown` into
         // `from_raw`.
         unsafe {
             ComPtr::from_raw(
@@ -250,6 +250,7 @@ mod test {
         let mut ppv_object: *mut c_void = std::ptr::null_mut();
 
         // Calling `QueryInterface`
+        // SAFETY: notification_client has a valid lpVtbl pointer
         let res = unsafe {
             ((*notification_client.lpVtbl).parent.QueryInterface)(
                 notification_client.as_raw() as *mut IUnknown,
@@ -263,6 +264,7 @@ mod test {
         release(&notification_client);
 
         let valid_ref_iid = IMMNotificationClient::uuidof();
+        // SAFETY: notification_client has a valid lpVtbl pointer
         let res = unsafe {
             ((*notification_client.lpVtbl).parent.QueryInterface)(
                 notification_client.as_raw() as *mut IUnknown,
@@ -275,6 +277,7 @@ mod test {
         release(&notification_client);
 
         let valid_ref_iid = IAgileObject::uuidof();
+        // SAFETY: notification_client has a valid lpVtbl pointer
         let res = unsafe {
             ((*notification_client.lpVtbl).parent.QueryInterface)(
                 notification_client.as_raw() as *mut IUnknown,
@@ -294,6 +297,7 @@ mod test {
         let mut ppv_object: *mut c_void = std::ptr::null_mut();
 
         // Call `QueryInterface`
+        // SAFETY: notification_client has a valid lpVtbl pointer
         let res = unsafe {
             ((*notification_client.lpVtbl).parent.QueryInterface)(
                 notification_client.as_raw() as *mut IUnknown,
@@ -319,6 +323,7 @@ mod test {
     }
 
     fn release(notification_client: &ComPtr<IMMNotificationClient>) -> ULONG {
+        // SAFETY: notification_client has a valid lpVtbl pointer
         unsafe {
             ((*notification_client.lpVtbl).parent.Release)(
                 notification_client.as_raw() as *mut IUnknown
@@ -327,6 +332,7 @@ mod test {
     }
 
     fn add_ref(notification_client: &ComPtr<IMMNotificationClient>) -> ULONG {
+        // SAFETY: notification_client has a valid lpVtbl pointer
         unsafe {
             ((*notification_client.lpVtbl).parent.AddRef)(
                 notification_client.as_raw() as *mut IUnknown
