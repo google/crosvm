@@ -19,7 +19,7 @@ pub struct Condvar {
 
 impl Condvar {
     /// Creates a new condvar that is ready to be waited on.
-    pub fn new() -> Condvar {
+    pub const fn new() -> Condvar {
         Condvar {
             std: StdCondvar::new(),
         }

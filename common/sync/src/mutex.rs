@@ -38,7 +38,7 @@ pub struct Mutex<T: ?Sized> {
 
 impl<T> Mutex<T> {
     /// Creates a new mutex in an unlocked state ready for use.
-    pub fn new(value: T) -> Mutex<T> {
+    pub const fn new(value: T) -> Mutex<T> {
         Mutex {
             std: StdMutex::new(value),
         }

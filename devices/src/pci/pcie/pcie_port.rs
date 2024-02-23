@@ -6,7 +6,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use base::warn;
-use once_cell::sync::Lazy;
 use resources::Alloc;
 use resources::SystemAllocator;
 use sync::Mutex;
@@ -79,8 +78,7 @@ impl PcieRootCap {
     }
 }
 
-static PCIE_ROOTS_CAP: Lazy<Mutex<Vec<Arc<Mutex<PcieRootCap>>>>> =
-    Lazy::new(|| Mutex::new(Vec::new()));
+static PCIE_ROOTS_CAP: Mutex<Vec<Arc<Mutex<PcieRootCap>>>> = Mutex::new(Vec::new());
 
 fn push_pcie_root_cap(root_cap: Arc<Mutex<PcieRootCap>>) {
     PCIE_ROOTS_CAP.lock().push(root_cap);

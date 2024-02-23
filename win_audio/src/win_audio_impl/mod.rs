@@ -1796,7 +1796,6 @@ mod tests {
 
     use cros_async::Executor;
     use metrics::MetricEventType;
-    use once_cell::sync::Lazy;
     use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
     use winapi::shared::mmreg::WAVEFORMATEX;
     use winapi::shared::mmreg::WAVEFORMATEXTENSIBLE;
@@ -1812,7 +1811,7 @@ mod tests {
     // completed, thus causing an error.
     //
     // TODO(b/217768491): Randomizing events should resolve the need for serialized tests.
-    static SERIALIZE_LOCK: Lazy<Mutex<()>> = Lazy::new(Mutex::default);
+    static SERIALIZE_LOCK: Mutex<()> = Mutex::new(());
 
     struct SafeCoInit;
     impl SafeCoInit {
