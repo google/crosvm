@@ -36,7 +36,7 @@ impl SnapshotWriter {
     }
 
     /// Creates a snapshot fragment and get access to the `Write` impl representing it.
-    pub fn raw_fragment(&self, name: &str) -> Result<impl Write> {
+    pub fn raw_fragment(&self, name: &str) -> Result<Box<dyn Write>> {
         let path = self.dir.join(name);
         let file = File::options()
             .write(true)
@@ -48,7 +48,7 @@ impl SnapshotWriter {
                     path.display()
                 )
             })?;
-        Ok(file)
+        Ok(Box::new(file))
     }
 
     /// Creates a snapshot fragment from a serialized representation of `v`.
@@ -83,7 +83,7 @@ impl SnapshotReader {
     }
 
     /// Gets access to a `Read` impl that represents a fragment.
-    pub fn raw_fragment(&self, name: &str) -> Result<impl Read> {
+    pub fn raw_fragment(&self, name: &str) -> Result<Box<dyn Read>> {
         let path = self.dir.join(name);
         let file = File::open(&path).with_context(|| {
             format!(
@@ -91,7 +91,7 @@ impl SnapshotReader {
                 path.display()
             )
         })?;
-        Ok(file)
+        Ok(Box::new(file))
     }
 
     /// Reads a fragment.
