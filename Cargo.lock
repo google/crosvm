@@ -603,7 +603,6 @@ dependencies = [
  "cfg-if",
  "cros_tracing_types",
  "libtest-mimic",
- "once_cell",
  "perfetto",
  "sync",
 ]

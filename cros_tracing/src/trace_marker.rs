@@ -9,13 +9,12 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
-use std::sync::Mutex;
 
 use base::error;
 use base::RawDescriptor;
-use once_cell::sync::OnceCell;
+use sync::Mutex;
 
-static TRACE_MARKER_FILE: OnceCell<Mutex<File>> = OnceCell::new();
+static TRACE_MARKER_FILE: Mutex<Option<File>> = Mutex::new(None);
 
 #[macro_export]
 /// This macro is used as a placeholder to let us iterate over the compile-time
@@ -71,8 +70,8 @@ macro_rules! trace_simple_print {
 ///
 /// * `keep_rds` - List of file descriptors that will be accessible after jailing
 pub fn push_descriptors_internal(keep_rds: &mut Vec<RawDescriptor>) {
-    if let Some(file) = TRACE_MARKER_FILE.get() {
-        let fd = file.lock().unwrap().as_raw_fd();
+    if let Some(file) = TRACE_MARKER_FILE.lock().as_ref() {
+        let fd = file.as_raw_fd();
         if !keep_rds.contains(&fd) {
             keep_rds.push(fd);
         }
@@ -249,11 +248,11 @@ setup_trace_marker!(
 pub fn trace_simple_print_internal(message: String) {
     // In case tracing is not working or the trace marker file is None we can
     // just ignore this. We don't need to handle the error here.
-    if let Some(file) = TRACE_MARKER_FILE.get() {
+    if let Some(file) = TRACE_MARKER_FILE.lock().as_mut() {
         // We ignore the error here in case write!() fails, because the trace
         // marker file would be normally closed by the system unless we are
         // actively tracing the runtime. It is not an error.
-        write!(file.lock().unwrap(), "{}", message).ok();
+        let _ = write!(file, "{}", message);
     };
 }
 
@@ -265,6 +264,11 @@ pub fn trace_simple_print_internal(message: String) {
 /// tracing will not work but the crosvm process will still continue execution
 /// without tracing.
 pub fn init() {
+    let mut trace_marker_file = TRACE_MARKER_FILE.lock();
+    if trace_marker_file.is_some() {
+        return;
+    }
+
     let path = Path::new("/sys/kernel/tracing/trace_marker");
     let file = match OpenOptions::new().read(false).write(true).open(path) {
         Ok(f) => f,
@@ -278,9 +282,7 @@ pub fn init() {
         }
     };
 
-    if TRACE_MARKER_FILE.set(Mutex::new(file)).is_err() {
-        error!("Failed to create mutex. Tracing will not work.");
-    }
+    *trace_marker_file = Some(file);
 }
 
 /// A trace context obtained from a `trace_event!()` call.

@@ -13,17 +13,16 @@ harness = false
 required-features = ["trace_marker"]
 
 [features]
-trace_marker = ["once_cell"]
-perfetto = ['dep:perfetto', "once_cell", "sync"]
+trace_marker = []
+perfetto = ["dep:perfetto"]
 
 [dependencies]
 anyhow = "*"
 base = "*"
 cfg-if = "1.0.0"
 cros_tracing_types = { path = "../cros_tracing_types" }
-once_cell = { version = "1.7", optional = true }
 perfetto = { path = "../perfetto", optional = true }
-sync = { path = "../common/sync", optional = true }
+sync = { path = "../common/sync" }
 
 [dev-dependencies]
 libtest-mimic = "0.6"
