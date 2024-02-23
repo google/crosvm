@@ -195,8 +195,7 @@ macro_rules! setup_perfetto {
         }
 
 
-        static PERFETTO_PER_TRACE_CALLBACKS: once_cell::sync::Lazy<sync::Mutex<Vec<fn()>>> =
-            once_cell::sync::Lazy::new(|| sync::Mutex::new(Vec::new()));
+        static PERFETTO_PER_TRACE_CALLBACKS: sync::Mutex<Vec<fn()>> = sync::Mutex::new(Vec::new());
 
 
         pub fn add_per_trace_callback(callback: fn()) {

@@ -2164,8 +2164,7 @@ impl<V: VcpuArch> WindowsIrqChip<V> {
 
 /// Storage for the VM TSC offset for each vcpu. Stored in a static because the tracing thread will
 /// need access to it when tracing is enabled.
-static TSC_OFFSETS: once_cell::sync::Lazy<sync::Mutex<Vec<Option<u64>>>> =
-    once_cell::sync::Lazy::new(|| sync::Mutex::new(Vec::new()));
+static TSC_OFFSETS: sync::Mutex<Vec<Option<u64>>> = sync::Mutex::new(Vec::new());
 
 /// Save the TSC offset for a particular vcpu.
 ///

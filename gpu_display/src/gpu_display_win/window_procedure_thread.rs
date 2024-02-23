@@ -32,7 +32,6 @@ use base::Event;
 use base::ReadNotifier;
 use base::Tube;
 use euclid::size2;
-use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -606,8 +605,8 @@ impl WindowProcedureThread {
     /// name will be returned. This function also registers the Window class if it is not registered
     /// through this function yet.
     fn get_window_class_name<T: RegisterWindowClass>() -> Result<String> {
-        static WINDOW_CLASS_NAMES: OnceCell<Mutex<BTreeMap<TypeId, String>>> = OnceCell::new();
-        let mut window_class_names = WINDOW_CLASS_NAMES.get_or_init(Default::default).lock();
+        static WINDOW_CLASS_NAMES: Mutex<BTreeMap<TypeId, String>> = Mutex::new(BTreeMap::new());
+        let mut window_class_names = WINDOW_CLASS_NAMES.lock();
         let id = window_class_names.len();
         let entry = window_class_names.entry(TypeId::of::<T>());
         let entry = match entry {

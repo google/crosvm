@@ -29,7 +29,6 @@ win_util = { path = "../win_util" }
 sync = { path = "../common/sync" }
 euclid = "*"
 vm_control = { path = "../vm_control", features = ["gpu"] }
-once_cell = "*"
 
 [build-dependencies]
 cc = "1.0.25"

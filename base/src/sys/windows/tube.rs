@@ -12,7 +12,6 @@ use std::os::windows::io::RawHandle;
 use std::time::Duration;
 
 use log::warn;
-use once_cell::sync::Lazy;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
@@ -89,9 +88,8 @@ struct MsgHeader {
     descriptor_json_size: usize,
 }
 
-static DH_TUBE: Lazy<sync::Mutex<Option<DuplicateHandleTube>>> =
-    Lazy::new(|| sync::Mutex::new(None));
-static ALIAS_PID: Lazy<sync::Mutex<Option<u32>>> = Lazy::new(|| sync::Mutex::new(None));
+static DH_TUBE: sync::Mutex<Option<DuplicateHandleTube>> = sync::Mutex::new(None);
+static ALIAS_PID: sync::Mutex<Option<u32>> = sync::Mutex::new(None);
 
 /// Set a tube to delegate duplicate handle calls.
 pub fn set_duplicate_handle_tube(dh_tube: DuplicateHandleTube) {
