@@ -35,7 +35,7 @@ use crate::RawDescriptor;
 
 /// Global syslog socket derived from the fd opened by `openlog()`.
 /// This is initialized in `PlatformSyslog::new()`.
-static SYSLOG_SOCKET: OnceCell<UnixDatagram> = OnceCell::new();
+static SYSLOG_SOCKET: OnceCell<Result<UnixDatagram, Error>> = OnceCell::new();
 
 pub struct PlatformSyslog {}
 
@@ -43,7 +43,7 @@ struct SyslogSocket {}
 
 impl Write for SyslogSocket {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if let Some(socket) = SYSLOG_SOCKET.get() {
+        if let Some(Ok(socket)) = SYSLOG_SOCKET.get() {
             // If `send()` fails, there is nothing we can do about it, so just ignore the result.
             let _ = socket.send(buf);
         }
@@ -61,13 +61,13 @@ impl Syslog for PlatformSyslog {
     fn new(
         proc_name: String,
         facility: Facility,
-    ) -> Result<(Option<Box<dyn log::Log + Send>>, Option<RawDescriptor>), Error> {
+    ) -> Result<(Option<Box<dyn log::Log + Send>>, Option<RawDescriptor>), &'static Error> {
         // Calling openlog_and_get_socket() more than once will cause the previous syslogger FD to
         // be closed, invalidating the log::Log object in an unsafe manner. The OnceCell
-        // get_or_try_init() ensures we only call it once.
+        // get_or_init() ensures we only call it once.
         //
         // b/238923791 is tracking fixing this problem.
-        let socket = SYSLOG_SOCKET.get_or_try_init(openlog_and_get_socket)?;
+        let socket = SYSLOG_SOCKET.get_or_init(openlog_and_get_socket).as_ref()?;
         let mut builder = env_logger::Builder::new();
 
         // Everything is filtered layer above

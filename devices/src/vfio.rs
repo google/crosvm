@@ -61,8 +61,8 @@ pub enum VfioError {
     ContainerDupError,
     #[error("failed to set container's IOMMU driver type as {0:?}: {1}")]
     ContainerSetIOMMU(IommuType, Error),
-    #[error("failed to create KVM vfio device: {0}")]
-    CreateVfioKvmDevice(Error),
+    #[error("failed to create KVM vfio device")]
+    CreateVfioKvmDevice,
     #[error("failed to get Group Status: {0}")]
     GetGroupStatus(Error),
     #[error("failed to get vfio device fd: {0}")]
@@ -139,7 +139,20 @@ fn get_error() -> Error {
     Error::last()
 }
 
-static KVM_VFIO_FILE: OnceCell<SafeDescriptor> = OnceCell::new();
+static KVM_VFIO_FILE: OnceCell<Option<SafeDescriptor>> = OnceCell::new();
+
+fn create_kvm_vfio_file(vm: &impl Vm) -> Option<&'static SafeDescriptor> {
+    KVM_VFIO_FILE
+        .get_or_init(|| vm.create_device(DeviceKind::Vfio).ok())
+        .as_ref()
+}
+
+fn kvm_vfio_file() -> Option<&'static SafeDescriptor> {
+    match KVM_VFIO_FILE.get() {
+        Some(Some(v)) => Some(v),
+        _ => None,
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum VfioDeviceType {
@@ -206,9 +219,7 @@ impl KvmVfioPviommu {
 
     #[cfg(all(target_os = "android", target_arch = "aarch64"))]
     fn ioctl_kvm_dev_vfio_pviommu_attach(vm: &impl Vm) -> Result<File> {
-        let kvm_vfio_file = KVM_VFIO_FILE
-            .get_or_try_init(|| vm.create_device(DeviceKind::Vfio))
-            .map_err(VfioError::CreateVfioKvmDevice)?;
+        let kvm_vfio_file = create_kvm_vfio_file(vm).ok_or(VfioError::CreateVfioKvmDevice)?;
 
         let vfio_dev_attr = kvm_sys::kvm_device_attr {
             flags: 0,
@@ -260,9 +271,7 @@ impl KvmVfioPviommu {
         vm: &impl Vm,
         device: &T,
     ) -> Result<kvm_sys::kvm_vfio_iommu_info> {
-        let kvm_vfio_file = KVM_VFIO_FILE
-            .get_or_try_init(|| vm.create_device(DeviceKind::Vfio))
-            .map_err(VfioError::CreateVfioKvmDevice)?;
+        let kvm_vfio_file = create_kvm_vfio_file(vm).ok_or(VfioError::CreateVfioKvmDevice)?;
 
         let mut info = kvm_sys::kvm_vfio_iommu_info {
             device_fd: device.as_raw_descriptor(),
@@ -637,9 +646,7 @@ impl VfioContainer {
             }
         }
 
-        let kvm_vfio_file = KVM_VFIO_FILE
-            .get_or_try_init(|| vm.create_device(DeviceKind::Vfio))
-            .map_err(VfioError::CreateVfioKvmDevice)?;
+        let kvm_vfio_file = create_kvm_vfio_file(vm).ok_or(VfioError::CreateVfioKvmDevice)?;
         group
             .lock()
             .kvm_device_set_group(kvm_vfio_file, KvmVfioGroupOps::Add)?;
@@ -674,7 +681,7 @@ impl VfioContainer {
                 group.lock().reduce_device_num();
             }
             if group.lock().device_num() == 0 {
-                let kvm_vfio_file = KVM_VFIO_FILE.get().expect("kvm vfio file isn't created");
+                let kvm_vfio_file = kvm_vfio_file().expect("kvm vfio file isn't created");
                 if group
                     .lock()
                     .kvm_device_set_group(kvm_vfio_file, KvmVfioGroupOps::Delete)

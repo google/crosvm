@@ -175,7 +175,7 @@ pub(crate) trait Syslog {
     fn new(
         proc_name: String,
         facility: Facility,
-    ) -> Result<(Option<Box<dyn Log + Send>>, Option<RawDescriptor>), Error>;
+    ) -> Result<(Option<Box<dyn Log + Send>>, Option<RawDescriptor>), &'static Error>;
 }
 
 pub struct State {

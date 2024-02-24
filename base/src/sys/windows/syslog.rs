@@ -38,7 +38,7 @@ impl Syslog for PlatformSyslog {
     fn new(
         _proc_name: String,
         _facility: Facility,
-    ) -> Result<(Option<Box<dyn Log + Send>>, Option<RawDescriptor>), Error> {
+    ) -> Result<(Option<Box<dyn Log + Send>>, Option<RawDescriptor>), &'static Error> {
         Ok((None, None))
     }
 }
