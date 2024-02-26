@@ -26,6 +26,7 @@
   - [USB](./devices/usb.md)
   - [Wayland](./devices/wayland.md)
   - [Video (experimental)](./devices/video.md)
+  - [Virtual U2F Passthrough](./devices/virtual_u2f.md)
   - [Vhost-user](./devices/vhost_user.md)
 - [Tracing](./tracing.md)
 - [Integration](./integration/index.md)
