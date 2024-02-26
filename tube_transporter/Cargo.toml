@@ -12,5 +12,7 @@ rand = "0.8"
 thiserror = "1.0.20"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "*"
+
+[target.'cfg(windows)'.dependencies]
 win_util = { path = "../win_util"}
 winapi = "*"
