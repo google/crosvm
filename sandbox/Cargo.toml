@@ -6,6 +6,8 @@ edition = "2021"
 
 [dependencies]
 base = { path = "../base" }
+
+[target.'cfg(windows)'.dependencies]
 win_util = { path = "../win_util"}
 winapi = { version = "*", features = ["everything", "std", "impl-default"] }
 
