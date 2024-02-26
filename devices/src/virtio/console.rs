@@ -51,6 +51,7 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::Reader;
 use crate::virtio::VirtioDevice;
+use crate::PciAddress;
 
 pub(crate) const QUEUE_SIZE: u16 = 256;
 
@@ -270,6 +271,7 @@ pub struct Console {
     // happens, or when a restore is performed. On a fresh startup, it will be empty. On a restore,
     // it will contain whatever data was remaining in the buffer in the snapshot.
     input_buffer: VecDeque<u8>,
+    pci_address: Option<PciAddress>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -284,6 +286,7 @@ impl Console {
         input: Option<InStreamType>,
         output: Option<Box<dyn io::Write + Send>>,
         mut keep_rds: Vec<RawDescriptor>,
+        pci_address: Option<PciAddress>,
     ) -> Console {
         let in_avail_evt = Event::new().expect("failed creating Event");
         keep_rds.push(in_avail_evt.as_raw_descriptor());
@@ -296,6 +299,7 @@ impl Console {
             keep_descriptors: keep_rds.iter().map(|rd| Descriptor(*rd)).collect(),
             input_thread: None,
             input_buffer: VecDeque::new(),
+            pci_address,
         }
     }
 }
@@ -384,6 +388,10 @@ impl VirtioDevice for Console {
             worker
         }));
         Ok(())
+    }
+
+    fn pci_address(&self) -> Option<PciAddress> {
+        self.pci_address
     }
 
     fn reset(&mut self) -> bool {

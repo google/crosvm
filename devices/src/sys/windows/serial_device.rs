@@ -38,6 +38,7 @@ pub trait SerialDevice {
         interrupt_evt: Event,
         pipe_in: named_pipes::PipeConnection,
         pipe_out: named_pipes::PipeConnection,
+        options: SerialOptions,
         keep_rds: Vec<RawDescriptor>,
     ) -> Self;
 }
@@ -79,6 +80,7 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
                 evt,
                 pipe_in,
                 pipe_out,
+                Default::default(),
                 keep_rds.to_vec(),
             ))
         }

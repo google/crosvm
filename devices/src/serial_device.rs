@@ -30,6 +30,7 @@ use thiserror::Error as ThisError;
 
 pub use crate::sys::serial_device::SerialDevice;
 use crate::sys::serial_device::*;
+use crate::PciAddress;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -158,6 +159,7 @@ pub struct SerialParameters {
         default = "serial_parameters_default_debugcon_port"
     )]
     pub debugcon_port: u16,
+    pub pci_address: Option<PciAddress>,
 }
 
 /// Temporary structure containing the parameters of a serial port for easy passing to
@@ -167,6 +169,7 @@ pub struct SerialOptions {
     pub name: Option<String>,
     pub out_timestamp: bool,
     pub console: bool,
+    pub pci_address: Option<PciAddress>,
 }
 
 impl SerialParameters {
@@ -249,6 +252,7 @@ impl SerialParameters {
                 name: self.name.clone(),
                 out_timestamp: self.out_timestamp,
                 console: self.console,
+                pci_address: self.pci_address,
             },
             keep_rds.to_vec(),
         ))
@@ -283,6 +287,7 @@ mod tests {
                 stdin: false,
                 out_timestamp: false,
                 debugcon_port: 0x402,
+                pci_address: None,
             }
         );
 
@@ -377,7 +382,7 @@ mod tests {
         assert_eq!(params.debugcon_port, 1026);
 
         // all together
-        let params = from_serial_arg("type=stdout,path=/some/path,hardware=virtio-console,num=5,earlycon,console,stdin,input=/some/input,out_timestamp,debugcon_port=12").unwrap();
+        let params = from_serial_arg("type=stdout,path=/some/path,hardware=virtio-console,num=5,earlycon,console,stdin,input=/some/input,out_timestamp,debugcon_port=12,pci-address=00:0e.0").unwrap();
         assert_eq!(
             params,
             SerialParameters {
@@ -392,6 +397,11 @@ mod tests {
                 stdin: true,
                 out_timestamp: true,
                 debugcon_port: 12,
+                pci_address: Some(PciAddress {
+                    bus: 0,
+                    dev: 14,
+                    func: 0
+                }),
             }
         );
 

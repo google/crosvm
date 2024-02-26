@@ -395,6 +395,16 @@ pub fn validate_serial_parameters(params: &SerialParameters) -> Result<(), Strin
         ));
     }
 
+    if params.pci_address.is_some()
+        && params.hardware != SerialHardware::VirtioConsole
+        && params.hardware != SerialHardware::LegacyVirtioConsole
+    {
+        return Err(invalid_value_err(
+            params.pci_address.unwrap().to_string(),
+            "Providing serial PCI address is only supported for virtio-console hardware type",
+        ));
+    }
+
     Ok(())
 }
 
@@ -1504,6 +1514,48 @@ mod tests {
             .unwrap()
         )
         .is_err())
+    }
+
+    #[test]
+    fn parse_serial_pci_address_valid_for_virtio() {
+        let parsed =
+            parse_serial_options("type=syslog,hardware=virtio-console,pci-address=00:0e.0")
+                .expect("parse should have succeded");
+        assert_eq!(
+            parsed.pci_address,
+            Some(PciAddress {
+                bus: 0,
+                dev: 14,
+                func: 0
+            })
+        );
+    }
+
+    #[test]
+    fn parse_serial_pci_address_valid_for_legacy_virtio() {
+        let parsed =
+            parse_serial_options("type=syslog,hardware=legacy-virtio-console,pci-address=00:0e.0")
+                .expect("parse should have succeded");
+        assert_eq!(
+            parsed.pci_address,
+            Some(PciAddress {
+                bus: 0,
+                dev: 14,
+                func: 0
+            })
+        );
+    }
+
+    #[test]
+    fn parse_serial_pci_address_failed_for_serial() {
+        parse_serial_options("type=syslog,hardware=serial,pci-address=00:0e.0")
+            .expect_err("expected pci-address error for serial hardware");
+    }
+
+    #[test]
+    fn parse_serial_pci_address_failed_for_debugcon() {
+        parse_serial_options("type=syslog,hardware=debugcon,pci-address=00:0e.0")
+            .expect_err("expected pci-address error for debugcon hardware");
     }
 
     #[test]

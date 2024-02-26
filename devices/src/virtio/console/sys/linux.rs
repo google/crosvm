@@ -32,10 +32,10 @@ impl SerialDevice for Console {
         out: Option<Box<dyn io::Write + Send>>,
         // TODO(b/171331752): connect filesync functionality.
         _sync: Option<Box<dyn FileSync + Send>>,
-        _options: SerialOptions,
+        options: SerialOptions,
         keep_rds: Vec<RawDescriptor>,
     ) -> Console {
-        Console::new(protection_type, input, out, keep_rds)
+        Console::new(protection_type, input, out, keep_rds, options.pci_address)
     }
 }
 

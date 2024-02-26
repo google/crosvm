@@ -1941,7 +1941,7 @@ pub struct RunCommand {
 
     #[argh(
         option,
-        arg_name = "type=TYPE,[hardware=HW,name=NAME,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
+        arg_name = "type=TYPE,[hardware=HW,name=NAME,num=NUM,path=PATH,input=PATH,console,earlycon,stdin,pci-address=ADDR]",
         from_str_fn(parse_serial_options)
     )]
     #[serde(default)]
@@ -1973,6 +1973,7 @@ pub struct RunCommand {
     ///     stdin - Direct standard input to this serial device.
     ///        Can only be given once. Will default to first serial
     ///        port if not provided.
+    ///     pci-address - Preferred PCI address, e.g. "00:01.0".
     pub serial: Vec<SerialParameters>,
 
     #[cfg(windows)]

@@ -112,6 +112,7 @@ impl SerialDevice for Serial {
         interrupt_evt: Event,
         pipe_in: PipeConnection,
         pipe_out: PipeConnection,
+        _options: SerialOptions,
         _keep_rds: Vec<RawDescriptor>,
     ) -> Serial {
         let system_params = SystemSerialParams {
@@ -245,6 +246,7 @@ mod tests {
             event,
             pipe_in,
             pipe_out,
+            Default::default(),
             Vec::new(),
         );
 

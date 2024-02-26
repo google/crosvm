@@ -48,6 +48,7 @@ impl SerialDevice for Debugcon {
         _interrupt_evt: Event,
         _pipe_in: named_pipes::PipeConnection,
         _pipe_out: named_pipes::PipeConnection,
+        _options: SerialOptions,
         _keep_rds: Vec<RawDescriptor>,
     ) -> Debugcon {
         unimplemented!("new_with_pipe unimplemented for Debugcon");

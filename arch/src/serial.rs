@@ -262,6 +262,7 @@ mod tests {
                 stdin: true,
                 out_timestamp: false,
                 debugcon_port: 0,
+                pci_address: None,
             },
         );
 
@@ -293,6 +294,7 @@ mod tests {
                 stdin: true,
                 out_timestamp: false,
                 debugcon_port: 0,
+                pci_address: None,
             },
         );
 
@@ -311,6 +313,7 @@ mod tests {
                 stdin: false,
                 out_timestamp: false,
                 debugcon_port: 0,
+                pci_address: None,
             },
         );
 
@@ -343,6 +346,7 @@ mod tests {
                 stdin: true,
                 out_timestamp: false,
                 debugcon_port: 0,
+                pci_address: None,
             },
         );
 
