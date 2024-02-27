@@ -53,7 +53,10 @@ impl SnapshotWriter {
 
     /// Creates a snapshot fragment from a serialized representation of `v`.
     pub fn write_fragment<T: serde::Serialize>(&self, name: &str, v: &T) -> Result<()> {
-        Ok(serde_json::to_writer(self.raw_fragment(name)?, v)?)
+        let mut w = std::io::BufWriter::new(self.raw_fragment(name)?);
+        serde_json::to_writer(&mut w, v)?;
+        w.flush()?;
+        Ok(())
     }
 
     /// Creates new namespace and returns a `SnapshotWriter` that writes to it. Namespaces can be
@@ -96,7 +99,9 @@ impl SnapshotReader {
 
     /// Reads a fragment.
     pub fn read_fragment<T: serde::de::DeserializeOwned>(&self, name: &str) -> Result<T> {
-        Ok(serde_json::from_reader(self.raw_fragment(name)?)?)
+        Ok(serde_json::from_reader(std::io::BufReader::new(
+            self.raw_fragment(name)?,
+        ))?)
     }
 
     /// Reads the names of all fragments in this namespace.

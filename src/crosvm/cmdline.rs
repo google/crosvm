@@ -809,8 +809,13 @@ where
 
 #[cfg(feature = "config-file")]
 fn write_config_file(config_file: &Path, cmd: &RunCommand) -> Result<(), String> {
-    let file = std::fs::File::create(config_file).map_err(|e| e.to_string())?;
-    serde_json::to_writer_pretty(file, cmd).map_err(|e| e.to_string())
+    use std::io::Write;
+
+    let mut w =
+        std::io::BufWriter::new(std::fs::File::create(config_file).map_err(|e| e.to_string())?);
+    serde_json::to_writer_pretty(&mut w, cmd).map_err(|e| e.to_string())?;
+    w.flush().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Overwrite an `Option<T>` if the right member is set.
