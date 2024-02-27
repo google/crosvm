@@ -4,7 +4,9 @@
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
+use std::sync::mpsc;
 
+use anyhow::bail;
 use base::error;
 
 use crate::bus::HotPlugBus;
@@ -83,11 +85,14 @@ impl PciePortVariant for PcieUpstreamPort {
 // hotplug out.
 impl HotPlugBus for PcieUpstreamPort {
     // Do nothing. We are not a real hotplug bus.
-    fn hot_plug(&mut self, _addr: PciAddress) {}
+    fn hot_plug(&mut self, _addr: PciAddress) -> anyhow::Result<Option<mpsc::Receiver<()>>> {
+        bail!("hot plug not supported on upstream port.")
+    }
 
     // Just remove the downstream device.
-    fn hot_unplug(&mut self, addr: PciAddress) {
+    fn hot_unplug(&mut self, addr: PciAddress) -> anyhow::Result<Option<mpsc::Receiver<()>>> {
         self.downstream_devices.remove(&addr);
+        Ok(None)
     }
 
     fn get_secondary_bus_number(&self) -> Option<u8> {
@@ -208,19 +213,25 @@ impl PciePortVariant for PcieDownstreamPort {
 }
 
 impl HotPlugBus for PcieDownstreamPort {
-    fn hot_plug(&mut self, addr: PciAddress) {
-        if !self.pcie_port.hotplug_implemented() || self.downstream_devices.get(&addr).is_none() {
-            return;
+    fn hot_plug(&mut self, addr: PciAddress) -> anyhow::Result<Option<mpsc::Receiver<()>>> {
+        if !self.pcie_port.hotplug_implemented() {
+            bail!("hotplug not implemented.");
+        }
+        if self.downstream_devices.get(&addr).is_none() {
+            bail!("no downstream devices.");
         }
         self.pcie_port
             .set_slot_status(PCIE_SLTSTA_PDS | PCIE_SLTSTA_ABP);
         self.pcie_port.trigger_hp_or_pme_interrupt();
+        Ok(None)
     }
 
-    fn hot_unplug(&mut self, addr: PciAddress) {
-        if self.downstream_devices.remove(&addr).is_none() || !self.pcie_port.hotplug_implemented()
-        {
-            return;
+    fn hot_unplug(&mut self, addr: PciAddress) -> anyhow::Result<Option<mpsc::Receiver<()>>> {
+        if !self.pcie_port.hotplug_implemented() {
+            bail!("hotplug not implemented.");
+        }
+        if self.downstream_devices.remove(&addr).is_none() {
+            bail!("no downstream devices.");
         }
 
         if !self.hotplug_out_begin {
@@ -239,6 +250,7 @@ impl HotPlugBus for PcieDownstreamPort {
         }
 
         self.hotplug_out_begin = true;
+        Ok(None)
     }
 
     fn get_address(&self) -> Option<PciAddress> {

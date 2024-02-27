@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::result;
+use std::sync::mpsc;
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -208,13 +209,17 @@ pub enum HotPlugKey {
 }
 
 /// Trait for devices that notify hotplug event into guest
-pub trait HotPlugBus {
-    /// Notify hotplug in event into guest
+pub trait HotPlugBus: Send {
+    /// Request hot plug event. Returns error if the request is not sent. Upon success, optionally
+    /// returns a notification receiver, where a notification is sent when the guest OS completes
+    /// the request (by sending PCI_EXP_SLTCTL_CCIE). Returns None if no such mechanism is provided.
     /// * 'addr' - the guest pci address for hotplug in device
-    fn hot_plug(&mut self, addr: PciAddress);
-    /// Notify hotplug out event into guest
+    fn hot_plug(&mut self, addr: PciAddress) -> anyhow::Result<Option<mpsc::Receiver<()>>>;
+    /// Request hot unplug event. Returns error if the request is not sent. Upon success, optionally
+    /// returns a notification receiver, where a notification is sent when the guest OS completes
+    /// the request (by sending PCI_EXP_SLTCTL_CCIE). Returns None if no such mechanism is provided.
     /// * 'addr' - the guest pci address for hotplug out device
-    fn hot_unplug(&mut self, addr: PciAddress);
+    fn hot_unplug(&mut self, addr: PciAddress) -> anyhow::Result<Option<mpsc::Receiver<()>>>;
     /// Check whether the hotplug bus is available to add the new device
     ///
     /// - 'None': hotplug bus isn't match with host pci device

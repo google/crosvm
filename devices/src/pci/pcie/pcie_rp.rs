@@ -3,7 +3,9 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
+use std::sync::mpsc;
 
+use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use vm_control::GpeNotify;
@@ -86,38 +88,49 @@ impl PciePortVariant for PcieRootPort {
 }
 
 impl HotPlugBus for PcieRootPort {
-    fn hot_plug(&mut self, addr: PciAddress) {
-        if self.downstream_devices.get(&addr).is_none() {
-            return;
+    fn hot_plug(&mut self, addr: PciAddress) -> Result<Option<mpsc::Receiver<()>>> {
+        if self.pcie_port.is_cc_pending() {
+            bail!("Slot busy: plugging too early or guest does not support PCIe hotplug.");
         }
+        self.downstream_devices
+            .get(&addr)
+            .context("No downstream devices.")?;
 
+        let (cc_sender, cc_recvr) = mpsc::channel();
+        self.pcie_port.set_cc_sender(cc_sender);
         self.pcie_port
             .set_slot_status(PCIE_SLTSTA_PDS | PCIE_SLTSTA_ABP);
         self.pcie_port.trigger_hp_or_pme_interrupt();
+        Ok(Some(cc_recvr))
     }
 
-    fn hot_unplug(&mut self, addr: PciAddress) {
-        if self.downstream_devices.remove(&addr).is_none() {
-            return;
+    fn hot_unplug(&mut self, addr: PciAddress) -> Result<Option<mpsc::Receiver<()>>> {
+        self.downstream_devices
+            .remove(&addr)
+            .context("No downstream devices.")?;
+        if self.hotplug_out_begin {
+            bail!("Hot unplug is pending.")
         }
-
-        if !self.hotplug_out_begin {
-            self.removed_downstream.clear();
-            self.removed_downstream.push(addr);
-            // All the remaine devices will be removed also in this hotplug out interrupt
-            for (guest_pci_addr, _) in self.downstream_devices.iter() {
-                self.removed_downstream.push(*guest_pci_addr);
-            }
-
-            self.pcie_port.set_slot_status(PCIE_SLTSTA_ABP);
-            self.pcie_port.trigger_hp_or_pme_interrupt();
-
-            if self.pcie_port.is_host() {
-                self.pcie_port.hot_unplug()
-            }
-        }
-
         self.hotplug_out_begin = true;
+
+        self.removed_downstream.clear();
+        self.removed_downstream.push(addr);
+        // All the remaine devices will be removed also in this hotplug out interrupt
+        for (guest_pci_addr, _) in self.downstream_devices.iter() {
+            self.removed_downstream.push(*guest_pci_addr);
+        }
+
+        let (cc_sender, cc_recvr) = mpsc::channel();
+        if self.pcie_port.set_cc_sender(cc_sender).is_some() {
+            bail!("Slot busy: unplugging too early or guest does not support PCIe hotplug.");
+        }
+        self.pcie_port.set_slot_status(PCIE_SLTSTA_ABP);
+        self.pcie_port.trigger_hp_or_pme_interrupt();
+
+        if self.pcie_port.is_host() {
+            self.pcie_port.hot_unplug()
+        }
+        Ok(Some(cc_recvr))
     }
 
     fn get_address(&self) -> Option<PciAddress> {

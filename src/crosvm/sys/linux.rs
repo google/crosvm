@@ -2371,7 +2371,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     };
     hp_bus.lock().add_hotplug_device(hotplug_key, pci_address);
     if device.hp_interrupt {
-        hp_bus.lock().hot_plug(pci_address);
+        hp_bus.lock().hot_plug(pci_address)?;
     }
     Ok(())
 }
@@ -2497,7 +2497,7 @@ fn remove_hotplug_bridge<V: VmArch, Vcpu: VcpuArch>(
         let mut hp_bus_lock = hp_bus.lock();
         if let Some(pci_addr) = hp_bus_lock.get_hotplug_device(hotplug_key) {
             sys_allocator.release_pci(pci_addr.bus, pci_addr.dev, pci_addr.func);
-            hp_bus_lock.hot_unplug(pci_addr);
+            hp_bus_lock.hot_unplug(pci_addr)?;
             buses_to_remove.push(child_bus);
             if hp_bus_lock.is_empty() {
                 if let Some(hotplug_key) = hp_bus_lock.get_hotplug_key() {
@@ -2583,7 +2583,7 @@ fn remove_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
             // downstream port. Root port will send one plug out interrupt and remove all
             // the remaining devices
             if !empty_simbling {
-                hp_bus_lock.hot_unplug(pci_addr);
+                hp_bus_lock.hot_unplug(pci_addr)?;
             }
 
             sys_allocator.release_pci(pci_addr.bus, pci_addr.dev, pci_addr.func);

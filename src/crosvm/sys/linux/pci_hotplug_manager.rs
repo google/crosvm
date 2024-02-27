@@ -71,7 +71,7 @@ impl PortStub {
     /// Sends hotplug signal on the port.
     fn send_hotplug_signal(&mut self) -> Result<()> {
         let base_pci_address = PciAddress::new(0, self.downstream_bus.into(), 0, 0)?;
-        self.port.lock().hot_plug(base_pci_address);
+        self.port.lock().hot_plug(base_pci_address)?;
         Ok(())
     }
 }
@@ -281,7 +281,7 @@ impl PciHotPlugManager {
     fn remove_device_from_port(&self, bus: u8) -> Result<()> {
         if let Some(port_stub) = self.occupied_ports.get(&bus) {
             let base_pci_address = PciAddress::new(0, bus as u32, 0, 0)?;
-            port_stub.port.lock().hot_unplug(base_pci_address);
+            port_stub.port.lock().hot_unplug(base_pci_address)?;
             Ok(())
         } else {
             bail!("invalid bus number for device removal: {}", bus);
