@@ -96,6 +96,11 @@ where
         Self::new(tap)
     }
 
+    fn new_from_name(name: &str) -> anyhow::Result<Self> {
+        let tap = T::new_with_name(name.as_bytes(), true, false).map_err(NetError::TapOpen)?;
+        Self::new(tap)
+    }
+
     pub fn new_from_tap_fd(tap_fd: RawDescriptor) -> anyhow::Result<Self> {
         let tap_fd = validate_raw_descriptor(tap_fd).context("failed to validate tap fd")?;
         // SAFETY:
@@ -255,6 +260,9 @@ pub struct Options {
     #[argh(option, arg_name = "SOCKET_PATH,TAP_FD")]
     /// TAP FD with a socket path"
     tap_fd: Vec<String>,
+    #[argh(option, arg_name = "SOCKET_PATH,TAP_NAME")]
+    /// TAP NAME with a socket path
+    tap_name: Vec<String>,
 }
 
 enum Connection {
@@ -273,6 +281,21 @@ fn new_backend_from_device_arg(arg: &str) -> anyhow::Result<(String, NetBackend<
         .parse::<TapConfig>()
         .context("failed to parse tap config")?;
     let backend = NetBackend::<Tap>::new_from_config(cfg).context("failed to create NetBackend")?;
+    Ok((conn.to_string(), backend))
+}
+
+fn new_backend_from_tap_name(arg: &str) -> anyhow::Result<(String, NetBackend<Tap>)> {
+    let pos = match arg.find(',') {
+        Some(p) => p,
+        None => {
+            bail!("device must take comma-separated argument");
+        }
+    };
+    let conn = &arg[0..pos];
+    let tap_name = &arg[pos + 1..];
+
+    let backend =
+        NetBackend::<Tap>::new_from_name(tap_name).context("failed to create NetBackend")?;
     Ok((conn.to_string(), backend))
 }
 
@@ -296,7 +319,7 @@ fn new_backend_from_tapfd_arg(arg: &str) -> anyhow::Result<(String, NetBackend<T
 /// Starts a vhost-user net device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn start_device(opts: Options) -> anyhow::Result<()> {
-    let num_devices = opts.device.len() + opts.tap_fd.len();
+    let num_devices = opts.device.len() + opts.tap_fd.len() + opts.tap_name.len();
 
     if num_devices == 0 {
         bail!("no device option was passed");
@@ -309,6 +332,12 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         devices.push(
             new_backend_from_device_arg(arg)
                 .map(|(s, backend)| (Connection::Socket(s), backend))?,
+        );
+    }
+
+    for arg in opts.tap_name.iter() {
+        devices.push(
+            new_backend_from_tap_name(arg).map(|(s, backend)| (Connection::Socket(s), backend))?,
         );
     }
     for arg in opts.tap_fd.iter() {
