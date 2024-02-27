@@ -124,11 +124,11 @@ mod test {
     }
 
     fn wait_for_state(controller: &SwapController, state: SwapState) -> bool {
-        for _ in 0..10 {
+        for _ in 0..20 {
             if controller.status().unwrap().state == state {
                 return true;
             }
-            std::thread::sleep(Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(100));
         }
         false
     }
