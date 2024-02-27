@@ -329,34 +329,24 @@ impl IoCompletionPort {
         Err(Error::IocpOperationFailed(SysError::last()))
     }
 
-    fn take_completed_packets(&self) -> SmallVec<[CompletionPacket; ENTRIES_PER_POLL]> {
+    /// Waits for completion events to arrive & returns the completion keys.
+    fn poll_threaded(&self) -> Result<SmallVec<[CompletionPacket; ENTRIES_PER_POLL]>> {
         let mut completion_packets = SmallVec::with_capacity(ENTRIES_PER_POLL);
         let mut packets = self.completed.0.lock();
-        let len = usize::min(ENTRIES_PER_POLL, packets.len());
-        for p in packets.drain(..len) {
-            completion_packets.push(p)
+        loop {
+            let len = usize::min(ENTRIES_PER_POLL, packets.len());
+            for p in packets.drain(..len) {
+                completion_packets.push(p)
+            }
+            if !completion_packets.is_empty() {
+                return Ok(completion_packets);
+            }
+            packets = self.completed.1.wait(packets).unwrap();
         }
-        completion_packets
     }
 
     /// Waits for completion events to arrive & returns the completion keys.
-    pub fn poll_threaded(&self) -> Result<SmallVec<[CompletionPacket; ENTRIES_PER_POLL]>> {
-        let completion_packets = self.take_completed_packets();
-
-        if !completion_packets.is_empty() {
-            return Ok(completion_packets);
-        }
-
-        {
-            let available = self.completed.0.lock();
-            let _unused = self.completed.1.wait(available).unwrap();
-        }
-        let completion_packets = self.take_completed_packets();
-        Ok(completion_packets)
-    }
-
-    /// Waits for completion events to arrive & returns the completion keys.
-    pub fn poll_unthreaded(&self) -> Result<SmallVec<[CompletionPacket; ENTRIES_PER_POLL]>> {
+    fn poll_unthreaded(&self) -> Result<SmallVec<[CompletionPacket; ENTRIES_PER_POLL]>> {
         // SAFETY: safe because port is in scope for the duration of the call.
         let packets = unsafe { poll(self.port.as_raw_descriptor())? };
         let mut completion_packets = SmallVec::with_capacity(ENTRIES_PER_POLL);
