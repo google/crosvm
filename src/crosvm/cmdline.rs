@@ -1009,6 +1009,7 @@ pub struct RunCommand {
     ///         will attempt to boot from the current device
     ///         after failing to boot from the device with
     ///         bootindex=1.
+    ///     pci-address=ADDR - Preferred PCI address, e.g. "00:01.0".
     block: Vec<DiskOptionWithId>,
 
     #[cfg(target_arch = "x86_64")]

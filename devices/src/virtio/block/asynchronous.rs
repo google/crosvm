@@ -89,6 +89,7 @@ use crate::virtio::Queue;
 use crate::virtio::Reader;
 use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
+use crate::PciAddress;
 
 const DEFAULT_QUEUE_SIZE: u16 = 256;
 const DEFAULT_NUM_QUEUES: u16 = 16;
@@ -615,6 +616,7 @@ pub struct BlockAsync {
     activated_queues: BTreeSet<usize>,
     #[cfg(windows)]
     pub(super) io_concurrency: u32,
+    pci_address: Option<PciAddress>,
 }
 
 impl BlockAsync {
@@ -701,6 +703,7 @@ impl BlockAsync {
             boot_index,
             #[cfg(windows)]
             io_concurrency,
+            pci_address: disk_option.pci_address,
         })
     }
 
@@ -1191,6 +1194,10 @@ impl VirtioDevice for BlockAsync {
         Ok(())
     }
 
+    fn pci_address(&self) -> Option<PciAddress> {
+        self.pci_address
+    }
+
     fn bootorder_fw_cfg(&self, pci_slot: u8) -> Option<(Vec<u8>, usize)> {
         self.boot_index
             .map(|s| (format!("scsi@{}/disk@0,0", pci_slot).as_bytes().to_vec(), s))
@@ -1301,6 +1308,24 @@ mod tests {
             // + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
             assert_eq!(0x120001064, b.features());
         }
+    }
+
+    #[test]
+    fn check_pci_adress_configurability() {
+        let f = tempfile().unwrap();
+
+        let features = base_features(ProtectionType::Unprotected);
+        let disk_option = DiskOption {
+            pci_address: Some(PciAddress {
+                bus: 0,
+                dev: 1,
+                func: 1,
+            }),
+            ..Default::default()
+        };
+        let b = BlockAsync::new(features, Box::new(f), &disk_option, None, None, None).unwrap();
+
+        assert_eq!(b.pci_address(), disk_option.pci_address);
     }
 
     #[test]
