@@ -2945,6 +2945,7 @@ dependencies = [
  "serde",
  "winapi",
  "windows",
+ "zeroize",
 ]
 
 [[package]]
@@ -3178,3 +3179,9 @@ dependencies = [
  "quote 1.0.33",
  "syn 2.0.37",
 ]
+
+[[package]]
+name = "zeroize"
+version = "1.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c394b5bd0c6f669e7275d9c20aa90ae064cb22e75a1cad54e1b34088034b149f"

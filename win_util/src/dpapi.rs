@@ -16,6 +16,7 @@ use winapi::um::dpapi::CryptProtectData;
 use winapi::um::dpapi::CryptUnprotectData;
 use winapi::um::winbase::LocalFree;
 use winapi::um::wincrypt::DATA_BLOB;
+use zeroize::Zeroize;
 
 use crate::syscall_bail;
 
@@ -46,6 +47,9 @@ impl LocalAllocBuffer {
 
 impl Drop for LocalAllocBuffer {
     fn drop(&mut self) {
+        // This buffer likely contains cryptographic key material. Zero it.
+        self.as_mut_slice().zeroize();
+
         // SAFETY: when this struct is created, the caller guarantees
         // ptr is a valid pointer to a buffer that can be freed with LocalFree.
         unsafe {
