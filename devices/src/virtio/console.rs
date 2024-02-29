@@ -395,7 +395,9 @@ impl VirtioDevice for Console {
     }
 
     fn reset(&mut self) -> bool {
-        self.input = self.input_thread.take().map(|t| t.stop());
+        if let Some(input_thread) = self.input_thread.take() {
+            self.input = Some(input_thread.stop());
+        }
         if let Some(worker_thread) = self.worker_thread.take() {
             let worker = worker_thread.stop();
             // NOTE: Even though we are reseting the device, it still makes sense to preserve the
@@ -410,7 +412,9 @@ impl VirtioDevice for Console {
     }
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
-        self.input = self.input_thread.take().map(|t| t.stop());
+        if let Some(input_thread) = self.input_thread.take() {
+            self.input = Some(input_thread.stop());
+        }
         if let Some(worker_thread) = self.worker_thread.take() {
             let worker = worker_thread.stop();
             self.input_buffer = worker
