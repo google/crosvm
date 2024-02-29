@@ -50,7 +50,7 @@ cros_async = { path = "../cros_async" }
 cros-codecs = { version = "0.0.4", optional = true }
 crosvm_cli = { path = "../crosvm_cli" }
 data_model = { path = "../common/data_model" }
-dbus = { version = "0.9", optional = true }
+dbus = { version = "0.9.7", features = ["stdfd"], optional = true }
 disk = { path = "../disk" }
 downcast-rs = "1.2.0"
 enumn = "0.1.0"

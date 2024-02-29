@@ -1348,9 +1348,8 @@ impl PassthroughFs {
                 if !is_android_project_id(project_id) {
                     return Err(io::Error::from_raw_os_error(libc::EINVAL));
                 }
-                // SAFETY: data is a valid file descriptor.
-                let fd = unsafe { dbus::arg::OwnedFd::new(base::clone_descriptor(&*data)?) };
-                match proxy.set_project_id(fd, project_id) {
+                let file_clone = base::SafeDescriptor::try_from(&*data)?;
+                match proxy.set_project_id(file_clone.into(), project_id) {
                     Ok(r) => {
                         let r = SetProjectIdReply::parse_from_bytes(&r)
                             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -1439,9 +1438,8 @@ impl PassthroughFs {
                 // If the input flags contain FS_PROJINHERIT_FL, then it is a set. Otherwise it is a
                 // reset.
                 let enable = (in_flags & FS_PROJINHERIT_FL) == FS_PROJINHERIT_FL;
-                // SAFETY: data is a valid file descriptor.
-                let fd = unsafe { dbus::arg::OwnedFd::new(base::clone_descriptor(&*data)?) };
-                match proxy.set_project_inheritance_flag(fd, enable) {
+                let file_clone = base::SafeDescriptor::try_from(&*data)?;
+                match proxy.set_project_inheritance_flag(file_clone.into(), enable) {
                     Ok(r) => {
                         let r = SetProjectInheritanceFlagReply::parse_from_bytes(&r)
                             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;

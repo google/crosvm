@@ -8,5 +8,5 @@ edition = "2021"
 path = "src/system_api.rs"
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
-dbus = "0.9"
+dbus = { version = "0.9.7", features = ["stdfd"] }
 protobuf = "3.2"
