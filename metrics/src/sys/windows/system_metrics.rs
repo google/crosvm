@@ -22,7 +22,7 @@ use base::FromRawDescriptor;
 use base::SafeDescriptor;
 use base::WaitContext;
 use chrono::DateTime;
-use chrono::Local;
+use chrono::Utc;
 use winapi::shared::minwindef::DWORD;
 use winapi::shared::minwindef::FILETIME;
 use winapi::um::processthreadsapi::GetProcessTimes;
@@ -224,15 +224,15 @@ impl Worker {
                 let updated_io = match *io_record {
                     Some(io) => ProcessIoRecord {
                         current: new_io,
-                        current_time: Local::now(),
+                        current_time: Utc::now(),
                         last_upload: io.last_upload,
                         last_upload_time: io.last_upload_time,
                     },
                     None => ProcessIoRecord {
                         current: new_io,
-                        current_time: Local::now(),
+                        current_time: Utc::now(),
                         last_upload: new_io,
-                        last_upload_time: Local::now(),
+                        last_upload_time: Utc::now(),
                     },
                 };
                 *io_record = Some(updated_io);
@@ -530,9 +530,9 @@ struct ProcessIo {
 #[derive(Copy, Clone)]
 struct ProcessIoRecord {
     current: ProcessIo,
-    current_time: DateTime<Local>,
+    current_time: DateTime<Utc>,
     last_upload: ProcessIo,
-    last_upload_time: DateTime<Local>,
+    last_upload_time: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone)]

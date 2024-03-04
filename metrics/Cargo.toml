@@ -13,5 +13,5 @@ sync = { path = "../common/sync" }
 metrics_product = { path = "../vendor/generic/metrics", package = "metrics_generic" }
 
 [target.'cfg(windows)'.dependencies]
-chrono = { version = "0.4.34", default-features = false, features = ["clock"] }
+chrono = { version = "0.4.34", default-features = false, features = ["now"] }
 winapi = { version = "*" }
