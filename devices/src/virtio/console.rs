@@ -492,3 +492,64 @@ impl VirtioDevice for Console {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[cfg(windows)]
+    use base::windows::named_pipes;
+    use tempfile::tempfile;
+    use vm_memory::GuestAddress;
+
+    use super::*;
+    use crate::suspendable_virtio_tests;
+
+    struct ConsoleContext {
+        #[cfg(windows)]
+        input_peer: named_pipes::PipeConnection,
+    }
+
+    fn modify_device(_context: &mut ConsoleContext, b: &mut Console) {
+        b.input_buffer.push_back(0);
+    }
+
+    fn create_device() -> (ConsoleContext, Console) {
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        let (input, context) = (Box::new(tempfile().unwrap()), ConsoleContext {});
+        #[cfg(windows)]
+        let (input, context) = {
+            let (x, y) = named_pipes::pair(
+                &named_pipes::FramingMode::Byte,
+                &named_pipes::BlockingMode::NoWait,
+                0,
+            )
+            .unwrap();
+            (Box::new(x), ConsoleContext { input_peer: y })
+        };
+
+        let output = Box::new(tempfile().unwrap());
+        (
+            context,
+            Console::new(
+                hypervisor::ProtectionType::Unprotected,
+                Some(input),
+                Some(output),
+                Vec::new(),
+                None,
+            ),
+        )
+    }
+
+    suspendable_virtio_tests!(console, create_device, 2, modify_device);
+
+    #[test]
+    fn test_inactive_sleep_resume() {
+        let (_ctx, device) = &mut create_device();
+        let sleep_result = device.virtio_sleep().expect("failed to sleep");
+        assert!(sleep_result.is_none());
+        device.virtio_snapshot().expect("failed to snapshot");
+        device.virtio_wake(None).expect("failed to wake");
+        // Make sure the input and output haven't been dropped.
+        assert!(device.input.is_some());
+        assert!(device.output.is_some());
+    }
+}
