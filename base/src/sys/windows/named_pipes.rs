@@ -617,9 +617,7 @@ impl PipeConnection {
         match unsafe { self.read_overlapped(buf, overlapped_wrapper) } {
             // More data isn't necessarily an error as long as we've filled the provided buffer,
             // as is checked later in this function.
-            Err(e) if e.raw_os_error().expect("must be an OS error") == ERROR_MORE_DATA as i32 => {
-                Ok(())
-            }
+            Err(e) if e.raw_os_error() == Some(ERROR_MORE_DATA as i32) => Ok(()),
             Err(e) => Err(e),
             Ok(()) => Ok(()),
         }?;
