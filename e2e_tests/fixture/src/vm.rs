@@ -307,6 +307,7 @@ impl TestVm {
 
         // It's possible the prebuilts downloaded by crosvm-9999.ebuild differ
         // from the version that crosvm was compiled for.
+        info!("Prebuilt version to be used: {}", prebuilt_version());
         if let Ok(value) = env::var("CROSVM_CARGO_TEST_PREBUILT_VERSION") {
             if value != prebuilt_version() {
                 panic!(
