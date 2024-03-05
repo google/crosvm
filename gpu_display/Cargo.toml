@@ -36,11 +36,9 @@ metrics = { path = "../metrics" }
 num-traits = "*"
 winapi = "*"
 win_util = { path = "../win_util" }
-once_cell = "*"
 smallvec = "*"
 sync = { path = "../common/sync" }
 euclid = "*"
-lazy_static = "*"
 
 [build-dependencies]
 cc = "1.0.25"

@@ -30,7 +30,6 @@ use euclid::size2;
 use euclid::Box2D;
 use euclid::Size2D;
 use euclid::UnknownUnit;
-use lazy_static::lazy_static;
 use sync::Mutex;
 use vulkano::device::Device;
 use vulkano::instance::Instance;
@@ -365,9 +364,7 @@ unsafe extern "system" fn wnd_proc<AppState: ApplicationState>(
     }
 }
 
-lazy_static! {
-    static ref WND_CLASS_REGISTRATION_SUCCESS: Mutex<bool> = Mutex::new(false);
-}
+static WND_CLASS_REGISTRATION_SUCCESS: Mutex<bool> = Mutex::new(false);
 
 /// # Safety
 ///  - The passed in `worker` must not be destroyed before the created window is destroyed if the
