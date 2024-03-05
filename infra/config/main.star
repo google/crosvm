@@ -123,8 +123,6 @@ luci.cq_group(
         repo = "https://chromium.googlesource.com/crosvm/crosvm",
         refs = ["refs/heads/.+"],  # will watch all branches
     ),
-    # Allows us to submit chains of commits with a single CQ run.
-    allow_submit_with_open_deps = True,
 )
 
 # Console showing all postsubmit verify builders
