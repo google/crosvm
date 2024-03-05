@@ -6,5 +6,4 @@ edition = "2021"
 
 [dependencies]
 anyhow = "*"
-lazy_static = "*"
 sync = { path = "../common/sync" }

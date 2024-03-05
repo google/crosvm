@@ -6,16 +6,13 @@
 //! use is for FFIs like Perfetto which require any trace point names to be
 //! static.
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::ffi::CString;
 use std::os::raw::c_char;
 
-use lazy_static::lazy_static;
 use sync::Mutex;
 
-lazy_static! {
-    static ref STATIC_STRINGS: Mutex<HashSet<CString>> = Mutex::new(HashSet::new());
-}
+static STATIC_STRINGS: Mutex<BTreeSet<CString>> = Mutex::new(BTreeSet::new());
 
 /// Holds a reference to a 'static string that was registered via `register_string`.
 #[derive(Clone, Copy)]
