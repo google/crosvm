@@ -343,6 +343,7 @@ impl Suspendable for Vmwdt {
 mod tests {
     use std::thread::sleep;
 
+    use base::poll_assert;
     use base::Tube;
 
     use super::*;
@@ -378,14 +379,13 @@ mod tests {
             vmwdt_locked[0].next_expiration_interval_ms
         };
 
-        sleep(Duration::from_millis(100));
-
-        // Verify that our timer expired and the next_expiration_interval_ms changed
-        let vmwdt_locked = device.vm_wdts.lock();
-        assert_eq!(
-            vmwdt_locked[0].next_expiration_interval_ms != next_expiration_ms,
-            true
-        );
+        // Poll multiple times as we don't get a signal when the watchdog thread has run.
+        poll_assert!(10, || {
+            sleep(Duration::from_millis(50));
+            let vmwdt_locked = device.vm_wdts.lock();
+            // Verify that our timer expired and the next_expiration_interval_ms changed
+            vmwdt_locked[0].next_expiration_interval_ms != next_expiration_ms
+        });
     }
 
     #[test]
@@ -404,16 +404,13 @@ mod tests {
         // the function get_guest_time() returns 0
         device.vm_wdts.lock()[0].last_guest_time_ms = -100;
 
-        sleep(Duration::from_millis(100));
-
-        // Verify that our timer expired and the next_expiration_interval_ms changed
-        match vm_evt_rdtube.recv::<VmEventType>() {
-            Ok(vm_event) => {
-                assert!(vm_event == VmEventType::WatchdogReset);
+        // Poll multiple times as we don't get a signal when the watchdog thread has run.
+        poll_assert!(10, || {
+            sleep(Duration::from_millis(50));
+            match vm_evt_rdtube.recv::<VmEventType>() {
+                Ok(vm_event) => vm_event == VmEventType::WatchdogReset,
+                Err(_e) => false,
             }
-            Err(_e) => {
-                panic!();
-            }
-        };
+        });
     }
 }

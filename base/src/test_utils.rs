@@ -43,3 +43,25 @@ pub fn check_can_sudo() {
         panic!("This test need to be run as root or with passwordless sudo.");
     }
 }
+
+/// Assert repeatedly until it's true
+///
+/// Runs the provided `$cond` closure until it returns true. If it does not return true after
+/// `$tries` times, it will panic.
+/// There is no delay between polls, but the `$cond` can sleep as needed.
+#[macro_export]
+macro_rules! poll_assert {
+    ($tries: tt, $cond:expr) => {
+        $crate::test_utils::poll_assert_impl(stringify!($cond), $tries, $cond)
+    };
+}
+
+/// Implementation of [poll_assert]
+pub fn poll_assert_impl(msg: &'static str, tries: usize, poll_fn: impl Fn() -> bool) {
+    for _ in 0..tries {
+        if poll_fn() {
+            return;
+        }
+    }
+    panic!("Still failing after {} tries: {}", tries, msg);
+}
