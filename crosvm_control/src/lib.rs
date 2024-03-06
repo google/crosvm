@@ -438,9 +438,13 @@ pub unsafe extern "C" fn crosvm_client_usb_list(
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage.
+/// Trivial !raw_pointer.is_null() checks prevent some unsafe behavior, but the caller should
+/// ensure no null pointers are passed into the function.
+///
+/// The safety requirements for `socket_path` and `dev_path` are the same as the ones from
+/// `CStr::from_ptr()`. `out_port` should be a non-null pointer that points to a writable 1byte
+/// region.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_usb_attach(
     socket_path: *const c_char,
@@ -460,6 +464,63 @@ pub unsafe extern "C" fn crosvm_client_usb_attach(
             let dev_path = Path::new(unsafe { CStr::from_ptr(dev_path) }.to_str().unwrap_or(""));
 
             if let Ok(UsbControlResult::Ok { port }) = do_usb_attach(socket_path, dev_path) {
+                if !out_port.is_null() {
+                    // SAFETY: trivially safe
+                    unsafe { *out_port = port };
+                }
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// Attaches a u2f security key to crosvm instance whose control socket is listening on
+/// `socket_path`.
+///
+/// The function returns the amount of entries written.
+/// # Arguments
+///
+/// * `socket_path` - Path to the crosvm control socket
+/// * `hidraw_path` - Path to the hidraw device of the security key (like `/dev/hidraw0`)
+/// * `out_port` - (optional) internal port will be written here if provided.
+///
+/// The function returns true on success or false if an error occurred.
+///
+/// # Safety
+///
+/// Function is unsafe due to raw pointer usage.
+/// Trivial !raw_pointer.is_null() checks prevent some unsafe behavior, but the caller should
+/// ensure no null pointers are passed into the function.
+///
+/// The safety requirements for `socket_path` and `hidraw_path` are the same as the ones from
+/// `CStr::from_ptr()`. `out_port` should be a non-null pointer that points to a writable 1byte
+/// region.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_security_key_attach(
+    socket_path: *const c_char,
+    hidraw_path: *const c_char,
+    out_port: *mut u8,
+) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            if hidraw_path.is_null() {
+                return false;
+            }
+            let hidraw_path = Path::new(
+                // SAFETY: just checked that `hidraw_path` is not null.
+                unsafe { CStr::from_ptr(hidraw_path) }
+                    .to_str()
+                    .unwrap_or(""),
+            );
+
+            if let Ok(UsbControlResult::Ok { port }) =
+                do_security_key_attach(socket_path, hidraw_path)
+            {
                 if !out_port.is_null() {
                     // SAFETY: trivially safe
                     unsafe { *out_port = port };
