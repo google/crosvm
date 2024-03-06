@@ -11,7 +11,6 @@ cfg_if::cfg_if! {
         mod controller;
         mod file;
         mod file_truncator;
-        mod logger;
         mod pagesize;
         mod present_list;
         // this is public only for integration tests.

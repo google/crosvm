@@ -14,7 +14,6 @@ harness = false
 
 [features]
 trace_marker = ["cros_tracing/trace_marker"]
-log_page_fault = []
 enable = ["userfaultfd", "userfaultfd-sys"]
 
 [dependencies]

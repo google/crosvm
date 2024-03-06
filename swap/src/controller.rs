@@ -49,8 +49,6 @@ use sync::Mutex;
 use vm_memory::GuestMemory;
 
 use crate::file_truncator::FileTruncator;
-#[cfg(feature = "log_page_fault")]
-use crate::logger::PageFaultEventLogger;
 use crate::page_handler::Error as PageHandlerError;
 use crate::page_handler::MoveToStaging;
 use crate::page_handler::PageHandler;
@@ -188,10 +186,6 @@ impl SwapController {
 
         let dead_uffd_checker = DeadUffdCheckerImpl::new().context("create dead uffd checker")?;
 
-        #[cfg(feature = "log_page_fault")]
-        let page_fault_logger = PageFaultEventLogger::create(&swap_dir, &guest_memory)
-            .context("create page fault logger")?;
-
         let mut keep_rds = vec![
             stdout().as_raw_descriptor(),
             stderr().as_raw_descriptor(),
@@ -199,8 +193,6 @@ impl SwapController {
             swap_file.as_raw_descriptor(),
             command_tube_monitor.as_raw_descriptor(),
             bg_job_control.get_completion_event().as_raw_descriptor(),
-            #[cfg(feature = "log_page_fault")]
-            page_fault_logger.as_raw_descriptor(),
         ];
 
         syslog::push_descriptors(&mut keep_rds);
@@ -238,8 +230,6 @@ impl SwapController {
                     swap_file,
                     bg_job_control,
                     &dead_uffd_checker,
-                    #[cfg(feature = "log_page_fault")]
-                    page_fault_logger,
                 ) {
                     if let Some(PageHandlerError::Userfaultfd(UffdError::UffdClosed)) =
                         e.downcast_ref::<PageHandlerError>()
@@ -566,7 +556,6 @@ fn monitor_process(
     swap_file: File,
     bg_job_control: BackgroundJobControl,
     dead_uffd_checker: &DeadUffdCheckerImpl,
-    #[cfg(feature = "log_page_fault")] mut page_fault_logger: PageFaultEventLogger,
 ) -> anyhow::Result<()> {
     info!("monitor_process started");
 
@@ -700,8 +689,6 @@ fn monitor_process(
                                 &worker,
                                 &mutex_transition,
                                 &bg_job_control,
-                                #[cfg(feature = "log_page_fault")]
-                                &mut page_fault_logger,
                             );
                             // Abort background jobs to unblock ScopedJoinHandle eariler on a
                             // failure.
@@ -911,7 +898,6 @@ fn handle_vmm_swap<'scope, 'env>(
     worker: &Worker<MoveToStaging>,
     state_transition: &'env Mutex<SwapStateTransition>,
     bg_job_control: &'env BackgroundJobControl,
-    #[cfg(feature = "log_page_fault")] page_fault_logger: &mut PageFaultEventLogger,
 ) -> anyhow::Result<VmmSwapResult> {
     let mut state = match move_guest_to_staging(page_handler, guest_memory, worker) {
         Ok(transition) => {
@@ -983,8 +969,6 @@ fn handle_vmm_swap<'scope, 'env>(
                     while let Some(event) = uffd.read_event().context("read userfaultfd event")? {
                         match event {
                             UffdEvent::Pagefault { addr, .. } => {
-                                #[cfg(feature = "log_page_fault")]
-                                page_fault_logger.log_page_fault(addr as usize, id_uffd);
                                 match page_handler.handle_page_fault(uffd, addr as usize) {
                                     Ok(()) => {}
                                     Err(PageHandlerError::Userfaultfd(UffdError::UffdClosed)) => {
