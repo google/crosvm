@@ -161,6 +161,22 @@ impl From<SafeDescriptor> for UnixStream {
     }
 }
 
+impl From<SafeDescriptor> for OwnedFd {
+    fn from(s: SafeDescriptor) -> Self {
+        // SAFETY:
+        // Safe because we own the SafeDescriptor at this point.
+        unsafe { OwnedFd::from_raw_descriptor(s.into_raw_descriptor()) }
+    }
+}
+
+impl From<OwnedFd> for SafeDescriptor {
+    fn from(fd: OwnedFd) -> Self {
+        // SAFETY:
+        // Safe because we own the OwnedFd at this point.
+        unsafe { SafeDescriptor::from_raw_descriptor(fd.into_raw_descriptor()) }
+    }
+}
+
 // AsRawFd for interoperability with interfaces that require it. Within crosvm,
 // always use AsRawDescriptor when possible.
 impl AsRawFd for Descriptor {
