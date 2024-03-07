@@ -5,8 +5,6 @@
 use std::collections::VecDeque;
 use std::fmt;
 use std::io;
-use std::io::Error;
-use std::io::ErrorKind;
 use std::io::Write;
 use std::iter::ExactSizeIterator;
 
@@ -23,20 +21,6 @@ use zerocopy::AsBytes;
 
 const EVENT_SIZE: usize = virtio_input_event::SIZE;
 const EVENT_BUFFER_LEN_MAX: usize = 64 * EVENT_SIZE;
-
-// /// Half-way build `EventDevice` with only the `event_socket` defined. Finish building the
-// /// `EventDevice` by using `status_socket`.
-// pub struct PartialEventDevice(UnixStream);
-
-// impl PartialEventDevice {
-//     /// Finish build `EventDevice` by providing the `status_socket`.
-//     pub fn status_socket(self, status_socket: UnixStream) -> EventDevice {
-//         EventDevice {
-//             event_socket: self.0,
-//             status_socket,
-//         }
-//     }
-// }
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum EventDeviceKind {
@@ -165,7 +149,6 @@ impl EventDevice {
 
     pub fn recv_event_encoded(&self) -> io::Result<virtio_input_event> {
         zerocopy_from_reader::<_, virtio_input_event>(&self.event_socket)
-            .map_err(|_| Error::new(ErrorKind::InvalidInput, "failed to read virtio_input_event"))
     }
 }
 

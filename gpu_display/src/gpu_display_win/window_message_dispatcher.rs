@@ -95,8 +95,10 @@ impl DisplayEventDispatcher {
                 Ok(event) => return Some((device.kind(), event)),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => return None,
                 Err(e) => error!(
-                    "failed to read from event device {}: {:?}",
-                    event_device_id, e
+                    "failed to read from event device {:?} (index: {}): {:?}",
+                    device.kind(),
+                    event_device_id,
+                    e
                 ),
             }
         } else {
