@@ -100,7 +100,9 @@ impl Default for GpuParameters {
             external_blob: false,
             system_blob: false,
             // TODO(b/324649619): not yet fully compatible with other platforms (windows)
-            fixed_blob_mapping: cfg!(target_os = "linux"),
+            // TODO(b/246334944): gfxstream may map vulkan opaque blobs directly (without vulkano),
+            // so set the default to disabled when built with the gfxstream feature.
+            fixed_blob_mapping: cfg!(target_os = "linux") && !cfg!(feature = "gfxstream"),
             allow_implicit_render_server_exec: false,
             renderer_features: None,
         }
