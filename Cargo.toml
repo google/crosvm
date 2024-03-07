@@ -89,6 +89,7 @@ members = [
     "usb_util",
     "vendor/generic/anti_tamper",
     "vendor/generic/crash_report",
+    "vendor/generic/crypto",
     "vfio_sys",
     "vhost",
     "virtio_sys",

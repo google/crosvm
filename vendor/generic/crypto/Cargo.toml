@@ -1,0 +1,16 @@
+[package]
+name = "crypto_product"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+
+[features]
+rustcrypto = []
+
+[dependencies]
+anyhow = "1.0.32"
+base = { path = "../../../base" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "*"
+tempfile = "3"
+zeroize = "1.5.7"
