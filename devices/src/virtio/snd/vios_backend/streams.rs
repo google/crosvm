@@ -162,8 +162,8 @@ impl Stream {
                 let code = match self.vios_client.lock().set_stream_parameters_raw(params) {
                     Ok(()) => {
                         let frame_rate = from_virtio_frame_rate(params.rate).unwrap_or(0) as u64;
-                        self.period = Duration::from_millis(
-                            (params.period_bytes.to_native() as u64 * 1000u64)
+                        self.period = Duration::from_nanos(
+                            (params.period_bytes.to_native() as u64 * 1_000_000_000u64)
                                 / frame_rate
                                 / params.channels as u64
                                 / bytes_per_sample(params.format) as u64,
