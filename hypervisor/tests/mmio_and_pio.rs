@@ -25,7 +25,7 @@ fn test_kvm_mmio_and_pio() {
 }
 
 #[test]
-#[cfg(feature = "haxm")]
+#[cfg(all(windows, feature = "haxm"))]
 fn test_haxm_mmio_and_pio() {
     use hypervisor::haxm::*;
     test_mmio_and_pio(|guest_mem| {

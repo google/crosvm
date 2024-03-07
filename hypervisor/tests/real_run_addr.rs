@@ -23,7 +23,7 @@ fn test_kvm_real_run_addr() {
 }
 
 #[test]
-#[cfg(feature = "haxm")]
+#[cfg(all(windows, feature = "haxm"))]
 fn test_haxm_real_run_addr() {
     use hypervisor::haxm::*;
     test_real_run_addr(|guest_mem| {

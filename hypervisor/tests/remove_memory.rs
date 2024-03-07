@@ -24,7 +24,7 @@ fn test_kvm_remove_memory() {
 }
 
 #[test]
-#[cfg(feature = "haxm")]
+#[cfg(all(windows, feature = "haxm"))]
 fn test_haxm_remove_memory() {
     use hypervisor::haxm::*;
     test_remove_memory(|guest_mem| {

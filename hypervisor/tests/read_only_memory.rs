@@ -29,7 +29,7 @@ fn test_kvm_read_only_memory() {
 // TODO(b/163163457): HAXM has a bug where the mmio write for read only memory
 //  does not happen to the correct address.
 // #[test]
-// #[cfg(feature = "haxm")]
+// #[cfg(all(windows, feature = "haxm"))]
 // fn test_haxm_read_only_memory() {
 //     use hypervisor::haxm::*;
 //     test_read_only_memory(|guest_mem| {

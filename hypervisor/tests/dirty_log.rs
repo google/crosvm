@@ -25,7 +25,7 @@ fn test_kvm_dirty_log() {
 }
 
 #[test]
-#[cfg(feature = "haxm")]
+#[cfg(all(windows, feature = "haxm"))]
 fn test_haxm_dirty_log_not_supported() {
     // HAXM does not support dirty log, so we simply test that the capability
     // returns false.

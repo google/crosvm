@@ -39,7 +39,7 @@ fn test_kvm_tsc_offsets() {
 }
 
 #[test]
-#[cfg(feature = "haxm")]
+#[cfg(all(windows, feature = "haxm"))]
 fn test_haxm_tsc_offsets() {
     use hypervisor::haxm::*;
     test_tsc_offsets(|guest_mem| {
