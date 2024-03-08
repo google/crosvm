@@ -15,6 +15,7 @@ use std::thread;
 use base::pagesize;
 use base::Event;
 use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
 use base::MappedRegion;
 use base::MemoryMappingArena;
 use base::MemoryMappingBuilder;
@@ -277,16 +278,15 @@ fn irqfd_resample() {
     vm.create_irq_chip().unwrap();
     vm.register_irqfd(4, &evtfd1, Some(&evtfd2)).unwrap();
     vm.unregister_irqfd(4, &evtfd1).unwrap();
-    // Ensures the ioctl is actually reading the resamplefd.
-    vm.register_irqfd(
-        4,
-        &evtfd1,
-        Some(
-            // SAFETY: trivially safe
-            unsafe { &Event::from_raw_descriptor(-1) },
-        ),
-    )
-    .unwrap_err();
+
+    // Ensures the ioctl is actually reading the resamplefd by providing an invalid fd and expecting
+    // an error. File descriptor numbers are allocated sequentially, so this very large fd should
+    // never practically be in use.
+    // SAFETY: This is a bad idea! Don't try this at home! Professional driver on a closed course.
+    let resample_evt = unsafe { Event::from_raw_descriptor(2147483647) };
+    vm.register_irqfd(4, &evtfd1, Some(&resample_evt))
+        .unwrap_err();
+    let _ = resample_evt.into_raw_descriptor(); // Don't try to close the invalid fd.
 }
 
 #[test]
