@@ -8,18 +8,10 @@ edition = "2021"
 anyhow = "*"
 base = { path = "../base" }
 cfg-if = "*"
-libc = { version = "*", optional = true }
-protobuf = "3.2"
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "*", optional = true }
 sync = { path = "../common/sync" }
+metrics_product = { path = "../vendor/generic/metrics", package = "metrics_generic" }
 
 [target.'cfg(windows)'.dependencies]
 chrono = { version = "0.4.19", default-features = false }
 winapi = { version = "*" }
-win_util = { path = "../win_util" }
-wmi = { version = "^0.9" }
-
-
-[build-dependencies]
-proto_build_tools = { path = "../proto_build_tools" }

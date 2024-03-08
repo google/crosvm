@@ -10,15 +10,8 @@ use base::warn;
 use base::EventToken;
 use base::Tube;
 
-use crate::metrics_requests::MetricsRequest;
+use crate::MetricsRequest;
 use crate::RequestHandler;
-
-/// Handles incoming requests to log metrics
-pub(crate) trait MetricsRequestHandler {
-    fn new() -> Self;
-    fn handle_request(&self, request: MetricsRequest);
-    fn shutdown(&self);
-}
 
 /// Runs the metrics controller.
 pub struct MetricsController {

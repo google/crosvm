@@ -1,0 +1,23 @@
+[package]
+name = "metrics_generic"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+
+[features]
+default = []
+experimental = []
+collect = []
+
+[dependencies]
+anyhow = "*"
+base = { path = "../../../base" }
+cfg-if = "*"
+protobuf = "3.2"
+serde = { version = "1", features = ["derive"] }
+
+[target.'cfg(windows)'.dependencies]
+win_util = { path = "../../../win_util" }
+
+[build-dependencies]
+proto_build_tools = { path = "../../../proto_build_tools" }
