@@ -245,7 +245,13 @@ fn get_gpu_render_server_environment(
     }
 
     // TODO(b/237493180, b/284517235): workaround to enable ETC2/ASTC format emulation in Mesa
-    let driconf_options = ["radv_require_etc2", "vk_require_etc2", "vk_require_astc"];
+    // TODO(b/284361281, b/328827736): workaround to enable legacy sparse binding in RADV
+    let driconf_options = [
+        "radv_legacy_sparse_binding",
+        "radv_require_etc2",
+        "vk_require_etc2",
+        "vk_require_astc",
+    ];
     for opt in driconf_options {
         if !env.contains_key(opt) {
             env.insert(opt.to_string(), "true".to_string());
