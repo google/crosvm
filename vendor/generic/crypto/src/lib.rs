@@ -21,8 +21,6 @@ pub use crypto_impl::*;
 ///
 /// Note: there may be multiple copies of this trait because we want to restrict the internals
 /// to access only within this crate.
-///
-/// WARNING: Under no circumstances should Display or Debug be implemented for this type.
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct CryptKey {
@@ -44,7 +42,7 @@ impl Display for SecureByteVec {
 }
 impl Debug for SecureByteVec {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Debug: SecureByteVec")
+        f.write_str("debug: SecureByteVec")
     }
 }
 
