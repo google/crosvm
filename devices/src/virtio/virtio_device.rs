@@ -321,30 +321,6 @@ macro_rules! suspendable_virtio_tests {
             }
 
             #[test]
-            fn test_sleep_snapshot() {
-                let (_ctx, mut device) = $dev();
-                let mem = memory();
-                let interrupt = interrupt();
-                let queues = create_queues(
-                    $num_queues,
-                    device
-                        .queue_max_sizes()
-                        .first()
-                        .cloned()
-                        .expect("missing queue size"),
-                    &mem,
-                );
-                device
-                    .activate(mem.clone(), interrupt.clone(), queues)
-                    .expect("failed to activate");
-                device
-                    .virtio_sleep()
-                    .expect("failed to sleep")
-                    .expect("missing queues while sleeping");
-                device.virtio_snapshot().expect("failed to snapshot");
-            }
-
-            #[test]
             fn test_sleep_snapshot_wake() {
                 let (_ctx, mut device) = $dev();
                 let mem = memory();
