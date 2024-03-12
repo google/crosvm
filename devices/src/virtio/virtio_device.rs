@@ -321,6 +321,15 @@ macro_rules! suspendable_virtio_tests {
             }
 
             #[test]
+            fn test_unactivated_sleep_snapshot_wake() {
+                let (_ctx, mut device) = $dev();
+                let sleep_result = device.virtio_sleep().expect("failed to sleep");
+                assert!(sleep_result.is_none());
+                device.virtio_snapshot().expect("failed to snapshot");
+                device.virtio_wake(None).expect("failed to wake");
+            }
+
+            #[test]
             fn test_sleep_snapshot_wake() {
                 let (_ctx, mut device) = $dev();
                 let mem = memory();
