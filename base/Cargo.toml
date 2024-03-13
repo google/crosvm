@@ -18,7 +18,6 @@ seccomp_trace = []
 [dependencies]
 audio_streams = { path = "../common/audio_streams" } # provided by ebuild
 base_event_token_derive = { path = "base_event_token_derive", version = "*" }
-data_model = { path = "../common/data_model" } # provided by ebuild
 sync = { path = "../common/sync" } # provided by ebuild
 
 cfg-if = "*"

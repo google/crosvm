@@ -21,7 +21,6 @@ anyhow = "*"
 base = { path = "../base" }
 cfg-if = "*"
 cros_tracing = { path = "../cros_tracing" }
-data_model = { path = "../common/data_model" }
 jail = { path = "../jail" }
 num_cpus = "*"
 once_cell = "*"
