@@ -261,6 +261,38 @@ fn handle_my_enum(e: MyEnum) {
 }
 ```
 
+### Exception: dispatch enums (trait-object like enums) should NOT be split
+
+Dispatch enums (enums which are pretending to be trait objects) should NOT be split as shown above.
+This is because these enums just forward method calls verbatim and don't have any meaningful cross
+platform code. As such, there is no benefit to splitting the enum. Here is an acceptable example:
+
+```rust
+enum MyDispatcher {
+  #[cfg(windows)]
+  WinType(ImplForWindows),
+  #[cfg(unix)]
+  UnixType(ImplForUnix),
+}
+
+impl MyDispatcher {
+  fn foo(&self) {
+    match self {
+        #[cfg(windows)]
+        MyDispatcher::WinType(t) => t.foo(),
+        #[cfg(unix)]
+        MyDispatcher::UnixType(t) => t.foo(),
+    }
+  }
+}
+```
+
+## Errors
+
+Inlining all platform specific error values is ok. This is an exception to the [enum](#enum) to keep
+error handling simple. Organize platform independent errors first and then platform specific errors
+ordered by the target os name i.e. "linux" first and "windows" later.
+
 ## Code blocks and functions
 
 If a code block or a function has little platform independent code and the bulk of the code is
@@ -384,12 +416,6 @@ fn parse_args(arg: &str) -> Result<()>{
   }
 }
 ```
-
-## Errors
-
-Inlining all platform specific error values is ok. This is an exception to the [enum](#enum) to keep
-error handling simple. Organize platform independent errors first and then platform specific errors
-ordered by the target os name i.e. "linux" first and "windows" later.
 
 ## Platform specific symbols
 
