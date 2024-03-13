@@ -98,6 +98,8 @@ pub enum VfioError {
     OpenContainer(io::Error),
     #[error("failed to open {1} group: {0}")]
     OpenGroup(io::Error, String),
+    #[error("failed to read {1} link: {0}")]
+    ReadLink(io::Error, PathBuf),
     #[error("resources error: {0}")]
     Resources(ResourcesError),
     #[error("unknown vfio device type (flags: {0:#x})")]
@@ -780,7 +782,9 @@ impl VfioGroup {
         let mut uuid_path = PathBuf::new();
         uuid_path.push(sysfspath);
         uuid_path.push("iommu_group");
-        let group_path = uuid_path.read_link().map_err(|_| VfioError::InvalidPath)?;
+        let group_path = uuid_path
+            .read_link()
+            .map_err(|e| VfioError::ReadLink(e, uuid_path))?;
         let group_osstr = group_path.file_name().ok_or(VfioError::InvalidPath)?;
         let group_str = group_osstr.to_str().ok_or(VfioError::InvalidPath)?;
         let group_id = group_str
