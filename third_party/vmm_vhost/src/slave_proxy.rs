@@ -129,20 +129,6 @@ impl VhostUserMasterReqHandler for Slave {
         self.send_message(SlaveReq::CONFIG_CHANGE_MSG, &VhostUserEmptyMessage, None)
     }
 
-    /// Forward vhost-user-fs map file requests to the slave.
-    fn fs_slave_map(
-        &mut self,
-        fs: &VhostUserFSSlaveMsg,
-        fd: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
-        self.send_message(SlaveReq::FS_MAP, fs, Some(&[fd.as_raw_descriptor()]))
-    }
-
-    /// Forward vhost-user-fs unmap file requests to the master.
-    fn fs_slave_unmap(&mut self, fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
-        self.send_message(SlaveReq::FS_UNMAP, fs, None)
-    }
-
     /// Handle GPU shared memory region mapping requests.
     fn gpu_map(
         &mut self,
@@ -176,51 +162,5 @@ mod tests {
         assert!(fs_cache.error.is_none());
         fs_cache.set_failed(libc::EAGAIN);
         assert_eq!(fs_cache.error, Some(libc::EAGAIN));
-    }
-
-    #[test]
-    fn test_slave_recv_negative() {
-        let (p1, p2) = SystemStream::pair().unwrap();
-        let mut fs_cache = Slave::from_stream(p1);
-        let master = Connection::from(p2);
-
-        let len = mem::size_of::<VhostUserU64>();
-        let mut hdr = VhostUserMsgHeader::new(
-            SlaveReq::FS_MAP,
-            VhostUserHeaderFlag::REPLY.bits(),
-            len as u32,
-        );
-        let body = VhostUserU64::new(0);
-
-        master
-            .send_message(&hdr, &body, Some(&[master.as_raw_descriptor()]))
-            .unwrap();
-        fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
-            .unwrap();
-
-        fs_cache.set_reply_ack_flag(true);
-        fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
-            .unwrap_err();
-
-        hdr.set_code(SlaveReq::FS_UNMAP);
-        master.send_message(&hdr, &body, None).unwrap();
-        fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
-            .unwrap_err();
-        hdr.set_code(SlaveReq::FS_MAP);
-
-        let body = VhostUserU64::new(1);
-        master.send_message(&hdr, &body, None).unwrap();
-        fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
-            .unwrap_err();
-
-        let body = VhostUserU64::new(0);
-        master.send_message(&hdr, &body, None).unwrap();
-        fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
-            .unwrap();
     }
 }

@@ -191,13 +191,13 @@ pub enum SlaveReq {
     /// Indicates a request to unmap part of a shared memory region.
     SHMEM_UNMAP = 1001,
     /// Virtio-fs draft: map file content into the window.
-    FS_MAP = 1002,
+    DEPRECATED__FS_MAP = 1002,
     /// Virtio-fs draft: unmap file content from the window.
-    FS_UNMAP = 1003,
+    DEPRECATED__FS_UNMAP = 1003,
     /// Virtio-fs draft: sync file content.
-    FS_SYNC = 1004,
+    DEPRECATED__FS_SYNC = 1004,
     /// Virtio-fs draft: perform a read/write from an fd directly to GPA.
-    FS_IO = 1005,
+    DEPRECATED__FS_IO = 1005,
     /// Indicates a request to map GPU memory into a shared memory region.
     GPU_MAP = 1006,
     /// Indicates a request to map external memory into a shared memory region.
