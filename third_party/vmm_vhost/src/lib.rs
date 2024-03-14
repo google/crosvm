@@ -61,7 +61,6 @@ mod slave_req_handler;
 pub use self::master_req_handler::MasterReqHandler;
 pub use self::slave_proxy::Slave;
 pub use self::slave_req_handler::SlaveReqHandler;
-pub use self::slave_req_handler::SlaveReqHelper;
 pub use self::slave_req_handler::VhostUserSlaveReqHandler;
 
 /// Errors for vhost-user operations
