@@ -11,9 +11,9 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::Ref;
 
-use crate::connection::to_system_stream;
 use crate::into_single_file;
 use crate::message::*;
+use crate::to_system_stream;
 use crate::Connection;
 use crate::Error;
 use crate::MasterReq;

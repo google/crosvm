@@ -57,8 +57,8 @@ pub mod test_helpers {
     use std::os::unix::net::UnixStream;
 
     use tempfile::TempDir;
-    use vmm_vhost::connection::socket::SocketListener;
     use vmm_vhost::connection::Listener;
+    use vmm_vhost::unix::SocketListener;
     use vmm_vhost::SlaveReqHandler;
     use vmm_vhost::VhostUserSlaveReqHandler;
 

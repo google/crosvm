@@ -3,19 +3,6 @@
 
 //! Common data structures for listener and connection.
 
-cfg_if::cfg_if! {
-    if #[cfg(unix)] {
-        pub mod socket;
-        pub use socket::to_system_stream;
-        mod unix;
-    } else if #[cfg(windows)] {
-        mod tube;
-        pub use tube::TubePlatformConnection;
-        pub use tube::to_system_stream;
-        mod windows;
-    }
-}
-
 use std::fs::File;
 use std::io::IoSliceMut;
 use std::mem;
@@ -264,14 +251,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::message::VhostUserEmptyMessage;
     use crate::message::VhostUserU64;
-
-    cfg_if::cfg_if! {
-        if #[cfg(unix)] {
-            pub(crate) use super::unix::tests::*;
-        } else if #[cfg(windows)] {
-            pub(crate) use super::windows::tests::*;
-        }
-    }
+    use crate::tests::create_connection_pair;
 
     #[test]
     fn send_header_only() {

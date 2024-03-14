@@ -1,14 +1,6 @@
 // Copyright (C) 2019-2021 Alibaba Cloud. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-cfg_if::cfg_if! {
-    if #[cfg(unix)] {
-        mod unix;
-    } else if #[cfg(windows)] {
-        mod windows;
-    }
-}
-
 use std::fs::File;
 use std::mem;
 
@@ -84,7 +76,7 @@ pub trait VhostUserMasterReqHandler {
 /// Server to handle service requests from slaves from the slave communication channel.
 pub struct MasterReqHandler<S: VhostUserMasterReqHandler> {
     // underlying Unix domain socket for communication
-    sub_sock: Connection<SlaveReq>,
+    pub(crate) sub_sock: Connection<SlaveReq>,
     tx_sock: Option<SystemStream>,
     // Serializes tx_sock for passing to the backend.
     serialize_tx: Box<dyn Fn(SystemStream) -> SafeDescriptor + Send>,

@@ -720,7 +720,7 @@ mod tests {
     use tempfile::tempfile;
 
     use super::*;
-    use crate::connection::tests::create_pair;
+    use crate::tests::create_pair;
 
     const BUFFER_SIZE: usize = 0x1001;
 

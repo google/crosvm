@@ -241,10 +241,12 @@ mod tests {
     use tempfile::tempfile;
 
     use super::*;
-    use crate::connection::tests::*;
     use crate::dummy_slave::DummySlaveReqHandler;
     use crate::dummy_slave::VIRTIO_FEATURES;
     use crate::message::*;
+    pub(crate) use crate::sys::tests::create_connection_pair;
+    pub(crate) use crate::sys::tests::create_master_slave_pair;
+    pub(crate) use crate::sys::tests::create_pair;
     use crate::VhostUserMemoryRegionInfo;
     use crate::VringConfigData;
 

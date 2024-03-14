@@ -11,8 +11,8 @@ use cros_async::AsyncWrapper;
 use cros_async::Executor;
 use futures::Future;
 use futures::FutureExt;
-use vmm_vhost::connection::socket::SocketListener;
 use vmm_vhost::connection::Listener;
+use vmm_vhost::unix::SocketListener;
 use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandler;
 

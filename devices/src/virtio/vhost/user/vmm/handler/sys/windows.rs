@@ -13,7 +13,6 @@ use cros_async::Executor;
 use futures::pin_mut;
 use futures::select;
 use futures::FutureExt;
-use vmm_vhost::connection::TubePlatformConnection;
 use vmm_vhost::message::MasterReq;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::Master;
