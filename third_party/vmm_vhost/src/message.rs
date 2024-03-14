@@ -834,67 +834,6 @@ pub struct VhostUserIotlb {
 }
 */
 
-/// Flags for virtio-fs slave messages.
-#[repr(transparent)]
-#[derive(
-    AsBytes,
-    FromZeroes,
-    FromBytes,
-    Copy,
-    Clone,
-    Debug,
-    Default,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-)]
-pub struct VhostUserFSSlaveMsgFlags(u64);
-
-// Bit mask for flags in virtio-fs slave messages
-bitflags! {
-    impl VhostUserFSSlaveMsgFlags: u64 {
-        /// Empty permission.
-        const EMPTY = 0x0;
-        /// Read permission.
-        const MAP_R = 0x1;
-        /// Write permission.
-        const MAP_W = 0x2;
-    }
-}
-
-/// Max entries in one virtio-fs slave request.
-pub const VHOST_USER_FS_SLAVE_ENTRIES: usize = 8;
-
-/// Slave request message to update the MMIO window.
-#[repr(packed)]
-#[derive(Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
-pub struct VhostUserFSSlaveMsg {
-    /// File offset.
-    pub fd_offset: [u64; VHOST_USER_FS_SLAVE_ENTRIES],
-    /// Offset into the DAX window.
-    pub cache_offset: [u64; VHOST_USER_FS_SLAVE_ENTRIES],
-    /// Size of region to map.
-    pub len: [u64; VHOST_USER_FS_SLAVE_ENTRIES],
-    /// Flags for the mmap operation
-    pub flags: [VhostUserFSSlaveMsgFlags; VHOST_USER_FS_SLAVE_ENTRIES],
-}
-
-impl VhostUserMsgValidator for VhostUserFSSlaveMsg {
-    fn is_valid(&self) -> bool {
-        for i in 0..VHOST_USER_FS_SLAVE_ENTRIES {
-            if ({ self.flags[i] }.bits() & !VhostUserFSSlaveMsgFlags::all().bits()) != 0
-                || self.fd_offset[i].checked_add(self.len[i]).is_none()
-                || self.cache_offset[i].checked_add(self.len[i]).is_none()
-            {
-                return false;
-            }
-        }
-        true
-    }
-}
-
 /// Flags for SHMEM_MAP messages.
 #[repr(transparent)]
 #[derive(
@@ -965,7 +904,7 @@ pub struct VhostUserShmemMapMsg {
 
 impl VhostUserMsgValidator for VhostUserShmemMapMsg {
     fn is_valid(&self) -> bool {
-        (self.flags.bits() & !VhostUserFSSlaveMsgFlags::all().bits() as u8) == 0
+        (self.flags.bits() & !VhostUserShmemMapMsgFlags::all().bits()) == 0
             && self.fd_offset.checked_add(self.len).is_some()
             && self.shm_offset.checked_add(self.len).is_some()
     }
@@ -1515,22 +1454,5 @@ mod tests {
         assert!(msg.is_valid());
         msg.flags |= 0x4;
         assert!(!msg.is_valid());
-    }
-
-    #[test]
-    fn test_vhost_user_fs_slave() {
-        let mut fs_slave = VhostUserFSSlaveMsg::default();
-
-        assert!(fs_slave.is_valid());
-
-        fs_slave.fd_offset[0] = 0xffff_ffff_ffff_ffff;
-        fs_slave.len[0] = 0x1;
-        assert!(!fs_slave.is_valid());
-
-        assert_ne!(
-            VhostUserFSSlaveMsgFlags::MAP_R,
-            VhostUserFSSlaveMsgFlags::MAP_W
-        );
-        assert_eq!(VhostUserFSSlaveMsgFlags::EMPTY.bits(), 0);
     }
 }
