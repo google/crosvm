@@ -17,7 +17,7 @@ TODO: Include a protocol feature for backends to advertise snapshotting support.
 
 ### VHOST_USER_SLEEP
 
-id: 42
+id: 1000 (temporary)
 
 equivalent ioctl: N/A
 
@@ -35,7 +35,7 @@ The first byte of the response should be 1 to indicate success or 0 to indicate 
 
 ### VHOST_USER_WAKE
 
-id: 43
+id: 1001 (temporary)
 
 equivalent ioctl: N/A
 
@@ -49,7 +49,7 @@ The first byte of the response should be 1 to indicate success or 0 to indicate 
 
 ### VHOST_USER_SNAPSHOT
 
-id: 44
+id: 1002 (temporary)
 
 equivalent ioctl: N/A
 
@@ -64,7 +64,7 @@ the response is the snapshot bytes, which are opaque from the perspective of the
 
 ### VHOST_USER_RESTORE
 
-id: 45
+id: 1003 (temporary)
 
 equivalent ioctl: N/A
 

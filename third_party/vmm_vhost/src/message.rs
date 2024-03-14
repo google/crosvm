@@ -140,16 +140,18 @@ pub enum MasterReq {
     /// Query the backend for its device status as defined in the VIRTIO
     /// specification.
     GET_STATUS = 40,
-    /// Get a list of the device's shared memory regions.
-    GET_SHARED_MEMORY_REGIONS = 41,
+
+    // Non-standard message types.
     /// Stop all queue handlers and save each queue state.
-    SLEEP = 42,
+    SLEEP = 1000,
     /// Start up all queue handlers with their saved queue state.
-    WAKE = 43,
+    WAKE = 1001,
     /// Request serialized state of vhost process.
-    SNAPSHOT = 44,
+    SNAPSHOT = 1002,
     /// Request to restore state of vhost process.
-    RESTORE = 45,
+    RESTORE = 1003,
+    /// Get a list of the device's shared memory regions.
+    GET_SHARED_MEMORY_REGIONS = 1004,
 }
 
 impl From<MasterReq> for u32 {
@@ -182,22 +184,24 @@ pub enum SlaveReq {
     VRING_CALL = 4,
     /// Indicate that an error occurred on the specific vring.
     VRING_ERR = 5,
+
+    // Non-standard message types.
     /// Indicates a request to map a fd into a shared memory region.
-    SHMEM_MAP = 6,
+    SHMEM_MAP = 1000,
     /// Indicates a request to unmap part of a shared memory region.
-    SHMEM_UNMAP = 7,
+    SHMEM_UNMAP = 1001,
     /// Virtio-fs draft: map file content into the window.
-    FS_MAP = 8,
+    FS_MAP = 1002,
     /// Virtio-fs draft: unmap file content from the window.
-    FS_UNMAP = 9,
+    FS_UNMAP = 1003,
     /// Virtio-fs draft: sync file content.
-    FS_SYNC = 10,
+    FS_SYNC = 1004,
     /// Virtio-fs draft: perform a read/write from an fd directly to GPA.
-    FS_IO = 11,
+    FS_IO = 1005,
     /// Indicates a request to map GPU memory into a shared memory region.
-    GPU_MAP = 12,
+    GPU_MAP = 1006,
     /// Indicates a request to map external memory into a shared memory region.
-    EXTERNAL_MAP = 13,
+    EXTERNAL_MAP = 1007,
 }
 
 impl From<SlaveReq> for u32 {
