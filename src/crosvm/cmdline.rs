@@ -133,9 +133,6 @@ pub enum CrossPlatformCommands {
     BalloonStats(BalloonStatsCommand),
     #[cfg(feature = "balloon")]
     BalloonWs(BalloonWsCommand),
-    // TODO(b/288432539): remove once concierge is migrated
-    #[cfg(feature = "balloon")]
-    BalloonWss(BalloonWsCommand),
     Battery(BatteryCommand),
     #[cfg(feature = "composite-disk")]
     CreateComposite(CreateCompositeCommand),
@@ -984,13 +981,6 @@ pub struct RunCommand {
     #[merge(strategy = overwrite_option)]
     /// enable working set reporting in balloon.
     pub balloon_ws_reporting: Option<bool>,
-
-    // TODO(b/288432539): remove once concierge is migrated
-    #[argh(switch)]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite_option)]
-    /// enable working set reporting in balloon.
-    pub balloon_wss_reporting: Option<bool>,
 
     #[argh(option)]
     /// comma separated key=value pairs for setting up battery
@@ -3111,9 +3101,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.balloon = !cmd.no_balloon.unwrap_or_default();
         cfg.balloon_page_reporting = cmd.balloon_page_reporting.unwrap_or_default();
         cfg.balloon_ws_num_bins = cmd.balloon_ws_num_bins.unwrap_or(4);
-        cfg.balloon_ws_reporting = cmd.balloon_ws_reporting.unwrap_or_default()
-        // TODO(b/288432539): remove once concierge is migrated
-            | cmd.balloon_wss_reporting.unwrap_or_default();
+        cfg.balloon_ws_reporting = cmd.balloon_ws_reporting.unwrap_or_default();
         #[cfg(feature = "audio")]
         {
             cfg.virtio_snds = cmd.virtio_snd;

@@ -793,11 +793,6 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
                     CrossPlatformCommands::BalloonWs(cmd) => {
                         balloon_ws(cmd).map_err(|_| anyhow!("balloon_ws subcommand failed"))
                     }
-                    // TODO(b/288432539): remove once concierge is migrated
-                    #[cfg(feature = "balloon")]
-                    CrossPlatformCommands::BalloonWss(cmd) => {
-                        balloon_ws(cmd).map_err(|_| anyhow!("balloon_ws subcommand failed"))
-                    }
                     CrossPlatformCommands::Battery(cmd) => {
                         modify_battery(cmd).map_err(|_| anyhow!("battery subcommand failed"))
                     }
