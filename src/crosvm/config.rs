@@ -86,6 +86,7 @@ const MB_ALIGNED: u64 = ONE_MB - 1;
 const MAX_PCIE_ECAM_SIZE: u64 = ONE_MB * 256;
 
 // by default, if enabled, the balloon WS features will use 4 bins.
+#[cfg(feature = "balloon")]
 const VIRTIO_BALLOON_WS_DEFAULT_NUM_BINS: u8 = 4;
 
 /// Indicates the location and kind of executable kernel for a VM.
@@ -636,11 +637,17 @@ pub struct Config {
     pub acpi_tables: Vec<PathBuf>,
     pub android_fstab: Option<PathBuf>,
     pub async_executor: Option<ExecutorKind>,
+    #[cfg(feature = "balloon")]
     pub balloon: bool,
+    #[cfg(feature = "balloon")]
     pub balloon_bias: i64,
+    #[cfg(feature = "balloon")]
     pub balloon_control: Option<PathBuf>,
+    #[cfg(feature = "balloon")]
     pub balloon_page_reporting: bool,
+    #[cfg(feature = "balloon")]
     pub balloon_ws_num_bins: u8,
+    #[cfg(feature = "balloon")]
     pub balloon_ws_reporting: bool,
     pub battery_config: Option<BatteryConfig>,
     #[cfg(windows)]
@@ -700,6 +707,7 @@ pub struct Config {
     pub host_guid: Option<String>,
     pub hugepages: bool,
     pub hypervisor: Option<HypervisorKind>,
+    #[cfg(feature = "balloon")]
     pub init_memory: Option<u64>,
     pub initrd_path: Option<PathBuf>,
     #[cfg(all(windows, feature = "gpu"))]
@@ -777,6 +785,7 @@ pub struct Config {
     pub socket_path: Option<PathBuf>,
     #[cfg(feature = "audio")]
     pub sound: Option<PathBuf>,
+    #[cfg(feature = "balloon")]
     pub strict_balloon: bool,
     pub stub_pci_devices: Vec<StubPciParameters>,
     pub suspended: bool,
@@ -835,11 +844,17 @@ impl Default for Config {
             acpi_tables: Vec::new(),
             android_fstab: None,
             async_executor: None,
+            #[cfg(feature = "balloon")]
             balloon: true,
+            #[cfg(feature = "balloon")]
             balloon_bias: 0,
+            #[cfg(feature = "balloon")]
             balloon_control: None,
+            #[cfg(feature = "balloon")]
             balloon_page_reporting: false,
+            #[cfg(feature = "balloon")]
             balloon_ws_num_bins: VIRTIO_BALLOON_WS_DEFAULT_NUM_BINS,
+            #[cfg(feature = "balloon")]
             balloon_ws_reporting: false,
             battery_config: None,
             #[cfg(windows)]
@@ -903,6 +918,7 @@ impl Default for Config {
             product_channel: None,
             hugepages: false,
             hypervisor: None,
+            #[cfg(feature = "balloon")]
             init_memory: None,
             initrd_path: None,
             #[cfg(all(windows, feature = "gpu"))]
@@ -977,6 +993,7 @@ impl Default for Config {
             socket_path: None,
             #[cfg(feature = "audio")]
             sound: None,
+            #[cfg(feature = "balloon")]
             strict_balloon: false,
             stub_pci_devices: Vec::new(),
             suspended: false,
@@ -1171,12 +1188,15 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         }
     }
 
-    if !cfg.balloon && cfg.balloon_control.is_some() {
-        return Err("'balloon-control' requires enabled balloon".to_string());
-    }
+    #[cfg(feature = "balloon")]
+    {
+        if !cfg.balloon && cfg.balloon_control.is_some() {
+            return Err("'balloon-control' requires enabled balloon".to_string());
+        }
 
-    if !cfg.balloon && cfg.balloon_page_reporting {
-        return Err("'balloon_page_reporting' requires enabled balloon".to_string());
+        if !cfg.balloon && cfg.balloon_page_reporting {
+            return Err("'balloon_page_reporting' requires enabled balloon".to_string());
+        }
     }
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
