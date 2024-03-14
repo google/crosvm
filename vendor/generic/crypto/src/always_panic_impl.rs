@@ -20,13 +20,13 @@ pub struct CryptWriter<T: Write> {
 
 impl<T: Write> CryptWriter<T> {
     /// Creates a new writer using an internally randomly generated key.
-    fn new(_inner_writable: T, _chunk_size_bytes: usize) -> anyhow::Result<Box<Self>> {
+    pub fn new(_inner_writable: T, _chunk_size_bytes: usize) -> anyhow::Result<Box<Self>> {
         panic!("no crypto support was compiled in this build");
     }
 
     /// Creates a new writer using the provided key and encrypted chunk size. Generally, larger
     /// chunks are more performant but have buffering cost of O(chunk_size).
-    fn new_from_key(
+    pub fn new_from_key(
         _inner_writable: T,
         _chunk_size_bytes: usize,
         _key: &CryptKey,
@@ -56,12 +56,12 @@ where
 {
     /// Given a newly opened file previously written by a `CryptWriter`, extracts the encryption key
     /// used to write the file.
-    fn extract_key(_inner_readable: T) -> anyhow::Result<CryptKey> {
+    pub fn extract_key(_inner_readable: T) -> anyhow::Result<CryptKey> {
         panic!("no crypto support was compiled in this build");
     }
 
     /// Creates a CryptReader over a file given a key.
-    fn from_file_and_key(_inner_readable: T, _key: &CryptKey) -> anyhow::Result<Box<Self>> {
+    pub fn from_file_and_key(_inner_readable: T, _key: &CryptKey) -> anyhow::Result<Box<Self>> {
         panic!("no crypto support was compiled in this build");
     }
 }

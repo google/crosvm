@@ -3585,6 +3585,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     .try_box_clone()?
                     .restore(image, linux.vcpu_count)
             },
+            /* require_encrypted= */ false,
         )?;
         // Allow the vCPUs to start for real.
         vcpu::kick_all_vcpus(

@@ -629,12 +629,14 @@ fn snapshot_vm(cmd: cmdline::SnapshotCommand) -> std::result::Result<(), ()> {
             let req = VmRequest::Snapshot(SnapshotCommand::Take {
                 snapshot_path: take_cmd.snapshot_path,
                 compress_memory: take_cmd.compress_memory,
+                encrypt: take_cmd.encrypt,
             });
             (take_cmd.socket_path, req)
         }
         Restore(path) => {
             let req = VmRequest::Restore(RestoreCommand::Apply {
                 restore_path: path.snapshot_path,
+                require_encrypted: path.require_encrypted,
             });
             (path.socket_path, req)
         }

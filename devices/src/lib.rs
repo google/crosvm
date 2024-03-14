@@ -252,6 +252,9 @@ fn wake_buses(buses: &[&Bus]) {
     }
 }
 
+// Use 64MB chunks when writing the memory snapshot (if encryption is used).
+const MEMORY_SNAP_ENCRYPTED_CHUNK_SIZE_BYTES: usize = 1024 * 1024 * 64;
+
 async fn snapshot_handler(
     snapshot_writer: vm_control::SnapshotWriter,
     guest_memory: &GuestMemory,
@@ -262,7 +265,11 @@ async fn snapshot_handler(
     // VM & devices are stopped.
     let guest_memory_metadata = unsafe {
         guest_memory
-            .snapshot(&mut snapshot_writer.raw_fragment("mem")?, compress_memory)
+            .snapshot(
+                &mut snapshot_writer
+                    .raw_fragment_with_chunk_size("mem", MEMORY_SNAP_ENCRYPTED_CHUNK_SIZE_BYTES)?,
+                compress_memory,
+            )
             .context("failed to snapshot memory")?
     };
     snapshot_writer.write_fragment("mem_metadata", &guest_memory_metadata)?;

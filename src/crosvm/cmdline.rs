@@ -736,6 +736,9 @@ pub struct SnapshotTakeCommand {
     #[argh(switch)]
     /// compress the ram snapshot.
     pub compress_memory: bool,
+    #[argh(switch, arg_name = "encrypt")]
+    /// whether the snapshot should be encrypted
+    pub encrypt: bool,
 }
 
 #[derive(FromArgs)]
@@ -748,6 +751,9 @@ pub struct SnapshotRestoreCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
     pub socket_path: String,
+    /// true to require an encrypted snapshot
+    #[argh(switch, arg_name = "require_encrypted")]
+    pub require_encrypted: bool,
 }
 
 #[derive(FromArgs)]
