@@ -952,30 +952,35 @@ pub struct RunCommand {
     #[serde(skip)] // TODO(b/255223604)
     pub async_executor: Option<ExecutorKind>,
 
+    #[cfg(feature = "balloon")]
     #[argh(option, arg_name = "N")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
     /// amount to bias balance of memory between host and guest as the balloon inflates, in mib.
     pub balloon_bias_mib: Option<i64>,
 
+    #[cfg(feature = "balloon")]
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
     /// path for balloon controller socket.
     pub balloon_control: Option<PathBuf>,
 
+    #[cfg(feature = "balloon")]
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
     /// enable page reporting in balloon.
     pub balloon_page_reporting: Option<bool>,
 
+    #[cfg(feature = "balloon")]
     #[argh(option)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
     /// set number of WS bins to use (default = 4).
     pub balloon_ws_num_bins: Option<u8>,
 
+    #[cfg(feature = "balloon")]
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -1444,6 +1449,7 @@ pub struct RunCommand {
     #[merge(strategy = overwrite_option)]
     pub hypervisor: Option<HypervisorKind>,
 
+    #[cfg(feature = "balloon")]
     #[argh(option, arg_name = "N")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -1641,6 +1647,7 @@ pub struct RunCommand {
     /// netmask for VM subnet
     pub netmask: Option<std::net::Ipv4Addr>,
 
+    #[cfg(feature = "balloon")]
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -2142,6 +2149,7 @@ pub struct RunCommand {
     /// (EXPERIMENTAL) enable split-irqchip support
     pub split_irqchip: Option<bool>,
 
+    #[cfg(feature = "balloon")]
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -2877,8 +2885,6 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.socket_path = Some(socket_path);
         }
 
-        cfg.balloon_control = cmd.balloon_control;
-
         cfg.vsock = cmd.vsock;
 
         // Legacy vsock options.
@@ -3098,10 +3104,24 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.usb = !cmd.no_usb.unwrap_or_default();
         cfg.rng = !cmd.no_rng.unwrap_or_default();
-        cfg.balloon = !cmd.no_balloon.unwrap_or_default();
-        cfg.balloon_page_reporting = cmd.balloon_page_reporting.unwrap_or_default();
-        cfg.balloon_ws_num_bins = cmd.balloon_ws_num_bins.unwrap_or(4);
-        cfg.balloon_ws_reporting = cmd.balloon_ws_reporting.unwrap_or_default();
+
+        #[cfg(feature = "balloon")]
+        {
+            cfg.balloon = !cmd.no_balloon.unwrap_or_default();
+
+            // cfg.balloon_bias is in bytes.
+            if let Some(b) = cmd.balloon_bias_mib {
+                cfg.balloon_bias = b * 1024 * 1024;
+            }
+
+            cfg.balloon_control = cmd.balloon_control;
+            cfg.balloon_page_reporting = cmd.balloon_page_reporting.unwrap_or_default();
+            cfg.balloon_ws_num_bins = cmd.balloon_ws_num_bins.unwrap_or(4);
+            cfg.balloon_ws_reporting = cmd.balloon_ws_reporting.unwrap_or_default();
+            cfg.strict_balloon = cmd.strict_balloon.unwrap_or_default();
+            cfg.init_memory = cmd.init_mem;
+        }
+
         #[cfg(feature = "audio")]
         {
             cfg.virtio_snds = cmd.virtio_snd;
@@ -3364,11 +3384,6 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.pci_hotplug_slots = cmd.pci_hotplug_slots;
         }
 
-        // cfg.balloon_bias is in bytes.
-        if let Some(b) = cmd.balloon_bias_mib {
-            cfg.balloon_bias = b * 1024 * 1024;
-        }
-
         cfg.vhost_user = cmd.vhost_user;
 
         // Convert an option from `VhostUserOption` to `VhostUserFrontendOption` with the given
@@ -3420,10 +3435,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.stub_pci_devices = cmd.stub_pci_device;
 
         cfg.file_backed_mappings = cmd.file_backed_mapping;
-
-        cfg.init_memory = cmd.init_mem;
-
-        cfg.strict_balloon = cmd.strict_balloon.unwrap_or_default();
 
         #[cfg(target_os = "android")]
         {
