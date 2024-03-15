@@ -15,7 +15,6 @@ pub mod snd;
 pub use block::run_block_device;
 pub use block::Options as BlockOptions;
 use cros_async::Executor;
-use cros_async::ExecutorKind;
 #[cfg(feature = "gpu")]
 pub use gpu::run_gpu_device;
 #[cfg(feature = "gpu")]
@@ -69,10 +68,4 @@ pub trait VhostUserDevice {
         self: Box<Self>,
         ex: &Executor,
     ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>>;
-
-    /// The preferred ExecutorKind of an Executor to accept by
-    /// [`VhostUserDevice::into_req_handler()`].
-    fn executor_kind(&self) -> Option<ExecutorKind> {
-        None
-    }
 }
