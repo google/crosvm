@@ -58,7 +58,7 @@ pub trait Frontend {
 
 /// Handles requests from a vhost-user backend connection by dispatching them to [[Frontend]]
 /// methods.
-pub struct MasterReqHandler<S: Frontend> {
+pub struct FrontendServer<S: Frontend> {
     // underlying Unix domain socket for communication
     pub(crate) sub_sock: Connection<SlaveReq>,
     tx_sock: Option<SystemStream>,
@@ -70,22 +70,22 @@ pub struct MasterReqHandler<S: Frontend> {
     frontend: S,
 }
 
-impl<S: Frontend> MasterReqHandler<S> {
-    /// Create a server to handle service requests from slaves on the slave communication channel.
+impl<S: Frontend> FrontendServer<S> {
+    /// Create a server to handle service requests from backends.
     ///
-    /// This opens a pair of connected anonymous sockets to form the slave communication channel.
-    /// The socket fd returned by [Self::take_tx_descriptor()] should be sent to the slave by
-    /// [Master::set_slave_request_fd()].
+    /// This opens a pair of connected anonymous sockets to form the backend-to-frontend
+    /// communication channel. The socket fd returned by [Self::take_tx_descriptor()] should be
+    /// sent to the backend by [BackendClient::set_slave_request_fd()].
     ///
-    /// [Self::take_tx_descriptor()]: struct.MasterReqHandler.html#method.take_tx_descriptor
-    /// [Master::set_slave_request_fd()]: struct.Master.html#method.set_slave_request_fd
+    /// [Self::take_tx_descriptor()]: struct.FrontendServer.html#method.take_tx_descriptor
+    /// [BackendClient::set_slave_request_fd()]: struct.BackendClient.html#method.set_slave_request_fd
     pub fn new(
         frontend: S,
         serialize_tx: Box<dyn Fn(SystemStream) -> SafeDescriptor + Send>,
     ) -> Result<Self> {
         let (tx, rx) = SystemStream::pair()?;
 
-        Ok(MasterReqHandler {
+        Ok(FrontendServer {
             sub_sock: Connection::from(rx),
             tx_sock: Some(tx),
             serialize_tx,
@@ -94,12 +94,12 @@ impl<S: Frontend> MasterReqHandler<S> {
         })
     }
 
-    /// Get the descriptor for the slave to communication with the master.
+    /// Get the descriptor for the backend to communication with the frontend.
     ///
     /// The caller owns the descriptor. The returned descriptor should be sent to the slave by
-    /// [Master::set_slave_request_fd()].
+    /// [BackendClient::set_slave_request_fd()].
     ///
-    /// [Master::set_slave_request_fd()]: struct.Master.html#method.set_slave_request_fd
+    /// [BackendClient::set_slave_request_fd()]: struct.BackendClient.html#method.set_slave_request_fd
     pub fn take_tx_descriptor(&mut self) -> SafeDescriptor {
         (self.serialize_tx)(self.tx_sock.take().expect("tx_sock should have a value"))
     }
@@ -107,8 +107,7 @@ impl<S: Frontend> MasterReqHandler<S> {
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.
     ///
     /// When the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature has been negotiated,
-    /// the "REPLY_ACK" flag will be set in the message header for every slave to master request
-    /// message.
+    /// the "REPLY_ACK" flag will be set in the message header for every request message.
     pub fn set_reply_ack_flag(&mut self, enable: bool) {
         self.reply_ack_negotiated = enable;
     }
@@ -118,7 +117,7 @@ impl<S: Frontend> MasterReqHandler<S> {
         &mut self.frontend
     }
 
-    /// Main entrance to server slave request from the slave communication channel.
+    /// Process the next received request.
     ///
     /// The caller needs to:
     /// - serialize calls to this function

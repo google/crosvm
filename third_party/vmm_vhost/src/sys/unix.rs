@@ -21,7 +21,7 @@ use base::SafeDescriptor;
 use base::ScmSocket;
 
 use crate::connection::Listener;
-use crate::frontend_server::MasterReqHandler;
+use crate::frontend_server::FrontendServer;
 use crate::message::MasterReq;
 use crate::message::MAX_ATTACHED_FD_ENTRIES;
 use crate::Connection;
@@ -279,15 +279,15 @@ pub unsafe fn to_system_stream(fd: SafeDescriptor) -> Result<SystemStream> {
     Ok(fd.into())
 }
 
-impl<S: Frontend> AsRawDescriptor for MasterReqHandler<S> {
+impl<S: Frontend> AsRawDescriptor for FrontendServer<S> {
     /// Used for polling.
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.sub_sock.as_raw_descriptor()
     }
 }
 
-impl<S: Frontend> MasterReqHandler<S> {
-    /// Create a `MasterReqHandler` that uses a Unix stream internally.
+impl<S: Frontend> FrontendServer<S> {
+    /// Create a `FrontendServer` that uses a Unix stream internally.
     pub fn with_stream(backend: S) -> Result<Self> {
         Self::new(
             backend,

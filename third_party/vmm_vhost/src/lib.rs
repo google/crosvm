@@ -61,7 +61,7 @@ mod frontend_client;
 pub use self::backend_server::Backend;
 pub use self::backend_server::BackendServer;
 pub use self::frontend_client::FrontendClient;
-pub use self::frontend_server::MasterReqHandler;
+pub use self::frontend_server::FrontendServer;
 
 /// Errors for vhost-user operations
 #[sorted]

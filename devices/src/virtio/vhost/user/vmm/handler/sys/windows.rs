@@ -15,7 +15,6 @@ use futures::select;
 use futures::FutureExt;
 use vmm_vhost::message::MasterReq;
 use vmm_vhost::message::VhostUserProtocolFeatures;
-use vmm_vhost::MasterReqHandler;
 
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandler;
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandlerImpl;
@@ -27,8 +26,8 @@ pub fn create_backend_req_handler(
     backend_pid: Option<u32>,
 ) -> VhostResult<BackendReqHandler> {
     let backend_pid = backend_pid.expect("tube needs target pid for backend requests");
-    let mut handler =
-        MasterReqHandler::with_tube(h, backend_pid).map_err(Error::CreateBackendReqHandler)?;
+    let mut handler = vmm_vhost::FrontendServer::with_tube(h, backend_pid)
+        .map_err(Error::CreateBackendReqHandler)?;
     Ok(handler)
 }
 

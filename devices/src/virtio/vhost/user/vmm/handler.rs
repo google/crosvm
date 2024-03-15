@@ -26,8 +26,8 @@ use vmm_vhost::message::VhostUserShmemMapMsg;
 use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::BackendClient;
 use vmm_vhost::Frontend;
+use vmm_vhost::FrontendServer;
 use vmm_vhost::HandlerResult;
-use vmm_vhost::MasterReqHandler;
 use vmm_vhost::VhostUserMemoryRegionInfo;
 use vmm_vhost::VringConfigData;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
@@ -41,7 +41,7 @@ use crate::virtio::Queue;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 
-type BackendReqHandler = MasterReqHandler<BackendReqHandlerImpl>;
+type BackendReqHandler = FrontendServer<BackendReqHandlerImpl>;
 
 pub struct VhostUserHandler {
     backend_client: BackendClient,

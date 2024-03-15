@@ -20,9 +20,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use tube_transporter::packed_tube;
 
-use crate::frontend_server::MasterReqHandler;
 use crate::Error;
 use crate::Frontend;
+use crate::FrontendServer;
 use crate::Result;
 
 /// Alias to enable platform independent code.
@@ -191,8 +191,8 @@ impl AsRawDescriptor for TubePlatformConnection {
     }
 }
 
-impl<S: Frontend> MasterReqHandler<S> {
-    /// Create a `MasterReqHandler` that uses a Tube internally. Must specify the backend process
+impl<S: Frontend> FrontendServer<S> {
+    /// Create a `FrontendServer` that uses a Tube internally. Must specify the backend process
     /// which will receive the Tube.
     pub fn with_tube(backend: S, backend_pid: u32) -> Result<Self> {
         Self::new(
@@ -207,14 +207,14 @@ impl<S: Frontend> MasterReqHandler<S> {
     }
 }
 
-impl<S: Frontend> ReadNotifier for MasterReqHandler<S> {
+impl<S: Frontend> ReadNotifier for FrontendServer<S> {
     /// Used for polling.
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
         self.sub_sock.0.get_tube().get_read_notifier()
     }
 }
 
-impl<S: Frontend> CloseNotifier for MasterReqHandler<S> {
+impl<S: Frontend> CloseNotifier for FrontendServer<S> {
     /// Used for closing.
     fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
         self.sub_sock.0.get_tube().get_close_notifier()
