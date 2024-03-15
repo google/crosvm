@@ -225,32 +225,32 @@ impl<S: VhostUserMasterReqHandler> CloseNotifier for MasterReqHandler<S> {
 pub(crate) mod tests {
     use crate::backend_client::BackendClient;
     use crate::backend_server::Backend;
-    use crate::backend_server::SlaveReqHandler;
+    use crate::backend_server::BackendServer;
     use crate::message::MasterReq;
     use crate::Connection;
     use crate::SystemStream;
 
     pub(crate) fn create_pair() -> (BackendClient, Connection<MasterReq>) {
-        let (backend_tube, slave_tube) = SystemStream::pair().unwrap();
-        let backend_client = BackendClient::from_stream(backend_tube);
-        (backend_client, Connection::from(slave_tube))
+        let (client_tube, server_tube) = SystemStream::pair().unwrap();
+        let backend_client = BackendClient::from_stream(client_tube);
+        (backend_client, Connection::from(server_tube))
     }
 
     pub(crate) fn create_connection_pair() -> (Connection<MasterReq>, Connection<MasterReq>) {
-        let (backend_tube, slave_tube) = SystemStream::pair().unwrap();
-        let backend_connection = Connection::<MasterReq>::from(backend_tube);
-        (backend_connection, Connection::from(slave_tube))
+        let (client_tube, server_tube) = SystemStream::pair().unwrap();
+        let backend_connection = Connection::<MasterReq>::from(client_tube);
+        (backend_connection, Connection::from(server_tube))
     }
 
-    pub(crate) fn create_master_slave_pair<S>(backend: S) -> (BackendClient, SlaveReqHandler<S>)
+    pub(crate) fn create_master_slave_pair<S>(backend: S) -> (BackendClient, BackendServer<S>)
     where
         S: Backend,
     {
-        let (backend_tube, slave_tube) = SystemStream::pair().unwrap();
-        let backend_client = BackendClient::from_stream(backend_tube);
+        let (client_tube, server_tube) = SystemStream::pair().unwrap();
+        let backend_client = BackendClient::from_stream(client_tube);
         (
             backend_client,
-            SlaveReqHandler::<S>::from_stream(slave_tube, backend),
+            BackendServer::<S>::from_stream(server_tube, backend),
         )
     }
 }

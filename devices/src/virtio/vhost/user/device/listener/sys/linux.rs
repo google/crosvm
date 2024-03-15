@@ -13,7 +13,7 @@ use futures::Future;
 use futures::FutureExt;
 use vmm_vhost::connection::Listener;
 use vmm_vhost::unix::SocketListener;
-use vmm_vhost::SlaveReqHandler;
+use vmm_vhost::BackendServer;
 
 use crate::virtio::vhost::user::device::handler::sys::linux::run_handler;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
@@ -57,7 +57,7 @@ async fn run_with_handler(
             .context("failed to accept an incoming connection")?
         {
             Some(connection) => {
-                let req_handler = SlaveReqHandler::new(connection, handler);
+                let req_handler = BackendServer::new(connection, handler);
                 return run_handler(req_handler, ex).await;
             }
             None => {

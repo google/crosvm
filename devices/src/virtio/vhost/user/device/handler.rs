@@ -987,7 +987,7 @@ mod tests {
     use anyhow::anyhow;
     use anyhow::bail;
     use base::Event;
-    use vmm_vhost::SlaveReqHandler;
+    use vmm_vhost::BackendServer;
     use zerocopy::AsBytes;
     use zerocopy::FromBytes;
     use zerocopy::FromZeroes;
@@ -1197,7 +1197,7 @@ mod tests {
     }
 
     fn handle_request<S: vmm_vhost::Backend>(
-        handler: &mut SlaveReqHandler<S>,
+        handler: &mut BackendServer<S>,
     ) -> Result<(), VhostError> {
         let (hdr, files) = handler.recv_header()?;
         handler.process_message(hdr, files)

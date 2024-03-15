@@ -9,15 +9,15 @@ use base::AsRawDescriptor;
 use base::SafeDescriptor;
 use cros_async::AsyncWrapper;
 use cros_async::Executor;
+use vmm_vhost::BackendServer;
 use vmm_vhost::Error as VhostError;
-use vmm_vhost::SlaveReqHandler;
 
 /// Performs the run loop for an already-constructor request handler.
-pub async fn run_handler<S>(mut req_handler: SlaveReqHandler<S>, ex: &Executor) -> Result<()>
+pub async fn run_handler<S>(mut backend_server: BackendServer<S>, ex: &Executor) -> Result<()>
 where
     S: vmm_vhost::Backend,
 {
-    let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
+    let h = SafeDescriptor::try_from(&backend_server as &dyn AsRawDescriptor)
         .map(AsyncWrapper::new)
         .context("failed to get safe descriptor for handler")?;
     let handler_source = ex
@@ -29,7 +29,7 @@ where
             .wait_readable()
             .await
             .context("failed to wait for the handler to become readable")?;
-        let (hdr, files) = match req_handler.recv_header() {
+        let (hdr, files) = match backend_server.recv_header() {
             Ok((hdr, files)) => (hdr, files),
             Err(VhostError::ClientExit) => {
                 info!("vhost-user connection closed");
@@ -41,13 +41,13 @@ where
             }
         };
 
-        if req_handler.needs_wait_for_payload(&hdr) {
+        if backend_server.needs_wait_for_payload(&hdr) {
             handler_source
                 .wait_readable()
                 .await
                 .context("failed to wait for the handler to become readable")?;
         }
-        req_handler.process_message(hdr, files)?;
+        backend_server.process_message(hdr, files)?;
     }
 }
 
@@ -58,7 +58,7 @@ pub mod test_helpers {
     use tempfile::TempDir;
     use vmm_vhost::connection::Listener;
     use vmm_vhost::unix::SocketListener;
-    use vmm_vhost::SlaveReqHandler;
+    use vmm_vhost::BackendServer;
 
     pub(crate) fn setup() -> (SocketListener, TempDir) {
         let dir = tempfile::Builder::new()
@@ -81,8 +81,8 @@ pub mod test_helpers {
     pub(crate) fn listen<S: vmm_vhost::Backend>(
         mut listener: SocketListener,
         handler: S,
-    ) -> SlaveReqHandler<S> {
+    ) -> BackendServer<S> {
         let connection = listener.accept().unwrap().unwrap();
-        SlaveReqHandler::new(connection, handler)
+        BackendServer::new(connection, handler)
     }
 }

@@ -309,7 +309,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::backend_client::BackendClient;
     use crate::backend_server::Backend;
-    use crate::backend_server::SlaveReqHandler;
+    use crate::backend_server::BackendServer;
     use crate::connection::Listener;
     use crate::message::MasterReq;
     use crate::Connection;
@@ -325,8 +325,8 @@ pub(crate) mod tests {
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let backend_client = BackendClient::connect(path).unwrap();
-        let slave = listener.accept().unwrap().unwrap();
-        (backend_client, slave)
+        let server_connection = listener.accept().unwrap().unwrap();
+        (backend_client, server_connection)
     }
 
     pub(crate) fn create_connection_pair() -> (Connection<MasterReq>, Connection<MasterReq>) {
@@ -335,12 +335,12 @@ pub(crate) mod tests {
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let backend_connection = Connection::<MasterReq>::connect(path).unwrap();
-        let slave = listener.accept().unwrap().unwrap();
-        (backend_connection, slave)
+        let client_connection = Connection::<MasterReq>::connect(path).unwrap();
+        let server_connection = listener.accept().unwrap().unwrap();
+        (client_connection, server_connection)
     }
 
-    pub(crate) fn create_master_slave_pair<S>(backend: S) -> (BackendClient, SlaveReqHandler<S>)
+    pub(crate) fn create_master_slave_pair<S>(backend: S) -> (BackendClient, BackendServer<S>)
     where
         S: Backend,
     {
@@ -350,7 +350,7 @@ pub(crate) mod tests {
         let mut listener = SocketListener::new(&path, true).unwrap();
         let backend_client = BackendClient::connect(&path).unwrap();
         let connection = listener.accept().unwrap().unwrap();
-        let req_handler = SlaveReqHandler::new(connection, backend);
+        let req_handler = BackendServer::new(connection, backend);
         (backend_client, req_handler)
     }
 
@@ -391,7 +391,7 @@ pub(crate) mod tests {
         listener.set_nonblocking(true).unwrap();
 
         let _backend_client = BackendClient::connect(&path).unwrap();
-        let _slave = listener.accept().unwrap().unwrap();
+        let _server_connection = listener.accept().unwrap().unwrap();
     }
 
     #[test]

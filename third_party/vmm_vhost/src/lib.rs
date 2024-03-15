@@ -59,7 +59,7 @@ pub use self::master_req_handler::VhostUserMasterReqHandler;
 mod backend_server;
 mod slave_proxy;
 pub use self::backend_server::Backend;
-pub use self::backend_server::SlaveReqHandler;
+pub use self::backend_server::BackendServer;
 pub use self::master_req_handler::MasterReqHandler;
 pub use self::slave_proxy::Slave;
 
@@ -251,7 +251,7 @@ mod tests {
     use crate::VringConfigData;
 
     /// Utility function to process a header and a message together.
-    fn handle_request(h: &mut SlaveReqHandler<DummySlaveReqHandler>) -> Result<()> {
+    fn handle_request(h: &mut BackendServer<DummySlaveReqHandler>) -> Result<()> {
         // We assume that a header comes together with message body in tests so we don't wait before
         // calling `process_message()`.
         let (hdr, files) = h.recv_header()?;

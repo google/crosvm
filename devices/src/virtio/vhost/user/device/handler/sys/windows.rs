@@ -22,7 +22,7 @@ use tube_transporter::TubeTransferDataList;
 use tube_transporter::TubeTransporterReader;
 use vmm_vhost::message::MasterReq;
 use vmm_vhost::message::VhostUserMsgHeader;
-use vmm_vhost::SlaveReqHandler;
+use vmm_vhost::BackendServer;
 
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 
@@ -61,7 +61,7 @@ pub async fn run_handler(
         .context("failed to create an async event")?;
     let exit_event = EventAsync::new(exit_event, ex).context("failed to create an async event")?;
 
-    let mut req_handler = SlaveReqHandler::from_stream(vhost_user_tube, handler);
+    let mut backend_server = BackendServer::from_stream(vhost_user_tube, handler);
 
     let read_event_fut = read_event.next_val().fuse();
     let close_event_fut = close_event.next_val().fuse();
@@ -76,20 +76,20 @@ pub async fn run_handler(
             _read_res = read_event_fut => {
                 match pending_header.take() {
                     None => {
-                        let (hdr, files) = req_handler
+                        let (hdr, files) = backend_server
                             .recv_header()
                             .context("failed to handle a vhost-user request")?;
-                        if req_handler.needs_wait_for_payload(&hdr) {
+                        if backend_server.needs_wait_for_payload(&hdr) {
                             // Wait for the message body being notified.
                             pending_header = Some((hdr, files));
                         } else {
-                            req_handler
+                            backend_server
                                 .process_message(hdr, files)
                                 .context("failed to handle a vhost-user request")?;
                         }
                     }
                     Some((hdr, files)) => {
-                        req_handler
+                        backend_server
                             .process_message(hdr, files)
                             .context("failed to handle a vhost-user request")?;
                     }
@@ -114,7 +114,7 @@ pub async fn run_handler(
 pub mod test_helpers {
     use base::Tube;
     use vmm_vhost::message::MasterReq;
-    use vmm_vhost::SlaveReqHandler;
+    use vmm_vhost::BackendServer;
 
     pub(crate) fn setup() -> (Tube, Tube) {
         Tube::pair().unwrap()
@@ -124,7 +124,7 @@ pub mod test_helpers {
         tube
     }
 
-    pub(crate) fn listen<S: vmm_vhost::Backend>(dev_tube: Tube, handler: S) -> SlaveReqHandler<S> {
-        SlaveReqHandler::from_stream(dev_tube, handler)
+    pub(crate) fn listen<S: vmm_vhost::Backend>(dev_tube: Tube, handler: S) -> BackendServer<S> {
+        BackendServer::from_stream(dev_tube, handler)
     }
 }
