@@ -307,8 +307,8 @@ pub(crate) mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::backend_client::BackendClient;
     use crate::connection::Listener;
-    use crate::master::Master;
     use crate::message::MasterReq;
     use crate::slave_req_handler::SlaveReqHandler;
     use crate::slave_req_handler::VhostUserSlaveReqHandler;
@@ -318,15 +318,15 @@ pub(crate) mod tests {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
     }
 
-    pub(crate) fn create_pair() -> (Master, Connection<MasterReq>) {
+    pub(crate) fn create_pair() -> (BackendClient, Connection<MasterReq>) {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let master = Master::connect(path).unwrap();
+        let backend_client = BackendClient::connect(path).unwrap();
         let slave = listener.accept().unwrap().unwrap();
-        (master, slave)
+        (backend_client, slave)
     }
 
     pub(crate) fn create_connection_pair() -> (Connection<MasterReq>, Connection<MasterReq>) {
@@ -335,12 +335,12 @@ pub(crate) mod tests {
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let master = Connection::<MasterReq>::connect(path).unwrap();
+        let backend_connection = Connection::<MasterReq>::connect(path).unwrap();
         let slave = listener.accept().unwrap().unwrap();
-        (master, slave)
+        (backend_connection, slave)
     }
 
-    pub(crate) fn create_master_slave_pair<S>(backend: S) -> (Master, SlaveReqHandler<S>)
+    pub(crate) fn create_master_slave_pair<S>(backend: S) -> (BackendClient, SlaveReqHandler<S>)
     where
         S: VhostUserSlaveReqHandler,
     {
@@ -348,10 +348,10 @@ pub(crate) mod tests {
         let mut path = dir.path().to_owned();
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
-        let master = Master::connect(&path).unwrap();
+        let backend_client = BackendClient::connect(&path).unwrap();
         let connection = listener.accept().unwrap().unwrap();
         let req_handler = SlaveReqHandler::new(connection, backend);
-        (master, req_handler)
+        (backend_client, req_handler)
     }
 
     #[test]
@@ -384,13 +384,13 @@ pub(crate) mod tests {
         path.push("sock");
         let _ = SocketListener::new(&path, true).unwrap();
         let _ = SocketListener::new(&path, false).is_err();
-        assert!(Master::connect(&path).is_err());
+        assert!(BackendClient::connect(&path).is_err());
 
         let mut listener = SocketListener::new(&path, true).unwrap();
         assert!(SocketListener::new(&path, false).is_err());
         listener.set_nonblocking(true).unwrap();
 
-        let _master = Master::connect(&path).unwrap();
+        let _backend_client = BackendClient::connect(&path).unwrap();
         let _slave = listener.accept().unwrap().unwrap();
     }
 

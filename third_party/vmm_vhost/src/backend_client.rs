@@ -1,8 +1,6 @@
 // Copyright (C) 2019 Alibaba Cloud Computing. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Traits and Struct for vhost-user master.
-
 use std::fs::File;
 use std::mem;
 use std::path::Path;
@@ -27,9 +25,9 @@ use crate::Result;
 use crate::SystemStream;
 
 /// Client for a vhost-user device. The API is a thin abstraction over the vhost-user protocol.
-pub struct Master {
+pub struct BackendClient {
     // Used to send requests to the slave.
-    main_sock: Connection<MasterReq>,
+    connection: Connection<MasterReq>,
     // Cached virtio features from the slave.
     virtio_features: u64,
     // Cached acked virtio features from the driver.
@@ -38,23 +36,23 @@ pub struct Master {
     acked_protocol_features: u64,
 }
 
-impl Master {
+impl BackendClient {
     /// Create a new instance from a Unix stream socket.
     pub fn from_stream(sock: SystemStream) -> Self {
         Self::new(Connection::from(sock))
     }
 
     /// Create a new instance.
-    fn new(ep: Connection<MasterReq>) -> Self {
-        Master {
-            main_sock: ep,
+    fn new(connection: Connection<MasterReq>) -> Self {
+        BackendClient {
+            connection,
             virtio_features: 0,
             acked_virtio_features: 0,
             acked_protocol_features: 0,
         }
     }
 
-    /// Create a new vhost-user master connection.
+    /// Create a new instance.
     ///
     /// Will retry as the backend may not be ready to accept the connection.
     ///
@@ -565,7 +563,7 @@ impl Master {
         fds: Option<&[RawDescriptor]>,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
         let hdr = self.new_request_header(code, 0);
-        self.main_sock.send_header_only_message(&hdr, fds)?;
+        self.connection.send_header_only_message(&hdr, fds)?;
         Ok(hdr)
     }
 
@@ -576,7 +574,7 @@ impl Master {
         fds: Option<&[RawDescriptor]>,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
         let hdr = self.new_request_header(code, mem::size_of::<T>() as u32);
-        self.main_sock.send_message(&hdr, msg, fds)?;
+        self.connection.send_message(&hdr, msg, fds)?;
         Ok(hdr)
     }
 
@@ -599,7 +597,7 @@ impl Master {
             code,
             len.try_into().map_err(VhostUserError::InvalidCastToInt)?,
         );
-        self.main_sock
+        self.connection
             .send_message_with_payload(&hdr, msg, payload, fds)?;
         Ok(hdr)
     }
@@ -615,7 +613,7 @@ impl Master {
         // that polling will be used instead of waiting for the call.
         let msg = VhostUserU64::new(queue_index as u64);
         let hdr = self.new_request_header(code, mem::size_of::<VhostUserU64>() as u32);
-        self.main_sock.send_message(&hdr, &msg, Some(&[fd]))?;
+        self.connection.send_message(&hdr, &msg, Some(&[fd]))?;
         Ok(hdr)
     }
 
@@ -626,7 +624,7 @@ impl Master {
         if hdr.is_reply() {
             return Err(VhostUserError::InvalidParam);
         }
-        let (reply, body, rfds) = self.main_sock.recv_message::<T>()?;
+        let (reply, body, rfds) = self.connection.recv_message::<T>()?;
         if !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
@@ -641,7 +639,7 @@ impl Master {
             return Err(VhostUserError::InvalidParam);
         }
 
-        let (reply, body, files) = self.main_sock.recv_message::<T>()?;
+        let (reply, body, files) = self.connection.recv_message::<T>()?;
         if !reply.is_reply_for(hdr) || files.is_empty() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
@@ -656,7 +654,7 @@ impl Master {
             return Err(VhostUserError::InvalidParam);
         }
 
-        let (reply, body, buf, files) = self.main_sock.recv_message_with_payload::<T>()?;
+        let (reply, body, buf, files) = self.connection.recv_message_with_payload::<T>()?;
         if !reply.is_reply_for(hdr) || !files.is_empty() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
@@ -671,7 +669,7 @@ impl Master {
             return Ok(());
         }
 
-        let (reply, body, rfds) = self.main_sock.recv_message::<VhostUserU64>()?;
+        let (reply, body, rfds) = self.connection.recv_message::<VhostUserU64>()?;
         if !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
@@ -725,13 +723,13 @@ mod tests {
     const BUFFER_SIZE: usize = 0x1001;
 
     #[test]
-    fn create_master() {
-        let (master, slave) = create_pair();
+    fn create_backend_client() {
+        let (backend_client, slave) = create_pair();
 
-        assert!(master.main_sock.as_raw_descriptor() != INVALID_DESCRIPTOR);
+        assert!(backend_client.connection.as_raw_descriptor() != INVALID_DESCRIPTOR);
         // Send two messages continuously
-        master.set_owner().unwrap();
-        master.reset_owner().unwrap();
+        backend_client.set_owner().unwrap();
+        backend_client.reset_owner().unwrap();
 
         let (hdr, rfds) = slave.recv_header().unwrap();
         assert_eq!(hdr.get_code(), Ok(MasterReq::SET_OWNER));
@@ -748,9 +746,9 @@ mod tests {
 
     #[test]
     fn test_features() {
-        let (mut master, peer) = create_pair();
+        let (mut backend_client, peer) = create_pair();
 
-        master.set_owner().unwrap();
+        backend_client.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
         assert_eq!(hdr.get_code(), Ok(MasterReq::SET_OWNER));
         assert_eq!(hdr.get_size(), 0);
@@ -760,7 +758,7 @@ mod tests {
         let hdr = VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0x4, 8);
         let msg = VhostUserU64::new(0x15);
         peer.send_message(&hdr, &msg, None).unwrap();
-        let features = master.get_features().unwrap();
+        let features = backend_client.get_features().unwrap();
         assert_eq!(features, 0x15u64);
         let (_hdr, rfds) = peer.recv_header().unwrap();
         assert!(rfds.is_empty());
@@ -768,7 +766,7 @@ mod tests {
         let hdr = VhostUserMsgHeader::new(MasterReq::SET_FEATURES, 0x4, 8);
         let msg = VhostUserU64::new(0x15);
         peer.send_message(&hdr, &msg, None).unwrap();
-        master.set_features(0x15).unwrap();
+        backend_client.set_features(0x15).unwrap();
         let (_hdr, msg, rfds) = peer.recv_message::<VhostUserU64>().unwrap();
         assert!(rfds.is_empty());
         let val = msg.value;
@@ -777,20 +775,20 @@ mod tests {
         let hdr = VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0x4, 8);
         let msg = 0x15u32;
         peer.send_message(&hdr, &msg, None).unwrap();
-        assert!(master.get_features().is_err());
+        assert!(backend_client.get_features().is_err());
     }
 
     #[test]
     fn test_protocol_features() {
-        let (mut master, peer) = create_pair();
+        let (mut backend_client, peer) = create_pair();
 
-        master.set_owner().unwrap();
+        backend_client.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
         assert_eq!(hdr.get_code(), Ok(MasterReq::SET_OWNER));
         assert!(rfds.is_empty());
 
-        assert!(master.get_protocol_features().is_err());
-        assert!(master
+        assert!(backend_client.get_protocol_features().is_err());
+        assert!(backend_client
             .set_protocol_features(VhostUserProtocolFeatures::all())
             .is_err());
 
@@ -798,12 +796,12 @@ mod tests {
         let hdr = VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0x4, 8);
         let msg = VhostUserU64::new(vfeatures);
         peer.send_message(&hdr, &msg, None).unwrap();
-        let features = master.get_features().unwrap();
+        let features = backend_client.get_features().unwrap();
         assert_eq!(features, vfeatures);
         let (_hdr, rfds) = peer.recv_header().unwrap();
         assert!(rfds.is_empty());
 
-        master.set_features(vfeatures).unwrap();
+        backend_client.set_features(vfeatures).unwrap();
         let (_hdr, msg, rfds) = peer.recv_message::<VhostUserU64>().unwrap();
         assert!(rfds.is_empty());
         let val = msg.value;
@@ -813,12 +811,12 @@ mod tests {
         let hdr = VhostUserMsgHeader::new(MasterReq::GET_PROTOCOL_FEATURES, 0x4, 8);
         let msg = VhostUserU64::new(pfeatures.bits());
         peer.send_message(&hdr, &msg, None).unwrap();
-        let features = master.get_protocol_features().unwrap();
+        let features = backend_client.get_protocol_features().unwrap();
         assert_eq!(features, pfeatures);
         let (_hdr, rfds) = peer.recv_header().unwrap();
         assert!(rfds.is_empty());
 
-        master.set_protocol_features(pfeatures).unwrap();
+        backend_client.set_protocol_features(pfeatures).unwrap();
         let (_hdr, msg, rfds) = peer.recv_message::<VhostUserU64>().unwrap();
         assert!(rfds.is_empty());
         let val = msg.value;
@@ -827,207 +825,207 @@ mod tests {
         let hdr = VhostUserMsgHeader::new(MasterReq::SET_PROTOCOL_FEATURES, 0x4, 8);
         let msg = VhostUserU64::new(pfeatures.bits());
         peer.send_message(&hdr, &msg, None).unwrap();
-        assert!(master.get_protocol_features().is_err());
+        assert!(backend_client.get_protocol_features().is_err());
     }
 
     #[test]
-    fn test_master_set_config_negative() {
-        let (mut master, _peer) = create_pair();
+    fn test_backend_client_set_config_negative() {
+        let (mut backend_client, _peer) = create_pair();
         let buf = vec![0x0; BUFFER_SIZE];
 
-        master
+        backend_client
             .set_config(0x100, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .unwrap_err();
 
-        master.virtio_features = 0xffff_ffff;
-        master.acked_virtio_features = 0xffff_ffff;
-        master.acked_protocol_features = 0xffff_ffff;
+        backend_client.virtio_features = 0xffff_ffff;
+        backend_client.acked_virtio_features = 0xffff_ffff;
+        backend_client.acked_protocol_features = 0xffff_ffff;
 
-        master
+        backend_client
             .set_config(0, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .unwrap();
-        master
+        backend_client
             .set_config(
                 VHOST_USER_CONFIG_SIZE,
                 VhostUserConfigFlags::WRITABLE,
                 &buf[0..4],
             )
             .unwrap_err();
-        master
+        backend_client
             .set_config(0x1000, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .unwrap_err();
-        master
+        backend_client
             .set_config(
                 0x100,
                 VhostUserConfigFlags::from_bits_retain(0xffff_ffff),
                 &buf[0..4],
             )
             .unwrap_err();
-        master
+        backend_client
             .set_config(VHOST_USER_CONFIG_SIZE, VhostUserConfigFlags::WRITABLE, &buf)
             .unwrap_err();
-        master
+        backend_client
             .set_config(VHOST_USER_CONFIG_SIZE, VhostUserConfigFlags::WRITABLE, &[])
             .unwrap_err();
     }
 
-    fn create_pair2() -> (Master, Connection<MasterReq>) {
-        let (mut master, peer) = create_pair();
+    fn create_pair2() -> (BackendClient, Connection<MasterReq>) {
+        let (mut backend_client, peer) = create_pair();
 
-        master.virtio_features = 0xffff_ffff;
-        master.acked_virtio_features = 0xffff_ffff;
-        master.acked_protocol_features = 0xffff_ffff;
+        backend_client.virtio_features = 0xffff_ffff;
+        backend_client.acked_virtio_features = 0xffff_ffff;
+        backend_client.acked_protocol_features = 0xffff_ffff;
 
-        (master, peer)
+        (backend_client, peer)
     }
 
     #[test]
-    fn test_master_get_config_negative0() {
-        let (master, peer) = create_pair2();
+    fn test_backend_client_get_config_negative0() {
+        let (backend_client, peer) = create_pair2();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let mut hdr = VhostUserMsgHeader::new(MasterReq::GET_CONFIG, 0x4, 16);
         let msg = VhostUserConfig::new(0x100, 4, VhostUserConfigFlags::empty());
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_ok());
 
         hdr.set_code(MasterReq::GET_FEATURES);
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_err());
         hdr.set_code(MasterReq::GET_CONFIG);
     }
 
     #[test]
-    fn test_master_get_config_negative1() {
-        let (master, peer) = create_pair2();
+    fn test_backend_client_get_config_negative1() {
+        let (backend_client, peer) = create_pair2();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let mut hdr = VhostUserMsgHeader::new(MasterReq::GET_CONFIG, 0x4, 16);
         let msg = VhostUserConfig::new(0x100, 4, VhostUserConfigFlags::empty());
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_ok());
 
         hdr.set_reply(false);
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_err());
     }
 
     #[test]
-    fn test_master_get_config_negative2() {
-        let (master, peer) = create_pair2();
+    fn test_backend_client_get_config_negative2() {
+        let (backend_client, peer) = create_pair2();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let hdr = VhostUserMsgHeader::new(MasterReq::GET_CONFIG, 0x4, 16);
         let msg = VhostUserConfig::new(0x100, 4, VhostUserConfigFlags::empty());
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_ok());
     }
 
     #[test]
-    fn test_master_get_config_negative3() {
-        let (master, peer) = create_pair2();
+    fn test_backend_client_get_config_negative3() {
+        let (backend_client, peer) = create_pair2();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let hdr = VhostUserMsgHeader::new(MasterReq::GET_CONFIG, 0x4, 16);
         let mut msg = VhostUserConfig::new(0x100, 4, VhostUserConfigFlags::empty());
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_ok());
 
         msg.offset = 0;
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_err());
     }
 
     #[test]
-    fn test_master_get_config_negative4() {
-        let (master, peer) = create_pair2();
+    fn test_backend_client_get_config_negative4() {
+        let (backend_client, peer) = create_pair2();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let hdr = VhostUserMsgHeader::new(MasterReq::GET_CONFIG, 0x4, 16);
         let mut msg = VhostUserConfig::new(0x100, 4, VhostUserConfigFlags::empty());
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_ok());
 
         msg.offset = 0x101;
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_err());
     }
 
     #[test]
-    fn test_master_get_config_negative5() {
-        let (master, peer) = create_pair2();
+    fn test_backend_client_get_config_negative5() {
+        let (backend_client, peer) = create_pair2();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let hdr = VhostUserMsgHeader::new(MasterReq::GET_CONFIG, 0x4, 16);
         let mut msg = VhostUserConfig::new(0x100, 4, VhostUserConfigFlags::empty());
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_ok());
 
         msg.offset = (BUFFER_SIZE) as u32;
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_err());
     }
 
     #[test]
-    fn test_master_get_config_negative6() {
-        let (master, peer) = create_pair2();
+    fn test_backend_client_get_config_negative6() {
+        let (backend_client, peer) = create_pair2();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let hdr = VhostUserMsgHeader::new(MasterReq::GET_CONFIG, 0x4, 16);
         let mut msg = VhostUserConfig::new(0x100, 4, VhostUserConfigFlags::empty());
         peer.send_message_with_payload(&hdr, &msg, &buf[0..4], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_ok());
 
         msg.size = 6;
         peer.send_message_with_payload(&hdr, &msg, &buf[0..6], None)
             .unwrap();
-        assert!(master
+        assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_err());
     }
 
     #[test]
     fn test_maset_set_mem_table_failure() {
-        let (master, _peer) = create_pair2();
+        let (backend_client, _peer) = create_pair2();
 
         // set_mem_table() with 0 regions is invalid
-        master.set_mem_table(&[]).unwrap_err();
+        backend_client.set_mem_table(&[]).unwrap_err();
 
         // set_mem_table() with more than MAX_ATTACHED_FD_ENTRIES is invalid
         let files: Vec<File> = (0..MAX_ATTACHED_FD_ENTRIES + 1)
@@ -1043,6 +1041,6 @@ mod tests {
                 mmap_handle: f.as_raw_descriptor(),
             })
             .collect();
-        master.set_mem_table(&tables).unwrap_err();
+        backend_client.set_mem_table(&tables).unwrap_err();
     }
 }

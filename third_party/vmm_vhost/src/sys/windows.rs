@@ -223,33 +223,33 @@ impl<S: VhostUserMasterReqHandler> CloseNotifier for MasterReqHandler<S> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::master::Master;
+    use crate::backend_client::BackendClient;
     use crate::message::MasterReq;
     use crate::slave_req_handler::SlaveReqHandler;
     use crate::slave_req_handler::VhostUserSlaveReqHandler;
     use crate::Connection;
     use crate::SystemStream;
 
-    pub(crate) fn create_pair() -> (Master, Connection<MasterReq>) {
-        let (master_tube, slave_tube) = SystemStream::pair().unwrap();
-        let master = Master::from_stream(master_tube);
-        (master, Connection::from(slave_tube))
+    pub(crate) fn create_pair() -> (BackendClient, Connection<MasterReq>) {
+        let (backend_tube, slave_tube) = SystemStream::pair().unwrap();
+        let backend_client = BackendClient::from_stream(backend_tube);
+        (backend_client, Connection::from(slave_tube))
     }
 
     pub(crate) fn create_connection_pair() -> (Connection<MasterReq>, Connection<MasterReq>) {
-        let (master_tube, slave_tube) = SystemStream::pair().unwrap();
-        let master = Connection::<MasterReq>::from(master_tube);
-        (master, Connection::from(slave_tube))
+        let (backend_tube, slave_tube) = SystemStream::pair().unwrap();
+        let backend_connection = Connection::<MasterReq>::from(backend_tube);
+        (backend_connection, Connection::from(slave_tube))
     }
 
-    pub(crate) fn create_master_slave_pair<S>(backend: S) -> (Master, SlaveReqHandler<S>)
+    pub(crate) fn create_master_slave_pair<S>(backend: S) -> (BackendClient, SlaveReqHandler<S>)
     where
         S: VhostUserSlaveReqHandler,
     {
-        let (master_tube, slave_tube) = SystemStream::pair().unwrap();
-        let master = Master::from_stream(master_tube);
+        let (backend_tube, slave_tube) = SystemStream::pair().unwrap();
+        let backend_client = BackendClient::from_stream(backend_tube);
         (
-            master,
+            backend_client,
             SlaveReqHandler::<S>::from_stream(slave_tube, backend),
         )
     }

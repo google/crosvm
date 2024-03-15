@@ -24,8 +24,8 @@ use vmm_vhost::message::VhostUserGpuMapMsg;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserShmemMapMsg;
 use vmm_vhost::message::VhostUserShmemUnmapMsg;
+use vmm_vhost::BackendClient;
 use vmm_vhost::HandlerResult;
-use vmm_vhost::Master;
 use vmm_vhost::MasterReqHandler;
 use vmm_vhost::VhostUserMasterReqHandler;
 use vmm_vhost::VhostUserMemoryRegionInfo;
@@ -44,7 +44,7 @@ use crate::virtio::SharedMemoryRegion;
 type BackendReqHandler = MasterReqHandler<BackendReqHandlerImpl>;
 
 pub struct VhostUserHandler {
-    vu: Master,
+    backend_client: BackendClient,
     pub avail_features: u64,
     acked_features: u64,
     protocol_features: VhostUserProtocolFeatures,
@@ -63,25 +63,28 @@ impl VhostUserHandler {
         #[cfg(windows)]
         let backend_pid = connection.target_pid();
 
-        let mut vu = Master::from_stream(connection);
+        let mut backend_client = BackendClient::from_stream(connection);
 
-        vu.set_owner().map_err(Error::SetOwner)?;
+        backend_client.set_owner().map_err(Error::SetOwner)?;
 
-        let avail_features = allow_features & vu.get_features().map_err(Error::GetFeatures)?;
+        let avail_features =
+            allow_features & backend_client.get_features().map_err(Error::GetFeatures)?;
         let mut acked_features = 0;
 
         let mut protocol_features = VhostUserProtocolFeatures::empty();
         if avail_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
             // The vhost-user backend supports VHOST_USER_F_PROTOCOL_FEATURES; enable it.
-            vu.set_features(1 << VHOST_USER_F_PROTOCOL_FEATURES)
+            backend_client
+                .set_features(1 << VHOST_USER_F_PROTOCOL_FEATURES)
                 .map_err(Error::SetFeatures)?;
             acked_features |= 1 << VHOST_USER_F_PROTOCOL_FEATURES;
 
-            let avail_protocol_features = vu
+            let avail_protocol_features = backend_client
                 .get_protocol_features()
                 .map_err(Error::GetProtocolFeatures)?;
             protocol_features = allow_protocol_features & avail_protocol_features;
-            vu.set_protocol_features(protocol_features)
+            backend_client
+                .set_protocol_features(protocol_features)
                 .map_err(Error::SetProtocolFeatures)?;
         }
 
@@ -96,7 +99,8 @@ impl VhostUserHandler {
                     #[cfg(windows)]
                     backend_pid,
                 )?;
-                vu.set_slave_request_fd(&handler.take_tx_descriptor())
+                backend_client
+                    .set_slave_request_fd(&handler.take_tx_descriptor())
                     .map_err(Error::SetDeviceRequestChannel)?;
                 Some(handler)
             } else {
@@ -104,7 +108,7 @@ impl VhostUserHandler {
             };
 
         Ok(VhostUserHandler {
-            vu,
+            backend_client,
             avail_features,
             acked_features,
             protocol_features,
@@ -121,7 +125,10 @@ impl VhostUserHandler {
             .contains(VhostUserProtocolFeatures::MQ)
         {
             trace!("backend supports VHOST_USER_PROTOCOL_F_MQ");
-            let num_queues = self.vu.get_queue_num().map_err(Error::GetQueueNum)?;
+            let num_queues = self
+                .backend_client
+                .get_queue_num()
+                .map_err(Error::GetQueueNum)?;
             trace!("VHOST_USER_GET_QUEUE_NUM returned {num_queues}");
             Ok(Some(num_queues as usize))
         } else {
@@ -133,7 +140,9 @@ impl VhostUserHandler {
     /// Enables a set of features.
     pub fn ack_features(&mut self, ack_features: u64) -> Result<()> {
         let features = (ack_features & self.avail_features) | self.acked_features;
-        self.vu.set_features(features).map_err(Error::SetFeatures)?;
+        self.backend_client
+            .set_features(features)
+            .map_err(Error::SetFeatures)?;
         self.acked_features = features;
         Ok(())
     }
@@ -141,7 +150,7 @@ impl VhostUserHandler {
     /// Gets the device configuration space at `offset` and writes it into `data`.
     pub fn read_config(&mut self, offset: u64, data: &mut [u8]) -> Result<()> {
         let (_, config) = self
-            .vu
+            .backend_client
             .get_config(
                 offset
                     .try_into()
@@ -159,7 +168,7 @@ impl VhostUserHandler {
 
     /// Writes `data` into the device configuration space at `offset`.
     pub fn write_config(&mut self, offset: u64, data: &[u8]) -> Result<()> {
-        self.vu
+        self.backend_client
             .set_config(
                 offset
                     .try_into()
@@ -183,7 +192,7 @@ impl VhostUserHandler {
             })
             .collect();
 
-        self.vu
+        self.backend_client
             .set_mem_table(regions.as_slice())
             .map_err(Error::SetMemTable)?;
 
@@ -198,7 +207,7 @@ impl VhostUserHandler {
         queue: &Queue,
         irqfd: &Event,
     ) -> Result<()> {
-        self.vu
+        self.backend_client
             .set_vring_num(queue_index, queue.size())
             .map_err(Error::SetVringNum)?;
 
@@ -216,25 +225,25 @@ impl VhostUserHandler {
                 .map_err(Error::GetHostAddress)? as u64,
             log_addr: None,
         };
-        self.vu
+        self.backend_client
             .set_vring_addr(queue_index, &config_data)
             .map_err(Error::SetVringAddr)?;
 
-        self.vu
+        self.backend_client
             .set_vring_base(queue_index, 0)
             .map_err(Error::SetVringBase)?;
 
-        self.vu
+        self.backend_client
             .set_vring_call(queue_index, irqfd)
             .map_err(Error::SetVringCall)?;
-        self.vu
+        self.backend_client
             .set_vring_kick(queue_index, queue.event())
             .map_err(Error::SetVringKick)?;
 
         // Per protocol documentation, `VHOST_USER_SET_VRING_ENABLE` should be sent only when
         // `VHOST_USER_F_PROTOCOL_FEATURES` has been negotiated.
         if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
-            self.vu
+            self.backend_client
                 .set_vring_enable(queue_index, true)
                 .map_err(Error::SetVringEnable)?;
         }
@@ -275,11 +284,11 @@ impl VhostUserHandler {
     pub fn reset(&mut self, queues_num: usize) -> Result<()> {
         for queue_index in 0..queues_num {
             if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
-                self.vu
+                self.backend_client
                     .set_vring_enable(queue_index, false)
                     .map_err(Error::SetVringEnable)?;
             }
-            self.vu
+            self.backend_client
                 .get_vring_base(queue_index)
                 .map_err(Error::GetVringBase)?;
         }
@@ -297,7 +306,7 @@ impl VhostUserHandler {
             return Ok(r.clone());
         }
         let regions = self
-            .vu
+            .backend_client
             .get_shared_memory_regions()
             .map_err(Error::ShmemRegions)?;
         let region = match regions.len() {
@@ -339,19 +348,19 @@ impl VhostUserHandler {
 
     /// Sends a message to the device process to stop worker futures/threads
     pub fn sleep(&mut self) -> Result<()> {
-        self.vu.sleep().map_err(Error::Sleep)?;
+        self.backend_client.sleep().map_err(Error::Sleep)?;
         Ok(())
     }
 
     /// Sends a message to the device process to start up worker futures/threads.
     pub fn wake(&mut self) -> Result<()> {
-        self.vu.wake().map_err(Error::Wake)
+        self.backend_client.wake().map_err(Error::Wake)
     }
 
     /// Sends a snapshot request to the device and it should respond with the device's serialized
     /// state.
     pub fn snapshot(&self) -> Result<serde_json::Value> {
-        let snapshot_bytes = self.vu.snapshot().map_err(Error::Snapshot)?;
+        let snapshot_bytes = self.backend_client.snapshot().map_err(Error::Snapshot)?;
         serde_json::to_value(snapshot_bytes).map_err(Error::SliceToSerdeValue)
     }
 
@@ -363,7 +372,7 @@ impl VhostUserHandler {
         queue_evts: Option<Vec<Event>>,
     ) -> Result<()> {
         let data_bytes: Vec<u8> = serde_json::from_value(data).map_err(Error::SerdeValueToSlice)?;
-        self.vu
+        self.backend_client
             .restore(data_bytes.as_slice(), queue_evts)
             .map_err(Error::Restore)
     }
@@ -371,7 +380,7 @@ impl VhostUserHandler {
     /// Rewire up irqfds. Meant to be called right before `restore` and should only be called
     /// if the device is asleep.
     pub fn restore_irqfd(&self, queue_index: usize, irqfd: &Event) -> Result<()> {
-        self.vu
+        self.backend_client
             .set_vring_call(queue_index, irqfd)
             .map_err(Error::SetVringCall)
     }

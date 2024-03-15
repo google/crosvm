@@ -52,8 +52,8 @@ pub use message::SlaveReq;
 pub use sys::SystemStream;
 pub use sys::*;
 
-pub(crate) mod master;
-pub use self::master::Master;
+pub(crate) mod backend_client;
+pub use backend_client::BackendClient;
 mod master_req_handler;
 pub use self::master_req_handler::VhostUserMasterReqHandler;
 mod slave_proxy;
