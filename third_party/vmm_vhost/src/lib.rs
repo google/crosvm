@@ -57,11 +57,11 @@ pub use backend_client::BackendClient;
 mod master_req_handler;
 pub use self::master_req_handler::VhostUserMasterReqHandler;
 mod backend_server;
-mod slave_proxy;
+mod frontend_client;
 pub use self::backend_server::Backend;
 pub use self::backend_server::BackendServer;
+pub use self::frontend_client::FrontendClient;
 pub use self::master_req_handler::MasterReqHandler;
-pub use self::slave_proxy::Slave;
 
 /// Errors for vhost-user operations
 #[sorted]

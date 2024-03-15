@@ -17,15 +17,8 @@ use crate::SlaveReq;
 use crate::SystemStream;
 use crate::VhostUserMasterReqHandler;
 
-/// Request proxy to send slave requests to the master through the slave communication channel.
-///
-/// The [Slave] acts as a message proxy to forward slave requests to the master through the
-/// vhost-user slave communication channel. The forwarded messages will be handled by the
-/// [MasterReqHandler] server.
-///
-/// [Slave]: struct.Slave.html
-/// [MasterReqHandler]: struct.MasterReqHandler.html
-pub struct Slave {
+/// Client for a vhost-user frontend. Allows a backend to send requests to the frontend.
+pub struct FrontendClient {
     sock: Connection<SlaveReq>,
 
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
@@ -35,10 +28,10 @@ pub struct Slave {
     error: Option<i32>,
 }
 
-impl Slave {
-    /// Constructs a new slave proxy from the given connection.
+impl FrontendClient {
+    /// Create a new instance from the given connection.
     pub fn new(ep: Connection<SlaveReq>) -> Self {
-        Slave {
+        FrontendClient {
             sock: ep,
             reply_ack_negotiated: false,
             error: None,
@@ -46,8 +39,8 @@ impl Slave {
     }
 
     /// Create a new instance from a `SystemStream` object.
-    pub fn from_stream(sock: SystemStream) -> Self {
-        Self::new(Connection::from(sock))
+    pub fn from_stream(connection: SystemStream) -> Self {
+        Self::new(Connection::from(connection))
     }
 
     fn send_message<T>(
@@ -109,7 +102,7 @@ impl Slave {
     }
 }
 
-impl VhostUserMasterReqHandler for Slave {
+impl VhostUserMasterReqHandler for FrontendClient {
     /// Handle shared memory region mapping requests.
     fn shmem_map(
         &mut self,
@@ -157,10 +150,10 @@ mod tests {
     #[test]
     fn test_slave_req_set_failed() {
         let (p1, _p2) = SystemStream::pair().unwrap();
-        let mut fs_cache = Slave::from_stream(p1);
+        let mut frontend_client = FrontendClient::from_stream(p1);
 
-        assert!(fs_cache.error.is_none());
-        fs_cache.set_failed(libc::EAGAIN);
-        assert_eq!(fs_cache.error, Some(libc::EAGAIN));
+        assert!(frontend_client.error.is_none());
+        frontend_client.set_failed(libc::EAGAIN);
+        assert_eq!(frontend_client.error, Some(libc::EAGAIN));
     }
 }
