@@ -14,7 +14,6 @@ use futures::FutureExt;
 use vmm_vhost::connection::Listener;
 use vmm_vhost::unix::SocketListener;
 use vmm_vhost::SlaveReqHandler;
-use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::virtio::vhost::user::device::handler::sys::linux::run_handler;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
@@ -44,7 +43,7 @@ impl VhostUserListener {
 /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
 async fn run_with_handler(
     mut listener: SocketListener,
-    handler: Box<dyn VhostUserSlaveReqHandler>,
+    handler: Box<dyn vmm_vhost::Backend>,
     ex: &Executor,
 ) -> anyhow::Result<()> {
     listener.set_nonblocking(true)?;
@@ -93,7 +92,7 @@ impl VhostUserListenerTrait for VhostUserListener {
     /// `ex` is the executor on which the request handler can schedule its own tasks.
     fn run_req_handler<'e>(
         self,
-        handler: Box<dyn VhostUserSlaveReqHandler>,
+        handler: Box<dyn vmm_vhost::Backend>,
         ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
         async { run_with_handler(self.0, handler, ex).await }.boxed_local()

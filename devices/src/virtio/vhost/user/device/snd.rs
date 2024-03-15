@@ -141,7 +141,7 @@ impl VhostUserDevice for SndBackend {
     fn into_req_handler(
         self: Box<Self>,
         _ex: &Executor,
-    ) -> anyhow::Result<Box<dyn vmm_vhost::VhostUserSlaveReqHandler>> {
+    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
         let handler = DeviceRequestHandler::new(self);
         Ok(Box::new(handler))
     }

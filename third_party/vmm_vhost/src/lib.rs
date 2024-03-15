@@ -56,12 +56,12 @@ pub(crate) mod backend_client;
 pub use backend_client::BackendClient;
 mod master_req_handler;
 pub use self::master_req_handler::VhostUserMasterReqHandler;
+mod backend_server;
 mod slave_proxy;
-mod slave_req_handler;
+pub use self::backend_server::Backend;
+pub use self::backend_server::SlaveReqHandler;
 pub use self::master_req_handler::MasterReqHandler;
 pub use self::slave_proxy::Slave;
-pub use self::slave_req_handler::SlaveReqHandler;
-pub use self::slave_req_handler::VhostUserSlaveReqHandler;
 
 /// Errors for vhost-user operations
 #[sorted]

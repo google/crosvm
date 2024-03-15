@@ -7,7 +7,6 @@ use std::pin::Pin;
 use base::RawDescriptor;
 use cros_async::Executor;
 use futures::Future;
-use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
@@ -28,7 +27,7 @@ impl VhostUserListenerTrait for VhostUserListener {
 
     fn run_req_handler<'e>(
         self,
-        _handler: Box<dyn VhostUserSlaveReqHandler>,
+        _handler: Box<dyn vmm_vhost::Backend>,
         _ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
         todo!()

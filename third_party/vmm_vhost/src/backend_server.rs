@@ -21,22 +21,11 @@ use crate::Result;
 use crate::SlaveReq;
 use crate::SystemStream;
 
-/// Services provided to the master by the slave.
+/// Trait for vhost-user backends.
 ///
-/// The [VhostUserSlaveReqHandler] trait defines the services provided to the master by the slave.
-/// The vhost-user specification defines a master communication channel, by which masters could
-/// request services from slaves. The [VhostUserSlaveReqHandler] trait defines services provided by
-/// slaves, and it's used both on the master side and slave side.
-///
-/// - on the master side, a stub forwarder implementing [VhostUserSlaveReqHandler] will proxy
-///   service requests to slaves.
-/// - on the slave side, the [SlaveReqHandler] will forward service requests to a handler
-///   implementing [VhostUserSlaveReqHandler].
-///
-/// [VhostUserSlaveReqHandler]: trait.VhostUserSlaveReqHandler.html
-/// [SlaveReqHandler]: struct.SlaveReqHandler.html
+/// Each method corresponds to a vhost-user protocol method. See the specification for details.
 #[allow(missing_docs)]
-pub trait VhostUserSlaveReqHandler {
+pub trait Backend {
     fn set_owner(&mut self) -> Result<()>;
     fn reset_owner(&mut self) -> Result<()>;
     fn get_features(&mut self) -> Result<u64>;
@@ -89,9 +78,9 @@ pub trait VhostUserSlaveReqHandler {
     fn restore(&mut self, data_bytes: &[u8], queue_evts: Vec<File>) -> Result<()>;
 }
 
-impl<T> VhostUserSlaveReqHandler for T
+impl<T> Backend for T
 where
-    T: AsMut<dyn VhostUserSlaveReqHandler>,
+    T: AsMut<dyn Backend>,
 {
     fn set_owner(&mut self) -> Result<()> {
         self.as_mut().set_owner()
@@ -227,18 +216,8 @@ where
     }
 }
 
-/// Server to handle service requests from masters from the master communication channel.
-///
-/// The [SlaveReqHandler] acts as a server on the slave side, to handle service requests from
-/// masters on the master communication channel. It's actually a proxy invoking the registered
-/// handler implementing [VhostUserSlaveReqHandler] to do the real work.
-///
-/// The lifetime of the SlaveReqHandler object should be the same as the underline Unix Domain
-/// Socket, so it gets simpler to recover from disconnect.
-///
-/// [VhostUserSlaveReqHandler]: trait.VhostUserSlaveReqHandler.html
-/// [SlaveReqHandler]: struct.SlaveReqHandler.html
-pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler> {
+/// Handles requests from a vhost-user connection by dispatching them to [[Backend]] methods.
+pub struct SlaveReqHandler<S: Backend> {
     /// Underlying connection for communication.
     connection: Connection<MasterReq>,
     // the vhost-user backend device object
@@ -253,20 +232,20 @@ pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler> {
     reply_ack_enabled: bool,
 }
 
-impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
+impl<S: Backend> SlaveReqHandler<S> {
     /// Create a vhost-user slave connection from a connected socket.
     pub fn from_stream(socket: SystemStream, backend: S) -> Self {
         Self::new(Connection::from(socket), backend)
     }
 }
 
-impl<S: VhostUserSlaveReqHandler> AsRef<S> for SlaveReqHandler<S> {
+impl<S: Backend> AsRef<S> for SlaveReqHandler<S> {
     fn as_ref(&self) -> &S {
         &self.backend
     }
 }
 
-impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
+impl<S: Backend> SlaveReqHandler<S> {
     /// Create a vhost-user slave connection.
     pub fn new(connection: Connection<MasterReq>, backend: S) -> Self {
         SlaveReqHandler {
@@ -888,7 +867,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
     }
 }
 
-impl<S: VhostUserSlaveReqHandler> AsRawDescriptor for SlaveReqHandler<S> {
+impl<S: Backend> AsRawDescriptor for SlaveReqHandler<S> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         // TODO(b/221882601): figure out if this used for polling.
         self.connection.as_raw_descriptor()

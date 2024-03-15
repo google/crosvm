@@ -11,12 +11,11 @@ use cros_async::AsyncWrapper;
 use cros_async::Executor;
 use vmm_vhost::Error as VhostError;
 use vmm_vhost::SlaveReqHandler;
-use vmm_vhost::VhostUserSlaveReqHandler;
 
 /// Performs the run loop for an already-constructor request handler.
 pub async fn run_handler<S>(mut req_handler: SlaveReqHandler<S>, ex: &Executor) -> Result<()>
 where
-    S: VhostUserSlaveReqHandler,
+    S: vmm_vhost::Backend,
 {
     let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
         .map(AsyncWrapper::new)
@@ -60,7 +59,6 @@ pub mod test_helpers {
     use vmm_vhost::connection::Listener;
     use vmm_vhost::unix::SocketListener;
     use vmm_vhost::SlaveReqHandler;
-    use vmm_vhost::VhostUserSlaveReqHandler;
 
     pub(crate) fn setup() -> (SocketListener, TempDir) {
         let dir = tempfile::Builder::new()
@@ -80,7 +78,7 @@ pub mod test_helpers {
         UnixStream::connect(path).unwrap()
     }
 
-    pub(crate) fn listen<S: VhostUserSlaveReqHandler>(
+    pub(crate) fn listen<S: vmm_vhost::Backend>(
         mut listener: SocketListener,
         handler: S,
     ) -> SlaveReqHandler<S> {

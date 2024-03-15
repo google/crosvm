@@ -33,7 +33,6 @@ use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
 use vmm_vhost::Error;
 use vmm_vhost::Result;
-use vmm_vhost::VhostUserSlaveReqHandler;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 use zerocopy::AsBytes;
 
@@ -99,7 +98,7 @@ impl VhostUserDevice for VhostUserVsockDevice {
     fn into_req_handler(
         self: Box<Self>,
         _ex: &Executor,
-    ) -> anyhow::Result<Box<dyn vmm_vhost::VhostUserSlaveReqHandler>> {
+    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
         let backend = VsockBackend {
             queues: [
                 QueueConfig::new(Queue::MAX_SIZE, 0),
@@ -125,7 +124,7 @@ fn convert_vhost_error(err: vhost::Error) -> Error {
     }
 }
 
-impl VhostUserSlaveReqHandler for VsockBackend {
+impl vmm_vhost::Backend for VsockBackend {
     fn set_owner(&mut self) -> Result<()> {
         self.handle.set_owner().map_err(convert_vhost_error)
     }

@@ -23,7 +23,6 @@ use tube_transporter::TubeTransporterReader;
 use vmm_vhost::message::MasterReq;
 use vmm_vhost::message::VhostUserMsgHeader;
 use vmm_vhost::SlaveReqHandler;
-use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 
@@ -48,7 +47,7 @@ pub fn read_from_tube_transporter(
 }
 
 pub async fn run_handler(
-    handler: Box<dyn VhostUserSlaveReqHandler>,
+    handler: Box<dyn vmm_vhost::Backend>,
     vhost_user_tube: Tube,
     exit_event: Event,
     ex: &Executor,
@@ -116,7 +115,6 @@ pub mod test_helpers {
     use base::Tube;
     use vmm_vhost::message::MasterReq;
     use vmm_vhost::SlaveReqHandler;
-    use vmm_vhost::VhostUserSlaveReqHandler;
 
     pub(crate) fn setup() -> (Tube, Tube) {
         Tube::pair().unwrap()
@@ -126,10 +124,7 @@ pub mod test_helpers {
         tube
     }
 
-    pub(crate) fn listen<S: VhostUserSlaveReqHandler>(
-        dev_tube: Tube,
-        handler: S,
-    ) -> SlaveReqHandler<S> {
+    pub(crate) fn listen<S: vmm_vhost::Backend>(dev_tube: Tube, handler: S) -> SlaveReqHandler<S> {
         SlaveReqHandler::from_stream(dev_tube, handler)
     }
 }

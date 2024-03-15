@@ -34,7 +34,6 @@ pub use net::Options as NetOptions;
 pub use snd::run_snd_device;
 #[cfg(feature = "audio")]
 pub use snd::Options as SndOptions;
-use vmm_vhost::VhostUserSlaveReqHandler;
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
@@ -55,8 +54,8 @@ cfg_if::cfg_if! {
 
 /// A trait for vhost-user devices.
 ///
-/// Upon being given an [[Executor]], a device can be converted into a
-/// [[VhostUserSlaveReqHandler]], which can then process the requests from the front-end.
+/// Upon being given an [[Executor]], a device can be converted into a [[vmm_vhost::Backend]],
+/// which can then process the requests from the front-end.
 ///
 /// We don't build request handlers directly to ensure that the device starts to process queues in
 /// the jailed process, not in the main process. [[VhostUserDevice::into_req_handler()]] is called
@@ -72,7 +71,7 @@ pub trait VhostUserDevice {
     fn into_req_handler(
         self: Box<Self>,
         ex: &Executor,
-    ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>>;
+    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>>;
 
     /// The preferred ExecutorKind of an Executor to accept by
     /// [`VhostUserDevice::into_req_handler()`].

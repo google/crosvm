@@ -19,7 +19,6 @@ use hypervisor::ProtectionType;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
-use vmm_vhost::VhostUserSlaveReqHandler;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 use zerocopy::AsBytes;
 
@@ -77,7 +76,7 @@ impl VhostUserDevice for VhostUserConsoleDevice {
     fn into_req_handler(
         self: Box<Self>,
         ex: &Executor,
-    ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>> {
+    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
         if self.raw_stdin {
             // Set stdin() to raw mode so we can send over individual keystrokes unbuffered
             std::io::stdin()

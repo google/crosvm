@@ -308,10 +308,10 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::backend_client::BackendClient;
+    use crate::backend_server::Backend;
+    use crate::backend_server::SlaveReqHandler;
     use crate::connection::Listener;
     use crate::message::MasterReq;
-    use crate::slave_req_handler::SlaveReqHandler;
-    use crate::slave_req_handler::VhostUserSlaveReqHandler;
     use crate::Connection;
 
     pub(crate) fn temp_dir() -> TempDir {
@@ -342,7 +342,7 @@ pub(crate) mod tests {
 
     pub(crate) fn create_master_slave_pair<S>(backend: S) -> (BackendClient, SlaveReqHandler<S>)
     where
-        S: VhostUserSlaveReqHandler,
+        S: Backend,
     {
         let dir = Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap();
         let mut path = dir.path().to_owned();

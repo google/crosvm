@@ -4,9 +4,9 @@
 use std::fs::File;
 
 use crate::message::*;
+use crate::Backend;
 use crate::Error;
 use crate::Result;
-use crate::VhostUserSlaveReqHandler;
 
 pub const MAX_QUEUE_NUM: usize = 2;
 pub const MAX_VRING_NUM: usize = 256;
@@ -39,7 +39,7 @@ impl DummySlaveReqHandler {
     }
 }
 
-impl VhostUserSlaveReqHandler for DummySlaveReqHandler {
+impl Backend for DummySlaveReqHandler {
     fn set_owner(&mut self) -> Result<()> {
         if self.owned {
             return Err(Error::InvalidOperation);

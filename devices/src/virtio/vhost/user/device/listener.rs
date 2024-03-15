@@ -10,7 +10,6 @@ use base::RawDescriptor;
 use cros_async::Executor;
 use futures::Future;
 pub use sys::VhostUserListener;
-use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
@@ -53,7 +52,7 @@ pub trait VhostUserListenerTrait {
     /// exits when the front-end side disconnects or an error occurs.
     fn run_req_handler<'e>(
         self,
-        handler: Box<dyn VhostUserSlaveReqHandler>,
+        handler: Box<dyn vmm_vhost::Backend>,
         ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>;
 

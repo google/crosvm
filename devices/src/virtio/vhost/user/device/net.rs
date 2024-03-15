@@ -252,7 +252,7 @@ where
     fn into_req_handler(
         self: Box<Self>,
         ex: &Executor,
-    ) -> anyhow::Result<Box<dyn vmm_vhost::VhostUserSlaveReqHandler>> {
+    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
         NET_EXECUTOR.with(|thread_ex| {
             let _ = thread_ex.set(ex.clone());
         });

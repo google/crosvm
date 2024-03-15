@@ -14,7 +14,6 @@ pub use sys::start_device as run_block_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::*;
-use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::virtio;
 use crate::virtio::block::asynchronous::BlockAsync;
@@ -51,7 +50,7 @@ impl VhostUserDevice for BlockAsync {
     fn into_req_handler(
         self: Box<Self>,
         _ex: &Executor,
-    ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>> {
+    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
         let avail_features = self.features() | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
         let backend = BlockBackend {
             inner: self,

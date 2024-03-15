@@ -224,9 +224,9 @@ impl<S: VhostUserMasterReqHandler> CloseNotifier for MasterReqHandler<S> {
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::backend_client::BackendClient;
+    use crate::backend_server::Backend;
+    use crate::backend_server::SlaveReqHandler;
     use crate::message::MasterReq;
-    use crate::slave_req_handler::SlaveReqHandler;
-    use crate::slave_req_handler::VhostUserSlaveReqHandler;
     use crate::Connection;
     use crate::SystemStream;
 
@@ -244,7 +244,7 @@ pub(crate) mod tests {
 
     pub(crate) fn create_master_slave_pair<S>(backend: S) -> (BackendClient, SlaveReqHandler<S>)
     where
-        S: VhostUserSlaveReqHandler,
+        S: Backend,
     {
         let (backend_tube, slave_tube) = SystemStream::pair().unwrap();
         let backend_client = BackendClient::from_stream(backend_tube);

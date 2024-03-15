@@ -95,7 +95,6 @@ use vmm_vhost::Result as VhostResult;
 use vmm_vhost::Slave;
 use vmm_vhost::SlaveReq;
 use vmm_vhost::VhostUserMasterReqHandler;
-use vmm_vhost::VhostUserSlaveReqHandler;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio::Interrupt;
@@ -391,7 +390,7 @@ impl DeviceRequestHandler {
     }
 }
 
-impl VhostUserSlaveReqHandler for DeviceRequestHandler {
+impl vmm_vhost::Backend for DeviceRequestHandler {
     fn set_owner(&mut self) -> VhostResult<()> {
         if self.owned {
             return Err(VhostError::InvalidOperation);
@@ -989,7 +988,6 @@ mod tests {
     use anyhow::bail;
     use base::Event;
     use vmm_vhost::SlaveReqHandler;
-    use vmm_vhost::VhostUserSlaveReqHandler;
     use zerocopy::AsBytes;
     use zerocopy::FromBytes;
     use zerocopy::FromZeroes;
@@ -1198,7 +1196,7 @@ mod tests {
         }
     }
 
-    fn handle_request<S: VhostUserSlaveReqHandler>(
+    fn handle_request<S: vmm_vhost::Backend>(
         handler: &mut SlaveReqHandler<S>,
     ) -> Result<(), VhostError> {
         let (hdr, files) = handler.recv_header()?;
