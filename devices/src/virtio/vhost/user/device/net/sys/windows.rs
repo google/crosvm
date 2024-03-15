@@ -50,7 +50,7 @@ use crate::virtio::net::MAX_BUFFER_SIZE;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
 use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::net::run_ctrl_queue;
 use crate::virtio::vhost::user::device::net::run_tx_queue;
@@ -167,7 +167,7 @@ async fn run_rx_queue<T: TapT>(
     queue
 }
 
-/// Platform specific impl of VhostUserBackend::start_queue.
+/// Platform specific impl of VhostUserDevice::start_queue.
 pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + IntoAsync + TapT>(
     backend: &mut NetBackend<T>,
     idx: usize,

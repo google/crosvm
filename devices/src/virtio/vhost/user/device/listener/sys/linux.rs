@@ -40,7 +40,7 @@ impl VhostUserListener {
 }
 
 /// Attaches to an already bound socket via `listener` and handles incoming messages from the
-/// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
+/// VMM, which are dispatched to the device backend via the `VhostUserDevice` trait methods.
 async fn run_with_handler(
     mut listener: SocketListener,
     handler: Box<dyn vmm_vhost::Backend>,

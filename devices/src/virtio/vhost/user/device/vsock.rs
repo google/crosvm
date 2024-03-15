@@ -40,7 +40,7 @@ use crate::virtio::device_constants::vsock::NUM_QUEUES;
 use crate::virtio::vhost::user::device::handler::vmm_va_to_gpa;
 use crate::virtio::vhost::user::device::handler::MappingInfo;
 use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
-use crate::virtio::vhost::user::VhostUserDevice;
+use crate::virtio::vhost::user::VhostUserDeviceBuilder;
 use crate::virtio::vhost::user::VhostUserListener;
 use crate::virtio::vhost::user::VhostUserListenerTrait;
 use crate::virtio::Queue;
@@ -90,11 +90,8 @@ impl AsRawDescriptor for VhostUserVsockDevice {
     }
 }
 
-impl VhostUserDevice for VhostUserVsockDevice {
-    fn into_req_handler(
-        self: Box<Self>,
-        _ex: &Executor,
-    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
+impl VhostUserDeviceBuilder for VhostUserVsockDevice {
+    fn build(self: Box<Self>, _ex: &Executor) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
         let backend = VsockBackend {
             queues: [
                 QueueConfig::new(Queue::MAX_SIZE, 0),

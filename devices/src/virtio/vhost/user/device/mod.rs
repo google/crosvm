@@ -20,7 +20,7 @@ pub use gpu::run_gpu_device;
 #[cfg(feature = "gpu")]
 pub use gpu::Options as GpuOptions;
 pub use handler::VhostBackendReqConnectionState;
-pub use handler::VhostUserBackend;
+pub use handler::VhostUserDevice;
 pub use listener::sys::VhostUserListener;
 pub use listener::VhostUserListenerTrait;
 #[cfg(feature = "net")]
@@ -51,21 +51,21 @@ cfg_if::cfg_if! {
     }
 }
 
-/// A trait for vhost-user devices.
+/// A trait for not-yet-built vhost-user devices.
 ///
-/// Upon being given an [[Executor]], a device can be converted into a [[vmm_vhost::Backend]],
+/// Upon being given an [[Executor]], a builder can be converted into a [[vmm_vhost::Backend]],
 /// which can then process the requests from the front-end.
 ///
-/// We don't build request handlers directly to ensure that the device starts to process queues in
-/// the jailed process, not in the main process. [[VhostUserDevice::into_req_handler()]] is called
-/// only after jailing, which ensures that any operations by the request handler is done in the
-/// jailed process.
-pub trait VhostUserDevice {
-    /// Turn this device into a vhost-user request handler that will run the device.
+/// We don't build the device directly to ensure that the device only starts threads in the jailed
+/// process, not in the main process. [[VhostUserDeviceBuilder::build()]] is called only after
+/// jailing, which ensures that any operations by the device are done in the jailed process.
+///
+/// TODO: Ideally this would return a [[VhostUserDevice]] instead of [[vmm_vhost::Backend]]. Only
+/// the vhost-user vhost-vsock device uses the latter and it can probably be migrated to
+/// [[VhostUserDevice]].
+pub trait VhostUserDeviceBuilder {
+    /// Create the vhost-user device.
     ///
     /// `ex` is an executor the device can use to schedule its tasks.
-    fn into_req_handler(
-        self: Box<Self>,
-        ex: &Executor,
-    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>>;
+    fn build(self: Box<Self>, ex: &Executor) -> anyhow::Result<Box<dyn vmm_vhost::Backend>>;
 }

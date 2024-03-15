@@ -29,10 +29,10 @@ use crate::virtio::console::virtio_console_config;
 use crate::virtio::copy_config;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
-use crate::virtio::vhost::user::device::VhostUserDevice;
+use crate::virtio::vhost::user::device::VhostUserDeviceBuilder;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::SerialHardware;
@@ -59,11 +59,8 @@ impl Drop for VhostUserConsoleDevice {
     }
 }
 
-impl VhostUserDevice for VhostUserConsoleDevice {
-    fn into_req_handler(
-        self: Box<Self>,
-        ex: &Executor,
-    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
+impl VhostUserDeviceBuilder for VhostUserConsoleDevice {
+    fn build(self: Box<Self>, ex: &Executor) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
         if self.raw_stdin {
             // Set stdin() to raw mode so we can send over individual keystrokes unbuffered
             std::io::stdin()
@@ -95,7 +92,7 @@ struct ConsoleBackend {
     active_queues: Vec<Option<Arc<Mutex<Queue>>>>,
 }
 
-impl VhostUserBackend for ConsoleBackend {
+impl VhostUserDevice for ConsoleBackend {
     fn max_queue_num(&self) -> usize {
         self.device.console.max_queues()
     }

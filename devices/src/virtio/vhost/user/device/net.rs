@@ -34,8 +34,8 @@ use crate::virtio::net::process_tx;
 use crate::virtio::net::virtio_features_to_tap_offload;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
-use crate::virtio::vhost::user::VhostUserDevice;
+use crate::virtio::vhost::user::device::handler::VhostUserDevice;
+use crate::virtio::vhost::user::VhostUserDeviceBuilder;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
@@ -142,7 +142,7 @@ where
     }
 }
 
-impl<T: 'static> VhostUserBackend for NetBackend<T>
+impl<T: 'static> VhostUserDevice for NetBackend<T>
 where
     T: TapT + IntoAsync,
 {
@@ -241,14 +241,11 @@ where
     }
 }
 
-impl<T> VhostUserDevice for NetBackend<T>
+impl<T> VhostUserDeviceBuilder for NetBackend<T>
 where
     T: TapT + IntoAsync + 'static,
 {
-    fn into_req_handler(
-        self: Box<Self>,
-        ex: &Executor,
-    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
+    fn build(self: Box<Self>, ex: &Executor) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
         NET_EXECUTOR.with(|thread_ex| {
             let _ = thread_ex.set(ex.clone());
         });

@@ -23,7 +23,7 @@ use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_tr
 use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
 use crate::virtio::vhost::user::device::snd::SndBackend;
 use crate::virtio::vhost::user::device::snd::SND_EXECUTOR;
-use crate::virtio::vhost::user::device::VhostUserDevice;
+use crate::virtio::vhost::user::VhostUserDeviceBuilder;
 
 pub mod generic;
 pub use generic as product;
@@ -111,7 +111,7 @@ pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
         warn!("Failed to set audio thread to real time: {}", e);
     };
 
-    let handler = snd_device.into_req_handler(&ex)?;
+    let handler = snd_device.build(&ex)?;
 
     info!("vhost-user snd device ready, starting run loop...");
     if let Err(e) = ex.run_until(run_handler(

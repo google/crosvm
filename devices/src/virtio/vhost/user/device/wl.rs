@@ -41,7 +41,7 @@ use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
@@ -141,7 +141,7 @@ impl WlBackend {
     }
 }
 
-impl VhostUserBackend for WlBackend {
+impl VhostUserDevice for WlBackend {
     fn max_queue_num(&self) -> usize {
         NUM_QUEUES
     }

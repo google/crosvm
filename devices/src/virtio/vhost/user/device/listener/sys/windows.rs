@@ -8,7 +8,7 @@ use base::RawDescriptor;
 use cros_async::Executor;
 use futures::Future;
 
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 
 /// TODO implement this. On Windows the `vhost_user_tube` can be provided through the `path`

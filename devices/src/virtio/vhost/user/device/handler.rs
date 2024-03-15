@@ -5,12 +5,12 @@
 //! Library for implementing vhost-user device executables.
 //!
 //! This crate provides
-//! * `VhostUserBackend` trait, which is a collection of methods to handle vhost-user requests, and
+//! * `VhostUserDevice` trait, which is a collection of methods to handle vhost-user requests, and
 //! * `DeviceRequestHandler` struct, which makes a connection to a VMM and starts an event loop.
 //!
 //! They are expected to be used as follows:
 //!
-//! 1. Define a struct and implement `VhostUserBackend` for it.
+//! 1. Define a struct and implement `VhostUserDevice` for it.
 //! 2. Create a `DeviceRequestHandler` with the backend struct.
 //! 3. Drive the `DeviceRequestHandler::run` async fn with an executor.
 //!
@@ -19,7 +19,7 @@
 //!   /* fields */
 //! }
 //!
-//! impl VhostUserBackend for MyBackend {
+//! impl VhostUserDevice for MyBackend {
 //!   /* implement methods */
 //! }
 //!
@@ -37,12 +37,12 @@
 //! ```
 // Implementation note:
 // This code lets us take advantage of the vmm_vhost low level implementation of the vhost user
-// protocol. DeviceRequestHandler implements the VhostUserSlaveReqHandler trait from vmm_vhost,
-// and includes some common code for setting up guest memory and managing partially configured
-// vrings. DeviceRequestHandler::run watches the vhost-user socket and then calls handle_request()
-// when it becomes readable. handle_request() reads and parses the message and then calls one of the
-// VhostUserSlaveReqHandler trait methods. These dispatch back to the supplied VhostUserBackend
-// implementation (this is what our devices implement).
+// protocol. DeviceRequestHandler implements the Backend trait from vmm_vhost, and includes some
+// common code for setting up guest memory and managing partially configured vrings.
+// DeviceRequestHandler::run watches the vhost-user socket and then calls handle_request() when it
+// becomes readable. handle_request() reads and parses the message and then calls one of the
+// Backend trait methods. These dispatch back to the supplied VhostUserDevice implementation (this
+// is what our devices implement).
 
 pub(super) mod sys;
 
@@ -121,8 +121,11 @@ pub fn vmm_va_to_gpa(maps: &[MappingInfo], vmm_va: u64) -> VhostResult<GuestAddr
     Err(VhostError::InvalidMessage)
 }
 
-/// Trait for vhost-user backend.
-pub trait VhostUserBackend {
+/// Trait for vhost-user devices. Analogous to the `VirtioDevice` trait.
+///
+/// In contrast with [[vmm_vhost::Backend]], which closely matches the vhost-user spec, this trait
+/// is designed to follow crosvm conventions for implementing devices.
+pub trait VhostUserDevice {
     /// The maximum number of queues that this backend can manage.
     fn max_queue_num(&self) -> usize;
 
@@ -186,7 +189,7 @@ pub trait VhostUserBackend {
         error!("set_backend_req_connection is not implemented");
     }
 
-    /// Used to stop non queue workers that `VhostUserBackend::stop_queue` can't stop. May or may
+    /// Used to stop non queue workers that `VhostUserDevice::stop_queue` can't stop. May or may
     /// not also stop all queue workers.
     fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
         error!("sleep not implemented for vhost user device");
@@ -353,13 +356,13 @@ impl VhostUserRegularOps {
     }
 }
 
-/// A request handler for devices implementing `VhostUserBackend`.
+/// An adapter that implements `vmm_vhost::Backend` for any type implementing `VhostUserDevice`.
 pub struct DeviceRequestHandler {
     vrings: Vec<Vring>,
     owned: bool,
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
-    backend: Box<dyn VhostUserBackend>,
+    backend: Box<dyn VhostUserDevice>,
     backend_req_connection: Arc<Mutex<VhostBackendReqConnectionState>>,
 }
 
@@ -371,7 +374,7 @@ pub struct DeviceRequestHandlerSnapshot {
 
 impl DeviceRequestHandler {
     /// Creates a vhost-user handler instance for `backend`.
-    pub(crate) fn new(backend: Box<dyn VhostUserBackend>) -> Self {
+    pub(crate) fn new(backend: Box<dyn VhostUserDevice>) -> Self {
         let mut vrings = Vec::with_capacity(backend.max_queue_num());
         for _ in 0..backend.max_queue_num() {
             vrings.push(Vring::new(Queue::MAX_SIZE, backend.features()));
@@ -1027,7 +1030,7 @@ mod tests {
         }
     }
 
-    impl VhostUserBackend for FakeBackend {
+    impl VhostUserDevice for FakeBackend {
         fn max_queue_num(&self) -> usize {
             Self::MAX_QUEUE_NUM
         }

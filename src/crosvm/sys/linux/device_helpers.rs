@@ -44,7 +44,7 @@ use devices::virtio::vfio_wrapper::VfioWrapper;
 use devices::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 #[cfg(feature = "net")]
 use devices::virtio::vhost::user::NetBackend;
-use devices::virtio::vhost::user::VhostUserDevice;
+use devices::virtio::vhost::user::VhostUserDeviceBuilder;
 use devices::virtio::vhost::user::VhostUserVsockDevice;
 use devices::virtio::vsock::VsockConfig;
 #[cfg(feature = "balloon")]
@@ -194,7 +194,7 @@ pub trait VirtioDeviceBuilder: Sized {
     fn create_vhost_user_device(
         self,
         _keep_rds: &mut Vec<RawDescriptor>,
-    ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
+    ) -> anyhow::Result<Box<dyn VhostUserDeviceBuilder>> {
         unimplemented!()
     }
 
@@ -272,7 +272,7 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
     fn create_vhost_user_device(
         self,
         keep_rds: &mut Vec<RawDescriptor>,
-    ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
+    ) -> anyhow::Result<Box<dyn VhostUserDeviceBuilder>> {
         let disk = self.disk;
         let disk_image = disk.open()?;
         let base_features = virtio::base_features(ProtectionType::Unprotected);
@@ -750,7 +750,7 @@ impl VirtioDeviceBuilder for &NetParameters {
     fn create_vhost_user_device(
         self,
         keep_rds: &mut Vec<RawDescriptor>,
-    ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
+    ) -> anyhow::Result<Box<dyn VhostUserDeviceBuilder>> {
         let vq_pairs = self.vq_pairs.unwrap_or(1);
         let multi_vq = vq_pairs > 1 && self.vhost_net.is_none();
         let (tap, _mac) = create_tap_for_net_device(&self.mode, multi_vq)?;
@@ -955,7 +955,7 @@ impl VirtioDeviceBuilder for &VsockConfig {
     fn create_vhost_user_device(
         self,
         keep_rds: &mut Vec<RawDescriptor>,
-    ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
+    ) -> anyhow::Result<Box<dyn VhostUserDeviceBuilder>> {
         let vsock_device = VhostUserVsockDevice::new(self.cid, &self.vhost_device)?;
 
         keep_rds.push(vsock_device.as_raw_descriptor());
@@ -1248,7 +1248,7 @@ impl VirtioDeviceBuilder for &SerialParameters {
     fn create_vhost_user_device(
         self,
         keep_rds: &mut Vec<RawDescriptor>,
-    ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
+    ) -> anyhow::Result<Box<dyn VhostUserDeviceBuilder>> {
         Ok(Box::new(virtio::vhost::user::create_vu_console_device(
             self, keep_rds,
         )?))

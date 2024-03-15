@@ -49,9 +49,9 @@ use crate::virtio::snd::constants::VIRTIO_SND_R_PCM_START;
 use crate::virtio::snd::parameters::Parameters;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::handler::WorkerState;
-use crate::virtio::vhost::user::VhostUserDevice;
+use crate::virtio::vhost::user::VhostUserDeviceBuilder;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
@@ -133,17 +133,14 @@ impl SndBackend {
     }
 }
 
-impl VhostUserDevice for SndBackend {
-    fn into_req_handler(
-        self: Box<Self>,
-        _ex: &Executor,
-    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
+impl VhostUserDeviceBuilder for SndBackend {
+    fn build(self: Box<Self>, _ex: &Executor) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
         let handler = DeviceRequestHandler::new(self);
         Ok(Box::new(handler))
     }
 }
 
-impl VhostUserBackend for SndBackend {
+impl VhostUserDevice for SndBackend {
     fn max_queue_num(&self) -> usize {
         MAX_QUEUE_NUM
     }

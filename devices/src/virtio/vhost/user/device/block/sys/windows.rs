@@ -29,7 +29,7 @@ use crate::virtio::vhost::user::device::block::BlockBackend;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
 use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
 use crate::virtio::vhost::user::device::VhostUserDevice;
-use crate::virtio::vhost::user::VhostUserBackend;
+use crate::virtio::vhost::user::VhostUserDeviceBuilder;
 use crate::virtio::BlockAsync;
 
 #[derive(FromArgs, Debug)]
@@ -92,7 +92,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     //     }
 
     // This is basically the event loop.
-    let handler = block.into_req_handler(&ex)?;
+    let handler = block.build(&ex)?;
 
     info!("vhost-user disk device ready, starting run loop...");
     if let Err(e) = ex.run_until(run_handler(handler, vhost_user_tube, exit_event, &ex)) {

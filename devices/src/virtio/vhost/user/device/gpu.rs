@@ -29,7 +29,7 @@ use crate::virtio::gpu;
 use crate::virtio::gpu::QueueReader;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Gpu;
@@ -94,7 +94,7 @@ struct GpuBackend {
     shmem_mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
 }
 
-impl VhostUserBackend for GpuBackend {
+impl VhostUserDevice for GpuBackend {
     fn max_queue_num(&self) -> usize {
         MAX_QUEUE_NUM
     }

@@ -38,7 +38,7 @@ use crate::virtio::fs::passthrough::PassthroughFs;
 use crate::virtio::fs::process_fs_queue;
 use crate::virtio::fs::Config;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -117,7 +117,7 @@ impl FsBackend {
     }
 }
 
-impl VhostUserBackend for FsBackend {
+impl VhostUserDevice for FsBackend {
     fn max_queue_num(&self) -> usize {
         MAX_QUEUE_NUM
     }

@@ -12,8 +12,8 @@ use futures::Future;
 pub use sys::VhostUserListener;
 
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
-use crate::virtio::vhost::user::VhostUserDevice;
+use crate::virtio::vhost::user::device::handler::VhostUserDevice;
+use crate::virtio::vhost::user::VhostUserDeviceBuilder;
 
 /// Trait that the platform-specific type `VhostUserListener` needs to implement. It contains all
 /// the methods that are ok to call from non-platform specific code.
@@ -60,7 +60,7 @@ pub trait VhostUserListenerTrait {
     /// This is a legacy way to run devices - prefer `run_device`.
     fn run_backend<'e>(
         self,
-        backend: Box<dyn VhostUserBackend>,
+        backend: Box<dyn VhostUserDevice>,
         ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>
     where
@@ -71,10 +71,10 @@ pub trait VhostUserListenerTrait {
 
     /// Start processing requests for a `VhostUserDevice` on `listener`. Returns when the front-end
     /// side disconnects or an error occurs.
-    fn run_device(self, ex: Executor, device: Box<dyn VhostUserDevice>) -> anyhow::Result<()>
+    fn run_device(self, ex: Executor, device: Box<dyn VhostUserDeviceBuilder>) -> anyhow::Result<()>
     where
         Self: Sized,
     {
-        ex.run_until(self.run_req_handler(device.into_req_handler(&ex).unwrap(), &ex))?
+        ex.run_until(self.run_req_handler(device.build(&ex).unwrap(), &ex))?
     }
 }

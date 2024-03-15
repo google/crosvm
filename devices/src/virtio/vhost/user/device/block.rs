@@ -18,8 +18,8 @@ use vmm_vhost::message::*;
 use crate::virtio;
 use crate::virtio::block::asynchronous::BlockAsync;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
-use crate::virtio::vhost::user::device::VhostUserDevice;
+use crate::virtio::vhost::user::device::handler::VhostUserDevice;
+use crate::virtio::vhost::user::device::VhostUserDeviceBuilder;
 use crate::virtio::Interrupt;
 use crate::virtio::VirtioDevice;
 
@@ -42,11 +42,8 @@ struct BlockBackendSnapshot {
     acked_protocol_features: u64,
 }
 
-impl VhostUserDevice for BlockAsync {
-    fn into_req_handler(
-        self: Box<Self>,
-        _ex: &Executor,
-    ) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
+impl VhostUserDeviceBuilder for BlockAsync {
+    fn build(self: Box<Self>, _ex: &Executor) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
         let avail_features = self.features() | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
         let backend = BlockBackend {
             inner: self,
@@ -59,7 +56,7 @@ impl VhostUserDevice for BlockAsync {
     }
 }
 
-impl VhostUserBackend for BlockBackend {
+impl VhostUserDevice for BlockBackend {
     fn max_queue_num(&self) -> usize {
         NUM_QUEUES as usize
     }
