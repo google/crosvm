@@ -134,10 +134,6 @@ impl SndBackend {
 }
 
 impl VhostUserDevice for SndBackend {
-    fn max_queue_num(&self) -> usize {
-        MAX_QUEUE_NUM
-    }
-
     fn into_req_handler(
         self: Box<Self>,
         _ex: &Executor,

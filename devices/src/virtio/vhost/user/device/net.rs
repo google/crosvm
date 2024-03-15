@@ -245,10 +245,6 @@ impl<T> VhostUserDevice for NetBackend<T>
 where
     T: TapT + IntoAsync + 'static,
 {
-    fn max_queue_num(&self) -> usize {
-        MAX_QUEUE_NUM
-    }
-
     fn into_req_handler(
         self: Box<Self>,
         ex: &Executor,

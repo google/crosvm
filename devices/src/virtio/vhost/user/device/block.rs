@@ -43,10 +43,6 @@ struct BlockBackendSnapshot {
 }
 
 impl VhostUserDevice for BlockAsync {
-    fn max_queue_num(&self) -> usize {
-        NUM_QUEUES as usize
-    }
-
     fn into_req_handler(
         self: Box<Self>,
         _ex: &Executor,

@@ -60,19 +60,6 @@ impl Drop for VhostUserConsoleDevice {
 }
 
 impl VhostUserDevice for VhostUserConsoleDevice {
-    fn max_queue_num(&self) -> usize {
-        // The port 0 receive and transmit queues always exist;
-        // other queues only exist if VIRTIO_CONSOLE_F_MULTIPORT is set.
-        if self.console.is_multi_port() {
-            let port_num = self.console.max_ports();
-
-            // Extra 1 is for control port; each port has two queues (tx & rx)
-            (port_num + 1) * 2
-        } else {
-            2
-        }
-    }
-
     fn into_req_handler(
         self: Box<Self>,
         ex: &Executor,
@@ -84,7 +71,7 @@ impl VhostUserDevice for VhostUserConsoleDevice {
                 .context("failed to set terminal in raw mode")?;
         }
 
-        let queue_num = self.max_queue_num();
+        let queue_num = self.console.max_queues();
         let active_queues = vec![None; queue_num];
 
         let backend = ConsoleBackend {
@@ -110,7 +97,7 @@ struct ConsoleBackend {
 
 impl VhostUserBackend for ConsoleBackend {
     fn max_queue_num(&self) -> usize {
-        self.device.max_queue_num()
+        self.device.console.max_queues()
     }
 
     fn features(&self) -> u64 {

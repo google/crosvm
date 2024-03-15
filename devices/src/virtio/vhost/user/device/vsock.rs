@@ -91,10 +91,6 @@ impl AsRawDescriptor for VhostUserVsockDevice {
 }
 
 impl VhostUserDevice for VhostUserVsockDevice {
-    fn max_queue_num(&self) -> usize {
-        NUM_QUEUES
-    }
-
     fn into_req_handler(
         self: Box<Self>,
         _ex: &Executor,

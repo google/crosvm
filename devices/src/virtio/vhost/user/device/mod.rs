@@ -62,9 +62,6 @@ cfg_if::cfg_if! {
 /// only after jailing, which ensures that any operations by the request handler is done in the
 /// jailed process.
 pub trait VhostUserDevice {
-    /// The maximum number of queues that this device can manage.
-    fn max_queue_num(&self) -> usize;
-
     /// Turn this device into a vhost-user request handler that will run the device.
     ///
     /// `ex` is an executor the device can use to schedule its tasks.

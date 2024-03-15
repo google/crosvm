@@ -296,6 +296,20 @@ impl ConsoleDevice {
         1 + self.extra_ports.len()
     }
 
+    /// Returns the maximum number of queues supported by this device.
+    pub fn max_queues(&self) -> usize {
+        // The port 0 receive and transmit queues always exist;
+        // other queues only exist if VIRTIO_CONSOLE_F_MULTIPORT is set.
+        if self.is_multi_port() {
+            let port_num = self.max_ports();
+
+            // Extra 1 is for control port; each port has two queues (tx & rx)
+            (port_num + 1) * 2
+        } else {
+            2
+        }
+    }
+
     /// Return the reference of the console port by port_id
     fn get_console_port(&mut self, port_id: usize) -> anyhow::Result<&mut ConsolePort> {
         match port_id {
