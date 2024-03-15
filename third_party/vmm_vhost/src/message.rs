@@ -51,7 +51,7 @@ pub enum ReqError {
     InvalidValue(u32),
 }
 
-/// Type of requests sending from masters to slaves.
+/// Type of requests sent to the backend.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, enumn::N)]
 pub enum MasterReq {

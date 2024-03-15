@@ -878,7 +878,7 @@ mod tests {
     use base::INVALID_DESCRIPTOR;
 
     use super::*;
-    use crate::dummy_slave::DummySlaveReqHandler;
+    use crate::test_backend::TestBackend;
     use crate::Connection;
     use crate::SystemStream;
 
@@ -886,7 +886,7 @@ mod tests {
     fn test_backend_server_new() {
         let (p1, _p2) = SystemStream::pair().unwrap();
         let connection = Connection::from(p1);
-        let backend = DummySlaveReqHandler::new();
+        let backend = TestBackend::new();
         let handler = BackendServer::new(connection, backend);
 
         assert!(handler.as_raw_descriptor() != INVALID_DESCRIPTOR);
