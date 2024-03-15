@@ -91,10 +91,10 @@ use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
 use vmm_vhost::Connection;
 use vmm_vhost::Error as VhostError;
+use vmm_vhost::Frontend;
 use vmm_vhost::FrontendClient;
 use vmm_vhost::Result as VhostResult;
 use vmm_vhost::SlaveReq;
-use vmm_vhost::VhostUserMasterReqHandler;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio::Interrupt;

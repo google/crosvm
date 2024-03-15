@@ -25,9 +25,9 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserShmemMapMsg;
 use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::BackendClient;
+use vmm_vhost::Frontend;
 use vmm_vhost::HandlerResult;
 use vmm_vhost::MasterReqHandler;
-use vmm_vhost::VhostUserMasterReqHandler;
 use vmm_vhost::VhostUserMemoryRegionInfo;
 use vmm_vhost::VringConfigData;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
@@ -341,7 +341,7 @@ impl VhostUserHandler {
             .id;
 
         backend_req_handler
-            .backend_mut()
+            .frontend_mut()
             .set_shared_mapper_state(SharedMapperState { mapper, shmid });
         Ok(())
     }
@@ -399,7 +399,7 @@ impl VhostUserHandler {
         let mut backend_req_handler = self.backend_req_handler.take();
         if let Some(handler) = &mut backend_req_handler {
             // Using unwrap here to get the mutex protected value
-            handler.backend_mut().set_interrupt(interrupt.clone());
+            handler.frontend_mut().set_interrupt(interrupt.clone());
         }
 
         Ok(WorkerThread::start(label.clone(), move |kill_evt| {
@@ -437,7 +437,7 @@ impl BackendReqHandlerImpl {
     }
 }
 
-impl VhostUserMasterReqHandler for BackendReqHandlerImpl {
+impl Frontend for BackendReqHandlerImpl {
     fn shmem_map(
         &mut self,
         req: &VhostUserShmemMapMsg,

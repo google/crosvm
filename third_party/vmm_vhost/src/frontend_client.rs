@@ -11,11 +11,11 @@ use zerocopy::AsBytes;
 use crate::message::*;
 use crate::Connection;
 use crate::Error;
+use crate::Frontend;
 use crate::HandlerResult;
 use crate::Result;
 use crate::SlaveReq;
 use crate::SystemStream;
-use crate::VhostUserMasterReqHandler;
 
 /// Client for a vhost-user frontend. Allows a backend to send requests to the frontend.
 pub struct FrontendClient {
@@ -102,7 +102,7 @@ impl FrontendClient {
     }
 }
 
-impl VhostUserMasterReqHandler for FrontendClient {
+impl Frontend for FrontendClient {
     /// Handle shared memory region mapping requests.
     fn shmem_map(
         &mut self,

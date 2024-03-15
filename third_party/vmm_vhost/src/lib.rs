@@ -54,14 +54,14 @@ pub use sys::*;
 
 pub(crate) mod backend_client;
 pub use backend_client::BackendClient;
-mod master_req_handler;
-pub use self::master_req_handler::VhostUserMasterReqHandler;
+mod frontend_server;
+pub use self::frontend_server::Frontend;
 mod backend_server;
 mod frontend_client;
 pub use self::backend_server::Backend;
 pub use self::backend_server::BackendServer;
 pub use self::frontend_client::FrontendClient;
-pub use self::master_req_handler::MasterReqHandler;
+pub use self::frontend_server::MasterReqHandler;
 
 /// Errors for vhost-user operations
 #[sorted]

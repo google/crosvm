@@ -15,20 +15,10 @@ use crate::Result;
 use crate::SlaveReq;
 use crate::SystemStream;
 
-/// Define services provided by masters for the slave communication channel.
+/// Trait for vhost-user frontends to respond to requests from the backend.
 ///
-/// The vhost-user specification defines a slave communication channel, by which slaves could
-/// request services from masters. The [VhostUserMasterReqHandler] trait defines services provided
-/// by masters, and it's used both on the master side and slave side.
-/// - on the slave side, a stub forwarder implementing [VhostUserMasterReqHandler] will proxy
-///   service requests to masters. The [Slave] is an example stub forwarder.
-/// - on the master side, the [MasterReqHandler] will forward service requests to a handler
-///   implementing [VhostUserMasterReqHandler].
-///
-/// [VhostUserMasterReqHandler]: trait.VhostUserMasterReqHandler.html
-/// [MasterReqHandler]: struct.MasterReqHandler.html
-/// [Slave]: struct.Slave.html
-pub trait VhostUserMasterReqHandler {
+/// Each method corresponds to a vhost-user protocol method. See the specification for details.
+pub trait Frontend {
     /// Handle device configuration change notifications.
     fn handle_config_change(&mut self) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
@@ -66,15 +56,9 @@ pub trait VhostUserMasterReqHandler {
     }
 }
 
-/// The [MasterReqHandler] acts as a server on the master side, to handle service requests from
-/// slaves on the slave communication channel. It's actually a proxy invoking the registered
-/// handler implementing [VhostUserMasterReqHandler] to do the real work.
-///
-/// [MasterReqHandler]: struct.MasterReqHandler.html
-/// [VhostUserMasterReqHandler]: trait.VhostUserMasterReqHandler.html
-///
-/// Server to handle service requests from slaves from the slave communication channel.
-pub struct MasterReqHandler<S: VhostUserMasterReqHandler> {
+/// Handles requests from a vhost-user backend connection by dispatching them to [[Frontend]]
+/// methods.
+pub struct MasterReqHandler<S: Frontend> {
     // underlying Unix domain socket for communication
     pub(crate) sub_sock: Connection<SlaveReq>,
     tx_sock: Option<SystemStream>,
@@ -83,11 +67,10 @@ pub struct MasterReqHandler<S: VhostUserMasterReqHandler> {
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
 
-    /// the VirtIO backend device object
-    backend: S,
+    frontend: S,
 }
 
-impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
+impl<S: Frontend> MasterReqHandler<S> {
     /// Create a server to handle service requests from slaves on the slave communication channel.
     ///
     /// This opens a pair of connected anonymous sockets to form the slave communication channel.
@@ -97,7 +80,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     /// [Self::take_tx_descriptor()]: struct.MasterReqHandler.html#method.take_tx_descriptor
     /// [Master::set_slave_request_fd()]: struct.Master.html#method.set_slave_request_fd
     pub fn new(
-        backend: S,
+        frontend: S,
         serialize_tx: Box<dyn Fn(SystemStream) -> SafeDescriptor + Send>,
     ) -> Result<Self> {
         let (tx, rx) = SystemStream::pair()?;
@@ -107,7 +90,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
             tx_sock: Some(tx),
             serialize_tx,
             reply_ack_negotiated: false,
-            backend,
+            frontend,
         })
     }
 
@@ -130,9 +113,9 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         self.reply_ack_negotiated = enable;
     }
 
-    /// Get the underlying backend device
-    pub fn backend_mut(&mut self) -> &mut S {
-        &mut self.backend
+    /// Get the underlying frontend
+    pub fn frontend_mut(&mut self) -> &mut S {
+        &mut self.frontend
     }
 
     /// Main entrance to server slave request from the slave communication channel.
@@ -159,33 +142,33 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         let res = match hdr.get_code() {
             Ok(SlaveReq::CONFIG_CHANGE_MSG) => {
                 self.check_msg_size(&hdr, size, 0)?;
-                self.backend
+                self.frontend
                     .handle_config_change()
                     .map_err(Error::ReqHandlerError)
             }
             Ok(SlaveReq::SHMEM_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserShmemMapMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
-                self.backend
+                self.frontend
                     .shmem_map(&msg, &files[0])
                     .map_err(Error::ReqHandlerError)
             }
             Ok(SlaveReq::SHMEM_UNMAP) => {
                 let msg = self.extract_msg_body::<VhostUserShmemUnmapMsg>(&hdr, size, &buf)?;
-                self.backend
+                self.frontend
                     .shmem_unmap(&msg)
                     .map_err(Error::ReqHandlerError)
             }
             Ok(SlaveReq::GPU_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserGpuMapMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
-                self.backend
+                self.frontend
                     .gpu_map(&msg, &files[0])
                     .map_err(Error::ReqHandlerError)
             }
             Ok(SlaveReq::EXTERNAL_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserExternalMapMsg>(&hdr, size, &buf)?;
-                self.backend
+                self.frontend
                     .external_map(&msg)
                     .map_err(Error::ReqHandlerError)
             }
