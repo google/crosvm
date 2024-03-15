@@ -8,14 +8,13 @@ use std::fs::File;
 use std::io::ErrorKind;
 use std::io::IoSlice;
 use std::io::IoSliceMut;
-use std::os::unix::io::IntoRawFd;
+use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixListener;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::path::PathBuf;
 
 use base::AsRawDescriptor;
-use base::FromRawDescriptor;
 use base::RawDescriptor;
 use base::SafeDescriptor;
 use base::ScmSocket;
@@ -288,16 +287,17 @@ impl<S: Frontend> AsRawDescriptor for FrontendServer<S> {
 
 impl<S: Frontend> FrontendServer<S> {
     /// Create a `FrontendServer` that uses a Unix stream internally.
-    pub fn with_stream(backend: S) -> Result<Self> {
-        Self::new(
-            backend,
-            Box::new(|stream|
-                // SAFETY:
-                // Safe because we own the raw fd.
-                unsafe {
-                    SafeDescriptor::from_raw_descriptor(stream.into_raw_fd())
-            }),
-        )
+    ///
+    /// The returned `SafeDescriptor` is the client side of the stream and should be sent to the
+    /// backend using [BackendClient::set_slave_request_fd()].
+    ///
+    /// [BackendClient::set_slave_request_fd()]: struct.BackendClient.html#method.set_slave_request_fd
+    pub fn with_stream(backend: S) -> Result<(Self, SafeDescriptor)> {
+        let (tx, rx) = SystemStream::pair()?;
+        Ok((
+            Self::new(backend, rx)?,
+            SafeDescriptor::from(OwnedFd::from(tx)),
+        ))
     }
 }
 

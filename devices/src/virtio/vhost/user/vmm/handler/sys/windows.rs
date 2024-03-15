@@ -7,6 +7,7 @@ use anyhow::Result;
 use base::info;
 use base::CloseNotifier;
 use base::ReadNotifier;
+use base::SafeDescriptor;
 use base::Tube;
 use cros_async::EventAsync;
 use cros_async::Executor;
@@ -24,11 +25,9 @@ use crate::virtio::vhost::user::vmm::Result as VhostResult;
 pub fn create_backend_req_handler(
     h: BackendReqHandlerImpl,
     backend_pid: Option<u32>,
-) -> VhostResult<BackendReqHandler> {
+) -> VhostResult<(BackendReqHandler, SafeDescriptor)> {
     let backend_pid = backend_pid.expect("tube needs target pid for backend requests");
-    let mut handler = vmm_vhost::FrontendServer::with_tube(h, backend_pid)
-        .map_err(Error::CreateBackendReqHandler)?;
-    Ok(handler)
+    vmm_vhost::FrontendServer::with_tube(h, backend_pid).map_err(Error::CreateBackendReqHandler)
 }
 
 pub async fn run_backend_request_handler(

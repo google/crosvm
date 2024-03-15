@@ -91,7 +91,7 @@ impl VhostUserHandler {
         // if protocol feature `VhostUserProtocolFeatures::SLAVE_REQ` is negotiated.
         let backend_req_handler =
             if protocol_features.contains(VhostUserProtocolFeatures::SLAVE_REQ) {
-                let mut handler = create_backend_req_handler(
+                let (handler, tx_fd) = create_backend_req_handler(
                     BackendReqHandlerImpl {
                         interrupt: None,
                         shared_mapper_state: None,
@@ -100,7 +100,7 @@ impl VhostUserHandler {
                     backend_pid,
                 )?;
                 backend_client
-                    .set_slave_request_fd(&handler.take_tx_descriptor())
+                    .set_slave_request_fd(&tx_fd)
                     .map_err(Error::SetDeviceRequestChannel)?;
                 Some(handler)
             } else {

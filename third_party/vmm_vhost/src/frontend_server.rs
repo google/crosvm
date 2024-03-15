@@ -5,7 +5,6 @@ use std::fs::File;
 use std::mem;
 
 use base::AsRawDescriptor;
-use base::SafeDescriptor;
 
 use crate::message::*;
 use crate::Connection;
@@ -61,9 +60,6 @@ pub trait Frontend {
 pub struct FrontendServer<S: Frontend> {
     // underlying Unix domain socket for communication
     pub(crate) sub_sock: Connection<SlaveReq>,
-    tx_sock: Option<SystemStream>,
-    // Serializes tx_sock for passing to the backend.
-    serialize_tx: Box<dyn Fn(SystemStream) -> SafeDescriptor + Send>,
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
 
@@ -71,37 +67,13 @@ pub struct FrontendServer<S: Frontend> {
 }
 
 impl<S: Frontend> FrontendServer<S> {
-    /// Create a server to handle service requests from backends.
-    ///
-    /// This opens a pair of connected anonymous sockets to form the backend-to-frontend
-    /// communication channel. The socket fd returned by [Self::take_tx_descriptor()] should be
-    /// sent to the backend by [BackendClient::set_slave_request_fd()].
-    ///
-    /// [Self::take_tx_descriptor()]: struct.FrontendServer.html#method.take_tx_descriptor
-    /// [BackendClient::set_slave_request_fd()]: struct.BackendClient.html#method.set_slave_request_fd
-    pub fn new(
-        frontend: S,
-        serialize_tx: Box<dyn Fn(SystemStream) -> SafeDescriptor + Send>,
-    ) -> Result<Self> {
-        let (tx, rx) = SystemStream::pair()?;
-
+    /// Create a server to handle requests from `stream`.
+    pub(crate) fn new(frontend: S, stream: SystemStream) -> Result<Self> {
         Ok(FrontendServer {
-            sub_sock: Connection::from(rx),
-            tx_sock: Some(tx),
-            serialize_tx,
+            sub_sock: Connection::from(stream),
             reply_ack_negotiated: false,
             frontend,
         })
-    }
-
-    /// Get the descriptor for the backend to communication with the frontend.
-    ///
-    /// The caller owns the descriptor. The returned descriptor should be sent to the slave by
-    /// [BackendClient::set_slave_request_fd()].
-    ///
-    /// [BackendClient::set_slave_request_fd()]: struct.BackendClient.html#method.set_slave_request_fd
-    pub fn take_tx_descriptor(&mut self) -> SafeDescriptor {
-        (self.serialize_tx)(self.tx_sock.take().expect("tx_sock should have a value"))
     }
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.

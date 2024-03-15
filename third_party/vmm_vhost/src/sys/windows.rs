@@ -194,16 +194,17 @@ impl AsRawDescriptor for TubePlatformConnection {
 impl<S: Frontend> FrontendServer<S> {
     /// Create a `FrontendServer` that uses a Tube internally. Must specify the backend process
     /// which will receive the Tube.
-    pub fn with_tube(backend: S, backend_pid: u32) -> Result<Self> {
-        Self::new(
-            backend,
-            Box::new(move |tube|
-                // SAFETY:
-                // Safe because we expect the tube to be unpacked in the other process.
-                unsafe {
-                packed_tube::pack(tube, backend_pid).expect("packed tube")
-            }),
-        )
+    ///
+    /// The returned `SafeDescriptor` is the client side of the tube and should be sent to the
+    /// backend using [BackendClient::set_slave_request_fd()].
+    ///
+    /// [BackendClient::set_slave_request_fd()]: struct.BackendClient.html#method.set_slave_request_fd
+    pub fn with_tube(backend: S, backend_pid: u32) -> Result<(Self, SafeDescriptor)> {
+        let (tx, rx) = SystemStream::pair()?;
+        // SAFETY:
+        // Safe because we expect the tube to be unpacked in the other process.
+        let tx = unsafe { packed_tube::pack(tx, backend_pid).expect("packed tube") };
+        Ok((Self::new(backend, rx)?, tx))
     }
 }
 
