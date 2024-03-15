@@ -4392,7 +4392,7 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
     let device = params
         .create_vhost_user_device(&mut keep_rds)
         .context("failed to create vhost-user device")?;
-    let mut listener = VhostUserListener::new(vhost, device.max_queue_num(), Some(&mut keep_rds))
+    let mut listener = VhostUserListener::new(vhost, Some(&mut keep_rds))
         .context("failed to create the vhost listener")?;
     let parent_resources = listener.take_parent_process_resources();
 

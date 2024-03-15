@@ -17,11 +17,7 @@ use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 pub struct VhostUserListener;
 
 impl VhostUserListenerTrait for VhostUserListener {
-    fn new(
-        _path: &str,
-        _max_num_queues: usize,
-        _keep_rds: Option<&mut Vec<RawDescriptor>>,
-    ) -> anyhow::Result<Self> {
+    fn new(_path: &str, _keep_rds: Option<&mut Vec<RawDescriptor>>) -> anyhow::Result<Self> {
         todo!()
     }
 

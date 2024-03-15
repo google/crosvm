@@ -21,12 +21,10 @@ pub trait VhostUserListenerTrait {
     /// Creates a VhostUserListener from `path`, which is a platform-specific string describing how
     /// to establish the vhost-user channel. For instance, it can be a path to a socket.
     ///
-    /// `max_num_queues` is the maximum number of queues we will supports through this channel.
     /// `keep_rds` is a vector of `RawDescriptor`s to which the descriptors needed for this listener
     /// to operate properly will be added if it is `Some()`.
     fn new(
         path: &str,
-        max_num_queues: usize,
         keep_rds: Option<&mut Vec<RawDescriptor>>,
     ) -> anyhow::Result<VhostUserListener>;
 

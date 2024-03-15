@@ -79,11 +79,7 @@ impl VhostUserListenerTrait for VhostUserListener {
     ///
     /// `keep_rds` can be specified to retrieve the raw descriptors that must be preserved for this
     /// listener to keep working after forking.
-    fn new(
-        path: &str,
-        _max_num_queues: usize,
-        keep_rds: Option<&mut Vec<RawDescriptor>>,
-    ) -> anyhow::Result<Self> {
+    fn new(path: &str, keep_rds: Option<&mut Vec<RawDescriptor>>) -> anyhow::Result<Self> {
         Self::new_socket(path, keep_rds)
     }
 
