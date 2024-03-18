@@ -255,22 +255,26 @@ pub(crate) mod tests {
 
     #[test]
     fn send_header_only() {
-        let (master, slave) = create_connection_pair();
+        let (client_connection, server_connection) = create_connection_pair();
         let hdr1 = VhostUserMsgHeader::new(FrontendReq::GET_FEATURES, 0, 0);
-        master.send_header_only_message(&hdr1, None).unwrap();
-        let (hdr2, _, files) = slave.recv_message::<VhostUserEmptyMessage>().unwrap();
+        client_connection
+            .send_header_only_message(&hdr1, None)
+            .unwrap();
+        let (hdr2, _, files) = server_connection
+            .recv_message::<VhostUserEmptyMessage>()
+            .unwrap();
         assert_eq!(hdr1, hdr2);
         assert!(files.is_empty());
     }
 
     #[test]
     fn send_data() {
-        let (master, slave) = create_connection_pair();
+        let (client_connection, server_connection) = create_connection_pair();
         let hdr1 = VhostUserMsgHeader::new(FrontendReq::SET_FEATURES, 0, 8);
-        master
+        client_connection
             .send_message(&hdr1, &VhostUserU64::new(0xf00dbeefdeadf00d), None)
             .unwrap();
-        let (hdr2, body, files) = slave.recv_message::<VhostUserU64>().unwrap();
+        let (hdr2, body, files) = server_connection.recv_message::<VhostUserU64>().unwrap();
         assert_eq!(hdr1, hdr2);
         let value = body.value;
         assert_eq!(value, 0xf00dbeefdeadf00d);
@@ -279,18 +283,20 @@ pub(crate) mod tests {
 
     #[test]
     fn send_fd() {
-        let (master, slave) = create_connection_pair();
+        let (client_connection, server_connection) = create_connection_pair();
 
         let mut fd = tempfile().unwrap();
         write!(fd, "test").unwrap();
 
         // Normal case for sending/receiving file descriptors
         let hdr1 = VhostUserMsgHeader::new(FrontendReq::SET_MEM_TABLE, 0, 0);
-        master
+        client_connection
             .send_header_only_message(&hdr1, Some(&[fd.as_raw_descriptor()]))
             .unwrap();
 
-        let (hdr2, _, files) = slave.recv_message::<VhostUserEmptyMessage>().unwrap();
+        let (hdr2, _, files) = server_connection
+            .recv_message::<VhostUserEmptyMessage>()
+            .unwrap();
         assert_eq!(hdr1, hdr2);
         assert_eq!(files.len(), 1);
         let mut file = &files[0];

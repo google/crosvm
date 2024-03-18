@@ -183,7 +183,7 @@ pub trait VhostUserDevice {
     /// The backend is given an `Arc` instead of full ownership so that the framework can also use
     /// the connection.
     ///
-    /// This method will be called when `VhostUserProtocolFeatures::SLAVE_REQ` is
+    /// This method will be called when `VhostUserProtocolFeatures::BACKEND_REQ` is
     /// negotiated.
     fn set_backend_req_connection(&mut self, _conn: Arc<VhostBackendReqConnection>) {
         error!("set_backend_req_connection is not implemented");
@@ -568,7 +568,7 @@ impl vmm_vhost::Backend for DeviceRequestHandler {
             Ok(queue) => queue,
             Err(e) => {
                 error!("failed to activate vring: {:#}", e);
-                return Err(VhostError::SlaveInternalError);
+                return Err(VhostError::BackendInternalError);
             }
         };
 
@@ -579,7 +579,7 @@ impl vmm_vhost::Backend for DeviceRequestHandler {
             .start_queue(index as usize, queue, mem, doorbell)
         {
             error!("Failed to start queue {}: {}", index, e);
-            return Err(VhostError::SlaveInternalError);
+            return Err(VhostError::BackendInternalError);
         }
 
         Ok(())
@@ -623,10 +623,9 @@ impl vmm_vhost::Backend for DeviceRequestHandler {
             return Err(VhostError::InvalidOperation);
         }
 
-        // Slave must not pass data to/from the backend until ring is
-        // enabled by VHOST_USER_SET_VRING_ENABLE with parameter 1,
-        // or after it has been disabled by VHOST_USER_SET_VRING_ENABLE
-        // with parameter 0.
+        // Backend must not pass data to/from the ring until ring is enabled by
+        // VHOST_USER_SET_VRING_ENABLE with parameter 1, or after it has been disabled by
+        // VHOST_USER_SET_VRING_ENABLE with parameter 0.
         self.vrings[index as usize].enabled = enable;
 
         Ok(())
@@ -653,7 +652,7 @@ impl vmm_vhost::Backend for DeviceRequestHandler {
         Ok(())
     }
 
-    fn set_slave_req_fd(&mut self, ep: Connection<BackendReq>) {
+    fn set_backend_req_fd(&mut self, ep: Connection<BackendReq>) {
         let conn = Arc::new(VhostBackendReqConnection::new(
             FrontendClient::new(ep),
             self.backend.get_shared_memory_region().map(|r| r.id),
@@ -731,12 +730,12 @@ impl vmm_vhost::Backend for DeviceRequestHandler {
     fn wake(&mut self) -> VhostResult<()> {
         for (index, vring) in self.vrings.iter_mut().enumerate() {
             if let Some(queue) = vring.paused_queue.take() {
-                let mem = self.mem.clone().ok_or(VhostError::SlaveInternalError)?;
+                let mem = self.mem.clone().ok_or(VhostError::BackendInternalError)?;
                 let doorbell = vring.doorbell.clone().expect("Failed to clone doorbell");
 
                 if let Err(e) = self.backend.start_queue(index, queue, mem, doorbell) {
                     error!("Failed to start queue {}: {}", index, e);
-                    return Err(VhostError::SlaveInternalError);
+                    return Err(VhostError::BackendInternalError);
                 }
             }
         }

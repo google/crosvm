@@ -83,7 +83,7 @@ impl VhostUserDevice for BlockBackend {
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::MQ
-            | VhostUserProtocolFeatures::SLAVE_REQ
+            | VhostUserProtocolFeatures::BACKEND_REQ
     }
 
     fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {

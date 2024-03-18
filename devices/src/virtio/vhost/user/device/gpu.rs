@@ -114,7 +114,7 @@ impl VhostUserDevice for GpuBackend {
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         VhostUserProtocolFeatures::CONFIG
-            | VhostUserProtocolFeatures::SLAVE_REQ
+            | VhostUserProtocolFeatures::BACKEND_REQ
             | VhostUserProtocolFeatures::MQ
             | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS
     }

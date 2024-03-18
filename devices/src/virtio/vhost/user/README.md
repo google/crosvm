@@ -4,8 +4,8 @@ This directory contains the implementation of [vhost-user] devices.
 
 ## Code Locations
 
-- [`vmm`](./vmm/) - Implements vhost-user vmm device; i.e. vhost-user master.
-- [`device`](./device/) - Implements vhost-user device backend; i.e. vhost-user slave.
+- [`vmm`](./vmm/) - Implements vhost-user vmm device; i.e. vhost-user frontend.
+- [`device`](./device/) - Implements vhost-user device backend; i.e. vhost-user backend.
 
 ## Usage
 

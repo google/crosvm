@@ -174,10 +174,10 @@ impl Backend for TestBackend {
     }
 
     fn set_protocol_features(&mut self, features: u64) -> Result<()> {
-        // Note: slave that reported VHOST_USER_F_PROTOCOL_FEATURES must
+        // Note: Backend that reported VHOST_USER_F_PROTOCOL_FEATURES must
         // support this message even before VHOST_USER_SET_FEATURES was
         // called.
-        // What happens if the master calls set_features() with
+        // What happens if the frontend calls set_features() with
         // VHOST_USER_F_PROTOCOL_FEATURES cleared after calling this
         // interface?
         self.acked_protocol_features = features;
@@ -196,11 +196,6 @@ impl Backend for TestBackend {
         } else if index as usize >= self.queue_num || index as usize > self.queue_num {
             return Err(Error::InvalidParam);
         }
-
-        // Slave must not pass data to/from the backend until ring is
-        // enabled by VHOST_USER_SET_VRING_ENABLE with parameter 1,
-        // or after it has been disabled by VHOST_USER_SET_VRING_ENABLE
-        // with parameter 0.
         self.vring_enabled[index as usize] = enable;
         Ok(())
     }

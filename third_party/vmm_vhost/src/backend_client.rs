@@ -26,9 +26,8 @@ use crate::SystemStream;
 
 /// Client for a vhost-user device. The API is a thin abstraction over the vhost-user protocol.
 pub struct BackendClient {
-    // Used to send requests to the slave.
     connection: Connection<FrontendReq>,
-    // Cached virtio features from the slave.
+    // Cached virtio features from the backend.
     virtio_features: u64,
     // Cached acked virtio features from the driver.
     acked_virtio_features: u64,
@@ -112,7 +111,7 @@ impl BackendClient {
         self.wait_for_ack(&hdr)
     }
 
-    /// Set the memory map regions on the slave so it can translate the vring
+    /// Set the memory map regions on the backend so it can translate the vring
     /// addresses. In the ancillary data there is an array of file descriptors
     pub fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
         if regions.is_empty() || regions.len() > MAX_ATTACHED_FD_ENTRIES {
@@ -332,7 +331,7 @@ impl BackendClient {
             return Err(VhostUserError::InvalidOperation);
         }
         if features.contains(VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS)
-            && !features.contains(VhostUserProtocolFeatures::SLAVE_REQ)
+            && !features.contains(VhostUserProtocolFeatures::BACKEND_REQ)
         {
             return Err(VhostUserError::FeatureMismatch);
         }
@@ -358,9 +357,9 @@ impl BackendClient {
         Ok(val.value)
     }
 
-    /// Signal slave to enable or disable corresponding vring.
+    /// Signal backend to enable or disable corresponding vring.
     ///
-    /// Slave must not pass data to/from the backend until ring is enabled by
+    /// Backend must not pass data to/from the ring until ring is enabled by
     /// VHOST_USER_SET_VRING_ENABLE with parameter 1, or after it has been
     /// disabled by VHOST_USER_SET_VRING_ENABLE with parameter 0.
     pub fn set_vring_enable(&self, queue_index: usize, enable: bool) -> Result<()> {
@@ -393,15 +392,15 @@ impl BackendClient {
         }
 
         // vhost-user spec states that:
-        // "Master payload: virtio device config space"
-        // "Slave payload: virtio device config space"
+        // "Request payload: virtio device config space"
+        // "Reply payload: virtio device config space"
         let hdr = self.send_request_with_payload(FrontendReq::GET_CONFIG, &body, buf, None)?;
         let (body_reply, buf_reply, rfds) =
             self.recv_reply_with_payload::<VhostUserConfig>(&hdr)?;
         if !rfds.is_empty() {
             return Err(VhostUserError::InvalidMessage);
         } else if body_reply.size == 0 {
-            return Err(VhostUserError::SlaveInternalError);
+            return Err(VhostUserError::BackendInternalError);
         } else if body_reply.size != body.size
             || body_reply.size as usize != buf.len()
             || body_reply.offset != body.offset
@@ -435,13 +434,13 @@ impl BackendClient {
         self.wait_for_ack(&hdr)
     }
 
-    /// Setup slave communication channel.
-    pub fn set_slave_request_fd(&self, fd: &dyn AsRawDescriptor) -> Result<()> {
-        if self.acked_protocol_features & VhostUserProtocolFeatures::SLAVE_REQ.bits() == 0 {
+    /// Setup backend communication channel.
+    pub fn set_backend_req_fd(&self, fd: &dyn AsRawDescriptor) -> Result<()> {
+        if self.acked_protocol_features & VhostUserProtocolFeatures::BACKEND_REQ.bits() == 0 {
             return Err(VhostUserError::InvalidOperation);
         }
         let fds = [fd.as_raw_descriptor()];
-        let hdr = self.send_request_header(FrontendReq::SET_SLAVE_REQ_FD, Some(&fds))?;
+        let hdr = self.send_request_header(FrontendReq::SET_BACKEND_REQ_FD, Some(&fds))?;
         self.wait_for_ack(&hdr)
     }
 
@@ -675,7 +674,7 @@ impl BackendClient {
             return Err(VhostUserError::InvalidMessage);
         }
         if body.value != 0 {
-            return Err(VhostUserError::SlaveInternalError);
+            return Err(VhostUserError::BackendInternalError);
         }
         Ok(())
     }
@@ -695,7 +694,7 @@ impl BackendClient {
 }
 
 // TODO(b/221882601): likely need pairs of RDs and/or SharedMemory to represent mmaps on Windows.
-/// Context object to pass guest memory configuration to Master::set_mem_table().
+/// Context object to pass guest memory configuration to BackendClient::set_mem_table().
 struct VhostUserMemoryContext {
     regions: VhostUserMemoryPayload,
     fds: Vec<RawDescriptor>,
@@ -729,20 +728,20 @@ mod tests {
 
     #[test]
     fn create_backend_client() {
-        let (backend_client, slave) = create_pair();
+        let (backend_client, peer) = create_pair();
 
         assert!(backend_client.connection.as_raw_descriptor() != INVALID_DESCRIPTOR);
         // Send two messages continuously
         backend_client.set_owner().unwrap();
         backend_client.reset_owner().unwrap();
 
-        let (hdr, rfds) = slave.recv_header().unwrap();
+        let (hdr, rfds) = peer.recv_header().unwrap();
         assert_eq!(hdr.get_code(), Ok(FrontendReq::SET_OWNER));
         assert_eq!(hdr.get_size(), 0);
         assert_eq!(hdr.get_version(), 0x1);
         assert!(rfds.is_empty());
 
-        let (hdr, rfds) = slave.recv_header().unwrap();
+        let (hdr, rfds) = peer.recv_header().unwrap();
         assert_eq!(hdr.get_code(), Ok(FrontendReq::RESET_OWNER));
         assert_eq!(hdr.get_size(), 0);
         assert_eq!(hdr.get_version(), 0x1);

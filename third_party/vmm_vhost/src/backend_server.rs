@@ -58,7 +58,7 @@ pub trait Backend {
         flags: VhostUserConfigFlags,
     ) -> Result<Vec<u8>>;
     fn set_config(&mut self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
-    fn set_slave_req_fd(&mut self, _vu_req: Connection<BackendReq>) {}
+    fn set_backend_req_fd(&mut self, _vu_req: Connection<BackendReq>) {}
     fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,
@@ -168,8 +168,8 @@ where
         self.as_mut().set_config(offset, buf, flags)
     }
 
-    fn set_slave_req_fd(&mut self, vu_req: Connection<BackendReq>) {
-        self.as_mut().set_slave_req_fd(vu_req)
+    fn set_backend_req_fd(&mut self, vu_req: Connection<BackendReq>) {
+        self.as_mut().set_backend_req_fd(vu_req)
     }
 
     fn get_inflight_fd(
@@ -507,12 +507,13 @@ impl<S: Backend> BackendServer<S> {
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(FrontendReq::SET_SLAVE_REQ_FD) => {
-                if self.acked_protocol_features & VhostUserProtocolFeatures::SLAVE_REQ.bits() == 0 {
+            Ok(FrontendReq::SET_BACKEND_REQ_FD) => {
+                if self.acked_protocol_features & VhostUserProtocolFeatures::BACKEND_REQ.bits() == 0
+                {
                     return Err(Error::InvalidOperation);
                 }
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
-                let res = self.set_slave_req_fd(files);
+                let res = self.set_backend_req_fd(files);
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
@@ -641,7 +642,7 @@ impl<S: Backend> BackendServer<S> {
         ))
     }
 
-    /// Sends reply back to Vhost Master in response to a message.
+    /// Sends reply back to Vhost frontend in response to a message.
     fn send_ack_message(
         &mut self,
         req: &VhostUserMsgHeader<FrontendReq>,
@@ -769,13 +770,13 @@ impl<S: Backend> BackendServer<S> {
         self.backend.set_config(msg.offset, payload, flags)
     }
 
-    fn set_slave_req_fd(&mut self, files: Vec<File>) -> Result<()> {
+    fn set_backend_req_fd(&mut self, files: Vec<File>) -> Result<()> {
         let file = into_single_file(files).ok_or(Error::InvalidMessage)?;
         let fd = file.into();
         // SAFETY: Safe because the protocol promises the file represents the appropriate file type
         // for the platform.
         let stream = unsafe { to_system_stream(fd) }?;
-        self.backend.set_slave_req_fd(Connection::from(stream));
+        self.backend.set_backend_req_fd(Connection::from(stream));
         Ok(())
     }
 
@@ -836,7 +837,7 @@ impl<S: Backend> BackendServer<S> {
             | Ok(FrontendReq::SET_VRING_ERR)
             | Ok(FrontendReq::SET_LOG_BASE)
             | Ok(FrontendReq::SET_LOG_FD)
-            | Ok(FrontendReq::SET_SLAVE_REQ_FD)
+            | Ok(FrontendReq::SET_BACKEND_REQ_FD)
             | Ok(FrontendReq::SET_INFLIGHT_FD)
             | Ok(FrontendReq::RESTORE)
             | Ok(FrontendReq::ADD_MEM_REG) => Ok(()),

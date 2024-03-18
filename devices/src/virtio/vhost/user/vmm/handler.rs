@@ -88,9 +88,9 @@ impl VhostUserHandler {
                 .map_err(Error::SetProtocolFeatures)?;
         }
 
-        // if protocol feature `VhostUserProtocolFeatures::SLAVE_REQ` is negotiated.
+        // if protocol feature `VhostUserProtocolFeatures::BACKEND_REQ` is negotiated.
         let backend_req_handler =
-            if protocol_features.contains(VhostUserProtocolFeatures::SLAVE_REQ) {
+            if protocol_features.contains(VhostUserProtocolFeatures::BACKEND_REQ) {
                 let (handler, tx_fd) = create_backend_req_handler(
                     BackendReqHandlerImpl {
                         interrupt: None,
@@ -100,7 +100,7 @@ impl VhostUserHandler {
                     backend_pid,
                 )?;
                 backend_client
-                    .set_slave_request_fd(&tx_fd)
+                    .set_backend_req_fd(&tx_fd)
                     .map_err(Error::SetDeviceRequestChannel)?;
                 Some(handler)
             } else {
@@ -324,12 +324,12 @@ impl VhostUserHandler {
 
     pub fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) -> Result<()> {
         // Return error if backend request handler is not available. This indicates
-        // that `VhostUserProtocolFeatures::SLAVE_REQ` is not negotiated.
+        // that `VhostUserProtocolFeatures::BACKEND_REQ` is not negotiated.
         let backend_req_handler =
             self.backend_req_handler
                 .as_mut()
                 .ok_or(Error::ProtocolFeatureNotNegoiated(
-                    VhostUserProtocolFeatures::SLAVE_REQ,
+                    VhostUserProtocolFeatures::BACKEND_REQ,
                 ))?;
 
         // The virtio framework will only call this if get_shared_memory_region returned a region

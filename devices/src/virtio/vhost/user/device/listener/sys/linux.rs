@@ -83,9 +83,6 @@ impl VhostUserListenerTrait for VhostUserListener {
         Self::new_socket(path, keep_rds)
     }
 
-    /// Returns a future that runs a `VhostUserSlaveReqHandler` using this listener.
-    ///
-    /// `ex` is the executor on which the request handler can schedule its own tasks.
     fn run_req_handler<'e>(
         self,
         handler: Box<dyn vmm_vhost::Backend>,

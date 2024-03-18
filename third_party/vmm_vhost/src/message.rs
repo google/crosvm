@@ -37,7 +37,7 @@ pub const VHOST_USER_CONFIG_SIZE: u32 = 0x1000;
 /// Maximum number of vrings supported.
 pub const VHOST_USER_MAX_VRINGS: u64 = 0x8000u64;
 
-/// Used for the payload in Vhost Master messages.
+/// Message type. Either [[FrontendReq]] or [[BackendReq]].
 pub trait Req:
     Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Into<u32> + TryFrom<u32> + Send + Sync
 {
@@ -63,11 +63,11 @@ pub enum FrontendReq {
     GET_FEATURES = 1,
     /// Enable features in the underlying vhost implementation using a bit mask.
     SET_FEATURES = 2,
-    /// Set the current Master as an owner of the session.
+    /// Set the current frontend as an owner of the session.
     SET_OWNER = 3,
     /// No longer used.
     RESET_OWNER = 4,
-    /// Set the memory map regions on the slave so it can translate the vring addresses.
+    /// Set the memory map regions on the backend so it can translate the vring addresses.
     SET_MEM_TABLE = 5,
     /// Set logging shared memory space.
     SET_LOG_BASE = 6,
@@ -93,15 +93,15 @@ pub enum FrontendReq {
     SET_PROTOCOL_FEATURES = 16,
     /// Query how many queues the backend supports.
     GET_QUEUE_NUM = 17,
-    /// Signal slave to enable or disable corresponding vring.
+    /// Signal backend to enable or disable corresponding vring.
     SET_VRING_ENABLE = 18,
     /// Ask vhost user backend to broadcast a fake RARP to notify the migration is terminated
     /// for guest that does not support GUEST_ANNOUNCE.
     SEND_RARP = 19,
     /// Set host MTU value exposed to the guest.
     NET_SET_MTU = 20,
-    /// Set the socket file descriptor for slave initiated requests.
-    SET_SLAVE_REQ_FD = 21,
+    /// Set the socket file descriptor for backend initiated requests.
+    SET_BACKEND_REQ_FD = 21,
     /// Send IOTLB messages with struct vhost_iotlb_msg as payload.
     IOTLB_MSG = 22,
     /// Set the endianness of a VQ for legacy devices.
@@ -114,15 +114,15 @@ pub enum FrontendReq {
     CREATE_CRYPTO_SESSION = 26,
     /// Close a session for crypto operation.
     CLOSE_CRYPTO_SESSION = 27,
-    /// Advise slave that a migration with postcopy enabled is underway.
+    /// Advise backend that a migration with postcopy enabled is underway.
     POSTCOPY_ADVISE = 28,
-    /// Advise slave that a transition to postcopy mode has happened.
+    /// Advise backend that a transition to postcopy mode has happened.
     POSTCOPY_LISTEN = 29,
     /// Advise that postcopy migration has now completed.
     POSTCOPY_END = 30,
-    /// Get a shared buffer from slave.
+    /// Get a shared buffer from backend.
     GET_INFLIGHT_FD = 31,
-    /// Send the shared inflight buffer back to slave.
+    /// Send the shared inflight buffer back to backend.
     SET_INFLIGHT_FD = 32,
     /// Sets the GPU protocol socket file descriptor.
     GPU_SET_SOCKET = 33,
@@ -413,19 +413,19 @@ bitflags! {
         const REPLY_ACK = 0x0000_0008;
         /// Support setting MTU for virtio-net devices.
         const MTU = 0x0000_0010;
-        /// Allow the slave to send requests to the master by an optional communication channel.
-        const SLAVE_REQ = 0x0000_0020;
-        /// Support setting slave endian by SET_VRING_ENDIAN.
+        /// Allow the backend to send requests to the frontend by an optional communication channel.
+        const BACKEND_REQ = 0x0000_0020;
+        /// Support setting backend endian by SET_VRING_ENDIAN.
         const CROSS_ENDIAN = 0x0000_0040;
         /// Support crypto operations.
         const CRYPTO_SESSION = 0x0000_0080;
-        /// Support sending userfault_fd from slaves to masters.
+        /// Support sending userfault_fd from backends to frontends.
         const PAGEFAULT = 0x0000_0100;
         /// Support Virtio device configuration.
         const CONFIG = 0x0000_0200;
-        /// Allow the slave to send fds (at most 8 descriptors in each message) to the master.
-        const SLAVE_SEND_FD = 0x0000_0400;
-        /// Allow the slave to register a host notifier.
+        /// Allow the backend to send fds (at most 8 descriptors in each message) to the frontend.
+        const BACKEND_SEND_FD = 0x0000_0400;
+        /// Allow the backend to register a host notifier.
         const HOST_NOTIFIER = 0x0000_0800;
         /// Support inflight shmfd.
         const INFLIGHT_SHMFD = 0x0000_1000;
@@ -725,9 +725,9 @@ bitflags! {
     #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[repr(transparent)]
     pub struct VhostUserConfigFlags: u32 {
-        /// Vhost master messages used for writeable fields.
+        /// Vhost frontend messages used for writeable fields.
         const WRITABLE = 0x1;
-        /// Vhost master messages used for live migration.
+        /// Vhost frontend messages used for live migration.
         const LIVE_MIGRATION = 0x2;
     }
 }
@@ -893,7 +893,7 @@ impl From<VhostUserShmemMapMsgFlags> for Protection {
     }
 }
 
-/// Slave request message to map a file into a shared memory region.
+/// Backend request message to map a file into a shared memory region.
 #[repr(C, packed)]
 #[derive(Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
 pub struct VhostUserShmemMapMsg {
@@ -938,7 +938,7 @@ impl VhostUserShmemMapMsg {
     }
 }
 
-/// Slave request message to map GPU memory into a shared memory region.
+/// Backend request message to map GPU memory into a shared memory region.
 #[repr(C, packed)]
 #[derive(Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
 pub struct VhostUserGpuMapMsg {
@@ -989,7 +989,7 @@ impl VhostUserGpuMapMsg {
     }
 }
 
-/// Slave request message to map external memory into a shared memory region.
+/// Backend request message to map external memory into a shared memory region.
 #[repr(C, packed)]
 #[derive(Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
 pub struct VhostUserExternalMapMsg {
@@ -1023,7 +1023,7 @@ impl VhostUserExternalMapMsg {
     }
 }
 
-/// Slave request message to unmap part of a shared memory region.
+/// Backend request message to unmap part of a shared memory region.
 #[repr(C, packed)]
 #[derive(Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct VhostUserShmemUnmapMsg {
@@ -1213,7 +1213,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn check_master_request_code() {
+    fn check_frontend_request_code() {
         FrontendReq::try_from(0).expect_err("invalid value");
         FrontendReq::try_from(46).expect_err("invalid value");
         FrontendReq::try_from(10000).expect_err("invalid value");
@@ -1223,7 +1223,7 @@ mod tests {
     }
 
     #[test]
-    fn check_slave_request_code() {
+    fn check_backend_request_code() {
         BackendReq::try_from(0).expect_err("invalid value");
         BackendReq::try_from(14).expect_err("invalid value");
         BackendReq::try_from(10000).expect_err("invalid value");

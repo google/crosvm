@@ -46,8 +46,8 @@ pub trait VhostUserListenerTrait {
         None
     }
 
-    /// Returns a `Future` that processes requests for a `VhostUserSlaveReqHandler`. The future
-    /// exits when the front-end side disconnects or an error occurs.
+    /// Returns a `Future` that processes requests for `handler`. The future exits when the
+    /// front-end side disconnects or an error occurs.
     fn run_req_handler<'e>(
         self,
         handler: Box<dyn vmm_vhost::Backend>,

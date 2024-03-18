@@ -127,9 +127,6 @@ pub enum Error {
     /// Failed to connect socket.
     #[error("failed to connect socket: {0}")]
     SocketConnect(std::io::Error),
-    /// Failed to create Master from a UDS path.
-    #[error("failed to connect to device socket while creating instance: {0}")]
-    SocketConnectOnMasterCreate(VhostError),
     /// Failed to spawn worker thread.
     #[error("failed to spawn worker: {0}")]
     SpawnWorker(std::io::Error),

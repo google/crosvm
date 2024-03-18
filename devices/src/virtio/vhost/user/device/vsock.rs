@@ -113,7 +113,7 @@ fn convert_vhost_error(err: vhost::Error) -> Error {
     use vhost::Error::*;
     match err {
         IoctlError(e) => Error::ReqHandlerError(e),
-        _ => Error::SlaveInternalError,
+        _ => Error::BackendInternalError,
     }
 }
 
@@ -392,9 +392,9 @@ impl vmm_vhost::Backend for VsockBackend {
         Err(Error::InvalidOperation)
     }
 
-    fn set_slave_req_fd(&mut self, _vu_req: Connection<BackendReq>) {
-        // We didn't set VhostUserProtocolFeatures::SLAVE_REQ
-        unreachable!("unexpected set_slave_req_fd");
+    fn set_backend_req_fd(&mut self, _vu_req: Connection<BackendReq>) {
+        // We didn't set VhostUserProtocolFeatures::BACKEND_REQ
+        unreachable!("unexpected set_backend_req_fd");
     }
 
     fn get_inflight_fd(

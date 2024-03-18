@@ -340,7 +340,7 @@ pub(crate) mod tests {
         (client_connection, server_connection)
     }
 
-    pub(crate) fn create_master_slave_pair<S>(backend: S) -> (BackendClient, BackendServer<S>)
+    pub(crate) fn create_client_server_pair<S>(backend: S) -> (BackendClient, BackendServer<S>)
     where
         S: Backend,
     {

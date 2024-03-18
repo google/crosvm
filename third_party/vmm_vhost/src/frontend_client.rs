@@ -81,7 +81,7 @@ impl FrontendClient {
             return Err(Error::InvalidMessage);
         }
         if body.value != 0 {
-            return Err(Error::MasterInternalError);
+            return Err(Error::FrontendInternalError);
         }
 
         Ok(body.value)
@@ -89,8 +89,8 @@ impl FrontendClient {
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.
     ///
-    /// When the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature has been negotiated,
-    /// the "REPLY_ACK" flag will be set in the message header for every slave to master request
+    /// When the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature has been negotiated, the
+    /// "REPLY_ACK" flag will be set in the message header for every backend to frontend request
     /// message.
     pub fn set_reply_ack_flag(&mut self, enable: bool) {
         self.reply_ack_negotiated = enable;
@@ -148,7 +148,7 @@ mod tests {
     use crate::SystemStream;
 
     #[test]
-    fn test_slave_req_set_failed() {
+    fn test_backend_req_set_failed() {
         let (p1, _p2) = SystemStream::pair().unwrap();
         let mut frontend_client = FrontendClient::from_stream(p1);
 

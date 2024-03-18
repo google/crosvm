@@ -107,7 +107,7 @@ impl VhostUserVirtioDevice {
 
         let mut allow_protocol_features = VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::MQ
-            | VhostUserProtocolFeatures::SLAVE_REQ;
+            | VhostUserProtocolFeatures::BACKEND_REQ;
 
         // HACK: the crosvm vhost-user GPU backend supports the non-standard
         // VHOST_USER_PROTOCOL_FEATURE_SHARED_MEMORY_REGIONS. This should either be standardized
