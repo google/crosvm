@@ -7,11 +7,11 @@ use std::mem;
 use base::AsRawDescriptor;
 
 use crate::message::*;
+use crate::BackendReq;
 use crate::Connection;
 use crate::Error;
 use crate::HandlerResult;
 use crate::Result;
-use crate::SlaveReq;
 use crate::SystemStream;
 
 /// Trait for vhost-user frontends to respond to requests from the backend.
@@ -59,7 +59,7 @@ pub trait Frontend {
 /// methods.
 pub struct FrontendServer<S: Frontend> {
     // underlying Unix domain socket for communication
-    pub(crate) sub_sock: Connection<SlaveReq>,
+    pub(crate) sub_sock: Connection<BackendReq>,
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
 
@@ -111,33 +111,33 @@ impl<S: Frontend> FrontendServer<S> {
         let size = buf.len();
 
         let res = match hdr.get_code() {
-            Ok(SlaveReq::CONFIG_CHANGE_MSG) => {
+            Ok(BackendReq::CONFIG_CHANGE_MSG) => {
                 self.check_msg_size(&hdr, size, 0)?;
                 self.frontend
                     .handle_config_change()
                     .map_err(Error::ReqHandlerError)
             }
-            Ok(SlaveReq::SHMEM_MAP) => {
+            Ok(BackendReq::SHMEM_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserShmemMapMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.frontend
                     .shmem_map(&msg, &files[0])
                     .map_err(Error::ReqHandlerError)
             }
-            Ok(SlaveReq::SHMEM_UNMAP) => {
+            Ok(BackendReq::SHMEM_UNMAP) => {
                 let msg = self.extract_msg_body::<VhostUserShmemUnmapMsg>(&hdr, size, &buf)?;
                 self.frontend
                     .shmem_unmap(&msg)
                     .map_err(Error::ReqHandlerError)
             }
-            Ok(SlaveReq::GPU_MAP) => {
+            Ok(BackendReq::GPU_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserGpuMapMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.frontend
                     .gpu_map(&msg, &files[0])
                     .map_err(Error::ReqHandlerError)
             }
-            Ok(SlaveReq::EXTERNAL_MAP) => {
+            Ok(BackendReq::EXTERNAL_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserExternalMapMsg>(&hdr, size, &buf)?;
                 self.frontend
                     .external_map(&msg)
@@ -153,7 +153,7 @@ impl<S: Frontend> FrontendServer<S> {
 
     fn check_msg_size(
         &self,
-        hdr: &VhostUserMsgHeader<SlaveReq>,
+        hdr: &VhostUserMsgHeader<BackendReq>,
         size: usize,
         expected: usize,
     ) -> Result<()> {
@@ -169,12 +169,12 @@ impl<S: Frontend> FrontendServer<S> {
 
     fn check_attached_files(
         &self,
-        hdr: &VhostUserMsgHeader<SlaveReq>,
+        hdr: &VhostUserMsgHeader<BackendReq>,
         files: &[File],
     ) -> Result<()> {
         let expected_num_files = match hdr.get_code().map_err(|_| Error::InvalidMessage)? {
             // Expect a single file is passed.
-            SlaveReq::SHMEM_MAP | SlaveReq::GPU_MAP => 1,
+            BackendReq::SHMEM_MAP | BackendReq::GPU_MAP => 1,
             _ => 0,
         };
 
@@ -187,7 +187,7 @@ impl<S: Frontend> FrontendServer<S> {
 
     fn extract_msg_body<T: Sized + VhostUserMsgValidator>(
         &self,
-        hdr: &VhostUserMsgHeader<SlaveReq>,
+        hdr: &VhostUserMsgHeader<BackendReq>,
         size: usize,
         buf: &[u8],
     ) -> Result<T> {
@@ -202,8 +202,8 @@ impl<S: Frontend> FrontendServer<S> {
 
     fn new_reply_header<T: Sized>(
         &self,
-        req: &VhostUserMsgHeader<SlaveReq>,
-    ) -> Result<VhostUserMsgHeader<SlaveReq>> {
+        req: &VhostUserMsgHeader<BackendReq>,
+    ) -> Result<VhostUserMsgHeader<BackendReq>> {
         Ok(VhostUserMsgHeader::new(
             req.get_code().map_err(|_| Error::InvalidMessage)?,
             VhostUserHeaderFlag::REPLY.bits(),
@@ -211,12 +211,16 @@ impl<S: Frontend> FrontendServer<S> {
         ))
     }
 
-    fn send_reply(&mut self, req: &VhostUserMsgHeader<SlaveReq>, res: &Result<u64>) -> Result<()> {
+    fn send_reply(
+        &mut self,
+        req: &VhostUserMsgHeader<BackendReq>,
+        res: &Result<u64>,
+    ) -> Result<()> {
         let code = req.get_code().map_err(|_| Error::InvalidMessage)?;
-        if code == SlaveReq::SHMEM_MAP
-            || code == SlaveReq::SHMEM_UNMAP
-            || code == SlaveReq::GPU_MAP
-            || code == SlaveReq::EXTERNAL_MAP
+        if code == BackendReq::SHMEM_MAP
+            || code == BackendReq::SHMEM_UNMAP
+            || code == BackendReq::GPU_MAP
+            || code == BackendReq::EXTERNAL_MAP
             || (self.reply_ack_negotiated && req.is_need_reply())
         {
             let hdr = self.new_reply_header::<VhostUserU64>(req)?;

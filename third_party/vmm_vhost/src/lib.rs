@@ -47,8 +47,8 @@ pub mod connection;
 
 mod sys;
 pub use connection::Connection;
-pub use message::MasterReq;
-pub use message::SlaveReq;
+pub use message::BackendReq;
+pub use message::FrontendReq;
 pub use sys::SystemStream;
 pub use sys::*;
 

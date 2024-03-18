@@ -52,9 +52,13 @@ pub enum ReqError {
 }
 
 /// Type of requests sent to the backend.
+///
+/// These are called "front-end message types" in the spec, so we call them `FrontendReq` here even
+/// though it is somewhat confusing that the `BackendClient` sends `FrontendReq`s to a
+/// `BackendServer`.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, enumn::N)]
-pub enum MasterReq {
+pub enum FrontendReq {
     /// Get from the underlying vhost implementation the features bit mask.
     GET_FEATURES = 1,
     /// Enable features in the underlying vhost implementation using a bit mask.
@@ -154,26 +158,30 @@ pub enum MasterReq {
     GET_SHARED_MEMORY_REGIONS = 1004,
 }
 
-impl From<MasterReq> for u32 {
-    fn from(req: MasterReq) -> u32 {
+impl From<FrontendReq> for u32 {
+    fn from(req: FrontendReq) -> u32 {
         req as u32
     }
 }
 
-impl Req for MasterReq {}
+impl Req for FrontendReq {}
 
-impl TryFrom<u32> for MasterReq {
+impl TryFrom<u32> for FrontendReq {
     type Error = ReqError;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        MasterReq::n(value).ok_or(ReqError::InvalidValue(value))
+        FrontendReq::n(value).ok_or(ReqError::InvalidValue(value))
     }
 }
 
-/// Type of requests sending from slaves to masters.
+/// Type of requests sending from backends to frontends.
+///
+/// These are called "backend-end message types" in the spec, so we call them `BackendReq` here
+/// even though it is somewhat confusing that the `FrontendClient` sends `BackendReq`s to a
+/// `FrontendServer`.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, enumn::N)]
-pub enum SlaveReq {
+pub enum BackendReq {
     /// Send IOTLB messages with struct vhost_iotlb_msg as payload.
     IOTLB_MSG = 1,
     /// Notify that the virtio device's configuration space has changed.
@@ -204,19 +212,19 @@ pub enum SlaveReq {
     EXTERNAL_MAP = 1007,
 }
 
-impl From<SlaveReq> for u32 {
-    fn from(req: SlaveReq) -> u32 {
+impl From<BackendReq> for u32 {
+    fn from(req: BackendReq) -> u32 {
         req as u32
     }
 }
 
-impl Req for SlaveReq {}
+impl Req for BackendReq {}
 
-impl TryFrom<u32> for SlaveReq {
+impl TryFrom<u32> for BackendReq {
     type Error = ReqError;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        SlaveReq::n(value).ok_or(ReqError::InvalidValue(value))
+        BackendReq::n(value).ok_or(ReqError::InvalidValue(value))
     }
 }
 
@@ -1206,30 +1214,30 @@ mod tests {
 
     #[test]
     fn check_master_request_code() {
-        MasterReq::try_from(0).expect_err("invalid value");
-        MasterReq::try_from(46).expect_err("invalid value");
-        MasterReq::try_from(10000).expect_err("invalid value");
+        FrontendReq::try_from(0).expect_err("invalid value");
+        FrontendReq::try_from(46).expect_err("invalid value");
+        FrontendReq::try_from(10000).expect_err("invalid value");
 
-        let code = MasterReq::try_from(MasterReq::GET_FEATURES as u32).unwrap();
+        let code = FrontendReq::try_from(FrontendReq::GET_FEATURES as u32).unwrap();
         assert_eq!(code, code.clone());
     }
 
     #[test]
     fn check_slave_request_code() {
-        SlaveReq::try_from(0).expect_err("invalid value");
-        SlaveReq::try_from(14).expect_err("invalid value");
-        SlaveReq::try_from(10000).expect_err("invalid value");
+        BackendReq::try_from(0).expect_err("invalid value");
+        BackendReq::try_from(14).expect_err("invalid value");
+        BackendReq::try_from(10000).expect_err("invalid value");
 
-        let code = SlaveReq::try_from(SlaveReq::CONFIG_CHANGE_MSG as u32).unwrap();
+        let code = BackendReq::try_from(BackendReq::CONFIG_CHANGE_MSG as u32).unwrap();
         assert_eq!(code, code.clone());
     }
 
     #[test]
     fn msg_header_ops() {
-        let mut hdr = VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, 0x100);
-        assert_eq!(hdr.get_code(), Ok(MasterReq::GET_FEATURES));
-        hdr.set_code(MasterReq::SET_FEATURES);
-        assert_eq!(hdr.get_code(), Ok(MasterReq::SET_FEATURES));
+        let mut hdr = VhostUserMsgHeader::new(FrontendReq::GET_FEATURES, 0, 0x100);
+        assert_eq!(hdr.get_code(), Ok(FrontendReq::GET_FEATURES));
+        hdr.set_code(FrontendReq::SET_FEATURES);
+        assert_eq!(hdr.get_code(), Ok(FrontendReq::SET_FEATURES));
 
         assert_eq!(hdr.get_version(), 0x1);
 

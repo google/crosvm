@@ -22,7 +22,7 @@ use vhost::Vhost;
 use vhost::Vsock;
 use vm_memory::GuestMemory;
 use vmm_vhost::connection::Connection;
-use vmm_vhost::message::SlaveReq;
+use vmm_vhost::message::BackendReq;
 use vmm_vhost::message::VhostSharedMemoryRegion;
 use vmm_vhost::message::VhostUserConfigFlags;
 use vmm_vhost::message::VhostUserInflight;
@@ -392,7 +392,7 @@ impl vmm_vhost::Backend for VsockBackend {
         Err(Error::InvalidOperation)
     }
 
-    fn set_slave_req_fd(&mut self, _vu_req: Connection<SlaveReq>) {
+    fn set_slave_req_fd(&mut self, _vu_req: Connection<BackendReq>) {
         // We didn't set VhostUserProtocolFeatures::SLAVE_REQ
         unreachable!("unexpected set_slave_req_fd");
     }

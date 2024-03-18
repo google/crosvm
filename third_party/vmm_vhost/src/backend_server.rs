@@ -14,11 +14,11 @@ use zerocopy::Ref;
 use crate::into_single_file;
 use crate::message::*;
 use crate::to_system_stream;
+use crate::BackendReq;
 use crate::Connection;
 use crate::Error;
-use crate::MasterReq;
+use crate::FrontendReq;
 use crate::Result;
-use crate::SlaveReq;
 use crate::SystemStream;
 
 /// Trait for vhost-user backends.
@@ -58,7 +58,7 @@ pub trait Backend {
         flags: VhostUserConfigFlags,
     ) -> Result<Vec<u8>>;
     fn set_config(&mut self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
-    fn set_slave_req_fd(&mut self, _vu_req: Connection<SlaveReq>) {}
+    fn set_slave_req_fd(&mut self, _vu_req: Connection<BackendReq>) {}
     fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,
@@ -168,7 +168,7 @@ where
         self.as_mut().set_config(offset, buf, flags)
     }
 
-    fn set_slave_req_fd(&mut self, vu_req: Connection<SlaveReq>) {
+    fn set_slave_req_fd(&mut self, vu_req: Connection<BackendReq>) {
         self.as_mut().set_slave_req_fd(vu_req)
     }
 
@@ -219,7 +219,7 @@ where
 /// Handles requests from a vhost-user connection by dispatching them to [[Backend]] methods.
 pub struct BackendServer<S: Backend> {
     /// Underlying connection for communication.
-    connection: Connection<MasterReq>,
+    connection: Connection<FrontendReq>,
     // the vhost-user backend device object
     backend: S,
 
@@ -246,7 +246,7 @@ impl<S: Backend> AsRef<S> for BackendServer<S> {
 }
 
 impl<S: Backend> BackendServer<S> {
-    pub fn new(connection: Connection<MasterReq>, backend: S) -> Self {
+    pub fn new(connection: Connection<FrontendReq>, backend: S) -> Self {
         BackendServer {
             connection,
             backend,
@@ -305,7 +305,7 @@ impl<S: Backend> BackendServer<S> {
     ///   backend_server.process_message(&hdr, &files).unwrap();
     /// }
     /// ```
-    pub fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<MasterReq>, Vec<File>)> {
+    pub fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<FrontendReq>, Vec<File>)> {
         // The underlying communication channel is a Unix domain socket in
         // stream mode, and recvmsg() is a little tricky here. To successfully
         // receive attached file descriptors, we need to receive messages and
@@ -336,7 +336,7 @@ impl<S: Backend> BackendServer<S> {
     /// [`BackendServer::process_message`].
     ///
     /// See [`BackendServer::recv_header`]'s doc comment for the usage.
-    pub fn needs_wait_for_payload(&self, hdr: &VhostUserMsgHeader<MasterReq>) -> bool {
+    pub fn needs_wait_for_payload(&self, hdr: &VhostUserMsgHeader<FrontendReq>) -> bool {
         // Since the vhost-user protocol uses stream mode, we need to wait until an additional
         // payload is available if exists.
         hdr.get_size() != 0
@@ -356,26 +356,26 @@ impl<S: Backend> BackendServer<S> {
     /// * - other errors: failed to handle a request.
     pub fn process_message(
         &mut self,
-        hdr: VhostUserMsgHeader<MasterReq>,
+        hdr: VhostUserMsgHeader<FrontendReq>,
         files: Vec<File>,
     ) -> Result<()> {
         let buf = self.connection.recv_body_bytes(&hdr)?;
         let size = buf.len();
 
         match hdr.get_code() {
-            Ok(MasterReq::SET_OWNER) => {
+            Ok(FrontendReq::SET_OWNER) => {
                 self.check_request_size(&hdr, size, 0)?;
                 let res = self.backend.set_owner();
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::RESET_OWNER) => {
+            Ok(FrontendReq::RESET_OWNER) => {
                 self.check_request_size(&hdr, size, 0)?;
                 let res = self.backend.reset_owner();
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::GET_FEATURES) => {
+            Ok(FrontendReq::GET_FEATURES) => {
                 self.check_request_size(&hdr, size, 0)?;
                 let features = self.backend.get_features()?;
                 let msg = VhostUserU64::new(features);
@@ -383,7 +383,7 @@ impl<S: Backend> BackendServer<S> {
                 self.virtio_features = features;
                 self.update_reply_ack_flag();
             }
-            Ok(MasterReq::SET_FEATURES) => {
+            Ok(FrontendReq::SET_FEATURES) => {
                 let msg = self.extract_request_body::<VhostUserU64>(&hdr, size, &buf)?;
                 let res = self.backend.set_features(msg.value);
                 self.acked_virtio_features = msg.value;
@@ -391,18 +391,18 @@ impl<S: Backend> BackendServer<S> {
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::SET_MEM_TABLE) => {
+            Ok(FrontendReq::SET_MEM_TABLE) => {
                 let res = self.set_mem_table(&hdr, size, &buf, files);
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::SET_VRING_NUM) => {
+            Ok(FrontendReq::SET_VRING_NUM) => {
                 let msg = self.extract_request_body::<VhostUserVringState>(&hdr, size, &buf)?;
                 let res = self.backend.set_vring_num(msg.index, msg.num);
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::SET_VRING_ADDR) => {
+            Ok(FrontendReq::SET_VRING_ADDR) => {
                 let msg = self.extract_request_body::<VhostUserVringAddr>(&hdr, size, &buf)?;
                 let flags = match VhostUserVringAddrFlags::from_bits(msg.flags) {
                     Some(val) => val,
@@ -419,39 +419,39 @@ impl<S: Backend> BackendServer<S> {
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::SET_VRING_BASE) => {
+            Ok(FrontendReq::SET_VRING_BASE) => {
                 let msg = self.extract_request_body::<VhostUserVringState>(&hdr, size, &buf)?;
                 let res = self.backend.set_vring_base(msg.index, msg.num);
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::GET_VRING_BASE) => {
+            Ok(FrontendReq::GET_VRING_BASE) => {
                 let msg = self.extract_request_body::<VhostUserVringState>(&hdr, size, &buf)?;
                 let reply = self.backend.get_vring_base(msg.index)?;
                 self.send_reply_message(&hdr, &reply)?;
             }
-            Ok(MasterReq::SET_VRING_CALL) => {
+            Ok(FrontendReq::SET_VRING_CALL) => {
                 self.check_request_size(&hdr, size, mem::size_of::<VhostUserU64>())?;
                 let (index, file) = self.handle_vring_fd_request(&buf, files)?;
                 let res = self.backend.set_vring_call(index, file);
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::SET_VRING_KICK) => {
+            Ok(FrontendReq::SET_VRING_KICK) => {
                 self.check_request_size(&hdr, size, mem::size_of::<VhostUserU64>())?;
                 let (index, file) = self.handle_vring_fd_request(&buf, files)?;
                 let res = self.backend.set_vring_kick(index, file);
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::SET_VRING_ERR) => {
+            Ok(FrontendReq::SET_VRING_ERR) => {
                 self.check_request_size(&hdr, size, mem::size_of::<VhostUserU64>())?;
                 let (index, file) = self.handle_vring_fd_request(&buf, files)?;
                 let res = self.backend.set_vring_err(index, file);
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::GET_PROTOCOL_FEATURES) => {
+            Ok(FrontendReq::GET_PROTOCOL_FEATURES) => {
                 self.check_request_size(&hdr, size, 0)?;
                 let features = self.backend.get_protocol_features()?;
                 let msg = VhostUserU64::new(features.bits());
@@ -459,7 +459,7 @@ impl<S: Backend> BackendServer<S> {
                 self.protocol_features = features;
                 self.update_reply_ack_flag();
             }
-            Ok(MasterReq::SET_PROTOCOL_FEATURES) => {
+            Ok(FrontendReq::SET_PROTOCOL_FEATURES) => {
                 let msg = self.extract_request_body::<VhostUserU64>(&hdr, size, &buf)?;
                 let res = self.backend.set_protocol_features(msg.value);
                 self.acked_protocol_features = msg.value;
@@ -467,7 +467,7 @@ impl<S: Backend> BackendServer<S> {
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::GET_QUEUE_NUM) => {
+            Ok(FrontendReq::GET_QUEUE_NUM) => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::MQ.bits() == 0 {
                     return Err(Error::InvalidOperation);
                 }
@@ -476,7 +476,7 @@ impl<S: Backend> BackendServer<S> {
                 let msg = VhostUserU64::new(num);
                 self.send_reply_message(&hdr, &msg)?;
             }
-            Ok(MasterReq::SET_VRING_ENABLE) => {
+            Ok(FrontendReq::SET_VRING_ENABLE) => {
                 let msg = self.extract_request_body::<VhostUserVringState>(&hdr, size, &buf)?;
                 if self.acked_virtio_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
                     return Err(Error::InvalidOperation);
@@ -491,14 +491,14 @@ impl<S: Backend> BackendServer<S> {
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::GET_CONFIG) => {
+            Ok(FrontendReq::GET_CONFIG) => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
                     return Err(Error::InvalidOperation);
                 }
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
                 self.get_config(&hdr, &buf)?;
             }
-            Ok(MasterReq::SET_CONFIG) => {
+            Ok(FrontendReq::SET_CONFIG) => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
                     return Err(Error::InvalidOperation);
                 }
@@ -507,7 +507,7 @@ impl<S: Backend> BackendServer<S> {
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::SET_SLAVE_REQ_FD) => {
+            Ok(FrontendReq::SET_SLAVE_REQ_FD) => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::SLAVE_REQ.bits() == 0 {
                     return Err(Error::InvalidOperation);
                 }
@@ -516,7 +516,7 @@ impl<S: Backend> BackendServer<S> {
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::GET_INFLIGHT_FD) => {
+            Ok(FrontendReq::GET_INFLIGHT_FD) => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits()
                     == 0
                 {
@@ -532,7 +532,7 @@ impl<S: Backend> BackendServer<S> {
                     Some(&[file.as_raw_descriptor()]),
                 )?;
             }
-            Ok(MasterReq::SET_INFLIGHT_FD) => {
+            Ok(FrontendReq::SET_INFLIGHT_FD) => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits()
                     == 0
                 {
@@ -544,7 +544,7 @@ impl<S: Backend> BackendServer<S> {
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::GET_MAX_MEM_SLOTS) => {
+            Ok(FrontendReq::GET_MAX_MEM_SLOTS) => {
                 if self.acked_protocol_features
                     & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
                     == 0
@@ -556,7 +556,7 @@ impl<S: Backend> BackendServer<S> {
                 let msg = VhostUserU64::new(num);
                 self.send_reply_message(&hdr, &msg)?;
             }
-            Ok(MasterReq::ADD_MEM_REG) => {
+            Ok(FrontendReq::ADD_MEM_REG) => {
                 if self.acked_protocol_features
                     & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
                     == 0
@@ -570,7 +570,7 @@ impl<S: Backend> BackendServer<S> {
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::REM_MEM_REG) => {
+            Ok(FrontendReq::REM_MEM_REG) => {
                 if self.acked_protocol_features
                     & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
                     == 0
@@ -584,7 +584,7 @@ impl<S: Backend> BackendServer<S> {
                 self.send_ack_message(&hdr, res.is_ok())?;
                 res?;
             }
-            Ok(MasterReq::GET_SHARED_MEMORY_REGIONS) => {
+            Ok(FrontendReq::GET_SHARED_MEMORY_REGIONS) => {
                 let regions = self.backend.get_shared_memory_regions()?;
                 let mut buf = Vec::new();
                 let msg = VhostUserU64::new(regions.len() as u64);
@@ -593,17 +593,17 @@ impl<S: Backend> BackendServer<S> {
                 }
                 self.send_reply_with_payload(&hdr, &msg, buf.as_slice())?;
             }
-            Ok(MasterReq::SLEEP) => {
+            Ok(FrontendReq::SLEEP) => {
                 let res = self.backend.sleep();
                 let msg = VhostUserSuccess::new(res.is_ok());
                 self.send_reply_message(&hdr, &msg)?;
             }
-            Ok(MasterReq::WAKE) => {
+            Ok(FrontendReq::WAKE) => {
                 let res = self.backend.wake();
                 let msg = VhostUserSuccess::new(res.is_ok());
                 self.send_reply_message(&hdr, &msg)?;
             }
-            Ok(MasterReq::SNAPSHOT) => {
+            Ok(FrontendReq::SNAPSHOT) => {
                 let (success_msg, payload) = match self.backend.snapshot() {
                     Ok(snapshot_payload) => (VhostUserSuccess::new(true), snapshot_payload),
                     Err(e) => {
@@ -613,7 +613,7 @@ impl<S: Backend> BackendServer<S> {
                 };
                 self.send_reply_with_payload(&hdr, &success_msg, payload.as_slice())?;
             }
-            Ok(MasterReq::RESTORE) => {
+            Ok(FrontendReq::RESTORE) => {
                 let res = self.backend.restore(buf.as_slice(), files);
                 let msg = VhostUserSuccess::new(res.is_ok());
                 self.send_reply_message(&hdr, &msg)?;
@@ -627,9 +627,9 @@ impl<S: Backend> BackendServer<S> {
 
     fn new_reply_header<T: Sized>(
         &self,
-        req: &VhostUserMsgHeader<MasterReq>,
+        req: &VhostUserMsgHeader<FrontendReq>,
         payload_size: usize,
-    ) -> Result<VhostUserMsgHeader<MasterReq>> {
+    ) -> Result<VhostUserMsgHeader<FrontendReq>> {
         Ok(VhostUserMsgHeader::new(
             req.get_code().map_err(|_| Error::InvalidMessage)?,
             VhostUserHeaderFlag::REPLY.bits(),
@@ -644,11 +644,11 @@ impl<S: Backend> BackendServer<S> {
     /// Sends reply back to Vhost Master in response to a message.
     fn send_ack_message(
         &mut self,
-        req: &VhostUserMsgHeader<MasterReq>,
+        req: &VhostUserMsgHeader<FrontendReq>,
         success: bool,
     ) -> Result<()> {
         if self.reply_ack_enabled && req.is_need_reply() {
-            let hdr: VhostUserMsgHeader<MasterReq> =
+            let hdr: VhostUserMsgHeader<FrontendReq> =
                 self.new_reply_header::<VhostUserU64>(req, 0)?;
             let val = if success { 0 } else { 1 };
             let msg = VhostUserU64::new(val);
@@ -659,7 +659,7 @@ impl<S: Backend> BackendServer<S> {
 
     fn send_reply_message<T: Sized + AsBytes>(
         &mut self,
-        req: &VhostUserMsgHeader<MasterReq>,
+        req: &VhostUserMsgHeader<FrontendReq>,
         msg: &T,
     ) -> Result<()> {
         let hdr = self.new_reply_header::<T>(req, 0)?;
@@ -669,7 +669,7 @@ impl<S: Backend> BackendServer<S> {
 
     fn send_reply_with_payload<T: Sized + AsBytes>(
         &mut self,
-        req: &VhostUserMsgHeader<MasterReq>,
+        req: &VhostUserMsgHeader<FrontendReq>,
         msg: &T,
         payload: &[u8],
     ) -> Result<()> {
@@ -681,7 +681,7 @@ impl<S: Backend> BackendServer<S> {
 
     fn set_mem_table(
         &mut self,
-        hdr: &VhostUserMsgHeader<MasterReq>,
+        hdr: &VhostUserMsgHeader<FrontendReq>,
         size: usize,
         buf: &[u8],
         files: Vec<File>,
@@ -718,7 +718,7 @@ impl<S: Backend> BackendServer<S> {
         self.backend.set_mem_table(&regions, files)
     }
 
-    fn get_config(&mut self, hdr: &VhostUserMsgHeader<MasterReq>, buf: &[u8]) -> Result<()> {
+    fn get_config(&mut self, hdr: &VhostUserMsgHeader<FrontendReq>, buf: &[u8]) -> Result<()> {
         let (msg, payload) =
             Ref::<_, VhostUserConfig>::new_from_prefix(buf).ok_or(Error::InvalidMessage)?;
         if !msg.is_valid() {
@@ -810,7 +810,7 @@ impl<S: Backend> BackendServer<S> {
 
     fn check_request_size(
         &self,
-        hdr: &VhostUserMsgHeader<MasterReq>,
+        hdr: &VhostUserMsgHeader<FrontendReq>,
         size: usize,
         expected: usize,
     ) -> Result<()> {
@@ -826,20 +826,20 @@ impl<S: Backend> BackendServer<S> {
 
     fn check_attached_files(
         &self,
-        hdr: &VhostUserMsgHeader<MasterReq>,
+        hdr: &VhostUserMsgHeader<FrontendReq>,
         files: &[File],
     ) -> Result<()> {
         match hdr.get_code() {
-            Ok(MasterReq::SET_MEM_TABLE)
-            | Ok(MasterReq::SET_VRING_CALL)
-            | Ok(MasterReq::SET_VRING_KICK)
-            | Ok(MasterReq::SET_VRING_ERR)
-            | Ok(MasterReq::SET_LOG_BASE)
-            | Ok(MasterReq::SET_LOG_FD)
-            | Ok(MasterReq::SET_SLAVE_REQ_FD)
-            | Ok(MasterReq::SET_INFLIGHT_FD)
-            | Ok(MasterReq::RESTORE)
-            | Ok(MasterReq::ADD_MEM_REG) => Ok(()),
+            Ok(FrontendReq::SET_MEM_TABLE)
+            | Ok(FrontendReq::SET_VRING_CALL)
+            | Ok(FrontendReq::SET_VRING_KICK)
+            | Ok(FrontendReq::SET_VRING_ERR)
+            | Ok(FrontendReq::SET_LOG_BASE)
+            | Ok(FrontendReq::SET_LOG_FD)
+            | Ok(FrontendReq::SET_SLAVE_REQ_FD)
+            | Ok(FrontendReq::SET_INFLIGHT_FD)
+            | Ok(FrontendReq::RESTORE)
+            | Ok(FrontendReq::ADD_MEM_REG) => Ok(()),
             Err(_) => Err(Error::InvalidMessage),
             _ if !files.is_empty() => Err(Error::InvalidMessage),
             _ => Ok(()),
@@ -848,7 +848,7 @@ impl<S: Backend> BackendServer<S> {
 
     fn extract_request_body<T: Sized + FromBytes + VhostUserMsgValidator>(
         &self,
-        hdr: &VhostUserMsgHeader<MasterReq>,
+        hdr: &VhostUserMsgHeader<FrontendReq>,
         size: usize,
         buf: &[u8],
     ) -> Result<T> {

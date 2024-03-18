@@ -21,7 +21,7 @@ use base::ScmSocket;
 
 use crate::connection::Listener;
 use crate::frontend_server::FrontendServer;
-use crate::message::MasterReq;
+use crate::message::FrontendReq;
 use crate::message::MAX_ATTACHED_FD_ENTRIES;
 use crate::Connection;
 use crate::Error;
@@ -86,7 +86,7 @@ impl Listener for SocketListener {
     /// * - Some(SystemListener): new SystemListener object if new incoming connection is available.
     /// * - None: no incoming connection available.
     /// * - SocketError: errors from accept().
-    fn accept(&mut self) -> Result<Option<Connection<MasterReq>>> {
+    fn accept(&mut self) -> Result<Option<Connection<FrontendReq>>> {
         loop {
             match self.fd.accept() {
                 Ok((stream, _addr)) => {
@@ -311,14 +311,14 @@ pub(crate) mod tests {
     use crate::backend_server::Backend;
     use crate::backend_server::BackendServer;
     use crate::connection::Listener;
-    use crate::message::MasterReq;
+    use crate::message::FrontendReq;
     use crate::Connection;
 
     pub(crate) fn temp_dir() -> TempDir {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
     }
 
-    pub(crate) fn create_pair() -> (BackendClient, Connection<MasterReq>) {
+    pub(crate) fn create_pair() -> (BackendClient, Connection<FrontendReq>) {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
@@ -329,13 +329,13 @@ pub(crate) mod tests {
         (backend_client, server_connection)
     }
 
-    pub(crate) fn create_connection_pair() -> (Connection<MasterReq>, Connection<MasterReq>) {
+    pub(crate) fn create_connection_pair() -> (Connection<FrontendReq>, Connection<FrontendReq>) {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let client_connection = Connection::<MasterReq>::connect(path).unwrap();
+        let client_connection = Connection::<FrontendReq>::connect(path).unwrap();
         let server_connection = listener.accept().unwrap().unwrap();
         (client_connection, server_connection)
     }

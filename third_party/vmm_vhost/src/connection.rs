@@ -14,7 +14,7 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use crate::connection::Req;
-use crate::message::MasterReq;
+use crate::message::FrontendReq;
 use crate::message::*;
 use crate::sys::PlatformConnection;
 use crate::Error;
@@ -24,7 +24,7 @@ use crate::SystemStream;
 /// Listener for accepting connections.
 pub trait Listener: Sized {
     /// Accept an incoming connection.
-    fn accept(&mut self) -> Result<Option<Connection<MasterReq>>>;
+    fn accept(&mut self) -> Result<Option<Connection<FrontendReq>>>;
 
     /// Change blocking status on the listener.
     fn set_nonblocking(&self, block: bool) -> Result<()>;
@@ -256,7 +256,7 @@ pub(crate) mod tests {
     #[test]
     fn send_header_only() {
         let (master, slave) = create_connection_pair();
-        let hdr1 = VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, 0);
+        let hdr1 = VhostUserMsgHeader::new(FrontendReq::GET_FEATURES, 0, 0);
         master.send_header_only_message(&hdr1, None).unwrap();
         let (hdr2, _, files) = slave.recv_message::<VhostUserEmptyMessage>().unwrap();
         assert_eq!(hdr1, hdr2);
@@ -266,7 +266,7 @@ pub(crate) mod tests {
     #[test]
     fn send_data() {
         let (master, slave) = create_connection_pair();
-        let hdr1 = VhostUserMsgHeader::new(MasterReq::SET_FEATURES, 0, 8);
+        let hdr1 = VhostUserMsgHeader::new(FrontendReq::SET_FEATURES, 0, 8);
         master
             .send_message(&hdr1, &VhostUserU64::new(0xf00dbeefdeadf00d), None)
             .unwrap();
@@ -285,7 +285,7 @@ pub(crate) mod tests {
         write!(fd, "test").unwrap();
 
         // Normal case for sending/receiving file descriptors
-        let hdr1 = VhostUserMsgHeader::new(MasterReq::SET_MEM_TABLE, 0, 0);
+        let hdr1 = VhostUserMsgHeader::new(FrontendReq::SET_MEM_TABLE, 0, 0);
         master
             .send_header_only_message(&hdr1, Some(&[fd.as_raw_descriptor()]))
             .unwrap();

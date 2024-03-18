@@ -227,19 +227,19 @@ pub(crate) mod tests {
     use crate::backend_client::BackendClient;
     use crate::backend_server::Backend;
     use crate::backend_server::BackendServer;
-    use crate::message::MasterReq;
+    use crate::message::FrontendReq;
     use crate::Connection;
     use crate::SystemStream;
 
-    pub(crate) fn create_pair() -> (BackendClient, Connection<MasterReq>) {
+    pub(crate) fn create_pair() -> (BackendClient, Connection<FrontendReq>) {
         let (client_tube, server_tube) = SystemStream::pair().unwrap();
         let backend_client = BackendClient::from_stream(client_tube);
         (backend_client, Connection::from(server_tube))
     }
 
-    pub(crate) fn create_connection_pair() -> (Connection<MasterReq>, Connection<MasterReq>) {
+    pub(crate) fn create_connection_pair() -> (Connection<FrontendReq>, Connection<FrontendReq>) {
         let (client_tube, server_tube) = SystemStream::pair().unwrap();
-        let backend_connection = Connection::<MasterReq>::from(client_tube);
+        let backend_connection = Connection::<FrontendReq>::from(client_tube);
         (backend_connection, Connection::from(server_tube))
     }
 

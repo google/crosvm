@@ -20,7 +20,7 @@ use futures::select;
 use futures::FutureExt;
 use tube_transporter::TubeTransferDataList;
 use tube_transporter::TubeTransporterReader;
-use vmm_vhost::message::MasterReq;
+use vmm_vhost::message::FrontendReq;
 use vmm_vhost::message::VhostUserMsgHeader;
 use vmm_vhost::BackendServer;
 
@@ -70,7 +70,7 @@ pub async fn run_handler(
     pin_mut!(close_event_fut);
     pin_mut!(exit_event_fut);
 
-    let mut pending_header: Option<(VhostUserMsgHeader<MasterReq>, Vec<std::fs::File>)> = None;
+    let mut pending_header: Option<(VhostUserMsgHeader<FrontendReq>, Vec<std::fs::File>)> = None;
     loop {
         select! {
             _read_res = read_event_fut => {
@@ -113,7 +113,7 @@ pub async fn run_handler(
 #[cfg(test)]
 pub mod test_helpers {
     use base::Tube;
-    use vmm_vhost::message::MasterReq;
+    use vmm_vhost::message::FrontendReq;
     use vmm_vhost::BackendServer;
 
     pub(crate) fn setup() -> (Tube, Tube) {

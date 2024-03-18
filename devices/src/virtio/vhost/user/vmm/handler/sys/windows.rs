@@ -14,7 +14,6 @@ use cros_async::Executor;
 use futures::pin_mut;
 use futures::select;
 use futures::FutureExt;
-use vmm_vhost::message::MasterReq;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandler;
