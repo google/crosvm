@@ -23,7 +23,7 @@ crosvm on ChromeOS is usually built with Portage, so it follows the same general
 `cros_workon` package. The full package name is `chromeos-base/crosvm`.
 
 The developer guide section on
-[Make your Changes](https://chromium.googlesource.com/chromiumos/docs/+/main/developer_guide.md#make-your-changes)
+[Make your Changes](https://www.chromium.org/chromium-os/developer-library/guides/development/developer-guide/#make-your-changes)
 applies to crosvm as well. You can specify the development version to be built with cros_workon, and
 build with cros build-packages. Consecutive builds without changes to dependency can be done with
 emerge.
@@ -120,7 +120,7 @@ conflicts down the road.
 
 Your change need to be merged into [chromiumos/platform/crosvm] to cherry-pick it to a release
 branch. You should follow
-[ChromiumOS Merge Workflow](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/work_on_branch.md)
+[ChromiumOS Merge Workflow](https://www.chromium.org/chromium-os/developer-library/guides/development/work-on-branch/)
 to cherry-pick your changes. Since changes are merged from [crosvm/crosvm] to
 [chromiumos/platform/crosvm] through [the merge process](#the-merge-process), you can't use gerrit
 to cherry-pick your changes but need to use git command locally.

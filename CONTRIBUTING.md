@@ -33,7 +33,7 @@ a different project), you probably don't need to do it again.
 ### Commit Messages
 
 As for commit messages, we follow
-[ChromeOS's guideline](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/contributing.md#commit-messages)
+[ChromeOS's guideline](https://www.chromium.org/chromium-os/developer-library/guides/development/contributing/#commit-messages)
 in general.
 
 Here is an example of a good commit message:

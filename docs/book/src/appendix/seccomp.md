@@ -6,7 +6,7 @@ the BPF programs, crosvm uses minijail's policy file format. A policy file is wr
 device per architecture. Each device requires a unique set of syscalls to accomplish their function
 and each architecture has slightly different naming for similar syscalls. The ChromeOS docs have a
 useful
-[listing of syscalls](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/constants/syscalls.md).
+[listing of syscalls](https://www.chromium.org/chromium-os/developer-library/reference/linux-constants/syscalls/).
 
 The seccomp policies are compiled from `.policy` source files into BPF bytecode by
 [`jail/build.rs`](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/jail/build.rs)
