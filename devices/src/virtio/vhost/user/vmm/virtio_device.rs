@@ -4,7 +4,6 @@
 
 //! VirtioDevice implementation for the VMM side of a vhost-user connection.
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -38,7 +37,7 @@ use crate::PciAddress;
 pub struct VhostUserVirtioDevice {
     device_type: DeviceType,
     worker_thread: Option<WorkerThread<()>>,
-    handler: RefCell<VhostUserHandler>,
+    handler: VhostUserHandler,
     queue_sizes: Vec<u16>,
     cfg: Option<Vec<u8>>,
     expose_shmem_descriptors_with_viommu: bool,
@@ -148,7 +147,7 @@ impl VhostUserVirtioDevice {
         Ok(VhostUserVirtioDevice {
             device_type,
             worker_thread: None,
-            handler: RefCell::new(handler),
+            handler,
             queue_sizes,
             cfg: cfg.map(|cfg| cfg.to_vec()),
             expose_shmem_descriptors_with_viommu,
@@ -171,11 +170,11 @@ impl VirtioDevice for VhostUserVirtioDevice {
     }
 
     fn features(&self) -> u64 {
-        self.handler.borrow().avail_features
+        self.handler.avail_features
     }
 
     fn ack_features(&mut self, features: u64) {
-        if let Err(e) = self.handler.borrow_mut().ack_features(features) {
+        if let Err(e) = self.handler.ack_features(features) {
             error!("failed to enable features 0x{:x}: {}", features, e);
         }
     }
@@ -183,13 +182,13 @@ impl VirtioDevice for VhostUserVirtioDevice {
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         if let Some(cfg) = &self.cfg {
             copy_config(data, 0, cfg, offset);
-        } else if let Err(e) = self.handler.borrow_mut().read_config(offset, data) {
+        } else if let Err(e) = self.handler.read_config(offset, data) {
             error!("failed to read config: {}", e);
         }
     }
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
-        if let Err(e) = self.handler.borrow_mut().write_config(offset, data) {
+        if let Err(e) = self.handler.write_config(offset, data) {
             error!("failed to write config: {}", e);
         }
     }
@@ -202,7 +201,6 @@ impl VirtioDevice for VhostUserVirtioDevice {
     ) -> anyhow::Result<()> {
         let worker_thread = self
             .handler
-            .borrow_mut()
             .activate(mem, interrupt, queues, &format!("{}", self.device_type))
             .context("failed to activate queues")?;
         self.worker_thread = Some(worker_thread);
@@ -210,7 +208,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
     }
 
     fn reset(&mut self) -> bool {
-        if let Err(e) = self.handler.borrow_mut().reset(self.queue_sizes.len()) {
+        if let Err(e) = self.handler.reset(self.queue_sizes.len()) {
             error!("Failed to reset device: {}", e);
             false
         } else {
@@ -223,7 +221,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
     }
 
     fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
-        match self.handler.borrow_mut().get_shared_memory_region() {
+        match self.handler.get_shared_memory_region() {
             Ok(r) => r,
             Err(e) => {
                 error!("Failed to get shared memory regions {}", e);
@@ -233,7 +231,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
     }
 
     fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) {
-        if let Err(e) = self.handler.borrow_mut().set_shared_memory_mapper(mapper) {
+        if let Err(e) = self.handler.set_shared_memory_mapper(mapper) {
             error!("Error setting shared memory mapper {}", e);
         }
     }
@@ -243,10 +241,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
     }
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
-        self.handler
-            .borrow_mut()
-            .sleep()
-            .context("Failed to sleep device.")?;
+        self.handler.sleep().context("Failed to sleep device.")?;
 
         // Vhost user devices won't return queues on sleep, so return an empty Vec so that
         // VirtioPciDevice can set the sleep state properly.
@@ -259,15 +254,11 @@ impl VirtioDevice for VhostUserVirtioDevice {
         // already have it.
         _queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
-        self.handler
-            .borrow_mut()
-            .wake()
-            .context("Failed to wake device.")
+        self.handler.wake().context("Failed to wake device.")
     }
 
     fn virtio_snapshot(&mut self) -> anyhow::Result<Value> {
         self.handler
-            .borrow_mut()
             .snapshot()
             .context("failed to snapshot vu device")
     }
@@ -292,7 +283,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
     ) -> anyhow::Result<()> {
         // Other aspects of the restore operation will depend on the mem table
         // being set.
-        self.handler.borrow_mut().set_mem_table(&mem)?;
+        self.handler.set_mem_table(&mem)?;
 
         if device_activated {
             let non_msix_evt = Event::new().context("Failed to create event")?;
@@ -307,7 +298,6 @@ impl VirtioDevice for VhostUserVirtioDevice {
                         .unwrap_or(&non_msix_evt);
 
                     self.handler
-                        .borrow_mut()
                         .restore_irqfd(queue_index, irqfd)
                         .context("Failed to restore irqfd")?;
 
@@ -321,7 +311,6 @@ impl VirtioDevice for VhostUserVirtioDevice {
             );
             self.worker_thread = Some(
                 self.handler
-                    .borrow_mut()
                     .start_worker(
                         interrupt.expect(
                             "Interrupt doesn't exist. This shouldn't \
@@ -335,6 +324,6 @@ impl VirtioDevice for VhostUserVirtioDevice {
             );
         }
 
-        Ok(self.handler.borrow_mut().restore(data, queue_evts)?)
+        Ok(self.handler.restore(data, queue_evts)?)
     }
 }

@@ -5,6 +5,7 @@
 mod sys;
 pub(crate) mod worker;
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use base::error;
@@ -50,7 +51,7 @@ pub struct VhostUserHandler {
     protocol_features: VhostUserProtocolFeatures,
     backend_req_handler: Option<BackendReqHandler>,
     // Shared memory region info. IPC result from backend is saved with outer Option.
-    shmem_region: Option<Option<SharedMemoryRegion>>,
+    shmem_region: RefCell<Option<Option<SharedMemoryRegion>>>,
 }
 
 impl VhostUserHandler {
@@ -113,7 +114,7 @@ impl VhostUserHandler {
             acked_features,
             protocol_features,
             backend_req_handler,
-            shmem_region: None,
+            shmem_region: RefCell::new(None),
         })
     }
 
@@ -148,7 +149,7 @@ impl VhostUserHandler {
     }
 
     /// Gets the device configuration space at `offset` and writes it into `data`.
-    pub fn read_config(&mut self, offset: u64, data: &mut [u8]) -> Result<()> {
+    pub fn read_config(&self, offset: u64, data: &mut [u8]) -> Result<()> {
         let (_, config) = self
             .backend_client
             .get_config(
@@ -295,14 +296,14 @@ impl VhostUserHandler {
         Ok(())
     }
 
-    pub fn get_shared_memory_region(&mut self) -> Result<Option<SharedMemoryRegion>> {
+    pub fn get_shared_memory_region(&self) -> Result<Option<SharedMemoryRegion>> {
         if !self
             .protocol_features
             .contains(VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS)
         {
             return Ok(None);
         }
-        if let Some(r) = self.shmem_region.as_ref() {
+        if let Some(r) = self.shmem_region.borrow().as_ref() {
             return Ok(r.clone());
         }
         let regions = self
@@ -318,7 +319,7 @@ impl VhostUserHandler {
             n => return Err(Error::TooManyShmemRegions(n)),
         };
 
-        self.shmem_region = Some(region.clone());
+        *self.shmem_region.borrow_mut() = Some(region.clone());
         Ok(region)
     }
 
@@ -335,6 +336,7 @@ impl VhostUserHandler {
         // The virtio framework will only call this if get_shared_memory_region returned a region
         let shmid = self
             .shmem_region
+            .borrow()
             .clone()
             .flatten()
             .expect("missing shmid")
