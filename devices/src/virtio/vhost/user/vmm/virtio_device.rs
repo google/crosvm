@@ -32,7 +32,6 @@ use crate::virtio::vhost::user::vmm::handler::sys::create_backend_req_handler;
 use crate::virtio::vhost::user::vmm::handler::worker::Worker;
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandler;
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandlerImpl;
-use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Error;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::DeviceType;
@@ -86,7 +85,7 @@ impl VhostUserVirtioDevice {
     pub fn new(
         device_type: DeviceType,
         base_features: u64,
-        connection: Connection,
+        connection: vmm_vhost::SystemStream,
         max_queue_size: Option<u16>,
         pci_address: Option<PciAddress>,
     ) -> Result<VhostUserVirtioDevice> {
@@ -111,7 +110,7 @@ impl VhostUserVirtioDevice {
     /// - `cfg`: bytes to return for the virtio configuration space (queried from device if not
     ///   specified)
     pub(crate) fn new_internal(
-        connection: Connection,
+        connection: vmm_vhost::SystemStream,
         device_type: DeviceType,
         max_queue_size: Option<u16>,
         base_features: u64,
