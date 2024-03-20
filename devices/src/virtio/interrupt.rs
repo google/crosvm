@@ -253,6 +253,26 @@ impl Interrupt {
         )
     }
 
+    #[cfg(test)]
+    pub fn new_for_test_with_msix() -> Interrupt {
+        let (_, unused_config_tube) = base::Tube::pair().unwrap();
+        let msix_vectors = 2;
+        let msix_cfg = MsixConfig::new(
+            msix_vectors,
+            unused_config_tube,
+            0,
+            "test_device".to_owned(),
+        );
+
+        Interrupt::new(
+            IrqLevelEvent::new().unwrap(),
+            Some(Arc::new(Mutex::new(msix_cfg))),
+            msix_vectors,
+            #[cfg(target_arch = "x86_64")]
+            None,
+        )
+    }
+
     /// Get a reference to the interrupt event.
     pub fn get_interrupt_evt(&self) -> &Event {
         match &self.inner.as_ref().transport {

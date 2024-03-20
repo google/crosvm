@@ -990,13 +990,16 @@ mod tests {
     use anyhow::bail;
     use base::Event;
     use vmm_vhost::BackendServer;
+    use vmm_vhost::FrontendReq;
     use zerocopy::AsBytes;
     use zerocopy::FromBytes;
     use zerocopy::FromZeroes;
 
     use super::sys::test_helpers;
     use super::*;
-    use crate::virtio::vhost::user::vmm::VhostUserHandler;
+    use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
+    use crate::virtio::DeviceType;
+    use crate::virtio::VirtioDevice;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq, AsBytes, FromZeroes, FromBytes)]
     #[repr(C, packed(4))]
@@ -1111,44 +1114,44 @@ mod tests {
             // VMM side
             rx.recv().unwrap(); // Ensure the device is ready.
 
-            let allow_features = 1 << VHOST_USER_F_PROTOCOL_FEATURES;
-            let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
             let connection = test_helpers::connect(vmm);
 
-            let mut vmm_handler =
-                VhostUserHandler::new(connection, allow_features, allow_protocol_features).unwrap();
+            let mut vmm_device =
+                VhostUserVirtioDevice::new(DeviceType::Rng, 0, connection, None, None).unwrap();
 
             println!("read_config");
             let mut buf = vec![0; std::mem::size_of::<FakeConfig>()];
-            vmm_handler.read_config(0, &mut buf).unwrap();
+            vmm_device.read_config(0, &mut buf);
             // Check if the obtained config data is correct.
             let config = FakeConfig::read_from(buf.as_bytes()).unwrap();
             assert_eq!(config, FAKE_CONFIG_DATA);
 
-            println!("set_mem_table");
             let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
-            vmm_handler.set_mem_table(&mem).unwrap();
+            let interrupt = Interrupt::new_for_test_with_msix();
 
+            let mut queues = BTreeMap::new();
             for idx in 0..QUEUES_NUM {
-                println!("activate_mem_table: queue_index={}", idx);
                 let mut queue = QueueConfig::new(0x10, 0);
                 queue.set_ready(true);
                 let queue = queue
                     .activate(&mem, Event::new().unwrap())
                     .expect("QueueConfig::activate");
-                let irqfd = Event::new().unwrap();
-
-                vmm_handler
-                    .activate_vring(&mem, idx, &queue, &irqfd)
-                    .unwrap();
+                queues.insert(idx, queue);
             }
 
-            vmm_handler.sleep().unwrap();
+            println!("activate");
+            vmm_device
+                .activate(mem.clone(), interrupt.clone(), queues)
+                .unwrap();
 
-            vmm_handler.wake().unwrap();
+            println!("virtio_sleep");
+            vmm_device.virtio_sleep().unwrap();
+
+            println!("virtio_wake");
+            vmm_device.virtio_wake(None).unwrap();
 
             // The VMM side is supposed to stop before the device side.
-            drop(vmm_handler);
+            drop(vmm_device);
 
             vmm_bar.wait();
         });
@@ -1161,38 +1164,36 @@ mod tests {
 
         let mut req_handler = test_helpers::listen(dev, handler);
 
-        // VhostUserHandler::new()
-        handle_request(&mut req_handler).expect("set_owner");
-        handle_request(&mut req_handler).expect("get_features");
-        handle_request(&mut req_handler).expect("set_features");
-        handle_request(&mut req_handler).expect("get_protocol_features");
-        handle_request(&mut req_handler).expect("set_protocol_features");
+        // VhostUserVirtioDevice::new()
+        handle_request(&mut req_handler, FrontendReq::SET_OWNER).unwrap();
+        handle_request(&mut req_handler, FrontendReq::GET_FEATURES).unwrap();
+        handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
+        handle_request(&mut req_handler, FrontendReq::GET_PROTOCOL_FEATURES).unwrap();
+        handle_request(&mut req_handler, FrontendReq::SET_PROTOCOL_FEATURES).unwrap();
 
-        // VhostUserHandler::read_config()
-        handle_request(&mut req_handler).expect("get_config");
+        // VhostUserVirtioDevice::read_config()
+        handle_request(&mut req_handler, FrontendReq::GET_CONFIG).unwrap();
 
-        // VhostUserHandler::set_mem_table()
-        handle_request(&mut req_handler).expect("set_mem_table");
-
+        // VhostUserVirtioDevice::activate()
+        handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
         for _ in 0..QUEUES_NUM {
-            // VhostUserHandler::activate_vring()
-            handle_request(&mut req_handler).expect("set_vring_num");
-            handle_request(&mut req_handler).expect("set_vring_addr");
-            handle_request(&mut req_handler).expect("set_vring_base");
-            handle_request(&mut req_handler).expect("set_vring_call");
-            handle_request(&mut req_handler).expect("set_vring_kick");
-            handle_request(&mut req_handler).expect("set_vring_enable");
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_ADDR).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_BASE).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_CALL).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_KICK).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
         }
 
-        // sleep
-        handle_request(&mut req_handler).expect("sleep");
+        // VhostUserVirtioDevice::virtio_sleep()
+        handle_request(&mut req_handler, FrontendReq::SLEEP).unwrap();
 
-        // wake
-        handle_request(&mut req_handler).expect("wake");
+        // VhostUserVirtioDevice::virtio_wake()
+        handle_request(&mut req_handler, FrontendReq::WAKE).unwrap();
 
         dev_bar.wait();
 
-        match handle_request(&mut req_handler) {
+        match req_handler.recv_header() {
             Err(VhostError::ClientExit) => (),
             r => panic!("expected Err(ClientExit) but got {:?}", r),
         }
@@ -1200,8 +1201,10 @@ mod tests {
 
     fn handle_request<S: vmm_vhost::Backend>(
         handler: &mut BackendServer<S>,
+        expected_message_type: FrontendReq,
     ) -> Result<(), VhostError> {
         let (hdr, files) = handler.recv_header()?;
+        assert_eq!(hdr.get_code(), Ok(expected_message_type));
         handler.process_message(hdr, files)
     }
 }
