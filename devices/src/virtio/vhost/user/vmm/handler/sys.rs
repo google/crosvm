@@ -5,13 +5,12 @@
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
         mod linux;
-        pub(super) use self::linux::*;
         use linux as platform;
     } else if #[cfg(windows)] {
         mod windows;
-        pub(super) use self::windows::*;
         use windows as platform;
     }
 }
 
+pub(in super::super) use platform::create_backend_req_handler;
 pub(super) use platform::run_backend_request_handler;

@@ -4,27 +4,37 @@
 
 //! VirtioDevice implementation for the VMM side of a vhost-user connection.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use anyhow::Context;
 use base::error;
 use base::trace;
+use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
 use base::WorkerThread;
 use serde_json::Value;
 use sync::Mutex;
 use vm_memory::GuestMemory;
+use vmm_vhost::message::VhostUserConfigFlags;
 use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::BackendClient;
+use vmm_vhost::VhostUserMemoryRegionInfo;
+use vmm_vhost::VringConfigData;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::pci::MsixConfig;
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::VIRTIO_DEVICE_TYPE_SPECIFIC_FEATURES_MASK;
+use crate::virtio::vhost::user::vmm::handler::sys::create_backend_req_handler;
+use crate::virtio::vhost::user::vmm::handler::worker::Worker;
+use crate::virtio::vhost::user::vmm::handler::BackendReqHandler;
+use crate::virtio::vhost::user::vmm::handler::BackendReqHandlerImpl;
 use crate::virtio::vhost::user::vmm::Connection;
+use crate::virtio::vhost::user::vmm::Error;
 use crate::virtio::vhost::user::vmm::Result;
-use crate::virtio::vhost::user::vmm::VhostUserHandler;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -37,7 +47,15 @@ use crate::PciAddress;
 pub struct VhostUserVirtioDevice {
     device_type: DeviceType,
     worker_thread: Option<WorkerThread<()>>,
-    handler: VhostUserHandler,
+
+    backend_client: BackendClient,
+    avail_features: u64,
+    acked_features: u64,
+    protocol_features: VhostUserProtocolFeatures,
+    backend_req_handler: Option<BackendReqHandler>,
+    // Shared memory region info. IPC result from backend is saved with outer Option.
+    shmem_region: RefCell<Option<Option<SharedMemoryRegion>>>,
+
     queue_sizes: Vec<u16>,
     cfg: Option<Vec<u8>>,
     expose_shmem_descriptors_with_viommu: bool,
@@ -100,9 +118,19 @@ impl VhostUserVirtioDevice {
         cfg: Option<&[u8]>,
         pci_address: Option<PciAddress>,
     ) -> Result<VhostUserVirtioDevice> {
+        #[cfg(windows)]
+        let backend_pid = connection.target_pid();
+
+        let mut backend_client = BackendClient::from_stream(connection);
+
+        backend_client.set_owner().map_err(Error::SetOwner)?;
+
         let allow_features = VIRTIO_DEVICE_TYPE_SPECIFIC_FEATURES_MASK
             | base_features
             | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
+        let avail_features =
+            allow_features & backend_client.get_features().map_err(Error::GetFeatures)?;
+        let mut acked_features = 0;
 
         let mut allow_protocol_features = VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::MQ
@@ -118,14 +146,51 @@ impl VhostUserVirtioDevice {
             false
         };
 
-        let handler = VhostUserHandler::new(connection, allow_features, allow_protocol_features)?;
+        let mut protocol_features = VhostUserProtocolFeatures::empty();
+        if avail_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
+            // The vhost-user backend supports VHOST_USER_F_PROTOCOL_FEATURES; enable it.
+            backend_client
+                .set_features(1 << VHOST_USER_F_PROTOCOL_FEATURES)
+                .map_err(Error::SetFeatures)?;
+            acked_features |= 1 << VHOST_USER_F_PROTOCOL_FEATURES;
+
+            let avail_protocol_features = backend_client
+                .get_protocol_features()
+                .map_err(Error::GetProtocolFeatures)?;
+            protocol_features = allow_protocol_features & avail_protocol_features;
+            backend_client
+                .set_protocol_features(protocol_features)
+                .map_err(Error::SetProtocolFeatures)?;
+        }
+
+        // if protocol feature `VhostUserProtocolFeatures::BACKEND_REQ` is negotiated.
+        let backend_req_handler =
+            if protocol_features.contains(VhostUserProtocolFeatures::BACKEND_REQ) {
+                let (handler, tx_fd) = create_backend_req_handler(
+                    BackendReqHandlerImpl::new(),
+                    #[cfg(windows)]
+                    backend_pid,
+                )?;
+                backend_client
+                    .set_backend_req_fd(&tx_fd)
+                    .map_err(Error::SetDeviceRequestChannel)?;
+                Some(handler)
+            } else {
+                None
+            };
 
         // If the device supports VHOST_USER_PROTOCOL_F_MQ, use VHOST_USER_GET_QUEUE_NUM to
         // determine the number of queues supported. Otherwise, use the minimum number of queues
         // required by the spec for this device type.
-        let num_queues = handler
-            .num_queues()?
-            .unwrap_or_else(|| device_type.min_queues());
+        let num_queues = if protocol_features.contains(VhostUserProtocolFeatures::MQ) {
+            trace!("backend supports VHOST_USER_PROTOCOL_F_MQ");
+            let num_queues = backend_client.get_queue_num().map_err(Error::GetQueueNum)?;
+            trace!("VHOST_USER_GET_QUEUE_NUM returned {num_queues}");
+            num_queues as usize
+        } else {
+            trace!("backend does not support VHOST_USER_PROTOCOL_F_MQ");
+            device_type.min_queues()
+        };
 
         // Clamp the maximum queue size to the largest power of 2 <= max_queue_size.
         let max_queue_size = max_queue_size
@@ -147,12 +212,118 @@ impl VhostUserVirtioDevice {
         Ok(VhostUserVirtioDevice {
             device_type,
             worker_thread: None,
-            handler,
+            backend_client,
+            avail_features,
+            acked_features,
+            protocol_features,
+            backend_req_handler,
+            shmem_region: RefCell::new(None),
             queue_sizes,
             cfg: cfg.map(|cfg| cfg.to_vec()),
             expose_shmem_descriptors_with_viommu,
             pci_address,
         })
+    }
+
+    fn set_mem_table(&mut self, mem: &GuestMemory) -> Result<()> {
+        let regions: Vec<_> = mem
+            .regions()
+            .map(|region| VhostUserMemoryRegionInfo {
+                guest_phys_addr: region.guest_addr.0,
+                memory_size: region.size as u64,
+                userspace_addr: region.host_addr as u64,
+                mmap_offset: region.shm_offset,
+                mmap_handle: region.shm.as_raw_descriptor(),
+            })
+            .collect();
+
+        self.backend_client
+            .set_mem_table(regions.as_slice())
+            .map_err(Error::SetMemTable)?;
+
+        Ok(())
+    }
+
+    /// Activates a vring for the given `queue`.
+    fn activate_vring(
+        &mut self,
+        mem: &GuestMemory,
+        queue_index: usize,
+        queue: &Queue,
+        irqfd: &Event,
+    ) -> Result<()> {
+        self.backend_client
+            .set_vring_num(queue_index, queue.size())
+            .map_err(Error::SetVringNum)?;
+
+        let config_data = VringConfigData {
+            queue_size: queue.size(),
+            flags: 0u32,
+            desc_table_addr: mem
+                .get_host_address(queue.desc_table())
+                .map_err(Error::GetHostAddress)? as u64,
+            used_ring_addr: mem
+                .get_host_address(queue.used_ring())
+                .map_err(Error::GetHostAddress)? as u64,
+            avail_ring_addr: mem
+                .get_host_address(queue.avail_ring())
+                .map_err(Error::GetHostAddress)? as u64,
+            log_addr: None,
+        };
+        self.backend_client
+            .set_vring_addr(queue_index, &config_data)
+            .map_err(Error::SetVringAddr)?;
+
+        self.backend_client
+            .set_vring_base(queue_index, 0)
+            .map_err(Error::SetVringBase)?;
+
+        self.backend_client
+            .set_vring_call(queue_index, irqfd)
+            .map_err(Error::SetVringCall)?;
+        self.backend_client
+            .set_vring_kick(queue_index, queue.event())
+            .map_err(Error::SetVringKick)?;
+
+        // Per protocol documentation, `VHOST_USER_SET_VRING_ENABLE` should be sent only when
+        // `VHOST_USER_F_PROTOCOL_FEATURES` has been negotiated.
+        if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
+            self.backend_client
+                .set_vring_enable(queue_index, true)
+                .map_err(Error::SetVringEnable)?;
+        }
+
+        Ok(())
+    }
+
+    /// Helper to start up the worker thread that will be used with handling interrupts and requests
+    /// from the device process.
+    fn start_worker(
+        &mut self,
+        interrupt: Interrupt,
+        mem: GuestMemory,
+        non_msix_evt: Event,
+    ) -> Result<WorkerThread<()>> {
+        let label = format!("vhost_user_virtio_{}", self.device_type);
+
+        let mut backend_req_handler = self.backend_req_handler.take();
+        if let Some(handler) = &mut backend_req_handler {
+            // Using unwrap here to get the mutex protected value
+            handler.frontend_mut().set_interrupt(interrupt.clone());
+        }
+
+        Ok(WorkerThread::start(label.clone(), move |kill_evt| {
+            let mut worker = Worker {
+                mem,
+                kill_evt,
+                non_msix_evt,
+                backend_req_handler,
+            };
+
+            if let Err(e) = worker.run(interrupt) {
+                error!("failed to start {} worker: {}", label, e);
+            }
+        }))
     }
 }
 
@@ -170,25 +341,64 @@ impl VirtioDevice for VhostUserVirtioDevice {
     }
 
     fn features(&self) -> u64 {
-        self.handler.avail_features
+        self.avail_features
     }
 
     fn ack_features(&mut self, features: u64) {
-        if let Err(e) = self.handler.ack_features(features) {
+        let features = (features & self.avail_features) | self.acked_features;
+        if let Err(e) = self
+            .backend_client
+            .set_features(features)
+            .map_err(Error::SetFeatures)
+        {
             error!("failed to enable features 0x{:x}: {}", features, e);
+            return;
         }
+        self.acked_features = features;
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         if let Some(cfg) = &self.cfg {
             copy_config(data, 0, cfg, offset);
-        } else if let Err(e) = self.handler.read_config(offset, data) {
-            error!("failed to read config: {}", e);
+            return;
         }
+
+        let Ok(offset) = offset.try_into() else {
+            error!("failed to read config: invalid config offset is given: {offset}");
+            return;
+        };
+        let Ok(data_len) = data.len().try_into() else {
+            error!(
+                "failed to read config: invalid config length is given: {}",
+                data.len()
+            );
+            return;
+        };
+        let (_, config) = match self.backend_client.get_config(
+            offset,
+            data_len,
+            VhostUserConfigFlags::WRITABLE,
+            data,
+        ) {
+            Ok(x) => x,
+            Err(e) => {
+                error!("failed to read config: {}", Error::GetConfig(e));
+                return;
+            }
+        };
+        data.copy_from_slice(&config);
     }
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
-        if let Err(e) = self.handler.write_config(offset, data) {
+        let Ok(offset) = offset.try_into() else {
+            error!("failed to write config: invalid config offset is given: {offset}");
+            return;
+        };
+        if let Err(e) = self
+            .backend_client
+            .set_config(offset, VhostUserConfigFlags::empty(), data)
+            .map_err(Error::SetConfig)
+        {
             error!("failed to write config: {}", e);
         }
     }
@@ -199,21 +409,50 @@ impl VirtioDevice for VhostUserVirtioDevice {
         interrupt: Interrupt,
         queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
-        let worker_thread = self
-            .handler
-            .activate(mem, interrupt, queues, &format!("{}", self.device_type))
-            .context("failed to activate queues")?;
-        self.worker_thread = Some(worker_thread);
+        self.set_mem_table(&mem)?;
+
+        let msix_config_opt = interrupt
+            .get_msix_config()
+            .as_ref()
+            .ok_or(Error::MsixConfigUnavailable)?;
+        let msix_config = msix_config_opt.lock();
+
+        let non_msix_evt = Event::new().map_err(Error::CreateEvent)?;
+        for (&queue_index, queue) in queues.iter() {
+            let irqfd = msix_config
+                .get_irqfd(queue.vector() as usize)
+                .unwrap_or(&non_msix_evt);
+            self.activate_vring(&mem, queue_index, queue, irqfd)?;
+        }
+
+        drop(msix_config);
+
+        self.worker_thread = Some(self.start_worker(interrupt, mem, non_msix_evt)?);
         Ok(())
     }
 
     fn reset(&mut self) -> bool {
-        if let Err(e) = self.handler.reset(self.queue_sizes.len()) {
-            error!("Failed to reset device: {}", e);
-            false
-        } else {
-            true
+        for queue_index in 0..self.queue_sizes.len() {
+            if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
+                if let Err(e) = self
+                    .backend_client
+                    .set_vring_enable(queue_index, false)
+                    .map_err(Error::SetVringEnable)
+                {
+                    error!("Failed to reset device: {}", e);
+                    return false;
+                }
+            }
+            if let Err(e) = self
+                .backend_client
+                .get_vring_base(queue_index)
+                .map_err(Error::GetVringBase)
+            {
+                error!("Failed to reset device: {}", e);
+                return false;
+            }
         }
+        true
     }
 
     fn pci_address(&self) -> Option<PciAddress> {
@@ -221,19 +460,68 @@ impl VirtioDevice for VhostUserVirtioDevice {
     }
 
     fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
-        match self.handler.get_shared_memory_region() {
-            Ok(r) => r,
+        if !self
+            .protocol_features
+            .contains(VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS)
+        {
+            return None;
+        }
+        if let Some(r) = self.shmem_region.borrow().as_ref() {
+            return r.clone();
+        }
+        let regions = match self
+            .backend_client
+            .get_shared_memory_regions()
+            .map_err(Error::ShmemRegions)
+        {
+            Ok(x) => x,
             Err(e) => {
                 error!("Failed to get shared memory regions {}", e);
-                None
+                return None;
             }
-        }
+        };
+        let region = match regions.len() {
+            0 => None,
+            1 => Some(SharedMemoryRegion {
+                id: regions[0].id,
+                length: regions[0].length,
+            }),
+            n => {
+                error!(
+                    "Failed to get shared memory regions {}",
+                    Error::TooManyShmemRegions(n)
+                );
+                return None;
+            }
+        };
+
+        *self.shmem_region.borrow_mut() = Some(region.clone());
+        region
     }
 
     fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) {
-        if let Err(e) = self.handler.set_shared_memory_mapper(mapper) {
-            error!("Error setting shared memory mapper {}", e);
-        }
+        // Return error if backend request handler is not available. This indicates
+        // that `VhostUserProtocolFeatures::BACKEND_REQ` is not negotiated.
+        let Some(backend_req_handler) = self.backend_req_handler.as_mut() else {
+            error!(
+                "Error setting shared memory mapper {}",
+                Error::ProtocolFeatureNotNegoiated(VhostUserProtocolFeatures::BACKEND_REQ)
+            );
+            return;
+        };
+
+        // The virtio framework will only call this if get_shared_memory_region returned a region
+        let shmid = self
+            .shmem_region
+            .borrow()
+            .clone()
+            .flatten()
+            .expect("missing shmid")
+            .id;
+
+        backend_req_handler
+            .frontend_mut()
+            .set_shared_mapper_state(mapper, shmid);
     }
 
     fn expose_shmem_descriptors_with_viommu(&self) -> bool {
@@ -241,7 +529,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
     }
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
-        self.handler.sleep().context("Failed to sleep device.")?;
+        self.backend_client.sleep().map_err(Error::Sleep)?;
 
         // Vhost user devices won't return queues on sleep, so return an empty Vec so that
         // VirtioPciDevice can set the sleep state properly.
@@ -254,13 +542,13 @@ impl VirtioDevice for VhostUserVirtioDevice {
         // already have it.
         _queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
-        self.handler.wake().context("Failed to wake device.")
+        self.backend_client.wake().map_err(Error::Wake)?;
+        Ok(())
     }
 
     fn virtio_snapshot(&mut self) -> anyhow::Result<Value> {
-        self.handler
-            .snapshot()
-            .context("failed to snapshot vu device")
+        let snapshot_bytes = self.backend_client.snapshot().map_err(Error::Snapshot)?;
+        Ok(serde_json::to_value(snapshot_bytes).map_err(Error::SliceToSerdeValue)?)
     }
 
     fn virtio_restore(&mut self, _data: Value) -> anyhow::Result<()> {
@@ -283,7 +571,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
     ) -> anyhow::Result<()> {
         // Other aspects of the restore operation will depend on the mem table
         // being set.
-        self.handler.set_mem_table(&mem)?;
+        self.set_mem_table(&mem)?;
 
         if device_activated {
             let non_msix_evt = Event::new().context("Failed to create event")?;
@@ -297,8 +585,9 @@ impl VirtioDevice for VhostUserVirtioDevice {
                         .get_irqfd(queue.vector() as usize)
                         .unwrap_or(&non_msix_evt);
 
-                    self.handler
-                        .restore_irqfd(queue_index, irqfd)
+                    self.backend_client
+                        .set_vring_call(queue_index, irqfd)
+                        .map_err(Error::SetVringCall)
                         .context("Failed to restore irqfd")?;
 
                     Ok::<(), anyhow::Error>(())
@@ -310,20 +599,23 @@ impl VirtioDevice for VhostUserVirtioDevice {
                 is supported."
             );
             self.worker_thread = Some(
-                self.handler
-                    .start_worker(
-                        interrupt.expect(
-                            "Interrupt doesn't exist. This shouldn't \
+                self.start_worker(
+                    interrupt.expect(
+                        "Interrupt doesn't exist. This shouldn't \
                         happen since the device is activated.",
-                        ),
-                        &format!("{}", self.device_type),
-                        mem,
-                        non_msix_evt,
-                    )
-                    .context("Failed to start worker on restore.")?,
+                    ),
+                    mem,
+                    non_msix_evt,
+                )
+                .context("Failed to start worker on restore.")?,
             );
         }
 
-        Ok(self.handler.restore(data, queue_evts)?)
+        let data_bytes: Vec<u8> = serde_json::from_value(data).map_err(Error::SerdeValueToSlice)?;
+        self.backend_client
+            .restore(data_bytes.as_slice(), queue_evts)
+            .map_err(Error::Restore)?;
+
+        Ok(())
     }
 }
