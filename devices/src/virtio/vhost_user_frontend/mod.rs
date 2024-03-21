@@ -49,7 +49,7 @@ use crate::virtio::SharedMemoryRegion;
 use crate::virtio::VirtioDevice;
 use crate::PciAddress;
 
-pub struct VhostUserVirtioDevice {
+pub struct VhostUserFrontend {
     device_type: DeviceType,
     worker_thread: Option<WorkerThread<()>>,
 
@@ -79,7 +79,7 @@ fn power_of_two_le(val: u16) -> Option<u16> {
     }
 }
 
-impl VhostUserVirtioDevice {
+impl VhostUserFrontend {
     /// Create a new VirtioDevice for a vhost-user device frontend.
     ///
     /// # Arguments
@@ -94,8 +94,8 @@ impl VhostUserVirtioDevice {
         connection: vmm_vhost::SystemStream,
         max_queue_size: Option<u16>,
         pci_address: Option<PciAddress>,
-    ) -> Result<VhostUserVirtioDevice> {
-        VhostUserVirtioDevice::new_internal(
+    ) -> Result<VhostUserFrontend> {
+        VhostUserFrontend::new_internal(
             connection,
             device_type,
             max_queue_size,
@@ -122,7 +122,7 @@ impl VhostUserVirtioDevice {
         base_features: u64,
         cfg: Option<&[u8]>,
         pci_address: Option<PciAddress>,
-    ) -> Result<VhostUserVirtioDevice> {
+    ) -> Result<VhostUserFrontend> {
         #[cfg(windows)]
         let backend_pid = connection.target_pid();
 
@@ -214,7 +214,7 @@ impl VhostUserVirtioDevice {
 
         let queue_sizes = vec![max_queue_size; num_queues];
 
-        Ok(VhostUserVirtioDevice {
+        Ok(VhostUserFrontend {
             device_type,
             worker_thread: None,
             backend_client,
@@ -332,7 +332,7 @@ impl VhostUserVirtioDevice {
     }
 }
 
-impl VirtioDevice for VhostUserVirtioDevice {
+impl VirtioDevice for VhostUserFrontend {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         Vec::new()
     }

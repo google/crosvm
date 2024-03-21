@@ -9,16 +9,16 @@ use zerocopy::AsBytes;
 use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
 use crate::virtio::vhost_user_frontend::Error;
 use crate::virtio::vhost_user_frontend::Result;
-use crate::virtio::vhost_user_frontend::VhostUserVirtioDevice;
+use crate::virtio::vhost_user_frontend::VhostUserFrontend;
 use crate::virtio::DeviceType;
 
-impl VhostUserVirtioDevice {
+impl VhostUserFrontend {
     pub fn new_fs(
         base_features: u64,
         connection: vmm_vhost::SystemStream,
         max_queue_size: Option<u16>,
         tag: Option<&str>,
-    ) -> Result<VhostUserVirtioDevice> {
+    ) -> Result<VhostUserFrontend> {
         let cfg = if let Some(tag) = tag {
             if tag.len() > FS_MAX_TAG_LEN {
                 return Err(Error::TagTooLong {
@@ -43,7 +43,7 @@ impl VhostUserVirtioDevice {
             None
         };
 
-        VhostUserVirtioDevice::new_internal(
+        VhostUserFrontend::new_internal(
             connection,
             DeviceType::Fs,
             max_queue_size,

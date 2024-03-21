@@ -997,7 +997,7 @@ mod tests {
 
     use super::sys::test_helpers;
     use super::*;
-    use crate::virtio::vhost_user_frontend::VhostUserVirtioDevice;
+    use crate::virtio::vhost_user_frontend::VhostUserFrontend;
     use crate::virtio::DeviceType;
     use crate::virtio::VirtioDevice;
 
@@ -1117,7 +1117,7 @@ mod tests {
             let connection = test_helpers::connect(vmm);
 
             let mut vmm_device =
-                VhostUserVirtioDevice::new(DeviceType::Rng, 0, connection, None, None).unwrap();
+                VhostUserFrontend::new(DeviceType::Rng, 0, connection, None, None).unwrap();
 
             println!("read_config");
             let mut buf = vec![0; std::mem::size_of::<FakeConfig>()];
@@ -1164,17 +1164,17 @@ mod tests {
 
         let mut req_handler = test_helpers::listen(dev, handler);
 
-        // VhostUserVirtioDevice::new()
+        // VhostUserFrontend::new()
         handle_request(&mut req_handler, FrontendReq::SET_OWNER).unwrap();
         handle_request(&mut req_handler, FrontendReq::GET_FEATURES).unwrap();
         handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
         handle_request(&mut req_handler, FrontendReq::GET_PROTOCOL_FEATURES).unwrap();
         handle_request(&mut req_handler, FrontendReq::SET_PROTOCOL_FEATURES).unwrap();
 
-        // VhostUserVirtioDevice::read_config()
+        // VhostUserFrontend::read_config()
         handle_request(&mut req_handler, FrontendReq::GET_CONFIG).unwrap();
 
-        // VhostUserVirtioDevice::activate()
+        // VhostUserFrontend::activate()
         handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
         for _ in 0..QUEUES_NUM {
             handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
@@ -1185,10 +1185,10 @@ mod tests {
             handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
         }
 
-        // VhostUserVirtioDevice::virtio_sleep()
+        // VhostUserFrontend::virtio_sleep()
         handle_request(&mut req_handler, FrontendReq::SLEEP).unwrap();
 
-        // VhostUserVirtioDevice::virtio_wake()
+        // VhostUserFrontend::virtio_wake()
         handle_request(&mut req_handler, FrontendReq::WAKE).unwrap();
 
         dev_bar.wait();

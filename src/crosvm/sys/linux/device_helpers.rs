@@ -55,7 +55,7 @@ use devices::virtio::NetError;
 use devices::virtio::NetParameters;
 #[cfg(feature = "net")]
 use devices::virtio::NetParametersMode;
-use devices::virtio::VhostUserVirtioDevice;
+use devices::virtio::VhostUserFrontend;
 use devices::virtio::VirtioDevice;
 use devices::virtio::VirtioDeviceType;
 use devices::BusDeviceObj;
@@ -336,7 +336,7 @@ pub fn create_vhost_user_frontend(
     protection_type: ProtectionType,
     opt: &VhostUserFrontendOption,
 ) -> DeviceResult {
-    let dev = VhostUserVirtioDevice::new(
+    let dev = VhostUserFrontend::new(
         opt.type_,
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
@@ -356,7 +356,7 @@ pub fn create_vhost_user_fs_device(
     protection_type: ProtectionType,
     option: &VhostUserFsOption,
 ) -> DeviceResult {
-    let dev = VhostUserVirtioDevice::new_fs(
+    let dev = VhostUserFrontend::new_fs(
         virtio::base_features(protection_type),
         vhost_user_connection(&option.socket)?,
         option.max_queue_size,
