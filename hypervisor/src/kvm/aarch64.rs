@@ -381,12 +381,24 @@ pub enum KvmVcpuRegister {
 }
 
 impl KvmVcpuRegister {
+    pub const MPIDR_EL1: Self = Self::from_encoding(0b11, 0b000, 0b0000, 0b0000, 0b101);
+
     // Firmware pseudo-registers are part of the ARM KVM interface:
     //     https://docs.kernel.org/virt/kvm/arm/hypercalls.html
     pub const PSCI_VERSION: Self = Self::Firmware(0);
     pub const SMCCC_ARCH_WORKAROUND_1: Self = Self::Firmware(1);
     pub const SMCCC_ARCH_WORKAROUND_2: Self = Self::Firmware(2);
     pub const SMCCC_ARCH_WORKAROUND_3: Self = Self::Firmware(3);
+
+    const fn from_encoding(op0: u8, op1: u8, crn: u8, crm: u8, op2: u8) -> Self {
+        let op0 = (op0 as u16 & 0b11) << 14;
+        let op1 = (op1 as u16 & 0b111) << 11;
+        let crn = (crn as u16 & 0b1111) << 7;
+        let crm = (crm as u16 & 0b1111) << 3;
+        let op2 = op2 as u16 & 0b111;
+
+        Self::System(op0 | op1 | crn | crm | op2)
+    }
 }
 
 /// Gives the `u64` register ID expected by the `GET_ONE_REG`/`SET_ONE_REG` ioctl API.
@@ -678,6 +690,10 @@ impl VcpuAArch64 for KvmVcpu {
 
     fn get_one_reg(&self, reg_id: VcpuRegAArch64) -> Result<u64> {
         self.get_one_kvm_reg_u64(KvmVcpuRegister::from(reg_id))
+    }
+
+    fn get_mpidr(&self) -> Result<u64> {
+        self.get_one_kvm_reg_u64(KvmVcpuRegister::MPIDR_EL1)
     }
 
     fn get_psci_version(&self) -> Result<PsciVersion> {
