@@ -331,6 +331,7 @@ pub struct VmComponents {
     pub ac_adapter: bool,
     pub acpi_sdts: Vec<SDT>,
     pub android_fstab: Option<File>,
+    pub boot_cpu: usize,
     pub bootorder_fw_cfg_blob: Vec<u8>,
     #[cfg(target_arch = "x86_64")]
     pub break_linux_pci_config_io: bool,

@@ -1159,6 +1159,7 @@ pub struct RunCommand {
     ///       core-types=[atom=[0,1],core=[2,3]] - set vCPU 0 and
     ///       vCPU 1 as intel Atom type, also set vCPU 2 and vCPU 3
     ///       as intel Core type.
+    ///     boot-cpu=NUM - Select vCPU to boot from. (default: 0) (aarch64 only)
     pub cpus: Option<CpuOptions>,
 
     #[cfg(feature = "crash-report")]
@@ -2607,6 +2608,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         {
             let cpus = cmd.cpus.unwrap_or_default();
             cfg.vcpu_count = cpus.num_cores;
+            cfg.boot_cpu = cpus.boot_cpu.unwrap_or_default();
 
             // Only allow deprecated `--cpu-cluster` option only if `--cpu clusters=[...]` is not
             // used.

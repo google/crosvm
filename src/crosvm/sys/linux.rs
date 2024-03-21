@@ -1300,6 +1300,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         #[cfg(target_arch = "x86_64")]
         pci_low_start: cfg.pci_low_start,
         dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
+        boot_cpu: cfg.boot_cpu,
     })
 }
 

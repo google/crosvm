@@ -135,6 +135,9 @@ pub struct CpuOptions {
     /// Core Type of CPUs.
     #[cfg(target_arch = "x86_64")]
     pub core_types: Option<CpuCoreType>,
+    /// Select which CPU to boot from.
+    #[serde(default)]
+    pub boot_cpu: Option<usize>,
 }
 
 /// Device tree overlay configuration.
@@ -656,6 +659,7 @@ pub struct Config {
     pub block_control_tube: Vec<Tube>,
     #[cfg(windows)]
     pub block_vhost_user_tube: Vec<Tube>,
+    pub boot_cpu: usize,
     #[cfg(target_arch = "x86_64")]
     pub break_linux_pci_config_io: bool,
     #[cfg(windows)]
@@ -861,6 +865,7 @@ impl Default for Config {
             #[cfg(feature = "balloon")]
             balloon_ws_reporting: false,
             battery_config: None,
+            boot_cpu: 0,
             #[cfg(windows)]
             block_control_tube: Vec::new(),
             #[cfg(windows)]
@@ -1119,6 +1124,11 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
                     .to_string(),
             );
         }
+    }
+
+    if cfg.boot_cpu >= cfg.vcpu_count.unwrap_or(1) {
+        log::warn!("boot_cpu selection cannot be higher than vCPUs available, defaulting to 0");
+        cfg.boot_cpu = 0;
     }
 
     #[cfg(all(

@@ -512,6 +512,7 @@ impl arch::LinuxArch for AArch64 {
                     &payload,
                     fdt_offset,
                     components.hv_cfg.protection_type,
+                    components.boot_cpu,
                 )
             };
             has_pvtime &= vcpu.has_pvtime_support();
@@ -522,7 +523,7 @@ impl arch::LinuxArch for AArch64 {
 
         // Initialize Vcpus after all Vcpu objects have been created.
         for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
-            vcpu.init(&Self::vcpu_features(vcpu_id, use_pmu))
+            vcpu.init(&Self::vcpu_features(vcpu_id, use_pmu, components.boot_cpu))
                 .map_err(Error::VcpuInit)?;
         }
 
@@ -1074,13 +1075,13 @@ impl AArch64 {
     ///
     /// * `vcpu_id` - The VM's index for `vcpu`.
     /// * `use_pmu` - Should `vcpu` be configured to use the Performance Monitor Unit.
-    fn vcpu_features(vcpu_id: usize, use_pmu: bool) -> Vec<VcpuFeature> {
+    fn vcpu_features(vcpu_id: usize, use_pmu: bool, boot_cpu: usize) -> Vec<VcpuFeature> {
         let mut features = vec![VcpuFeature::PsciV0_2];
         if use_pmu {
             features.push(VcpuFeature::PmuV3);
         }
         // Non-boot cpus are powered off initially
-        if vcpu_id != 0 {
+        if vcpu_id != boot_cpu {
             features.push(VcpuFeature::PowerOff);
         }
 
@@ -1097,6 +1098,7 @@ impl AArch64 {
         payload: &PayloadType,
         fdt_address: GuestAddress,
         protection_type: ProtectionType,
+        boot_cpu: usize,
     ) -> VcpuInitAArch64 {
         let mut regs: BTreeMap<VcpuRegAArch64, u64> = Default::default();
 
@@ -1105,7 +1107,7 @@ impl AArch64 {
         regs.insert(VcpuRegAArch64::Pstate, pstate);
 
         // Other cpus are powered off initially
-        if vcpu_id == 0 {
+        if vcpu_id == boot_cpu {
             let entry_addr = if protection_type.loads_firmware() {
                 Some(AARCH64_PROTECTED_VM_FW_START)
             } else if protection_type.runs_firmware() {
@@ -1156,7 +1158,7 @@ mod tests {
         let fdt_address = GuestAddress(0x1234);
         let prot = ProtectionType::Unprotected;
 
-        let vcpu_init = AArch64::vcpu_init(0, &payload, fdt_address, prot);
+        let vcpu_init = AArch64::vcpu_init(0, &payload, fdt_address, prot, 0);
 
         // PC: kernel image entry point
         assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::Pc), Some(&0x8080_0000));
@@ -1174,7 +1176,7 @@ mod tests {
         let fdt_address = GuestAddress(0x1234);
         let prot = ProtectionType::Unprotected;
 
-        let vcpu_init = AArch64::vcpu_init(0, &payload, fdt_address, prot);
+        let vcpu_init = AArch64::vcpu_init(0, &payload, fdt_address, prot, 0);
 
         // PC: bios image entry point
         assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::Pc), Some(&0x8020_0000));
@@ -1193,7 +1195,7 @@ mod tests {
         let fdt_address = GuestAddress(0x1234);
         let prot = ProtectionType::Protected;
 
-        let vcpu_init = AArch64::vcpu_init(0, &payload, fdt_address, prot);
+        let vcpu_init = AArch64::vcpu_init(0, &payload, fdt_address, prot, 0);
 
         // The hypervisor provides the initial value of PC, so PC should not be present in the
         // vcpu_init register map.

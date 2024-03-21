@@ -2099,6 +2099,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
         #[cfg(target_arch = "x86_64")]
         break_linux_pci_config_io: cfg.break_linux_pci_config_io,
+        boot_cpu: cfg.boot_cpu,
     })
 }
 
