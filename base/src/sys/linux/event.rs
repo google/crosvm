@@ -14,7 +14,6 @@ use libc::POLLIN;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::duration_to_timespec;
 use super::errno_result;
 use super::RawDescriptor;
 use super::Result;
@@ -22,6 +21,7 @@ use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::IntoRawDescriptor;
 use crate::descriptor::SafeDescriptor;
+use crate::unix::duration_to_timespec;
 use crate::EventWaitResult;
 
 /// A safe wrapper around a Linux eventfd (man 2 eventfd).

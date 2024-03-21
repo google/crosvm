@@ -13,6 +13,7 @@ pub mod net;
 mod sock_ctrl_msg;
 mod stream_channel;
 pub mod system_info;
+mod time;
 pub mod tube;
 
 pub use descriptor::*;
@@ -24,6 +25,7 @@ pub use stream_channel::*;
 pub use system_info::iov_max;
 pub use system_info::number_of_logical_cores;
 pub use system_info::pagesize;
+pub use time::duration_to_timespec;
 
 /// Process identifier.
 pub type Pid = libc::pid_t;

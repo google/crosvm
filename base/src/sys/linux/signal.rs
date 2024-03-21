@@ -37,13 +37,13 @@ use libc::SIG_UNBLOCK;
 use remain::sorted;
 use thiserror::Error;
 
-use super::duration_to_timespec;
 use super::errno_result;
 use super::Error as ErrnoError;
 use super::Pid;
 use super::Result;
 use crate::handle_eintr_errno;
 use crate::handle_eintr_rc;
+use crate::unix::duration_to_timespec;
 
 #[sorted]
 #[derive(Error, Debug)]
