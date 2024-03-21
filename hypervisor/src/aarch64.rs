@@ -114,6 +114,17 @@ pub trait VcpuAArch64: Vcpu {
     /// Gets the value of a register on this VCPU.
     fn get_one_reg(&self, reg_id: VcpuRegAArch64) -> Result<u64>;
 
+    /// Gets the value of MPIDR_EL1 on this VCPU.
+    fn get_mpidr(&self) -> Result<u64> {
+        const RES1: u64 = 1 << 31;
+
+        // Assume that MPIDR_EL1.{U,MT} = {0,0}.
+
+        let aff = u64::try_from(self.id()).unwrap();
+
+        Ok(RES1 | aff)
+    }
+
     /// Gets the current PSCI version.
     fn get_psci_version(&self) -> Result<PsciVersion>;
 

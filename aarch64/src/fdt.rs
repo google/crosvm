@@ -132,6 +132,7 @@ fn create_resv_memory_node(
 fn create_cpu_nodes(
     fdt: &mut Fdt,
     num_cpus: u32,
+    cpu_mpidr_generator: &impl Fn(usize) -> Option<u64>,
     cpu_clusters: Vec<CpuSet>,
     cpu_capacity: BTreeMap<usize, u32>,
     dynamic_power_coefficient: BTreeMap<usize, u32>,
@@ -143,14 +144,18 @@ fn create_cpu_nodes(
     cpus_node.set_prop("#size-cells", 0x0u32)?;
 
     for cpu_id in 0..num_cpus {
-        let cpu_name = format!("cpu@{:x}", cpu_id);
+        let reg = u32::try_from(
+            cpu_mpidr_generator(cpu_id.try_into().unwrap()).ok_or(Error::PropertyValueInvalid)?,
+        )
+        .map_err(|_| Error::PropertyValueTooLarge)?;
+        let cpu_name = format!("cpu@{:x}", reg);
         let cpu_node = cpus_node.subnode_mut(&cpu_name)?;
         cpu_node.set_prop("device_type", "cpu")?;
         cpu_node.set_prop("compatible", "arm,arm-v8")?;
         if num_cpus > 1 {
             cpu_node.set_prop("enable-method", "psci")?;
         }
-        cpu_node.set_prop("reg", cpu_id)?;
+        cpu_node.set_prop("reg", reg)?;
         cpu_node.set_prop("phandle", PHANDLE_CPU0 + cpu_id)?;
 
         if let Some(pwr_coefficient) = dynamic_power_coefficient.get(&(cpu_id as usize)) {
@@ -625,6 +630,7 @@ pub fn create_fdt(
         PlatformBusResources,
     >,
     num_cpus: u32,
+    cpu_mpidr_generator: &impl Fn(usize) -> Option<u64>,
     cpu_clusters: Vec<CpuSet>,
     cpu_capacity: BTreeMap<usize, u32>,
     cpu_frequencies: BTreeMap<usize, Vec<u32>>,
@@ -676,6 +682,7 @@ pub fn create_fdt(
     create_cpu_nodes(
         &mut fdt,
         num_cpus,
+        cpu_mpidr_generator,
         cpu_clusters,
         cpu_capacity,
         dynamic_power_coefficient,

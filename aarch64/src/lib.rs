@@ -372,6 +372,12 @@ fn get_block_size() -> u64 {
     block_size as u64
 }
 
+fn get_vcpu_mpidr_aff<Vcpu: VcpuAArch64>(vcpus: &[Vcpu], index: usize) -> Option<u64> {
+    const MPIDR_AFF_MASK: u64 = 0xff_00ff_ffff;
+
+    Some(vcpus.get(index)?.get_mpidr().ok()? & MPIDR_AFF_MASK)
+}
+
 impl arch::LinuxArch for AArch64 {
     type Error = Error;
 
@@ -766,6 +772,7 @@ impl arch::LinuxArch for AArch64 {
             &pci_ranges,
             dev_resources,
             vcpu_count as u32,
+            &|n| get_vcpu_mpidr_aff(&vcpus, n),
             components.cpu_clusters,
             components.cpu_capacity,
             components.cpu_frequencies,
