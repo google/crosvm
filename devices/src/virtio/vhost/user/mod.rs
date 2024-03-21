@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 pub mod device;
-pub mod vmm;
 
 use std::fmt::Debug;
 

@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-pub(super) mod sys;
-pub(crate) mod worker;
-
 use base::error;
 use base::info;
 use base::AsRawDescriptor;

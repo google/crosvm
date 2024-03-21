@@ -41,7 +41,6 @@ use devices::virtio::scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vfio_wrapper::VfioWrapper;
-use devices::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 #[cfg(feature = "net")]
 use devices::virtio::vhost::user::NetBackend;
 use devices::virtio::vhost::user::VhostUserDeviceBuilder;
@@ -56,6 +55,7 @@ use devices::virtio::NetError;
 use devices::virtio::NetParameters;
 #[cfg(feature = "net")]
 use devices::virtio::NetParametersMode;
+use devices::virtio::VhostUserVirtioDevice;
 use devices::virtio::VirtioDevice;
 use devices::virtio::VirtioDeviceType;
 use devices::BusDeviceObj;

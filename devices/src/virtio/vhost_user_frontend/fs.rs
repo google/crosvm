@@ -7,9 +7,9 @@ use virtio_sys::virtio_fs::virtio_fs_config;
 use zerocopy::AsBytes;
 
 use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
-use crate::virtio::vhost::user::vmm::Error;
-use crate::virtio::vhost::user::vmm::Result;
-use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
+use crate::virtio::vhost_user_frontend::Error;
+use crate::virtio::vhost_user_frontend::Result;
+use crate::virtio::vhost_user_frontend::VhostUserVirtioDevice;
 use crate::virtio::DeviceType;
 
 impl VhostUserVirtioDevice {

@@ -38,6 +38,7 @@ pub mod scsi;
 #[cfg(feature = "audio")]
 pub mod snd;
 pub mod vhost;
+pub mod vhost_user_frontend;
 pub mod vsock;
 
 #[cfg(feature = "balloon")]
@@ -96,6 +97,7 @@ pub use self::scsi::DiskConfig as ScsiDiskConfig;
 pub use self::tpm::Tpm;
 #[cfg(feature = "vtpm")]
 pub use self::tpm::TpmBackend;
+pub use self::vhost_user_frontend::VhostUserVirtioDevice;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 pub use self::video::VideoDevice;
 pub use self::virtio_device::SharedMemoryMapper;

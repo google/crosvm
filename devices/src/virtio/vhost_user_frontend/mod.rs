@@ -4,6 +4,12 @@
 
 //! VirtioDevice implementation for the VMM side of a vhost-user connection.
 
+mod error;
+mod fs;
+mod handler;
+mod sys;
+mod worker;
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -28,12 +34,12 @@ use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 use crate::pci::MsixConfig;
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::VIRTIO_DEVICE_TYPE_SPECIFIC_FEATURES_MASK;
-use crate::virtio::vhost::user::vmm::handler::sys::create_backend_req_handler;
-use crate::virtio::vhost::user::vmm::handler::worker::Worker;
-use crate::virtio::vhost::user::vmm::handler::BackendReqHandler;
-use crate::virtio::vhost::user::vmm::handler::BackendReqHandlerImpl;
-use crate::virtio::vhost::user::vmm::Error;
-use crate::virtio::vhost::user::vmm::Result;
+use crate::virtio::vhost_user_frontend::error::Error;
+use crate::virtio::vhost_user_frontend::error::Result;
+use crate::virtio::vhost_user_frontend::handler::BackendReqHandler;
+use crate::virtio::vhost_user_frontend::handler::BackendReqHandlerImpl;
+use crate::virtio::vhost_user_frontend::sys::create_backend_req_handler;
+use crate::virtio::vhost_user_frontend::worker::Worker;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;

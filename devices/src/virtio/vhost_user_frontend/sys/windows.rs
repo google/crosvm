@@ -16,10 +16,10 @@ use futures::select;
 use futures::FutureExt;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
-use crate::virtio::vhost::user::vmm::handler::BackendReqHandler;
-use crate::virtio::vhost::user::vmm::handler::BackendReqHandlerImpl;
-use crate::virtio::vhost::user::vmm::Error;
-use crate::virtio::vhost::user::vmm::Result as VhostResult;
+use crate::virtio::vhost_user_frontend::handler::BackendReqHandler;
+use crate::virtio::vhost_user_frontend::handler::BackendReqHandlerImpl;
+use crate::virtio::vhost_user_frontend::Error;
+use crate::virtio::vhost_user_frontend::Result as VhostResult;
 
 pub fn create_backend_req_handler(
     h: BackendReqHandlerImpl,

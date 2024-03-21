@@ -997,7 +997,7 @@ mod tests {
 
     use super::sys::test_helpers;
     use super::*;
-    use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
+    use crate::virtio::vhost_user_frontend::VhostUserVirtioDevice;
     use crate::virtio::DeviceType;
     use crate::virtio::VirtioDevice;
 

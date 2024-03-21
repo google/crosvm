@@ -2,13 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-mod fs;
-mod handler;
-mod virtio_device;
-
 use remain::sorted;
 use thiserror::Error as ThisError;
-pub use virtio_device::VhostUserVirtioDevice;
 use vm_memory::GuestMemoryError;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::Error as VhostError;
