@@ -17,6 +17,7 @@ pub struct PowerData {
     pub battery: Option<BatteryData>,
 }
 
+#[derive(Clone, Copy)]
 pub struct BatteryData {
     pub status: BatteryStatus,
     pub percent: u32,
@@ -30,6 +31,7 @@ pub struct BatteryData {
     pub charge_full: u32,
 }
 
+#[derive(Clone, Copy)]
 pub enum BatteryStatus {
     Unknown,
     Charging,

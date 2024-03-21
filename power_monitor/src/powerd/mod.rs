@@ -96,6 +96,7 @@ pub enum DBusMonitorError {
 pub struct DBusMonitor {
     connection: Connection,
     connection_fd: RawFd,
+    previous_data: Option<BatteryData>,
 }
 
 impl DBusMonitor {
@@ -126,7 +127,16 @@ impl DBusMonitor {
         Ok(Box::new(Self {
             connection,
             connection_fd: fds[0],
+            previous_data: None,
         }))
+    }
+}
+
+fn denoise_value(new_val: u32, prev_val: u32, margin: f64) -> u32 {
+    if new_val.abs_diff(prev_val) as f64 / prev_val.min(new_val).max(1) as f64 >= margin {
+        new_val
+    } else {
+        prev_val
     }
 }
 
@@ -172,6 +182,7 @@ impl PowerMonitor for DBusMonitor {
                 _ => last,
             });
 
+        let previous_data = self.previous_data.take();
         match newest_message {
             Some(message) => {
                 let data_bytes: Vec<u8> = message.read1().map_err(DBusMonitorError::DBusRead)?;
@@ -179,7 +190,22 @@ impl PowerMonitor for DBusMonitor {
                 props
                     .merge_from_bytes(&data_bytes)
                     .map_err(DBusMonitorError::ConvertProtobuf)?;
-                Ok(Some(props.into()))
+                let mut data: PowerData = props.into();
+                if let (Some(new_data), Some(previous)) = (data.battery.as_mut(), previous_data) {
+                    // The raw information from powerd signals isn't really that useful to
+                    // the guest. Voltage/current are volatile values, so the .0333 hZ
+                    // snapshot provided by powerd isn't particularly meaningful. We do
+                    // need to provide *something*, but we might as well make it less noisy
+                    // to avoid having the guest try to process mostly useless information.
+                    // charge_counter is potentially useful to the guest, but it doesn't
+                    // need to be higher precision than battery.percent.
+                    new_data.voltage = denoise_value(new_data.voltage, previous.voltage, 0.1);
+                    new_data.current = denoise_value(new_data.current, previous.current, 0.1);
+                    new_data.charge_counter =
+                        denoise_value(new_data.charge_counter, previous.charge_counter, 0.01);
+                }
+                self.previous_data = data.battery;
+                Ok(Some(data))
             }
             None => Ok(None),
         }
