@@ -30,10 +30,10 @@ pub fn create_backend_req_handler(
 }
 
 pub async fn run_backend_request_handler(
-    handler: Option<BackendReqHandler>,
+    handler: Option<&mut BackendReqHandler>,
     ex: &Executor,
 ) -> Result<()> {
-    let mut handler = match handler {
+    let handler = match handler {
         Some(h) => h,
         None => std::future::pending().await,
     };

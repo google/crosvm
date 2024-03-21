@@ -42,7 +42,7 @@ impl Worker {
         let kill = async_utils::await_and_exit(&ex, kill_evt);
         pin_mut!(kill);
 
-        let req_handler = run_backend_request_handler(self.backend_req_handler.take(), &ex);
+        let req_handler = run_backend_request_handler(self.backend_req_handler.as_mut(), &ex);
         pin_mut!(req_handler);
 
         match ex.run_until(select4(handle_non_msix_evt, resample, kill, req_handler)) {
