@@ -25,14 +25,9 @@ pub fn create_backend_req_handler(
 }
 
 pub async fn run_backend_request_handler(
-    handler: Option<&mut BackendReqHandler>,
+    handler: &mut BackendReqHandler,
     ex: &Executor,
 ) -> Result<()> {
-    let handler = match handler {
-        Some(h) => h,
-        None => std::future::pending().await,
-    };
-
     let h = SafeDescriptor::try_from(handler as &dyn AsRawDescriptor)
         .map(AsyncWrapper::new)
         .context("failed to get safe descriptor for handler")?;
