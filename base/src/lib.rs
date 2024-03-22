@@ -15,6 +15,7 @@ mod file_traits;
 mod iobuf;
 mod mmap;
 mod notifiers;
+mod periodic_logger;
 mod shm;
 pub mod syslog;
 pub mod test_utils;
