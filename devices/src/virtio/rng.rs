@@ -26,6 +26,9 @@ use super::VirtioDevice;
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
 
+// Chosen to match the Linux guest driver RNG buffer refill size.
+const CHUNK_SIZE: usize = 64;
+
 struct Worker {
     interrupt: Interrupt,
     queue: Queue,
@@ -33,22 +36,22 @@ struct Worker {
 
 impl Worker {
     fn process_queue(&mut self) {
+        let mut rand_bytes = [0u8; CHUNK_SIZE];
         let mut needs_interrupt = false;
+
         while let Some(mut avail_desc) = self.queue.pop() {
             let writer = &mut avail_desc.writer;
-            let avail_bytes = writer.available_bytes();
-
-            let mut rand_bytes = vec![0u8; avail_bytes];
-            OsRng.fill_bytes(&mut rand_bytes);
-
-            let written_size = match writer.write_all(&rand_bytes) {
-                Ok(_) => rand_bytes.len(),
-                Err(e) => {
+            while writer.available_bytes() > 0 {
+                let chunk_size = writer.available_bytes().min(CHUNK_SIZE);
+                let chunk = &mut rand_bytes[..chunk_size];
+                OsRng.fill_bytes(chunk);
+                if let Err(e) = writer.write_all(chunk) {
                     warn!("Failed to write random data to the guest: {}", e);
-                    0usize
+                    break;
                 }
-            };
+            }
 
+            let written_size = writer.bytes_written();
             self.queue.add_used(avail_desc, written_size as u32);
             needs_interrupt = true;
         }
