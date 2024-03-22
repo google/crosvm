@@ -1208,13 +1208,6 @@ impl Suspendable for VirtioPciDevice {
             return Ok(());
         }
 
-        // Don't call `self.device.virtio_sleep()` for vhost user devices if the device is not
-        // activated yet, since it will always return an empty Vec.
-        if !self.device_activated && self.device.is_vhost_user() {
-            // This will need to be set, so that a cold restore will work.
-            self.sleep_state = Some(SleepState::Inactive);
-            return Ok(());
-        }
         if let Some(queues) = self.device.virtio_sleep()? {
             anyhow::ensure!(
                 self.device_activated,
@@ -1240,11 +1233,6 @@ impl Suspendable for VirtioPciDevice {
     }
 
     fn wake(&mut self) -> anyhow::Result<()> {
-        // A vhost user device that isn't activated doesn't need to be woken up.
-        if !self.device_activated && self.device.is_vhost_user() {
-            self.sleep_state = None;
-            return Ok(());
-        }
         match self.sleep_state.take() {
             None => {
                 // If the device is already awake, we should not request it to wake again.
@@ -1435,42 +1423,7 @@ impl Suspendable for VirtioPciDevice {
                 .context("failed to wake doorbell")
         })?;
 
-        if self.device.is_vhost_user() {
-            let (queue_evts, interrupt) = if self.device_activated {
-                (
-                    Some(
-                        self.queue_evts
-                            .iter()
-                            .map(|queue_evt| {
-                                queue_evt
-                                    .event
-                                    .try_clone()
-                                    .context("Failed to clone queue_evt")
-                            })
-                            .collect::<anyhow::Result<Vec<_>>>()?,
-                    ),
-                    Some(
-                        self.interrupt
-                            .as_ref()
-                            .expect("Interrupt should not be empty if device was activated.")
-                            .clone(),
-                    ),
-                )
-            } else {
-                (None, None)
-            };
-            self.device.vhost_user_restore(
-                deser.inner_device,
-                &self.queues,
-                queue_evts,
-                interrupt,
-                self.mem.clone(),
-                &self.msix_config,
-                self.device_activated,
-            )?;
-        } else {
-            self.device.virtio_restore(deser.inner_device)?;
-        }
+        self.device.virtio_restore(deser.inner_device)?;
 
         Ok(())
     }

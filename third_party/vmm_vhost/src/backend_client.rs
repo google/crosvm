@@ -246,32 +246,6 @@ impl BackendClient {
         self.wait_for_ack(&hdr)
     }
 
-    /// Put the device to sleep.
-    pub fn sleep(&self) -> Result<()> {
-        let hdr = self.send_request_header(FrontendReq::SLEEP, None)?;
-        let reply = self.recv_reply::<VhostUserSuccess>(&hdr)?;
-        if !reply.success() {
-            Err(VhostUserError::SleepError(anyhow!(
-                "Device process responded with a failure on SLEEP."
-            )))
-        } else {
-            Ok(())
-        }
-    }
-
-    /// Wake the device up.
-    pub fn wake(&self) -> Result<()> {
-        let hdr = self.send_request_header(FrontendReq::WAKE, None)?;
-        let reply = self.recv_reply::<VhostUserSuccess>(&hdr)?;
-        if !reply.success() {
-            Err(VhostUserError::WakeError(anyhow!(
-                "Device process responded with a failure on WAKE."
-            )))
-        } else {
-            Ok(())
-        }
-    }
-
     /// Snapshot the device and receive serialized state of the device.
     pub fn snapshot(&self) -> Result<Vec<u8>> {
         let hdr = self.send_request_header(FrontendReq::SNAPSHOT, None)?;
@@ -286,22 +260,10 @@ impl BackendClient {
     }
 
     /// Restore the device.
-    pub fn restore(&mut self, data_bytes: &[u8], queue_evts: Option<Vec<Event>>) -> Result<()> {
+    pub fn restore(&mut self, data_bytes: &[u8]) -> Result<()> {
         let body = VhostUserEmptyMsg;
 
-        let queue_evt_fds: Option<Vec<RawDescriptor>> = queue_evts.as_ref().map(|queue_evts| {
-            queue_evts
-                .iter()
-                .map(|queue_evt| queue_evt.as_raw_descriptor())
-                .collect()
-        });
-
-        let hdr = self.send_request_with_payload(
-            FrontendReq::RESTORE,
-            &body,
-            data_bytes,
-            queue_evt_fds.as_deref(),
-        )?;
+        let hdr = self.send_request_with_payload(FrontendReq::RESTORE, &body, data_bytes, None)?;
         let reply = self.recv_reply::<VhostUserSuccess>(&hdr)?;
         if !reply.success() {
             Err(VhostUserError::RestoreError(anyhow!(

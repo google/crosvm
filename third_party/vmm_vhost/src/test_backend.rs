@@ -268,19 +268,11 @@ impl Backend for TestBackend {
         Ok(Vec::new())
     }
 
-    fn sleep(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn wake(&mut self) -> Result<()> {
-        Ok(())
-    }
-
     fn snapshot(&mut self) -> Result<Vec<u8>> {
         Ok(Vec::new())
     }
 
-    fn restore(&mut self, _data_bytes: &[u8], _queue_evts: Vec<File>) -> Result<()> {
+    fn restore(&mut self, _data_bytes: &[u8]) -> Result<()> {
         Ok(())
     }
 }

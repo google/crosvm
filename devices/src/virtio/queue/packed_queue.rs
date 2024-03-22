@@ -166,6 +166,15 @@ impl PackedQueue {
         })
     }
 
+    pub fn vhost_user_reclaim(&mut self, _vring_base: u16) {
+        // TODO: b/331466964 - Need more than `vring_base` to reclaim a packed virtqueue.
+        unimplemented!()
+    }
+
+    pub fn next_avail_to_process(&self) -> u16 {
+        self.avail_index.index.0
+    }
+
     /// Return the actual size of the queue, as the driver may not set up a
     /// queue as big as the device allows.
     pub fn size(&self) -> u16 {

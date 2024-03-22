@@ -147,9 +147,9 @@ pub enum FrontendReq {
 
     // Non-standard message types.
     /// Stop all queue handlers and save each queue state.
-    SLEEP = 1000,
+    DEPRECATED__SLEEP = 1000,
     /// Start up all queue handlers with their saved queue state.
-    WAKE = 1001,
+    DEPRECATED__WAKE = 1001,
     /// Request serialized state of vhost process.
     SNAPSHOT = 1002,
     /// Request to restore state of vhost process.

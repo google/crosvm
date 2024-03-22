@@ -9,43 +9,24 @@ we can send it upstream as a proposal.
 These extensions might be redundant with the VHOST_USER_PROTOCOL_F_DEVICE_STATE features recently
 added to the spec.
 
-## Protocol features
+## Suspended device state
 
-TODO: Include a protocol feature for backends to advertise snapshotting support.
+(proposed additions are **bold**)
+
+While all vrings are stopped, the device is suspended. In addition to not processing any vring
+(because they are stopped), the device must:
+
+- not write to any guest memory regions,
+- not send any notifications to the guest,
+- not send any messages to the front-end,
+- **NEW: not interact with host resources. For example, a block device should not read or modify the
+  disk image file**
+- still process and reply to messages from the front-end.
+
+**NEW: The frontend can assume those requirements are obeyed both (1) before the first queue is
+started and (2) as soon as it receives a response for the message that stopped the last queue.**
 
 ## Front-end message types
-
-### VHOST_USER_SLEEP
-
-id: 1000 (temporary)
-
-equivalent ioctl: N/A
-
-request payload: N/A
-
-reply payload: i8
-
-Backend should stop all active queues. If the backend interacts with resources on the host, e.g. if
-it writes to a socket, it is expected that all activity with those resources stops before the
-VHOST_USER_SLEEP response is sent. This requirement allows other host side processes to snapshot
-their own state without the risk of race conditions. For example, if a virtio-blk flushed pending
-writes after VHOST_USER_SLEEP, then a disk image snapshot taken by the VMM could be missing data.
-
-The first byte of the response should be 1 to indicate success or 0 to indicate failure.
-
-### VHOST_USER_WAKE
-
-id: 1001 (temporary)
-
-equivalent ioctl: N/A
-
-request payload: N/A
-
-reply payload: i8
-
-Backend should start all active queues and may restart any interactions with host side resources.
-
-The first byte of the response should be 1 to indicate success or 0 to indicate failure.
 
 ### VHOST_USER_SNAPSHOT
 
@@ -75,13 +56,6 @@ reply payload: i8
 Backend should restore itself to state of the snapshot provided in the request payload. The request
 will contain the exact same bytes returned from a previous VHOST_USER_SNAPSHOT request.
 
-The frontend must send the VHOST_USER_SET_MEM_TABLE request before VHOST_USER_RESTORE so that the
-backend has enough information to perform the vring restore.
-
-The event file descriptors for adding buffers to the vrings (normally passed via
-VHOST_USER_SET_VRING_KICK) are included in the ancillary data. The index of the file descriptor in
-the ancillary data is the index of the queue it belongs to.
-
 The one byte response should be 1 to indicate success or 0 to indicate failure.
 
 ## Snapshot-Restore
@@ -95,25 +69,32 @@ Snapshot sequence:
 1. Frontend connects to vhost-user devices.
 1. ... proceed as usual ...
 1. For each vhost-user device
-   - Frontend sends VHOST_USER_SLEEP request.
+   - Frontend stops all the queues using VHOST_USER_GET_VRING_BASE and saves the vring bases
+     somewhere.
+   - Backend enters the "suspended device state" when the last queue is stopped.
 1. For each vhost-user device
    - Frontend sends VHOST_USER_SNAPSHOT request and saves the response payload somewhere.
 1. For each vhost-user device
-   - Frontend sends VHOST_USER_WAKE request.
+   - Frontend sends VHOST_USER_SET_MEM_TABLE request.
+   - Frontend starts all the queues as if from scratch, using the saved vring base in the
+     VHOST_USER_SET_VRING_BASE request.
+   - Backend exits the "suspended device state" (as early as) when the first queue is started.
 1. ... proceed as usual ...
 
 Restore sequence:
 
 1. Frontend connects to vhost-user devices.
 1. For each vhost-user device
-   - Frontend sends VHOST_USER_SLEEP request.
+   - Frontend stops all the queues using VHOST_USER_GET_VRING_BASE and saves the vring bases
+     somewhere.
+   - Backend enters the "suspended device state" when the last queue is stopped.
 1. For each vhost-user device
-   - Frontend sends VHOST_USER_SET_MEM_TABLE request.
-   - For every queue that was active at the time of snapshotting, frontend sends a
-     VHOST_USER_SET_VRING_CALL request for that queue.
    - Frontend sends VHOST_USER_RESTORE request.
 1. For each vhost-user device
-   - Frontend sends VHOST_USER_WAKE request.
+   - Frontend sends VHOST_USER_SET_MEM_TABLE request.
+   - Frontend starts all the queues as if from scratch, using the saved vring base in the
+     VHOST_USER_SET_VRING_BASE request.
+   - Backend exits the "suspended device state" (as early as) when the first queue is started.
 1. ... proceed as usual ...
 
 ### Backend

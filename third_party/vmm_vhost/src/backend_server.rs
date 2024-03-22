@@ -70,14 +70,8 @@ pub trait Backend {
     fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>>;
-    /// Request the device to sleep by stopping their workers. This should NOT be called if the
-    /// device is already asleep.
-    fn sleep(&mut self) -> Result<()>;
-    /// Request the device to wake up by starting up their workers. This should NOT be called if the
-    /// device is already awake.
-    fn wake(&mut self) -> Result<()>;
     fn snapshot(&mut self) -> Result<Vec<u8>>;
-    fn restore(&mut self, data_bytes: &[u8], queue_evts: Vec<File>) -> Result<()>;
+    fn restore(&mut self, data_bytes: &[u8]) -> Result<()>;
 }
 
 impl<T> Backend for T
@@ -201,20 +195,12 @@ where
         self.as_mut().get_shared_memory_regions()
     }
 
-    fn sleep(&mut self) -> Result<()> {
-        self.as_mut().sleep()
-    }
-
-    fn wake(&mut self) -> Result<()> {
-        self.as_mut().wake()
-    }
-
     fn snapshot(&mut self) -> Result<Vec<u8>> {
         self.as_mut().snapshot()
     }
 
-    fn restore(&mut self, data_bytes: &[u8], queue_evts: Vec<File>) -> Result<()> {
-        self.as_mut().restore(data_bytes, queue_evts)
+    fn restore(&mut self, data_bytes: &[u8]) -> Result<()> {
+        self.as_mut().restore(data_bytes)
     }
 }
 
@@ -608,16 +594,6 @@ impl<S: Backend> BackendServer<S> {
                 }
                 self.send_reply_with_payload(&hdr, &msg, buf.as_slice())?;
             }
-            Ok(FrontendReq::SLEEP) => {
-                let res = self.backend.sleep();
-                let msg = VhostUserSuccess::new(res.is_ok());
-                self.send_reply_message(&hdr, &msg)?;
-            }
-            Ok(FrontendReq::WAKE) => {
-                let res = self.backend.wake();
-                let msg = VhostUserSuccess::new(res.is_ok());
-                self.send_reply_message(&hdr, &msg)?;
-            }
             Ok(FrontendReq::SNAPSHOT) => {
                 let (success_msg, payload) = match self.backend.snapshot() {
                     Ok(snapshot_payload) => (VhostUserSuccess::new(true), snapshot_payload),
@@ -629,7 +605,7 @@ impl<S: Backend> BackendServer<S> {
                 self.send_reply_with_payload(&hdr, &success_msg, payload.as_slice())?;
             }
             Ok(FrontendReq::RESTORE) => {
-                let res = self.backend.restore(buf.as_slice(), files);
+                let res = self.backend.restore(buf.as_slice());
                 let msg = VhostUserSuccess::new(res.is_ok());
                 self.send_reply_message(&hdr, &msg)?;
             }
@@ -853,7 +829,6 @@ impl<S: Backend> BackendServer<S> {
             | Ok(FrontendReq::SET_LOG_FD)
             | Ok(FrontendReq::SET_BACKEND_REQ_FD)
             | Ok(FrontendReq::SET_INFLIGHT_FD)
-            | Ok(FrontendReq::RESTORE)
             | Ok(FrontendReq::ADD_MEM_REG) => Ok(()),
             Err(_) => Err(Error::InvalidMessage),
             _ if !files.is_empty() => Err(Error::InvalidMessage),

@@ -80,6 +80,8 @@ pub enum Error {
     /// If connection is closed properly, use `ClientExit` instead.
     #[error("client closed the connection")]
     Disconnect,
+    #[error("Failed to enter suspended state")]
+    EnterSuspendedState(anyhow::Error),
     /// Virtio/protocol features mismatch.
     #[error("virtio features mismatch")]
     FeatureMismatch,

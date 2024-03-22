@@ -457,6 +457,29 @@ impl Queue {
         }
     }
 
+    /// "Reclaim" a queue that was given to a vhost-user backend and is now being taken back using
+    /// VHOST_USER_GET_VRING_BASE.
+    ///
+    /// The `Queue` will have stale fields if the vhost-user backend fulfilled any virtqueue
+    /// requests. This function updates the `Queue` to pick up where the backend left off.
+    pub fn vhost_user_reclaim(&mut self, vring_base: u16) {
+        match self {
+            Queue::SplitVirtQueue(q) => q.vhost_user_reclaim(vring_base),
+            Queue::PackedVirtQueue(q) => q.vhost_user_reclaim(vring_base),
+        }
+    }
+
+    /// Getter for the next index of the available ring that device will process.
+    ///
+    /// Not to be confused with the available ring's index field, which is the next index for the
+    /// driver to fill.
+    pub fn next_avail_to_process(&self) -> u16 {
+        match self {
+            Queue::SplitVirtQueue(q) => q.next_avail_to_process(),
+            Queue::PackedVirtQueue(q) => q.next_avail_to_process(),
+        }
+    }
+
     define_queue_method!(
         /// Getter for vector field
         vector,

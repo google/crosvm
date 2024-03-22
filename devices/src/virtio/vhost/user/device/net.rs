@@ -203,6 +203,11 @@ where
         }
     }
 
+    fn enter_suspended_state(&mut self) -> anyhow::Result<bool> {
+        // No non-queue workers.
+        Ok(true)
+    }
+
     fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
         serde_json::to_vec(&NetBackendSnapshot {
             acked_feature: self.acked_features,

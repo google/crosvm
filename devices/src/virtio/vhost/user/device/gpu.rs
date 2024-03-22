@@ -93,6 +93,15 @@ struct GpuBackend {
     shmem_mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
 }
 
+impl GpuBackend {
+    fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
+        for handle in self.platform_workers.borrow_mut().drain(..) {
+            let _ = self.ex.run_until(handle.cancel());
+        }
+        Ok(())
+    }
+}
+
 impl VhostUserDevice for GpuBackend {
     fn max_queue_num(&self) -> usize {
         MAX_QUEUE_NUM
@@ -231,11 +240,9 @@ impl VhostUserDevice for GpuBackend {
         }
     }
 
-    fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
-        for handle in self.platform_workers.borrow_mut().drain(..) {
-            let _ = self.ex.run_until(handle.cancel());
-        }
-        Ok(())
+    fn enter_suspended_state(&mut self) -> anyhow::Result<bool> {
+        self.stop_non_queue_workers()?;
+        Ok(true)
     }
 
     fn reset(&mut self) {
