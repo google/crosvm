@@ -328,13 +328,12 @@ impl VirtioDevice for Pmem {
         Ok(())
     }
 
-    fn reset(&mut self) -> bool {
+    fn reset(&mut self) -> anyhow::Result<()> {
         if let Some(worker_thread) = self.worker_thread.take() {
             let (_queue, pmem_device_tube) = worker_thread.stop();
             self.pmem_device_tube = Some(pmem_device_tube);
-            return true;
         }
-        false
+        Ok(())
     }
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {

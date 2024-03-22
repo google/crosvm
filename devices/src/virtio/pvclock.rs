@@ -902,9 +902,9 @@ impl VirtioDevice for PvClock {
         self.switch_to_main_worker(interrupt, worker, queues)
     }
 
-    fn reset(&mut self) -> bool {
+    fn reset(&mut self) -> Result<()> {
         self.switch_to_stub_worker();
-        true
+        Ok(())
     }
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {

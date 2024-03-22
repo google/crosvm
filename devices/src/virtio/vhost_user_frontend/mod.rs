@@ -436,28 +436,19 @@ impl VirtioDevice for VhostUserFrontend {
         Ok(())
     }
 
-    fn reset(&mut self) -> bool {
+    fn reset(&mut self) -> anyhow::Result<()> {
         for queue_index in 0..self.queue_sizes.len() {
             if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
-                if let Err(e) = self
-                    .backend_client
+                self.backend_client
                     .set_vring_enable(queue_index, false)
-                    .map_err(Error::SetVringEnable)
-                {
-                    error!("Failed to reset device: {}", e);
-                    return false;
-                }
+                    .context("set_vring_enable failed during reset")?;
             }
-            if let Err(e) = self
+            let _vring_base = self
                 .backend_client
                 .get_vring_base(queue_index)
-                .map_err(Error::GetVringBase)
-            {
-                error!("Failed to reset device: {}", e);
-                return false;
-            }
+                .context("get_vring_base failed during reset")?;
         }
-        true
+        Ok(())
     }
 
     fn pci_address(&self) -> Option<PciAddress> {

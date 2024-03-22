@@ -103,7 +103,9 @@ impl VhostUserDevice for BlockBackend {
     }
 
     fn reset(&mut self) {
-        self.inner.reset();
+        if let Err(e) = self.inner.reset() {
+            base::error!("reset failed: {:#}", e);
+        }
     }
 
     fn start_queue(
@@ -124,8 +126,7 @@ impl VhostUserDevice for BlockBackend {
         // TODO: This assumes that `reset` only stops workers which might not be true in the
         // future. Consider moving the `reset` code into a `stop_all_workers` method or, maybe,
         // make `stop_queue` implicitly stop a worker thread when there is no active queue.
-        self.inner.reset();
-        Ok(())
+        self.inner.reset()
     }
 
     fn snapshot(&self) -> anyhow::Result<Vec<u8>> {

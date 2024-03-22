@@ -172,18 +172,16 @@ impl VirtioDevice for Sound {
         Ok(())
     }
 
-    fn reset(&mut self) -> bool {
-        let mut ret = true;
-
+    fn reset(&mut self) -> anyhow::Result<()> {
         if let Some(worker_thread) = self.worker_thread.take() {
-            let worker_status = worker_thread.stop();
-            ret = worker_status.is_ok();
+            let worker = worker_thread.stop();
+            self.vios_client
+                .lock()
+                .stop_bg_thread()
+                .context("failed to stop VioS Client background thread")?;
+            let _worker = worker.context("failed to stop worker_thread")?;
         }
-        if let Err(e) = self.vios_client.lock().stop_bg_thread() {
-            error!("virtio-snd: Failed to stop vios background thread: {}", e);
-            ret = false;
-        }
-        ret
+        Ok(())
     }
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {

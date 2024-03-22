@@ -900,14 +900,18 @@ impl PciDevice for VirtioPciDevice {
         }
 
         // Device has been reset by the driver
-        if self.device_activated && self.is_reset_requested() && self.device.reset() {
-            self.device_activated = false;
-            // reset queues
-            self.queues.iter_mut().for_each(QueueConfig::reset);
-            // select queue 0 by default
-            self.common_config.queue_select = 0;
-            if let Err(e) = self.unregister_ioevents() {
-                error!("failed to unregister ioevents: {:#}", e);
+        if self.device_activated && self.is_reset_requested() {
+            if let Err(e) = self.device.reset() {
+                error!("failed to reset {} device: {:#}", self.debug_label(), e);
+            } else {
+                self.device_activated = false;
+                // reset queues
+                self.queues.iter_mut().for_each(QueueConfig::reset);
+                // select queue 0 by default
+                self.common_config.queue_select = 0;
+                if let Err(e) = self.unregister_ioevents() {
+                    error!("failed to unregister ioevents: {:#}", e);
+                }
             }
         }
     }

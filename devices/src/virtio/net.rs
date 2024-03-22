@@ -810,13 +810,13 @@ where
         Ok(())
     }
 
-    fn reset(&mut self) -> bool {
+    fn reset(&mut self) -> anyhow::Result<()> {
         for worker_thread in self.worker_threads.drain(..) {
             let worker = worker_thread.stop();
             self.taps.push(worker.tap);
         }
 
-        true
+        Ok(())
     }
 }
 

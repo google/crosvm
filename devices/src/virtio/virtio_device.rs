@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 #[cfg(target_arch = "x86_64")]
 use acpi_tables::sdt::SDT;
+use anyhow::anyhow;
 use anyhow::Result;
 use base::Event;
 use base::Protection;
@@ -119,10 +120,10 @@ pub trait VirtioDevice: Send {
 
     /// Optionally deactivates this device. If the reset method is
     /// not able to reset the virtio device, or the virtio device model doesn't
-    /// implement the reset method, a false value is returned to indicate
-    /// the reset is not successful. Otherwise a true value should be returned.
-    fn reset(&mut self) -> bool {
-        false
+    /// implement the reset method, an `Err` value is returned to indicate
+    /// the reset is not successful. Otherwise `Ok(())` should be returned.
+    fn reset(&mut self) -> Result<()> {
+        Err(anyhow!("reset not implemented for {}", self.debug_label()))
     }
 
     /// Returns any additional BAR configuration required by the device.

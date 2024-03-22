@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 use base::warn;
 use base::Event;
@@ -180,15 +181,11 @@ impl VirtioDevice for Rng {
         Ok(())
     }
 
-    fn reset(&mut self) -> bool {
+    fn reset(&mut self) -> anyhow::Result<()> {
         if let Some(worker_thread) = self.worker_thread.take() {
-            if let Err(e) = worker_thread.stop() {
-                error!("rng worker failed: {:#}", e);
-                return false;
-            }
-            return true;
+            worker_thread.stop().context("rng worker failed")?;
         }
-        false
+        Ok(())
     }
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
