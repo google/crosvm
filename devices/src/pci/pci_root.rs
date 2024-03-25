@@ -571,7 +571,9 @@ impl PciRootMmioState {
             mapping
                 .write_obj_volatile(val, reg_offset)
                 .expect("memcpy failed");
-            mapping.flush_uncached_guest_mapping(reg_offset);
+            if let Err(err) = mapping.flush_region(reg_offset, 4) {
+                error!("failed to flush write to mfd bit: {}", err);
+            }
         }
     }
 }

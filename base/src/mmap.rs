@@ -13,6 +13,7 @@ use std::ptr::write_unaligned;
 use std::ptr::write_volatile;
 use std::sync::atomic::fence;
 use std::sync::atomic::Ordering;
+use std::sync::OnceLock;
 
 use remain::sorted;
 use serde::Deserialize;
@@ -29,6 +30,44 @@ use crate::VolatileMemoryError;
 use crate::VolatileMemoryResult;
 use crate::VolatileSlice;
 
+static CACHELINE_SIZE: OnceLock<usize> = OnceLock::new();
+
+#[allow(unused_assignments)]
+fn get_cacheline_size_once() -> usize {
+    let mut assume_reason: &str = "unknown";
+    cfg_if::cfg_if! {
+        if #[cfg(any(target_os = "android", target_os = "linux"))] {
+            // SAFETY:
+            // Safe because we check the return value for errors or unsupported requests
+            let linesize = unsafe { libc::sysconf(libc::_SC_LEVEL1_DCACHE_LINESIZE) };
+            if linesize > 0 {
+                return linesize as usize;
+            } else {
+                assume_reason = "sysconf cacheline size query failed";
+            }
+        } else {
+            assume_reason = "cacheline size query not implemented for platform/arch";
+        }
+    }
+
+    let assumed_size = 64;
+    log::debug!(
+        "assuming cacheline_size={}; reason: {}.",
+        assumed_size,
+        assume_reason
+    );
+    assumed_size
+}
+
+/// Returns the system's effective cacheline size (e.g. the granularity at which arch-specific
+/// cacheline management, such as with the clflush instruction, is expected to occur).
+#[inline(always)]
+fn get_cacheline_size() -> usize {
+    let size = *CACHELINE_SIZE.get_or_init(get_cacheline_size_once);
+    assert!(size > 0);
+    size
+}
+
 #[sorted]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -44,6 +83,8 @@ pub enum Error {
     InvalidOffset,
     #[error("requested memory range spans past the end of the region: offset={0} count={1} region_size={2}")]
     InvalidRange(usize, usize, usize),
+    #[error("operation is not implemented on platform/architecture: {0}")]
+    NotImplemented(&'static str),
     #[error("requested memory is not page aligned")]
     NotPageAligned,
     #[error("failed to read from file to memory: {0}")]
@@ -130,6 +171,27 @@ pub struct MemoryMapping {
     // file object's locks (e.g. exclusive read/write) in place. We need to revisit/validate that
     // concern.
     pub(crate) _file_descriptor: Option<SafeDescriptor>,
+}
+
+#[inline(always)]
+unsafe fn flush_one(_addr: *const u8) -> Result<()> {
+    cfg_if::cfg_if! {
+        if #[cfg(target_arch = "x86_64")] {
+            // As per table 11-7 of the SDM, processors are not required to
+            // snoop UC mappings, so flush the target to memory.
+            // SAFETY: assumes that the caller has supplied a valid address.
+            unsafe { core::arch::x86_64::_mm_clflush(_addr) };
+            Ok(())
+        } else if #[cfg(target_arch = "aarch64")] {
+            // Data cache clean by VA to PoC.
+            std::arch::asm!("DC CVAC, {x}", x = in(reg) _addr);
+            Ok(())
+        } else if #[cfg(target_arch = "arm")] {
+            Err(Error::NotImplemented("Userspace cannot flush to PoC"))
+        } else {
+            Err(Error::NotImplemented("Cache flush not implemented"))
+        }
+    }
 }
 
 impl MemoryMapping {
@@ -294,42 +356,63 @@ impl MemoryMapping {
         self.mapping.msync()
     }
 
-    /// Flush memory which the guest may be accessing through an uncached mapping.
+    /// Flush a region of the MemoryMapping from the system's caching hierarchy.
+    /// There are several uses for flushing:
     ///
-    /// Reads via an uncached mapping can bypass the cache and directly access main
-    /// memory. This is outside the memory model of Rust, which means that even with
-    /// proper synchronization, guest reads via an uncached mapping might not see
-    /// updates from the host. As such, it is necessary to perform architectural
-    /// cache maintainance to flush the host writes to main memory.
+    /// * Cached memory which the guest may be reading through an uncached mapping:
     ///
-    /// Note that this does not support writable uncached guest mappings, as doing so
-    /// requires invalidating the cache, not flushing the cache.
+    ///     Guest reads via an uncached mapping can bypass the cache and directly access main
+    ///     memory. This is outside the memory model of Rust, which means that even with proper
+    ///     synchronization, guest reads via an uncached mapping might not see updates from the
+    ///     host. As such, it is necessary to perform architectural cache maintainance to flush the
+    ///     host writes to main memory.
+    ///
+    ///     Note that this does not support writable uncached guest mappings, as doing so
+    ///     requires invalidating the cache, not flushing the cache.
+    ///
+    /// * Uncached memory which the guest may be writing through a cached mapping:
+    ///
+    ///     Guest writes via a cached mapping of a host's uncached memory may never make it to
+    ///     system/device memory prior to being read. In such cases, explicit flushing of the cached
+    ///     writes is necessary, since other managers of the host's uncached mapping (e.g. DRM) see
+    ///     no need to flush, as they believe all writes would explicitly bypass the caches.
     ///
     /// Currently only supported on x86_64 and aarch64. Cannot be supported on 32-bit arm.
-    pub fn flush_uncached_guest_mapping(&self, offset: usize) {
-        if offset > self.mapping.size() {
-            return;
+    pub fn flush_region(&self, offset: usize, len: usize) -> Result<()> {
+        let addr: *const u8 = self.as_ptr();
+        let size = self.size();
+
+        // disallow overflow/wrapping ranges and subregion extending beyond mapped range
+        if usize::MAX - size < addr as usize || offset >= size || size - offset < len {
+            return Err(Error::InvalidRange(offset, len, size));
         }
-        // SAFETY: We checked that offset is within the mapping, and flushing
-        // the cache doesn't affect any rust safety properties.
-        unsafe {
-            #[allow(unused)]
-            let target = self.mapping.as_ptr().add(offset);
-            cfg_if::cfg_if! {
-                if #[cfg(target_arch = "x86_64")] {
-                    // As per table 11-7 of the SDM, processors are not required to
-                    // snoop UC mappings, so flush the target to memory.
-                    core::arch::x86_64::_mm_clflush(target);
-                } else if #[cfg(target_arch = "aarch64")] {
-                    // Data cache clean by VA to PoC.
-                    std::arch::asm!("DC CVAC, {x}", x = in(reg) target);
-                } else if #[cfg(target_arch = "arm")] {
-                    panic!("Userspace cannot flush to PoC");
-                } else {
-                    unimplemented!("Cache flush not implemented")
-                }
-            }
+
+        // SAFETY:
+        // Safe because already validated that `next` will be an address in the mapping:
+        //     * mapped region is non-wrapping
+        //     * subregion is bounded within the mapped region
+        let mut next: *const u8 = unsafe { addr.add(offset) };
+
+        let cacheline_size = get_cacheline_size();
+        let cacheline_count = len / cacheline_size;
+
+        for _ in 0..cacheline_count {
+            // SAFETY:
+            // Safe because `next` is guaranteed to be within the mapped region (see earlier
+            // validations), and flushing the cache doesn't affect any rust safety properties.
+            unsafe { flush_one(next)? };
+
+            // SAFETY:
+            // Safe because we never use next if it goes out of the mapped region or overflows its
+            // storage type (based on earlier validations and the loop bounds).
+            next = unsafe { next.add(cacheline_size) };
         }
+        Ok(())
+    }
+
+    /// Flush all backing memory for a mapping in an arch-specific manner (see `flush_region()`).
+    pub fn flush_all(&self) -> Result<()> {
+        self.flush_region(0, self.size())
     }
 }
 
