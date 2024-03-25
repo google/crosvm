@@ -408,7 +408,7 @@ fn write_facp_overrides(
             _space_id: ADR_SPACE_SYSTEM_IO,
             _bit_width: 8,
             _bit_offset: 0,
-            _access_width: 8,
+            _access_width: 1,
             _address: reset_port.into(),
         },
     );
