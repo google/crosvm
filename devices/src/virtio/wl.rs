@@ -75,6 +75,10 @@ use base::EventType;
 use base::FromRawDescriptor;
 #[cfg(feature = "gpu")]
 use base::IntoRawDescriptor;
+#[cfg(feature = "minigbm")]
+use base::MemoryMappingBuilder;
+#[cfg(feature = "minigbm")]
+use base::MmapError;
 use base::Protection;
 use base::RawDescriptor;
 use base::Result;
@@ -93,6 +97,8 @@ use hypervisor::MemCacheType;
 use libc::EBADF;
 #[cfg(feature = "minigbm")]
 use libc::EINVAL;
+#[cfg(feature = "minigbm")]
+use libc::ENOSYS;
 use remain::sorted;
 use resources::address_allocator::AddressAllocator;
 use resources::AddressRange;
@@ -113,6 +119,10 @@ use rutabaga_gfx::RutabagaGralloc;
 use rutabaga_gfx::RutabagaGrallocFlags;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaIntoRawDescriptor;
+#[cfg(feature = "minigbm")]
+use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
+#[cfg(feature = "minigbm")]
+use rutabaga_gfx::RUTABAGA_MAP_CACHE_MASK;
 use thiserror::Error as ThisError;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
@@ -190,6 +200,10 @@ const VIRTIO_WL_VFD_DMABUF_SYNC_VALID_FLAG_MASK: u32 = 0x7;
 
 #[cfg(feature = "minigbm")]
 const DMA_BUF_IOCTL_BASE: c_uint = 0x62;
+#[cfg(feature = "minigbm")]
+const DMA_BUF_SYNC_WRITE: c_uint = 0x2;
+#[cfg(feature = "minigbm")]
+const DMA_BUF_SYNC_END: c_uint = 0x4;
 
 #[cfg(feature = "minigbm")]
 #[repr(C)]
@@ -797,6 +811,8 @@ struct WlVfd {
     slot: Option<(u64 /* offset */, VmRequester)>,
     #[cfg(feature = "minigbm")]
     is_dmabuf: bool,
+    #[cfg(feature = "minigbm")]
+    map_info: u32,
     fence: Option<File>,
     is_fence: bool,
 }
@@ -818,6 +834,25 @@ impl fmt::Debug for WlVfd {
         }
         write!(f, " }}")
     }
+}
+
+#[cfg(feature = "minigbm")]
+fn flush_shared_memory(shared_memory: &SharedMemory) -> Result<()> {
+    let mmap = match MemoryMappingBuilder::new(shared_memory.size as usize)
+        .from_shared_memory(shared_memory)
+        .build()
+    {
+        Ok(v) => v,
+        Err(_) => return Err(Error::new(EINVAL)),
+    };
+    if let Err(err) = mmap.flush_all() {
+        base::error!("failed to flush shared memory: {}", err);
+        return match err {
+            MmapError::NotImplemented(_) => Err(Error::new(ENOSYS)),
+            _ => Err(Error::new(EINVAL)),
+        };
+    }
+    Ok(())
 }
 
 impl WlVfd {
@@ -864,6 +899,7 @@ impl WlVfd {
         vfd.guest_shared_memory = Some(vfd_shm);
         vfd.slot = Some((offset, vm));
         vfd.is_dmabuf = true;
+        vfd.map_info = reqs.map_info;
         Ok((vfd, desc))
     }
 
@@ -881,10 +917,25 @@ impl WlVfd {
                 // SAFETY:
                 // Safe as descriptor is a valid dmabuf and incorrect flags will return an error.
                 if unsafe { ioctl_with_ref(descriptor, DMA_BUF_IOCTL_SYNC(), &sync) } < 0 {
-                    Err(WlError::DmabufSync(io::Error::last_os_error()))
-                } else {
-                    Ok(())
+                    return Err(WlError::DmabufSync(io::Error::last_os_error()));
                 }
+
+                // virtio-wl kernel driver always maps dmabufs with WB memory type, regardless of
+                // the host memory type (which is wrong). However, to avoid changing the protocol,
+                // assume that all guest writes are cached and ensure clflush-like ops on all mapped
+                // cachelines if the host mapping is not cached.
+                const END_WRITE_MASK: u32 = DMA_BUF_SYNC_WRITE | DMA_BUF_SYNC_END;
+                if (flags & END_WRITE_MASK) == END_WRITE_MASK
+                    && (self.map_info & RUTABAGA_MAP_CACHE_MASK) != RUTABAGA_MAP_CACHE_CACHED
+                {
+                    if let Err(err) = flush_shared_memory(descriptor) {
+                        base::warn!("failed to flush cached dmabuf mapping: {:?}", err);
+                        return Err(WlError::DmabufSync(io::Error::from_raw_os_error(
+                            err.errno(),
+                        )));
+                    }
+                }
+                Ok(())
             }
             None => Err(WlError::DmabufSync(io::Error::from_raw_os_error(EBADF))),
         }
