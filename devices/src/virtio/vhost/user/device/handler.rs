@@ -393,6 +393,18 @@ impl<T: VhostUserDevice> DeviceRequestHandler<T> {
     }
 }
 
+impl<T: VhostUserDevice> AsRef<T> for DeviceRequestHandler<T> {
+    fn as_ref(&self) -> &T {
+        &self.backend
+    }
+}
+
+impl<T: VhostUserDevice> AsMut<T> for DeviceRequestHandler<T> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.backend
+    }
+}
+
 impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
     fn set_owner(&mut self) -> VhostResult<()> {
         if self.owned {
@@ -1015,6 +1027,8 @@ mod tests {
         acked_features: u64,
         acked_protocol_features: VhostUserProtocolFeatures,
         active_queues: Vec<Option<Queue>>,
+        allow_backend_req: bool,
+        backend_conn: Option<Arc<VhostBackendReqConnection>>,
     }
 
     impl FakeBackend {
@@ -1028,6 +1042,8 @@ mod tests {
                 acked_features: 0,
                 acked_protocol_features: VhostUserProtocolFeatures::empty(),
                 active_queues,
+                allow_backend_req: false,
+                backend_conn: None,
             }
         }
     }
@@ -1058,7 +1074,11 @@ mod tests {
         }
 
         fn protocol_features(&self) -> VhostUserProtocolFeatures {
-            VhostUserProtocolFeatures::CONFIG
+            let mut features = VhostUserProtocolFeatures::CONFIG;
+            if self.allow_backend_req {
+                features |= VhostUserProtocolFeatures::BACKEND_REQ;
+            }
+            features
         }
 
         fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {
@@ -1097,10 +1117,24 @@ mod tests {
                 .take()
                 .ok_or(Error::WorkerNotFound)?)
         }
+
+        fn set_backend_req_connection(&mut self, conn: Arc<VhostBackendReqConnection>) {
+            self.backend_conn = Some(conn);
+        }
     }
 
     #[test]
     fn test_vhost_user_activate() {
+        test_vhost_user_activate_parameterized(false);
+    }
+
+    #[test]
+    #[cfg(not(windows))] // Windows requries more complex connection setup.
+    fn test_vhost_user_activate_with_backend_req() {
+        test_vhost_user_activate_parameterized(true);
+    }
+
+    fn test_vhost_user_activate_parameterized(allow_backend_req: bool) {
         const QUEUES_NUM: usize = 2;
 
         let (dev, vmm) = test_helpers::setup();
@@ -1117,7 +1151,7 @@ mod tests {
             let connection = test_helpers::connect(vmm);
 
             let mut vmm_device =
-                VhostUserFrontend::new(DeviceType::Rng, 0, connection, None, None).unwrap();
+                VhostUserFrontend::new(DeviceType::Console, 0, connection, None, None).unwrap();
 
             println!("read_config");
             let mut buf = vec![0; std::mem::size_of::<FakeConfig>()];
@@ -1126,23 +1160,37 @@ mod tests {
             let config = FakeConfig::read_from(buf.as_bytes()).unwrap();
             assert_eq!(config, FAKE_CONFIG_DATA);
 
-            let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
-            let interrupt = Interrupt::new_for_test_with_msix();
+            let activate = |vmm_device: &mut VhostUserFrontend| {
+                let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
+                let interrupt = Interrupt::new_for_test_with_msix();
 
-            let mut queues = BTreeMap::new();
-            for idx in 0..QUEUES_NUM {
-                let mut queue = QueueConfig::new(0x10, 0);
-                queue.set_ready(true);
-                let queue = queue
-                    .activate(&mem, Event::new().unwrap())
-                    .expect("QueueConfig::activate");
-                queues.insert(idx, queue);
-            }
+                let mut queues = BTreeMap::new();
+                for idx in 0..QUEUES_NUM {
+                    let mut queue = QueueConfig::new(0x10, 0);
+                    queue.set_ready(true);
+                    let queue = queue
+                        .activate(&mem, Event::new().unwrap())
+                        .expect("QueueConfig::activate");
+                    queues.insert(idx, queue);
+                }
 
-            println!("activate");
-            vmm_device
-                .activate(mem.clone(), interrupt.clone(), queues)
-                .unwrap();
+                println!("activate");
+                vmm_device
+                    .activate(mem.clone(), interrupt.clone(), queues)
+                    .unwrap();
+            };
+
+            activate(&mut vmm_device);
+
+            println!("reset");
+            let reset_result = vmm_device.reset();
+            assert!(
+                reset_result.is_ok(),
+                "reset failed: {:#}",
+                reset_result.unwrap_err()
+            );
+
+            activate(&mut vmm_device);
 
             println!("virtio_sleep");
             vmm_device.virtio_sleep().unwrap();
@@ -1151,13 +1199,15 @@ mod tests {
             vmm_device.virtio_wake(None).unwrap();
 
             // The VMM side is supposed to stop before the device side.
+            println!("drop");
             drop(vmm_device);
 
             vmm_bar.wait();
         });
 
         // Device side
-        let handler = DeviceRequestHandler::new(FakeBackend::new());
+        let mut handler = DeviceRequestHandler::new(FakeBackend::new());
+        handler.as_mut().allow_backend_req = allow_backend_req;
 
         // Notify listener is ready.
         tx.send(()).unwrap();
@@ -1170,6 +1220,9 @@ mod tests {
         handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
         handle_request(&mut req_handler, FrontendReq::GET_PROTOCOL_FEATURES).unwrap();
         handle_request(&mut req_handler, FrontendReq::SET_PROTOCOL_FEATURES).unwrap();
+        if allow_backend_req {
+            handle_request(&mut req_handler, FrontendReq::SET_BACKEND_REQ_FD).unwrap();
+        }
 
         // VhostUserFrontend::read_config()
         handle_request(&mut req_handler, FrontendReq::GET_CONFIG).unwrap();
@@ -1185,11 +1238,52 @@ mod tests {
             handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
         }
 
+        // VhostUserFrontend::reset()
+        for _ in 0..QUEUES_NUM {
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
+            handle_request(&mut req_handler, FrontendReq::GET_VRING_BASE).unwrap();
+        }
+
+        // VhostUserFrontend::activate()
+        handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
+        for _ in 0..QUEUES_NUM {
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_ADDR).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_BASE).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_CALL).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_KICK).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
+        }
+
+        if allow_backend_req {
+            // Make sure the connection still works even after reset/reactivate.
+            req_handler
+                .as_ref()
+                .as_ref()
+                .backend_conn
+                .as_ref()
+                .expect("backend_conn missing")
+                .send_config_changed()
+                .expect("send_config_changed failed");
+        }
+
         // VhostUserFrontend::virtio_sleep()
         handle_request(&mut req_handler, FrontendReq::SLEEP).unwrap();
 
         // VhostUserFrontend::virtio_wake()
         handle_request(&mut req_handler, FrontendReq::WAKE).unwrap();
+
+        if allow_backend_req {
+            // Make sure the connection still works even after sleep/wake.
+            req_handler
+                .as_ref()
+                .as_ref()
+                .backend_conn
+                .as_ref()
+                .expect("backend_conn missing")
+                .send_config_changed()
+                .expect("send_config_changed failed");
+        }
 
         dev_bar.wait();
 

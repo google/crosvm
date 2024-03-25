@@ -11,8 +11,9 @@ use base::SafeDescriptor;
 use base::Tube;
 use cros_async::EventAsync;
 use cros_async::Executor;
+use futures::channel::oneshot;
 use futures::pin_mut;
-use futures::select;
+use futures::select_biased;
 use futures::FutureExt;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
@@ -29,9 +30,14 @@ pub fn create_backend_req_handler(
     vmm_vhost::FrontendServer::with_tube(h, backend_pid).map_err(Error::CreateBackendReqHandler)
 }
 
+/// Process requests from the backend.
+///
+/// If `stop_rx` is sent a value, the function will exit at a well defined point so that
+/// `run_backend_request_handler` can be re-invoked to resume processing the connection.
 pub async fn run_backend_request_handler(
-    handler: &mut BackendReqHandler,
     ex: &Executor,
+    handler: &mut BackendReqHandler,
+    mut stop_rx: oneshot::Receiver<()>,
 ) -> Result<()> {
     let read_notifier = handler.get_read_notifier();
     let close_notifier = handler.get_close_notifier();
@@ -47,7 +53,8 @@ pub async fn run_backend_request_handler(
     pin_mut!(close_event_fut);
 
     loop {
-        select! {
+        select_biased! {
+            _ = stop_rx => return Ok(()),
             _read_res = read_event_fut => {
                 handler
                     .handle_request()
