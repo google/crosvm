@@ -14,6 +14,7 @@ use crate::gpu_display_android::android_display_error_callback_type;
 #[no_mangle]
 extern "C" fn create_android_display_context(
     _service_name: *const ::std::os::raw::c_char,
+    _service_name_len: ::std::os::raw::c_ulong,
     _error_callback: android_display_error_callback_type,
 ) -> *mut android_display_context {
     unimplemented!();
@@ -50,6 +51,7 @@ extern "C" fn blit_android_display(
     _width: u32,
     _height: u32,
     _bytes: *mut u8,
+    _size: usize,
 ) {
     unimplemented!();
 }
