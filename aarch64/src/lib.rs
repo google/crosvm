@@ -632,11 +632,11 @@ impl arch::LinuxArch for AArch64 {
 
         let com_evt_1_3 = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
         let com_evt_2_4 = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
-        arch::add_serial_devices(
+        let serial_devices = arch::add_serial_devices(
             components.hv_cfg.protection_type,
             &mmio_bus,
-            com_evt_1_3.get_trigger(),
-            com_evt_2_4.get_trigger(),
+            (AARCH64_SERIAL_1_3_IRQ, com_evt_1_3.get_trigger()),
+            (AARCH64_SERIAL_2_4_IRQ, com_evt_2_4.get_trigger()),
             serial_parameters,
             serial_jail,
             #[cfg(feature = "swap")]
@@ -695,7 +695,7 @@ impl arch::LinuxArch for AArch64 {
         }
 
         let mut cmdline = Self::get_base_linux_cmdline();
-        get_serial_cmdline(&mut cmdline, serial_parameters, "mmio")
+        get_serial_cmdline(&mut cmdline, serial_parameters, "mmio", &serial_devices)
             .map_err(Error::GetSerialCmdline)?;
         for param in components.extra_kernel_params {
             cmdline.insert_str(&param).map_err(Error::Cmdline)?;

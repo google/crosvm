@@ -52,6 +52,7 @@ use acpi_tables::aml::Aml;
 use acpi_tables::sdt::SDT;
 use anyhow::Context;
 use arch::get_serial_cmdline;
+use arch::serial::SerialDeviceInfo;
 use arch::CpuSet;
 use arch::DtbOverlay;
 use arch::GetSerialCmdlineError;
@@ -872,7 +873,7 @@ impl arch::LinuxArch for X8664arch {
         } else {
             None
         };
-        Self::setup_serial_devices(
+        let serial_devices = Self::setup_serial_devices(
             components.hv_cfg.protection_type,
             irq_chip.as_irq_chip_mut(),
             &io_bus,
@@ -988,7 +989,7 @@ impl arch::LinuxArch for X8664arch {
 
         let mut cmdline = Self::get_base_linux_cmdline();
 
-        get_serial_cmdline(&mut cmdline, serial_parameters, "io")
+        get_serial_cmdline(&mut cmdline, serial_parameters, "io", &serial_devices)
             .map_err(Error::GetSerialCmdline)?;
 
         for param in components.extra_kernel_params {
@@ -2172,14 +2173,13 @@ impl X8664arch {
         ))
     }
 
-    /// Sets up the serial devices for this platform. Returns the serial port number and serial
-    /// device to be used for stdout
+    /// Sets up the serial devices for this platform. Returns a list of configured serial devices.
     ///
     /// # Arguments
     ///
     /// * - `irq_chip` the IrqChip object for registering irq events
     /// * - `io_bus` the I/O bus to add the devices to
-    /// * - `serial_parmaters` - definitions for how the serial devices should be configured
+    /// * - `serial_parameters` - definitions for how the serial devices should be configured
     pub fn setup_serial_devices(
         protection_type: ProtectionType,
         irq_chip: &mut dyn IrqChip,
@@ -2187,15 +2187,15 @@ impl X8664arch {
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
-    ) -> Result<()> {
+    ) -> Result<Vec<SerialDeviceInfo>> {
         let com_evt_1_3 = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
         let com_evt_2_4 = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
 
-        arch::add_serial_devices(
+        let serial_devices = arch::add_serial_devices(
             protection_type,
             io_bus,
-            com_evt_1_3.get_trigger(),
-            com_evt_2_4.get_trigger(),
+            (X86_64_SERIAL_1_3_IRQ, com_evt_1_3.get_trigger()),
+            (X86_64_SERIAL_2_4_IRQ, com_evt_2_4.get_trigger()),
             serial_parameters,
             serial_jail,
             #[cfg(feature = "swap")]
@@ -2215,7 +2215,7 @@ impl X8664arch {
             .register_edge_irq_event(X86_64_SERIAL_2_4_IRQ, &com_evt_2_4, source)
             .map_err(Error::RegisterIrqfd)?;
 
-        Ok(())
+        Ok(serial_devices)
     }
 
     fn setup_debugcon_devices(
