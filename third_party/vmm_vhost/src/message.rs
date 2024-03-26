@@ -394,6 +394,8 @@ impl<T: Req> VhostUserMsgValidator for VhostUserMsgHeader<T> {
     }
 }
 
+pub const VIRTIO_F_RING_PACKED: u32 = 34;
+
 /// Virtio feature flag for the vhost-user protocol features.
 pub const VHOST_USER_F_PROTOCOL_FEATURES: u32 = 30;
 

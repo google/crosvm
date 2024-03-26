@@ -188,6 +188,7 @@ impl BackendClient {
     }
 
     /// Set the first index to look for available descriptors.
+    // TODO: b/331466964 - Arguments and message format are wrong for packed queues.
     pub fn set_vring_base(&self, queue_index: usize, base: u16) -> Result<()> {
         let val = VhostUserVringState::new(queue_index as u32, base.into());
         let hdr = self.send_request_with_body(FrontendReq::SET_VRING_BASE, &val, None)?;
@@ -195,6 +196,7 @@ impl BackendClient {
     }
 
     /// Get the available vring base offset.
+    // TODO: b/331466964 - Return type is wrong for packed queues.
     pub fn get_vring_base(&self, queue_index: usize) -> Result<u32> {
         let req = VhostUserVringState::new(queue_index as u32, 0);
         let hdr = self.send_request_with_body(FrontendReq::GET_VRING_BASE, &req, None)?;

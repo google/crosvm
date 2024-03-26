@@ -41,7 +41,9 @@ pub trait Backend {
         available: u64,
         log: u64,
     ) -> Result<()>;
+    // TODO: b/331466964 - Argument type is wrong for packed queues.
     fn set_vring_base(&mut self, index: u32, base: u32) -> Result<()>;
+    // TODO: b/331466964 - Return type is wrong for packed queues.
     fn get_vring_base(&mut self, index: u32) -> Result<VhostUserVringState>;
     fn set_vring_kick(&mut self, index: u8, fd: Option<File>) -> Result<()>;
     fn set_vring_call(&mut self, index: u8, fd: Option<File>) -> Result<()>;
@@ -377,14 +379,26 @@ impl<S: Backend> BackendServer<S> {
             }
             Ok(FrontendReq::GET_FEATURES) => {
                 self.check_request_size(&hdr, size, 0)?;
-                let features = self.backend.get_features()?;
+                let mut features = self.backend.get_features()?;
+
+                // Don't advertise packed queues even if the device does. We don't handle them
+                // properly yet at the protocol layer.
+                // TODO: b/331466964 - Remove once support is added.
+                features &= !(1 << VIRTIO_F_RING_PACKED);
+
                 let msg = VhostUserU64::new(features);
                 self.send_reply_message(&hdr, &msg)?;
                 self.virtio_features = features;
                 self.update_reply_ack_flag();
             }
             Ok(FrontendReq::SET_FEATURES) => {
-                let msg = self.extract_request_body::<VhostUserU64>(&hdr, size, &buf)?;
+                let mut msg = self.extract_request_body::<VhostUserU64>(&hdr, size, &buf)?;
+
+                // Don't allow packed queues even if the device does. We don't handle them
+                // properly yet at the protocol layer.
+                // TODO: b/331466964 - Remove once support is added.
+                msg.value &= !(1 << VIRTIO_F_RING_PACKED);
+
                 let res = self.backend.set_features(msg.value);
                 self.acked_virtio_features = msg.value;
                 self.update_reply_ack_flag();

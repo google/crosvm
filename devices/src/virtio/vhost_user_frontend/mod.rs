@@ -122,10 +122,21 @@ impl VhostUserFrontend {
         connection: vmm_vhost::SystemStream,
         device_type: DeviceType,
         max_queue_size: Option<u16>,
-        base_features: u64,
+        mut base_features: u64,
         cfg: Option<&[u8]>,
         pci_address: Option<PciAddress>,
     ) -> Result<VhostUserFrontend> {
+        // Don't allow packed queues even if requested. We don't handle them properly yet at the
+        // protocol layer.
+        // TODO: b/331466964 - Remove once packed queue support is added to BackendClient.
+        if base_features & (1 << virtio_sys::virtio_config::VIRTIO_F_RING_PACKED) != 0 {
+            base_features &= !(1 << virtio_sys::virtio_config::VIRTIO_F_RING_PACKED);
+            base::warn!(
+                "VIRTIO_F_RING_PACKED requested, but not yet supported by vhost-user frontend. \
+                Automatically disabled."
+            );
+        }
+
         #[cfg(windows)]
         let backend_pid = connection.target_pid();
 
