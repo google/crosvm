@@ -249,7 +249,7 @@ where
         NET_EXECUTOR.with(|thread_ex| {
             let _ = thread_ex.set(ex.clone());
         });
-        let handler = DeviceRequestHandler::new(self);
+        let handler = DeviceRequestHandler::new(*self);
 
         Ok(Box::new(handler))
     }

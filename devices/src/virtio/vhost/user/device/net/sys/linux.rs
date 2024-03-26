@@ -331,7 +331,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
                     let listener = VhostUserListener::new_socket(&socket, None)?;
                     // run_until() returns an Result<Result<..>> which the ? operator lets us
                     // flatten.
-                    ex.run_until(listener.run_backend(Box::new(backend), &ex))?
+                    ex.run_until(listener.run_backend(backend, &ex))?
                 }));
             }
         };

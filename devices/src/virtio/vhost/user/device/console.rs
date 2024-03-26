@@ -79,7 +79,7 @@ impl VhostUserDeviceBuilder for VhostUserConsoleDevice {
             active_queues,
         };
 
-        let handler = DeviceRequestHandler::new(Box::new(backend));
+        let handler = DeviceRequestHandler::new(backend);
         Ok(Box::new(handler))
     }
 }

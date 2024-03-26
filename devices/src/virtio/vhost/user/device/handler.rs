@@ -357,12 +357,12 @@ impl VhostUserRegularOps {
 }
 
 /// An adapter that implements `vmm_vhost::Backend` for any type implementing `VhostUserDevice`.
-pub struct DeviceRequestHandler {
+pub struct DeviceRequestHandler<T: VhostUserDevice> {
     vrings: Vec<Vring>,
     owned: bool,
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
-    backend: Box<dyn VhostUserDevice>,
+    backend: T,
     backend_req_connection: Arc<Mutex<VhostBackendReqConnectionState>>,
 }
 
@@ -372,9 +372,9 @@ pub struct DeviceRequestHandlerSnapshot {
     backend: Vec<u8>,
 }
 
-impl DeviceRequestHandler {
+impl<T: VhostUserDevice> DeviceRequestHandler<T> {
     /// Creates a vhost-user handler instance for `backend`.
-    pub(crate) fn new(backend: Box<dyn VhostUserDevice>) -> Self {
+    pub(crate) fn new(backend: T) -> Self {
         let mut vrings = Vec::with_capacity(backend.max_queue_num());
         for _ in 0..backend.max_queue_num() {
             vrings.push(Vring::new(Queue::MAX_SIZE, backend.features()));
@@ -393,7 +393,7 @@ impl DeviceRequestHandler {
     }
 }
 
-impl vmm_vhost::Backend for DeviceRequestHandler {
+impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
     fn set_owner(&mut self) -> VhostResult<()> {
         if self.owned {
             return Err(VhostError::InvalidOperation);
@@ -1157,7 +1157,7 @@ mod tests {
         });
 
         // Device side
-        let handler = DeviceRequestHandler::new(Box::new(FakeBackend::new()));
+        let handler = DeviceRequestHandler::new(FakeBackend::new());
 
         // Notify listener is ready.
         tx.send(()).unwrap();

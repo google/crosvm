@@ -51,7 +51,7 @@ impl VhostUserDeviceBuilder for BlockAsync {
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
         };
-        let handler = DeviceRequestHandler::new(Box::new(backend));
+        let handler = DeviceRequestHandler::new(backend);
         Ok(Box::new(handler))
     }
 }

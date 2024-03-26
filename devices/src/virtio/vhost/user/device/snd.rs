@@ -135,7 +135,7 @@ impl SndBackend {
 
 impl VhostUserDeviceBuilder for SndBackend {
     fn build(self: Box<Self>, _ex: &Executor) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
-        let handler = DeviceRequestHandler::new(self);
+        let handler = DeviceRequestHandler::new(*self);
         Ok(Box::new(handler))
     }
 }

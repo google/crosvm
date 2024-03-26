@@ -244,7 +244,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         None,
     )));
 
-    let backend = Box::new(GpuBackend {
+    let backend = GpuBackend {
         ex: ex.clone(),
         gpu,
         resource_bridges,
@@ -254,7 +254,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         queue_workers: Default::default(),
         platform_workers: Default::default(),
         shmem_mapper: Arc::new(Mutex::new(None)),
-    });
+    };
 
     // Run until the backend is finished.
     let _ = ex.run_until(listener.run_backend(backend, &ex))?;

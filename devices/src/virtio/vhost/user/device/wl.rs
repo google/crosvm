@@ -407,7 +407,7 @@ pub fn run_wl_device(opts: Options) -> anyhow::Result<()> {
 
     let listener = VhostUserListener::new_socket(&socket, None)?;
 
-    let backend = Box::new(WlBackend::new(&ex, wayland_paths, resource_bridge));
+    let backend = WlBackend::new(&ex, wayland_paths, resource_bridge);
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
     ex.run_until(listener.run_backend(backend, &ex))?
 }
