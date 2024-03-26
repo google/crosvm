@@ -173,8 +173,6 @@ fn get_swiotlb_addr(
     }
 }
 
-// Serial device requires 8 bytes of registers;
-const AARCH64_SERIAL_SIZE: u64 = 0x8;
 // This was the speed kvmtool used, not sure if it matters.
 const AARCH64_SERIAL_SPEED: u32 = 1843200;
 // The serial device gets the first interrupt line
@@ -791,6 +789,7 @@ impl arch::LinuxArch for AArch64 {
             &|writer, phandles| vm.create_fdt(writer, phandles),
             components.dynamic_power_coefficient,
             device_tree_overlays,
+            &serial_devices,
         )
         .map_err(Error::CreateFdt)?;
 
