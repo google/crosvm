@@ -13,12 +13,11 @@ use base::RawDescriptor;
 use base::Result;
 use devices::serial_device::SerialParameters;
 use devices::serial_device::SerialType;
-use devices::Bus;
+use devices::BusDevice;
 use devices::Serial;
 use jail::FakeMinijailStub as Minijail;
 use sync::Mutex;
 
-use crate::serial::SERIAL_ADDR;
 use crate::DeviceRegistrationError;
 
 /// A type for queueing input bytes to a serial device that abstracts if the device is local or part
@@ -46,51 +45,45 @@ impl SerialInput {
 }
 
 pub fn add_serial_device(
-    com_num: usize,
     com: Serial,
     serial_params: &SerialParameters,
     serial_jail: Option<Minijail>,
     _preserved_descriptors: Vec<RawDescriptor>,
-    io_bus: &Bus,
-) -> std::result::Result<(), DeviceRegistrationError> {
-    match serial_jail {
-        Some(_) => (),
-        None => {
-            let com = Arc::new(Mutex::new(com));
-            io_bus
-                .insert(com.clone(), SERIAL_ADDR[com_num], 0x8)
-                .unwrap();
+) -> std::result::Result<Arc<Mutex<dyn BusDevice>>, DeviceRegistrationError> {
+    assert!(serial_jail.is_none());
 
-            if !serial_params.stdin {
-                if let SerialType::SystemSerialType = serial_params.type_ {
-                    let mut in_pipe_result = com
-                        .lock()
-                        .system_params
-                        .in_stream
-                        .as_ref()
-                        .unwrap()
-                        .try_clone();
-                    thread::spawn(move || {
-                        let serial_input = SerialInput::new_local(com);
-                        let in_pipe = in_pipe_result.as_mut().unwrap();
+    let com = Arc::new(Mutex::new(com));
 
-                        let mut buffer: [u8; 255] = [0; 255];
-                        loop {
-                            // Safe because we are reading bytes.
-                            let bytes = in_pipe.read(&mut buffer).unwrap_or(0);
-                            if bytes > 0 {
-                                serial_input.queue_input_bytes(&buffer[0..bytes]).unwrap();
-                            }
-                            // We can't issue blocking reads here and overlapped I/O is
-                            // incompatible with the call site where writes to this pipe are being
-                            // made, so instead we issue a small wait to prevent us from hogging
-                            // the CPU. This 20ms delay while typing doesn't seem to be noticeable.
-                            thread::sleep(Duration::from_millis(20));
-                        }
-                    });
+    if !serial_params.stdin {
+        if let SerialType::SystemSerialType = serial_params.type_ {
+            let mut in_pipe_result = com
+                .lock()
+                .system_params
+                .in_stream
+                .as_ref()
+                .unwrap()
+                .try_clone();
+            let com = com.clone();
+            thread::spawn(move || {
+                let serial_input = SerialInput::new_local(com);
+                let in_pipe = in_pipe_result.as_mut().unwrap();
+
+                let mut buffer: [u8; 255] = [0; 255];
+                loop {
+                    // Safe because we are reading bytes.
+                    let bytes = in_pipe.read(&mut buffer).unwrap_or(0);
+                    if bytes > 0 {
+                        serial_input.queue_input_bytes(&buffer[0..bytes]).unwrap();
+                    }
+                    // We can't issue blocking reads here and overlapped I/O is
+                    // incompatible with the call site where writes to this pipe are being
+                    // made, so instead we issue a small wait to prevent us from hogging
+                    // the CPU. This 20ms delay while typing doesn't seem to be noticeable.
+                    thread::sleep(Duration::from_millis(20));
                 }
-            }
+            });
         }
     }
-    Ok(())
+
+    Ok(com)
 }

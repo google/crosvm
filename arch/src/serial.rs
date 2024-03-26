@@ -143,16 +143,18 @@ pub fn add_serial_devices(
         #[cfg(windows)]
         let serial_jail = None;
 
-        sys::add_serial_device(
-            com_num as usize,
+        let com = sys::add_serial_device(
             com,
             param,
             serial_jail,
             preserved_descriptors,
-            io_bus,
             #[cfg(feature = "swap")]
             swap_controller,
         )?;
+
+        let address = SERIAL_ADDR[usize::from(com_num)];
+        let size = 0x8; // 16550 UART uses 8 bytes of address space.
+        io_bus.insert(com, address, size).unwrap();
     }
 
     Ok(())
