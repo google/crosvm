@@ -5,11 +5,12 @@
 //! This module writes Flattened Devicetree blobs as defined here:
 //! <https://devicetree-specification.readthedocs.io/en/stable/flattened-format.html>
 
-use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::io;
 
+use indexmap::map::Entry;
+use indexmap::IndexMap;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
@@ -322,8 +323,8 @@ impl FdtStrings {
 pub struct FdtNode {
     /// Node name
     pub(crate) name: String,
-    pub(crate) props: BTreeMap<String, Vec<u8>>,
-    pub(crate) subnodes: BTreeMap<String, FdtNode>,
+    pub(crate) props: IndexMap<String, Vec<u8>>,
+    pub(crate) subnodes: IndexMap<String, FdtNode>,
 }
 
 impl FdtNode {
@@ -331,8 +332,8 @@ impl FdtNode {
     // node or property names do not satisfy devicetree naming criteria.
     pub(crate) fn new(
         name: String,
-        props: BTreeMap<String, Vec<u8>>,
-        subnodes: BTreeMap<String, FdtNode>,
+        props: IndexMap<String, Vec<u8>>,
+        subnodes: IndexMap<String, FdtNode>,
     ) -> Result<Self> {
         if !is_valid_node_name(&name) {
             return Err(Error::InvalidName(name));
@@ -372,8 +373,8 @@ impl FdtNode {
         consume(input, name_nbytes + align_pad_len(name_nbytes, SIZE_U32))?;
 
         // Node properties and subnodes
-        let mut props = BTreeMap::new();
-        let mut subnodes = BTreeMap::new();
+        let mut props = IndexMap::new();
+        let mut subnodes = IndexMap::new();
         let mut encountered_subnode = false; // Properties must appear before subnodes
 
         loop {
@@ -1174,24 +1175,6 @@ mod tests {
     }
 
     #[test]
-    fn fdt_iter_nodes() {
-        let mut root = FdtNode::empty("").unwrap();
-        let node_a = root.subnode_mut("A").unwrap();
-        node_a.subnode_mut("B").unwrap();
-        node_a.subnode_mut("A").unwrap();
-
-        let mut root_subnodes = root.iter_subnodes();
-        let node_a = root_subnodes.next().unwrap();
-        assert_eq!(node_a.name, "A");
-        assert!(root_subnodes.next().is_none());
-
-        let mut node_a_subnodes = node_a.iter_subnodes();
-        assert_eq!(node_a_subnodes.next().unwrap().name, "A");
-        assert_eq!(node_a_subnodes.next().unwrap().name, "B");
-        assert!(node_a_subnodes.next().is_none());
-    }
-
-    #[test]
     fn fdt_get_node() {
         let fdt = Fdt::new(&[]);
         assert!(fdt.get_node("/").is_some());
@@ -1440,18 +1423,87 @@ mod tests {
     }
 
     #[test]
-    fn prop_order() {
-        let expected_bytes: &[u8] = &[
+    fn node_order() {
+        let expected: &[u8] = &[
             0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
-            0x00, 0x00, 0x00, 0x84, // 0004: totalsize (0x84)
+            0x00, 0x00, 0x00, 0x9C, // 0004: totalsize (0x9C)
             0x00, 0x00, 0x00, 0x38, // 0008: off_dt_struct (0x38)
-            0x00, 0x00, 0x00, 0x78, // 000C: off_dt_strings (0x78)
+            0x00, 0x00, 0x00, 0x9C, // 000C: off_dt_strings (0x9C)
             0x00, 0x00, 0x00, 0x28, // 0010: off_mem_rsvmap (0x28)
             0x00, 0x00, 0x00, 0x11, // 0014: version (0x11 = 17)
             0x00, 0x00, 0x00, 0x10, // 0018: last_comp_version (0x10 = 16)
             0x00, 0x00, 0x00, 0x00, // 001C: boot_cpuid_phys (0)
-            0x00, 0x00, 0x00, 0x0C, // 0020: size_dt_strings (0x0C)
-            0x00, 0x00, 0x00, 0x40, // 0024: size_dt_struct (0x40)
+            0x00, 0x00, 0x00, 0x00, // 0020: size_dt_strings (0x00)
+            0x00, 0x00, 0x00, 0x64, // 0024: size_dt_struct (0x64)
+            0x00, 0x00, 0x00, 0x00, // 0028: rsvmap terminator (address = 0 high)
+            0x00, 0x00, 0x00, 0x00, // 002C: rsvmap terminator (address = 0 low)
+            0x00, 0x00, 0x00, 0x00, // 0030: rsvmap terminator (size = 0 high)
+            0x00, 0x00, 0x00, 0x00, // 0034: rsvmap terminator (size = 0 low)
+            0x00, 0x00, 0x00, 0x01, // 0038: FDT_BEGIN_NODE
+            0x00, 0x00, 0x00, 0x00, // 003C: node name ("") + padding
+            0x00, 0x00, 0x00, 0x01, // 0040: FDT_BEGIN_NODE
+            b'B', 0x00, 0x00, 0x00, // 0044: node name ("B") + padding
+            0x00, 0x00, 0x00, 0x02, // 0048: FDT_END_NODE
+            0x00, 0x00, 0x00, 0x01, // 004C: FDT_BEGIN_NODE
+            b'A', 0x00, 0x00, 0x00, // 0050: node name ("A") + padding
+            0x00, 0x00, 0x00, 0x02, // 0054: FDT_END_NODE
+            0x00, 0x00, 0x00, 0x01, // 0058: FDT_BEGIN_NODE
+            b'C', 0x00, 0x00, 0x00, // 005C: node name ("C") + padding
+            0x00, 0x00, 0x00, 0x01, // 0060: FDT_BEGIN_NODE
+            b'D', 0x00, 0x00, 0x00, // 0064: node name ("D") + padding
+            0x00, 0x00, 0x00, 0x02, // 0068: FDT_END_NODE
+            0x00, 0x00, 0x00, 0x01, // 006C: FDT_BEGIN_NODE
+            b'E', 0x00, 0x00, 0x00, // 0070: node name ("E") + padding
+            0x00, 0x00, 0x00, 0x02, // 0074: FDT_END_NODE
+            0x00, 0x00, 0x00, 0x01, // 0078: FDT_BEGIN_NODE
+            b'B', 0x00, 0x00, 0x00, // 007C: node name ("B") + padding
+            0x00, 0x00, 0x00, 0x02, // 0080: FDT_END_NODE
+            0x00, 0x00, 0x00, 0x01, // 0084: FDT_BEGIN_NODE
+            b'F', 0x00, 0x00, 0x00, // 0088: node name ("F") + padding
+            0x00, 0x00, 0x00, 0x02, // 008C: FDT_END_NODE
+            0x00, 0x00, 0x00, 0x02, // 0090: FDT_END_NODE
+            0x00, 0x00, 0x00, 0x02, // 0094: FDT_END_NODE
+            0x00, 0x00, 0x00, 0x09, // 0098: FDT_END
+        ];
+
+        let mut fdt = Fdt::new(&[]);
+        let root = fdt.root_mut();
+        let root_subnode_names = ["B", "A", "C"];
+        let node_c_subnode_names = ["D", "E", "B", "F"];
+        for n in root_subnode_names {
+            root.subnode_mut(n).unwrap();
+        }
+        let node_c = root.subnode_mut("C").unwrap();
+        for n in node_c_subnode_names {
+            node_c.subnode_mut(n).unwrap();
+        }
+
+        assert!(root
+            .iter_subnodes()
+            .zip(root_subnode_names)
+            .all(|(sn, n)| sn.name == n));
+        assert!(root
+            .subnode("C")
+            .unwrap()
+            .iter_subnodes()
+            .zip(node_c_subnode_names)
+            .all(|(sn, n)| sn.name == n));
+        assert_eq!(fdt.finish().unwrap(), expected);
+    }
+
+    #[test]
+    fn prop_order() {
+        let expected: &[u8] = &[
+            0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
+            0x00, 0x00, 0x00, 0x98, // 0004: totalsize (0x98)
+            0x00, 0x00, 0x00, 0x38, // 0008: off_dt_struct (0x38)
+            0x00, 0x00, 0x00, 0x88, // 000C: off_dt_strings (0x88)
+            0x00, 0x00, 0x00, 0x28, // 0010: off_mem_rsvmap (0x28)
+            0x00, 0x00, 0x00, 0x11, // 0014: version (0x11 = 17)
+            0x00, 0x00, 0x00, 0x10, // 0018: last_comp_version (0x10 = 16)
+            0x00, 0x00, 0x00, 0x00, // 001C: boot_cpuid_phys (0)
+            0x00, 0x00, 0x00, 0x10, // 0020: size_dt_strings (0x10)
+            0x00, 0x00, 0x00, 0x50, // 0024: size_dt_struct (0x50)
             0x00, 0x00, 0x00, 0x00, // 0028: rsvmap terminator (address = 0 high)
             0x00, 0x00, 0x00, 0x00, // 002C: rsvmap terminator (address = 0 low)
             0x00, 0x00, 0x00, 0x00, // 0030: rsvmap terminator (size = 0 high)
@@ -1461,35 +1513,39 @@ mod tests {
             0x00, 0x00, 0x00, 0x03, // 0040: FDT_PROP (u32)
             0x00, 0x00, 0x00, 0x04, // 0044: prop len (4)
             0x00, 0x00, 0x00, 0x00, // 0048: prop nameoff (0x00)
-            0x00, 0x00, 0x00, 0x01, // 004C: prop u32 value (0x1)
+            0x76, 0x61, 0x6c, 0x00, // 004C: prop string value ("val")
             0x00, 0x00, 0x00, 0x03, // 0050: FDT_PROP (u32)
             0x00, 0x00, 0x00, 0x04, // 0054: prop len (4)
             0x00, 0x00, 0x00, 0x04, // 0058: prop nameoff (0x04)
             0x00, 0x00, 0x00, 0x02, // 005C: prop u32 high (0x2)
             0x00, 0x00, 0x00, 0x03, // 0060: FDT_PROP (u32)
             0x00, 0x00, 0x00, 0x04, // 0064: prop len (4)
-            0x00, 0x00, 0x00, 0x08, // 0068: prop nameoff (0x22)
-            0x76, 0x61, 0x6c, 0x00, // 006C: prop string value ("val")
-            0x00, 0x00, 0x00, 0x02, // 0070: FDT_END_NODE
-            0x00, 0x00, 0x00, 0x09, // 0074: FDT_END
-            b'a', b'b', b'c', 0x00, // 0078: strings + 0x00: "abc"
-            b'd', b'e', b'f', 0x00, // 007C: strings + 0x04: "def"
-            b'g', b'h', b'i', 0x00, // 0080: strings + 0x08: "ghi"
+            0x00, 0x00, 0x00, 0x08, // 0068: prop nameoff (0x08)
+            0x00, 0x00, 0x00, 0x01, // 006C: prop u32 value (0x1)
+            0x00, 0x00, 0x00, 0x03, // 0070: FDT_PROP (u32)
+            0x00, 0x00, 0x00, 0x04, // 0074: prop len (4)
+            0x00, 0x00, 0x00, 0x0C, // 0078: prop nameoff (0x0B)
+            0x00, 0x00, 0x00, 0x03, // 007C: prop u32 value (0x3)
+            0x00, 0x00, 0x00, 0x02, // 0080: FDT_END_NODE
+            0x00, 0x00, 0x00, 0x09, // 0084: FDT_END
+            b'g', b'h', b'i', 0x00, // 0088: strings + 0x00: "ghi"
+            b'd', b'e', b'f', 0x00, // 008C: strings + 0x04: "def"
+            b'a', b'b', b'c', 0x00, // 0090: strings + 0x08: "abc"
+            b'b', b'c', b'd', 0x00, // 0094: strings + 0x0C: "bcd"
         ];
 
         let mut fdt = Fdt::new(&[]);
         let root_node = fdt.root_mut();
-        root_node.set_prop("abc", 1u32).unwrap();
-        root_node.set_prop("def", 2u32).unwrap();
         root_node.set_prop("ghi", "val").unwrap();
-        assert_eq!(fdt.finish().unwrap(), expected_bytes);
+        root_node.set_prop("def", 2u32).unwrap();
+        root_node.set_prop("abc", 1u32).unwrap();
+        root_node.set_prop("bcd", 3u32).unwrap();
 
-        let mut fdt = Fdt::new(&[]);
-        let root_node = fdt.root_mut();
-        root_node.set_prop("ghi", "val").unwrap();
-        root_node.set_prop("def", 2u32).unwrap();
-        root_node.set_prop("abc", 1u32).unwrap();
-        assert_eq!(fdt.finish().unwrap(), expected_bytes);
+        assert_eq!(
+            root_node.prop_names().collect::<Vec<_>>(),
+            ["ghi", "def", "abc", "bcd"]
+        );
+        assert_eq!(fdt.finish().unwrap(), expected);
     }
 
     #[test]
