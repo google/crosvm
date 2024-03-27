@@ -197,6 +197,7 @@ impl SwapController {
 
         syslog::push_descriptors(&mut keep_rds);
         cros_tracing::push_descriptors!(&mut keep_rds);
+        metrics::push_descriptors(&mut keep_rds);
         keep_rds.extend(guest_memory.as_raw_descriptors());
 
         keep_rds.extend(uffd_factory.as_raw_descriptors());

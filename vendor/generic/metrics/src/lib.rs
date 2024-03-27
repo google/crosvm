@@ -25,6 +25,7 @@ pub use client::log_high_frequency_descriptor_event;
 pub use client::log_histogram_metric;
 pub use client::log_metric;
 pub use client::merge_session_invariants;
+pub use client::push_descriptors;
 pub use client::set_auth_token;
 pub use client::set_graphics_api;
 pub use client::set_package_name;

@@ -22,6 +22,7 @@ base = { path = "../base" }
 cfg-if = "*"
 cros_tracing = { path = "../cros_tracing" }
 jail = { path = "../jail" }
+metrics = { path = "../metrics" }
 num_cpus = "*"
 once_cell = "*"
 remain = "*"

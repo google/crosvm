@@ -164,6 +164,7 @@ use jail_warden::JailWardenImpl;
 #[cfg(feature = "pci-hotplug")]
 use jail_warden::PermissiveJailWarden;
 use libc;
+use metrics::MetricsController;
 use minijail::Minijail;
 #[cfg(feature = "pci-hotplug")]
 use pci_hotplug_manager::PciHotPlugManager;
@@ -1675,6 +1676,10 @@ where
         // access to those files will not be possible.
         info!("crosvm entering multiprocess mode");
     }
+
+    let (metrics_send, metrics_recv) = Tube::directional_pair().context("metrics tube")?;
+    metrics::initialize(metrics_send);
+
     #[cfg(all(feature = "pci-hotplug", feature = "swap"))]
     let swap_device_helper = match &swap_controller {
         Some(swap_controller) => Some(swap_controller.create_device_helper()?),
@@ -2188,6 +2193,7 @@ where
         guest_suspended_cvar,
         #[cfg(feature = "pvclock")]
         pvclock_host_tube,
+        metrics_recv,
     )
 }
 
@@ -3254,6 +3260,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(feature = "registered_events")] reg_evt_rdtube: RecvTube,
     guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     #[cfg(feature = "pvclock")] pvclock_host_tube: Option<Tube>,
+    metrics_tube: RecvTube,
 ) -> Result<ExitState> {
     #[derive(EventToken)]
     enum Token {
@@ -3603,6 +3610,21 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             .context("static device setup complete")?;
     }
 
+    let metrics_thread = if metrics::is_initialized() {
+        Some(
+            std::thread::Builder::new()
+                .name("metrics_thread".into())
+                .spawn(move || {
+                    if let Err(e) = MetricsController::new(vec![metrics_tube]).run() {
+                        error!("Metrics controller error: {:?}", e);
+                    }
+                })
+                .context("metrics thread failed")?,
+        )
+    } else {
+        None
+    };
+
     let mut exit_state = ExitState::Stop;
     let mut pvpanic_code = PvPanicCode::Unknown;
     #[cfg(feature = "registered_events")]
@@ -3931,6 +3953,20 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     // Explicitly drop the VM structure here to allow the devices to clean up before the
     // control sockets are closed when this function exits.
     mem::drop(linux);
+
+    // Drop the hotplug manager to tell the warden process to exit before we try to join
+    // the metrics thread.
+    #[cfg(feature = "pci-hotplug")]
+    mem::drop(hotplug_manager);
+
+    // All our children should have exited by now, so closing our fd should
+    // terminate metrics. Then join so that everything gets flushed.
+    metrics::get_destructor().cleanup();
+    if let Some(metrics_thread) = metrics_thread {
+        if let Err(e) = metrics_thread.join() {
+            error!("failed to exit irq handler thread: {:?}", e);
+        }
+    }
 
     stdin()
         .set_canon_mode()
@@ -4377,6 +4413,7 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
 
     base::syslog::push_descriptors(&mut keep_rds);
     cros_tracing::push_descriptors!(&mut keep_rds);
+    metrics::push_descriptors(&mut keep_rds);
 
     let jail_type = VirtioDeviceType::VhostUser;
 

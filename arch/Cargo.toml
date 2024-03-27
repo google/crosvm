@@ -25,6 +25,7 @@ hypervisor = { path = "../hypervisor" }
 jail = { path = "../jail" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 libc = "*"
+metrics = { path = "../metrics" }
 resources = { path = "../resources" }
 remain = "*"
 serde = { version = "*", features = [ "derive"] }

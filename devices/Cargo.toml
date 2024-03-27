@@ -66,6 +66,7 @@ libc = "*"
 libvda = { path = "../media/libvda", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
 memoffset = { version = "0.6" }
+metrics = { path = "../metrics" }
 net_util = { path = "../net_util" }
 num-traits = "0.2"
 once_cell = "1.7.2"
@@ -102,7 +103,6 @@ vhost = { path = "../vhost" }
 
 [target.'cfg(windows)'.dependencies]
 broker_ipc = { path = "../broker_ipc" }
-metrics = { path = "../metrics" }
 tube_transporter = { path = "../tube_transporter" }
 win_audio = { path = "../win_audio"}
 win_util = { path = "../win_util"}

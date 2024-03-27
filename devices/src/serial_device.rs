@@ -188,6 +188,7 @@ impl SerialParameters {
         let evt = evt.try_clone().map_err(Error::CloneEvent)?;
         keep_rds.push(evt.as_raw_descriptor());
         cros_tracing::push_descriptors!(keep_rds);
+        metrics::push_descriptors(keep_rds);
         let input: Option<Box<dyn SerialInput>> = if let Some(input_path) = &self.input {
             let input_path = input_path.as_path();
 

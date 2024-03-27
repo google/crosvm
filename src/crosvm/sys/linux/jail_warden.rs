@@ -88,6 +88,7 @@ impl JailWardenImpl {
         let mut keep_rds = Vec::new();
         syslog::push_descriptors(&mut keep_rds);
         cros_tracing::push_descriptors!(&mut keep_rds);
+        metrics::push_descriptors(&mut keep_rds);
         let (main_tube, worker_tube) = Tube::pair()?;
         keep_rds.push(worker_tube.as_raw_descriptor());
         #[cfg(feature = "swap")]
@@ -201,6 +202,7 @@ fn jail_worker_process(
                 let mut keep_rds = vec![];
                 syslog::push_descriptors(&mut keep_rds);
                 cros_tracing::push_descriptors!(&mut keep_rds);
+                metrics::push_descriptors(&mut keep_rds);
                 keep_rds.extend(pci_device.keep_rds());
                 let proxy_device_primitive = ChildProcIntf::new(
                     pci_device,

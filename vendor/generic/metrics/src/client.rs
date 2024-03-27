@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::RawDescriptor;
 use base::SendTube;
 use metrics_events::MetricEventType;
 use metrics_events::RecordDetails;
@@ -13,6 +14,9 @@ use crate::MetricsClientDestructor;
 pub fn initialize(_: SendTube) {}
 #[cfg(test)]
 pub fn force_initialize(_: SendTube) {}
+
+pub fn push_descriptors(_: &mut Vec<RawDescriptor>) {}
+
 pub fn get_destructor() -> MetricsClientDestructor {
     MetricsClientDestructor::new(|| {})
 }
