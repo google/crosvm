@@ -4,5 +4,5 @@
 
 @include /usr/share/policy/crosvm/gpu_common.policy
 
-socket: arg0 == AF_UNIX && arg1 == SOCK_STREAM|SOCK_CLOEXEC && arg2 == 0
+socket: arg0 == AF_UNIX && arg1 in SOCK_STREAM|SOCK_CLOEXEC|SOCK_NONBLOCK && arg2 == 0
 clone: arg0 & CLONE_THREAD
