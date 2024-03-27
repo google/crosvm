@@ -6,16 +6,14 @@
 
 use anyhow::Result;
 use base::info;
-use base::warn;
 use base::EventToken;
-use base::Tube;
+use base::RecvTube;
 
-use crate::MetricsRequest;
 use crate::RequestHandler;
 
 /// Runs the metrics controller.
 pub struct MetricsController {
-    pub(crate) agents: Vec<Tube>,
+    pub(crate) agents: Vec<RecvTube>,
     handler: RequestHandler,
     pub(crate) closed_tubes: usize,
 }
@@ -30,7 +28,7 @@ pub(crate) enum MetricsControllerToken {
 }
 
 impl MetricsController {
-    pub fn new(agents: Vec<Tube>) -> Self {
+    pub fn new(agents: Vec<RecvTube>) -> Self {
         Self {
             agents,
             handler: RequestHandler::new(),
@@ -46,13 +44,8 @@ impl MetricsController {
     }
 
     /// Handles a tube that has indicated it has data ready to read.
-    pub(crate) fn on_tube_readable(&self, client: &Tube) {
-        match client.recv::<MetricsRequest>() {
-            Ok(req) => self.handler.handle_request(req),
-            Err(e) => {
-                warn!("unexpected error receiving agent metrics request: {}", e)
-            }
-        }
+    pub(crate) fn on_tube_readable(&self, client: &RecvTube) {
+        self.handler.handle_tube_readable(client)
     }
 
     /// Handles a closed connection, and returns a bool indicating

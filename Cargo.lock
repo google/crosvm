@@ -1833,7 +1833,6 @@ dependencies = [
  "anyhow",
  "base",
  "metrics_events",
- "serde",
 ]
 
 [[package]]

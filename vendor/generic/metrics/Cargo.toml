@@ -13,4 +13,3 @@ collect = []
 anyhow = "*"
 base = { path = "../../../base" }
 metrics_events = { path = "../../../metrics_events" }
-serde = { version = "1", features = ["derive"] }

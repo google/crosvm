@@ -6,7 +6,6 @@
 //! to log metrics.
 
 mod client;
-mod metrics_requests;
 mod periodic_logger;
 mod request_handler;
 
@@ -30,7 +29,6 @@ pub use client::set_auth_token;
 pub use client::set_graphics_api;
 pub use client::set_package_name;
 pub use metrics_cleanup::MetricsClientDestructor;
-pub use metrics_requests::MetricsRequest;
 pub use periodic_logger::PeriodicLogger;
 pub use request_handler::MetricsRequestHandler;
 

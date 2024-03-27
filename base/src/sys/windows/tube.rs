@@ -384,6 +384,18 @@ impl AsRawDescriptor for RecvTube {
     }
 }
 
+impl CloseNotifier for SendTube {
+    fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
+        self.0.get_close_notifier()
+    }
+}
+
+impl CloseNotifier for RecvTube {
+    fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
+        self.0.get_close_notifier()
+    }
+}
+
 /// A request to duplicate a handle to a target process.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DuplicateHandleRequest {
