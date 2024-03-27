@@ -726,6 +726,12 @@ impl DisplayT for DisplayX {
                 black_pixel,
             );
 
+            xlib::XStoreName(
+                self.display.as_ptr(),
+                window,
+                CStr::from_bytes_with_nul(b"crosvm\0").unwrap().as_ptr(),
+            );
+
             let gc = xlib::XCreateGC(self.display.as_ptr(), window, 0, null_mut());
 
             // Because the event is from an extension, its type must be calculated dynamically.

@@ -56,6 +56,7 @@ bindgen --no-layout-tests --no-derive-debug \
   --allowlist-function XShmGetEventBase \
   --allowlist-function XShmPutImage \
   --allowlist-function XShmQueryExtension \
+  --allowlist-function XStoreName \
   --allowlist-var 'XK_.*' \
   --allowlist-var ButtonPress \
   --allowlist-var ButtonPressMask \

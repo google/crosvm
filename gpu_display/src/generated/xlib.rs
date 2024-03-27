@@ -2688,6 +2688,13 @@ extern "C" {
         arg3: ::std::os::raw::c_long,
     ) -> ::std::os::raw::c_int;
 }
+extern "C" {
+    pub fn XStoreName(
+        arg1: *mut Display,
+        arg2: Window,
+        arg3: *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+}
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct XSizeHints {
