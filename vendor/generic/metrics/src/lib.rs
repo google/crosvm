@@ -6,15 +6,10 @@
 //! to log metrics.
 
 mod client;
-mod event_types;
 mod metrics_requests;
 mod periodic_logger;
 mod request_handler;
-mod sys;
 
-pub mod protos {
-    include!(concat!(env!("OUT_DIR"), "/metrics_protos/generated.rs"));
-}
 mod metrics_cleanup;
 
 use std::time::Duration;
@@ -34,7 +29,6 @@ pub use client::merge_session_invariants;
 pub use client::set_auth_token;
 pub use client::set_graphics_api;
 pub use client::set_package_name;
-pub use event_types::MetricEventType;
 pub use metrics_cleanup::MetricsClientDestructor;
 pub use metrics_requests::MetricsRequest;
 pub use periodic_logger::PeriodicLogger;

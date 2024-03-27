@@ -72,6 +72,7 @@ members = [
     "linux_input_sys",
     "media/ffmpeg",
     "metrics",
+    "metrics_events",
     "net_sys",
     "net_util",
     "power_monitor",

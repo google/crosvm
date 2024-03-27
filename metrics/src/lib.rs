@@ -16,7 +16,7 @@ mod local_stats;
 pub mod sys;
 
 pub use controller::MetricsController;
-pub use metrics_product::MetricEventType;
+pub use metrics_events::MetricEventType;
 pub use metrics_product::*;
 
 pub type RequestHandler = MetricsRequestHandler;

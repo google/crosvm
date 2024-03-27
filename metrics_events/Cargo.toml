@@ -1,0 +1,14 @@
+[package]
+name = "metrics_events"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+
+[dependencies]
+anyhow = "*"
+cfg-if = "*"
+serde = { version = "1", features = ["derive"] }
+metrics_events_product = { path = "../vendor/generic/metrics_events", package = "metrics_events_generic" }
+
+[target.'cfg(windows)'.dependencies]
+win_util = { path = "../win_util" }

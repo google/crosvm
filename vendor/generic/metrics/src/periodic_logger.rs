@@ -5,7 +5,7 @@
 use std::result::Result;
 use std::time::Duration;
 
-use crate::MetricEventType;
+use metrics_events::MetricEventType;
 
 /// A logging struct meant for use in tracking and periodically
 /// logging a single metric. The metric is aggregated over the

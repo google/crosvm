@@ -102,8 +102,6 @@ use gpu_display::EventDevice;
 use gpu_display::WindowProcedureThread;
 #[cfg(feature = "gpu")]
 use gpu_display::WindowProcedureThreadBuilder;
-use metrics::protos::event_details::EmulatorChildProcessExitDetails;
-use metrics::protos::event_details::RecordDetails;
 use metrics::MetricEventType;
 #[cfg(all(feature = "net", feature = "slirp"))]
 use net_util::slirp::sys::windows::SlirpStartupConfig;
@@ -399,12 +397,10 @@ impl Drop for ChildCleanup {
             if self.process_type != ProcessType::Metrics {
                 let exit_code = self.child.wait();
                 if let Ok(Some(exit_code)) = exit_code {
-                    let mut details = RecordDetails::new();
-                    let mut exit_details = EmulatorChildProcessExitDetails::new();
-                    exit_details.set_exit_code(exit_code as u32);
-                    exit_details.set_process_type(self.process_type.into());
-                    details.emulator_child_process_exit_details = Some(exit_details).into();
-                    metrics::log_event_with_details(MetricEventType::ChildProcessExit, &details);
+                    metrics::log_event(MetricEventType::ChildProcessExit {
+                        exit_code: exit_code as u32,
+                        process_type: self.process_type,
+                    });
                 } else {
                     error!(
                         "Failed to log exit code for process: {:?}, couldn't get exit code",

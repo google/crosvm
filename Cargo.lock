@@ -1801,10 +1801,29 @@ dependencies = [
  "base",
  "cfg-if",
  "chrono",
+ "metrics_events",
  "metrics_generic",
  "serde",
  "sync",
  "winapi",
+]
+
+[[package]]
+name = "metrics_events"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cfg-if",
+ "metrics_events_generic",
+ "serde",
+ "win_util",
+]
+
+[[package]]
+name = "metrics_events_generic"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -1813,11 +1832,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base",
- "cfg-if",
- "proto_build_tools",
- "protobuf",
+ "metrics_events",
  "serde",
- "win_util",
 ]
 
 [[package]]

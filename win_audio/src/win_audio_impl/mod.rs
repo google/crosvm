@@ -1801,7 +1801,7 @@ mod tests {
     use std::thread;
 
     use cros_async::Executor;
-    use metrics::MetricEventType;
+    use metrics::sys::WaveFormatDetails;
     use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
     use winapi::shared::mmreg::WAVEFORMATEX;
     use winapi::shared::mmreg::WAVEFORMATEXTENSIBLE;
@@ -2038,8 +2038,8 @@ mod tests {
         assert!(check_format(
             &audio_client,
             &format,
-            WaveFormatDetailsProto::new(),
-            MetricEventType::AudioFormatRequestOk,
+            WaveFormatDetails::default(),
+            AudioFormatEventType::RequestOk,
         )
         .is_ok());
 
@@ -2067,8 +2067,8 @@ mod tests {
         assert!(check_format(
             &audio_client,
             &format,
-            WaveFormatDetailsProto::new(),
-            MetricEventType::AudioFormatRequestOk,
+            WaveFormatDetails::default(),
+            AudioFormatEventType::RequestOk,
         )
         .is_ok());
 
@@ -2097,8 +2097,8 @@ mod tests {
         assert!(check_format(
             &audio_client,
             &format,
-            WaveFormatDetailsProto::new(),
-            MetricEventType::AudioFormatRequestOk,
+            WaveFormatDetails::default(),
+            AudioFormatEventType::RequestOk,
         )
         .is_err());
     }

@@ -10,6 +10,7 @@ base = { path = "../base" }
 cfg-if = "*"
 serde = { version = "1", features = ["derive"] }
 sync = { path = "../common/sync" }
+metrics_events = { path = "../metrics_events" }
 metrics_product = { path = "../vendor/generic/metrics", package = "metrics_generic" }
 
 [target.'cfg(windows)'.dependencies]

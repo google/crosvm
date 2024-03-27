@@ -3,9 +3,9 @@
 // found in the LICENSE file.
 
 use base::Tube;
+use metrics_events::MetricEventType;
+use metrics_events::RecordDetails;
 
-use crate::protos::event_details::RecordDetails;
-use crate::MetricEventType;
 use crate::MetricsClientDestructor;
 
 /// This interface exists to be used and re-implemented by downstream forks. Updates shouldn't be

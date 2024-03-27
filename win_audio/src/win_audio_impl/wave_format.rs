@@ -11,10 +11,9 @@ use base::error;
 use base::info;
 use base::warn;
 use base::Error;
-use metrics::protos::event_details::wave_format::WaveFormatSubFormat;
-use metrics::protos::event_details::RecordDetails;
-use metrics::protos::event_details::WaveFormat;
-use metrics::protos::event_details::WaveFormatDetails;
+use metrics::sys::WaveFormat as WaveFormatMetric;
+use metrics::sys::WaveFormatDetails as WaveFormatDetailsMetric;
+use metrics::sys::WaveFormatSubFormat as WaveFormatSubFormatMetric;
 use metrics::MetricEventType;
 use winapi::shared::guiddef::IsEqualGUID;
 use winapi::shared::guiddef::GUID;
@@ -46,10 +45,6 @@ use crate::WinAudioError;
 use crate::MONO_CHANNEL_COUNT;
 use crate::STEREO_CHANNEL_COUNT;
 
-pub type WaveFormatDetailsProto = WaveFormatDetails;
-pub type WaveFormatProto = WaveFormat;
-pub type SubFormatProto = WaveFormatSubFormat;
-
 /// Wrapper around `WAVEFORMATEX` and `WAVEFORMATEXTENSIBLE` to hide some of the unsafe calls
 /// that could be made.
 pub enum WaveAudioFormat {
@@ -57,6 +52,12 @@ pub enum WaveAudioFormat {
     WaveFormat(WAVEFORMATEX),
     /// Format where channels can be >2. (It can still have <=2 channels)
     WaveFormatExtensible(WAVEFORMATEXTENSIBLE),
+}
+
+pub(crate) enum AudioFormatEventType {
+    RequestOk,
+    ModifiedOk,
+    Failed,
 }
 
 impl WaveAudioFormat {
@@ -389,59 +390,51 @@ impl PartialEq for WaveAudioFormat {
     }
 }
 
-impl From<&WaveAudioFormat> for WaveFormatProto {
-    fn from(format: &WaveAudioFormat) -> WaveFormatProto {
-        let mut wave_format_proto = WaveFormatProto::new();
-
+impl From<&WaveAudioFormat> for WaveFormatMetric {
+    fn from(format: &WaveAudioFormat) -> WaveFormatMetric {
         match format {
-            WaveAudioFormat::WaveFormat(wave_format) => {
-                wave_format_proto.set_format_tag(wave_format.wFormatTag.into());
-                wave_format_proto.set_channels(wave_format.nChannels.into());
-                wave_format_proto.set_samples_per_sec(
-                    wave_format
-                        .nSamplesPerSec
-                        .try_into()
-                        .expect("Failed to cast nSamplesPerSec to i32"),
-                );
-                wave_format_proto.set_avg_bytes_per_sec(
-                    wave_format
-                        .nAvgBytesPerSec
-                        .try_into()
-                        .expect("Failed to cast nAvgBytesPerSec"),
-                );
-                wave_format_proto.set_block_align(wave_format.nBlockAlign.into());
-                wave_format_proto.set_bits_per_sample(wave_format.wBitsPerSample.into());
-                wave_format_proto.set_size_bytes(wave_format.cbSize.into());
-            }
+            WaveAudioFormat::WaveFormat(wave_format) => WaveFormatMetric {
+                format_tag: wave_format.wFormatTag.into(),
+                channels: wave_format.nChannels.into(),
+                samples_per_sec: wave_format
+                    .nSamplesPerSec
+                    .try_into()
+                    .expect("Failed to cast nSamplesPerSec to i32"),
+                avg_bytes_per_sec: wave_format
+                    .nAvgBytesPerSec
+                    .try_into()
+                    .expect("Failed to cast nAvgBytesPerSec"),
+                block_align: wave_format.nBlockAlign.into(),
+                bits_per_sample: wave_format.wBitsPerSample.into(),
+                size_bytes: wave_format.cbSize.into(),
+                samples: None,
+                channel_mask: None,
+                sub_format: None,
+            },
             WaveAudioFormat::WaveFormatExtensible(wave_format_extensible) => {
-                wave_format_proto.set_format_tag(wave_format_extensible.Format.wFormatTag.into());
-                wave_format_proto.set_channels(wave_format_extensible.Format.nChannels.into());
-                wave_format_proto.set_samples_per_sec(
-                    wave_format_extensible
+                let sub_format = wave_format_extensible.SubFormat;
+                WaveFormatMetric {
+                    format_tag: wave_format_extensible.Format.wFormatTag.into(),
+                    channels: wave_format_extensible.Format.nChannels.into(),
+                    samples_per_sec: wave_format_extensible
                         .Format
                         .nSamplesPerSec
                         .try_into()
                         .expect("Failed to cast nSamplesPerSec to i32"),
-                );
-                wave_format_proto.set_avg_bytes_per_sec(
-                    wave_format_extensible
+                    avg_bytes_per_sec: wave_format_extensible
                         .Format
                         .nAvgBytesPerSec
                         .try_into()
                         .expect("Failed to cast nAvgBytesPerSec"),
-                );
-                wave_format_proto.set_block_align(wave_format_extensible.Format.nBlockAlign.into());
-                wave_format_proto
-                    .set_bits_per_sample(wave_format_extensible.Format.wBitsPerSample.into());
-                wave_format_proto.set_size_bytes(wave_format_extensible.Format.cbSize.into());
-                wave_format_proto.set_samples(wave_format_extensible.Samples.into());
-                wave_format_proto.set_channel_mask(wave_format_extensible.dwChannelMask.into());
-                let sub_format = wave_format_extensible.SubFormat;
-                wave_format_proto.set_sub_format(GuidWrapper(&sub_format).into());
+                    block_align: wave_format_extensible.Format.nBlockAlign.into(),
+                    bits_per_sample: wave_format_extensible.Format.wBitsPerSample.into(),
+                    size_bytes: wave_format_extensible.Format.cbSize.into(),
+                    samples: Some(wave_format_extensible.Samples.into()),
+                    channel_mask: Some(wave_format_extensible.dwChannelMask.into()),
+                    sub_format: Some(GuidWrapper(&sub_format).into()),
+                }
             }
         }
-
-        wave_format_proto
     }
 }
 
@@ -465,18 +458,18 @@ pub(crate) fn get_valid_mix_format(
         WaveAudioFormat::new(format_ptr)
     };
 
-    let mut wave_format_details = WaveFormatDetailsProto::new();
-    let mut event_code = MetricEventType::AudioFormatRequestOk;
-    wave_format_details.requested = Some(WaveFormatProto::from(&format)).into();
+    let mut wave_format_details = WaveFormatDetailsMetric::default();
+    let mut event_code = AudioFormatEventType::RequestOk;
+    wave_format_details.requested = Some(WaveFormatMetric::from(&format));
 
     info!("Printing mix format from `GetMixFormat`:\n{:?}", format);
     const BIT_DEPTH: usize = 32;
     format.modify_mix_format(BIT_DEPTH, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
 
-    let modified_wave_format = Some(WaveFormatProto::from(&format)).into();
+    let modified_wave_format = Some(WaveFormatMetric::from(&format));
     if modified_wave_format != wave_format_details.requested {
         wave_format_details.modified = modified_wave_format;
-        event_code = MetricEventType::AudioFormatModifiedOk;
+        event_code = AudioFormatEventType::ModifiedOk;
     }
 
     info!("Audio Engine Mix Format Used: \n{:?}", format);
@@ -491,8 +484,8 @@ pub(crate) fn get_valid_mix_format(
 pub(crate) fn check_format(
     audio_client: &IAudioClient,
     format: &WaveAudioFormat,
-    mut wave_format_details: WaveFormatDetailsProto,
-    event_code: MetricEventType,
+    mut wave_format_details: WaveFormatDetailsMetric,
+    event_code: AudioFormatEventType,
 ) -> Result<(), WinAudioError> {
     let mut closest_match_format: *mut WAVEFORMATEX = std::ptr::null_mut();
     // SAFETY: All values passed into `IsFormatSupport` is owned by us and we will
@@ -511,8 +504,7 @@ pub(crate) fn check_format(
             // SAFETY: If the `hr` value is `S_FALSE`, then `IsFormatSupported` must've
             // given us a closest match.
             let closest_match_enum = unsafe { WaveAudioFormat::new(closest_match_format) };
-            wave_format_details.closest_matched =
-                Some(WaveFormatProto::from(&closest_match_enum)).into();
+            wave_format_details.closest_matched = Some(WaveFormatMetric::from(&closest_match_enum));
 
             error!(
                 "Current audio format not supported, the closest format is:\n{:?}",
@@ -526,7 +518,7 @@ pub(crate) fn check_format(
         let last_error = Error::last();
         // TODO:(b/253509368): Only upload for audio rendering, since these metrics can't
         // differentiate between rendering and capture.
-        upload_metrics(wave_format_details, MetricEventType::AudioFormatFailed);
+        upload_metrics(wave_format_details, AudioFormatEventType::Failed);
 
         Err(WinAudioError::WindowsError(hr, last_error))
     } else {
@@ -536,38 +528,38 @@ pub(crate) fn check_format(
     }
 }
 
-fn upload_metrics(
-    wave_format_details: WaveFormatDetailsProto,
-    metrics_event_code: MetricEventType,
-) {
-    let mut details = RecordDetails::new();
-    details.wave_format_details = Some(wave_format_details).into();
-    metrics::log_event_with_details(metrics_event_code, &details);
+fn upload_metrics(details: WaveFormatDetailsMetric, event_type: AudioFormatEventType) {
+    let event = match event_type {
+        AudioFormatEventType::RequestOk => MetricEventType::AudioFormatRequestOk(details),
+        AudioFormatEventType::ModifiedOk => MetricEventType::AudioFormatModifiedOk(details),
+        AudioFormatEventType::Failed => MetricEventType::AudioFormatFailed(details),
+    };
+    metrics::log_event(event);
 }
 
 struct GuidWrapper<'a>(&'a GUID);
 
-impl<'a> From<GuidWrapper<'a>> for SubFormatProto {
-    fn from(guid: GuidWrapper) -> SubFormatProto {
+impl<'a> From<GuidWrapper<'a>> for WaveFormatSubFormatMetric {
+    fn from(guid: GuidWrapper) -> WaveFormatSubFormatMetric {
         let guid = guid.0;
         if IsEqualGUID(guid, &KSDATAFORMAT_SUBTYPE_ANALOG) {
-            SubFormatProto::KSDATAFORMAT_SUBTYPE_ANALOG
+            WaveFormatSubFormatMetric::Analog
         } else if IsEqualGUID(guid, &KSDATAFORMAT_SUBTYPE_PCM) {
-            SubFormatProto::KSDATAFORMAT_SUBTYPE_PCM
+            WaveFormatSubFormatMetric::Pcm
         } else if IsEqualGUID(guid, &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) {
-            SubFormatProto::KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
+            WaveFormatSubFormatMetric::IeeeFloat
         } else if IsEqualGUID(guid, &KSDATAFORMAT_SUBTYPE_DRM) {
-            SubFormatProto::KSDATAFORMAT_SUBTYPE_DRM
+            WaveFormatSubFormatMetric::Drm
         } else if IsEqualGUID(guid, &KSDATAFORMAT_SUBTYPE_ALAW) {
-            SubFormatProto::KSDATAFORMAT_SUBTYPE_ALAW
+            WaveFormatSubFormatMetric::ALaw
         } else if IsEqualGUID(guid, &KSDATAFORMAT_SUBTYPE_MULAW) {
-            SubFormatProto::KSDATAFORMAT_SUBTYPE_MULAW
+            WaveFormatSubFormatMetric::MuLaw
         } else if IsEqualGUID(guid, &KSDATAFORMAT_SUBTYPE_ADPCM) {
-            SubFormatProto::KSDATAFORMAT_SUBTYPE_ADPCM
+            WaveFormatSubFormatMetric::Adpcm
         } else if IsEqualGUID(guid, &KSDATAFORMAT_SUBTYPE_MPEG) {
-            SubFormatProto::KSDATAFORMAT_SUBTYPE_MPEG
+            WaveFormatSubFormatMetric::Mpeg
         } else {
-            SubFormatProto::KSDATAFORMAT_SUBTYPE_INVALID
+            WaveFormatSubFormatMetric::Invalid
         }
     }
 }
@@ -1150,18 +1142,22 @@ mod tests {
             unsafe { WaveAudioFormat::new((&wave_format) as *const _ as *mut WAVEFORMATEX) };
 
         // Testing the `into`.
-        let wave_format_proto = WaveFormatProto::from(&wave_audio_format);
+        let wave_format_metric = WaveFormatMetric::from(&wave_audio_format);
 
-        let mut expected = WaveFormatProto::new();
-        expected.set_format_tag(WAVE_FORMAT_PCM.into());
-        expected.set_channels(2);
-        expected.set_samples_per_sec(48000);
-        expected.set_avg_bytes_per_sec(192000);
-        expected.set_block_align(4);
-        expected.set_bits_per_sample(16);
-        expected.set_size_bytes(0);
+        let expected = WaveFormatMetric {
+            format_tag: WAVE_FORMAT_PCM.into(),
+            channels: 2,
+            samples_per_sec: 48000,
+            avg_bytes_per_sec: 192000,
+            block_align: 4,
+            bits_per_sample: 16,
+            size_bytes: 0,
+            samples: None,
+            channel_mask: None,
+            sub_format: None,
+        };
 
-        assert_eq!(wave_format_proto, expected);
+        assert_eq!(wave_format_metric, expected);
     }
 
     #[test]
@@ -1188,20 +1184,21 @@ mod tests {
         };
 
         // Testing the `into`.
-        let wave_format_proto = WaveFormatProto::from(&wave_audio_format);
+        let wave_format_metric = WaveFormatMetric::from(&wave_audio_format);
 
-        let mut expected = WaveFormatProto::new();
-        expected.set_format_tag(WAVE_FORMAT_EXTENSIBLE.into());
-        expected.set_channels(2);
-        expected.set_samples_per_sec(48000);
-        expected.set_avg_bytes_per_sec(8 * 48000);
-        expected.set_block_align(8);
-        expected.set_bits_per_sample(32);
-        expected.set_size_bytes(22);
-        expected.set_samples(32);
-        expected.set_channel_mask((SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT) as i64);
-        expected.set_sub_format(GuidWrapper(&KSDATAFORMAT_SUBTYPE_IEEE_FLOAT).into());
+        let expected = WaveFormatMetric {
+            format_tag: WAVE_FORMAT_EXTENSIBLE.into(),
+            channels: 2,
+            samples_per_sec: 48000,
+            avg_bytes_per_sec: 8 * 48000,
+            block_align: 8,
+            bits_per_sample: 32,
+            size_bytes: 22,
+            samples: Some(32),
+            channel_mask: Some((SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT) as i64),
+            sub_format: Some(WaveFormatSubFormatMetric::IeeeFloat),
+        };
 
-        assert_eq!(wave_format_proto, expected);
+        assert_eq!(wave_format_metric, expected);
     }
 }
