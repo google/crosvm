@@ -5,6 +5,7 @@
 use std::cmp::min;
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -24,6 +25,8 @@ use chrono::Datelike;
 use chrono::TimeZone;
 use chrono::Timelike;
 use chrono::Utc;
+use metrics::log_metric;
+use metrics::MetricEventType;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -86,16 +89,34 @@ pub struct Cmos {
     alarm_fn: Option<AlarmFn>,
     #[serde(skip_serializing)] // skip serializing the worker thread
     worker: Option<WorkerThread<AlarmFn>>,
+    #[serde(skip_serializing)] // skip serializing the armed time
+    armed_time: Option<Arc<Mutex<Instant>>>,
 }
 
 struct AlarmFn {
     irq: IrqEdgeEvent,
     vm_control: Tube,
+    armed_time: Arc<Mutex<Instant>>,
 }
 
 impl AlarmFn {
+    fn new(irq: IrqEdgeEvent, vm_control: Tube) -> Self {
+        Self {
+            irq,
+            vm_control,
+            // Not actually armed, but simpler than wrapping with an Option.
+            armed_time: Arc::new(Mutex::new(Instant::now())),
+        }
+    }
+
     fn fire(&self) -> anyhow::Result<()> {
         self.irq.trigger().context("failed to trigger irq")?;
+
+        let elapsed = self.armed_time.lock().elapsed().as_millis();
+        log_metric(
+            MetricEventType::RtcWakeup,
+            elapsed.try_into().unwrap_or(i64::MAX),
+        );
 
         // The Linux kernel expects wakeups to come via ACPI when ACPI is enabled. There's
         // no real way to determine that here, so just send this unconditionally.
@@ -125,7 +146,7 @@ impl Cmos {
             mem_below_4g,
             mem_above_4g,
             now_fn,
-            Some(AlarmFn { irq, vm_control }),
+            Some(AlarmFn::new(irq, vm_control)),
         )
     }
 
@@ -153,6 +174,7 @@ impl Cmos {
         data[0x5c] = (high_mem >> 8) as u8;
         data[0x5d] = (high_mem >> 16) as u8;
 
+        let armed_time = alarm_fn.as_ref().map(|a| a.armed_time.clone());
         Ok(Cmos {
             index: 0,
             data,
@@ -161,6 +183,7 @@ impl Cmos {
             alarm_time: None,
             alarm_fn,
             worker: None,
+            armed_time,
         })
     }
 
@@ -201,6 +224,9 @@ impl Cmos {
 
                     if self.alarm_fn.is_some() {
                         self.spawn_worker();
+                    }
+                    if let Some(armed_time) = self.armed_time.as_ref() {
+                        *armed_time.lock() = Instant::now();
                     }
 
                     let duration = target
@@ -690,10 +716,7 @@ mod tests {
     fn cmos_sleep_wake() {
         // 2000-01-02T03:04:05+00:00
         let now_fn = || timestamp_to_datetime(946782245);
-        let alarm_fn = AlarmFn {
-            irq: IrqEdgeEvent::new().unwrap(),
-            vm_control: Tube::pair().unwrap().0,
-        };
+        let alarm_fn = AlarmFn::new(IrqEdgeEvent::new().unwrap(), Tube::pair().unwrap().0);
         let mut cmos = Cmos::new_inner(1024, 0, now_fn, Some(alarm_fn)).unwrap();
 
         // A date later this year

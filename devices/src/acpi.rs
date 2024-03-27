@@ -7,6 +7,7 @@ use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Instant;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
@@ -23,6 +24,8 @@ use base::Tube;
 use base::VmEventType;
 use base::WaitContext;
 use base::WorkerThread;
+use metrics::log_metric;
+use metrics::MetricEventType;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -663,38 +666,50 @@ pub struct PmWakeupEvent {
     active: AtomicBool,
     vm_control_tube: Arc<Mutex<Tube>>,
     pm_config: Arc<Mutex<PmConfig>>,
-    debug_label: String,
+    metrics_event: MetricEventType,
+    armed_time: Arc<Mutex<Instant>>,
 }
 
 impl PmWakeupEvent {
     pub fn new(
         vm_control_tube: Arc<Mutex<Tube>>,
         pm_config: Arc<Mutex<PmConfig>>,
-        debug_label: String,
+        metrics_event: MetricEventType,
     ) -> Self {
         Self {
             active: AtomicBool::new(false),
             vm_control_tube,
             pm_config,
-            debug_label,
+            metrics_event,
+            // Not actually armed, but simpler than wrapping with an Option.
+            armed_time: Arc::new(Mutex::new(Instant::now())),
         }
     }
 
     pub fn trigger_wakeup(&self) -> anyhow::Result<()> {
         if self.active.load(Ordering::SeqCst) && self.pm_config.lock().should_trigger_pme() {
+            let elapsed = self.armed_time.lock().elapsed().as_millis();
+            log_metric(
+                self.metrics_event.clone(),
+                elapsed.try_into().unwrap_or(i64::MAX),
+            );
+
             let tube = self.vm_control_tube.lock();
             tube.send(&VmRequest::Gpe(PM_WAKEUP_GPIO))
-                .with_context(|| format!("{} failed to send pme", self.debug_label))?;
+                .with_context(|| format!("{:?} failed to send pme", self.metrics_event))?;
             match tube.recv::<VmResponse>() {
                 Ok(VmResponse::Ok) => (),
-                e => bail!("{} pme failure {:?}", self.debug_label, e),
+                e => bail!("{:?} pme failure {:?}", self.metrics_event, e),
             }
         }
         Ok(())
     }
 
     pub fn set_active(&self, active: bool) {
-        self.active.store(active, Ordering::SeqCst)
+        self.active.store(active, Ordering::SeqCst);
+        if active {
+            *self.armed_time.lock() = Instant::now();
+        }
     }
 }
 

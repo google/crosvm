@@ -45,6 +45,10 @@ pub enum MetricEventType {
     GraphicsHangSyncThread,
     AudioNoopStreamForced,
     AudioPlaybackError,
+    RtcWakeup,
+    VirtioWakeup {
+        virtio_id: u32,
+    },
     Other(i64),
     Vendor(VendorMetricEventType),
 }

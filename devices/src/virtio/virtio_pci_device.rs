@@ -23,6 +23,8 @@ use data_model::Le32;
 use hypervisor::Datamatch;
 use hypervisor::MemCacheType;
 use libc::ERANGE;
+#[cfg(target_arch = "x86_64")]
+use metrics::MetricEventType;
 use resources::Alloc;
 use resources::AllocOptions;
 use resources::SystemAllocator;
@@ -548,7 +550,9 @@ impl VirtioPciDevice {
             Some(PmWakeupEvent::new(
                 self.vm_control_tube.clone(),
                 self.pm_config.clone(),
-                self.device.debug_label(),
+                MetricEventType::VirtioWakeup {
+                    virtio_id: self.device.device_type() as u32,
+                },
             )),
         );
         self.interrupt = Some(interrupt.clone());
@@ -1312,7 +1316,9 @@ impl Suspendable for VirtioPciDevice {
                 Some(PmWakeupEvent::new(
                     self.vm_control_tube.clone(),
                     self.pm_config.clone(),
-                    self.device.debug_label(),
+                    MetricEventType::VirtioWakeup {
+                        virtio_id: self.device.device_type() as u32,
+                    },
                 )),
             ));
         }
