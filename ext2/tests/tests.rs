@@ -61,7 +61,8 @@ fn mkfs_empty(cfg: &Config) {
 
     // To allow non-fatal inconsistencies for now, try auto-fix first.
     // TODO(b/329359333): Remove this once we can generate correct filesystem.
-    let fix_count = 12; // TODO(b/329359333): Make this 0.
+    let fix_count = 5; // TODO(b/329359333): Make this 0.
+
     do_autofix(&path, fix_count);
 
     run_fsck(&path);

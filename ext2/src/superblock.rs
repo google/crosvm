@@ -30,14 +30,14 @@ pub(crate) struct SuperBlock {
     inodes_count: u32,
     blocks_count: u32,
     _r_blocks_count: u32,
-    free_blocks_count: u32,
-    free_inodes_count: u32,
+    pub free_blocks_count: u32,
+    pub free_inodes_count: u32,
     _first_data_block: u32,
-    log_block_size: u32,
+    pub log_block_size: u32,
     log_frag_size: u32,
-    blocks_per_group: u32,
+    pub blocks_per_group: u32,
     frags_per_group: u32,
-    inodes_per_group: u32,
+    pub inodes_per_group: u32,
     mtime: u32,
     wtime: u32,
     _mnt_count: u16,
@@ -53,8 +53,8 @@ pub(crate) struct SuperBlock {
     _def_resuid: u16,
     _def_resgid: u16,
     first_ino: u32,
-    inode_size: u16,
-    block_group_nr: u16,
+    pub inode_size: u16,
+    pub block_group_nr: u16,
     _feature_compat: u32,
     feature_incompat: u32,
     _feature_ro_compat: u32,
@@ -117,5 +117,10 @@ impl SuperBlock {
             ..Default::default()
         };
         Ok(sb)
+    }
+
+    #[inline]
+    pub fn block_size(&self) -> u64 {
+        1024 << self.log_block_size
     }
 }

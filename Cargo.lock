@@ -1151,6 +1151,7 @@ dependencies = [
  "anyhow",
  "argh",
  "base",
+ "enumn",
  "libc",
  "tempfile",
  "uuid",

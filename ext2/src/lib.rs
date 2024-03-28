@@ -8,6 +8,8 @@
 #![deny(missing_docs)]
 
 mod arena;
+mod bitmap;
+mod blockgroup;
 mod fs;
 mod superblock;
 
