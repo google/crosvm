@@ -17,7 +17,7 @@ use base::EnabledHighResTimer;
 use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
 use base::SafeDescriptor;
-use base::Tube;
+use base::SendTube;
 #[cfg(feature = "process-invariants")]
 pub use broker_ipc_product::init_broker_process_invariants;
 use broker_ipc_product::init_child_crash_reporting;
@@ -33,7 +33,7 @@ use serde::Serialize;
 pub struct CommonChildStartupArgs {
     log_args: LogArgs,
     syslog_file: Option<SafeDescriptor>,
-    metrics_tube: Option<Tube>,
+    metrics_tube: Option<SendTube>,
     product_attrs: ProductAttributes,
 }
 
@@ -44,7 +44,7 @@ impl CommonChildStartupArgs {
         syslog_path: Option<PathBuf>,
         #[cfg(feature = "crash-report")] _crash_attrs: crash_report::CrashReportAttributes,
         #[cfg(feature = "process-invariants")] _process_invariants: EmulatorProcessInvariants,
-        metrics_tube: Option<Tube>,
+        metrics_tube: Option<SendTube>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             log_args: log_args.clone(),
