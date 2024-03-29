@@ -1147,6 +1147,7 @@ name = "ext2"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "argh",
  "base",
  "libc",
  "tempfile",
