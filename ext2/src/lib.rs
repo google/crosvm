@@ -11,3 +11,4 @@ mod fs;
 mod superblock;
 
 pub use fs::Ext2;
+pub use superblock::Config;

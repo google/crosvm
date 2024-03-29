@@ -15,16 +15,27 @@ mod linux {
 
     #[derive(FromArgs)]
     /// Create ext2 filesystem.
-    struct Config {
+    struct Args {
         /// path to the disk,
         #[argh(option)]
         path: String,
+
+        /// number of blocks for each group
+        #[argh(option, default = "1024")]
+        blocks_per_group: u32,
+
+        /// number of inodes for each group
+        #[argh(option, default = "1024")]
+        inodes_per_group: u32,
     }
 
     pub fn main() -> anyhow::Result<()> {
-        let cfg: Config = argh::from_env();
-        let ext2 = Ext2::new()?;
-        println!("Create {}", cfg.path);
+        let args: Args = argh::from_env();
+        let ext2 = Ext2::new(&ext2::Config {
+            blocks_per_group: args.blocks_per_group,
+            inodes_per_group: args.inodes_per_group,
+        })?;
+        println!("Create {}", args.path);
         let mem = ext2.write_to_memory()?;
         // SAFETY: `mem` has a valid pointer and its size.
         let buf = unsafe { std::slice::from_raw_parts(mem.as_ptr(), mem.size()) };
@@ -32,8 +43,9 @@ mod linux {
             .write(true)
             .create(true)
             .truncate(true)
-            .open(&cfg.path)
+            .open(&args.path)
             .unwrap();
+
         file.write_all(buf).unwrap();
 
         Ok(())

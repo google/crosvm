@@ -11,6 +11,7 @@ use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use zerocopy::AsBytes;
 
+use crate::superblock::Config;
 use crate::superblock::SuperBlock;
 
 /// A struct to represent an ext2 filesystem.
@@ -20,8 +21,9 @@ pub struct Ext2 {
 
 impl Ext2 {
     /// Create a new ext2 filesystem.
-    pub fn new() -> Result<Self> {
-        let sb = SuperBlock::new()?;
+
+    pub fn new(cfg: &Config) -> Result<Self> {
+        let sb = SuperBlock::new(cfg)?;
         Ok(Ext2 { sb })
     }
 

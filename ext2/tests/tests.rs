@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use base::MappedRegion;
+use ext2::Config;
 use ext2::Ext2;
 use tempfile::tempdir;
 
@@ -44,11 +45,10 @@ fn do_autofix(path: &PathBuf, fix_count: usize) {
     println!("output={:?}", output);
 }
 
-#[test]
-fn mkfs_empty() {
+fn mkfs_empty(cfg: &Config) {
     let td = tempdir().unwrap();
     let path = td.path().join("empty.ext2");
-    let ext2 = Ext2::new().unwrap();
+    let ext2 = Ext2::new(cfg).unwrap();
     let mem = ext2.write_to_memory().unwrap();
     // SAFETY: `mem` has a valid pointer and its size.
     let buf = unsafe { std::slice::from_raw_parts(mem.as_ptr(), mem.size()) };
@@ -66,4 +66,20 @@ fn mkfs_empty() {
     do_autofix(&path, fix_count);
 
     run_fsck(&path);
+}
+
+#[test]
+fn test_mkfs_empty() {
+    mkfs_empty(&Config {
+        blocks_per_group: 1024,
+        inodes_per_group: 1024,
+    });
+}
+
+#[test]
+fn test_mkfs_empty_more_blocks() {
+    mkfs_empty(&Config {
+        blocks_per_group: 2048,
+        inodes_per_group: 4096,
+    });
 }

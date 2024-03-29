@@ -9,6 +9,14 @@ use zerocopy::AsBytes;
 use zerocopy_derive::FromBytes;
 use zerocopy_derive::FromZeroes;
 
+/// A struct to represent the configuration of an ext2 filesystem.
+pub struct Config {
+    /// The number of blocks per group.
+    pub blocks_per_group: u32,
+    /// The number of inodes per group.
+    pub inodes_per_group: u32,
+}
+
 /// The ext2 superblock.
 ///
 /// The field names are based on [the specification](https://www.nongnu.org/ext2-doc/ext2.html#superblock).
@@ -53,13 +61,13 @@ pub(crate) struct SuperBlock {
 }
 
 impl SuperBlock {
-    pub fn new() -> Result<Self> {
+    pub fn new(cfg: &Config) -> Result<Self> {
         const EXT2_MAGIC_NUMBER: u16 = 0xEF53;
 
         // TODO(b/329359333): Support more than 1 groups for larger data.
         let block_group_nr = 1u16;
-        let blocks_per_group = 1024;
-        let inodes_per_group = 1024;
+        let blocks_per_group = cfg.blocks_per_group;
+        let inodes_per_group = cfg.inodes_per_group;
 
         let log_block_size = 2; // (1024 << log_block_size) = 4K bytes
 
