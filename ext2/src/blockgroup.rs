@@ -4,6 +4,8 @@
 
 //! Defines structs for metadata of block groups.
 
+use std::collections::BTreeMap;
+
 use anyhow::bail;
 use anyhow::Result;
 use zerocopy::AsBytes;
@@ -12,6 +14,8 @@ use zerocopy_derive::FromZeroes;
 
 use crate::arena::Arena;
 use crate::bitmap::BitMap;
+use crate::inode::Inode;
+use crate::inode::InodeNum;
 use crate::superblock::SuperBlock;
 
 /// The size of a block in bytes.
@@ -29,22 +33,26 @@ pub(crate) struct BlockGroupDescriptor {
     /// Index of the first block of the inode bitmap.
     pub inode_bitmap: u32,
     /// Index of the first block of the inode table.
-    inode_table: u32,
+    pub inode_table: u32,
     /// Number of free blocks.
-    free_blocks_count: u16,
+    pub free_blocks_count: u16,
     /// Number of free inodes.
-    free_inodes_count: u16,
+    pub free_inodes_count: u16,
     /// Number of directories.
-    used_dirs_count: u16,
+    pub used_dirs_count: u16,
     pad: u16,
     reserved: [u8; 12],
 }
 
-#[allow(dead_code)]
 pub(crate) struct GroupMetaData<'a> {
-    group_desc: &'a mut BlockGroupDescriptor,
-    block_bitmap: BitMap<'a>,
-    inode_bitmap: BitMap<'a>,
+    pub group_desc: &'a mut BlockGroupDescriptor,
+    pub block_bitmap: BitMap<'a>,
+    pub inode_bitmap: BitMap<'a>,
+
+    pub inode_table: BTreeMap<InodeNum, &'a mut Inode>,
+
+    pub first_free_block: u32,
+    pub first_free_inode: u32,
 }
 
 impl<'a> GroupMetaData<'a> {
@@ -75,17 +83,16 @@ impl<'a> GroupMetaData<'a> {
         group_desc.inode_table = group_desc.inode_bitmap + 1;
 
         // First free block is the one after inode table.
-        let first_free_block = group_desc.inode_table as usize + num_blocks_for_inode_table;
+        let first_free_block = group_desc.inode_table + num_blocks_for_inode_table as u32;
         // Free blocks are from `first_free_block` to `blocks_per_group`, inclusive.
-        group_desc.free_blocks_count = (sb.blocks_per_group - first_free_block as u32) as u16;
+        group_desc.free_blocks_count = (sb.blocks_per_group - first_free_block) as u16;
         sb.free_blocks_count = group_desc.free_blocks_count as u32;
 
         // 10 inodes should be reserved in ext2.
         let reserved_inode = 10;
+        let first_free_inode = reserved_inode + 1;
         group_desc.free_inodes_count = (sb.inodes_per_group - reserved_inode) as u16;
         sb.free_inodes_count = group_desc.free_inodes_count as u32;
-
-        group_desc.used_dirs_count = 1; // root dir
 
         // Initialize block bitmap block.
         let bmap = arena.allocate::<[u8; BLOCK_SIZE]>(group_desc.block_bitmap as usize, 0)?;
@@ -94,7 +101,7 @@ impl<'a> GroupMetaData<'a> {
         bmap[valid_bmap_bytes..].iter_mut().for_each(|x| *x = 0xff);
         // Interpret the region as BitMap and mask bits for blocks used for metadata.
         let mut block_bitmap = BitMap::from_slice_mut(&mut bmap[..valid_bmap_bytes]);
-        block_bitmap.mark_first_elems(first_free_block - block_for_super_block as usize, true);
+        block_bitmap.mark_first_elems((first_free_block - block_for_super_block) as usize, true);
 
         let imap = arena.allocate::<[u8; BLOCK_SIZE]>(group_desc.inode_bitmap as usize, 0)?;
         let valid_imap_bytes = (sb.inodes_per_group / 8) as usize;
@@ -109,6 +116,11 @@ impl<'a> GroupMetaData<'a> {
             group_desc,
             block_bitmap,
             inode_bitmap,
+
+            inode_table: BTreeMap::new(),
+
+            first_free_block,
+            first_free_inode,
         })
     }
 }

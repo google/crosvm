@@ -11,6 +11,7 @@ mod arena;
 mod bitmap;
 mod blockgroup;
 mod fs;
+mod inode;
 mod superblock;
 
 pub use fs::create_ext2_region;

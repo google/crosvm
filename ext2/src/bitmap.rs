@@ -4,6 +4,9 @@
 
 //! Defines bitmap types.
 
+use anyhow::bail;
+use anyhow::Result;
+
 pub struct BitMap<'a> {
     inner: &'a mut [u8],
 }
@@ -12,6 +15,21 @@ impl<'a> BitMap<'a> {
     /// Creates a new bitmap from an underlying buffer.
     pub fn from_slice_mut(inner: &'a mut [u8]) -> Self {
         Self { inner }
+    }
+
+    /// Sets the bit at the given index.
+    pub fn set(&mut self, index: usize, value: bool) -> Result<()> {
+        let i = index / 8;
+        let j = index % 8;
+        if i >= self.inner.len() {
+            bail!("index out of range");
+        }
+        if value {
+            self.inner[i] |= 1 << j;
+        } else {
+            self.inner[i] &= !(1 << j);
+        }
+        Ok(())
     }
 
     /// Marks the first `n` bits in the bitmap with the given value.
@@ -60,5 +78,15 @@ mod tests {
         b.mark_first_elems(28, true);
         // (28 + 1) = 8 * 3 + 4. So, the first 3 bytes and 4 bits should be set.
         assert_eq!(b.as_slice(), &[0xff, 0xff, 0xff, 0b1111, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_set() {
+        let mut s = [0; 10];
+        let mut b = BitMap::from_slice_mut(&mut s);
+        b.set(42, true).unwrap();
+        // (42 +  1) == 8 * 5 + 3. So, 3rd bit at 6th byte should be set.
+        // Note that "+1" is needed as this is 0-indexed.
+        assert_eq!(b.as_slice(), &[0, 0, 0, 0, 0, 0b100, 0, 0, 0, 0]);
     }
 }

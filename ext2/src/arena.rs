@@ -165,14 +165,14 @@ impl<'a> Arena<'a> {
         })
     }
 
-    /// Allocate a new region for a value with type `T`.
-    pub fn allocate<T: AsBytes + FromBytes + Sized>(
-        &'a self,
+    /// Allocate a new slice.
+    pub fn allocate_slice(
+        &self,
         block_id: usize,
         block_offset: usize,
-    ) -> Result<&'a mut T> {
+        len: usize,
+    ) -> Result<&'a mut [u8]> {
         let offset = block_id * self.block_size + block_offset;
-        let len = std::mem::size_of::<T>();
         let mem_end = offset.checked_add(len).context("mem_end overflow")?;
 
         if mem_end > self.mem.size() {
@@ -190,7 +190,16 @@ impl<'a> Arena<'a> {
 
         // SAFETY: the memory region [new_addr, new_addr+len) is guaranteed to be valid.
         let slice = unsafe { std::slice::from_raw_parts_mut(new_addr as *mut u8, len) };
+        Ok(slice)
+    }
 
+    /// Allocate a new region for a value with type `T`.
+    pub fn allocate<T: AsBytes + FromBytes + Sized>(
+        &self,
+        block_id: usize,
+        block_offset: usize,
+    ) -> Result<&'a mut T> {
+        let slice = self.allocate_slice(block_id, block_offset, std::mem::size_of::<T>())?;
         T::mut_from(slice).ok_or_else(|| anyhow!("failed to interpret"))
     }
 }

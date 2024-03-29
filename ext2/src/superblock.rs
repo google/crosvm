@@ -10,6 +10,7 @@ use zerocopy_derive::FromBytes;
 use zerocopy_derive::FromZeroes;
 
 use crate::arena::Arena;
+use crate::inode::Inode;
 
 /// A struct to represent the configuration of an ext2 filesystem.
 pub struct Config {
@@ -27,8 +28,8 @@ pub struct Config {
 #[repr(C)]
 #[derive(Default, Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub(crate) struct SuperBlock {
-    inodes_count: u32,
-    blocks_count: u32,
+    pub inodes_count: u32,
+    pub blocks_count: u32,
     _r_blocks_count: u32,
     pub free_blocks_count: u32,
     pub free_inodes_count: u32,
@@ -85,12 +86,6 @@ impl SuperBlock {
         // <https://docs.kernel.org/filesystems/ext4/special_inodes.html>.
         let first_ino = 11;
 
-        // TODO(b/329359333): Replace this with `std::mem::size_of()` once Inode struct is
-        // defined.
-        // TODO(b/333988434): Support larger inode size for extended attributes. Note that
-        // COMPAT_RESIZE_INODE will also be required.
-        let inode_size = 128;
-
         // Superblock is located at 1024 bytes in the first block.
         let sb = arena.allocate::<SuperBlock>(0, 1024)?;
         *sb = Self {
@@ -110,7 +105,7 @@ impl SuperBlock {
             errors: 1, // continue on errors
             rev_level: 1,
             first_ino,
-            inode_size,
+            inode_size: Inode::inode_record_size(),
             block_group_nr,
             feature_incompat: 0x2, // Directory entries contain a type field
             uuid,

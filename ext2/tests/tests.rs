@@ -15,6 +15,7 @@ use ext2::Config;
 use tempfile::tempdir;
 
 const FSCK_PATH: &str = "/usr/sbin/e2fsck";
+const DEBUGFS_PATH: &str = "/usr/sbin/debugfs";
 
 fn run_fsck(path: &PathBuf) {
     // Run fsck and scheck its exit code is 0.
@@ -30,19 +31,22 @@ fn run_fsck(path: &PathBuf) {
     assert!(output.status.success());
 }
 
-fn do_autofix(path: &PathBuf, fix_count: usize) {
-    let output = Command::new(FSCK_PATH)
-        .arg("-fvy")
+fn run_debugfs_ls(path: &PathBuf, expected: &str) {
+    let output = Command::new(DEBUGFS_PATH)
+        .arg("-R")
+        .arg("ls")
         .arg(path)
         .output()
         .unwrap();
 
-    let msg = std::str::from_utf8(&output.stdout).unwrap();
-    assert!(msg.contains("FILE SYSTEM WAS MODIFIED"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    println!("status: {}", output.status);
+    println!("stdout: {stdout}");
+    println!("stderr: {stderr}");
+    assert!(output.status.success());
 
-    assert_eq!(msg.matches("yes").count(), fix_count);
-
-    println!("output={:?}", output);
+    assert_eq!(stdout.trim_start().trim_end(), expected);
 }
 
 fn mkfs_empty(cfg: &Config) {
@@ -59,13 +63,14 @@ fn mkfs_empty(cfg: &Config) {
         .unwrap();
     file.write_all(buf).unwrap();
 
-    // To allow non-fatal inconsistencies for now, try auto-fix first.
-    // TODO(b/329359333): Remove this once we can generate correct filesystem.
-    let fix_count = 5; // TODO(b/329359333): Make this 0.
-
-    do_autofix(&path, fix_count);
-
     run_fsck(&path);
+
+    // Ensure the content of the generated disk image with `debugfs`.
+    // It contains the following entries:
+    // - `.`: the rootdir whose inode is 2 and rec_len is 12.
+    // - `..`: this is also the rootdir with same inode and the same rec_len.
+    // - `lost+found`: inode is 11 and rec_len is 4072 (= block_size - 2*12).
+    run_debugfs_ls(&path, "2  (12) .    2  (12) ..    11  (4072) lost+found");
 }
 
 #[test]
