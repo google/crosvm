@@ -553,7 +553,10 @@ impl PvClockWorker {
                     // SAFETY:
                     // Safe because _rdtsc takes no arguments, and we trust _rdtsc to not modify
                     // any other memory.
-                    unsafe { _rdtsc() } - suspend_time.tsc_value,
+                    // NB: This calculation may wrap around, as TSC can be reset to zero when
+                    // the device has resumed from the "deep" suspend state (it may not happen for
+                    // s2idle cases). It also happens when the tsc value itself wraps.
+                    unsafe { _rdtsc() }.wrapping_sub(suspend_time.tsc_value),
                 )
             } else {
                 return Err(Error::new(libc::ENOTSUP))
@@ -561,7 +564,10 @@ impl PvClockWorker {
             };
 
         // update the total tsc delta during all suspends
-        self.total_suspend_tsc_delta += this_suspend_tsc_delta;
+        // NB: This calculation may wrap around, as the suspend time can be bigger than u64 range.
+        self.total_suspend_tsc_delta = self
+            .total_suspend_tsc_delta
+            .wrapping_add(this_suspend_tsc_delta);
 
         // save tsc_suspended_delta to shared memory
         self.pvclock_shared_data
