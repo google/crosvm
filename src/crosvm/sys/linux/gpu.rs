@@ -193,7 +193,7 @@ pub fn create_gpu_device(
                     socket_path.display(),
                 )
             })?;
-            jail.mount_bind(dir, dir, true)?;
+            jail.mount(dir, dir, "", (libc::MS_BIND | libc::MS_REC) as usize)?;
         }
 
         Some(jail)
