@@ -285,7 +285,7 @@ impl arch::LinuxArch for Riscv64 {
             .insert(pci_bus, RISCV64_PCI_CFG_BASE, RISCV64_PCI_CFG_SIZE)
             .map_err(Error::RegisterPci)?;
 
-        get_serial_cmdline(&mut cmdline, serial_parameters, "mmio", serial_devices)
+        get_serial_cmdline(&mut cmdline, serial_parameters, "mmio", &serial_devices)
             .map_err(Error::GetSerialCmdline)?;
         for param in components.extra_kernel_params {
             cmdline.insert_str(&param).map_err(Error::Cmdline)?;
