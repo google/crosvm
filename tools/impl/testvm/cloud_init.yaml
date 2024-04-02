@@ -23,6 +23,7 @@ preserve_hostname: true
 # Runtime dependencies of crosvm binaries.
 # Note: Keep in sync with ./install-[aarch64-]deps.sh
 packages:
+    - e2fsprogs
     - gcc
     - libavcodec60
     - libavutil58
@@ -61,7 +62,11 @@ runcmd:
     - echo "* soft core unlimited" > /etc/security/limits.conf
 
     # Trim some fat
-    - [apt-get, remove, --yes, vim-runtime, iso-codes, perl, grub-common]
+{% if v1.machine == 'aarch64' %}
+    - [apt-get, remove, --yes, --allow-remove-essential, vim-runtime, grub-common]
+{% else %}
+    - [apt-get, remove, --yes, --allow-remove-essential, vim-runtime, grub-common, grub-efi-amd64-signed]
+{% endif %}
     - [apt-get, autoremove, --yes]
     - [apt-get, clean, --yes]
     - [rm, -rf, /var/lib/apt/lists]

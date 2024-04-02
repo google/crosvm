@@ -1,7 +1,7 @@
 # Libvda Rust wrapper
 
 Note: This crate is specific to ChromeOS and requires the native
-(libvda)\[https://source.chromium.org/chromiumos/chromiumos/codesearch/+/main:src/platform2/arc/vm/libvda\]
+[libvda](https://source.chromium.org/chromiumos/chromiumos/codesearch/+/main:src/platform2/arc/vm/libvda)
 library at link time.
 
 Rust wrapper for libvda. This library is used to enable communication with Chrome's GPU process to

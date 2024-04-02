@@ -76,7 +76,7 @@ def check_line_endings(*files: str):
         check_endings(wdir_endings)
 
 
-def check_rust_lockfiles(*_files: str):
+def check_rust_lockfiles(*files: str):
     "Verifies that none of the Cargo.lock files require updates."
     lockfiles = [Path("Cargo.lock"), *Path("common").glob("*/Cargo.lock")]
     for path in lockfiles:
@@ -99,7 +99,7 @@ KNOWN_DISABLED_FEATURES = [
 ]
 
 
-def check_rust_features(*_files: str):
+def check_rust_features(*files: str):
     "Verifies that all cargo features are included in the list of features we compile upstream."
     metadata = json.loads(cmd("cargo metadata --format-version=1").stdout())
     crosvm_metadata = next(p for p in metadata["packages"] if p["name"] == "crosvm")
