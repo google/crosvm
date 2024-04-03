@@ -32,24 +32,25 @@ pub type RawDescriptor = RawFd;
 
 pub const INVALID_DESCRIPTOR: RawDescriptor = -1;
 
-/// Clones `descriptor`, returning a new `RawDescriptor` that refers to the same open file
-/// description as `descriptor`. The cloned descriptor will have the `FD_CLOEXEC` flag set but will
-/// not share any other file descriptor flags with `descriptor`.
-pub fn clone_descriptor(descriptor: &dyn AsRawDescriptor) -> Result<RawDescriptor> {
+/// Clones `descriptor`, returning a new `SafeDescriptor` that refers to the same file
+/// `descriptor`. The cloned descriptor will have the `FD_CLOEXEC` flag set but will not share any
+/// other file descriptor flags with `descriptor`.
+pub fn clone_descriptor(descriptor: &dyn AsRawDescriptor) -> Result<SafeDescriptor> {
     clone_fd(&descriptor.as_raw_descriptor())
 }
 
-/// Clones `fd`, returning a new file descriptor that refers to the same open file description as
-/// `fd`. The cloned fd will have the `FD_CLOEXEC` flag set but will not share any other file
-/// descriptor flags with `fd`.
-fn clone_fd(fd: &dyn AsRawFd) -> Result<RawFd> {
+/// Clones `fd`, returning a new file descriptor that refers to the same open file as `fd`. The
+/// cloned fd will have the `FD_CLOEXEC` flag set but will not share any other file descriptor
+/// flags with `fd`.
+fn clone_fd(fd: &dyn AsRawFd) -> Result<SafeDescriptor> {
     // SAFETY:
     // Safe because this doesn't modify any memory and we check the return value.
     let ret = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
     if ret < 0 {
         errno_result()
     } else {
-        Ok(ret)
+        // SAFETY: We just dup'd the FD and so have exclusive access.
+        Ok(unsafe { SafeDescriptor::from_raw_descriptor(ret) })
     }
 }
 
@@ -108,9 +109,7 @@ impl TryFrom<&dyn AsRawFd> for SafeDescriptor {
     type Error = std::io::Error;
 
     fn try_from(fd: &dyn AsRawFd) -> std::result::Result<Self, Self::Error> {
-        Ok(SafeDescriptor {
-            descriptor: clone_fd(fd)?,
-        })
+        Ok(clone_fd(fd)?)
     }
 }
 

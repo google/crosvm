@@ -153,10 +153,8 @@ pub enum DecoderEvent {
 mod tests {
     use std::time::Duration;
 
-    use base::FromRawDescriptor;
     use base::MappedRegion;
     use base::MemoryMappingBuilder;
-    use base::SafeDescriptor;
     use base::SharedMemory;
     use base::WaitContext;
 
@@ -233,11 +231,7 @@ mod tests {
     #[allow(dead_code)]
     pub fn build_object_handle(mem: &SharedMemory) -> GuestResourceHandle {
         GuestResourceHandle::VirtioObject(VirtioObjectHandle {
-            // SAFETY:
-            // Safe because we are taking ownership of a just-duplicated FD.
-            desc: unsafe {
-                SafeDescriptor::from_raw_descriptor(base::clone_descriptor(mem).unwrap())
-            },
+            desc: base::clone_descriptor(mem).unwrap(),
             modifier: 0,
         })
     }
@@ -247,11 +241,7 @@ mod tests {
     #[allow(dead_code)]
     pub fn build_guest_mem_handle(mem: &SharedMemory) -> GuestResourceHandle {
         GuestResourceHandle::GuestPages(GuestMemHandle {
-            // SAFETY:
-            // Safe because we are taking ownership of a just-duplicated FD.
-            desc: unsafe {
-                SafeDescriptor::from_raw_descriptor(base::clone_descriptor(mem).unwrap())
-            },
+            desc: base::clone_descriptor(mem).unwrap(),
             mem_areas: vec![GuestMemArea {
                 offset: 0,
                 length: mem.size() as usize,

@@ -11,8 +11,6 @@ use base::clone_descriptor;
 use base::error;
 use base::info;
 use base::Event;
-use base::FromRawDescriptor;
-use base::SafeDescriptor;
 use base::WaitContext;
 use cros_async::select3;
 use cros_async::AsyncWrapper;
@@ -403,12 +401,7 @@ impl Worker {
         let device_wait_ctx = WaitContext::new().map_err(Error::WaitContextCreationFailed)?;
         let device_evt = ex
             .async_from(AsyncWrapper::new(
-                clone_descriptor(&device_wait_ctx)
-                    .map(|fd|
-                        // SAFETY:
-                        // Safe because we just created this fd.
-                        unsafe { SafeDescriptor::from_raw_descriptor(fd) })
-                    .map_err(Error::CloneDescriptorFailed)?,
+                clone_descriptor(&device_wait_ctx).map_err(Error::CloneDescriptorFailed)?,
             ))
             .map_err(Error::EventAsyncCreationFailed)?;
 

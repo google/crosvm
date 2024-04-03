@@ -25,6 +25,7 @@ use base::linux::MemoryMappingUnix;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
 use base::MappedRegion;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
@@ -396,7 +397,7 @@ impl Userfaultfd {
     pub fn try_clone(&self) -> Result<Self> {
         let dup_desc = base::clone_descriptor(self).map_err(Error::Clone)?;
         // SAFETY: no one owns dup_desc.
-        let uffd = unsafe { Self::from_raw_descriptor(dup_desc) };
+        let uffd = Self::from(unsafe { Uffd::from_raw_fd(dup_desc.into_raw_descriptor()) });
         Ok(uffd)
     }
 }

@@ -12,7 +12,6 @@ use anyhow::Context;
 use argh::FromArgs;
 use base::clone_descriptor;
 use base::error;
-use base::FromRawDescriptor;
 use base::SafeDescriptor;
 use base::Tube;
 use base::UnixSeqpacketListener;
@@ -98,13 +97,7 @@ impl GpuBackend {
 
         // Start handling the display.
         let display = clone_descriptor(&*state.borrow_mut().display().borrow())
-            .map(|fd| {
-                AsyncWrapper::new(
-                    // SAFETY:
-                    // Safe because we just created this fd.
-                    unsafe { SafeDescriptor::from_raw_descriptor(fd) },
-                )
-            })
+            .map(AsyncWrapper::new)
             .context("failed to clone inner WaitContext for gpu display")
             .and_then(|ctx| {
                 self.ex

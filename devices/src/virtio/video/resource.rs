@@ -232,11 +232,8 @@ impl GuestResource {
                 let guest_region = mem
                     .shm_region(GuestAddress(addr))
                     .map_err(GuestMemResourceCreationError::CantGetShmRegion)?;
-                let desc = base::clone_descriptor(guest_region)
-                    .map_err(GuestMemResourceCreationError::DescriptorCloneError)?;
-                // SAFETY:
-                // Safe because we are the sole owner of the duplicated descriptor.
-                unsafe { SafeDescriptor::from_raw_descriptor(desc) }
+                base::clone_descriptor(guest_region)
+                    .map_err(GuestMemResourceCreationError::DescriptorCloneError)?
             }
         };
 
@@ -377,7 +374,6 @@ impl GuestResource {
 #[cfg(test)]
 mod tests {
     use base::MappedRegion;
-    use base::SafeDescriptor;
     use base::SharedMemory;
 
     use super::*;
@@ -415,10 +411,7 @@ mod tests {
 
         // Create the `GuestMemHandle` we will try to map and retrieve the data from.
         let mem_handle = GuestResourceHandle::GuestPages(GuestMemHandle {
-            // SAFETY: descriptor is expected to be valid
-            desc: unsafe {
-                SafeDescriptor::from_raw_descriptor(base::clone_descriptor(&mem).unwrap())
-            },
+            desc: base::clone_descriptor(&mem).unwrap(),
             mem_areas: page_order
                 .iter()
                 .map(|&page| GuestMemArea {
