@@ -7,18 +7,6 @@ use std::path::PathBuf;
 
 fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-
-    #[cfg(debug_assertions)]
-    println!(
-        "cargo:rustc-link-search={}\\..\\..\\..\\libs\\debug\\",
-        manifest_dir
-    );
-    #[cfg(not(debug_assertions))]
-    println!(
-        "cargo:rustc-link-search={}\\..\\..\\..\\libs\\release\\",
-        manifest_dir
-    );
-
     build_protos(&PathBuf::from(manifest_dir));
 }
 
