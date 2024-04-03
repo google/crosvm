@@ -1,0 +1,18 @@
+[package]
+name = "ext2"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "*"
+base = { path = "../base/" }
+libc = "*"
+uuid = { version = "*", features = ["v4"] }
+zerocopy = "0.7.29" # >=0.7.29 is required for our 'AsBytes'
+zerocopy-derive = "*"
+
+[dev-dependencies]
+tempfile = "*"

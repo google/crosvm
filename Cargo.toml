@@ -59,6 +59,7 @@ members = [
     "devices",
     "disk",
     "e2e_tests",
+    "ext2",
     "fuse",
     "fuzz",
     "gpu_display",
