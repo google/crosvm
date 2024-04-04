@@ -68,6 +68,7 @@ pub use self::protocol::VIRTIO_GPU_F_FENCE_PASSING;
 pub use self::protocol::VIRTIO_GPU_F_RESOURCE_BLOB;
 pub use self::protocol::VIRTIO_GPU_F_RESOURCE_UUID;
 pub use self::protocol::VIRTIO_GPU_F_VIRGL;
+pub use self::protocol::VIRTIO_GPU_MAX_SCANOUTS;
 pub use self::protocol::VIRTIO_GPU_SHM_ID_HOST_VISIBLE;
 use self::protocol::*;
 use self::virtio_gpu::to_rutabaga_descriptor;

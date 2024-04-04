@@ -531,6 +531,7 @@ mod tests {
                 let wndproc_thread_builder = {
                     let mut wndproc_thread_builder = wndproc_thread_builder;
                     wndproc_thread_builder
+                        .set_max_num_windows(1)
                         .set_display_tube(None)
                         .set_ime_tube(Some(_device_ime_tube));
                     wndproc_thread_builder

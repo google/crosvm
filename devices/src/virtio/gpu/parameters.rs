@@ -16,6 +16,7 @@ use vm_control::gpu::DisplayParameters;
 
 use super::GpuMode;
 use super::GpuWsi;
+use crate::virtio::gpu::VIRTIO_GPU_MAX_SCANOUTS;
 use crate::PciAddress;
 
 mod serde_capset_mask {
@@ -41,6 +42,8 @@ mod serde_capset_mask {
 pub struct GpuParameters {
     #[serde(rename = "backend")]
     pub mode: GpuMode,
+    #[serde(default = "default_max_num_displays")]
+    pub max_num_displays: u32,
     #[serde(rename = "displays")]
     pub display_params: Vec<DisplayParameters>,
     // `width` and `height` are supported for CLI backwards compatibility.
@@ -81,6 +84,7 @@ pub struct GpuParameters {
 impl Default for GpuParameters {
     fn default() -> Self {
         GpuParameters {
+            max_num_displays: default_max_num_displays(),
             display_params: vec![],
             __width_compat: None,
             __height_compat: None,
@@ -107,6 +111,10 @@ impl Default for GpuParameters {
             renderer_features: None,
         }
     }
+}
+
+fn default_max_num_displays() -> u32 {
+    VIRTIO_GPU_MAX_SCANOUTS as u32
 }
 
 #[cfg(test)]

@@ -62,11 +62,6 @@ use super::window_message_processor::*;
 // The default app icon id, which is defined in crosvm-manifest.rc.
 const APP_ICON_ID: u16 = 1;
 
-// The number of GUI windows to pre-create when booting KiwiVM. At most this
-// number of guest displays and host windows can be used concurrently.
-// TODO(b/314984693): The service or the config file should specify this number.
-const MAX_NUM_WINDOWS: usize = 1;
-
 #[derive(Debug)]
 enum MessageLoopState {
     /// The initial state.
@@ -241,13 +236,14 @@ impl WindowProcedureThread {
         // We don't implement Default for WindowProcedureThreadBuilder so that the builder function
         // is the only way to create WindowProcedureThreadBuilder.
         WindowProcedureThreadBuilder {
+            max_num_windows: 1,
             display_tube: None,
             #[cfg(feature = "kiwi")]
             ime_tube: None,
         }
     }
 
-    fn start_thread(gpu_main_display_tube: Option<Tube>) -> Result<Self> {
+    fn start_thread(max_num_windows: u32, gpu_main_display_tube: Option<Tube>) -> Result<Self> {
         let (message_router_handle_sender, message_router_handle_receiver) = channel();
         let message_loop_state = Arc::new(AtomicI32::new(MessageLoopState::NotStarted as i32));
         let close_requested_event = Event::new().unwrap();
@@ -262,6 +258,7 @@ impl WindowProcedureThread {
             .spawn(move || {
                 match close_requested_event_clone.try_clone() {
                     Ok(close_requested_event) => Self::run_message_loop(
+                        max_num_windows,
                         message_router_handle_sender,
                         message_loop_state_clone,
                         gpu_main_display_tube,
@@ -337,6 +334,7 @@ impl WindowProcedureThread {
     }
 
     fn run_message_loop(
+        max_num_windows: u32,
         message_router_handle_sender: Sender<Result<u32>>,
         message_loop_state: Arc<AtomicI32>,
         gpu_main_display_tube: Option<Tube>,
@@ -346,14 +344,16 @@ impl WindowProcedureThread {
         // SAFETY:
         // Safe because the dispatcher will take care of the lifetime of the `MessageOnlyWindow` and
         // `GuiWindow` objects.
-        match unsafe { Self::create_windows() }.and_then(|(message_router_window, gui_windows)| {
-            WindowMessageDispatcher::new(
-                message_router_window,
-                gui_windows,
-                gpu_main_display_tube.clone(),
-                close_requested_event,
-            )
-        }) {
+        match unsafe { Self::create_windows(max_num_windows) }.and_then(
+            |(message_router_window, gui_windows)| {
+                WindowMessageDispatcher::new(
+                    message_router_window,
+                    gui_windows,
+                    gpu_main_display_tube.clone(),
+                    close_requested_event,
+                )
+            },
+        ) {
             Ok(dispatcher) => {
                 info!("WndProc thread entering message loop");
                 message_loop_state.store(MessageLoopState::Running as i32, Ordering::SeqCst);
@@ -542,7 +542,7 @@ impl WindowProcedureThread {
     /// # Safety
     /// The owner of the returned window objects is responsible for dropping them before we finish
     /// processing `WM_NCDESTROY`, because the window handle will become invalid afterwards.
-    unsafe fn create_windows() -> Result<(MessageOnlyWindow, Vec<GuiWindow>)> {
+    unsafe fn create_windows(max_num_windows: u32) -> Result<(MessageOnlyWindow, Vec<GuiWindow>)> {
         let message_router_window = MessageOnlyWindow::new(
             /* class_name */
             Self::get_window_class_name::<MessageOnlyWindow>()
@@ -559,10 +559,10 @@ impl WindowProcedureThread {
         // window may use the background brush to clear the gfxstream window client area when
         // drawing occurs. This caused the screen flickering issue during resizing.
         // See b/197786842 for details.
-        let mut gui_windows = Vec::with_capacity(MAX_NUM_WINDOWS);
-        for scanout_id in 0..MAX_NUM_WINDOWS {
+        let mut gui_windows = Vec::with_capacity(max_num_windows as usize);
+        for scanout_id in 0..max_num_windows {
             gui_windows.push(GuiWindow::new(
-                scanout_id as u32,
+                scanout_id,
                 /* class_name */
                 Self::get_window_class_name::<GuiWindow>()
                     .with_context(|| {
@@ -650,12 +650,18 @@ unsafe impl Send for WindowProcedureThread {}
 
 #[derive(Deserialize, Serialize)]
 pub struct WindowProcedureThreadBuilder {
+    max_num_windows: u32,
     display_tube: Option<Tube>,
     #[cfg(feature = "kiwi")]
     ime_tube: Option<Tube>,
 }
 
 impl WindowProcedureThreadBuilder {
+    pub fn set_max_num_windows(&mut self, max_num_windows: u32) -> &mut Self {
+        self.max_num_windows = max_num_windows;
+        self
+    }
+
     pub fn set_display_tube(&mut self, display_tube: Option<Tube>) -> &mut Self {
         self.display_tube = display_tube;
         self
@@ -675,10 +681,16 @@ impl WindowProcedureThreadBuilder {
     pub fn start_thread(self) -> Result<WindowProcedureThread> {
         cfg_if::cfg_if! {
             if #[cfg(feature = "kiwi")] {
-                let ime_tube = self.ime_tube.ok_or_else(|| anyhow!("The ime tube is not set."))?;
-                WindowProcedureThread::start_thread(self.display_tube, ime_tube)
+                let ime_tube = self
+                    .ime_tube
+                    .ok_or_else(|| anyhow!("The ime tube is not set."))?;
+                WindowProcedureThread::start_thread(
+                    self.max_num_windows,
+                    self.display_tube,
+                    ime_tube,
+                )
             } else {
-                WindowProcedureThread::start_thread(None)
+                WindowProcedureThread::start_thread(self.max_num_windows, None)
             }
         }
     }

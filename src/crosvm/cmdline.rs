@@ -1338,9 +1338,13 @@ pub struct RunCommand {
     /// Possible key values:
     ///     backend=(2d|virglrenderer|gfxstream) - Which backend to
     ///        use for virtio-gpu (determining rendering protocol)
+    ///     max_num_displays=INT - The maximum number of concurrent
+    ///        virtual displays in this VM. This must not exceed
+    ///        VIRTIO_GPU_MAX_SCANOUTS (i.e. 16).
     ///     displays=[[GpuDisplayParameters]] - The list of virtual
-    ///         displays to create. See the possible key values for
-    ///         GpuDisplayParameters in the section below.
+    ///        displays to create when booting this VM. Displays may
+    ///        be hotplugged after booting. See the possible key
+    ///        values for GpuDisplayParameters in the section below.
     ///     context-types=LIST - The list of supported context
     ///       types, separated by ':' (default: no contexts enabled)
     ///     width=INT - The width of the virtual display connected

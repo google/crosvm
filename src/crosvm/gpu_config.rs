@@ -2,10 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(feature = "kiwi")]
-use base::warn;
-#[cfg(feature = "kiwi")]
-use battlestar::process_invariants;
+use devices::virtio::gpu::VIRTIO_GPU_MAX_SCANOUTS;
 use devices::virtio::GpuDisplayMode;
 use devices::virtio::GpuDisplayParameters;
 #[cfg(feature = "gfxstream")]
@@ -103,37 +100,27 @@ pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
             ));
         }
 
+        if gpu_parameters.max_num_displays < 1
+            || gpu_parameters.max_num_displays > VIRTIO_GPU_MAX_SCANOUTS as u32
+        {
+            return Err(format!(
+                "`max_num_displays` must be in range [1, {}]",
+                VIRTIO_GPU_MAX_SCANOUTS
+            ));
+        }
+        if gpu_parameters.display_params.len() as u32 > gpu_parameters.max_num_displays {
+            return Err(format!(
+                "Provided more `display_params` ({}) than `max_num_displays` ({})",
+                gpu_parameters.display_params.len(),
+                gpu_parameters.max_num_displays
+            ));
+        }
+
         // Add a default display if no display is specified.
         if gpu_parameters.display_params.is_empty() {
             gpu_parameters.display_params.push(Default::default());
         }
 
-        // Process invariants are not written to the static `PROCESS_INVARIANTS` yet, so instead of
-        // calling `phenotype!(kiwi_emulator_feature, get_enable_4k_uhd_resolution)`, we have to
-        // load it by ourselves.
-        // TODO(b/276909432): The BSS should read the experiment flags and specify the virtual
-        // display size, and then we can remove this workaround.
-        #[cfg(feature = "kiwi")]
-        let is_4k_uhd_enabled = match process_invariants::load_invariants(
-            &cfg.process_invariants_data_handle,
-            &cfg.process_invariants_data_size,
-        ) {
-            Ok(invariants) => invariants
-                .get_flag_snapshot()
-                .get_features()
-                .kiwi_emulator_feature
-                .clone()
-                .unwrap_or_default()
-                .get_enable_4k_uhd_resolution(),
-            Err(e) => {
-                warn!(
-                    "Failed to load process invariants, will not enable 4k UHD: {}",
-                    e
-                );
-                false
-            }
-        };
-        #[cfg(not(feature = "kiwi"))]
         let is_4k_uhd_enabled = false;
         let (width, height) =
             gpu_parameters.display_params[0].get_virtual_display_size_4k_uhd(is_4k_uhd_enabled);
@@ -169,6 +156,81 @@ mod tests {
 
     fn parse_gpu_display_options(s: &str) -> Result<GpuDisplayParameters, String> {
         from_key_values::<GpuDisplayParameters>(s)
+    }
+
+    #[test]
+    fn parse_gpu_options_max_num_displays() {
+        {
+            let gpu_params = parse_gpu_options("").unwrap();
+            assert_eq!(gpu_params.max_num_displays, VIRTIO_GPU_MAX_SCANOUTS as u32);
+        }
+        {
+            let gpu_params = parse_gpu_options("max-num-displays=5").unwrap();
+            assert_eq!(gpu_params.max_num_displays, 5);
+        }
+        {
+            let command = crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--gpu", "max-num-displays=0", "/dev/null"],
+            )
+            .unwrap();
+            assert!(Config::try_from(command).is_err());
+        }
+        {
+            let command = crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &[
+                    "--gpu",
+                    format!("max-num-displays={}", VIRTIO_GPU_MAX_SCANOUTS + 1).as_str(),
+                    "/dev/null",
+                ],
+            )
+            .unwrap();
+            assert!(Config::try_from(command).is_err());
+        }
+        // TODO(b/332910955): Remove the single display restriction on Windows and enable this test.
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        {
+            let command = crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &[
+                    "--gpu",
+                    "max-num-displays=1,displays=[[mode=windowed[1920,1080]],\
+                    [mode=windowed[1280,720]]]",
+                    "/dev/null",
+                ],
+            )
+            .unwrap();
+            assert!(Config::try_from(command).is_err());
+        }
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        {
+            let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &[
+                    "--gpu",
+                    "max-num-displays=3,displays=[[mode=windowed[1920,1080]],\
+                    [mode=windowed[1280,720]]]",
+                    "/dev/null",
+                ],
+            )
+            .unwrap()
+            .try_into()
+            .unwrap();
+
+            let gpu_params = config.gpu_parameters.unwrap();
+
+            assert_eq!(gpu_params.max_num_displays, 3);
+            assert_eq!(gpu_params.display_params.len(), 2);
+            assert_eq!(
+                gpu_params.display_params[0].mode,
+                GpuDisplayMode::Windowed(1920, 1080)
+            );
+            assert_eq!(
+                gpu_params.display_params[1].mode,
+                GpuDisplayMode::Windowed(1280, 720)
+            );
+        }
     }
 
     #[test]
