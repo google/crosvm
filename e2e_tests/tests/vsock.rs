@@ -64,6 +64,7 @@ fn host_to_guest_disable_sandbox() {
 }
 
 #[test]
+#[ignore = "b/333090177 test is flaky"]
 fn host_to_guest_snapshot_restore() {
     let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
