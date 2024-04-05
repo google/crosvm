@@ -451,6 +451,7 @@ devices = { path = "devices" }
 disk = { path = "disk" }
 document-features = { version = "0.2", optional = true }
 enumn = "0.1.0"
+ext2 = { path = "ext2" }
 gdbstub = { version = "0.7.0", optional = true }
 gdbstub_arch = { version = "0.3.0", optional = true }
 rutabaga_gfx = { path = "rutabaga_gfx"}

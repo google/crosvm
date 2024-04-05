@@ -386,6 +386,12 @@ pub struct FileBackedMappingParameters {
     pub align: bool,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, serde_keyvalue::FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct PmemExt2Option {
+    pub path: PathBuf,
+}
+
 fn parse_hex_or_decimal(maybe_hex_string: &str) -> Result<u64, String> {
     // Parse string starting with 0x as hex and others as numbers.
     if let Some(hex_string) = maybe_hex_string.strip_prefix("0x") {
@@ -795,6 +801,7 @@ pub struct Config {
     #[cfg(feature = "plugin")]
     pub plugin_mounts: Vec<crate::crosvm::plugin::BindMount>,
     pub plugin_root: Option<PathBuf>,
+    pub pmem_ext2: Vec<PmemExt2Option>,
     pub pmems: Vec<PmemOption>,
     #[cfg(feature = "process-invariants")]
     pub process_invariants_data_handle: Option<u64>,
@@ -1016,6 +1023,7 @@ impl Default for Config {
             #[cfg(feature = "plugin")]
             plugin_mounts: Vec::new(),
             plugin_root: None,
+            pmem_ext2: Vec::new(),
             pmems: Vec::new(),
             #[cfg(feature = "process-invariants")]
             process_invariants_data_handle: None,
@@ -2407,5 +2415,20 @@ mod tests {
         assert!(validate_pmem(&pmem)
             .unwrap_err()
             .contains("swap-interval parameter can only be set for writable pmem device"));
+    }
+
+    #[test]
+    fn parse_pmem_ext2() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--pmem-ext2", "/path/to/dir", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let opt = config.pmem_ext2.first().unwrap();
+
+        assert_eq!(opt.path, PathBuf::from("/path/to/dir"));
     }
 }

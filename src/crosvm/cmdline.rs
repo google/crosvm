@@ -94,6 +94,7 @@ use crate::crosvm::config::HypervisorKind;
 use crate::crosvm::config::InputDeviceOption;
 use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::config::MemOptions;
+use crate::crosvm::config::PmemExt2Option;
 use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::config::VhostUserFrontendOption;
 use crate::crosvm::config::VhostUserFsOption;
@@ -1837,6 +1838,12 @@ pub struct RunCommand {
     /// path to a disk image
     pmem_device: Vec<DiskOption>,
 
+    #[argh(option, arg_name = "PATH")]
+    #[serde(default)]
+    #[merge(strategy = append)]
+    /// (EXPERIMENTAL): construct an ext2 file system on a pmem device from the given directory
+    pub pmem_ext2: Vec<PmemExt2Option>,
+
     #[cfg(feature = "process-invariants")]
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
@@ -2890,6 +2897,8 @@ impl TryFrom<RunCommand> for super::config::Config {
                 return Err("only one root disk can be specified".to_string());
             }
         }
+
+        cfg.pmem_ext2 = cmd.pmem_ext2;
 
         #[cfg(feature = "pvclock")]
         {

@@ -88,6 +88,7 @@ use sync::Mutex;
 use vm_control::api::VmMemoryClient;
 use vm_memory::GuestAddress;
 
+use crate::crosvm::config::PmemExt2Option;
 use crate::crosvm::config::PmemOption;
 use crate::crosvm::config::VhostUserFrontendOption;
 use crate::crosvm::config::VhostUserFsOption;
@@ -1169,13 +1170,71 @@ pub fn create_pmem_device(
 
     let dev = virtio::Pmem::new(
         virtio::base_features(protection_type),
-        fd,
+        Some(fd),
         GuestAddress(mapping_address),
         slot,
         arena_size,
         pmem_device_tube,
         pmem.swap_interval,
         !pmem.ro,
+    )
+    .context("failed to create pmem device")?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev) as Box<dyn VirtioDevice>,
+        jail: simple_jail(jail_config, "pmem_device")?,
+    })
+}
+
+pub fn create_pmem_ext2_device(
+    protection_type: ProtectionType,
+    jail_config: &Option<JailConfig>,
+    vm: &mut impl Vm,
+    resources: &mut SystemAllocator,
+    opts: &PmemExt2Option,
+    index: usize,
+    pmem_device_tube: Tube,
+) -> DeviceResult {
+    let cfg = ext2::Config {
+        inodes_per_group: 4096,
+        blocks_per_group: 1024,
+    };
+    let arena = ext2::create_ext2_region(&cfg, Some(opts.path.as_path()))?;
+    let arena_size = arena.size() as u64;
+
+    let mapping_address = resources
+        .allocate_mmio(
+            arena_size,
+            Alloc::PmemDevice(index),
+            format!("pmem_ext2_image_{}", index),
+            AllocOptions::new()
+                .top_down(true)
+                .prefetchable(true)
+                // 2MB alignment for DAX
+                // cf. https://docs.pmem.io/persistent-memory/getting-started-guide/creating-development-environments/linux-environments/advanced-topics/i-o-alignment-considerations#verifying-io-alignment
+                .align(2 * 1024 * 1024),
+        )
+        .context("failed to allocate memory for pmem device")?;
+
+    let slot = vm
+        .add_memory_region(
+            GuestAddress(mapping_address),
+            Box::new(arena),
+            /* read_only= */ true,
+            /* log_dirty_pages= */ false,
+            MemCacheType::CacheCoherent,
+        )
+        .context("failed to add pmem device memory")?;
+
+    let dev = virtio::Pmem::new(
+        virtio::base_features(protection_type),
+        None,
+        GuestAddress(mapping_address),
+        slot,
+        arena_size,
+        pmem_device_tube,
+        /* swap_interval= */ None,
+        /* mapping_writable= */ false,
     )
     .context("failed to create pmem device")?;
 

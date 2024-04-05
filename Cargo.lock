@@ -805,6 +805,7 @@ dependencies = [
  "disk",
  "document-features",
  "enumn",
+ "ext2",
  "futures",
  "gdbstub",
  "gdbstub_arch",

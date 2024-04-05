@@ -371,7 +371,7 @@ struct PmemSnapshot {
 impl Pmem {
     pub fn new(
         base_features: u64,
-        disk_image: File,
+        disk_image: Option<File>,
         mapping_address: GuestAddress,
         mapping_arena_slot: MemSlot,
         mapping_size: u64,
@@ -391,7 +391,7 @@ impl Pmem {
         Ok(Pmem {
             worker_thread: None,
             features: avail_features,
-            disk_image: Some(disk_image),
+            disk_image,
             mapping_address,
             mapping_arena_slot,
             mapping_size,

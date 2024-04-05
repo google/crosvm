@@ -403,6 +403,19 @@ fn create_virtio_devices(
         )?);
     }
 
+    for (index, pmem_ext2) in cfg.pmem_ext2.iter().enumerate() {
+        let pmem_device_tube = pmem_device_tubes.remove(0);
+        devs.push(create_pmem_ext2_device(
+            cfg.protection_type,
+            &cfg.jail_config,
+            vm,
+            resources,
+            pmem_ext2,
+            index,
+            pmem_device_tube,
+        )?);
+    }
+
     if cfg.rng {
         devs.push(create_rng_device(cfg.protection_type, &cfg.jail_config)?);
     }
@@ -1803,7 +1816,7 @@ where
     }
 
     let mut pmem_device_tubes = Vec::new();
-    let pmem_count = cfg.pmems.len();
+    let pmem_count = cfg.pmems.len() + cfg.pmem_ext2.len();
     for _ in 0..pmem_count {
         let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
         pmem_device_tubes.push(pmem_device_tube);
