@@ -201,6 +201,7 @@ fn tap_hotplug_add_remove_add_impl() {
 
 /// Checks tap hotplug works with a device added, removed, then added again.
 #[test]
+#[ignore = "b/333090169 test is flaky"]
 fn tap_hotplug_add_remove_add() {
     call_test_with_sudo("tap_hotplug_add_remove_add_impl");
 }
@@ -262,6 +263,7 @@ fn tap_hotplug_add_remove_rapid_add_impl() {
 
 /// Checks tap hotplug works with a device added, removed, then rapidly added again.
 #[test]
+#[ignore = "b/333090169 test is flaky"]
 fn tap_hotplug_add_remove_rapid_add() {
     call_test_with_sudo("tap_hotplug_add_remove_rapid_add_impl");
 }
