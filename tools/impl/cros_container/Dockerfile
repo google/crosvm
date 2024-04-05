@@ -38,4 +38,4 @@ RUN repo sync -j 8 --current-branch
 
 RUN --security=insecure cros_sdk --create && rm /home/crosvmdev/chromiumos/.cache/sdks/*
 RUN --security=insecure cros_sdk setup_board --board=${BOARD}
-RUN --security=insecure cros_sdk emerge-${BOARD} --update --deep -j$(nproc) crosvm
+RUN --security=insecure cros_sdk emerge-${BOARD} --update --deep -j$(nproc) chromeos-base/crosvm
