@@ -54,15 +54,6 @@ fn load_transparent_hugepage_size() -> anyhow::Result<usize> {
     Ok(hugepage_size)
 }
 
-/// Helper methods to calculate values derived from page size.
-///
-/// This has performance benefits from:
-///
-/// * Avoiding calling `sysconf(_SC_PAGESIZE)` multiple times by caching the shift bit.
-/// * Using the (faster) shift instruction instead of (slower) multiply/divide instruction.
-#[derive(Clone, Copy, Debug)]
-pub struct PagesizeShift(u8);
-
 /// The page index of the page which contains the "addr".
 #[inline]
 pub fn addr_to_page_idx(addr: usize) -> usize {
