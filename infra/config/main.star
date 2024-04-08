@@ -28,6 +28,7 @@ luci.project(
                 "role/swarming.poolOwner",
                 "role/swarming.poolUser",
                 "role/swarming.taskTriggerer",
+                "role/buildbucket.owner",
             ],
             groups = "mdb/crosvm-acl-luci-admin",
         ),
