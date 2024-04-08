@@ -2,15 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::ffi::c_char;
 use std::ffi::CStr;
+use std::ffi::CString;
 use std::panic::catch_unwind;
 use std::process::abort;
 use std::ptr::NonNull;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::rc::Rc;
+use std::slice;
 
 use base::error;
-use base::warn;
 use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
@@ -25,169 +26,179 @@ use crate::GpuDisplaySurface;
 use crate::SurfaceType;
 use crate::SysDisplayT;
 
-// Structs and functions from display_android.cpp:
+// Opaque blob
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct android_display_context {
-    pub _bindgen_opaque_blob: [u32; 1usize],
+pub(crate) struct AndroidDisplayContext {
+    _data: [u8; 0],
+    _marker: core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
-#[allow(non_camel_case_types)]
-pub type android_display_error_callback_type =
-    ::std::option::Option<unsafe extern "C" fn(message: *const ::std::os::raw::c_char)>;
+// Opaque blob
+#[repr(C)]
+pub(crate) struct ANativeWindow {
+    _data: [u8; 0],
+    _marker: core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+}
+
+// Should be the same as ANativeWindow_Buffer in android/native_window.h
+// Note that this struct is part of NDK; guaranteed to be stable, so we use it directly across the
+// FFI.
+#[repr(C)]
+pub(crate) struct ANativeWindow_Buffer {
+    width: i32,
+    height: i32,
+    stride: i32, // in number of pixels, NOT bytes
+    format: i32,
+    bits: *mut u8,
+    reserved: [u32; 6],
+}
+
+pub(crate) type ErrorCallback = unsafe extern "C" fn(message: *const c_char);
 
 extern "C" {
+    /// Constructs an AndroidDisplayContext for this backend. This awlays returns a valid (ex:
+    /// non-null) handle to the context. The `name` parameter is from crosvm commandline and the
+    /// client of crosvm will use it to locate and communicate to the AndroidDisplayContext. For
+    /// example, this can be a path to UNIX domain socket where a RPC binder server listens on.
+    /// `error_callback` is a function pointer to an error reporting function, and will be used by
+    /// this and other functions below when something goes wrong. The returned context should be
+    /// destroyed by calling `destroy_android_display_context` if this backend is no longer in use.
     fn create_android_display_context(
-        service_name: *const ::std::os::raw::c_char,
-        service_name_len: usize,
-        error_callback: android_display_error_callback_type,
-    ) -> *mut android_display_context;
+        name: *const c_char,
+        error_callback: ErrorCallback,
+    ) -> *mut AndroidDisplayContext;
 
-    fn destroy_android_display_context(
-        error_callback: android_display_error_callback_type,
-        self_: *mut *mut android_display_context,
-    );
+    /// Destroys the AndroidDisplayContext created from `create_android_display_context`.
+    fn destroy_android_display_context(self_: *mut AndroidDisplayContext);
 
-    fn get_android_display_width(
-        error_callback: android_display_error_callback_type,
-        self_: *mut android_display_context,
-    ) -> u32;
-
-    fn get_android_display_height(
-        error_callback: android_display_error_callback_type,
-        self_: *mut android_display_context,
-    ) -> u32;
-
-    fn blit_android_display(
-        error_callback: android_display_error_callback_type,
-        self_: *mut android_display_context,
+    /// Creates an Android Surface (which is also called as Window) of given size. If the surface
+    /// can't be created for whatever reason, null pointer is returned, in which case we shouldn't
+    /// proceed further.
+    fn create_android_surface(
+        ctx: *mut AndroidDisplayContext,
         width: u32,
         height: u32,
-        bytes: *mut u8,
-        size: usize,
-    );
+    ) -> *mut ANativeWindow;
+
+    /// Destroys the Android surface created from `create_android_surface`.
+    #[allow(dead_code)]
+    fn destroy_android_surface(ctx: *mut AndroidDisplayContext, surface: *mut ANativeWindow);
+
+    /// Obtains one buffer from the given Android Surface. The information about the buffer (buffer
+    /// address, size, stride, etc) is reported via the `ANativeWindow_Buffer` struct. It shouldn't
+    /// be null. The size of the buffer is guaranteed to be bigger than (width * stride * 4) bytes.
+    /// This function locks the buffer for the client, which means the caller has the exclusive
+    /// access to the buffer until it is returned back to Android display stack (surfaceflinger) by
+    /// calling `post_android_surface_buffer`. This function may fail (in which case false is
+    /// returned), then the caller shouldn't try to read `out_buffer` or use the buffer in any way.
+    fn get_android_surface_buffer(
+        ctx: *mut AndroidDisplayContext,
+        surface: *mut ANativeWindow,
+        out_buffer: *mut ANativeWindow_Buffer,
+    ) -> bool;
+
+    /// Posts the buffer obtained from `get_android_surface_buffer` to the Android display system
+    /// so that it can be displayed on the screen. Once this is called, the caller shouldn't use
+    /// the buffer any more.
+    fn post_android_surface_buffer(ctx: *mut AndroidDisplayContext, surface: *mut ANativeWindow);
 }
 
-unsafe extern "C" fn error_callback(message: *const ::std::os::raw::c_char) {
+unsafe extern "C" fn error_callback(message: *const c_char) {
     catch_unwind(|| {
         error!(
             "{}",
-            // SAFETY:  message is null terminated
+            // SAFETY: message is null terminated
             unsafe { CStr::from_ptr(message) }.to_string_lossy()
         )
     })
     .unwrap_or_else(|_| abort())
 }
 
-struct AndroidDisplayContext(NonNull<android_display_context>);
-// SAFETY: pointers are safe to send between threads
-unsafe impl Send for AndroidDisplayContext {}
+struct AndroidDisplayContextWrapper(NonNull<AndroidDisplayContext>);
 
-impl Drop for AndroidDisplayContext {
+impl Drop for AndroidDisplayContextWrapper {
     fn drop(&mut self) {
-        // SAFETY: the context pointer is non-null and always valid.
-        unsafe {
-            destroy_android_display_context(Some(error_callback), &mut self.0.as_ptr());
+        // SAFETY: this object is constructed from create_android_display_context
+        unsafe { destroy_android_display_context(self.0.as_ptr()) };
+    }
+}
+
+impl Default for ANativeWindow_Buffer {
+    fn default() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            stride: 0,
+            format: 0,
+            bits: std::ptr::null_mut(),
+            reserved: [0u32; 6],
         }
     }
 }
 
-#[allow(dead_code)]
-struct Buffer {
-    width: u32,
-    height: u32,
-    bytes_per_pixel: u32,
-    bytes: Vec<u8>,
-}
-
-impl Buffer {
-    fn as_volatile_slice(&mut self) -> VolatileSlice {
-        VolatileSlice::new(self.bytes.as_mut_slice())
-    }
-
-    fn width(&self) -> u32 {
-        self.width
-    }
-
-    fn height(&self) -> u32 {
-        self.height
-    }
-
-    fn stride(&self) -> usize {
-        (self.bytes_per_pixel as usize) * (self.width as usize)
-    }
-
-    fn bytes_per_pixel(&self) -> usize {
-        self.bytes_per_pixel as usize
+impl From<ANativeWindow_Buffer> for GpuDisplayFramebuffer<'_> {
+    fn from(anb: ANativeWindow_Buffer) -> Self {
+        // TODO: check anb.format to see if it's ARGB8888?
+        // TODO: infer bpp from anb.format?
+        const BYTES_PER_PIXEL: u32 = 4;
+        let stride_bytes = BYTES_PER_PIXEL * u32::try_from(anb.stride).unwrap();
+        let buffer_size = stride_bytes * u32::try_from(anb.height).unwrap();
+        let buffer =
+            // SAFETY: get_android_surface_buffer guarantees that bits points to a valid buffer and
+            // the buffer remains available until post_android_surface_buffer is called.
+            unsafe { slice::from_raw_parts_mut(anb.bits, buffer_size.try_into().unwrap()) };
+        Self::new(VolatileSlice::new(buffer), stride_bytes, BYTES_PER_PIXEL)
     }
 }
 
 struct AndroidSurface {
-    context: Arc<Mutex<AndroidDisplayContext>>,
-    buffer: Buffer,
+    context: Rc<AndroidDisplayContextWrapper>,
+    surface: NonNull<ANativeWindow>,
 }
 
 impl GpuDisplaySurface for AndroidSurface {
     fn framebuffer(&mut self) -> Option<GpuDisplayFramebuffer> {
-        let framebuffer = &mut self.buffer;
-        let framebuffer_stride = framebuffer.stride() as u32;
-        let framebuffer_bytes_per_pixel = framebuffer.bytes_per_pixel() as u32;
-        Some(GpuDisplayFramebuffer::new(
-            framebuffer.as_volatile_slice(),
-            framebuffer_stride,
-            framebuffer_bytes_per_pixel,
-        ))
+        let mut anb = ANativeWindow_Buffer::default();
+        // SAFETY: context and surface are opaque handles and buf is used as the out parameter to
+        // hold the return values.
+        let success = unsafe {
+            get_android_surface_buffer(
+                self.context.0.as_ptr(),
+                self.surface.as_ptr(),
+                &mut anb as *mut ANativeWindow_Buffer,
+            )
+        };
+        if success {
+            Some(anb.into())
+        } else {
+            None
+        }
     }
 
     fn flip(&mut self) {
-        let w = self.buffer.width();
-        let h = self.buffer.height();
-        let _context = self.context.lock().map(|context| {
-            // SAFETY: self.buffer is not leaked outside of this function
-            unsafe {
-                blit_android_display(
-                    Some(error_callback),
-                    context.0.as_ptr(),
-                    w,
-                    h,
-                    self.buffer.bytes.as_mut_ptr(),
-                    self.buffer.bytes.len(),
-                )
-            };
-        });
+        // SAFETY: context and surface are opaque handles.
+        unsafe { post_android_surface_buffer(self.context.0.as_ptr(), self.surface.as_ptr()) }
     }
 }
 
-impl Drop for AndroidSurface {
-    fn drop(&mut self) {}
-}
-
 pub struct DisplayAndroid {
-    context: Arc<Mutex<AndroidDisplayContext>>,
+    context: Rc<AndroidDisplayContextWrapper>,
     /// This event is never triggered and is used solely to fulfill AsRawDescriptor.
     event: Event,
 }
 
 impl DisplayAndroid {
-    pub fn new(service_name: &str) -> GpuDisplayResult<DisplayAndroid> {
+    pub fn new(name: &str) -> GpuDisplayResult<DisplayAndroid> {
+        let name = CString::new(name).unwrap();
+        let context = NonNull::new(
+            // SAFETY: service_name is not leaked outside of this function
+            unsafe { create_android_display_context(name.as_ptr(), error_callback) },
+        )
+        .ok_or(GpuDisplayError::Unsupported)?;
+        let context = AndroidDisplayContextWrapper(context);
         let event = Event::new().map_err(|_| GpuDisplayError::CreateEvent)?;
-
-        let context = AndroidDisplayContext(
-            NonNull::new(
-                // SAFETY: service_name is not leaked outside of this function
-                unsafe {
-                    create_android_display_context(
-                        service_name.as_ptr() as *const ::std::os::raw::c_char,
-                        service_name.len(),
-                        Some(error_callback),
-                    )
-                },
-            )
-            .ok_or(GpuDisplayError::Unsupported)?,
-        );
-
         Ok(DisplayAndroid {
-            context: Arc::new(Mutex::new(context)),
+            context: context.into(),
             event,
         })
     }
@@ -206,46 +217,16 @@ impl DisplayT for DisplayAndroid {
             return Err(GpuDisplayError::Unsupported);
         }
 
-        let (android_width, android_height): (u32, u32) = self
-            .context
-            .lock()
-            .map(|context| {
-                let android_width: u32 =
-                    // SAFETY: context is not leaked outside of this function
-                    unsafe { get_android_display_width(Some(error_callback), context.0.as_ptr()) };
-                let android_height: u32 =
-                    // SAFETY: context is not leaked outside of this function
-                    unsafe { get_android_display_height(Some(error_callback), context.0.as_ptr()) };
-                (android_width, android_height)
-            })
-            .map_err(|_| GpuDisplayError::Unsupported)?;
-
         let (requested_width, requested_height) = display_params.get_virtual_display_size();
-        if requested_width != android_width {
-            warn!(
-                "Display surface width ({}) doesn't match Android Surface width ({}).",
-                requested_width, android_width
-            );
-        }
+        // SAFETY: context is an opaque handle.
+        let surface = NonNull::new(unsafe {
+            create_android_surface(self.context.0.as_ptr(), requested_width, requested_height)
+        })
+        .ok_or(GpuDisplayError::CreateSurface)?;
 
-        if requested_height != android_height {
-            warn!(
-                "Display surface height ({}) doesn't match Android Surface height ({}).",
-                requested_height, android_height
-            );
-        }
-
-        let bytes_per_pixel = 4;
-        let bytes_total =
-            (requested_width as u64) * (requested_height as u64) * (bytes_per_pixel as u64);
         Ok(Box::new(AndroidSurface {
             context: self.context.clone(),
-            buffer: Buffer {
-                width: requested_width,
-                height: requested_height,
-                bytes_per_pixel,
-                bytes: vec![0; bytes_total as usize],
-            },
+            surface,
         }))
     }
 }
