@@ -5,7 +5,6 @@
 use std::arch::x86_64::CpuidResult;
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 use std::arch::x86_64::__cpuid;
-#[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 use std::arch::x86_64::_rdtsc;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -153,15 +152,62 @@ pub trait VcpuX86_64: Vcpu {
     /// will then set the appropriate registers on the vcpu.
     fn handle_cpuid(&mut self, entry: &CpuIdEntry) -> Result<()>;
 
-    /// Get the guest->host TSC offset
-    fn get_tsc_offset(&self) -> Result<u64>;
+    /// Gets the guest->host TSC offset.
+    ///
+    /// The default implementation uses [`VcpuX86_64::get_msr()`] to read the guest TSC.
+    fn get_tsc_offset(&self) -> Result<u64> {
+        // SAFETY:
+        // Safe because _rdtsc takes no arguments
+        let host_before_tsc = unsafe { _rdtsc() };
 
-    /// Set the guest->host TSC offset
-    fn set_tsc_offset(&self, offset: u64) -> Result<()>;
+        // get guest TSC value from our hypervisor
+        let guest_tsc = self.get_msr(crate::MSR_IA32_TSC)?;
+
+        // SAFETY:
+        // Safe because _rdtsc takes no arguments
+        let host_after_tsc = unsafe { _rdtsc() };
+
+        // Average the before and after host tsc to get the best value
+        let host_tsc = ((host_before_tsc as u128 + host_after_tsc as u128) / 2) as u64;
+
+        Ok(guest_tsc.wrapping_sub(host_tsc))
+    }
+
+    /// Sets the guest->host TSC offset.
+    ///
+    /// The default implementation uses [`VcpuX86_64::set_tsc_value()`] to set the TSC value.
+    ///
+    /// It sets TSC_OFFSET (VMCS / CB field) by setting the TSC MSR to the current
+    /// host TSC value plus the desired offset. We rely on the fact that hypervisors
+    /// determine the value of TSC_OFFSET by computing TSC_OFFSET = new_tsc_value
+    /// - _rdtsc() = _rdtsc() + offset - _rdtsc() ~= offset. Note that the ~= is
+    /// important: this is an approximate operation, because the two _rdtsc() calls
+    /// are separated by at least a few ticks.
+    ///
+    /// Note: TSC_OFFSET, host TSC, guest TSC, and TSC MSR are all different
+    /// concepts.
+    /// * When a guest executes rdtsc, the value (guest TSC) returned is host_tsc * TSC_MULTIPLIER +
+    ///   TSC_OFFSET + TSC_ADJUST.
+    /// * The TSC MSR is a special MSR that when written to by the host, will cause TSC_OFFSET to be
+    ///   set accordingly by the hypervisor.
+    /// * When the guest *writes* to TSC MSR, it actually changes the TSC_ADJUST MSR *for the
+    ///   guest*. Generally this is only happens if the guest is trying to re-zero or synchronize
+    ///   TSCs.
+    fn set_tsc_offset(&self, offset: u64) -> Result<()> {
+        // SAFETY: _rdtsc takes no arguments.
+        let host_tsc = unsafe { _rdtsc() };
+        self.set_tsc_value(host_tsc.wrapping_add(offset))
+    }
 
     /// Sets the guest TSC exactly to the provided value.
-    /// Required for snapshotting.
-    fn set_tsc_value(&self, value: u64) -> Result<()>;
+    ///
+    /// The default implementation sets the guest's TSC by writing the value to the MSR directly.
+    ///
+    /// See [`VcpuX86_64::set_tsc_offset()`] for an explanation of how this value is actually read
+    /// by the guest after being set.
+    fn set_tsc_value(&self, value: u64) -> Result<()> {
+        self.set_msr(crate::MSR_IA32_TSC, value)
+    }
 
     /// Some hypervisors require special handling to restore timekeeping when
     /// a snapshot is restored. They are provided with a host TSC reference
@@ -262,58 +308,6 @@ impl_downcast!(VcpuX86_64);
 
 // TSC MSR
 pub const MSR_IA32_TSC: u32 = 0x00000010;
-
-/// Implementation of get_tsc_offset that uses VcpuX86_64::get_msrs.
-#[cfg(any(unix, feature = "haxm", feature = "whpx"))]
-pub(crate) fn get_tsc_offset_from_msr(vcpu: &impl VcpuX86_64) -> Result<u64> {
-    // SAFETY:
-    // Safe because _rdtsc takes no arguments
-    let host_before_tsc = unsafe { _rdtsc() };
-
-    // get guest TSC value from our hypervisor
-    let guest_tsc = vcpu.get_msr(crate::MSR_IA32_TSC)?;
-
-    // SAFETY:
-    // Safe because _rdtsc takes no arguments
-    let host_after_tsc = unsafe { _rdtsc() };
-
-    // Average the before and after host tsc to get the best value
-    let host_tsc = ((host_before_tsc as u128 + host_after_tsc as u128) / 2) as u64;
-
-    Ok(guest_tsc.wrapping_sub(host_tsc))
-}
-
-/// Implementation of set_tsc_offset that uses VcpuX86_64::get_msrs.
-///
-/// It sets TSC_OFFSET (VMCS / CB field) by setting the TSC MSR to the current
-/// host TSC value plus the desired offset. We rely on the fact that hypervisors
-/// determine the value of TSC_OFFSET by computing TSC_OFFSET = new_tsc_value
-/// - _rdtsc() = _rdtsc() + offset - _rdtsc() ~= offset. Note that the ~= is
-/// important: this is an approximate operation, because the two _rdtsc() calls
-/// are separated by at least a few ticks.
-///
-/// Note: TSC_OFFSET, host TSC, guest TSC, and TSC MSR are all different
-/// concepts.
-/// * When a guest executes rdtsc, the value (guest TSC) returned is host_tsc * TSC_MULTIPLIER +
-///   TSC_OFFSET + TSC_ADJUST.
-/// * The TSC MSR is a special MSR that when written to by the host, will cause TSC_OFFSET to be set
-///   accordingly by the hypervisor.
-/// * When the guest *writes* to TSC MSR, it actually changes the TSC_ADJUST MSR *for the guest*.
-///   Generally this is only happens if the guest is trying to re-zero or synchronize TSCs.
-#[cfg(any(unix, feature = "haxm", feature = "whpx"))]
-pub(crate) fn set_tsc_offset_via_msr(vcpu: &impl VcpuX86_64, offset: u64) -> Result<()> {
-    // SAFETY: _rdtsc takes no arguments.
-    let host_tsc = unsafe { _rdtsc() };
-    set_tsc_value_via_msr(vcpu, host_tsc.wrapping_add(offset))
-}
-
-/// Sets the guest's TSC by writing the value to the MSR directly. See
-/// [`set_tsc_offset_via_msr`] for an explanation of how this value is actually
-/// read by the guest after being set.
-#[cfg(any(unix, feature = "haxm", feature = "whpx"))]
-pub(crate) fn set_tsc_value_via_msr(vcpu: &impl VcpuX86_64, value: u64) -> Result<()> {
-    vcpu.set_msr(crate::MSR_IA32_TSC, value)
-}
 
 /// Gets host cpu max physical address bits.
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]

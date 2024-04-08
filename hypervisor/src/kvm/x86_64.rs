@@ -30,10 +30,7 @@ use super::Config;
 use super::Kvm;
 use super::KvmVcpu;
 use super::KvmVm;
-use crate::get_tsc_offset_from_msr;
 use crate::host_phys_addr_bits;
-use crate::set_tsc_offset_via_msr;
-use crate::set_tsc_value_via_msr;
 use crate::ClockState;
 use crate::CpuId;
 use crate::CpuIdEntry;
@@ -1090,10 +1087,6 @@ impl VcpuX86_64 for KvmVcpu {
         Err(Error::new(ENXIO))
     }
 
-    fn set_tsc_value(&self, value: u64) -> Result<()> {
-        set_tsc_value_via_msr(self, value)
-    }
-
     fn restore_timekeeping(&self, _host_tsc_reference_moment: u64, tsc_offset: u64) -> Result<()> {
         // In theory, KVM requires no extra handling beyond restoring the TSC
         // MSR, which happens separately because TSC is in the all MSR list for
@@ -1105,16 +1098,6 @@ impl VcpuX86_64 for KvmVcpu {
         // saving/restoring TSC_KHZ somehow fixes this issue as well. Further
         // research is required.)
         self.set_tsc_offset(tsc_offset)
-    }
-
-    fn get_tsc_offset(&self) -> Result<u64> {
-        // Use the default MSR-based implementation
-        get_tsc_offset_from_msr(self)
-    }
-
-    fn set_tsc_offset(&self, offset: u64) -> Result<()> {
-        // Use the default MSR-based implementation
-        set_tsc_offset_via_msr(self, offset)
     }
 }
 

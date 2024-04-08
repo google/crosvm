@@ -27,9 +27,6 @@ use libc::EOPNOTSUPP;
 use vm_memory::GuestAddress;
 
 use super::*;
-use crate::get_tsc_offset_from_msr;
-use crate::set_tsc_offset_via_msr;
-use crate::set_tsc_value_via_msr;
 use crate::CpuId;
 use crate::CpuIdEntry;
 use crate::DebugRegs;
@@ -570,16 +567,6 @@ impl VcpuX86_64 for HaxmVcpu {
         Err(Error::new(ENOENT))
     }
 
-    fn get_tsc_offset(&self) -> Result<u64> {
-        // Use the default MSR-based implementation
-        get_tsc_offset_from_msr(self)
-    }
-
-    fn set_tsc_offset(&self, offset: u64) -> Result<()> {
-        // Use the default MSR-based implementation
-        set_tsc_offset_via_msr(self, offset)
-    }
-
     fn restore_timekeeping(&self, _host_tsc_reference_moment: u64, tsc_offset: u64) -> Result<()> {
         // HAXM sets TSC_OFFSET based on what we set TSC to; however, it does
         // not yet handle syncing. This means it computes
@@ -593,10 +580,6 @@ impl VcpuX86_64 for HaxmVcpu {
         // reference moment. (Alternatively, we may just expose a way to set the
         // offset directly.)
         self.set_tsc_offset(tsc_offset)
-    }
-
-    fn set_tsc_value(&self, value: u64) -> Result<()> {
-        set_tsc_value_via_msr(self, value)
     }
 }
 

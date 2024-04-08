@@ -779,15 +779,6 @@ impl VcpuX86_64 for FakeVcpu {
     fn set_guest_debug(&self, _addrs: &[GuestAddress], _enable_singlestep: bool) -> Result<()> {
         unimplemented!()
     }
-    fn get_tsc_offset(&self) -> Result<u64> {
-        unimplemented!()
-    }
-    fn set_tsc_offset(&self, _offset: u64) -> Result<()> {
-        unimplemented!()
-    }
-    fn set_tsc_value(&self, _value: u64) -> Result<()> {
-        unimplemented!()
-    }
     fn snapshot(&self) -> anyhow::Result<VcpuSnapshot> {
         unimplemented!()
     }
