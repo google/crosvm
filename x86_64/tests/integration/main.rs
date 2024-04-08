@@ -45,8 +45,8 @@ use x86_64::mptable;
 use x86_64::read_pci_mmio_before_32bit;
 use x86_64::read_pcie_cfg_mmio;
 use x86_64::regs::configure_segments_and_sregs;
-use x86_64::regs::long_mode_msrs;
-use x86_64::regs::mtrr_msrs;
+use x86_64::regs::set_long_mode_msrs;
+use x86_64::regs::set_mtrr_msrs;
 use x86_64::regs::setup_page_tables;
 use x86_64::smbios;
 use x86_64::X8664arch;
@@ -281,10 +281,11 @@ where
                 setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, cpu_config).unwrap();
             }
 
-            let mut msrs = long_mode_msrs();
-            msrs.append(&mut mtrr_msrs(&vm, read_pci_mmio_before_32bit().start));
-            for msr in msrs {
-                vcpu.set_msr(msr.id, msr.value).unwrap();
+            let mut msrs = BTreeMap::new();
+            set_long_mode_msrs(&mut msrs);
+            set_mtrr_msrs(&mut msrs, &vm, read_pci_mmio_before_32bit().start);
+            for (msr_index, value) in msrs {
+                vcpu.set_msr(msr_index, value).unwrap();
             }
 
             let mut vcpu_regs = Regs {

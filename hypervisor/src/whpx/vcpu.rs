@@ -4,6 +4,7 @@
 
 use core::ffi::c_void;
 use std::arch::x86_64::CpuidResult;
+use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::mem::size_of;
 use std::sync::Arc;
@@ -1149,7 +1150,7 @@ impl VcpuX86_64 for WhpxVcpu {
         Ok(value)
     }
 
-    fn get_all_msrs(&self) -> Result<Vec<Register>> {
+    fn get_all_msrs(&self) -> Result<BTreeMap<u32, u64>> {
         // Note that some members of VALID_MSRS cannot be fetched from WHPX with
         // WHvGetVirtualProcessorRegisters per the HTLFS, so we enumerate all of
         // permitted MSRs here.
@@ -1179,12 +1180,9 @@ impl VcpuX86_64 for WhpxVcpu {
             .iter()
             .map(|msr_index| {
                 let value = self.get_msr(*msr_index)?;
-                Ok(Register {
-                    id: *msr_index,
-                    value,
-                })
+                Ok((*msr_index, value))
             })
-            .collect::<Result<Vec<Register>>>()?;
+            .collect::<Result<BTreeMap<u32, u64>>>()?;
 
         Ok(registers)
     }
@@ -1588,7 +1586,7 @@ mod tests {
 
         // Our MSR buffer is init'ed to zeros in the registers. The APIC base will be non-zero, so
         // by asserting that we know the MSR fetch actually did get us data.
-        let apic_base = all_msrs.iter().find(|reg| reg.id == MSR_APIC_BASE).unwrap();
-        assert_ne!(apic_base.value, 0);
+        let apic_base = all_msrs.get(&MSR_APIC_BASE).unwrap();
+        assert_ne!(*apic_base, 0);
     }
 }

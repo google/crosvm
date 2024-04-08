@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::arch::x86_64::CpuidResult;
+use std::collections::BTreeMap;
 
 use base::errno_result;
 use base::error;
@@ -941,7 +942,7 @@ impl VcpuX86_64 for KvmVcpu {
         Ok(value)
     }
 
-    fn get_all_msrs(&self) -> Result<Vec<Register>> {
+    fn get_all_msrs(&self) -> Result<BTreeMap<u32, u64>> {
         let msr_index_list = self.kvm.get_msr_index_list()?;
         let mut kvm_msrs = vec_with_array_field::<kvm_msrs, kvm_msr_entry>(msr_index_list.len());
         kvm_msrs[0].nmsrs = msr_index_list.len() as u32;
@@ -980,15 +981,13 @@ impl VcpuX86_64 for KvmVcpu {
         // SAFETY:
         // Safe because we trust the kernel to return the correct array length on success.
         let msrs = unsafe {
-            kvm_msrs[0]
-                .entries
-                .as_slice(count)
-                .iter()
-                .map(|kvm_msr| Register {
-                    id: kvm_msr.index,
-                    value: kvm_msr.data,
-                })
-                .collect()
+            BTreeMap::from_iter(
+                kvm_msrs[0]
+                    .entries
+                    .as_slice(count)
+                    .iter()
+                    .map(|kvm_msr| (kvm_msr.index, kvm_msr.data)),
+            )
         };
 
         Ok(msrs)

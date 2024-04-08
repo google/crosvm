@@ -1004,8 +1004,8 @@ impl arch::LinuxArch for X8664arch {
         let pci_start = read_pci_mmio_before_32bit().start;
 
         let mut vcpu_init = vec![VcpuInitX86_64::default(); vcpu_count];
+        let mut msrs = BTreeMap::new();
 
-        let mut msrs;
         match components.vm_image {
             VmImage::Bios(ref mut bios) => {
                 // Allow a bios to hardcode CMDLINE_OFFSET and read the kernel command line from it.
@@ -1016,7 +1016,7 @@ impl arch::LinuxArch for X8664arch {
                 )
                 .map_err(Error::LoadCmdline)?;
                 Self::load_bios(&mem, bios)?;
-                msrs = regs::default_msrs();
+                regs::set_default_msrs(&mut msrs);
                 // The default values for `Regs` and `Sregs` already set up the reset vector.
             }
             VmImage::Kernel(ref mut kernel_image) => {
@@ -1039,8 +1039,8 @@ impl arch::LinuxArch for X8664arch {
                 vcpu_init[0].regs.rsp = BOOT_STACK_POINTER;
                 vcpu_init[0].regs.rsi = ZERO_PAGE_OFFSET;
 
-                msrs = regs::long_mode_msrs();
-                msrs.append(&mut regs::mtrr_msrs(&vm, pci_start));
+                regs::set_long_mode_msrs(&mut msrs);
+                regs::set_mtrr_msrs(&mut msrs, &vm, pci_start);
 
                 // Set up long mode and enable paging.
                 regs::configure_segments_and_sregs(&mem, &mut vcpu_init[0].sregs)
@@ -1111,24 +1111,24 @@ impl arch::LinuxArch for X8664arch {
 
         let vcpu_supported_var_mtrrs = regs::vcpu_supported_variable_mtrrs(vcpu);
         let num_var_mtrrs = regs::count_variable_mtrrs(&vcpu_init.msrs);
-        let msrs = if num_var_mtrrs > vcpu_supported_var_mtrrs {
+        let skip_mtrr_msrs = if num_var_mtrrs > vcpu_supported_var_mtrrs {
             warn!(
                 "Too many variable MTRR entries ({} required, {} supported),
                 please check pci_start addr, guest with pass through device may be very slow",
                 num_var_mtrrs, vcpu_supported_var_mtrrs,
             );
             // Filter out the MTRR entries from the MSR list.
-            vcpu_init
-                .msrs
-                .into_iter()
-                .filter(|&msr| !regs::is_mtrr_msr(msr.id))
-                .collect()
+            true
         } else {
-            vcpu_init.msrs
+            false
         };
 
-        for msr in msrs {
-            vcpu.set_msr(msr.id, msr.value).map_err(Error::SetupMsrs)?;
+        for (msr_index, value) in vcpu_init.msrs.into_iter() {
+            if skip_mtrr_msrs && regs::is_mtrr_msr(msr_index) {
+                continue;
+            }
+
+            vcpu.set_msr(msr_index, value).map_err(Error::SetupMsrs)?;
         }
 
         interrupts::set_lint(vcpu_id, irq_chip).map_err(Error::SetLint)?;

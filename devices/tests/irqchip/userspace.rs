@@ -4,6 +4,7 @@
 
 #![cfg(target_arch = "x86_64")]
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -761,7 +762,7 @@ impl VcpuX86_64 for FakeVcpu {
     fn get_msr(&self, _msr_index: u32) -> Result<u64> {
         unimplemented!()
     }
-    fn get_all_msrs(&self) -> Result<Vec<Register>> {
+    fn get_all_msrs(&self) -> Result<BTreeMap<u32, u64>> {
         unimplemented!()
     }
     fn set_msr(&self, _msr_index: u32, _value: u64) -> Result<()> {

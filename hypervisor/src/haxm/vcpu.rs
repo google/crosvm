@@ -5,6 +5,7 @@
 use core::ffi::c_void;
 use std::arch::x86_64::CpuidResult;
 use std::cmp::min;
+use std::collections::BTreeMap;
 use std::intrinsics::copy_nonoverlapping;
 use std::mem::size_of;
 
@@ -496,7 +497,7 @@ impl VcpuX86_64 for HaxmVcpu {
         Ok(msr_data.entries[0].value)
     }
 
-    fn get_all_msrs(&self) -> Result<Vec<Register>> {
+    fn get_all_msrs(&self) -> Result<BTreeMap<u32, u64>> {
         Err(Error::new(EOPNOTSUPP))
     }
 

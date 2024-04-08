@@ -6,7 +6,7 @@ use std::arch::x86_64::CpuidResult;
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 use std::arch::x86_64::__cpuid;
 use std::arch::x86_64::_rdtsc;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 use anyhow::Context;
@@ -133,7 +133,7 @@ pub trait VcpuX86_64: Vcpu {
     fn get_msr(&self, msr_index: u32) -> Result<u64>;
 
     /// Gets the model-specific registers. Returns all the MSRs for the VCPU.
-    fn get_all_msrs(&self) -> Result<Vec<Register>>;
+    fn get_all_msrs(&self) -> Result<BTreeMap<u32, u64>>;
 
     /// Sets a single model-specific register's value.
     fn set_msr(&self, msr_index: u32, value: u64) -> Result<()>;
@@ -260,17 +260,12 @@ pub trait VcpuX86_64: Vcpu {
         self.set_debugregs(&snapshot.debug_regs)?;
         self.set_xcrs(&snapshot.xcrs)?;
 
-        let mut msrs = HashMap::new();
-        for reg in self.get_all_msrs()? {
-            msrs.insert(reg.id, reg.value);
-        }
-
-        for &msr in snapshot.msrs.iter() {
-            if Some(&msr.value) == msrs.get(&msr.id) {
+        for (msr_index, value) in snapshot.msrs.iter() {
+            if self.get_msr(*msr_index) == Ok(*value) {
                 continue; // no need to set MSR since the values are the same.
             }
-            if let Err(e) = self.set_msr(msr.id, msr.value) {
-                if msr_allowlist.contains(&msr.id) {
+            if let Err(e) = self.set_msr(*msr_index, *value) {
+                if msr_allowlist.contains(msr_index) {
                     warn!(
                         "Failed to set MSR. MSR might not be supported in this kernel. Err: {}",
                         e
@@ -298,7 +293,7 @@ pub struct VcpuSnapshot {
     sregs: Sregs,
     debug_regs: DebugRegs,
     xcrs: Vec<Register>,
-    msrs: Vec<Register>,
+    msrs: BTreeMap<u32, u64>,
     xsave: Xsave,
     hypervisor_data: serde_json::Value,
     tsc_offset: u64,
@@ -337,7 +332,7 @@ pub struct VcpuInitX86_64 {
     pub fpu: Fpu,
 
     /// Machine-specific registers.
-    pub msrs: Vec<Register>,
+    pub msrs: BTreeMap<u32, u64>,
 }
 
 /// Hold the CPU feature configurations that are needed to setup a vCPU.

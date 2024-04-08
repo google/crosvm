@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::BTreeMap;
 use std::mem;
 use std::result;
 
 use base::warn;
-use hypervisor::Register;
 use hypervisor::Sregs;
 use hypervisor::VcpuX86_64;
 use hypervisor::Vm;
@@ -116,105 +116,64 @@ pub fn is_mtrr_msr(id: u32) -> bool {
 }
 
 /// Returns the count of variable MTRR entries specified by the list of `msrs`.
-pub fn count_variable_mtrrs(msrs: &[Register]) -> usize {
+pub fn count_variable_mtrrs(msrs: &BTreeMap<u32, u64>) -> usize {
     // Each variable MTRR takes up two MSRs (base + mask), so divide by 2. This will also count the
     // MTRRdefType entry, but that is only one extra and the division truncates, so it won't affect
     // the final count.
-    msrs.iter().filter(|msr| is_mtrr_msr(msr.id)).count() / 2
+    msrs.keys().filter(|&msr| is_mtrr_msr(*msr)).count() / 2
 }
 
 /// Returns a set of MSRs containing the MTRR configuration.
-pub fn mtrr_msrs(vm: &dyn Vm, pci_start: u64) -> Vec<Register> {
+pub fn set_mtrr_msrs(msrs: &mut BTreeMap<u32, u64>, vm: &dyn Vm, pci_start: u64) {
     // Set pci_start .. 4G as UC
     // all others are set to default WB
     let pci_len = (1 << 32) - pci_start;
     let vecs = get_mtrr_pairs(pci_start, pci_len);
 
-    let mut entries = Vec::new();
-
     let phys_mask: u64 = (1 << vm.get_guest_phys_addr_bits()) - 1;
     for (idx, (base, len)) in vecs.iter().enumerate() {
         let reg_idx = idx as u32 * 2;
-        entries.push(Register {
-            id: MTRR_PHYS_BASE_MSR + reg_idx,
-            value: base | MTRR_MEMTYPE_UC as u64,
-        });
+        msrs.insert(MTRR_PHYS_BASE_MSR + reg_idx, base | MTRR_MEMTYPE_UC as u64);
         let mask: u64 = len.wrapping_neg() & phys_mask | MTRR_VAR_VALID;
-        entries.push(Register {
-            id: MTRR_PHYS_MASK_MSR + reg_idx,
-            value: mask,
-        });
+        msrs.insert(MTRR_PHYS_MASK_MSR + reg_idx, mask);
     }
     // Disable fixed MTRRs and enable variable MTRRs, set default type as WB
-    entries.push(Register {
-        id: crate::msr_index::MSR_MTRRdefType,
-        value: MTRR_ENABLE | MTRR_MEMTYPE_WB as u64,
-    });
-    entries
+    msrs.insert(
+        crate::msr_index::MSR_MTRRdefType,
+        MTRR_ENABLE | MTRR_MEMTYPE_WB as u64,
+    );
 }
 
 /// Returns the default value of MSRs at reset.
 ///
 /// Currently only sets IA32_TSC to 0.
-pub fn default_msrs() -> Vec<Register> {
-    vec![
-        Register {
-            id: crate::msr_index::MSR_IA32_TSC,
-            value: 0x0,
-        },
-        Register {
-            id: crate::msr_index::MSR_IA32_MISC_ENABLE,
-            value: crate::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
-        },
-    ]
+pub fn set_default_msrs(msrs: &mut BTreeMap<u32, u64>) {
+    msrs.insert(crate::msr_index::MSR_IA32_TSC, 0x0);
+    msrs.insert(
+        crate::msr_index::MSR_IA32_MISC_ENABLE,
+        crate::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
+    );
 }
 
 /// Configure Model specific registers for long (64-bit) mode.
-pub fn long_mode_msrs() -> Vec<Register> {
-    vec![
-        Register {
-            id: crate::msr_index::MSR_IA32_SYSENTER_CS,
-            value: 0x0,
-        },
-        Register {
-            id: crate::msr_index::MSR_IA32_SYSENTER_ESP,
-            value: 0x0,
-        },
-        Register {
-            id: crate::msr_index::MSR_IA32_SYSENTER_EIP,
-            value: 0x0,
-        },
-        // x86_64 specific msrs, we only run on x86_64 not x86
-        Register {
-            id: crate::msr_index::MSR_STAR,
-            value: 0x0,
-        },
-        Register {
-            id: crate::msr_index::MSR_CSTAR,
-            value: 0x0,
-        },
-        Register {
-            id: crate::msr_index::MSR_KERNEL_GS_BASE,
-            value: 0x0,
-        },
-        Register {
-            id: crate::msr_index::MSR_SYSCALL_MASK,
-            value: 0x0,
-        },
-        Register {
-            id: crate::msr_index::MSR_LSTAR,
-            value: 0x0,
-        },
-        // end of x86_64 specific code
-        Register {
-            id: crate::msr_index::MSR_IA32_TSC,
-            value: 0x0,
-        },
-        Register {
-            id: crate::msr_index::MSR_IA32_MISC_ENABLE,
-            value: crate::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
-        },
-    ]
+pub fn set_long_mode_msrs(msrs: &mut BTreeMap<u32, u64>) {
+    msrs.insert(crate::msr_index::MSR_IA32_SYSENTER_CS, 0x0);
+    msrs.insert(crate::msr_index::MSR_IA32_SYSENTER_ESP, 0x0);
+    msrs.insert(crate::msr_index::MSR_IA32_SYSENTER_EIP, 0x0);
+
+    // x86_64 specific msrs, we only run on x86_64 not x86
+    msrs.insert(crate::msr_index::MSR_STAR, 0x0);
+    msrs.insert(crate::msr_index::MSR_CSTAR, 0x0);
+    msrs.insert(crate::msr_index::MSR_KERNEL_GS_BASE, 0x0);
+    msrs.insert(crate::msr_index::MSR_SYSCALL_MASK, 0x0);
+    msrs.insert(crate::msr_index::MSR_LSTAR, 0x0);
+    // end of x86_64 specific code
+
+    msrs.insert(crate::msr_index::MSR_IA32_TSC, 0x0);
+    msrs.insert(
+        crate::msr_index::MSR_IA32_MISC_ENABLE,
+        crate::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
+    );
 }
 
 const X86_CR0_PE: u64 = 0x1;
