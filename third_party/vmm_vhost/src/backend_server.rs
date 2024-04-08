@@ -870,7 +870,7 @@ impl<S: Backend> BackendServer<S> {
         self.check_request_size(hdr, size, mem::size_of::<T>())?;
         T::read_from_prefix(buf)
             .filter(T::is_valid)
-            .map_or(Err(Error::InvalidMessage), Ok)
+            .ok_or(Error::InvalidMessage)
     }
 
     fn update_reply_ack_flag(&mut self) {
