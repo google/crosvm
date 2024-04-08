@@ -110,10 +110,10 @@ pub trait VcpuX86_64: Vcpu {
     fn set_debugregs(&self, debugregs: &DebugRegs) -> Result<()>;
 
     /// Gets the VCPU extended control registers.
-    fn get_xcrs(&self) -> Result<Vec<Register>>;
+    fn get_xcrs(&self) -> Result<BTreeMap<u32, u64>>;
 
-    /// Sets the VCPU extended control registers.
-    fn set_xcrs(&self, xcrs: &[Register]) -> Result<()>;
+    /// Sets a VCPU extended control register.
+    fn set_xcr(&self, xcr: u32, value: u64) -> Result<()>;
 
     /// Gets the VCPU x87 FPU, MMX, XMM, YMM and MXCSR registers.
     fn get_xsave(&self) -> Result<Xsave>;
@@ -258,7 +258,9 @@ pub trait VcpuX86_64: Vcpu {
         self.set_regs(&snapshot.regs)?;
         self.set_sregs(&snapshot.sregs)?;
         self.set_debugregs(&snapshot.debug_regs)?;
-        self.set_xcrs(&snapshot.xcrs)?;
+        for (xcr_index, value) in &snapshot.xcrs {
+            self.set_xcr(*xcr_index, *value)?;
+        }
 
         for (msr_index, value) in snapshot.msrs.iter() {
             if self.get_msr(*msr_index) == Ok(*value) {
@@ -292,7 +294,7 @@ pub struct VcpuSnapshot {
     regs: Regs,
     sregs: Sregs,
     debug_regs: DebugRegs,
-    xcrs: Vec<Register>,
+    xcrs: BTreeMap<u32, u64>,
     msrs: BTreeMap<u32, u64>,
     xsave: Xsave,
     hypervisor_data: serde_json::Value,
@@ -977,13 +979,6 @@ pub struct DebugRegs {
     pub db: [u64; 4usize],
     pub dr6: u64,
     pub dr7: u64,
-}
-
-/// State of one VCPU register.  Currently used for MSRs and XCRs.
-#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize)]
-pub struct Register {
-    pub id: u32,
-    pub value: u64,
 }
 
 /// The hybrid type for intel hybrid CPU.

@@ -47,7 +47,6 @@ use hypervisor::IrqSource;
 use hypervisor::Level;
 use hypervisor::PicSelect;
 use hypervisor::PitRWMode;
-use hypervisor::Register;
 use hypervisor::Regs;
 use hypervisor::Sregs;
 use hypervisor::TriggerMode;
@@ -753,10 +752,10 @@ impl VcpuX86_64 for FakeVcpu {
     fn set_debugregs(&self, _debugregs: &DebugRegs) -> Result<()> {
         unimplemented!()
     }
-    fn get_xcrs(&self) -> Result<Vec<Register>> {
+    fn get_xcrs(&self) -> Result<BTreeMap<u32, u64>> {
         unimplemented!()
     }
-    fn set_xcrs(&self, _xcrs: &[Register]) -> Result<()> {
+    fn set_xcr(&self, _xcr_index: u32, _value: u64) -> Result<()> {
         unimplemented!()
     }
     fn get_msr(&self, _msr_index: u32) -> Result<u64> {

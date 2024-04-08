@@ -364,11 +364,10 @@ fn xcrs() {
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let vcpu = vm.create_vcpu(0).unwrap();
-    let mut xcrs = vcpu.get_xcrs().unwrap();
-    xcrs[0].value = 1;
-    vcpu.set_xcrs(&xcrs).unwrap();
-    let xcrs2 = vcpu.get_xcrs().unwrap();
-    assert_eq!(xcrs[0].value, xcrs2[0].value);
+    vcpu.set_xcr(0, 1).unwrap();
+    let xcrs = vcpu.get_xcrs().unwrap();
+    let xcr0 = xcrs.get(&0).unwrap();
+    assert_eq!(*xcr0, 1);
 }
 
 #[test]

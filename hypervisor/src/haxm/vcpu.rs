@@ -36,7 +36,6 @@ use crate::Fpu;
 use crate::HypervHypercall;
 use crate::IoOperation;
 use crate::IoParams;
-use crate::Register;
 use crate::Regs;
 use crate::Segment;
 use crate::Sregs;
@@ -468,13 +467,13 @@ impl VcpuX86_64 for HaxmVcpu {
     }
 
     /// Gets the VCPU extended control registers.
-    fn get_xcrs(&self) -> Result<Vec<Register>> {
-        // Haxm does not support setting XCRs
+    fn get_xcrs(&self) -> Result<BTreeMap<u32, u64>> {
+        // Haxm does not support getting XCRs
         Err(Error::new(libc::ENXIO))
     }
 
-    /// Sets the VCPU extended control registers.
-    fn set_xcrs(&self, _xcrs: &[Register]) -> Result<()> {
+    /// Sets a VCPU extended control register.
+    fn set_xcr(&self, _xcr_index: u32, _value: u64) -> Result<()> {
         // Haxm does not support setting XCRs
         Err(Error::new(libc::ENXIO))
     }

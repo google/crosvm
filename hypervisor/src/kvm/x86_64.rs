@@ -49,7 +49,6 @@ use crate::PicState;
 use crate::PitChannelState;
 use crate::PitState;
 use crate::ProtectionType;
-use crate::Register;
 use crate::Regs;
 use crate::Segment;
 use crate::Sregs;
@@ -881,25 +880,36 @@ impl VcpuX86_64 for KvmVcpu {
         }
     }
 
-    fn get_xcrs(&self) -> Result<Vec<Register>> {
+    fn get_xcrs(&self) -> Result<BTreeMap<u32, u64>> {
         let mut regs: kvm_xcrs = Default::default();
         // SAFETY:
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
         // correct amount of memory to our pointer, and we verify the return result.
         let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_XCRS(), &mut regs) };
-        if ret == 0 {
-            Ok(from_kvm_xcrs(&regs))
-        } else {
-            errno_result()
+        if ret < 0 {
+            return errno_result();
         }
+
+        Ok(regs
+            .xcrs
+            .iter()
+            .take(regs.nr_xcrs as usize)
+            .map(|kvm_xcr| (kvm_xcr.xcr, kvm_xcr.value))
+            .collect())
     }
 
-    fn set_xcrs(&self, xcrs: &[Register]) -> Result<()> {
-        let xcrs = to_kvm_xcrs(xcrs);
+    fn set_xcr(&self, xcr_index: u32, value: u64) -> Result<()> {
+        let mut kvm_xcr = kvm_xcrs {
+            nr_xcrs: 1,
+            ..Default::default()
+        };
+        kvm_xcr.xcrs[0].xcr = xcr_index;
+        kvm_xcr.xcrs[0].value = value;
+
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read past the end of the kvm_xcrs struct.
-            unsafe { ioctl_with_ref(self, KVM_SET_XCRS(), &xcrs) }
+            unsafe { ioctl_with_ref(self, KVM_SET_XCRS(), &kvm_xcr) }
         };
         if ret == 0 {
             Ok(())
@@ -1796,29 +1806,6 @@ impl From<&DebugRegs> for kvm_debugregs {
             ..Default::default()
         }
     }
-}
-
-fn from_kvm_xcrs(r: &kvm_xcrs) -> Vec<Register> {
-    r.xcrs
-        .iter()
-        .take(r.nr_xcrs as usize)
-        .map(|x| Register {
-            id: x.xcr,
-            value: x.value,
-        })
-        .collect()
-}
-
-fn to_kvm_xcrs(r: &[Register]) -> kvm_xcrs {
-    let mut kvm = kvm_xcrs {
-        nr_xcrs: r.len() as u32,
-        ..Default::default()
-    };
-    for (i, &xcr) in r.iter().enumerate() {
-        kvm.xcrs[i].xcr = xcr.id;
-        kvm.xcrs[i].value = xcr.value;
-    }
-    kvm
 }
 
 #[cfg(test)]

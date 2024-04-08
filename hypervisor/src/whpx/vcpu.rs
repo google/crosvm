@@ -28,7 +28,6 @@ use crate::Fpu;
 use crate::HypervHypercall;
 use crate::IoOperation;
 use crate::IoParams;
-use crate::Register;
 use crate::Regs;
 use crate::Sregs;
 use crate::Vcpu;
@@ -1081,53 +1080,48 @@ impl VcpuX86_64 for WhpxVcpu {
     }
 
     /// Gets the VCPU extended control registers.
-    fn get_xcrs(&self) -> Result<Vec<Register>> {
-        const REG_NAMES: [WHV_REGISTER_NAME; 1] = [WHV_REGISTER_NAME_WHvX64RegisterXCr0];
-        let mut xcrs: [WHV_REGISTER_VALUE; 1] = Default::default();
+    fn get_xcrs(&self) -> Result<BTreeMap<u32, u64>> {
+        const REG_NAME: WHV_REGISTER_NAME = WHV_REGISTER_NAME_WHvX64RegisterXCr0;
+        let mut reg_value = WHV_REGISTER_VALUE::default();
         // safe because we have enough space for all the registers in whpx_regs
         check_whpx!(unsafe {
             WHvGetVirtualProcessorRegisters(
                 self.vm_partition.partition,
                 self.index,
-                &REG_NAMES as *const WHV_REGISTER_NAME,
-                REG_NAMES.len() as u32,
-                xcrs.as_mut_ptr(),
+                &REG_NAME,
+                /* RegisterCount */ 1,
+                &mut reg_value,
             )
         })?;
-        let reg = Register {
-            id: 0, // whpx only supports xcr0
-            // safe because the union value, reg64, is safe to pull out assuming
-            // kernel filled in the xcrs properly.
-            value: unsafe { xcrs[0].Reg64 },
-        };
-        Ok(vec![reg])
+
+        // safe because the union value, reg64, is safe to pull out assuming
+        // kernel filled in the xcrs properly.
+        let xcr0 = unsafe { reg_value.Reg64 };
+
+        // whpx only supports xcr0
+        let xcrs = BTreeMap::from([(0, xcr0)]);
+        Ok(xcrs)
     }
 
-    /// Sets the VCPU extended control registers.
-    fn set_xcrs(&self, xcrs: &[Register]) -> Result<()> {
-        const REG_NAMES: [WHV_REGISTER_NAME; 1] = [WHV_REGISTER_NAME_WHvX64RegisterXCr0];
-        let whpx_xcrs = xcrs
-            .iter()
-            .filter_map(|reg| match reg.id {
-                0 => Some(WHV_REGISTER_VALUE { Reg64: reg.value }),
-                _ => None,
-            })
-            .collect::<Vec<WHV_REGISTER_VALUE>>();
-        if !whpx_xcrs.is_empty() {
-            // safe because we have enough space for all the registers in whpx_xcrs
-            check_whpx!(unsafe {
-                WHvSetVirtualProcessorRegisters(
-                    self.vm_partition.partition,
-                    self.index,
-                    &REG_NAMES as *const WHV_REGISTER_NAME,
-                    REG_NAMES.len() as u32,
-                    whpx_xcrs.as_ptr(),
-                )
-            })
-        } else {
+    /// Sets a VCPU extended control register.
+    fn set_xcr(&self, xcr_index: u32, value: u64) -> Result<()> {
+        if xcr_index != 0 {
             // invalid xcr register provided
-            Err(Error::new(ENXIO))
+            return Err(Error::new(EINVAL));
         }
+
+        const REG_NAME: WHV_REGISTER_NAME = WHV_REGISTER_NAME_WHvX64RegisterXCr0;
+        let reg_value = WHV_REGISTER_VALUE { Reg64: value };
+        // safe because we have enough space for all the registers in whpx_xcrs
+        check_whpx!(unsafe {
+            WHvSetVirtualProcessorRegisters(
+                self.vm_partition.partition,
+                self.index,
+                &REG_NAME,
+                /* RegisterCount */ 1,
+                &reg_value,
+            )
+        })
     }
 
     /// Gets the value of a single model-specific register.
@@ -1443,11 +1437,10 @@ mod tests {
             return;
         }
 
-        let mut xcrs = vcpu.get_xcrs().unwrap();
-        xcrs[0].value = 1;
-        vcpu.set_xcrs(&xcrs).unwrap();
-        let xcrs2 = vcpu.get_xcrs().unwrap();
-        assert_eq!(xcrs[0].value, xcrs2[0].value);
+        vcpu.set_xcr(0, 1).unwrap();
+        let xcrs = vcpu.get_xcrs().unwrap();
+        let xcr0 = xcrs.get(&0).unwrap();
+        assert_eq!(*xcr0, 1);
     }
 
     #[test]
