@@ -188,10 +188,7 @@ impl FilePageStates {
                     .idx_page()
                     .unwrap_or_else(|| unreachable!("the page is not freed"))]
                 .is_present()
-        });
-        let Some(next_head_idx_offset) = next_head_idx_offset else {
-            return None;
-        };
+        })?;
         let idx_file = idx_file + next_head_idx_offset;
 
         let Some(head_idx_page) = self.states[idx_file].idx_page() else {
