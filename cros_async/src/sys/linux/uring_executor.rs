@@ -462,8 +462,8 @@ impl UringReactor {
         let src = ring
             .registered_sources
             .get(source.tag)
-            .map(Arc::clone)
-            .ok_or(Error::InvalidSource)?;
+            .ok_or(Error::InvalidSource)?
+            .clone();
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
         self.ctx
@@ -490,8 +490,8 @@ impl UringReactor {
         let src = ring
             .registered_sources
             .get(source.tag)
-            .map(Arc::clone)
-            .ok_or(Error::InvalidSource)?;
+            .ok_or(Error::InvalidSource)?
+            .clone();
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
         self.ctx
@@ -532,8 +532,8 @@ impl UringReactor {
         let src = ring
             .registered_sources
             .get(source.tag)
-            .map(Arc::clone)
-            .ok_or(Error::InvalidSource)?;
+            .ok_or(Error::InvalidSource)?
+            .clone();
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
         self.ctx
@@ -574,8 +574,8 @@ impl UringReactor {
         let src = ring
             .registered_sources
             .get(source.tag)
-            .map(Arc::clone)
-            .ok_or(Error::InvalidSource)?;
+            .ok_or(Error::InvalidSource)?
+            .clone();
 
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
@@ -630,8 +630,8 @@ impl UringReactor {
         let src = ring
             .registered_sources
             .get(source.tag)
-            .map(Arc::clone)
-            .ok_or(Error::InvalidSource)?;
+            .ok_or(Error::InvalidSource)?
+            .clone();
 
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
