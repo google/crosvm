@@ -60,7 +60,6 @@ use std::time::Duration;
 
 pub use acpi_event::*;
 pub use capabilities::drop_capabilities;
-pub use descriptor::*;
 pub use event::EventExt;
 pub(crate) use event::PlatformEvent;
 pub use file::find_next_data;
@@ -97,7 +96,6 @@ pub use signal::*;
 pub use signalfd::Error as SignalFdError;
 pub use signalfd::*;
 pub use terminal::*;
-pub use timer::*;
 pub(crate) use write_zeroes::file_punch_hole;
 pub(crate) use write_zeroes::file_write_zeroes_at;
 

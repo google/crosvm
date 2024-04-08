@@ -7,5 +7,4 @@ pub mod memory_mapping;
 pub mod shm;
 
 pub use memory_mapping::MemoryMapping;
-pub use shm::round_up_to_page_size;
 pub use shm::SharedMemory;

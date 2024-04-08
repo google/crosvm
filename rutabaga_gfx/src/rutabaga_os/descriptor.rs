@@ -35,15 +35,6 @@ pub trait AsRawDescriptor {
     fn as_raw_descriptor(&self) -> RawDescriptor;
 }
 
-/// A trait similar to `AsRawDescriptor` but supports an arbitrary number of descriptors.
-pub trait AsRawDescriptors {
-    /// Returns the underlying raw descriptors.
-    ///
-    /// Please refer to the documentation of [`AsRawDescriptor::as_raw_descriptor`] for limitations
-    /// and recommended use.
-    fn as_raw_descriptors(&self) -> Vec<RawDescriptor>;
-}
-
 pub trait FromRawDescriptor {
     /// # Safety
     /// Safe only if the caller ensures nothing has access to the descriptor after passing it to
@@ -54,15 +45,6 @@ pub trait FromRawDescriptor {
 impl AsRawDescriptor for SafeDescriptor {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.descriptor
-    }
-}
-
-impl<T> AsRawDescriptors for T
-where
-    T: AsRawDescriptor,
-{
-    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
-        vec![self.as_raw_descriptor()]
     }
 }
 

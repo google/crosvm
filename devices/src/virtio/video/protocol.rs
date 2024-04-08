@@ -32,11 +32,6 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
-pub use crate::virtio::device_constants::video::virtio_video_config;
-pub use crate::virtio::device_constants::video::VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES;
-pub use crate::virtio::device_constants::video::VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG;
-pub use crate::virtio::device_constants::video::VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT;
-
 pub const VIRTIO_VIDEO_MAX_PLANES: u32 = 8;
 pub const VIRTIO_VIDEO_FORMAT_RAW_MIN: virtio_video_format = 1;
 pub const VIRTIO_VIDEO_FORMAT_ARGB8888: virtio_video_format = 1;

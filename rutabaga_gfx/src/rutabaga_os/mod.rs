@@ -8,7 +8,6 @@ mod shm;
 pub mod sys;
 
 pub use descriptor::AsRawDescriptor;
-pub use descriptor::AsRawDescriptors;
 pub use descriptor::FromRawDescriptor;
 pub use descriptor::IntoRawDescriptor;
 pub use descriptor::SafeDescriptor;
