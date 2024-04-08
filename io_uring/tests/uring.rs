@@ -308,8 +308,7 @@ fn fallocate_fsync() {
         let mut f = OpenOptions::new()
             .read(true)
             .write(true)
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .open(&file_path)
             .unwrap();
         f.write_all(&buf).unwrap();
@@ -321,6 +320,7 @@ fn fallocate_fsync() {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(&file_path)
         .unwrap();
 

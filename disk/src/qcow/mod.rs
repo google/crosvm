@@ -2470,7 +2470,7 @@ mod tests {
         let _backing_file = OpenOptions::new()
             .read(true)
             .write(true)
-            .create(true)
+            .create_new(true)
             .open(&backing_file_path)
             .unwrap();
 
@@ -2478,7 +2478,7 @@ mod tests {
         let level1_qcow_file = OpenOptions::new()
             .read(true)
             .write(true)
-            .create(true)
+            .create_new(true)
             .open(&level1_qcow_file_path)
             .unwrap();
         let _level1_qcow_file = QcowFile::new_from_backing(
