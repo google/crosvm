@@ -554,7 +554,7 @@ impl<D: DecoderBackend> Decoder<D> {
             return Err(VideoError::InvalidArgument);
         } else {
             // unwrap() is safe because we just tested that `plane_entries` had exactly one element.
-            plane_entries.get(0).unwrap()
+            plane_entries.first().unwrap()
         };
 
         // Now try to resolve our resource.
@@ -574,7 +574,7 @@ impl<D: DecoderBackend> Decoder<D> {
                     // Safe because we confirmed the correct type for the resource.
                     // unwrap() is also safe here because we just tested above that `entries` had
                     // exactly one element.
-                    unsafe { entries.get(0).unwrap().object },
+                    unsafe { entries.first().unwrap().object },
                     &self.resource_bridge,
                     params,
                 )

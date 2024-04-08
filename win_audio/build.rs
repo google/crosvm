@@ -26,7 +26,7 @@ fn main() {
         )
         .unwrap();
         let lib_dir = files
-            .get(0)
+            .first()
             .unwrap()
             .parent()
             .unwrap()

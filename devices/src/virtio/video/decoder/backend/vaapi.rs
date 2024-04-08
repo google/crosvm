@@ -244,7 +244,7 @@ impl VaapiDecoder {
                 libva::VASurfaceAttribType::VASurfaceAttribMinWidth,
             )?;
 
-            let min_width = match min_width.get(0) {
+            let min_width = match min_width.first() {
                 Some(libva::GenericValue::Integer(i)) => *i as u32,
                 Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
                 None => 1,
@@ -253,7 +253,7 @@ impl VaapiDecoder {
             let min_height = config.query_surface_attributes_by_type(
                 libva::VASurfaceAttribType::VASurfaceAttribMinHeight,
             )?;
-            let min_height = match min_height.get(0) {
+            let min_height = match min_height.first() {
                 Some(libva::GenericValue::Integer(i)) => *i as u32,
                 Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
                 None => 1,
@@ -262,7 +262,7 @@ impl VaapiDecoder {
             let max_width = config.query_surface_attributes_by_type(
                 libva::VASurfaceAttribType::VASurfaceAttribMaxWidth,
             )?;
-            let max_width = match max_width.get(0) {
+            let max_width = match max_width.first() {
                 Some(libva::GenericValue::Integer(i)) => *i as u32,
                 Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
                 None => coded_cap.max_width,
@@ -271,7 +271,7 @@ impl VaapiDecoder {
             let max_height = config.query_surface_attributes_by_type(
                 libva::VASurfaceAttribType::VASurfaceAttribMaxHeight,
             )?;
-            let max_height = match max_height.get(0) {
+            let max_height = match max_height.first() {
                 Some(libva::GenericValue::Integer(i)) => *i as u32,
                 Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
                 None => coded_cap.max_height,
