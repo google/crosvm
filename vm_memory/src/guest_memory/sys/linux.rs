@@ -55,7 +55,7 @@ impl GuestMemory {
             return;
         }
 
-        for (_, region) in self.regions.iter().enumerate() {
+        for region in self.regions.iter() {
             if mem_policy.contains(MemoryPolicy::USE_HUGEPAGES) {
                 let ret = region.mapping.use_hugepages();
 
