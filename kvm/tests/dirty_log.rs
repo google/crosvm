@@ -62,11 +62,9 @@ fn test_run() {
         .expect("failed to register memory");
 
     let runnable_vcpu = vcpu.to_runnable(None).unwrap();
-    loop {
-        match runnable_vcpu.run().expect("run failed") {
-            VcpuExit::Hlt => break,
-            r => panic!("unexpected exit reason: {:?}", r),
-        }
+    let run_result = runnable_vcpu.run().expect("run failed");
+    if !matches!(run_result, VcpuExit::Hlt) {
+        panic!("unexpected exit reason: {:?}", run_result);
     }
 
     let mut dirty_log = [0x0, 0x0];
