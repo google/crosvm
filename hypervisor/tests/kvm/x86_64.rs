@@ -25,7 +25,6 @@ use hypervisor::PitChannelState;
 use hypervisor::PitRWMode;
 use hypervisor::PitRWState;
 use hypervisor::PitState;
-use hypervisor::Register;
 use hypervisor::TriggerMode;
 use hypervisor::Vm;
 use hypervisor::VmCap;
@@ -373,60 +372,44 @@ fn xcrs() {
 }
 
 #[test]
-fn get_msrs() {
+fn get_msr() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let vcpu = vm.create_vcpu(0).unwrap();
-    let mut msrs = vec![
-        // This one should succeed
-        Register {
-            id: 0x0000011e,
-            ..Default::default()
-        },
-        // This one will fail to fetch
-        Register {
-            id: 0xffffffff,
-            ..Default::default()
-        },
-    ];
-    vcpu.get_msrs(&mut msrs).unwrap();
-    assert_eq!(msrs.len(), 1);
+
+    // This one should succeed
+    let _value = vcpu.get_msr(0x0000011e).unwrap();
+
+    // This one will fail to fetch
+    vcpu.get_msr(0xffffffff)
+        .expect_err("invalid MSR index should fail");
 }
 
 #[test]
-fn set_msrs() {
+fn set_msr() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let vcpu = vm.create_vcpu(0).unwrap();
 
     const MSR_TSC_AUX: u32 = 0xc0000103;
-    let mut msrs = vec![Register {
-        id: MSR_TSC_AUX,
-        value: 42,
-    }];
-    vcpu.set_msrs(&msrs).unwrap();
-
-    msrs[0].value = 0;
-    vcpu.get_msrs(&mut msrs).unwrap();
-    assert_eq!(msrs.len(), 1);
-    assert_eq!(msrs[0].id, MSR_TSC_AUX);
-    assert_eq!(msrs[0].value, 42);
+    vcpu.set_msr(MSR_TSC_AUX, 42).unwrap();
+    let msr_tsc_aux = vcpu.get_msr(MSR_TSC_AUX).unwrap();
+    assert_eq!(msr_tsc_aux, 42);
 }
 
 #[test]
-fn set_msrs_unsupported() {
+fn set_msr_unsupported() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let vcpu = vm.create_vcpu(0).unwrap();
 
-    let msrs = vec![Register {
-        id: u32::MAX,
-        value: u64::MAX,
-    }];
-    assert_eq!(vcpu.set_msrs(&msrs), Err(base::Error::new(libc::EPERM)));
+    assert_eq!(
+        vcpu.set_msr(u32::MAX, u64::MAX),
+        Err(base::Error::new(libc::EPERM))
+    );
 }
 
 #[test]

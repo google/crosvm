@@ -98,15 +98,12 @@ fn get_mtrr_pairs(base: u64, len: u64) -> Vec<(u64, u64)> {
 /// Returns the number of variable MTRR entries supported by `vcpu`.
 pub fn vcpu_supported_variable_mtrrs(vcpu: &dyn VcpuX86_64) -> usize {
     // Get VAR MTRR num from MSR_MTRRcap
-    let mut msrs = vec![Register {
-        id: crate::msr_index::MSR_MTRRcap,
-        ..Default::default()
-    }];
-    if vcpu.get_msrs(&mut msrs).is_err() {
-        warn!("get msrs fail, guest with pass through device may be very slow");
-        0
-    } else {
-        (msrs[0].value & VAR_MTRR_NUM_MASK) as usize
+    match vcpu.get_msr(crate::msr_index::MSR_MTRRcap) {
+        Ok(value) => (value & VAR_MTRR_NUM_MASK) as usize,
+        Err(_e) => {
+            warn!("failed to get MSR_MTRRcap, guests with passthrough devices may be very slow");
+            0
+        }
     }
 }
 

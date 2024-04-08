@@ -283,7 +283,9 @@ where
 
             let mut msrs = long_mode_msrs();
             msrs.append(&mut mtrr_msrs(&vm, read_pci_mmio_before_32bit().start));
-            vcpu.set_msrs(&msrs).unwrap();
+            for msr in msrs {
+                vcpu.set_msr(msr.id, msr.value).unwrap();
+            }
 
             let mut vcpu_regs = Regs {
                 rip: start_addr.offset(),

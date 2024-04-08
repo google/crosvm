@@ -910,78 +910,119 @@ impl VcpuX86_64 for KvmVcpu {
         }
     }
 
-    fn get_msrs(&self, vec: &mut Vec<Register>) -> Result<()> {
-        let msrs = to_kvm_msrs(vec);
+    fn get_msr(&self, msr_index: u32) -> Result<u64> {
+        let mut msrs = vec_with_array_field::<kvm_msrs, kvm_msr_entry>(1);
+        msrs[0].nmsrs = 1;
+
+        // SAFETY: We initialize a one-element array using `vec_with_array_field` above.
+        unsafe {
+            let msr_entries = msrs[0].entries.as_mut_slice(1);
+            msr_entries[0].index = msr_index;
+        }
+
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read or write past the end of the kvm_msrs struct.
             unsafe { ioctl_with_ref(self, KVM_GET_MSRS(), &msrs[0]) }
         };
-        // KVM_GET_MSRS actually returns the number of msr entries written.
         if ret < 0 {
             return errno_result();
         }
+
+        // KVM_GET_MSRS returns the number of msr entries written.
+        if ret != 1 {
+            return Err(base::Error::new(libc::ENOENT));
+        }
+
         // SAFETY:
         // Safe because we trust the kernel to return the correct array length on success.
-        let entries = unsafe {
-            let count = ret as usize;
-            assert!(count <= vec.len());
-            msrs[0].entries.as_slice(count)
+        let value = unsafe {
+            let msr_entries = msrs[0].entries.as_slice(1);
+            msr_entries[0].data
         };
-        vec.truncate(0);
-        vec.extend(entries.iter().map(|e| Register {
-            id: e.index,
-            value: e.data,
-        }));
-        Ok(())
+
+        Ok(value)
     }
 
     fn get_all_msrs(&self) -> Result<Vec<Register>> {
-        let mut msrs: Vec<_> = self
-            .kvm
-            .get_msr_index_list()?
-            .into_iter()
-            .map(|i| Register { id: i, value: 0 })
-            .collect();
-        let count = msrs.len();
-        self.get_msrs(&mut msrs)?;
-        if msrs.len() != count {
-            error!(
-                "failed to get all MSRs: requested {}, got {}",
-                count,
-                msrs.len()
-            );
-            return Err(base::Error::new(libc::EPERM));
+        let msr_index_list = self.kvm.get_msr_index_list()?;
+        let mut kvm_msrs = vec_with_array_field::<kvm_msrs, kvm_msr_entry>(msr_index_list.len());
+        kvm_msrs[0].nmsrs = msr_index_list.len() as u32;
+        // SAFETY:
+        // Mapping the unsized array to a slice is unsafe because the length isn't known.
+        // Providing the length used to create the struct guarantees the entire slice is valid.
+        unsafe {
+            kvm_msrs[0]
+                .entries
+                .as_mut_slice(msr_index_list.len())
+                .iter_mut()
+                .zip(msr_index_list.iter())
+                .for_each(|(msr_entry, msr_index)| msr_entry.index = *msr_index);
         }
-        Ok(msrs)
-    }
 
-    fn set_msrs(&self, vec: &[Register]) -> Result<()> {
-        let msrs = to_kvm_msrs(vec);
         let ret = {
             // SAFETY:
-            // Here we trust the kernel not to read past the end of the kvm_msrs struct.
-            unsafe { ioctl_with_ref(self, KVM_SET_MSRS(), &msrs[0]) }
+            // Here we trust the kernel not to read or write past the end of the kvm_msrs struct.
+            unsafe { ioctl_with_ref(self, KVM_GET_MSRS(), &kvm_msrs[0]) }
         };
-        // KVM_SET_MSRS actually returns the number of msr entries written.
         if ret < 0 {
             return errno_result();
         }
-        let num_set = ret as usize;
-        if num_set != vec.len() {
-            if let Some(register) = vec.get(num_set) {
-                error!(
-                    "failed to set MSR {:#x?} to {:#x?}",
-                    register.id, register.value
-                );
-            } else {
-                error!(
-                    "unexpected KVM_SET_MSRS return value {num_set} (nmsrs={})",
-                    vec.len()
-                );
-            }
+
+        // KVM_GET_MSRS returns the number of msr entries written.
+        let count = ret as usize;
+        if count != msr_index_list.len() {
+            error!(
+                "failed to get all MSRs: requested {}, got {}",
+                msr_index_list.len(),
+                count,
+            );
             return Err(base::Error::new(libc::EPERM));
         }
+
+        // SAFETY:
+        // Safe because we trust the kernel to return the correct array length on success.
+        let msrs = unsafe {
+            kvm_msrs[0]
+                .entries
+                .as_slice(count)
+                .iter()
+                .map(|kvm_msr| Register {
+                    id: kvm_msr.index,
+                    value: kvm_msr.data,
+                })
+                .collect()
+        };
+
+        Ok(msrs)
+    }
+
+    fn set_msr(&self, msr_index: u32, value: u64) -> Result<()> {
+        let mut kvm_msrs = vec_with_array_field::<kvm_msrs, kvm_msr_entry>(1);
+        kvm_msrs[0].nmsrs = 1;
+
+        // SAFETY: We initialize a one-element array using `vec_with_array_field` above.
+        unsafe {
+            let msr_entries = kvm_msrs[0].entries.as_mut_slice(1);
+            msr_entries[0].index = msr_index;
+            msr_entries[0].data = value;
+        }
+
+        let ret = {
+            // SAFETY:
+            // Here we trust the kernel not to read past the end of the kvm_msrs struct.
+            unsafe { ioctl_with_ref(self, KVM_SET_MSRS(), &kvm_msrs[0]) }
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+
+        // KVM_SET_MSRS returns the number of msr entries written.
+        if ret != 1 {
+            error!("failed to set MSR {:#x} to {:#x}", msr_index, value);
+            return Err(base::Error::new(libc::EPERM));
+        }
+
         Ok(())
     }
 
@@ -1117,25 +1158,14 @@ impl KvmVcpu {
     ///
     /// See the documentation for The kvm_run structure, and for KVM_GET_LAPIC.
     pub fn get_apic_base(&self) -> Result<u64> {
-        let mut apic_base = vec![Register {
-            id: MSR_IA32_APICBASE,
-            value: 0,
-        }];
-        self.get_msrs(&mut apic_base)?;
-        match apic_base.get(0) {
-            Some(base) => Ok(base.value),
-            None => Err(Error::new(EIO)),
-        }
+        self.get_msr(MSR_IA32_APICBASE)
     }
 
     /// X86 specific call to set the value of the APIC_BASE MSR.
     ///
     /// See the documentation for The kvm_run structure, and for KVM_GET_LAPIC.
     pub fn set_apic_base(&self, apic_base: u64) -> Result<()> {
-        self.set_msrs(&[Register {
-            id: MSR_IA32_APICBASE,
-            value: apic_base,
-        }])
+        self.set_msr(MSR_IA32_APICBASE, apic_base)
     }
 
     /// Call to get pending interrupts acknowledged by the APIC but not yet injected into the CPU.
@@ -1807,30 +1837,6 @@ fn to_kvm_xcrs(r: &[Register]) -> kvm_xcrs {
         kvm.xcrs[i].value = xcr.value;
     }
     kvm
-}
-
-fn to_kvm_msrs(vec: &[Register]) -> Vec<kvm_msrs> {
-    let vec: Vec<kvm_msr_entry> = vec
-        .iter()
-        .map(|e| kvm_msr_entry {
-            index: e.id,
-            data: e.value,
-            ..Default::default()
-        })
-        .collect();
-
-    let mut msrs = vec_with_array_field::<kvm_msrs, kvm_msr_entry>(vec.len());
-    // SAFETY:
-    // Mapping the unsized array to a slice is unsafe because the length isn't known.
-    // Providing the length used to create the struct guarantees the entire slice is valid.
-    unsafe {
-        msrs[0]
-            .entries
-            .as_mut_slice(vec.len())
-            .copy_from_slice(&vec);
-    }
-    msrs[0].nmsrs = vec.len() as u32;
-    msrs
 }
 
 #[cfg(test)]

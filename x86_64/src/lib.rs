@@ -1127,7 +1127,9 @@ impl arch::LinuxArch for X8664arch {
             vcpu_init.msrs
         };
 
-        vcpu.set_msrs(&msrs).map_err(Error::SetupMsrs)?;
+        for msr in msrs {
+            vcpu.set_msr(msr.id, msr.value).map_err(Error::SetupMsrs)?;
+        }
 
         interrupts::set_lint(vcpu_id, irq_chip).map_err(Error::SetLint)?;
 

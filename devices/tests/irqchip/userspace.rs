@@ -758,13 +758,13 @@ impl VcpuX86_64 for FakeVcpu {
     fn set_xcrs(&self, _xcrs: &[Register]) -> Result<()> {
         unimplemented!()
     }
-    fn get_msrs(&self, _msrs: &mut Vec<Register>) -> Result<()> {
+    fn get_msr(&self, _msr_index: u32) -> Result<u64> {
         unimplemented!()
     }
     fn get_all_msrs(&self) -> Result<Vec<Register>> {
         unimplemented!()
     }
-    fn set_msrs(&self, _msrs: &[Register]) -> Result<()> {
+    fn set_msr(&self, _msr_index: u32, _value: u64) -> Result<()> {
         unimplemented!()
     }
     fn set_cpuid(&self, _cpuid: &CpuId) -> Result<()> {
