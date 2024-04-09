@@ -34,12 +34,6 @@ use base::RawDescriptor;
 use base::Result;
 use base::SafeDescriptor;
 use cros_fdt::Fdt;
-#[cfg(feature = "gdb")]
-use gdbstub::arch::Arch;
-#[cfg(feature = "gdb")]
-use gdbstub_arch::aarch64::reg::id::AArch64RegId;
-#[cfg(feature = "gdb")]
-use gdbstub_arch::aarch64::AArch64 as GdbArch;
 pub use geniezone_sys::*;
 use libc::open;
 use libc::EFAULT;
@@ -57,6 +51,7 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::MemoryRegionPurpose;
 
+use crate::AArch64SysRegId;
 use crate::BalloonEvent;
 use crate::ClockState;
 use crate::Config;
@@ -281,22 +276,12 @@ pub enum GeniezoneVcpuRegister {
     Pc,
     /// Processor State
     Pstate,
-    /// Stack Pointer (EL1)
-    SpEl1,
-    /// Exception Link Register (EL1)
-    ElrEl1,
-    /// Saved Program Status Register (EL1, abt, und, irq, fiq)
-    Spsr(u8),
     /// FP & SIMD Registers V0-V31
     V(u8),
-    /// Floating-point Status Register
-    Fpsr,
-    /// Floating-point Control Register
-    Fpcr,
     /// Geniezone Firmware Pseudo-Registers
     Firmware(u16),
-    /// Generic System Registers by (Op0, Op1, CRn, CRm, Op2)
-    System(u16),
+    /// System Registers
+    System(AArch64SysRegId),
     /// CCSIDR_EL1 Demultiplexed by CSSELR_EL1
     Ccsidr(u8),
 }
@@ -316,6 +301,11 @@ impl From<GeniezoneVcpuRegister> for u64 {
 
         const fn gzvm_reg(offset: usize) -> u64 {
             gzvm_regs_reg(GZVM_REG_SIZE_U64, offset)
+        }
+
+        fn spsr_reg(spsr_reg: u32) -> u64 {
+            let n = std::mem::size_of::<u64>() * (spsr_reg as usize);
+            gzvm_reg(memoffset::offset_of!(gzvm_regs, spsr) + n)
         }
 
         fn user_pt_reg(offset: usize) -> u64 {
@@ -356,15 +346,6 @@ impl From<GeniezoneVcpuRegister> for u64 {
             GeniezoneVcpuRegister::Pstate => {
                 user_pt_reg(memoffset::offset_of!(user_pt_regs, pstate))
             }
-            GeniezoneVcpuRegister::SpEl1 => gzvm_reg(memoffset::offset_of!(gzvm_regs, sp_el1)),
-            GeniezoneVcpuRegister::ElrEl1 => gzvm_reg(memoffset::offset_of!(gzvm_regs, elr_el1)),
-            GeniezoneVcpuRegister::Spsr(n @ 0..=4) => {
-                let n = std::mem::size_of::<u64>() * (n as usize);
-                gzvm_reg(memoffset::offset_of!(gzvm_regs, spsr) + n)
-            }
-            GeniezoneVcpuRegister::Spsr(n) => {
-                unreachable!("invalid GeniezoneVcpuRegister Spsr index: {n}")
-            }
             GeniezoneVcpuRegister::V(n @ 0..=31) => {
                 let n = std::mem::size_of::<u128>() * (n as usize);
                 user_fpsimd_state_reg(
@@ -375,29 +356,31 @@ impl From<GeniezoneVcpuRegister> for u64 {
             GeniezoneVcpuRegister::V(n) => {
                 unreachable!("invalid GeniezoneVcpuRegister Vn index: {n}")
             }
-            GeniezoneVcpuRegister::Fpsr => user_fpsimd_state_reg(
+            GeniezoneVcpuRegister::System(AArch64SysRegId::FPSR) => user_fpsimd_state_reg(
                 GZVM_REG_SIZE_U32,
                 memoffset::offset_of!(user_fpsimd_state, fpsr),
             ),
-            GeniezoneVcpuRegister::Fpcr => user_fpsimd_state_reg(
+            GeniezoneVcpuRegister::System(AArch64SysRegId::FPCR) => user_fpsimd_state_reg(
                 GZVM_REG_SIZE_U32,
                 memoffset::offset_of!(user_fpsimd_state, fpcr),
             ),
+            GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_EL1) => spsr_reg(0),
+            GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_abt) => spsr_reg(1),
+            GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_und) => spsr_reg(2),
+            GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_irq) => spsr_reg(3),
+            GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_fiq) => spsr_reg(4),
+            GeniezoneVcpuRegister::System(AArch64SysRegId::SP_EL1) => {
+                gzvm_reg(memoffset::offset_of!(gzvm_regs, sp_el1))
+            }
+            GeniezoneVcpuRegister::System(AArch64SysRegId::ELR_EL1) => {
+                gzvm_reg(memoffset::offset_of!(gzvm_regs, elr_el1))
+            }
+            GeniezoneVcpuRegister::System(sysreg) => {
+                reg_u64(GZVM_REG_ARM64_SYSREG.into(), sysreg.encoded().into())
+            }
             GeniezoneVcpuRegister::Firmware(n) => reg_u64(GZVM_REG_ARM, n.into()),
-            GeniezoneVcpuRegister::System(n) => reg_u64(GZVM_REG_ARM64_SYSREG.into(), n.into()),
             GeniezoneVcpuRegister::Ccsidr(n) => demux_reg(GZVM_REG_SIZE_U32, 0, n.into()),
         }
-    }
-}
-
-#[cfg(feature = "gdb")]
-impl TryFrom<AArch64RegId> for GeniezoneVcpuRegister {
-    type Error = Error;
-
-    fn try_from(_reg: <GdbArch as Arch>::RegId) -> std::result::Result<Self, Self::Error> {
-        // TODO: Geniezone not support gdb currently
-        error!("Geniezone: not support gdb");
-        Err(Error::new(EINVAL))
     }
 }
 
@@ -409,6 +392,7 @@ impl From<VcpuRegAArch64> for GeniezoneVcpuRegister {
             VcpuRegAArch64::Sp => Self::Sp,
             VcpuRegAArch64::Pc => Self::Pc,
             VcpuRegAArch64::Pstate => Self::Pstate,
+            VcpuRegAArch64::System(sysreg) => Self::System(sysreg),
         }
     }
 }
@@ -468,34 +452,6 @@ impl VcpuAArch64 for GeniezoneVcpu {
     fn set_guest_debug(&self, _addrs: &[GuestAddress], _enable_singlestep: bool) -> Result<()> {
         // TODO: Geniezone not support gdb currently
         error!("Geniezone: not support set_gdb_registers");
-        Err(Error::new(EINVAL))
-    }
-
-    #[cfg(feature = "gdb")]
-    fn set_gdb_registers(&self, _regs: &<GdbArch as Arch>::Registers) -> Result<()> {
-        // TODO: Geniezone not support gdb currently
-        error!("Geniezone: not support set_gdb_registers");
-        Err(Error::new(EINVAL))
-    }
-
-    #[cfg(feature = "gdb")]
-    fn get_gdb_registers(&self, _regs: &mut <GdbArch as Arch>::Registers) -> Result<()> {
-        // TODO: Geniezone not support gdb currently
-        error!("Geniezone: not support get_gdb_registers");
-        Err(Error::new(EINVAL))
-    }
-
-    #[cfg(feature = "gdb")]
-    fn set_gdb_register(&self, _reg: <GdbArch as Arch>::RegId, _data: &[u8]) -> Result<()> {
-        // TODO: Geniezone not support gdb currently
-        error!("Geniezone: not support set_gdb_register");
-        Err(Error::new(EINVAL))
-    }
-
-    #[cfg(feature = "gdb")]
-    fn get_gdb_register(&self, _reg: <GdbArch as Arch>::RegId, _data: &mut [u8]) -> Result<usize> {
-        // TODO: Geniezone not support gdb currently
-        error!("Geniezone: not support get_gdb_register");
         Err(Error::new(EINVAL))
     }
 }

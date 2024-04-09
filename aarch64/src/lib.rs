@@ -45,7 +45,11 @@ use devices::VirtCpufreq;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
 #[cfg(feature = "gdb")]
+use gdbstub_arch::aarch64::reg::id::AArch64RegId;
+#[cfg(feature = "gdb")]
 use gdbstub_arch::aarch64::AArch64 as GdbArch;
+#[cfg(feature = "gdb")]
+use hypervisor::AArch64SysRegId;
 use hypervisor::CpuConfigAArch64;
 use hypervisor::DeviceKind;
 use hypervisor::Hypervisor;
@@ -937,27 +941,160 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
 
     fn read_registers(vcpu: &T) -> Result<<GdbArch as Arch>::Registers> {
         let mut regs: <GdbArch as Arch>::Registers = Default::default();
-
-        vcpu.get_gdb_registers(&mut regs).map_err(Error::ReadRegs)?;
+        assert!(
+            regs.x.len() == 31,
+            "unexpected number of Xn general purpose registers"
+        );
+        for (i, reg) in regs.x.iter_mut().enumerate() {
+            let n = u8::try_from(i).expect("invalid Xn general purpose register index");
+            *reg = vcpu
+                .get_one_reg(VcpuRegAArch64::X(n))
+                .map_err(Error::ReadReg)?;
+        }
+        regs.sp = vcpu
+            .get_one_reg(VcpuRegAArch64::Sp)
+            .map_err(Error::ReadReg)?;
+        regs.pc = vcpu
+            .get_one_reg(VcpuRegAArch64::Pc)
+            .map_err(Error::ReadReg)?;
+        // hypervisor API gives a 64-bit value for Pstate, but GDB wants a 32-bit "CPSR".
+        regs.cpsr = vcpu
+            .get_one_reg(VcpuRegAArch64::Pstate)
+            .map_err(Error::ReadReg)? as u32;
+        for (i, reg) in regs.v.iter_mut().enumerate() {
+            let n = u8::try_from(i).expect("invalid Vn general purpose register index");
+            *reg = vcpu.get_vector_reg(n).map_err(Error::ReadReg)?;
+        }
+        regs.fpcr = vcpu
+            .get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::FPCR))
+            .map_err(Error::ReadReg)? as u32;
+        regs.fpsr = vcpu
+            .get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::FPSR))
+            .map_err(Error::ReadReg)? as u32;
 
         Ok(regs)
     }
 
     fn write_registers(vcpu: &T, regs: &<GdbArch as Arch>::Registers) -> Result<()> {
-        vcpu.set_gdb_registers(regs).map_err(Error::WriteRegs)
+        assert!(
+            regs.x.len() == 31,
+            "unexpected number of Xn general purpose registers"
+        );
+        for (i, reg) in regs.x.iter().enumerate() {
+            let n = u8::try_from(i).expect("invalid Xn general purpose register index");
+            vcpu.set_one_reg(VcpuRegAArch64::X(n), *reg)
+                .map_err(Error::WriteReg)?;
+        }
+        vcpu.set_one_reg(VcpuRegAArch64::Sp, regs.sp)
+            .map_err(Error::WriteReg)?;
+        vcpu.set_one_reg(VcpuRegAArch64::Pc, regs.pc)
+            .map_err(Error::WriteReg)?;
+        // GDB gives a 32-bit value for "CPSR", but hypervisor API wants a 64-bit Pstate.
+        let pstate = vcpu
+            .get_one_reg(VcpuRegAArch64::Pstate)
+            .map_err(Error::ReadReg)?;
+        let pstate = (pstate & 0xffff_ffff_0000_0000) | (regs.cpsr as u64);
+        vcpu.set_one_reg(VcpuRegAArch64::Pstate, pstate)
+            .map_err(Error::WriteReg)?;
+        for (i, reg) in regs.v.iter().enumerate() {
+            let n = u8::try_from(i).expect("invalid Vn general purpose register index");
+            vcpu.set_vector_reg(n, *reg).map_err(Error::WriteReg)?;
+        }
+        vcpu.set_one_reg(
+            VcpuRegAArch64::System(AArch64SysRegId::FPCR),
+            u64::from(regs.fpcr),
+        )
+        .map_err(Error::WriteReg)?;
+        vcpu.set_one_reg(
+            VcpuRegAArch64::System(AArch64SysRegId::FPSR),
+            u64::from(regs.fpsr),
+        )
+        .map_err(Error::WriteReg)?;
+
+        Ok(())
     }
 
     fn read_register(vcpu: &T, reg_id: <GdbArch as Arch>::RegId) -> Result<Vec<u8>> {
-        let mut reg = vec![0; std::mem::size_of::<u128>()];
-        let size = vcpu
-            .get_gdb_register(reg_id, reg.as_mut_slice())
-            .map_err(Error::ReadReg)?;
-        reg.truncate(size);
-        Ok(reg)
+        let result = match reg_id {
+            AArch64RegId::X(n) => vcpu
+                .get_one_reg(VcpuRegAArch64::X(n))
+                .map(|v| v.to_ne_bytes().to_vec()),
+            AArch64RegId::Sp => vcpu
+                .get_one_reg(VcpuRegAArch64::Sp)
+                .map(|v| v.to_ne_bytes().to_vec()),
+            AArch64RegId::Pc => vcpu
+                .get_one_reg(VcpuRegAArch64::Pc)
+                .map(|v| v.to_ne_bytes().to_vec()),
+            AArch64RegId::Pstate => vcpu
+                .get_one_reg(VcpuRegAArch64::Pstate)
+                .map(|v| (v as u32).to_ne_bytes().to_vec()),
+            AArch64RegId::V(n) => vcpu.get_vector_reg(n).map(|v| v.to_ne_bytes().to_vec()),
+            AArch64RegId::System(op) => vcpu
+                .get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::from_encoded(op)))
+                .map(|v| v.to_ne_bytes().to_vec()),
+            _ => {
+                base::error!("Unexpected AArch64RegId: {:?}", reg_id);
+                Err(base::Error::new(libc::EINVAL))
+            }
+        };
+
+        match result {
+            Ok(bytes) => Ok(bytes),
+            // ENOENT is returned when KVM is aware of the register but it is unavailable
+            Err(e) if e.errno() == libc::ENOENT => Ok(Vec::new()),
+            Err(e) => Err(Error::ReadReg(e)),
+        }
     }
 
     fn write_register(vcpu: &T, reg_id: <GdbArch as Arch>::RegId, data: &[u8]) -> Result<()> {
-        vcpu.set_gdb_register(reg_id, data).map_err(Error::WriteReg)
+        fn try_into_u32(data: &[u8]) -> Result<u32> {
+            let s = data
+                .get(..4)
+                .ok_or(Error::WriteReg(base::Error::new(libc::EINVAL)))?;
+            let a = s
+                .try_into()
+                .map_err(|_| Error::WriteReg(base::Error::new(libc::EINVAL)))?;
+            Ok(u32::from_ne_bytes(a))
+        }
+
+        fn try_into_u64(data: &[u8]) -> Result<u64> {
+            let s = data
+                .get(..8)
+                .ok_or(Error::WriteReg(base::Error::new(libc::EINVAL)))?;
+            let a = s
+                .try_into()
+                .map_err(|_| Error::WriteReg(base::Error::new(libc::EINVAL)))?;
+            Ok(u64::from_ne_bytes(a))
+        }
+
+        fn try_into_u128(data: &[u8]) -> Result<u128> {
+            let s = data
+                .get(..16)
+                .ok_or(Error::WriteReg(base::Error::new(libc::EINVAL)))?;
+            let a = s
+                .try_into()
+                .map_err(|_| Error::WriteReg(base::Error::new(libc::EINVAL)))?;
+            Ok(u128::from_ne_bytes(a))
+        }
+
+        match reg_id {
+            AArch64RegId::X(n) => vcpu.set_one_reg(VcpuRegAArch64::X(n), try_into_u64(data)?),
+            AArch64RegId::Sp => vcpu.set_one_reg(VcpuRegAArch64::Sp, try_into_u64(data)?),
+            AArch64RegId::Pc => vcpu.set_one_reg(VcpuRegAArch64::Pc, try_into_u64(data)?),
+            AArch64RegId::Pstate => {
+                vcpu.set_one_reg(VcpuRegAArch64::Pstate, u64::from(try_into_u32(data)?))
+            }
+            AArch64RegId::V(n) => vcpu.set_vector_reg(n, try_into_u128(data)?),
+            AArch64RegId::System(op) => vcpu.set_one_reg(
+                VcpuRegAArch64::System(AArch64SysRegId::from_encoded(op)),
+                try_into_u64(data)?,
+            ),
+            _ => {
+                base::error!("Unexpected AArch64RegId: {:?}", reg_id);
+                Err(base::Error::new(libc::EINVAL))
+            }
+        }
+        .map_err(Error::WriteReg)
     }
 
     fn enable_singlestep(vcpu: &T) -> Result<()> {
