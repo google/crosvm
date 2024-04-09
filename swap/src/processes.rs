@@ -11,6 +11,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::linux::getpid;
@@ -41,13 +42,20 @@ pub struct ProcessesGuard {
 ///
 /// This must be called from the main process.
 pub fn freeze_child_processes(monitor_pid: Pid) -> Result<ProcessesGuard> {
-    let guard = ProcessesGuard {
+    let mut guard = ProcessesGuard {
         pids: load_descendants(getpid(), monitor_pid)?,
     };
 
-    guard.stop_the_world().context("stop the world")?;
+    for _ in 0..3 {
+        guard.stop_the_world().context("stop the world")?;
+        let pids_after = load_descendants(getpid(), monitor_pid)?;
+        if pids_after == guard.pids {
+            return Ok(guard);
+        }
+        guard.pids = pids_after;
+    }
 
-    Ok(guard)
+    bail!("new processes forked while freezing");
 }
 
 impl ProcessesGuard {
