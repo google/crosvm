@@ -394,7 +394,7 @@ impl MemoryMapping {
         let mut next: *const u8 = unsafe { addr.add(offset) };
 
         let cacheline_size = get_cacheline_size();
-        let cacheline_count = len / cacheline_size;
+        let cacheline_count = len.div_ceil(cacheline_size);
 
         for _ in 0..cacheline_count {
             // SAFETY:
