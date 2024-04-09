@@ -140,15 +140,18 @@ fn parse_process_state(text: &str) -> Option<char> {
 }
 
 fn wait_process_stopped(pid: Pid) -> Result<()> {
-    let process_stat_path = format!("/proc/{}/stat", pid);
-    for _ in 0..10 {
-        let stat = read_to_string(&process_stat_path).context("read process status")?;
-        if let Some(state) = parse_process_state(&stat) {
-            if state == 'T' {
-                return Ok(());
+    let all_tasks = std::fs::read_dir(format!("/proc/{}/task", pid)).context("read tasks")?;
+    for task in all_tasks {
+        let task = task.context("read task entry")?;
+        for _ in 0..10 {
+            let stat = read_to_string(task.path().join("stat")).context("read process status")?;
+            if let Some(state) = parse_process_state(&stat) {
+                if state == 'T' {
+                    return Ok(());
+                }
             }
+            sleep(Duration::from_millis(50));
         }
-        sleep(Duration::from_millis(50));
     }
     Err(anyhow!("time out"))
 }
