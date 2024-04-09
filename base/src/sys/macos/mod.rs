@@ -11,6 +11,7 @@ use crate::unix::Pid;
 use crate::MmapError;
 
 mod event;
+pub(in crate::sys::macos) mod kqueue;
 mod net;
 
 pub(crate) use event::PlatformEvent;
