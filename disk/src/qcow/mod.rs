@@ -287,10 +287,10 @@ impl QcowHeader {
         }
         // L2 blocks are always one cluster long. They contain cluster_size/sizeof(u64) addresses.
         let l2_size: u32 = cluster_size / size_of::<u64>() as u32;
-        let num_clusters: u32 = div_round_up_u64(size, u64::from(cluster_size)) as u32;
-        let num_l2_clusters: u32 = div_round_up_u32(num_clusters, l2_size);
-        let l1_clusters: u32 = div_round_up_u32(num_l2_clusters, cluster_size);
-        let header_clusters = div_round_up_u32(size_of::<QcowHeader>() as u32, cluster_size);
+        let num_clusters: u32 = size.div_ceil(u64::from(cluster_size)) as u32;
+        let num_l2_clusters: u32 = num_clusters.div_ceil(l2_size);
+        let l1_clusters: u32 = num_l2_clusters.div_ceil(cluster_size);
+        let header_clusters = (size_of::<QcowHeader>() as u32).div_ceil(cluster_size);
         Ok(QcowHeader {
             magic: QCOW_MAGIC,
             version: 3,
@@ -317,10 +317,7 @@ impl QcowHeader {
                     num_clusters + l1_clusters + num_l2_clusters + header_clusters,
                 ) as u32;
                 // The refcount table needs to store the offset of each refcount cluster.
-                div_round_up_u32(
-                    max_refcount_clusters * size_of::<u64>() as u32,
-                    cluster_size,
-                )
+                (max_refcount_clusters * size_of::<u64>() as u32).div_ceil(cluster_size)
             },
             nb_snapshots: 0,
             snapshots_offset: 0,
@@ -389,8 +386,8 @@ impl QcowHeader {
 fn max_refcount_clusters(refcount_order: u32, cluster_size: u32, num_clusters: u32) -> u64 {
     // Use u64 as the product of the u32 inputs can overflow.
     let refcount_bytes = (0x01 << refcount_order as u64) / 8;
-    let for_data = div_round_up_u64(num_clusters as u64 * refcount_bytes, cluster_size as u64);
-    let for_refcounts = div_round_up_u64(for_data * refcount_bytes, cluster_size as u64);
+    let for_data = (u64::from(num_clusters) * refcount_bytes).div_ceil(u64::from(cluster_size));
+    let for_refcounts = (for_data * refcount_bytes).div_ceil(u64::from(cluster_size));
     for_data + for_refcounts
 }
 
@@ -532,10 +529,10 @@ impl QcowFile {
         }
 
         let l2_size = cluster_size / size_of::<u64>() as u64;
-        let num_clusters = div_round_up_u64(header.size, cluster_size);
-        let num_l2_clusters = div_round_up_u64(num_clusters, l2_size);
-        let l1_clusters = div_round_up_u64(num_l2_clusters, cluster_size);
-        let header_clusters = div_round_up_u64(size_of::<QcowHeader>() as u64, cluster_size);
+        let num_clusters = header.size.div_ceil(cluster_size);
+        let num_l2_clusters = num_clusters.div_ceil(l2_size);
+        let l1_clusters = num_l2_clusters.div_ceil(cluster_size);
+        let header_clusters = (size_of::<QcowHeader>() as u64).div_ceil(cluster_size);
         if num_l2_clusters > MAX_RAM_POINTER_TABLE_SIZE {
             return Err(Error::TooManyL1Entries(num_l2_clusters));
         }
@@ -549,7 +546,7 @@ impl QcowFile {
                 .map_err(Error::ReadingHeader)?,
         );
 
-        let num_clusters = div_round_up_u64(header.size, cluster_size);
+        let num_clusters = header.size.div_ceil(cluster_size);
         let refcount_clusters = max_refcount_clusters(
             header.refcount_order,
             cluster_size as u32,
@@ -737,7 +734,7 @@ impl QcowFile {
             header: QcowHeader,
             cluster_size: u64,
         ) -> Result<()> {
-            let l1_clusters = div_round_up_u64(header.l1_size as u64, cluster_size);
+            let l1_clusters = u64::from(header.l1_size).div_ceil(cluster_size);
             let l1_table_offset = header.l1_table_offset;
             for i in 0..l1_clusters {
                 add_ref(refcounts, cluster_size, l1_table_offset + i * cluster_size)?;
@@ -810,7 +807,7 @@ impl QcowFile {
             refblock_clusters: u64,
             pointers_per_cluster: u64,
         ) -> Result<Vec<u64>> {
-            let refcount_table_entries = div_round_up_u64(refblock_clusters, pointers_per_cluster);
+            let refcount_table_entries = refblock_clusters.div_ceil(pointers_per_cluster);
             let mut ref_table = vec![0; refcount_table_entries as usize];
             let mut first_free_cluster: u64 = 0;
             for refblock_addr in &mut ref_table {
@@ -899,24 +896,21 @@ impl QcowFile {
             .len();
 
         let refcount_bits = 1u64 << header.refcount_order;
-        let refcount_bytes = div_round_up_u64(refcount_bits, 8);
+        let refcount_bytes = refcount_bits.div_ceil(8);
         let refcount_block_entries = cluster_size / refcount_bytes;
         let pointers_per_cluster = cluster_size / size_of::<u64>() as u64;
-        let data_clusters = div_round_up_u64(header.size, cluster_size);
-        let l2_clusters = div_round_up_u64(data_clusters, pointers_per_cluster);
-        let l1_clusters = div_round_up_u64(l2_clusters, cluster_size);
-        let header_clusters = div_round_up_u64(size_of::<QcowHeader>() as u64, cluster_size);
+        let data_clusters = header.size.div_ceil(cluster_size);
+        let l2_clusters = data_clusters.div_ceil(pointers_per_cluster);
+        let l1_clusters = l2_clusters.div_ceil(cluster_size);
+        let header_clusters = (size_of::<QcowHeader>() as u64).div_ceil(cluster_size);
         let max_clusters = data_clusters + l2_clusters + l1_clusters + header_clusters;
         let mut max_valid_cluster_index = max_clusters;
-        let refblock_clusters = div_round_up_u64(max_valid_cluster_index, refcount_block_entries);
-        let reftable_clusters = div_round_up_u64(refblock_clusters, pointers_per_cluster);
+        let refblock_clusters = max_valid_cluster_index.div_ceil(refcount_block_entries);
+        let reftable_clusters = refblock_clusters.div_ceil(pointers_per_cluster);
         // Account for refblocks and the ref table size needed to address them.
-        let refblocks_for_refs = div_round_up_u64(
-            refblock_clusters + reftable_clusters,
-            refcount_block_entries,
-        );
-        let reftable_clusters_for_refs =
-            div_round_up_u64(refblocks_for_refs, refcount_block_entries);
+        let refblocks_for_refs =
+            (refblock_clusters + reftable_clusters).div_ceil(refcount_block_entries);
+        let reftable_clusters_for_refs = refblocks_for_refs.div_ceil(refcount_block_entries);
         max_valid_cluster_index += refblock_clusters + reftable_clusters;
         max_valid_cluster_index += refblocks_for_refs + reftable_clusters_for_refs;
 
@@ -1628,16 +1622,6 @@ fn offset_is_cluster_boundary(offset: u64, cluster_bits: u32) -> Result<()> {
         return Err(Error::InvalidOffset(offset));
     }
     Ok(())
-}
-
-// Ceiling of the division of `dividend`/`divisor`.
-fn div_round_up_u64(dividend: u64, divisor: u64) -> u64 {
-    dividend / divisor + u64::from(dividend % divisor != 0)
-}
-
-// Ceiling of the division of `dividend`/`divisor`.
-fn div_round_up_u32(dividend: u32, divisor: u32) -> u32 {
-    dividend / divisor + u32::from(dividend % divisor != 0)
 }
 
 #[cfg(test)]
