@@ -13,6 +13,7 @@ use crate::MmapError;
 mod event;
 pub(in crate::sys::macos) mod kqueue;
 mod net;
+mod timer;
 
 pub(crate) use event::PlatformEvent;
 pub(in crate::sys) use libc::sendmsg;
@@ -255,34 +256,6 @@ impl crate::shm::PlatformSharedMemory for crate::SharedMemory {
         _descriptor: crate::SafeDescriptor,
         _size: u64,
     ) -> crate::Result<crate::SharedMemory> {
-        todo!();
-    }
-}
-
-impl crate::Timer {
-    pub fn new() -> crate::errno::Result<crate::Timer> {
-        todo!();
-    }
-}
-
-impl crate::TimerTrait for crate::Timer {
-    fn reset(
-        &mut self,
-        _dur: std::time::Duration,
-        mut _interval: Option<std::time::Duration>,
-    ) -> crate::errno::Result<()> {
-        todo!();
-    }
-    fn wait(&mut self) -> crate::errno::Result<()> {
-        todo!();
-    }
-    fn mark_waited(&mut self) -> crate::errno::Result<bool> {
-        todo!();
-    }
-    fn clear(&mut self) -> crate::errno::Result<()> {
-        todo!();
-    }
-    fn resolution(&self) -> crate::errno::Result<std::time::Duration> {
         todo!();
     }
 }

@@ -21,14 +21,15 @@ pub(in crate::sys::macos) struct Kqueue {
 }
 
 // Only accepts the subset of parameters we actually use
-pub(in crate::sys::macos) fn make_kevent(filter: i16, flags: u16, fflags: u32) -> libc::kevent {
-    libc::kevent {
+pub(in crate::sys::macos) fn make_kevent(filter: i16, flags: u16, fflags: u32) -> libc::kevent64_s {
+    libc::kevent64_s {
         ident: 0, /* hopefully not global? */
         filter,
         flags,
         fflags,
         data: 0,
-        udata: ptr::null_mut(),
+        udata: 0,
+        ext: [0, 0],
     }
 }
 
@@ -47,20 +48,21 @@ impl Kqueue {
 
     pub(in crate::sys::macos) fn kevent<'a>(
         &self,
-        changelist: &[libc::kevent],
-        eventlist: &'a mut [libc::kevent],
+        changelist: &[libc::kevent64_s],
+        eventlist: &'a mut [libc::kevent64_s],
         timeout: Option<Duration>,
-    ) -> Result<&'a mut [libc::kevent]> {
+    ) -> Result<&'a mut [libc::kevent64_s]> {
         let timespec = timeout.map(duration_to_timespec);
         // SAFETY: `queue` is a valid kqueue, `changelist` and `eventlist` are supplied with lengths
         // based on valid slices
         let res = unsafe {
-            libc::kevent(
+            libc::kevent64(
                 self.queue.as_raw_descriptor(),
                 changelist.as_ptr(),
                 changelist.len() as i32,
                 eventlist.as_mut_ptr(),
                 eventlist.len() as i32,
+                0,
                 if let Some(timeout) = timespec {
                     &timeout
                 } else {

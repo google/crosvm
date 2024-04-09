@@ -241,8 +241,20 @@ mod tests {
         tfd.wait().expect("unable to wait for timer");
         let elapsed = now.elapsed();
         // elapsed is within +-clock_error from expected duration
-        assert!(elapsed - clock_error <= dur);
-        assert!(elapsed + clock_error >= dur);
+        assert!(
+            elapsed - clock_error <= dur,
+            "expected {:?} - {:?} <= {:?}",
+            elapsed,
+            clock_error,
+            dur
+        );
+        assert!(
+            elapsed + clock_error >= dur,
+            "expected {:?} + {:?} >= {:?}",
+            elapsed,
+            clock_error,
+            dur
+        );
     }
 
     /// Similar to one_shot, except this one waits for a clone of the timer.
@@ -263,8 +275,20 @@ mod tests {
         let elapsed = now.elapsed();
 
         // elapsed is within +-clock_error from expected duration
-        assert!(elapsed - clock_error <= dur);
-        assert!(elapsed + clock_error >= dur);
+        assert!(
+            elapsed - clock_error <= dur,
+            "expected {:?} - {:?} <= {:?}",
+            elapsed,
+            clock_error,
+            dur
+        );
+        assert!(
+            elapsed + clock_error >= dur,
+            "expected {:?} + {:?} >= {:?}",
+            elapsed,
+            clock_error,
+            dur
+        );
     }
 
     #[test]
