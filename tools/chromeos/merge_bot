@@ -212,6 +212,11 @@ def create_merge_commits(
     if not commits:
         print("Nothing to merge.")
         return (0, False)
+    else:
+        commit_authors = git_log(f"HEAD..{revision}", "--pretty=%an").lines()
+        if all(map(lambda x: x == "recipe-roller", commit_authors)):
+            print("All commits are from recipe roller, don't merge yet")
+            return (0, False)
 
     # Create a merge commit for each batch
     batches = list(batched(commits, max_size)) if max_size > 0 else [commits]
