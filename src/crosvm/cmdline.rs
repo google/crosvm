@@ -3157,14 +3157,19 @@ impl TryFrom<RunCommand> for super::config::Config {
             }
             cfg.gpu_parameters = cmd.gpu.into_iter().map(|p| p.0).take(1).next();
             if !cmd.gpu_display.is_empty() {
+                log::warn!("'--gpu-display' is deprecated; please use `--gpu displays=[...]`");
                 cfg.gpu_parameters
                     .get_or_insert_with(Default::default)
                     .display_params
                     .extend(cmd.gpu_display.into_iter().map(|p| p.0));
+            }
 
-                #[cfg(feature = "android_display")]
-                {
-                    cfg.android_display_service = cmd.android_display_service;
+            #[cfg(feature = "android_display")]
+            {
+                if let Some(gpu_parameters) = &cfg.gpu_parameters {
+                    if !gpu_parameters.display_params.is_empty() {
+                        cfg.android_display_service = cmd.android_display_service;
+                    }
                 }
             }
 

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::warn;
 use devices::virtio::gpu::VIRTIO_GPU_MAX_SCANOUTS;
 use devices::virtio::GpuDisplayMode;
 use devices::virtio::GpuDisplayParameters;
@@ -28,6 +29,10 @@ pub(crate) fn fixup_gpu_options(
         .into_iter()
         .map(|p| fixup_gpu_display_options(p).map(|p| p.0))
         .collect::<Result<Vec<_>, _>>()?;
+
+    if gpu_params.__width_compat.is_some() || gpu_params.__height_compat.is_some() {
+        warn!("'width' and 'height' in '--gpu' are deprecated; please use `displays=[...]`");
+    }
 
     match (
         gpu_params.__width_compat.take(),
@@ -71,6 +76,9 @@ pub(crate) fn fixup_gpu_display_options(
         display_params.__horizontal_dpi_compat.take(),
         display_params.__vertical_dpi_compat.take(),
     );
+    if horizontal_dpi_compat.is_some() || vertical_dpi_compat.is_some() {
+        warn!("'horizontal-dpi' and 'vertical-dpi' are deprecated; please use `dpi=[...]`");
+    }
     // Make sure `display_params.dpi` is always populated.
     display_params.dpi = Some(match display_params.dpi {
         Some(dpi) => {
