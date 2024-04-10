@@ -1722,6 +1722,9 @@ fn platform_create_window_procedure_thread_configs(
     main_alias_pid: u32,
     device_alias_pid: u32,
 ) -> Result<WindowProcedureThreadSplitConfig> {
+    if let Some(params) = cfg.gpu_parameters.as_ref() {
+        wndproc_thread_builder.set_max_num_windows(params.max_num_displays);
+    }
     let product_config = get_window_procedure_thread_product_configs(
         cfg,
         &mut wndproc_thread_builder,
