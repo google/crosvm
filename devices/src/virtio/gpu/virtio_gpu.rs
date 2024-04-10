@@ -67,7 +67,6 @@ use super::VirtioScanoutBlobData;
 use crate::virtio::gpu::edid::DisplayInfo;
 use crate::virtio::gpu::edid::EdidBytes;
 use crate::virtio::gpu::GpuDisplayParameters;
-use crate::virtio::gpu::VIRTIO_GPU_MAX_SCANOUTS;
 use crate::virtio::resource_bridge::BufferInfo;
 use crate::virtio::resource_bridge::PlaneInfo;
 use crate::virtio::resource_bridge::ResourceInfo;
@@ -448,6 +447,7 @@ impl VirtioGpuScanout {
 /// Handles functionality related to displays, input events and hypervisor memory management.
 pub struct VirtioGpu {
     display: Rc<RefCell<GpuDisplay>>,
+    num_scanouts: u32,
     scanouts: Map<u32, VirtioGpuScanout>,
     scanouts_updated: Arc<AtomicBool>,
     cursor_scanout: VirtioGpuScanout,
@@ -524,6 +524,7 @@ impl VirtioGpu {
     /// Creates a new instance of the VirtioGpu state tracker.
     pub fn new(
         display: GpuDisplay,
+        num_scanouts: u32,
         display_params: Vec<GpuDisplayParameters>,
         display_event: Arc<AtomicBool>,
         rutabaga: Rutabaga,
@@ -555,6 +556,7 @@ impl VirtioGpu {
 
         Some(VirtioGpu {
             display: Rc::new(RefCell::new(display)),
+            num_scanouts,
             scanouts,
             scanouts_updated: display_event,
             cursor_scanout,
@@ -582,8 +584,7 @@ impl VirtioGpu {
     /// Gets the list of supported display resolutions as a slice of `(width, height, enabled)`
     /// tuples.
     pub fn display_info(&self) -> Vec<(u32, u32, bool)> {
-        (0..VIRTIO_GPU_MAX_SCANOUTS)
-            .map(|scanout_id| scanout_id as u32)
+        (0..self.num_scanouts)
             .map(|scanout_id| {
                 self.scanouts
                     .get(&scanout_id)
@@ -596,13 +597,11 @@ impl VirtioGpu {
 
     // Connects new displays to the device.
     fn add_displays(&mut self, displays: Vec<DisplayParameters>) -> GpuControlResult {
-        if self.scanouts.len() + displays.len() > VIRTIO_GPU_MAX_SCANOUTS {
-            return GpuControlResult::TooManyDisplays(VIRTIO_GPU_MAX_SCANOUTS);
+        if self.scanouts.len() + displays.len() > self.num_scanouts as usize {
+            return GpuControlResult::TooManyDisplays(self.num_scanouts as usize);
         }
 
-        let mut available_scanout_ids = (0..VIRTIO_GPU_MAX_SCANOUTS)
-            .map(|s| s as u32)
-            .collect::<Set<u32>>();
+        let mut available_scanout_ids = (0..self.num_scanouts).collect::<Set<u32>>();
 
         self.scanouts.keys().for_each(|scanout_id| {
             available_scanout_ids.remove(scanout_id);
