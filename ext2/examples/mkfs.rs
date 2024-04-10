@@ -8,6 +8,7 @@
 mod linux {
     use std::fs::OpenOptions;
     use std::io::Write;
+    use std::path::Path;
 
     use argh::FromArgs;
     use base::MappedRegion;
@@ -18,7 +19,11 @@ mod linux {
     struct Args {
         /// path to the disk,
         #[argh(option)]
-        path: String,
+        output: String,
+
+        /// path to the source directory to copy files from,
+        #[argh(option)]
+        src: Option<String>,
 
         /// number of blocks for each group
         #[argh(option, default = "1024")]
@@ -31,20 +36,20 @@ mod linux {
 
     pub fn main() -> anyhow::Result<()> {
         let args: Args = argh::from_env();
+        let src_dir = args.src.as_ref().map(|s| Path::new(s.as_str()));
         let cfg = ext2::Config {
             blocks_per_group: args.blocks_per_group,
             inodes_per_group: args.inodes_per_group,
         };
-
-        let mem = create_ext2_region(&cfg)?;
-        println!("Create {}", args.path);
+        let mem = create_ext2_region(&cfg, src_dir)?;
+        println!("Create {}", args.output);
         // SAFETY: `mem` has a valid pointer and its size.
         let buf = unsafe { std::slice::from_raw_parts(mem.as_ptr(), mem.size()) };
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
-            .open(&args.path)
+            .open(&args.output)
             .unwrap();
 
         file.write_all(buf).unwrap();

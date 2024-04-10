@@ -142,7 +142,8 @@ fn test_region_manager() {
     assert_eq!(rm.to_vec(), vec![&Region { start: 0, len: 30 },]);
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, AsBytes)]
+#[repr(C)]
 /// Represents a ID of a disk block.
 pub struct BlockId(u32);
 
@@ -155,6 +156,12 @@ impl From<u32> for BlockId {
 impl From<BlockId> for u32 {
     fn from(value: BlockId) -> Self {
         value.0
+    }
+}
+
+impl BlockId {
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
     }
 }
 

@@ -4,6 +4,8 @@
 
 //! Defines the inode structure.
 
+use std::os::linux::fs::MetadataExt;
+
 use anyhow::bail;
 use anyhow::Result;
 use enumn::N;
@@ -46,7 +48,7 @@ impl InodeType {
 // Represents an inode number.
 // This is 1-indexed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct InodeNum(u32);
+pub(crate) struct InodeNum(pub u32);
 
 impl InodeNum {
     pub fn new(inode: u32) -> Result<Self> {
@@ -91,9 +93,14 @@ impl Default for InodeBlock {
 }
 
 impl InodeBlock {
+    /// Copies the given slice to `self.0.[offset..]`.
+    pub fn copy_from_slice(&mut self, offset: usize, src: &[u8]) {
+        self.0[offset..offset + src.len()].copy_from_slice(src)
+    }
+
     /// Set a block id at the given index.
-    pub fn set_block_id(&mut self, index: usize, block: BlockId) {
-        self.0[index * 4..(index + 1) * 4].copy_from_slice(u32::from(block).as_bytes())
+    pub fn set_block_id(&mut self, index: usize, block_id: &BlockId) {
+        self.copy_from_slice(index * 4, block_id.as_bytes())
     }
 }
 
@@ -182,6 +189,7 @@ impl Inode {
         let gid_high = (gid >> 16) as u16;
         let gid_low = gid as u16;
 
+        // TODO(b/333988434): Support extended attributes.
         *inode = Self {
             mode,
             size,
@@ -192,6 +200,54 @@ impl Inode {
             _gid: gid_low,
             _uid_high: uid_high,
             _gid_high: gid_high,
+            ..Default::default()
+        };
+        Ok(inode)
+    }
+
+    pub fn from_metadata<'a>(
+        arena: &'a Arena<'a>,
+        group: &mut GroupMetaData,
+        inode_num: InodeNum,
+        m: &std::fs::Metadata,
+        size: u32,
+        links_count: u16,
+        blocks: u32,
+        block: InodeBlock,
+    ) -> Result<&'a mut Self> {
+        // (inode_num - 1) because inode is 1-indexed.
+        let inode_offset = (usize::from(inode_num) - 1) * Inode::inode_record_size() as usize;
+        let inode =
+            arena.allocate::<Inode>(BlockId::from(group.group_desc.inode_table), inode_offset)?;
+
+        let mode = m.st_mode() as u16;
+
+        let uid = m.st_uid();
+        let uid_high = (uid >> 16) as u16;
+        let uid_low: u16 = uid as u16;
+        let gid = m.st_gid();
+        let gid_high = (gid >> 16) as u16;
+        let gid_low: u16 = gid as u16;
+
+        let atime = m.st_atime() as u32;
+        let ctime = m.st_ctime() as u32;
+        let mtime = m.st_mtime() as u32;
+
+        *inode = Inode {
+            mode,
+            _uid: uid_low,
+            _gid: gid_low,
+            size,
+            atime,
+            ctime,
+            mtime,
+            links_count,
+            blocks,
+            block,
+
+            _uid_high: uid_high,
+            _gid_high: gid_high,
+
             ..Default::default()
         };
         Ok(inode)

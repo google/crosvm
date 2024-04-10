@@ -19,3 +19,4 @@ name = "mkfs"
 [dev-dependencies]
 argh = "0.1"
 tempfile = "3"
+walkdir = "2.3"
