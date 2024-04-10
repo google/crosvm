@@ -6,7 +6,10 @@ use std::convert::TryFrom;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use anyhow::Context;
 use base::warn;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
@@ -55,6 +58,13 @@ pub struct Pl030 {
 
     // status flag to keep track of whether the interrupt is cleared
     // or not
+    interrupt_active: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Pl030Snapshot {
+    counter_delta_time: u32,
+    match_value: u32,
     interrupt_active: bool,
 }
 
@@ -156,7 +166,33 @@ impl BusDevice for Pl030 {
     }
 }
 
-impl Suspendable for Pl030 {}
+impl Suspendable for Pl030 {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(Pl030Snapshot {
+            counter_delta_time: self.counter_delta_time,
+            match_value: self.match_value,
+            interrupt_active: self.interrupt_active,
+        })
+        .with_context(|| format!("error serializing {}", self.debug_label()))
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let deser: Pl030Snapshot = serde_json::from_value(data)
+            .with_context(|| format!("failed to deserialize {}", self.debug_label()))?;
+        self.counter_delta_time = deser.counter_delta_time;
+        self.match_value = deser.match_value;
+        self.interrupt_active = deser.interrupt_active;
+        Ok(())
+    }
+
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
