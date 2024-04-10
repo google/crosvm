@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
 
-use anyhow::anyhow;
 use base::Error;
 use base::Result;
 use cros_fdt::Fdt;
@@ -48,11 +47,16 @@ impl TryFrom<u32> for PsciVersion {
     }
 }
 
+// Aarch64 does not provide a concrete number as to how many registers exist.
+// The list of registers available exceeds 600 registers
+pub const AARCH64_MAX_REG_COUNT: usize = 1024;
+
 pub const PSCI_0_2: PsciVersion = PsciVersion { major: 0, minor: 2 };
 pub const PSCI_1_0: PsciVersion = PsciVersion { major: 1, minor: 0 };
 
 /// AArch64 system register as used in MSR/MRS instructions.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Deserialize, Serialize)]
+#[serde(transparent)]
 pub struct AArch64SysRegId(u16);
 
 impl AArch64SysRegId {
@@ -220,6 +224,15 @@ pub trait VcpuAArch64: Vcpu {
     /// Gets the value of a Neon vector register (V0-V31) on this VCPU.
     fn get_vector_reg(&self, reg_num: u8) -> Result<u128>;
 
+    /// Gets the set of system registers accessible by the hypervisor
+    fn get_system_regs(&self) -> Result<BTreeMap<AArch64SysRegId, u64>>;
+
+    /// Gets the hypervisor specific data for snapshot
+    fn hypervisor_specific_snapshot(&self) -> anyhow::Result<serde_json::Value>;
+
+    /// Restores the hypervisor specific data
+    fn hypervisor_specific_restore(&self, _data: serde_json::Value) -> anyhow::Result<()>;
+
     /// Gets the value of MPIDR_EL1 on this VCPU.
     fn get_mpidr(&self) -> Result<u64> {
         const RES1: u64 = 1 << 31;
@@ -240,23 +253,59 @@ pub trait VcpuAArch64: Vcpu {
     /// Gets the max number of hardware breakpoints.
     fn get_max_hw_bps(&self) -> Result<usize>;
 
-    /// Snapshot VCPU
     fn snapshot(&self) -> anyhow::Result<VcpuSnapshot> {
-        Err(anyhow!("not yet implemented"))
+        let mut snap = VcpuSnapshot {
+            vcpu_id: self.id(),
+            sp: self.get_one_reg(VcpuRegAArch64::Sp)?,
+            pc: self.get_one_reg(VcpuRegAArch64::Pc)?,
+            pstate: self.get_one_reg(VcpuRegAArch64::Pstate)?,
+            hypervisor_data: self.hypervisor_specific_snapshot()?,
+            sys: self.get_system_regs()?,
+            ..Default::default()
+        };
+
+        for (n, xn) in snap.x.iter_mut().enumerate() {
+            *xn = self.get_one_reg(VcpuRegAArch64::X(n as u8))?;
+        }
+
+        for (n, vn) in snap.v.iter_mut().enumerate() {
+            *vn = self.get_vector_reg(n as u8)?;
+        }
+
+        Ok(snap)
     }
 
     /// Restore VCPU
-    fn restore(&self, _snapshot: &VcpuSnapshot) -> anyhow::Result<()> {
-        Err(anyhow!("not yet implemented"))
+    fn restore(&self, snapshot: &VcpuSnapshot) -> anyhow::Result<()> {
+        self.set_one_reg(VcpuRegAArch64::Sp, snapshot.sp)?;
+        self.set_one_reg(VcpuRegAArch64::Pc, snapshot.pc)?;
+        self.set_one_reg(VcpuRegAArch64::Pstate, snapshot.pstate)?;
+
+        for (n, xn) in snapshot.x.iter().enumerate() {
+            self.set_one_reg(VcpuRegAArch64::X(n as u8), *xn)?;
+        }
+        for (n, vn) in snapshot.v.iter().enumerate() {
+            self.set_vector_reg(n as u8, *vn)?;
+        }
+        for (id, val) in &snapshot.sys {
+            self.set_one_reg(VcpuRegAArch64::System(*id), *val)?;
+        }
+        self.hypervisor_specific_restore(snapshot.hypervisor_data.clone())?;
+        Ok(())
     }
 }
 
 /// Aarch64 specific vCPU snapshot.
-///
-/// Not implemented yet.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VcpuSnapshot {
     pub vcpu_id: usize,
+    pub sp: u64,
+    pub pc: u64,
+    pub pstate: u64,
+    pub x: [u64; 31],
+    pub v: [u128; 32],
+    pub sys: BTreeMap<AArch64SysRegId, u64>,
+    pub hypervisor_data: serde_json::Value,
 }
 
 impl_downcast!(VcpuAArch64);

@@ -432,6 +432,25 @@ impl VcpuAArch64 for GeniezoneVcpu {
         Err(Error::new(EINVAL))
     }
 
+    fn get_system_regs(&self) -> Result<BTreeMap<AArch64SysRegId, u64>> {
+        error!("Geniezone: not support get_system_regs");
+        Err(Error::new(EINVAL))
+    }
+
+    fn hypervisor_specific_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        // TODO: Geniezone not support gdb currently
+        Err(anyhow::anyhow!(
+            "Geniezone: not support hypervisor_specific_snapshot"
+        ))
+    }
+
+    fn hypervisor_specific_restore(&self, _data: serde_json::Value) -> anyhow::Result<()> {
+        // TODO: Geniezone not support gdb currently
+        Err(anyhow::anyhow!(
+            "Geniezone: not support hypervisor_specific_restore"
+        ))
+    }
+
     fn set_guest_debug(&self, _addrs: &[GuestAddress], _enable_singlestep: bool) -> Result<()> {
         // TODO: Geniezone not support gdb currently
         error!("Geniezone: not support set_guest_debug");

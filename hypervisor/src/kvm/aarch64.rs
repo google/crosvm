@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::mem::offset_of;
 
+use anyhow::Context;
 use base::errno_result;
 use base::error;
 use base::ioctl_with_mut_ref;
@@ -19,11 +20,14 @@ use base::warn;
 use base::Error;
 use base::Result;
 use cros_fdt::Fdt;
+use data_model::vec_with_array_field;
 use kvm_sys::*;
 use libc::EINVAL;
 use libc::ENOMEM;
 use libc::ENOTSUP;
 use libc::ENXIO;
+use serde::Deserialize;
+use serde::Serialize;
 use vm_memory::GuestAddress;
 
 use super::Config;
@@ -44,6 +48,7 @@ use crate::VcpuFeature;
 use crate::VcpuRegAArch64;
 use crate::VmAArch64;
 use crate::VmCap;
+use crate::AARCH64_MAX_REG_COUNT;
 use crate::PSCI_0_2;
 
 impl Kvm {
@@ -357,7 +362,7 @@ impl KvmVcpu {
 /// pseudo-registers (`Firmware`) and multiplexed registers (`Ccsidr`).
 ///
 /// See https://docs.kernel.org/virt/kvm/api.html for more details.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum KvmVcpuRegister {
     /// General Purpose Registers X0-X30
     X(u8),
@@ -703,6 +708,97 @@ impl VcpuAArch64 for KvmVcpu {
         }
     }
 
+    fn get_system_regs(&self) -> Result<BTreeMap<AArch64SysRegId, u64>> {
+        let mut kvm_reg_list = vec_with_array_field::<kvm_reg_list, u64>(AARCH64_MAX_REG_COUNT);
+        kvm_reg_list[0].n = AARCH64_MAX_REG_COUNT as u64;
+        let ret =
+            // SAFETY:
+            // We trust the kernel not to read/write past the end of kvm_reg_list struct.
+            unsafe { ioctl_with_mut_ref(self, KVM_GET_REG_LIST, &mut kvm_reg_list[0]) };
+        if ret < 0 {
+            return errno_result();
+        }
+        let n = kvm_reg_list[0].n;
+        assert!(
+            n <= AARCH64_MAX_REG_COUNT as u64,
+            "Get reg list returned more registers than possible"
+        );
+        // SAFETY:
+        // Mapping the unsized array to a slice is unsafe because the length isn't known.
+        // Providing the length used to create the struct guarantees the entire slice is valid.
+        let reg_list: &[u64] = unsafe { kvm_reg_list[0].reg.as_slice(n as usize) };
+        let cntvct_el0: u16 = AArch64SysRegId::CNTVCT_EL0.encoded();
+        let cntv_cval_el0: u16 = AArch64SysRegId::CNTV_CVAL_EL0.encoded();
+        let mut sys_regs = BTreeMap::new();
+        for reg in reg_list {
+            if (*reg as u32) & KVM_REG_ARM_COPROC_MASK == KVM_REG_ARM64_SYSREG {
+                if *reg as u16 == cntvct_el0 {
+                    sys_regs.insert(
+                        AArch64SysRegId::CNTV_CVAL_EL0,
+                        self.get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::CNTV_CVAL_EL0))?,
+                    );
+                } else if *reg as u16 == cntv_cval_el0 {
+                    sys_regs.insert(
+                        AArch64SysRegId::CNTVCT_EL0,
+                        self.get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::CNTVCT_EL0))?,
+                    );
+                } else {
+                    sys_regs.insert(
+                        AArch64SysRegId::from_encoded((reg & 0xFFFF) as u16),
+                        self.get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::from_encoded(
+                            (reg & 0xFFFF) as u16,
+                        )))?,
+                    );
+                }
+            }
+        }
+        Ok(sys_regs)
+    }
+
+    fn hypervisor_specific_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        let mut kvm_reg_list = vec_with_array_field::<kvm_reg_list, u64>(AARCH64_MAX_REG_COUNT);
+        kvm_reg_list[0].n = AARCH64_MAX_REG_COUNT as u64;
+        let ret =
+            // SAFETY:
+            // We trust the kernel not to read/write past the end of kvm_reg_list struct.
+            unsafe { ioctl_with_mut_ref(self, KVM_GET_REG_LIST, &mut kvm_reg_list[0]) };
+        if ret < 0 {
+            return errno_result().context("failed to get registers list");
+        }
+        let n = kvm_reg_list[0].n;
+        assert!(
+            n <= AARCH64_MAX_REG_COUNT as u64,
+            "Get reg list returned more registers than possible"
+        );
+        // SAFETY:
+        // Mapping the unsized array to a slice is unsafe because the length isn't known.
+        // Providing the length used to create the struct guarantees the entire slice is valid.
+        let reg_list: &[u64] = unsafe { kvm_reg_list[0].reg.as_slice(n as usize) };
+        let mut firmware_regs = BTreeMap::new();
+        for reg in reg_list {
+            if (*reg as u32) & KVM_REG_ARM_COPROC_MASK == KVM_REG_ARM_FW {
+                firmware_regs.insert(
+                    *reg as u16,
+                    self.get_one_kvm_reg_u64(KvmVcpuRegister::Firmware(*reg as u16))?,
+                );
+            }
+        }
+
+        serde_json::to_value(KvmSnapshot { firmware_regs })
+            .context("Failed to serialize KVM specific data")
+    }
+
+    fn hypervisor_specific_restore(&self, data: serde_json::Value) -> anyhow::Result<()> {
+        let deser: KvmSnapshot =
+            serde_json::from_value(data).context("Failed to deserialize KVM specific data")?;
+        // TODO: need to set firmware registers before "create_fdt" is called, earlier in the
+        // stack.
+        for (id, val) in &deser.firmware_regs {
+            self.set_one_kvm_reg_u64(KvmVcpuRegister::Firmware(*id), *val)?;
+        }
+        Ok(())
+    }
+
     #[allow(clippy::unusual_byte_groupings)]
     fn set_guest_debug(&self, addrs: &[GuestAddress], enable_singlestep: bool) -> Result<()> {
         let mut dbg = kvm_guest_debug {
@@ -748,6 +844,11 @@ impl VcpuAArch64 for KvmVcpu {
             errno_result()
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct KvmSnapshot {
+    firmware_regs: BTreeMap<u16, u64>,
 }
 
 // This function translates an IrqSrouceChip to the kvm u32 equivalent. It has a different
