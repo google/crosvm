@@ -289,7 +289,11 @@ pub struct MakeRTCommand {
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "resume")]
-/// Resumes the crosvm instance
+/// Resumes the crosvm instance. No-op if already running. When starting crosvm with `--restore`,
+/// this command can be used to wait until the restore is complete
+// Implementation note: All the restore work happens before crosvm becomes able to process incoming
+// commands, so really all commands can be used to wait for restore to complete, but few are side
+// effect free.
 pub struct ResumeCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path

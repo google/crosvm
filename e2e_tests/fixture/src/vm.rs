@@ -406,7 +406,27 @@ impl TestVm {
         TestVm::new_generic(TestVmSys::append_config_args, cfg, false)
     }
 
-    pub fn new_cold_restore(cfg: Config) -> Result<TestVm> {
+    /// Create `TestVm` from a snapshot, using `--restore` but NOT `--suspended`.
+    pub fn new_restore(cfg: Config) -> Result<TestVm> {
+        let mut vm = TestVm::new_generic_restore(TestVmSys::append_config_args, cfg, false)?;
+        // Send a resume request to wait for the restore to finish.
+        // We don't want to return from this function until the restore is complete, otherwise it
+        // will be difficult to differentiate between a slow restore and a slow response from the
+        // guest.
+        let vm = run_with_timeout(
+            move || {
+                vm.resume_full().expect("failed to resume after VM restore");
+                vm
+            },
+            Duration::from_secs(60),
+        )
+        .expect("VM restore timeout");
+
+        Ok(vm)
+    }
+
+    /// Create `TestVm` from a snapshot, using `--restore` AND `--suspended`.
+    pub fn new_restore_suspended(cfg: Config) -> Result<TestVm> {
         TestVm::new_generic_restore(TestVmSys::append_config_args, cfg, false)
     }
 

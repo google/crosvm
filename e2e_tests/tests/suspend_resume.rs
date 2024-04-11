@@ -119,7 +119,7 @@ fn suspend_resume_system(disabled_sandbox: bool) -> anyhow::Result<()> {
     // shut down VM
     drop(vm);
     // Start up VM with cold restore.
-    let mut vm = TestVm::new_cold_restore(new_config().extra_args(vec![
+    let mut vm = TestVm::new_restore_suspended(new_config().extra_args(vec![
         "--restore".to_string(),
         snap1_path.to_str().unwrap().to_string(),
         "--suspended".to_string(),
@@ -213,7 +213,7 @@ fn snapshot_vhost_user() {
         snap_path.to_str().unwrap().to_string(),
         "--no-usb".to_string(),
     ]);
-    let _vm = TestVm::new_cold_restore(config).unwrap();
+    let _vm = TestVm::new_restore(config).unwrap();
 }
 
 fn create_net_config(socket: &Path) -> VuConfig {
