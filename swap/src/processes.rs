@@ -6,6 +6,7 @@
 
 use std::fs::read_to_string;
 use std::num::ParseIntError;
+use std::path::Path;
 use std::str::FromStr;
 use std::thread::sleep;
 use std::time::Duration;
@@ -147,21 +148,25 @@ fn parse_process_state(text: &str) -> Option<char> {
     chars.next()
 }
 
+fn wait_for_task_stopped(task_path: &Path) -> Result<()> {
+    for _ in 0..10 {
+        let stat = read_to_string(task_path.join("stat")).context("read process status")?;
+        if let Some(state) = parse_process_state(&stat) {
+            if state == 'T' {
+                return Ok(());
+            }
+        }
+        sleep(Duration::from_millis(50));
+    }
+    Err(anyhow!("time out"))
+}
+
 fn wait_process_stopped(pid: Pid) -> Result<()> {
     let all_tasks = std::fs::read_dir(format!("/proc/{}/task", pid)).context("read tasks")?;
     for task in all_tasks {
-        let task = task.context("read task entry")?;
-        for _ in 0..10 {
-            let stat = read_to_string(task.path().join("stat")).context("read process status")?;
-            if let Some(state) = parse_process_state(&stat) {
-                if state == 'T' {
-                    return Ok(());
-                }
-            }
-            sleep(Duration::from_millis(50));
-        }
+        wait_for_task_stopped(&task.context("read task entry")?.path()).context("wait for task")?;
     }
-    Err(anyhow!("time out"))
+    Ok(())
 }
 
 #[cfg(test)]
