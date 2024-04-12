@@ -1142,11 +1142,12 @@ mod tests {
         let vmm_bar = Arc::new(Barrier::new(2));
         let dev_bar = vmm_bar.clone();
 
-        let (tx, rx) = channel();
+        let (ready_tx, ready_rx) = channel();
+        let (shutdown_tx, shutdown_rx) = channel();
 
         std::thread::spawn(move || {
             // VMM side
-            rx.recv().unwrap(); // Ensure the device is ready.
+            ready_rx.recv().unwrap(); // Ensure the device is ready.
 
             let connection = test_helpers::connect(vmm);
 
@@ -1198,6 +1199,9 @@ mod tests {
             println!("virtio_wake");
             vmm_device.virtio_wake(None).unwrap();
 
+            println!("wait for shutdown signal");
+            shutdown_rx.recv().unwrap();
+
             // The VMM side is supposed to stop before the device side.
             println!("drop");
             drop(vmm_device);
@@ -1210,7 +1214,7 @@ mod tests {
         handler.as_mut().allow_backend_req = allow_backend_req;
 
         // Notify listener is ready.
-        tx.send(()).unwrap();
+        ready_tx.send(()).unwrap();
 
         let mut req_handler = test_helpers::listen(dev, handler);
 
@@ -1285,8 +1289,11 @@ mod tests {
                 .expect("send_config_changed failed");
         }
 
+        // Ask the client to shutdown, then wait to it to finish.
+        shutdown_tx.send(()).unwrap();
         dev_bar.wait();
 
+        // Verify recv_header fails with `ClientExit` after the client has disconnected.
         match req_handler.recv_header() {
             Err(VhostError::ClientExit) => (),
             r => panic!("expected Err(ClientExit) but got {:?}", r),
