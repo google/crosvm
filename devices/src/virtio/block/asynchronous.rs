@@ -1571,21 +1571,16 @@ mod tests {
         assert_eq!(returned_id, *id);
     }
 
-    // TODO(b/270225199): enable this test on Windows once IoSource::into_source is implemented
-    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn reset_and_reactivate_single_worker() {
         reset_and_reactivate(false);
     }
 
-    // TODO(b/270225199): enable this test on Windows once IoSource::into_source is implemented
-    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn reset_and_reactivate_multiple_workers() {
         reset_and_reactivate(true);
     }
 
-    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn reset_and_reactivate(enables_multiple_workers: bool) {
         // Create an empty disk image
         let f = tempfile().unwrap();
@@ -1685,17 +1680,11 @@ mod tests {
         .expect("re-activate should succeed");
     }
 
-    // TODO(b/270225199): enable this test on Windows once IoSource::into_source is implemented,
-    // or after finding a good way to prevent BlockAsync::drop() from panicking due to that.
-    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn resize_with_single_worker() {
         resize(false);
     }
 
-    // TODO(b/270225199): enable this test on Windows once IoSource::into_source is implemented,
-    // or after finding a good way to prevent BlockAsync::drop() from panicking due to that.
-    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn resize_with_multiple_workers() {
         // Test resize handled by one worker affect the whole state
@@ -1812,9 +1801,6 @@ mod tests {
         );
     }
 
-    // TODO(b/270225199): enable this test on Windows once IoSource::into_source is implemented,
-    // or after finding a good way to prevent BlockAsync::drop() from panicking due to that.
-    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn run_worker_threads() {
         // Create an empty duplicable disk image
