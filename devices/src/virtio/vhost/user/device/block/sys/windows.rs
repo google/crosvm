@@ -67,9 +67,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
 
     info!("using {:?} executor.", disk_option.async_executor);
 
-    let kind = disk_option
-        .async_executor
-        .unwrap_or(ExecutorKindSys::Handle.into());
+    let kind = disk_option.async_executor.unwrap_or_default();
     let ex = Executor::with_executor_kind(kind).context("failed to create executor")?;
 
     let block = Box::new(BlockAsync::new(

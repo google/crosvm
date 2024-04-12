@@ -640,7 +640,7 @@ impl BlockAsync {
             base::warn!("multiple workers requested, but not supported by disk image type");
             worker_per_queue = false;
         }
-        let executor_kind = disk_option.async_executor;
+        let executor_kind = disk_option.async_executor.unwrap_or_default();
         let boot_index = disk_option.bootindex;
         #[cfg(windows)]
         let io_concurrency = disk_option.io_concurrency.get();
@@ -677,7 +677,6 @@ impl BlockAsync {
             Self::build_avail_features(base_features, read_only, sparse, multi_queue, packed_queue);
 
         let seg_max = get_seg_max(q_size);
-        let executor_kind = executor_kind.unwrap_or_default();
 
         let disk_size = Arc::new(AtomicU64::new(disk_size));
         let shared_state = Arc::new(AsyncRwLock::new(WorkerSharedState {

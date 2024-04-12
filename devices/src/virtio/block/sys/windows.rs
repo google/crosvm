@@ -40,10 +40,8 @@ impl DiskOption {
         }
 
         let is_overlapped = matches!(
-            self.async_executor,
-            Some(ExecutorKind::SysVariants(
-                ExecutorKindSys::Overlapped { .. }
-            ))
+            self.async_executor.unwrap_or_default(),
+            ExecutorKind::SysVariants(ExecutorKindSys::Overlapped { .. })
         );
         if is_overlapped {
             warn!("Opening disk file for overlapped IO");
