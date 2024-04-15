@@ -74,7 +74,7 @@ fn tap_hotplug_two_impl() {
     let config = Config::new().extra_args(vec!["--pci-hotplug-slots".to_owned(), "2".to_owned()]);
     let mut vm = TestVm::new(config).unwrap();
 
-    //Setup test taps.
+    //Setup test taps. tap_name has to be distinct per test, or it may appear flaky (b/333090169).
     let tap1_name = "test_tap1";
     setup_tap_device(
         tap1_name.as_bytes(),
@@ -151,8 +151,8 @@ fn tap_hotplug_add_remove_add_impl() {
     let config = Config::new().extra_args(vec!["--pci-hotplug-slots".to_owned(), "1".to_owned()]);
     let mut vm = TestVm::new(config).unwrap();
 
-    //Setup test tap
-    let tap_name = "test_tap";
+    //Setup test tap. tap_name has to be distinct per test, or it may appear flaky (b/333090169).
+    let tap_name = "test_tap3";
     setup_tap_device(
         tap_name.as_bytes(),
         "100.115.92.5".parse().unwrap(),
@@ -201,7 +201,6 @@ fn tap_hotplug_add_remove_add_impl() {
 
 /// Checks tap hotplug works with a device added, removed, then added again.
 #[test]
-#[ignore = "b/333090169 test is flaky"]
 fn tap_hotplug_add_remove_add() {
     call_test_with_sudo("tap_hotplug_add_remove_add_impl");
 }
@@ -217,11 +216,11 @@ fn tap_hotplug_add_remove_rapid_add_impl() {
     let config = Config::new().extra_args(vec!["--pci-hotplug-slots".to_owned(), "1".to_owned()]);
     let mut vm = TestVm::new(config).unwrap();
 
-    //Setup test tap
-    let tap_name = "test_tap";
+    //Setup test tap. tap_name has to be distinct per test, or it may appear flaky (b/333090169).
+    let tap_name = "test_tap4";
     setup_tap_device(
         tap_name.as_bytes(),
-        "100.115.92.5".parse().unwrap(),
+        "100.115.92.9".parse().unwrap(),
         "255.255.255.252".parse().unwrap(),
         "a0:b0:c0:d0:e0:f0".parse().unwrap(),
     );
@@ -263,7 +262,6 @@ fn tap_hotplug_add_remove_rapid_add_impl() {
 
 /// Checks tap hotplug works with a device added, removed, then rapidly added again.
 #[test]
-#[ignore = "b/333090169 test is flaky"]
 fn tap_hotplug_add_remove_rapid_add() {
     call_test_with_sudo("tap_hotplug_add_remove_rapid_add_impl");
 }
