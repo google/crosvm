@@ -36,7 +36,7 @@ static CACHELINE_SIZE: OnceLock<usize> = OnceLock::new();
 fn get_cacheline_size_once() -> usize {
     let mut assume_reason: &str = "unknown";
     cfg_if::cfg_if! {
-        if #[cfg(any(target_os = "android", target_os = "linux"))] {
+        if #[cfg(all(any(target_os = "android", target_os = "linux"), not(target_env = "musl")))] {
             // SAFETY:
             // Safe because we check the return value for errors or unsupported requests
             let linesize = unsafe { libc::sysconf(libc::_SC_LEVEL1_DCACHE_LINESIZE) };
