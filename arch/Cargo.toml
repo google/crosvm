@@ -47,3 +47,4 @@ winapi = "*"
 
 [dev-dependencies]
 serde_json = "*"
+tempfile = "3"

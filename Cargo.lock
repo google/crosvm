@@ -107,6 +107,7 @@ dependencies = [
  "serde_keyvalue",
  "swap",
  "sync",
+ "tempfile",
  "thiserror",
  "uuid",
  "vm_control",

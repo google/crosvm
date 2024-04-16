@@ -1242,8 +1242,12 @@ pub enum LoadImageError {
     GuestMemorySlice(GuestMemoryError),
     #[error("Image size too large: {0}")]
     ImageSizeTooLarge(u64),
+    #[error("No suitable memory region found")]
+    NoSuitableMemoryRegion,
     #[error("Reading image into memory failed: {0}")]
     ReadToMemory(io::Error),
+    #[error("Cannot load zero-sized image")]
+    ZeroSizedImage,
 }
 
 /// Load an image from a file into guest memory.
@@ -1313,13 +1317,44 @@ where
     let max_size = max_guest_addr.offset_from(min_guest_addr) & !(align - 1);
     let size = image.get_len().map_err(LoadImageError::GetLen)?;
 
+    if size == 0 {
+        return Err(LoadImageError::ZeroSizedImage);
+    }
+
     if size > usize::max_value() as u64 || size > max_size {
         return Err(LoadImageError::ImageSizeTooLarge(size));
     }
 
-    // Load image at the maximum aligned address allowed.
-    // The subtraction cannot underflow because of the size checks above.
-    let guest_addr = GuestAddress((max_guest_addr.offset() - size) & !(align - 1));
+    // Sort the list of guest memory regions by address so we can iterate over them in reverse order
+    // (high to low).
+    let mut regions: Vec<_> = guest_mem.regions().collect();
+    regions.sort_unstable_by(|a, b| a.guest_addr.cmp(&b.guest_addr));
+
+    // Find the highest valid address inside a guest memory region that satisfies the requested
+    // alignment and min/max address requirements while having enough space for the image.
+    let guest_addr = regions
+        .into_iter()
+        .rev()
+        .filter_map(|r| {
+            // Highest address within this region.
+            let rgn_max_addr = r
+                .guest_addr
+                .checked_add((r.size as u64).checked_sub(1)?)?
+                .min(max_guest_addr);
+            // Lowest aligned address within this region.
+            let rgn_start_aligned = r.guest_addr.align(align)?;
+            // Hypothetical address of the image if loaded at the end of the region.
+            let image_addr = rgn_max_addr.checked_sub(size - 1)? & !(align - 1);
+
+            // Would the image fit within the region?
+            if image_addr >= rgn_start_aligned {
+                Some(image_addr)
+            } else {
+                None
+            }
+        })
+        .find(|&addr| addr >= min_guest_addr)
+        .ok_or(LoadImageError::NoSuitableMemoryRegion)?;
 
     // This is safe due to the bounds check above.
     let size = size as usize;
@@ -1364,6 +1399,7 @@ pub struct SmbiosOptions {
 #[cfg(test)]
 mod tests {
     use serde_keyvalue::from_key_values;
+    use tempfile::tempfile;
 
     use super::*;
 
@@ -1419,5 +1455,32 @@ mod tests {
         let res: CpuSet = serde_json::from_str(json_str).unwrap();
         assert_eq!(res, cpuset);
         assert_eq!(serde_json::to_string(&cpuset).unwrap(), json_str);
+    }
+
+    #[test]
+    fn load_image_high_max_4g() {
+        let mem = GuestMemory::new(&[
+            (GuestAddress(0x0000_0000), 0x4000_0000), // 0x00000000..0x40000000
+            (GuestAddress(0x8000_0000), 0x4000_0000), // 0x80000000..0xC0000000
+        ])
+        .unwrap();
+
+        const TEST_IMAGE_SIZE: u64 = 1234;
+        let mut test_image = tempfile().unwrap();
+        test_image.set_len(TEST_IMAGE_SIZE).unwrap();
+
+        const TEST_ALIGN: u64 = 0x8000;
+        let (addr, size) = load_image_high(
+            &mem,
+            &mut test_image,
+            GuestAddress(0x8000),
+            GuestAddress(0xFFFF_FFFF), // max_guest_addr beyond highest guest memory region
+            TEST_ALIGN,
+        )
+        .unwrap();
+
+        assert_eq!(addr, GuestAddress(0xBFFF_8000));
+        assert_eq!(addr.offset() % TEST_ALIGN, 0);
+        assert_eq!(size, TEST_IMAGE_SIZE as usize);
     }
 }

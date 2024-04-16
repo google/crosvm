@@ -1682,11 +1682,6 @@ impl X8664arch {
                     initrd_addr_max = 0x37FFFFFF;
                 }
 
-                let mem_max = mem.end_addr().offset() - 1;
-                if initrd_addr_max > mem_max {
-                    initrd_addr_max = mem_max;
-                }
-
                 let (initrd_start, initrd_size) = arch::load_image_high(
                     mem,
                     &mut initrd_file,
