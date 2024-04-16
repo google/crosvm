@@ -597,8 +597,12 @@ impl VirtioGpu {
 
     // Connects new displays to the device.
     fn add_displays(&mut self, displays: Vec<DisplayParameters>) -> GpuControlResult {
-        if self.scanouts.len() + displays.len() > self.num_scanouts as usize {
-            return GpuControlResult::TooManyDisplays(self.num_scanouts as usize);
+        let requested_num_scanouts = self.scanouts.len() + displays.len();
+        if requested_num_scanouts > self.num_scanouts as usize {
+            return GpuControlResult::TooManyDisplays {
+                allowed: self.num_scanouts as usize,
+                requested: requested_num_scanouts,
+            };
         }
 
         let mut available_scanout_ids = (0..self.num_scanouts).collect::<Set<u32>>();
