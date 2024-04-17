@@ -17,14 +17,14 @@
 
 		cpu@0 {
 			device_type = "cpu";
-			compatible = "arm,arm-v8";
+			compatible = "arm,armv8";
 			enable-method = "psci";
 			reg = <0x00>;
 		};
 
 		cpu@1 {
 			device_type = "cpu";
-			compatible = "arm,arm-v8";
+			compatible = "arm,armv8";
 			enable-method = "psci";
 			reg = <0x01>;
 		};

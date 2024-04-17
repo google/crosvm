@@ -151,7 +151,7 @@ fn create_cpu_nodes(
         let cpu_name = format!("cpu@{:x}", reg);
         let cpu_node = cpus_node.subnode_mut(&cpu_name)?;
         cpu_node.set_prop("device_type", "cpu")?;
-        cpu_node.set_prop("compatible", "arm,arm-v8")?;
+        cpu_node.set_prop("compatible", "arm,armv8")?;
         if num_cpus > 1 {
             cpu_node.set_prop("enable-method", "psci")?;
         }
