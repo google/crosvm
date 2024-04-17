@@ -90,7 +90,7 @@ impl PciePortVariant for PcieRootPort {
 impl HotPlugBus for PcieRootPort {
     fn hot_plug(&mut self, addr: PciAddress) -> Result<Option<mpsc::Receiver<()>>> {
         if self.pcie_port.is_cc_pending() {
-            bail!("Slot busy: plugging too early or guest does not support PCIe hotplug.");
+            bail!("Hot plug fail: previous slot event is pending.");
         }
         self.downstream_devices
             .get(&addr)
@@ -105,6 +105,9 @@ impl HotPlugBus for PcieRootPort {
     }
 
     fn hot_unplug(&mut self, addr: PciAddress) -> Result<Option<mpsc::Receiver<()>>> {
+        if self.pcie_port.is_cc_pending() {
+            bail!("Hot unplug fail: previous slot event is pending.");
+        }
         self.downstream_devices
             .remove(&addr)
             .context("No downstream devices.")?;
@@ -121,9 +124,7 @@ impl HotPlugBus for PcieRootPort {
         }
 
         let (cc_sender, cc_recvr) = mpsc::channel();
-        if self.pcie_port.set_cc_sender(cc_sender).is_some() {
-            bail!("Slot busy: unplugging too early or guest does not support PCIe hotplug.");
-        }
+        self.pcie_port.set_cc_sender(cc_sender);
         self.pcie_port.set_slot_status(PCIE_SLTSTA_ABP);
         self.pcie_port.trigger_hp_or_pme_interrupt();
 
