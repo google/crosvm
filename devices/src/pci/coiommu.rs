@@ -746,8 +746,6 @@ impl UnpinWorker {
         let mut unpin_timer = if self.params.unpin_policy != CoIommuUnpinPolicy::Off
             && !self.params.unpin_interval.is_zero()
         {
-            let duration = self.params.unpin_interval;
-            let interval = Some(self.params.unpin_interval);
             let mut timer = match Timer::new() {
                 Ok(t) => t,
                 Err(e) => {
@@ -759,7 +757,7 @@ impl UnpinWorker {
                     return;
                 }
             };
-            if let Err(e) = timer.reset(duration, interval) {
+            if let Err(e) = timer.reset_repeating(self.params.unpin_interval) {
                 error!(
                     "{}: failed to start the unpin timer: {}",
                     self.debug_label(),

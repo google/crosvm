@@ -161,7 +161,7 @@ impl SyncWorker {
             Ok(timer) => timer,
         };
 
-        if let Err(e) = timer.reset(Duration::from_secs(1), Some(Duration::from_secs(1))) {
+        if let Err(e) = timer.reset_repeating(Duration::from_secs(1)) {
             error!("failed to set timer for SyncWorker: {}", e);
             return;
         }

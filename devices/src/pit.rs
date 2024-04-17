@@ -722,14 +722,25 @@ impl PitCounter {
         }
 
         let timer_len = Duration::from_nanos(u64::from(self.count) * NANOS_PER_SEC / FREQUENCY_HZ);
+        let safe_timer_len = if timer_len == Duration::new(0, 0) {
+            Duration::from_nanos(1)
+        } else {
+            timer_len
+        };
 
-        let period_ns = match self.get_command_mode() {
+        match self.get_command_mode() {
             Some(CommandMode::CommandInterrupt)
             | Some(CommandMode::CommandHWOneShot)
             | Some(CommandMode::CommandSWStrobe)
-            | Some(CommandMode::CommandHWStrobe) => None,
+            | Some(CommandMode::CommandHWStrobe) => {
+                if let Err(e) = self.timer.reset_oneshot(safe_timer_len) {
+                    error!("failed to reset oneshot timer: {}", e);
+                }
+            }
             Some(CommandMode::CommandRateGen) | Some(CommandMode::CommandSquareWaveGen) => {
-                Some(timer_len)
+                if let Err(e) = self.timer.reset_repeating(safe_timer_len) {
+                    error!("failed to reset repeating timer: {}", e);
+                }
             }
             // Don't arm timer if invalid mode.
             None => {
@@ -748,9 +759,8 @@ impl PitCounter {
                 warn!("Invalid command mode based on command {:#x}", self.command);
                 return;
             }
-        };
+        }
 
-        self.safe_arm_timer(timer_len, period_ns);
         self.timer_valid = true;
     }
 
@@ -834,16 +844,6 @@ impl PitCounter {
         if let Some(interrupt) = &mut self.interrupt_evt {
             // This is safe because the file descriptor is nonblocking and we're writing 1.
             interrupt.trigger().unwrap();
-        }
-    }
-
-    fn safe_arm_timer(&mut self, mut due: Duration, period: Option<Duration>) {
-        if due == Duration::new(0, 0) {
-            due = Duration::from_nanos(1);
-        }
-
-        if let Err(e) = self.timer.reset(due, period) {
-            error!("failed to reset timer: {}", e);
         }
     }
 

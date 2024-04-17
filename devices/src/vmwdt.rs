@@ -172,7 +172,7 @@ impl Vmwdt {
                             watchdog.next_expiration_interval_ms = remaining_time_ms;
                             if let Err(_e) = watchdog
                                 .timer
-                                .reset(Duration::from_millis(remaining_time_ms as u64), None)
+                                .reset_oneshot(Duration::from_millis(remaining_time_ms as u64))
                             {
                                 error!("failed to reset internal timer on vcpu {}", cpu_id);
                             }
@@ -270,9 +270,8 @@ impl BusDevice for Vmwdt {
                 cpu_watchdog.is_enabled = reg_val != 0;
 
                 if reg_val != 0 {
-                    let due = Duration::from_nanos(1);
                     let interval = Duration::from_millis(1000 / cpu_watchdog.timer_freq_hz);
-                    cpu_watchdog.timer.reset(due, Some(interval)).unwrap();
+                    cpu_watchdog.timer.reset_repeating(interval).unwrap();
                 } else {
                     cpu_watchdog.timer.clear().unwrap();
                 }
@@ -299,7 +298,7 @@ impl BusDevice for Vmwdt {
                 if cpu_watchdog.is_enabled {
                     if let Err(_e) = cpu_watchdog
                         .timer
-                        .reset(Duration::from_millis(next_expiration_interval_ms), None)
+                        .reset_oneshot(Duration::from_millis(next_expiration_interval_ms))
                     {
                         error!("failed to reset one-shot vcpu time {}", cpu_index);
                     }

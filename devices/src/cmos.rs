@@ -233,7 +233,7 @@ impl Cmos {
                         .signed_duration_since(now)
                         .to_std()
                         .unwrap_or(Duration::new(0, 0));
-                    if let Err(e) = self.alarm.lock().reset(duration, None) {
+                    if let Err(e) = self.alarm.lock().reset_oneshot(duration) {
                         error!("Failed to set alarm {:?}", e);
                     }
                 }

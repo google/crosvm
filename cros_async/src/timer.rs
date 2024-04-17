@@ -33,11 +33,14 @@ impl<T: TimerTrait + IntoAsync> TimerAsync<T> {
         self.wait_sys().await
     }
 
-    /// Sets the timer to expire after `dur`.  If `interval` is not `None` and non-zero it
-    /// represents the period for repeated expirations after the initial expiration.  Otherwise
-    /// the timer will expire just once.  Cancels any existing duration and repeating interval.
-    pub fn reset(&mut self, dur: Duration, interval: Option<Duration>) -> SysResult<()> {
-        self.io_source.as_source_mut().reset(dur, interval)
+    /// Sets the timer to expire after `dur`. Cancels any existing timer.
+    pub fn reset_oneshot(&mut self, dur: Duration) -> SysResult<()> {
+        self.io_source.as_source_mut().reset_oneshot(dur)
+    }
+
+    /// Sets the timer to expire repeatedly at intervals of `dur`. Cancels any existing timer.
+    pub fn reset_repeating(&mut self, dur: Duration) -> SysResult<()> {
+        self.io_source.as_source_mut().reset_repeating(dur)
     }
 
     /// Disarms the timer.
@@ -53,7 +56,7 @@ impl TimerAsync<Timer> {
     /// for details.
     pub async fn sleep(ex: &Executor, dur: Duration) -> std::result::Result<(), Error> {
         let mut tfd = Timer::new().map_err(Error::Timer)?;
-        tfd.reset(dur, None).map_err(Error::Timer)?;
+        tfd.reset_oneshot(dur).map_err(Error::Timer)?;
         let t = TimerAsync::new(tfd, ex).map_err(Error::TimerAsync)?;
         t.wait().await.map_err(Error::TimerAsync)?;
         Ok(())

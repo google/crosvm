@@ -95,7 +95,7 @@ impl PeriodicLogger {
             move |kill_evt| {
                 let mut timer = Timer::new().map_err(PeriodicLoggerError::TimerNewError)?;
                 timer
-                    .reset(interval_copy, Some(interval_copy))
+                    .reset_repeating(interval_copy)
                     .map_err(PeriodicLoggerError::TimerResetError)?;
 
                 let wait_ctx = WaitContext::build_with(&[

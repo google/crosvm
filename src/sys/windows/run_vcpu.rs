@@ -437,10 +437,7 @@ impl VcpuStallMonitor {
                 pin_mut!(exit_future);
                 'main: loop {
                     if reset_timer {
-                        timer.reset(
-                            Self::VCPU_CHECKUP_INTERVAL,
-                            Some(Self::VCPU_CHECKUP_INTERVAL),
-                        )?;
+                        timer.reset_repeating(Self::VCPU_CHECKUP_INTERVAL)?;
                         reset_timer = false;
                     }
                     let timer_future = timer.wait();

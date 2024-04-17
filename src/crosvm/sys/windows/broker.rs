@@ -836,7 +836,7 @@ fn clean_up_metrics(metrics_child: ChildCleanup) -> Result<()> {
     let mut metrics_timeout =
         Timer::new().exit_context(Exit::CreateTimer, "failed to create metrics timeout timer")?;
     metrics_timeout
-        .reset(EXIT_TIMEOUT, None)
+        .reset_oneshot(EXIT_TIMEOUT)
         .exit_context(Exit::ResetTimer, "failed to reset timer")?;
     metrics_cleanup_wait.add(&metrics_timeout, 0).exit_context(
         Exit::WaitContextAdd,
@@ -977,7 +977,7 @@ impl Supervisor {
         }
 
         let mut et = Timer::new().exit_context(Exit::CreateTimer, "failed to create timer")?;
-        et.reset(EXIT_TIMEOUT, None)
+        et.reset_oneshot(EXIT_TIMEOUT)
             .exit_context(Exit::ResetTimer, "failed to reset timer")?;
         self.wait_ctx.add(&et, timeout_token).exit_context(
             Exit::WaitContextAdd,

@@ -827,7 +827,7 @@ impl BlockAsync {
                     let flush_delay = Duration::from_secs(60);
                     flush_timer
                         .borrow_mut()
-                        .reset(flush_delay, None)
+                        .reset_oneshot(flush_delay)
                         .map_err(ExecuteError::TimerReset)?;
                 }
             }

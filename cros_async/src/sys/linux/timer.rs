@@ -80,7 +80,7 @@ mod tests {
 
             let dur = Duration::from_millis(200);
             let now = Instant::now();
-            tfd.reset(dur, None).expect("failed to arm timer");
+            tfd.reset_oneshot(dur).expect("failed to arm timer");
 
             let t = TimerAsync::new_uring(tfd, ex).unwrap();
             t.wait().await.expect("unable to wait for timer");
@@ -99,7 +99,7 @@ mod tests {
 
             let dur = Duration::from_millis(200);
             let now = Instant::now();
-            tfd.reset(dur, None).expect("failed to arm timer");
+            tfd.reset_oneshot(dur).expect("failed to arm timer");
 
             let t = TimerAsync::new_poll(tfd, ex).unwrap();
             t.wait().await.expect("unable to wait for timer");

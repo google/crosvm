@@ -60,7 +60,7 @@ impl PollTimer {
     /// Arms the timer with its initialized interval.
     pub fn arm(&mut self) -> Result<()> {
         self.timer
-            .reset(self.interval, None)
+            .reset_oneshot(self.interval)
             .map_err(|error| Error::CannotArmPollTimer {
                 name: self.name.clone(),
                 error,

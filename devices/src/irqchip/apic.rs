@@ -630,9 +630,22 @@ impl Apic {
         }
         let length = self.cycle_length * initial_count * self.get_timer_divide_control();
         let mode = self.get_reg(Reg::LOCAL_TIMER) & TIMER_MODE_MASK;
-        let (duration, interval) = match mode {
-            TIMER_MODE_ONE_SHOT => (length, None),
-            TIMER_MODE_PERIODIC => (length, Some(length)),
+        match mode {
+            TIMER_MODE_ONE_SHOT => {
+                if let Err(e) = self.timer.reset_oneshot(length) {
+                    error!("Failed to reset APIC timer to one-shot({:?}) {}", length, e);
+                    return;
+                }
+            }
+            TIMER_MODE_PERIODIC => {
+                if let Err(e) = self.timer.reset_repeating(length) {
+                    error!(
+                        "Failed to reset APIC timer to repeating({:?}) {}",
+                        length, e
+                    );
+                    return;
+                }
+            }
             TIMER_MODE_TSC_DEADLINE => {
                 warn!("APIC TSC-deadline timer not supported");
                 return;
@@ -644,13 +657,6 @@ impl Apic {
         };
 
         self.last_tick = Instant::now();
-        if let Err(e) = self.timer.reset(duration, interval) {
-            error!(
-                "Failed to reset APIC timer to duration={:?} interval={:?}: {}",
-                duration, interval, e
-            );
-            return;
-        }
         self.timer_length = Some(length);
     }
 

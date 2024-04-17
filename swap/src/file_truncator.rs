@@ -31,7 +31,6 @@ pub struct FileTruncator {
 // The particular values here are relatively arbitrary values that
 // result in a "slow-enough" background truncation.
 const TRUNCATE_STEP_BYTES: u64 = 64 * 1024 * 1024; // 64 MiB
-const TRUNCATE_INITIAL_WAIT: Duration = Duration::from_secs(30);
 const TRUNCATE_INTERVAL: Duration = Duration::from_secs(5);
 
 fn truncate_worker(
@@ -86,7 +85,7 @@ impl FileTruncator {
 
     fn new_inner(mut timer: Box<dyn TimerTrait>, file: File) -> Result<Self> {
         timer
-            .reset(TRUNCATE_INITIAL_WAIT, Some(TRUNCATE_INTERVAL))
+            .reset_repeating(TRUNCATE_INTERVAL)
             .context("failed to arm timer")?;
         Ok(Self {
             worker: Some(WorkerThread::start(
@@ -147,7 +146,7 @@ mod tests {
         file.set_len(2 * TRUNCATE_STEP_BYTES).unwrap();
 
         let worker = FileTruncator::new_inner(timer, file.try_clone().unwrap()).unwrap();
-        clock.lock().add_ns(TRUNCATE_INITIAL_WAIT.as_nanos() as u64);
+        clock.lock().add_ns(TRUNCATE_INTERVAL.as_nanos() as u64);
         wait_for_target_length(&mut file, TRUNCATE_STEP_BYTES);
         clock.lock().add_ns(TRUNCATE_INTERVAL.as_nanos() as u64);
         wait_for_target_length(&mut file, 0);

@@ -28,33 +28,29 @@ impl Timer {
 }
 
 impl crate::TimerTrait for Timer {
-    fn reset(&mut self, delay: Duration, interval: Option<Duration>) -> Result<()> {
-        match (delay, interval) {
-            (delay, None) => {
-                let mut event = make_kevent(
-                    libc::EVFILT_TIMER,
-                    libc::EV_ADD | libc::EV_ONESHOT,
-                    libc::NOTE_NSECONDS,
-                );
-                event.data = delay
-                    .as_nanos()
-                    .try_into()
-                    .map_err(|_| Error::new(libc::EINVAL))?;
-                self.queue()?.kevent(&[event], &mut [], None)?;
-            }
-            (delay, Some(interval)) if delay.as_millis() <= 1 => {
-                let mut event = make_kevent(libc::EVFILT_TIMER, libc::EV_ADD, libc::NOTE_NSECONDS);
-                event.data = interval
-                    .as_nanos()
-                    .try_into()
-                    .map_err(|_| Error::new(libc::EINVAL))?;
-                self.queue()?.kevent(&[event], &mut [], None)?;
-            }
-            // Can't set a timer that starts after a delay
-            (_delay, Some(_)) => {
-                return Err(Error::new(libc::EINVAL));
-            }
-        }
+    fn reset_oneshot(&mut self, delay: Duration) -> Result<()> {
+        self.interval = None;
+        let mut event = make_kevent(
+            libc::EVFILT_TIMER,
+            libc::EV_ADD | libc::EV_ONESHOT,
+            libc::NOTE_NSECONDS,
+        );
+        event.data = delay
+            .as_nanos()
+            .try_into()
+            .map_err(|_| Error::new(libc::EINVAL))?;
+        self.queue()?.kevent(&[event], &mut [], None)?;
+        Ok(())
+    }
+
+    fn reset_repeating(&mut self, interval: Duration) -> Result<()> {
+        self.interval = Some(interval);
+        let mut event = make_kevent(libc::EVFILT_TIMER, libc::EV_ADD, libc::NOTE_NSECONDS);
+        event.data = interval
+            .as_nanos()
+            .try_into()
+            .map_err(|_| Error::new(libc::EINVAL))?;
+        self.queue()?.kevent(&[event], &mut [], None)?;
         Ok(())
     }
 
@@ -87,7 +83,6 @@ impl crate::TimerTrait for Timer {
         if ret != 0 {
             return errno_result();
         }
-        println!("{:?}", res);
 
         Ok(Duration::new(res.tv_sec as u64, res.tv_nsec as u32))
     }
