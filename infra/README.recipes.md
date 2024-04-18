@@ -174,19 +174,19 @@ This recipe requires ambient luci authentication. To test locally run:
 
 &mdash; **def [RunSteps](/infra/recipes/update_chromeos_merges.py#14)(api):**
 
-[depot_tools/recipe_modules/bot_update]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/6aaae85821254406042a11254d49b14c9d1b44f3/recipes/README.recipes.md#recipe_modules-bot_update
-[depot_tools/recipe_modules/depot_tools]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/6aaae85821254406042a11254d49b14c9d1b44f3/recipes/README.recipes.md#recipe_modules-depot_tools
-[depot_tools/recipe_modules/gclient]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/6aaae85821254406042a11254d49b14c9d1b44f3/recipes/README.recipes.md#recipe_modules-gclient
-[depot_tools/recipe_modules/git]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/6aaae85821254406042a11254d49b14c9d1b44f3/recipes/README.recipes.md#recipe_modules-git
-[depot_tools/recipe_modules/gsutil]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/6aaae85821254406042a11254d49b14c9d1b44f3/recipes/README.recipes.md#recipe_modules-gsutil
-[recipe_engine/recipe_modules/buildbucket]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/2d4b5456534f32afc385663a5395273759009f18/README.recipes.md#recipe_modules-buildbucket
-[recipe_engine/recipe_modules/cipd]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/2d4b5456534f32afc385663a5395273759009f18/README.recipes.md#recipe_modules-cipd
-[recipe_engine/recipe_modules/context]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/2d4b5456534f32afc385663a5395273759009f18/README.recipes.md#recipe_modules-context
-[recipe_engine/recipe_modules/file]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/2d4b5456534f32afc385663a5395273759009f18/README.recipes.md#recipe_modules-file
-[recipe_engine/recipe_modules/json]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/2d4b5456534f32afc385663a5395273759009f18/README.recipes.md#recipe_modules-json
-[recipe_engine/recipe_modules/path]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/2d4b5456534f32afc385663a5395273759009f18/README.recipes.md#recipe_modules-path
-[recipe_engine/recipe_modules/platform]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/2d4b5456534f32afc385663a5395273759009f18/README.recipes.md#recipe_modules-platform
-[recipe_engine/recipe_modules/properties]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/2d4b5456534f32afc385663a5395273759009f18/README.recipes.md#recipe_modules-properties
-[recipe_engine/recipe_modules/raw_io]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/2d4b5456534f32afc385663a5395273759009f18/README.recipes.md#recipe_modules-raw_io
-[recipe_engine/recipe_modules/step]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/2d4b5456534f32afc385663a5395273759009f18/README.recipes.md#recipe_modules-step
-[recipe_engine/wkt/RecipeApi]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/2d4b5456534f32afc385663a5395273759009f18/recipe_engine/recipe_api.py#471
+[depot_tools/recipe_modules/bot_update]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/28f32775f618d532dc95aa93cbaa65222e3f872e/recipes/README.recipes.md#recipe_modules-bot_update
+[depot_tools/recipe_modules/depot_tools]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/28f32775f618d532dc95aa93cbaa65222e3f872e/recipes/README.recipes.md#recipe_modules-depot_tools
+[depot_tools/recipe_modules/gclient]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/28f32775f618d532dc95aa93cbaa65222e3f872e/recipes/README.recipes.md#recipe_modules-gclient
+[depot_tools/recipe_modules/git]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/28f32775f618d532dc95aa93cbaa65222e3f872e/recipes/README.recipes.md#recipe_modules-git
+[depot_tools/recipe_modules/gsutil]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/28f32775f618d532dc95aa93cbaa65222e3f872e/recipes/README.recipes.md#recipe_modules-gsutil
+[recipe_engine/recipe_modules/buildbucket]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/62ca441e14052ee3cc4d75e8abaeda61ce7ffe67/README.recipes.md#recipe_modules-buildbucket
+[recipe_engine/recipe_modules/cipd]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/62ca441e14052ee3cc4d75e8abaeda61ce7ffe67/README.recipes.md#recipe_modules-cipd
+[recipe_engine/recipe_modules/context]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/62ca441e14052ee3cc4d75e8abaeda61ce7ffe67/README.recipes.md#recipe_modules-context
+[recipe_engine/recipe_modules/file]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/62ca441e14052ee3cc4d75e8abaeda61ce7ffe67/README.recipes.md#recipe_modules-file
+[recipe_engine/recipe_modules/json]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/62ca441e14052ee3cc4d75e8abaeda61ce7ffe67/README.recipes.md#recipe_modules-json
+[recipe_engine/recipe_modules/path]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/62ca441e14052ee3cc4d75e8abaeda61ce7ffe67/README.recipes.md#recipe_modules-path
+[recipe_engine/recipe_modules/platform]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/62ca441e14052ee3cc4d75e8abaeda61ce7ffe67/README.recipes.md#recipe_modules-platform
+[recipe_engine/recipe_modules/properties]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/62ca441e14052ee3cc4d75e8abaeda61ce7ffe67/README.recipes.md#recipe_modules-properties
+[recipe_engine/recipe_modules/raw_io]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/62ca441e14052ee3cc4d75e8abaeda61ce7ffe67/README.recipes.md#recipe_modules-raw_io
+[recipe_engine/recipe_modules/step]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/62ca441e14052ee3cc4d75e8abaeda61ce7ffe67/README.recipes.md#recipe_modules-step
+[recipe_engine/wkt/RecipeApi]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/62ca441e14052ee3cc4d75e8abaeda61ce7ffe67/recipe_engine/recipe_api.py#471
