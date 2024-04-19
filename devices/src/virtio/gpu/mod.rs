@@ -240,7 +240,6 @@ impl QueueReader for SharedQueueReader {
 /// Initializes the virtio_gpu state tracker.
 fn build(
     display_backends: &[DisplayBackend],
-    num_scanouts: u32,
     display_params: Vec<GpuDisplayParameters>,
     display_event: Arc<AtomicBool>,
     rutabaga: Rutabaga,
@@ -279,7 +278,6 @@ fn build(
 
     VirtioGpu::new(
         display,
-        num_scanouts,
         display_params,
         display_event,
         rutabaga,
@@ -1185,7 +1183,6 @@ pub struct Gpu {
         WorkerThread<WorkerReturn>,
     )>,
     display_backends: Vec<DisplayBackend>,
-    num_scanouts: u32,
     display_params: Vec<GpuDisplayParameters>,
     display_event: Arc<AtomicBool>,
     rutabaga_builder: RutabagaBuilder,
@@ -1299,7 +1296,6 @@ impl Gpu {
             event_devices: Some(event_devices),
             worker_thread: None,
             display_backends,
-            num_scanouts: gpu_parameters.max_num_displays,
             display_params,
             display_event: Arc::new(AtomicBool::new(false)),
             rutabaga_builder,
@@ -1346,7 +1342,6 @@ impl Gpu {
 
         let mut virtio_gpu = build(
             &self.display_backends,
-            self.num_scanouts,
             self.display_params.clone(),
             self.display_event.clone(),
             rutabaga,
@@ -1393,7 +1388,6 @@ impl Gpu {
             .unwrap();
 
         let display_backends = self.display_backends.clone();
-        let num_scanouts = self.num_scanouts;
         let display_params = self.display_params.clone();
         let display_event = self.display_event.clone();
         let event_devices = self.event_devices.take().expect("missing event_devices");
@@ -1459,7 +1453,6 @@ impl Gpu {
 
             let mut virtio_gpu = match build(
                 &display_backends,
-                num_scanouts,
                 display_params,
                 display_event,
                 rutabaga,
@@ -1630,7 +1623,7 @@ impl Gpu {
         virtio_gpu_config {
             events_read: Le32::from(events_read),
             events_clear: Le32::from(0),
-            num_scanouts: Le32::from(self.num_scanouts),
+            num_scanouts: Le32::from(VIRTIO_GPU_MAX_SCANOUTS as u32),
             num_capsets: Le32::from(num_capsets),
         }
     }
