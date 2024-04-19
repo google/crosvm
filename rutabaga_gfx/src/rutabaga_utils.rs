@@ -21,7 +21,7 @@ use thiserror::Error;
 #[cfg(feature = "vulkano")]
 use vulkano::device::DeviceCreationError;
 #[cfg(feature = "vulkano")]
-use vulkano::image::ImageCreationError;
+use vulkano::image::ImageError;
 #[cfg(feature = "vulkano")]
 use vulkano::instance::InstanceCreationError;
 #[cfg(feature = "vulkano")]
@@ -308,7 +308,7 @@ pub enum RutabagaError {
     /// Image creation error
     #[cfg(feature = "vulkano")]
     #[error("vulkano image creation failure {0}")]
-    VkImageCreationError(ImageCreationError),
+    VkImageCreationError(ImageError),
     /// Instance creation error
     #[cfg(feature = "vulkano")]
     #[error("vulkano instance creation failure {0}")]
