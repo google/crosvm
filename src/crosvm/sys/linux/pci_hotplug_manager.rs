@@ -19,6 +19,8 @@ use anyhow::Error;
 use arch::RunnableLinuxVm;
 use arch::VcpuArch;
 use arch::VmArch;
+use base::Event;
+use base::EventWaitResult;
 use devices::HotPlugBus;
 use devices::HotPlugKey;
 use devices::IrqEventSource;
@@ -66,7 +68,7 @@ enum HotPlugAvailability {
     /// available now
     Now,
     /// available after notification is received.
-    After(mpsc::Receiver<()>),
+    After(Event),
 }
 
 /// PortStub contains a hotplug port and set of hotplug devices on it.
@@ -91,14 +93,11 @@ impl PortStub {
     }
 
     /// Sends hotplug signal after notification on the port.
-    fn send_hotplug_signal_after_notification(
-        &mut self,
-        notf_recvr: mpsc::Receiver<()>,
-    ) -> Result<()> {
+    fn send_hotplug_signal_after_notification(&mut self, notf_recvr: Event) -> Result<()> {
         let base_pci_address = PciAddress::new(0, self.downstream_bus.into(), 0, 0)?;
         let weak_port = Arc::downgrade(&self.port);
         thread::spawn(move || {
-            if let Err(e) = notf_recvr.recv_timeout(PCI_SLOT_TIMEOUT) {
+            if let Err(e) = notf_recvr.wait_timeout(PCI_SLOT_TIMEOUT) {
                 error!(
                     "failed to receive hot unplug command complete notification: {:#}",
                     &e
@@ -324,7 +323,7 @@ impl PciHotPlugManager {
     }
 
     /// Sends eject signal on the port, and removes downstream devices on the port.
-    fn remove_device_from_port(&self, bus: u8) -> Result<mpsc::Receiver<()>> {
+    fn remove_device_from_port(&self, bus: u8) -> Result<Event> {
         let port_stub = self
             .occupied_ports
             .get(&bus)
@@ -343,7 +342,7 @@ struct PortPool {
     /// map of empty ports that are available
     ports_available: BTreeMap<PciAddress, PortStub>,
     /// map of ports that will soon be available
-    ports_pending: BTreeMap<PciAddress, (mpsc::Receiver<()>, PortStub)>,
+    ports_pending: BTreeMap<PciAddress, (Event, PortStub)>,
 }
 
 impl PortPool {
@@ -357,19 +356,17 @@ impl PortPool {
 
     /// Insert a port_stub that is available immediately.
     fn insert(&mut self, port_stub: PortStub) -> Result<()> {
-        self.update_port_availability();
+        self.update_port_availability()
+            .context("Update port availability")?;
         let pci_addr = port_stub.pci_address;
         self.ports_available.insert(pci_addr, port_stub);
         Ok(())
     }
 
     /// Insert a port_stub that will be available after notification received. Returns immediately.
-    fn insert_after_notification(
-        &mut self,
-        port_stub: PortStub,
-        cc_recvr: mpsc::Receiver<()>,
-    ) -> Result<()> {
-        self.update_port_availability();
+    fn insert_after_notification(&mut self, port_stub: PortStub, cc_recvr: Event) -> Result<()> {
+        self.update_port_availability()
+            .context("Update port availability")?;
         self.ports_pending
             .insert(port_stub.pci_address, (cc_recvr, port_stub));
         Ok(())
@@ -378,7 +375,8 @@ impl PortPool {
     /// Pop the first available port in the order of PCI enumeration. If no port is available now,
     /// pop the first in the order of PCI enumeration.
     fn pop_first(&mut self) -> Result<(PortStub, HotPlugAvailability)> {
-        self.update_port_availability();
+        self.update_port_availability()
+            .context("Update port availability")?;
         if let Some((_, port_stub)) = self.ports_available.pop_first() {
             return Ok((port_stub, HotPlugAvailability::Now));
         }
@@ -391,17 +389,21 @@ impl PortPool {
     }
 
     /// Move pending ports to available ports if notification is received.
-    fn update_port_availability(&mut self) {
+    fn update_port_availability(&mut self) -> Result<()> {
         let mut new_ports_pending = BTreeMap::new();
         while let Some((pci_addr, (cc_recvr, port_stub))) = self.ports_pending.pop_first() {
-            if cc_recvr.try_recv().is_ok() {
-                let pci_addr = port_stub.pci_address;
-                self.ports_available.insert(pci_addr, port_stub);
-            } else {
-                new_ports_pending.insert(pci_addr, (cc_recvr, port_stub));
+            match cc_recvr.wait_timeout(Duration::ZERO)? {
+                EventWaitResult::Signaled => {
+                    let pci_addr = port_stub.pci_address;
+                    self.ports_available.insert(pci_addr, port_stub);
+                }
+                EventWaitResult::TimedOut => {
+                    new_ports_pending.insert(pci_addr, (cc_recvr, port_stub));
+                }
             }
         }
         self.ports_pending = new_ports_pending;
+        Ok(())
     }
 }
 
@@ -425,7 +427,7 @@ mod tests {
     fn port_pool_pop_before_completion() {
         let mut port_pool = PortPool::new();
         let mock_port = new_mock_port_stub(PciAddress::new(0, 1, 0, 0).unwrap());
-        let (_cc_sender, cc_recvr) = mpsc::channel();
+        let cc_recvr = Event::new().unwrap();
         port_pool
             .insert_after_notification(mock_port, cc_recvr)
             .unwrap();
@@ -437,11 +439,12 @@ mod tests {
     fn port_pool_pop_after_completion() {
         let mut port_pool = PortPool::new();
         let mock_port = new_mock_port_stub(PciAddress::new(0, 1, 0, 0).unwrap());
-        let (cc_sender, cc_recvr) = mpsc::channel();
+        let cc_recvr = Event::new().unwrap();
+        let cc_sender = cc_recvr.try_clone().unwrap();
         port_pool
             .insert_after_notification(mock_port, cc_recvr)
             .unwrap();
-        cc_sender.send(()).unwrap();
+        cc_sender.signal().unwrap();
         let (_port_stub, port_availability) = port_pool.pop_first().unwrap();
         assert!(matches!(port_availability, HotPlugAvailability::Now));
     }

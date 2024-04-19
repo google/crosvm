@@ -4,10 +4,10 @@
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
-use std::sync::mpsc;
 
 use anyhow::bail;
 use base::error;
+use base::Event;
 
 use crate::bus::HotPlugBus;
 use crate::bus::HotPlugKey;
@@ -85,12 +85,12 @@ impl PciePortVariant for PcieUpstreamPort {
 // hotplug out.
 impl HotPlugBus for PcieUpstreamPort {
     // Do nothing. We are not a real hotplug bus.
-    fn hot_plug(&mut self, _addr: PciAddress) -> anyhow::Result<Option<mpsc::Receiver<()>>> {
+    fn hot_plug(&mut self, _addr: PciAddress) -> anyhow::Result<Option<Event>> {
         bail!("hot plug not supported on upstream port.")
     }
 
     // Just remove the downstream device.
-    fn hot_unplug(&mut self, addr: PciAddress) -> anyhow::Result<Option<mpsc::Receiver<()>>> {
+    fn hot_unplug(&mut self, addr: PciAddress) -> anyhow::Result<Option<Event>> {
         self.downstream_devices.remove(&addr);
         Ok(None)
     }
@@ -213,7 +213,7 @@ impl PciePortVariant for PcieDownstreamPort {
 }
 
 impl HotPlugBus for PcieDownstreamPort {
-    fn hot_plug(&mut self, addr: PciAddress) -> anyhow::Result<Option<mpsc::Receiver<()>>> {
+    fn hot_plug(&mut self, addr: PciAddress) -> anyhow::Result<Option<Event>> {
         if !self.pcie_port.hotplug_implemented() {
             bail!("hotplug not implemented.");
         }
@@ -226,7 +226,7 @@ impl HotPlugBus for PcieDownstreamPort {
         Ok(None)
     }
 
-    fn hot_unplug(&mut self, addr: PciAddress) -> anyhow::Result<Option<mpsc::Receiver<()>>> {
+    fn hot_unplug(&mut self, addr: PciAddress) -> anyhow::Result<Option<Event>> {
         if !self.pcie_port.hotplug_implemented() {
             bail!("hotplug not implemented.");
         }
