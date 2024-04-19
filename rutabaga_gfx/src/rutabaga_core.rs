@@ -1177,23 +1177,26 @@ impl RutabagaBuilder {
             ));
         }
 
-        if self.default_component == RutabagaComponentType::Rutabaga2D {
-            let rutabaga_2d = Rutabaga2D::init(fence_handler.clone())?;
-            rutabaga_components.insert(RutabagaComponentType::Rutabaga2D, rutabaga_2d);
-        } else {
+        #[allow(unused_mut)]
+        let mut fallback_2d = false;
+        if self.default_component != RutabagaComponentType::Rutabaga2D {
             #[cfg(feature = "virgl_renderer")]
             if self.default_component == RutabagaComponentType::VirglRenderer {
-                let virgl = VirglRenderer::init(
+                if let Ok(virgl) = VirglRenderer::init(
                     self.virglrenderer_flags,
                     fence_handler.clone(),
                     rutabaga_server_descriptor,
-                )?;
-                rutabaga_components.insert(RutabagaComponentType::VirglRenderer, virgl);
+                ) {
+                    rutabaga_components.insert(RutabagaComponentType::VirglRenderer, virgl);
 
-                push_capset(RUTABAGA_CAPSET_VIRGL);
-                push_capset(RUTABAGA_CAPSET_VIRGL2);
-                push_capset(RUTABAGA_CAPSET_VENUS);
-                push_capset(RUTABAGA_CAPSET_DRM);
+                    push_capset(RUTABAGA_CAPSET_VIRGL);
+                    push_capset(RUTABAGA_CAPSET_VIRGL2);
+                    push_capset(RUTABAGA_CAPSET_VENUS);
+                    push_capset(RUTABAGA_CAPSET_DRM);
+                } else {
+                    log::warn!("error initializing gpu backend=virglrenderer, falling back to 2d.");
+                    fallback_2d = true;
+                };
             }
 
             #[cfg(feature = "gfxstream")]
@@ -1218,6 +1221,11 @@ impl RutabagaBuilder {
             let cross_domain = CrossDomain::init(self.channels, fence_handler.clone())?;
             rutabaga_components.insert(RutabagaComponentType::CrossDomain, cross_domain);
             push_capset(RUTABAGA_CAPSET_CROSS_DOMAIN);
+        }
+
+        if self.default_component == RutabagaComponentType::Rutabaga2D || fallback_2d {
+            let rutabaga_2d = Rutabaga2D::init(fence_handler.clone())?;
+            rutabaga_components.insert(RutabagaComponentType::Rutabaga2D, rutabaga_2d);
         }
 
         Ok(Rutabaga {
