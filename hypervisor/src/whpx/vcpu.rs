@@ -1183,17 +1183,24 @@ impl VcpuX86_64 for WhpxVcpu {
 
     /// Sets the value of a single model-specific register.
     fn set_msr(&self, msr_index: u32, value: u64) -> Result<()> {
-        let msr_name = get_msr_name(msr_index).ok_or(Error::new(libc::ENOENT))?;
-        let msr_value = WHV_REGISTER_VALUE { Reg64: value };
-        check_whpx!(unsafe {
-            WHvSetVirtualProcessorRegisters(
-                self.vm_partition.partition,
-                self.index,
-                &msr_name,
-                /* RegisterCount */ 1,
-                &msr_value,
-            )
-        })
+        match get_msr_name(msr_index) {
+            Some(msr_name) => {
+                let msr_value = WHV_REGISTER_VALUE { Reg64: value };
+                check_whpx!(unsafe {
+                    WHvSetVirtualProcessorRegisters(
+                        self.vm_partition.partition,
+                        self.index,
+                        &msr_name,
+                        /* RegisterCount */ 1,
+                        &msr_value,
+                    )
+                })
+            }
+            None => {
+                warn!("msr 0x{msr_index:X} write unsupported by WHPX, dropping");
+                Ok(())
+            }
+        }
     }
 
     /// Sets up the data returned by the CPUID instruction.
