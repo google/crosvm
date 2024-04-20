@@ -409,6 +409,7 @@ all-mingw64 = [
     "slirp",
     "stats",
     "vulkan_display",
+    "pvclock",
 ]
 
 ## All features that are compiled and tested for msvc64

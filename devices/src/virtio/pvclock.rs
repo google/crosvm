@@ -310,6 +310,7 @@ impl PvClock {
         let last_state = replace(&mut self.worker_state, PvClockWorkerState::None);
         if let PvClockWorkerState::Idle(suspend_tube) = last_state {
             if queues.len() != QUEUE_SIZES.len() {
+                self.worker_state = PvClockWorkerState::Idle(suspend_tube);
                 return Err(anyhow!(
                     "expected {} queues, got {}",
                     QUEUE_SIZES.len(),
@@ -915,15 +916,25 @@ impl VirtioDevice for PvClock {
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         let last_state = replace(&mut self.worker_state, PvClockWorkerState::None);
-        if let PvClockWorkerState::Main(main_worker_thread) = last_state {
-            let main_worker_ret = main_worker_thread.stop();
-            let mut queues = BTreeMap::new();
-            queues.insert(0, main_worker_ret.set_pvclock_page_queue);
-            self.worker_state = PvClockWorkerState::Idle(main_worker_ret.suspend_tube);
-            self.state.paused_main_worker = Some(main_worker_ret.worker.into());
-            Ok(Some(queues))
-        } else {
-            Ok(None)
+        match last_state {
+            PvClockWorkerState::Main(main_worker_thread) => {
+                let main_worker_ret = main_worker_thread.stop();
+                let mut queues = BTreeMap::new();
+                queues.insert(0, main_worker_ret.set_pvclock_page_queue);
+                self.worker_state = PvClockWorkerState::Idle(main_worker_ret.suspend_tube);
+                self.state.paused_main_worker = Some(main_worker_ret.worker.into());
+                Ok(Some(queues))
+            }
+            PvClockWorkerState::Stub(stub_worker_thread) => {
+                let stub_ret = stub_worker_thread.stop();
+                self.worker_state = PvClockWorkerState::Idle(stub_ret.suspend_tube);
+                Ok(None)
+            }
+            PvClockWorkerState::Idle(suspend_tube) => {
+                self.worker_state = PvClockWorkerState::Idle(suspend_tube);
+                Ok(None)
+            }
+            PvClockWorkerState::None => panic!("invalid state transition"),
         }
     }
 
@@ -945,6 +956,10 @@ impl VirtioDevice for PvClock {
             );
             // Use unchecked as no worker is running at this point
             self.start_main_worker(interrupt, worker, queues)?;
+        } else {
+            // If the device wasn't activated, we should bring up the stub worker since that's
+            // what is supposed to be running for an un-activated device.
+            self.start_stub_worker();
         }
         Ok(())
     }
