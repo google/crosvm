@@ -175,6 +175,7 @@ pub(crate) use panic_hook::set_panic_hook;
 use product::create_snd_mute_tube_pair;
 #[cfg(any(feature = "haxm", feature = "gvm", feature = "whpx"))]
 use product::create_snd_state_tube;
+#[cfg(feature = "pvclock")]
 use product::handle_pvclock_request;
 use product::merge_session_invariants;
 use product::run_ime_thread;
@@ -503,7 +504,7 @@ fn create_virtio_devices(
     #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
     disk_device_tubes: &mut Vec<Tube>,
     balloon_device_tube: Option<Tube>,
-    pvclock_device_tube: Option<Tube>,
+    #[cfg(feature = "pvclock")] pvclock_device_tube: Option<Tube>,
     dynamic_mapping_device_tube: Option<Tube>,
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
@@ -542,6 +543,7 @@ fn create_virtio_devices(
         devs.push(create_virtio_snd_device(cfg, control_tubes)?);
     }
 
+    #[cfg(feature = "pvclock")]
     if let Some(tube) = pvclock_device_tube {
         product::push_pvclock_device(cfg, &mut devs, tsc_frequency, tube);
     }
@@ -770,7 +772,7 @@ fn create_devices(
     control_tubes: &mut Vec<TaggedControlTube>,
     disk_device_tubes: &mut Vec<Tube>,
     balloon_device_tube: Option<Tube>,
-    pvclock_device_tube: Option<Tube>,
+    #[cfg(feature = "pvclock")] pvclock_device_tube: Option<Tube>,
     dynamic_mapping_device_tube: Option<Tube>,
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
@@ -784,6 +786,7 @@ fn create_devices(
         control_tubes,
         disk_device_tubes,
         balloon_device_tube,
+        #[cfg(feature = "pvclock")]
         pvclock_device_tube,
         dynamic_mapping_device_tube,
         inflate_tube,
@@ -858,7 +861,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(feature = "balloon")] mut balloon_tube: Option<&mut BalloonTube>,
     memory_size_mb: u64,
     vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
-    pvclock_host_tube: &Option<Tube>,
+    #[cfg(feature = "pvclock")] pvclock_host_tube: &Option<Tube>,
     run_mode_arc: &VcpuRunMode,
     region_state: &mut VmMemoryRegionState,
     vm_control_server: Option<&mut ControlServer>,
@@ -888,6 +891,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     vcpu_control_channels,
                     vcpu_boxes,
                     guest_os.irq_chip.as_ref(),
+                    #[cfg(feature = "pvclock")]
                     pvclock_host_tube,
                     msg,
                 );
@@ -1070,6 +1074,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 ipc_main_loop_tube,
                 memory_size_mb,
                 proto_main_loop_tube,
+                #[cfg(feature = "pvclock")]
                 pvclock_host_tube,
                 run_mode_arc,
                 service_vm_state,
@@ -1248,7 +1253,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(feature = "gpu")] gpu_control_tube: Option<Tube>,
     broker_shutdown_evt: Option<Event>,
     balloon_host_tube: Option<Tube>,
-    pvclock_host_tube: Option<Tube>,
+    #[cfg(feature = "pvclock")] pvclock_host_tube: Option<Tube>,
     disk_host_tubes: Vec<Tube>,
     gralloc: RutabagaGralloc,
     #[cfg(feature = "stats")] stats: Option<Arc<Mutex<StatisticsCollector>>>,
@@ -1430,6 +1435,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     &vcpu_control_channels,
                     vcpu_boxes.as_ref(),
                     guest_os.irq_chip.as_ref(),
+                    #[cfg(feature = "pvclock")]
                     &pvclock_host_tube,
                     msg,
                 )
@@ -1440,7 +1446,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     &vcpu_control_channels,
                     vcpu_boxes.as_ref(),
                     guest_os.irq_chip.as_ref(),
-                    &pvclock_host_tube,
                     index,
                     msg,
                 )
@@ -1462,6 +1467,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             &vcpu_control_channels,
             vcpu_boxes.as_ref(),
             guest_os.irq_chip.as_ref(),
+            #[cfg(feature = "pvclock")]
             &pvclock_host_tube,
             // Other platforms (unix) have multiple modes they could start in (e.g. starting for
             // guest kernel debugging, etc). If/when we support those modes on Windows, we'll need
@@ -1506,6 +1512,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 balloon_tube.as_mut(),
                 memory_size_mb,
                 vcpu_boxes.as_ref(),
+                #[cfg(feature = "pvclock")]
                 &pvclock_host_tube,
                 run_mode_arc.as_ref(),
                 &mut region_state,
@@ -1664,18 +1671,30 @@ fn kick_all_vcpus(
     vcpu_control_channels: &[mpsc::Sender<VcpuControl>],
     vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
     irq_chip: &dyn IrqChipArch,
-    pvclock_host_tube: &Option<Tube>,
+    #[cfg(feature = "pvclock")] pvclock_host_tube: &Option<Tube>,
     msg: VcpuControl,
 ) {
     // On Windows, we handle run mode switching directly rather than delegating to the VCPU thread
     // like unix does.
     match &msg {
         VcpuControl::RunState(VmRunMode::Suspending) => {
-            suspend_all_vcpus(run_mode, vcpu_boxes, irq_chip, pvclock_host_tube);
+            suspend_all_vcpus(
+                run_mode,
+                vcpu_boxes,
+                irq_chip,
+                #[cfg(feature = "pvclock")]
+                pvclock_host_tube,
+            );
             return;
         }
         VcpuControl::RunState(VmRunMode::Running) => {
-            resume_all_vcpus(run_mode, vcpu_boxes, irq_chip, pvclock_host_tube);
+            resume_all_vcpus(
+                run_mode,
+                vcpu_boxes,
+                irq_chip,
+                #[cfg(feature = "pvclock")]
+                pvclock_host_tube,
+            );
             return;
         }
         _ => (),
@@ -1709,7 +1728,6 @@ fn kick_vcpu(
     vcpu_control_channels: &[mpsc::Sender<VcpuControl>],
     vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
     irq_chip: &dyn IrqChipArch,
-    pvclock_host_tube: &Option<Tube>,
     index: usize,
     msg: VcpuControl,
 ) {
@@ -1749,7 +1767,7 @@ pub(crate) fn suspend_all_vcpus(
     run_mode: &VcpuRunMode,
     vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
     irq_chip: &dyn IrqChipArch,
-    pvclock_host_tube: &Option<Tube>,
+    #[cfg(feature = "pvclock")] pvclock_host_tube: &Option<Tube>,
 ) {
     // VCPU threads MUST see the VmRunMode::Suspending flag first, otherwise
     // they may re-enter the VM.
@@ -1761,6 +1779,7 @@ pub(crate) fn suspend_all_vcpus(
     }
     irq_chip.kick_halted_vcpus();
 
+    #[cfg(feature = "pvclock")]
     handle_pvclock_request(pvclock_host_tube, PvClockCommand::Suspend)
         .unwrap_or_else(|e| error!("Error handling pvclock suspend: {:?}", e));
 }
@@ -1770,8 +1789,9 @@ pub(crate) fn resume_all_vcpus(
     run_mode: &VcpuRunMode,
     vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
     irq_chip: &dyn IrqChipArch,
-    pvclock_host_tube: &Option<Tube>,
+    #[cfg(feature = "pvclock")] pvclock_host_tube: &Option<Tube>,
 ) {
+    #[cfg(feature = "pvclock")]
     handle_pvclock_request(pvclock_host_tube, PvClockCommand::Resume)
         .unwrap_or_else(|e| error!("Error handling pvclock resume: {:?}", e));
 
@@ -2453,6 +2473,7 @@ where
     };
 
     // PvClock gets a tube for handling suspend/resume requests from the main thread.
+    #[cfg(feature = "pvclock")]
     let (pvclock_host_tube, pvclock_device_tube) = if cfg.pvclock {
         let (host, device) =
             Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
@@ -2575,6 +2596,7 @@ where
         &mut control_tubes,
         &mut disk_device_tubes,
         balloon_device_tube,
+        #[cfg(feature = "pvclock")]
         pvclock_device_tube,
         dynamic_mapping_device_tube,
         /* inflate_tube= */ None,
@@ -2625,6 +2647,7 @@ where
         gpu_control_tube,
         cfg.broker_shutdown_event.take(),
         balloon_host_tube,
+        #[cfg(feature = "pvclock")]
         pvclock_host_tube,
         disk_host_tubes,
         gralloc,

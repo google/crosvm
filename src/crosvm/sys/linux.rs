@@ -1905,10 +1905,6 @@ where
     } else {
         (None, None)
     };
-    #[cfg(not(feature = "pvclock"))]
-    if cfg.pvclock {
-        bail!("pvclock device is only supported when crosvm is built with a feature 'pvclock'");
-    }
 
     #[cfg(feature = "registered_events")]
     let (reg_evt_wrtube, reg_evt_rdtube) =

@@ -1866,6 +1866,7 @@ pub struct RunCommand {
     ///     [--pstore <path=PATH,size=SIZE>]
     pub pstore: Option<Pstore>,
 
+    #[cfg(feature = "pvclock")]
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -2823,7 +2824,11 @@ impl TryFrom<RunCommand> for super::config::Config {
             pmem.read_only = read_only;
             cfg.pmem_devices.push(pmem);
         }
-        cfg.pvclock = cmd.pvclock.unwrap_or_default();
+
+        #[cfg(feature = "pvclock")]
+        {
+            cfg.pvclock = cmd.pvclock.unwrap_or_default();
+        }
 
         #[cfg(windows)]
         {

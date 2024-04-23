@@ -768,6 +768,7 @@ pub struct Config {
     pub product_version: Option<String>,
     pub protection_type: ProtectionType,
     pub pstore: Option<Pstore>,
+    #[cfg(feature = "pvclock")]
     pub pvclock: bool,
     /// Must be `Some` iff `protection_type == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<PathBuf>,
@@ -982,6 +983,7 @@ impl Default for Config {
             product_name: None,
             protection_type: ProtectionType::Unprotected,
             pstore: None,
+            #[cfg(feature = "pvclock")]
             pvclock: false,
             pvm_fw: None,
             restore_path: None,

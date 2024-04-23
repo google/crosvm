@@ -132,6 +132,7 @@ pub(super) fn get_run_control_args(cfg: &mut Config) -> RunControlArgs {
 pub(super) fn merge_session_invariants(serialized_session_invariants: &[u8]) {}
 
 // Handles sending command to pvclock device.
+#[cfg(feature = "pvclock")]
 pub(super) fn handle_pvclock_request(tube: &Option<Tube>, command: PvClockCommand) -> Result<()> {
     Ok(())
 }
@@ -192,7 +193,7 @@ pub(super) fn handle_received_token<'a, V: VmArch + 'static, Vcpu: VcpuArch + 's
     _ipc_main_loop_tube: Option<&Tube>,
     _memory_size_mb: u64,
     _proto_main_loop_tube: Option<&ProtoTube>,
-    _pvclock_host_tube: &Option<Tube>,
+    #[cfg(feature = "pvclock")] _pvclock_host_tube: &Option<Tube>,
     _run_mode_arc: &VcpuRunMode,
     _service_vm_state: &mut ServiceVmState,
     _vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
@@ -311,6 +312,7 @@ pub(super) fn push_mouse_device(
     Ok(())
 }
 
+#[cfg(feature = "pvclock")]
 pub(super) fn push_pvclock_device(
     cfg: &Config,
     devs: &mut [VirtioDeviceStub],
