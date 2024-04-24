@@ -459,7 +459,7 @@ impl VirtioDevice for VhostUserFrontend {
     }
 
     fn reset(&mut self) -> anyhow::Result<()> {
-        for queue_index in 0..self.queue_sizes.len() {
+        for (queue_index, _queue) in self.sent_queues.take().into_iter().flatten() {
             if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
                 self.backend_client
                     .set_vring_enable(queue_index, false)
