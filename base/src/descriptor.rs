@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use serde::Deserialize;
 use serde::Serialize;
+use serde::Serializer;
 
 use crate::EventToken;
 use crate::RawDescriptor;
@@ -156,7 +157,7 @@ impl From<File> for SafeDescriptor {
 ///
 /// Note that with the exception of the last use-case (which requires proper error checking against
 /// the descriptor being closed), the `Descriptor` instance would be very short-lived.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Descriptor(pub RawDescriptor);
 impl AsRawDescriptor for Descriptor {
@@ -178,5 +179,23 @@ impl EventToken for Descriptor {
 
     fn from_raw_token(data: u64) -> Self {
         Descriptor(data as RawDescriptor)
+    }
+}
+
+impl Serialize for Descriptor {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(self.0 as u64)
+    }
+}
+
+impl<'de> Deserialize<'de> for Descriptor {
+    fn deserialize<D>(deserializer: D) -> Result<Descriptor, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        u64::deserialize(deserializer).map(|data| Descriptor(data as RawDescriptor))
     }
 }
