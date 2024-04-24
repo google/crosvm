@@ -1583,19 +1583,32 @@ mod tests {
 
     #[test]
     fn reset_and_reactivate_single_worker() {
-        reset_and_reactivate(false);
+        reset_and_reactivate(false, None);
     }
 
     #[test]
     fn reset_and_reactivate_multiple_workers() {
-        reset_and_reactivate(true);
+        reset_and_reactivate(true, None);
     }
 
-    fn reset_and_reactivate(enables_multiple_workers: bool) {
+    #[test]
+    #[cfg(windows)]
+    fn reset_and_reactivate_overrlapped_io() {
+        reset_and_reactivate(
+            false,
+            Some(
+                cros_async::sys::windows::ExecutorKindSys::Overlapped { concurrency: None }.into(),
+            ),
+        );
+    }
+
+    fn reset_and_reactivate(
+        enables_multiple_workers: bool,
+        async_executor: Option<cros_async::ExecutorKind>,
+    ) {
         // Create an empty disk image
-        let f = tempfile().unwrap();
-        f.set_len(0x1000).unwrap();
-        let disk_image: Box<dyn DiskFile> = Box::new(f);
+        let f = tempfile::NamedTempFile::new().unwrap();
+        f.as_file().set_len(0x1000).unwrap();
 
         // Create an empty guest memory
         let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
@@ -1610,15 +1623,18 @@ mod tests {
         let features = base_features(ProtectionType::Unprotected);
         let id = b"Block serial number\0";
         let disk_option = DiskOption {
+            path: f.path().to_owned(),
             read_only: true,
             id: Some(*id),
             sparse: false,
             multiple_workers: enables_multiple_workers,
+            async_executor,
             ..Default::default()
         };
+        let disk_image = disk_option.open().unwrap();
         let mut b = BlockAsync::new(
             features,
-            disk_image.try_clone().unwrap(),
+            disk_image,
             &disk_option,
             Some(control_tube_device),
             None,
