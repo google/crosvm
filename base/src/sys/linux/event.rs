@@ -15,12 +15,14 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::errno_result;
+use super::Error;
 use super::RawDescriptor;
 use super::Result;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::IntoRawDescriptor;
 use crate::descriptor::SafeDescriptor;
+use crate::handle_eintr_errno;
 use crate::unix::duration_to_timespec;
 use crate::EventWaitResult;
 
@@ -75,15 +77,18 @@ impl PlatformEvent {
         // SAFETY:
         // This is safe because we made this fd and the pointer we pass can not overflow because we
         // give the syscall's size parameter properly.
-        let ret = unsafe {
+        let ret = handle_eintr_errno!(unsafe {
             write(
                 self.as_raw_descriptor(),
                 &v as *const u64 as *const c_void,
                 mem::size_of::<u64>(),
             )
-        };
-        if ret <= 0 {
+        });
+        if ret < 0 {
             return errno_result();
+        }
+        if ret as usize != mem::size_of::<u64>() {
+            return Err(Error::new(libc::EIO));
         }
         Ok(())
     }
@@ -94,15 +99,18 @@ impl PlatformEvent {
         // SAFETY:
         // This is safe because we made this fd and the pointer we pass can not overflow because
         // we give the syscall's size parameter properly.
-        let ret = unsafe {
+        let ret = handle_eintr_errno!(unsafe {
             read(
                 self.as_raw_descriptor(),
                 &mut buf as *mut u64 as *mut c_void,
                 mem::size_of::<u64>(),
             )
-        };
-        if ret <= 0 {
+        });
+        if ret < 0 {
             return errno_result();
+        }
+        if ret as usize != mem::size_of::<u64>() {
+            return Err(Error::new(libc::EIO));
         }
         Ok(buf)
     }
