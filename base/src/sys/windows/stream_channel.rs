@@ -387,6 +387,14 @@ impl StreamChannel {
     pub fn flush_blocking(&self) -> io::Result<()> {
         self.pipe_conn.flush_data_blocking()
     }
+
+    pub(crate) fn get_read_notifier_event(&self) -> &Event {
+        &self.read_notify
+    }
+
+    pub(crate) fn get_close_notifier_event(&self) -> &Event {
+        &self.pipe_closed
+    }
 }
 
 impl io::Write for StreamChannel {

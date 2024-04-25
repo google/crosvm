@@ -50,12 +50,18 @@ pub async fn run_handler(
     exit_event: Event,
     ex: &Executor,
 ) -> Result<()> {
-    let read_notifier = vhost_user_tube.get_read_notifier();
-    let close_notifier = vhost_user_tube.get_close_notifier();
+    let read_notifier = vhost_user_tube
+        .get_read_notifier_event()
+        .try_clone()
+        .context("failed to clone event")?;
+    let close_notifier = vhost_user_tube
+        .get_close_notifier_event()
+        .try_clone()
+        .context("failed to clone event")?;
 
-    let read_event = EventAsync::clone_raw_without_reset(read_notifier, ex)
+    let read_event = EventAsync::new_without_reset(read_notifier, ex)
         .context("failed to create an async event")?;
-    let close_event = EventAsync::clone_raw_without_reset(close_notifier, ex)
+    let close_event = EventAsync::new_without_reset(close_notifier, ex)
         .context("failed to create an async event")?;
     let exit_event = EventAsync::new(exit_event, ex).context("failed to create an async event")?;
 

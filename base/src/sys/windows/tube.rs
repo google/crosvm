@@ -32,6 +32,7 @@ use crate::tube::Result;
 use crate::tube::SendTube;
 use crate::BlockingMode;
 use crate::CloseNotifier;
+use crate::Event;
 use crate::EventToken;
 use crate::FramingMode;
 use crate::PipeConnection;
@@ -205,6 +206,14 @@ impl Tube {
     /// TODO(b/145998747, b/184398671): this method should be removed.
     pub fn set_recv_timeout(&self, _timeout: Option<Duration>) -> Result<()> {
         unimplemented!("To be removed/refactored upstream.");
+    }
+
+    pub fn get_read_notifier_event(&self) -> &Event {
+        self.socket.get_read_notifier_event()
+    }
+
+    pub fn get_close_notifier_event(&self) -> &Event {
+        self.socket.get_close_notifier_event()
     }
 }
 
