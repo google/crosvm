@@ -26,7 +26,7 @@ anyhow = "1.0"
 serde = "1"
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] } # provided by ebuild
 static_assertions = "1.1"
-tokio = { version = "1.29.1", optional = true, features = ["net", "rt-multi-thread"] }
+tokio = { workspace = true, optional = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 io_uring = { path = "../io_uring" } # provided by ebuild

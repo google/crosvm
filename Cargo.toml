@@ -45,6 +45,7 @@ members = [
     "audio_util",
     "audio_streams_conformance_test",
     "base",
+    "base_tokio",
     "bit_field",
     "broker_ipc",
     "common/audio_streams",
@@ -113,6 +114,9 @@ exclude = [
     # This crate depends on optional features and is compiled via dependencies when enabled.
     "media/libvda",
 ]
+
+[workspace.dependencies]
+tokio = { version = "1.29.1", features = ["net", "rt-multi-thread", "time", "sync", "macros"] }
 
 [features]
 ## Default features of crosvm. This selection is somewhat arbitrary for historical reasons.

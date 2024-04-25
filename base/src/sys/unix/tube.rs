@@ -94,6 +94,10 @@ impl Tube {
     }
 
     pub fn recv<T: DeserializeOwned>(&self) -> Result<T> {
+        // WARNING: The `cros_async` and `base_tokio` tube wrappers both assume that, if the tube
+        // is readable, then a call to `Tube::recv` will not block (which ought to be true since we
+        // use SOCK_SEQPACKET and a single recvmsg call currently).
+
         let msg_size = handle_eintr!(self.socket.inner().peek_size()).map_err(Error::Recv)?;
         // This buffer is the right size, as the size received in peek_size() represents the size
         // of only the message itself and not the file descriptors. The descriptors are stored
