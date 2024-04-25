@@ -360,6 +360,7 @@ struct WakeupState {
     wakeup_enabled: bool,
     armed_time: Instant,
     metrics_event: MetricEventType,
+    wakeup_clear_evt: Option<Event>,
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -371,18 +372,24 @@ impl WakeupState {
             // Not actually armed, but simpler than wrapping with an Option.
             armed_time: Instant::now(),
             metrics_event,
+            wakeup_clear_evt: None,
         })
     }
 
-    fn trigger_wakeup(&self) {
+    fn trigger_wakeup(&mut self) {
+        if self.wakeup_clear_evt.is_some() {
+            return;
+        }
+
         let elapsed = self.armed_time.elapsed().as_millis();
         log_metric(
             self.metrics_event.clone(),
             elapsed.try_into().unwrap_or(i64::MAX),
         );
 
-        if let Err(err) = self.wakeup_event.trigger_wakeup() {
-            error!("Wakeup trigger failed {:?}", err);
+        match self.wakeup_event.trigger_wakeup() {
+            Ok(clear_evt) => self.wakeup_clear_evt = clear_evt,
+            Err(err) => error!("Wakeup trigger failed {:?}", err),
         }
     }
 }
@@ -416,7 +423,7 @@ impl PmState {
         if self.suspended {
             self.pending_signals.push((vector, mask));
             #[cfg(target_arch = "x86_64")]
-            if let Some(wakeup_state) = self.wakeup_state.as_ref() {
+            if let Some(wakeup_state) = self.wakeup_state.as_mut() {
                 if wakeup_state.wakeup_enabled {
                     wakeup_state.trigger_wakeup();
                 }
@@ -441,6 +448,10 @@ impl PmState {
             wakeup_state.armed_time = Instant::now();
             if !self.pending_signals.is_empty() {
                 wakeup_state.trigger_wakeup();
+            }
+        } else if let Some(clear_evt) = wakeup_state.wakeup_clear_evt.take() {
+            if let Err(e) = clear_evt.signal() {
+                error!("failed to signal clear event {}", e);
             }
         }
     }

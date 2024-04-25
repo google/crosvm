@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
@@ -16,6 +17,7 @@ use base::warn;
 use base::Error as SysError;
 use base::Event;
 use base::EventToken;
+use base::EventWaitResult;
 use base::SendTube;
 use base::Tube;
 use base::VmEventType;
@@ -72,12 +74,16 @@ pub(crate) struct Pm1Resource {
     control: u16,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 pub(crate) struct GpeResource {
     pub(crate) status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
     enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
     #[serde(skip_serializing, skip_deserializing)]
     pub(crate) gpe_notify: BTreeMap<u32, Vec<Arc<Mutex<dyn GpeNotify>>>>,
+    // For each triggered GPE, a vector of events to check when resampling
+    // sci_evt. If any events are un-signaled, then sci_evt should be re-asserted.
+    #[serde(skip_serializing, skip_deserializing)]
+    pending_clear_evts: BTreeMap<u32, Vec<Event>>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -133,6 +139,7 @@ impl ACPIPMResource {
             status: Default::default(),
             enable: Default::default(),
             gpe_notify: BTreeMap::new(),
+            pending_clear_evts: BTreeMap::new(),
         };
         let pci = PciResource {
             pme_notify: BTreeMap::new(),
@@ -168,6 +175,9 @@ impl ACPIPMResource {
 
 impl Suspendable for ACPIPMResource {
     fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+        if !self.gpe0.lock().pending_clear_evts.is_empty() {
+            bail!("ACPIPMResource is busy");
+        }
         serde_json::to_value(&self)
             .with_context(|| format!("error serializing {}", self.debug_label()))
     }
@@ -245,7 +255,7 @@ fn run_worker(
 
                     // Re-trigger SCI if PM1 or GPE status is still not cleared.
                     pm1.lock().trigger_sci(&sci_evt);
-                    gpe0.lock().trigger_sci(&sci_evt);
+                    gpe0.lock().resample_clear_evts_and_trigger(&sci_evt);
                 }
                 Token::Kill => return Ok(()),
             }
@@ -279,6 +289,27 @@ impl GpeResource {
             return Err(ACPIPMError::GpeOutOfBound(gpe));
         }
         Ok(())
+    }
+
+    pub fn resample_clear_evts_and_trigger(&mut self, sci_evt: &IrqLevelEvent) {
+        let mut retained = Vec::new();
+        self.pending_clear_evts.retain(|gpe, clear_evts| {
+            clear_evts.retain(|clear_evt| {
+                matches!(
+                    clear_evt.wait_timeout(Duration::ZERO),
+                    Ok(EventWaitResult::TimedOut)
+                )
+            });
+            if !clear_evts.is_empty() {
+                retained.push(*gpe);
+            }
+            !clear_evts.is_empty()
+        });
+        for gpe in retained.into_iter() {
+            self.set_active(gpe).expect("bad gpe index");
+        }
+
+        self.trigger_sci(sci_evt);
     }
 }
 
@@ -400,11 +431,18 @@ impl PmResource for ACPIPMResource {
         pm1.trigger_sci(&self.sci_evt);
     }
 
-    fn gpe_evt(&mut self, gpe: u32) {
+    fn gpe_evt(&mut self, gpe: u32, clear_evt: Option<Event>) {
         let mut gpe0 = self.gpe0.lock();
-
         match gpe0.set_active(gpe) {
-            Ok(_) => gpe0.trigger_sci(&self.sci_evt),
+            Ok(_) => {
+                if let Some(clear_evt) = clear_evt {
+                    gpe0.pending_clear_evts
+                        .entry(gpe)
+                        .or_default()
+                        .push(clear_evt);
+                }
+                gpe0.trigger_sci(&self.sci_evt)
+            }
             Err(e) => error!("{}", e),
         }
     }
@@ -600,6 +638,12 @@ impl BusDevice for ACPIPMResource {
                     }
                 }
                 pm1.control = val & !BITMASK_PM1CNT_SLEEP_ENABLE;
+
+                // Re-trigger GPEs in case there is a pending wakeup that should
+                // override us just having gone to sleep.
+                self.gpe0
+                    .lock()
+                    .resample_clear_evts_and_trigger(&self.sci_evt);
             }
             // OSPM accesses GPE registers through byte accesses (regardless of their length)
             GPE0_STATUS..=GPE0_STATUS_LAST => {
@@ -621,8 +665,10 @@ impl BusDevice for ACPIPMResource {
                 }
                 let offset = (info.offset - GPE0_ENABLE as u64) as usize;
                 let mut gpe = self.gpe0.lock();
-                gpe.enable[offset] = data[0];
-                gpe.trigger_sci(&self.sci_evt);
+                if gpe.enable[offset] != data[0] {
+                    gpe.enable[offset] = data[0];
+                    gpe.resample_clear_evts_and_trigger(&self.sci_evt);
+                }
             }
             _ => {
                 warn!("ACPIPM: Bad write to {}", info);
@@ -670,17 +716,22 @@ impl PmWakeupEvent {
         }
     }
 
-    pub fn trigger_wakeup(&self) -> anyhow::Result<()> {
+    pub fn trigger_wakeup(&self) -> anyhow::Result<Option<Event>> {
         if self.pm_config.lock().should_trigger_pme() {
+            let event = Event::new().context("failed to create clear event")?;
             let tube = self.vm_control_tube.lock();
-            tube.send(&VmRequest::Gpe(PM_WAKEUP_GPIO))
-                .context("failed to send pme")?;
+            tube.send(&VmRequest::Gpe {
+                gpe: PM_WAKEUP_GPIO,
+                clear_evt: Some(event.try_clone().context("failed to clone clear event")?),
+            })
+            .context("failed to send pme")?;
             match tube.recv::<VmResponse>() {
-                Ok(VmResponse::Ok) => (),
+                Ok(VmResponse::Ok) => Ok(Some(event)),
                 e => bail!("pme failure {:?}", e),
             }
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 }
 

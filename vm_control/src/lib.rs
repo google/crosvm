@@ -185,7 +185,7 @@ pub trait PmResource {
     fn pwrbtn_evt(&mut self) {}
     fn slpbtn_evt(&mut self) {}
     fn rtc_evt(&mut self) {}
-    fn gpe_evt(&mut self, _gpe: u32) {}
+    fn gpe_evt(&mut self, _gpe: u32, _clear_evt: Option<Event>) {}
     fn pme_evt(&mut self, _requester_id: u16) {}
     fn register_gpe_notify_dev(&mut self, _gpe: u32, _notify_dev: Arc<Mutex<dyn GpeNotify>>) {}
     fn register_pme_notify_dev(&mut self, _bus: u8, _notify_dev: Arc<Mutex<dyn PmeNotify>>) {}
@@ -1306,8 +1306,10 @@ pub enum VmRequest {
     Swap(SwapCommand),
     /// Resume the VM's VCPUs that were previously suspended.
     ResumeVcpus,
-    /// Inject a general-purpose event.
-    Gpe(u32),
+    /// Inject a general-purpose event. If `clear_evt` is provided, when the irq associated
+    /// with the GPE is resampled, it will be re-asserted as long as `clear_evt` is not
+    /// signaled.
+    Gpe { gpe: u32, clear_evt: Option<Event> },
     /// Inject a PCI PME
     PciPme(u16),
     /// Make the VM's RT VCPU real-time.
@@ -1864,10 +1866,18 @@ impl VmRequest {
                 kick_vcpus(VcpuControl::RunState(VmRunMode::Running));
                 VmResponse::Ok
             }
-            VmRequest::Gpe(gpe) => {
+            VmRequest::Gpe { gpe, clear_evt } => {
                 if let Some(pm) = pm.as_ref() {
-                    pm.lock().gpe_evt(*gpe);
-                    VmResponse::Ok
+                    match clear_evt.as_ref().map(|e| e.try_clone()).transpose() {
+                        Ok(clear_evt) => {
+                            pm.lock().gpe_evt(*gpe, clear_evt);
+                            VmResponse::Ok
+                        }
+                        Err(err) => {
+                            error!("Error cloning clear_evt: {:?}", err);
+                            VmResponse::Err(SysError::new(EIO))
+                        }
+                    }
                 } else {
                     error!("{:#?} not supported", *self);
                     VmResponse::Err(SysError::new(ENOTSUP))

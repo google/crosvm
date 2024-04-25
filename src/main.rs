@@ -225,7 +225,13 @@ fn sleepbtn_vms(cmd: cmdline::SleepCommand) -> std::result::Result<(), ()> {
 }
 
 fn inject_gpe(cmd: cmdline::GpeCommand) -> std::result::Result<(), ()> {
-    vms_request(&VmRequest::Gpe(cmd.gpe), cmd.socket_path)
+    vms_request(
+        &VmRequest::Gpe {
+            gpe: cmd.gpe,
+            clear_evt: None,
+        },
+        cmd.socket_path,
+    )
 }
 
 #[cfg(feature = "balloon")]

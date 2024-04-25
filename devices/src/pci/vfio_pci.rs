@@ -608,7 +608,10 @@ impl VfioPciWorker {
                         if let Some(gpe) = gpe {
                             if let Ok(val) = base::EventExt::read_count(&acpi_notify_evt) {
                                 notification_val.lock().push(val as u32);
-                                let request = VmRequest::Gpe(gpe);
+                                let request = VmRequest::Gpe {
+                                    gpe,
+                                    clear_evt: None,
+                                };
                                 if self.vm_socket.send(&request).is_ok() {
                                     if let Err(e) = self.vm_socket.recv::<VmResponse>() {
                                         error!("{} failed to send GPE: {}", self.name.clone(), e);
