@@ -904,7 +904,11 @@ impl Vcpu for KvmVcpu {
             // SAFETY:
             // The ioctl is safe because it does not read or write memory in this process.
             if unsafe { ioctl(self, KVM_KVMCLOCK_CTRL()) } != 0 {
-                return errno_result();
+                // Even if the host kernel supports the capability, it may not be configured by
+                // the guest - for example, when the guest kernel offlines a CPU.
+                if Error::last().errno() != libc::EINVAL {
+                    return errno_result();
+                }
             }
         }
 
