@@ -390,7 +390,6 @@ pub enum VcpuExit {
         vector: u8,
     },
     HypervHypercall,
-    Unknown,
     Exception,
     Hypercall,
     Debug,

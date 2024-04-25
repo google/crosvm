@@ -956,7 +956,6 @@ impl Vcpu for KvmVcpu {
 
         match run.exit_reason {
             KVM_EXIT_MMIO => Ok(VcpuExit::Mmio),
-            KVM_EXIT_UNKNOWN => Ok(VcpuExit::Unknown),
             KVM_EXIT_EXCEPTION => Ok(VcpuExit::Exception),
             KVM_EXIT_HYPERCALL => Ok(VcpuExit::Hypercall),
             KVM_EXIT_DEBUG => Ok(VcpuExit::Debug),

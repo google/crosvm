@@ -58,6 +58,7 @@ const HAX_EXIT_REALMODE: u32 = 3;
 // Also used when vcpu thread receives a signal
 const HAX_EXIT_INTERRUPT: u32 = 4;
 // Unknown vmexit, mostly trigger reboot
+#[allow(dead_code)]
 const HAX_EXIT_UNKNOWN: u32 = 5;
 // HALT from guest
 const HAX_EXIT_HLT: u32 = 6;
@@ -320,7 +321,6 @@ impl Vcpu for HaxmVcpu {
         match exit_status {
             HAX_EXIT_IO => Ok(VcpuExit::Io),
             HAX_EXIT_INTERRUPT => Ok(VcpuExit::Intr),
-            HAX_EXIT_UNKNOWN => Ok(VcpuExit::Unknown),
             HAX_EXIT_HLT => Ok(VcpuExit::Hlt),
             HAX_EXIT_STATECHANGE => Ok(VcpuExit::Shutdown),
             HAX_EXIT_FAST_MMIO => Ok(VcpuExit::Mmio),

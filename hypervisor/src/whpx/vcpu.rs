@@ -644,7 +644,6 @@ impl Vcpu for WhpxVcpu {
         })?;
 
         match self.last_exit_context.ExitReason {
-            WHV_RUN_VP_EXIT_REASON_WHvRunVpExitReasonNone => Ok(VcpuExit::Unknown),
             WHV_RUN_VP_EXIT_REASON_WHvRunVpExitReasonMemoryAccess => Ok(VcpuExit::Mmio),
             WHV_RUN_VP_EXIT_REASON_WHvRunVpExitReasonX64IoPortAccess => Ok(VcpuExit::Io),
             WHV_RUN_VP_EXIT_REASON_WHvRunVpExitReasonUnrecoverableException => {
