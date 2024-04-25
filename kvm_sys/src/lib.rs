@@ -74,6 +74,12 @@ pub mod aarch64 {
     ioctl_iow_nr!(KVM_ARM_SET_DEVICE_ADDR, KVMIO, 0xab, kvm_arm_device_addr);
     ioctl_iow_nr!(KVM_ARM_VCPU_INIT, KVMIO, 0xae, kvm_vcpu_init);
     ioctl_ior_nr!(KVM_ARM_PREFERRED_TARGET, KVMIO, 0xaf, kvm_vcpu_init);
+    ioctl_iow_nr!(
+        KVM_ARM_SET_COUNTER_OFFSET,
+        KVMIO,
+        0xb5,
+        kvm_arm_counter_offset
+    );
 }
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use crate::aarch64::*;

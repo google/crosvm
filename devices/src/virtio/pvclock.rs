@@ -43,7 +43,8 @@
 //! However, it doesn't address the difference between CLOCK_BOOTTIME and CLOCK_MONOTONIC related
 //! to host's suspend/resume, as it is designed to maintain the CLOCK_REALTIME in sync mainly.
 
-use std::arch::x86_64::_rdtsc;
+#[cfg(target_arch = "aarch64")]
+use std::arch::asm;
 use std::collections::BTreeMap;
 use std::mem::replace;
 use std::mem::size_of;
@@ -109,6 +110,25 @@ const VIRTIO_PVCLOCK_S_OK: u8 = 0;
 const VIRTIO_PVCLOCK_S_IOERR: u8 = 1;
 
 const VIRTIO_PVCLOCK_CLOCKSOURCE_RATING: u32 = 450;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn read_clock_counter() -> u64 {
+    // SAFETY: rdtsc is unprivileged and have no side effects.
+    unsafe { std::arch::x86_64::_rdtsc() }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn read_clock_counter() -> u64 {
+    let mut x: u64;
+    // SAFETY: This instruction have no side effect apart from storing the current timestamp counter
+    //         into the specified register.
+    unsafe {
+        asm!("mrs {x}, cntvct_el0",
+            x = out(reg) x,
+        );
+    }
+    x
+}
 
 // The config structure being exposed to the guest to tell them how much suspend time should be
 // injected to the guest's CLOCK_BOOTTIME.
@@ -200,7 +220,7 @@ impl PvclockSharedData {
 
     pub fn set_tsc_frequency(&mut self, frequency: u64) -> Result<()> {
         // TSC values are converted to timestamps using the following algorithm:
-        //   delta = _rdtsc() - tsc_suspended_delta
+        //   delta = rdtsc() - tsc_suspended_delta
         //   if tsc_frequency_shift > 0:
         //     delta <<= tsc_frequency_shift
         //   else:
@@ -496,14 +516,11 @@ impl PvClockWorker {
         }
         self.suspend_time = Some(PvclockInstant {
             time: Utc::now(),
-            // SAFETY:
-            // Safe because _rdtsc takes no arguments, and we trust _rdtsc to not modify any other
-            // memory.
-            tsc_value: unsafe { _rdtsc() },
+            tsc_value: read_clock_counter(),
         });
     }
 
-    pub fn resume(&mut self) -> Result<()> {
+    pub fn resume(&mut self) -> Result<u64> {
         // First, increment the sequence lock by 1 before writing to the pvclock page.
         self.increment_pvclock_seqlock()?;
 
@@ -516,9 +533,9 @@ impl PvClockWorker {
         // the bit, the guest will unset it once the guest has handled the stoppage.
         // We get the result here because we want to call increment_pvclock_seqlock regardless of
         // the result of these calls.
-        let result = self
-            .set_suspended_time()
-            .and_then(|_| self.set_guest_stopped_bit());
+        let total_suspended_ticks = self.set_suspended_time()?;
+
+        self.set_guest_stopped_bit()?;
 
         // The guest makes sure there are memory barriers in between reads of the seqlock and other
         // fields, we should make sure there are memory barriers in between writes of seqlock and
@@ -528,7 +545,7 @@ impl PvClockWorker {
         // Do a final increment once changes are done.
         self.increment_pvclock_seqlock()?;
 
-        result
+        Ok(total_suspended_ticks)
     }
 
     fn get_suspended_duration(suspend_time: &PvclockInstant) -> Duration {
@@ -546,18 +563,15 @@ impl PvClockWorker {
         }
     }
 
-    fn set_suspended_time(&mut self) -> Result<()> {
+    fn set_suspended_time(&mut self) -> Result<u64> {
         let (this_suspend_duration, this_suspend_tsc_delta) =
             if let Some(suspend_time) = self.suspend_time.take() {
                 (
                     Self::get_suspended_duration(&suspend_time),
-                    // SAFETY:
-                    // Safe because _rdtsc takes no arguments, and we trust _rdtsc to not modify
-                    // any other memory.
                     // NB: This calculation may wrap around, as TSC can be reset to zero when
                     // the device has resumed from the "deep" suspend state (it may not happen for
                     // s2idle cases). It also happens when the tsc value itself wraps.
-                    unsafe { _rdtsc() }.wrapping_sub(suspend_time.tsc_value),
+                    read_clock_counter().wrapping_sub(suspend_time.tsc_value),
                 )
             } else {
                 return Err(Error::new(libc::ENOTSUP))
@@ -587,7 +601,7 @@ impl PvClockWorker {
         self.total_injected_ns
             .fetch_add(this_suspend_duration.as_nanos() as u64, Ordering::SeqCst);
 
-        Ok(())
+        Ok(self.total_suspend_tsc_delta)
     }
 
     fn increment_pvclock_seqlock(&mut self) -> Result<()> {
@@ -823,13 +837,20 @@ fn run_main_worker(
                             PvClockCommandResponse::Ok
                         }
                         PvClockCommand::Resume => {
-                            if let Err(e) = worker.resume() {
-                                error!("Failed to resume pvclock: {:#}", e);
-                                PvClockCommandResponse::Err(pvclock_response_error_from_anyhow(e))
-                            } else {
-                                // signal to the driver that the total_suspend_ns has changed
-                                interrupt.signal_config_changed();
-                                PvClockCommandResponse::Ok
+                            match worker.resume() {
+                                Ok(total_suspended_ticks) => {
+                                    // signal to the driver that the total_suspend_ns has changed
+                                    interrupt.signal_config_changed();
+                                    PvClockCommandResponse::Resumed {
+                                        total_suspended_ticks,
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to resume pvclock: {:#}", e);
+                                    PvClockCommandResponse::Err(pvclock_response_error_from_anyhow(
+                                        e,
+                                    ))
+                                }
                             }
                         }
                     };

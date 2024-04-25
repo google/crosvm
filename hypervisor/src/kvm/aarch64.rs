@@ -221,6 +221,19 @@ impl VmAArch64 for KvmVm {
     ) -> Result<()> {
         Ok(())
     }
+
+    fn set_counter_offset(&self, offset: u64) -> Result<()> {
+        let off = kvm_arm_counter_offset {
+            counter_offset: offset,
+            reserved: 0,
+        };
+        // SAFETY: self.vm is a valid KVM fd
+        let ret = unsafe { ioctl_with_ref(&self.vm, KVM_ARM_SET_COUNTER_OFFSET(), &off) };
+        if ret != 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
 }
 
 impl KvmVcpu {

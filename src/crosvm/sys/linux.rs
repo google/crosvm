@@ -17,6 +17,8 @@ pub(crate) mod pci_hotplug_helpers;
 pub(crate) mod pci_hotplug_manager;
 mod vcpu;
 
+#[cfg(all(feature = "pvclock", target_arch = "aarch64"))]
+use std::arch::asm;
 use std::cmp::max;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -75,7 +77,7 @@ use cros_async::Executor;
 use device_helpers::*;
 use devices::create_devices_worker_thread;
 use devices::serial_device::SerialHardware;
-#[cfg(feature = "pvclock")]
+#[cfg(all(feature = "pvclock", target_arch = "x86_64"))]
 use devices::tsc::get_tsc_sync_mitigations;
 use devices::vfio::VfioCommonSetup;
 use devices::vfio::VfioCommonTrait;
@@ -215,7 +217,7 @@ static GUNYAH_PATH: &str = "/dev/gunyah";
 
 fn create_virtio_devices(
     cfg: &Config,
-    vm: &mut impl Vm,
+    vm: &mut impl VmArch,
     resources: &mut SystemAllocator,
     #[cfg_attr(not(feature = "gpu"), allow(unused_variables))] vm_evt_wrtube: &SendTube,
     #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
@@ -407,22 +409,45 @@ fn create_virtio_devices(
 
     #[cfg(feature = "pvclock")]
     if let Some(suspend_tube) = pvclock_device_tube {
-        let tsc_state = devices::tsc::tsc_state()?;
-        let tsc_sync_mitigations =
-            get_tsc_sync_mitigations(&tsc_state, cfg.vcpu_count.unwrap_or(1));
-        if tsc_state.core_grouping.size() > 1 {
-            // Host TSCs are not in sync. Log what mitigations are applied.
-            warn!(
-                "Host TSCs are not in sync, applying the following mitigations: {:?}",
-                tsc_sync_mitigations
-            );
+        let frequency: u64;
+        #[cfg(target_arch = "x86_64")]
+        {
+            let tsc_state = devices::tsc::tsc_state()?;
+            let tsc_sync_mitigations =
+                get_tsc_sync_mitigations(&tsc_state, cfg.vcpu_count.unwrap_or(1));
+            if tsc_state.core_grouping.size() > 1 {
+                // Host TSCs are not in sync. Log what mitigations are applied.
+                warn!(
+                    "Host TSCs are not in sync, applying the following mitigations: {:?}",
+                    tsc_sync_mitigations
+                );
+            }
+            frequency = tsc_state.frequency;
         }
-        devs.push(create_pvclock_device(
+        #[cfg(target_arch = "aarch64")]
+        {
+            let mut x: u64;
+            // SAFETY: This instruction have no side effect apart from storing the current timestamp
+            //         frequency into the specified register.
+            unsafe {
+                asm!("mrs {x}, cntfrq_el0",
+                    x = out(reg) x,
+                );
+            }
+            frequency = x;
+
+            // If unset, KVM defaults to an offset that is calculated from VM boot time. Explicitly
+            // set it to zero on boot. When updating the offset, we always set it to the total
+            // amount of time the VM has been suspended.
+            vm.set_counter_offset(0)?;
+        }
+        let dev = create_pvclock_device(
             cfg.protection_type,
             &cfg.jail_config,
-            tsc_state.frequency,
+            frequency,
             suspend_tube,
-        )?);
+        )?;
+        devs.push(dev);
         info!("virtio-pvclock is enabled for this vm");
     }
 
@@ -720,7 +745,7 @@ fn create_virtio_devices(
 
 fn create_devices(
     cfg: &Config,
-    vm: &mut impl Vm,
+    vm: &mut impl VmArch,
     resources: &mut SystemAllocator,
     vm_evt_wrtube: &SendTube,
     iommu_attached_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
@@ -2729,21 +2754,47 @@ pub fn trigger_vm_suspend_and_wait_for_entry(
 }
 
 #[cfg(feature = "pvclock")]
-fn send_pvclock_cmd(tube: &Tube, command: PvClockCommand) -> Result<()> {
+/// The action requested by the pvclock device to perform on the main thread.
+enum PvClockAction {
+    #[cfg(target_arch = "aarch64")]
+    /// Update the counter offset with VmAarch64::set_counter_offset.
+    SetCounterOffset(u64),
+}
+
+#[cfg(feature = "pvclock")]
+fn send_pvclock_cmd(tube: &Tube, command: PvClockCommand) -> Result<Option<PvClockAction>> {
     tube.send(&command)
         .with_context(|| format!("failed to send pvclock command {:?}", command))?;
     let resp = tube
         .recv::<PvClockCommandResponse>()
         .context("failed to receive pvclock command response")?;
-    if let PvClockCommandResponse::Err(e) = resp {
-        bail!("pvclock encountered error on {:?}: {}", command, e);
+    match resp {
+        PvClockCommandResponse::Err(e) => {
+            bail!("pvclock encountered error on {:?}: {}", command, e);
+        }
+        PvClockCommandResponse::DeviceInactive => {
+            warn!("Tried to send {command:?} but pvclock device was inactive");
+            Ok(None)
+        }
+        PvClockCommandResponse::Resumed {
+            total_suspended_ticks,
+        } => {
+            info!("{command:?} completed with {total_suspended_ticks} total_suspended_ticks");
+            cfg_if::cfg_if! {
+                if #[cfg(target_arch = "aarch64")] {
+                    Ok(Some(PvClockAction::SetCounterOffset(total_suspended_ticks)))
+                } else {
+                    // For non-AArch64 platforms this is handled by directly updating the offset in
+                    // shared memory in the pvclock device worker.
+                    Ok(None)
+                }
+            }
+        }
+        PvClockCommandResponse::Ok => {
+            info!("{command:?} completed with {resp:?}");
+            Ok(None)
+        }
     }
-    if let PvClockCommandResponse::DeviceInactive = resp {
-        warn!("Tried to send {command:?} but pvclock device was inactive");
-    } else {
-        info!("{command:?} completed with {resp:?}");
-    }
-    Ok(())
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -3013,11 +3064,20 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         _ => None,
                     };
                     if let Some(cmd) = cmd {
-                        if let Err(e) = send_pvclock_cmd(pvclock_host_tube, cmd.clone()) {
-                            error!("{:?} command failed: {:#}", cmd, e);
-                        } else {
-                            info!("{:?} command successfully processed", cmd);
-                        }
+                        match send_pvclock_cmd(pvclock_host_tube, cmd.clone()) {
+                            Ok(action) => {
+                                info!("{:?} command successfully processed", cmd);
+                                if let Some(action) = action {
+                                    match action {
+                                        #[cfg(target_arch = "aarch64")]
+                                        PvClockAction::SetCounterOffset(offset) => {
+                                            state.linux.vm.set_counter_offset(offset)?;
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => error!("{:?} command failed: {:#}", cmd, e),
+                        };
                     }
                 }
             }

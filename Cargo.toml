@@ -157,7 +157,7 @@ net = ["devices/net"]
 ## Enables PCI hotplug. Only available on Linux, and currently only for x86/x86-64.
 pci-hotplug = ["devices/pci-hotplug", "vm_control/pci-hotplug"]
 
-## Enables virtio-pvclock. Only available on Linux, and currently only for x86/x86-64.
+## Enables virtio-pvclock. Only available on Linux, and currently only for x86/x86-64 and aarch64.
 pvclock = ["devices/pvclock"]
 
 ## Enables the use of the qcow format for block devices.
@@ -349,6 +349,7 @@ all-default = [
     "noncoherent-dma",
     "pci-hotplug",
     "power-monitor-powerd",
+    "pvclock",
     "registered_events",
     "slirp",
     "swap",
@@ -382,7 +383,6 @@ all-x86_64 = [
     "android_display",
     "android_display_stub",
     "plugin",
-    "pvclock",
     "scudo"
 ]
 

@@ -182,6 +182,12 @@ pub trait VmAArch64: Vm {
         fdt_address: GuestAddress,
         fdt_size: usize,
     ) -> Result<()>;
+
+    /// Set an offset that describes a number of counter cycles that are subtracted from both
+    /// virtual and physical counter views.
+    fn set_counter_offset(&self, _offset: u64) -> Result<()> {
+        Err(Error::new(libc::ENOSYS))
+    }
 }
 
 /// A wrapper around creating and using a VCPU on aarch64.

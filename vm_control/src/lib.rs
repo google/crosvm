@@ -1264,6 +1264,7 @@ pub enum PvClockCommand {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum PvClockCommandResponse {
     Ok,
+    Resumed { total_suspended_ticks: u64 },
     DeviceInactive,
     Err(SysError),
 }
