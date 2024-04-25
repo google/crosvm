@@ -9,6 +9,8 @@ use zerocopy::AsBytes;
 use zerocopy_derive::FromBytes;
 use zerocopy_derive::FromZeroes;
 
+use crate::arena::Arena;
+
 /// A struct to represent the configuration of an ext2 filesystem.
 pub struct Config {
     /// The number of blocks per group.
@@ -61,7 +63,7 @@ pub(crate) struct SuperBlock {
 }
 
 impl SuperBlock {
-    pub fn new(cfg: &Config) -> Result<Self> {
+    pub fn new<'a>(arena: &'a Arena<'a>, cfg: &Config) -> Result<&'a mut SuperBlock> {
         const EXT2_MAGIC_NUMBER: u16 = 0xEF53;
 
         // TODO(b/329359333): Support more than 1 groups for larger data.
@@ -89,7 +91,9 @@ impl SuperBlock {
         // COMPAT_RESIZE_INODE will also be required.
         let inode_size = 128;
 
-        Ok(Self {
+        // Superblock is located at 1024 bytes in the first block.
+        let sb = arena.allocate::<SuperBlock>(0, 1024)?;
+        *sb = Self {
             inodes_count,
             blocks_count,
             free_blocks_count: blocks_count, // All blocks are free
@@ -111,11 +115,7 @@ impl SuperBlock {
             feature_incompat: 0x2, // Directory entries contain a type field
             uuid,
             ..Default::default()
-        })
-    }
-
-    pub fn disk_size(&self) -> u64 {
-        let block_size = 1024 << self.log_block_size;
-        (block_size * self.blocks_count) as u64
+        };
+        Ok(sb)
     }
 }

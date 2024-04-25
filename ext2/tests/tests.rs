@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use base::MappedRegion;
+use ext2::create_ext2_region;
 use ext2::Config;
-use ext2::Ext2;
 use tempfile::tempdir;
 
 const FSCK_PATH: &str = "/usr/sbin/e2fsck";
@@ -48,8 +48,7 @@ fn do_autofix(path: &PathBuf, fix_count: usize) {
 fn mkfs_empty(cfg: &Config) {
     let td = tempdir().unwrap();
     let path = td.path().join("empty.ext2");
-    let ext2 = Ext2::new(cfg).unwrap();
-    let mem = ext2.write_to_memory().unwrap();
+    let mem = create_ext2_region(cfg).unwrap();
     // SAFETY: `mem` has a valid pointer and its size.
     let buf = unsafe { std::slice::from_raw_parts(mem.as_ptr(), mem.size()) };
     let mut file = OpenOptions::new()

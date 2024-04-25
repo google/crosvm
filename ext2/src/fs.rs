@@ -5,37 +5,38 @@
 //! Defines a struct to represent an ext2 filesystem and implements methods to create
 // a filesystem in memory.
 
-use anyhow::Context;
 use anyhow::Result;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
-use zerocopy::AsBytes;
 
+use crate::arena::Arena;
 use crate::superblock::Config;
 use crate::superblock::SuperBlock;
 
+/// The size of a block in bytes.
+/// We only support 4K-byte blocks.
+const BLOCK_SIZE: usize = 4096;
+
 /// A struct to represent an ext2 filesystem.
-pub struct Ext2 {
-    sb: SuperBlock,
+pub struct Ext2<'a> {
+    _sb: &'a SuperBlock,
 }
 
-impl Ext2 {
+impl<'a> Ext2<'a> {
     /// Create a new ext2 filesystem.
-
-    pub fn new(cfg: &Config) -> Result<Self> {
-        let sb = SuperBlock::new(cfg)?;
-        Ok(Ext2 { sb })
+    fn new(cfg: &Config, arena: &'a mut Arena<'a>) -> Result<Self> {
+        let sb = SuperBlock::new(arena, cfg)?;
+        Ok(Ext2 { _sb: sb })
     }
+}
 
-    /// Write a minimal ext2 filesystem to a memory region.
-    pub fn write_to_memory(&self) -> Result<MemoryMapping> {
-        let len = self.sb.disk_size() as usize;
-        let mem = MemoryMappingBuilder::new(len).build()?;
-
-        // Write the superblock.
-        let offset = 1024;
-        mem.write_slice(self.sb.as_bytes(), offset)?;
-        mem.msync().context("failed to flush disk")?;
-        Ok(mem)
-    }
+/// Creates a memory mapping region where an ext2 filesystem is constructed.
+pub fn create_ext2_region(cfg: &Config) -> Result<MemoryMapping> {
+    let num_group = 1; // TODO(b/329359333): Support more than 1 group.
+    let mut mem = MemoryMappingBuilder::new(cfg.blocks_per_group as usize * BLOCK_SIZE * num_group)
+        .build()?;
+    let mut arena = Arena::new(BLOCK_SIZE, &mut mem)?;
+    let _ext2 = Ext2::new(cfg, &mut arena)?;
+    mem.msync()?;
+    Ok(mem)
 }

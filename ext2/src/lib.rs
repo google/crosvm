@@ -7,8 +7,9 @@
 #![cfg(target_os = "linux")]
 #![deny(missing_docs)]
 
+mod arena;
 mod fs;
 mod superblock;
 
-pub use fs::Ext2;
+pub use fs::create_ext2_region;
 pub use superblock::Config;

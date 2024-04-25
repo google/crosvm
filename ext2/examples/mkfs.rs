@@ -11,7 +11,7 @@ mod linux {
 
     use argh::FromArgs;
     use base::MappedRegion;
-    use ext2::Ext2;
+    use ext2::create_ext2_region;
 
     #[derive(FromArgs)]
     /// Create ext2 filesystem.
@@ -31,12 +31,13 @@ mod linux {
 
     pub fn main() -> anyhow::Result<()> {
         let args: Args = argh::from_env();
-        let ext2 = Ext2::new(&ext2::Config {
+        let cfg = ext2::Config {
             blocks_per_group: args.blocks_per_group,
             inodes_per_group: args.inodes_per_group,
-        })?;
+        };
+
+        let mem = create_ext2_region(&cfg)?;
         println!("Create {}", args.path);
-        let mem = ext2.write_to_memory()?;
         // SAFETY: `mem` has a valid pointer and its size.
         let buf = unsafe { std::slice::from_raw_parts(mem.as_ptr(), mem.size()) };
         let mut file = OpenOptions::new()
