@@ -604,6 +604,47 @@ impl KvmVcpu {
         let size: usize = size.try_into().unwrap();
         Ok(size.max(KVM_XSAVE_MAX_SIZE))
     }
+
+    #[inline]
+    pub(crate) fn handle_vm_exit_arch(&self, run: &mut kvm_run) -> Option<VcpuExit> {
+        match run.exit_reason {
+            KVM_EXIT_IO => Some(VcpuExit::Io),
+            KVM_EXIT_IOAPIC_EOI => {
+                // SAFETY:
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let vector = unsafe { run.__bindgen_anon_1.eoi.vector };
+                Some(VcpuExit::IoapicEoi { vector })
+            }
+            KVM_EXIT_HYPERV => Some(VcpuExit::HypervHypercall),
+            KVM_EXIT_HLT => Some(VcpuExit::Hlt),
+            KVM_EXIT_SET_TPR => Some(VcpuExit::SetTpr),
+            KVM_EXIT_TPR_ACCESS => Some(VcpuExit::TprAccess),
+            KVM_EXIT_X86_RDMSR => {
+                // SAFETY:
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let msr = unsafe { &mut run.__bindgen_anon_1.msr };
+                let index = msr.index;
+                // By default fail the MSR read unless it was handled later.
+                msr.error = 1;
+                Some(VcpuExit::RdMsr { index })
+            }
+            KVM_EXIT_X86_WRMSR => {
+                // SAFETY:
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let msr = unsafe { &mut run.__bindgen_anon_1.msr };
+                // By default fail the MSR write.
+                msr.error = 1;
+                let index = msr.index;
+                let data = msr.data;
+                Some(VcpuExit::WrMsr { index, data })
+            }
+            KVM_EXIT_X86_BUS_LOCK => Some(VcpuExit::BusLock),
+            _ => None,
+        }
+    }
 }
 
 impl VcpuX86_64 for KvmVcpu {

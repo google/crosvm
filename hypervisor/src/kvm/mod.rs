@@ -943,22 +943,19 @@ impl Vcpu for KvmVcpu {
         // Safe because we know we mapped enough memory to hold the kvm_run struct because the
         // kernel told us how large it was.
         let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+
+        // Check for architecture-specific VM exit reasons first in case the architecture wants to
+        // override the default handling.
+        if let Some(vcpu_exit) = self.handle_vm_exit_arch(run) {
+            return Ok(vcpu_exit);
+        }
+
         match run.exit_reason {
-            KVM_EXIT_IO => Ok(VcpuExit::Io),
             KVM_EXIT_MMIO => Ok(VcpuExit::Mmio),
-            KVM_EXIT_IOAPIC_EOI => {
-                // SAFETY:
-                // Safe because the exit_reason (which comes from the kernel) told us which
-                // union field to use.
-                let vector = unsafe { run.__bindgen_anon_1.eoi.vector };
-                Ok(VcpuExit::IoapicEoi { vector })
-            }
-            KVM_EXIT_HYPERV => Ok(VcpuExit::HypervHypercall),
             KVM_EXIT_UNKNOWN => Ok(VcpuExit::Unknown),
             KVM_EXIT_EXCEPTION => Ok(VcpuExit::Exception),
             KVM_EXIT_HYPERCALL => Ok(VcpuExit::Hypercall),
             KVM_EXIT_DEBUG => Ok(VcpuExit::Debug),
-            KVM_EXIT_HLT => Ok(VcpuExit::Hlt),
             KVM_EXIT_IRQ_WINDOW_OPEN => Ok(VcpuExit::IrqWindowOpen),
             KVM_EXIT_SHUTDOWN => Ok(VcpuExit::Shutdown),
             KVM_EXIT_FAIL_ENTRY => {
@@ -975,19 +972,7 @@ impl Vcpu for KvmVcpu {
                 })
             }
             KVM_EXIT_INTR => Ok(VcpuExit::Intr),
-            KVM_EXIT_SET_TPR => Ok(VcpuExit::SetTpr),
-            KVM_EXIT_TPR_ACCESS => Ok(VcpuExit::TprAccess),
-            KVM_EXIT_S390_SIEIC => Ok(VcpuExit::S390Sieic),
-            KVM_EXIT_S390_RESET => Ok(VcpuExit::S390Reset),
-            KVM_EXIT_DCR => Ok(VcpuExit::Dcr),
-            KVM_EXIT_NMI => Ok(VcpuExit::Nmi),
             KVM_EXIT_INTERNAL_ERROR => Ok(VcpuExit::InternalError),
-            KVM_EXIT_OSI => Ok(VcpuExit::Osi),
-            KVM_EXIT_PAPR_HCALL => Ok(VcpuExit::PaprHcall),
-            KVM_EXIT_S390_UCONTROL => Ok(VcpuExit::S390Ucontrol),
-            KVM_EXIT_WATCHDOG => Ok(VcpuExit::Watchdog),
-            KVM_EXIT_S390_TSCH => Ok(VcpuExit::S390Tsch),
-            KVM_EXIT_EPR => Ok(VcpuExit::Epr),
             KVM_EXIT_SYSTEM_EVENT => {
                 // SAFETY:
                 // Safe because we know the exit reason told us this union
@@ -1010,54 +995,6 @@ impl Vcpu for KvmVcpu {
                         Err(Error::new(EINVAL))
                     }
                 }
-            }
-            KVM_EXIT_X86_RDMSR => {
-                // SAFETY:
-                // Safe because the exit_reason (which comes from the kernel) told us which
-                // union field to use.
-                let msr = unsafe { &mut run.__bindgen_anon_1.msr };
-                let index = msr.index;
-                // By default fail the MSR read unless it was handled later.
-                msr.error = 1;
-                Ok(VcpuExit::RdMsr { index })
-            }
-            KVM_EXIT_X86_WRMSR => {
-                // SAFETY:
-                // Safe because the exit_reason (which comes from the kernel) told us which
-                // union field to use.
-                let msr = unsafe { &mut run.__bindgen_anon_1.msr };
-                // By default fail the MSR write.
-                msr.error = 1;
-                let index = msr.index;
-                let data = msr.data;
-                Ok(VcpuExit::WrMsr { index, data })
-            }
-            KVM_EXIT_X86_BUS_LOCK => Ok(VcpuExit::BusLock),
-            #[cfg(target_arch = "riscv64")]
-            KVM_EXIT_RISCV_SBI => {
-                // Safe because we trust the kernel to correctly fill in the union
-                let extension_id = unsafe { run.__bindgen_anon_1.riscv_sbi.extension_id };
-                let function_id = unsafe { run.__bindgen_anon_1.riscv_sbi.function_id };
-                let args = unsafe { run.__bindgen_anon_1.riscv_sbi.args };
-                Ok(VcpuExit::Sbi {
-                    extension_id,
-                    function_id,
-                    args,
-                })
-            }
-            #[cfg(target_arch = "riscv64")]
-            KVM_EXIT_RISCV_CSR => {
-                // Safe because we trust the kernel to correctly fill in the union
-                let csr_num = unsafe { run.__bindgen_anon_1.riscv_csr.csr_num };
-                let new_value = unsafe { run.__bindgen_anon_1.riscv_csr.new_value };
-                let write_mask = unsafe { run.__bindgen_anon_1.riscv_csr.write_mask };
-                let ret_value = unsafe { run.__bindgen_anon_1.riscv_csr.ret_value };
-                Ok(VcpuExit::RiscvCsr {
-                    csr_num,
-                    new_value,
-                    write_mask,
-                    ret_value,
-                })
             }
             r => panic!("unknown kvm exit reason: {}", r),
         }

@@ -329,6 +329,12 @@ impl KvmVcpu {
             errno_result()
         }
     }
+
+    #[inline]
+    pub(crate) fn handle_vm_exit_arch(&self, _run: &mut kvm_run) -> Option<VcpuExit> {
+        // No aarch64-specific exits (for now)
+        None
+    }
 }
 
 /// KVM registers as used by the `GET_ONE_REG`/`SET_ONE_REG` ioctl API

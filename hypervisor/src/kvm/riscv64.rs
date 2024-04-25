@@ -105,6 +105,37 @@ impl KvmVcpu {
     pub fn system_event_reset(&self, _event_flags: u64) -> Result<VcpuExit> {
         Ok(VcpuExit::SystemEventReset)
     }
+
+    #[inline]
+    pub(crate) fn handle_vm_exit_arch(&self, run: &mut kvm_run) -> Option<VcpuExit> {
+        match run.exit_reason {
+            KVM_EXIT_RISCV_SBI => {
+                // SAFETY: Safe because we trust the kernel to correctly fill in the union
+                let extension_id = unsafe { run.__bindgen_anon_1.riscv_sbi.extension_id };
+                let function_id = unsafe { run.__bindgen_anon_1.riscv_sbi.function_id };
+                let args = unsafe { run.__bindgen_anon_1.riscv_sbi.args };
+                Some(VcpuExit::Sbi {
+                    extension_id,
+                    function_id,
+                    args,
+                })
+            }
+            KVM_EXIT_RISCV_CSR => {
+                // SAFETY: Safe because we trust the kernel to correctly fill in the union
+                let csr_num = unsafe { run.__bindgen_anon_1.riscv_csr.csr_num };
+                let new_value = unsafe { run.__bindgen_anon_1.riscv_csr.new_value };
+                let write_mask = unsafe { run.__bindgen_anon_1.riscv_csr.write_mask };
+                let ret_value = unsafe { run.__bindgen_anon_1.riscv_csr.ret_value };
+                Some(VcpuExit::RiscvCsr {
+                    csr_num,
+                    new_value,
+                    write_mask,
+                    ret_value,
+                })
+            }
+            _ => None,
+        }
+    }
 }
 
 impl VcpuRiscv64 for KvmVcpu {
