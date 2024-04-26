@@ -1636,7 +1636,7 @@ impl VmRequest {
         snapshot_irqchip: impl Fn() -> anyhow::Result<serde_json::Value>,
         restore_irqchip: impl FnMut(serde_json::Value) -> anyhow::Result<()>,
     ) -> VmResponse {
-        match *self {
+        match self {
             VmRequest::Exit => {
                 *run_mode = Some(VmRunMode::Exiting);
                 VmResponse::Ok
@@ -1772,7 +1772,7 @@ impl VmRequest {
             }) => {
                 #[cfg(feature = "swap")]
                 if let Some(swap_controller) = swap_controller {
-                    return match swap_controller.disable(slow_file_cleanup) {
+                    return match swap_controller.disable(*slow_file_cleanup) {
                         Ok(()) => VmResponse::Ok,
                         Err(e) => {
                             error!("swap disable failed: {}", e);
@@ -1864,7 +1864,7 @@ impl VmRequest {
             }
             VmRequest::Gpe(gpe) => {
                 if let Some(pm) = pm.as_ref() {
-                    pm.lock().gpe_evt(gpe);
+                    pm.lock().gpe_evt(*gpe);
                     VmResponse::Ok
                 } else {
                     error!("{:#?} not supported", *self);
@@ -1873,7 +1873,7 @@ impl VmRequest {
             }
             VmRequest::PciPme(requester_id) => {
                 if let Some(pm) = pm.as_ref() {
-                    pm.lock().pme_evt(requester_id);
+                    pm.lock().pme_evt(*requester_id);
                     VmResponse::Ok
                 } else {
                     error!("{:#?} not supported", *self);
@@ -1889,7 +1889,7 @@ impl VmRequest {
             VmRequest::DiskCommand {
                 disk_index,
                 ref command,
-            } => match &disk_host_tubes.get(disk_index) {
+            } => match &disk_host_tubes.get(*disk_index) {
                 Some(tube) => handle_disk_command(command, tube),
                 None => VmResponse::Err(SysError::new(ENODEV)),
             },
@@ -1938,7 +1938,7 @@ impl VmRequest {
             VmRequest::BatCommand(type_, ref cmd) => {
                 match bat_control {
                     Some(battery) => {
-                        if battery.type_ != type_ {
+                        if battery.type_ != *type_ {
                             error!("ignored battery command due to battery type: expected {:?}, got {:?}", battery.type_, type_);
                             return VmResponse::Err(SysError::new(EINVAL));
                         }
@@ -1978,8 +1978,8 @@ impl VmRequest {
                     device_control_tube,
                     vcpu_size,
                     snapshot_irqchip,
-                    compress_memory,
-                    encrypt,
+                    *compress_memory,
+                    *encrypt,
                 ) {
                     Ok(()) => {
                         info!("Finished crosvm snapshot successfully");
@@ -2004,7 +2004,7 @@ impl VmRequest {
                     device_control_tube,
                     vcpu_size,
                     restore_irqchip,
-                    require_encrypted,
+                    *require_encrypted,
                 ) {
                     Ok(()) => {
                         info!("Finished crosvm restore successfully");
