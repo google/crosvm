@@ -26,9 +26,9 @@ use acpi_tables::sdt::SDT;
 use base::syslog;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
-use base::Event;
 use base::FileGetLen;
 use base::FileReadWriteAtVolatile;
+use base::RecvTube;
 use base::SendTube;
 use base::Tube;
 use devices::virtio::VirtioDevice;
@@ -405,7 +405,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     pub root_config: Arc<Mutex<PciRoot>>,
     pub rt_cpus: CpuSet,
-    pub suspend_evt: Event,
+    pub suspend_tube: (Arc<Mutex<SendTube>>, RecvTube),
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub vcpu_count: usize,
     pub vcpu_init: Vec<VcpuInitArch>,

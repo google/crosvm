@@ -67,23 +67,40 @@ pub enum ACPIPMFixedEvent {
     RTC,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Clone)]
 pub(crate) struct Pm1Resource {
     pub(crate) status: u16,
     enable: u16,
     control: u16,
+    #[serde(skip_serializing)]
+    suspend_tube: Arc<Mutex<SendTube>>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
+struct Pm1ResourceSerializable {
+    status: u16,
+    enable: u16,
+    control: u16,
+}
+
+#[derive(Serialize)]
 pub(crate) struct GpeResource {
     pub(crate) status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
     enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
-    #[serde(skip_serializing, skip_deserializing)]
+    #[serde(skip_serializing)]
     pub(crate) gpe_notify: BTreeMap<u32, Vec<Arc<Mutex<dyn GpeNotify>>>>,
     // For each triggered GPE, a vector of events to check when resampling
     // sci_evt. If any events are un-signaled, then sci_evt should be re-asserted.
-    #[serde(skip_serializing, skip_deserializing)]
+    #[serde(skip_serializing)]
     pending_clear_evts: BTreeMap<u32, Vec<Event>>,
+    #[serde(skip_serializing)]
+    suspend_tube: Arc<Mutex<SendTube>>,
+}
+
+#[derive(Deserialize)]
+struct GpeResourceSerializable {
+    status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
+    enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -102,7 +119,7 @@ pub struct ACPIPMResource {
     #[serde(skip_serializing)]
     worker_thread: Option<WorkerThread<()>>,
     #[serde(skip_serializing)]
-    suspend_evt: Event,
+    suspend_tube: Arc<Mutex<SendTube>>,
     #[serde(skip_serializing)]
     exit_evt_wrtube: SendTube,
     #[serde(serialize_with = "serialize_arc_mutex")]
@@ -117,8 +134,8 @@ pub struct ACPIPMResource {
 
 #[derive(Deserialize)]
 struct ACPIPMResrourceSerializable {
-    pm1: Pm1Resource,
-    gpe0: GpeResource,
+    pm1: Pm1ResourceSerializable,
+    gpe0: GpeResourceSerializable,
 }
 
 impl ACPIPMResource {
@@ -126,7 +143,7 @@ impl ACPIPMResource {
     #[allow(dead_code)]
     pub fn new(
         sci_evt: IrqLevelEvent,
-        suspend_evt: Event,
+        suspend_tube: Arc<Mutex<SendTube>>,
         exit_evt_wrtube: SendTube,
         acdc: Option<Arc<Mutex<AcAdapter>>>,
     ) -> ACPIPMResource {
@@ -134,12 +151,14 @@ impl ACPIPMResource {
             status: 0,
             enable: 0,
             control: 0,
+            suspend_tube: suspend_tube.clone(),
         };
         let gpe0 = GpeResource {
             status: Default::default(),
             enable: Default::default(),
             gpe_notify: BTreeMap::new(),
             pending_clear_evts: BTreeMap::new(),
+            suspend_tube: suspend_tube.clone(),
         };
         let pci = PciResource {
             pme_notify: BTreeMap::new(),
@@ -148,7 +167,7 @@ impl ACPIPMResource {
         ACPIPMResource {
             sci_evt,
             worker_thread: None,
-            suspend_evt,
+            suspend_tube,
             exit_evt_wrtube,
             pm1: Arc::new(Mutex::new(pm1)),
             gpe0: Arc::new(Mutex::new(gpe0)),
@@ -187,7 +206,9 @@ impl Suspendable for ACPIPMResource {
             .with_context(|| format!("error deserializing {}", self.debug_label()))?;
         {
             let mut pm1 = self.pm1.lock();
-            *pm1 = acpi_snapshot.pm1;
+            pm1.status = acpi_snapshot.pm1.status;
+            pm1.enable = acpi_snapshot.pm1.enable;
+            pm1.control = acpi_snapshot.pm1.control;
         }
         {
             let mut gpe0 = self.gpe0.lock();
@@ -269,6 +290,9 @@ impl Pm1Resource {
             if let Err(e) = sci_evt.trigger() {
                 error!("ACPIPM: failed to trigger sci event for pm1: {}", e);
             }
+            if let Err(e) = self.suspend_tube.lock().send(&false) {
+                error!("ACPIPM: failed to trigger wake event: {}", e);
+            }
         }
     }
 }
@@ -278,6 +302,9 @@ impl GpeResource {
         if (0..self.status.len()).any(|i| self.status[i] & self.enable[i] != 0) {
             if let Err(e) = sci_evt.trigger() {
                 error!("ACPIPM: failed to trigger sci event for gpe: {}", e);
+            }
+            if let Err(e) = self.suspend_tube.lock().send(&false) {
+                error!("ACPIPM: failed to trigger wake event: {}", e);
             }
         }
     }
@@ -620,7 +647,7 @@ impl BusDevice for ACPIPMResource {
                 if (val & BITMASK_PM1CNT_SLEEP_ENABLE) != 0 {
                     match val & BITMASK_PM1CNT_SLEEP_TYPE {
                         SLEEP_TYPE_S1 => {
-                            if let Err(e) = self.suspend_evt.signal() {
+                            if let Err(e) = self.suspend_tube.lock().send(&true) {
                                 error!("ACPIPM: failed to trigger suspend event: {}", e);
                             }
                         }
@@ -737,15 +764,13 @@ impl PmWakeupEvent {
 
 #[cfg(test)]
 mod tests {
-    use base::SendTube;
     use base::Tube;
 
     use super::*;
     use crate::suspendable_tests;
 
-    fn get_evt_tube() -> SendTube {
-        let (vm_evt_wrtube, _) = Tube::directional_pair().unwrap();
-        vm_evt_wrtube
+    fn get_send_tube() -> SendTube {
+        Tube::directional_pair().unwrap().0
     }
 
     fn get_irq_evt() -> IrqLevelEvent {
@@ -767,7 +792,12 @@ mod tests {
 
     suspendable_tests!(
         acpi,
-        ACPIPMResource::new(get_irq_evt(), Event::new().unwrap(), get_evt_tube(), None,),
+        ACPIPMResource::new(
+            get_irq_evt(),
+            Arc::new(Mutex::new(get_send_tube())),
+            get_send_tube(),
+            None,
+        ),
         modify_device
     );
 }

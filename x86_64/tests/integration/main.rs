@@ -14,7 +14,6 @@ use std::thread;
 
 use arch::LinuxArch;
 use arch::SmbiosOptions;
-use base::Event;
 use base::Tube;
 use devices::Bus;
 use devices::BusType;
@@ -199,16 +198,14 @@ where
     // ````
 
     let max_bus = (read_pcie_cfg_mmio().len().unwrap() / 0x100000 - 1) as u8;
-    let suspend_evt = Event::new().unwrap();
+    let (suspend_tube_send, _suspend_tube_recv) = Tube::directional_pair().unwrap();
     let mut resume_notify_devices = Vec::new();
     let acpi_dev_resource = X8664arch::setup_acpi_devices(
         pci,
         &guest_mem,
         &io_bus,
         &mut resources,
-        suspend_evt
-            .try_clone()
-            .expect("unable to clone suspend_evt"),
+        Arc::new(Mutex::new(suspend_tube_send)),
         exit_evt_wrtube
             .try_clone()
             .expect("unable to clone exit_evt_wrtube"),

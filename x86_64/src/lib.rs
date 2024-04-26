@@ -207,6 +207,8 @@ pub enum Error {
     CreateSerialDevices(arch::DeviceRegistrationError),
     #[error("failed to create socket: {0}")]
     CreateSocket(io::Error),
+    #[error("failed to create tube: {0}")]
+    CreateTube(base::TubeError),
     #[error("failed to create VCPU: {0}")]
     CreateVcpu(base::Error),
     #[error("failed to create Virtio MMIO bus: {0}")]
@@ -843,7 +845,9 @@ impl arch::LinuxArch for X8664arch {
         pid_debug_label_map.append(&mut virtio_mmio_pid);
 
         // Event used to notify crosvm that guest OS is trying to suspend.
-        let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
+        let (suspend_tube_send, suspend_tube_recv) =
+            Tube::directional_pair().map_err(Error::CreateTube)?;
+        let suspend_tube_send = Arc::new(Mutex::new(suspend_tube_send));
 
         if components.fw_cfg_enable {
             Self::setup_fw_cfg_device(
@@ -921,7 +925,7 @@ impl arch::LinuxArch for X8664arch {
             &mem,
             &io_bus,
             system_allocator,
-            suspend_evt.try_clone().map_err(Error::CloneEvent)?,
+            suspend_tube_send.clone(),
             vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
             components.acpi_sdts,
             irq_chip.as_irq_chip_mut(),
@@ -1066,7 +1070,7 @@ impl arch::LinuxArch for X8664arch {
             io_bus,
             mmio_bus,
             pid_debug_label_map,
-            suspend_evt,
+            suspend_tube: (suspend_tube_send, suspend_tube_recv),
             resume_notify_devices,
             rt_cpus: components.rt_cpus,
             delay_rt: components.delay_rt,
@@ -1901,7 +1905,7 @@ impl X8664arch {
     ///
     /// * - `io_bus` the I/O bus to add the devices to
     /// * - `resources` the SystemAllocator to allocate IO and MMIO for acpi devices.
-    /// * - `suspend_evt` the event object which used to suspend the vm
+    /// * - `suspend_tube` the tube object which used to suspend/resume the VM.
     /// * - `sdts` ACPI system description tables
     /// * - `irq_chip` the IrqChip object for registering irq events
     /// * - `battery` indicate whether to create the battery
@@ -1913,7 +1917,7 @@ impl X8664arch {
         mem: &GuestMemory,
         io_bus: &Bus,
         resources: &mut SystemAllocator,
-        suspend_evt: Event,
+        suspend_tube: Arc<Mutex<SendTube>>,
         vm_evt_wrtube: SendTube,
         sdts: Vec<SDT>,
         irq_chip: &mut dyn IrqChip,
@@ -2042,7 +2046,7 @@ impl X8664arch {
 
         let mut pmresource = devices::ACPIPMResource::new(
             pm_sci_evt.try_clone().map_err(Error::CloneEvent)?,
-            suspend_evt,
+            suspend_tube,
             vm_evt_wrtube,
             acdc,
         );

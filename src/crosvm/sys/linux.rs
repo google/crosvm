@@ -2692,7 +2692,7 @@ pub fn trigger_vm_suspend_and_wait_for_entry(
     guest_suspended_cvar: Arc<(Mutex<bool>, Condvar)>,
     tube: &SendTube,
     response: vm_control::VmResponse,
-    suspend_evt: Event,
+    suspend_tube: Arc<Mutex<SendTube>>,
     pm: Option<Arc<Mutex<dyn PmResource + Send>>>,
 ) {
     let (lock, cvar) = &*guest_suspended_cvar;
@@ -2719,7 +2719,7 @@ pub fn trigger_vm_suspend_and_wait_for_entry(
         info!("Guest suspended");
     }
 
-    if let Err(e) = suspend_evt.signal() {
+    if let Err(e) = suspend_tube.lock().send(&true) {
         error!("failed to trigger suspend event: {}", e);
     }
     // Now we ready to send response over the tube and communicate that VM suspend has finished
@@ -2995,7 +2995,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
                     // Spawn s2idle wait thread.
                     let send_tube = tube.try_clone_send_tube().unwrap();
-                    let suspend_evt = state.linux.suspend_evt.try_clone().unwrap();
+                    let suspend_tube = state.linux.suspend_tube.0.clone();
                     let guest_suspended_cvar = state.guest_suspended_cvar.clone();
                     let delayed_response = response.clone();
                     let pm = state.linux.pm.clone();
@@ -3007,7 +3007,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 guest_suspended_cvar.unwrap(),
                                 &send_tube,
                                 delayed_response,
-                                suspend_evt,
+                                suspend_tube,
                                 pm,
                             )
                         })
@@ -3284,7 +3284,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let iommu_host_tube = iommu_host_tube.map(|t| Arc::new(Mutex::new(t)));
 
     let wait_ctx = WaitContext::build_with(&[
-        (&linux.suspend_evt, Token::Suspend),
+        (&linux.suspend_tube.1, Token::Suspend),
         (&sigchld_fd, Token::ChildSignal),
         (&vm_evt_rdtube, Token::VmEvent),
         #[cfg(feature = "registered_events")]
@@ -3710,15 +3710,27 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         break 'wait;
                     }
                 }
-                Token::Suspend => {
-                    info!("VM requested suspend");
-                    linux.suspend_evt.wait().unwrap();
-                    vcpu::kick_all_vcpus(
-                        &vcpu_handles,
-                        linux.irq_chip.as_irq_chip(),
-                        VcpuControl::RunState(VmRunMode::Suspending),
-                    );
-                }
+                Token::Suspend => match linux.suspend_tube.1.recv::<bool>() {
+                    Ok(is_suspend_request) => {
+                        let mode = if is_suspend_request {
+                            VmRunMode::Suspending
+                        } else {
+                            for dev in &linux.resume_notify_devices {
+                                dev.lock().resume_imminent();
+                            }
+                            VmRunMode::Running
+                        };
+                        info!("VM requested {}", mode);
+                        vcpu::kick_all_vcpus(
+                            &vcpu_handles,
+                            linux.irq_chip.as_irq_chip(),
+                            VcpuControl::RunState(mode),
+                        );
+                    }
+                    Err(err) => {
+                        warn!("Failed to read suspend tube {:?}", err);
+                    }
+                },
                 Token::ChildSignal => {
                     // Print all available siginfo structs, then exit the loop if child process has
                     // been exited except CLD_STOPPED and CLD_CONTINUED. the two should be ignored

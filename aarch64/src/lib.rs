@@ -21,9 +21,9 @@ use arch::RunnableLinuxVm;
 use arch::VcpuAffinity;
 use arch::VmComponents;
 use arch::VmImage;
-use base::Event;
 use base::MemoryMappingBuilder;
 use base::SendTube;
+use base::Tube;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 use devices::vmwdt::VMWDT_DEFAULT_CLOCK_HZ;
@@ -253,6 +253,8 @@ pub enum Error {
     CreateSerialDevices(arch::DeviceRegistrationError),
     #[error("failed to create socket: {0}")]
     CreateSocket(io::Error),
+    #[error("failed to create tube: {0}")]
+    CreateTube(base::TubeError),
     #[error("failed to create VCPU: {0}")]
     CreateVcpu(base::Error),
     #[error("custom pVM firmware could not be loaded: {0}")]
@@ -581,7 +583,9 @@ impl arch::LinuxArch for AArch64 {
 
         // Event used by PMDevice to notify crosvm that
         // guest OS is trying to suspend.
-        let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
+        let (suspend_tube_send, suspend_tube_recv) =
+            Tube::directional_pair().map_err(Error::CreateTube)?;
+        let suspend_tube_send = Arc::new(Mutex::new(suspend_tube_send));
 
         let (pci_devices, others): (Vec<_>, Vec<_>) = devs
             .into_iter()
@@ -823,7 +827,7 @@ impl arch::LinuxArch for AArch64 {
             io_bus,
             mmio_bus,
             pid_debug_label_map,
-            suspend_evt,
+            suspend_tube: (suspend_tube_send, suspend_tube_recv),
             rt_cpus: components.rt_cpus,
             delay_rt: components.delay_rt,
             bat_control,
