@@ -69,10 +69,13 @@ impl PciPmCap {
         }
     }
     pub fn default_cap() -> u16 {
-        PM_CAP_VERSION
-            | PM_CAP_PME_SUPPORT_D0
-            | PM_CAP_PME_SUPPORT_D3_HOT
-            | PM_CAP_PME_SUPPORT_D3_COLD
+        let mut cap = PM_CAP_VERSION;
+        // We use ACPI GPEs for PMEs, which are x86_64 only. We should
+        // implement support for native PCIe PMEs to support non-ACPI platforms.
+        if cfg!(target_arch = "x86_64") {
+            cap |= PM_CAP_PME_SUPPORT_D0 | PM_CAP_PME_SUPPORT_D3_HOT | PM_CAP_PME_SUPPORT_D3_COLD
+        }
+        cap
     }
 }
 
