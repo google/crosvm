@@ -1662,6 +1662,7 @@ impl VmRequest {
             VmRequest::Rtc => {
                 if let Some(pm) = pm {
                     pm.lock().rtc_evt();
+                    *run_mode = Some(VmRunMode::Running);
                     VmResponse::Ok
                 } else {
                     error!("{:#?} not supported", *self);
