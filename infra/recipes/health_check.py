@@ -20,7 +20,7 @@ def RunSteps(api):
             "Self-test dev-container",
             [
                 "vpython3",
-                api.crosvm.source_dir.join("tools/dev_container"),
+                api.crosvm.source_dir / "tools/dev_container",
                 "--verbose",
                 "--self-test",
             ],
@@ -29,7 +29,7 @@ def RunSteps(api):
             "List checks to run",
             [
                 "vpython3",
-                api.crosvm.source_dir.join("tools/presubmit"),
+                api.crosvm.source_dir / "tools/presubmit",
                 "--list-checks",
                 "health_checks",
             ],

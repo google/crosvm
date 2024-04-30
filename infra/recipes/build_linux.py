@@ -78,7 +78,7 @@ def RunSteps(api, properties):
             "List checks to run",
             [
                 "vpython3",
-                api.crosvm.source_dir.join("tools/presubmit"),
+                api.crosvm.source_dir / "tools/presubmit",
                 "--list-checks",
                 presubmit_group,
             ],

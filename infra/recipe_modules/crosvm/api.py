@@ -14,31 +14,31 @@ class CrosvmApi(recipe_api.RecipeApi):
     @property
     def source_dir(self):
         "Where the crosvm source will be checked out."
-        return self.builder_cache.join("crosvm")
+        return self.builder_cache / "crosvm"
 
     @property
     def rustup_home(self):
         "RUSTUP_HOME is cached between runs."
-        return self.builder_cache.join("rustup")
+        return self.builder_cache / "rustup"
 
     @property
     def cargo_home(self):
         "CARGO_HOME is cached between runs."
-        return self.builder_cache.join("cargo_home")
+        return self.builder_cache / "cargo_home"
 
     @property
     def cargo_target_dir(self):
         "CARGO_TARGET_DIR is cleaned up between runs"
-        return self.m.path["cleanup"].join("cargo_target")
+        return self.m.path.cleanup_dir / "cargo_target"
 
     @property
     def local_bin(self):
         "Directory used to install local tools required by the build."
-        return self.builder_cache.join("local_bin")
+        return self.builder_cache / "local_bin"
 
     @property
     def dev_container_cache(self):
-        return self.builder_cache.join("dev_container")
+        return self.builder_cache / "dev_container"
 
     @property
     def builder_cache(self):
@@ -47,7 +47,7 @@ class CrosvmApi(recipe_api.RecipeApi):
 
         Luci will try to run each builder on the same bot as previously to keep this cache present.
         """
-        return self.m.path["cache"].join("builder")
+        return self.m.path.cache_dir / "builder"
 
     def source_context(self):
         """
@@ -92,7 +92,7 @@ class CrosvmApi(recipe_api.RecipeApi):
                     "Stop existing cros containers",
                     [
                         "vpython3",
-                        self.source_dir.join("tools/dev_container"),
+                        self.source_dir / "tools/dev_container",
                         "--verbose",
                         "--stop",
                         "--cros",
@@ -102,7 +102,7 @@ class CrosvmApi(recipe_api.RecipeApi):
                     "Force pull cros_container",
                     [
                         "vpython3",
-                        self.source_dir.join("tools/dev_container"),
+                        self.source_dir / "tools/dev_container",
                         "--pull",
                         "--cros",
                     ],
@@ -131,7 +131,7 @@ class CrosvmApi(recipe_api.RecipeApi):
                 }
                 env_prefixes = {
                     "PATH": [
-                        self.cargo_home.join("bin"),
+                        self.cargo_home / "bin",
                         self.local_bin,
                     ],
                 }
@@ -149,7 +149,7 @@ class CrosvmApi(recipe_api.RecipeApi):
             step_name,
             [
                 "vpython3",
-                self.source_dir.join("tools/dev_container"),
+                self.source_dir / "tools/dev_container",
                 "--no-interactive",
                 "--verbose",
             ]
@@ -160,7 +160,7 @@ class CrosvmApi(recipe_api.RecipeApi):
 
     def prepare_git(self):
         with self.m.step.nest("Prepare git"):
-            with self.m.context(cwd=self.m.path["start_dir"]):
+            with self.m.context(cwd=self.m.path.start_dir):
                 name = self.m.git.config_get("user.name")
                 email = self.m.git.config_get("user.email")
                 if not name or not email:
@@ -221,9 +221,9 @@ class CrosvmApi(recipe_api.RecipeApi):
         Note: You want to run this after prepare_source to ensure the correct version is installed.
         """
         with self.m.step.nest("Prepare rust"):
-            if not self.m.path.exists(
-                self.cargo_home.join("bin/rustup")
-            ) and not self.m.path.exists(self.cargo_home.join("bin/rustup.exe")):
+            if not self.m.path.exists(self.cargo_home / "bin/rustup") and not self.m.path.exists(
+                self.cargo_home / "bin/rustup.exe"
+            ):
                 rustup_init = self.m.cipd.ensure_tool("crosvm/rustup-init/${platform}", "latest")
                 self.m.step("Install rustup", [rustup_init, "-y", "--default-toolchain", "none"])
 
@@ -306,7 +306,7 @@ class CrosvmApi(recipe_api.RecipeApi):
                     "Stop existing dev containers",
                     [
                         "vpython3",
-                        self.source_dir.join("tools/dev_container"),
+                        self.source_dir / "tools/dev_container",
                         "--verbose",
                         "--stop",
                     ],
@@ -315,7 +315,7 @@ class CrosvmApi(recipe_api.RecipeApi):
                     "Force pull dev_container",
                     [
                         "vpython3",
-                        self.source_dir.join("tools/dev_container"),
+                        self.source_dir / "tools/dev_container",
                         "--pull",
                     ],
                 )
