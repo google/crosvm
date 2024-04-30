@@ -184,7 +184,7 @@ pub trait PmeNotify: Send {
 pub trait PmResource {
     fn pwrbtn_evt(&mut self) {}
     fn slpbtn_evt(&mut self) {}
-    fn rtc_evt(&mut self) {}
+    fn rtc_evt(&mut self, _clear_evt: Event) {}
     fn gpe_evt(&mut self, _gpe: u32, _clear_evt: Option<Event>) {}
     fn pme_evt(&mut self, _requester_id: u16) {}
     fn register_gpe_notify_dev(&mut self, _gpe: u32, _notify_dev: Arc<Mutex<dyn GpeNotify>>) {}
@@ -1298,8 +1298,9 @@ pub enum VmRequest {
     Powerbtn,
     /// Trigger a sleep button event in the guest.
     Sleepbtn,
-    /// Trigger a RTC interrupt in the guest.
-    Rtc,
+    /// Trigger a RTC interrupt in the guest. When the irq associated with the RTC is
+    /// resampled, it will be re-asserted as long as `clear_evt` is not signaled.
+    Rtc { clear_evt: Event },
     /// Suspend the VM's VCPUs until resume.
     SuspendVcpus,
     /// Swap the memory content into files on a disk
@@ -1662,11 +1663,19 @@ impl VmRequest {
                     VmResponse::Err(SysError::new(ENOTSUP))
                 }
             }
-            VmRequest::Rtc => {
-                if let Some(pm) = pm {
-                    pm.lock().rtc_evt();
-                    *run_mode = Some(VmRunMode::Running);
-                    VmResponse::Ok
+            VmRequest::Rtc { clear_evt } => {
+                if let Some(pm) = pm.as_ref() {
+                    match clear_evt.try_clone() {
+                        Ok(clear_evt) => {
+                            pm.lock().rtc_evt(clear_evt);
+                            *run_mode = Some(VmRunMode::Running);
+                            VmResponse::Ok
+                        }
+                        Err(err) => {
+                            error!("Error cloning clear_evt: {:?}", err);
+                            VmResponse::Err(SysError::new(EIO))
+                        }
+                    }
                 } else {
                     error!("{:#?} not supported", *self);
                     VmResponse::Err(SysError::new(ENOTSUP))

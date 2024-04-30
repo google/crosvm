@@ -67,13 +67,15 @@ pub enum ACPIPMFixedEvent {
     RTC,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize)]
 pub(crate) struct Pm1Resource {
     pub(crate) status: u16,
     enable: u16,
     control: u16,
     #[serde(skip_serializing)]
     suspend_tube: Arc<Mutex<SendTube>>,
+    #[serde(skip_serializing)]
+    rtc_clear_evt: Option<Event>,
 }
 
 #[derive(Deserialize)]
@@ -152,6 +154,7 @@ impl ACPIPMResource {
             enable: 0,
             control: 0,
             suspend_tube: suspend_tube.clone(),
+            rtc_clear_evt: None,
         };
         let gpe0 = GpeResource {
             status: Default::default(),
@@ -275,7 +278,7 @@ fn run_worker(
                     sci_evt.clear_resample();
 
                     // Re-trigger SCI if PM1 or GPE status is still not cleared.
-                    pm1.lock().trigger_sci(&sci_evt);
+                    pm1.lock().resample_clear_evts_and_trigger(&sci_evt);
                     gpe0.lock().resample_clear_evts_and_trigger(&sci_evt);
                 }
                 Token::Kill => return Ok(()),
@@ -294,6 +297,16 @@ impl Pm1Resource {
                 error!("ACPIPM: failed to trigger wake event: {}", e);
             }
         }
+    }
+
+    fn resample_clear_evts_and_trigger(&mut self, sci_evt: &IrqLevelEvent) {
+        if let Some(clear_evt) = self.rtc_clear_evt.take() {
+            if clear_evt.wait_timeout(Duration::ZERO) == Ok(EventWaitResult::TimedOut) {
+                self.rtc_clear_evt = Some(clear_evt);
+                self.status |= ACPIPMFixedEvent::RTC.bitmask();
+            }
+        }
+        self.trigger_sci(sci_evt);
     }
 }
 
@@ -322,10 +335,7 @@ impl GpeResource {
         let mut retained = Vec::new();
         self.pending_clear_evts.retain(|gpe, clear_evts| {
             clear_evts.retain(|clear_evt| {
-                matches!(
-                    clear_evt.wait_timeout(Duration::ZERO),
-                    Ok(EventWaitResult::TimedOut)
-                )
+                clear_evt.wait_timeout(Duration::ZERO) == Ok(EventWaitResult::TimedOut)
             });
             if !clear_evts.is_empty() {
                 retained.push(*gpe);
@@ -451,9 +461,10 @@ impl PmResource for ACPIPMResource {
         pm1.trigger_sci(&self.sci_evt);
     }
 
-    fn rtc_evt(&mut self) {
+    fn rtc_evt(&mut self, clear_evt: Event) {
         let mut pm1 = self.pm1.lock();
 
+        pm1.rtc_clear_evt = Some(clear_evt);
         pm1.status |= ACPIPMFixedEvent::RTC.bitmask();
         pm1.trigger_sci(&self.sci_evt);
     }
@@ -624,7 +635,7 @@ impl BusDevice for ACPIPMResource {
                     v[j] = data[i];
                 }
                 pm1.enable = u16::from_ne_bytes(v);
-                pm1.trigger_sci(&self.sci_evt);
+                pm1.resample_clear_evts_and_trigger(&self.sci_evt);
             }
             PM1_CONTROL..=PM1_CONTROL_LAST => {
                 if data.len() > std::mem::size_of::<u16>()
@@ -666,8 +677,9 @@ impl BusDevice for ACPIPMResource {
                 }
                 pm1.control = val & !BITMASK_PM1CNT_SLEEP_ENABLE;
 
-                // Re-trigger GPEs in case there is a pending wakeup that should
+                // Re-trigger PM & GPEs in case there is a pending wakeup that should
                 // override us just having gone to sleep.
+                pm1.resample_clear_evts_and_trigger(&self.sci_evt);
                 self.gpe0
                     .lock()
                     .resample_clear_evts_and_trigger(&self.sci_evt);

@@ -80,10 +80,11 @@ struct AlarmState {
     vm_control: Tube,
     irq: IrqEdgeEvent,
     armed_time: Instant,
+    clear_evt: Option<Event>,
 }
 
 impl AlarmState {
-    fn trigger_rtc_interrupt(&self) -> anyhow::Result<()> {
+    fn trigger_rtc_interrupt(&self) -> anyhow::Result<Event> {
         self.irq.trigger().context("failed to trigger irq")?;
 
         let elapsed = self.armed_time.elapsed().as_millis();
@@ -92,13 +93,20 @@ impl AlarmState {
             elapsed.try_into().unwrap_or(i64::MAX),
         );
 
+        let msg = vm_control::VmRequest::Rtc {
+            clear_evt: Event::new().context("failed to create clear event")?,
+        };
+
         // The Linux kernel expects wakeups to come via ACPI when ACPI is enabled. There's
         // no real way to determine that here, so just send this unconditionally.
-        self.vm_control
-            .send(&vm_control::VmRequest::Rtc)
-            .context("send failed")?;
+        self.vm_control.send(&msg).context("send failed")?;
+
+        let vm_control::VmRequest::Rtc { clear_evt } = msg else {
+            unreachable!("message type failure");
+        };
+
         match self.vm_control.recv().context("recv failed")? {
-            VmResponse::Ok => Ok(()),
+            VmResponse::Ok => Ok(clear_evt),
             resp => Err(anyhow!("unexpected rtc response: {:?}", resp)),
         }
     }
@@ -165,6 +173,7 @@ impl Cmos {
                 vm_control,
                 // Not actually armed, but simpler than wrapping with an Option.
                 armed_time: Instant::now(),
+                clear_evt: None,
             })),
             worker: None,
         })
@@ -217,6 +226,11 @@ impl Cmos {
             if let Err(e) = state.alarm.clear() {
                 error!("Failed to clear alarm {:?}", e);
             }
+            if let Some(clear_evt) = state.clear_evt.take() {
+                if let Err(e) = clear_evt.signal() {
+                    error!("failed to clear rtc pm signal {:?}", e);
+                }
+            }
         }
 
         let needs_worker = self.alarm_time.is_some();
@@ -250,8 +264,10 @@ fn run_cmos_worker(alarm_state: Arc<Mutex<AlarmState>>, kill_evt: Event) -> anyh
                     if state.alarm.mark_waited().context("timer ack failed")? {
                         continue;
                     }
-                    if let Err(e) = state.trigger_rtc_interrupt() {
-                        error!("Failed to send rtc {:?}", e);
+
+                    match state.trigger_rtc_interrupt() {
+                        Ok(clear_evt) => state.clear_evt = Some(clear_evt),
+                        Err(e) => error!("Failed to send rtc {:?}", e),
                     }
                 }
                 Token::Kill => return Ok(()),
