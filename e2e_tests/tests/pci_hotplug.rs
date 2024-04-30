@@ -135,7 +135,6 @@ fn tap_hotplug_two_impl() {
 }
 
 /// Checks hotplug works with two tap devices.
-#[ignore = "Temporarily ignored since async handling is missing on this version."]
 #[test]
 fn tap_hotplug_two() {
     call_test_with_sudo("tap_hotplug_two_impl");
@@ -201,7 +200,6 @@ fn tap_hotplug_add_remove_add_impl() {
 }
 
 /// Checks tap hotplug works with a device added, removed, then added again.
-#[ignore = "Temporarily ignored since async handling is missing on this version."]
 #[test]
 fn tap_hotplug_add_remove_add() {
     call_test_with_sudo("tap_hotplug_add_remove_add_impl");
@@ -219,10 +217,18 @@ fn tap_hotplug_add_remove_rapid_add_impl() {
     let mut vm = TestVm::new(config).unwrap();
 
     //Setup test tap. tap_name has to be distinct per test, or it may appear flaky (b/333090169).
-    let tap_name = "test_tap4";
+    let tap_name_a = "test_tap4";
     setup_tap_device(
-        tap_name.as_bytes(),
+        tap_name_a.as_bytes(),
         "100.115.92.9".parse().unwrap(),
+        "255.255.255.252".parse().unwrap(),
+        "a0:b0:c0:d0:e0:f0".parse().unwrap(),
+    );
+
+    let tap_name_b = "test_tap5";
+    setup_tap_device(
+        tap_name_b.as_bytes(),
+        "100.115.92.1".parse().unwrap(),
         "255.255.255.252".parse().unwrap(),
         "a0:b0:c0:d0:e0:f0".parse().unwrap(),
     );
@@ -233,7 +239,7 @@ fn tap_hotplug_add_remove_rapid_add_impl() {
         wait_timeout
     ));
     // Hotplug tap.
-    vm.hotplug_tap(tap_name).unwrap();
+    vm.hotplug_tap(tap_name_a).unwrap();
     // Wait until virtio-net device appears in guest OS.
     assert!(poll_until_true(
         &mut vm,
@@ -243,7 +249,7 @@ fn tap_hotplug_add_remove_rapid_add_impl() {
 
     // Remove hotplugged tap device, then hotplug again without waiting for guest.
     vm.remove_pci_device(1).unwrap();
-    vm.hotplug_tap(tap_name).unwrap();
+    vm.hotplug_tap(tap_name_b).unwrap();
 
     // Wait for a while that the guest likely noticed the removal.
     thread::sleep(Duration::from_millis(500));
@@ -257,13 +263,16 @@ fn tap_hotplug_add_remove_rapid_add_impl() {
 
     drop(vm);
     Command::new("ip")
-        .args(["link", "delete", tap_name])
+        .args(["link", "delete", tap_name_a])
+        .status()
+        .unwrap();
+    Command::new("ip")
+        .args(["link", "delete", tap_name_b])
         .status()
         .unwrap();
 }
 
 /// Checks tap hotplug works with a device added, removed, then rapidly added again.
-#[ignore = "Temporarily ignored since async handling is missing on this version."]
 #[test]
 fn tap_hotplug_add_remove_rapid_add() {
     call_test_with_sudo("tap_hotplug_add_remove_rapid_add_impl");
