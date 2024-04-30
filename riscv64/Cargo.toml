@@ -5,7 +5,7 @@ authors = ["Rivos Inc."]
 edition = "2021"
 
 [features]
-gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "hypervisor/gdb"]
+gdb = ["gdbstub", "gdbstub_arch", "arch/gdb"]
 
 [dependencies]
 arch = { path = "../arch" }

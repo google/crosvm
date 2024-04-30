@@ -1461,8 +1461,6 @@ dependencies = [
  "downcast-rs",
  "enumn",
  "fnv",
- "gdbstub",
- "gdbstub_arch",
  "kvm",
  "kvm_sys",
  "libc",

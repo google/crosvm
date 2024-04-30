@@ -228,11 +228,9 @@ pub trait VcpuAArch64: Vcpu {
     /// Gets the current PSCI version.
     fn get_psci_version(&self) -> Result<PsciVersion>;
 
-    #[cfg(feature = "gdb")]
     /// Sets up debug registers and configure vcpu for handling guest debug events.
     fn set_guest_debug(&self, addrs: &[GuestAddress], enable_singlestep: bool) -> Result<()>;
 
-    #[cfg(feature = "gdb")]
     /// Gets the max number of hardware breakpoints.
     fn get_max_hw_bps(&self) -> Result<usize>;
 

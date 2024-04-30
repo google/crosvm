@@ -225,12 +225,10 @@ impl VcpuAArch64 for GunyahVcpu {
         Ok(PSCI_0_2)
     }
 
-    #[cfg(feature = "gdb")]
     fn set_guest_debug(&self, _addrs: &[GuestAddress], _enable_singlestep: bool) -> Result<()> {
         Err(Error::new(ENOTSUP))
     }
 
-    #[cfg(feature = "gdb")]
     fn get_max_hw_bps(&self) -> Result<usize> {
         Err(Error::new(ENOTSUP))
     }

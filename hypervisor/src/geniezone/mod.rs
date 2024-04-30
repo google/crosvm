@@ -441,17 +441,15 @@ impl VcpuAArch64 for GeniezoneVcpu {
         Ok(PSCI_0_2)
     }
 
-    #[cfg(feature = "gdb")]
     fn get_max_hw_bps(&self) -> Result<usize> {
         // TODO: Geniezone not support gdb currently
         error!("Geniezone: not support get_max_hw_bps");
         Err(Error::new(EINVAL))
     }
 
-    #[cfg(feature = "gdb")]
     fn set_guest_debug(&self, _addrs: &[GuestAddress], _enable_singlestep: bool) -> Result<()> {
         // TODO: Geniezone not support gdb currently
-        error!("Geniezone: not support set_gdb_registers");
+        error!("Geniezone: not support set_guest_debug");
         Err(Error::new(EINVAL))
     }
 }

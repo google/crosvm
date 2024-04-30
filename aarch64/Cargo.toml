@@ -5,7 +5,7 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [features]
-gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "hypervisor/gdb"]
+gdb = ["gdbstub", "gdbstub_arch", "arch/gdb"]
 swap = ["swap/enable"]
 
 [dependencies]

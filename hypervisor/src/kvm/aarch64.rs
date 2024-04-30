@@ -680,7 +680,6 @@ impl VcpuAArch64 for KvmVcpu {
         }
     }
 
-    #[cfg(feature = "gdb")]
     fn get_max_hw_bps(&self) -> Result<usize> {
         // SAFETY:
         // Safe because the kernel will only return the result of the ioctl.
@@ -699,7 +698,6 @@ impl VcpuAArch64 for KvmVcpu {
         }
     }
 
-    #[cfg(feature = "gdb")]
     #[allow(clippy::unusual_byte_groupings)]
     fn set_guest_debug(&self, addrs: &[GuestAddress], enable_singlestep: bool) -> Result<()> {
         let mut dbg = kvm_guest_debug {
