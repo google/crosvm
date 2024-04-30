@@ -141,9 +141,6 @@ pub trait VcpuX86_64: Vcpu {
     /// Sets up the data returned by the CPUID instruction.
     fn set_cpuid(&self, cpuid: &CpuId) -> Result<()>;
 
-    /// Gets the system emulated hyper-v CPUID values.
-    fn get_hyperv_cpuid(&self) -> Result<CpuId>;
-
     /// Sets up debug registers and configure vcpu for handling guest debug events.
     fn set_guest_debug(&self, addrs: &[GuestAddress], enable_singlestep: bool) -> Result<()>;
 

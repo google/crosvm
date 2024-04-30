@@ -828,18 +828,6 @@ impl Vcpu for GunyahVcpu {
         unreachable!()
     }
 
-    fn handle_hyperv_hypercall(&self, _func: &mut dyn FnMut(HypervHypercall) -> u64) -> Result<()> {
-        unreachable!()
-    }
-
-    fn handle_rdmsr(&self, _data: u64) -> Result<()> {
-        unreachable!()
-    }
-
-    fn handle_wrmsr(&self) {
-        unreachable!()
-    }
-
     fn on_suspend(&self) -> Result<()> {
         Ok(())
     }

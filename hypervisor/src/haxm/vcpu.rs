@@ -33,7 +33,6 @@ use crate::CpuIdEntry;
 use crate::DebugRegs;
 use crate::DescriptorTable;
 use crate::Fpu;
-use crate::HypervHypercall;
 use crate::IoOperation;
 use crate::IoParams;
 use crate::Regs;
@@ -280,26 +279,6 @@ impl Vcpu for HaxmVcpu {
             }
             _ => Err(Error::new(EINVAL)),
         }
-    }
-
-    /// haxm does not handle hypervcalls.
-    fn handle_hyperv_hypercall(&self, _func: &mut dyn FnMut(HypervHypercall) -> u64) -> Result<()> {
-        Err(Error::new(libc::ENXIO))
-    }
-
-    /// This function should be called after `Vcpu::run` returns `VcpuExit::RdMsr`,
-    /// and in the same thread as run.
-    ///
-    /// It will put `data` into the user buffer and return.
-    fn handle_rdmsr(&self, _data: u64) -> Result<()> {
-        // TODO(b/233766326): Implement.
-        Err(Error::new(libc::ENXIO))
-    }
-
-    /// This function should be called after `Vcpu::run` returns `VcpuExit::WrMsr`,
-    /// and in the same thread as run.
-    fn handle_wrmsr(&self) {
-        // TODO(b/233766326): Implement.
     }
 
     #[allow(clippy::cast_ptr_alignment)]
@@ -554,12 +533,6 @@ impl VcpuX86_64 for HaxmVcpu {
     /// HAXM does not support the VcpuExit::Cpuid exit type.
     fn handle_cpuid(&mut self, _entry: &CpuIdEntry) -> Result<()> {
         Err(Error::new(ENXIO))
-    }
-
-    /// Gets the system emulated hyper-v CPUID values.
-    fn get_hyperv_cpuid(&self) -> Result<CpuId> {
-        // HaxmVcpu does not support hyperv_cpuid
-        Err(Error::new(libc::ENXIO))
     }
 
     fn set_guest_debug(&self, _addrs: &[GuestAddress], _enable_singlestep: bool) -> Result<()> {

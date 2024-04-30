@@ -322,29 +322,6 @@ pub trait Vcpu: downcast_rs::DowncastSync {
     /// the return data in the vcpu so that the vcpu can resume running.
     fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()>;
 
-    /// Handles the HYPERV_HYPERCALL exit from a vcpu.
-    ///
-    /// This function should be called after `Vcpu::run` returns `VcpuExit::HypervHcall`, and in the
-    /// same thread as run.
-    ///
-    /// Once called, it will parse the appropriate input parameters to the provided function to
-    /// handle the hyperv call, and then set the return data into the vcpu so it can resume running.
-    fn handle_hyperv_hypercall(&self, func: &mut dyn FnMut(HypervHypercall) -> u64) -> Result<()>;
-
-    /// Handles a RDMSR exit from the guest.
-    ///
-    /// This function should be called after `Vcpu::run` returns `VcpuExit::RdMsr`,
-    /// and in the same thread as run.
-    ///
-    /// It will put `data` into the guest buffer and return.
-    fn handle_rdmsr(&self, data: u64) -> Result<()>;
-
-    /// Handles a WRMSR exit from the guest by removing any error indication for the operation.
-    ///
-    /// This function should be called after `Vcpu::run` returns `VcpuExit::WrMsr`,
-    /// and in the same thread as run.
-    fn handle_wrmsr(&self);
-
     /// Signals to the hypervisor that this Vcpu is being paused by userspace.
     fn on_suspend(&self) -> Result<()>;
 
@@ -389,7 +366,6 @@ pub enum VcpuExit {
     IoapicEoi {
         vector: u8,
     },
-    HypervHypercall,
     Exception,
     Hypercall,
     Debug,
@@ -406,13 +382,6 @@ pub enum VcpuExit {
     SystemEventShutdown,
     SystemEventReset,
     SystemEventCrash,
-    RdMsr {
-        index: u32,
-    },
-    WrMsr {
-        index: u32,
-        data: u64,
-    },
     /// An invalid vcpu register was set while running.
     InvalidVpRegister,
     /// incorrect setup for vcpu requiring an unsupported feature
@@ -448,21 +417,6 @@ pub enum VcpuExit {
         new_value: u64,
         write_mask: u64,
         ret_value: u64,
-    },
-}
-
-/// A hypercall with parameters being made from the guest.
-#[derive(Debug)]
-pub enum HypervHypercall {
-    HypervSynic {
-        msr: u32,
-        control: u64,
-        evt_page: u64,
-        msg_page: u64,
-    },
-    HypervHcall {
-        input: u64,
-        params: [u64; 2],
     },
 }
 

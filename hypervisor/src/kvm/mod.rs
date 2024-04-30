@@ -72,7 +72,6 @@ use crate::ClockState;
 use crate::Config;
 use crate::Datamatch;
 use crate::DeviceKind;
-use crate::HypervHypercall;
 use crate::Hypervisor;
 use crate::HypervisorCap;
 use crate::IoEventAddress;
@@ -1094,77 +1093,6 @@ impl Vcpu for KvmVcpu {
             }
             _ => Err(Error::new(EINVAL)),
         }
-    }
-
-    fn handle_hyperv_hypercall(
-        &self,
-        handle_fn: &mut dyn FnMut(HypervHypercall) -> u64,
-    ) -> Result<()> {
-        // SAFETY:
-        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
-        // kernel told us how large it was.
-        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
-        // Verify that the handler is called in the right context.
-        assert!(run.exit_reason == KVM_EXIT_HYPERV);
-        // SAFETY:
-        // Safe because the exit_reason (which comes from the kernel) told us which
-        // union field to use.
-        let hyperv = unsafe { &mut run.__bindgen_anon_1.hyperv };
-        match hyperv.type_ {
-            KVM_EXIT_HYPERV_SYNIC => {
-                // TODO(b/315998194): Add safety comment
-                #[allow(clippy::undocumented_unsafe_blocks)]
-                let synic = unsafe { &hyperv.u.synic };
-                handle_fn(HypervHypercall::HypervSynic {
-                    msr: synic.msr,
-                    control: synic.control,
-                    evt_page: synic.evt_page,
-                    msg_page: synic.msg_page,
-                });
-                Ok(())
-            }
-            KVM_EXIT_HYPERV_HCALL => {
-                // TODO(b/315998194): Add safety comment
-                #[allow(clippy::undocumented_unsafe_blocks)]
-                let hcall = unsafe { &mut hyperv.u.hcall };
-                hcall.result = handle_fn(HypervHypercall::HypervHcall {
-                    input: hcall.input,
-                    params: hcall.params,
-                });
-                Ok(())
-            }
-            _ => Err(Error::new(EINVAL)),
-        }
-    }
-
-    fn handle_rdmsr(&self, data: u64) -> Result<()> {
-        // SAFETY:
-        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
-        // kernel told us how large it was.
-        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
-        // Verify that the handler is called in the right context.
-        assert!(run.exit_reason == KVM_EXIT_X86_RDMSR);
-        // SAFETY:
-        // Safe because the exit_reason (which comes from the kernel) told us which
-        // union field to use.
-        let msr = unsafe { &mut run.__bindgen_anon_1.msr };
-        msr.data = data;
-        msr.error = 0;
-        Ok(())
-    }
-
-    fn handle_wrmsr(&self) {
-        // SAFETY:
-        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
-        // kernel told us how large it was.
-        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
-        // Verify that the handler is called in the right context.
-        assert!(run.exit_reason == KVM_EXIT_X86_WRMSR);
-        // SAFETY:
-        // Safe because the exit_reason (which comes from the kernel) told us which
-        // union field to use.
-        let msr = unsafe { &mut run.__bindgen_anon_1.msr };
-        msr.error = 0;
     }
 }
 

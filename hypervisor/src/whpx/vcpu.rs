@@ -25,7 +25,6 @@ use crate::CpuId;
 use crate::CpuIdEntry;
 use crate::DebugRegs;
 use crate::Fpu;
-use crate::HypervHypercall;
 use crate::IoOperation;
 use crate::IoParams;
 use crate::Regs;
@@ -607,26 +606,6 @@ impl Vcpu for WhpxVcpu {
             // safe because we trust the kernel to fill in the union field properly.
             Err(Error::new(unsafe { status.AsUINT32 }))
         }
-    }
-
-    /// this is unhandled currently since we don't emulate hypercall instructions for whpx.
-    fn handle_hyperv_hypercall(&self, _func: &mut dyn FnMut(HypervHypercall) -> u64) -> Result<()> {
-        Ok(())
-    }
-
-    /// This function should be called after `Vcpu::run` returns `VcpuExit::RdMsr`,
-    /// and in the same thread as run.
-    ///
-    /// It will put `data` into the user buffer and return.
-    fn handle_rdmsr(&self, _data: u64) -> Result<()> {
-        // TODO(b/235691411): Implement.
-        Err(Error::new(libc::ENXIO))
-    }
-
-    /// This function should be called after `Vcpu::run` returns `VcpuExit::WrMsr`,
-    /// and in the same thread as run.
-    fn handle_wrmsr(&self) {
-        // TODO(b/235691411): Implement.
     }
 
     #[allow(non_upper_case_globals)]
@@ -1256,12 +1235,6 @@ impl VcpuX86_64 for WhpxVcpu {
                 values.as_ptr() as *const WHV_REGISTER_VALUE,
             )
         })
-    }
-
-    /// Gets the system emulated hyper-v CPUID values.
-    /// For WHPX, this is not valid on the vcpu, and needs to be setup on the vm.
-    fn get_hyperv_cpuid(&self) -> Result<CpuId> {
-        Err(Error::new(ENXIO))
     }
 
     /// Sets up debug registers and configure vcpu for handling guest debug events.

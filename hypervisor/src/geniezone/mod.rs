@@ -57,7 +57,6 @@ use crate::ClockState;
 use crate::Config;
 use crate::Datamatch;
 use crate::DeviceKind;
-use crate::HypervHypercall;
 use crate::Hypervisor;
 use crate::HypervisorCap;
 use crate::IoEventAddress;
@@ -1216,19 +1215,6 @@ impl Vcpu for GeniezoneVcpu {
     fn handle_io(&self, _handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
         Err(Error::new(EINVAL))
     }
-
-    fn handle_hyperv_hypercall(
-        &self,
-        _handle_fn: &mut dyn FnMut(HypervHypercall) -> u64,
-    ) -> Result<()> {
-        Err(Error::new(EINVAL))
-    }
-
-    fn handle_rdmsr(&self, _data: u64) -> Result<()> {
-        Err(Error::new(EINVAL))
-    }
-
-    fn handle_wrmsr(&self) {}
 }
 
 impl AsRawDescriptor for GeniezoneVcpu {
