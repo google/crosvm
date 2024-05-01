@@ -14,19 +14,19 @@ use crate::VolatileSlice;
 /// it can be implemented for other types.
 pub trait FileSync {
     // Flush buffers related to this file to disk.
-    fn fsync(&mut self) -> Result<()>;
+    fn fsync(&self) -> Result<()>;
 
     // Flush buffers related to this file's data to disk, avoiding updating extra metadata. Note
     // that an implementation may simply implement fsync for fdatasync.
-    fn fdatasync(&mut self) -> Result<()>;
+    fn fdatasync(&self) -> Result<()>;
 }
 
 impl FileSync for File {
-    fn fsync(&mut self) -> Result<()> {
+    fn fsync(&self) -> Result<()> {
         self.sync_all()
     }
 
-    fn fdatasync(&mut self) -> Result<()> {
+    fn fdatasync(&self) -> Result<()> {
         self.sync_data()
     }
 }
@@ -51,7 +51,7 @@ impl FileSetLen for File {
 /// This is equivalent to fallocate() with no special flags.
 pub trait FileAllocate {
     /// Allocate storage for the region of the file starting at `offset` and extending `len` bytes.
-    fn allocate(&mut self, offset: u64, len: u64) -> Result<()>;
+    fn allocate(&self, offset: u64, len: u64) -> Result<()>;
 }
 
 /// A trait for getting the size of a file.

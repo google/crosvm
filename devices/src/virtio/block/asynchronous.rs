@@ -384,7 +384,7 @@ async fn handle_command_tube(
 async fn resize(disk_state: &AsyncRwLock<DiskState>, new_size: u64) -> DiskControlResult {
     // Acquire exclusive, mutable access to the state so the virtqueue task won't be able to read
     // the state while resizing.
-    let mut disk_state = disk_state.lock().await;
+    let disk_state = disk_state.lock().await;
     // Prevent any other worker threads won't be able to do IO.
     let worker_shared_state = Arc::clone(&disk_state.worker_shared_state);
     let worker_shared_state = worker_shared_state.lock().await;

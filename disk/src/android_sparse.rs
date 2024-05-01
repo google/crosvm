@@ -345,7 +345,7 @@ impl FileSetLen for AsyncAndroidSparse {
 }
 
 impl FileAllocate for AsyncAndroidSparse {
-    fn allocate(&mut self, _offset: u64, _length: u64) -> io::Result<()> {
+    fn allocate(&self, _offset: u64, _length: u64) -> io::Result<()> {
         Err(io::Error::new(
             ErrorKind::PermissionDenied,
             "unsupported operation",

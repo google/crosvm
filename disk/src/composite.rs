@@ -383,11 +383,11 @@ impl FileSetLen for AsyncCompositeDiskFile {
 }
 
 impl FileAllocate for AsyncCompositeDiskFile {
-    fn allocate(&mut self, offset: u64, length: u64) -> io::Result<()> {
+    fn allocate(&self, offset: u64, length: u64) -> io::Result<()> {
         let range = offset..(offset + length);
         let disks = self
             .component_disks
-            .iter_mut()
+            .iter()
             .filter(|disk| ranges_overlap(&disk.range(), &range));
         for disk in disks {
             if let Some(intersection) = range_intersection(&range, &disk.range()) {

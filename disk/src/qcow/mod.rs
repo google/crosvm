@@ -435,7 +435,7 @@ struct QcowFileInner {
 impl DiskFile for QcowFile {}
 
 impl DiskFlush for QcowFile {
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&self) -> io::Result<()> {
         // Using fsync is overkill here, but, the code for flushing state to file tangled up with
         // the fsync, so it is best we can do for now.
         self.fsync()
@@ -1570,14 +1570,15 @@ impl FileReadWriteAtVolatile for QcowFile {
 }
 
 impl FileSync for QcowFile {
-    fn fsync(&mut self) -> std::io::Result<()> {
-        let inner = self.inner.get_mut();
+    fn fsync(&self) -> std::io::Result<()> {
+        let mut inner = self.inner.lock();
         inner.sync_caches()?;
-        inner.avail_clusters.append(&mut inner.unref_clusters);
+        let unref_clusters = std::mem::take(&mut inner.unref_clusters);
+        inner.avail_clusters.extend(unref_clusters);
         Ok(())
     }
 
-    fn fdatasync(&mut self) -> io::Result<()> {
+    fn fdatasync(&self) -> io::Result<()> {
         // QcowFile does not implement fdatasync. Just fall back to fsync.
         self.fsync()
     }
@@ -1599,8 +1600,8 @@ impl DiskGetLen for QcowFile {
 }
 
 impl FileAllocate for QcowFile {
-    fn allocate(&mut self, offset: u64, len: u64) -> io::Result<()> {
-        let inner = self.inner.get_mut();
+    fn allocate(&self, offset: u64, len: u64) -> io::Result<()> {
+        let mut inner = self.inner.lock();
         // Call write_cb with a do-nothing callback, which will have the effect
         // of allocating all clusters in the specified range.
         inner.write_cb(

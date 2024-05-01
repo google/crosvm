@@ -200,7 +200,7 @@ impl FileReadWriteAtVolatile for File {
 }
 
 impl FileAllocate for File {
-    fn allocate(&mut self, offset: u64, len: u64) -> Result<()> {
+    fn allocate(&self, offset: u64, len: u64) -> Result<()> {
         // The Windows equivalent of fallocate's default mode (allocate a zeroed block of space in a
         // file) is to just call write_zeros_at. There are not, at the time of writing, any syscalls
         // that will extend the file and zero the range while maintaining the disk allocation in a

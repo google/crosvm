@@ -432,8 +432,8 @@ impl FileSetLen for SingleFileDisk {
 }
 
 impl FileAllocate for SingleFileDisk {
-    fn allocate(&mut self, offset: u64, len: u64) -> io::Result<()> {
-        self.inner.as_source_mut().allocate(offset, len)
+    fn allocate(&self, offset: u64, len: u64) -> io::Result<()> {
+        self.inner.as_source().allocate(offset, len)
     }
 }
 
