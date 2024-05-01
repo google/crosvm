@@ -304,7 +304,7 @@ impl Reader {
     /// enough data in the descriptor chain buffer.
     pub fn read_to_at<F: FileReadWriteAtVolatile>(
         &mut self,
-        mut dst: F,
+        dst: &F,
         count: usize,
         off: u64,
     ) -> io::Result<usize> {
@@ -342,12 +342,12 @@ impl Reader {
     /// returning an error if 'count' bytes can't be read.
     pub fn read_exact_to_at<F: FileReadWriteAtVolatile>(
         &mut self,
-        mut dst: F,
+        dst: &F,
         mut count: usize,
         mut off: u64,
     ) -> io::Result<()> {
         while count > 0 {
-            match self.read_to_at(&mut dst, count, off) {
+            match self.read_to_at(dst, count, off) {
                 Ok(0) => {
                     return Err(io::Error::new(
                         io::ErrorKind::UnexpectedEof,
@@ -595,7 +595,7 @@ impl Writer {
     /// there isn't enough data in the descriptor chain buffer.
     pub fn write_from_at<F: FileReadWriteAtVolatile>(
         &mut self,
-        mut src: F,
+        src: &F,
         count: usize,
         off: u64,
     ) -> io::Result<usize> {
@@ -629,12 +629,12 @@ impl Writer {
 
     pub fn write_all_from_at<F: FileReadWriteAtVolatile>(
         &mut self,
-        mut src: F,
+        src: &F,
         mut count: usize,
         mut off: u64,
     ) -> io::Result<()> {
         while count > 0 {
-            match self.write_from_at(&mut src, count, off) {
+            match self.write_from_at(src, count, off) {
                 Ok(0) => {
                     return Err(io::Error::new(
                         io::ErrorKind::WriteZero,

@@ -1548,8 +1548,8 @@ impl Write for QcowFile {
 }
 
 impl FileReadWriteAtVolatile for QcowFile {
-    fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
-        let inner = self.inner.get_mut();
+    fn read_at_volatile(&self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
+        let mut inner = self.inner.lock();
         inner.read_cb(offset, slice.size(), |file, read, offset, count| {
             let sub_slice = slice.get_slice(read, count).unwrap();
             match file {
@@ -1562,8 +1562,8 @@ impl FileReadWriteAtVolatile for QcowFile {
         })
     }
 
-    fn write_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
-        let inner = self.inner.get_mut();
+    fn write_at_volatile(&self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
+        let mut inner = self.inner.lock();
         inner.write_cb(offset, slice.size(), |file, offset, raw_offset, count| {
             let sub_slice = slice.get_slice(offset, count).unwrap();
             file.write_all_at_volatile(sub_slice, raw_offset)

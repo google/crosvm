@@ -165,7 +165,7 @@ pub trait FileReadWriteAtVolatile {
     /// Reads bytes from this file at `offset` into the given slice, returning the number of bytes
     /// read on success. On Windows file pointer will update with the read, but on Linux the
     /// file pointer will not change.
-    fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> Result<usize>;
+    fn read_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<usize>;
 
     /// Like `read_at_volatile`, except it reads to a slice of buffers. Data is copied to fill each
     /// buffer in order, with the final buffer written to possibly being only partially filled. This
@@ -174,7 +174,7 @@ pub trait FileReadWriteAtVolatile {
     /// buffer provided, or returns `Ok(0)` if none exists.
     /// On Windows file pointer will update with the read, but on Linux the file pointer will not
     /// change.
-    fn read_vectored_at_volatile(&mut self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
+    fn read_vectored_at_volatile(&self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
         if let Some(&slice) = bufs.first() {
             self.read_at_volatile(slice, offset)
         } else {
@@ -185,7 +185,7 @@ pub trait FileReadWriteAtVolatile {
     /// Reads bytes from this file at `offset` into the given slice until all bytes in the slice are
     /// read, or an error is returned. On Windows file pointer will update with the read, but on
     /// Linux the file pointer will not change.
-    fn read_exact_at_volatile(&mut self, mut slice: VolatileSlice, mut offset: u64) -> Result<()> {
+    fn read_exact_at_volatile(&self, mut slice: VolatileSlice, mut offset: u64) -> Result<()> {
         while slice.size() > 0 {
             match self.read_at_volatile(slice, offset) {
                 Ok(0) => return Err(Error::from(ErrorKind::UnexpectedEof)),
@@ -203,7 +203,7 @@ pub trait FileReadWriteAtVolatile {
     /// Writes bytes to this file at `offset` from the given slice, returning the number of bytes
     /// written on success. On Windows file pointer will update with the write, but on Linux the
     /// file pointer will not change.
-    fn write_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> Result<usize>;
+    fn write_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<usize>;
 
     /// Like `write_at_volatile`, except that it writes from a slice of buffers. Data is copied
     /// from each buffer in order, with the final buffer read from possibly being only partially
@@ -212,7 +212,7 @@ pub trait FileReadWriteAtVolatile {
     /// first nonempty buffer provided, or returns `Ok(0)` if none exists.
     /// On Windows file pointer will update with the write, but on Linux the file pointer will not
     /// change.
-    fn write_vectored_at_volatile(&mut self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
+    fn write_vectored_at_volatile(&self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
         if let Some(&slice) = bufs.first() {
             self.write_at_volatile(slice, offset)
         } else {
@@ -223,7 +223,7 @@ pub trait FileReadWriteAtVolatile {
     /// Writes bytes to this file at `offset` from the given slice until all bytes in the slice
     /// are written, or an error is returned. On Windows file pointer will update with the write,
     /// but on Linux the file pointer will not change.
-    fn write_all_at_volatile(&mut self, mut slice: VolatileSlice, mut offset: u64) -> Result<()> {
+    fn write_all_at_volatile(&self, mut slice: VolatileSlice, mut offset: u64) -> Result<()> {
         while slice.size() > 0 {
             match self.write_at_volatile(slice, offset) {
                 Ok(0) => return Err(Error::from(ErrorKind::WriteZero)),
@@ -240,27 +240,53 @@ pub trait FileReadWriteAtVolatile {
 }
 
 impl<'a, T: FileReadWriteAtVolatile + ?Sized> FileReadWriteAtVolatile for &'a mut T {
-    fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> Result<usize> {
+    fn read_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<usize> {
         (**self).read_at_volatile(slice, offset)
     }
 
-    fn read_vectored_at_volatile(&mut self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
+    fn read_vectored_at_volatile(&self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
         (**self).read_vectored_at_volatile(bufs, offset)
     }
 
-    fn read_exact_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> Result<()> {
+    fn read_exact_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<()> {
         (**self).read_exact_at_volatile(slice, offset)
     }
 
-    fn write_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> Result<usize> {
+    fn write_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<usize> {
         (**self).write_at_volatile(slice, offset)
     }
 
-    fn write_vectored_at_volatile(&mut self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
+    fn write_vectored_at_volatile(&self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
         (**self).write_vectored_at_volatile(bufs, offset)
     }
 
-    fn write_all_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> Result<()> {
+    fn write_all_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<()> {
+        (**self).write_all_at_volatile(slice, offset)
+    }
+}
+
+impl<'a, T: FileReadWriteAtVolatile + ?Sized> FileReadWriteAtVolatile for &'a T {
+    fn read_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<usize> {
+        (**self).read_at_volatile(slice, offset)
+    }
+
+    fn read_vectored_at_volatile(&self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
+        (**self).read_vectored_at_volatile(bufs, offset)
+    }
+
+    fn read_exact_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<()> {
+        (**self).read_exact_at_volatile(slice, offset)
+    }
+
+    fn write_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<usize> {
+        (**self).write_at_volatile(slice, offset)
+    }
+
+    fn write_vectored_at_volatile(&self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
+        (**self).write_vectored_at_volatile(bufs, offset)
+    }
+
+    fn write_all_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<()> {
         (**self).write_all_at_volatile(slice, offset)
     }
 }

@@ -256,7 +256,7 @@ impl AsRawDescriptor for AndroidSparse {
 
 // Performs reads up to the chunk boundary.
 impl FileReadWriteAtVolatile for AndroidSparse {
-    fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
+    fn read_at_volatile(&self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
         let found_chunk = self.chunks.range(..=offset).next_back();
         let (
             chunk_start,
@@ -301,7 +301,7 @@ impl FileReadWriteAtVolatile for AndroidSparse {
             }
         }
     }
-    fn write_at_volatile(&mut self, _slice: VolatileSlice, _offset: u64) -> io::Result<usize> {
+    fn write_at_volatile(&self, _slice: VolatileSlice, _offset: u64) -> io::Result<usize> {
         Err(io::Error::new(
             ErrorKind::PermissionDenied,
             "unsupported operation",
@@ -562,7 +562,7 @@ mod tests {
             chunk: Chunk::DontCare,
             expanded_size: 100,
         }];
-        let mut image = test_image(chunks);
+        let image = test_image(chunks);
         let mut input_memory = [55u8; 100];
         image
             .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 0)
@@ -577,7 +577,7 @@ mod tests {
             chunk: Chunk::Fill([10, 20, 10, 20]),
             expanded_size: 8,
         }];
-        let mut image = test_image(chunks);
+        let image = test_image(chunks);
         let mut input_memory = [55u8; 8];
         image
             .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 0)
@@ -592,7 +592,7 @@ mod tests {
             chunk: Chunk::Fill([10, 20, 30, 40]),
             expanded_size: 8,
         }];
-        let mut image = test_image(chunks);
+        let image = test_image(chunks);
         let mut input_memory = [55u8; 6];
         image
             .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 1)
@@ -613,7 +613,7 @@ mod tests {
                 expanded_size: 100,
             },
         ];
-        let mut image = test_image(chunks);
+        let image = test_image(chunks);
         let mut input_memory = [55u8; 7];
         image
             .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 39)
@@ -650,7 +650,7 @@ mod tests {
                 expanded_size: 4,
             },
         ];
-        let mut image = test_image(chunks);
+        let image = test_image(chunks);
         let mut input_memory = [55u8; 8];
         image
             .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 0)

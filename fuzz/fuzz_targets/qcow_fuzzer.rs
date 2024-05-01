@@ -31,7 +31,7 @@ fuzz_target!(|bytes| {
     let mut disk_file = tempfile::tempfile().unwrap();
     disk_file.write_all(&bytes[16..]).unwrap();
     disk_file.seek(SeekFrom::Start(0)).unwrap();
-    if let Ok(mut qcow) = QcowFile::from(disk_file, max_nesting_depth) {
+    if let Ok(qcow) = QcowFile::from(disk_file, max_nesting_depth) {
         let mut mem = value.to_le_bytes().to_owned();
         let vslice = VolatileSlice::new(&mut mem);
         let _ = qcow.write_all_at_volatile(vslice, addr);

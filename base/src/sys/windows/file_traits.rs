@@ -99,7 +99,7 @@ impl FileReadWriteVolatile for File {
 }
 
 impl FileReadWriteAtVolatile for File {
-    fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> Result<usize> {
+    fn read_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<usize> {
         // The unix implementation uses pread, which doesn't modify the file
         // pointer. Windows doesn't have an option for that, unfortunately.
 
@@ -129,7 +129,7 @@ impl FileReadWriteAtVolatile for File {
         }
     }
 
-    fn read_vectored_at_volatile(&mut self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
+    fn read_vectored_at_volatile(&self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
         if bufs.is_empty() {
             return Ok(0);
         }
@@ -148,7 +148,7 @@ impl FileReadWriteAtVolatile for File {
         Ok(ret)
     }
 
-    fn write_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> Result<usize> {
+    fn write_at_volatile(&self, slice: VolatileSlice, offset: u64) -> Result<usize> {
         // The unix implementation uses pwrite, which doesn't modify the file
         // pointer. Windows doesn't have an option for that, unfortunately.
 
@@ -178,7 +178,7 @@ impl FileReadWriteAtVolatile for File {
         }
     }
 
-    fn write_vectored_at_volatile(&mut self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
+    fn write_vectored_at_volatile(&self, bufs: &[VolatileSlice], offset: u64) -> Result<usize> {
         if bufs.is_empty() {
             return Ok(0);
         }

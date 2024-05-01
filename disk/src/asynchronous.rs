@@ -136,7 +136,7 @@ impl<
         let mem_offsets: Vec<cros_async::MemRegion> = mem_offsets.collect();
         self.blocking_pool
             .spawn(move || {
-                let mut disk_file = inner_clone.lock();
+                let disk_file = inner_clone.lock();
                 let mut size = 0;
                 for region in mem_offsets {
                     let mem_slice = mem.get_volatile_slice(region).unwrap();
@@ -164,7 +164,7 @@ impl<
         let mem_offsets: Vec<cros_async::MemRegion> = mem_offsets.collect();
         self.blocking_pool
             .spawn(move || {
-                let mut disk_file = inner_clone.lock();
+                let disk_file = inner_clone.lock();
                 let mut size = 0;
                 for region in mem_offsets {
                     let mem_slice = mem.get_volatile_slice(region).unwrap();
