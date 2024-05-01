@@ -595,7 +595,8 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         false,
         /* use_sandbox= */
         cfg.jail_config.is_some(),
-        Vec::new(),
+        vec![],
+        &[],
         &cfg,
     )?;
     metrics_controller
@@ -616,7 +617,8 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         false,
         /* use_sandbox= */
         cfg.jail_config.is_some(),
-        Vec::new(),
+        vec![],
+        &[],
         &cfg,
     )?;
 
@@ -1258,6 +1260,7 @@ fn spawn_block_backend(
                 tube_token: TubeToken::VhostUser,
             },
         ],
+        &[],
         cfg,
     )?;
 
@@ -1503,6 +1506,7 @@ fn spawn_slirp(
         false,
         /* use_sandbox= */ cfg.jail_config.is_some(),
         vec![],
+        &[],
         cfg,
     )?;
 
@@ -1541,6 +1545,7 @@ fn spawn_net_backend(
             tube: vhost_user_device_tube,
             tube_token: TubeToken::VhostUser,
         }],
+        &[],
         cfg,
     )?;
 
@@ -1632,6 +1637,7 @@ fn start_up_snd(
         /* use_sandbox= */
         cfg.jail_config.is_some(),
         vec![],
+        &[],
         cfg,
     )?;
 
@@ -1822,6 +1828,7 @@ fn start_up_gpu(
         /* use_sandbox= */
         cfg.jail_config.is_some(),
         vec![],
+        &[],
         cfg,
     )?;
 
@@ -1896,6 +1903,7 @@ fn spawn_child<I, S>(
     #[cfg(test)] skip_bootstrap: bool,
     use_sandbox: bool,
     mut tubes: Vec<TubeTransferData>,
+    handles_to_inherit: &[&dyn AsRawDescriptor],
     #[allow(unused_variables)] cfg: &Config,
 ) -> Result<ChildProcess>
 where
@@ -1958,6 +1966,9 @@ where
         .map(|arg| arg.as_ref())
         .chain(bootstrap.iter().map(|arg| arg.as_ref()));
 
+    let mut handles_to_inherit = handles_to_inherit.to_vec();
+    handles_to_inherit.push(&tube_transport_main_child);
+
     #[cfg(feature = "sandbox")]
     let (process_id, child) = if use_sandbox {
         spawn_sandboxed_child(
@@ -1965,26 +1976,15 @@ where
             args,
             stdout_file,
             stderr_file,
-            vec![&tube_transport_main_child],
+            handles_to_inherit,
             process_policy(process_type, cfg),
         )?
     } else {
-        spawn_unsandboxed_child(
-            program,
-            args,
-            stdout_file,
-            stderr_file,
-            vec![&tube_transport_main_child],
-        )?
+        spawn_unsandboxed_child(program, args, stdout_file, stderr_file, handles_to_inherit)?
     };
     #[cfg(not(feature = "sandbox"))]
-    let (process_id, child) = spawn_unsandboxed_child(
-        program,
-        args,
-        stdout_file,
-        stderr_file,
-        vec![&tube_transport_main_child],
-    )?;
+    let (process_id, child) =
+        spawn_unsandboxed_child(program, args, stdout_file, stderr_file, handles_to_inherit)?;
 
     let (mut bootstrap_tube, bootstrap_tube_child) =
         Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
@@ -2073,7 +2073,8 @@ mod tests {
                 &mut wait_ctx,
                 /* skip_bootstrap= */ true,
                 /* use_sandbox= */ false,
-                Vec::new(),
+                vec![],
+                &[],
                 &Config::default(),
             );
 
@@ -2101,7 +2102,8 @@ mod tests {
                 &mut wait_ctx,
                 /* skip_bootstrap= */ true,
                 /* use_sandbox= */ false,
-                Vec::new(),
+                vec![],
+                &[],
                 &Config::default(),
             );
             let _child_device = spawn_child(
@@ -2114,7 +2116,8 @@ mod tests {
                 &mut wait_ctx,
                 /* skip_bootstrap= */ true,
                 /* use_sandbox= */ false,
-                Vec::new(),
+                vec![],
+                &[],
                 &Config::default(),
             );
 
@@ -2141,7 +2144,8 @@ mod tests {
                 &mut wait_ctx,
                 /* skip_bootstrap= */ true,
                 /* use_sandbox= */ false,
-                Vec::new(),
+                vec![],
+                &[],
                 &Config::default(),
             );
             let _child_device = spawn_child(
@@ -2154,7 +2158,8 @@ mod tests {
                 &mut wait_ctx,
                 /* skip_bootstrap= */ true,
                 /* use_sandbox= */ false,
-                Vec::new(),
+                vec![],
+                &[],
                 &Config::default(),
             );
 
@@ -2186,7 +2191,8 @@ mod tests {
                 &mut wait_ctx,
                 /* skip_bootstrap= */ true,
                 /* use_sandbox= */ false,
-                Vec::new(),
+                vec![],
+                &[],
                 &Config::default(),
             );
             let _child_device = spawn_child(
@@ -2199,7 +2205,8 @@ mod tests {
                 &mut wait_ctx,
                 /* skip_bootstrap= */ true,
                 /* use_sandbox= */ false,
-                Vec::new(),
+                vec![],
+                &[],
                 &Config::default(),
             );
 
@@ -2231,7 +2238,8 @@ mod tests {
                 &mut wait_ctx,
                 /* skip_bootstrap= */ true,
                 /* use_sandbox= */ false,
-                Vec::new(),
+                vec![],
+                &[],
                 &Config::default(),
             );
             let _child_device = spawn_child(
@@ -2244,7 +2252,8 @@ mod tests {
                 &mut wait_ctx,
                 /* skip_bootstrap= */ true,
                 /* use_sandbox= */ false,
-                Vec::new(),
+                vec![],
+                &[],
                 &Config::default(),
             );
 
@@ -2279,7 +2288,8 @@ mod tests {
                 &mut wait_ctx,
                 /* skip_bootstrap= */ true,
                 /* use_sandbox= */ false,
-                Vec::new(),
+                vec![],
+                &[],
                 &Config::default(),
             );
             wait_ctx.add(&sigterm_event, Token::Sigterm).unwrap();
