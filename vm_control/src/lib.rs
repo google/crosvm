@@ -39,6 +39,7 @@ use std::convert::TryInto;
 use std::fmt;
 use std::fmt::Display;
 use std::fs::File;
+use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result as StdResult;
 use std::str::FromStr;
@@ -1998,7 +1999,7 @@ impl VmRequest {
             }) => {
                 info!("Starting crosvm restore");
                 match do_restore(
-                    restore_path.clone(),
+                    restore_path,
                     kick_vcpus,
                     kick_vcpu,
                     irq_handler_control,
@@ -2139,7 +2140,7 @@ fn do_snapshot(
 /// Same as `VmRequest::execute` with a `VmRequest::Restore`. Exposed as a separate function
 /// because not all the `VmRequest::execute` arguments are available in the "cold restore" flow.
 pub fn do_restore(
-    restore_path: PathBuf,
+    restore_path: &Path,
     kick_vcpus: impl Fn(VcpuControl),
     kick_vcpu: impl Fn(VcpuControl, usize),
     irq_handler_control: &Tube,

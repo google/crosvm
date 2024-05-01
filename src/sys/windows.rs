@@ -1450,7 +1450,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     // Restore VM (if applicable).
     if let Some(path) = restore_path {
         vm_control::do_restore(
-            path,
+            &path,
             |msg| {
                 kick_all_vcpus(
                     run_mode_arc.as_ref(),
