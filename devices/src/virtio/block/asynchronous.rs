@@ -1264,6 +1264,10 @@ mod tests {
         let mut path = tempdir.path().to_owned();
         path.push("disk_image");
 
+        // Feature bits 0-23 and 50-127 are specific for the device type, but
+        // at the moment crosvm only supports 64 bits of feature bits.
+        const DEVICE_FEATURE_BITS: u64 = 0xffffff;
+
         // read-write block device
         {
             let f = File::create(&path).unwrap();
@@ -1271,9 +1275,9 @@ mod tests {
             let disk_option = DiskOption::default();
             let b = BlockAsync::new(features, Box::new(f), &disk_option, None, None, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
-            // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
-            // + VIRTIO_BLK_F_SEG_MAX + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
-            assert_eq!(0x120007244, b.features());
+            // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
+            // + VIRTIO_BLK_F_MQ
+            assert_eq!(0x7244, b.features() & DEVICE_FEATURE_BITS);
         }
 
         // read-write block device, non-sparse
@@ -1286,9 +1290,8 @@ mod tests {
             };
             let b = BlockAsync::new(features, Box::new(f), &disk_option, None, None, None).unwrap();
             // writable device should set VIRTIO_F_FLUSH + VIRTIO_BLK_F_RO
-            // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
-            // + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
-            assert_eq!(0x120005244, b.features());
+            // + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX + VIRTIO_BLK_F_MQ
+            assert_eq!(0x5244, b.features() & DEVICE_FEATURE_BITS);
         }
 
         // read-only block device
@@ -1301,9 +1304,8 @@ mod tests {
             };
             let b = BlockAsync::new(features, Box::new(f), &disk_option, None, None, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_RO
-            // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
-            // + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
-            assert_eq!(0x120001064, b.features());
+            // + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX + VIRTIO_BLK_F_MQ
+            assert_eq!(0x1064, b.features() & DEVICE_FEATURE_BITS);
         }
     }
 

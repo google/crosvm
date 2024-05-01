@@ -397,6 +397,9 @@ pub mod tests {
     #[test]
     fn features() {
         let net = create_net_common();
+        // Feature bits 0-23 and 50-127 are specific for the device type, but
+        // at the moment crosvm only supports 64 bits of feature bits.
+        const DEVICE_FEATURE_BITS: u64 = 0xffffff;
         let expected_features = 1 << 0 // VIRTIO_NET_F_CSUM
             | 1 << 1 // VIRTIO_NET_F_GUEST_CSUM
             | 1 << 5 // VIRTIO_NET_F_MAC
@@ -404,10 +407,8 @@ pub mod tests {
             | 1 << 10 // VIRTIO_NET_F_GUEST_UFO
             | 1 << 11 // VIRTIO_NET_F_HOST_TSO4
             | 1 << 14 // VIRTIO_NET_F_HOST_UFO
-            | 1 << 15 // VIRTIO_NET_F_MRG_RXBUF
-            | 1 << 29 // VIRTIO_RING_F_EVENT_IDX
-            | 1 << 32; // VIRTIO_F_VERSION_1
-        assert_eq!(net.features(), expected_features);
+            | 1 << 15; // VIRTIO_NET_F_MRG_RXBUF
+        assert_eq!(net.features() & DEVICE_FEATURE_BITS, expected_features);
     }
 
     #[test]
