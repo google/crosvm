@@ -345,7 +345,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         }
         // SAFETY:
         // Safe because self.source lives as long as file.
-        let mut file = ManuallyDrop::new(unsafe {
+        let file = ManuallyDrop::new(unsafe {
             File::from_raw_descriptor(self.source.as_raw_descriptor())
         });
         // ZeroRange calls `punch_hole` which doesn't extend the File size if it needs to.

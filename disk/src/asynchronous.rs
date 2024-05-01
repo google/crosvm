@@ -198,7 +198,7 @@ impl<
         let inner_clone = self.inner.clone();
         self.blocking_pool
             .spawn(move || {
-                let mut disk_file = inner_clone.lock();
+                let disk_file = inner_clone.lock();
                 disk_file
                     .write_zeroes_all_at(file_offset, length as usize)
                     .map_err(Error::WriteZeroes)

@@ -10,11 +10,7 @@ use std::os::windows::fs::FileExt;
 use crate::PunchHole;
 
 // TODO(b/195151495): Fix so that this will extend a file size if needed.
-pub(crate) fn file_write_zeroes_at(
-    file: &mut File,
-    offset: u64,
-    length: usize,
-) -> io::Result<usize> {
+pub(crate) fn file_write_zeroes_at(file: &File, offset: u64, length: usize) -> io::Result<usize> {
     // Try to punch a hole first.
     if let Ok(()) = file.punch_hole(offset, length as u64) {
         return Ok(length);

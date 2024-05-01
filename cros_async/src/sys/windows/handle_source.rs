@@ -330,7 +330,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
             .blocking_pool
             .spawn(
                 move || {
-                    let mut file = get_thread_file(descriptors);
+                    let file = get_thread_file(descriptors);
                     // ZeroRange calls `punch_hole` which doesn't extend the File size if it needs
                     // to. Will fix if it becomes a problem.
                     file.write_zeroes_at(file_offset, len as usize)

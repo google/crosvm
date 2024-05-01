@@ -23,13 +23,13 @@ impl PunchHole for File {
 pub trait WriteZeroesAt {
     /// Write up to `length` bytes of zeroes starting at `offset`, returning how many bytes were
     /// written.
-    fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize>;
+    fn write_zeroes_at(&self, offset: u64, length: usize) -> io::Result<usize>;
 
     /// Write zeroes starting at `offset` until `length` bytes have been written.
     ///
     /// This method will continuously call `write_zeroes_at` until the requested
     /// `length` is satisfied or an error is encountered.
-    fn write_zeroes_all_at(&mut self, mut offset: u64, mut length: usize) -> io::Result<()> {
+    fn write_zeroes_all_at(&self, mut offset: u64, mut length: usize) -> io::Result<()> {
         while length > 0 {
             match self.write_zeroes_at(offset, length) {
                 Ok(0) => return Err(Error::from(ErrorKind::WriteZero)),
@@ -53,7 +53,7 @@ pub trait WriteZeroesAt {
 }
 
 impl WriteZeroesAt for File {
-    fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
+    fn write_zeroes_at(&self, offset: u64, length: usize) -> io::Result<usize> {
         crate::platform::file_write_zeroes_at(self, offset, length)
     }
 }

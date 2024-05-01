@@ -1278,9 +1278,7 @@ impl QcowFileInner {
                 };
                 if let Some(offset) = offset {
                     // Partial cluster - zero it out.
-                    self.raw_file
-                        .file_mut()
-                        .write_zeroes_all_at(offset, count)?;
+                    self.raw_file.file().write_zeroes_all_at(offset, count)?;
                 }
             }
 
@@ -1630,7 +1628,7 @@ impl PunchHole for QcowFile {
 }
 
 impl WriteZeroesAt for QcowFile {
-    fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
+    fn write_zeroes_at(&self, offset: u64, length: usize) -> io::Result<usize> {
         self.punch_hole(offset, length as u64)?;
         Ok(length)
     }
