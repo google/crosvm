@@ -13,7 +13,7 @@ use base::AsRawDescriptors;
 use base::FileAllocate;
 use base::FileSetLen;
 use base::FileSync;
-use base::PunchHoleMut;
+use base::PunchHole;
 use base::RawDescriptor;
 use base::WriteZeroesAt;
 use cros_async::BackingMemory;
@@ -84,7 +84,7 @@ impl<
             + FileAllocate
             + FileSetLen
             + FileSync
-            + PunchHoleMut
+            + PunchHole
             + WriteZeroesAt,
     > AsyncDisk for AsyncDiskFileWrapper<T>
 {
@@ -186,9 +186,9 @@ impl<
         let inner_clone = self.inner.clone();
         self.blocking_pool
             .spawn(move || {
-                let mut disk_file = inner_clone.lock();
+                let disk_file = inner_clone.lock();
                 disk_file
-                    .punch_hole_mut(file_offset, length)
+                    .punch_hole(file_offset, length)
                     .map_err(Error::IoPunchHole)
             })
             .await

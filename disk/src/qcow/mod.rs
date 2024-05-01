@@ -27,7 +27,7 @@ use base::FileAllocate;
 use base::FileReadWriteAtVolatile;
 use base::FileSetLen;
 use base::FileSync;
-use base::PunchHoleMut;
+use base::PunchHole;
 use base::RawDescriptor;
 use base::VolatileMemory;
 use base::VolatileSlice;
@@ -1244,10 +1244,7 @@ impl QcowFileInner {
             // This cluster is no longer in use; deallocate the storage.
             // The underlying FS may not support FALLOC_FL_PUNCH_HOLE,
             // so don't treat an error as fatal.  Future reads will return zeros anyways.
-            let _ = self
-                .raw_file
-                .file_mut()
-                .punch_hole_mut(cluster_addr, cluster_size);
+            let _ = self.raw_file.file().punch_hole(cluster_addr, cluster_size);
             self.unref_clusters.push(cluster_addr);
         }
         Ok(())
@@ -1617,9 +1614,9 @@ impl FileAllocate for QcowFile {
     }
 }
 
-impl PunchHoleMut for QcowFile {
-    fn punch_hole_mut(&mut self, offset: u64, length: u64) -> std::io::Result<()> {
-        let inner = self.inner.get_mut();
+impl PunchHole for QcowFile {
+    fn punch_hole(&self, offset: u64, length: u64) -> std::io::Result<()> {
+        let mut inner = self.inner.lock();
         let mut remaining = length;
         let mut offset = offset;
         while remaining > 0 {
@@ -1634,7 +1631,7 @@ impl PunchHoleMut for QcowFile {
 
 impl WriteZeroesAt for QcowFile {
     fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
-        self.punch_hole_mut(offset, length as u64)?;
+        self.punch_hole(offset, length as u64)?;
         Ok(length)
     }
 }
