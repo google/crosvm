@@ -779,6 +779,7 @@ fn create_virtio_devices(
         for (tube, backend) in media_adapter_cfg {
             devs.push(create_virtio_media_adapter(
                 cfg.protection_type,
+                &cfg.jail_config,
                 tube,
                 backend,
             )?);

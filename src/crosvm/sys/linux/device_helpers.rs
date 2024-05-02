@@ -1035,6 +1035,62 @@ pub fn create_wayland_device(
 }
 
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+fn create_video_device_jail(
+    backend: VideoBackendType,
+    jail_config: &JailConfig,
+    typ: VideoDeviceType,
+) -> Result<Minijail> {
+    match typ {
+        #[cfg(feature = "video-decoder")]
+        VideoDeviceType::Decoder => {}
+        #[cfg(feature = "video-encoder")]
+        VideoDeviceType::Encoder => {}
+        #[cfg(any(not(feature = "video-decoder"), not(feature = "video-encoder")))]
+        // `typ` is always a VideoDeviceType enabled
+        device_type => unreachable!("Not compiled with {:?} enabled", device_type),
+    };
+    let mut config = SandboxConfig::new(jail_config, "video_device");
+    config.bind_mounts = true;
+    let mut jail =
+        create_sandbox_minijail(&jail_config.pivot_root, MAX_OPEN_FILES_DEFAULT, &config)?;
+
+    let need_drm_device = match backend {
+        #[cfg(any(feature = "libvda", feature = "libvda-stub"))]
+        VideoBackendType::Libvda => true,
+        #[cfg(any(feature = "libvda", feature = "libvda-stub"))]
+        VideoBackendType::LibvdaVd => true,
+        #[cfg(feature = "vaapi")]
+        VideoBackendType::Vaapi => true,
+        #[cfg(feature = "ffmpeg")]
+        VideoBackendType::Ffmpeg => false,
+    };
+
+    if need_drm_device {
+        jail_mount_bind_drm(&mut jail, /* render_node_only= */ true)?;
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    {
+        // Device nodes used by libdrm through minigbm in libvda on AMD devices.
+        let sys_dev_char_path = Path::new("/sys/dev/char");
+        jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
+        let sys_devices_path = Path::new("/sys/devices");
+        jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
+
+        // Required for loading dri or vulkan libraries loaded by minigbm on AMD devices.
+        jail_mount_bind_if_exists(&mut jail, &["/usr/lib64", "/usr/lib", "/usr/share/vulkan"])?;
+    }
+
+    // Device nodes required by libchrome which establishes Mojo connection in libvda.
+    let dev_urandom_path = Path::new("/dev/urandom");
+    jail.mount_bind(dev_urandom_path, dev_urandom_path, false)?;
+    let system_bus_socket_path = Path::new("/run/dbus/system_bus_socket");
+    jail.mount_bind(system_bus_socket_path, system_bus_socket_path, true)?;
+
+    Ok(jail)
+}
+
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 pub fn create_video_device(
     backend: VideoBackendType,
     protection_type: ProtectionType,
@@ -1043,54 +1099,7 @@ pub fn create_video_device(
     resource_bridge: Tube,
 ) -> DeviceResult {
     let jail = if let Some(jail_config) = jail_config {
-        match typ {
-            #[cfg(feature = "video-decoder")]
-            VideoDeviceType::Decoder => {}
-            #[cfg(feature = "video-encoder")]
-            VideoDeviceType::Encoder => {}
-            #[cfg(any(not(feature = "video-decoder"), not(feature = "video-encoder")))]
-            // `typ` is always a VideoDeviceType enabled
-            device_type => unreachable!("Not compiled with {:?} enabled", device_type),
-        };
-        let mut config = SandboxConfig::new(jail_config, "video_device");
-        config.bind_mounts = true;
-        let mut jail =
-            create_sandbox_minijail(&jail_config.pivot_root, MAX_OPEN_FILES_DEFAULT, &config)?;
-
-        let need_drm_device = match backend {
-            #[cfg(any(feature = "libvda", feature = "libvda-stub"))]
-            VideoBackendType::Libvda => true,
-            #[cfg(any(feature = "libvda", feature = "libvda-stub"))]
-            VideoBackendType::LibvdaVd => true,
-            #[cfg(feature = "vaapi")]
-            VideoBackendType::Vaapi => true,
-            #[cfg(feature = "ffmpeg")]
-            VideoBackendType::Ffmpeg => false,
-        };
-
-        if need_drm_device {
-            jail_mount_bind_drm(&mut jail, /* render_node_only= */ true)?;
-        }
-
-        #[cfg(target_arch = "x86_64")]
-        {
-            // Device nodes used by libdrm through minigbm in libvda on AMD devices.
-            let sys_dev_char_path = Path::new("/sys/dev/char");
-            jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
-            let sys_devices_path = Path::new("/sys/devices");
-            jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
-
-            // Required for loading dri or vulkan libraries loaded by minigbm on AMD devices.
-            jail_mount_bind_if_exists(&mut jail, &["/usr/lib64", "/usr/lib", "/usr/share/vulkan"])?;
-        }
-
-        // Device nodes required by libchrome which establishes Mojo connection in libvda.
-        let dev_urandom_path = Path::new("/dev/urandom");
-        jail.mount_bind(dev_urandom_path, dev_urandom_path, false)?;
-        let system_bus_socket_path = Path::new("/run/dbus/system_bus_socket");
-        jail.mount_bind(system_bus_socket_path, system_bus_socket_path, true)?;
-
-        Some(jail)
+        Some(create_video_device_jail(backend, jail_config, typ)?)
     } else {
         None
     };
@@ -1152,15 +1161,26 @@ pub fn create_v4l2_device<P: AsRef<Path>>(
 #[cfg(all(feature = "media", feature = "video-decoder"))]
 pub fn create_virtio_media_adapter(
     protection_type: ProtectionType,
+    jail_config: &Option<JailConfig>,
     tube: Tube,
     backend: VideoBackendType,
 ) -> DeviceResult {
     use devices::virtio::media::create_virtio_media_decoder_adapter_device;
 
+    let jail = if let Some(jail_config) = jail_config {
+        Some(create_video_device_jail(
+            backend,
+            jail_config,
+            VideoDeviceType::Decoder,
+        )?)
+    } else {
+        None
+    };
+
     let features = virtio::base_features(protection_type);
     let dev = create_virtio_media_decoder_adapter_device(features, tube, backend)?;
 
-    Ok(VirtioDeviceStub { dev, jail: None })
+    Ok(VirtioDeviceStub { dev, jail })
 }
 
 impl VirtioDeviceBuilder for &VsockConfig {
