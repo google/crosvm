@@ -296,7 +296,6 @@
       "@@@STEP_LOG_LINE@json.output@      \"revision\": \"2e31dd442a44af9e1e51e96aeca18017ddb9922c\"@@@",
       "@@@STEP_LOG_LINE@json.output@    }@@@",
       "@@@STEP_LOG_LINE@json.output@  },@@@",
-      "@@@STEP_LOG_LINE@json.output@  \"patch_failure\": false,@@@",
       "@@@STEP_LOG_LINE@json.output@  \"patch_root\": \"crosvm\",@@@",
       "@@@STEP_LOG_LINE@json.output@  \"properties\": {@@@",
       "@@@STEP_LOG_LINE@json.output@    \"got_revision\": \"2e31dd442a44af9e1e51e96aeca18017ddb9922c\",@@@",
