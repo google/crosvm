@@ -1,0 +1,24 @@
+[package]
+name = "kumquat"
+version = "0.1.3"
+authors = ["Android Open Source Project"]
+edition = "2021"
+description = "Handling virtio multi-media protocols via a Rust server"
+license-file = "LICENSE"
+
+[[bin]]
+name = "kumquat"
+path = "src/main.rs"
+
+[dependencies]
+rutabaga_gfx = { path = "../../", version = "0.1.3", features = ["ipc", "gfxstream"]}
+nix = { version = "0.28", features = ["event", "feature", "fs", "mman", "socket", "uio", "ioctl"] }
+zerocopy = { version = "0.7", features = ["derive"] }
+log = "0.4"
+clap = { version = "4.1.8", features = ["derive"] }
+
+[profile.dev]
+lto = true
+incremental = false
+
+[workspace]

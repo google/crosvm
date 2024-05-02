@@ -35,5 +35,21 @@ pub use crate::rutabaga_os::AsRawDescriptor;
 pub use crate::rutabaga_os::FromRawDescriptor as RutabagaFromRawDescriptor;
 pub use crate::rutabaga_os::IntoRawDescriptor as RutabagaIntoRawDescriptor;
 pub use crate::rutabaga_os::MappedRegion as RutabagaMappedRegion;
+pub use crate::rutabaga_os::RawDescriptor as RutabagaRawDescriptor;
 pub use crate::rutabaga_os::SafeDescriptor as RutabagaDescriptor;
 pub use crate::rutabaga_utils::*;
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "ipc")] {
+        mod ipc;
+        mod bytestream;
+
+        pub use crate::ipc::kumquat_gpu_protocol;
+        pub use crate::ipc::RutabagaStream;
+        pub use crate::bytestream::Reader as RutabagaReader;
+        pub use crate::bytestream::Writer as RutabagaWriter;
+        pub use crate::rutabaga_os::SharedMemory as RutabagaSharedMemory;
+        pub use crate::rutabaga_os::MemoryMapping as RutabagaMemoryMapping;
+        pub use crate::rutabaga_os::WaitContext as RutabagaWaitContext;
+    }
+}

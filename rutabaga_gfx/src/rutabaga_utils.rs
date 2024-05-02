@@ -32,6 +32,9 @@ use vulkano::memory::MemoryMapError;
 use vulkano::LoadingError;
 #[cfg(feature = "vulkano")]
 use vulkano::VulkanError;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::rutabaga_os::SafeDescriptor;
 
@@ -108,14 +111,42 @@ pub struct Resource3DInfo {
 }
 
 /// A unique identifier for a device.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    FromZeroes,
+    FromBytes,
+    AsBytes,
+)]
+#[repr(C)]
 pub struct DeviceId {
     pub device_uuid: [u8; 16],
     pub driver_uuid: [u8; 16],
 }
 
 /// Memory index and physical device id of the associated VkDeviceMemory.
-#[derive(Copy, Clone, Default)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    FromZeroes,
+    FromBytes,
+    AsBytes,
+)]
+#[repr(C)]
 pub struct VulkanInfo {
     pub memory_idx: u32,
     pub device_id: DeviceId,
@@ -644,6 +675,12 @@ pub const RUTABAGA_FENCE_HANDLE_TYPE_ZIRCON: u32 = 0x0009;
 pub struct RutabagaHandle {
     pub os_handle: SafeDescriptor,
     pub handle_type: u32,
+}
+
+impl fmt::Debug for RutabagaHandle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Handle debug").finish()
+    }
 }
 
 impl RutabagaHandle {
