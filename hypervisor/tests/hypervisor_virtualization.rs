@@ -455,3 +455,54 @@ fn test_mmio_exit_readonly_memory() {
         exit_matcher
     );
 }
+
+// This tests that we can write and read GPRs to/from the VM.
+#[test]
+fn test_register_access() {
+    let setup = TestSetup {
+        /*
+            0:  74 0a         jz c ; jump to hlt
+            2:  93            xchg ax, bx
+            3:  87 ca         xchg cx, dx
+            5:  87 e5         xchg sp, bp
+            7:  87 f7         xchg si, di
+            9:  83 f8 01      cmp ax, 1
+            12: f4            hlt
+        */
+        assembly: vec![
+            0x74, 0x0a, 0x93, 0x87, 0xca, 0x87, 0xe5, 0x87, 0xf7, 0x83, 0xf8, 0x01, 0xf4,
+        ],
+        load_addr: GuestAddress(0x1000),
+        initial_regs: Regs {
+            rip: 0x1000,
+            rax: 2,
+            rbx: 1,
+            rcx: 4,
+            rdx: 3,
+            rsp: 6,
+            rbp: 5,
+            rsi: 8,
+            rdi: 7,
+            rflags: 2,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    run_tests!(
+        setup,
+        |_, regs| {
+            assert_eq!(regs.rax, 1);
+            assert_eq!(regs.rbx, 2);
+            assert_eq!(regs.rcx, 3);
+            assert_eq!(regs.rdx, 4);
+            assert_eq!(regs.rsp, 5);
+            assert_eq!(regs.rbp, 6);
+            assert_eq!(regs.rsi, 7);
+            assert_eq!(regs.rdi, 8);
+            assert_ne!(regs.rflags & 0x40, 0); // zero flag is set
+            assert_eq!(regs.rip, 0x100d); // after hlt
+        },
+        |_, exit, _| matches!(exit, VcpuExit::Hlt)
+    );
+}
