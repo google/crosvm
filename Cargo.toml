@@ -39,6 +39,7 @@ codegen-units = 1
 members = [
     "aarch64",
     "acpi_tables",
+    "android_audio",
     "arch",
     "argh_helpers",
     "audio_util",
@@ -296,6 +297,13 @@ default-no-sandbox = []
 ## org.chromium.ArcQuota dbus service.
 arc_quota = ["devices/arc_quota"]
 
+## Enables use of Android AAudio virtio-snd backend.
+audio_aaudio = ["devices/audio_aaudio"]
+
+## Stub implementation of Android AAudio NDK library. This is only used for building and testing the
+## Android audio on a non-Android target
+libaaudio_stub = ["android_audio/libaaudio_stub"]
+
 ## Enables use of the ChromeOS audio server. ChromeOS builds will replace libcras_stub with an
 ## implementation that talks to the audio server. In upstream builds, using this option will panic.
 audio_cras = ["devices/audio_cras"]
@@ -367,10 +375,12 @@ all-default = [
 
 ## All features that are compiled and tested for aarch64
 all-aarch64 = [
+    "audio_aaudio",
     "all-default",
     "android_display",
     "android_display_stub",
     "gunyah",
+    "libaaudio_stub",
 ]
 
 ## All features that are compiled and tested for riscv64
@@ -380,9 +390,11 @@ all-riscv64 = [
 
 ## All features that are compiled and tested for x86_64
 all-x86_64 = [
+    "audio_aaudio",
     "all-default",
     "android_display",
     "android_display_stub",
+    "libaaudio_stub",
     "plugin",
     "scudo"
 ]
@@ -484,6 +496,7 @@ aarch64 = { path = "aarch64" }
 minijail = "*" # provided by ebuild
 p9 = "0.2.3"
 vhost = { path = "vhost" }
+android_audio = { path = "android_audio"}
 
 [target.'cfg(windows)'.dependencies]
 anti_tamper = { path = "vendor/generic/anti_tamper" }

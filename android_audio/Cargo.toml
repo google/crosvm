@@ -1,0 +1,17 @@
+[package]
+name = "android_audio"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+
+[features]
+libaaudio_stub = []
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+audio_streams = { path = "../common/audio_streams"}
+async-trait = "0.1.36"
+base = { path = "../base" }
+thiserror = "1.0.20"

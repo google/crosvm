@@ -405,6 +405,8 @@ pub fn create_virtio_snd_device(
 
     let policy = match backend {
         Backend::NULL | Backend::FILE => "snd_null_device",
+        #[cfg(feature = "audio_aaudio")]
+        Backend::Sys(virtio::snd::sys::StreamSourceBackend::AAUDIO) => "snd_aaudio_device",
         #[cfg(feature = "audio_cras")]
         Backend::Sys(virtio::snd::sys::StreamSourceBackend::CRAS) => "snd_cras_device",
         #[cfg(not(feature = "audio_cras"))]

@@ -9,6 +9,7 @@ android_display = ["gpu_display/android_display"]
 android_display_stub = ["gpu_display/android_display_stub"]
 arc_quota = ["dbus", "protobuf", "system_api"]
 audio = []
+audio_aaudio = []
 audio_cras = ["libcras"]
 balloon = []
 gpu = ["gpu_display"]
@@ -92,6 +93,7 @@ vm_memory = { path = "../vm_memory" }
 zerocopy = { version = "0.7", features = ["derive"] }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+android_audio = { path = "../android_audio" }
 fuse = {path = "../fuse" }
 jail = { path = "../jail" }
 libcras = { version = "*", optional = true }

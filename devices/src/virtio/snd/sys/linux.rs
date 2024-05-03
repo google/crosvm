@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(feature = "audio_aaudio")]
+use android_audio::AndroidAudioStreamSourceGenerator;
 use async_trait::async_trait;
 use audio_streams::capture::AsyncCaptureBuffer;
 use audio_streams::capture::AsyncCaptureBufferStream;
@@ -50,6 +52,8 @@ pub(crate) struct SysAsyncStreamObjects {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum StreamSourceBackend {
+    #[cfg(feature = "audio_aaudio")]
+    AAUDIO,
     #[cfg(feature = "audio_cras")]
     CRAS,
 }
@@ -58,6 +62,8 @@ pub enum StreamSourceBackend {
 impl From<StreamSourceBackend> for String {
     fn from(backend: StreamSourceBackend) -> Self {
         match backend {
+            #[cfg(feature = "audio_aaudio")]
+            StreamSourceBackend::AAUDIO => "aaudio".to_owned(),
             #[cfg(feature = "audio_cras")]
             StreamSourceBackend::CRAS => "cras".to_owned(),
         }
@@ -69,11 +75,26 @@ impl TryFrom<&str> for StreamSourceBackend {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
+            #[cfg(feature = "audio_aaudio")]
+            "aaudio" => Ok(StreamSourceBackend::AAUDIO),
             #[cfg(feature = "audio_cras")]
             "cras" => Ok(StreamSourceBackend::CRAS),
             _ => Err(ParametersError::InvalidBackend),
         }
     }
+}
+
+#[cfg(feature = "audio_aaudio")]
+pub(crate) fn create_aaudio_stream_source_generators(
+    snd_data: &SndData,
+) -> Vec<SysAudioStreamSourceGenerator> {
+    let mut generators: Vec<Box<dyn StreamSourceGenerator>> =
+        Vec::with_capacity(snd_data.pcm_info_len());
+    for pcm_info in snd_data.pcm_info_iter() {
+        assert_eq!(pcm_info.features, 0); // Should be 0. Android audio backend does not support any features.
+        generators.push(Box::new(AndroidAudioStreamSourceGenerator::new()));
+    }
+    generators
 }
 
 #[cfg(feature = "audio_cras")]
@@ -107,6 +128,8 @@ pub(crate) fn create_stream_source_generators(
     snd_data: &SndData,
 ) -> Vec<Box<dyn StreamSourceGenerator>> {
     match backend {
+        #[cfg(feature = "audio_aaudio")]
+        StreamSourceBackend::AAUDIO => create_aaudio_stream_source_generators(snd_data),
         #[cfg(feature = "audio_cras")]
         StreamSourceBackend::CRAS => create_cras_stream_source_generators(params, snd_data),
     }

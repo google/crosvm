@@ -1,0 +1,17 @@
+# Copyright 2024 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+@include /usr/share/policy/crosvm/common_device.policy
+
+openat: return ENOENT
+socket: arg0 == AF_UNIX
+socketpair: arg0 == AF_UNIX
+prctl: arg0 == PR_SET_NAME
+connect: 1
+prlimit64: 1
+setrlimit: 1
+sched_setscheduler: 1
+timerfd_create: 1
+timerfd_gettime: 1
+timerfd_settime: 1
