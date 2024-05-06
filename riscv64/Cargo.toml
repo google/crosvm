@@ -15,8 +15,6 @@ gdbstub = { version = "0.7.0", optional = true }
 gdbstub_arch = { version = "0.3.0", optional = true }
 hypervisor = { path = "../hypervisor" }
 kernel_cmdline = { path = "../kernel_cmdline" }
-kvm = { path = "../kvm" }
-kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 rand = "0.8"
 remain = "*"
