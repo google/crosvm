@@ -19,6 +19,7 @@ use base::IoctlNr;
 use base::MappedRegion;
 use base::Result;
 use data_model::vec_with_array_field;
+use data_model::FlexibleArrayWrapper;
 use kvm_sys::*;
 use libc::E2BIG;
 use libc::EIO;
@@ -59,7 +60,7 @@ use crate::VmX86_64;
 use crate::Xsave;
 use crate::NUM_IOAPIC_PINS;
 
-type KvmCpuId = kvm::CpuId;
+type KvmCpuId = FlexibleArrayWrapper<kvm_cpuid2, kvm_cpuid_entry2>;
 const KVM_XSAVE_MAX_SIZE: usize = 4096;
 const MSR_IA32_APICBASE: u32 = 0x0000001b;
 

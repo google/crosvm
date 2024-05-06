@@ -30,7 +30,6 @@ base = { path = "../base" }
 vm_memory = { path = "../vm_memory" }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
-kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 
 [target.'cfg(windows)'.dependencies]

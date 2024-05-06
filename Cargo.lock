@@ -1461,7 +1461,6 @@ dependencies = [
  "downcast-rs",
  "enumn",
  "fnv",
- "kvm",
  "kvm_sys",
  "libc",
  "memoffset 0.6.5",

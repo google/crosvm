@@ -7,6 +7,9 @@ mod aarch64;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use aarch64::*;
 
+mod cap;
+pub use cap::KvmCap;
+
 #[cfg(target_arch = "riscv64")]
 mod riscv64;
 
@@ -141,8 +144,6 @@ pub fn dirty_log_bitmap_size(size: usize) -> usize {
 pub struct Kvm {
     kvm: SafeDescriptor,
 }
-
-pub type KvmCap = kvm::Cap;
 
 impl Kvm {
     pub fn new_with_path(device_path: &Path) -> Result<Kvm> {
