@@ -13,26 +13,25 @@ use base::ioctl_io_nr;
 use base::ioctl_ior_nr;
 use base::ioctl_iow_nr;
 use base::ioctl_iowr_nr;
-#[cfg(target_arch = "x86_64")]
-use data_model::flexible_array_impl;
-// Each of the below modules defines ioctls specific to their platform.
 
-#[cfg(target_arch = "x86_64")]
-pub const KVM_MSR_FILTER_RANGE_MAX_BITS: usize = 0x2000;
-#[cfg(target_arch = "x86_64")]
-pub const KVM_MSR_FILTER_RANGE_MAX_BYTES: usize = KVM_MSR_FILTER_RANGE_MAX_BITS / 8;
+// Each of the below modules defines ioctls specific to their platform.
+// Along with the common ioctls, we reexport the ioctls of the current
+// platform.
 
 #[cfg(target_arch = "x86_64")]
 pub mod x86 {
-    // generated with bindgen /usr/include/linux/kvm.h --no-unstable-rust --constified-enum '*'
-    // --with-derive-default
-    #[allow(clippy::all)]
     pub mod bindings;
     use base::ioctl_ior_nr;
     use base::ioctl_iow_nr;
     use base::ioctl_iowr_nr;
+    use data_model::flexible_array_impl;
 
     pub use crate::bindings::*;
+
+    flexible_array_impl!(kvm_cpuid2, kvm_cpuid_entry2, nent, entries);
+
+    pub const KVM_MSR_FILTER_RANGE_MAX_BITS: usize = 0x2000;
+    pub const KVM_MSR_FILTER_RANGE_MAX_BYTES: usize = KVM_MSR_FILTER_RANGE_MAX_BITS / 8;
 
     ioctl_iowr_nr!(KVM_GET_MSR_INDEX_LIST, KVMIO, 0x02, kvm_msr_list);
     ioctl_iowr_nr!(KVM_GET_SUPPORTED_CPUID, KVMIO, 0x05, kvm_cpuid2);
@@ -59,13 +58,14 @@ pub mod x86 {
     ioctl_ior_nr!(KVM_GET_XCRS, KVMIO, 0xa6, kvm_xcrs);
     ioctl_iow_nr!(KVM_SET_XCRS, KVMIO, 0xa7, kvm_xcrs);
     ioctl_iowr_nr!(KVM_GET_SUPPORTED_HV_CPUID, KVMIO, 0xc1, kvm_cpuid2);
+    ioctl_iow_nr!(KVM_X86_SET_MSR_FILTER, KVMIO, 0xc6, kvm_msr_filter);
     ioctl_ior_nr!(KVM_GET_XSAVE2, KVMIO, 0xcf, kvm_xsave);
 }
+#[cfg(target_arch = "x86_64")]
+pub use crate::x86::*;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub mod aarch64 {
-    // generated with bindgen <arm sysroot>/usr/include/linux/kvm.h --no-unstable-rust
-    // --constified-enum '*' --with-derive-default -- -I<arm sysroot>/usr/include
     pub mod bindings;
     use base::ioctl_ior_nr;
     use base::ioctl_iow_nr;
@@ -75,12 +75,16 @@ pub mod aarch64 {
     ioctl_iow_nr!(KVM_ARM_VCPU_INIT, KVMIO, 0xae, kvm_vcpu_init);
     ioctl_ior_nr!(KVM_ARM_PREFERRED_TARGET, KVMIO, 0xaf, kvm_vcpu_init);
 }
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+pub use crate::aarch64::*;
 
 #[cfg(target_arch = "riscv64")]
 pub mod riscv64 {
     pub mod bindings;
     pub use bindings::*;
 }
+#[cfg(target_arch = "riscv64")]
+pub use crate::riscv64::*;
 
 // These ioctls are commonly defined on all/multiple platforms.
 ioctl_io_nr!(KVM_GET_API_VERSION, KVMIO, 0x00);
@@ -145,11 +149,7 @@ ioctl_iow_nr!(KVM_SET_DEVICE_ATTR, KVMIO, 0xe1, kvm_device_attr);
 ioctl_iow_nr!(KVM_GET_DEVICE_ATTR, KVMIO, 0xe2, kvm_device_attr);
 ioctl_iow_nr!(KVM_HAS_DEVICE_ATTR, KVMIO, 0xe3, kvm_device_attr);
 ioctl_io_nr!(KVM_RUN, KVMIO, 0x80);
-// The following two ioctls are commonly defined but specifically excluded
-// from arm platforms.
-#[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
 ioctl_ior_nr!(KVM_GET_REGS, KVMIO, 0x81, kvm_regs);
-#[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
 ioctl_iow_nr!(KVM_SET_REGS, KVMIO, 0x82, kvm_regs);
 ioctl_ior_nr!(KVM_GET_SREGS, KVMIO, 0x83, kvm_sregs);
 ioctl_iow_nr!(KVM_SET_SREGS, KVMIO, 0x84, kvm_sregs);
@@ -171,20 +171,3 @@ ioctl_iow_nr!(KVM_SET_ONE_REG, KVMIO, 0xac, kvm_one_reg);
 ioctl_io_nr!(KVM_KVMCLOCK_CTRL, KVMIO, 0xad);
 ioctl_iowr_nr!(KVM_GET_REG_LIST, KVMIO, 0xb0, kvm_reg_list);
 ioctl_io_nr!(KVM_SMI, KVMIO, 0xb7);
-#[cfg(target_arch = "x86_64")]
-ioctl_iow_nr!(KVM_X86_SET_MSR_FILTER, KVMIO, 0xc6, kvm_msr_filter);
-
-// Along with the common ioctls, we reexport the ioctls of the current
-// platform.
-
-#[cfg(target_arch = "x86_64")]
-pub use crate::x86::*;
-
-#[cfg(target_arch = "x86_64")]
-flexible_array_impl!(kvm_cpuid2, kvm_cpuid_entry2, nent, entries);
-
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-pub use aarch64::*;
-
-#[cfg(target_arch = "riscv64")]
-pub use crate::riscv64::*;
