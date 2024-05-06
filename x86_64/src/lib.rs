@@ -458,14 +458,12 @@ fn tss_addr_end() -> GuestAddress {
 
 fn configure_system(
     guest_mem: &GuestMemory,
-    kernel_addr: GuestAddress,
     cmdline_addr: GuestAddress,
     cmdline_size: usize,
     setup_data: Option<GuestAddress>,
     initrd: Option<(GuestAddress, usize)>,
     mut params: boot_params,
 ) -> Result<()> {
-    const EBDA_START: u64 = 0x0009_fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
     const KERNEL_HDR_MAGIC: u32 = 0x5372_6448;
     const KERNEL_LOADER_OTHER: u8 = 0xff;
@@ -486,20 +484,11 @@ fn configure_system(
         params.hdr.ramdisk_size = initrd_size as u32;
     }
 
-    add_e820_entry(
-        &mut params,
-        AddressRange {
-            start: START_OF_RAM_32BITS,
-            end: EBDA_START - 1,
-        },
-        E820Type::Ram,
-    )?;
-
     // GuestMemory::end_addr() returns the first address past the end, so subtract 1 to get the
     // inclusive end.
     let guest_mem_end = guest_mem.end_addr().offset() - 1;
     let ram_below_4g = AddressRange {
-        start: kernel_addr.offset(),
+        start: START_OF_RAM_32BITS,
         end: guest_mem_end.min(read_pci_mmio_before_32bit().start - 1),
     };
     let ram_above_4g = AddressRange {
@@ -1713,7 +1702,6 @@ impl X8664arch {
 
         configure_system(
             mem,
-            GuestAddress(KERNEL_START_OFFSET),
             GuestAddress(CMDLINE_OFFSET),
             cmdline.to_bytes().len() + 1,
             setup_data,
