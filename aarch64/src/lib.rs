@@ -68,7 +68,9 @@ use kernel_loader::LoadedKernel;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use minijail::Minijail;
 use remain::sorted;
+use resources::address_allocator::AddressAllocator;
 use resources::AddressRange;
+use resources::MmioType;
 use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -726,17 +728,20 @@ impl arch::LinuxArch for AArch64 {
             size: AARCH64_PCI_CFG_SIZE,
         };
 
-        let pci_ranges: Vec<fdt::PciRange> = system_allocator
-            .mmio_pools()
-            .iter()
-            .map(|range| fdt::PciRange {
+        let mut pci_ranges: Vec<fdt::PciRange> = Vec::new();
+
+        let mut add_pci_ranges = |alloc: &AddressAllocator, prefetchable: bool| {
+            pci_ranges.extend(alloc.pools().iter().map(|range| fdt::PciRange {
                 space: fdt::PciAddressSpace::Memory64,
                 bus_address: range.start,
                 cpu_physical_address: range.start,
                 size: range.len().unwrap(),
-                prefetchable: false,
-            })
-            .collect();
+                prefetchable,
+            }));
+        };
+
+        add_pci_ranges(system_allocator.mmio_allocator(MmioType::Low), false);
+        add_pci_ranges(system_allocator.mmio_allocator(MmioType::High), true);
 
         let (bat_control, bat_mmio_base_and_irq) = match bat_type {
             Some(BatteryType::Goldfish) => {
