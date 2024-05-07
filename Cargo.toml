@@ -463,7 +463,6 @@ smallvec = "1.6.1"
 static_assertions = "1.1"
 swap = { path = "swap" }
 sync = { path = "common/sync" }
-tempfile = "3"
 thiserror = { version = "1.0.20" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }
@@ -502,6 +501,7 @@ win_util = { path = "win_util" }
 [dev-dependencies]
 base = "*"
 rand = "0.8"
+tempfile = "3"
 
 [patch.crates-io]
 audio_streams = { path = "common/audio_streams" }

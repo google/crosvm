@@ -26,7 +26,6 @@ remain = "*"
 serde = { version = "1", features = [ "derive" ] }
 sync = { path = "../common/sync" }
 thiserror = "*"
-tempfile = "3"
 uuid = { version = "1", features = ["v4"], optional = true }
 vm_memory = { path = "../vm_memory" }
 zerocopy = { version = "0.7", features = ["derive"] }
@@ -34,3 +33,6 @@ zerocopy = { version = "0.7", features = ["derive"] }
 [dependencies.futures]
 version = "*"
 default-features = false
+
+[dev-dependencies]
+tempfile = "3"

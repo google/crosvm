@@ -5,5 +5,7 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-tempfile = "3"
 zerocopy = { version = "0.7", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"

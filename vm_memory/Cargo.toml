@@ -20,5 +20,5 @@ serde_json = "*"
 thiserror = "*"
 zerocopy = { version = "0.7", features = ["derive"] }
 
-[dev_dependencies]
+[dev-dependencies]
 tempfile = "3"

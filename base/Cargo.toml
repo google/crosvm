@@ -31,7 +31,6 @@ remain = "0.2"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "*"
 smallvec = "1.6.1"
-tempfile = "3"
 thiserror = "1.0.20"
 uuid = { version = "1", features = ["v4"] }
 zerocopy = { version = "0.7", features = ["derive"] }
@@ -39,6 +38,7 @@ zerocopy = { version = "0.7", features = ["derive"] }
 [dev-dependencies]
 libtest-mimic = "0.6"
 protos = { path = "../protos", features = ["composite-disk"] }
+tempfile = "3"
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 minijail = "*"
