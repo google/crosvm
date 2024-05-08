@@ -5,6 +5,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
+use base::error;
 use base::warn;
 use base::Event;
 use resources::Alloc;
@@ -336,13 +337,16 @@ impl PciePort {
     }
 
     /// Has command completion pending.
-    pub fn is_cc_pending(&self) -> bool {
-        self.pcie_config.lock().cc_sender.is_some()
+    pub fn is_hpc_pending(&self) -> bool {
+        self.pcie_config.lock().hpc_sender.is_some()
     }
 
-    /// Sets a sender for notifying guest report command complete. Returns sender replaced.
-    pub fn set_cc_sender(&mut self, cc_sender: Event) -> Option<Event> {
-        self.pcie_config.lock().cc_sender.replace(cc_sender)
+    /// Sets a sender for hot plug or unplug complete.
+    pub fn set_hpc_sender(&mut self, event: Event) {
+        self.pcie_config
+            .lock()
+            .hpc_sender
+            .replace(HotPlugCompleteSender::new(event));
     }
 
     pub fn trigger_hp_or_pme_interrupt(&mut self) {
@@ -398,6 +402,32 @@ impl PciePort {
     }
 }
 
+struct HotPlugCompleteSender {
+    sender: Event,
+    armed: bool,
+}
+
+impl HotPlugCompleteSender {
+    fn new(sender: Event) -> Self {
+        Self {
+            sender,
+            armed: false,
+        }
+    }
+
+    fn arm(&mut self) {
+        self.armed = true;
+    }
+
+    fn armed(&self) -> bool {
+        self.armed
+    }
+
+    fn signal(&self) -> base::Result<()> {
+        self.sender.signal()
+    }
+}
+
 pub struct PcieConfig {
     msi_config: Option<Arc<Mutex<MsiConfig>>>,
 
@@ -409,7 +439,7 @@ pub struct PcieConfig {
     root_cap: Arc<Mutex<PcieRootCap>>,
     port_type: PcieDevicePortType,
 
-    cc_sender: Option<Event>,
+    hpc_sender: Option<HotPlugCompleteSender>,
     hp_interrupt_pending: bool,
     removed_downstream_valid: bool,
 
@@ -435,7 +465,7 @@ impl PcieConfig {
             root_cap,
             port_type,
 
-            cc_sender: None,
+            hpc_sender: None,
             hp_interrupt_pending: false,
             removed_downstream_valid: false,
 
@@ -489,8 +519,8 @@ impl PcieConfig {
                     None => return,
                 }
                 if (self.slot_status & PCIE_SLTSTA_PDS != 0)
-                    && (value & PCIE_SLTCTL_PIC_OFF == PCIE_SLTCTL_PIC_OFF)
-                    && (old_control & PCIE_SLTCTL_PIC_OFF != PCIE_SLTCTL_PIC_OFF)
+                    && (value & PCIE_SLTCTL_PIC == PCIE_SLTCTL_PIC_OFF)
+                    && (old_control & PCIE_SLTCTL_PIC != PCIE_SLTCTL_PIC_OFF)
                 {
                     self.removed_downstream_valid = true;
                     self.slot_status &= !PCIE_SLTSTA_PDS;
@@ -508,10 +538,19 @@ impl PcieConfig {
                 }
 
                 if old_control != value {
-                    // send Command completed events
-                    if let Some(sender) = self.cc_sender.take() {
-                        if let Err(e) = sender.signal() {
-                            warn!("Failed to notify command complete for slot event: {:#}", &e);
+                    let old_pic_state = old_control & PCIE_SLTCTL_PIC;
+                    let pic_state = value & PCIE_SLTCTL_PIC;
+                    if old_pic_state == PCIE_SLTCTL_PIC_BLINK && old_pic_state != pic_state {
+                        // The power indicator (PIC) is controled by the guest to indicate the power
+                        // state of the slot.
+                        // For successful hotplug: OFF => BLINK => (board enabled) => ON
+                        // For failed hotplug: OFF => BLINK => (board enable failed) => OFF
+                        // For hot unplug: ON => BLINK => (board disabled) => OFF
+                        // hot (un)plug is completed at next slot status write after it changed to
+                        // ON or OFF state.
+
+                        if let Some(sender) = self.hpc_sender.as_mut() {
+                            sender.arm();
                         }
                     }
                     self.slot_status |= PCIE_SLTSTA_CC;
@@ -521,6 +560,14 @@ impl PcieConfig {
             PCIE_SLTSTA_OFFSET => {
                 if self.slot_control.is_none() {
                     return;
+                }
+                if let Some(hpc_sender) = self.hpc_sender.as_mut() {
+                    if hpc_sender.armed() {
+                        if let Err(e) = hpc_sender.signal() {
+                            error!("Failed to send hot un/plug complete signal: {}", e);
+                        }
+                        self.hpc_sender = None;
+                    }
                 }
                 let value = match u16::read_from(data) {
                     Some(v) => v,

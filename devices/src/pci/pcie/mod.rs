@@ -47,7 +47,9 @@ const PCIE_SLTCAP_HPS: u32 = 0x20; // Hot-Plug Surprise
 const PCIE_SLTCAP_HPC: u32 = 0x40; // Hot-Plug Capable
 
 const PCIE_SLTCTL_OFFSET: usize = 0x18;
-const PCIE_SLTCTL_PIC_OFF: u16 = 0x300;
+const PCIE_SLTCTL_PIC: u16 = 0x300; // Power indicator
+const PCIE_SLTCTL_PIC_BLINK: u16 = 0x200; // Power indicator blink
+const PCIE_SLTCTL_PIC_OFF: u16 = 0x300; // Power indicator off
 const PCIE_SLTCTL_AIC_OFF: u16 = 0xC0;
 const PCIE_SLTCTL_ABPE: u16 = 0x01;
 const PCIE_SLTCTL_PDCE: u16 = 0x08;

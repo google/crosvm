@@ -89,32 +89,32 @@ impl PciePortVariant for PcieRootPort {
 
 impl HotPlugBus for PcieRootPort {
     fn hot_plug(&mut self, addr: PciAddress) -> Result<Option<Event>> {
-        if self.pcie_port.is_cc_pending() {
+        if self.pcie_port.is_hpc_pending() {
             bail!("Hot plug fail: previous slot event is pending.");
         }
         self.downstream_devices
             .get(&addr)
             .context("No downstream devices.")?;
 
-        let cc_sender = Event::new()?;
-        let cc_recvr = cc_sender.try_clone()?;
+        let hpc_sender = Event::new()?;
+        let hpc_recvr = hpc_sender.try_clone()?;
         if !self.pcie_port.is_hotplug_ready() {
             // The pcie port is not enabled by the guest yet. (i.e.: before PCI enumeration) Don't
             // trigger interrupt, only flipping the presence detected bit, and the device will be
             // found by PCI enumeration.
             self.pcie_port.set_slot_status(PCIE_SLTSTA_PDS);
-            cc_sender.signal()?;
-            return Ok(Some(cc_recvr));
+            hpc_sender.signal()?;
+            return Ok(Some(hpc_recvr));
         }
-        self.pcie_port.set_cc_sender(cc_sender);
+        self.pcie_port.set_hpc_sender(hpc_sender);
         self.pcie_port
             .set_slot_status(PCIE_SLTSTA_PDS | PCIE_SLTSTA_ABP);
         self.pcie_port.trigger_hp_or_pme_interrupt();
-        Ok(Some(cc_recvr))
+        Ok(Some(hpc_recvr))
     }
 
     fn hot_unplug(&mut self, addr: PciAddress) -> Result<Option<Event>> {
-        if self.pcie_port.is_cc_pending() {
+        if self.pcie_port.is_hpc_pending() {
             bail!("Hot unplug fail: previous slot event is pending.");
         }
         self.downstream_devices
@@ -132,24 +132,24 @@ impl HotPlugBus for PcieRootPort {
             self.removed_downstream.push(*guest_pci_addr);
         }
 
-        let cc_sender = Event::new()?;
-        let cc_recvr = cc_sender.try_clone()?;
+        let hpc_sender = Event::new()?;
+        let hpc_recvr = hpc_sender.try_clone()?;
         if !self.pcie_port.is_hotplug_ready() {
             // The pcie port is not enabled by the guest yet. (i.e.: before PCI enumeration) Don't
             // trigger interrupt, only flipping the presence detected bit in case the bit is already
             // flipped by an earlier hot plug on this port.
             self.pcie_port.mask_slot_status(!PCIE_SLTSTA_PDS);
-            cc_sender.signal()?;
-            return Ok(Some(cc_recvr));
+            hpc_sender.signal()?;
+            return Ok(Some(hpc_recvr));
         }
-        self.pcie_port.set_cc_sender(cc_sender);
+        self.pcie_port.set_hpc_sender(hpc_sender);
         self.pcie_port.set_slot_status(PCIE_SLTSTA_ABP);
         self.pcie_port.trigger_hp_or_pme_interrupt();
 
         if self.pcie_port.is_host() {
             self.pcie_port.hot_unplug()
         }
-        Ok(Some(cc_recvr))
+        Ok(Some(hpc_recvr))
     }
 
     fn get_address(&self) -> Option<PciAddress> {
