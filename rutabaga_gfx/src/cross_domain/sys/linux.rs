@@ -15,8 +15,11 @@ use libc::O_WRONLY;
 use nix::cmsg_space;
 use nix::fcntl::fcntl;
 use nix::fcntl::FcntlArg;
+use nix::sys::epoll::Epoll;
 use nix::sys::epoll::EpollCreateFlags;
+use nix::sys::epoll::EpollEvent;
 use nix::sys::epoll::EpollFlags;
+use nix::sys::epoll::EpollTimeout;
 use nix::sys::eventfd::EfdFlags;
 use nix::sys::eventfd::EventFd;
 use nix::sys::socket::connect;
@@ -44,8 +47,6 @@ use super::super::CrossDomainContext;
 use super::super::CrossDomainItem;
 use super::super::CrossDomainJob;
 use super::super::CrossDomainState;
-use super::epoll_internal::Epoll;
-use super::epoll_internal::EpollEvent;
 use crate::cross_domain::cross_domain_protocol::CrossDomainInit;
 use crate::cross_domain::CrossDomainEvent;
 use crate::cross_domain::CrossDomainToken;
@@ -323,7 +324,7 @@ impl WaitContext {
 
     pub fn wait(&mut self) -> RutabagaResult<Vec<CrossDomainEvent>> {
         let mut events = [EpollEvent::empty(); WAIT_CONTEXT_MAX];
-        let count = self.epoll_ctx.wait(&mut events, isize::MAX)?;
+        let count = self.epoll_ctx.wait(&mut events, EpollTimeout::NONE)?;
         let events = events[0..count]
             .iter()
             .map(|e| CrossDomainEvent {
