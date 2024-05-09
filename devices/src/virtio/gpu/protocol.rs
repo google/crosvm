@@ -155,7 +155,7 @@ pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
 
 pub const VIRTIO_GPU_FLAG_FENCE: u32 = 1 << 0;
 pub const VIRTIO_GPU_FLAG_INFO_RING_IDX: u32 = 1 << 1;
-pub const VIRTIO_GPU_FLAG_FENCE_SHAREABLE: u32 = 1 << 2;
+pub const VIRTIO_GPU_FLAG_FENCE_HOST_SHAREABLE: u32 = 1 << 2;
 
 #[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
 #[repr(C)]
