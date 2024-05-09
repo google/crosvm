@@ -249,17 +249,21 @@ impl RutabagaContext for GfxstreamContext {
         RutabagaComponentType::Gfxstream
     }
 
-    fn context_create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
+    fn context_create_fence(
+        &mut self,
+        fence: RutabagaFence,
+    ) -> RutabagaResult<Option<RutabagaHandle>> {
         if fence.ring_idx as u32 == 1 {
             self.fence_handler.call(fence);
-            return Ok(());
+            return Ok(None);
         }
 
         // SAFETY:
         // Safe because RutabagaFences and stream_renderer_fence are ABI identical
         let ret = unsafe { stream_renderer_create_fence(&fence as *const stream_renderer_fence) };
 
-        ret_to_res(ret)
+        ret_to_res(ret)?;
+        Ok(None)
     }
 }
 

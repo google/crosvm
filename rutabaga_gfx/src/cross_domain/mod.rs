@@ -863,7 +863,10 @@ impl RutabagaContext for CrossDomainContext {
             .remove(&resource.resource_id);
     }
 
-    fn context_create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
+    fn context_create_fence(
+        &mut self,
+        fence: RutabagaFence,
+    ) -> RutabagaResult<Option<RutabagaHandle>> {
         match fence.ring_idx as u32 {
             CROSS_DOMAIN_QUERY_RING => self.fence_handler.call(fence),
             CROSS_DOMAIN_CHANNEL_RING => {
@@ -874,7 +877,7 @@ impl RutabagaContext for CrossDomainContext {
             _ => return Err(RutabagaError::SpecViolation("unexpected ring type")),
         }
 
-        Ok(())
+        Ok(None)
     }
 
     fn component_type(&self) -> RutabagaComponentType {

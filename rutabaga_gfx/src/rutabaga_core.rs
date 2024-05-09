@@ -238,7 +238,13 @@ pub trait RutabagaContext {
 
     /// Implementations must create a fence on specified `ring_idx` in `fence`.  This
     /// allows for multiple synchronizations timelines per RutabagaContext.
-    fn context_create_fence(&mut self, _fence: RutabagaFence) -> RutabagaResult<()> {
+    ///
+    /// If RUTABAGA_FLAG_FENCE_HOST_SHAREABLE is set, a rutabaga handle must be returned on
+    /// success.
+    fn context_create_fence(
+        &mut self,
+        _fence: RutabagaFence,
+    ) -> RutabagaResult<Option<RutabagaHandle>> {
         Err(RutabagaError::Unsupported)
     }
 
