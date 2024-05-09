@@ -88,7 +88,12 @@ fn import_resource(resource: &mut RutabagaResource) -> RutabagaResult<()> {
 }
 
 impl RutabagaContext for VirglRendererContext {
-    fn submit_cmd(&mut self, commands: &mut [u8], fence_ids: &[u64]) -> RutabagaResult<()> {
+    fn submit_cmd(
+        &mut self,
+        commands: &mut [u8],
+        fence_ids: &[u64],
+        _shareable_fences: Vec<RutabagaHandle>,
+    ) -> RutabagaResult<()> {
         #[cfg(not(virgl_renderer_unstable))]
         if !fence_ids.is_empty() {
             return Err(RutabagaError::Unsupported);

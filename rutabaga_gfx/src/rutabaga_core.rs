@@ -223,7 +223,12 @@ pub trait RutabagaContext {
     }
 
     /// Implementations must handle the context-specific command stream.
-    fn submit_cmd(&mut self, _commands: &mut [u8], _fence_ids: &[u64]) -> RutabagaResult<()>;
+    fn submit_cmd(
+        &mut self,
+        _commands: &mut [u8],
+        _fence_ids: &[u64],
+        shareable_fences: Vec<RutabagaHandle>,
+    ) -> RutabagaResult<()>;
 
     /// Implementations may use `resource` in this context's command stream.
     fn attach(&mut self, _resource: &mut RutabagaResource);
@@ -964,7 +969,7 @@ impl Rutabaga {
             .get_mut(&ctx_id)
             .ok_or(RutabagaError::InvalidContextId)?;
 
-        ctx.submit_cmd(commands, fence_ids)
+        ctx.submit_cmd(commands, fence_ids, Vec::new())
     }
 }
 

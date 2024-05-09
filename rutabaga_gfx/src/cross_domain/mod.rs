@@ -751,11 +751,12 @@ impl RutabagaContext for CrossDomainContext {
         }
     }
 
-    fn submit_cmd(&mut self, mut commands: &mut [u8], fence_ids: &[u64]) -> RutabagaResult<()> {
-        if !fence_ids.is_empty() {
-            return Err(RutabagaError::Unsupported);
-        }
-
+    fn submit_cmd(
+        &mut self,
+        mut commands: &mut [u8],
+        _fence_ids: &[u64],
+        _shareable_fences: Vec<RutabagaHandle>,
+    ) -> RutabagaResult<()> {
         while !commands.is_empty() {
             let hdr = CrossDomainHeader::read_from_prefix(commands.as_bytes())
                 .ok_or(RutabagaError::InvalidCommandBuffer)?;
