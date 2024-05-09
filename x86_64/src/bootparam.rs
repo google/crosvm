@@ -20,6 +20,11 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
+/// Set if kernel image has a 64-bit entry point at 0x200.
+pub const XLF_KERNEL_64: u16 = 1 << 0;
+/// Set if kernel/boot_params/cmdline/ramdisk can be above 4G.
+pub const XLF_CAN_BE_LOADED_ABOVE_4G: u16 = 1 << 1;
+
 #[repr(C)]
 #[derive(Default)]
 pub struct __IncompleteArrayField<T>(::std::marker::PhantomData<T>, [T; 0]);

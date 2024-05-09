@@ -152,6 +152,7 @@ use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
 use crate::bootparam::boot_params;
+use crate::bootparam::XLF_CAN_BE_LOADED_ABOVE_4G;
 use crate::cpuid::EDX_HYBRID_CPU_SHIFT;
 
 #[sorted]
@@ -481,7 +482,9 @@ fn configure_system(
     }
     if let Some((initrd_addr, initrd_size)) = initrd {
         params.hdr.ramdisk_image = initrd_addr.offset() as u32;
+        params.ext_ramdisk_image = (initrd_addr.offset() >> 32) as u32;
         params.hdr.ramdisk_size = initrd_size as u32;
+        params.ext_ramdisk_size = (initrd_size as u64 >> 32) as u32;
     }
 
     // GuestMemory::end_addr() returns the first address past the end, so subtract 1 to get the
@@ -1676,11 +1679,14 @@ impl X8664arch {
 
         let initrd = match initrd_file {
             Some(mut initrd_file) => {
-                let mut initrd_addr_max = u64::from(params.hdr.initrd_addr_max);
-                // Default initrd_addr_max for old kernels (see Documentation/x86/boot.txt).
-                if initrd_addr_max == 0 {
-                    initrd_addr_max = 0x37FFFFFF;
-                }
+                let initrd_addr_max = if params.hdr.xloadflags & XLF_CAN_BE_LOADED_ABOVE_4G != 0 {
+                    u64::MAX
+                } else if params.hdr.initrd_addr_max == 0 {
+                    // Default initrd_addr_max for old kernels (see Documentation/x86/boot.txt).
+                    0x37FFFFFF
+                } else {
+                    u64::from(params.hdr.initrd_addr_max)
+                };
 
                 let (initrd_start, initrd_size) = arch::load_image_high(
                     mem,

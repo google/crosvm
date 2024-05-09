@@ -19,6 +19,7 @@ use vm_memory::GuestMemoryError;
 use zerocopy::AsBytes;
 
 use crate::bootparam::boot_params;
+use crate::bootparam::XLF_KERNEL_64;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -44,9 +45,6 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
-
-// Set if kernel image has a 64-bit entry point at 0x200.
-const XLF_KERNEL_64: u16 = 1 << 0;
 
 /// Loads a kernel from a bzImage to a slice
 ///
