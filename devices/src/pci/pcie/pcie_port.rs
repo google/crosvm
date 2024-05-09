@@ -310,6 +310,10 @@ impl PciePort {
         }
     }
 
+    pub fn get_slot_control(&self) -> u16 {
+        self.pcie_config.lock().get_slot_control()
+    }
+
     pub fn clone_interrupt(&mut self, msi_config: Arc<Mutex<MsiConfig>>) {
         if self.port_type == PcieDevicePortType::RootPort {
             self.root_cap.lock().clone_interrupt(msi_config.clone());

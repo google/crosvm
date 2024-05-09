@@ -142,9 +142,25 @@ impl HotPlugBus for PcieRootPort {
             hpc_sender.signal()?;
             return Ok(Some(hpc_recvr));
         }
-        self.pcie_port.set_hpc_sender(hpc_sender);
-        self.pcie_port.set_slot_status(PCIE_SLTSTA_ABP);
-        self.pcie_port.trigger_hp_or_pme_interrupt();
+        let slot_control = self.pcie_port.get_slot_control();
+        match slot_control & PCIE_SLTCTL_PIC {
+            PCIE_SLTCTL_PIC_ON => {
+                self.pcie_port.set_hpc_sender(hpc_sender);
+                self.pcie_port.set_slot_status(PCIE_SLTSTA_ABP);
+                self.pcie_port.trigger_hp_or_pme_interrupt();
+            }
+            PCIE_SLTCTL_PIC_OFF => {
+                // Do not press attention button, as the slot is already off. Likely caused by
+                // previous hot plug failed.
+                self.pcie_port.mask_slot_status(!PCIE_SLTSTA_PDS);
+                hpc_sender.signal()?;
+            }
+            _ => {
+                // Power indicator in blinking state.
+                // Should not be possible, since the previous slot event is pending.
+                bail!("Hot unplug fail: Power indicator is blinking.");
+            }
+        }
 
         if self.pcie_port.is_host() {
             self.pcie_port.hot_unplug()
