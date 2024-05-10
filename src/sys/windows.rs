@@ -903,17 +903,6 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     msg,
                 );
             },
-            |msg, index| {
-                kick_vcpu(
-                    run_mode_arc,
-                    vcpu_control_channels,
-                    vcpu_boxes,
-                    guest_os.irq_chip.as_ref(),
-                    pvclock_host_tube,
-                    index,
-                    msg,
-                );
-            },
             force_s2idle,
             #[cfg(feature = "swap")]
             None,
@@ -921,12 +910,6 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             vcpu_size,
             irq_handler_control,
             || guest_os.irq_chip.as_ref().snapshot(vcpu_size),
-            |snapshot| {
-                guest_os
-                    .irq_chip
-                    .try_box_clone()?
-                    .restore(snapshot, vcpu_size)
-            },
         );
         (resp, run_mode_opt)
     };

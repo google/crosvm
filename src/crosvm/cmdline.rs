@@ -746,26 +746,10 @@ pub struct SnapshotTakeCommand {
 }
 
 #[derive(FromArgs)]
-#[argh(subcommand, name = "restore")]
-/// Restore VM state from a snapshot created by take
-pub struct SnapshotRestoreCommand {
-    #[argh(positional)]
-    /// path to snapshot to restore
-    pub snapshot_path: PathBuf,
-    #[argh(positional, arg_name = "VM_SOCKET")]
-    /// VM Socket path
-    pub socket_path: String,
-    /// true to require an encrypted snapshot
-    #[argh(switch, arg_name = "require_encrypted")]
-    pub require_encrypted: bool,
-}
-
-#[derive(FromArgs)]
 #[argh(subcommand)]
 /// Snapshot commands
 pub enum SnapshotSubCommands {
     Take(SnapshotTakeCommand),
-    Restore(SnapshotRestoreCommand),
 }
 
 /// Container for GpuParameters that have been fixed after parsing using serde.

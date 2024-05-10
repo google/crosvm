@@ -325,15 +325,6 @@ pub enum SnapshotCommand {
     },
 }
 
-/// Commands for restore feature
-#[derive(Serialize, Deserialize, Debug)]
-pub enum RestoreCommand {
-    Apply {
-        restore_path: PathBuf,
-        require_encrypted: bool,
-    },
-}
-
 /// Commands for actions on devices and the devices control thread.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum DeviceControlCommand {
@@ -1341,8 +1332,6 @@ pub enum VmRequest {
     HotPlugNetCommand(NetControlCommand),
     /// Command to Snapshot devices
     Snapshot(SnapshotCommand),
-    /// Command to Restore devices
-    Restore(RestoreCommand),
     /// Register for event notification
     #[cfg(feature = "registered_events")]
     RegisterListener {
@@ -1631,14 +1620,12 @@ impl VmRequest {
         usb_control_tube: Option<&Tube>,
         bat_control: &mut Option<BatControl>,
         kick_vcpus: impl Fn(VcpuControl),
-        kick_vcpu: impl Fn(VcpuControl, usize),
         force_s2idle: bool,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
         device_control_tube: &Tube,
         vcpu_size: usize,
         irq_handler_control: &Tube,
         snapshot_irqchip: impl Fn() -> anyhow::Result<serde_json::Value>,
-        restore_irqchip: impl FnMut(serde_json::Value) -> anyhow::Result<()>,
     ) -> VmResponse {
         match self {
             VmRequest::Exit => {
@@ -2008,31 +1995,6 @@ impl VmRequest {
                     }
                     Err(e) => {
                         error!("failed to handle snapshot: {:?}", e);
-                        VmResponse::Err(SysError::new(EIO))
-                    }
-                }
-            }
-            VmRequest::Restore(RestoreCommand::Apply {
-                ref restore_path,
-                require_encrypted,
-            }) => {
-                info!("Starting crosvm restore");
-                match do_restore(
-                    restore_path,
-                    kick_vcpus,
-                    kick_vcpu,
-                    irq_handler_control,
-                    device_control_tube,
-                    vcpu_size,
-                    restore_irqchip,
-                    *require_encrypted,
-                ) {
-                    Ok(()) => {
-                        info!("Finished crosvm restore successfully");
-                        VmResponse::Ok
-                    }
-                    Err(e) => {
-                        error!("failed to handle restore: {:?}", e);
                         VmResponse::Err(SysError::new(EIO))
                     }
                 }
