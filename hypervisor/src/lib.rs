@@ -464,12 +464,10 @@ pub struct IrqRoute {
 }
 
 /// The state of the paravirtual clock.
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize)]
 pub struct ClockState {
     /// Current pv clock timestamp, as seen by the guest
     pub clock: u64,
-    /// Hypervisor-specific feature flags for the pv clock
-    pub flags: u32,
 }
 
 /// The MPState represents the state of a processor.

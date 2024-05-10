@@ -884,6 +884,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         let mut run_mode_opt = None;
         let vcpu_size = vcpu_boxes.lock().len();
         let resp = request.execute(
+            &guest_os.vm,
             &mut run_mode_opt,
             disk_host_tubes,
             &mut guest_os.pm,
@@ -1434,6 +1435,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     if let Some(path) = restore_path {
         vm_control::do_restore(
             &path,
+            &guest_os.vm,
             |msg| {
                 kick_all_vcpus(
                     run_mode_arc.as_ref(),
