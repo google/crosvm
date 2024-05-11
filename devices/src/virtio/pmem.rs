@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io;
+use std::mem::size_of;
 use std::time::Duration;
 
 use anyhow::anyhow;
@@ -50,7 +51,11 @@ use super::VirtioDevice;
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
 
+/* Feature bits */
+const VIRTIO_PMEM_F_DISCARD: u32 = 63;
+
 const VIRTIO_PMEM_REQ_TYPE_FLUSH: u32 = 0;
+const VIRTIO_PMEM_REQ_TYPE_DISCARD: u32 = u32::MAX;
 const VIRTIO_PMEM_RESP_TYPE_OK: u32 = 0;
 const VIRTIO_PMEM_RESP_TYPE_EIO: u32 = 1;
 
@@ -71,6 +76,15 @@ struct virtio_pmem_resp {
 #[repr(C)]
 struct virtio_pmem_req {
     type_: Le32,
+}
+
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
+#[repr(C)]
+struct virtio_pmem_range_req {
+    type_: Le32,
+    padding_: Le32,
+    start_address: Le64,
+    size: Le64,
 }
 
 #[sorted]
@@ -133,12 +147,14 @@ async fn pageout(
 }
 
 fn execute_request(
-    request: virtio_pmem_req,
+    request_type: u32,
+    start_address: u64,
+    size: u64,
     pmem_device_tube: &Tube,
     mapping_arena_slot: u32,
     mapping_size: usize,
 ) -> u32 {
-    match request.type_.to_native() {
+    match request_type {
         VIRTIO_PMEM_REQ_TYPE_FLUSH => {
             let request = VmMemoryMappingRequest::MsyncArena {
                 slot: mapping_arena_slot,
@@ -165,8 +181,36 @@ fn execute_request(
                 }
             }
         }
+
+        VIRTIO_PMEM_REQ_TYPE_DISCARD => {
+            let request = VmMemoryMappingRequest::MadviseRemove {
+                slot: mapping_arena_slot,
+                offset: usize::try_from(start_address).unwrap(),
+                size: usize::try_from(size).unwrap(),
+            };
+
+            if let Err(e) = pmem_device_tube.send(&request) {
+                error!("failed to send request: {}", e);
+                return VIRTIO_PMEM_RESP_TYPE_EIO;
+            }
+
+            match pmem_device_tube.recv() {
+                Ok(response) => match response {
+                    VmMemoryMappingResponse::Ok => VIRTIO_PMEM_RESP_TYPE_OK,
+                    VmMemoryMappingResponse::Err(e) => {
+                        error!("failed to discard memory range: {}", e);
+                        VIRTIO_PMEM_RESP_TYPE_EIO
+                    }
+                },
+                Err(e) => {
+                    error!("failed to receive data: {}", e);
+                    VIRTIO_PMEM_RESP_TYPE_EIO
+                }
+            }
+        }
+
         _ => {
-            error!("unknown request type: {}", request.type_.to_native());
+            error!("unknown request type: {}", request_type);
             VIRTIO_PMEM_RESP_TYPE_EIO
         }
     }
@@ -178,11 +222,32 @@ fn handle_request(
     mapping_arena_slot: u32,
     mapping_size: usize,
 ) -> Result<usize> {
-    let status_code = avail_desc
-        .reader
-        .read_obj()
-        .map(|request| execute_request(request, pmem_device_tube, mapping_arena_slot, mapping_size))
-        .map_err(Error::ReadQueue)?;
+    let (request_type, start_address, size) =
+        if avail_desc.reader.available_bytes() == size_of::<virtio_pmem_req>() {
+            let request = avail_desc
+                .reader
+                .read_obj::<virtio_pmem_req>()
+                .map_err(Error::ReadQueue)?;
+            (request.type_.to_native(), 0, 0)
+        } else {
+            let request = avail_desc
+                .reader
+                .read_obj::<virtio_pmem_range_req>()
+                .map_err(Error::ReadQueue)?;
+            (
+                request.type_.to_native(),
+                request.start_address.to_native(),
+                request.size.to_native(),
+            )
+        };
+    let status_code = execute_request(
+        request_type,
+        start_address,
+        size,
+        pmem_device_tube,
+        mapping_arena_slot,
+        mapping_size,
+    );
 
     let response = virtio_pmem_resp {
         status_code: status_code.into(),
@@ -290,7 +355,7 @@ fn run_worker(
 
 pub struct Pmem {
     worker_thread: Option<WorkerThread<(Queue, Tube)>>,
-    base_features: u64,
+    features: u64,
     disk_image: Option<File>,
     mapping_address: GuestAddress,
     mapping_arena_slot: MemSlot,
@@ -314,14 +379,20 @@ impl Pmem {
         mapping_size: u64,
         pmem_device_tube: Tube,
         swap_interval: Option<Duration>,
+        mapping_writable: bool,
     ) -> SysResult<Pmem> {
         if mapping_size > usize::max_value() as u64 {
             return Err(SysError::new(libc::EOVERFLOW));
         }
 
+        let mut avail_features = base_features;
+        if mapping_writable {
+            avail_features |= 1 << VIRTIO_PMEM_F_DISCARD;
+        }
+
         Ok(Pmem {
             worker_thread: None,
-            base_features,
+            features: avail_features,
             disk_image: Some(disk_image),
             mapping_address,
             mapping_arena_slot,
@@ -354,7 +425,7 @@ impl VirtioDevice for Pmem {
     }
 
     fn features(&self) -> u64 {
-        self.base_features
+        self.features
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {

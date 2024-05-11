@@ -102,6 +102,14 @@ pub enum VmMemoryMappingRequest {
         offset: usize,
         size: usize,
     },
+
+    /// Gives a MADV_REMOVE advice to the memory region mapped at `slot`, with the address range
+    /// starting at `offset` from the start of the region, and with size `size`.
+    MadviseRemove {
+        slot: MemSlot,
+        offset: usize,
+        size: usize,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -128,6 +136,12 @@ impl VmMemoryMappingRequest {
             },
             MadvisePageout { slot, offset, size } => {
                 match vm.madvise_pageout_memory_region(slot, offset, size) {
+                    Ok(()) => VmMemoryMappingResponse::Ok,
+                    Err(e) => VmMemoryMappingResponse::Err(e),
+                }
+            }
+            MadviseRemove { slot, offset, size } => {
+                match vm.madvise_remove_memory_region(slot, offset, size) {
                     Ok(()) => VmMemoryMappingResponse::Ok,
                     Err(e) => VmMemoryMappingResponse::Err(e),
                 }

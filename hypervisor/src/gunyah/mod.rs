@@ -518,6 +518,15 @@ impl Vm for GunyahVm {
         Err(Error::new(ENOTSUP))
     }
 
+    fn madvise_remove_memory_region(
+        &mut self,
+        _slot: MemSlot,
+        _offset: usize,
+        _size: usize,
+    ) -> Result<()> {
+        Err(Error::new(ENOTSUP))
+    }
+
     fn remove_memory_region(&mut self, _slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
         unimplemented!()
     }

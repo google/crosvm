@@ -1179,6 +1179,7 @@ pub fn create_pmem_device(
         arena_size,
         pmem_device_tube,
         pmem.swap_interval,
+        !pmem.ro,
     )
     .context("failed to create pmem device")?;
 
