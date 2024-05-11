@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io;
+use std::time::Duration;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -14,19 +15,24 @@ use base::Error as SysError;
 use base::Event;
 use base::RawDescriptor;
 use base::Result as SysResult;
+use base::Timer;
 use base::Tube;
+use base::TubeError;
 use base::WorkerThread;
 use cros_async::select3;
+use cros_async::select4;
+use cros_async::AsyncError;
 use cros_async::EventAsync;
 use cros_async::Executor;
+use cros_async::TimerAsync;
 use data_model::Le32;
 use data_model::Le64;
 use futures::pin_mut;
 use remain::sorted;
 use thiserror::Error;
 use vm_control::MemSlot;
-use vm_control::VmMsyncRequest;
-use vm_control::VmMsyncResponse;
+use vm_control::VmMemoryMappingRequest;
+use vm_control::VmMemoryMappingResponse;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
@@ -70,15 +76,61 @@ struct virtio_pmem_req {
 #[sorted]
 #[derive(Error, Debug)]
 enum Error {
+    /// Failed to get value from pageout timer.
+    #[error("failed to get value from pageout timer: {0}")]
+    PageoutTimer(AsyncError),
     /// Failed to read from virtqueue.
     #[error("failed to read from virtqueue: {0}")]
     ReadQueue(io::Error),
+    /// Failed to receive tube response.
+    #[error("failed to receive tube response: {0}")]
+    ReceiveResponse(TubeError),
+    /// Failed to send tube request.
+    #[error("failed to send tube request: {0}")]
+    SendingRequest(TubeError),
     /// Failed to write to virtqueue.
     #[error("failed to write to virtqueue: {0}")]
     WriteQueue(io::Error),
 }
 
 type Result<T> = ::std::result::Result<T, Error>;
+
+async fn pageout(
+    ex: &Executor,
+    swap_interval: Duration,
+    pmem_device_tube: &Tube,
+    mapping_arena_slot: u32,
+    mapping_size: usize,
+) -> Result<()> {
+    let timer = Timer::new().expect("Failed to create a timer");
+    let mut pageout_timer =
+        TimerAsync::new(timer, ex).expect("Failed to create an async pageout timer");
+    pageout_timer
+        .reset_repeating(swap_interval)
+        .expect("Failed to reset pageout timer");
+
+    loop {
+        pageout_timer.wait().await.map_err(Error::PageoutTimer)?;
+        let request = VmMemoryMappingRequest::MadvisePageout {
+            slot: mapping_arena_slot,
+            offset: 0,
+            size: mapping_size,
+        };
+
+        pmem_device_tube
+            .send(&request)
+            .map_err(Error::SendingRequest)?;
+        match pmem_device_tube
+            .recv::<VmMemoryMappingResponse>()
+            .map_err(Error::ReceiveResponse)?
+        {
+            VmMemoryMappingResponse::Ok => {}
+            VmMemoryMappingResponse::Err(e) => {
+                error!("failed to page out the memory mapping: {}", e);
+            }
+        };
+    }
+}
 
 fn execute_request(
     request: virtio_pmem_req,
@@ -88,7 +140,7 @@ fn execute_request(
 ) -> u32 {
     match request.type_.to_native() {
         VIRTIO_PMEM_REQ_TYPE_FLUSH => {
-            let request = VmMsyncRequest::MsyncArena {
+            let request = VmMemoryMappingRequest::MsyncArena {
                 slot: mapping_arena_slot,
                 offset: 0, // The pmem backing file is always at offset 0 in the arena.
                 size: mapping_size,
@@ -101,8 +153,8 @@ fn execute_request(
 
             match pmem_device_tube.recv() {
                 Ok(response) => match response {
-                    VmMsyncResponse::Ok => VIRTIO_PMEM_RESP_TYPE_OK,
-                    VmMsyncResponse::Err(e) => {
+                    VmMemoryMappingResponse::Ok => VIRTIO_PMEM_RESP_TYPE_OK,
+                    VmMemoryMappingResponse::Err(e) => {
                         error!("failed flushing disk image: {}", e);
                         VIRTIO_PMEM_RESP_TYPE_EIO
                     }
@@ -185,6 +237,7 @@ fn run_worker(
     kill_evt: Event,
     mapping_arena_slot: u32,
     mapping_size: usize,
+    swap_interval: Option<Duration>,
 ) {
     let ex = Executor::new().unwrap();
 
@@ -213,8 +266,25 @@ fn run_worker(
     let kill = async_utils::await_and_exit(&ex, kill_evt);
     pin_mut!(kill);
 
-    if let Err(e) = ex.run_until(select3(queue_fut, resample, kill)) {
-        error!("error happened in executor: {}", e);
+    match swap_interval {
+        None => {
+            if let Err(e) = ex.run_until(select3(queue_fut, resample, kill)) {
+                error!("error happened in executor: {}", e);
+            }
+        }
+        Some(interval) => {
+            let pageout_fut = pageout(
+                &ex,
+                interval,
+                pmem_device_tube,
+                mapping_arena_slot,
+                mapping_size,
+            );
+            pin_mut!(pageout_fut);
+            if let Err(e) = ex.run_until(select4(queue_fut, resample, kill, pageout_fut)) {
+                error!("error happened in executor: {}", e);
+            }
+        }
     }
 }
 
@@ -226,6 +296,7 @@ pub struct Pmem {
     mapping_arena_slot: MemSlot,
     mapping_size: u64,
     pmem_device_tube: Option<Tube>,
+    swap_interval: Option<Duration>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -242,6 +313,7 @@ impl Pmem {
         mapping_arena_slot: MemSlot,
         mapping_size: u64,
         pmem_device_tube: Tube,
+        swap_interval: Option<Duration>,
     ) -> SysResult<Pmem> {
         if mapping_size > usize::max_value() as u64 {
             return Err(SysError::new(libc::EOVERFLOW));
@@ -255,6 +327,7 @@ impl Pmem {
             mapping_arena_slot,
             mapping_size,
             pmem_device_tube: Some(pmem_device_tube),
+            swap_interval,
         })
     }
 }
@@ -313,6 +386,8 @@ impl VirtioDevice for Pmem {
             .take()
             .context("missing pmem device tube")?;
 
+        let swap_interval = self.swap_interval;
+
         self.worker_thread = Some(WorkerThread::start("v_pmem", move |kill_event| {
             run_worker(
                 &mut queue,
@@ -321,6 +396,7 @@ impl VirtioDevice for Pmem {
                 kill_event,
                 mapping_arena_slot,
                 mapping_size,
+                swap_interval,
             );
             (queue, pmem_device_tube)
         }));

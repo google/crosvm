@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+use std::fs::File;
 use std::fs::OpenOptions;
 use std::ops::RangeInclusive;
 use std::os::unix::net::UnixStream;
@@ -17,6 +18,8 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use arch::VirtioDeviceStub;
+use base::linux::MemfdSeals;
+use base::sys::SharedMemoryLinux;
 use base::ReadNotifier;
 use base::*;
 use devices::serial_device::SerialHardware;
@@ -1078,32 +1081,38 @@ pub fn create_pmem_device(
     index: usize,
     pmem_device_tube: Tube,
 ) -> DeviceResult {
-    let fd = open_file_or_duplicate(&pmem.path, OpenOptions::new().read(true).write(!pmem.ro))
-        .with_context(|| format!("failed to load disk image {}", pmem.path.display()))?;
-
-    let (disk_size, arena_size) = {
-        let metadata = std::fs::metadata(&pmem.path).with_context(|| {
-            format!("failed to get disk image {} metadata", pmem.path.display())
-        })?;
-        let disk_len = metadata.len();
-        // Linux requires pmem region sizes to be 2 MiB aligned. Linux will fill any partial page
-        // at the end of an mmap'd file and won't write back beyond the actual file length, but if
-        // we just align the size of the file to 2 MiB then access beyond the last page of the
-        // mapped file will generate SIGBUS. So use a memory mapping arena that will provide
-        // padding up to 2 MiB.
-        let alignment = 2 * 1024 * 1024;
-        let align_adjust = if disk_len % alignment != 0 {
-            alignment - (disk_len % alignment)
-        } else {
-            0
-        };
-        (
-            disk_len,
-            disk_len
-                .checked_add(align_adjust)
-                .ok_or_else(|| anyhow!("pmem device image too big"))?,
-        )
+    let (fd, disk_size) = match pmem.vma_size {
+        None => {
+            let disk_image =
+                open_file_or_duplicate(&pmem.path, OpenOptions::new().read(true).write(!pmem.ro))
+                    .with_context(|| format!("failed to load disk image {}", pmem.path.display()))?;
+            let metadata = std::fs::metadata(&pmem.path).with_context(|| {
+                format!("failed to get disk image {} metadata", pmem.path.display())
+            })?;
+            (disk_image, metadata.len())
+        }
+        Some(size) => {
+            let anon_file =
+                create_anonymous_file(&pmem.path, size).context("failed to create anon file")?;
+            (anon_file, size)
+        }
     };
+
+    // Linux requires pmem region sizes to be 2 MiB aligned. Linux will fill any partial page
+    // at the end of an mmap'd file and won't write back beyond the actual file length, but if
+    // we just align the size of the file to 2 MiB then access beyond the last page of the
+    // mapped file will generate SIGBUS. So use a memory mapping arena that will provide
+    // padding up to 2 MiB.
+    let alignment = 2 * 1024 * 1024;
+    let align_adjust = if disk_size % alignment != 0 {
+        alignment - (disk_size % alignment)
+    } else {
+        0
+    };
+
+    let arena_size = disk_size
+        .checked_add(align_adjust)
+        .ok_or_else(|| anyhow!("pmem device image too big"))?;
 
     let protection = {
         if pmem.ro {
@@ -1169,6 +1178,7 @@ pub fn create_pmem_device(
         slot,
         arena_size,
         pmem_device_tube,
+        pmem.swap_interval,
     )
     .context("failed to create pmem device")?;
 
@@ -1176,6 +1186,22 @@ pub fn create_pmem_device(
         dev: Box::new(dev) as Box<dyn VirtioDevice>,
         jail: simple_jail(jail_config, "pmem_device")?,
     })
+}
+
+pub fn create_anonymous_file<P: AsRef<Path>>(path: P, size: u64) -> Result<File> {
+    let file_name = path
+        .as_ref()
+        .to_str()
+        .ok_or_else(|| Error::new(libc::EINVAL))?;
+    let mut shm = SharedMemory::new(file_name, size)?;
+    let mut seals = MemfdSeals::new();
+
+    seals.set_shrink_seal();
+    seals.set_grow_seal();
+    seals.set_seal_seal();
+    shm.add_seals(seals)?;
+
+    Ok(shm.descriptor.into())
 }
 
 pub fn create_iommu_device(

@@ -6,7 +6,7 @@ cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
         pub mod linux;
         use linux as platform;
-        pub use platform::{VmMsyncRequest, VmMsyncResponse, FsMappingRequest};
+        pub use platform::{VmMemoryMappingRequest, VmMemoryMappingResponse, FsMappingRequest};
         #[cfg(feature = "gpu")]
         pub use platform::gpu::UnixDisplayMode as DisplayMode;
         pub use platform::handle_request_with_timeout;

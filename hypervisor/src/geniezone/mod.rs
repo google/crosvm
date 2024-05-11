@@ -951,6 +951,15 @@ impl Vm for GeniezoneVm {
         })
     }
 
+    fn madvise_pageout_memory_region(
+        &mut self,
+        _slot: MemSlot,
+        _offset: usize,
+        _size: usize,
+    ) -> Result<()> {
+        Err(Error::new(ENOTSUP))
+    }
+
     fn remove_memory_region(&mut self, slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
         let mut regions = self.mem_regions.lock();
         if !regions.contains_key(&slot) {

@@ -40,6 +40,7 @@ use libc::EINVAL;
 use libc::EIO;
 use libc::ENOENT;
 use libc::ENOSPC;
+use libc::ENOTSUP;
 use libc::EOVERFLOW;
 use libc::O_CLOEXEC;
 use libc::O_RDWR;
@@ -506,6 +507,15 @@ impl Vm for GunyahVm {
             MmapError::SystemCallFailed(e) => e,
             _ => Error::new(EIO),
         })
+    }
+
+    fn madvise_pageout_memory_region(
+        &mut self,
+        _slot: MemSlot,
+        _offset: usize,
+        _size: usize,
+    ) -> Result<()> {
+        Err(Error::new(ENOTSUP))
     }
 
     fn remove_memory_region(&mut self, _slot: MemSlot) -> Result<Box<dyn MappedRegion>> {

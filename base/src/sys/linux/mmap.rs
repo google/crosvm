@@ -77,6 +77,29 @@ impl dyn MappedRegion {
             Err(Error::SystemCallFailed(ErrnoError::last()))
         }
     }
+
+    /// Calls madvise on a mapping of `size` bytes starting at `offset` from the start of
+    /// the region.  `offset`..`offset+size` must be contained within the `MappedRegion`.
+    pub fn madvise(&self, offset: usize, size: usize, advice: libc::c_int) -> Result<()> {
+        validate_includes_range(self.size(), offset, size)?;
+
+        // SAFETY:
+        // Safe because the MemoryMapping/MemoryMappingArena interface ensures our pointer and size
+        // are correct, and we've validated that `offset`..`offset+size` is in the range owned by
+        // this `MappedRegion`.
+        let ret = unsafe {
+            libc::madvise(
+                (self.as_ptr() as usize + offset) as *mut libc::c_void,
+                size,
+                advice,
+            )
+        };
+        if ret != -1 {
+            Ok(())
+        } else {
+            Err(Error::SystemCallFailed(ErrnoError::last()))
+        }
+    }
 }
 
 /// Wraps an anonymous shared memory mapping in the current process. Provides
@@ -1144,6 +1167,23 @@ mod tests {
         <dyn MappedRegion>::msync(&m, 0, size).unwrap();
         <dyn MappedRegion>::msync(&m, ps, size - ps).unwrap();
         let res = <dyn MappedRegion>::msync(&m, ps, size).unwrap_err();
+        match res {
+            Error::InvalidAddress => {}
+            e => panic!("unexpected error: {}", e),
+        }
+    }
+
+    #[test]
+    fn arena_madvise() {
+        let size = 0x40000;
+        let mut m = MemoryMappingArena::new(size).unwrap();
+        m.add_anon_protection(0, size, Protection::read_write())
+            .expect("failed to add writable protection for madvise MADV_REMOVE");
+        let ps = pagesize();
+        <dyn MappedRegion>::madvise(&m, 0, ps, libc::MADV_PAGEOUT).unwrap();
+        <dyn MappedRegion>::madvise(&m, 0, size, libc::MADV_PAGEOUT).unwrap();
+        <dyn MappedRegion>::madvise(&m, ps, size - ps, libc::MADV_REMOVE).unwrap();
+        let res = <dyn MappedRegion>::madvise(&m, ps, size, libc::MADV_PAGEOUT).unwrap_err();
         match res {
             Error::InvalidAddress => {}
             e => panic!("unexpected error: {}", e),

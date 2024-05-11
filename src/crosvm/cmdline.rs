@@ -1809,6 +1809,14 @@ pub struct RunCommand {
     ///         without the key as the first argument.
     ///     ro=BOOL - Whether the pmem device should be read-only.
     ///         (default: false)
+    ///     vma-size=BYTES - (Experimental) Size in bytes
+    ///        of an anonymous virtual memory area that is
+    ///        created to back this device. When this
+    ///        option is specified, the disk image path
+    ///        is used to name the memory area
+    ///     swap-interval-ms=NUM - (Experimental) Interval
+    ///        in milliseconds for periodic swap out of
+    ///        memory mapping created by this device
     pub pmem: Vec<PmemOption>,
 
     #[argh(option, arg_name = "PATH")]
@@ -2842,12 +2850,14 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.pmems.push(PmemOption {
                 path: disk_option.path,
                 ro: true, // read-only
+                ..PmemOption::default()
             });
         }
         for disk_option in cmd.rw_pmem_device.into_iter() {
             cfg.pmems.push(PmemOption {
                 path: disk_option.path,
                 ro: false, // writable
+                ..PmemOption::default()
             });
         }
 

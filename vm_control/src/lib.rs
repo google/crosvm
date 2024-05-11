@@ -98,9 +98,9 @@ use sync::Mutex;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use sys::FsMappingRequest;
 #[cfg(any(target_os = "android", target_os = "linux"))]
-pub use sys::VmMsyncRequest;
+pub use sys::VmMemoryMappingRequest;
 #[cfg(any(target_os = "android", target_os = "linux"))]
-pub use sys::VmMsyncResponse;
+pub use sys::VmMemoryMappingResponse;
 use thiserror::Error;
 pub use vm_control_product::GpuSendToMain;
 pub use vm_control_product::GpuSendToService;

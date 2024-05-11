@@ -146,6 +146,17 @@ pub trait Vm: Send {
     /// `offset` from the start of the region.  `offset` must be page aligned.
     fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()>;
 
+    /// Gives a MADV_PAGEOUT advice to the memory region mapped at `slot`, with the address range
+    /// starting at `offset` from the start of the region, and with size `size`. `offset`
+    /// must be page aligned.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn madvise_pageout_memory_region(
+        &mut self,
+        slot: MemSlot,
+        offset: usize,
+        size: usize,
+    ) -> Result<()>;
+
     /// Removes and drops the `UserMemoryRegion` that was previously added at the given slot.
     fn remove_memory_region(&mut self, slot: MemSlot) -> Result<Box<dyn MappedRegion>>;
 

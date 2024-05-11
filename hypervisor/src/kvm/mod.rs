@@ -673,6 +673,24 @@ impl Vm for KvmVm {
         })
     }
 
+    fn madvise_pageout_memory_region(
+        &mut self,
+        slot: MemSlot,
+        offset: usize,
+        size: usize,
+    ) -> Result<()> {
+        let mut regions = self.mem_regions.lock();
+        let mem = regions.get_mut(&slot).ok_or_else(|| Error::new(ENOENT))?;
+
+        mem.madvise(offset, size, libc::MADV_PAGEOUT)
+            .map_err(|err| match err {
+                MmapError::InvalidAddress => Error::new(EFAULT),
+                MmapError::NotPageAligned => Error::new(EINVAL),
+                MmapError::SystemCallFailed(e) => e,
+                _ => Error::new(EIO),
+            })
+    }
+
     fn remove_memory_region(&mut self, slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
         let mut regions = self.mem_regions.lock();
         if !regions.contains_key(&slot) {

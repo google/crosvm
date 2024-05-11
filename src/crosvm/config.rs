@@ -9,6 +9,7 @@ use std::arch::x86_64::__cpuid_count;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Duration;
 
 use arch::set_default_serial_parameters;
 use arch::CpuSet;
@@ -53,6 +54,7 @@ use hypervisor::ProtectionType;
 use jail::JailConfig;
 use resources::AddressRange;
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 use vm_control::BatteryType;
@@ -159,6 +161,16 @@ pub struct MemOptions {
     pub size: Option<u64>,
 }
 
+fn deserialize_swap_interval<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Duration>, D::Error> {
+    let ms = Option::<u64>::deserialize(deserializer)?;
+    match ms {
+        None => Ok(None),
+        Some(ms) => Ok(Some(Duration::from_millis(ms))),
+    }
+}
+
 #[derive(
     Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq, serde_keyvalue::FromKeyValues,
 )]
@@ -169,6 +181,17 @@ pub struct PmemOption {
     /// Whether the disk is read-only.
     #[serde(default)]
     pub ro: bool,
+    /// Experimental option to specify the size in bytes of an anonymous virtual memory area that
+    /// will be created to back this device.
+    #[serde(default)]
+    pub vma_size: Option<u64>,
+    /// Experimental option to specify interval for periodic swap out of memory mapping
+    #[serde(
+        default,
+        deserialize_with = "deserialize_swap_interval",
+        rename = "swap-interval-ms"
+    )]
+    pub swap_interval: Option<Duration>,
 }
 
 #[derive(Serialize, Deserialize, FromKeyValues)]
@@ -1250,6 +1273,10 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         validate_file_backed_mapping(mapping)?;
     }
 
+    for pmem in cfg.pmems.iter() {
+        validate_pmem(pmem)?;
+    }
+
     // Validate platform specific things
     super::sys::config::validate_config(cfg)
 }
@@ -1266,6 +1293,24 @@ fn validate_file_backed_mapping(mapping: &mut FileBackedMappingParameters) -> Re
     } else if aligned_address != mapping.address || aligned_size != mapping.size {
         return Err(
             "--file-backed-mapping addr and size parameters must be page size aligned".to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_pmem(pmem: &PmemOption) -> Result<(), String> {
+    if (pmem.swap_interval.is_some() && pmem.vma_size.is_none())
+        || (pmem.swap_interval.is_none() && pmem.vma_size.is_some())
+    {
+        return Err(
+            "--pmem vma-size and swap-interval parameters must be specified together".to_string(),
+        );
+    }
+
+    if pmem.ro && pmem.swap_interval.is_some() {
+        return Err(
+            "--pmem swap-interval parameter can only be set for writable pmem device".to_string(),
         );
     }
 
@@ -2297,5 +2342,61 @@ mod tests {
                 path: PathBuf::from("/dev/rotary-test")
             }
         );
+    }
+
+    #[test]
+    fn parse_pmem_options_missing_path() {
+        assert!(from_key_values::<PmemOption>("")
+            .unwrap_err()
+            .contains("missing field `path`"));
+    }
+
+    #[test]
+    fn parse_pmem_options_default_values() {
+        let pmem = from_key_values::<PmemOption>("/path/to/disk.img").unwrap();
+        assert_eq!(
+            pmem,
+            PmemOption {
+                path: "/path/to/disk.img".into(),
+                ro: false,
+                vma_size: None,
+                swap_interval: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_pmem_options_virtual_swap() {
+        let pmem =
+            from_key_values::<PmemOption>("virtual_path,vma-size=12345,swap-interval-ms=1000")
+                .unwrap();
+        assert_eq!(
+            pmem,
+            PmemOption {
+                path: "virtual_path".into(),
+                ro: false,
+                vma_size: Some(12345),
+                swap_interval: Some(Duration::new(1, 0)),
+            }
+        );
+    }
+
+    #[test]
+    fn validate_pmem_missing_virtual_swap_param() {
+        let pmem = from_key_values::<PmemOption>("virtual_path,swap-interval-ms=1000").unwrap();
+        assert!(validate_pmem(&pmem)
+            .unwrap_err()
+            .contains("vma-size and swap-interval parameters must be specified together"));
+    }
+
+    #[test]
+    fn validate_pmem_read_only_virtual_swap() {
+        let pmem = from_key_values::<PmemOption>(
+            "virtual_path,ro=true,vma-size=12345,swap-interval-ms=1000",
+        )
+        .unwrap();
+        assert!(validate_pmem(&pmem)
+            .unwrap_err()
+            .contains("swap-interval parameter can only be set for writable pmem device"));
     }
 }

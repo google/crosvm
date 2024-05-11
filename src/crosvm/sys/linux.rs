@@ -3161,7 +3161,7 @@ fn process_vm_control_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 }
             }
         },
-        TaggedControlTube::VmMsync(tube) => match tube.recv::<VmMsyncRequest>() {
+        TaggedControlTube::VmMsync(tube) => match tube.recv::<VmMemoryMappingRequest>() {
             Ok(request) => {
                 let response = request.execute(&mut state.linux.vm);
                 if let Err(e) = tube.send(&response) {
