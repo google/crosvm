@@ -263,6 +263,7 @@ dependencies = [
  "cfg-if",
  "chrono",
  "env_logger",
+ "futures",
  "libc",
  "libtest-mimic",
  "log",

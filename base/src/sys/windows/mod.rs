@@ -10,6 +10,7 @@
 pub mod ioctl;
 #[macro_use]
 pub mod syslog;
+mod async_wait_for_single_object;
 mod console;
 mod descriptor;
 mod event;
@@ -42,6 +43,7 @@ pub mod thread;
 
 mod write_zeroes;
 
+pub use async_wait_for_single_object::async_wait_for_single_object;
 pub use console::*;
 pub use descriptor::*;
 pub use event::*;

@@ -400,8 +400,10 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
     }
 
     pub async fn wait_for_handle(&self) -> AsyncResult<()> {
-        let waiter = super::WaitForHandle::new(&self.source);
-        Ok(waiter.await?)
+        base::sys::windows::async_wait_for_single_object(&self.source)
+            .await
+            .map_err(super::handle_source::Error::HandleWaitFailed)?;
+        Ok(())
     }
 }
 
