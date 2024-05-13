@@ -110,6 +110,8 @@ use devices::virtio::vhost::user::gpu::sys::windows::product::GpuBackendConfig a
 use devices::virtio::vhost::user::gpu::sys::windows::run_gpu_device_worker;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::snd::sys::windows::product::SndBackendConfig as SndBackendConfigProduct;
+#[cfg(feature = "audio")]
+use devices::virtio::vhost::user::snd::sys::windows::run_snd_device_worker;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
 #[cfg(feature = "balloon")]
@@ -342,22 +344,6 @@ fn create_vhost_user_gpu_device(base_features: u64, vhost_user_tube: Tube) -> De
 }
 
 #[cfg(feature = "audio")]
-fn create_snd_device(
-    cfg: &Config,
-    parameters: SndParameters,
-    _product_args: SndBackendConfigProduct,
-) -> DeviceResult {
-    let features = virtio::base_features(cfg.protection_type);
-    let dev = VirtioSnd::new(features, parameters)
-        .exit_context(Exit::VirtioSoundDeviceNew, "failed to create snd device")?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: None,
-    })
-}
-
-#[cfg(feature = "audio")]
 fn create_vhost_user_snd_device(base_features: u64, vhost_user_tube: Tube) -> DeviceResult {
     let dev = virtio::VhostUserFrontend::new(
         virtio::DeviceType::Sound,
@@ -552,37 +538,8 @@ fn create_virtio_devices(
     }
 
     #[cfg(feature = "audio")]
-    if product::virtio_sound_enabled() {
-        let snd_split_config = cfg
-            .snd_split_config
-            .as_mut()
-            .expect("snd_split_config must exist");
-        let snd_vmm_config = snd_split_config
-            .vmm_config
-            .as_mut()
-            .expect("snd_vmm_config must exist");
-        product::push_snd_control_tubes(control_tubes, snd_vmm_config);
-
-        match snd_split_config.backend_config.take() {
-            None => {
-                // No backend config present means the backend is running in another process.
-                devs.push(create_vhost_user_snd_device(
-                    virtio::base_features(cfg.protection_type),
-                    snd_vmm_config
-                        .main_vhost_user_tube
-                        .take()
-                        .expect("Snd VMM vhost-user tube should be set"),
-                )?);
-            }
-            Some(backend_config) => {
-                // Backend config present, so initialize Snd in this process.
-                devs.push(create_snd_device(
-                    cfg,
-                    backend_config.parameters,
-                    backend_config.product_config,
-                )?);
-            }
-        }
+    {
+        devs.push(create_virtio_snd_device(cfg, control_tubes)?);
     }
 
     if let Some(tube) = pvclock_device_tube {
@@ -771,6 +728,37 @@ fn create_virtio_gpu_device(
             .expect("GPU VMM vhost-user tube should be set"),
     )
     .context("create vhost-user GPU device")
+}
+
+#[cfg(feature = "audio")]
+fn create_virtio_snd_device(
+    cfg: &mut Config,
+    #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
+) -> DeviceResult<VirtioDeviceStub> {
+    let snd_split_config = cfg
+        .snd_split_config
+        .as_mut()
+        .expect("snd_split_config must exist");
+    let snd_vmm_config = snd_split_config
+        .vmm_config
+        .as_mut()
+        .expect("snd_vmm_config must exist");
+    product::push_snd_control_tubes(control_tubes, snd_vmm_config);
+
+    // If the SND backend is passed, start up the vhost-user worker in the main process.
+    if let Some(backend_config) = snd_split_config.backend_config.take() {
+        std::thread::spawn(move || run_snd_device_worker(backend_config));
+    }
+
+    // The SND is always vhost-user, even if running in the main process.
+    create_vhost_user_snd_device(
+        virtio::base_features(cfg.protection_type),
+        snd_vmm_config
+            .main_vhost_user_tube
+            .take()
+            .expect("Snd VMM vhost-user tube should be set"),
+    )
+    .context("create vhost-user SND device")
 }
 
 fn create_devices(

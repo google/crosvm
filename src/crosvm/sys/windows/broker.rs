@@ -665,7 +665,6 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
             &mut cfg,
             &log_args,
             snd_cfg,
-            &mut main_child,
             &mut children,
             &mut wait_ctx,
             &mut metric_tubes,
@@ -1574,6 +1573,12 @@ fn platform_create_snd(
             .exit_context(Exit::CloneEvent, "failed to clone event")?,
     );
 
+    let (mut main_vhost_user_tube, mut device_vhost_user_tube) =
+        Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
+    // Start off the vhost-user tube assuming it is in the main process.
+    main_vhost_user_tube.set_target_pid(main_child.alias_pid);
+    device_vhost_user_tube.set_target_pid(main_child.alias_pid);
+
     let (backend_config_product, vmm_config_product) =
         get_snd_product_configs(cfg, main_child.alias_pid)?;
 
@@ -1585,14 +1590,14 @@ fn platform_create_snd(
     };
 
     let backend_config = Some(SndBackendConfig {
-        device_vhost_user_tube: None,
+        device_vhost_user_tube: Some(device_vhost_user_tube),
         exit_event,
         parameters,
         product_config: backend_config_product,
     });
 
     let vmm_config = Some(SndVmmConfig {
-        main_vhost_user_tube: None,
+        main_vhost_user_tube: Some(main_vhost_user_tube),
         product_config: vmm_config_product,
     });
 
@@ -1608,20 +1613,16 @@ fn start_up_snd(
     cfg: &mut Config,
     log_args: &LogArgs,
     mut snd_cfg: SndSplitConfig,
-    main_child: &mut ChildProcess,
     children: &mut HashMap<u32, ChildCleanup>,
     wait_ctx: &mut WaitContext<Token>,
     metric_tubes: &mut Vec<RecvTube>,
     #[cfg(feature = "process-invariants")] process_invariants: &EmulatorProcessInvariants,
 ) -> Result<ChildProcess> {
     // Extract the backend config from the sound config, so it can run elsewhere.
-    let mut backend_cfg = snd_cfg
+    let backend_cfg = snd_cfg
         .backend_config
         .take()
         .expect("snd backend config must be set");
-
-    let (mut main_vhost_user_tube, mut device_host_user_tube) =
-        Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
 
     let snd_child = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
@@ -1647,13 +1648,10 @@ fn start_up_snd(
         .exit_context(Exit::TubeTransporterInit, "failed to initialize tube")?;
 
     // Update target PIDs to new child.
-    device_host_user_tube.set_target_pid(main_child.alias_pid);
-    main_vhost_user_tube.set_target_pid(snd_child.alias_pid);
-
-    // Insert vhost-user tube to backend / frontend configs.
-    backend_cfg.device_vhost_user_tube = Some(device_host_user_tube);
     if let Some(vmm_config) = snd_cfg.vmm_config.as_mut() {
-        vmm_config.main_vhost_user_tube = Some(main_vhost_user_tube);
+        if let Some(tube) = vmm_config.main_vhost_user_tube.as_mut() {
+            tube.set_target_pid(snd_child.alias_pid);
+        }
     }
 
     // Send VMM config to main process.

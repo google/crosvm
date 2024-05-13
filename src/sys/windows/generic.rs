@@ -293,11 +293,6 @@ pub(crate) fn get_snd_product_configs(
     Ok((SndBackendConfigProduct {}, SndVmmConfigProduct {}))
 }
 
-#[cfg(feature = "audio")]
-pub(super) fn virtio_sound_enabled() -> bool {
-    false
-}
-
 pub(crate) fn run_metrics(_args: RunMetricsCommand) -> Result<()> {
     info!("sleep forever. We will get killed by broker");
     thread::sleep(Duration::MAX);

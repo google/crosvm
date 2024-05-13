@@ -88,6 +88,19 @@ pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
         .recv()
         .context("failed to parse Snd backend config from bootstrap tube")?;
 
+    // TODO(b/213170185): Uncomment once sandbox is upstreamed.
+    // if sandbox::is_sandbox_target() {
+    //     sandbox::TargetServices::get()
+    //         .expect("failed to get target services")
+    //         .unwrap()
+    //         .lower_token();
+    // }
+
+    run_snd_device_worker(config)
+}
+
+/// Run the SND device worker.
+pub fn run_snd_device_worker(config: SndBackendConfig) -> anyhow::Result<()> {
     let vhost_user_tube = config
         .device_vhost_user_tube
         .expect("vhost-user Snd tube must be set");
@@ -96,14 +109,6 @@ pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
     let _ = SND_EXECUTOR.set(ex.clone());
 
     let snd_device = Box::new(SndBackend::new(config.parameters)?);
-
-    // TODO(b/213170185): Uncomment once sandbox is upstreamed.
-    // if sandbox::is_sandbox_target() {
-    //     sandbox::TargetServices::get()
-    //         .expect("failed to get target services")
-    //         .unwrap()
-    //         .lower_token();
-    // }
 
     // Set the audio thread priority here. This assumes our executor is running on a single thread.
     let _thread_priority_handle = set_audio_thread_priority();
