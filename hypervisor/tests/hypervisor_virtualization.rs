@@ -640,11 +640,11 @@ fn test_control_register_access_valid() {
 fn test_debug_register_access() {
     let setup = TestSetup {
         /*
-        0:  0f 23 d0                mov    db2,rax
-        3:  0f 21 d0                mov    rax,db2
+        0:  0f 23 d0                mov    dr2,rax
+        3:  0f 21 d3                mov    rbx,dr2
         6:  f4                      hlt
          */
-        assembly: vec![0x0F, 0x23, 0xD0, 0x0F, 0x21, 0xD0, 0xF4],
+        assembly: vec![0x0F, 0x23, 0xD0, 0x0F, 0x21, 0xD3, 0xF4],
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -657,9 +657,9 @@ fn test_debug_register_access() {
 
     let regs_matcher = |_: HypervisorType, regs: &Regs| {
         assert_eq!(
-            regs.rax, 0x1234,
+            regs.rbx, 0x1234,
             "DR2 value mismatch: expected 0x1234, found {:X}",
-            regs.rax
+            regs.rbx
         );
     };
 
