@@ -108,6 +108,7 @@ pub struct TestSetup {
     pub initial_regs: Regs,
     pub extra_vm_setup: Option<Box<dyn Fn(&mut dyn VcpuX86_64, &mut dyn Vm) + Send>>,
     pub memory_initializations: Vec<(GuestAddress, Vec<u8>)>,
+    pub expect_run_success: bool,
 }
 
 impl Default for TestSetup {
@@ -119,6 +120,7 @@ impl Default for TestSetup {
             initial_regs: Regs::default(),
             extra_vm_setup: None,
             memory_initializations: Vec::new(),
+            expect_run_success: true,
         }
     }
 }
@@ -132,6 +134,7 @@ impl TestSetup {
             initial_regs: Regs::default(),
             extra_vm_setup: None,
             memory_initializations: Vec::new(),
+            expect_run_success: true,
         }
     }
 
@@ -176,20 +179,32 @@ pub fn run_configurable_test<H: HypervisorTestSetup>(
     }
 
     loop {
-        match vcpu.run().expect("run failed") {
-            // Continue on external interrupt or signal
-            VcpuExit::Intr => {
-                println!("Got interrupt; continuing.");
-                continue;
-            }
-            r => {
-                if exit_matcher(hypervisor_type, &r, &mut *vcpu) {
+        match vcpu.run() {
+            Ok(exit) => match exit {
+                VcpuExit::Intr => continue, // Handle interrupts by continuing the loop
+                other_exit => {
+                    if !setup.expect_run_success {
+                        panic!("Expected vcpu.run() to fail, but it succeeded");
+                    }
+                    if exit_matcher(hypervisor_type, &other_exit, &mut *vcpu) {
+                        break;
+                    }
+                }
+            },
+            Err(e) => {
+                if setup.expect_run_success {
+                    panic!(
+                        "Expected vcpu.run() to succeed, but it failed with error: {:?}",
+                        e
+                    );
+                } else {
+                    println!("Expected failure occurred: {:?}", e);
                     break;
                 }
-                continue;
             }
         }
     }
+
     let final_regs = vcpu.get_regs().expect("failed to get regs");
 
     regs_matcher(hypervisor_type, &final_regs);
@@ -675,64 +690,43 @@ fn test_debug_register_access() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+// This test only succeeds (by failing Vcpu::Run) on haxm.
+#[cfg(all(windows, feature = "haxm"))]
 #[test]
 fn test_msr_access_invalid() {
-    let expected_msr_value_low = 0xFFFF;
-    let expected_msr_value_high = 0xFFFF;
     let msr_index = 0xC0000080; // EFER MSR
+
     let setup = TestSetup {
         /*
-           0:  0f 30                   wrmsr
-           2:  0f 32                   rdmsr
-           4:  f4                      hlt
+            0:  0f 32                   rdmsr
+            2:  83 c8 02                or     ax,0x2 (1st bit is reserved)
+            5:  0f 30                   wrmsr
+            7:  f4                      hlt
         */
-        assembly: vec![0x0F, 0x30, 0x0F, 0x32, 0xF4],
+        assembly: vec![0x0F, 0x32, 0x83, 0xC8, 0x02, 0x0F, 0x30, 0xF4],
         mem_size: 0x5000,
-        load_addr: GuestAddress(0x2000),
+        load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
-            rcx: msr_index,               // MSR index to read/write
-            rax: expected_msr_value_low,  // Lower 32 bits of value to write to MSR
-            rdx: expected_msr_value_high, // Higher 32 bits of value to write to MSR
+            rip: 0x1000,
+            rcx: msr_index, // MSR index to read/write
             rflags: 2,
             ..Default::default()
         },
+        // This run should fail due to the invalid EFER bit being set.
+        expect_run_success: false,
         ..Default::default()
     };
 
-    let regs_matcher = |_: HypervisorType, regs: &Regs| {
-        // Check the results of the MSR write/read
-        assert_eq!(
-            regs.rax, expected_msr_value_low,
-            "MSR lower bits not matched."
-        );
-        assert_eq!(
-            regs.rdx, expected_msr_value_high,
-            "MSR upper bits not matched."
-        );
-    };
-
-    let exit_matcher =
-        |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
-            HypervisorType::Kvm => match exit {
-                VcpuExit::InternalError => {
-                    true // Break VM runloop
-                }
-                r => panic!("unexpected exit reason: {:?}", r),
-            },
-            HypervisorType::Whpx => match exit {
-                VcpuExit::Mmio => {
-                    true // Break VM runloop
-                }
-                r => panic!("unexpected exit reason: {:?}", r),
-            },
-            _ => match exit {
-                VcpuExit::Shutdown(_) => {
-                    true // Break VM runloop
-                }
-                r => panic!("unexpected exit reason: {:?}", r),
-            },
-        };
-    run_tests!(setup, regs_matcher, exit_matcher);
+    run_tests!(
+        setup,
+        |_, regs| {
+            assert_eq!(regs.rip, 0x1005); // Should stop at the wrmsr
+        },
+        |_, _, _| {
+            /* unused */
+            true
+        }
+    );
 }
 
 #[test]
@@ -742,19 +736,16 @@ fn test_msr_access_valid() {
 
     let setup = TestSetup {
         /*
-            0:  b9 80 00 00 c0          mov    ecx,0xc0000080
-            5:  0f 32                   rdmsr
-            7:  0d 00 01 00 00          or     eax,0x100
-            c:  0f 30                   wrmsr
-            e:  f4                      hlt
+            0:  0f 32                   rdmsr
+            2:  0d 00 01 00 00          or     ax,0x100
+            7:  0f 30                   wrmsr
+            9:  f4                      hlt
         */
-        assembly: vec![
-            0xB9, 0x80, 0x00, 0x00, 0xC0, 0x0F, 0x32, 0x0D, 0x00, 0x01, 0x00, 0x00, 0x0F, 0x30,
-            0xF4,
-        ],
+        assembly: vec![0x0F, 0x32, 0x0D, 0x00, 0x01, 0x00, 0x00, 0x0F, 0x30, 0xF4],
         mem_size: 0x5000,
-        load_addr: GuestAddress(0x2000),
+        load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
+            rip: 0x1000,
             rcx: msr_index, // MSR index to read/write
             rax: 0,         // Initialize to zero, modified by test
             rdx: 0,         // Initialize to zero, modified by test
@@ -764,15 +755,16 @@ fn test_msr_access_valid() {
         ..Default::default()
     };
 
-    let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs| {
-        if hypervisor_type == HypervisorType::Whpx {
-            // Check that the LME bit is set in EAX after the operation. HAXM appears to
-            // not let this bit get set.
+    let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs| match hypervisor_type {
+        // Check that the LME bit is set in EAX after the operation.
+        HypervisorType::Haxm | HypervisorType::Whpx => {
             assert!(
                 regs.rax & (1 << lme_bit_position) != 0,
                 "LME bit not set in MSR EFER after modification."
             );
+            assert_eq!(regs.rip, 0x100a); // Should stop after the hlt
         }
+        _ => {}
     };
 
     let exit_matcher =
@@ -790,7 +782,7 @@ fn test_msr_access_valid() {
                 r => panic!("unexpected exit reason: {:?}", r),
             },
             _ => match exit {
-                VcpuExit::Shutdown(_) => {
+                VcpuExit::Hlt => {
                     true // Break VM runloop
                 }
                 r => panic!("unexpected exit reason: {:?}", r),
