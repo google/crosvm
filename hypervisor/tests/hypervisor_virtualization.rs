@@ -537,52 +537,35 @@ fn test_cpuid_exit_handler() {
 fn test_control_register_access_invalid() {
     let setup = TestSetup {
         // Test setting an unused bit in addition to the Protected Mode Enable and
-        // Monitor co-processor bits, which causes a triple fault.
+        // Monitor co-processor bits, which causes a triple fault and hence the
+        // invalid bit should never make it to RCX.
         /*
-        0:  0f 22 c0                mov    cr0, rax
-        3:  0f 20 c0                mov    rax, cr0
-        6:  f4                      hlt
-         */
+            0:  0f 22 c0                mov    cr0,rax
+            3:  0f 20 c1                mov    rcx,cr0
+            6:  f4                      hlt
+        */
         assembly: vec![0x0F, 0x22, 0xC0, 0x0F, 0x20, 0xC0, 0xF4],
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
             rax: 0x80000011,
+            rcx: 0,
             rflags: 2,
             ..Default::default()
         },
         ..Default::default()
     };
 
-    // Matcher to check the final state of EAX after reading from CR0
-    let regs_matcher = |_: HypervisorType, regs: &Regs| {
+    // Matcher to check that the RAX value never made it to RCX.
+    let regs_matcher = move |_: HypervisorType, regs: &Regs| {
         assert_eq!(
-            regs.rax, 0x80000011,
-            "CR0 value mismatch: expected 0x80000011, found {:X}",
-            regs.rax
-        );
+            regs.rcx, 0,
+            "RCX value mismatch: expected 0, found {:X}",
+            regs.rcx
+        )
     };
 
-    let exit_matcher =
-        move |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
-            HypervisorType::Kvm | HypervisorType::Haxm => {
-                match exit {
-                    VcpuExit::Shutdown => {
-                        true // Break VM runloop
-                    }
-                    r => panic!("unexpected exit reason: {:?}", r),
-                }
-            }
-            _ => {
-                match exit {
-                    VcpuExit::UnrecoverableException => {
-                        true // Break VM runloop
-                    }
-                    r => panic!("unexpected exit reason: {:?}", r),
-                }
-            }
-        };
-    run_tests!(setup, regs_matcher, exit_matcher);
+    run_tests!(setup, regs_matcher, |_, _, _| { true });
 }
 
 #[test]
@@ -903,13 +886,23 @@ fn test_invd_instruction() {
 fn test_xsetbv_instruction() {
     let setup = TestSetup {
         /*
-           0:  0f 01 d1                xsetbv
-           3:  f4                      hlt
+            0:  0f 01 d0                xgetbv
+            3:  0f 20 e0                mov    eax,cr4
+            6:  0d 00 02 00 00          or     eax,0x200  ; Set the OSXSAVE bit in CR4 (bit 9)
+            b:  0f 22 e0                mov    cr4,eax
+            e:  0f 01 d1                xsetbv
+            11: f4                      hlt
         */
-        assembly: vec![0x0F, 0x01, 0xD1, 0xF4],
+        assembly: vec![
+            0x0F, 0x01, 0xD0, 0x0F, 0x20, 0xE0, 0x0D, 0x00, 0x02, 0x00, 0x00, 0x0F, 0x22, 0xE0,
+            0x0F, 0x01, 0xD1, 0xF4,
+        ],
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
+            rax: 1, // Set bit 0 in EAX
+            rdx: 0, // XSETBV also uses EDX:EAX, must be initialized
+            rcx: 0, // XCR0
             rflags: 2,
             ..Default::default()
         },
@@ -921,7 +914,7 @@ fn test_xsetbv_instruction() {
         HypervisorType::Haxm => {}
         HypervisorType::Kvm => {}
         _ => {
-            assert_eq!(regs.rip, 0x1002, "GETSEC; expected RIP at 0x1000");
+            assert_eq!(regs.rip, 0x100D, "XSETBV; expected RIP at 0x100D");
         }
     };
 
