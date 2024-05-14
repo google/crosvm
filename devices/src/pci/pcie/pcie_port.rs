@@ -358,6 +358,11 @@ impl PciePort {
         self.pcie_host.is_some()
     }
 
+    // Checks if the slot is enabled by guest and ready for hotplug events.
+    pub fn is_hotplug_ready(&self) -> bool {
+        self.pcie_config.lock().is_hotplug_ready()
+    }
+
     pub fn hot_unplug(&mut self) {
         if let Some(host) = self.pcie_host.as_mut() {
             host.hot_unplug()
@@ -374,6 +379,10 @@ impl PciePort {
 
     pub fn removed_downstream_valid(&self) -> bool {
         self.pcie_config.lock().removed_downstream_valid
+    }
+
+    pub fn mask_slot_status(&mut self, mask: u16) {
+        self.pcie_config.lock().mask_slot_status(mask);
     }
 
     pub fn set_slot_status(&mut self, flag: u16) {
@@ -448,6 +457,16 @@ impl PcieConfig {
                 _ => 0,
             };
         }
+    }
+
+    // Checks if the slot is enabled by guest and ready for hotplug events.
+    fn is_hotplug_ready(&self) -> bool {
+        // The hotplug capability flags are set when the guest enables the device. Checks all flags
+        // required by the hotplug mechanism.
+        let slot_control = self.get_slot_control();
+        (slot_control & (PCIE_SLTCTL_PDCE | PCIE_SLTCTL_ABPE)) != 0
+            && (slot_control & PCIE_SLTCTL_CCIE) != 0
+            && (slot_control & PCIE_SLTCTL_HPIE) != 0
     }
 
     fn write_pcie_cap(&mut self, offset: usize, data: &[u8]) {
@@ -584,6 +603,17 @@ impl PcieConfig {
             if (self.slot_status & slot_control & (PCIE_SLTCTL_ABPE | PCIE_SLTCTL_PDCE)) != 0 {
                 trigger_interrupt(&self.msi_config)
             }
+        }
+    }
+
+    fn mask_slot_status(&mut self, mask: u16) {
+        self.slot_status &= mask;
+        if let Some(mapping) = self.cap_mapping.as_mut() {
+            mapping.set_reg(
+                PCIE_SLTCTL_OFFSET / 4,
+                (self.slot_status as u32) << 16,
+                0xffff0000,
+            );
         }
     }
 

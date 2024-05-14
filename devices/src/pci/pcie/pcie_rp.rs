@@ -98,6 +98,14 @@ impl HotPlugBus for PcieRootPort {
 
         let cc_sender = Event::new()?;
         let cc_recvr = cc_sender.try_clone()?;
+        if !self.pcie_port.is_hotplug_ready() {
+            // The pcie port is not enabled by the guest yet. (i.e.: before PCI enumeration) Don't
+            // trigger interrupt, only flipping the presence detected bit, and the device will be
+            // found by PCI enumeration.
+            self.pcie_port.set_slot_status(PCIE_SLTSTA_PDS);
+            cc_sender.signal()?;
+            return Ok(Some(cc_recvr));
+        }
         self.pcie_port.set_cc_sender(cc_sender);
         self.pcie_port
             .set_slot_status(PCIE_SLTSTA_PDS | PCIE_SLTSTA_ABP);
@@ -126,6 +134,14 @@ impl HotPlugBus for PcieRootPort {
 
         let cc_sender = Event::new()?;
         let cc_recvr = cc_sender.try_clone()?;
+        if !self.pcie_port.is_hotplug_ready() {
+            // The pcie port is not enabled by the guest yet. (i.e.: before PCI enumeration) Don't
+            // trigger interrupt, only flipping the presence detected bit in case the bit is already
+            // flipped by an earlier hot plug on this port.
+            self.pcie_port.mask_slot_status(!PCIE_SLTSTA_PDS);
+            cc_sender.signal()?;
+            return Ok(Some(cc_recvr));
+        }
         self.pcie_port.set_cc_sender(cc_sender);
         self.pcie_port.set_slot_status(PCIE_SLTSTA_ABP);
         self.pcie_port.trigger_hp_or_pme_interrupt();

@@ -241,6 +241,13 @@ impl HotPlugBus for PcieDownstreamPort {
             for (guest_pci_addr, _) in self.downstream_devices.iter() {
                 self.removed_downstream.push(*guest_pci_addr);
             }
+            if !self.pcie_port.is_hotplug_ready() {
+                // The pcie port is not enabled by the guest yet. (i.e.: before PCI enumeration)
+                // Don't trigger interrupt, only flipping the presence detected bit in case the bit
+                // is already flipped by an earlier hot plug on this port.
+                self.pcie_port.mask_slot_status(!PCIE_SLTSTA_PDS);
+                return Ok(None);
+            }
             self.pcie_port.set_slot_status(PCIE_SLTSTA_ABP);
             self.pcie_port.trigger_hp_or_pme_interrupt();
 

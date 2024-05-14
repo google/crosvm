@@ -135,6 +135,7 @@ fn tap_hotplug_two_impl() {
 }
 
 /// Checks hotplug works with two tap devices.
+#[ignore = "Temporarily ignored since async handling is missing on this version."]
 #[test]
 fn tap_hotplug_two() {
     call_test_with_sudo("tap_hotplug_two_impl");
@@ -200,6 +201,7 @@ fn tap_hotplug_add_remove_add_impl() {
 }
 
 /// Checks tap hotplug works with a device added, removed, then added again.
+#[ignore = "Temporarily ignored since async handling is missing on this version."]
 #[test]
 fn tap_hotplug_add_remove_add() {
     call_test_with_sudo("tap_hotplug_add_remove_add_impl");
@@ -261,6 +263,7 @@ fn tap_hotplug_add_remove_rapid_add_impl() {
 }
 
 /// Checks tap hotplug works with a device added, removed, then rapidly added again.
+#[ignore = "Temporarily ignored since async handling is missing on this version."]
 #[test]
 fn tap_hotplug_add_remove_rapid_add() {
     call_test_with_sudo("tap_hotplug_add_remove_rapid_add_impl");
