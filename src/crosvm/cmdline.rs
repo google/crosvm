@@ -1187,8 +1187,9 @@ pub struct RunCommand {
     #[argh(option, short = 'd', arg_name = "PATH[,key=value[,key=value[,...]]]")]
     #[serde(skip)] // Deprecated - use `block` instead.
     #[merge(strategy = append)]
+    // (DEPRECATED): Use `block` instead.
     /// path to a disk image followed by optional comma-separated
-    /// options.  Deprecated - use `block` instead.
+    /// options.
     /// Valid keys:
     ///    sparse=BOOL - Indicates whether the disk should support
     ///        the discard operation (default: true)
@@ -1904,8 +1905,9 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]", short = 'r')]
     #[serde(skip)] // Deprecated - use `block` instead.
     #[merge(strategy = overwrite_option)]
+    // (DEPRECATED): Use `block` instead.
     /// path to a disk image followed by optional comma-separated
-    /// options.  Deprecated - use `block` instead.
+    /// options.
     /// Valid keys:
     ///     sparse=BOOL - Indicates whether the disk should support
     ///         the discard operation (default: true)
@@ -1938,8 +1940,9 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]")]
     #[serde(skip)] // Deprecated - use `block` instead.
     #[merge(strategy = append)]
+    // (DEPRECATED): Use `block` instead.
     /// path to a read-write disk image followed by optional
-    /// comma-separated options. Deprecated - use `block` instead.
+    /// comma-separated options.
     /// Valid keys:
     ///     sparse=BOOL - Indicates whether the disk should support
     ///        the discard operation (default: true)
@@ -1953,8 +1956,9 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]")]
     #[serde(skip)] // Deprecated - use `block` instead.
     #[merge(strategy = overwrite_option)]
+    // (DEPRECATED) Use `block` instead.
     /// path to a read-write root disk image followed by optional
-    /// comma-separated options.  Deprecated - use `block` instead.
+    /// comma-separated options.
     /// Valid keys:
     ///     sparse=BOOL - Indicates whether the disk should support
     ///       the discard operation (default: true)
@@ -2772,6 +2776,13 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.serial_parameters.insert(key, serial_params);
         }
 
+        if !(cmd.root.is_none()
+            && cmd.rwroot.is_none()
+            && cmd.disk.is_empty()
+            && cmd.rwdisk.is_empty())
+        {
+            log::warn!("Deprecated disk flags such as --[rw]disk or --[rw]root are passed. Use --block instead.");
+        }
         // Aggregate all the disks with the expected read-only and root values according to the
         // option they have been passed with.
         let mut disks = cmd
