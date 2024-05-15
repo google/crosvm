@@ -528,15 +528,13 @@ fn test_cpuid_exit_handler() {
         ..Default::default()
     };
 
-    let regs_matcher =
-        move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
-            HypervisorType::Kvm => {}
-            _ => {
-                let hypervisor_bit = regs.rcx & (1 << 31) != 0;
-                assert!(hypervisor_bit, "Hypervisor bit in CPUID should be set!");
-                assert_eq!(regs.rip, 0x1003, "CPUID did not execute correctly.");
-            }
-        };
+    let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| {
+        if hypervisor_type == HypervisorType::Haxm {
+            let hypervisor_bit = regs.rcx & (1 << 31) != 0;
+            assert!(hypervisor_bit, "Hypervisor bit in CPUID should be set!");
+            assert_eq!(regs.rip, 0x1003, "CPUID did not execute correctly.");
+        }
+    };
 
     let exit_matcher =
         |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
@@ -641,25 +639,12 @@ fn test_control_register_access_valid() {
         );
     };
 
-    let exit_matcher =
-        move |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
-            HypervisorType::Kvm | HypervisorType::Haxm => {
-                match exit {
-                    VcpuExit::Hlt => {
-                        true // Break VM runloop
-                    }
-                    r => panic!("unexpected exit reason: {:?}", r),
-                }
-            }
-            _ => {
-                match exit {
-                    VcpuExit::UnrecoverableException => {
-                        true // Break VM runloop
-                    }
-                    r => panic!("unexpected exit reason: {:?}", r),
-                }
-            }
-        };
+    let exit_matcher = move |_, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match exit {
+        VcpuExit::Hlt => {
+            true // Break VM runloop
+        }
+        r => panic!("unexpected exit reason: {:?}", r),
+    };
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
@@ -1024,41 +1009,16 @@ fn test_invvpid_instruction() {
         ..Default::default()
     };
 
-    let regs_matcher =
-        move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
-            HypervisorType::Haxm => {}
-            HypervisorType::Kvm => {}
-            _ => {
-                assert_eq!(regs.rip, 0x1006, "INVVPID; expected RIP at 0x1006");
-            }
-        };
-    let exit_matcher =
-        move |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
-            HypervisorType::Kvm => {
-                match exit {
-                    VcpuExit::InternalError => {
-                        true // Break VM runloop
-                    }
-                    r => panic!("unexpected exit reason: {:?}", r),
-                }
-            }
-            HypervisorType::Haxm => {
-                match exit {
-                    VcpuExit::Shutdown(_) => {
-                        true // Break VM runloop
-                    }
-                    r => panic!("unexpected exit reason: {:?}", r),
-                }
-            }
-            _ => {
-                match exit {
-                    VcpuExit::Hlt => {
-                        true // Break VM runloop
-                    }
-                    r => panic!("unexpected exit reason: {:?}", r),
-                }
-            }
-        };
+    let regs_matcher = move |_, regs: &Regs, _: &_| {
+        assert_eq!(regs.rip, 0x1000, "INVVPID; expected RIP at 0x1000");
+    };
+
+    let exit_matcher = move |_, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match exit {
+        VcpuExit::Mmio | VcpuExit::Shutdown(_) | VcpuExit::InternalError => {
+            true // Break VM runloop
+        }
+        r => panic!("unexpected exit reason: {:?}", r),
+    };
 
     run_tests!(setup, regs_matcher, exit_matcher);
 }
