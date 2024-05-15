@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use base::error;
 use base::named_pipes::PipeConnection;
+use base::AsRawDescriptor;
 use base::Event;
 use base::EventToken;
 use base::FileSync;
@@ -18,6 +19,7 @@ use base::Result;
 use base::TimerTrait;
 use base::WaitContext;
 use hypervisor::ProtectionType;
+use winapi::um::ioapiset::CancelIoEx;
 
 use crate::bus::BusDevice;
 use crate::serial_device::SerialInput;
@@ -137,6 +139,12 @@ impl Drop for Serial {
         if let Some(kill_evt) = self.system_params.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
             let _ = kill_evt.signal();
+        }
+
+        // TODO: only do this if serial stdin is enabled?
+        // SAFETY: We pass a valid file descriptor to `CancelIoEx`.
+        unsafe {
+            CancelIoEx(std::io::stdin().as_raw_descriptor(), std::ptr::null_mut());
         }
 
         if let Some(sync_thread) = self.system_params.sync_thread.take() {
