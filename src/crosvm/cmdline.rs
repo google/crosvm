@@ -66,6 +66,7 @@ use serde::Serialize;
 #[cfg(feature = "gpu")]
 use serde_keyvalue::FromKeyValues;
 
+use super::config::PmemOption;
 #[cfg(feature = "gpu")]
 use super::gpu_config::fixup_gpu_display_options;
 #[cfg(feature = "gpu")]
@@ -1799,11 +1800,22 @@ pub struct RunCommand {
     /// absolute path to a directory that will become root filesystem for the plugin process.
     pub plugin_root: Option<PathBuf>,
 
+    #[argh(option)]
+    #[merge(strategy = append)]
+    /// parameters for setting up a virtio-pmem device.
+    /// Valid keys:
+    ///     path=PATH - Path to the disk image. Can be specified
+    ///         without the key as the first argument.
+    ///     ro=BOOL - Whether the pmem device should be read-only.
+    ///         (default: false)
+    pub pmem: Vec<PmemOption>,
+
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
+    /// (DEPRECATED): Use --pmem instead.
     /// path to a disk image
-    pub pmem_device: Vec<DiskOption>,
+    pmem_device: Vec<DiskOption>,
 
     #[cfg(feature = "process-invariants")]
     #[argh(option, arg_name = "PATH")]
@@ -1910,6 +1922,7 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
+    /// (DEPRECATED): Use --pmem instead.
     /// path to a writable disk image
     rw_pmem_device: Vec<DiskOption>,
 
@@ -2673,13 +2686,13 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(target_arch = "aarch64")]
         {
             if cmd.mte.unwrap_or_default()
-                && !(cmd.pmem_device.is_empty()
+                && !(cmd.pmem.is_empty()
+                    && cmd.pmem_device.is_empty()
                     && cmd.pstore.is_none()
                     && cmd.rw_pmem_device.is_empty())
             {
                 return Err(
-                    "--mte cannot be specified together with --pmem-device, --pstore or --rw-pmem-device"
-                        .to_string(),
+                    "--mte cannot be specified together with --pstore or pmem flags".to_string(),
                 );
             }
             cfg.mte = cmd.mte.unwrap_or_default();
@@ -2815,14 +2828,26 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.scsis = cmd.scsi_block;
 
-        for (mut pmem, read_only) in cmd
-            .pmem_device
-            .into_iter()
-            .map(|p| (p, true))
-            .chain(cmd.rw_pmem_device.into_iter().map(|p| (p, false)))
-        {
-            pmem.read_only = read_only;
-            cfg.pmem_devices.push(pmem);
+        cfg.pmems = cmd.pmem;
+
+        if !cmd.pmem_device.is_empty() || !cmd.rw_pmem_device.is_empty() {
+            log::warn!(
+                "--pmem-device and --rw-pmem-device are deprecated. Please use --pmem instead."
+            );
+        }
+
+        // Convert the deprecated `pmem_device` and `rw_pmem_device` into `pmem_devices`.
+        for disk_option in cmd.pmem_device.into_iter() {
+            cfg.pmems.push(PmemOption {
+                path: disk_option.path,
+                ro: true, // read-only
+            });
+        }
+        for disk_option in cmd.rw_pmem_device.into_iter() {
+            cfg.pmems.push(PmemOption {
+                path: disk_option.path,
+                ro: false, // writable
+            });
         }
 
         #[cfg(feature = "pvclock")]

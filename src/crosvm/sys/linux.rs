@@ -390,7 +390,7 @@ fn create_virtio_devices(
         );
     }
 
-    for (index, pmem_disk) in cfg.pmem_devices.iter().enumerate() {
+    for (index, pmem_disk) in cfg.pmems.iter().enumerate() {
         let pmem_device_tube = pmem_device_tubes.remove(0);
         devs.push(create_pmem_device(
             cfg.protection_type,
@@ -1798,7 +1798,7 @@ where
     }
 
     let mut pmem_device_tubes = Vec::new();
-    let pmem_count = cfg.pmem_devices.len();
+    let pmem_count = cfg.pmems.len();
     for _ in 0..pmem_count {
         let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
         pmem_device_tubes.push(pmem_device_tube);

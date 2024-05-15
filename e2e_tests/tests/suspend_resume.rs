@@ -64,8 +64,8 @@ fn suspend_resume_system(disabled_sandbox: bool) -> anyhow::Result<()> {
         let mut config = Config::new();
         config = config.with_stdout_hardware("legacy-virtio-console");
         config = config.extra_args(vec![
-            "--pmem-device".to_string(),
-            pmem_file.path().display().to_string(),
+            "--pmem".to_string(),
+            format!("{},ro=true", pmem_file.path().display().to_string()),
         ]);
         // TODO: Remove once USB has snapshot/restore support.
         config = config.extra_args(vec!["--no-usb".to_string()]);

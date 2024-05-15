@@ -86,6 +86,7 @@ use sync::Mutex;
 use vm_control::api::VmMemoryClient;
 use vm_memory::GuestAddress;
 
+use crate::crosvm::config::PmemOption;
 use crate::crosvm::config::VhostUserFrontendOption;
 use crate::crosvm::config::VhostUserFsOption;
 
@@ -1073,19 +1074,16 @@ pub fn create_pmem_device(
     jail_config: &Option<JailConfig>,
     vm: &mut impl Vm,
     resources: &mut SystemAllocator,
-    disk: &DiskOption,
+    pmem: &PmemOption,
     index: usize,
     pmem_device_tube: Tube,
 ) -> DeviceResult {
-    let fd = open_file_or_duplicate(
-        &disk.path,
-        OpenOptions::new().read(true).write(!disk.read_only),
-    )
-    .with_context(|| format!("failed to load disk image {}", disk.path.display()))?;
+    let fd = open_file_or_duplicate(&pmem.path, OpenOptions::new().read(true).write(!pmem.ro))
+        .with_context(|| format!("failed to load disk image {}", pmem.path.display()))?;
 
     let (disk_size, arena_size) = {
-        let metadata = std::fs::metadata(&disk.path).with_context(|| {
-            format!("failed to get disk image {} metadata", disk.path.display())
+        let metadata = std::fs::metadata(&pmem.path).with_context(|| {
+            format!("failed to get disk image {} metadata", pmem.path.display())
         })?;
         let disk_len = metadata.len();
         // Linux requires pmem region sizes to be 2 MiB aligned. Linux will fill any partial page
@@ -1108,7 +1106,7 @@ pub fn create_pmem_device(
     };
 
     let protection = {
-        if disk.read_only {
+        if pmem.ro {
             Protection::read()
         } else {
             Protection::read_write()
@@ -1158,7 +1156,7 @@ pub fn create_pmem_device(
         .add_memory_region(
             GuestAddress(mapping_address),
             Box::new(arena),
-            /* read_only = */ disk.read_only,
+            /* read_only = */ pmem.ro,
             /* log_dirty_pages = */ false,
             MemCacheType::CacheCoherent,
         )

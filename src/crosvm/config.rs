@@ -159,6 +159,18 @@ pub struct MemOptions {
     pub size: Option<u64>,
 }
 
+#[derive(
+    Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq, serde_keyvalue::FromKeyValues,
+)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct PmemOption {
+    /// Path to the diks image.
+    pub path: PathBuf,
+    /// Whether the disk is read-only.
+    #[serde(default)]
+    pub ro: bool,
+}
+
 #[derive(Serialize, Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct VhostUserOption {
@@ -755,7 +767,7 @@ pub struct Config {
     #[cfg(feature = "plugin")]
     pub plugin_mounts: Vec<crate::crosvm::plugin::BindMount>,
     pub plugin_root: Option<PathBuf>,
-    pub pmem_devices: Vec<DiskOption>,
+    pub pmems: Vec<PmemOption>,
     #[cfg(feature = "process-invariants")]
     pub process_invariants_data_handle: Option<u64>,
     #[cfg(feature = "process-invariants")]
@@ -974,7 +986,7 @@ impl Default for Config {
             #[cfg(feature = "plugin")]
             plugin_mounts: Vec::new(),
             plugin_root: None,
-            pmem_devices: Vec::new(),
+            pmems: Vec::new(),
             #[cfg(feature = "process-invariants")]
             process_invariants_data_handle: None,
             #[cfg(feature = "process-invariants")]
