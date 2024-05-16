@@ -112,6 +112,8 @@ use devices::virtio::vhost::user::gpu::sys::windows::run_gpu_device_worker;
 use devices::virtio::vhost::user::snd::sys::windows::product::SndBackendConfig as SndBackendConfigProduct;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::snd::sys::windows::run_snd_device_worker;
+#[cfg(feature = "audio")]
+use devices::virtio::vhost::user::snd::sys::windows::SndSplitConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
 #[cfg(feature = "balloon")]
@@ -540,7 +542,10 @@ fn create_virtio_devices(
 
     #[cfg(feature = "audio")]
     {
-        devs.push(create_virtio_snd_device(cfg, control_tubes)?);
+        let mut snd_split_configs = std::mem::take(&mut cfg.snd_split_configs);
+        for snd_split_cfg in snd_split_configs.iter_mut() {
+            devs.push(create_virtio_snd_device(cfg, snd_split_cfg, control_tubes)?);
+        }
     }
 
     #[cfg(feature = "pvclock")]
@@ -735,12 +740,9 @@ fn create_virtio_gpu_device(
 #[cfg(feature = "audio")]
 fn create_virtio_snd_device(
     cfg: &mut Config,
+    snd_split_config: &mut SndSplitConfig,
     #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
 ) -> DeviceResult<VirtioDeviceStub> {
-    let snd_split_config = cfg
-        .snd_split_config
-        .as_mut()
-        .expect("snd_split_config must exist");
     let snd_vmm_config = snd_split_config
         .vmm_config
         .as_mut()

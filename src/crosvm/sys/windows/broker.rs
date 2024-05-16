@@ -72,6 +72,8 @@ use crosvm_cli::sys::windows::exit::ExitCodeWrapper;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 #[cfg(feature = "audio")]
+use devices::virtio::gpu::AudioDeviceMode;
+#[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuBackendConfig;
@@ -649,7 +651,27 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
     )?;
 
     #[cfg(feature = "audio")]
-    let snd_cfg = platform_create_snd(&cfg, &mut main_child, &mut exit_events)?;
+    let num_audio_devices = if let Some(gpu_params) = cfg.gpu_parameters.as_ref() {
+        match gpu_params.audio_device_mode {
+            AudioDeviceMode::PerSurface => gpu_params.max_num_displays,
+            AudioDeviceMode::OneGlobal => 1,
+        }
+    } else {
+        1
+    };
+
+    #[cfg(feature = "audio")]
+    let mut snd_cfgs = Vec::new();
+    #[cfg(feature = "audio")]
+    {
+        for _ in 0..num_audio_devices {
+            snd_cfgs.push(platform_create_snd(
+                &cfg,
+                &mut main_child,
+                &mut exit_events,
+            )?);
+        }
+    }
 
     #[cfg(feature = "audio")]
     let _snd_child = if !cfg
@@ -658,13 +680,13 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         .any(|opt| opt.type_ == DeviceType::Sound)
     {
         // Pass both backend and frontend configs to main process.
-        cfg.snd_split_config = Some(snd_cfg);
+        cfg.snd_split_configs = snd_cfgs;
         None
     } else {
         Some(start_up_snd(
             &mut cfg,
             &log_args,
-            snd_cfg,
+            snd_cfgs,
             &mut children,
             &mut wait_ctx,
             &mut metric_tubes,
@@ -1579,8 +1601,7 @@ fn platform_create_snd(
     main_vhost_user_tube.set_target_pid(main_child.alias_pid);
     device_vhost_user_tube.set_target_pid(main_child.alias_pid);
 
-    let (backend_config_product, vmm_config_product) =
-        get_snd_product_configs(cfg, main_child.alias_pid)?;
+    let (backend_config_product, vmm_config_product) = get_snd_product_configs()?;
 
     let parameters = SndParameters {
         backend: "winaudio".try_into().unwrap(),
@@ -1608,17 +1629,22 @@ fn platform_create_snd(
 }
 
 /// Returns a snd child process for vhost-user sound.
+// TODO(b/292128227): This method is deprecated and is not used downstream. The following code
+// has not been converted to handle multiple devices. We don't want multiple snd backend processes
+// being spun up anyways.
 #[cfg(feature = "audio")]
 fn start_up_snd(
     cfg: &mut Config,
     log_args: &LogArgs,
-    mut snd_cfg: SndSplitConfig,
+    mut snd_cfgs: Vec<SndSplitConfig>,
     children: &mut HashMap<u32, ChildCleanup>,
     wait_ctx: &mut WaitContext<Token>,
     metric_tubes: &mut Vec<RecvTube>,
     #[cfg(feature = "process-invariants")] process_invariants: &EmulatorProcessInvariants,
 ) -> Result<ChildProcess> {
     // Extract the backend config from the sound config, so it can run elsewhere.
+    // TODO(b/292128227): Clean up when upstreamed.
+    let mut snd_cfg = snd_cfgs.swap_remove(0);
     let backend_cfg = snd_cfg
         .backend_config
         .take()
@@ -1655,7 +1681,7 @@ fn start_up_snd(
     }
 
     // Send VMM config to main process.
-    cfg.snd_split_config = Some(snd_cfg);
+    cfg.snd_split_configs = snd_cfgs;
 
     let startup_args = CommonChildStartupArgs::new(
         log_args,

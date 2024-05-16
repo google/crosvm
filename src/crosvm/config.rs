@@ -826,7 +826,7 @@ pub struct Config {
     #[cfg(target_arch = "x86_64")]
     pub smbios: SmbiosOptions,
     #[cfg(all(windows, feature = "audio"))]
-    pub snd_split_config: Option<SndSplitConfig>,
+    pub snd_split_configs: Vec<SndSplitConfig>,
     pub socket_path: Option<PathBuf>,
     #[cfg(feature = "audio")]
     pub sound: Option<PathBuf>,
@@ -1038,7 +1038,7 @@ impl Default for Config {
             #[cfg(target_arch = "x86_64")]
             smbios: SmbiosOptions::default(),
             #[cfg(all(windows, feature = "audio"))]
-            snd_split_config: None,
+            snd_split_configs: Vec::new(),
             socket_path: None,
             #[cfg(feature = "audio")]
             sound: None,

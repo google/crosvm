@@ -287,10 +287,7 @@ pub(crate) fn get_gpu_product_configs(
 }
 
 #[cfg(feature = "audio")]
-pub(crate) fn get_snd_product_configs(
-    _cfg: &Config,
-    _alias_pid: u32,
-) -> Result<(SndBackendConfigProduct, SndVmmConfigProduct)> {
+pub(crate) fn get_snd_product_configs() -> Result<(SndBackendConfigProduct, SndVmmConfigProduct)> {
     Ok((SndBackendConfigProduct {}, SndVmmConfigProduct {}))
 }
 

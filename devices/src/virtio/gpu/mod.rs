@@ -41,6 +41,7 @@ use base::WorkerThread;
 use data_model::*;
 pub use gpu_display::EventDevice;
 use gpu_display::*;
+pub use parameters::AudioDeviceMode;
 pub use parameters::GpuParameters;
 use rutabaga_gfx::*;
 use serde::Deserialize;
