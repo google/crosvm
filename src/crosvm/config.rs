@@ -181,6 +181,9 @@ pub struct PmemOption {
     /// Whether the disk is read-only.
     #[serde(default)]
     pub ro: bool,
+    /// If set, add a kernel command line option making this the root device. Can only be set once.
+    #[serde(default)]
+    pub root: bool,
     /// Experimental option to specify the size in bytes of an anonymous virtual memory area that
     /// will be created to back this device.
     #[serde(default)]
@@ -2359,6 +2362,7 @@ mod tests {
             PmemOption {
                 path: "/path/to/disk.img".into(),
                 ro: false,
+                root: false,
                 vma_size: None,
                 swap_interval: None,
             }
@@ -2375,6 +2379,7 @@ mod tests {
             PmemOption {
                 path: "virtual_path".into(),
                 ro: false,
+                root: false,
                 vma_size: Some(12345),
                 swap_interval: Some(Duration::new(1, 0)),
             }

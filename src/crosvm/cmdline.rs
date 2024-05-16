@@ -2845,7 +2845,16 @@ impl TryFrom<RunCommand> for super::config::Config {
             .filter(|(_, s)| s.root)
             .map(|(i, s)| (format_disk_letter("/dev/sd", i), s.read_only));
 
-        let mut root_devs = virtio_blk_root_devs.chain(virtio_scsi_root_devs);
+        let virtio_pmem_root_devs = cfg
+            .pmems
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.root)
+            .map(|(i, p)| (format!("/dev/pmem{}", i), p.ro));
+
+        let mut root_devs = virtio_blk_root_devs
+            .chain(virtio_scsi_root_devs)
+            .chain(virtio_pmem_root_devs);
         if let Some((root_dev, read_only)) = root_devs.next() {
             cfg.params.push(format!(
                 "root={} {}",
