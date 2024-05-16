@@ -2813,12 +2813,9 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         // If we have a root disk, add the corresponding command-line parameters.
         if let Some(d) = disks.iter().find(|d| d.disk_option.root) {
-            if d.index >= 26 {
-                return Err("ran out of letters for to assign to root disk".to_string());
-            }
             cfg.params.push(format!(
-                "root=/dev/vd{} {}",
-                char::from(b'a' + d.index as u8),
+                "root={} {}",
+                format_disk_letter("/dev/vd", d.index),
                 if d.disk_option.read_only { "ro" } else { "rw" }
             ));
         }
@@ -2829,8 +2826,8 @@ impl TryFrom<RunCommand> for super::config::Config {
         // If we have a root scsi disk, add the corresponding command-line parameters.
         if let Some((i, s)) = cmd.scsi_block.iter().enumerate().find(|(_, s)| s.root) {
             cfg.params.push(format!(
-                "root=/dev/sd{} {}",
-                char::from(b'a' + i as u8),
+                "root={} {}",
+                format_disk_letter("/dev/sd", i),
                 if s.read_only { "ro" } else { "rw" }
             ));
         }
@@ -3538,9 +3535,27 @@ impl TryFrom<RunCommand> for super::config::Config {
     }
 }
 
+// Produce a block device path as used by Linux block devices.
+//
+// Examples for "/dev/vdX":
+// /dev/vda, /dev/vdb, ..., /dev/vdz, /dev/vdaa, /dev/vdab, ...
+fn format_disk_letter(dev_prefix: &str, mut i: usize) -> String {
+    const ALPHABET_LEN: usize = 26; // a to z
+    let mut s = dev_prefix.to_string();
+    let insert_idx = dev_prefix.len();
+    loop {
+        s.insert(insert_idx, char::from(b'a' + (i % ALPHABET_LEN) as u8));
+        i /= ALPHABET_LEN;
+        if i == 0 {
+            break;
+        }
+        i -= 1;
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "config-file")]
     use super::*;
 
     #[test]
@@ -3579,5 +3594,21 @@ mod tests {
                 String::from("fourthparam"),
             ]
         );
+    }
+
+    #[test]
+    fn disk_letter() {
+        assert_eq!(format_disk_letter("/dev/sd", 0), "/dev/sda");
+        assert_eq!(format_disk_letter("/dev/sd", 1), "/dev/sdb");
+        assert_eq!(format_disk_letter("/dev/sd", 25), "/dev/sdz");
+        assert_eq!(format_disk_letter("/dev/sd", 26), "/dev/sdaa");
+        assert_eq!(format_disk_letter("/dev/sd", 27), "/dev/sdab");
+        assert_eq!(format_disk_letter("/dev/sd", 51), "/dev/sdaz");
+        assert_eq!(format_disk_letter("/dev/sd", 52), "/dev/sdba");
+        assert_eq!(format_disk_letter("/dev/sd", 53), "/dev/sdbb");
+        assert_eq!(format_disk_letter("/dev/sd", 78), "/dev/sdca");
+        assert_eq!(format_disk_letter("/dev/sd", 701), "/dev/sdzz");
+        assert_eq!(format_disk_letter("/dev/sd", 702), "/dev/sdaaa");
+        assert_eq!(format_disk_letter("/dev/sd", 703), "/dev/sdaab");
     }
 }
