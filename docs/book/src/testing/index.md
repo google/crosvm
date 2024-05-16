@@ -53,7 +53,16 @@ are only executed when a device-under-test (DUT) is specified when running tests
 End to end tests live in the `e2e_tests` crate. The crate provides a framework to boot a guest with
 crosvm and execut commands in the guest to validate functionality at a high level.
 
-E2E tests are executed just like integration tests.
+E2E tests are executed just like integration tests. By giving
+[nextest's filter expressions](https://nexte.st/book/filter-expressions), you can run a subset of
+the tests.
+
+```sh
+# Run all e2e tests
+./tools/run_tests --dut=vm --filter-expr 'package(e2e_tests)'
+# Run e2e tests whose name contains the string 'boot'.
+./tools/run_tests --dut=vm --filter-expr 'package(e2e_tests) and test(boot)'
+```
 
 ### Downstream Product tests
 
