@@ -18,7 +18,6 @@ use cros_async::Executor;
 use futures::channel::mpsc;
 use futures::FutureExt;
 use hypervisor::ProtectionType;
-use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 pub use sys::run_snd_device;
@@ -55,8 +54,6 @@ use crate::virtio::vhost::user::VhostUserDeviceBuilder;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
-static SND_EXECUTOR: OnceCell<Executor> = OnceCell::new();
-
 // Async workers:
 // 0 - ctrl
 // 1 - event
@@ -64,6 +61,7 @@ static SND_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 // 3 - rx
 const PCM_RESPONSE_WORKER_IDX_OFFSET: usize = 2;
 struct SndBackend {
+    ex: Executor,
     cfg: virtio_snd_config,
     avail_features: u64,
     acked_features: u64,
@@ -89,7 +87,7 @@ struct SndBackendSnapshot {
 }
 
 impl SndBackend {
-    pub fn new(params: Parameters) -> anyhow::Result<Self> {
+    pub fn new(ex: &Executor, params: Parameters) -> anyhow::Result<Self> {
         let cfg = hardcoded_virtio_snd_config(&params);
         let avail_features = virtio::base_features(ProtectionType::Unprotected)
             | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
@@ -117,6 +115,7 @@ impl SndBackend {
         let (rx_send, rx_recv) = mpsc::unbounded();
 
         Ok(SndBackend {
+            ex: ex.clone(),
             cfg,
             avail_features,
             acked_features: 0,
@@ -185,9 +184,8 @@ impl VhostUserDevice for SndBackend {
     }
 
     fn reset(&mut self) {
-        let ex = SND_EXECUTOR.get().expect("Executor not initialized");
         for worker in self.workers.iter_mut().filter_map(Option::take) {
-            let _ = ex.run_until(worker.queue_task.cancel());
+            let _ = self.ex.run_until(worker.queue_task.cancel());
         }
     }
 
@@ -203,15 +201,12 @@ impl VhostUserDevice for SndBackend {
             self.stop_queue(idx)?;
         }
 
-        // Safe because the executor is initialized in main() below.
-        let ex = SND_EXECUTOR.get().expect("Executor not initialized");
-
         let kick_evt = queue
             .event()
             .try_clone()
             .context("failed to clone queue event")?;
-        let mut kick_evt =
-            EventAsync::new(kick_evt, ex).context("failed to create EventAsync for kick_evt")?;
+        let mut kick_evt = EventAsync::new(kick_evt, &self.ex)
+            .context("failed to create EventAsync for kick_evt")?;
         let queue = Rc::new(AsyncRwLock::new(queue));
         let queue_task = match idx {
             0 => {
@@ -221,9 +216,11 @@ impl VhostUserDevice for SndBackend {
                 let tx_send = self.tx_send.clone();
                 let rx_send = self.rx_send.clone();
                 let ctrl_queue = queue.clone();
-                Some(ex.spawn_local(async move {
+
+                let ex_clone = self.ex.clone();
+                Some(self.ex.spawn_local(async move {
                     handle_ctrl_queue(
-                        ex,
+                        &ex_clone,
                         &streams,
                         &snd_data,
                         ctrl_queue,
@@ -242,7 +239,7 @@ impl VhostUserDevice for SndBackend {
             // the Queue so we can return it back in stop_queue. As such, we create a do nothing
             // future to "run" this queue so that we track a WorkerState for it (which is how
             // we return the Queue back).
-            1 => Some(ex.spawn_local(async move { Ok(()) })),
+            1 => Some(self.ex.spawn_local(async move { Ok(()) })),
             2 | 3 => {
                 let (send, recv) = if idx == 2 {
                     (self.tx_send.clone(), self.tx_recv.take())
@@ -252,12 +249,12 @@ impl VhostUserDevice for SndBackend {
                 let mut recv = recv.ok_or_else(|| anyhow!("queue restart is not supported"))?;
                 let streams = Rc::clone(&self.streams);
                 let queue_pcm_queue = queue.clone();
-                let queue_task = ex.spawn_local(async move {
+                let queue_task = self.ex.spawn_local(async move {
                     handle_pcm_queue(&streams, send, queue_pcm_queue, &kick_evt, None).await
                 });
 
                 let queue_response_queue = queue.clone();
-                let response_queue_task = ex.spawn_local(async move {
+                let response_queue_task = self.ex.spawn_local(async move {
                     send_pcm_response_worker(queue_response_queue, doorbell, &mut recv, None).await
                 });
 
@@ -278,14 +275,13 @@ impl VhostUserDevice for SndBackend {
     }
 
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
-        let ex = SND_EXECUTOR.get().expect("Executor not initialized");
         let worker_queue_rc = self
             .workers
             .get_mut(idx)
             .and_then(Option::take)
             .map(|worker| {
                 // Wait for queue_task to be aborted.
-                let _ = ex.run_until(worker.queue_task.cancel());
+                let _ = self.ex.run_until(worker.queue_task.cancel());
                 worker.queue
             });
 
@@ -296,7 +292,7 @@ impl VhostUserDevice for SndBackend {
                 .and_then(Option::take)
             {
                 // Wait for queue_task to be aborted.
-                let _ = ex.run_until(worker.queue_task.cancel());
+                let _ = self.ex.run_until(worker.queue_task.cancel());
             }
         }
 
@@ -363,15 +359,12 @@ impl VhostUserDevice for SndBackend {
         );
         self.acked_features = deser.acked_features;
 
-        // Wondering why we can pass ex to a move block *and* still use it
-        // afterwards? It's a &'static, which is the only kind of reference that
-        // can taken by a future run via spawn/spawn_local.
-        let ex = SND_EXECUTOR.get().expect("executor must be initialized");
+        let ex_clone = self.ex.clone();
         let streams_rc = self.streams.clone();
         let tx_send_clone = self.tx_send.clone();
         let rx_send_clone = self.rx_send.clone();
 
-        let restore_task = ex.spawn_local(async move {
+        let restore_task = self.ex.spawn_local(async move {
             if let Some(stream_infos) = &deser.stream_infos {
                 for (stream, stream_info) in streams_rc.lock().await.iter().zip(stream_infos.iter())
                 {
@@ -382,7 +375,7 @@ impl VhostUserDevice for SndBackend {
                         stream
                             .lock()
                             .await
-                            .prepare(ex, &tx_send_clone, &rx_send_clone)
+                            .prepare(&ex_clone, &tx_send_clone, &rx_send_clone)
                             .await
                             .expect("failed to prepare PCM");
                     }
@@ -397,7 +390,8 @@ impl VhostUserDevice for SndBackend {
                 }
             }
         });
-        ex.run_until(restore_task)
+        self.ex
+            .run_until(restore_task)
             .expect("failed to restore streams");
         Ok(())
     }

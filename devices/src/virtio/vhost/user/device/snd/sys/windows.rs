@@ -22,7 +22,6 @@ use crate::virtio::snd::sys::set_audio_thread_priority;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
 use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
 use crate::virtio::vhost::user::device::snd::SndBackend;
-use crate::virtio::vhost::user::device::snd::SND_EXECUTOR;
 use crate::virtio::vhost::user::VhostUserDeviceBuilder;
 
 pub mod generic;
@@ -106,9 +105,8 @@ pub fn run_snd_device_worker(config: SndBackendConfig) -> anyhow::Result<()> {
         .expect("vhost-user Snd tube must be set");
 
     let ex = Executor::new().context("Failed to create executor")?;
-    let _ = SND_EXECUTOR.set(ex.clone());
 
-    let snd_device = Box::new(SndBackend::new(config.parameters)?);
+    let snd_device = Box::new(SndBackend::new(&ex, config.parameters)?);
 
     // Set the audio thread priority here. This assumes our executor is running on a single thread.
     let _thread_priority_handle = set_audio_thread_priority();
