@@ -1801,6 +1801,7 @@ pub struct RunCommand {
     pub plugin_root: Option<PathBuf>,
 
     #[argh(option)]
+    #[serde(default)]
     #[merge(strategy = append)]
     /// parameters for setting up a virtio-pmem device.
     /// Valid keys:

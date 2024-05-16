@@ -316,8 +316,7 @@ impl TestVmSys {
             "input": "{}",
             "num": 2
           }}
-        ],
-        "pmem": []
+        ]
         "#,
             test_dir.join(CONTROL_PIPE).display(),
             test_dir.join(FROM_GUEST_PIPE).display(),
