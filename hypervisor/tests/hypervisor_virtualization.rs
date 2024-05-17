@@ -23,6 +23,7 @@ use hypervisor::whpx::*;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use hypervisor::MemCacheType::CacheCoherent;
 use hypervisor::*;
+use hypervisor_test_macro::global_asm_data;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
@@ -226,17 +227,21 @@ macro_rules! run_tests {
     };
 }
 
+global_asm_data!(
+    test_minimal_virtualization_code,
+    ".code16",
+    "add ax, bx",
+    "hlt"
+);
+
 // This runs a minimal program under virtualization.
 // It should require only the ability to execute instructions under virtualization, physical
 // memory, the ability to get and set some guest VM registers, and intercepting HLT.
 #[test]
 fn test_minimal_virtualization() {
+    let assembly = test_minimal_virtualization_code::data().to_vec();
     let setup = TestSetup {
-        /*
-            0:  01 d8                   add    eax,ebx
-            2:  f4                      hlt
-        */
-        assembly: vec![0x01, 0xD8, 0xF4],
+        assembly: assembly.clone(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -252,7 +257,9 @@ fn test_minimal_virtualization() {
         setup,
         |_, regs| {
             assert_eq!(regs.rax, 3); // 1 + 2
-            assert_eq!(regs.rip, 0x1003); // After HLT
+
+            // For VMEXIT caused by HLT, the hypervisor will automatically advance the rIP register.
+            assert_eq!(regs.rip, 0x1000 + assembly.len() as u64);
         },
         |_, exit, _| matches!(exit, VcpuExit::Hlt)
     );

@@ -64,6 +64,7 @@ members = [
     "fuzz",
     "gpu_display",
     "hypervisor",
+    "hypervisor/hypervisor_test_macro",
     "io_uring",
     "kernel_cmdline",
     "kernel_loader",

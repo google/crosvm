@@ -32,6 +32,9 @@ vm_memory = { path = "../vm_memory" }
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 kvm_sys = { path = "../kvm_sys" }
 
+[target.'cfg(target_arch = "x86_64")'.dev-dependencies]
+hypervisor_test_macro = { path = "hypervisor_test_macro" }
+
 [target.'cfg(windows)'.dependencies]
 thiserror = "*"
 winapi = "*"

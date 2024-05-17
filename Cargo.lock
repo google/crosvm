@@ -1463,6 +1463,7 @@ dependencies = [
  "downcast-rs",
  "enumn",
  "fnv",
+ "hypervisor_test_macro",
  "kvm_sys",
  "libc",
  "memoffset 0.6.5",
@@ -1476,6 +1477,16 @@ dependencies = [
  "win_util",
  "winapi",
  "windows",
+]
+
+[[package]]
+name = "hypervisor_test_macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote 1.0.33",
+ "rand",
+ "syn 2.0.37",
 ]
 
 [[package]]
