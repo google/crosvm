@@ -61,8 +61,8 @@ const HAX_EXIT_INTERRUPT: u32 = 4;
 const HAX_EXIT_UNKNOWN: u32 = 5;
 // HALT from guest
 const HAX_EXIT_HLT: u32 = 6;
-// Reboot request, like because of triple fault in guest
-const HAX_EXIT_STATECHANGE: u32 = 7;
+// VCPU panic, like because of triple fault in guest
+const HAX_EXIT_VCPU_PANIC: u32 = 7;
 // Paused by crosvm setting _exit_reason to HAX_EXIT_PAUSED before entry
 pub(crate) const HAX_EXIT_PAUSED: u32 = 8;
 // MMIO instruction emulation through io_buffer
@@ -109,7 +109,7 @@ impl HaxmVcpu {
         }
 
         // Also read efer MSR
-        state._efer = self.get_msr(IA32_EFER)? as u32;
+        state.efer = self.get_msr(IA32_EFER)? as u32;
 
         Ok(VcpuState { state })
     }
@@ -122,7 +122,7 @@ impl HaxmVcpu {
         }
 
         // Also set efer MSR
-        self.set_msr(IA32_EFER, state.state._efer as u64)
+        self.set_msr(IA32_EFER, state.state.efer as u64)
     }
 }
 
@@ -153,7 +153,7 @@ impl Vcpu for HaxmVcpu {
         // Crosvm's HAXM implementation does not use the _exit_reason, so it's fine if we
         // overwrite it.
         unsafe {
-            (*self.tunnel)._exit_reason = if exit { HAX_EXIT_PAUSED } else { 0 };
+            (*self.tunnel).exit_reason = if exit { HAX_EXIT_PAUSED } else { 0 };
         }
     }
 
@@ -180,7 +180,7 @@ impl Vcpu for HaxmVcpu {
         // kernel told us how large it was.
         // Verify that the handler is called for mmio context only.
         unsafe {
-            assert!((*self.tunnel)._exit_status == HAX_EXIT_FAST_MMIO);
+            assert!((*self.tunnel).exit_status == HAX_EXIT_FAST_MMIO);
         }
         let mmio = self.io_buffer as *mut hax_fastmmio;
         let (address, size, direction) =
@@ -235,15 +235,15 @@ impl Vcpu for HaxmVcpu {
         // kernel told us how large it was.
         // Verify that the handler is called for io context only.
         unsafe {
-            assert!((*self.tunnel)._exit_status == HAX_EXIT_IO);
+            assert!((*self.tunnel).exit_status == HAX_EXIT_IO);
         }
         // SAFETY:
         // Safe because the exit_reason (which comes from the kernel) told us which
         // union field to use.
         let io = unsafe { (*self.tunnel).__bindgen_anon_1.io };
-        let address = io._port.into();
-        let size = (io._count as usize) * (io._size as usize);
-        match io._direction as u32 {
+        let address = io.port.into();
+        let size = (io.count as usize) * (io.size as usize);
+        match io.direction as u32 {
             HAX_EXIT_DIRECTION_PIO_IN => {
                 if let Some(data) = handle_fn(IoParams {
                     address,
@@ -295,13 +295,13 @@ impl Vcpu for HaxmVcpu {
         // SAFETY:
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
-        let exit_status = unsafe { (*self.tunnel)._exit_status };
+        let exit_status = unsafe { (*self.tunnel).exit_status };
 
         match exit_status {
             HAX_EXIT_IO => Ok(VcpuExit::Io),
             HAX_EXIT_INTERRUPT => Ok(VcpuExit::Intr),
             HAX_EXIT_HLT => Ok(VcpuExit::Hlt),
-            HAX_EXIT_STATECHANGE => Ok(VcpuExit::Shutdown),
+            HAX_EXIT_VCPU_PANIC => Ok(VcpuExit::Shutdown),
             HAX_EXIT_FAST_MMIO => Ok(VcpuExit::Mmio),
             HAX_EXIT_PAGEFAULT => Ok(VcpuExit::Exception),
             HAX_EXIT_DEBUG => Ok(VcpuExit::Debug),
@@ -571,59 +571,59 @@ impl VcpuState {
                     .__bindgen_anon_1
                     .__bindgen_anon_1
                     .__bindgen_anon_1
-                    ._rax,
+                    .rax,
                 rbx: self
                     .state
                     .__bindgen_anon_1
                     .__bindgen_anon_1
                     .__bindgen_anon_4
-                    ._rbx,
+                    .rbx,
                 rcx: self
                     .state
                     .__bindgen_anon_1
                     .__bindgen_anon_1
                     .__bindgen_anon_2
-                    ._rcx,
+                    .rcx,
                 rdx: self
                     .state
                     .__bindgen_anon_1
                     .__bindgen_anon_1
                     .__bindgen_anon_3
-                    ._rdx,
+                    .rdx,
                 rsi: self
                     .state
                     .__bindgen_anon_1
                     .__bindgen_anon_1
                     .__bindgen_anon_7
-                    ._rsi,
+                    .rsi,
                 rdi: self
                     .state
                     .__bindgen_anon_1
                     .__bindgen_anon_1
                     .__bindgen_anon_8
-                    ._rdi,
+                    .rdi,
                 rsp: self
                     .state
                     .__bindgen_anon_1
                     .__bindgen_anon_1
                     .__bindgen_anon_5
-                    ._rsp,
+                    .rsp,
                 rbp: self
                     .state
                     .__bindgen_anon_1
                     .__bindgen_anon_1
                     .__bindgen_anon_6
-                    ._rbp,
-                r8: self.state.__bindgen_anon_1.__bindgen_anon_1._r8,
-                r9: self.state.__bindgen_anon_1.__bindgen_anon_1._r9,
-                r10: self.state.__bindgen_anon_1.__bindgen_anon_1._r10,
-                r11: self.state.__bindgen_anon_1.__bindgen_anon_1._r11,
-                r12: self.state.__bindgen_anon_1.__bindgen_anon_1._r12,
-                r13: self.state.__bindgen_anon_1.__bindgen_anon_1._r13,
-                r14: self.state.__bindgen_anon_1.__bindgen_anon_1._r14,
-                r15: self.state.__bindgen_anon_1.__bindgen_anon_1._r15,
-                rip: self.state.__bindgen_anon_2._rip,
-                rflags: self.state.__bindgen_anon_3._rflags,
+                    .rbp,
+                r8: self.state.__bindgen_anon_1.__bindgen_anon_1.r8,
+                r9: self.state.__bindgen_anon_1.__bindgen_anon_1.r9,
+                r10: self.state.__bindgen_anon_1.__bindgen_anon_1.r10,
+                r11: self.state.__bindgen_anon_1.__bindgen_anon_1.r11,
+                r12: self.state.__bindgen_anon_1.__bindgen_anon_1.r12,
+                r13: self.state.__bindgen_anon_1.__bindgen_anon_1.r13,
+                r14: self.state.__bindgen_anon_1.__bindgen_anon_1.r14,
+                r15: self.state.__bindgen_anon_1.__bindgen_anon_1.r15,
+                rip: self.state.__bindgen_anon_2.rip,
+                rflags: self.state.__bindgen_anon_3.rflags,
             }
         }
     }
@@ -633,114 +633,114 @@ impl VcpuState {
             .__bindgen_anon_1
             .__bindgen_anon_1
             .__bindgen_anon_1
-            ._rax = regs.rax;
+            .rax = regs.rax;
         self.state
             .__bindgen_anon_1
             .__bindgen_anon_1
             .__bindgen_anon_4
-            ._rbx = regs.rbx;
+            .rbx = regs.rbx;
         self.state
             .__bindgen_anon_1
             .__bindgen_anon_1
             .__bindgen_anon_2
-            ._rcx = regs.rcx;
+            .rcx = regs.rcx;
         self.state
             .__bindgen_anon_1
             .__bindgen_anon_1
             .__bindgen_anon_3
-            ._rdx = regs.rdx;
+            .rdx = regs.rdx;
         self.state
             .__bindgen_anon_1
             .__bindgen_anon_1
             .__bindgen_anon_7
-            ._rsi = regs.rsi;
+            .rsi = regs.rsi;
         self.state
             .__bindgen_anon_1
             .__bindgen_anon_1
             .__bindgen_anon_8
-            ._rdi = regs.rdi;
+            .rdi = regs.rdi;
         self.state
             .__bindgen_anon_1
             .__bindgen_anon_1
             .__bindgen_anon_5
-            ._rsp = regs.rsp;
+            .rsp = regs.rsp;
         self.state
             .__bindgen_anon_1
             .__bindgen_anon_1
             .__bindgen_anon_6
-            ._rbp = regs.rbp;
-        self.state.__bindgen_anon_1.__bindgen_anon_1._r8 = regs.r8;
-        self.state.__bindgen_anon_1.__bindgen_anon_1._r9 = regs.r9;
-        self.state.__bindgen_anon_1.__bindgen_anon_1._r10 = regs.r10;
-        self.state.__bindgen_anon_1.__bindgen_anon_1._r11 = regs.r11;
-        self.state.__bindgen_anon_1.__bindgen_anon_1._r12 = regs.r12;
-        self.state.__bindgen_anon_1.__bindgen_anon_1._r13 = regs.r13;
-        self.state.__bindgen_anon_1.__bindgen_anon_1._r14 = regs.r14;
-        self.state.__bindgen_anon_1.__bindgen_anon_1._r15 = regs.r15;
-        self.state.__bindgen_anon_2._rip = regs.rip;
-        self.state.__bindgen_anon_3._rflags = regs.rflags;
+            .rbp = regs.rbp;
+        self.state.__bindgen_anon_1.__bindgen_anon_1.r8 = regs.r8;
+        self.state.__bindgen_anon_1.__bindgen_anon_1.r9 = regs.r9;
+        self.state.__bindgen_anon_1.__bindgen_anon_1.r10 = regs.r10;
+        self.state.__bindgen_anon_1.__bindgen_anon_1.r11 = regs.r11;
+        self.state.__bindgen_anon_1.__bindgen_anon_1.r12 = regs.r12;
+        self.state.__bindgen_anon_1.__bindgen_anon_1.r13 = regs.r13;
+        self.state.__bindgen_anon_1.__bindgen_anon_1.r14 = regs.r14;
+        self.state.__bindgen_anon_1.__bindgen_anon_1.r15 = regs.r15;
+        self.state.__bindgen_anon_2.rip = regs.rip;
+        self.state.__bindgen_anon_3.rflags = regs.rflags;
     }
 
     fn get_sregs(&self) -> Sregs {
         Sregs {
-            cs: Segment::from(&self.state._cs),
-            ds: Segment::from(&self.state._ds),
-            es: Segment::from(&self.state._es),
-            fs: Segment::from(&self.state._fs),
-            gs: Segment::from(&self.state._gs),
-            ss: Segment::from(&self.state._ss),
-            tr: Segment::from(&self.state._tr),
-            ldt: Segment::from(&self.state._ldt),
-            gdt: DescriptorTable::from(&self.state._gdt),
-            idt: DescriptorTable::from(&self.state._idt),
-            cr0: self.state._cr0,
-            cr2: self.state._cr2,
-            cr3: self.state._cr3,
-            cr4: self.state._cr4,
+            cs: Segment::from(&self.state.cs),
+            ds: Segment::from(&self.state.ds),
+            es: Segment::from(&self.state.es),
+            fs: Segment::from(&self.state.fs),
+            gs: Segment::from(&self.state.gs),
+            ss: Segment::from(&self.state.ss),
+            tr: Segment::from(&self.state.tr),
+            ldt: Segment::from(&self.state.ldt),
+            gdt: DescriptorTable::from(&self.state.gdt),
+            idt: DescriptorTable::from(&self.state.idt),
+            cr0: self.state.cr0,
+            cr2: self.state.cr2,
+            cr3: self.state.cr3,
+            cr4: self.state.cr4,
             // HAXM does not support setting cr8
             cr8: 0,
-            efer: self.state._efer as u64,
+            efer: self.state.efer as u64,
         }
     }
 
     fn set_sregs(&mut self, sregs: &Sregs) {
-        self.state._cs = segment_desc_t::from(&sregs.cs);
-        self.state._ds = segment_desc_t::from(&sregs.ds);
-        self.state._es = segment_desc_t::from(&sregs.es);
-        self.state._fs = segment_desc_t::from(&sregs.fs);
-        self.state._gs = segment_desc_t::from(&sregs.gs);
-        self.state._ss = segment_desc_t::from(&sregs.ss);
-        self.state._tr = segment_desc_t::from(&sregs.tr);
-        self.state._ldt = segment_desc_t::from(&sregs.ldt);
-        self.state._gdt = segment_desc_t::from(&sregs.gdt);
-        self.state._idt = segment_desc_t::from(&sregs.idt);
-        self.state._cr0 = sregs.cr0;
-        self.state._cr2 = sregs.cr2;
-        self.state._cr3 = sregs.cr3;
-        self.state._cr4 = sregs.cr4;
-        self.state._efer = sregs.efer as u32;
+        self.state.cs = segment_desc_t::from(&sregs.cs);
+        self.state.ds = segment_desc_t::from(&sregs.ds);
+        self.state.es = segment_desc_t::from(&sregs.es);
+        self.state.fs = segment_desc_t::from(&sregs.fs);
+        self.state.gs = segment_desc_t::from(&sregs.gs);
+        self.state.ss = segment_desc_t::from(&sregs.ss);
+        self.state.tr = segment_desc_t::from(&sregs.tr);
+        self.state.ldt = segment_desc_t::from(&sregs.ldt);
+        self.state.gdt = segment_desc_t::from(&sregs.gdt);
+        self.state.idt = segment_desc_t::from(&sregs.idt);
+        self.state.cr0 = sregs.cr0;
+        self.state.cr2 = sregs.cr2;
+        self.state.cr3 = sregs.cr3;
+        self.state.cr4 = sregs.cr4;
+        self.state.efer = sregs.efer as u32;
     }
 
     fn get_debugregs(&self) -> DebugRegs {
         DebugRegs {
             db: [
-                self.state._dr0,
-                self.state._dr1,
-                self.state._dr2,
-                self.state._dr3,
+                self.state.dr0,
+                self.state.dr1,
+                self.state.dr2,
+                self.state.dr3,
             ],
-            dr6: self.state._dr6,
-            dr7: self.state._dr7,
+            dr6: self.state.dr6,
+            dr7: self.state.dr7,
         }
     }
 
     fn set_debugregs(&mut self, debugregs: &DebugRegs) {
-        self.state._dr0 = debugregs.db[0];
-        self.state._dr1 = debugregs.db[1];
-        self.state._dr2 = debugregs.db[2];
-        self.state._dr3 = debugregs.db[3];
-        self.state._dr6 = debugregs.dr6;
-        self.state._dr7 = debugregs.dr7;
+        self.state.dr0 = debugregs.db[0];
+        self.state.dr1 = debugregs.db[1];
+        self.state.dr2 = debugregs.db[2];
+        self.state.dr3 = debugregs.db[3];
+        self.state.dr6 = debugregs.dr6;
+        self.state.dr7 = debugregs.dr7;
     }
 }
 

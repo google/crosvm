@@ -17,10 +17,9 @@ See instructions from: https://rust-lang.github.io/rust-bindgen/print.html
   structs, there's a bindgen bug for this:
   https://github.com/rust-lang/rust-bindgen/issues/1538
 
-  I removed the align from:
-    - interruptibility_state_t__bindgen_ty_1
+  I removed the align attr. from:
     - segment_desc_t__bindgen_ty_1__bindgen_ty_1
-*/
+ */
 #![allow(clippy::undocumented_unsafe_blocks)]
 
 #[repr(C)]
@@ -389,7 +388,7 @@ impl Default for interruptibility_state_t {
 #[derive(Copy, Clone)]
 pub struct segment_desc_t {
     pub selector: u16,
-    pub _dummy: u16,
+    pub dummy: u16,
     pub limit: u32,
     pub base: u64,
     pub __bindgen_anon_1: segment_desc_t__bindgen_ty_1,
@@ -630,13 +629,13 @@ fn bindgen_test_layout_segment_desc_t() {
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._dummy) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).dummy) as usize - ptr as usize },
         2usize,
         concat!(
             "Offset of field: ",
             stringify!(segment_desc_t),
             "::",
-            stringify!(_dummy)
+            stringify!(dummy)
         )
     );
     assert_eq!(
@@ -685,39 +684,39 @@ pub struct vcpu_state_t {
     pub __bindgen_anon_1: vcpu_state_t__bindgen_ty_1,
     pub __bindgen_anon_2: vcpu_state_t__bindgen_ty_2,
     pub __bindgen_anon_3: vcpu_state_t__bindgen_ty_3,
-    pub _cs: segment_desc_t,
-    pub _ss: segment_desc_t,
-    pub _ds: segment_desc_t,
-    pub _es: segment_desc_t,
-    pub _fs: segment_desc_t,
-    pub _gs: segment_desc_t,
-    pub _ldt: segment_desc_t,
-    pub _tr: segment_desc_t,
-    pub _gdt: segment_desc_t,
-    pub _idt: segment_desc_t,
-    pub _cr0: u64,
-    pub _cr2: u64,
-    pub _cr3: u64,
-    pub _cr4: u64,
-    pub _dr0: u64,
-    pub _dr1: u64,
-    pub _dr2: u64,
-    pub _dr3: u64,
-    pub _dr6: u64,
-    pub _dr7: u64,
-    pub _pde: u64,
-    pub _efer: u32,
-    pub _sysenter_cs: u32,
-    pub _sysenter_eip: u64,
-    pub _sysenter_esp: u64,
-    pub _activity_state: u32,
+    pub cs: segment_desc_t,
+    pub ss: segment_desc_t,
+    pub ds: segment_desc_t,
+    pub es: segment_desc_t,
+    pub fs: segment_desc_t,
+    pub gs: segment_desc_t,
+    pub ldt: segment_desc_t,
+    pub tr: segment_desc_t,
+    pub gdt: segment_desc_t,
+    pub idt: segment_desc_t,
+    pub cr0: u64,
+    pub cr2: u64,
+    pub cr3: u64,
+    pub cr4: u64,
+    pub dr0: u64,
+    pub dr1: u64,
+    pub dr2: u64,
+    pub dr3: u64,
+    pub dr6: u64,
+    pub dr7: u64,
+    pub pde: u64,
+    pub efer: u32,
+    pub sysenter_cs: u32,
+    pub sysenter_eip: u64,
+    pub sysenter_esp: u64,
+    pub activity_state: u32,
     pub pad: u32,
-    pub _interruptibility_state: interruptibility_state_t,
+    pub interruptibility_state: interruptibility_state_t,
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union vcpu_state_t__bindgen_ty_1 {
-    pub _regs: [u64; 16usize],
+    pub regs: [u64; 16usize],
     pub __bindgen_anon_1: vcpu_state_t__bindgen_ty_1__bindgen_ty_1,
 }
 #[repr(C)]
@@ -731,28 +730,28 @@ pub struct vcpu_state_t__bindgen_ty_1__bindgen_ty_1 {
     pub __bindgen_anon_6: vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_6,
     pub __bindgen_anon_7: vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_7,
     pub __bindgen_anon_8: vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_8,
-    pub _r8: u64,
-    pub _r9: u64,
-    pub _r10: u64,
-    pub _r11: u64,
-    pub _r12: u64,
-    pub _r13: u64,
-    pub _r14: u64,
-    pub _r15: u64,
+    pub r8: u64,
+    pub r9: u64,
+    pub r10: u64,
+    pub r11: u64,
+    pub r12: u64,
+    pub r13: u64,
+    pub r14: u64,
+    pub r15: u64,
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1 {
     pub __bindgen_anon_1: vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1,
-    pub _ax: u16,
-    pub _eax: u32,
-    pub _rax: u64,
+    pub ax: u16,
+    pub eax: u32,
+    pub rax: u64,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1 {
-    pub _al: u8,
-    pub _ah: u8,
+    pub al: u8,
+    pub ah: u8,
 }
 #[test]
 fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1() {
@@ -779,23 +778,23 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1__b
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._al) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).al) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_al)
+            stringify!(al)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._ah) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).ah) as usize - ptr as usize },
         1usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_ah)
+            stringify!(ah)
         )
     );
 }
@@ -821,33 +820,33 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1() 
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._ax) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).ax) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_ax)
+            stringify!(ax)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._eax) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).eax) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_eax)
+            stringify!(eax)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._rax) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).rax) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_rax)
+            stringify!(rax)
         )
     );
 }
@@ -864,15 +863,15 @@ impl Default for vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1 {
 #[derive(Copy, Clone)]
 pub union vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2 {
     pub __bindgen_anon_1: vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1,
-    pub _cx: u16,
-    pub _ecx: u32,
-    pub _rcx: u64,
+    pub cx: u16,
+    pub ecx: u32,
+    pub rcx: u64,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1 {
-    pub _cl: u8,
-    pub _ch: u8,
+    pub cl: u8,
+    pub ch: u8,
 }
 #[test]
 fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1() {
@@ -899,23 +898,23 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2__b
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._cl) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).cl) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1),
             "::",
-            stringify!(_cl)
+            stringify!(cl)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._ch) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).ch) as usize - ptr as usize },
         1usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1),
             "::",
-            stringify!(_ch)
+            stringify!(ch)
         )
     );
 }
@@ -941,33 +940,33 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2() 
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._cx) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).cx) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2),
             "::",
-            stringify!(_cx)
+            stringify!(cx)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._ecx) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).ecx) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2),
             "::",
-            stringify!(_ecx)
+            stringify!(ecx)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._rcx) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).rcx) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2),
             "::",
-            stringify!(_rcx)
+            stringify!(rcx)
         )
     );
 }
@@ -984,15 +983,15 @@ impl Default for vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2 {
 #[derive(Copy, Clone)]
 pub union vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3 {
     pub __bindgen_anon_1: vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3__bindgen_ty_1,
-    pub _dx: u16,
-    pub _edx: u32,
-    pub _rdx: u64,
+    pub dx: u16,
+    pub edx: u32,
+    pub rdx: u64,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3__bindgen_ty_1 {
-    pub _dl: u8,
-    pub _dh: u8,
+    pub dl: u8,
+    pub dh: u8,
 }
 #[test]
 fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3__bindgen_ty_1() {
@@ -1019,23 +1018,23 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3__b
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._dl) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).dl) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3__bindgen_ty_1),
             "::",
-            stringify!(_dl)
+            stringify!(dl)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._dh) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).dh) as usize - ptr as usize },
         1usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3__bindgen_ty_1),
             "::",
-            stringify!(_dh)
+            stringify!(dh)
         )
     );
 }
@@ -1061,33 +1060,33 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3() 
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._dx) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).dx) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3),
             "::",
-            stringify!(_dx)
+            stringify!(dx)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._edx) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).edx) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3),
             "::",
-            stringify!(_edx)
+            stringify!(edx)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._rdx) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).rdx) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3),
             "::",
-            stringify!(_rdx)
+            stringify!(rdx)
         )
     );
 }
@@ -1104,15 +1103,15 @@ impl Default for vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_3 {
 #[derive(Copy, Clone)]
 pub union vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4 {
     pub __bindgen_anon_1: vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4__bindgen_ty_1,
-    pub _bx: u16,
-    pub _ebx: u32,
-    pub _rbx: u64,
+    pub bx: u16,
+    pub ebx: u32,
+    pub rbx: u64,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4__bindgen_ty_1 {
-    pub _bl: u8,
-    pub _bh: u8,
+    pub bl: u8,
+    pub bh: u8,
 }
 #[test]
 fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4__bindgen_ty_1() {
@@ -1139,23 +1138,23 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4__b
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._bl) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).bl) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4__bindgen_ty_1),
             "::",
-            stringify!(_bl)
+            stringify!(bl)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._bh) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).bh) as usize - ptr as usize },
         1usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4__bindgen_ty_1),
             "::",
-            stringify!(_bh)
+            stringify!(bh)
         )
     );
 }
@@ -1181,33 +1180,33 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4() 
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._bx) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).bx) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4),
             "::",
-            stringify!(_bx)
+            stringify!(bx)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._ebx) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).ebx) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4),
             "::",
-            stringify!(_ebx)
+            stringify!(ebx)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._rbx) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).rbx) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4),
             "::",
-            stringify!(_rbx)
+            stringify!(rbx)
         )
     );
 }
@@ -1223,9 +1222,9 @@ impl Default for vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_4 {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_5 {
-    pub _sp: u16,
-    pub _esp: u32,
-    pub _rsp: u64,
+    pub sp: u16,
+    pub esp: u32,
+    pub rsp: u64,
 }
 #[test]
 fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_5() {
@@ -1249,33 +1248,33 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_5() 
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._sp) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).sp) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_5),
             "::",
-            stringify!(_sp)
+            stringify!(sp)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._esp) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).esp) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_5),
             "::",
-            stringify!(_esp)
+            stringify!(esp)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._rsp) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).rsp) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_5),
             "::",
-            stringify!(_rsp)
+            stringify!(rsp)
         )
     );
 }
@@ -1291,9 +1290,9 @@ impl Default for vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_5 {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_6 {
-    pub _bp: u16,
-    pub _ebp: u32,
-    pub _rbp: u64,
+    pub bp: u16,
+    pub ebp: u32,
+    pub rbp: u64,
 }
 #[test]
 fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_6() {
@@ -1317,33 +1316,33 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_6() 
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._bp) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).bp) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_6),
             "::",
-            stringify!(_bp)
+            stringify!(bp)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._ebp) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).ebp) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_6),
             "::",
-            stringify!(_ebp)
+            stringify!(ebp)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._rbp) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).rbp) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_6),
             "::",
-            stringify!(_rbp)
+            stringify!(rbp)
         )
     );
 }
@@ -1359,9 +1358,9 @@ impl Default for vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_6 {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_7 {
-    pub _si: u16,
-    pub _esi: u32,
-    pub _rsi: u64,
+    pub si: u16,
+    pub esi: u32,
+    pub rsi: u64,
 }
 #[test]
 fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_7() {
@@ -1385,33 +1384,33 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_7() 
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._si) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).si) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_7),
             "::",
-            stringify!(_si)
+            stringify!(si)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._esi) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).esi) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_7),
             "::",
-            stringify!(_esi)
+            stringify!(esi)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._rsi) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).rsi) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_7),
             "::",
-            stringify!(_rsi)
+            stringify!(rsi)
         )
     );
 }
@@ -1427,9 +1426,9 @@ impl Default for vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_7 {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_8 {
-    pub _di: u16,
-    pub _edi: u32,
-    pub _rdi: u64,
+    pub di: u16,
+    pub edi: u32,
+    pub rdi: u64,
 }
 #[test]
 fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_8() {
@@ -1453,33 +1452,33 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_8() 
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._di) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).di) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_8),
             "::",
-            stringify!(_di)
+            stringify!(di)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._edi) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).edi) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_8),
             "::",
-            stringify!(_edi)
+            stringify!(edi)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._rdi) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).rdi) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1__bindgen_ty_8),
             "::",
-            stringify!(_rdi)
+            stringify!(rdi)
         )
     );
 }
@@ -1514,83 +1513,83 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._r8) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).r8) as usize - ptr as usize },
         64usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_r8)
+            stringify!(r8)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._r9) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).r9) as usize - ptr as usize },
         72usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_r9)
+            stringify!(r9)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._r10) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).r10) as usize - ptr as usize },
         80usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_r10)
+            stringify!(r10)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._r11) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).r11) as usize - ptr as usize },
         88usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_r11)
+            stringify!(r11)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._r12) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).r12) as usize - ptr as usize },
         96usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_r12)
+            stringify!(r12)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._r13) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).r13) as usize - ptr as usize },
         104usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_r13)
+            stringify!(r13)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._r14) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).r14) as usize - ptr as usize },
         112usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_r14)
+            stringify!(r14)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._r15) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).r15) as usize - ptr as usize },
         120usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_r15)
+            stringify!(r15)
         )
     );
 }
@@ -1619,13 +1618,13 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_1() {
         concat!("Alignment of ", stringify!(vcpu_state_t__bindgen_ty_1))
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._regs) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).regs) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_1),
             "::",
-            stringify!(_regs)
+            stringify!(regs)
         )
     );
 }
@@ -1641,8 +1640,8 @@ impl Default for vcpu_state_t__bindgen_ty_1 {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union vcpu_state_t__bindgen_ty_2 {
-    pub _eip: u32,
-    pub _rip: u64,
+    pub eip: u32,
+    pub rip: u64,
 }
 #[test]
 fn bindgen_test_layout_vcpu_state_t__bindgen_ty_2() {
@@ -1660,23 +1659,23 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_2() {
         concat!("Alignment of ", stringify!(vcpu_state_t__bindgen_ty_2))
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._eip) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).eip) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_2),
             "::",
-            stringify!(_eip)
+            stringify!(eip)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._rip) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).rip) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_2),
             "::",
-            stringify!(_rip)
+            stringify!(rip)
         )
     );
 }
@@ -1692,8 +1691,8 @@ impl Default for vcpu_state_t__bindgen_ty_2 {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union vcpu_state_t__bindgen_ty_3 {
-    pub _eflags: u32,
-    pub _rflags: u64,
+    pub eflags: u32,
+    pub rflags: u64,
 }
 #[test]
 fn bindgen_test_layout_vcpu_state_t__bindgen_ty_3() {
@@ -1711,23 +1710,23 @@ fn bindgen_test_layout_vcpu_state_t__bindgen_ty_3() {
         concat!("Alignment of ", stringify!(vcpu_state_t__bindgen_ty_3))
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._eflags) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).eflags) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_3),
             "::",
-            stringify!(_eflags)
+            stringify!(eflags)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._rflags) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).rflags) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t__bindgen_ty_3),
             "::",
-            stringify!(_rflags)
+            stringify!(rflags)
         )
     );
 }
@@ -1755,263 +1754,263 @@ fn bindgen_test_layout_vcpu_state_t() {
         concat!("Alignment of ", stringify!(vcpu_state_t))
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._cs) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).cs) as usize - ptr as usize },
         144usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_cs)
+            stringify!(cs)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._ss) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).ss) as usize - ptr as usize },
         168usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_ss)
+            stringify!(ss)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._ds) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).ds) as usize - ptr as usize },
         192usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_ds)
+            stringify!(ds)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._es) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).es) as usize - ptr as usize },
         216usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_es)
+            stringify!(es)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._fs) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).fs) as usize - ptr as usize },
         240usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_fs)
+            stringify!(fs)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._gs) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).gs) as usize - ptr as usize },
         264usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_gs)
+            stringify!(gs)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._ldt) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).ldt) as usize - ptr as usize },
         288usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_ldt)
+            stringify!(ldt)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._tr) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).tr) as usize - ptr as usize },
         312usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_tr)
+            stringify!(tr)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._gdt) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).gdt) as usize - ptr as usize },
         336usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_gdt)
+            stringify!(gdt)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._idt) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).idt) as usize - ptr as usize },
         360usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_idt)
+            stringify!(idt)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._cr0) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).cr0) as usize - ptr as usize },
         384usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_cr0)
+            stringify!(cr0)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._cr2) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).cr2) as usize - ptr as usize },
         392usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_cr2)
+            stringify!(cr2)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._cr3) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).cr3) as usize - ptr as usize },
         400usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_cr3)
+            stringify!(cr3)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._cr4) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).cr4) as usize - ptr as usize },
         408usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_cr4)
+            stringify!(cr4)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._dr0) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).dr0) as usize - ptr as usize },
         416usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_dr0)
+            stringify!(dr0)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._dr1) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).dr1) as usize - ptr as usize },
         424usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_dr1)
+            stringify!(dr1)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._dr2) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).dr2) as usize - ptr as usize },
         432usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_dr2)
+            stringify!(dr2)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._dr3) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).dr3) as usize - ptr as usize },
         440usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_dr3)
+            stringify!(dr3)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._dr6) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).dr6) as usize - ptr as usize },
         448usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_dr6)
+            stringify!(dr6)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._dr7) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).dr7) as usize - ptr as usize },
         456usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_dr7)
+            stringify!(dr7)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._pde) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).pde) as usize - ptr as usize },
         464usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_pde)
+            stringify!(pde)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._efer) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).efer) as usize - ptr as usize },
         472usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_efer)
+            stringify!(efer)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._sysenter_cs) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).sysenter_cs) as usize - ptr as usize },
         476usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_sysenter_cs)
+            stringify!(sysenter_cs)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._sysenter_eip) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).sysenter_eip) as usize - ptr as usize },
         480usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_sysenter_eip)
+            stringify!(sysenter_eip)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._sysenter_esp) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).sysenter_esp) as usize - ptr as usize },
         488usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_sysenter_esp)
+            stringify!(sysenter_esp)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._activity_state) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).activity_state) as usize - ptr as usize },
         496usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_activity_state)
+            stringify!(activity_state)
         )
     );
     assert_eq!(
@@ -2025,13 +2024,13 @@ fn bindgen_test_layout_vcpu_state_t() {
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._interruptibility_state) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).interruptibility_state) as usize - ptr as usize },
         504usize,
         concat!(
             "Offset of field: ",
             stringify!(vcpu_state_t),
             "::",
-            stringify!(_interruptibility_state)
+            stringify!(interruptibility_state)
         )
     );
 }
@@ -2503,12 +2502,92 @@ fn bindgen_test_layout_hax_msr_data() {
         )
     );
 }
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_UNKNOWN: vcpu_panic_reason = 0;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_LOAD_FAILED_IN_VMX_EXECUTE:
+    vcpu_panic_reason = 1;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_LOAD_FAILED_IN_VMX_VMWRITE:
+    vcpu_panic_reason = 2;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_LOAD_FAILED_WHILE_VCPU_PREPARE:
+    vcpu_panic_reason = 3;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_LOAD_FAILED_IN_VCPU_PREPARE:
+    vcpu_panic_reason = 4;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_LOAD_FAILED_WHILE_VCPU_VMREAD_ALL:
+    vcpu_panic_reason = 5;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_LOAD_FAILED_WHILE_EXIT_CR_ACCESS:
+    vcpu_panic_reason = 6;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_LOAD_FAILED_WHILE_CLTS: vcpu_panic_reason =
+    7;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_LOAD_FAILED_WHILE_LMSW: vcpu_panic_reason =
+    8;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_LOAD_FAILED_ON_VCPU_SET_REGS:
+    vcpu_panic_reason = 9;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_LOAD_FAILED_IN_VMREAD: vcpu_panic_reason =
+    10;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_PUT_FAILED_WHILE_VCPU_VMREAD_ALL:
+    vcpu_panic_reason = 11;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_PUT_FAILED_IN_VMX_VMWRITE:
+    vcpu_panic_reason = 12;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_PUT_FAILED_WHILE_EXIT_CR_ACCESS:
+    vcpu_panic_reason = 13;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_PUT_FAILED_WHILE_CLTS: vcpu_panic_reason =
+    14;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_PUT_FAILED_WHILE_LMSW: vcpu_panic_reason =
+    15;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_PUT_FAILED_ON_VCPU_SET_REGS:
+    vcpu_panic_reason = 16;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VMCS_PUT_FAILED_IN_VMREAD: vcpu_panic_reason = 17;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_PUT_VMCS_FAILED: vcpu_panic_reason = 18;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_PUT_VMCS_FAILED_BEFORE_VMEXIT: vcpu_panic_reason =
+    19;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_READ_GUEST_VIRTUAL_ERROR: vcpu_panic_reason = 20;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_READ_GUEST_VIRTUAL_ERROR_IN_STRING_IO:
+    vcpu_panic_reason = 21;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_WRITE_GUEST_VIRTUAL_ERROR: vcpu_panic_reason = 22;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_WRITE_GUEST_VIRTUAL_FAILED: vcpu_panic_reason =
+    23;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_IO_POST_UNEXPECTED_PAGE_FAULT: vcpu_panic_reason =
+    24;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_MMIO_FETCH_INSTRUCTION_FAILED: vcpu_panic_reason =
+    25;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_EM_DECODE_INS_FAILED: vcpu_panic_reason = 26;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_EM_EMULATE_INS_FAILED: vcpu_panic_reason = 27;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_EM_EMULATE_INS_FAILED_IN_VCPU_EXECUTE:
+    vcpu_panic_reason = 28;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VCPU_READ_GPR_INVALID_REGISTER_INDEX:
+    vcpu_panic_reason = 29;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_VCPU_WRITE_GPR_INVALID_REGISTER_INDEX:
+    vcpu_panic_reason = 30;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_TRIPLE_FAULT: vcpu_panic_reason = 31;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_INVALID_GUEST_STATE: vcpu_panic_reason = 32;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_PAGE_FAULT_WHILE_EPT_IS_ENABLED:
+    vcpu_panic_reason = 33;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_MACHINE_CHECK: vcpu_panic_reason = 34;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_DOUBLE_FAULT: vcpu_panic_reason = 35;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_FAILED_TO_RELOAD_PDPT_FOR_EPT_PAE_MODE:
+    vcpu_panic_reason = 36;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_64_BIT_GUEST_NOT_ALLOWED_ON_32_BIT_HOST:
+    vcpu_panic_reason = 37;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_UNEXPECTED_EPT_MISCONFIGURATION:
+    vcpu_panic_reason = 38;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_INCORRECT_EPT_SETTING: vcpu_panic_reason = 39;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_EPT_HANDLE_ACCESS_VIOLATION_RETURNED_ERROR:
+    vcpu_panic_reason = 40;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_UNHANDLED_VMX_VMEXIT_REASON: vcpu_panic_reason =
+    41;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_AMD_UNIMPLEMENTED: vcpu_panic_reason = 42;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_RVI_HANDLE_ACCESS_VIOLATION_RETURNED_EEXIST:
+    vcpu_panic_reason = 43;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_ATTEMPTED_TO_USE_UNSET_NRIP: vcpu_panic_reason =
+    44;
+pub const vcpu_panic_reason_HAX_VCPU_PANIC_REASON_ATTEMPTED_TO_USE_UNSET_EXIT_GPA:
+    vcpu_panic_reason = 45;
+pub type vcpu_panic_reason = ::std::os::raw::c_int;
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub struct hax_tunnel {
-    pub _exit_reason: u32,
+    pub exit_reason: u32,
     pub pad0: u32,
-    pub _exit_status: u32,
+    pub exit_status: u32,
     pub user_event_pending: u32,
     pub ready_for_interrupt_injection: ::std::os::raw::c_int,
     pub request_interrupt_window: ::std::os::raw::c_int,
@@ -2521,22 +2600,22 @@ pub union hax_tunnel__bindgen_ty_1 {
     pub io: hax_tunnel__bindgen_ty_1__bindgen_ty_1,
     pub mmio: hax_tunnel__bindgen_ty_1__bindgen_ty_2,
     pub pagefault: hax_tunnel__bindgen_ty_1__bindgen_ty_3,
-    pub state: hax_tunnel__bindgen_ty_1__bindgen_ty_4,
+    pub vcpu_panic: hax_tunnel__bindgen_ty_1__bindgen_ty_4,
     pub debug: hax_tunnel__bindgen_ty_1__bindgen_ty_5,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct hax_tunnel__bindgen_ty_1__bindgen_ty_1 {
-    pub _direction: u8,
-    pub _df: u8,
-    pub _size: u16,
-    pub _port: u16,
-    pub _count: u16,
-    pub _flags: u8,
-    pub _pad0: u8,
-    pub _pad1: u16,
-    pub _pad2: u32,
-    pub _vaddr: hax_vaddr_t,
+    pub direction: u8,
+    pub df: u8,
+    pub size: u16,
+    pub port: u16,
+    pub count: u16,
+    pub flags: u8,
+    pub pad0: u8,
+    pub pad1: u16,
+    pub pad2: u32,
+    pub vaddr: hax_vaddr_t,
 }
 #[test]
 fn bindgen_test_layout_hax_tunnel__bindgen_ty_1__bindgen_ty_1() {
@@ -2560,103 +2639,103 @@ fn bindgen_test_layout_hax_tunnel__bindgen_ty_1__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._direction) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).direction) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_direction)
+            stringify!(direction)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._df) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).df) as usize - ptr as usize },
         1usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_df)
+            stringify!(df)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._size) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).size) as usize - ptr as usize },
         2usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_size)
+            stringify!(size)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._port) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).port) as usize - ptr as usize },
         4usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_port)
+            stringify!(port)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._count) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).count) as usize - ptr as usize },
         6usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_count)
+            stringify!(count)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._flags) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).flags) as usize - ptr as usize },
         8usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_flags)
+            stringify!(flags)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._pad0) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).pad0) as usize - ptr as usize },
         9usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_pad0)
+            stringify!(pad0)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._pad1) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).pad1) as usize - ptr as usize },
         10usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_pad1)
+            stringify!(pad1)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._pad2) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).pad2) as usize - ptr as usize },
         12usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_pad2)
+            stringify!(pad2)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._vaddr) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).vaddr) as usize - ptr as usize },
         16usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(_vaddr)
+            stringify!(vaddr)
         )
     );
 }
@@ -2770,7 +2849,7 @@ fn bindgen_test_layout_hax_tunnel__bindgen_ty_1__bindgen_ty_3() {
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct hax_tunnel__bindgen_ty_1__bindgen_ty_4 {
-    pub dummy: hax_paddr_t,
+    pub reason: u32,
 }
 #[test]
 fn bindgen_test_layout_hax_tunnel__bindgen_ty_1__bindgen_ty_4() {
@@ -2779,7 +2858,7 @@ fn bindgen_test_layout_hax_tunnel__bindgen_ty_1__bindgen_ty_4() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::std::mem::size_of::<hax_tunnel__bindgen_ty_1__bindgen_ty_4>(),
-        8usize,
+        4usize,
         concat!(
             "Size of: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_4)
@@ -2787,20 +2866,20 @@ fn bindgen_test_layout_hax_tunnel__bindgen_ty_1__bindgen_ty_4() {
     );
     assert_eq!(
         ::std::mem::align_of::<hax_tunnel__bindgen_ty_1__bindgen_ty_4>(),
-        8usize,
+        4usize,
         concat!(
             "Alignment of ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_4)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr).dummy) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).reason) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1__bindgen_ty_4),
             "::",
-            stringify!(dummy)
+            stringify!(reason)
         )
     );
 }
@@ -2909,13 +2988,13 @@ fn bindgen_test_layout_hax_tunnel__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr).state) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).vcpu_panic) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel__bindgen_ty_1),
             "::",
-            stringify!(state)
+            stringify!(vcpu_panic)
         )
     );
     assert_eq!(
@@ -2953,13 +3032,13 @@ fn bindgen_test_layout_hax_tunnel() {
         concat!("Alignment of ", stringify!(hax_tunnel))
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._exit_reason) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).exit_reason) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel),
             "::",
-            stringify!(_exit_reason)
+            stringify!(exit_reason)
         )
     );
     assert_eq!(
@@ -2973,13 +3052,13 @@ fn bindgen_test_layout_hax_tunnel() {
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._exit_status) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).exit_status) as usize - ptr as usize },
         8usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_tunnel),
             "::",
-            stringify!(_exit_status)
+            stringify!(exit_status)
         )
     );
     assert_eq!(
@@ -3043,10 +3122,10 @@ pub struct hax_fastmmio {
     pub direction: u8,
     pub reg_index: u16,
     pub pad0: u32,
-    pub _cr0: u64,
-    pub _cr2: u64,
-    pub _cr3: u64,
-    pub _cr4: u64,
+    pub cr0: u64,
+    pub cr2: u64,
+    pub cr3: u64,
+    pub cr4: u64,
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -3164,43 +3243,43 @@ fn bindgen_test_layout_hax_fastmmio() {
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._cr0) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).cr0) as usize - ptr as usize },
         24usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_fastmmio),
             "::",
-            stringify!(_cr0)
+            stringify!(cr0)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._cr2) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).cr2) as usize - ptr as usize },
         32usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_fastmmio),
             "::",
-            stringify!(_cr2)
+            stringify!(cr2)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._cr3) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).cr3) as usize - ptr as usize },
         40usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_fastmmio),
             "::",
-            stringify!(_cr3)
+            stringify!(cr3)
         )
     );
     assert_eq!(
-        unsafe { ::std::ptr::addr_of!((*ptr)._cr4) as usize - ptr as usize },
+        unsafe { ::std::ptr::addr_of!((*ptr).cr4) as usize - ptr as usize },
         48usize,
         concat!(
             "Offset of field: ",
             stringify!(hax_fastmmio),
             "::",
-            stringify!(_cr4)
+            stringify!(cr4)
         )
     );
 }
