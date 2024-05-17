@@ -904,15 +904,15 @@ fn test_invd_instruction() {
 fn test_xsetbv_instruction() {
     let setup = TestSetup {
         /*
-            0:  0f 01 d0                xgetbv
-            3:  0f 20 e0                mov    eax,cr4
-            6:  0d 00 02 00 00          or     eax,0x200  ; Set the OSXSAVE bit in CR4 (bit 9)
-            b:  0f 22 e0                mov    cr4,eax
+            0:  0f 20 e0                mov    eax,cr4
+            3:  0d 00 02 00 00          or     eax,0x200  ; Set the OSXSAVE bit in CR4 (bit 9)
+            8:  0f 22 e0                mov    cr4,eax
+            b:  0f 01 d0                xgetbv
             e:  0f 01 d1                xsetbv
             11: f4                      hlt
         */
         assembly: vec![
-            0x0F, 0x01, 0xD0, 0x0F, 0x20, 0xE0, 0x0D, 0x00, 0x02, 0x00, 0x00, 0x0F, 0x22, 0xE0,
+            0x0F, 0x20, 0xE0, 0x0D, 0x00, 0x02, 0x00, 0x00, 0x0F, 0x22, 0xE0, 0x0F, 0x01, 0xD0,
             0x0F, 0x01, 0xD1, 0xF4,
         ],
         load_addr: GuestAddress(0x1000),
