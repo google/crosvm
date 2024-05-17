@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -50,13 +51,15 @@ where
         let now = Instant::now();
         self.cleanup(&now);
 
-        if self.map.get(key).is_some() {
-            Ok(self.map.get(key).map(|(v, _)| v).expect("must exist"))
-        } else {
-            self.dq.push_back((key.clone(), now));
-            self.map.insert(key.clone(), (f()?, now));
-            Ok(self.map.get(key).map(|(v, _)| v).expect("must exist"))
-        }
+        let (v, _) = match self.map.entry(key.clone()) {
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => {
+                let value = f()?;
+                self.dq.push_back((key.clone(), now));
+                v.insert((value, now))
+            }
+        };
+        Ok(v)
     }
 
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
