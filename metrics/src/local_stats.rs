@@ -600,8 +600,11 @@ mod tests {
         assert_eq!(histogram.values, None);
     }
 
+    #[cfg(feature = "experimental")]
     #[derive(Clone, Debug, PartialEq)]
     struct MyDetails(u64, u64);
+
+    #[cfg(feature = "experimental")]
     impl Details<u64> for MyDetails {
         fn value(&self) -> u64 {
             self.1 - self.0
