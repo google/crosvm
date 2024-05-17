@@ -938,6 +938,7 @@ mod tests {
     const EFER_SCE: u64 = 0x00000001;
     const EFER_LME: u64 = 0x00000100;
     const EFER_LMA: u64 = 0x00000400;
+    const EFER_SVME: u64 = 1 << 12;
 
     // CR0 bits
     const CR0_PG: u64 = 1 << 31;
@@ -1020,7 +1021,7 @@ mod tests {
 
         let mut sregs = vcpu.get_sregs().expect("failed to get sregs");
         // Initial value should be 0
-        assert_eq!(sregs.efer, 0);
+        assert_eq!(sregs.efer & !EFER_SVME, 0);
 
         // Enable and activate long mode
         sregs.efer = EFER_LMA | EFER_LME;
@@ -1030,11 +1031,11 @@ mod tests {
 
         // Verify that setting stuck
         let sregs = vcpu.get_sregs().expect("failed to get sregs");
-        assert_eq!(sregs.efer, EFER_LMA | EFER_LME);
+        assert_eq!(sregs.efer & !EFER_SVME, EFER_LMA | EFER_LME);
 
         // IA32_EFER register value should match
         let efer = vcpu.get_msr(IA32_EFER).expect("failed to get msr");
-        assert_eq!(efer, EFER_LMA | EFER_LME);
+        assert_eq!(efer & !EFER_SVME, EFER_LMA | EFER_LME);
 
         // Enable SCE via set_msrs
         vcpu.set_msr(IA32_EFER, efer | EFER_SCE)
@@ -1042,8 +1043,8 @@ mod tests {
 
         // Verify that setting stuck
         let sregs = vcpu.get_sregs().expect("failed to get sregs");
-        assert_eq!(sregs.efer, EFER_SCE | EFER_LME | EFER_LMA);
+        assert_eq!(sregs.efer & !EFER_SVME, EFER_SCE | EFER_LME | EFER_LMA);
         let new_efer = vcpu.get_msr(IA32_EFER).expect("failed to get msrs");
-        assert_eq!(new_efer, EFER_SCE | EFER_LME | EFER_LMA);
+        assert_eq!(new_efer & !EFER_SVME, EFER_SCE | EFER_LME | EFER_LMA);
     }
 }
