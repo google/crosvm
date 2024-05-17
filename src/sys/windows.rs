@@ -857,7 +857,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     control_tubes: &mut BTreeMap<usize, TaggedControlTube>,
     guest_os: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator_mutex: &Arc<Mutex<SystemAllocator>>,
-    virtio_snd_host_mute_tube: &mut Option<Tube>,
+    virtio_snd_host_mute_tubes: &mut [Tube],
     proto_main_loop_tube: Option<&ProtoTube>,
     anti_tamper_main_thread_tube: &Option<ProtoTube>,
     #[cfg(feature = "balloon")] mut balloon_tube: Option<&mut BalloonTube>,
@@ -972,7 +972,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     TaggedControlTube::Product(product_tube) => {
                         product::handle_tagged_control_tube_event(
                             product_tube,
-                            virtio_snd_host_mute_tube,
+                            virtio_snd_host_mute_tubes,
                             service_vm_state,
                             ipc_main_loop_tube,
                         )
@@ -1081,7 +1081,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 run_mode_arc,
                 service_vm_state,
                 vcpu_boxes,
-                virtio_snd_host_mute_tube,
+                virtio_snd_host_mute_tubes,
                 execute_vm_request,
             );
             if let Some(exit_state) = handle_run_mode_change_for_vm_request(&run_mode_opt, guest_os)
@@ -1265,7 +1265,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     tsc_sync_mitigations: TscSyncMitigations,
     force_calibrated_tsc_leaf: bool,
     mut product_args: RunControlArgs,
-    mut virtio_snd_host_mute_tube: Option<Tube>,
+    mut virtio_snd_host_mute_tubes: Vec<Tube>,
     restore_path: Option<PathBuf>,
     control_server_path: Option<PathBuf>,
     force_s2idle: bool,
@@ -1507,7 +1507,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 &mut control_tubes,
                 &mut guest_os,
                 &sys_allocator_mutex,
-                &mut virtio_snd_host_mute_tube,
+                &mut virtio_snd_host_mute_tubes,
                 proto_main_loop_tube.as_ref(),
                 &anti_tamper_main_thread_tube,
                 #[cfg(feature = "balloon")]
@@ -2661,7 +2661,10 @@ where
         tsc_sync_mitigations,
         cfg.force_calibrated_tsc_leaf,
         product_args,
-        virtio_snd_host_mute_tube,
+        match virtio_snd_host_mute_tube {
+            Some(virtio_snd_host_mute_tube) => vec![virtio_snd_host_mute_tube],
+            None => vec![],
+        },
         cfg.restore_path,
         cfg.socket_path,
         cfg.force_s2idle,

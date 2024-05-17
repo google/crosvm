@@ -165,7 +165,7 @@ pub(super) fn start_service_ipc_listener(
 
 pub(super) fn handle_tagged_control_tube_event(
     product_tube: &TaggedControlTube,
-    virtio_snd_host_mute_tube: &mut Option<Tube>,
+    virtio_snd_host_mute_tubes: &mut [Tube],
     service_vm_state: &mut ServiceVmState,
     ipc_main_loop_tube: Option<&Tube>,
 ) {
@@ -197,7 +197,7 @@ pub(super) fn handle_received_token<'a, V: VmArch + 'static, Vcpu: VcpuArch + 's
     _run_mode_arc: &VcpuRunMode,
     _service_vm_state: &mut ServiceVmState,
     _vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
-    _virtio_snd_host_mute_tube: &mut Option<Tube>,
+    _virtio_snd_host_mute_tube: &mut [Tube],
     _execute_vm_request: F,
 ) -> Option<VmRunMode>
 where
