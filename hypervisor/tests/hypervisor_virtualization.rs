@@ -565,7 +565,26 @@ fn test_control_register_access_invalid() {
         )
     };
 
-    run_tests!(setup, regs_matcher, |_, _, _| { true });
+    let exit_matcher =
+        move |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
+            HypervisorType::Kvm | HypervisorType::Haxm => {
+                match exit {
+                    VcpuExit::Shutdown(_) => {
+                        true // Break VM runloop
+                    }
+                    r => panic!("unexpected exit reason: {:?}", r),
+                }
+            }
+            _ => {
+                match exit {
+                    VcpuExit::UnrecoverableException => {
+                        true // Break VM runloop
+                    }
+                    r => panic!("unexpected exit reason: {:?}", r),
+                }
+            }
+        };
+    run_tests!(setup, regs_matcher, exit_matcher);
 }
 
 #[test]
@@ -707,7 +726,7 @@ fn test_msr_access_invalid() {
                 r => panic!("unexpected exit reason: {:?}", r),
             },
             _ => match exit {
-                VcpuExit::Shutdown => {
+                VcpuExit::Shutdown(_) => {
                     true // Break VM runloop
                 }
                 r => panic!("unexpected exit reason: {:?}", r),
@@ -771,7 +790,7 @@ fn test_msr_access_valid() {
                 r => panic!("unexpected exit reason: {:?}", r),
             },
             _ => match exit {
-                VcpuExit::Shutdown => {
+                VcpuExit::Shutdown(_) => {
                     true // Break VM runloop
                 }
                 r => panic!("unexpected exit reason: {:?}", r),
@@ -825,7 +844,7 @@ fn test_getsec_instruction() {
             }
             _ => {
                 match exit {
-                    VcpuExit::Shutdown => {
+                    VcpuExit::Shutdown(_) => {
                         true // Break VM runloop
                     }
                     r => panic!("unexpected exit reason: {:?}", r),
@@ -863,7 +882,7 @@ fn test_invd_instruction() {
         move |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
             HypervisorType::Haxm => {
                 match exit {
-                    VcpuExit::Shutdown => {
+                    VcpuExit::Shutdown(_) => {
                         true // Break VM runloop
                     }
                     r => panic!("unexpected exit reason: {:?}", r),
@@ -938,7 +957,7 @@ fn test_xsetbv_instruction() {
             }
             _ => {
                 match exit {
-                    VcpuExit::Shutdown => {
+                    VcpuExit::Shutdown(_) => {
                         true // Break VM runloop
                     }
                     r => panic!("unexpected exit reason: {:?}", r),
@@ -996,7 +1015,7 @@ fn test_invept_instruction() {
             }
             _ => {
                 match exit {
-                    VcpuExit::Shutdown => {
+                    VcpuExit::Shutdown(_) => {
                         true // Break VM runloop
                     }
                     r => panic!("unexpected exit reason: {:?}", r),
@@ -1044,7 +1063,7 @@ fn test_invvpid_instruction() {
             }
             HypervisorType::Haxm => {
                 match exit {
-                    VcpuExit::Shutdown => {
+                    VcpuExit::Shutdown(_) => {
                         true // Break VM runloop
                     }
                     r => panic!("unexpected exit reason: {:?}", r),
@@ -1120,7 +1139,7 @@ fn test_vm_instruction_set() {
                 }
                 _ => {
                     match exit {
-                        VcpuExit::Shutdown => {
+                        VcpuExit::Shutdown(_) => {
                             true // Break VM runloop
                         }
                         r => panic!("unexpected exit reason: {:?}", r),
@@ -1170,7 +1189,7 @@ fn test_software_interrupt() {
             }
             _ => {
                 match exit {
-                    VcpuExit::Shutdown => {
+                    VcpuExit::Shutdown(_) => {
                         true // Break VM runloop
                     }
                     r => panic!("unexpected exit reason: {:?}", r),

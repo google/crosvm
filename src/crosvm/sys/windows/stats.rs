@@ -147,7 +147,7 @@ fn exit_to_index(exit: &base::Result<VcpuExit>) -> usize {
         Ok(VcpuExit::IoapicEoi { .. }) => 2,
         Ok(VcpuExit::IrqWindowOpen) => 3,
         Ok(VcpuExit::Hlt) => 4,
-        Ok(VcpuExit::Shutdown) => 5,
+        Ok(VcpuExit::Shutdown(_)) => 5,
         Ok(VcpuExit::FailEntry { .. }) => 6,
         Ok(VcpuExit::SystemEventShutdown) => 7,
         Ok(VcpuExit::SystemEventReset) => 7,

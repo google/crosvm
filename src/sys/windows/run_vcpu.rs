@@ -831,7 +831,9 @@ where
                 // Shutdown only for triple faults and other vcpu panics.  WHPX never exits
                 // with Shutdown.  Normal reboots and shutdowns, like window close, use
                 // the vm event tube and VmRunMode::Exiting instead of VcpuExit::Shutdown.
-                Ok(VcpuExit::Shutdown) => bail_exit_code!(Exit::VcpuShutdown, "vcpu shutdown"),
+                Ok(VcpuExit::Shutdown(reason)) => {
+                    bail_exit_code!(Exit::VcpuShutdown, "vcpu shutdown (reason: {:?})", reason)
+                }
                 Ok(VcpuExit::FailEntry {
                     hardware_entry_failure_reason,
                 }) => bail_exit_code!(

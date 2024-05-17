@@ -1188,7 +1188,7 @@ impl Vcpu for GeniezoneVcpu {
                 }
             }
             GZVM_EXIT_INTERNAL_ERROR => Ok(VcpuExit::InternalError),
-            GZVM_EXIT_SHUTDOWN => Ok(VcpuExit::Shutdown),
+            GZVM_EXIT_SHUTDOWN => Ok(VcpuExit::Shutdown(Ok(()))),
             GZVM_EXIT_UNKNOWN => panic!("unknown gzvm exit reason\n"),
             r => panic!("unknown gzvm exit reason: {}", r),
         }

@@ -996,7 +996,7 @@ impl Vcpu for KvmVcpu {
             KVM_EXIT_HYPERCALL => Ok(VcpuExit::Hypercall),
             KVM_EXIT_DEBUG => Ok(VcpuExit::Debug),
             KVM_EXIT_IRQ_WINDOW_OPEN => Ok(VcpuExit::IrqWindowOpen),
-            KVM_EXIT_SHUTDOWN => Ok(VcpuExit::Shutdown),
+            KVM_EXIT_SHUTDOWN => Ok(VcpuExit::Shutdown(Ok(()))),
             KVM_EXIT_FAIL_ENTRY => {
                 // SAFETY:
                 // Safe because the exit_reason (which comes from the kernel) told us which

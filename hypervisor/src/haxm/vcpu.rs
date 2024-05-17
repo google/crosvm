@@ -28,7 +28,6 @@ use libc::EOPNOTSUPP;
 use vm_memory::GuestAddress;
 
 use super::*;
-use crate::CpuId;
 use crate::CpuIdEntry;
 use crate::DebugRegs;
 use crate::DescriptorTable;
@@ -301,7 +300,7 @@ impl Vcpu for HaxmVcpu {
             HAX_EXIT_IO => Ok(VcpuExit::Io),
             HAX_EXIT_INTERRUPT => Ok(VcpuExit::Intr),
             HAX_EXIT_HLT => Ok(VcpuExit::Hlt),
-            HAX_EXIT_VCPU_PANIC => Ok(VcpuExit::Shutdown),
+            HAX_EXIT_VCPU_PANIC => Ok(VcpuExit::Shutdown(Ok(()))),
             HAX_EXIT_FAST_MMIO => Ok(VcpuExit::Mmio),
             HAX_EXIT_PAGEFAULT => Ok(VcpuExit::Exception),
             HAX_EXIT_DEBUG => Ok(VcpuExit::Debug),

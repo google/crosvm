@@ -376,6 +376,40 @@ pub enum Datamatch {
     U64(Option<u64>),
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum VcpuShutdownErrorKind {
+    DoubleFault,
+    TripleFault,
+    Other,
+}
+
+/// A Vcpu shutdown may signify an error, such as a double or triple fault,
+/// or hypervisor specific reasons. This error covers all such cases.
+#[derive(Copy, Clone, Debug)]
+pub struct VcpuShutdownError {
+    kind: VcpuShutdownErrorKind,
+    raw_error_code: u64,
+}
+
+impl VcpuShutdownError {
+    pub fn new(kind: VcpuShutdownErrorKind, raw_error_code: u64) -> VcpuShutdownError {
+        Self {
+            kind,
+            raw_error_code,
+        }
+    }
+    pub fn kind(&self) -> VcpuShutdownErrorKind {
+        self.kind
+    }
+    pub fn get_raw_error_code(&self) -> u64 {
+        self.raw_error_code
+    }
+}
+
+// Note that when adding entries to the VcpuExit enum you may want to add corresponding entries in
+// crosvm::stats::exit_to_index and crosvm::stats::exit_index_to_str if you don't want the new
+// exit type to be categorized as "Unknown".
+
 /// A reason why a VCPU exited. One of these returns every time `Vcpu::run` is called.
 #[derive(Debug, Clone, Copy)]
 pub enum VcpuExit {
@@ -393,7 +427,7 @@ pub enum VcpuExit {
     Debug,
     Hlt,
     IrqWindowOpen,
-    Shutdown,
+    Shutdown(std::result::Result<(), VcpuShutdownError>),
     FailEntry {
         hardware_entry_failure_reason: u64,
     },

@@ -389,7 +389,7 @@ where
                 }
                 Ok(VcpuExit::IrqWindowOpen) => {}
                 Ok(VcpuExit::Hlt) => irq_chip.halted(cpu_id),
-                Ok(VcpuExit::Shutdown) => return ExitState::Stop,
+                Ok(VcpuExit::Shutdown(_)) => return ExitState::Stop,
                 Ok(VcpuExit::FailEntry {
                     hardware_entry_failure_reason,
                 }) => {
