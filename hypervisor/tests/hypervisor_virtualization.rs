@@ -147,7 +147,7 @@ impl TestSetup {
 pub fn run_configurable_test<H: HypervisorTestSetup>(
     hypervisor_type: HypervisorType,
     setup: &TestSetup,
-    regs_matcher: impl Fn(HypervisorType, &Regs),
+    regs_matcher: impl Fn(HypervisorType, &Regs, &Sregs),
     exit_matcher: impl Fn(HypervisorType, &VcpuExit, &mut dyn VcpuX86_64) -> bool,
 ) {
     println!("Running test on hypervisor: {}", hypervisor_type);
@@ -207,8 +207,9 @@ pub fn run_configurable_test<H: HypervisorTestSetup>(
     }
 
     let final_regs = vcpu.get_regs().expect("failed to get regs");
+    let final_sregs = vcpu.get_sregs().expect("failed to get sregs");
 
-    regs_matcher(hypervisor_type, &final_regs);
+    regs_matcher(hypervisor_type, &final_regs, &final_sregs);
 }
 
 macro_rules! run_tests {
@@ -255,7 +256,7 @@ fn test_minimal_virtualization() {
 
     run_tests!(
         setup,
-        |_, regs| {
+        |_, regs, _| {
             assert_eq!(regs.rax, 3); // 1 + 2
 
             // For VMEXIT caused by HLT, the hypervisor will automatically advance the rIP register.
@@ -289,7 +290,7 @@ fn test_io_exit_handler() {
         ..Default::default()
     };
 
-    let regs_matcher = |_, regs: &Regs| {
+    let regs_matcher = |_, regs: &Regs, _: &_| {
         // The result in AX should be double the initial value of AX
         // plus the initial value of BX.
         assert_eq!(regs.rax, (0x34 * 2) + 0x42);
@@ -360,7 +361,7 @@ fn test_mmio_exit_cross_page() {
         ..Default::default()
     };
 
-    let regs_matcher = |_, regs: &Regs| {
+    let regs_matcher = |_, regs: &Regs, _: &_| {
         assert_eq!(regs.rax, 0x66, "Should match the MMIO read bytes below");
     };
 
@@ -501,7 +502,7 @@ fn test_mmio_exit_readonly_memory() {
 
     run_tests!(
         setup,
-        |_, regs| {
+        |_, regs, _| {
             assert_eq!(regs.rax, 0x67);
         },
         exit_matcher
@@ -526,14 +527,15 @@ fn test_cpuid_exit_handler() {
         ..Default::default()
     };
 
-    let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs| match hypervisor_type {
-        HypervisorType::Kvm => {}
-        _ => {
-            let hypervisor_bit = regs.rcx & (1 << 31) != 0;
-            assert!(hypervisor_bit, "Hypervisor bit in CPUID should be set!");
-            assert_eq!(regs.rip, 0x1003, "CPUID did not execute correctly.");
-        }
-    };
+    let regs_matcher =
+        move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
+            HypervisorType::Kvm => {}
+            _ => {
+                let hypervisor_bit = regs.rcx & (1 << 31) != 0;
+                assert!(hypervisor_bit, "Hypervisor bit in CPUID should be set!");
+                assert_eq!(regs.rip, 0x1003, "CPUID did not execute correctly.");
+            }
+        };
 
     let exit_matcher =
         |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
@@ -579,7 +581,7 @@ fn test_control_register_access_invalid() {
     };
 
     // Matcher to check that the RAX value never made it to RCX.
-    let regs_matcher = move |_: HypervisorType, regs: &Regs| {
+    let regs_matcher = move |_: HypervisorType, regs: &Regs, _: &_| {
         assert_eq!(
             regs.rcx, 0,
             "RCX value mismatch: expected 0, found {:X}",
@@ -630,7 +632,7 @@ fn test_control_register_access_valid() {
     };
 
     // Matcher to check the final state of EAX after reading from CR0
-    let regs_matcher = |_: HypervisorType, regs: &Regs| {
+    let regs_matcher = |_: HypervisorType, regs: &Regs, _: &_| {
         assert!(
             (regs.rax & 0x1) != 0,
             "CR0 value mismatch: expected the 0th bit to be set, found {:X}",
@@ -679,7 +681,7 @@ fn test_debug_register_access() {
         ..Default::default()
     };
 
-    let regs_matcher = |_: HypervisorType, regs: &Regs| {
+    let regs_matcher = |_: HypervisorType, regs: &Regs, _: &_| {
         assert_eq!(
             regs.rbx, 0x1234,
             "DR2 value mismatch: expected 0x1234, found {:X}",
@@ -726,7 +728,7 @@ fn test_msr_access_invalid() {
 
     run_tests!(
         setup,
-        |_, regs| {
+        |_, regs, _| {
             assert_eq!(regs.rip, 0x1005); // Should stop at the wrmsr
         },
         |_, _, _| {
@@ -762,17 +764,18 @@ fn test_msr_access_valid() {
         ..Default::default()
     };
 
-    let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs| match hypervisor_type {
-        // Check that the LME bit is set in EAX after the operation.
-        HypervisorType::Haxm | HypervisorType::Whpx => {
-            assert!(
-                regs.rax & (1 << lme_bit_position) != 0,
-                "LME bit not set in MSR EFER after modification."
-            );
-            assert_eq!(regs.rip, 0x100a); // Should stop after the hlt
-        }
-        _ => {}
-    };
+    let regs_matcher =
+        move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
+            // Check that the LME bit is set in EAX after the operation.
+            HypervisorType::Haxm | HypervisorType::Whpx => {
+                assert!(
+                    regs.rax & (1 << lme_bit_position) != 0,
+                    "LME bit not set in MSR EFER after modification."
+                );
+                assert_eq!(regs.rip, 0x100a); // Should stop after the hlt
+            }
+            _ => {}
+        };
 
     let exit_matcher =
         |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
@@ -815,13 +818,14 @@ fn test_getsec_instruction() {
         ..Default::default()
     };
 
-    let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs| match hypervisor_type {
-        HypervisorType::Whpx => {}
-        HypervisorType::Haxm => {}
-        _ => {
-            assert_eq!(regs.rip, 0x1000, "GETSEC; expected RIP at 0x1002");
-        }
-    };
+    let regs_matcher =
+        move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
+            HypervisorType::Whpx => {}
+            HypervisorType::Haxm => {}
+            _ => {
+                assert_eq!(regs.rip, 0x1000, "GETSEC; expected RIP at 0x1002");
+            }
+        };
 
     let exit_matcher =
         move |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
@@ -871,12 +875,13 @@ fn test_invd_instruction() {
         ..Default::default()
     };
 
-    let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs| match hypervisor_type {
-        HypervisorType::Haxm => {}
-        _ => {
-            assert_eq!(regs.rip, 0x1003, "INVD; expected RIP at 0x1003");
-        }
-    };
+    let regs_matcher =
+        move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
+            HypervisorType::Haxm => {}
+            _ => {
+                assert_eq!(regs.rip, 0x1003, "INVD; expected RIP at 0x1003");
+            }
+        };
     let exit_matcher =
         move |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
             HypervisorType::Haxm => {
@@ -927,14 +932,15 @@ fn test_xsetbv_instruction() {
         ..Default::default()
     };
 
-    let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs| match hypervisor_type {
-        HypervisorType::Whpx => {}
-        HypervisorType::Haxm => {}
-        HypervisorType::Kvm => {}
-        _ => {
-            assert_eq!(regs.rip, 0x100D, "XSETBV; expected RIP at 0x100D");
-        }
-    };
+    let regs_matcher =
+        move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
+            HypervisorType::Whpx => {}
+            HypervisorType::Haxm => {}
+            HypervisorType::Kvm => {}
+            _ => {
+                assert_eq!(regs.rip, 0x100D, "XSETBV; expected RIP at 0x100D");
+            }
+        };
 
     let exit_matcher =
         |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
@@ -985,14 +991,15 @@ fn test_invept_instruction() {
         ..Default::default()
     };
 
-    let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs| match hypervisor_type {
-        HypervisorType::Whpx => {}
-        HypervisorType::Haxm => {}
-        HypervisorType::Kvm => {}
-        _ => {
-            assert_eq!(regs.rip, 0x1005, "invept; expected RIP at 0x1005");
-        }
-    };
+    let regs_matcher =
+        move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
+            HypervisorType::Whpx => {}
+            HypervisorType::Haxm => {}
+            HypervisorType::Kvm => {}
+            _ => {
+                assert_eq!(regs.rip, 0x1005, "invept; expected RIP at 0x1005");
+            }
+        };
 
     let exit_matcher =
         move |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
@@ -1043,13 +1050,14 @@ fn test_invvpid_instruction() {
         ..Default::default()
     };
 
-    let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs| match hypervisor_type {
-        HypervisorType::Haxm => {}
-        HypervisorType::Kvm => {}
-        _ => {
-            assert_eq!(regs.rip, 0x1006, "INVVPID; expected RIP at 0x1006");
-        }
-    };
+    let regs_matcher =
+        move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
+            HypervisorType::Haxm => {}
+            HypervisorType::Kvm => {}
+            _ => {
+                assert_eq!(regs.rip, 0x1006, "INVVPID; expected RIP at 0x1006");
+            }
+        };
     let exit_matcher =
         move |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
             HypervisorType::Kvm => {
@@ -1109,19 +1117,19 @@ fn test_vm_instruction_set() {
             ..Default::default()
         };
 
-        let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs| match hypervisor_type
-        {
-            HypervisorType::Whpx => {}
-            HypervisorType::Kvm => {}
-            HypervisorType::Haxm => {}
-            _ => {
-                assert_eq!(
-                    regs.rip, expected_rip,
-                    "{}; expected RIP at {}",
-                    name, expected_rip
-                );
-            }
-        };
+        let regs_matcher =
+            move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
+                HypervisorType::Whpx => {}
+                HypervisorType::Kvm => {}
+                HypervisorType::Haxm => {}
+                _ => {
+                    assert_eq!(
+                        regs.rip, expected_rip,
+                        "{}; expected RIP at {}",
+                        name, expected_rip
+                    );
+                }
+            };
 
         let exit_matcher =
             |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
@@ -1167,14 +1175,15 @@ fn test_software_interrupt() {
         ..Default::default()
     };
 
-    let regs_matcher = move |hypervisor_type: HypervisorType, regs: &Regs| match hypervisor_type {
-        HypervisorType::Whpx => {}
-        HypervisorType::Haxm => {}
-        HypervisorType::Kvm => {}
-        _ => {
-            assert_eq!(regs.rip, 0x1002, "Expected RIP at 0x1002");
-        }
-    };
+    let regs_matcher =
+        move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
+            HypervisorType::Whpx => {}
+            HypervisorType::Haxm => {}
+            HypervisorType::Kvm => {}
+            _ => {
+                assert_eq!(regs.rip, 0x1002, "Expected RIP at 0x1002");
+            }
+        };
 
     let exit_matcher =
         |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
@@ -1217,7 +1226,7 @@ fn test_rdtsc_instruction() {
     };
 
     // This matcher checks that the timestamp counter has been incremented and read into EAX and EDX
-    let regs_matcher = |_: HypervisorType, regs: &Regs| {
+    let regs_matcher = |_: HypervisorType, regs: &Regs, _: &_| {
         assert!(
             regs.rax != 0 || regs.rdx != 0,
             "RDTSC returned a zero value, which is unlikely."
@@ -1265,7 +1274,7 @@ fn test_register_access() {
 
     run_tests!(
         setup,
-        |_, regs| {
+        |_, regs, _| {
             assert_eq!(regs.rax, 1);
             assert_eq!(regs.rbx, 2);
             assert_eq!(regs.rcx, 3);
@@ -1276,6 +1285,94 @@ fn test_register_access() {
             assert_eq!(regs.rdi, 8);
             assert_ne!(regs.rflags & 0x40, 0); // zero flag is set
             assert_eq!(regs.rip, 0x100d); // after hlt
+        },
+        |_, exit, _| matches!(exit, VcpuExit::Hlt)
+    );
+}
+
+// Tests that the VMM can read and write CRs and they become visible in the guest.
+#[test]
+fn test_set_cr_vmm() {
+    let asm_addr = 0x1000;
+    let setup = TestSetup {
+        /*
+            0: 0f 20 c0     mov eax, cr0
+            3: 0f 20 db     mov ebx, cr3
+            6: 0f 20 e1     mov ecx, cr4
+            9: f4           hlt
+        */
+        assembly: vec![0x0f, 0x20, 0xc0, 0x0f, 0x20, 0xdb, 0x0f, 0x20, 0xe1, 0xf4],
+        load_addr: GuestAddress(asm_addr),
+        initial_regs: Regs {
+            rip: asm_addr,
+            rflags: 2,
+            ..Default::default()
+        },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, _| {
+            let mut sregs = vcpu.get_sregs().expect("failed to get sregs");
+            sregs.cr0 |= 1 << 18; // Alignment Mask; does nothing without other config bits
+            sregs.cr3 = 0xfeedface; // arbitrary value; CR3 is not used in this configuration
+            sregs.cr4 |= 1 << 2; // Time Stamp Disable; not relevant here
+            vcpu.set_sregs(&sregs).expect("failed to set sregs");
+        })),
+        ..Default::default()
+    };
+
+    run_tests!(
+        setup,
+        |_, regs, sregs| {
+            assert_eq!(regs.rax, sregs.cr0);
+            assert_eq!(regs.rbx, sregs.cr3);
+            assert_eq!(regs.rcx, sregs.cr4);
+            assert_eq!(sregs.cr3, 0xfeedface);
+            assert_ne!(sregs.cr0 & (1 << 18), 0);
+            assert_ne!(sregs.cr4 & (1 << 2), 0);
+            assert_eq!(regs.rip, asm_addr + setup.assembly.len() as u64); // after hlt
+        },
+        |_, exit, _| matches!(exit, VcpuExit::Hlt)
+    );
+}
+
+// Tests that the guest can read and write CRs and they become visible to the VMM.
+#[test]
+fn test_set_cr_guest() {
+    let asm_addr = 0x1000;
+    let setup = TestSetup {
+        /*
+            0:  0f 20 c0            mov eax, cr0
+            3:  66 0d 00 00 04 00   or eax, (1 << 18)
+            9:  0f 22 c0            mov cr0, eax
+            c:  66 bb ce fa ed fe   mov ebx, 0xfeedface
+            12: 0f 22 db            mov cr3, ebx
+            15: 0f 20 e1            mov ecx, cr4
+            18: 66 83 c9 04         or ecx, (1 << 2)
+            1c: 0f 22 e1            mov cr4, ecx
+            1f: f4                  hlt
+        */
+        assembly: vec![
+            0x0f, 0x20, 0xc0, 0x66, 0x0d, 0x00, 0x00, 0x04, 0x00, 0x0f, 0x22, 0xc0, 0x66, 0xbb,
+            0xce, 0xfa, 0xed, 0xfe, 0x0f, 0x22, 0xdb, 0x0f, 0x20, 0xe1, 0x66, 0x83, 0xc9, 0x04,
+            0x0f, 0x22, 0xe1, 0xf4,
+        ],
+        load_addr: GuestAddress(asm_addr),
+        initial_regs: Regs {
+            rip: asm_addr,
+            rflags: 2,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    run_tests!(
+        setup,
+        |_, regs, sregs| {
+            assert_eq!(regs.rax, sregs.cr0);
+            assert_eq!(regs.rbx, sregs.cr3);
+            assert_eq!(regs.rcx, sregs.cr4);
+            assert_eq!(sregs.cr3, 0xfeedface);
+            assert_ne!(sregs.cr0 & (1 << 18), 0);
+            assert_ne!(sregs.cr4 & (1 << 2), 0);
+            assert_eq!(regs.rip, asm_addr + setup.assembly.len() as u64); // after hlt
         },
         |_, exit, _| matches!(exit, VcpuExit::Hlt)
     );
