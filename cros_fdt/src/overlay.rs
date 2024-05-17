@@ -161,7 +161,7 @@ fn do_overlay_filter(filtered_paths: Vec<Path>, overlay: &mut Fdt) {
             tgt_node = tgt_node
                 .subnode_mut(node_name)
                 .expect("filtered paths reference valid nodes");
-            tgt_node.props = src_node.props.clone();
+            tgt_node.props.clone_from(&src_node.props);
         }
     }
     overlay.root = new_root;

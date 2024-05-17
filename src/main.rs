@@ -763,7 +763,7 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
                          `crosvm --syslog-tag=\"{}\" run` instead",
                         syslog_tag
                     );
-                    log_config.log_args.proc_name = syslog_tag.clone();
+                    log_config.log_args.proc_name.clone_from(syslog_tag);
                 }
                 // We handle run_vm separately because it does not simply signal success/error
                 // but also indicates whether the guest requested reset or stop.

@@ -451,7 +451,7 @@ impl StreamInfo {
         self.buffer_bytes = state.buffer_bytes;
         self.period_bytes = state.period_bytes;
         self.direction = state.direction;
-        self.effects = state.effects.clone();
+        self.effects.clone_from(&state.effects);
         self.just_reset = state.just_reset;
     }
 }
