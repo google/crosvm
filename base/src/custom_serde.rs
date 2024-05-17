@@ -19,14 +19,10 @@ use sync::Mutex;
 /// NOTE: This does not validate already serialized Mutexes and data. If multiple structs contain a
 /// clone of the Arc, and they are all being serialized, this will result in the same data being
 /// serialized, once per clone.
-pub fn serialize_arc_mutex<S, T: ?Sized>(
+pub fn serialize_arc_mutex<S: Serializer, T: Serialize + ?Sized>(
     item: &Arc<Mutex<T>>,
     serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-    T: Serialize,
-{
+) -> Result<S::Ok, S::Error> {
     let lock = item.lock();
     serde::Serialize::serialize(&*lock, serializer)
 }
