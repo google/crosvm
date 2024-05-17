@@ -67,11 +67,6 @@ where
 
     pub fn remove(&mut self, key: &K) {
         self.map.remove(key);
-        self.dq = self
-            .dq
-            .iter()
-            .filter(|(k, _)| k != key)
-            .map(|(k, time)| (k.clone(), *time))
-            .collect();
+        self.dq.retain(|(k, _)| k != key);
     }
 }
