@@ -28,6 +28,7 @@ use libc::EOPNOTSUPP;
 use vm_memory::GuestAddress;
 
 use super::*;
+use crate::CpuId;
 use crate::CpuIdEntry;
 use crate::DebugRegs;
 use crate::DescriptorTable;
@@ -39,6 +40,8 @@ use crate::Segment;
 use crate::Sregs;
 use crate::Vcpu;
 use crate::VcpuExit;
+use crate::VcpuShutdownError;
+use crate::VcpuShutdownErrorKind;
 use crate::VcpuX86_64;
 use crate::Xsave;
 
@@ -300,7 +303,16 @@ impl Vcpu for HaxmVcpu {
             HAX_EXIT_IO => Ok(VcpuExit::Io),
             HAX_EXIT_INTERRUPT => Ok(VcpuExit::Intr),
             HAX_EXIT_HLT => Ok(VcpuExit::Hlt),
-            HAX_EXIT_VCPU_PANIC => Ok(VcpuExit::Shutdown(Ok(()))),
+            HAX_EXIT_VCPU_PANIC => {
+                // SAFETY:
+                // 1) we mapped enough memory to hold the hax_tunnel struct because the kernel told
+                //    us how large it was. That memory is still alive here.
+                let panic_reason = unsafe { (*self.tunnel).vcpu_panic_reason };
+                Ok(VcpuExit::Shutdown(Err(VcpuShutdownError::new(
+                    VcpuShutdownErrorKind::Other,
+                    panic_reason as u64,
+                ))))
+            }
             HAX_EXIT_FAST_MMIO => Ok(VcpuExit::Mmio),
             HAX_EXIT_PAGEFAULT => Ok(VcpuExit::Exception),
             HAX_EXIT_DEBUG => Ok(VcpuExit::Debug),
