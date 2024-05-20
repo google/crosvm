@@ -1373,6 +1373,16 @@ fn test_set_cr_guest() {
     );
 }
 
+#[repr(C, packed)]
+#[derive(AsBytes)]
+// Define IDTR value
+struct Idtr {
+    // The lower 2 bytes are limit.
+    limit: u16,
+    // The higher 4 bytes are base address.
+    base_address: u32,
+}
+
 mod test_minimal_interrupt_injection_code {
     use super::*;
 
@@ -1419,15 +1429,6 @@ fn test_minimal_interrupt_injection() {
     };
 
     let mut cur_addr = start_addr;
-    #[repr(C, packed)]
-    #[derive(AsBytes)]
-    // Define IDTR value
-    struct Idtr {
-        // The lower 2 bytes are limit.
-        limit: u16,
-        // The higher 4 bytes are base address.
-        base_address: u32,
-    }
 
     let idtr_size: u32 = 6;
     assert_eq!(Ok(std::mem::size_of::<Idtr>()), usize::try_from(idtr_size));
@@ -1483,6 +1484,177 @@ fn test_minimal_interrupt_injection() {
                     assert_eq!(regs.rbx, 0);
                     // Inject an external custom interrupt.
                     vcpu.interrupt(32)
+                        .expect("should be able to inject an interrupt");
+                    false
+                }
+                r => panic!("unexpected VMEXIT reason: {:?}", r),
+            }
+        }
+    );
+}
+
+mod test_multiple_interrupt_injection_code {
+    use super::*;
+
+    global_asm_data!(
+        pub init,
+        ".code16",
+        // Set the IDT
+        "lidt [0x200]",
+        // Set up the stack, which will be used when CPU transfers the control to the ISR on
+        // interrupt.
+        "mov esp, 0x900",
+        "mov eax, 1",
+        "mov ebx, 2",
+        "mov ecx, 3",
+        "mov edx, 4",
+        // We inject our interrupts on this hlt command.
+        "hlt",
+        "mov edx, 281",
+        "hlt",
+    );
+
+    global_asm_data!(
+        pub isr_intr_32,
+        ".code16",
+        "mov eax, 32",
+        "iret",
+    );
+
+    global_asm_data!(
+        pub isr_intr_33,
+        ".code16",
+        "mov ebx, 33",
+        "iret",
+    );
+
+    global_asm_data!(
+        pub isr_default,
+        ".code16",
+        "mov ecx, 761",
+        "iret",
+    );
+}
+
+#[test]
+fn test_multiple_interrupt_injection() {
+    let start_addr: u32 = 0x200;
+    // Allocate exceed 0x900, where we set up our stack.
+    let mem_size: u32 = 0x1000;
+
+    let mut setup = TestSetup {
+        load_addr: GuestAddress(start_addr.into()),
+        initial_regs: Regs {
+            rax: 0,
+            rbx: 0,
+            rcx: 0,
+            rdx: 0,
+            // Set RFLAGS.IF to enable interrupt.
+            rflags: 2 | 0x200,
+            ..Default::default()
+        },
+        mem_size: mem_size.into(),
+        ..Default::default()
+    };
+
+    let mut cur_addr = start_addr;
+
+    let idtr_size: u32 = 6;
+    assert_eq!(Ok(std::mem::size_of::<Idtr>()), usize::try_from(idtr_size));
+    // The limit is calculated from 256 entries timed by 4 bytes per entry.
+    let idt_size = 256u16 * 4u16;
+    let idtr = Idtr {
+        limit: idt_size - 1,
+        // The IDT right follows the IDTR.
+        base_address: start_addr + idtr_size,
+    };
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), idtr.as_bytes().to_vec());
+    cur_addr += idtr_size;
+
+    let isr_intr_32_assembly = test_multiple_interrupt_injection_code::isr_intr_32::data().to_vec();
+    let isr_intr_33_assembly = test_multiple_interrupt_injection_code::isr_intr_33::data().to_vec();
+    let isr_default_assembly = test_multiple_interrupt_injection_code::isr_default::data().to_vec();
+    // The ISR for intr 32 right follows the IDT.
+    let isr_intr_32_addr = cur_addr + u32::from(idt_size);
+    // The ISR for intr 33 right follows the ISR for intr 32.
+    let isr_intr_33_addr = isr_intr_32_addr
+        + u32::try_from(isr_intr_32_assembly.len())
+            .expect("the size of the ISR for intr 32 should be within the u32 range");
+    // The ISR for other interrupts right follows the ISR for intr 33.
+    let isr_default_addr = isr_intr_33_addr
+        + u32::try_from(isr_intr_33_assembly.len())
+            .expect("the size of the ISR for intr 33 should be within the u32 range");
+
+    // IDT entries are far pointers(CS:IP pair) to the correspondent ISR.
+    let idt = (0..256)
+        .map(|intr_vec| match intr_vec {
+            32 => isr_intr_32_addr,
+            33 => isr_intr_33_addr,
+            _ => isr_default_addr,
+        })
+        .flat_map(u32::to_ne_bytes)
+        .collect::<Vec<_>>();
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), idt.clone());
+    assert_eq!(Ok(idt.len()), usize::try_from(idt_size));
+    cur_addr += u32::try_from(idt.len()).expect("IDT size should be within u32");
+
+    assert_eq!(cur_addr, isr_intr_32_addr);
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), isr_intr_32_assembly.clone());
+    cur_addr += u32::try_from(isr_intr_32_assembly.len()).expect("ISR size should be within u32");
+
+    assert_eq!(cur_addr, isr_intr_33_addr);
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), isr_intr_33_assembly.clone());
+    cur_addr += u32::try_from(isr_intr_33_assembly.len()).expect("ISR size should be within u32");
+
+    assert_eq!(cur_addr, isr_default_addr);
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), isr_default_assembly.clone());
+    cur_addr += u32::try_from(isr_default_assembly.len()).expect("ISR size should be within u32");
+
+    let init_assembly = test_multiple_interrupt_injection_code::init::data().to_vec();
+    setup.initial_regs.rip = cur_addr.into();
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), init_assembly.clone());
+    cur_addr += u32::try_from(init_assembly.len()).expect("init size should be within u32");
+    let init_end_addr = cur_addr;
+
+    assert!(mem_size > cur_addr);
+
+    let mut counter = 0;
+    run_tests!(
+        setup,
+        |hypervisor_type, regs, _| {
+            // Different hypervisors behave differently on how the first injected exception should
+            // handled: for WHPX and KVM, the later injected interrupt overrides the earlier
+            // injected interrupt, while for HAXM, both interrupts are marked as pending.
+            match hypervisor_type {
+                HypervisorType::Haxm => assert_eq!(regs.rax, 32),
+                _ => assert_eq!(regs.rax, 1),
+            }
+
+            assert_eq!(regs.rip, u64::from(init_end_addr));
+            assert_eq!(regs.rbx, 33);
+            assert_eq!(regs.rcx, 3);
+            assert_eq!(regs.rdx, 281);
+        },
+        |_, exit, vcpu: &mut dyn VcpuX86_64| {
+            match exit {
+                VcpuExit::Hlt => {
+                    let regs = vcpu
+                        .get_regs()
+                        .expect("should retrieve registers successfully");
+                    counter += 1;
+                    if counter > 1 {
+                        return true;
+                    }
+                    assert_eq!(regs.rax, 1);
+                    assert_eq!(regs.rbx, 2);
+                    assert_eq!(regs.rcx, 3);
+                    assert_eq!(regs.rdx, 4);
+                    // Inject external custom interrupts.
+                    assert!(vcpu.ready_for_interrupt());
+                    vcpu.interrupt(32)
+                        .expect("should be able to inject an interrupt");
+                    assert!(vcpu.ready_for_interrupt());
+                    vcpu.interrupt(33)
                         .expect("should be able to inject an interrupt");
                     false
                 }
