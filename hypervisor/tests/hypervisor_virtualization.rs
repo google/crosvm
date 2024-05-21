@@ -267,19 +267,22 @@ fn test_minimal_virtualization() {
     );
 }
 
+global_asm_data!(
+    test_io_exit_handler_code,
+    ".code16",
+    "out 0x10, al",
+    "in al, 0x20",
+    "add ax, bx",
+    "hlt",
+);
+
 #[test]
 fn test_io_exit_handler() {
     // Use the OUT/IN instructions, which cause an Io exit in order to
     // read/write data using a given port.
     let load_addr = GuestAddress(0x1000);
     let setup = TestSetup {
-        /*
-           0:  e6 10                   out    0x10,al
-           2:  e4 20                   in     al,0x20
-           4:  66 01 d8                add    ax,bx
-           7:  f4                      hlt
-        */
-        assembly: vec![0xE6, 0x10, 0xE4, 0x20, 0x66, 0x01, 0xD8, 0xF4],
+        assembly: test_io_exit_handler_code::data().to_vec(),
         load_addr,
         initial_regs: Regs {
             rip: load_addr.offset(),
@@ -335,6 +338,14 @@ fn test_io_exit_handler() {
     run_tests!(setup, regs_matcher, &exit_matcher);
 }
 
+global_asm_data!(
+    test_mmio_exit_cross_page_code,
+    ".code16",
+    "mov byte ptr [ebx], al",
+    "mov al, byte ptr [ecx]",
+    "hlt",
+);
+
 // This test is similar to mmio_fetch_memory.rs (remove eventually)
 // but applies to all hypervisors.
 #[test]
@@ -343,13 +354,7 @@ fn test_mmio_exit_cross_page() {
     let load_addr = GuestAddress(page_size - 1); // Last byte of the first page
 
     let setup = TestSetup {
-        /*
-        These instructions will cross the page boundary.
-        0x0000000000000000:  67 88 03    mov byte ptr [ebx], al
-        0x0000000000000003:  67 8A 01    mov al, byte ptr [ecx]
-        0x000000000000000a:  F4          hlt
-        */
-        assembly: vec![0x67, 0x88, 0x03, 0x67, 0x8a, 0x01, 0xf4],
+        assembly: test_mmio_exit_cross_page_code::data().to_vec(),
         load_addr,
         initial_regs: Regs {
             rip: load_addr.offset(),
@@ -414,19 +419,22 @@ fn test_mmio_exit_cross_page() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+global_asm_data!(
+    test_mmio_exit_readonly_memory_code,
+    ".code16",
+    "mov al,BYTE PTR es:[bx]",
+    "add al, 0x1",
+    "mov BYTE PTR es:[bx], al",
+    "hlt",
+);
+
 #[test]
 #[cfg(any(target_os = "android", target_os = "linux"))] // Not working for WHXP yet.
 fn test_mmio_exit_readonly_memory() {
     // Read from read-only memory and then write back to it,
     // which should trigger an MMIO exit.
     let setup = TestSetup {
-        /*
-           0000  268A07  mov al,[es:bx]
-           0003  0401    add al,0x1
-           0005  268807  mov [es:bx],al
-           0008  F4      hlt
-        */
-        assembly: vec![0x26, 0x8a, 0x07, 0x04, 0x01, 0x26, 0x88, 0x07, 0xf4],
+        assembly: test_mmio_exit_readonly_memory_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -510,14 +518,18 @@ fn test_mmio_exit_readonly_memory() {
     );
 }
 
+#[rustfmt::skip::macros(global_asm_data)]
+global_asm_data!(
+    test_cpuid_exit_handler_code,
+    ".code16",
+    "cpuid",
+    "hlt",
+);
+
 #[test]
 fn test_cpuid_exit_handler() {
     let setup = TestSetup {
-        /*
-           0:  0f a2                   cpuid
-           2:  f4                      hlt
-        */
-        assembly: vec![0x0F, 0xA2, 0xF4],
+        assembly: test_cpuid_exit_handler_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -556,18 +568,20 @@ fn test_cpuid_exit_handler() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+global_asm_data!(
+    test_control_register_access_invalid_code,
+    ".code16",
+    // Test setting an unused bit in addition to the Protected Mode Enable and Monitor co-processor
+    // bits, which causes a triple fault and hence the invalid bit should never make it to RCX.
+    "mov cr0, eax",
+    "mov ecx, cr0",
+    "hlt",
+);
+
 #[test]
 fn test_control_register_access_invalid() {
     let setup = TestSetup {
-        // Test setting an unused bit in addition to the Protected Mode Enable and
-        // Monitor co-processor bits, which causes a triple fault and hence the
-        // invalid bit should never make it to RCX.
-        /*
-            0:  0f 22 c0                mov    cr0,rax
-            3:  0f 20 c1                mov    rcx,cr0
-            6:  f4                      hlt
-        */
-        assembly: vec![0x0F, 0x22, 0xC0, 0x0F, 0x20, 0xC0, 0xF4],
+        assembly: test_control_register_access_invalid_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -610,16 +624,19 @@ fn test_control_register_access_invalid() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+global_asm_data!(
+    test_control_register_access_valid_code,
+    // Set the 0th bit (Protected Mode Enable) of CR0, which should succeed.
+    ".code16",
+    "mov cr0, eax",
+    "mov eax, cr0",
+    "hlt",
+);
+
 #[test]
 fn test_control_register_access_valid() {
     let setup = TestSetup {
-        // Set the 0th bit (Protected Mode Enable) of CR0, which should succeed.
-        /*
-        0:  0f 22 c0                mov    cr0, rax
-        3:  0f 20 c0                mov    rax, cr0
-        6:  f4                      hlt
-         */
-        assembly: vec![0x0F, 0x22, 0xC0, 0x0F, 0x20, 0xC0, 0xF4],
+        assembly: test_control_register_access_invalid_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -648,15 +665,18 @@ fn test_control_register_access_valid() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+global_asm_data!(
+    test_debug_register_access_code,
+    ".code16",
+    "mov dr2, eax",
+    "mov ebx, dr2",
+    "hlt",
+);
+
 #[test]
 fn test_debug_register_access() {
     let setup = TestSetup {
-        /*
-        0:  0f 23 d0                mov    dr2,rax
-        3:  0f 21 d3                mov    rbx,dr2
-        6:  f4                      hlt
-         */
-        assembly: vec![0x0F, 0x23, 0xD0, 0x0F, 0x21, 0xD3, 0xF4],
+        assembly: test_debug_register_access_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -724,18 +744,21 @@ fn test_msr_access_invalid() {
     );
 }
 
+global_asm_data!(
+    test_msr_access_valid_code,
+    ".code16",
+    "rdmsr",
+    "add ax, 1",
+    "wrmsr",
+    "hlt",
+);
+
 #[test]
 fn test_msr_access_valid() {
     let msr_index = 0x10; // TSC MSR index
 
     let setup = TestSetup {
-        /*
-            0:  0f 32             rdmsr
-            2:  83 c0 01          add    ax,1  // Increment TSC read value by 1
-            5:  0f 30             wrmsr
-            7:  f4                hlt
-        */
-        assembly: vec![0x0F, 0x32, 0x83, 0xC0, 0x01, 0x0F, 0x30, 0xF4],
+        assembly: test_msr_access_valid_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -760,14 +783,18 @@ fn test_msr_access_valid() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+#[rustfmt::skip::macros(global_asm_data)]
+global_asm_data!(
+    test_getsec_instruction_code,
+    ".code16",
+    "getsec",
+    "hlt",
+);
+
 #[test]
 fn test_getsec_instruction() {
     let setup = TestSetup {
-        /*
-           0:  0f 37                   getsec
-           2:  f4                      hlt
-        */
-        assembly: vec![0x0F, 0x37, 0xF4],
+        assembly: test_getsec_instruction_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -817,14 +844,18 @@ fn test_getsec_instruction() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+#[rustfmt::skip::macros(global_asm_data)]
+global_asm_data!(
+    test_invd_instruction_code,
+    ".code16",
+    "invd",
+    "hlt",
+);
+
 #[test]
 fn test_invd_instruction() {
     let setup = TestSetup {
-        /*
-           0:  0f 08                   invd
-           2:  f4                      hlt
-        */
-        assembly: vec![0x0F, 0x08, 0xF4],
+        assembly: test_invd_instruction_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -864,21 +895,22 @@ fn test_invd_instruction() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+global_asm_data!(
+    test_xsetbv_instruction_code,
+    ".code16",
+    "mov eax, cr4",
+    // Set the OSXSAVE bit in CR4 (bit 9)
+    "or ax, 0x200",
+    "mov cr4, eax",
+    "xgetbv",
+    "xsetbv",
+    "hlt",
+);
+
 #[test]
 fn test_xsetbv_instruction() {
     let setup = TestSetup {
-        /*
-            0:  0f 20 e0                mov    eax,cr4
-            3:  0d 00 02 00 00          or     eax,0x200  ; Set the OSXSAVE bit in CR4 (bit 9)
-            8:  0f 22 e0                mov    cr4,eax
-            b:  0f 01 d0                xgetbv
-            e:  0f 01 d1                xsetbv
-            11: f4                      hlt
-        */
-        assembly: vec![
-            0x0F, 0x20, 0xE0, 0x0D, 0x00, 0x02, 0x00, 0x00, 0x0F, 0x22, 0xE0, 0x0F, 0x01, 0xD0,
-            0x0F, 0x01, 0xD1, 0xF4,
-        ],
+        assembly: test_xsetbv_instruction_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -932,14 +964,19 @@ fn test_xsetbv_instruction() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+global_asm_data!(
+    test_invept_instruction_code,
+    ".code16",
+    "invept eax, [eax]",
+    "hlt",
+);
+
+// TODO(b/342183625): invept instruction is not valid in real mode. Reconsider how we should write
+// this test.
 #[test]
 fn test_invept_instruction() {
     let setup = TestSetup {
-        /*
-            0:  66 0f 38 80 00          invept rax,OWORD PTR [rax]
-            5:  f4                      hlt
-        */
-        assembly: vec![0x66, 0x0F, 0x38, 0x80, 0x00, 0xF4],
+        assembly: test_invept_instruction_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rax: 0x2000,
@@ -991,14 +1028,19 @@ fn test_invept_instruction() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+global_asm_data!(
+    test_invvpid_instruction_code,
+    ".code16",
+    "invvpid eax, [eax]",
+    "hlt",
+);
+
+// TODO(b/342183625): invvpid instruction is not valid in real mode. Reconsider how we should write
+// this test.
 #[test]
 fn test_invvpid_instruction() {
     let setup = TestSetup {
-        /*
-           0:  66 0f 38 81 00          invvpid rax,OWORD PTR [rax]
-           5:  f4                      hlt
-        */
-        assembly: vec![0x66, 0x0F, 0x38, 0x81, 0x00, 0xF4],
+        assembly: test_invvpid_instruction_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -1092,17 +1134,21 @@ fn test_vm_instruction_set() {
     }
 }
 
+#[rustfmt::skip::macros(global_asm_data)]
+global_asm_data!(
+    test_software_interrupt_code,
+    "int 0x80",
+    "hlt",
+);
+
 #[test]
 fn test_software_interrupt() {
+    let start_addr = 0x1000;
     let setup = TestSetup {
-        /*
-           0:  cd 03                   int    0x3
-           2:  f4                      hlt
-        */
-        assembly: vec![0xCD, 0x03, 0xF4],
+        assembly: test_software_interrupt_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
-            rip: 0x1000,
+            rip: start_addr,
             rflags: 2,
             ..Default::default()
         },
@@ -1115,7 +1161,14 @@ fn test_software_interrupt() {
             HypervisorType::Haxm => {}
             HypervisorType::Kvm => {}
             _ => {
-                assert_eq!(regs.rip, 0x1002, "Expected RIP at 0x1002");
+                let expect_rip_addr = start_addr
+                    + u64::try_from(test_software_interrupt_code::data().len())
+                        .expect("the code length should within the range of u64");
+                assert_eq!(
+                    regs.rip, expect_rip_addr,
+                    "Expected RIP at {:#x}",
+                    expect_rip_addr
+                );
             }
         };
 
@@ -1142,14 +1195,18 @@ fn test_software_interrupt() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+#[rustfmt::skip::macros(global_asm_data)]
+global_asm_data!(
+    test_rdtsc_instruction_code,
+    ".code16",
+    "rdtsc",
+    "hlt",
+);
+
 #[test]
 fn test_rdtsc_instruction() {
     let setup = TestSetup {
-        /*
-            0:  0f 31                   rdtsc
-            2:  f4                      hlt
-        */
-        assembly: vec![0x0F, 0x31, 0xF4],
+        assembly: test_rdtsc_instruction_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -1173,22 +1230,24 @@ fn test_rdtsc_instruction() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+global_asm_data!(
+    test_register_access_code,
+    ".code16",
+    "jz fin",
+    "xchg ax, bx",
+    "xchg cx, dx",
+    "xchg sp, bp",
+    "xchg si, di",
+    "cmp ax, 1",
+    "fin:",
+    "hlt",
+);
+
 // This tests that we can write and read GPRs to/from the VM.
 #[test]
 fn test_register_access() {
     let setup = TestSetup {
-        /*
-            0:  74 0a         jz c ; jump to hlt
-            2:  93            xchg ax, bx
-            3:  87 ca         xchg cx, dx
-            5:  87 e5         xchg sp, bp
-            7:  87 f7         xchg si, di
-            9:  83 f8 01      cmp ax, 1
-            12: f4            hlt
-        */
-        assembly: vec![
-            0x74, 0x0a, 0x93, 0x87, 0xca, 0x87, 0xe5, 0x87, 0xf7, 0x83, 0xf8, 0x01, 0xf4,
-        ],
+        assembly: test_register_access_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
@@ -1224,18 +1283,21 @@ fn test_register_access() {
     );
 }
 
+global_asm_data!(
+    test_set_cr_vmm_code,
+    ".code16",
+    "mov eax, cr0",
+    "mov ebx, cr3",
+    "mov ecx, cr4",
+    "hlt",
+);
+
 // Tests that the VMM can read and write CRs and they become visible in the guest.
 #[test]
 fn test_set_cr_vmm() {
     let asm_addr = 0x1000;
     let setup = TestSetup {
-        /*
-            0: 0f 20 c0     mov eax, cr0
-            3: 0f 20 db     mov ebx, cr3
-            6: 0f 20 e1     mov ecx, cr4
-            9: f4           hlt
-        */
-        assembly: vec![0x0f, 0x20, 0xc0, 0x0f, 0x20, 0xdb, 0x0f, 0x20, 0xe1, 0xf4],
+        assembly: test_set_cr_vmm_code::data().to_vec(),
         load_addr: GuestAddress(asm_addr),
         initial_regs: Regs {
             rip: asm_addr,
@@ -1267,27 +1329,26 @@ fn test_set_cr_vmm() {
     );
 }
 
+global_asm_data!(
+    test_set_cr_guest_code,
+    ".code16",
+    "mov eax, cr0",
+    "or eax, (1 << 18)",
+    "mov cr0, eax",
+    "mov ebx, 0xfeedface",
+    "mov cr3, ebx",
+    "mov ecx, cr4",
+    "or ecx, (1 << 2)",
+    "mov cr4, ecx",
+    "hlt",
+);
+
 // Tests that the guest can read and write CRs and they become visible to the VMM.
 #[test]
 fn test_set_cr_guest() {
     let asm_addr = 0x1000;
     let setup = TestSetup {
-        /*
-            0:  0f 20 c0            mov eax, cr0
-            3:  66 0d 00 00 04 00   or eax, (1 << 18)
-            9:  0f 22 c0            mov cr0, eax
-            c:  66 bb ce fa ed fe   mov ebx, 0xfeedface
-            12: 0f 22 db            mov cr3, ebx
-            15: 0f 20 e1            mov ecx, cr4
-            18: 66 83 c9 04         or ecx, (1 << 2)
-            1c: 0f 22 e1            mov cr4, ecx
-            1f: f4                  hlt
-        */
-        assembly: vec![
-            0x0f, 0x20, 0xc0, 0x66, 0x0d, 0x00, 0x00, 0x04, 0x00, 0x0f, 0x22, 0xc0, 0x66, 0xbb,
-            0xce, 0xfa, 0xed, 0xfe, 0x0f, 0x22, 0xdb, 0x0f, 0x20, 0xe1, 0x66, 0x83, 0xc9, 0x04,
-            0x0f, 0x22, 0xe1, 0xf4,
-        ],
+        assembly: test_set_cr_guest_code::data().to_vec(),
         load_addr: GuestAddress(asm_addr),
         initial_regs: Regs {
             rip: asm_addr,
