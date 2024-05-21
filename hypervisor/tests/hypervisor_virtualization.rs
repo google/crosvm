@@ -740,64 +740,37 @@ fn test_msr_access_invalid() {
 
 #[test]
 fn test_msr_access_valid() {
-    let msr_index = 0xC0000080; // EFER MSR
-    let lme_bit_position = 8; // Bit position for LME (Long Mode Enable)
+    let msr_index = 0x10; // TSC MSR index
 
     let setup = TestSetup {
         /*
-            0:  0f 32                   rdmsr
-            2:  0d 00 01 00 00          or     ax,0x100
-            7:  0f 30                   wrmsr
-            9:  f4                      hlt
+            0:  0f 32             rdmsr
+            2:  83 c0 01          add    ax,1  // Increment TSC read value by 1
+            5:  0f 30             wrmsr
+            7:  f4                hlt
         */
-        assembly: vec![0x0F, 0x32, 0x0D, 0x00, 0x01, 0x00, 0x00, 0x0F, 0x30, 0xF4],
-        mem_size: 0x5000,
+        assembly: vec![0x0F, 0x32, 0x83, 0xC0, 0x01, 0x0F, 0x30, 0xF4],
         load_addr: GuestAddress(0x1000),
         initial_regs: Regs {
             rip: 0x1000,
-            rcx: msr_index, // MSR index to read/write
-            rax: 0,         // Initialize to zero, modified by test
-            rdx: 0,         // Initialize to zero, modified by test
+            rcx: msr_index, // MSR index for TSC
             rflags: 0x2,
             ..Default::default()
         },
         ..Default::default()
     };
 
-    let regs_matcher =
-        move |hypervisor_type: HypervisorType, regs: &Regs, _: &_| match hypervisor_type {
-            // Check that the LME bit is set in EAX after the operation.
-            HypervisorType::Haxm | HypervisorType::Whpx => {
-                assert!(
-                    regs.rax & (1 << lme_bit_position) != 0,
-                    "LME bit not set in MSR EFER after modification."
-                );
-                assert_eq!(regs.rip, 0x100a); // Should stop after the hlt
-            }
-            _ => {}
-        };
+    let regs_matcher = move |_: HypervisorType, regs: &Regs, _: &_| {
+        assert!(regs.rax > 0x0, "TSC value should be >0");
+        assert_eq!(regs.rip, 0x1008, "Should stop after the hlt instruction");
+    };
 
-    let exit_matcher =
-        |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match hypervisor_type {
-            HypervisorType::Kvm => match exit {
-                VcpuExit::InternalError => {
-                    true // Break VM runloop
-                }
-                r => panic!("unexpected exit reason: {:?}", r),
-            },
-            HypervisorType::Whpx => match exit {
-                VcpuExit::Mmio => {
-                    true // Break VM runloop
-                }
-                r => panic!("unexpected exit reason: {:?}", r),
-            },
-            _ => match exit {
-                VcpuExit::Hlt => {
-                    true // Break VM runloop
-                }
-                r => panic!("unexpected exit reason: {:?}", r),
-            },
-        };
+    let exit_matcher = |_, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match exit {
+        VcpuExit::Hlt => {
+            true // Break VM runloop
+        }
+        r => panic!("unexpected exit reason: {:?}", r),
+    };
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
