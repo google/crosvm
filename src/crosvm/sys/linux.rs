@@ -439,7 +439,8 @@ fn create_virtio_devices(
             // If unset, KVM defaults to an offset that is calculated from VM boot time. Explicitly
             // set it to zero on boot. When updating the offset, we always set it to the total
             // amount of time the VM has been suspended.
-            vm.set_counter_offset(0)?;
+            vm.set_counter_offset(0)
+                .context("failed to set up pvclock")?;
         }
         let dev = create_pvclock_device(
             cfg.protection_type,
