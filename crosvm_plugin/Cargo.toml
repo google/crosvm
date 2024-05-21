@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 [dependencies]
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
-libc = "*"
+libc = "0.2"
 protobuf = "3.2"
 protos = { path = "../protos", features = ["plugin"] }
 base = { path = "../base" }

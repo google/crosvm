@@ -13,28 +13,28 @@ registered_events = ["balloon", "protos/registered_events"]
 swap = ["swap/enable"]
 
 [dependencies]
-anyhow = "*"
+anyhow = "1"
 balloon_control = { path = "../common/balloon_control" }
 base = { path = "../base" }
-cfg-if = "*"
+cfg-if = "1"
 crypto = { path = "../vendor/generic/crypto", package = "crypto_generic" }
 gdbstub = { version = "0.7.0", optional = true }
 gdbstub_arch = { version = "0.3.0", optional = true }
 hypervisor = { path = "../hypervisor" }
-libc = "*"
+libc = "0.2"
 once_cell = "1.7.2"
 protos = { path = "../protos", optional = true }
-remain = "*"
+remain = "0.2"
 resources = { path = "../resources" }
 rutabaga_gfx = { path = "../rutabaga_gfx" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "*"
+serde_json = "1"
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
 swap = { path = "../swap" }
 sync = { path = "../common/sync" }
-thiserror = "*"
+thiserror = "1"
 vm_control_product = { path = "../vendor/generic/vm_control", package = "vm_control_product" }
 vm_memory = { path = "../vm_memory" }
 
 [target.'cfg(windows)'.dependencies]
-winapi = "*"
+winapi = "0.3"

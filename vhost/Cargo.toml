@@ -6,10 +6,10 @@ edition = "2021"
 
 [dependencies]
 static_assertions = "1.1"
-libc = "*"
+libc = "0.2"
 net_util = { path = "../net_util" }
 base = { path = "../base" }
-remain = "*"
-thiserror = "*"
+remain = "0.2"
+thiserror = "1"
 virtio_sys = { path = "../virtio_sys" }
 vm_memory = { path = "../vm_memory" }

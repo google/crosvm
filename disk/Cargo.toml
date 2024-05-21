@@ -13,25 +13,25 @@ composite-disk = ["crc32fast", "protos", "protobuf", "uuid"]
 qcow = []
 
 [dependencies]
-async-trait = "*"
+async-trait = "0.1.36"
 base = { path = "../base" }
 cfg-if = "1.0.0"
 crc32fast = { version = "1.2.1", optional = true }
 cros_async = { path = "../cros_async" }
 data_model = { path = "../common/data_model" }
-libc = "*"
+libc = "0.2"
 protobuf = { version = "3.2", optional = true }
 protos = { path = "../protos", features = ["composite-disk"], optional = true }
-remain = "*"
+remain = "0.2"
 serde = { version = "1", features = [ "derive" ] }
 sync = { path = "../common/sync" }
-thiserror = "*"
+thiserror = "1"
 uuid = { version = "1", features = ["v4"], optional = true }
 vm_memory = { path = "../vm_memory" }
 zerocopy = { version = "0.7", features = ["derive"] }
 
 [dependencies.futures]
-version = "*"
+version = "0.3"
 default-features = false
 
 [dev-dependencies]

@@ -13,14 +13,14 @@ default = ["openssl"]
 pure-rust-hashes = ["sha2"]
 
 [dependencies]
-anyhow = "*"
+anyhow = "1"
 base = { path = "../base" }
 cfg-if = "1.0.0"
 cros_tracing_types = { path = "../cros_tracing_types" }
-openssl = { version = "*", optional = true }
+openssl = { version = "0.10", optional = true }
 protobuf = "3.2"
 serde = { version = "1", features = [ "derive" ] }
-sha2 = { version = "*", optional = true }
+sha2 = { version = "0.10", optional = true }
 sync = { path = "../common/sync" }
 zerocopy = { version = "0.7", features = ["derive"] }
 

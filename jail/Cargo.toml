@@ -8,13 +8,13 @@ edition = "2021"
 seccomp_trace = []
 
 [dependencies]
-anyhow = "*"
+anyhow = "1"
 base = { path = "../base" }
-libc = "*"
-once_cell = "*"
-serde = "*"
+libc = "0.2"
+once_cell = "1.7"
+serde = "1"
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
-static_assertions = "*"
+static_assertions = "1.1"
 zerocopy = { version = "0.7", features = ["derive"] }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
@@ -25,4 +25,4 @@ which = "4"
 rayon = "1.5.3"
 
 [dev-dependencies]
-cfg-if = "*"
+cfg-if = "1"

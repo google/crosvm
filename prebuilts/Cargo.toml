@@ -5,6 +5,6 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "*"
-cfg-if = "*"
+anyhow = "1"
+cfg-if = "1"
 named-lock = "0.3"

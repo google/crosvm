@@ -5,7 +5,7 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "*"
-indexmap = "*"
-remain = "*"
+anyhow = "1"
+indexmap = "1"
+remain = "0.2"
 thiserror = "1.0.20"

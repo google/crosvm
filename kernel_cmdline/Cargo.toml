@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-libc = "*"
-remain = "*"
-thiserror = "*"
+libc = "0.2"
+remain = "0.2"
+thiserror = "1"
 
 [lib]
 path = "src/kernel_cmdline.rs"

@@ -4,9 +4,8 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2021"
 
-
 [dependencies]
-serde_json = "*"
-serde = { version = "*", features = ["derive"] }
-argh = "*"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+argh = "0.1"
 uuid = {version = "1", features = ["v4"]}

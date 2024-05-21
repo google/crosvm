@@ -9,4 +9,4 @@ path = "src/libcras.rs"
 
 [dependencies]
 audio_streams = "*"
-serde = "*"
+serde = "1"

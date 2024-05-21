@@ -14,20 +14,20 @@ edition = "2021"
 default = []
 
 [dependencies]
-anyhow = "*"
+anyhow = "1"
 base = { path = "../../base" }
 bitflags = "2.3"
 cfg-if = "1.0.0"
 enumn = "0.1.0"
 libc = ">=0.2.39"
-remain = "*"
+remain = "0.2"
 thiserror = { version = "1.0.20" }
 zerocopy = { version = "0.7", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
 serde = { version = "1", features = [ "derive" ] }
-serde_json = "*"
+serde_json = "1"
 tube_transporter = { path = "../../tube_transporter" }
 
 [dev-dependencies]
-tempfile = "*"
+tempfile = "3"

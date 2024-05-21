@@ -18,7 +18,7 @@ swap = { path = "../swap", default-features = false }
 vm_control = { path = "../vm_control", features = [ "balloon" ] }
 
 [build-dependencies]
-anyhow = "*"
+anyhow = "1"
 cbindgen = "0.24.3"
-cc = "*"
-tempfile = "*"
+cc = "1"
+tempfile = "3"

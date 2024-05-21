@@ -17,8 +17,8 @@ trace_marker = []
 perfetto = ["dep:perfetto"]
 
 [dependencies]
-anyhow = "*"
-base = "*"
+anyhow = "1"
+base = { path = "../base" }
 cfg-if = "1.0.0"
 cros_tracing_types = { path = "../cros_tracing_types" }
 perfetto = { path = "../perfetto", optional = true }

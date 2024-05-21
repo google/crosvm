@@ -18,15 +18,15 @@ hypervisor = { path = "../hypervisor" }
 jail = { path = "../jail" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 kernel_loader = { path = "../kernel_loader" }
-libc = "*"
+libc = "0.2"
 memoffset = "0.6"
 rand = "0.8"
-remain = "*"
+remain = "0.2"
 resources = { path = "../resources" }
 swap = { path = "../swap" }
 sync = { path = "../common/sync" }
 base = { path = "../base" }
-thiserror = "*"
+thiserror = "1"
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
 

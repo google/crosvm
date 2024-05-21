@@ -5,10 +5,10 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "*"
-libc = "*"
-thiserror = "*"
+anyhow = "1"
+libc = "0.2"
+thiserror = "1"
 
 [build-dependencies]
 bindgen = "0.63"
-pkg-config = "*"
+pkg-config = "0.3"

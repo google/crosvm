@@ -5,19 +5,19 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "*"
+anyhow = "1"
 arch = { path = "../../arch" }
-base = "*"
+base = { path = "../../base" }
 crc32fast = "1.3"
-cfg-if = "*"
+cfg-if = "1"
 libc = "0.2.65"
 rand = "0.8"
 tempfile = "3"
 prebuilts = { path = "../../prebuilts" }
-log = "*"
+log = "0.4"
 shlex = "1.3"
 url = "2.3"
 delegate = {path = "../guest_under_test/rootfs/delegate"}
-serde = {version = "*", features = ["derive"]}
-serde_json = "*"
+serde = {version = "1", features = ["derive"]}
+serde_json = "1"
 readclock = { path = "../guest_under_test/rootfs/readclock" }

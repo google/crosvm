@@ -10,6 +10,6 @@ experimental = []
 collect = []
 
 [dependencies]
-anyhow = "*"
+anyhow = "1"
 base = { path = "../../../base" }
 metrics_events = { path = "../../../metrics_events" }

@@ -10,7 +10,7 @@ libvda-stub = []
 
 [dependencies]
 enumn = "0.1.0"
-libc = "*"
+libc = "0.2"
 
 [build-dependencies]
-pkg-config = "*"
+pkg-config = "0.3"

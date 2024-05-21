@@ -9,8 +9,8 @@ base = { path = "../base" }
 
 [target.'cfg(windows)'.dependencies]
 win_util = { path = "../win_util"}
-winapi = { version = "*", features = ["everything", "std", "impl-default"] }
+winapi = { version = "0.3", features = ["everything", "std", "impl-default"] }
 
 [build-dependencies]
-anyhow = "*"
+anyhow = "1"
 prebuilts = { path = "../prebuilts" }

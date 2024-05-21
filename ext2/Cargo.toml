@@ -5,16 +5,16 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "*"
+anyhow = "1"
 base = { path = "../base/" }
-libc = "*"
-uuid = { version = "*", features = ["v4"] }
+libc = "0.2"
+uuid = { version = "1", features = ["v4"] }
 zerocopy = "0.7.29" # >=0.7.29 is required for our 'AsBytes'
-zerocopy-derive = "*"
+zerocopy-derive = "0.7"
 
 [[example]]
 name = "mkfs"
 
 [dev-dependencies]
-argh = "*"
-tempfile = "*"
+argh = "0.1"
+tempfile = "3"

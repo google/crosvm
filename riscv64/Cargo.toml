@@ -15,12 +15,12 @@ gdbstub = { version = "0.7.0", optional = true }
 gdbstub_arch = { version = "0.3.0", optional = true }
 hypervisor = { path = "../hypervisor" }
 kernel_cmdline = { path = "../kernel_cmdline" }
-libc = "*"
+libc = "0.2"
 rand = "0.8"
-remain = "*"
+remain = "0.2"
 resources = { path = "../resources" }
 sync = { path = "../common/sync" }
-thiserror = "*"
+thiserror = "1"
 base = { path = "../base" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }

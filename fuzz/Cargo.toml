@@ -13,13 +13,13 @@ disk = { path = "../disk" }
 fuse = { path = "../fuse" }
 hypervisor = { path = "../hypervisor" }
 kernel_loader = { path = "../kernel_loader" }
-libc = "*"
+libc = "0.2"
 rand = "0.8"
 base = { path = "../base" }
 tempfile = "3"
 usb_util = { path = "../usb_util" }
 vm_memory = { path = "../vm_memory" }
-p9 = "*"
+p9 = "0.2"
 rand_core = {version = "0.6", features = ["std"]}
 cfg-if = "1.0"
 

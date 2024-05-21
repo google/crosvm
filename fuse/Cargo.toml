@@ -8,12 +8,12 @@ edition = "2021"
 path = "src/lib.rs"
 
 [dependencies]
-base = "*"
+base = { path = "../base" }
 bitflags = "2.2.1"
 crossbeam-utils = "0.8"
 cros_tracing = { path = "../cros_tracing" }
 enumn = "0.1.0"
-libc = { version = "*", features = ["extra_traits"] }
+libc = { version = "0.2", features = ["extra_traits"] }
 remain = "0.2"
 thiserror = "1.0.20"
 zerocopy = { version = "0.7", features = ["derive"] }

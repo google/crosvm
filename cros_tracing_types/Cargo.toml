@@ -5,5 +5,5 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "*"
+anyhow = "1"
 sync = { path = "../common/sync" }

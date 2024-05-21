@@ -422,7 +422,7 @@ arch = { path = "arch" }
 argh = "0.1.10"
 argh_helpers = { path = "argh_helpers" }
 audio_streams = "*"
-base = "*"
+base = { path = "base" }
 bit_field = { path = "bit_field" }
 broker_ipc = { path = "broker_ipc" }
 cfg-if = "1.0.0"
@@ -454,11 +454,11 @@ net_util = { path = "net_util" }
 once_cell = "1.7"
 protobuf = { version = "3.2", optional = true }
 protos = { path = "protos", optional = true }
-remain = "*"
+remain = "0.2"
 resources = { path = "resources" }
 scudo = { version = "0.1", optional = true }
-serde = { version = "*", features = ["rc"] }
-serde_json = "*"
+serde = { version = "1", features = ["rc"] }
+serde_json = "1"
 serde_keyvalue = { path = "serde_keyvalue", features = ["argh_derive"] }
 smallvec = "1.6.1"
 static_assertions = "1.1"
@@ -488,25 +488,23 @@ vhost = { path = "vhost" }
 [target.'cfg(windows)'.dependencies]
 anti_tamper = { path = "vendor/generic/anti_tamper" }
 cros_async = { path = "cros_async" }
-ctrlc = "*"
+ctrlc = "3"
 futures = "0.3"
 gpu_display = { path = "gpu_display", optional = true }
 rand = "0.8"
 sandbox = { path = "sandbox" }
 cros_tracing = { path = "cros_tracing" }
 tube_transporter = { path = "tube_transporter" }
-winapi = "*"
+winapi = "0.3"
 win_audio = { path = "win_audio" }
 win_util = { path = "win_util" }
 
 [dev-dependencies]
-base = "*"
 rand = "0.8"
 tempfile = "3"
 
 [patch.crates-io]
 audio_streams = { path = "common/audio_streams" }
-base = { path = "base" }
 cros_async = { path = "cros_async" }
 data_model = { path = "common/data_model" }
 libcras = { path = "libcras_stub" } # ignored by ebuild

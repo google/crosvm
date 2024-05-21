@@ -5,16 +5,16 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dev-dependencies]
-anyhow = "*"
+anyhow = "1"
 fixture = { path = "fixture" }
-libc = "*"
+libc = "0.2"
 net_util = {path = "../net_util"}
 rand = "0.8"
 tempfile = "3"
 prebuilts = { path = "../prebuilts" }
 base = { path = "../base" }
 swap = { path= "../swap" }
-serde_json = "*"
+serde_json = "1"
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 net_sys = {path = "../net_sys"}

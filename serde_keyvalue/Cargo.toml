@@ -12,7 +12,7 @@ argh = { version = "0.1.7", optional = true }
 serde_keyvalue_derive = { path = "serde_keyvalue_derive", optional = true } # provided by ebuild
 serde = "1"
 thiserror = { version = "1.0.20" }
-remain = "*"
+remain = "0.2"
 num-traits = "0.2"
 nom = { version = "7.1.0", features = ["alloc"] }
 

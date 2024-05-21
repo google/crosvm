@@ -7,9 +7,9 @@ edition = "2021"
 [dependencies]
 static_assertions = "1.1"
 data_model = { path = "../common/data_model" }
-libc = "*"
-remain = "*"
-thiserror = "*"
+libc = "0.2"
+remain = "0.2"
+thiserror = "1"
 base = { path = "../base" }
 usb_sys = { path = "../usb_sys" }
 sync = { path = "../common/sync" }

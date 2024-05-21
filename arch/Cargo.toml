@@ -13,7 +13,7 @@ swap = ["swap/enable"]
 
 [dependencies]
 acpi_tables = { path = "../acpi_tables" }
-anyhow = "*"
+anyhow = "1"
 base = { path = "../base" }
 cfg-if = "1.0.0"
 cros_fdt = { path = "../cros_fdt" }
@@ -24,11 +24,11 @@ gdbstub_arch = { version = "0.3.0", optional = true }
 hypervisor = { path = "../hypervisor" }
 jail = { path = "../jail" }
 kernel_cmdline = { path = "../kernel_cmdline" }
-libc = "*"
+libc = "0.2"
 metrics = { path = "../metrics" }
 resources = { path = "../resources" }
-remain = "*"
-serde = { version = "*", features = [ "derive"] }
+remain = "0.2"
+serde = { version = "1", features = [ "derive"] }
 serde_json = { version = "1" }
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
 swap = { path = "../swap" }
@@ -43,8 +43,8 @@ minijail = "*" # provided by ebuild
 power_monitor = { path = "../power_monitor" }
 
 [target.'cfg(windows)'.dependencies]
-winapi = "*"
+winapi = "0.3"
 
 [dev-dependencies]
-serde_json = "*"
+serde_json = "1"
 tempfile = "3"

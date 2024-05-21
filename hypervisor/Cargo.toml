@@ -12,7 +12,7 @@ gunyah = []
 noncoherent-dma = []
 
 [dependencies]
-anyhow = "*"
+anyhow = "1"
 bit_field = { path = "../bit_field" }
 bitflags = "2.2.1"
 cros_fdt = { path = "../cros_fdt" }
@@ -20,7 +20,7 @@ data_model = { path = "../common/data_model" }
 downcast-rs = "1.2.0"
 enumn = "0.1.0"
 fnv = "1"
-libc = "*"
+libc = "0.2"
 memoffset = "0.6"
 once_cell = "1.7"
 serde = { version = "1", features = [ "derive" ] }
@@ -37,8 +37,8 @@ hypervisor_test_macro = { path = "hypervisor_test_macro" }
 zerocopy = { version = "0.7", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
-thiserror = "*"
-winapi = "*"
+thiserror = "1"
+winapi = "0.3"
 win_util = { path = "../win_util" }
 
 [target.'cfg(windows)'.dependencies.windows]
@@ -48,4 +48,4 @@ features = [
 ]
 
 [target.'cfg(windows)'.dev-dependencies]
-tempfile = "*"
+tempfile = "3"

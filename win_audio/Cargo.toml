@@ -10,16 +10,16 @@ audio_streams = { path = "../common/audio_streams"}
 audio_util = { path = "../audio_util" }
 base = { path = "../base" }
 cros_async = { path = "../cros_async" }
-libc = "*"
+libc = "0.2"
 win_util = { path = "../win_util" }
-winapi = "*"
-wio = "*"
+winapi = "0.3"
+wio = "0.2"
 sync = { path = "../common/sync" }
-thiserror = "*"
+thiserror = "1"
 metrics = { path = "../metrics"}
 once_cell = "1.7.2"
 
 [build-dependencies]
-anyhow = "*"
+anyhow = "1"
 prebuilts = { path = "../prebuilts" }
 

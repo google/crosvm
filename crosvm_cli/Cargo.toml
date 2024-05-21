@@ -12,4 +12,4 @@ cfg-if = "1.0.0"
 
 [target.'cfg(windows)'.dependencies]
 win_util = { path = "../win_util" }
-winapi = "*"
+winapi = "0.3"
