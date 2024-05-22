@@ -209,7 +209,6 @@ dependencies = [
  "cfg-if",
  "cros_async",
  "libcras",
- "minijail",
  "remain",
  "serde",
  "serde_json",
