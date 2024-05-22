@@ -201,6 +201,7 @@ use vm_control::BalloonControlCommand;
 #[cfg(feature = "balloon")]
 use vm_control::BalloonTube;
 use vm_control::DeviceControlCommand;
+use vm_control::InitialAudioSessionState;
 use vm_control::IrqHandlerRequest;
 use vm_control::PvClockCommand;
 use vm_control::VcpuControl;
@@ -505,6 +506,7 @@ fn create_virtio_devices(
     vm_evt_wrtube: &SendTube,
     #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
     disk_device_tubes: &mut Vec<Tube>,
+    initial_audio_session_states: &mut Vec<InitialAudioSessionState>,
     balloon_device_tube: Option<Tube>,
     #[cfg(feature = "pvclock")] pvclock_device_tube: Option<Tube>,
     dynamic_mapping_device_tube: Option<Tube>,
@@ -542,9 +544,20 @@ fn create_virtio_devices(
 
     #[cfg(feature = "audio")]
     {
-        let mut snd_split_configs = std::mem::take(&mut cfg.snd_split_configs);
-        for snd_split_cfg in snd_split_configs.iter_mut() {
-            devs.push(create_virtio_snd_device(cfg, snd_split_cfg, control_tubes)?);
+        let snd_split_configs = std::mem::take(&mut cfg.snd_split_configs);
+        for mut snd_split_cfg in snd_split_configs.into_iter() {
+            devs.push(create_virtio_snd_device(
+                cfg,
+                &mut snd_split_cfg,
+                control_tubes,
+            )?);
+            if let Some(vmm_config) = snd_split_cfg.vmm_config {
+                let initial_audio_session_state = InitialAudioSessionState {
+                    audio_client_guid: vmm_config.audio_client_guid,
+                    device_index: vmm_config.device_index,
+                };
+                initial_audio_session_states.push(initial_audio_session_state);
+            }
         }
     }
 
@@ -773,6 +786,7 @@ fn create_devices(
     vm_memory_control_tubes: &mut Vec<Tube>,
     control_tubes: &mut Vec<TaggedControlTube>,
     disk_device_tubes: &mut Vec<Tube>,
+    initial_audio_session_states: &mut Vec<InitialAudioSessionState>,
     balloon_device_tube: Option<Tube>,
     #[cfg(feature = "pvclock")] pvclock_device_tube: Option<Tube>,
     dynamic_mapping_device_tube: Option<Tube>,
@@ -787,6 +801,7 @@ fn create_devices(
         exit_evt_wrtube,
         control_tubes,
         disk_device_tubes,
+        initial_audio_session_states,
         balloon_device_tube,
         #[cfg(feature = "pvclock")]
         pvclock_device_tube,
@@ -1257,6 +1272,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     balloon_host_tube: Option<Tube>,
     #[cfg(feature = "pvclock")] pvclock_host_tube: Option<Tube>,
     disk_host_tubes: Vec<Tube>,
+    initial_audio_session_states: Vec<InitialAudioSessionState>,
     gralloc: RutabagaGralloc,
     #[cfg(feature = "stats")] stats: Option<Arc<Mutex<StatisticsCollector>>>,
     service_pipe_name: Option<String>,
@@ -1275,6 +1291,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         start_service_ipc_listener(service_pipe_name)?;
 
     let mut service_vm_state = product::create_service_vm_state(memory_size_mb);
+
+    let service_audio_states = product::create_service_audio_states_and_send_to_service(
+        initial_audio_session_states,
+        &ipc_main_loop_tube,
+    )?;
 
     let sys_allocator_mutex = Arc::new(Mutex::new(sys_allocator));
 
@@ -2589,6 +2610,8 @@ where
 
     let (virtio_snd_host_mute_tube, virtio_snd_device_mute_tube) = create_snd_mute_tube_pair()?;
 
+    let mut initial_audio_session_states: Vec<InitialAudioSessionState> = Vec::new();
+
     let pci_devices = create_devices(
         &mut cfg,
         vm.get_memory(),
@@ -2597,6 +2620,7 @@ where
         &mut vm_memory_control_tubes,
         &mut control_tubes,
         &mut disk_device_tubes,
+        &mut initial_audio_session_states,
         balloon_device_tube,
         #[cfg(feature = "pvclock")]
         pvclock_device_tube,
@@ -2652,6 +2676,7 @@ where
         #[cfg(feature = "pvclock")]
         pvclock_host_tube,
         disk_host_tubes,
+        initial_audio_session_states,
         gralloc,
         #[cfg(feature = "stats")]
         stats,

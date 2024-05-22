@@ -116,3 +116,11 @@ pub fn prepare_shared_memory_region(
 ) -> std::result::Result<(u64, MemSlot), Error> {
     unimplemented!()
 }
+
+/// State of a specific audio device on boot.
+pub struct InitialAudioSessionState {
+    // Uniquely identify an audio device.
+    pub device_index: usize,
+    // GUID assigned to the device's IAudioClient
+    pub audio_client_guid: String,
+}

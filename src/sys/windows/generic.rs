@@ -60,6 +60,7 @@ pub(crate) use metrics::MetricEventType;
 use sync::Mutex;
 #[cfg(feature = "balloon")]
 use vm_control::BalloonTube;
+use vm_control::InitialAudioSessionState;
 use vm_control::PvClockCommand;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
@@ -78,6 +79,8 @@ impl ServiceVmState {
     pub fn set_memory_size(&mut self, _size: u64) {}
     pub fn generate_send_state_message(&self) {}
 }
+
+pub struct ServiceAudioStates {}
 
 pub(super) struct RunControlArgs {}
 
@@ -243,6 +246,13 @@ pub(super) fn create_gpu(
         &BTreeMap::new(),
         wndproc_thread,
     ))
+}
+
+pub(super) fn create_service_audio_states_and_send_to_service(
+    initial_audio_session_states: Vec<InitialAudioSessionState>,
+    ipc_main_loop_tube: &Option<Tube>,
+) -> Result<ServiceAudioStates> {
+    Ok(ServiceAudioStates {})
 }
 
 #[cfg(feature = "gpu")]

@@ -27,7 +27,6 @@ use anyhow::Context;
 use anyhow::Result;
 use base::enable_high_res_timers;
 use base::error;
-#[cfg(feature = "crash-report")]
 use base::generate_uuid;
 use base::info;
 use base::named_pipes;
@@ -664,9 +663,10 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
     let mut snd_cfgs = Vec::new();
     #[cfg(feature = "audio")]
     {
-        for _ in 0..num_audio_devices {
+        for device_index in 0..num_audio_devices {
             snd_cfgs.push(platform_create_snd(
                 &cfg,
+                device_index as usize,
                 &mut main_child,
                 &mut exit_events,
             )?);
@@ -1585,6 +1585,7 @@ fn spawn_net_backend(
 #[cfg(feature = "audio")]
 fn platform_create_snd(
     cfg: &Config,
+    device_index: usize,
     main_child: &mut ChildProcess,
     exit_events: &mut Vec<Event>,
 ) -> Result<SndSplitConfig> {
@@ -1610,16 +1611,22 @@ fn platform_create_snd(
         ..Default::default()
     };
 
+    let audio_client_guid = generate_uuid();
+
     let backend_config = Some(SndBackendConfig {
         device_vhost_user_tube: Some(device_vhost_user_tube),
         exit_event,
         parameters,
         product_config: backend_config_product,
+        audio_client_guid: audio_client_guid.clone(),
+        device_index,
     });
 
     let vmm_config = Some(SndVmmConfig {
         main_vhost_user_tube: Some(main_vhost_user_tube),
         product_config: vmm_config_product,
+        audio_client_guid,
+        device_index,
     });
 
     Ok(SndSplitConfig {

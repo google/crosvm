@@ -43,6 +43,10 @@ pub struct Options {
 pub struct SndVmmConfig {
     // Tube for setting up the vhost-user connection. May not exist if not using vhost-user.
     pub main_vhost_user_tube: Option<Tube>,
+    // GUID that will be passed into `IAudioClient::Initialize`.
+    pub audio_client_guid: String,
+    // Used to identify the device backend.
+    pub device_index: usize,
     // Product related configuration.
     pub product_config: product::SndVmmConfig,
 }
@@ -57,6 +61,10 @@ pub struct SndBackendConfig {
     pub exit_event: Event,
     // Sound device parameters.
     pub parameters: Parameters,
+    // This field is used to pass this GUID to `IAudioClient::Initialize`.
+    pub audio_client_guid: String,
+    // Used to append to logs in the vhost user device backends.
+    pub device_index: usize,
     // Product related configuration.
     pub product_config: product::SndBackendConfig,
 }

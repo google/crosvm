@@ -19,6 +19,7 @@ cfg_if::cfg_if! {
         pub type DisplayMode = platform::gpu::WinDisplayMode<platform::gpu::DisplayDataProvider>;
         #[cfg(feature = "gpu")]
         pub use platform::gpu::WinMouseMode as MouseMode;
+        pub use platform::InitialAudioSessionState;
     } else {
         compile_error!("Unsupported platform");
     }

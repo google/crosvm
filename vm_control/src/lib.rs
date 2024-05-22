@@ -97,6 +97,8 @@ use swap::SwapStatus;
 use sync::Mutex;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use sys::FsMappingRequest;
+#[cfg(windows)]
+pub use sys::InitialAudioSessionState;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use sys::VmMemoryMappingRequest;
 #[cfg(any(target_os = "android", target_os = "linux"))]
