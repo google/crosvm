@@ -8,9 +8,9 @@ mod test {
     use std::time::Duration;
 
     use base::getpid;
-    use base::linux::process::fork_process;
     use base::AsRawDescriptor;
     use base::Tube;
+    use jail::fork::fork_process;
     use minijail::Minijail;
 
     pub fn pid_diff() {

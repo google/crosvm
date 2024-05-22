@@ -9,7 +9,6 @@ use std::fs;
 use anyhow::anyhow;
 use base::error;
 use base::info;
-use base::linux::process::fork_process;
 use base::AsRawDescriptor;
 #[cfg(feature = "swap")]
 use base::AsRawDescriptors;
@@ -17,6 +16,7 @@ use base::RawDescriptor;
 use base::SharedMemory;
 use base::Tube;
 use base::TubeError;
+use jail::fork::fork_process;
 use libc::pid_t;
 use minijail::Minijail;
 use remain::sorted;

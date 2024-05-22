@@ -4,13 +4,6 @@ version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
-# The process tests will use fork, which requires a custom test harness to enforce single threaded
-# execution.
-[[test]]
-name = "process"
-path = "tests/process.rs"
-harness = false
-
 [features]
 proto_tube = ["protobuf"]
 seccomp_trace = []
@@ -36,12 +29,8 @@ uuid = { version = "1", features = ["v4"] }
 zerocopy = { version = "0.7", features = ["derive"] }
 
 [dev-dependencies]
-libtest-mimic = "0.6"
 protos = { path = "../protos", features = ["composite-disk"] }
 tempfile = "3"
-
-[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
-minijail = "*"
 
 [target.'cfg(windows)'.dependencies]
 futures = { version = "0.3" }

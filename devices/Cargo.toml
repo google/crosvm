@@ -93,6 +93,7 @@ zerocopy = { version = "0.7", features = ["derive"] }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 fuse = {path = "../fuse" }
+jail = { path = "../jail" }
 libcras = { version = "*", optional = true }
 minijail = "*"
 net_sys = { path = "../net_sys" }

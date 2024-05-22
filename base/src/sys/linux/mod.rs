@@ -32,7 +32,6 @@ mod notifiers;
 pub mod platform_timer_resolution;
 mod poll;
 mod priority;
-pub mod process;
 mod sched;
 mod shm;
 pub mod signal;

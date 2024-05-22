@@ -4,9 +4,13 @@
 
 mod config;
 #[cfg(any(target_os = "android", target_os = "linux"))]
+pub mod fork;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 mod helpers;
 
 pub use crate::config::JailConfig;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+pub use crate::fork::fork_process;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use crate::helpers::*;
 

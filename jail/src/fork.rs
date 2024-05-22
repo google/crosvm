@@ -11,15 +11,14 @@ use std::mem::ManuallyDrop;
 use std::os::unix::process::ExitStatusExt;
 use std::process;
 
+use base::error;
+use base::linux::wait_for_pid;
+use base::Pid;
+use base::RawDescriptor;
 #[cfg(feature = "seccomp_trace")]
 use log::debug;
 use log::warn;
 use minijail::Minijail;
-
-use crate::error;
-use crate::linux::wait_for_pid;
-use crate::linux::Pid;
-use crate::RawDescriptor;
 
 /// Child represents the forked process.
 pub struct Child {
@@ -29,7 +28,7 @@ pub struct Child {
 
 impl Child {
     /// Wait for the child process exit using `waitpid(2)`.
-    pub fn wait(self) -> crate::Result<u8> {
+    pub fn wait(self) -> base::Result<u8> {
         // Suppress warning from the drop().
         let pid = self.into_pid();
         let (_, status) = wait_for_pid(pid, 0)?;
