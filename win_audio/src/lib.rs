@@ -112,6 +112,7 @@ pub trait WinAudioServer: StreamSource {
         _frame_rate: usize,
         _buffer_size: usize,
         _ex: &dyn audio_streams::AudioStreamsExecutor,
+        _audio_client_guid: Option<String>,
     ) -> Result<(Box<dyn AsyncPlaybackBufferStream>, AudioSharedFormat), BoxError> {
         unimplemented!()
     }
@@ -214,6 +215,7 @@ impl WinAudioServer for WinAudio {
         frame_rate: usize,
         buffer_size: usize,
         ex: &dyn audio_streams::AudioStreamsExecutor,
+        audio_client_guid: Option<String>,
     ) -> Result<(Box<dyn AsyncPlaybackBufferStream>, AudioSharedFormat), BoxError> {
         let hr = WinAudio::co_init_once_per_thread();
         let _ = check_hresult!(hr, WinAudioError::from(hr), "Co Initialized failed");
@@ -227,6 +229,7 @@ impl WinAudioServer for WinAudio {
             frame_rate as u32,
             buffer_size,
             ex,
+            audio_client_guid,
         ) {
             Ok(renderer) => {
                 let audio_shared_format = renderer.get_audio_shared_format();
@@ -349,6 +352,7 @@ impl WinAudioServer for NoopStreamSource {
         frame_rate: usize,
         buffer_size: usize,
         ex: &dyn audio_streams::AudioStreamsExecutor,
+        _audio_client_guid: Option<String>,
     ) -> Result<(Box<dyn AsyncPlaybackBufferStream>, AudioSharedFormat), BoxError> {
         let (_, playback_stream) = self
             .new_async_playback_stream(num_channels, format, frame_rate as u32, buffer_size, ex)

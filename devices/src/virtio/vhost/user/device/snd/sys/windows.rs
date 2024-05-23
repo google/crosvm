@@ -46,7 +46,7 @@ pub struct SndVmmConfig {
     // GUID that will be passed into `IAudioClient::Initialize`.
     pub audio_client_guid: String,
     // Used to identify the device backend.
-    pub device_index: usize,
+    pub card_index: usize,
     // Product related configuration.
     pub product_config: product::SndVmmConfig,
 }
@@ -64,7 +64,7 @@ pub struct SndBackendConfig {
     // This field is used to pass this GUID to `IAudioClient::Initialize`.
     pub audio_client_guid: String,
     // Used to append to logs in the vhost user device backends.
-    pub device_index: usize,
+    pub card_index: usize,
     // Product related configuration.
     pub product_config: product::SndBackendConfig,
 }
@@ -114,7 +114,12 @@ pub fn run_snd_device_worker(config: SndBackendConfig) -> anyhow::Result<()> {
 
     let ex = Executor::new().context("Failed to create executor")?;
 
-    let snd_device = Box::new(SndBackend::new(&ex, config.parameters)?);
+    let snd_device = Box::new(SndBackend::new(
+        &ex,
+        config.parameters,
+        Some(config.audio_client_guid),
+        config.card_index,
+    )?);
 
     // Set the audio thread priority here. This assumes our executor is running on a single thread.
     let _thread_priority_handle = set_audio_thread_priority();

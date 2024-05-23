@@ -554,7 +554,7 @@ fn create_virtio_devices(
             if let Some(vmm_config) = snd_split_cfg.vmm_config {
                 let initial_audio_session_state = InitialAudioSessionState {
                     audio_client_guid: vmm_config.audio_client_guid,
-                    device_index: vmm_config.device_index,
+                    card_index: vmm_config.card_index,
                 };
                 initial_audio_session_states.push(initial_audio_session_state);
             }

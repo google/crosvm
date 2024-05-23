@@ -51,6 +51,8 @@ pub struct SetParams {
 pub struct StreamInfoBuilder {
     stream_source_generator: Arc<SysAudioStreamSourceGenerator>,
     effects: Vec<StreamEffect>,
+    #[cfg(windows)]
+    audio_client_guid: Option<String>,
 }
 
 impl StreamInfoBuilder {
@@ -62,6 +64,8 @@ impl StreamInfoBuilder {
         StreamInfoBuilder {
             stream_source_generator,
             effects: vec![],
+            #[cfg(windows)]
+            audio_client_guid: None,
         }
     }
 
@@ -69,6 +73,12 @@ impl StreamInfoBuilder {
     /// [`StreamInfo::prepare()`]. The default value is no effects.
     pub fn effects(mut self, effects: Vec<StreamEffect>) -> Self {
         self.effects = effects;
+        self
+    }
+
+    #[cfg(windows)]
+    pub fn audio_client_guid(mut self, audio_client_guid: Option<String>) -> Self {
+        self.audio_client_guid = audio_client_guid;
         self
     }
 
@@ -109,6 +119,8 @@ pub struct StreamInfo {
         Arc<AsyncRwLock<Box<dyn audio_streams::AsyncPlaybackBufferStream>>>,
         Rc<AsyncRwLock<Box<dyn PlaybackBufferWriter>>>,
     )>,
+    #[cfg(windows)]
+    pub(crate) audio_client_guid: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -181,6 +193,8 @@ impl From<StreamInfoBuilder> for StreamInfo {
             ex: None,
             #[cfg(windows)]
             playback_stream_cache: None,
+            #[cfg(windows)]
+            audio_client_guid: None,
         }
     }
 }
@@ -266,7 +280,14 @@ impl StreamInfo {
         );
         let stream_objects = match self.direction {
             VIRTIO_SND_D_OUTPUT => SysAsyncStreamObjects {
-                stream: self.create_directionstream_output(frame_size, ex).await?,
+                stream: self
+                    .create_directionstream_output(
+                        frame_size,
+                        #[cfg(windows)]
+                        self.audio_client_guid.clone(),
+                        ex,
+                    )
+                    .await?,
                 pcm_sender: tx_send.clone(),
             },
             VIRTIO_SND_D_INPUT => {

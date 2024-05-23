@@ -663,10 +663,10 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
     let mut snd_cfgs = Vec::new();
     #[cfg(feature = "audio")]
     {
-        for device_index in 0..num_audio_devices {
+        for card_index in 0..num_audio_devices {
             snd_cfgs.push(platform_create_snd(
                 &cfg,
-                device_index as usize,
+                card_index as usize,
                 &mut main_child,
                 &mut exit_events,
             )?);
@@ -1585,7 +1585,7 @@ fn spawn_net_backend(
 #[cfg(feature = "audio")]
 fn platform_create_snd(
     cfg: &Config,
-    device_index: usize,
+    card_index: usize,
     main_child: &mut ChildProcess,
     exit_events: &mut Vec<Event>,
 ) -> Result<SndSplitConfig> {
@@ -1619,14 +1619,14 @@ fn platform_create_snd(
         parameters,
         product_config: backend_config_product,
         audio_client_guid: audio_client_guid.clone(),
-        device_index,
+        card_index,
     });
 
     let vmm_config = Some(SndVmmConfig {
         main_vhost_user_tube: Some(main_vhost_user_tube),
         product_config: vmm_config_product,
         audio_client_guid,
-        device_index,
+        card_index,
     });
 
     Ok(SndSplitConfig {

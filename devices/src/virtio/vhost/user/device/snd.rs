@@ -75,6 +75,8 @@ struct SndBackend {
     rx_send: mpsc::UnboundedSender<PcmResponse>,
     tx_recv: Option<mpsc::UnboundedReceiver<PcmResponse>>,
     rx_recv: Option<mpsc::UnboundedReceiver<PcmResponse>>,
+    // Appended to logs for when there are mutliple audio devices.
+    _card_index: usize,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -87,7 +89,12 @@ struct SndBackendSnapshot {
 }
 
 impl SndBackend {
-    pub fn new(ex: &Executor, params: Parameters) -> anyhow::Result<Self> {
+    pub fn new(
+        ex: &Executor,
+        params: Parameters,
+        #[cfg(windows)] audio_client_guid: Option<String>,
+        card_index: usize,
+    ) -> anyhow::Result<Self> {
         let cfg = hardcoded_virtio_snd_config(&params);
         let avail_features = virtio::base_features(ProtectionType::Unprotected)
             | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
@@ -104,8 +111,13 @@ impl SndBackend {
             )
         }
 
-        let streams = builders
-            .into_iter()
+        let streams = builders.into_iter();
+
+        #[cfg(windows)]
+        let streams = streams
+            .map(|stream_builder| stream_builder.audio_client_guid(audio_client_guid.clone()));
+
+        let streams = streams
             .map(StreamInfoBuilder::build)
             .map(AsyncRwLock::new)
             .collect();
@@ -128,6 +140,7 @@ impl SndBackend {
             rx_send,
             tx_recv: Some(tx_recv),
             rx_recv: Some(rx_recv),
+            _card_index: card_index,
         })
     }
 }

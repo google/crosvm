@@ -11,6 +11,7 @@ mod wave_format;
 
 use std::convert::From;
 use std::fmt::Debug;
+use std::num::ParseIntError;
 use std::os::raw::c_void;
 use std::ptr::null_mut;
 use std::sync::atomic::AtomicBool;
@@ -190,6 +191,7 @@ impl StreamSource for WinAudio {
 /// `DeviceRenderer` on a new device.
 pub(crate) struct WinAudioRenderer {
     pub device: DeviceRendererWrapper,
+    audio_client_guid: Option<String>,
 }
 
 impl WinAudioRenderer {
@@ -206,8 +208,12 @@ impl WinAudioRenderer {
             frame_rate,
             incoming_buffer_size_in_frames,
             None,
+            None,
         )?;
-        Ok(Self { device })
+        Ok(Self {
+            device,
+            audio_client_guid: None,
+        })
     }
 
     fn handle_playback_logging_on_error(e: &RenderError) {
@@ -407,12 +413,14 @@ impl DeviceRendererWrapper {
         guest_frame_rate: u32,
         incoming_buffer_size_in_frames: usize,
         ex: Option<&dyn AudioStreamsExecutor>,
+        audio_client_guid: Option<String>,
     ) -> Result<Self, RenderError> {
         let renderer_stream = match Self::create_device_renderer_and_log_time(
             num_channels,
             guest_frame_rate,
             incoming_buffer_size_in_frames,
             ex,
+            audio_client_guid,
         ) {
             Ok(device) => {
                 let audio_shared_format = device.audio_shared_format;
@@ -514,10 +522,16 @@ impl DeviceRendererWrapper {
         frame_rate: u32,
         incoming_buffer_size_in_frames: usize,
         ex: Option<&dyn AudioStreamsExecutor>,
+        audio_client_guid: Option<String>,
     ) -> Result<DeviceRenderer, RenderError> {
         let start = std::time::Instant::now();
-        let device =
-            DeviceRenderer::new(num_channels, frame_rate, incoming_buffer_size_in_frames, ex)?;
+        let device = DeviceRenderer::new(
+            num_channels,
+            frame_rate,
+            incoming_buffer_size_in_frames,
+            ex,
+            audio_client_guid,
+        )?;
         // This can give us insights to how other long other machines take to initialize audio.
         // Eventually this should be a histogram metric.
         info!(
@@ -566,6 +580,7 @@ impl DeviceRenderer {
         guest_frame_rate: u32,
         incoming_buffer_size_in_frames: usize,
         ex: Option<&dyn AudioStreamsExecutor>,
+        audio_client_guid: Option<String>,
     ) -> Result<Self, RenderError> {
         if num_channels > 2 {
             return Err(RenderError::WinAudioError(
@@ -578,6 +593,16 @@ impl DeviceRenderer {
         let audio_client = create_audio_client(eRender).map_err(RenderError::WinAudioError)?;
 
         let format = get_valid_mix_format(&audio_client).map_err(RenderError::WinAudioError)?;
+
+        let res = if let Some(audio_client_guid) = audio_client_guid {
+            info!(
+                "IAudioClient initializing with GUID: {:?}",
+                audio_client_guid
+            );
+            Some(Self::convert_session_string_to_guid(audio_client_guid)?)
+        } else {
+            None
+        };
 
         // SAFETY: `audio_client` is initialized
         let hr = unsafe {
@@ -596,7 +621,10 @@ impl DeviceRenderer {
                 0, /* hnsBufferDuration */
                 0, /* hnsPeriodicity */
                 format.as_ptr(),
-                null_mut(),
+                match res {
+                    Some(guid) => &guid as *const GUID,
+                    None => null_mut(),
+                },
             )
         };
         check_hresult!(
@@ -804,6 +832,46 @@ impl DeviceRenderer {
                 shared_audio_engine_period_in_frames * frame_size_bytes,
             ),
         ))
+    }
+
+    fn convert_session_string_to_guid(audio_client_guid: String) -> Result<GUID, RenderError> {
+        let split_guid: Vec<&str> = audio_client_guid.split('-').collect();
+        if split_guid.len() != 5 {
+            return Err(RenderError::WinAudioError(
+                WinAudioError::GuidSplitWrongSize(split_guid.len()),
+            ));
+        }
+
+        let first = u32::from_str_radix(split_guid[0], 16)
+            .map_err(|e| RenderError::WinAudioError(WinAudioError::GuidParseIntError(e)))?;
+        let second = u16::from_str_radix(split_guid[1], 16)
+            .map_err(|e| RenderError::WinAudioError(WinAudioError::GuidParseIntError(e)))?;
+        let third = u16::from_str_radix(split_guid[2], 16)
+            .map_err(|e| RenderError::WinAudioError(WinAudioError::GuidParseIntError(e)))?;
+
+        let combined = split_guid[3].to_owned() + split_guid[4];
+        let fourth_vec: Vec<String> = combined
+            .chars()
+            .collect::<Vec<char>>()
+            .chunks(2)
+            .map(|chunk| chunk.iter().collect())
+            .collect();
+        let fourth: Vec<u8> = fourth_vec
+            .into_iter()
+            .map(|byte_str| {
+                u8::from_str_radix(&byte_str, 16)
+                    .map_err(|e| RenderError::WinAudioError(WinAudioError::GuidParseIntError(e)))
+            })
+            .collect::<Result<Vec<u8>, RenderError>>()?;
+
+        Ok(GUID {
+            Data1: first,
+            Data2: second,
+            Data3: third,
+            Data4: fourth
+                .try_into()
+                .map_err(|_| RenderError::WinAudioError(WinAudioError::GuidVecConversionError))?,
+        })
     }
 }
 
@@ -1718,6 +1786,12 @@ pub enum WinAudioError {
     RegisterEndpointNotifError(i32),
     #[error("ReleaseBuffer failed. HResult: {0}")]
     ReleaseBufferError(i32),
+    #[error("Failed to parse part of a guid: {0}")]
+    GuidParseIntError(ParseIntError),
+    #[error("Guid split size is not len 5. It is: {0}")]
+    GuidSplitWrongSize(usize),
+    #[error("Failed to convert Vector to a slice")]
+    GuidVecConversionError,
 }
 
 impl From<&WinAudioError> for i64 {
@@ -1750,6 +1824,9 @@ impl From<&WinAudioError> for i64 {
             WinAudioError::GetBufferError(hr) => (24, *hr),
             WinAudioError::RegisterEndpointNotifError(hr) => (25, *hr),
             WinAudioError::ReleaseBufferError(hr) => (26, *hr),
+            WinAudioError::GuidParseIntError(_) => (27, 0),
+            WinAudioError::GuidSplitWrongSize(_) => (28, 0),
+            WinAudioError::GuidVecConversionError => (29, 0),
         };
         ((err_type as u64) << 32 | ((hr as u32) as u64)) as i64
     }
@@ -1866,11 +1943,31 @@ mod tests {
         assert_eq!(result, 100932191376);
     }
 
+    #[test]
+    fn test_device_renderer_convert_string_to_guid() {
+        let guid_string = "465c4ed4-cda1-4d65-b412-641299a39c2c";
+        let result_guid =
+            DeviceRenderer::convert_session_string_to_guid(guid_string.to_string()).unwrap();
+        assert_eq!(result_guid.Data1, 0x465c4ed4);
+        assert_eq!(result_guid.Data2, 0xcda1);
+        assert_eq!(result_guid.Data3, 0x4d65);
+
+        let data_4 = result_guid.Data4;
+        assert_eq!(data_4[0], 0xb4);
+        assert_eq!(data_4[1], 0x12);
+        assert_eq!(data_4[2], 0x64);
+        assert_eq!(data_4[3], 0x12);
+        assert_eq!(data_4[4], 0x99);
+        assert_eq!(data_4[5], 0xa3);
+        assert_eq!(data_4[6], 0x9c);
+        assert_eq!(data_4[7], 0x2c);
+    }
+
     #[ignore]
     #[test]
     fn test_create_win_audio_renderer_no_co_initliazed() {
         let _shared = SERIALIZE_LOCK.lock();
-        let win_audio_renderer = DeviceRenderer::new(2, 48000, 720, None);
+        let win_audio_renderer = DeviceRenderer::new(2, 48000, 720, None, None);
         assert!(win_audio_renderer.is_err());
     }
 
@@ -1887,7 +1984,7 @@ mod tests {
     fn test_create_win_audio_renderer() {
         let _shared = SERIALIZE_LOCK.lock();
         let _co_init = SafeCoInit::new_coinitialize();
-        let win_audio_renderer_result = DeviceRenderer::new(2, 48000, 480, None);
+        let win_audio_renderer_result = DeviceRenderer::new(2, 48000, 480, None, None);
         assert!(win_audio_renderer_result.is_ok());
         let win_audio_renderer = win_audio_renderer_result.unwrap();
         // This test is dependent on device format settings and machine. Ie. this will probably
@@ -1937,7 +2034,7 @@ mod tests {
     // there is no way to copy audio samples over succiently.
     fn test_guest_buffer_size_bigger_than_audio_render_client_buffer_size() {
         let _shared = SERIALIZE_LOCK.lock();
-        let win_audio_renderer = DeviceRenderer::new(2, 48000, 100000, None);
+        let win_audio_renderer = DeviceRenderer::new(2, 48000, 100000, None, None);
 
         assert!(win_audio_renderer.is_err());
     }
@@ -1974,7 +2071,8 @@ mod tests {
 
         let ex = Executor::new().expect("Failed to create executor.");
         let mut renderer_wrapper =
-            DeviceRendererWrapper::new(2, SampleFormat::S16LE, 48000, 480, Some(&ex)).unwrap();
+            DeviceRendererWrapper::new(2, SampleFormat::S16LE, 48000, 480, Some(&ex), None)
+                .unwrap();
         assert!(matches!(
             renderer_wrapper.renderer_stream,
             RendererStream::Device(_)

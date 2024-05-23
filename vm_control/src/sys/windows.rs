@@ -119,8 +119,9 @@ pub fn prepare_shared_memory_region(
 
 /// State of a specific audio device on boot.
 pub struct InitialAudioSessionState {
-    // Uniquely identify an audio device.
-    pub device_index: usize,
+    // Uniquely identify an audio device. In ALSA terminology, this is the card_index as opposed to
+    // a device index.
+    pub card_index: usize,
     // GUID assigned to the device's IAudioClient
     pub audio_client_guid: String,
 }

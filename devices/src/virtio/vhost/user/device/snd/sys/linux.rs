@@ -48,7 +48,7 @@ fn snd_parameters_from_str(input: &str) -> Result<Parameters, String> {
 /// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
     let ex = Executor::new().context("Failed to create executor")?;
-    let snd_device = Box::new(SndBackend::new(&ex, opts.params)?);
+    let snd_device = Box::new(SndBackend::new(&ex, opts.params, 0)?);
 
     let listener = VhostUserListener::new_socket(&opts.socket, None)?;
 
