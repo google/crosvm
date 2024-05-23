@@ -38,16 +38,16 @@ mod async_cmd_desc_map;
 mod command;
 mod control;
 #[cfg(feature = "video-decoder")]
-mod decoder;
+pub mod decoder;
 pub mod device;
 #[cfg(feature = "video-encoder")]
 mod encoder;
 mod error;
 mod event;
-mod format;
+pub mod format;
 mod params;
 mod protocol;
-mod resource;
+pub mod resource;
 mod response;
 mod utils;
 pub mod worker;

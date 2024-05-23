@@ -34,7 +34,7 @@ name = "acpi_tables"
 version = "0.1.0"
 dependencies = [
  "tempfile",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -62,7 +62,7 @@ dependencies = [
  "getrandom",
  "once_cell",
  "version_check",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -309,7 +309,7 @@ dependencies = [
  "uuid",
  "win_util",
  "winapi",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -380,16 +380,14 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.69.4"
+version = "0.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a00dc851838a2120612785d195287475a3ac45514741da670b735818822129a0"
+checksum = "f49d8fed880d473ea71efb9bf597651e77201bdd4893efe54c9e5d65ae04ce6f"
 dependencies = [
  "bitflags 2.4.0",
  "cexpr",
  "clang-sys",
  "itertools",
- "lazy_static",
- "lazycell",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -398,7 +396,6 @@ dependencies = [
  "rustc-hash",
  "shlex",
  "syn 2.0.77",
- "which",
 ]
 
 [[package]]
@@ -897,7 +894,7 @@ dependencies = [
  "win_util",
  "winapi",
  "x86_64",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -991,7 +988,7 @@ name = "data_model"
 version = "0.1.1-alpha.1"
 dependencies = [
  "serde",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -1100,7 +1097,7 @@ dependencies = [
  "win_audio",
  "win_util",
  "winapi",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -1126,7 +1123,7 @@ dependencies = [
  "uuid",
  "vm_memory",
  "winapi",
- "zerocopy",
+ "zerocopy 0.7.32",
  "zstd",
 ]
 
@@ -1237,7 +1234,7 @@ dependencies = [
  "tempfile",
  "uuid",
  "walkdir",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -1324,7 +1321,7 @@ dependencies = [
  "libc",
  "remain",
  "thiserror",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -1493,7 +1490,7 @@ dependencies = [
  "which",
  "win_util",
  "winapi",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -1565,7 +1562,7 @@ dependencies = [
  "win_util",
  "winapi",
  "windows",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -1692,7 +1689,7 @@ dependencies = [
  "serde_keyvalue",
  "static_assertions",
  "which",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -1726,7 +1723,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "vm_memory",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -1748,7 +1745,7 @@ dependencies = [
  "base",
  "data_model",
  "libc",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -1849,7 +1846,7 @@ dependencies = [
  "base",
  "data_model",
  "libc",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -2073,7 +2070,7 @@ dependencies = [
  "thiserror",
  "virtio_sys",
  "winapi",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -2296,7 +2293,7 @@ dependencies = [
  "protobuf",
  "serde",
  "sync",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -2665,7 +2662,7 @@ dependencies = [
  "thiserror",
  "vulkano 0.33.0",
  "winapi",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -3125,7 +3122,7 @@ dependencies = [
  "sync",
  "thiserror",
  "usb_sys",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -3165,12 +3162,12 @@ dependencies = [
 
 [[package]]
 name = "v4l2r"
-version = "0.0.5"
+version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe1d612d2df2a0802020c49a1b029282c45991cdfff1731b5fc61ed3dce4168a"
+checksum = "b4f8945ec08a0f9c9b3596c3437bfc8ed1e5c4feefcc230ecf5641aa9b44392b"
 dependencies = [
  "anyhow",
- "bindgen 0.69.4",
+ "bindgen 0.70.1",
  "bitflags 2.4.0",
  "enumn",
  "log",
@@ -3195,7 +3192,7 @@ name = "vfio_sys"
 version = "0.1.0"
 dependencies = [
  "base",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -3214,9 +3211,9 @@ dependencies = [
 
 [[package]]
 name = "virtio-media"
-version = "0.0.6"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "986653f821d3a3ed13543c37ba0819877457101855454e7d08611784eb63fa0c"
+checksum = "a6fe4fe1401316867eda765926fe6742849ca33dd4ea4f887036661c3cd15625"
 dependencies = [
  "anyhow",
  "enumn",
@@ -3225,7 +3222,7 @@ dependencies = [
  "nix 0.28.0",
  "thiserror",
  "v4l2r",
- "zerocopy",
+ "zerocopy 0.8.14",
 ]
 
 [[package]]
@@ -3234,7 +3231,7 @@ version = "0.1.0"
 dependencies = [
  "base",
  "data_model",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -3299,7 +3296,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -3318,7 +3315,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tube_transporter",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -3724,7 +3721,7 @@ dependencies = [
  "uuid",
  "vm_control",
  "vm_memory",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -3740,7 +3737,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74d4d3961e53fa4c9a25a8637fc2bfaf2595b3d3ae34875568a5cf64787716be"
 dependencies = [
  "byteorder",
- "zerocopy-derive",
+ "zerocopy-derive 0.7.32",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.8.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a367f292d93d4eab890745e75a778da40909cab4d6ff8173693812f79c4a2468"
+dependencies = [
+ "zerocopy-derive 0.8.14",
 ]
 
 [[package]]
@@ -3748,6 +3754,17 @@ name = "zerocopy-derive"
 version = "0.7.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ce1b18ccd8e73a9321186f97e46f9f04b778851177567b1975109d26a08d2a6"
+dependencies = [
+ "proc-macro2",
+ "quote 1.0.36",
+ "syn 2.0.77",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3931cb58c62c13adec22e38686b559c86a30565e16ad6e8510a337cedc611e1"
 dependencies = [
  "proc-macro2",
  "quote 1.0.36",

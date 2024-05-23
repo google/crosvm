@@ -1149,6 +1149,20 @@ pub fn create_v4l2_device<P: AsRef<Path>>(
     Ok(VirtioDeviceStub { dev, jail: None })
 }
 
+#[cfg(all(feature = "media", feature = "video-decoder"))]
+pub fn create_virtio_media_adapter(
+    protection_type: ProtectionType,
+    tube: Tube,
+    backend: VideoBackendType,
+) -> DeviceResult {
+    use devices::virtio::media::create_virtio_media_decoder_adapter_device;
+
+    let features = virtio::base_features(protection_type);
+    let dev = create_virtio_media_decoder_adapter_device(features, tube, backend)?;
+
+    Ok(VirtioDeviceStub { dev, jail: None })
+}
+
 impl VirtioDeviceBuilder for &VsockConfig {
     const NAME: &'static str = "vhost_vsock";
 

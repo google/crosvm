@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::VecDeque;
 
+pub use backend::DecoderBackend;
 use backend::*;
 use base::error;
 use base::AsRawDescriptor;
@@ -34,7 +35,7 @@ use crate::virtio::video::resource::*;
 use crate::virtio::video::response::CmdResponse;
 
 pub mod backend;
-mod capability;
+pub mod capability;
 
 use capability::*;
 

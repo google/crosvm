@@ -257,6 +257,18 @@ fn create_virtio_devices(
         )?);
     }
 
+    #[cfg(all(feature = "media", feature = "video-decoder"))]
+    let media_adapter_cfg = cfg
+        .media_decoder
+        .iter()
+        .map(|config| {
+            let (video_tube, gpu_tube) =
+                Tube::pair().expect("failed to create tube for media adapter");
+            resource_bridges.push(gpu_tube);
+            (video_tube, config.backend)
+        })
+        .collect::<Vec<_>>();
+
     #[cfg(feature = "video-decoder")]
     let video_dec_cfg = cfg
         .video_dec
@@ -760,6 +772,17 @@ fn create_virtio_devices(
     #[cfg(feature = "media")]
     if cfg.simple_media_device {
         devs.push(create_simple_media_device(cfg.protection_type)?);
+    }
+
+    #[cfg(all(feature = "media", feature = "video-decoder"))]
+    {
+        for (tube, backend) in media_adapter_cfg {
+            devs.push(create_virtio_media_adapter(
+                cfg.protection_type,
+                tube,
+                backend,
+            )?);
+        }
     }
 
     #[cfg(feature = "video-decoder")]

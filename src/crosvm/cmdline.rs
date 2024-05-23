@@ -1635,6 +1635,13 @@ pub struct RunCommand {
     /// MAC address for VM
     pub mac_address: Option<net_util::MacAddress>,
 
+    #[cfg(all(unix, feature = "media", feature = "video-decoder"))]
+    #[argh(option, arg_name = "[backend]")]
+    #[serde(default)]
+    #[merge(strategy = append)]
+    /// add a virtio-media adapter device.
+    pub media_decoder: Vec<VideoDeviceConfig>,
+
     #[argh(option, short = 'm', arg_name = "N")]
     #[merge(strategy = overwrite_option)]
     /// memory parameters.
@@ -3729,6 +3736,11 @@ impl TryFrom<RunCommand> for super::config::Config {
         {
             cfg.v4l2_proxy = cmd.v4l2_proxy;
             cfg.simple_media_device = cmd.simple_media_device.unwrap_or_default();
+        }
+
+        #[cfg(all(unix, feature = "media", feature = "video-decoder"))]
+        {
+            cfg.media_decoder = cmd.media_decoder;
         }
 
         cfg.file_backed_mappings = cmd.file_backed_mapping;

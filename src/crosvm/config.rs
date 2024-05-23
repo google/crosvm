@@ -743,6 +743,8 @@ pub struct Config {
     pub log_file: Option<String>,
     #[cfg(windows)]
     pub logs_directory: Option<String>,
+    #[cfg(all(feature = "media", feature = "video-decoder"))]
+    pub media_decoder: Vec<VideoDeviceConfig>,
     pub memory: Option<u64>,
     pub memory_file: Option<PathBuf>,
     pub mmio_address_ranges: Vec<AddressRange>,
@@ -983,6 +985,8 @@ impl Default for Config {
             logs_directory: None,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             boost_uclamp: false,
+            #[cfg(all(feature = "media", feature = "video-decoder"))]
+            media_decoder: Default::default(),
             memory: None,
             memory_file: None,
             mmio_address_ranges: Vec::new(),

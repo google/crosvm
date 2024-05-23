@@ -7,6 +7,9 @@
 //! This module provides implementation for the virtio-media traits required to make virtio-media
 //! devices operate under crosvm. Sub-modules then integrate these devices with crosvm.
 
+#[cfg(feature = "video-decoder")]
+pub mod decoder_adapter;
+
 use std::collections::BTreeMap;
 use std::os::fd::AsRawFd;
 use std::os::fd::BorrowedFd;
@@ -46,7 +49,10 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
 use crate::virtio::copy_config;
+#[cfg(feature = "video-decoder")]
 use crate::virtio::device_constants::media::QUEUE_SIZES;
+#[cfg(feature = "video-decoder")]
+use crate::virtio::device_constants::video::VideoBackendType;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -724,4 +730,64 @@ pub fn create_virtio_media_v4l2_proxy_device<P: AsRef<Path>>(
     );
 
     Ok(Box::new(device))
+}
+
+/// Create a decoder adapter device.
+///
+/// This is a regular virtio-media decoder device leveraging the virtio-video decoder backends.
+#[cfg(feature = "video-decoder")]
+pub fn create_virtio_media_decoder_adapter_device(
+    features: u64,
+    _gpu_tube: base::Tube,
+    backend: VideoBackendType,
+) -> anyhow::Result<Box<dyn VirtioDevice>> {
+    use decoder_adapter::VirtioVideoAdapter;
+    use virtio_media::devices::video_decoder::VideoDecoder;
+    use virtio_media::v4l2r::ioctl::Capabilities;
+
+    #[cfg(feature = "ffmpeg")]
+    use crate::virtio::video::decoder::backend::ffmpeg::FfmpegDecoder;
+    #[cfg(feature = "vaapi")]
+    use crate::virtio::video::decoder::backend::vaapi::VaapiDecoder;
+    #[cfg(feature = "libvda")]
+    use crate::virtio::video::decoder::backend::vda::LibvdaDecoder;
+    use crate::virtio::video::decoder::DecoderBackend;
+
+    let mut card = [0u8; 32];
+    let card_name = format!("{:?} decoder adapter", backend).to_lowercase();
+    card[0..card_name.len()].copy_from_slice(card_name.as_bytes());
+    let config = VirtioMediaDeviceConfig {
+        device_caps: (Capabilities::VIDEO_M2M_MPLANE | Capabilities::STREAMING).bits(),
+        // VFL_TYPE_VIDEO
+        device_type: 0,
+        card,
+    };
+
+    let create_device = move |event_queue, _, host_mapper: HostMemoryMapper<ArcedMemoryMapper>| {
+        let backend = match backend {
+            #[cfg(feature = "libvda")]
+            VideoBackendType::Libvda => {
+                LibvdaDecoder::new(libvda::decode::VdaImplType::Gavda)?.into_trait_object()
+            }
+            #[cfg(feature = "libvda")]
+            VideoBackendType::LibvdaVd => {
+                LibvdaDecoder::new(libvda::decode::VdaImplType::Gavd)?.into_trait_object()
+            }
+            #[cfg(feature = "vaapi")]
+            VideoBackendType::Vaapi => VaapiDecoder::new()?.into_trait_object(),
+            #[cfg(feature = "ffmpeg")]
+            VideoBackendType::Ffmpeg => FfmpegDecoder::new().into_trait_object(),
+        };
+
+        let adapter = VirtioVideoAdapter::new(backend);
+        let decoder = VideoDecoder::new(adapter, event_queue, host_mapper);
+
+        Ok(decoder)
+    };
+
+    Ok(Box::new(CrosvmVirtioMediaDevice::new(
+        features,
+        config,
+        create_device,
+    )))
 }
