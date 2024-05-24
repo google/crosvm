@@ -5,6 +5,7 @@
 #![cfg(target_arch = "x86_64")]
 #![cfg(any(feature = "whpx", feature = "gvm", feature = "haxm", unix))]
 
+use std::cell::RefCell;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 
@@ -1658,6 +1659,206 @@ fn test_multiple_interrupt_injection() {
                         .expect("should be able to inject an interrupt");
                     false
                 }
+                r => panic!("unexpected VMEXIT reason: {:?}", r),
+            }
+        }
+    );
+}
+
+mod test_interrupt_ready_when_not_interruptible_code {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub enum Instrumentation {
+        BeforeMovSs,
+        AfterMovSs,
+        AfterAfterMovSs,
+        BeforeSti,
+        AfterSti,
+        AfterAfterSti,
+        InIsr,
+    }
+
+    impl From<u64> for Instrumentation {
+        fn from(value: u64) -> Self {
+            match value {
+                0x10 => Instrumentation::BeforeMovSs,
+                0x20 => Instrumentation::AfterMovSs,
+                0x30 => Instrumentation::AfterAfterMovSs,
+                0x40 => Instrumentation::BeforeSti,
+                0x50 => Instrumentation::AfterSti,
+                0x60 => Instrumentation::AfterAfterSti,
+                0xf0 => Instrumentation::InIsr,
+                _ => panic!("Unknown instrumentation IO port: {}", value),
+            }
+        }
+    }
+
+    // We use port IO to trigger the VMEXIT instead of MMIO, because access to out of bound memory
+    // doesn't trigger MMIO VMEXIT on WHPX under simple real-mode set up.
+    global_asm_data!(
+        pub init,
+        ".code16",
+        // Set up the stack, which will be used when CPU transfers the control to the ISR on
+        // interrupt.
+        "mov sp, 0x1900",
+        // Set the IDT.
+        "lidt [0x200]",
+        // Load the ss register, so that the later mov ss instruction is actually a no-op.
+        "mov ax, ss",
+        "out 0x10, ax",
+        // Hypervisors shouldn't allow interrupt injection right after the mov ss instruction.
+        "mov ss, ax",
+        "out 0x20, ax",
+        // On WHPX we need some other instructions to bring the interuptibility back to normal.
+        // While this is not needed for other hypervisors, we add this instruction unconditionally.
+        "nop",
+        "out 0x30, ax",
+        "out 0x40, ax",
+        // Test hypervisors' interruptibilities right after sti instruction.
+        "sti",
+        "out 0x50, ax",
+        "out 0x60, ax",
+        "hlt",
+    );
+
+    global_asm_data!(
+        pub isr,
+        ".code16",
+        "out 0xf0, ax",
+        "iret",
+    );
+}
+
+// Physical x86 processor won't allow interrupt to be injected after mov ss or sti, while VM can.
+// Different hypervisors have different bahavior in those situations.
+#[test]
+fn test_interrupt_ready_when_normally_not_interruptible() {
+    use test_interrupt_ready_when_not_interruptible_code::Instrumentation;
+
+    let start_addr: u32 = 0x200;
+    // Allocate exceed 0x1900, where we set up our stack.
+    let mem_size: u32 = 0x2000;
+
+    let mut setup = TestSetup {
+        load_addr: GuestAddress(start_addr.into()),
+        initial_regs: Regs {
+            rax: 0,
+            rbx: 0,
+            // Set RFLAGS.IF to enable interrupt.
+            rflags: 2 | 0x202,
+            ..Default::default()
+        },
+        mem_size: mem_size.into(),
+        ..Default::default()
+    };
+
+    let mut cur_addr = start_addr;
+
+    let idtr_size: u32 = 6;
+    assert_eq!(Ok(std::mem::size_of::<Idtr>()), usize::try_from(idtr_size));
+    // The limit is calculated from 256 entries timed by 4 bytes per entry.
+    let idt_size = 256u16 * 4u16;
+    let idtr = Idtr {
+        limit: idt_size - 1,
+        // The IDT right follows the IDTR.
+        base_address: start_addr + idtr_size,
+    };
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), idtr.as_bytes().to_vec());
+    cur_addr += idtr_size;
+
+    let idt_entry = (start_addr + idtr_size + u32::from(idt_size)).to_ne_bytes();
+    // IDT entries are far pointers(CS:IP pair) to the only ISR, which locates right after the IDT.
+    // We set all entries to the same ISR.
+    let idt = (0..256).flat_map(|_| idt_entry).collect::<Vec<_>>();
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), idt.clone());
+    cur_addr += u32::try_from(idt.len()).expect("IDT size should be within u32");
+
+    let isr_assembly = test_interrupt_ready_when_not_interruptible_code::isr::data().to_vec();
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), isr_assembly.clone());
+    cur_addr += u32::try_from(isr_assembly.len()).expect("ISR size should be within u32");
+
+    let init_assembly = test_interrupt_ready_when_not_interruptible_code::init::data().to_vec();
+    setup.initial_regs.rip = cur_addr.into();
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), init_assembly.clone());
+    cur_addr += u32::try_from(init_assembly.len()).expect("init size should be within u32");
+
+    assert!(mem_size > cur_addr);
+
+    // This helps us check the interruptibility under different situations.
+    let interruptibility_traces = RefCell::<Vec<_>>::default();
+    // This helps us check when the interrupt actually delivers.
+    let instrumentation_traces = RefCell::<Vec<_>>::default();
+
+    run_tests!(
+        setup,
+        |_, regs, _| {
+            use Instrumentation::*;
+            assert_eq!(
+                *interruptibility_traces.borrow(),
+                [
+                    (BeforeMovSs, true),
+                    // Hypervisors don't allow interrupt injection right after mov ss.
+                    (AfterMovSs, false),
+                    (AfterAfterMovSs, true),
+                    (BeforeSti, true),
+                    // Hypervisors allow interrupt injection right after sti.
+                    (AfterSti, true),
+                    (AfterAfterSti, true)
+                ]
+            );
+            // Hypervisors always deliver the interrupt right after we inject it in the next VCPU
+            // run.
+            assert_eq!(
+                *instrumentation_traces.borrow(),
+                [
+                    BeforeMovSs,
+                    InIsr,
+                    AfterMovSs,
+                    AfterAfterMovSs,
+                    InIsr,
+                    BeforeSti,
+                    InIsr,
+                    AfterSti,
+                    InIsr,
+                    AfterAfterSti,
+                    InIsr,
+                ]
+            );
+            assert_eq!(Ok(regs.rip), u64::try_from(cur_addr));
+        },
+        |_, exit, vcpu: &mut dyn VcpuX86_64| {
+            match exit {
+                VcpuExit::Io => {
+                    let ready_for_interrupt = vcpu.ready_for_interrupt();
+                    let mut should_inject_interrupt = ready_for_interrupt;
+                    vcpu.handle_io(&mut |io_params| {
+                        let instrumentation = Instrumentation::from(io_params.address);
+                        match instrumentation {
+                            Instrumentation::InIsr => {
+                                // Only inject interrupt outside ISR.
+                                should_inject_interrupt = false;
+                            }
+                            _ => {
+                                // Only the interuptibility outside the ISR is important for this
+                                // test.
+                                interruptibility_traces
+                                    .borrow_mut()
+                                    .push((instrumentation, ready_for_interrupt));
+                            }
+                        }
+                        instrumentation_traces.borrow_mut().push(instrumentation);
+                        // We are always handling out IO port, so no data to return.
+                        None
+                    })
+                    .expect("should handle IO successfully");
+                    if should_inject_interrupt {
+                        vcpu.interrupt(32)
+                            .expect("interrupt injection should succeed when ready for interrupt");
+                    }
+                    false
+                }
+                VcpuExit::Hlt => true,
                 r => panic!("unexpected VMEXIT reason: {:?}", r),
             }
         }
