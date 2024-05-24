@@ -78,6 +78,7 @@ extern "C" {
         ctx: *mut AndroidDisplayContext,
         width: u32,
         height: u32,
+        for_cursor: bool,
     ) -> *mut ANativeWindow;
 
     /// Destroys the Android surface created from `create_android_surface`.
@@ -96,6 +97,8 @@ extern "C" {
         surface: *mut ANativeWindow,
         out_buffer: *mut ANativeWindow_Buffer,
     ) -> bool;
+
+    fn set_android_surface_position(ctx: *mut AndroidDisplayContext, x: u32, y: u32);
 
     /// Posts the buffer obtained from `get_android_surface_buffer` to the Android display system
     /// so that it can be displayed on the screen. Once this is called, the caller shouldn't use
@@ -179,6 +182,11 @@ impl GpuDisplaySurface for AndroidSurface {
         // SAFETY: context and surface are opaque handles.
         unsafe { post_android_surface_buffer(self.context.0.as_ptr(), self.surface.as_ptr()) }
     }
+
+    fn set_position(&mut self, x: u32, y: u32) {
+        // SAFETY: context is an opaque handle.
+        unsafe { set_android_surface_position(self.context.0.as_ptr(), x, y) };
+    }
 }
 
 pub struct DisplayAndroid {
@@ -213,14 +221,15 @@ impl DisplayT for DisplayAndroid {
         display_params: &DisplayParameters,
         _surf_type: SurfaceType,
     ) -> GpuDisplayResult<Box<dyn GpuDisplaySurface>> {
-        if parent_surface_id.is_some() {
-            return Err(GpuDisplayError::Unsupported);
-        }
-
         let (requested_width, requested_height) = display_params.get_virtual_display_size();
         // SAFETY: context is an opaque handle.
         let surface = NonNull::new(unsafe {
-            create_android_surface(self.context.0.as_ptr(), requested_width, requested_height)
+            create_android_surface(
+                self.context.0.as_ptr(),
+                requested_width,
+                requested_height,
+                parent_surface_id.is_some(),
+            )
         })
         .ok_or(GpuDisplayError::CreateSurface)?;
 

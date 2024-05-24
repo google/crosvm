@@ -33,6 +33,7 @@ extern "C" fn create_android_surface(
     _ctx: *mut AndroidDisplayContext,
     _width: u32,
     _height: u32,
+    _for_cursor: bool,
 ) -> *mut ANativeWindow {
     unimplemented!();
 }
@@ -42,6 +43,11 @@ extern "C" fn destroy_android_surface(
     _ctx: *mut AndroidDisplayContext,
     _surface: *mut ANativeWindow,
 ) {
+    unimplemented!();
+}
+
+#[no_mangle]
+extern "C" fn set_android_surface_position(_ctx: *mut AndroidDisplayContext, _x: u32, _y: u32) {
     unimplemented!();
 }
 
