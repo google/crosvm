@@ -108,11 +108,12 @@ pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
 
 /// Run the SND device worker.
 pub fn run_snd_device_worker(config: SndBackendConfig) -> anyhow::Result<()> {
+    let card_index = config.card_index;
     let vhost_user_tube = config
         .device_vhost_user_tube
-        .expect("vhost-user Snd tube must be set");
+        .unwrap_or_else(|| panic!("[Card {}] vhost-user Snd tube must be set", card_index));
 
-    let ex = Executor::new().context("Failed to create executor")?;
+    let ex = Executor::new().context(format!("[Card {}] Failed to create executor", card_index))?;
 
     let snd_device = Box::new(SndBackend::new(
         &ex,
@@ -124,19 +125,25 @@ pub fn run_snd_device_worker(config: SndBackendConfig) -> anyhow::Result<()> {
     // Set the audio thread priority here. This assumes our executor is running on a single thread.
     let _thread_priority_handle = set_audio_thread_priority();
     if let Err(e) = _thread_priority_handle {
-        warn!("Failed to set audio thread to real time: {}", e);
+        warn!(
+            "[Card {}] Failed to set audio thread to real time: {}",
+            card_index, e
+        );
     };
 
     let handler = snd_device.build(&ex)?;
 
-    info!("vhost-user snd device ready, starting run loop...");
+    info!(
+        "[Card {}] vhost-user snd device ready, starting run loop...",
+        card_index
+    );
     if let Err(e) = ex.run_until(run_handler(
         handler,
         vhost_user_tube,
         config.exit_event,
         &ex,
     )) {
-        bail!("error occurred: {}", e);
+        bail!("[Card {}] error occurred: {}", card_index, e);
     }
 
     Ok(())

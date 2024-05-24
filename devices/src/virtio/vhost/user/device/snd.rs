@@ -76,7 +76,7 @@ struct SndBackend {
     tx_recv: Option<mpsc::UnboundedReceiver<PcmResponse>>,
     rx_recv: Option<mpsc::UnboundedReceiver<PcmResponse>>,
     // Appended to logs for when there are mutliple audio devices.
-    _card_index: usize,
+    card_index: usize,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -101,11 +101,12 @@ impl SndBackend {
 
         let snd_data = hardcoded_snd_data(&params);
         let mut keep_rds = Vec::new();
-        let builders = create_stream_info_builders(&params, &snd_data, &mut keep_rds)?;
+        let builders = create_stream_info_builders(&params, &snd_data, &mut keep_rds, card_index)?;
 
         if snd_data.pcm_info_len() != builders.len() {
             error!(
-                "snd: expected {} stream info builders, got {}",
+                "[Card {}] snd: expected {} stream info builders, got {}",
+                card_index,
                 snd_data.pcm_info_len(),
                 builders.len(),
             )
@@ -140,7 +141,7 @@ impl SndBackend {
             rx_send,
             tx_recv: Some(tx_recv),
             rx_recv: Some(rx_recv),
-            _card_index: card_index,
+            card_index,
         })
     }
 }
@@ -164,7 +165,11 @@ impl VhostUserDevice for SndBackend {
     fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
         let unrequested_features = value & !self.avail_features;
         if unrequested_features != 0 {
-            bail!("invalid features are given: {:#x}", unrequested_features);
+            bail!(
+                "[Card {}] invalid features are given: {:#x}",
+                self.card_index,
+                unrequested_features
+            );
         }
 
         self.acked_features |= value;
@@ -181,8 +186,13 @@ impl VhostUserDevice for SndBackend {
     }
 
     fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {
-        let features = VhostUserProtocolFeatures::from_bits(features)
-            .ok_or_else(|| anyhow!("invalid protocol features are given: {:#x}", features))?;
+        let features = VhostUserProtocolFeatures::from_bits(features).ok_or_else(|| {
+            anyhow!(
+                "[Card {}] invalid protocol features are given: {:#x}",
+                self.card_index,
+                features
+            )
+        })?;
         let supported = self.protocol_features();
         self.acked_protocol_features = features & supported;
         Ok(())
@@ -210,17 +220,23 @@ impl VhostUserDevice for SndBackend {
         doorbell: Interrupt,
     ) -> anyhow::Result<()> {
         if self.workers[idx].is_some() {
-            warn!("Starting new queue handler without stopping old handler");
+            warn!(
+                "[Card {}] Starting new queue handler without stopping old handler",
+                self.card_index
+            );
             self.stop_queue(idx)?;
         }
 
-        let kick_evt = queue
-            .event()
-            .try_clone()
-            .context("failed to clone queue event")?;
-        let mut kick_evt = EventAsync::new(kick_evt, &self.ex)
-            .context("failed to create EventAsync for kick_evt")?;
+        let kick_evt = queue.event().try_clone().context(format!(
+            "[Card {}] failed to clone queue event",
+            self.card_index
+        ))?;
+        let mut kick_evt = EventAsync::new(kick_evt, &self.ex).context(format!(
+            "[Card {}] failed to create EventAsync for kick_evt",
+            self.card_index
+        ))?;
         let queue = Rc::new(AsyncRwLock::new(queue));
+        let card_index = self.card_index;
         let queue_task = match idx {
             0 => {
                 // ctrl queue
@@ -241,6 +257,7 @@ impl VhostUserDevice for SndBackend {
                         doorbell,
                         tx_send,
                         rx_send,
+                        card_index,
                         None,
                     )
                     .await
@@ -259,11 +276,14 @@ impl VhostUserDevice for SndBackend {
                 } else {
                     (self.rx_send.clone(), self.rx_recv.take())
                 };
-                let mut recv = recv.ok_or_else(|| anyhow!("queue restart is not supported"))?;
+                let mut recv = recv.ok_or_else(|| {
+                    anyhow!("[Card {}] queue restart is not supported", self.card_index)
+                })?;
                 let streams = Rc::clone(&self.streams);
                 let queue_pcm_queue = queue.clone();
                 let queue_task = self.ex.spawn_local(async move {
-                    handle_pcm_queue(&streams, send, queue_pcm_queue, &kick_evt, None).await
+                    handle_pcm_queue(&streams, send, queue_pcm_queue, &kick_evt, card_index, None)
+                        .await
                 });
 
                 let queue_response_queue = queue.clone();
@@ -278,7 +298,11 @@ impl VhostUserDevice for SndBackend {
 
                 Some(queue_task)
             }
-            _ => bail!("attempted to start unknown queue: {}", idx),
+            _ => bail!(
+                "[Card {}] attempted to start unknown queue: {}",
+                self.card_index,
+                idx
+            ),
         };
 
         if let Some(queue_task) = queue_task {
@@ -312,7 +336,10 @@ impl VhostUserDevice for SndBackend {
         if let Some(queue_rc) = worker_queue_rc {
             match Rc::try_unwrap(queue_rc) {
                 Ok(queue_mutex) => Ok(queue_mutex.into_inner()),
-                Err(_) => panic!("failed to recover queue from worker"),
+                Err(_) => panic!(
+                    "[Card {}] failed to recover queue from worker",
+                    self.card_index
+                ),
             }
         } else {
             Err(anyhow::Error::new(DeviceError::WorkerNotFound))
@@ -328,7 +355,12 @@ impl VhostUserDevice for SndBackend {
                     stream_info
                         .lock()
                         .now_or_never()
-                        .expect("failed to lock audio state during snapshot")
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "[Card {}] failed to lock audio state during snapshot",
+                                self.card_index
+                            )
+                        })
                         .snapshot(),
                 );
             }
@@ -344,29 +376,38 @@ impl VhostUserDevice for SndBackend {
             stream_infos: stream_info_snaps,
             snd_data: snd_data_ref.clone(),
         })
-        .context("Failed to serialize SndBackendSnapshot")
+        .context(format!(
+            "[Card {}] Failed to serialize SndBackendSnapshot",
+            self.card_index
+        ))
     }
 
     fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
-        let deser: SndBackendSnapshot = serde_json::from_slice(data.as_slice())
-            .context("Failed to deserialize SndBackendSnapshot")?;
+        let deser: SndBackendSnapshot =
+            serde_json::from_slice(data.as_slice()).context(format!(
+                "[Card {}] Failed to deserialize SndBackendSnapshot",
+                self.card_index
+            ))?;
         anyhow::ensure!(
             deser.avail_features == self.avail_features,
-            "avail features doesn't match on restore: expected: {}, got: {}",
+            "[Card {}] avail features doesn't match on restore: expected: {}, got: {}",
+            self.card_index,
             deser.avail_features,
             self.avail_features
         );
         anyhow::ensure!(
             self.acked_protocol_features.bits() == deser.acked_protocol_features,
-            "Vhost user snd restored acked_protocol_features do not match. Live: {:?}, \
+            "[Card {}] Vhost user snd restored acked_protocol_features do not match. Live: {:?}, \
             snapshot: {:?}",
+            self.card_index,
             self.acked_protocol_features,
             deser.acked_protocol_features,
         );
         let snd_data = self.snd_data.borrow();
         anyhow::ensure!(
             &deser.snd_data == snd_data,
-            "snd data doesn't match on restore: expected: {:?}, got: {:?}",
+            "[Card {}] snd data doesn't match on restore: expected: {:?}, got: {:?}",
+            self.card_index,
             deser.snd_data,
             snd_data,
         );
@@ -377,6 +418,7 @@ impl VhostUserDevice for SndBackend {
         let tx_send_clone = self.tx_send.clone();
         let rx_send_clone = self.rx_send.clone();
 
+        let card_index = self.card_index;
         let restore_task = self.ex.spawn_local(async move {
             if let Some(stream_infos) = &deser.stream_infos {
                 for (stream, stream_info) in streams_rc.lock().await.iter().zip(stream_infos.iter())
@@ -390,22 +432,21 @@ impl VhostUserDevice for SndBackend {
                             .await
                             .prepare(&ex_clone, &tx_send_clone, &rx_send_clone)
                             .await
-                            .expect("failed to prepare PCM");
+                            .unwrap_or_else(|_| {
+                                panic!("[Card {}] failed to prepare PCM", card_index)
+                            });
                     }
                     if stream_info.state == VIRTIO_SND_R_PCM_START {
-                        stream
-                            .lock()
-                            .await
-                            .start()
-                            .await
-                            .expect("failed to start PCM");
+                        stream.lock().await.start().await.unwrap_or_else(|_| {
+                            panic!("[Card {}] failed to start PCM", card_index)
+                        });
                     }
                 }
             }
         });
         self.ex
             .run_until(restore_task)
-            .expect("failed to restore streams");
+            .unwrap_or_else(|_| panic!("[Card {}] failed to restore streams", self.card_index));
         Ok(())
     }
 

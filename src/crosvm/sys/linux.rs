@@ -628,11 +628,13 @@ fn create_virtio_devices(
 
     #[cfg(feature = "audio")]
     {
-        for virtio_snd in &cfg.virtio_snds {
+        for (card_index, virtio_snd) in cfg.virtio_snds.iter().enumerate() {
+            let mut snd_params = virtio_snd.clone();
+            snd_params.card_index = card_index;
             devs.push(create_virtio_snd_device(
                 cfg.protection_type,
                 &cfg.jail_config,
-                virtio_snd.clone(),
+                snd_params,
             )?);
         }
     }

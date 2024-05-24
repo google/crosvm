@@ -205,6 +205,7 @@ pub struct VirtioSnd {
     worker_thread: Option<WorkerThread<Result<WorkerReturn, String>>>,
     keep_rds: Vec<Descriptor>,
     streams_state: Option<Vec<StreamInfoSnapshot>>,
+    card_index: usize,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -224,7 +225,8 @@ impl VirtioSnd {
         let avail_features = base_features;
         let mut keep_rds: Vec<RawDescriptor> = Vec::new();
 
-        let stream_info_builders = create_stream_info_builders(&params, &snd_data, &mut keep_rds)?;
+        let stream_info_builders =
+            create_stream_info_builders(&params, &snd_data, &mut keep_rds, params.card_index)?;
 
         Ok(VirtioSnd {
             cfg,
@@ -236,6 +238,7 @@ impl VirtioSnd {
             worker_thread: None,
             keep_rds: keep_rds.iter().map(|rd| Descriptor(*rd)).collect(),
             streams_state: None,
+            card_index: params.card_index,
         })
     }
 }
@@ -265,6 +268,7 @@ pub(crate) fn create_stream_info_builders(
     params: &Parameters,
     snd_data: &SndData,
     keep_rds: &mut Vec<RawDescriptor>,
+    card_index: usize,
 ) -> Result<Vec<StreamInfoBuilder>, Error> {
     Ok(create_stream_source_generators(params, snd_data, keep_rds)?
         .into_iter()
@@ -272,7 +276,8 @@ pub(crate) fn create_stream_info_builders(
         .zip(snd_data.pcm_info_iter())
         .map(|(generator, pcm_info)| {
             let device_params = params.get_device_params(pcm_info).unwrap_or_default();
-            StreamInfo::builder(generator).effects(device_params.effects.unwrap_or_default())
+            StreamInfo::builder(generator, card_index)
+                .effects(device_params.effects.unwrap_or_default())
         })
         .collect())
 }
@@ -453,6 +458,7 @@ impl VirtioDevice for VirtioSnd {
         let snd_data = self.snd_data.clone();
         let stream_info_builders = self.stream_info_builders.to_vec();
         let streams_state = self.streams_state.take();
+        let card_index = self.card_index;
         self.worker_thread = Some(WorkerThread::start("v_snd_common", move |kill_evt| {
             let _thread_priority_handle = set_audio_thread_priority();
             if let Err(e) = _thread_priority_handle {
@@ -465,6 +471,7 @@ impl VirtioDevice for VirtioSnd {
                 kill_evt,
                 stream_info_builders,
                 streams_state,
+                card_index,
             )
         }));
 
@@ -568,6 +575,7 @@ fn run_worker(
     kill_evt: Event,
     stream_info_builders: Vec<StreamInfoBuilder>,
     streams_state: Option<Vec<StreamInfoSnapshot>>,
+    card_index: usize,
 ) -> Result<WorkerReturn, String> {
     let ex = Executor::new().expect("Failed to create an executor");
 
@@ -664,6 +672,7 @@ fn run_worker(
             &rx_queue_evt,
             rx_send.clone(),
             &mut rx_recv,
+            card_index,
         ) == LoopState::Break
         {
             break;
@@ -750,6 +759,7 @@ fn run_worker_once(
     rx_queue_evt: &EventAsync,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
+    card_index: usize,
 ) -> LoopState {
     let tx_send2 = tx_send.clone();
     let rx_send2 = rx_send.clone();
@@ -765,6 +775,7 @@ fn run_worker_once(
         interrupt.clone(),
         tx_send,
         rx_send,
+        card_index,
         Some(&reset_signal),
     )
     .fuse();
@@ -781,6 +792,7 @@ fn run_worker_once(
         tx_send2,
         tx_queue.clone(),
         tx_queue_evt,
+        card_index,
         Some(&reset_signal),
     )
     .fuse();
@@ -791,6 +803,7 @@ fn run_worker_once(
         rx_send2,
         rx_queue.clone(),
         rx_queue_evt,
+        card_index,
         Some(&reset_signal),
     )
     .fuse();

@@ -51,6 +51,7 @@ pub struct SetParams {
 pub struct StreamInfoBuilder {
     stream_source_generator: Arc<SysAudioStreamSourceGenerator>,
     effects: Vec<StreamEffect>,
+    card_index: usize,
     #[cfg(windows)]
     audio_client_guid: Option<String>,
 }
@@ -60,10 +61,15 @@ impl StreamInfoBuilder {
     ///
     /// * `stream_source_generator`: Generator which generates stream source in
     ///   [`StreamInfo::prepare()`].
-    pub fn new(stream_source_generator: Arc<SysAudioStreamSourceGenerator>) -> Self {
+    /// * `card_index`: The ALSA card index.
+    pub fn new(
+        stream_source_generator: Arc<SysAudioStreamSourceGenerator>,
+        card_index: usize,
+    ) -> Self {
         StreamInfoBuilder {
             stream_source_generator,
             effects: vec![],
+            card_index,
             #[cfg(windows)]
             audio_client_guid: None,
         }
@@ -113,6 +119,7 @@ pub struct StreamInfo {
     pub sender: Option<mpsc::UnboundedSender<DescriptorChain>>,
     worker_future: Option<Box<dyn Future<Output = Result<(), Error>> + Unpin>>,
     release_signal: Option<Rc<(AsyncRwLock<bool>, Condvar)>>, // Signal worker on release
+    card_index: usize,
     ex: Option<Executor>, // Executor provided on `prepare()`. Used on `drop()`.
     #[cfg(windows)]
     pub(crate) playback_stream_cache: Option<(
@@ -190,6 +197,7 @@ impl From<StreamInfoBuilder> for StreamInfo {
             sender: None,
             worker_future: None,
             release_signal: None,
+            card_index: builder.card_index,
             ex: None,
             #[cfg(windows)]
             playback_stream_cache: None,
@@ -204,8 +212,9 @@ impl StreamInfo {
     /// the description of each parameter.
     pub fn builder(
         stream_source_generator: Arc<SysAudioStreamSourceGenerator>,
+        card_index: usize,
     ) -> StreamInfoBuilder {
-        StreamInfoBuilder::new(stream_source_generator)
+        StreamInfoBuilder::new(stream_source_generator, card_index)
     }
 
     /// Sets parameters of the stream, putting it into [`VIRTIO_SND_R_PCM_SET_PARAMS`] state.
@@ -218,7 +227,8 @@ impl StreamInfo {
             && self.state != VIRTIO_SND_R_PCM_RELEASE
         {
             error!(
-                "Invalid PCM state transition from {} to {}",
+                "[Card {}] Invalid PCM state transition from {} to {}",
+                self.card_index,
                 get_virtio_snd_r_pcm_cmd_name(self.state),
                 get_virtio_snd_r_pcm_cmd_name(VIRTIO_SND_R_PCM_SET_PARAMS)
             );
@@ -258,7 +268,8 @@ impl StreamInfo {
             && self.state != VIRTIO_SND_R_PCM_RELEASE
         {
             error!(
-                "Invalid PCM state transition from {} to {}",
+                "[Card {}] Invalid PCM state transition from {} to {}",
+                self.card_index,
                 get_virtio_snd_r_pcm_cmd_name(self.state),
                 get_virtio_snd_r_pcm_cmd_name(VIRTIO_SND_R_PCM_PREPARE)
             );
@@ -270,7 +281,10 @@ impl StreamInfo {
         }
         let frame_size = self.channels as usize * self.format.sample_bytes();
         if self.period_bytes % frame_size != 0 {
-            error!("period_bytes must be divisible by frame size");
+            error!(
+                "[Card {}] period_bytes must be divisible by frame size",
+                self.card_index
+            );
             return Err(Error::OperationNotSupported);
         }
         self.stream_source = Some(
@@ -317,6 +331,7 @@ impl StreamInfo {
             self.status_mutex.clone(),
             stream_objects.pcm_sender,
             period_dur,
+            self.card_index,
             release_signal,
         );
         self.worker_future = Some(Box::new(ex.spawn_local(f).into_future()));
@@ -331,7 +346,8 @@ impl StreamInfo {
         }
         if self.state != VIRTIO_SND_R_PCM_PREPARE && self.state != VIRTIO_SND_R_PCM_STOP {
             error!(
-                "Invalid PCM state transition from {} to {}",
+                "[Card {}] Invalid PCM state transition from {} to {}",
+                self.card_index,
                 get_virtio_snd_r_pcm_cmd_name(self.state),
                 get_virtio_snd_r_pcm_cmd_name(VIRTIO_SND_R_PCM_START)
             );
@@ -352,7 +368,8 @@ impl StreamInfo {
         }
         if self.state != VIRTIO_SND_R_PCM_START {
             error!(
-                "Invalid PCM state transition from {} to {}",
+                "[Card {}] Invalid PCM state transition from {} to {}",
+                self.card_index,
                 get_virtio_snd_r_pcm_cmd_name(self.state),
                 get_virtio_snd_r_pcm_cmd_name(VIRTIO_SND_R_PCM_STOP)
             );
@@ -373,7 +390,8 @@ impl StreamInfo {
         }
         if self.state != VIRTIO_SND_R_PCM_PREPARE && self.state != VIRTIO_SND_R_PCM_STOP {
             error!(
-                "Invalid PCM state transition from {} to {}",
+                "[Card {}] Invalid PCM state transition from {} to {}",
+                self.card_index,
                 get_virtio_snd_r_pcm_cmd_name(self.state),
                 get_virtio_snd_r_pcm_cmd_name(VIRTIO_SND_R_PCM_RELEASE)
             );
@@ -400,7 +418,12 @@ impl StreamInfo {
 
         if let Some(f) = self.worker_future.take() {
             f.await
-                .map_err(|error| warn!("Failure on releasing the worker_future: {}", error))
+                .map_err(|error| {
+                    warn!(
+                        "[Card {}] Failure on releasing the worker_future: {}",
+                        self.card_index, error
+                    )
+                })
                 .ok();
         }
         self.ex.take(); // Remove ex as the worker is finished
@@ -440,7 +463,12 @@ mod tests {
     use super::*;
 
     fn new_stream() -> StreamInfo {
-        StreamInfo::builder(Arc::new(Box::new(NoopStreamSourceGenerator::new()))).build()
+        let card_index = 0;
+        StreamInfo::builder(
+            Arc::new(Box::new(NoopStreamSourceGenerator::new())),
+            card_index,
+        )
+        .build()
     }
 
     fn stream_set_params(
@@ -739,8 +767,12 @@ mod tests {
 
     #[test]
     fn test_stream_info_builder() {
-        let builder = StreamInfo::builder(Arc::new(Box::new(NoopStreamSourceGenerator::new())))
-            .effects(vec![StreamEffect::EchoCancellation]);
+        let card_index = 0;
+        let builder = StreamInfo::builder(
+            Arc::new(Box::new(NoopStreamSourceGenerator::new())),
+            card_index,
+        )
+        .effects(vec![StreamEffect::EchoCancellation]);
 
         let stream = builder.build();
         assert_eq!(stream.effects, vec![StreamEffect::EchoCancellation]);
