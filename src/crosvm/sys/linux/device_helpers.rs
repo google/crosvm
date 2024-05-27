@@ -1104,14 +1104,8 @@ pub fn create_pmem_device(
     // mapped file will generate SIGBUS. So use a memory mapping arena that will provide
     // padding up to 2 MiB.
     let alignment = 2 * 1024 * 1024;
-    let align_adjust = if disk_size % alignment != 0 {
-        alignment - (disk_size % alignment)
-    } else {
-        0
-    };
-
     let arena_size = disk_size
-        .checked_add(align_adjust)
+        .checked_next_multiple_of(alignment)
         .ok_or_else(|| anyhow!("pmem device image too big"))?;
 
     let protection = {
