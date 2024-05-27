@@ -1151,6 +1151,7 @@ pub fn create_pmem_device(
                 .top_down(true)
                 .prefetchable(true)
                 // Linux kernel requires pmem namespaces to be 128 MiB aligned.
+                // cf. https://github.com/pmem/ndctl/issues/76
                 .align(128 * 1024 * 1024), /* 128 MiB */
         )
         .context("failed to allocate memory for pmem device")?;
