@@ -10,6 +10,7 @@ use thiserror::Error as ThisError;
 
 use crate::avcodec::AvError;
 use crate::avcodec::AvFrame;
+use crate::avcodec::Dimensions;
 use crate::ffi;
 
 /// A struct able to copy a decoded `AvFrame` into an `OutputBuffer`'s memory, converting the pixel
@@ -27,8 +28,8 @@ pub enum ConversionError {
         frame: ffi::AVPixelFormat,
         converter: ffi::AVPixelFormat,
     },
-    #[error("source AvFrame's dimension does not match destination's")]
-    DimensionMismatch,
+    #[error("source AvFrame's dimension {0:?} does not match destination's {1:?}")]
+    DimensionMismatch(Dimensions, Dimensions),
     #[error("destination AvFrame needs to be refcounted with refcount=1")]
     NotWritable,
     #[error("error during conversion with libswscale: {0}")]
@@ -107,7 +108,10 @@ impl SwConverter {
         }
 
         if src.dimensions() != dst.dimensions() {
-            return Err(ConversionError::DimensionMismatch);
+            return Err(ConversionError::DimensionMismatch(
+                src.dimensions(),
+                dst.dimensions(),
+            ));
         }
 
         if !dst.is_writable() {
