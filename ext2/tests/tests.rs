@@ -426,3 +426,43 @@ fn test_mkfs_symlink_to_deleted() {
 
     assert_eq_dirs(&td, &dir, &disk);
 }
+
+#[test]
+fn test_mkfs_long_symlink() {
+    // testdata
+    // ├── /(long name directory)/a.txt
+    // └── symlink -> /(long name directory)/a.txt
+    // ├── (60-byte filename)
+    // └── symlink60 -> (60-byte filename)
+
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+
+    create_dir(&dir).unwrap();
+
+    const LONG_DIR_NAME: &str =
+        "this_is_a_very_long_directory_name_so_that_name_cannoot_fit_in_60_characters_in_inode";
+    assert!(LONG_DIR_NAME.len() > 60);
+
+    let long_dir = dir.join(LONG_DIR_NAME);
+    create_dir(&long_dir).unwrap();
+    File::create(long_dir.join("a.txt")).unwrap();
+    symlink(long_dir.join("a.txt"), dir.join("symlink")).unwrap();
+
+    const SIXTY_CHAR_DIR_NAME: &str =
+        "./this_is_just_60_byte_long_so_it_can_work_as_a_corner_case.";
+    assert_eq!(SIXTY_CHAR_DIR_NAME.len(), 60);
+    File::create(dir.join(SIXTY_CHAR_DIR_NAME)).unwrap();
+    symlink(SIXTY_CHAR_DIR_NAME, dir.join("symlink60")).unwrap();
+
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group: 2048,
+            inodes_per_group: 4096,
+        },
+        Some(&dir),
+    );
+
+    assert_eq_dirs(&td, &dir, &disk);
+}

@@ -152,7 +152,6 @@ impl InodeBlock {
                 Self::max_inline_symlink_len()
             );
         }
-
         self.0[..bytes.len()].copy_from_slice(bytes);
         Ok(())
     }

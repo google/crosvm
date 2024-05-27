@@ -558,8 +558,7 @@ impl<'a> Ext2<'a> {
             .context("failed to convert symlink destination to str")?;
 
         if dst.len() >= InodeBlock::max_inline_symlink_len() {
-            // TODO(b/342937495): Support symlink longer than or equal to 60 bytes.
-            unimplemented!("long symlink is not supported yet: {:?}", dst);
+            return self.add_long_symlink(arena, parent, &link, dst);
         }
 
         let inode_num = self.allocate_inode()?;
@@ -574,6 +573,46 @@ impl<'a> Ext2<'a> {
             dst.len() as u32,
             1, //links_count,
             InodeBlocksCount::from_bytes_len(0),
+            block,
+        )?;
+        self.add_inode(inode_num, inode)?;
+
+        let link_name = link.file_name().context("failed to get symlink name")?;
+        self.allocate_dir_entry(arena, parent, inode_num, InodeType::Symlink, link_name)?;
+
+        Ok(())
+    }
+
+    fn add_long_symlink(
+        &mut self,
+        arena: &'a Arena<'a>,
+        parent: InodeNum,
+        link: &Path,
+        dst: &str,
+    ) -> Result<()> {
+        let dst_len = dst.len();
+        if dst_len > self.block_size() as usize {
+            bail!("symlink longer than block size: {:?}", dst);
+        }
+
+        // Copy symlink's destination to the block.
+        let symlink_block = self.allocate_block()?;
+        let buf = arena.allocate_slice(symlink_block, 0, dst_len)?;
+        buf.copy_from_slice(dst.as_bytes());
+
+        let inode_num = self.allocate_inode()?;
+        let mut block = InodeBlock::default();
+        block.set_direct_blocks(&[symlink_block])?;
+
+        let block_size = self.block_size() as u32;
+        let inode = Inode::from_metadata(
+            arena,
+            &mut self.group_metadata,
+            inode_num,
+            &std::fs::symlink_metadata(link)?,
+            dst_len as u32,
+            1, //links_count,
+            InodeBlocksCount::from_bytes_len(block_size),
             block,
         )?;
         self.add_inode(inode_num, inode)?;
