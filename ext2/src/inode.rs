@@ -77,6 +77,8 @@ impl From<InodeNum> for usize {
     }
 }
 
+/// Size of the `block` field in Inode.
+const INODE_BLOCK_LEN: usize = 60;
 /// Represents 60-byte region for block in Inode.
 /// This region is used for various ways depending on the file type.
 /// For regular files and directories, it's used for storing 32-bit indices of blocks.
@@ -84,11 +86,11 @@ impl From<InodeNum> for usize {
 /// This is a wrapper of `[u8; 60]` to implement `Default` manually.
 #[repr(C)]
 #[derive(Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
-pub(crate) struct InodeBlock(pub [u8; 60]);
+pub(crate) struct InodeBlock(pub [u8; INODE_BLOCK_LEN]);
 
 impl Default for InodeBlock {
     fn default() -> Self {
-        Self([0; 60])
+        Self([0; INODE_BLOCK_LEN])
     }
 }
 
@@ -132,6 +134,27 @@ impl InodeBlock {
     /// Set a block id to be used as the double indirect block table.
     pub fn set_double_indirect_block_table(&mut self, block_id: &BlockId) -> Result<()> {
         self.set_block_id(Self::DOUBLE_INDIRECT_BLOCK_TABLE_ID, block_id)
+    }
+
+    /// Returns the max length of symbolic links that can be stored in the inode data.
+    /// This length contains the trailing `\0`.
+    pub const fn max_inline_symlink_len() -> usize {
+        INODE_BLOCK_LEN
+    }
+
+    /// Stores a given string as an inlined symbolic link data.
+    pub fn set_inline_symlink(&mut self, symlink: &str) -> Result<()> {
+        let bytes = symlink.as_bytes();
+        if bytes.len() >= Self::max_inline_symlink_len() {
+            bail!(
+                "symlink '{symlink}' exceeds or equals tomax length: {} >= {}",
+                bytes.len(),
+                Self::max_inline_symlink_len()
+            );
+        }
+
+        self.0[..bytes.len()].copy_from_slice(bytes);
+        Ok(())
     }
 }
 

@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::ffi::OsString;
+use std::fs::DirEntry;
 use std::fs::File;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
@@ -546,6 +547,45 @@ impl<'a> Ext2<'a> {
         Ok(())
     }
 
+    fn add_symlink(
+        &mut self,
+        arena: &'a Arena<'a>,
+        parent: InodeNum,
+        entry: &DirEntry,
+    ) -> Result<()> {
+        let link = entry.path();
+        let dst_path = std::fs::read_link(&link)?;
+        let dst = dst_path
+            .to_str()
+            .context("failed to convert symlink destination to str")?;
+
+        if dst.len() >= InodeBlock::max_inline_symlink_len() {
+            // TODO(b/342937495): Support symlink longer than or equal to 60 bytes.
+            unimplemented!("long symlink is not supported yet: {:?}", dst);
+        }
+
+        let inode_num = self.allocate_inode()?;
+        let mut block = InodeBlock::default();
+        block.set_inline_symlink(dst)?;
+
+        let inode = Inode::from_metadata(
+            arena,
+            &mut self.group_metadata,
+            inode_num,
+            &std::fs::symlink_metadata(&link)?,
+            dst.len() as u32,
+            1, //links_count,
+            0, //blocks,
+            block,
+        )?;
+        self.add_inode(inode_num, inode)?;
+
+        let link_name = link.file_name().context("failed to get symlink name")?;
+        self.allocate_dir_entry(arena, parent, inode_num, InodeType::Symlink, link_name)?;
+
+        Ok(())
+    }
+
     /// Walks through `src_dir` and copies directories and files to the new file system.
     fn copy_dirtree<P: AsRef<Path>>(&mut self, arena: &'a Arena<'a>, src_dir: P) -> Result<()> {
         self.copy_dirtree_rec(arena, InodeNum(2), src_dir)
@@ -557,7 +597,7 @@ impl<'a> Ext2<'a> {
         parent_inode: InodeNum,
         src_dir: P,
     ) -> Result<()> {
-        for entry in std::fs::read_dir(src_dir)? {
+        for entry in std::fs::read_dir(&src_dir)? {
             let entry = entry?;
             let ftype = entry.file_type()?;
             if ftype.is_dir() {
@@ -581,10 +621,7 @@ impl<'a> Ext2<'a> {
                         )
                     })?;
             } else if ftype.is_symlink() {
-                let src = entry.path();
-                let dst = std::fs::read_link(&src)?;
-                // TODO(b/342937495): support symlink
-                bail!("symlink is not supported yet: {src:?} -> {dst:?}");
+                self.add_symlink(arena, parent_inode, &entry)?;
             } else {
                 panic!("unknown file type: {:?}", ftype);
             }

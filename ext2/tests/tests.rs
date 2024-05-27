@@ -5,13 +5,17 @@
 #![cfg(target_os = "linux")]
 
 use std::collections::BTreeSet;
+use std::fs;
 use std::fs::create_dir;
+use std::fs::read_link;
+use std::fs::symlink_metadata;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::BufWriter;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -163,14 +167,26 @@ fn assert_eq_dirs(td: &TempDir, dir: &Path, disk: &PathBuf) {
 
     for ((name1, path1), (name2, path2)) in paths1.iter().zip(paths2.iter()) {
         assert_eq!(name1, name2);
-        let m1 = std::fs::metadata(path1).unwrap();
-        let m2 = std::fs::metadata(path2).unwrap();
+        let m1 = symlink_metadata(path1).unwrap();
+        let m2 = symlink_metadata(path2).unwrap();
         assert_eq!(
             m1.file_type(),
             m2.file_type(),
             "file type mismatch ({name1})"
         );
-        assert_eq!(m1.len(), m2.len(), "length mismatch ({name1})");
+
+        if m1.file_type().is_symlink() {
+            let dst1 = read_link(path1).unwrap();
+            let dst2 = read_link(path2).unwrap();
+            assert_eq!(
+                dst1, dst2,
+                "symlink mismatch ({name1}): {:?}->{:?} vs {:?}->{:?}",
+                path1, dst1, path2, dst2
+            );
+        } else {
+            assert_eq!(m1.len(), m2.len(), "length mismatch ({name1})");
+        }
+
         assert_eq!(
             m1.permissions(),
             m2.permissions(),
@@ -312,6 +328,97 @@ fn test_mkfs_indirect_block() {
         &td,
         &Config {
             blocks_per_group: 4096,
+            inodes_per_group: 4096,
+        },
+        Some(&dir),
+    );
+
+    assert_eq_dirs(&td, &dir, &disk);
+}
+
+#[test]
+fn test_mkfs_symlink() {
+    // testdata
+    // ├── a.txt
+    // ├── self -> ./self
+    // ├── symlink0 -> ./a.txt
+    // ├── symlink1 -> ./symlink0
+    // └── dir
+    //     └── upper-a -> ../a.txt
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+    create_dir(&dir).unwrap();
+
+    let mut f = File::create(dir.join("a.txt")).unwrap();
+    f.write_all("Hello".as_bytes()).unwrap();
+
+    symlink("./self", dir.join("self")).unwrap();
+
+    symlink("./a.txt", dir.join("symlink0")).unwrap();
+    symlink("./symlink0", dir.join("symlink1")).unwrap();
+
+    create_dir(dir.join("dir")).unwrap();
+    symlink("../a.txt", dir.join("dir/upper-a")).unwrap();
+
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group: 2048,
+            inodes_per_group: 4096,
+        },
+        Some(&dir),
+    );
+
+    assert_eq_dirs(&td, &dir, &disk);
+}
+
+#[test]
+fn test_mkfs_abs_symlink() {
+    // testdata
+    // ├── a.txt
+    // ├── a -> /testdata/a
+    // ├── self -> /testdata/self
+    // ├── tmp -> /tmp
+    // └── abc -> /a/b/c
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+
+    std::fs::create_dir(&dir).unwrap();
+    File::create(dir.join("a.txt")).unwrap();
+    symlink(dir.join("a.txt"), dir.join("a")).unwrap();
+    symlink(dir.join("self"), dir.join("self")).unwrap();
+    symlink("/tmp/", dir.join("tmp")).unwrap();
+    symlink("/a/b/c", dir.join("abc")).unwrap();
+
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group: 2048,
+            inodes_per_group: 4096,
+        },
+        Some(&dir),
+    );
+
+    assert_eq_dirs(&td, &dir, &disk);
+}
+
+#[test]
+fn test_mkfs_symlink_to_deleted() {
+    // testdata
+    // ├── (deleted)
+    // └── symlink_to_deleted -> (deleted)
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+
+    std::fs::create_dir(&dir).unwrap();
+    File::create(dir.join("deleted")).unwrap();
+    symlink("./deleted", dir.join("symlink_to_deleted")).unwrap();
+    fs::remove_file(dir.join("deleted")).unwrap();
+
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group: 2048,
             inodes_per_group: 4096,
         },
         Some(&dir),
