@@ -9,6 +9,8 @@ use std::fs::create_dir;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::BufWriter;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -282,6 +284,34 @@ fn test_max_file_name() {
         &td,
         &Config {
             blocks_per_group: 2048,
+            inodes_per_group: 4096,
+        },
+        Some(&dir),
+    );
+
+    assert_eq_dirs(&td, &dir, &disk);
+}
+
+#[test]
+fn test_mkfs_indirect_block() {
+    // testdata
+    // ├── big.txt (80KiB), which requires indirect blocks
+    // └── huge.txt (8MiB), which requires doubly indirect blocks
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+    std::fs::create_dir(&dir).unwrap();
+    let mut big = std::fs::File::create(dir.join("big.txt")).unwrap();
+    big.seek(SeekFrom::Start(80 * 1024)).unwrap();
+    big.write_all(&[0]).unwrap();
+
+    let mut huge = std::fs::File::create(dir.join("huge.txt")).unwrap();
+    huge.seek(SeekFrom::Start(8 * 1024 * 1024)).unwrap();
+    huge.write_all(&[0]).unwrap();
+
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group: 4096,
             inodes_per_group: 4096,
         },
         Some(&dir),

@@ -93,14 +93,45 @@ impl Default for InodeBlock {
 }
 
 impl InodeBlock {
-    /// Copies the given slice to `self.0.[offset..]`.
-    pub fn copy_from_slice(&mut self, offset: usize, src: &[u8]) {
-        self.0[offset..offset + src.len()].copy_from_slice(src)
-    }
+    // Each inode contains 12 direct pointers (0-11), one singly indirect pointer (12), one
+    // doubly indirect block pointer (13), and one triply indirect pointer (14).
+    pub const NUM_DIRECT_BLOCKS: usize = 12;
+    const INDIRECT_BLOCK_TABLE_ID: usize = Self::NUM_DIRECT_BLOCKS;
+    const DOUBLE_INDIRECT_BLOCK_TABLE_ID: usize = 13;
 
     /// Set a block id at the given index.
-    pub fn set_block_id(&mut self, index: usize, block_id: &BlockId) {
-        self.copy_from_slice(index * 4, block_id.as_bytes())
+    fn set_block_id(&mut self, index: usize, block_id: &BlockId) -> Result<()> {
+        let offset = index * std::mem::size_of::<BlockId>();
+        let bytes = block_id.as_bytes();
+        if self.0.len() < offset + bytes.len() {
+            bail!("index out of bounds when setting block_id to InodeBlock: index={index}, block_id: {:?}", block_id);
+        }
+        self.0[offset..offset + bytes.len()].copy_from_slice(bytes);
+        Ok(())
+    }
+
+    /// Set an array of direct block IDs.
+    pub fn set_direct_blocks(&mut self, block_ids: &[BlockId]) -> Result<()> {
+        let bytes = block_ids.as_bytes();
+        if bytes.len() > self.0.len() {
+            bail!(
+                "length of direct blocks is {} bytes, but it must not exceed {}",
+                bytes.len(),
+                self.0.len()
+            );
+        }
+        self.0[..bytes.len()].copy_from_slice(bytes);
+        Ok(())
+    }
+
+    /// Set a block id to be used as the indirect block table.
+    pub fn set_indirect_block_table(&mut self, block_id: &BlockId) -> Result<()> {
+        self.set_block_id(Self::INDIRECT_BLOCK_TABLE_ID, block_id)
+    }
+
+    /// Set a block id to be used as the double indirect block table.
+    pub fn set_double_indirect_block_table(&mut self, block_id: &BlockId) -> Result<()> {
+        self.set_block_id(Self::DOUBLE_INDIRECT_BLOCK_TABLE_ID, block_id)
     }
 }
 

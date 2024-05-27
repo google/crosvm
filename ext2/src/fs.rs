@@ -133,8 +133,10 @@ struct FileMappingInfo {
     start_block: BlockId,
     /// The file to be mmap'd.
     file: File,
-    /// The size of the file to be mmap'd.
-    file_size: usize,
+    /// The length of the mapping.
+    length: usize,
+    /// Offset in the file to start the mapping.
+    file_offset: usize,
 }
 
 /// A struct to represent an ext2 filesystem.
@@ -273,7 +275,7 @@ impl<'a> Ext2<'a> {
         if !self.dentries.contains_key(&parent) {
             let block_id = self.allocate_block()?;
             let inode = self.get_inode_mut(parent)?;
-            inode.block.set_block_id(0, &block_id);
+            inode.block.set_direct_blocks(&[block_id])?;
             inode.blocks = block_size as u32 / 512;
             self.dentries.insert(
                 parent,
@@ -410,6 +412,38 @@ impl<'a> Ext2<'a> {
         Ok(())
     }
 
+    fn fill_indirect_block(
+        &mut self,
+        arena: &'a Arena<'a>,
+        indirect_table: BlockId,
+        file: &File,
+        file_size: usize,
+        file_offset: usize,
+    ) -> Result<usize> {
+        let block_size = self.block_size() as usize;
+        // We use a block as a table of indirect blocks.
+        // So, the maximum number of blocks supported by single indirect blocks is limited by the
+        // maximum number of entries in one block, which is (block_size / 4) where 4 is the size of
+        // int.
+        let max_num_blocks = block_size / 4;
+        let max_data_len = max_num_blocks * block_size;
+
+        let length = std::cmp::min(file_size - file_offset, max_data_len);
+        let block_num = length.div_ceil(block_size);
+        let blocks = self.allocate_contiguous_blocks(block_num as u16)?;
+
+        let slice = arena.allocate_slice(indirect_table, 0, 4 * block_num)?;
+        slice.copy_from_slice(blocks.as_bytes());
+
+        self.fd_mappings.push(FileMappingInfo {
+            start_block: blocks[0],
+            length,
+            file: file.try_clone()?,
+            file_offset,
+        });
+        Ok(length)
+    }
+
     fn add_file(
         &mut self,
         arena: &'a Arena<'a>,
@@ -426,26 +460,74 @@ impl<'a> Ext2<'a> {
         let block_size = self.block_size() as usize;
         let mut block = InodeBlock::default();
 
-        let block_num = file_size.div_ceil(block_size);
-        if block_num > 12 {
-            // TODO(b/342937441): Support indirect blocks.
-            bail!("indirect data block are not yet supported");
-        }
-
-        if block_num > 0 {
+        let mut written = 0;
+        let mut used_blocks = 0;
+        if file_size > 0 {
+            let block_num = std::cmp::min(
+                file_size.div_ceil(block_size),
+                InodeBlock::NUM_DIRECT_BLOCKS,
+            );
             let blocks = self.allocate_contiguous_blocks(block_num as u16)?;
+            let length = std::cmp::min(file_size, block_size * InodeBlock::NUM_DIRECT_BLOCKS);
             self.fd_mappings.push(FileMappingInfo {
                 start_block: blocks[0],
-                file_size,
-                file,
+                length,
+                file: file.try_clone()?,
+                file_offset: 0,
             });
-            block.copy_from_slice(0, blocks.as_bytes());
+            block.set_direct_blocks(&blocks)?;
+            written = length;
+            used_blocks = block_num;
+        }
+
+        // Indirect data block
+        if written < file_size {
+            let indirect_table = self.allocate_block()?;
+            block.set_indirect_block_table(&indirect_table)?;
+            used_blocks += 1;
+
+            let length =
+                self.fill_indirect_block(arena, indirect_table, &file, file_size, written)?;
+            written += length;
+            used_blocks += length.div_ceil(block_size);
+        }
+
+        // Double-indirect data block
+        // Supporting double-indirect data block allows storing ~4GB files if 4GB block size is
+        // used.
+        if written < file_size {
+            let d_indirect_table = self.allocate_block()?;
+            block.set_double_indirect_block_table(&d_indirect_table)?;
+            used_blocks += 1;
+
+            let mut indirect_blocks: Vec<BlockId> = vec![];
+            // Iterate (block_size / 4) times, as each block id is 4-byte.
+            for _ in 0..block_size / 4 {
+                if written >= file_size {
+                    break;
+                }
+                let indirect_table = self.allocate_block()?;
+                indirect_blocks.push(indirect_table);
+                used_blocks += 1;
+
+                let length =
+                    self.fill_indirect_block(arena, indirect_table, &file, file_size, written)?;
+                written += length;
+                used_blocks += length.div_ceil(block_size);
+            }
+
+            let d_table = arena.allocate_slice(d_indirect_table, 0, indirect_blocks.len() * 4)?;
+            d_table.copy_from_slice(indirect_blocks.as_bytes());
+        }
+
+        if written < file_size {
+            unimplemented!("Triple-indirect block is not supported");
         }
 
         // The spec says that the `blocks` field is a "32-bit value representing the total number
         // of 512-bytes blocks". This `512` is a fixed number regardless of the actual block size,
         // which is usuaully 4KB.
-        let blocks = block_num as u32 * (block_size as u32 / 512);
+        let blocks = used_blocks as u32 * (block_size as u32 / 512);
         let size = file_size as u32;
         let inode = Inode::from_metadata(
             arena,
@@ -533,15 +615,16 @@ pub fn create_ext2_region(cfg: &Config, src_dir: Option<&Path>) -> Result<Memory
     let mut mmap_arena = MemoryMappingArena::from(mem);
     for FileMappingInfo {
         start_block,
-        file_size,
         file,
+        length,
+        file_offset,
     } in file_mappings
     {
         mmap_arena.add_fd_mapping(
             u32::from(start_block) as usize * BLOCK_SIZE,
-            file_size,
+            length,
             &file,
-            0, /* fd_offset */
+            file_offset as u64, /* fd_offset */
             Protection::read(),
         )?;
     }
