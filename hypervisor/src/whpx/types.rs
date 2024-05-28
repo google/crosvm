@@ -280,22 +280,35 @@ impl From<&WhpxSregs> for Sregs {
     }
 }
 
-impl From<&[u8; 16]> for WHV_UINT128 {
-    fn from(bytes: &[u8; 16]) -> WHV_UINT128 {
+impl From<u128> for WHV_UINT128 {
+    fn from(v: u128) -> WHV_UINT128 {
         WHV_UINT128 {
-            // safe because the u8, 16 should really be a u128. We are just transmuting
-            // to fill in the union field.
-            Dword: unsafe { std::mem::transmute::<[u8; 16], [u32; 4]>(*bytes) },
+            __bindgen_anon_1: WHV_UINT128__bindgen_ty_1 {
+                Low64: v as u64,
+                High64: (v >> 64) as u64,
+            },
         }
     }
 }
 
-impl From<&WHV_UINT128> for u128 {
-    fn from(regs: &WHV_UINT128) -> u128 {
-        // whpx bindings have two u64 or an array of u32 which we can transmute into u128.
-        // whpx does not have a union that interprets them as bytes so we can use from/to_ne_bytes.
-        // safe because this is union, that can be safely casted as a u128.
-        unsafe { std::mem::transmute::<[u32; 4], u128>(regs.Dword) }
+impl From<WHV_UINT128> for u128 {
+    fn from(v: WHV_UINT128) -> u128 {
+        // SAFETY: Accessing u64 fields of the union is always safe since all bit patterns are valid
+        // for u64.
+        let (low64, high64) = unsafe { (v.__bindgen_anon_1.Low64, v.__bindgen_anon_1.High64) };
+        u128::from(low64) | (u128::from(high64) << 64)
+    }
+}
+
+impl WHV_UINT128 {
+    #[inline]
+    pub fn from_ne_bytes(bytes: [u8; 16]) -> WHV_UINT128 {
+        WHV_UINT128::from(u128::from_ne_bytes(bytes))
+    }
+
+    #[inline]
+    pub fn to_ne_bytes(self) -> [u8; 16] {
+        u128::from(self).to_ne_bytes()
     }
 }
 
@@ -350,42 +363,42 @@ impl From<&Fpu> for WhpxFpu {
             register_values: [
                 WHV_REGISTER_VALUE {
                     Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from(&fpu.fpr[0]),
+                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[0]),
                     },
                 },
                 WHV_REGISTER_VALUE {
                     Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from(&fpu.fpr[1]),
+                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[1]),
                     },
                 },
                 WHV_REGISTER_VALUE {
                     Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from(&fpu.fpr[2]),
+                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[2]),
                     },
                 },
                 WHV_REGISTER_VALUE {
                     Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from(&fpu.fpr[3]),
+                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[3]),
                     },
                 },
                 WHV_REGISTER_VALUE {
                     Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from(&fpu.fpr[4]),
+                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[4]),
                     },
                 },
                 WHV_REGISTER_VALUE {
                     Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from(&fpu.fpr[5]),
+                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[5]),
                     },
                 },
                 WHV_REGISTER_VALUE {
                     Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from(&fpu.fpr[6]),
+                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[6]),
                     },
                 },
                 WHV_REGISTER_VALUE {
                     Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from(&fpu.fpr[7]),
+                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[7]),
                     },
                 },
                 WHV_REGISTER_VALUE {
@@ -416,52 +429,52 @@ impl From<&Fpu> for WhpxFpu {
                     },
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[0]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[0]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[1]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[1]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[2]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[2]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[3]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[3]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[4]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[4]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[5]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[5]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[6]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[6]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[7]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[7]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[8]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[8]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[9]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[9]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[10]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[10]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[11]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[11]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[12]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[12]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[13]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[13]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[14]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[14]),
                 },
                 WHV_REGISTER_VALUE {
-                    Reg128: WHV_UINT128::from(&fpu.xmm[15]),
+                    Reg128: WHV_UINT128::from_ne_bytes(fpu.xmm[15]),
                 },
             ],
         }
@@ -479,14 +492,14 @@ impl From<&WhpxFpu> for Fpu {
                 .__bindgen_anon_1;
             Fpu {
                 fpr: [
-                    u128::from(&whpx_regs.register_values[0].Fp.AsUINT128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[1].Fp.AsUINT128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[2].Fp.AsUINT128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[3].Fp.AsUINT128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[4].Fp.AsUINT128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[5].Fp.AsUINT128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[6].Fp.AsUINT128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[7].Fp.AsUINT128).to_ne_bytes(),
+                    whpx_regs.register_values[0].Fp.AsUINT128.to_ne_bytes(),
+                    whpx_regs.register_values[1].Fp.AsUINT128.to_ne_bytes(),
+                    whpx_regs.register_values[2].Fp.AsUINT128.to_ne_bytes(),
+                    whpx_regs.register_values[3].Fp.AsUINT128.to_ne_bytes(),
+                    whpx_regs.register_values[4].Fp.AsUINT128.to_ne_bytes(),
+                    whpx_regs.register_values[5].Fp.AsUINT128.to_ne_bytes(),
+                    whpx_regs.register_values[6].Fp.AsUINT128.to_ne_bytes(),
+                    whpx_regs.register_values[7].Fp.AsUINT128.to_ne_bytes(),
                 ],
                 fcw: fp_control.FpControl,
                 fsw: fp_control.FpStatus,
@@ -495,22 +508,22 @@ impl From<&WhpxFpu> for Fpu {
                 last_ip: fp_control.__bindgen_anon_1.LastFpRip,
                 last_dp: xmm_control.__bindgen_anon_1.LastFpRdp,
                 xmm: [
-                    u128::from(&whpx_regs.register_values[10].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[11].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[12].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[13].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[14].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[15].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[16].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[17].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[18].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[19].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[20].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[21].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[22].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[23].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[24].Reg128).to_ne_bytes(),
-                    u128::from(&whpx_regs.register_values[25].Reg128).to_ne_bytes(),
+                    whpx_regs.register_values[10].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[11].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[12].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[13].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[14].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[15].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[16].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[17].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[18].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[19].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[20].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[21].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[22].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[23].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[24].Reg128.to_ne_bytes(),
+                    whpx_regs.register_values[25].Reg128.to_ne_bytes(),
                 ],
                 mxcsr: xmm_control.XmmStatusControl,
             }
