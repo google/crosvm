@@ -5,6 +5,7 @@
 #![cfg(target_arch = "x86_64")]
 #![cfg(any(feature = "whpx", feature = "gvm", feature = "haxm", unix))]
 
+use core::mem;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
@@ -238,6 +239,124 @@ global_asm_data!(
     "add ax, bx",
     "hlt"
 );
+
+pub fn enter_long_mode(vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
+    const GDT_OFFSET: u64 = 0x1500;
+    const IDT_OFFSET: u64 = 0x1528;
+
+    // Condensed version of the function in x86_64\src\gdt.rs
+    pub fn segment_from_gdt(entry: u64, table_index: u8) -> Segment {
+        Segment {
+            base: (((entry) & 0xFF00000000000000) >> 32)
+                | (((entry) & 0x000000FF00000000) >> 16)
+                | (((entry) & 0x00000000FFFF0000) >> 16),
+            limit: ((((entry) & 0x000F000000000000) >> 32) | ((entry) & 0x000000000000FFFF)) as u32,
+            selector: (table_index * 8) as u16,
+            type_: ((entry & 0x00000F0000000000) >> 40) as u8,
+            present: ((entry & 0x0000800000000000) >> 47) as u8,
+            dpl: ((entry & 0x0000600000000000) >> 45) as u8,
+            db: ((entry & 0x0040000000000000) >> 54) as u8,
+            s: ((entry & 0x0000100000000000) >> 44) as u8,
+            l: ((entry & 0x0020000000000000) >> 53) as u8,
+            g: ((entry & 0x0080000000000000) >> 55) as u8,
+            avl: ((entry & 0x0010000000000000) >> 52) as u8,
+        }
+    }
+
+    let mut sregs = vcpu.get_sregs().expect("failed to get sregs");
+    let guest_mem = vm.get_memory();
+
+    assert!(
+        guest_mem.range_overlap(GuestAddress(0x1500), GuestAddress(0xc000)),
+        "Long-mode setup requires 0x1500-0xc000 to be mapped in the guest."
+    );
+
+    // Setup GDT
+    let gdt_entries: [u64; 5] = [
+        0,
+        0,
+        0xaf9b000000ffff, // CODE: Execute/Read
+        0xcf93000000ffff, // DATA: Read/Write
+        0x8f8b000000ffff, // TSS (not used here)
+    ];
+
+    let gdt_addr = GuestAddress(GDT_OFFSET);
+    for (index, &entry) in gdt_entries.iter().enumerate() {
+        let entry_bytes = entry.to_le_bytes();
+        guest_mem
+            .write_at_addr(
+                &entry_bytes,
+                gdt_addr.unchecked_add((index * mem::size_of::<u64>()) as u64),
+            )
+            .expect("Failed to write GDT entry to guest memory");
+    }
+
+    let code_seg = segment_from_gdt(gdt_entries[2], 2);
+    let data_seg = segment_from_gdt(gdt_entries[3], 3);
+    let tss_seg = segment_from_gdt(gdt_entries[4], 4);
+
+    sregs.gdt.base = GDT_OFFSET;
+    sregs.gdt.limit = mem::size_of_val(&gdt_entries) as u16 - 1;
+
+    sregs.idt.base = IDT_OFFSET;
+    sregs.idt.limit = mem::size_of::<u64>() as u16 - 1;
+
+    sregs.cs = code_seg;
+    sregs.ds = data_seg;
+    sregs.es = data_seg;
+    sregs.fs = data_seg;
+    sregs.gs = data_seg;
+    sregs.ss = data_seg;
+    sregs.tr = tss_seg;
+
+    // Setup IDT
+    let idt_addr = GuestAddress(IDT_OFFSET);
+    let idt_entry: u64 = 0; // Empty IDT
+    let idt_entry_bytes = idt_entry.to_le_bytes();
+    guest_mem
+        .write_at_addr(&idt_entry_bytes, idt_addr)
+        .expect("failed to write IDT entry to guest memory");
+
+    // Protected mode
+    sregs.cr0 |= 0x1; // PE
+    sregs.efer |= 0x100; // LME;
+
+    vcpu.set_sregs(&sregs).expect("failed to set sregs");
+
+    // Setup paging
+    let pml4_addr = GuestAddress(0x9000);
+    let pdpte_addr = GuestAddress(0xa000);
+    let pde_addr = GuestAddress(0xb000);
+
+    // Pointing to PDPTE with present and RW flags
+    guest_mem
+        .write_at_addr(&(pdpte_addr.0 | 3).to_le_bytes(), pml4_addr)
+        .expect("failed to write PML4 entry");
+
+    // Pointing to PD with present and RW flags
+    guest_mem
+        .write_at_addr(&(pde_addr.0 | 3).to_le_bytes(), pdpte_addr)
+        .expect("failed to write PDPTE entry");
+
+    for i in 0..512 {
+        // Each 2MiB page present and RW
+        let pd_entry_bytes = ((i << 21) | 0x83u64).to_le_bytes();
+        guest_mem
+            .write_at_addr(
+                &pd_entry_bytes,
+                pde_addr.unchecked_add(i * mem::size_of::<u64>() as u64),
+            )
+            .expect("Failed to write PDE entry");
+    }
+
+    // Long mode
+    sregs.cr3 = pml4_addr.offset();
+    sregs.cr4 |= 0x20; // PAE
+    sregs.cr0 |= 0x80000000; // PG
+    sregs.efer |= 0x400; // LMA. Must be auto-enabled with CR0_PG.
+
+    vcpu.set_sregs(&sregs).expect("failed to set sregs");
+}
 
 // This runs a minimal program under virtualization.
 // It should require only the ability to execute instructions under virtualization, physical
@@ -1937,4 +2056,60 @@ fn test_interrupt_ready_when_interrupt_enable_flag_not_set() {
             }
         }
     );
+}
+
+#[cfg(any(feature = "whpx", feature = "haxm"))]
+#[test]
+fn test_enter_long_mode() {
+    global_asm_data!(
+        pub long_mode_asm,
+        ".code64",
+        "mov rdx, rax",
+        "mov rbx, [0x10000]",
+        "hlt"
+    );
+
+    let bigly_mem_value: u64 = 0x1_0000_0000;
+    let biglier_mem_value: u64 = 0x1_0000_0001;
+    let mut setup = TestSetup {
+        assembly: long_mode_asm::data().to_vec(),
+        mem_size: 0x11000,
+        load_addr: GuestAddress(0x1000),
+        initial_regs: Regs {
+            rax: bigly_mem_value,
+            rip: 0x1000,
+            rflags: 0x2,
+            ..Default::default()
+        },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+        })),
+
+        ..Default::default()
+    };
+
+    setup.add_memory_initialization(
+        GuestAddress(0x10000),
+        biglier_mem_value.to_le_bytes().to_vec(),
+    );
+    let regs_matcher = move |_: HypervisorType, regs: &Regs, sregs: &Sregs| {
+        assert!((sregs.efer & 0x400) != 0, "Long-Mode Active bit not set");
+        assert_eq!(
+            regs.rdx, bigly_mem_value,
+            "Did not execute instructions correctly in long mode."
+        );
+        assert_eq!(
+            regs.rbx, biglier_mem_value,
+            "Was not able to access translated memory in long mode."
+        );
+    };
+
+    let exit_matcher = |_, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match exit {
+        VcpuExit::Hlt => {
+            true // Break VM runloop
+        }
+        r => panic!("unexpected exit reason: {:?}", r),
+    };
+
+    run_tests!(setup, regs_matcher, exit_matcher);
 }
