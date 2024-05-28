@@ -191,6 +191,7 @@ use resources::SystemAllocator;
 use run_vcpu::run_all_vcpus;
 use run_vcpu::VcpuRunMode;
 use rutabaga_gfx::RutabagaGralloc;
+use rutabaga_gfx::RutabagaGrallocBackendFlags;
 use smallvec::SmallVec;
 use sync::Mutex;
 use tube_transporter::TubeToken;
@@ -2505,8 +2506,8 @@ where
         (None, None)
     };
 
-    let gralloc =
-        RutabagaGralloc::new().exit_context(Exit::CreateGralloc, "failed to create gralloc")?;
+    let gralloc = RutabagaGralloc::new(RutabagaGrallocBackendFlags::new())
+        .exit_context(Exit::CreateGralloc, "failed to create gralloc")?;
 
     let pstore_size = components.pstore.as_ref().map(|pstore| pstore.size as u64);
     let mut sys_allocator = SystemAllocator::new(

@@ -116,6 +116,8 @@ use rutabaga_gfx::RutabagaError;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaGralloc;
 #[cfg(feature = "minigbm")]
+use rutabaga_gfx::RutabagaGrallocBackendFlags;
+#[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaGrallocFlags;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaIntoRawDescriptor;
@@ -2009,7 +2011,7 @@ impl VirtioDevice for Wl {
     fn on_device_sandboxed(&mut self) {
         // Gralloc initialization can cause some GPU drivers to create their own threads
         // and that must be done after sandboxing.
-        match RutabagaGralloc::new() {
+        match RutabagaGralloc::new(RutabagaGrallocBackendFlags::new()) {
             Ok(g) => self.gralloc = Some(g),
             Err(e) => {
                 error!("failed to initialize gralloc {:?}", e);

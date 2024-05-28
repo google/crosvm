@@ -41,6 +41,7 @@ use crate::DrmFormat;
 use crate::ImageAllocationInfo;
 use crate::ImageMemoryRequirements;
 use crate::RutabagaGralloc;
+use crate::RutabagaGrallocBackendFlags;
 use crate::RutabagaGrallocFlags;
 
 mod cross_domain_protocol;
@@ -469,7 +470,7 @@ impl CrossDomain {
         channels: Option<Vec<RutabagaChannel>>,
         fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
-        let gralloc = RutabagaGralloc::new()?;
+        let gralloc = RutabagaGralloc::new(RutabagaGrallocBackendFlags::new())?;
         Ok(Box::new(CrossDomain {
             channels,
             gralloc: Arc::new(Mutex::new(gralloc)),

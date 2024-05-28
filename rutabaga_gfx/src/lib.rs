@@ -29,6 +29,7 @@ pub use crate::rutabaga_gralloc::DrmFormat;
 pub use crate::rutabaga_gralloc::ImageAllocationInfo;
 pub use crate::rutabaga_gralloc::ImageMemoryRequirements;
 pub use crate::rutabaga_gralloc::RutabagaGralloc;
+pub use crate::rutabaga_gralloc::RutabagaGrallocBackendFlags;
 pub use crate::rutabaga_gralloc::RutabagaGrallocFlags;
 pub use crate::rutabaga_os::AsRawDescriptor;
 pub use crate::rutabaga_os::FromRawDescriptor as RutabagaFromRawDescriptor;

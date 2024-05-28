@@ -20,6 +20,43 @@ use crate::rutabaga_os::round_up_to_page_size;
 use crate::rutabaga_os::MappedRegion;
 use crate::rutabaga_utils::*;
 
+const RUTABAGA_GRALLOC_BACKEND_SYSTEM: u32 = 1 << 0;
+const RUTABAGA_GRALLOC_BACKEND_GBM: u32 = 1 << 1;
+const RUTABAGA_GRALLOC_BACKEND_VULKANO: u32 = 1 << 2;
+
+/// Usage flags for constructing rutabaga gralloc backend
+#[derive(Copy, Clone, Eq, PartialEq, Default)]
+pub struct RutabagaGrallocBackendFlags(pub u32);
+
+impl RutabagaGrallocBackendFlags {
+    /// Returns new set of flags.
+    #[inline(always)]
+    pub fn new() -> RutabagaGrallocBackendFlags {
+        RutabagaGrallocBackendFlags(
+            RUTABAGA_GRALLOC_BACKEND_SYSTEM
+                | RUTABAGA_GRALLOC_BACKEND_GBM
+                | RUTABAGA_GRALLOC_BACKEND_VULKANO,
+        )
+    }
+
+    #[inline(always)]
+    pub fn disable_vulkano(self) -> RutabagaGrallocBackendFlags {
+        RutabagaGrallocBackendFlags(self.0 & !RUTABAGA_GRALLOC_BACKEND_VULKANO)
+    }
+
+    pub fn uses_system(&self) -> bool {
+        self.0 & RUTABAGA_GRALLOC_BACKEND_SYSTEM != 0
+    }
+
+    pub fn uses_gbm(&self) -> bool {
+        self.0 & RUTABAGA_GRALLOC_BACKEND_GBM != 0
+    }
+
+    pub fn uses_vulkan(&self) -> bool {
+        self.0 & RUTABAGA_GRALLOC_BACKEND_VULKANO != 0
+    }
+}
+
 /*
  * Rutabaga gralloc flags are copied from minigbm, but redundant legacy flags are left out.
  * For example, USE_WRITE / USE_CURSOR_64X64 / USE_CURSOR don't add much value.
@@ -219,14 +256,16 @@ pub struct RutabagaGralloc {
 impl RutabagaGralloc {
     /// Returns a new RutabagaGralloc instance upon success.  All allocation backends that have
     /// been built are initialized.  The default system allocator is always initialized.
-    pub fn new() -> RutabagaResult<RutabagaGralloc> {
+    pub fn new(flags: RutabagaGrallocBackendFlags) -> RutabagaResult<RutabagaGralloc> {
         let mut grallocs: Map<GrallocBackend, Box<dyn Gralloc>> = Default::default();
 
-        let system = SystemGralloc::init()?;
-        grallocs.insert(GrallocBackend::System, system);
+        if flags.uses_system() {
+            let system = SystemGralloc::init()?;
+            grallocs.insert(GrallocBackend::System, system);
+        }
 
         #[cfg(feature = "minigbm")]
-        {
+        if flags.uses_gbm() {
             // crosvm integration tests build with the "wl-dmabuf" feature, which translates in
             // rutabaga to the "minigbm" feature.  These tests run on hosts where a rendernode is
             // not present, and minigbm can not be initialized.
@@ -238,7 +277,7 @@ impl RutabagaGralloc {
         }
 
         #[cfg(feature = "vulkano")]
-        {
+        if flags.uses_vulkano() {
             match VulkanoGralloc::init() {
                 Ok(vulkano) => {
                     grallocs.insert(GrallocBackend::Vulkano, vulkano);
@@ -357,7 +396,7 @@ mod tests {
     #[test]
     #[cfg_attr(target_os = "windows", ignore)]
     fn create_render_target() {
-        let gralloc_result = RutabagaGralloc::new();
+        let gralloc_result = RutabagaGralloc::new(RutabagaGrallocBackendFlags::new());
         if gralloc_result.is_err() {
             return;
         }
@@ -386,7 +425,7 @@ mod tests {
     #[test]
     #[cfg_attr(target_os = "windows", ignore)]
     fn create_video_buffer() {
-        let gralloc_result = RutabagaGralloc::new();
+        let gralloc_result = RutabagaGralloc::new(RutabagaGrallocBackendFlags::new());
         if gralloc_result.is_err() {
             return;
         }
@@ -424,7 +463,7 @@ mod tests {
     #[test]
     #[cfg_attr(target_os = "windows", ignore)]
     fn export_and_map() {
-        let gralloc_result = RutabagaGralloc::new();
+        let gralloc_result = RutabagaGralloc::new(RutabagaGrallocBackendFlags::new());
         if gralloc_result.is_err() {
             return;
         }

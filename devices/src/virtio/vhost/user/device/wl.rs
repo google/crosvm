@@ -28,6 +28,8 @@ use cros_async::IoSource;
 use hypervisor::ProtectionType;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaGralloc;
+#[cfg(feature = "minigbm")]
+use rutabaga_gfx::RutabagaGrallocBackendFlags;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
@@ -234,7 +236,8 @@ impl VhostUserDevice for WlBackend {
         } = self;
 
         #[cfg(feature = "minigbm")]
-        let gralloc = RutabagaGralloc::new().context("Failed to initailize gralloc")?;
+        let gralloc = RutabagaGralloc::new(RutabagaGrallocBackendFlags::new())
+            .context("Failed to initailize gralloc")?;
         let wlstate = match &self.wlstate {
             None => {
                 let mapper = {
