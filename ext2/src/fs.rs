@@ -34,6 +34,7 @@ use crate::inode::InodeBlocksCount;
 use crate::inode::InodeNum;
 use crate::inode::InodeType;
 use crate::superblock::SuperBlock;
+use crate::xattr::InlineXattrs;
 
 #[repr(C)]
 #[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes, Debug)]
@@ -160,13 +161,18 @@ impl<'a> Ext2<'a> {
 
         // Add rootdir
         let root_inode = InodeNum::new(2)?;
-        ext2.add_reserved_dir(arena, root_inode, root_inode, OsStr::new("/"))?;
+        let root_xattr = match &builder.root_dir {
+            Some(dir) => Some(InlineXattrs::from_path(dir)?),
+            None => None,
+        };
+        ext2.add_reserved_dir(arena, root_inode, root_inode, OsStr::new("/"), root_xattr)?;
         let lost_found_inode = ext2.allocate_inode()?;
         ext2.add_reserved_dir(
             arena,
             lost_found_inode,
             root_inode,
             OsStr::new("lost+found"),
+            None,
         )?;
 
         Ok(ext2)
@@ -374,6 +380,7 @@ impl<'a> Ext2<'a> {
         inode_num: InodeNum,
         parent_inode: InodeNum,
         name: &OsStr,
+        xattr: Option<InlineXattrs>,
     ) -> Result<()> {
         let group_id = self.group_num_for_inode(inode_num);
         let inode = Inode::new(
@@ -382,6 +389,7 @@ impl<'a> Ext2<'a> {
             inode_num,
             InodeType::Directory,
             BLOCK_SIZE as u32,
+            xattr,
         )?;
         self.add_inode(inode_num, inode)?;
 
@@ -416,6 +424,7 @@ impl<'a> Ext2<'a> {
     ) -> Result<()> {
         let group_id = self.group_num_for_inode(inode_num);
 
+        let xattr = InlineXattrs::from_path(path)?;
         let inode = Inode::from_metadata(
             arena,
             &mut self.group_metadata[group_id],
@@ -425,6 +434,7 @@ impl<'a> Ext2<'a> {
             0,
             InodeBlocksCount::from_bytes_len(0),
             InodeBlock::default(),
+            Some(xattr),
         )?;
 
         self.add_inode(inode_num, inode)?;
@@ -600,6 +610,8 @@ impl<'a> Ext2<'a> {
         let blocks = InodeBlocksCount::from_bytes_len((used_blocks * BLOCK_SIZE) as u32);
         let group_id = self.group_num_for_inode(inode_num);
         let size = file_size as u32;
+
+        let xattr = InlineXattrs::from_path(path)?;
         let inode = Inode::from_metadata(
             arena,
             &mut self.group_metadata[group_id],
@@ -609,10 +621,10 @@ impl<'a> Ext2<'a> {
             1,
             blocks,
             block,
+            Some(xattr),
         )?;
 
         self.add_inode(inode_num, inode)?;
-
         self.allocate_dir_entry(arena, parent_inode, inode_num, InodeType::Regular, name)?;
 
         Ok(())
@@ -638,6 +650,7 @@ impl<'a> Ext2<'a> {
         let mut block = InodeBlock::default();
         block.set_inline_symlink(dst)?;
         let group_id = self.group_num_for_inode(inode_num);
+        let xattr = InlineXattrs::from_path(&link)?;
         let inode = Inode::from_metadata(
             arena,
             &mut self.group_metadata[group_id],
@@ -647,6 +660,7 @@ impl<'a> Ext2<'a> {
             1, //links_count,
             InodeBlocksCount::from_bytes_len(0),
             block,
+            Some(xattr),
         )?;
         self.add_inode(inode_num, inode)?;
 
@@ -678,6 +692,7 @@ impl<'a> Ext2<'a> {
         block.set_direct_blocks(&[symlink_block])?;
 
         let group_id = self.group_num_for_inode(inode_num);
+        let xattr = InlineXattrs::from_path(link)?;
         let inode = Inode::from_metadata(
             arena,
             &mut self.group_metadata[group_id],
@@ -687,6 +702,7 @@ impl<'a> Ext2<'a> {
             1, //links_count,
             InodeBlocksCount::from_bytes_len(BLOCK_SIZE as u32),
             block,
+            Some(xattr),
         )?;
         self.add_inode(inode_num, inode)?;
 

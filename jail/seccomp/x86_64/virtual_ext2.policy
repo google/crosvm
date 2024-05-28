@@ -14,8 +14,10 @@ getegid: 1
 geteuid: 1
 getpid: 1
 getrandom: 1
-mmap: arg2 in ~PROT_EXEC
+lgetxattr: 1
+llistxattr: 1
 madvise: 1
+mmap: arg2 in ~PROT_EXEC
 mremap: 1
 msync: 1
 munmap: 1

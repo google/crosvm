@@ -17,6 +17,7 @@ use zerocopy_derive::FromZeroes;
 use crate::arena::Arena;
 use crate::arena::BlockId;
 use crate::blockgroup::GroupMetaData;
+use crate::xattr::InlineXattrs;
 
 /// Types of inodes.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, N)]
@@ -246,12 +247,16 @@ impl Inode {
     /// to store extended attributes.
     pub const INODE_RECORD_SIZE: usize = 256;
 
+    /// Size of the region that inline extended attributes can be written.
+    pub const XATTR_AREA_SIZE: usize = Inode::INODE_RECORD_SIZE - std::mem::size_of::<Inode>();
+
     pub fn new<'a>(
         arena: &'a Arena<'a>,
         group: &mut GroupMetaData,
         inode_num: InodeNum,
         typ: InodeType,
         size: u32,
+        xattr: Option<InlineXattrs>,
     ) -> Result<&'a mut Self> {
         const EXT2_S_IRUSR: u16 = 0x0100; // user read
         const EXT2_S_IXUSR: u16 = 0x0040; // user execute
@@ -286,7 +291,6 @@ impl Inode {
         let gid_high = (gid >> 16) as u16;
         let gid_low = gid as u16;
 
-        // TODO(b/333988434): Support extended attributes.
         *inode = Self {
             mode,
             size,
@@ -299,6 +303,10 @@ impl Inode {
             gid_high,
             ..Default::default()
         };
+        if let Some(xattr) = xattr {
+            Self::add_xattr(arena, group, inode, inode_offset, xattr)?;
+        }
+
         Ok(inode)
     }
 
@@ -311,6 +319,7 @@ impl Inode {
         links_count: u16,
         blocks: InodeBlocksCount,
         block: InodeBlock,
+        xattr: Option<InlineXattrs>,
     ) -> Result<&'a mut Self> {
         let inodes_per_group = group.inode_bitmap.len();
         // (inode_num - 1) because inode is 1-indexed.
@@ -348,7 +357,44 @@ impl Inode {
             ..Default::default()
         };
 
+        if let Some(xattr) = xattr {
+            Self::add_xattr(arena, group, inode, inode_offset, xattr)?;
+        }
+
         Ok(inode)
+    }
+
+    fn add_xattr<'a>(
+        arena: &'a Arena<'a>,
+        group: &mut GroupMetaData,
+        inode: &mut Inode,
+        inode_offset: usize,
+        xattr: InlineXattrs,
+    ) -> Result<()> {
+        let xattr_region = arena.allocate::<[u8; Inode::XATTR_AREA_SIZE]>(
+            BlockId::from(group.group_desc.inode_table),
+            inode_offset + std::mem::size_of::<Inode>(),
+        )?;
+
+        if !xattr.entry_table.is_empty() {
+            // Linux and debugfs uses extra_size to check if inline xattr is stored so we need to
+            // set a positive value here. 4 (= sizeof(extra_size) + sizeof(_paddings))
+            // is the smallest value.
+            inode.extra_size = 4;
+            let InlineXattrs {
+                entry_table,
+                values,
+            } = xattr;
+
+            if entry_table.len() + values.len() > Inode::XATTR_AREA_SIZE {
+                bail!("xattr size is too large for inline store: entry_table.len={}, values.len={}, inline region size={}",
+                        entry_table.len(), values.len(), Inode::XATTR_AREA_SIZE);
+            }
+            // `entry_table` should be aligned to the beginning of the region.
+            xattr_region[..entry_table.len()].copy_from_slice(&entry_table);
+            xattr_region[Inode::XATTR_AREA_SIZE - values.len()..].copy_from_slice(&values);
+        }
+        Ok(())
     }
 
     pub fn update_metadata(&mut self, m: &std::fs::Metadata) {

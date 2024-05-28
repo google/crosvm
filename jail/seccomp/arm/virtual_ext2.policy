@@ -12,6 +12,8 @@ getdents64: 1
 getegid: 1
 geteuid: 1
 getrandom: 1
+lgetxattr: 1
+llistxattr: 1
 mmap2: arg2 in ~PROT_EXEC
 msync: 1
 munmap: 1

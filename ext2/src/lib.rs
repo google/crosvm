@@ -14,6 +14,9 @@ mod builder;
 mod fs;
 mod inode;
 mod superblock;
+mod xattr;
 
 pub use blockgroup::BLOCK_SIZE;
 pub use builder::Builder;
+pub use xattr::dump_xattrs;
+pub use xattr::set_xattr;

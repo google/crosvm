@@ -4,6 +4,7 @@
 
 #![cfg(target_os = "linux")]
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fs;
 use std::fs::create_dir;
@@ -23,6 +24,7 @@ use std::process::Command;
 use base::MappedRegion;
 use ext2::Builder;
 use tempfile::tempdir;
+use tempfile::tempdir_in;
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
@@ -155,7 +157,14 @@ fn collect_paths(dir: &Path, skip_lost_found: bool) -> BTreeSet<(String, PathBuf
         .collect()
 }
 
-fn assert_eq_dirs(td: &TempDir, dir: &Path, disk: &PathBuf) {
+fn assert_eq_dirs(
+    td: &TempDir,
+    dir: &Path,
+    disk: &PathBuf,
+    // Check the correct xattr is set and any unexpected one isn't set.
+    // Pass None to skip this check for test cases where many files are created.
+    xattr_map: Option<BTreeMap<String, Vec<(&str, &str)>>>,
+) {
     // dump the disk contents to `dump_dir`.
     let dump_dir = td.path().join("dump");
     std::fs::create_dir(&dump_dir).unwrap();
@@ -208,9 +217,27 @@ fn assert_eq_dirs(td: &TempDir, dir: &Path, disk: &PathBuf) {
         );
 
         if m1.file_type().is_file() {
+            // Check contents
             let c1 = std::fs::read_to_string(path1).unwrap();
             let c2 = std::fs::read_to_string(path2).unwrap();
             assert_eq!(c1, c2, "content mismatch: ({name1})");
+        }
+
+        // Check xattr
+        if let Some(mp) = &xattr_map {
+            match mp.get(name1) {
+                Some(expected_xattrs) if !expected_xattrs.is_empty() => {
+                    for (key, value) in expected_xattrs {
+                        let s = run_debugfs_cmd(&[&format!("ea_get -V {name1} {key}",)], disk);
+                        assert_eq!(&s, value);
+                    }
+                }
+                // If no xattr is specified, any value must not be set.
+                _ => {
+                    let s = run_debugfs_cmd(&[&format!("ea_list {}", name1,)], disk);
+                    assert_eq!(s, "");
+                }
+            }
         }
     }
 }
@@ -239,7 +266,7 @@ fn test_simple_dir() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, Some(Default::default()));
 
     td.close().unwrap(); // make sure that tempdir is properly deleted.
 }
@@ -273,7 +300,7 @@ fn test_nested_dirs() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, Some(Default::default()));
 }
 
 #[test]
@@ -302,7 +329,7 @@ fn test_file_contents() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, Some(Default::default()));
 }
 
 #[test]
@@ -325,7 +352,7 @@ fn test_max_file_name() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, Some(Default::default()));
 }
 
 #[test]
@@ -354,7 +381,7 @@ fn test_mkfs_indirect_block() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, Some(Default::default()));
 }
 
 #[test]
@@ -391,7 +418,7 @@ fn test_mkfs_symlink() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, Some(Default::default()));
 }
 
 #[test]
@@ -422,7 +449,7 @@ fn test_mkfs_abs_symlink() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, Some(Default::default()));
 }
 
 #[test]
@@ -448,7 +475,7 @@ fn test_mkfs_symlink_to_deleted() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, Some(Default::default()));
 }
 
 #[test]
@@ -489,7 +516,7 @@ fn test_mkfs_long_symlink() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, Some(Default::default()));
 }
 
 #[test]
@@ -581,7 +608,7 @@ fn test_multiple_block_directory_entry() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, None); // skip xattr check
 }
 
 // Test a case where the inode tables spans multiple block groups.
@@ -620,7 +647,7 @@ fn test_multiple_bg_multi_inode_bitmap() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, None);
 }
 
 /// Test a case where the block tables spans multiple block groups.
@@ -659,7 +686,7 @@ fn test_multiple_bg_multi_block_bitmap() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, None);
 }
 
 // Test a case where a file spans multiple block groups.
@@ -697,5 +724,61 @@ fn test_multiple_bg_big_files() {
         },
     );
 
-    assert_eq_dirs(&td, &dir, &disk);
+    assert_eq_dirs(&td, &dir, &disk, Some(Default::default()));
+}
+
+#[test]
+fn test_mkfs_xattr() {
+    // Since tmpfs doesn't support xattr, use the current directory.
+    let td = tempdir_in(".").unwrap();
+    let dir = td.path().join("testdata");
+    // testdata
+    // ├── a.txt ("user.foo"="a", "user.bar"="0123456789")
+    // ├── b.txt ("security.selinux"="unconfined_u:object_r:user_home_t:s0")
+    // ├── c.txt (no xattr)
+    // └── dir/ ("user.foo"="directory")
+    //     └─ d.txt ("user.foo"="in_directory")
+    std::fs::create_dir(&dir).unwrap();
+
+    let dir_xattrs = vec![("dir".to_string(), vec![("user.foo", "directory")])];
+    let file_xattrs = vec![
+        (
+            "a.txt".to_string(),
+            vec![("user.foo", "a"), ("user.number", "0123456789")],
+        ),
+        (
+            "b.txt".to_string(),
+            vec![("security.selinux", "unconfined_u:object_r:user_home_t:s0")],
+        ),
+        ("c.txt".to_string(), vec![]),
+        ("dir/d.txt".to_string(), vec![("user.foo", "in_directory")]),
+    ];
+
+    // Create dirs
+    for (fname, xattrs) in &dir_xattrs {
+        let f_path = dir.join(fname);
+        std::fs::create_dir(&f_path).unwrap();
+        for (key, value) in xattrs {
+            ext2::set_xattr(&f_path, key, value).unwrap();
+        }
+    }
+    // Create files
+    for (fname, xattrs) in &file_xattrs {
+        let f_path = dir.join(fname);
+        File::create(&f_path).unwrap();
+        for (key, value) in xattrs {
+            ext2::set_xattr(&f_path, key, value).unwrap();
+        }
+    }
+
+    let xattr_map: BTreeMap<String, Vec<(&str, &str)>> =
+        file_xattrs.into_iter().chain(dir_xattrs).collect();
+
+    let builder = Builder {
+        root_dir: Some(dir.clone()),
+        ..Default::default()
+    };
+    let disk = mkfs(&td, builder);
+
+    assert_eq_dirs(&td, &dir, &disk, Some(xattr_map));
 }
