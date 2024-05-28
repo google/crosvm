@@ -1715,9 +1715,14 @@ mod test_interrupt_ready_when_not_interruptible_code {
         "nop",
         "out 0x30, ax",
         "out 0x40, ax",
-        // Test hypervisors' interruptibilities right after sti instruction.
+        // Test hypervisors' interruptibilities right after sti instruction when FLAGS.IF is
+        // cleared.
+        "cli",
         "sti",
         "out 0x50, ax",
+        // On WHPX we need some other instructions to bring the interuptibility back to normal.
+        // While this is not needed for other hypervisors, we add this instruction unconditionally.
+        "nop",
         "out 0x60, ax",
         "hlt",
     );
@@ -1731,7 +1736,6 @@ mod test_interrupt_ready_when_not_interruptible_code {
 }
 
 // Physical x86 processor won't allow interrupt to be injected after mov ss or sti, while VM can.
-// Different hypervisors have different bahavior in those situations.
 #[test]
 fn test_interrupt_ready_when_normally_not_interruptible() {
     use test_interrupt_ready_when_not_interruptible_code::Instrumentation;
@@ -1802,8 +1806,9 @@ fn test_interrupt_ready_when_normally_not_interruptible() {
                     (AfterMovSs, false),
                     (AfterAfterMovSs, true),
                     (BeforeSti, true),
-                    // Hypervisors allow interrupt injection right after sti.
-                    (AfterSti, true),
+                    // Hypervisors don't allow interrupt injection right after sti when FLAGS.IF is
+                    // not set.
+                    (AfterSti, false),
                     (AfterAfterSti, true)
                 ]
             );
@@ -1820,7 +1825,6 @@ fn test_interrupt_ready_when_normally_not_interruptible() {
                     BeforeSti,
                     InIsr,
                     AfterSti,
-                    InIsr,
                     AfterAfterSti,
                     InIsr,
                 ]
