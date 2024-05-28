@@ -29,6 +29,8 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 
+const FLAGS_IF_BIT: u64 = 0x200;
+
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum HypervisorType {
     Kvm,
@@ -1422,7 +1424,7 @@ fn test_minimal_interrupt_injection() {
             rax: 0,
             rbx: 0,
             // Set RFLAGS.IF to enable interrupt.
-            rflags: 2 | 0x200,
+            rflags: 2 | FLAGS_IF_BIT,
             ..Default::default()
         },
         mem_size: mem_size.into(),
@@ -1551,7 +1553,7 @@ fn test_multiple_interrupt_injection() {
             rcx: 0,
             rdx: 0,
             // Set RFLAGS.IF to enable interrupt.
-            rflags: 2 | 0x200,
+            rflags: 2 | FLAGS_IF_BIT,
             ..Default::default()
         },
         mem_size: mem_size.into(),
@@ -1859,6 +1861,74 @@ fn test_interrupt_ready_when_normally_not_interruptible() {
                     if should_inject_interrupt {
                         vcpu.interrupt(32)
                             .expect("interrupt injection should succeed when ready for interrupt");
+                    }
+                    false
+                }
+                VcpuExit::Hlt => true,
+                r => panic!("unexpected VMEXIT reason: {:?}", r),
+            }
+        }
+    );
+}
+
+global_asm_data!(
+    test_interrupt_ready_when_interrupt_enable_flag_not_set_code,
+    ".code16",
+    "cli",
+    // We can't use hlt for VMEXIT, because HAXM unconditionally allows interrupt injection for
+    // hlt.
+    "out 0x10, ax",
+    "sti",
+    // nop is necessary to avoid the one instruction ineterrupt disable window for sti when
+    // FLAGS.IF is not set.
+    "nop",
+    "out 0x20, ax",
+    "hlt",
+);
+
+#[test]
+fn test_interrupt_ready_when_interrupt_enable_flag_not_set() {
+    let assembly = test_interrupt_ready_when_interrupt_enable_flag_not_set_code::data().to_vec();
+    let setup = TestSetup {
+        assembly: assembly.clone(),
+        load_addr: GuestAddress(0x1000),
+        initial_regs: Regs {
+            rip: 0x1000,
+            rflags: 2,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    run_tests!(
+        setup,
+        |_, regs, _| {
+            // For VMEXIT caused by HLT, the hypervisor will automatically advance the rIP register.
+            assert_eq!(regs.rip, 0x1000 + assembly.len() as u64);
+        },
+        |_, exit, vcpu| {
+            match exit {
+                VcpuExit::Io => {
+                    let mut addr = 0;
+                    vcpu.handle_io(&mut |io_params| {
+                        addr = io_params.address;
+                        // We are always handling out IO port, so no data to return.
+                        None
+                    })
+                    .expect("should handle IO successfully");
+                    let regs = vcpu
+                        .get_regs()
+                        .expect("should retrieve the registers successfully");
+                    match addr {
+                        0x10 => {
+                            assert_eq!(regs.rflags & FLAGS_IF_BIT, 0);
+                            assert!(!vcpu.ready_for_interrupt());
+                        }
+                        0x20 => {
+                            assert_eq!(regs.rflags & FLAGS_IF_BIT, FLAGS_IF_BIT);
+                            assert!(vcpu.ready_for_interrupt());
+                        }
+                        _ => panic!("unexpected addr: {}", addr),
                     }
                     false
                 }
