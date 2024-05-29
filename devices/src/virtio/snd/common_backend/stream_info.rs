@@ -202,7 +202,7 @@ impl From<StreamInfoBuilder> for StreamInfo {
             #[cfg(windows)]
             playback_stream_cache: None,
             #[cfg(windows)]
-            audio_client_guid: None,
+            audio_client_guid: builder.audio_client_guid,
         }
     }
 }
