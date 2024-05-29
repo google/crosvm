@@ -92,20 +92,15 @@ impl HotPlugBus for PcieRootPort {
         if self.pcie_port.is_hpc_pending() {
             bail!("Hot plug fail: previous slot event is pending.");
         }
+        if !self.pcie_port.is_hotplug_ready() {
+            bail!("Hot unplug fail: slot is not enabled by the guest yet.");
+        }
         self.downstream_devices
             .get(&addr)
             .context("No downstream devices.")?;
 
         let hpc_sender = Event::new()?;
         let hpc_recvr = hpc_sender.try_clone()?;
-        if !self.pcie_port.is_hotplug_ready() {
-            // The pcie port is not enabled by the guest yet. (i.e.: before PCI enumeration) Don't
-            // trigger interrupt, only flipping the presence detected bit, and the device will be
-            // found by PCI enumeration.
-            self.pcie_port.set_slot_status(PCIE_SLTSTA_PDS);
-            hpc_sender.signal()?;
-            return Ok(Some(hpc_recvr));
-        }
         self.pcie_port.set_hpc_sender(hpc_sender);
         self.pcie_port
             .set_slot_status(PCIE_SLTSTA_PDS | PCIE_SLTSTA_ABP);
@@ -116,6 +111,9 @@ impl HotPlugBus for PcieRootPort {
     fn hot_unplug(&mut self, addr: PciAddress) -> Result<Option<Event>> {
         if self.pcie_port.is_hpc_pending() {
             bail!("Hot unplug fail: previous slot event is pending.");
+        }
+        if !self.pcie_port.is_hotplug_ready() {
+            bail!("Hot unplug fail: slot is not enabled by the guest yet.");
         }
         self.downstream_devices
             .remove(&addr)
@@ -134,14 +132,6 @@ impl HotPlugBus for PcieRootPort {
 
         let hpc_sender = Event::new()?;
         let hpc_recvr = hpc_sender.try_clone()?;
-        if !self.pcie_port.is_hotplug_ready() {
-            // The pcie port is not enabled by the guest yet. (i.e.: before PCI enumeration) Don't
-            // trigger interrupt, only flipping the presence detected bit in case the bit is already
-            // flipped by an earlier hot plug on this port.
-            self.pcie_port.mask_slot_status(!PCIE_SLTSTA_PDS);
-            hpc_sender.signal()?;
-            return Ok(Some(hpc_recvr));
-        }
         let slot_control = self.pcie_port.get_slot_control();
         match slot_control & PCIE_SLTCTL_PIC {
             PCIE_SLTCTL_PIC_ON => {

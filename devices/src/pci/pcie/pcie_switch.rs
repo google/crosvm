@@ -220,6 +220,9 @@ impl HotPlugBus for PcieDownstreamPort {
         if self.downstream_devices.get(&addr).is_none() {
             bail!("no downstream devices.");
         }
+        if !self.pcie_port.is_hotplug_ready() {
+            bail!("Hot unplug fail: slot is not enabled by the guest yet.");
+        }
         self.pcie_port
             .set_slot_status(PCIE_SLTSTA_PDS | PCIE_SLTSTA_ABP);
         self.pcie_port.trigger_hp_or_pme_interrupt();
@@ -233,6 +236,9 @@ impl HotPlugBus for PcieDownstreamPort {
         if self.downstream_devices.remove(&addr).is_none() {
             bail!("no downstream devices.");
         }
+        if !self.pcie_port.is_hotplug_ready() {
+            bail!("Hot unplug fail: slot is not enabled by the guest yet.");
+        }
 
         if !self.hotplug_out_begin {
             self.removed_downstream.clear();
@@ -240,13 +246,6 @@ impl HotPlugBus for PcieDownstreamPort {
             // All the remaine devices will be removed also in this hotplug out interrupt
             for (guest_pci_addr, _) in self.downstream_devices.iter() {
                 self.removed_downstream.push(*guest_pci_addr);
-            }
-            if !self.pcie_port.is_hotplug_ready() {
-                // The pcie port is not enabled by the guest yet. (i.e.: before PCI enumeration)
-                // Don't trigger interrupt, only flipping the presence detected bit in case the bit
-                // is already flipped by an earlier hot plug on this port.
-                self.pcie_port.mask_slot_status(!PCIE_SLTSTA_PDS);
-                return Ok(None);
             }
             self.pcie_port.set_slot_status(PCIE_SLTSTA_ABP);
             self.pcie_port.trigger_hp_or_pme_interrupt();
