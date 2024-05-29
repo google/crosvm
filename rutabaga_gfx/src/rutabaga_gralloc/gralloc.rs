@@ -52,7 +52,7 @@ impl RutabagaGrallocBackendFlags {
         self.0 & RUTABAGA_GRALLOC_BACKEND_GBM != 0
     }
 
-    pub fn uses_vulkan(&self) -> bool {
+    pub fn uses_vulkano(&self) -> bool {
         self.0 & RUTABAGA_GRALLOC_BACKEND_VULKANO != 0
     }
 }
