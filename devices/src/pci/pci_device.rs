@@ -83,6 +83,15 @@ pub enum Error {
     /// Device not exist on this bus
     #[error("pci device {0} does not located on bus {1}")]
     DeviceNotExist(PciAddress, u8),
+    /// Fail to clone an event.
+    #[error("failed to clone an event: {0}")]
+    EventCloneFailed(i32),
+    /// Fail to create an event.
+    #[error("failed to create an event: {0}")]
+    EventCreationFailed(i32),
+    /// Fail to signal on an event.
+    #[error("failed to signal an event: {0}")]
+    EventSignalFailed(i32),
     /// Allocating space for an IO BAR failed.
     #[error("failed to allocate space for an IO BAR, size={0}: {1}")]
     IoAllocationFailed(u64, SystemAllocatorFaliure),

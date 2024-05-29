@@ -95,6 +95,10 @@ impl HotPlugBus for PcieUpstreamPort {
         Ok(None)
     }
 
+    fn get_ready_notification(&mut self) -> anyhow::Result<Event> {
+        bail!("hot plug not supported on upstream port.")
+    }
+
     fn get_secondary_bus_number(&self) -> Option<u8> {
         Some(self.pcie_port.get_bus_range()?.secondary)
     }
@@ -273,6 +277,10 @@ impl HotPlugBus for PcieDownstreamPort {
 
         self.hotplug_out_begin = true;
         Ok(None)
+    }
+
+    fn get_ready_notification(&mut self) -> anyhow::Result<Event> {
+        Ok(self.pcie_port.get_ready_notification()?)
     }
 
     fn get_address(&self) -> Option<PciAddress> {

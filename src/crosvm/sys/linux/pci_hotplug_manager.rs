@@ -915,6 +915,12 @@ mod tests {
             Ok(Some(self.cc_event.try_clone().unwrap()))
         }
 
+        fn get_ready_notification(&mut self) -> anyhow::Result<Event> {
+            let event = Event::new()?;
+            event.signal()?;
+            Ok(event)
+        }
+
         fn is_match(&self, _host_addr: PciAddress) -> Option<u8> {
             None
         }

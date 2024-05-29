@@ -366,9 +366,15 @@ impl PciePort {
         self.pcie_host.is_some()
     }
 
-    // Checks if the slot is enabled by guest and ready for hotplug events.
+    /// Checks if the slot is enabled by guest and ready for hotplug events.
     pub fn is_hotplug_ready(&self) -> bool {
         self.pcie_config.lock().is_hotplug_ready()
+    }
+
+    /// Gets a notification when the port is ready for hotplug.  If the port is already ready, then
+    /// the notification event is triggerred immediately.
+    pub fn get_ready_notification(&mut self) -> std::result::Result<Event, PciDeviceError> {
+        self.pcie_config.lock().get_ready_notification()
     }
 
     pub fn hot_unplug(&mut self) {
@@ -447,6 +453,8 @@ pub struct PcieConfig {
     hp_interrupt_pending: bool,
     removed_downstream_valid: bool,
 
+    enabled: bool,
+    hot_plug_ready_notifications: Vec<Event>,
     cap_mapping: Option<PciCapMapping>,
 }
 
@@ -473,6 +481,8 @@ impl PcieConfig {
             hp_interrupt_pending: false,
             removed_downstream_valid: false,
 
+            enabled: false,
+            hot_plug_ready_notifications: Vec::new(),
             cap_mapping: None,
         }
     }
@@ -503,6 +513,24 @@ impl PcieConfig {
             && (slot_control & PCIE_SLTCTL_HPIE) != 0
     }
 
+    /// Gets a notification when the port is ready for hotplug. If the port is already ready, then
+    /// the notification event is triggerred immediately.
+    fn get_ready_notification(&mut self) -> std::result::Result<Event, PciDeviceError> {
+        let event = Event::new().map_err(|e| PciDeviceError::EventCreationFailed(e.errno()))?;
+        if self.is_hotplug_ready() {
+            event
+                .signal()
+                .map_err(|e| PciDeviceError::EventSignalFailed(e.errno()))?;
+        } else {
+            self.hot_plug_ready_notifications.push(
+                event
+                    .try_clone()
+                    .map_err(|e| PciDeviceError::EventCloneFailed(e.errno()))?,
+            );
+        }
+        Ok(event)
+    }
+
     fn write_pcie_cap(&mut self, offset: usize, data: &[u8]) {
         self.removed_downstream_valid = false;
         match offset {
@@ -514,6 +542,19 @@ impl PcieConfig {
                         return;
                     }
                 };
+                if !self.enabled
+                    && (value & (PCIE_SLTCTL_PDCE | PCIE_SLTCTL_ABPE)) != 0
+                    && (value & PCIE_SLTCTL_CCIE) != 0
+                    && (value & PCIE_SLTCTL_HPIE) != 0
+                {
+                    // Device is getting enabled by the guest.
+                    for notf_event in self.hot_plug_ready_notifications.drain(..) {
+                        if let Err(e) = notf_event.signal() {
+                            error!("Failed to signal hot plug ready: {}", e);
+                        }
+                    }
+                    self.enabled = true;
+                }
 
                 // if slot is populated, power indicator is off,
                 // it will detach devices

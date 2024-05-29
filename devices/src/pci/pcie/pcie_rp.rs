@@ -158,6 +158,10 @@ impl HotPlugBus for PcieRootPort {
         Ok(Some(hpc_recvr))
     }
 
+    fn get_ready_notification(&mut self) -> anyhow::Result<Event> {
+        Ok(self.pcie_port.get_ready_notification()?)
+    }
+
     fn get_address(&self) -> Option<PciAddress> {
         self.pcie_port.get_address()
     }

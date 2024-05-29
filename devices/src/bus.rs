@@ -220,6 +220,9 @@ pub trait HotPlugBus: Send {
     /// sending PCI_EXP_SLTCTL_CCIE). Returns None if no such mechanism is provided.
     /// * 'addr' - the guest pci address for hotplug out device
     fn hot_unplug(&mut self, addr: PciAddress) -> anyhow::Result<Option<Event>>;
+    /// Get a notification event when the HotPlugBus is ready for hot plug commands. If the port is
+    /// already ready, then the notification event is triggerred immediately.
+    fn get_ready_notification(&mut self) -> anyhow::Result<Event>;
     /// Check whether the hotplug bus is available to add the new device
     ///
     /// - 'None': hotplug bus isn't match with host pci device
