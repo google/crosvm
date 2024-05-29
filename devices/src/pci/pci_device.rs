@@ -39,8 +39,6 @@ use crate::pci::PciAddressError;
 use crate::pci::PciBarIndex;
 use crate::pci::PciInterruptPin;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
-#[cfg(all(unix, feature = "audio"))]
-use crate::virtio::snd::vios_backend::Error as VioSError;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
@@ -79,10 +77,6 @@ pub enum Error {
     #[cfg(all(unix, feature = "audio", feature = "audio_cras"))]
     #[error("failed to create CRAS Client: {0}")]
     CreateCrasClientFailed(libcras::Error),
-    /// Create VioS client failed.
-    #[cfg(all(unix, feature = "audio"))]
-    #[error("failed to create VioS Client: {0}")]
-    CreateViosClientFailed(VioSError),
     /// Device is already on this bus
     #[error("pci device {0} has already been added to bus {1}")]
     DeviceAlreadyExist(PciAddress, u8),
@@ -92,12 +86,6 @@ pub enum Error {
     /// Allocating space for an IO BAR failed.
     #[error("failed to allocate space for an IO BAR, size={0}: {1}")]
     IoAllocationFailed(u64, SystemAllocatorFaliure),
-    /// ioevent registration failed.
-    #[error("IoEvent registration failed: {0}")]
-    IoEventRegisterFailed(IoEventError),
-    /// supports_iommu is false.
-    #[error("Iommu is not supported")]
-    IommuNotSupported,
     /// Registering an IO BAR failed.
     #[error("failed to register an IO BAR, addr={0} err={1}")]
     IoRegistrationFailed(u64, pci_configuration::Error),
@@ -113,9 +101,6 @@ pub enum Error {
     /// The new added bus does not located on this bus
     #[error("Added bus {0} does not located on bus {1}")]
     ParentBusNotExist(u8, u8),
-    /// PCI Address is not allocated.
-    #[error("PCI address is not allocated")]
-    PciAddressMissing,
     /// PCI Address parsing failure.
     #[error("PCI address '{0}' could not be parsed: {1}")]
     PciAddressParseFailure(String, PciAddressError),
@@ -128,23 +113,6 @@ pub enum Error {
     /// Size of zero encountered
     #[error("Size of zero detected")]
     SizeZero,
-}
-
-/// Errors when io event registration fails:
-#[derive(Clone, Debug, Error)]
-pub enum IoEventError {
-    /// Event clone failed.
-    #[error("Event clone failed: {0}")]
-    CloneFail(base::Error),
-    /// Failed due to system error.
-    #[error("System error: {0}")]
-    SystemError(base::Error),
-    /// Tube for ioevent register failed.
-    #[error("IoEvent register Tube failed")]
-    TubeFail,
-    /// ioevent_register_request not implemented for PciDevice emitting it.
-    #[error("ioevent register not implemented")]
-    Unsupported,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
