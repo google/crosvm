@@ -271,43 +271,70 @@ pub fn enter_long_mode(vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
         "Long-mode setup requires 0x1500-0xc000 to be mapped in the guest."
     );
 
+    const PRESENT: u8 = 1 << 7;
+    const NOT_SYS: u8 = 1 << 4;
+    const EXEC: u8 = 1 << 3;
+    const RW: u8 = 1 << 1;
+    const ACCESSED: u8 = 1 << 0;
+
+    const GRAN_4K: u8 = 1 << 7;
+    const LONG_MODE: u8 = 1 << 5;
+
     // Setup GDT
-    let gdt_entries: [u64; 5] = [
-        0,
-        0,
-        0xaf9b000000ffff, // CODE: Execute/Read
-        0xcf93000000ffff, // DATA: Read/Write
-        0x8f8b000000ffff, // TSS (not used here)
+    let gdt: Vec<u8> = vec![
+        // Null descriptor
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        // Null descriptor
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        // Code segment descriptor
+        0xFF, // Limit & Base (low, bits 0-15)
+        0xFF,
+        0x00,
+        0x00,
+        0x00,                                     // Base (mid, bits 16-23)
+        PRESENT | NOT_SYS | EXEC | RW | ACCESSED, // Access byte
+        GRAN_4K | LONG_MODE | 0x0F,               // Flags & Limit (high)
+        0x00,                                     // Base (high)
     ];
 
     let gdt_addr = GuestAddress(GDT_OFFSET);
-    for (index, &entry) in gdt_entries.iter().enumerate() {
-        let entry_bytes = entry.to_le_bytes();
-        guest_mem
-            .write_at_addr(
-                &entry_bytes,
-                gdt_addr.unchecked_add((index * mem::size_of::<u64>()) as u64),
-            )
-            .expect("Failed to write GDT entry to guest memory");
-    }
+    guest_mem
+        .write_at_addr(&gdt, gdt_addr)
+        .expect("Failed to write GDT entry to guest memory");
+
+    // Convert the GDT entries to a vector of u64
+    let gdt_entries: Vec<u64> = gdt
+        .chunks(8)
+        .map(|chunk| {
+            let mut array = [0u8; 8];
+            array.copy_from_slice(chunk);
+            u64::from_le_bytes(array)
+        })
+        .collect();
 
     let code_seg = segment_from_gdt(gdt_entries[2], 2);
-    let data_seg = segment_from_gdt(gdt_entries[3], 3);
-    let tss_seg = segment_from_gdt(gdt_entries[4], 4);
 
     sregs.gdt.base = GDT_OFFSET;
-    sregs.gdt.limit = mem::size_of_val(&gdt_entries) as u16 - 1;
+    sregs.gdt.limit = gdt.len() as u16 - 1;
 
     sregs.idt.base = IDT_OFFSET;
     sregs.idt.limit = mem::size_of::<u64>() as u16 - 1;
 
     sregs.cs = code_seg;
-    sregs.ds = data_seg;
-    sregs.es = data_seg;
-    sregs.fs = data_seg;
-    sregs.gs = data_seg;
-    sregs.ss = data_seg;
-    sregs.tr = tss_seg;
 
     // Setup IDT
     let idt_addr = GuestAddress(IDT_OFFSET);
@@ -316,12 +343,6 @@ pub fn enter_long_mode(vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
     guest_mem
         .write_at_addr(&idt_entry_bytes, idt_addr)
         .expect("failed to write IDT entry to guest memory");
-
-    // Protected mode
-    sregs.cr0 |= 0x1; // PE
-    sregs.efer |= 0x100; // LME;
-
-    vcpu.set_sregs(&sregs).expect("failed to set sregs");
 
     // Setup paging
     let pml4_addr = GuestAddress(0x9000);
@@ -350,10 +371,10 @@ pub fn enter_long_mode(vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
     }
 
     // Long mode
+    sregs.cr0 |= 0x1 | 0x80000000; // PE & PG
+    sregs.efer |= 0x100 | 0x400; // LME & LMA (Must be auto-enabled with CR0_PG)
     sregs.cr3 = pml4_addr.offset();
     sregs.cr4 |= 0x20; // PAE
-    sregs.cr0 |= 0x80000000; // PG
-    sregs.efer |= 0x400; // LMA. Must be auto-enabled with CR0_PG.
 
     vcpu.set_sregs(&sregs).expect("failed to set sregs");
 }
@@ -2058,7 +2079,6 @@ fn test_interrupt_ready_when_interrupt_enable_flag_not_set() {
     );
 }
 
-#[cfg(any(feature = "whpx", feature = "haxm"))]
 #[test]
 fn test_enter_long_mode() {
     global_asm_data!(
@@ -2094,6 +2114,7 @@ fn test_enter_long_mode() {
     );
     let regs_matcher = move |_: HypervisorType, regs: &Regs, sregs: &Sregs| {
         assert!((sregs.efer & 0x400) != 0, "Long-Mode Active bit not set");
+        assert_eq!((sregs.cs.l), 1, "Long-mode bit not set in CS");
         assert_eq!(
             regs.rdx, bigly_mem_value,
             "Did not execute instructions correctly in long mode."
