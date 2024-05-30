@@ -266,6 +266,7 @@ impl PartialEq for WorkerResponse {
 enum Token {
     Kill,
     ManagerCommand,
+    PortReady(RawDescriptor),
     PlugComplete(RawDescriptor),
     UnplugComplete(RawDescriptor),
 }
@@ -318,11 +319,21 @@ impl PciHotPlugWorker {
                         self.manager_evt.wait()?;
                         self.handle_manager_command()?;
                     }
+                    Token::PortReady(descriptor) => {
+                        let (event, pci_address) = self
+                            .event_map
+                            .remove(&descriptor)
+                            .context("Cannot find event")?;
+                        event.wait()?;
+                        self.wait_ctx.delete(&event)?;
+                        self.handle_port_ready(pci_address)?;
+                    }
                     Token::PlugComplete(descriptor) => {
                         let (event, pci_address) = self
                             .event_map
                             .remove(&descriptor)
                             .context("Cannot find event")?;
+                        event.wait()?;
                         self.wait_ctx.delete(&event)?;
                         self.handle_plug_complete(pci_address)?;
                     }
@@ -357,7 +368,7 @@ impl PciHotPlugWorker {
         Ok(self.response_sender.send(response)?)
     }
 
-    /// Handles add port: Initiate port in Empty(0) state.
+    /// Handles add port: Initiate port in EmptyNotReady state.
     fn handle_add_port(
         &mut self,
         pci_address: PciAddress,
@@ -368,7 +379,16 @@ impl PciHotPlugWorker {
                 "Conflicting upstream PCI address"
             )));
         }
-        let port_state = PortState::Empty(0);
+        let port_state = PortState::EmptyNotReady;
+        let port_ready_event = port.port.lock().get_ready_notification()?;
+        self.wait_ctx.add(
+            &port_ready_event,
+            Token::PortReady(port_ready_event.as_raw_descriptor()),
+        )?;
+        self.event_map.insert(
+            port_ready_event.as_raw_descriptor(),
+            (port_ready_event, pci_address),
+        );
         self.port_state_map.insert(pci_address, port_state);
         self.port_map.insert(
             PortKey {
@@ -395,61 +415,91 @@ impl PciHotPlugWorker {
             None => return Ok(WorkerResponse::InvalidCommand(anyhow!("No ports added"))),
         };
         match most_empty_port.port_state {
-            PortState::Empty(_) => Ok(WorkerResponse::GetEmptyPortOk(most_empty_port.pci_address)),
-            PortState::Occupied(_) => Ok(WorkerResponse::InvalidCommand(anyhow!("No empty port"))),
+            PortState::Empty(_) | PortState::EmptyNotReady => {
+                Ok(WorkerResponse::GetEmptyPortOk(most_empty_port.pci_address))
+            }
+            PortState::Occupied(_) | PortState::OccupiedNotReady => {
+                Ok(WorkerResponse::InvalidCommand(anyhow!("No empty port")))
+            }
         }
     }
 
-    /// Handles plug request: Moves PortState from Empty(n) to Occupied(n+1), and schedules the next
-    /// plug event if n == 0.
+    /// Handles plug request: Moves PortState from EmptyNotReady to OccupiedNotReady, Empty(n) to
+    /// Occupied(n+1), and schedules the next plug event if n == 0.
     fn handle_plug_request(
         &mut self,
         hotplug_command: SignalHotPlugCommand,
     ) -> Result<WorkerResponse> {
         let pci_address = hotplug_command.upstream_address;
-        let (n, next_state) = match self.get_port_state(pci_address) {
-            Ok(PortState::Empty(n)) => (n, PortState::Occupied(n + 1)),
-            Ok(PortState::Occupied(_)) => {
+        let next_state = match self.get_port_state(pci_address) {
+            Ok(PortState::Empty(n)) => {
+                self.get_port_mut(pci_address)?
+                    .add_hotplug_devices(hotplug_command.guest_devices)?;
+                if n == 0 {
+                    self.schedule_plug_event(pci_address)?;
+                }
+                PortState::Occupied(n + 1)
+            }
+            Ok(PortState::EmptyNotReady) => {
+                self.get_port_mut(pci_address)?
+                    .add_hotplug_devices(hotplug_command.guest_devices)?;
+                PortState::OccupiedNotReady
+            }
+            Ok(PortState::Occupied(_)) | Ok(PortState::OccupiedNotReady) => {
                 return Ok(WorkerResponse::InvalidCommand(anyhow!(
                     "Attempt to plug into an occupied port"
                 )))
             }
             Err(e) => return Ok(WorkerResponse::InvalidCommand(e)),
         };
-        self.get_port_mut(pci_address)?
-            .add_hotplug_devices(hotplug_command.guest_devices)?;
-        if n == 0 {
-            self.schedule_plug_event(pci_address)?;
-        }
         self.set_port_state(pci_address, next_state)?;
         Ok(WorkerResponse::SignalOk)
     }
 
-    /// Handles unplug request: Moves PortState from Occupied(n) to Empty(n % 2 + 1), and schedules
-    /// the next unplug event if n == 0.
+    /// Handles unplug request: Moves PortState from OccupiedNotReady to EmptyNotReady, Occupied(n)
+    /// to Empty(n % 2 + 1), and schedules the next unplug event if n == 0.
     ///
     /// n % 2 + 1: When unplug request is made, it either schedule the unplug event
     /// (n == 0 => 1 or n == 1 => 2), or cancels the corresponding plug event that has not started
     /// (n == 2 => 1 or n == 3 => 2). Staring at the mapping, it maps n to either 1 or 2 of opposite
     /// oddity. n % 2 + 1 is a good shorthand instead of the individual mappings.
     fn handle_unplug_request(&mut self, pci_address: PciAddress) -> Result<WorkerResponse> {
-        let (n, next_state) = match self.get_port_state(pci_address) {
-            Ok(PortState::Occupied(n)) => (n, PortState::Empty(n % 2 + 1)),
-            Ok(PortState::Empty(_)) => {
+        let next_state = match self.get_port_state(pci_address) {
+            Ok(PortState::Occupied(n)) => {
+                if n >= 2 {
+                    self.get_port_mut(pci_address)?.cancel_queued_add()?;
+                }
+                if n == 0 {
+                    self.schedule_unplug_event(pci_address)?;
+                }
+                PortState::Empty(n % 2 + 1)
+            }
+            Ok(PortState::OccupiedNotReady) => PortState::EmptyNotReady,
+            Ok(PortState::Empty(_)) | Ok(PortState::EmptyNotReady) => {
                 return Ok(WorkerResponse::InvalidCommand(anyhow!(
                     "Attempt to unplug from an empty port"
                 )))
             }
             Err(e) => return Ok(WorkerResponse::InvalidCommand(e)),
         };
-        if n >= 2 {
-            self.get_port_mut(pci_address)?.cancel_queued_add()?;
-        }
-        if n == 0 {
-            self.schedule_unplug_event(pci_address)?;
-        }
         self.set_port_state(pci_address, next_state)?;
         Ok(WorkerResponse::SignalOk)
+    }
+
+    /// Handles port ready: Moves PortState from EmptyNotReady to Empty(0), OccupiedNotReady to
+    /// Occupied(1), and schedules the next event if port is occupied
+    fn handle_port_ready(&mut self, pci_address: PciAddress) -> Result<()> {
+        let next_state = match self.get_port_state(pci_address)? {
+            PortState::EmptyNotReady => PortState::Empty(0),
+            PortState::OccupiedNotReady => {
+                self.schedule_plug_event(pci_address)?;
+                PortState::Occupied(1)
+            }
+            PortState::Empty(_) | PortState::Occupied(_) => {
+                bail!("Received port ready on an already enabled port");
+            }
+        };
+        self.set_port_state(pci_address, next_state)
     }
 
     /// Handles plug complete: Moves PortState from Any(n) to Any(n-1), and schedules the next
@@ -459,6 +509,9 @@ impl PciHotPlugWorker {
             // Note: n - 1 >= 0 as otherwise there would be no pending events.
             PortState::Empty(n) => (n, PortState::Empty(n - 1)),
             PortState::Occupied(n) => (n, PortState::Occupied(n - 1)),
+            PortState::EmptyNotReady | PortState::OccupiedNotReady => {
+                bail!("Received plug completed on a not enabled port");
+            }
         };
         if n > 1 {
             self.schedule_unplug_event(pci_address)?;
@@ -473,6 +526,9 @@ impl PciHotPlugWorker {
             // Note: n - 1 >= 0 as otherwise there would be no pending events.
             PortState::Empty(n) => (n, PortState::Empty(n - 1)),
             PortState::Occupied(n) => (n, PortState::Occupied(n - 1)),
+            PortState::EmptyNotReady | PortState::OccupiedNotReady => {
+                bail!("Received unplug completed on a not enabled port");
+            }
         };
         if n > 1 {
             self.schedule_plug_event(pci_address)?;
@@ -550,36 +606,64 @@ impl PciHotPlugWorker {
 
 /// PortState indicates the state of the port.
 ///
-/// The initial PortState is Empty(0). 7 PortStates are possible, and transition between the states
-/// are only possible by the following 2 pairs of functions:
+/// The initial PortState is EmptyNotReady (EmpNR). 9 PortStates are possible, and transition
+/// between the states are only possible by the following 3 groups of functions:
+/// handle_port_ready(R): guest notification of port ready to accept hot plug events.
 /// handle_plug_request(P) and handle_unplug_request(U): host initated requests.
-/// handle_plug_complete(PC) and handle_unplug_complete(UC): guest notification of completion.
+/// handle_plug_complete(PC) and handle_unplug_complete(UC): guest notification of event completion.
+/// When a port is not ready, PC and UC are not expected as no events are scheduled.
 /// The state transition is as follows:
-/// Emp0<-UC--Emp1<-PC--Emp2            |
-///     \    ^    \^   ^    \^          |
-///      P  /      P\ /      P\         |
-///       \/        \\        \\        |
-///       /\        /\\        \\       |
-///      U  \      U  \U        \U      |
-///     /    v    /    v\        v\     |
-/// Occ0<-PC--Occ1<-UC--Occ2<-PC--Occ3  |
+///    Emp0<-UC--Emp1<-PC--Emp2            |
+///  ^     \    ^    \^   ^    \^          |
+/// /       P  /      P\ /      P\         |
+/// |        \/        \\        \\        |
+/// |        /\        /\\        \\       |
+/// R       U  \      U  \U        \U      |
+/// |      /    v    /    v\        v\     |
+/// |  Occ0<-PC--Occ1<-UC--Occ2<-PC--Occ3  |
+/// |              ^                       |
+/// \              R                       |
+///   EmpNR<-P,U->OccNR                    |
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PortState {
     /// Port is empty on crosvm. The state on the guest OS is n steps behind.
     Empty(u8),
+    /// Port is empty on crosvm. The port is not enabled on the guest OS yet.
+    EmptyNotReady,
     /// Port is occupied on crosvm. The state on the guest OS is n steps behind.
     Occupied(u8),
+    /// Port is occupied on crosvm. The port is not enabled on the guest OS yet.
+    OccupiedNotReady,
+}
+
+impl PortState {
+    fn variant_order_index(&self) -> u8 {
+        match self {
+            PortState::Empty(_) => 0,
+            PortState::EmptyNotReady => 1,
+            PortState::Occupied(_) => 2,
+            PortState::OccupiedNotReady => 3,
+        }
+    }
 }
 
 /// Ordering on PortState defined by "most empty".
 impl Ord for PortState {
     fn cmp(&self, other: &Self) -> Ordering {
+        // First compare by the variant: Empty < EmptyNotReady < Occupied < OccupiedNotReady.
+        match self.variant_order_index().cmp(&other.variant_order_index()) {
+            Ordering::Less => {
+                return Ordering::Less;
+            }
+            Ordering::Equal => {}
+            Ordering::Greater => return Ordering::Greater,
+        }
+        // For the diagonals, prioritize ones with less step behind.
         match (self, other) {
             (PortState::Empty(lhs), PortState::Empty(rhs)) => lhs.cmp(rhs),
-            (PortState::Empty(_), PortState::Occupied(_)) => Ordering::Less,
-            (PortState::Occupied(_), PortState::Empty(_)) => Ordering::Greater,
             (PortState::Occupied(lhs), PortState::Occupied(rhs)) => lhs.cmp(rhs),
+            _ => Ordering::Equal,
         }
     }
 }
@@ -857,6 +941,7 @@ mod tests {
     struct MockPort {
         cc_event: Event,
         downstream_bus: u8,
+        ready_events: Vec<Event>,
     }
 
     impl MockPort {
@@ -864,12 +949,20 @@ mod tests {
             Self {
                 cc_event: Event::new().unwrap(),
                 downstream_bus,
+                ready_events: Vec::new(),
             }
         }
 
         fn signal_cc(&self) {
             self.cc_event.reset().unwrap();
             self.cc_event.signal().unwrap();
+        }
+
+        fn signal_ready(&mut self) {
+            for event in self.ready_events.drain(..) {
+                event.reset().unwrap();
+                event.signal().unwrap();
+            }
         }
     }
 
@@ -917,7 +1010,7 @@ mod tests {
 
         fn get_ready_notification(&mut self) -> anyhow::Result<Event> {
             let event = Event::new()?;
-            event.signal()?;
+            self.ready_events.push(event.try_clone()?);
             Ok(event)
         }
 
@@ -991,6 +1084,7 @@ mod tests {
         };
         let hotplug_command_a =
             SignalHotPlugCommand::new(upstream_addr_a, [device_a].to_vec()).unwrap();
+        let port_a = new_port(bus_a);
         // Port B: upstream 00:01.0, downstream 3.
         let upstream_addr_b = PciAddress {
             bus: 0,
@@ -1013,6 +1107,7 @@ mod tests {
         };
         let hotplug_command_b =
             SignalHotPlugCommand::new(upstream_addr_b, [device_b].to_vec()).unwrap();
+        let port_b = new_port(bus_b);
         // Port C: upstream 00:02.0, downstream 4.
         let upstream_addr_c = PciAddress {
             bus: 0,
@@ -1035,12 +1130,13 @@ mod tests {
         };
         let hotplug_command_c =
             SignalHotPlugCommand::new(upstream_addr_c, [device_c].to_vec()).unwrap();
+        let port_c = new_port(bus_c);
         assert_eq!(
             WorkerResponse::AddPortOk,
             client
                 .send_worker_command(WorkerCommand::AddPort(
                     upstream_addr_a,
-                    PortWorkerStub::new(new_port(bus_a), bus_a).unwrap()
+                    PortWorkerStub::new(port_a.clone(), bus_a).unwrap()
                 ))
                 .unwrap()
         );
@@ -1049,7 +1145,7 @@ mod tests {
             client
                 .send_worker_command(WorkerCommand::AddPort(
                     upstream_addr_b,
-                    PortWorkerStub::new(new_port(bus_b), bus_b).unwrap()
+                    PortWorkerStub::new(port_b.clone(), bus_b).unwrap()
                 ))
                 .unwrap()
         );
@@ -1058,10 +1154,34 @@ mod tests {
             client
                 .send_worker_command(WorkerCommand::AddPort(
                     upstream_addr_c,
-                    PortWorkerStub::new(new_port(bus_c), bus_c).unwrap()
+                    PortWorkerStub::new(port_c.clone(), bus_c).unwrap()
                 ))
                 .unwrap()
         );
+        port_a.lock().signal_ready();
+        assert!(poll_until_with_timeout(
+            || client
+                .send_worker_command(WorkerCommand::GetPortState(upstream_addr_a))
+                .unwrap()
+                == WorkerResponse::GetPortStateOk(PortState::Empty(0)),
+            Duration::from_millis(500)
+        ));
+        port_b.lock().signal_ready();
+        assert!(poll_until_with_timeout(
+            || client
+                .send_worker_command(WorkerCommand::GetPortState(upstream_addr_b))
+                .unwrap()
+                == WorkerResponse::GetPortStateOk(PortState::Empty(0)),
+            Duration::from_millis(500)
+        ));
+        port_c.lock().signal_ready();
+        assert!(poll_until_with_timeout(
+            || client
+                .send_worker_command(WorkerCommand::GetPortState(upstream_addr_c))
+                .unwrap()
+                == WorkerResponse::GetPortStateOk(PortState::Empty(0)),
+            Duration::from_millis(500)
+        ));
         // All ports empty and in sync. Should get port B.
         assert_eq!(
             WorkerResponse::GetEmptyPortOk(upstream_addr_b),
@@ -1166,6 +1286,7 @@ mod tests {
                 ))
                 .unwrap()
         );
+        port.lock().signal_ready();
         assert!(poll_until_with_timeout(
             || client
                 .send_worker_command(WorkerCommand::GetPortState(upstream_addr))
@@ -1241,6 +1362,78 @@ mod tests {
                 .send_worker_command(WorkerCommand::GetPortState(upstream_addr))
                 .unwrap()
                 == WorkerResponse::GetPortStateOk(PortState::Empty(0)),
+            Duration::from_millis(500)
+        ));
+    }
+
+    #[test]
+    fn worker_port_early_plug_state_transitions() {
+        let (rootbus_controller, _rootbus_recvr) = mpsc::channel();
+        let client = WorkerClient::new(rootbus_controller).unwrap();
+        let upstream_addr = PciAddress {
+            bus: 0,
+            dev: 1,
+            func: 1,
+        };
+        let bus = 2;
+        let downstream_addr = PciAddress {
+            bus,
+            dev: 0,
+            func: 0,
+        };
+        let hotplug_key = HotPlugKey::GuestDevice {
+            guest_addr: downstream_addr,
+        };
+        let device = GuestDeviceStub {
+            pci_addr: downstream_addr,
+            key: hotplug_key,
+            device: Arc::new(Mutex::new(MockDevice)),
+        };
+        let hotplug_command = SignalHotPlugCommand::new(upstream_addr, [device].to_vec()).unwrap();
+        let port = new_port(bus);
+        assert_eq!(
+            WorkerResponse::AddPortOk,
+            client
+                .send_worker_command(WorkerCommand::AddPort(
+                    upstream_addr,
+                    PortWorkerStub::new(port.clone(), bus).unwrap()
+                ))
+                .unwrap()
+        );
+        assert!(poll_until_with_timeout(
+            || client
+                .send_worker_command(WorkerCommand::GetPortState(upstream_addr))
+                .unwrap()
+                == WorkerResponse::GetPortStateOk(PortState::EmptyNotReady),
+            Duration::from_millis(500)
+        ));
+        assert_eq!(
+            WorkerResponse::SignalOk,
+            client
+                .send_worker_command(WorkerCommand::SignalHotPlug(hotplug_command.clone()))
+                .unwrap()
+        );
+        assert!(poll_until_with_timeout(
+            || client
+                .send_worker_command(WorkerCommand::GetPortState(upstream_addr))
+                .unwrap()
+                == WorkerResponse::GetPortStateOk(PortState::OccupiedNotReady),
+            Duration::from_millis(500)
+        ));
+        port.lock().signal_ready();
+        assert!(poll_until_with_timeout(
+            || client
+                .send_worker_command(WorkerCommand::GetPortState(upstream_addr))
+                .unwrap()
+                == WorkerResponse::GetPortStateOk(PortState::Occupied(1)),
+            Duration::from_millis(500)
+        ));
+        port.lock().signal_cc();
+        assert!(poll_until_with_timeout(
+            || client
+                .send_worker_command(WorkerCommand::GetPortState(upstream_addr))
+                .unwrap()
+                == WorkerResponse::GetPortStateOk(PortState::Occupied(0)),
             Duration::from_millis(500)
         ));
     }
