@@ -66,6 +66,7 @@ use hypervisor::IoOperation;
 use hypervisor::IoParams;
 use hypervisor::VcpuExit;
 use hypervisor::VcpuInitX86_64;
+use metrics_events::MetricEventType;
 use sync::Condvar;
 use sync::Mutex;
 use vm_control::VcpuControl;
@@ -832,6 +833,12 @@ where
                 // with Shutdown.  Normal reboots and shutdowns, like window close, use
                 // the vm event tube and VmRunMode::Exiting instead of VcpuExit::Shutdown.
                 Ok(VcpuExit::Shutdown(reason)) => {
+                    if let Err(e) = reason {
+                        metrics::log_descriptor(
+                            MetricEventType::VcpuShutdownError,
+                            e.get_raw_error_code() as i64,
+                        );
+                    }
                     bail_exit_code!(Exit::VcpuShutdown, "vcpu shutdown (reason: {:?})", reason)
                 }
                 Ok(VcpuExit::FailEntry {

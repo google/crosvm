@@ -35,6 +35,7 @@ use hypervisor::IoParams;
 use hypervisor::VcpuExit;
 use hypervisor::VcpuSignalHandle;
 use libc::c_int;
+use metrics_events::MetricEventType;
 #[cfg(target_arch = "riscv64")]
 use riscv64::Riscv64 as Arch;
 #[cfg(target_arch = "x86_64")]
@@ -389,7 +390,15 @@ where
                 }
                 Ok(VcpuExit::IrqWindowOpen) => {}
                 Ok(VcpuExit::Hlt) => irq_chip.halted(cpu_id),
-                Ok(VcpuExit::Shutdown(_)) => return ExitState::Stop,
+                Ok(VcpuExit::Shutdown(reason)) => {
+                    if let Err(e) = reason {
+                        metrics::log_descriptor(
+                            MetricEventType::VcpuShutdownError,
+                            e.get_raw_error_code() as i64,
+                        );
+                    }
+                    return ExitState::Stop;
+                }
                 Ok(VcpuExit::FailEntry {
                     hardware_entry_failure_reason,
                 }) => {

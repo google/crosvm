@@ -805,6 +805,7 @@ dependencies = [
  "log",
  "merge",
  "metrics",
+ "metrics_events",
  "minijail",
  "net_util",
  "once_cell",
