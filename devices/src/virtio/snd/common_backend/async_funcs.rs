@@ -890,8 +890,8 @@ pub async fn handle_ctrl_queue(
                         streams,
                         VirtioSndPcmCmd::with_set_params_and_direction(set_params, dir),
                         writer,
-                        card_index,
                         stream_id,
+                        card_index,
                     )
                     .await
                 }
