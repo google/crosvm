@@ -18,6 +18,9 @@ mod ffi {
     #![allow(non_snake_case)]
     #![allow(dead_code)]
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+    /// SAFETY: `AVCodec` instances are all static and thus safe to share.
+    unsafe impl Sync for AVCodec {}
 }
 pub mod swscale;
 
