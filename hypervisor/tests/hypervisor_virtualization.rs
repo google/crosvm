@@ -1738,7 +1738,7 @@ fn test_multiple_interrupt_injection() {
         .flat_map(u32::to_ne_bytes)
         .collect::<Vec<_>>();
     setup.add_memory_initialization(GuestAddress(cur_addr.into()), idt.clone());
-    assert_eq!(Ok(idt.len()), usize::try_from(idt_size));
+    assert_eq!(idt.len(), usize::from(idt_size));
     cur_addr += u32::try_from(idt.len()).expect("IDT size should be within u32");
 
     assert_eq!(cur_addr, isr_intr_32_addr);
@@ -1971,7 +1971,7 @@ fn test_interrupt_ready_when_normally_not_interruptible() {
                     InIsr,
                 ]
             );
-            assert_eq!(Ok(regs.rip), u64::try_from(cur_addr));
+            assert_eq!(regs.rip, u64::from(cur_addr));
         },
         |_, exit, vcpu: &mut dyn VcpuX86_64| {
             match exit {
