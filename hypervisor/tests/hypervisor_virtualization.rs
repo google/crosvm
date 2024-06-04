@@ -1469,6 +1469,83 @@ fn test_flags_register() {
 }
 
 global_asm_data!(
+    test_vmm_set_segs_code,
+    ".code16",
+    "mov ax, ds:0",
+    "mov bx, es:0",
+    "mov cx, fs:0",
+    "mov dx, gs:0",
+    "mov sp, ss:0",
+    "hlt",
+);
+
+// This tests that the VMM can set segment registers and have them used by the VM.
+#[test]
+fn test_vmm_set_segs() {
+    let start_addr = 0x1000;
+    let data_addr = 0x2000;
+    let setup = TestSetup {
+        assembly: test_vmm_set_segs_code::data().to_vec(),
+        load_addr: GuestAddress(start_addr),
+        mem_size: 0x4000,
+        initial_regs: Regs {
+            rip: start_addr,
+            rflags: 0x42,
+            ..Default::default()
+        },
+        // simple memory pattern where the value of a byte is (addr - data_addr + 1)
+        memory_initializations: vec![(GuestAddress(data_addr), (1..=32).collect())],
+        extra_vm_setup: Some(Box::new(move |vcpu: &mut dyn VcpuX86_64, _| {
+            let mut sregs = vcpu.get_sregs().expect("failed to get sregs");
+            sregs.ds.base = data_addr;
+            sregs.ds.selector = 0;
+            sregs.es.base = data_addr + 4;
+            sregs.es.selector = 0;
+            sregs.fs.base = data_addr + 8;
+            sregs.fs.selector = 0;
+            sregs.gs.base = data_addr + 12;
+            sregs.gs.selector = 0;
+            sregs.ss.base = data_addr + 16;
+            sregs.ss.selector = 0;
+            vcpu.set_sregs(&sregs).expect("failed to set sregs");
+        })),
+        ..Default::default()
+    };
+
+    run_tests!(
+        setup,
+        |_, regs, sregs| {
+            assert_eq!(sregs.ds.base, data_addr);
+            assert_eq!(sregs.es.base, data_addr + 4);
+            assert_eq!(sregs.fs.base, data_addr + 8);
+            assert_eq!(sregs.gs.base, data_addr + 12);
+            assert_eq!(sregs.ss.base, data_addr + 16);
+
+            // ax was loaded from ds:0, which has offset 0, so is [1, 2]
+            assert_eq!(regs.rax, 0x0201);
+            // bx was loaded from es:0, which has offset 4, so is [5, 6]
+            assert_eq!(regs.rbx, 0x0605);
+            // cx was loaded from fs:0, which has offset 8, so is [9, 10]
+            assert_eq!(regs.rcx, 0x0a09);
+            // dx was loaded from gs:0, which has offset 12, so is [13, 14]
+            assert_eq!(regs.rdx, 0x0e0d);
+            // sp was loaded from ss:0, which has offset 16, so is [17, 18]
+            assert_eq!(regs.rsp, 0x1211);
+
+            let expect_rip_addr = start_addr
+                + u64::try_from(test_vmm_set_segs_code::data().len())
+                    .expect("the code length should within the range of u64");
+            assert_eq!(
+                regs.rip, expect_rip_addr,
+                "Expected RIP at {:#x}",
+                expect_rip_addr
+            );
+        },
+        |_, exit, _| matches!(exit, VcpuExit::Hlt)
+    );
+}
+
+global_asm_data!(
     test_set_cr_vmm_code,
     ".code16",
     "mov eax, cr0",
