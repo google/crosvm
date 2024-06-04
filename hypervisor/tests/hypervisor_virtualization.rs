@@ -2222,3 +2222,64 @@ fn test_request_interrupt_window() {
         }
     );
 }
+
+#[cfg(any(feature = "whpx", feature = "haxm"))]
+#[test]
+fn test_fsgsbase() {
+    global_asm_data!(
+        pub fsgsbase_asm,
+        ".code64",
+        "wrfsbase rax",
+        "wrgsbase rbx",
+        "rdfsbase rcx",
+        "rdgsbase rdx",
+        "mov rax, fs:0",
+        "mov rbx, gs:0",
+        "hlt"
+    );
+
+    let code_addr = 0x1000;
+    let fs = 0x10000;
+    let gs = 0x10100;
+
+    let setup = TestSetup {
+        assembly: fsgsbase_asm::data().to_vec(),
+        mem_size: 0x11000,
+        load_addr: GuestAddress(code_addr),
+        initial_regs: Regs {
+            rax: fs,
+            rbx: gs,
+            rip: code_addr,
+            rflags: 0x2,
+            ..Default::default()
+        },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+
+            let mut sregs = vcpu.get_sregs().expect("unable to get sregs");
+            sregs.cr4 |= 1 << 16; // FSGSBASE (bit 16)
+            vcpu.set_sregs(&sregs).expect("unable to set sregs");
+        })),
+        memory_initializations: vec![
+            (GuestAddress(fs), [0xaa; 8].into()),
+            (GuestAddress(gs), [0xbb; 8].into()),
+        ],
+        ..Default::default()
+    };
+
+    let regs_matcher = move |_: HypervisorType, regs: &Regs, _: &_| {
+        assert_eq!(regs.rcx, fs);
+        assert_eq!(regs.rdx, gs);
+        assert_eq!(regs.rax, 0xaaaaaaaaaaaaaaaa);
+        assert_eq!(regs.rbx, 0xbbbbbbbbbbbbbbbb);
+    };
+
+    let exit_matcher = |_, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match exit {
+        VcpuExit::Hlt => {
+            true // Break VM runloop
+        }
+        r => panic!("unexpected exit reason: {:?}", r),
+    };
+
+    run_tests!(setup, regs_matcher, exit_matcher);
+}
