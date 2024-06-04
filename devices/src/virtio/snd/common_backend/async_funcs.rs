@@ -190,7 +190,7 @@ async fn process_pcm_ctrl(
             .map_err(Error::WriteResponse),
         Err(Error::OperationNotSupported) => {
             error!(
-                "[Device{}] {} for stream id={} failed. Error code: VIRTIO_SND_S_NOT_SUPP.",
+                "[Card {}] {} for stream id={} failed. Error code: VIRTIO_SND_S_NOT_SUPP.",
                 card_index, cmd, stream_id
             );
 
@@ -202,7 +202,7 @@ async fn process_pcm_ctrl(
             // Runtime/internal error would be more appropriate, but there's
             // no such error type
             error!(
-                "[Device{}] {} for stream id={} failed. Error code: VIRTIO_SND_S_IO_ERR. Actual error: {}",
+                "[Card {}] {} for stream id={} failed. Error code: VIRTIO_SND_S_IO_ERR. Actual error: {}",
                 card_index, cmd, stream_id, e
             );
             writer
