@@ -1379,24 +1379,22 @@ fn test_rdtsc_instruction() {
 global_asm_data!(
     test_register_access_code,
     ".code16",
-    "jz fin",
     "xchg ax, bx",
     "xchg cx, dx",
     "xchg sp, bp",
     "xchg si, di",
-    "cmp ax, 1",
-    "fin:",
     "hlt",
 );
 
 // This tests that we can write and read GPRs to/from the VM.
 #[test]
 fn test_register_access() {
+    let start_addr = 0x1000;
     let setup = TestSetup {
         assembly: test_register_access_code::data().to_vec(),
-        load_addr: GuestAddress(0x1000),
+        load_addr: GuestAddress(start_addr),
         initial_regs: Regs {
-            rip: 0x1000,
+            rip: start_addr,
             rax: 2,
             rbx: 1,
             rcx: 4,
@@ -1422,8 +1420,49 @@ fn test_register_access() {
             assert_eq!(regs.rbp, 6);
             assert_eq!(regs.rsi, 7);
             assert_eq!(regs.rdi, 8);
-            assert_ne!(regs.rflags & 0x40, 0); // zero flag is set
-            assert_eq!(regs.rip, 0x100d); // after hlt
+            assert_eq!(
+                regs.rip,
+                start_addr + test_register_access_code::data().len() as u64
+            );
+        },
+        |_, exit, _| matches!(exit, VcpuExit::Hlt)
+    );
+}
+
+global_asm_data!(
+    test_flags_register_code,
+    ".code16",
+    "jnz fin",
+    "test ax, ax",
+    "fin:",
+    "hlt",
+);
+
+// This tests that we can get/set the flags register from the VMM.
+#[test]
+fn test_flags_register() {
+    let start_addr = 0x1000;
+    let setup = TestSetup {
+        assembly: test_flags_register_code::data().to_vec(),
+        load_addr: GuestAddress(start_addr),
+        initial_regs: Regs {
+            rip: start_addr,
+            rax: 0xffffffff,
+            rflags: 0x42, // zero flag set, sign flag clear
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    run_tests!(
+        setup,
+        |_, regs, _| {
+            assert_eq!(regs.rflags & 0x40, 0); // zero flag is clear
+            assert_ne!(regs.rflags & 0x80, 0); // sign flag is set
+            assert_eq!(
+                regs.rip,
+                start_addr + test_flags_register_code::data().len() as u64
+            );
         },
         |_, exit, _| matches!(exit, VcpuExit::Hlt)
     );
