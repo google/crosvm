@@ -282,7 +282,7 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
 #[no_mangle]
 pub extern "C" fn rutabaga_finish(ptr: &mut *mut rutabaga) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        unsafe { Box::from_raw(*ptr) };
+        let _ = unsafe { Box::from_raw(*ptr) };
         *ptr = null_mut();
         NO_ERROR
     }))
