@@ -7,6 +7,7 @@
 #![cfg(any(target_os = "android", target_os = "linux"))]
 
 use std::ffi::CString;
+use std::fs::read_to_string;
 use std::fs::OpenOptions;
 use std::io::Read;
 use std::io::Write;
@@ -107,17 +108,7 @@ fn run_vhost_user_console_multiport_test_output(config: VmConfig) -> anyhow::Res
         vm.exec_in_guest(format!("echo \"hello {}\" > /dev/{}", port, port).as_str())
             .expect("Failed to echo data to port");
 
-        let mut output_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .append(true)
-            .open(&file_path[i].0)
-            .expect("vu-console: open output failed");
-
-        let mut data = String::new();
-        output_file
-            .read_to_string(&mut data)
-            .expect("vu-console: read data failed");
+        let data = read_to_string(&file_path[i].0).expect("vu-console: read output failed");
 
         assert_eq!(data.trim(), format!("hello {}", port).as_str());
     }
