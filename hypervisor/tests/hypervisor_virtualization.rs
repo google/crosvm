@@ -2137,3 +2137,88 @@ fn test_enter_long_mode() {
 
     run_tests!(setup, regs_matcher, exit_matcher);
 }
+
+#[test]
+fn test_request_interrupt_window() {
+    global_asm_data!(
+        assembly,
+        ".code16",
+        // Disable the interrupt, and the interrupt window shouldn't cause a vcpu exit until the
+        // interrupt is enabled again.
+        "cli",
+        // vcpu exit here to request an interrupt window when interrupt is not ready. We can't use
+        // hlt for VMEXIT, because HAXM unconditionally allows interrupt injection for hlt.
+        "out 0x10, ax",
+        // Enable the interrupt.
+        "sti",
+        // Another instruction window for interrupt delivery after sti. We shouldn't receive the
+        // interrupt window exit until we complete this instruction. We use another intercepted
+        // instruction here to make sure the hypervisor doesn't shadow the not delivered interrupt
+        // request window on an intercepted instruction.
+        "out 0x10, ax",
+        // WHPX requires another not intercepted instruction to restore from the not interruptible
+        // state.
+        "nop",
+        // The interrupt window exit should happen either right before nop or right after nop.
+        "hlt",
+    );
+
+    let assembly = assembly::data().to_vec();
+    let setup = TestSetup {
+        assembly: assembly.clone(),
+        load_addr: GuestAddress(0x1000),
+        initial_regs: Regs {
+            rip: 0x1000,
+            rflags: 2,
+            ..Default::default()
+        },
+        intercept_intr: true,
+        ..Default::default()
+    };
+
+    run_tests!(
+        setup,
+        |_, regs, _| assert_eq!(regs.rip, 0x1000 + assembly.len() as u64),
+        {
+            let mut io_counter = 0;
+            let mut irq_window_received = false;
+            move |hypervisor_type, exit, vcpu: &mut dyn VcpuX86_64| {
+                let is_irq_window = if hypervisor_type == HypervisorType::Haxm {
+                    matches!(exit, VcpuExit::Intr) && io_counter == 2
+                } else {
+                    matches!(exit, VcpuExit::IrqWindowOpen)
+                };
+                if is_irq_window {
+                    assert_eq!(io_counter, 2);
+                    assert!(vcpu.ready_for_interrupt());
+                    vcpu.set_interrupt_window_requested(false);
+
+                    irq_window_received = true;
+                    return false;
+                }
+                match exit {
+                    VcpuExit::Intr => false,
+                    VcpuExit::Io => {
+                        // We are always handling out IO port, so no data to return.
+                        vcpu.handle_io(&mut |_| None)
+                            .expect("should handle IO successfully");
+
+                        assert!(!vcpu.ready_for_interrupt());
+
+                        // Only set the interrupt window request on the first out instruction.
+                        if io_counter == 0 {
+                            vcpu.set_interrupt_window_requested(true);
+                        }
+                        io_counter += 1;
+                        false
+                    }
+                    VcpuExit::Hlt => {
+                        assert!(irq_window_received);
+                        true
+                    }
+                    r => panic!("unexpected VMEXIT: {:?}", r),
+                }
+            }
+        }
+    );
+}
