@@ -1817,7 +1817,9 @@ pub struct RunCommand {
     ///        is used to name the memory area
     ///     swap-interval-ms=NUM - (Experimental) Interval
     ///        in milliseconds for periodic swap out of
-    ///        memory mapping created by this device
+    ///        memory mapping created by this device. 0
+    ///        means the memory mapping won't be swapped
+    ///        out by crosvm
     pub pmem: Vec<PmemOption>,
 
     #[argh(option, arg_name = "PATH")]

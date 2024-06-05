@@ -331,24 +331,22 @@ fn run_worker(
     let kill = async_utils::await_and_exit(&ex, kill_evt);
     pin_mut!(kill);
 
-    match swap_interval {
-        None => {
-            if let Err(e) = ex.run_until(select3(queue_fut, resample, kill)) {
-                error!("error happened in executor: {}", e);
-            }
+    let interval = swap_interval.unwrap_or(Duration::ZERO);
+    if interval.is_zero() {
+        if let Err(e) = ex.run_until(select3(queue_fut, resample, kill)) {
+            error!("error happened in executor: {}", e);
         }
-        Some(interval) => {
-            let pageout_fut = pageout(
-                &ex,
-                interval,
-                pmem_device_tube,
-                mapping_arena_slot,
-                mapping_size,
-            );
-            pin_mut!(pageout_fut);
-            if let Err(e) = ex.run_until(select4(queue_fut, resample, kill, pageout_fut)) {
-                error!("error happened in executor: {}", e);
-            }
+    } else {
+        let pageout_fut = pageout(
+            &ex,
+            interval,
+            pmem_device_tube,
+            mapping_arena_slot,
+            mapping_size,
+        );
+        pin_mut!(pageout_fut);
+        if let Err(e) = ex.run_until(select4(queue_fut, resample, kill, pageout_fut)) {
+            error!("error happened in executor: {}", e);
         }
     }
 }
