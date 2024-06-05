@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::btree_map;
 use std::collections::BTreeMap;
 
 use base::pagesize;
@@ -270,36 +271,34 @@ impl SystemAllocator {
     }
 
     fn get_pci_allocator_mut(&mut self, bus: u8) -> Option<&mut AddressAllocator> {
-        // pci root is 00:00.0, Bus 0 next device is 00:01.0 with mandatory function
-        // number zero.
-        if self.pci_allocator.get(&bus).is_none() {
-            let base = if bus == 0 { 8 } else { 0 };
+        match self.pci_allocator.entry(bus) {
+            btree_map::Entry::Occupied(entry) => Some(entry.into_mut()),
+            btree_map::Entry::Vacant(entry) => {
+                // pci root is 00:00.0, Bus 0 next device is 00:01.0 with mandatory function number
+                // zero.
+                let base = if bus == 0 { 8 } else { 0 };
 
-            // Each bus supports up to 32 (devices) x 8 (functions).
-            // Prefer allocating at device granularity (preferred_align = 8), but fall back to
-            // allocating individual functions (min_align = 1) when we run out of devices.
-            match AddressAllocator::new(
-                AddressRange {
-                    start: base,
-                    end: (32 * 8) - 1,
-                },
-                Some(1),
-                Some(8),
-            ) {
-                Ok(v) => self.pci_allocator.insert(bus, v),
-                Err(_) => return None,
-            };
+                // Each bus supports up to 32 (devices) x 8 (functions).
+                // Prefer allocating at device granularity (preferred_align = 8), but fall back to
+                // allocating individual functions (min_align = 1) when we run out of devices.
+                let pci_alloc = AddressAllocator::new(
+                    AddressRange {
+                        start: base,
+                        end: (32 * 8) - 1,
+                    },
+                    Some(1),
+                    Some(8),
+                )
+                .ok()?;
+
+                Some(entry.insert(pci_alloc))
+            }
         }
-        self.pci_allocator.get_mut(&bus)
     }
 
     // Check whether devices exist or not on the specified bus
     pub fn pci_bus_empty(&self, bus: u8) -> bool {
-        if self.pci_allocator.get(&bus).is_none() {
-            true
-        } else {
-            false
-        }
+        !self.pci_allocator.contains_key(&bus)
     }
 
     /// Allocate PCI slot location.

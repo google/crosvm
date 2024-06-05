@@ -221,7 +221,7 @@ impl HotPlugBus for PcieDownstreamPort {
         if !self.pcie_port.hotplug_implemented() {
             bail!("hotplug not implemented.");
         }
-        if self.downstream_devices.get(&addr).is_none() {
+        if !self.downstream_devices.contains_key(&addr) {
             bail!("no downstream devices.");
         }
         if !self.pcie_port.is_hotplug_ready() {

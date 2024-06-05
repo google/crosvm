@@ -361,7 +361,7 @@ impl VfioContainer {
     }
 
     fn is_group_set(&self, group_id: u32) -> bool {
-        self.groups.get(&group_id).is_some()
+        self.groups.contains_key(&group_id)
     }
 
     fn check_extension(&self, val: IommuType) -> bool {
