@@ -5,7 +5,10 @@
 #![cfg(target_os = "linux")]
 
 use std::collections::BTreeSet;
+use std::fs::create_dir;
+use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::BufWriter;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -132,15 +135,26 @@ fn collect_paths(dir: &Path) -> BTreeSet<(String, PathBuf)> {
         .collect()
 }
 
-fn assert_eq_dirs(dir1: &Path, dir2: &Path) {
-    let paths1 = collect_paths(dir1);
-    let paths2 = collect_paths(dir2);
+fn assert_eq_dirs(td: &TempDir, dir: &Path, disk: &PathBuf) {
+    // dump the disk contents to `dump_dir`.
+    let dump_dir = td.path().join("dump");
+    std::fs::create_dir(&dump_dir).unwrap();
+    run_debugfs_cmd(
+        &[&format!(
+            "rdump / {}",
+            dump_dir.as_os_str().to_str().unwrap()
+        )],
+        disk,
+    );
+
+    let paths1 = collect_paths(dir);
+    let paths2 = collect_paths(&dump_dir);
     if paths1.len() != paths2.len() {
         panic!(
             "number of entries mismatch: {:?}={:?}, {:?}={:?}",
-            dir1,
+            dir,
             paths1.len(),
-            dir2,
+            dump_dir,
             paths2.len()
         );
     }
@@ -160,46 +174,118 @@ fn assert_eq_dirs(dir1: &Path, dir2: &Path) {
             m2.permissions(),
             "permissions mismatch ({name1})"
         );
+
+        if m1.file_type().is_file() {
+            let c1 = std::fs::read_to_string(path1).unwrap();
+            let c2 = std::fs::read_to_string(path2).unwrap();
+            assert_eq!(c1, c2, "content mismatch ({name1})");
+        }
     }
 }
 
-fn create_test_data(root: &Path) {
-    // root
+#[test]
+fn test_simple_dir() {
+    // testdata
     // ├── a.txt
     // ├── b.txt
     // └── dir
     //     └── c.txt
-    std::fs::create_dir(root).unwrap();
-    std::fs::File::create(root.join("a.txt")).unwrap();
-    std::fs::File::create(root.join("b.txt")).unwrap();
-    std::fs::create_dir(root.join("dir")).unwrap();
-    std::fs::File::create(root.join("dir/c.txt")).unwrap();
-}
-
-#[test]
-fn test_mkfs_dir() {
     let td = tempdir().unwrap();
-    let testdata_dir = td.path().join("testdata");
-    create_test_data(&testdata_dir);
+    let dir = td.path().join("testdata");
+    create_dir(&dir).unwrap();
+    File::create(dir.join("a.txt")).unwrap();
+    File::create(dir.join("b.txt")).unwrap();
+    create_dir(dir.join("dir")).unwrap();
+    File::create(dir.join("dir/c.txt")).unwrap();
     let disk = mkfs(
         &td,
         &Config {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
         },
-        Some(&testdata_dir),
+        Some(&dir),
     );
 
-    // dump the disk contents to `dump_dir`.
-    let dump_dir = td.path().join("dump");
-    std::fs::create_dir(&dump_dir).unwrap();
-    run_debugfs_cmd(
-        &[&format!(
-            "rdump / {}",
-            dump_dir.as_os_str().to_str().unwrap()
-        )],
-        &disk,
+    assert_eq_dirs(&td, &dir, &disk);
+}
+
+#[test]
+fn test_nested_dirs() {
+    // testdata
+    // └── dir1
+    //     ├── a.txt
+    //     └── dir2
+    //         ├── b.txt
+    //         └── dir3
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+    create_dir(&dir).unwrap();
+    let dir1 = &dir.join("dir1");
+    create_dir(dir1).unwrap();
+    File::create(dir1.join("a.txt")).unwrap();
+    let dir2 = dir1.join("dir2");
+    create_dir(&dir2).unwrap();
+    File::create(dir2.join("b.txt")).unwrap();
+    let dir3 = dir2.join("dir3");
+    create_dir(dir3).unwrap();
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group: 2048,
+            inodes_per_group: 4096,
+        },
+        Some(&dir),
     );
 
-    assert_eq_dirs(&testdata_dir, &dump_dir);
+    assert_eq_dirs(&td, &dir, &disk);
+}
+
+#[test]
+fn test_file_contents() {
+    // testdata
+    // ├── hello.txt (content: "Hello!\n")
+    // └── big.txt (content: 10KB of data, which doesn't fit in one block)
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+    create_dir(&dir).unwrap();
+    let mut hello = File::create(&dir.join("hello.txt")).unwrap();
+    hello.write_all(b"Hello!\n").unwrap();
+    let mut big = BufWriter::new(File::create(&dir.join("big.txt")).unwrap());
+    let data = b"123456789\n";
+    for _ in 0..1024 {
+        big.write_all(data).unwrap();
+    }
+
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group: 2048,
+            inodes_per_group: 4096,
+        },
+        Some(&dir),
+    );
+
+    assert_eq_dirs(&td, &dir, &disk);
+}
+
+#[test]
+fn test_max_file_name() {
+    // testdata
+    // └── aa..aa (whose file name length is 255, which is the ext2/3/4's maximum file name length)
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+    create_dir(&dir).unwrap();
+    let long_name = "a".repeat(255);
+    File::create(dir.join(long_name)).unwrap();
+
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group: 2048,
+            inodes_per_group: 4096,
+        },
+        Some(&dir),
+    );
+
+    assert_eq_dirs(&td, &dir, &disk);
 }
