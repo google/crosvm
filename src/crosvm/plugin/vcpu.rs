@@ -480,15 +480,13 @@ impl PluginVcpu {
                     let mut stream = CodedOutputStream::vec(&mut response_buffer);
                     match response.write_length_delimited_to(&mut stream) {
                         Ok(_) => {
-                            match stream.flush() {
-                                Ok(_) => {}
-                                Err(e) => error!("failed to flush to vec: {}", e),
+                            if let Err(e) = stream.flush() {
+                                error!("failed to flush to vec: {}", e);
                             }
                             drop(stream);
                             let mut write_pipe = &self.write_pipe;
-                            match write_pipe.write(&response_buffer[..]) {
-                                Ok(_) => {}
-                                Err(e) => error!("failed to write to pipe: {}", e),
+                            if let Err(e) = write_pipe.write_all(&response_buffer) {
+                                error!("failed to write to pipe: {}", e);
                             }
                         }
                         Err(e) => error!("failed to write to buffer: {}", e),
