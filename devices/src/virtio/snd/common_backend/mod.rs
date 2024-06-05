@@ -34,7 +34,6 @@ use futures::future::FusedFuture;
 use futures::join;
 use futures::pin_mut;
 use futures::select;
-use futures::Future;
 use futures::FutureExt;
 use serde::Deserialize;
 use serde::Serialize;
@@ -747,8 +746,8 @@ fn run_worker_once(
     streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     interrupt: Interrupt,
     snd_data: &SndData,
-    mut f_kill: &mut (impl Future<Output = anyhow::Result<()>> + FusedFuture + Unpin),
-    mut f_resample: &mut (impl Future<Output = anyhow::Result<()>> + FusedFuture + Unpin),
+    mut f_kill: &mut (impl FusedFuture<Output = anyhow::Result<()>> + Unpin),
+    mut f_resample: &mut (impl FusedFuture<Output = anyhow::Result<()>> + Unpin),
     ctrl_queue: Rc<AsyncRwLock<Queue>>,
     ctrl_queue_evt: &mut EventAsync,
     tx_queue: Rc<AsyncRwLock<Queue>>,
