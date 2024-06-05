@@ -25,8 +25,7 @@ use base::*;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 use devices::serial_device::SerialType;
-use devices::vfio::VfioCommonSetup;
-use devices::vfio::VfioCommonTrait;
+use devices::vfio::VfioContainerManager;
 use devices::virtio;
 use devices::virtio::block::DiskOption;
 use devices::virtio::console::asynchronous::AsyncConsole;
@@ -1331,8 +1330,10 @@ pub fn create_vfio_device(
     coiommu_endpoints: Option<&mut Vec<u16>>,
     iommu_dev: IommuDevType,
     dt_symbol: Option<String>,
+    vfio_container_manager: &mut VfioContainerManager,
 ) -> DeviceResult<(VfioDeviceVariant, Option<Minijail>, Option<VfioWrapper>)> {
-    let vfio_container = VfioCommonSetup::vfio_get_container(iommu_dev, Some(vfio_path))
+    let vfio_container = vfio_container_manager
+        .get_container(iommu_dev, Some(vfio_path))
         .context("failed to get vfio container")?;
 
     let (vfio_host_tube_mem, vfio_device_tube_mem) =

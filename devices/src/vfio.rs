@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::fs::File;
@@ -58,8 +57,6 @@ use crate::IommuDevType;
 #[sorted]
 #[derive(Error, Debug)]
 pub enum VfioError {
-    #[error("failed to borrow global vfio container")]
-    BorrowVfioContainer,
     #[error("failed to duplicate VfioContainer")]
     ContainerDupError,
     #[error("failed to set container's IOMMU driver type as {0:?}: {1}")]
@@ -867,122 +864,91 @@ impl AsRawDescriptor for VfioGroup {
     }
 }
 
-/// A helper trait for managing VFIO setup
-pub trait VfioCommonTrait: Send + Sync {
+/// A helper struct for managing VFIO containers
+#[derive(Default)]
+pub struct VfioContainerManager {
+    /// One VFIO container shared by all VFIO devices that don't attach to any IOMMU device.
+    no_iommu_container: Option<Arc<Mutex<VfioContainer>>>,
+
+    /// For IOMMU enabled devices, all VFIO groups that share the same IOVA space are managed by
+    /// one VFIO container.
+    iommu_containers: Vec<Arc<Mutex<VfioContainer>>>,
+
+    /// One VFIO container shared by all VFIO devices that attach to the CoIOMMU device.
+    coiommu_container: Option<Arc<Mutex<VfioContainer>>>,
+
+    /// One VFIO container shared by all VFIO devices that attach to pKVM.
+    pkvm_iommu_container: Option<Arc<Mutex<VfioContainer>>>,
+}
+
+impl VfioContainerManager {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// The single place to create a VFIO container for a PCI endpoint.
     ///
     /// The policy to determine whether an individual or a shared VFIO container
     /// will be created for this device is governed by the physical PCI topology,
-    /// and the argument iommu_enabled.
+    /// and the argument iommu_type.
     ///
     ///  # Arguments
     ///
     ///  * `sysfspath` - the path to the PCI device, e.g. /sys/bus/pci/devices/0000:02:00.0
-    ///  * `iommu_enabled` - whether virtio IOMMU is enabled on this device
-    fn vfio_get_container<P: AsRef<Path>>(
-        iommu_dev: IommuDevType,
-        sysfspath: Option<P>,
-    ) -> Result<Arc<Mutex<VfioContainer>>>;
-}
-
-thread_local! {
-
-    // One VFIO container is shared by all VFIO devices that don't
-    // attach to the virtio IOMMU device
-    static NO_IOMMU_CONTAINER: RefCell<Option<Arc<Mutex<VfioContainer>>>> = RefCell::new(None);
-
-    // For IOMMU enabled devices, all VFIO groups that share the same IOVA space
-    // are managed by one VFIO container
-    static IOMMU_CONTAINERS: RefCell<Option<Vec<Arc<Mutex<VfioContainer>>>>> = RefCell::new(Some(Default::default()));
-
-    // One VFIO container is shared by all VFIO devices that
-    // attach to the CoIOMMU device
-    static COIOMMU_CONTAINER: RefCell<Option<Arc<Mutex<VfioContainer>>>> = RefCell::new(None);
-
-    // One VFIO container is shared by all VFIO devices that attach to pKVM
-    static PKVM_IOMMU_CONTAINER: RefCell<Option<Arc<Mutex<VfioContainer>>>> = RefCell::new(None);
-}
-
-pub struct VfioCommonSetup;
-
-impl VfioCommonTrait for VfioCommonSetup {
-    fn vfio_get_container<P: AsRef<Path>>(
-        iommu_dev: IommuDevType,
+    ///  * `iommu_type` - which type of IOMMU is enabled on this device
+    pub fn get_container<P: AsRef<Path>>(
+        &mut self,
+        iommu_type: IommuDevType,
         sysfspath: Option<P>,
     ) -> Result<Arc<Mutex<VfioContainer>>> {
-        match iommu_dev {
+        match iommu_type {
             IommuDevType::NoIommu => {
-                // One VFIO container is used for all IOMMU disabled groups
-                NO_IOMMU_CONTAINER.with(|v| {
-                    if v.borrow().is_some() {
-                        if let Some(ref container) = *v.borrow() {
-                            Ok(container.clone())
-                        } else {
-                            Err(VfioError::BorrowVfioContainer)
-                        }
-                    } else {
-                        let container = Arc::new(Mutex::new(VfioContainer::new()?));
-                        *v.borrow_mut() = Some(container.clone());
-                        Ok(container)
-                    }
-                })
+                // One VFIO container is used for all IOMMU disabled groups.
+                if let Some(container) = &self.no_iommu_container {
+                    Ok(container.clone())
+                } else {
+                    let container = Arc::new(Mutex::new(VfioContainer::new()?));
+                    self.no_iommu_container = Some(container.clone());
+                    Ok(container)
+                }
             }
             IommuDevType::VirtioIommu => {
                 let path = sysfspath.ok_or(VfioError::InvalidPath)?;
                 let group_id = VfioGroup::get_group_id(path)?;
 
-                // One VFIO container is used for all devices belong to one VFIO group
+                // One VFIO container is used for all devices that belong to one VFIO group.
                 // NOTE: vfio_wrapper relies on each container containing exactly one group.
-                IOMMU_CONTAINERS.with(|v| {
-                    if let Some(ref mut containers) = *v.borrow_mut() {
-                        let container = containers
-                            .iter()
-                            .find(|container| container.lock().is_group_set(group_id));
-
-                        match container {
-                            None => {
-                                let container = Arc::new(Mutex::new(VfioContainer::new()?));
-                                containers.push(container.clone());
-                                Ok(container)
-                            }
-                            Some(container) => Ok(container.clone()),
-                        }
-                    } else {
-                        Err(VfioError::BorrowVfioContainer)
-                    }
-                })
+                if let Some(container) = self
+                    .iommu_containers
+                    .iter()
+                    .find(|container| container.lock().is_group_set(group_id))
+                {
+                    Ok(container.clone())
+                } else {
+                    let container = Arc::new(Mutex::new(VfioContainer::new()?));
+                    self.iommu_containers.push(container.clone());
+                    Ok(container)
+                }
             }
             IommuDevType::CoIommu => {
                 // One VFIO container is used for devices attached to CoIommu
-                COIOMMU_CONTAINER.with(|v| {
-                    if v.borrow().is_some() {
-                        if let Some(ref container) = *v.borrow() {
-                            Ok(container.clone())
-                        } else {
-                            Err(VfioError::BorrowVfioContainer)
-                        }
-                    } else {
-                        let container = Arc::new(Mutex::new(VfioContainer::new()?));
-                        *v.borrow_mut() = Some(container.clone());
-                        Ok(container)
-                    }
-                })
+                if let Some(container) = &self.coiommu_container {
+                    Ok(container.clone())
+                } else {
+                    let container = Arc::new(Mutex::new(VfioContainer::new()?));
+                    self.coiommu_container = Some(container.clone());
+                    Ok(container)
+                }
             }
             IommuDevType::PkvmPviommu => {
                 // One VFIO container is used for devices attached to pKVM
-                PKVM_IOMMU_CONTAINER.with(|v| {
-                    if v.borrow().is_some() {
-                        if let Some(ref container) = *v.borrow() {
-                            Ok(container.clone())
-                        } else {
-                            Err(VfioError::BorrowVfioContainer)
-                        }
-                    } else {
-                        let container = Arc::new(Mutex::new(VfioContainer::new()?));
-                        *v.borrow_mut() = Some(container.clone());
-                        Ok(container)
-                    }
-                })
+                if let Some(container) = &self.pkvm_iommu_container {
+                    Ok(container.clone())
+                } else {
+                    let container = Arc::new(Mutex::new(VfioContainer::new()?));
+                    self.pkvm_iommu_container = Some(container.clone());
+                    Ok(container)
+                }
             }
         }
     }

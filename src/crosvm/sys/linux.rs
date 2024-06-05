@@ -79,8 +79,7 @@ use devices::create_devices_worker_thread;
 use devices::serial_device::SerialHardware;
 #[cfg(all(feature = "pvclock", target_arch = "x86_64"))]
 use devices::tsc::get_tsc_sync_mitigations;
-use devices::vfio::VfioCommonSetup;
-use devices::vfio::VfioCommonTrait;
+use devices::vfio::VfioContainerManager;
 #[cfg(feature = "gpu")]
 use devices::virtio;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
@@ -767,6 +766,7 @@ fn create_devices(
     iova_max_addr: &mut Option<u64>,
     #[cfg(feature = "registered_events")] registered_evt_q: &SendTube,
     #[cfg(feature = "pvclock")] pvclock_device_tube: Option<Tube>,
+    vfio_container_manager: &mut VfioContainerManager,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     #[cfg(feature = "balloon")]
@@ -791,6 +791,7 @@ fn create_devices(
                 Some(&mut coiommu_attached_endpoints),
                 vfio_dev.iommu,
                 vfio_dev.dt_symbol.clone(),
+                vfio_container_manager,
             )?;
             match dev {
                 VfioDeviceVariant::Pci(vfio_pci_device) => {
@@ -851,9 +852,9 @@ fn create_devices(
         #[cfg(not(feature = "balloon"))]
         let coiommu_tube: Option<Tube> = None;
         if !coiommu_attached_endpoints.is_empty() {
-            let vfio_container =
-                VfioCommonSetup::vfio_get_container(IommuDevType::CoIommu, None as Option<&Path>)
-                    .context("failed to get vfio container")?;
+            let vfio_container = vfio_container_manager
+                .get_container(IommuDevType::CoIommu, None as Option<&Path>)
+                .context("failed to get vfio container")?;
             let (coiommu_host_tube, coiommu_device_tube) =
                 Tube::pair().context("failed to create coiommu tube")?;
             vm_memory_control_tubes.push(VmMemoryTube {
@@ -1901,6 +1902,8 @@ where
         BTreeMap::new();
     let mut iova_max_addr: Option<u64> = None;
 
+    let mut vfio_container_manager = VfioContainerManager::new();
+
     // pvclock gets a tube for handling suspend/resume requests from the main thread.
     #[cfg(feature = "pvclock")]
     let (pvclock_host_tube, pvclock_device_tube) = if cfg.pvclock {
@@ -1941,6 +1944,7 @@ where
         &reg_evt_wrtube,
         #[cfg(feature = "pvclock")]
         pvclock_device_tube,
+        &mut vfio_container_manager,
     )?;
 
     #[cfg(feature = "pci-hotplug")]
@@ -2220,6 +2224,7 @@ where
         #[cfg(feature = "pvclock")]
         pvclock_host_tube,
         metrics_recv,
+        vfio_container_manager,
     )
 }
 
@@ -2332,6 +2337,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     iommu_host_tube: Option<&Tube>,
     device: &HotPlugDeviceInfo,
     #[cfg(feature = "swap")] swap_controller: &mut Option<SwapController>,
+    vfio_container_manager: &mut VfioContainerManager,
 ) -> Result<()> {
     let host_addr = PciAddress::from_path(&device.path)
         .context("failed to parse hotplug device's PCI address")?;
@@ -2407,6 +2413,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                     IommuDevType::NoIommu
                 },
                 None,
+                vfio_container_manager,
             )?;
             let vfio_pci_device = match vfio_device {
                 VfioDeviceVariant::Pci(pci) => Box::new(pci),
@@ -2811,6 +2818,7 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     device: &HotPlugDeviceInfo,
     add: bool,
     #[cfg(feature = "swap")] swap_controller: &mut Option<SwapController>,
+    vfio_container_manager: &mut VfioContainerManager,
 ) -> VmResponse {
     let iommu_host_tube = if cfg.vfio_isolate_hotplug {
         iommu_host_tube
@@ -2831,6 +2839,7 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
             device,
             #[cfg(feature = "swap")]
             swap_controller,
+            vfio_container_manager,
         )
     } else {
         remove_hotplug_device(linux, sys_allocator, iommu_host_tube, device)
@@ -2876,6 +2885,7 @@ struct ControlLoopState<'a, V: VmArch, Vcpu: VcpuArch> {
     registered_evt_tubes: &'a mut HashMap<RegisteredEvent, HashSet<AddressedProtoTube>>,
     #[cfg(feature = "pvclock")]
     pvclock_host_tube: Option<Arc<Tube>>,
+    vfio_container_manager: &'a mut VfioContainerManager,
 }
 
 fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
@@ -2914,6 +2924,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     add,
                     #[cfg(feature = "swap")]
                     state.swap_controller,
+                    state.vfio_container_manager,
                 )
             }
 
@@ -2921,6 +2932,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             {
                 // Suppress warnings.
                 let _ = (device, add);
+                let _ = &state.vfio_container_manager;
                 VmResponse::Ok
             }
         }
@@ -3309,6 +3321,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     #[cfg(feature = "pvclock")] pvclock_host_tube: Option<Tube>,
     metrics_tube: RecvTube,
+    mut vfio_container_manager: VfioContainerManager,
 ) -> Result<ExitState> {
     #[derive(EventToken)]
     enum Token {
@@ -3878,6 +3891,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             registered_evt_tubes: &mut registered_evt_tubes,
                             #[cfg(feature = "pvclock")]
                             pvclock_host_tube: pvclock_host_tube.clone(),
+                            vfio_container_manager: &mut vfio_container_manager,
                         };
                         let (exit_requested, mut ids_to_remove, add_tubes) =
                             process_vm_control_event(&mut state, id, socket)?;
