@@ -266,9 +266,9 @@ fn test_file_contents() {
     let td = tempdir().unwrap();
     let dir = td.path().join("testdata");
     create_dir(&dir).unwrap();
-    let mut hello = File::create(&dir.join("hello.txt")).unwrap();
+    let mut hello = File::create(dir.join("hello.txt")).unwrap();
     hello.write_all(b"Hello!\n").unwrap();
-    let mut big = BufWriter::new(File::create(&dir.join("big.txt")).unwrap());
+    let mut big = BufWriter::new(File::create(dir.join("big.txt")).unwrap());
     let data = b"123456789\n";
     for _ in 0..1024 {
         big.write_all(data).unwrap();

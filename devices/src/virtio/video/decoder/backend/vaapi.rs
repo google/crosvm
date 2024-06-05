@@ -491,6 +491,7 @@ impl<'a, T: AsBufferHandle> AsMut<[u8]> for BufferMapping<'a, T> {
 /// decoded and is waiting for us to release it (`Decoded`), or because we temporarily removed it
 /// from the decoder pool after a reset and are waiting for the client to tell us we can use it
 /// (`Held`).
+#[allow(dead_code)] // TODO: b/344974550
 enum BorrowedFrame {
     Decoded(Box<dyn DecodedHandle<Descriptor = BufferDescWithPicId>>),
     Held(Box<dyn AsRef<BufferDescWithPicId>>),

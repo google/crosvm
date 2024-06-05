@@ -269,7 +269,7 @@ impl Config {
     }
 
     pub fn with_stdout_hardware(mut self, hw_type: &str) -> Self {
-        self.console_hardware = hw_type.to_owned();
+        self.console_hardware = hw_type.into();
         self
     }
 
