@@ -115,6 +115,15 @@ pub struct TestSetup {
     pub extra_vm_setup: Option<Box<dyn Fn(&mut dyn VcpuX86_64, &mut dyn Vm) + Send>>,
     pub memory_initializations: Vec<(GuestAddress, Vec<u8>)>,
     pub expect_run_success: bool,
+
+    /// Whether the `exit_matcher` should recieve [`VcpuExit::Intr`]. Default to `false`.
+    ///
+    /// Hypervisors may occasinally receive [`VcpuExit::Intr`] if external interrupt intercept is
+    /// enabled. In such case, we should proceed to the next VCPU run to handle it. HAXM doesn't
+    /// distinguish between [`VcpuExit::Intr`] and [`VcpuExit::IrqWindowOpen`], so it may be
+    /// necessary to intercept [`VcpuExit::Intr`] for testing
+    /// [`VcpuX86_64::set_interrupt_window_requested`].
+    pub intercept_intr: bool,
 }
 
 impl Default for TestSetup {
@@ -127,21 +136,14 @@ impl Default for TestSetup {
             extra_vm_setup: None,
             memory_initializations: Vec::new(),
             expect_run_success: true,
+            intercept_intr: false,
         }
     }
 }
 
 impl TestSetup {
     pub fn new() -> Self {
-        TestSetup {
-            assembly: Vec::new(),
-            load_addr: GuestAddress(0),
-            mem_size: 0x2000,
-            initial_regs: Regs::default(),
-            extra_vm_setup: None,
-            memory_initializations: Vec::new(),
-            expect_run_success: true,
-        }
+        Default::default()
     }
 
     pub fn add_memory_initialization(&mut self, addr: GuestAddress, data: Vec<u8>) {
@@ -187,7 +189,8 @@ pub fn run_configurable_test<H: HypervisorTestSetup>(
     loop {
         match vcpu.run() {
             Ok(exit) => match exit {
-                VcpuExit::Intr => continue, // Handle interrupts by continuing the loop
+                // Handle interrupts by continuing the loop
+                VcpuExit::Intr if !setup.intercept_intr => continue,
                 other_exit => {
                     if !setup.expect_run_success {
                         panic!("Expected vcpu.run() to fail, but it succeeded");
