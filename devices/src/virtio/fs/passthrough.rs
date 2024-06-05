@@ -820,11 +820,7 @@ impl PassthroughFs {
     }
 
     fn find_inode(&self, inode: Inode) -> io::Result<Arc<InodeData>> {
-        self.inodes
-            .lock()
-            .get(&inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)
+        self.inodes.lock().get(&inode).cloned().ok_or_else(ebadf)
     }
 
     fn find_handle(&self, handle: Handle, inode: Inode) -> io::Result<Arc<HandleData>> {
@@ -832,7 +828,7 @@ impl PassthroughFs {
             .lock()
             .get(&handle)
             .filter(|hd| hd.inode == inode)
-            .map(Arc::clone)
+            .cloned()
             .ok_or_else(ebadf)
     }
 
