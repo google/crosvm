@@ -57,7 +57,7 @@ pub struct PflashParameters {
     pub block_size: u32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 enum State {
     ReadArray,
     ReadStatus,
@@ -232,7 +232,19 @@ impl BusDevice for Pflash {
 }
 
 impl Suspendable for Pflash {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::to_value((self.status, self.state))?)
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let (status, state) = serde_json::from_value(data)?;
+        self.status = status;
+        self.state = state;
+        Ok(())
+    }
+
     fn sleep(&mut self) -> anyhow::Result<()> {
+        // TODO(schuffelen): Flush the disk after lifting flush() from AsyncDisk to DiskFile
         Ok(())
     }
 
