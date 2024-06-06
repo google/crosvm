@@ -71,6 +71,9 @@ const RISCV64_KERNEL_OFFSET: u64 = 0x20_0000;
 const RISCV64_INITRD_ALIGN: u64 = 8;
 const RISCV64_FDT_ALIGN: u64 = 0x40_0000;
 
+// Maximum Linux riscv kernel command line size (arch/riscv/include/uapi/asm/setup.h).
+const RISCV64_CMDLINE_MAX_SIZE: usize = 1024;
+
 // This indicates the start of DRAM inside the physical address space.
 const RISCV64_PHYS_MEM_START: u64 = 0x8000_0000;
 
@@ -538,7 +541,7 @@ fn get_high_mmio_base_size(mem_size: u64, guest_phys_addr_bits: u8) -> (u64, u64
 }
 
 fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
-    let mut cmdline = kernel_cmdline::Cmdline::new(base::pagesize());
+    let mut cmdline = kernel_cmdline::Cmdline::new(RISCV64_CMDLINE_MAX_SIZE);
     cmdline.insert_str("panic=-1").unwrap();
     cmdline
 }

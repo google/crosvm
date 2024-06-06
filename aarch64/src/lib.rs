@@ -92,6 +92,9 @@ const AARCH64_KERNEL_OFFSET: u64 = 0;
 const AARCH64_FDT_MAX_SIZE: u64 = 0x200000;
 const AARCH64_INITRD_ALIGN: u64 = 0x1000000;
 
+// Maximum Linux arm64 kernel command line size (arch/arm64/include/uapi/asm/setup.h).
+const AARCH64_CMDLINE_MAX_SIZE: usize = 2048;
+
 // These constants indicate the address space used by the ARM vGIC.
 const AARCH64_GIC_DIST_SIZE: u64 = 0x10000;
 const AARCH64_GIC_CPUI_SIZE: u64 = 0x20000;
@@ -1126,7 +1129,7 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
 impl AArch64 {
     /// This returns a base part of the kernel command for this architecture
     fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
-        let mut cmdline = kernel_cmdline::Cmdline::new(base::pagesize());
+        let mut cmdline = kernel_cmdline::Cmdline::new(AARCH64_CMDLINE_MAX_SIZE);
         cmdline.insert_str("panic=-1").unwrap();
         cmdline
     }
