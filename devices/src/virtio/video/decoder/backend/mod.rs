@@ -104,7 +104,57 @@ pub trait DecoderSession {
     fn read_event(&mut self) -> VideoResult<DecoderEvent>;
 }
 
-pub trait DecoderBackend {
+impl<S: AsMut<dyn DecoderSession> + AsRef<dyn DecoderSession> + ?Sized> DecoderSession for S {
+    fn set_output_parameters(&mut self, buffer_count: usize, format: Format) -> VideoResult<()> {
+        self.as_mut().set_output_parameters(buffer_count, format)
+    }
+
+    fn decode(
+        &mut self,
+        resource_id: u32,
+        timestamp: u64,
+        resource: GuestResourceHandle,
+        offset: u32,
+        bytes_used: u32,
+    ) -> VideoResult<()> {
+        self.as_mut()
+            .decode(resource_id, timestamp, resource, offset, bytes_used)
+    }
+
+    fn flush(&mut self) -> VideoResult<()> {
+        self.as_mut().flush()
+    }
+
+    fn reset(&mut self) -> VideoResult<()> {
+        self.as_mut().reset()
+    }
+
+    fn clear_output_buffers(&mut self) -> VideoResult<()> {
+        self.as_mut().clear_output_buffers()
+    }
+
+    fn event_pipe(&self) -> &dyn AsRawDescriptor {
+        self.as_ref().event_pipe()
+    }
+
+    fn use_output_buffer(
+        &mut self,
+        picture_buffer_id: i32,
+        resource: GuestResource,
+    ) -> VideoResult<()> {
+        self.as_mut().use_output_buffer(picture_buffer_id, resource)
+    }
+
+    fn reuse_output_buffer(&mut self, picture_buffer_id: i32) -> VideoResult<()> {
+        self.as_mut().reuse_output_buffer(picture_buffer_id)
+    }
+
+    fn read_event(&mut self) -> VideoResult<DecoderEvent> {
+        self.as_mut().read_event()
+    }
+}
+
+pub trait DecoderBackend: Send {
     type Session: DecoderSession;
 
     /// Return the decoding capabilities for this backend instance.
@@ -112,6 +162,53 @@ pub trait DecoderBackend {
 
     /// Create a new decoding session for the passed `format`.
     fn new_session(&mut self, format: Format) -> VideoResult<Self::Session>;
+
+    /// Turn this backend into a trait object, allowing the same decoder to operate on a set of
+    /// different backends.
+    fn into_trait_object(self) -> Box<dyn DecoderBackend<Session = Box<dyn DecoderSession>>>
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(GenericDecoderBackend(self)) as Box<dyn DecoderBackend<Session = _>>
+    }
+}
+
+/// Type that changes the `Session` associated type to `Box<dyn DecoderSession>`, allowing us to
+/// use trait objects for backends.
+struct GenericDecoderBackend<S: DecoderBackend>(pub S);
+
+impl<S> DecoderBackend for GenericDecoderBackend<S>
+where
+    S: DecoderBackend,
+    <S as DecoderBackend>::Session: 'static,
+{
+    type Session = Box<dyn DecoderSession>;
+
+    fn get_capabilities(&self) -> Capability {
+        self.0.get_capabilities()
+    }
+
+    fn new_session(&mut self, format: Format) -> VideoResult<Self::Session> {
+        self.0
+            .new_session(format)
+            .map(|s| Box::new(s) as Box<dyn DecoderSession>)
+    }
+}
+
+impl<S> DecoderBackend for Box<S>
+where
+    S: ?Sized,
+    S: DecoderBackend,
+{
+    type Session = S::Session;
+
+    fn get_capabilities(&self) -> Capability {
+        self.as_ref().get_capabilities()
+    }
+
+    fn new_session(&mut self, format: Format) -> VideoResult<Self::Session> {
+        self.as_mut().new_session(format)
+    }
 }
 
 #[derive(Debug)]
