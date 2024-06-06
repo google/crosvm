@@ -67,7 +67,7 @@ impl TubeTokio {
         self.worker.await.expect("failed to join tube worker")
     }
 
-    pub async fn send<T: serde::Serialize + Send + 'static>(&self, msg: T) -> TubeResult<()> {
+    pub async fn send<T: serde::Serialize + Send + 'static>(&mut self, msg: T) -> TubeResult<()> {
         // It is unlikely the tube is full given crosvm usage patterns, so request the blocking
         // send immediately.
         let (tx, rx) = oneshot::channel();
@@ -81,7 +81,7 @@ impl TubeTokio {
         Ok(())
     }
 
-    pub async fn recv<T: serde::de::DeserializeOwned + Send + 'static>(&self) -> TubeResult<T> {
+    pub async fn recv<T: serde::de::DeserializeOwned + Send + 'static>(&mut self) -> TubeResult<T> {
         // `Tube`'s read notifier event is a manual-reset event and `Tube::recv` wants to
         // handle the reset, so we bypass `EventAsync`.
         base::sys::windows::async_wait_for_single_object(&self.read_notifier)

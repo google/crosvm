@@ -22,7 +22,10 @@ impl TubeTokio {
         tube
     }
 
-    pub async fn send<T: serde::Serialize + Send + 'static>(&self, msg: T) -> base::TubeResult<()> {
+    pub async fn send<T: serde::Serialize + Send + 'static>(
+        &mut self,
+        msg: T,
+    ) -> base::TubeResult<()> {
         loop {
             let mut guard = self.0.writable().await.map_err(base::TubeError::Send)?;
             match guard.try_io(|inner| {
@@ -51,7 +54,7 @@ impl TubeTokio {
     }
 
     pub async fn recv<T: serde::de::DeserializeOwned + Send + 'static>(
-        &self,
+        &mut self,
     ) -> base::TubeResult<T> {
         loop {
             let mut guard = self.0.readable().await.map_err(base::TubeError::Recv)?;

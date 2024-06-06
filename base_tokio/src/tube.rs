@@ -11,7 +11,7 @@ mod tests {
     #[tokio::test]
     async fn recv_send() {
         let (a, b) = Tube::pair().unwrap();
-        let b = TubeTokio::new(b).unwrap();
+        let mut b = TubeTokio::new(b).unwrap();
 
         let blocking_task = tokio::task::spawn_blocking(move || {
             a.send(&5u8).unwrap();
