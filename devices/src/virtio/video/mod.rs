@@ -329,45 +329,51 @@ pub fn create_decoder_device(
     resource_bridge: Tube,
     mem: GuestMemory,
 ) -> Result<Box<dyn Device>> {
-    Ok(match backend {
+    use decoder::backend::DecoderBackend;
+
+    let backend = match backend {
         #[cfg(feature = "libvda")]
         VideoBackendType::Libvda => {
-            let vda = decoder::backend::vda::LibvdaDecoder::new(libvda::decode::VdaImplType::Gavda)
+            decoder::backend::vda::LibvdaDecoder::new(libvda::decode::VdaImplType::Gavda)
                 .map_err(|e| {
                     Error::DeviceCreationFailed(format!(
                         "Failed to initialize VDA for decoder: {}",
                         e
                     ))
-                })?;
-            Box::new(decoder::Decoder::new(vda, resource_bridge, mem))
+                })?
+                .into_trait_object()
         }
         #[cfg(feature = "libvda")]
         VideoBackendType::LibvdaVd => {
-            let vda = decoder::backend::vda::LibvdaDecoder::new(libvda::decode::VdaImplType::Gavd)
+            decoder::backend::vda::LibvdaDecoder::new(libvda::decode::VdaImplType::Gavd)
                 .map_err(|e| {
                     Error::DeviceCreationFailed(format!(
                         "Failed to initialize VD for decoder: {}",
                         e
                     ))
-                })?;
-            Box::new(decoder::Decoder::new(vda, resource_bridge, mem))
+                })?
+                .into_trait_object()
         }
         #[cfg(feature = "ffmpeg")]
         VideoBackendType::Ffmpeg => {
-            let ffmpeg = decoder::backend::ffmpeg::FfmpegDecoder::new();
-            Box::new(decoder::Decoder::new(ffmpeg, resource_bridge, mem))
+            decoder::backend::ffmpeg::FfmpegDecoder::new().into_trait_object()
         }
         #[cfg(feature = "vaapi")]
-        VideoBackendType::Vaapi => {
-            let va = decoder::backend::vaapi::VaapiDecoder::new().map_err(|e| {
+        VideoBackendType::Vaapi => decoder::backend::vaapi::VaapiDecoder::new()
+            .map_err(|e| {
                 Error::DeviceCreationFailed(format!(
                     "Failed to initialize VA-API driver for decoder: {}",
                     e
                 ))
-            })?;
-            Box::new(decoder::Decoder::new(va, resource_bridge, mem))
-        }
-    })
+            })?
+            .into_trait_object(),
+    };
+
+    Ok(Box::new(decoder::Decoder::new(
+        backend,
+        resource_bridge,
+        mem,
+    )))
 }
 
 /// Manages the zero-length, EOS-marked buffer signaling the end of a stream.
