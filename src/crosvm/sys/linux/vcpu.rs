@@ -168,7 +168,7 @@ where
     Ok(vcpu)
 }
 
-thread_local!(static VCPU_THREAD: RefCell<Option<VcpuSignalHandle>> = RefCell::new(None));
+thread_local!(static VCPU_THREAD: RefCell<Option<VcpuSignalHandle>> = const { RefCell::new(None) });
 
 fn set_vcpu_thread_local(vcpu: Option<&dyn VcpuArch>, signal_num: c_int) {
     // Block signal while we add -- if a signal fires (very unlikely,

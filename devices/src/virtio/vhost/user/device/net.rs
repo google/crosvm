@@ -40,7 +40,7 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 thread_local! {
-    pub(crate) static NET_EXECUTOR: OnceCell<Executor> = OnceCell::new();
+    pub(crate) static NET_EXECUTOR: OnceCell<Executor> = const { OnceCell::new() };
 }
 
 // TODO(b/188947559): Come up with better way to include these constants. Compiler errors happen

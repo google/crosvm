@@ -1033,7 +1033,7 @@ pub struct VcpuThread {
     signal_num: Option<c_int>,
 }
 
-thread_local!(static VCPU_THREAD: RefCell<Option<VcpuThread>> = RefCell::new(None));
+thread_local!(static VCPU_THREAD: RefCell<Option<VcpuThread>> = const { RefCell::new(None) });
 
 impl Vcpu {
     /// Constructs a new VCPU for `vm`.

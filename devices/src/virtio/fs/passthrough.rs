@@ -354,7 +354,7 @@ fn set_creds(
     ScopedGid::new(gid, oldgid).and_then(|gid| Ok((ScopedUid::new(uid, olduid)?, gid)))
 }
 
-thread_local!(static THREAD_FSCREATE: RefCell<Option<File>> = RefCell::new(None));
+thread_local!(static THREAD_FSCREATE: RefCell<Option<File>> = const { RefCell::new(None) });
 
 // Opens and returns a write-only handle to /proc/thread-self/attr/fscreate. Panics if it fails to
 // open the file.
