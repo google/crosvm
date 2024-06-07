@@ -140,7 +140,7 @@ fn load_arm64_kernel_from_reader<F: BufRead>(
         .ok_or(Error::InvalidKernelSize)?;
     loop {
         let buf = match kernel_image.fill_buf() {
-            Ok(buf) if buf.is_empty() => break,
+            Ok([]) => break,
             Ok(buf) => buf,
             Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(_) => return Err(Error::ReadKernelImage),
