@@ -2406,3 +2406,80 @@ fn test_interrupt_injection_when_not_ready() {
         }
     );
 }
+
+#[test]
+fn test_ready_for_interrupt_for_intercepted_instructions() {
+    global_asm_data!(
+        assembly,
+        // We will use out instruction to cause VMEXITs and test ready_for_interrupt then.
+        ".code16",
+        // Disable the interrupt.
+        "cli",
+        // ready_for_interrupt should be false here.
+        "out 0x10, ax",
+        "sti",
+        // ready_for_interrupt should be false here, because of the one instruction
+        // interruptibility window for sti. And this is also an intercepted instruction.
+        "out 0x20, ax",
+        // ready_for_interrupt should be true here except for WHPX.
+        "out 0x30, ax",
+        // Restore the interruptibility for WHPX.
+        "nop",
+        "mov ax, ss",
+        "mov ss, ax",
+        // ready_for_interrupt should be false here, because of the one instruction
+        // interruptibility window for mov ss. And this is also an intercepted instruction.
+        "out 0x40, ax",
+        // ready_for_interrupt should be true here except for WHPX.
+        "out 0x50, ax",
+        "hlt"
+    );
+
+    let assembly = assembly::data().to_vec();
+    let setup = TestSetup {
+        assembly: assembly.clone(),
+        load_addr: GuestAddress(0x1000),
+        initial_regs: Regs {
+            rip: 0x1000,
+            rflags: 2,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    run_tests!(
+        setup,
+        |_, regs, _| {
+            // For VMEXIT caused by HLT, the hypervisor will automatically advance the rIP register.
+            assert_eq!(regs.rip, 0x1000 + assembly.len() as u64);
+        },
+        |hypervisor_type, exit, vcpu| {
+            match exit {
+                VcpuExit::Hlt => true,
+                VcpuExit::Io => {
+                    let ready_for_interrupt = vcpu.ready_for_interrupt();
+                    let mut io_port = 0;
+                    vcpu.handle_io(&mut |params| {
+                        io_port = params.address;
+                        // We are always handling out IO port, so no data to return.
+                        None
+                    })
+                    .expect("should handle port IO successfully");
+                    match io_port {
+                        0x10 | 0x20 | 0x40 => assert!(!ready_for_interrupt),
+                        0x30 | 0x50 => {
+                            // WHPX needs a not intercepted instruction to recover to the proper
+                            // interruptibility state.
+                            if hypervisor_type != HypervisorType::Whpx {
+                                assert!(ready_for_interrupt);
+                            }
+                        }
+                        _ => panic!("unexpected port {}", io_port),
+                    }
+                    false
+                }
+                r => panic!("unexpected exit reason: {:?}", r),
+            }
+        }
+    );
+}
