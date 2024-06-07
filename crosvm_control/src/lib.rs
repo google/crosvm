@@ -398,7 +398,7 @@ pub unsafe extern "C" fn crosvm_client_usb_list(
             if entries.is_null() {
                 return -1;
             }
-            if let Ok(UsbControlResult::Devices(res)) = do_usb_list(&socket_path) {
+            if let Ok(UsbControlResult::Devices(res)) = do_usb_list(socket_path) {
                 let mut i = 0;
                 for entry in res.iter().filter(|x| x.valid()) {
                     if i >= entries_length {

@@ -3437,7 +3437,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         None => None,
         Some(cgroup_path) => {
             // Move main process to cgroup_path
-            let mut f = File::create(&cgroup_path.join("tasks")).with_context(|| {
+            let mut f = File::create(cgroup_path.join("tasks")).with_context(|| {
                 format!(
                     "failed to create vcpu-cgroup-path {}",
                     cgroup_path.display(),
