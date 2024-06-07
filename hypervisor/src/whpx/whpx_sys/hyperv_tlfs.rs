@@ -4,7 +4,7 @@
 
 /// Constants from Hyper-V Top Level Functional Specification.
 /// This comes from the document published here:
-/// https://github.com/MicrosoftDocs/Virtualization-Documentation/raw/live/tlfs/Hypervisor%20Top%20Level%20Functional%20Specification%20v6.0b.pdf
+/// <https://github.com/MicrosoftDocs/Virtualization-Documentation/raw/live/tlfs/Hypervisor%20Top%20Level%20Functional%20Specification%20v6.0b.pdf>
 
 /// CPUID Leaf Range Register.
 pub const HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS: u32 = 0x40000000;

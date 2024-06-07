@@ -161,16 +161,16 @@ impl WhpxSplitIrqChip {
         self.pic.lock().interrupt_requested()
     }
 
-    /// Check if the specified vcpu has any pending interrupts. Returns None for no interrupts,
-    /// otherwise Some(u32) should be the injected interrupt vector. For WhpxSplitIrqChip
-    /// this calls get_external_interrupt on the pic.
-    pub fn get_external_interrupt(&self, vcpu_id: usize) -> Result<Option<u32>> {
+    /// Check if the specified vcpu has any pending interrupts. Returns [`None`] for no interrupts,
+    /// otherwise [`Some::<u8>`] should be the injected interrupt vector. For [`WhpxSplitIrqChip`]
+    /// this calls `get_external_interrupt` on the pic.
+    pub fn get_external_interrupt(&self, vcpu_id: usize) -> Result<Option<u8>> {
         // Pic interrupts for the split irqchip only go to vcpu 0
         if vcpu_id != 0 {
             return Ok(None);
         }
         if let Some(vector) = self.pic.lock().get_external_interrupt() {
-            Ok(Some(vector as u32))
+            Ok(Some(vector))
         } else {
             Ok(None)
         }
@@ -386,7 +386,7 @@ impl IrqChip for WhpxSplitIrqChip {
         }
 
         if let Some(vector) = self.get_external_interrupt(vcpu_id)? {
-            vcpu.interrupt(vector as u32)?;
+            vcpu.interrupt(vector)?;
         }
 
         // The second interrupt request should be handled immediately, so ask vCPU to exit as soon

@@ -563,8 +563,8 @@ impl VcpuX86_64 for KvmVcpu {
     ///
     /// While this ioctl exists on PPC and MIPS as well as x86, the semantics are different and
     /// ChromeOS doesn't support PPC or MIPS.
-    fn interrupt(&self, irq: u32) -> Result<()> {
-        let interrupt = kvm_interrupt { irq };
+    fn interrupt(&self, irq: u8) -> Result<()> {
+        let interrupt = kvm_interrupt { irq: irq.into() };
         // SAFETY:
         // safe becuase we allocated the struct and we know the kernel will read
         // exactly the size of the struct

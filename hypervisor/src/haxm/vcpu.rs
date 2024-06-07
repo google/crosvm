@@ -343,7 +343,8 @@ impl VcpuX86_64 for HaxmVcpu {
     }
 
     /// Injects interrupt vector `irq` into the VCPU.
-    fn interrupt(&self, irq: u32) -> Result<()> {
+    fn interrupt(&self, irq: u8) -> Result<()> {
+        let irq: u32 = irq.into();
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe { ioctl_with_ref(self, HAX_VCPU_IOCTL_INTERRUPT(), &irq) };

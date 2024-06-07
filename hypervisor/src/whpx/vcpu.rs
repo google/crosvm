@@ -780,7 +780,7 @@ impl VcpuX86_64 for WhpxVcpu {
     }
 
     /// Injects interrupt vector `irq` into the VCPU.
-    fn interrupt(&self, irq: u32) -> Result<()> {
+    fn interrupt(&self, irq: u8) -> Result<()> {
         const REG_NAMES: [WHV_REGISTER_NAME; 1] =
             [WHV_REGISTER_NAME_WHvRegisterPendingInterruption];
         let mut pending_interrupt: WHV_X64_PENDING_INTERRUPTION_REGISTER__bindgen_ty_1 =
@@ -788,7 +788,7 @@ impl VcpuX86_64 for WhpxVcpu {
         pending_interrupt.set_InterruptionPending(1);
         pending_interrupt
             .set_InterruptionType(WHV_X64_PENDING_INTERRUPTION_TYPE_WHvX64PendingInterrupt as u32);
-        pending_interrupt.set_InterruptionVector(irq);
+        pending_interrupt.set_InterruptionVector(irq.into());
         let interrupt = WHV_REGISTER_VALUE {
             PendingInterruption: WHV_X64_PENDING_INTERRUPTION_REGISTER {
                 __bindgen_anon_1: pending_interrupt,

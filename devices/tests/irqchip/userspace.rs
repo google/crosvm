@@ -625,12 +625,12 @@ struct FakeVcpu {
     id: usize,
     requested: Arc<Mutex<bool>>,
     ready: Arc<Mutex<bool>>,
-    injected: Arc<Mutex<Option<u32>>>,
+    injected: Arc<Mutex<Option<u8>>>,
 }
 
 impl FakeVcpu {
     /// Returns and clears the last interrupt set by `interrupt`.
-    fn clear_injected(&self) -> Option<u32> {
+    fn clear_injected(&self) -> Option<u8> {
         self.injected.lock().take()
     }
 
@@ -697,7 +697,7 @@ impl VcpuX86_64 for FakeVcpu {
         *self.ready.lock()
     }
 
-    fn interrupt(&self, irq: u32) -> Result<()> {
+    fn interrupt(&self, irq: u8) -> Result<()> {
         *self.injected.lock() = Some(irq);
         Ok(())
     }

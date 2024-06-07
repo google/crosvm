@@ -80,7 +80,15 @@ pub trait VcpuX86_64: Vcpu {
     fn ready_for_interrupt(&self) -> bool;
 
     /// Injects interrupt vector `irq` into the VCPU.
-    fn interrupt(&self, irq: u32) -> Result<()>;
+    ///
+    /// This function should only be called when [`Self::ready_for_interrupt`] returns true.
+    /// Otherwise the interrupt injetion may fail or the next VCPU run may fail.
+    ///
+    /// The caller should avoid calling this function more than 1 time for one VMEXIT, because the
+    /// hypervisor may behave differently: some hypervisors(e.g. WHPX, KVM) will only try to inject
+    /// the last `irq` requested, while some other hypervisors(e.g. HAXM) may try to inject all
+    /// `irq`s requested.
+    fn interrupt(&self, irq: u8) -> Result<()>;
 
     /// Injects a non-maskable interrupt into the VCPU.
     fn inject_nmi(&self) -> Result<()>;
