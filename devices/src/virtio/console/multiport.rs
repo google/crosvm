@@ -78,7 +78,7 @@ impl TryFrom<u16> for ControlEvent {
 
 fn process_tx_ctrl_msg(
     reader: &mut Reader,
-    ports: &Vec<ConsolePortInfo>,
+    ports: &[ConsolePortInfo],
 ) -> Result<Vec<ControlMsgBytes>> {
     let mut messages = Vec::<ControlMsgBytes>::new();
     let ports_num = ports.len() as u32;
@@ -143,7 +143,7 @@ fn process_tx_ctrl_msg(
 fn process_tx_ctrl_queue(
     queue: &Arc<Mutex<Queue>>,
     doorbell: &Interrupt,
-    ports: &Vec<ConsolePortInfo>,
+    ports: &[ConsolePortInfo],
 ) -> Vec<ControlMsgBytes> {
     let mut needs_interrupt = false;
     let mut messages = Vec::<ControlMsgBytes>::new();
