@@ -697,6 +697,8 @@ pub struct Config {
     pub block_control_tube: Vec<Tube>,
     #[cfg(windows)]
     pub block_vhost_user_tube: Vec<Tube>,
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    pub boost_uclamp: bool,
     pub boot_cpu: usize,
     #[cfg(target_arch = "x86_64")]
     pub break_linux_pci_config_io: bool,
@@ -986,6 +988,8 @@ impl Default for Config {
             log_file: None,
             #[cfg(windows)]
             logs_directory: None,
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            boost_uclamp: false,
             memory: None,
             memory_file: None,
             mmio_address_ranges: Vec::new(),

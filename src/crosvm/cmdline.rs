@@ -1043,6 +1043,14 @@ pub struct RunCommand {
     ///     pci-address=ADDR - Preferred PCI address, e.g. "00:01.0".
     block: Vec<DiskOptionWithId>,
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[argh(switch)]
+    #[serde(skip)]
+    #[merge(strategy = overwrite_option)]
+    /// set a minimum utilization for vCPU threads which will hint to the host scheduler
+    /// to ramp up higher frequencies or place vCPU threads on larger cores.
+    pub boost_uclamp: Option<bool>,
+
     #[cfg(target_arch = "x86_64")]
     #[argh(switch)]
     #[merge(strategy = overwrite_option)]
@@ -2725,6 +2733,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(any(target_os = "android", target_os = "linux"))]
         {
             cfg.lock_guest_memory = cmd.lock_guest_memory.unwrap_or_default();
+            cfg.boost_uclamp = cmd.boost_uclamp.unwrap_or_default();
         }
 
         #[cfg(feature = "audio")]

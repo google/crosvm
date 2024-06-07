@@ -24,6 +24,8 @@ use arch::LinuxArch;
 use arch::VcpuArch;
 use arch::VcpuInitArch;
 use arch::VmArch;
+use base::sched_attr;
+use base::sched_setattr;
 use base::signal::clear_signal_handler;
 use base::signal::BlockedSignal;
 use base::*;
@@ -35,6 +37,8 @@ use hypervisor::IoParams;
 use hypervisor::VcpuExit;
 use hypervisor::VcpuSignalHandle;
 use libc::c_int;
+use libc::SCHED_FLAG_KEEP_ALL;
+use libc::SCHED_FLAG_RESET_ON_FORK;
 use metrics_events::MetricEventType;
 #[cfg(target_arch = "riscv64")]
 use riscv64::Riscv64 as Arch;
@@ -49,6 +53,10 @@ use x86_64::X8664arch as Arch;
 use super::ExitState;
 #[cfg(target_arch = "x86_64")]
 use crate::crosvm::ratelimit::Ratelimit;
+
+// TODO(davidai): Import libc constant when updated
+const SCHED_FLAG_UTIL_CLAMP_MIN: u64 = 0x20;
+const SCHED_SCALE_CAPACITY: u32 = 1024;
 
 fn bus_io_handler(bus: &Bus) -> impl FnMut(IoParams) -> Option<[u8; 8]> + '_ {
     |IoParams {
@@ -87,10 +95,23 @@ pub fn set_vcpu_thread_scheduling(
     enable_per_vm_core_scheduling: bool,
     vcpu_cgroup_tasks_file: Option<File>,
     run_rt: bool,
+    boost_uclamp: bool,
 ) -> anyhow::Result<()> {
     if !vcpu_affinity.is_empty() {
         if let Err(e) = set_cpu_affinity(vcpu_affinity) {
             error!("Failed to set CPU affinity: {}", e);
+        }
+    }
+
+    if boost_uclamp {
+        let mut sched_attr = sched_attr::default();
+        sched_attr.sched_flags = SCHED_FLAG_KEEP_ALL as u64
+            | SCHED_FLAG_UTIL_CLAMP_MIN
+            | SCHED_FLAG_RESET_ON_FORK as u64;
+        sched_attr.sched_util_min = SCHED_SCALE_CAPACITY;
+
+        if let Err(e) = sched_setattr(0, &mut sched_attr, 0) {
+            warn!("Failed to boost vcpu util: {}", e);
         }
     }
 
@@ -499,6 +520,7 @@ pub fn run_vcpu<V>(
     vcpu_cgroup_tasks_file: Option<File>,
     #[cfg(target_arch = "x86_64")] bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
     run_mode: VmRunMode,
+    boost_uclamp: bool,
 ) -> Result<JoinHandle<()>>
 where
     V: VcpuArch + 'static,
@@ -516,6 +538,7 @@ where
                     enable_per_vm_core_scheduling,
                     vcpu_cgroup_tasks_file,
                     run_rt && !delay_rt,
+                    boost_uclamp,
                 ) {
                     error!("vcpu thread setup failed: {:#}", e);
                     return ExitState::Stop;
