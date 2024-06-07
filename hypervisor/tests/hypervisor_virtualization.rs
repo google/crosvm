@@ -243,10 +243,10 @@ global_asm_data!(
     "hlt"
 );
 
-pub fn enter_long_mode(vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
-    const GDT_OFFSET: u64 = 0x1500;
-    const IDT_OFFSET: u64 = 0x1528;
+const GDT_OFFSET: u64 = 0x1500;
+const IDT_OFFSET: u64 = 0x1528;
 
+pub fn configure_long_mode_memory(vm: &mut dyn Vm) -> Segment {
     // Condensed version of the function in x86_64\src\gdt.rs
     pub fn segment_from_gdt(entry: u64, table_index: u8) -> Segment {
         Segment {
@@ -266,7 +266,6 @@ pub fn enter_long_mode(vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
         }
     }
 
-    let mut sregs = vcpu.get_sregs().expect("failed to get sregs");
     let guest_mem = vm.get_memory();
 
     assert!(
@@ -331,14 +330,6 @@ pub fn enter_long_mode(vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
 
     let code_seg = segment_from_gdt(gdt_entries[2], 2);
 
-    sregs.gdt.base = GDT_OFFSET;
-    sregs.gdt.limit = gdt.len() as u16 - 1;
-
-    sregs.idt.base = IDT_OFFSET;
-    sregs.idt.limit = mem::size_of::<u64>() as u16 - 1;
-
-    sregs.cs = code_seg;
-
     // Setup IDT
     let idt_addr = GuestAddress(IDT_OFFSET);
     let idt_entry: u64 = 0; // Empty IDT
@@ -373,11 +364,29 @@ pub fn enter_long_mode(vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
             .expect("Failed to write PDE entry");
     }
 
+    code_seg
+}
+
+pub fn enter_long_mode(vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
+    let code_seg = configure_long_mode_memory(vm);
+
+    let mut sregs = vcpu.get_sregs().expect("failed to get sregs");
+
+    let pml4_addr = GuestAddress(0x9000);
+
+    sregs.gdt.base = GDT_OFFSET;
+    sregs.gdt.limit = 0xFFFF;
+
+    sregs.idt.base = IDT_OFFSET;
+    sregs.idt.limit = 0xFFFF;
+
+    sregs.cs = code_seg;
+
     // Long mode
     sregs.cr0 |= 0x1 | 0x80000000; // PE & PG
     sregs.efer |= 0x100 | 0x400; // LME & LMA (Must be auto-enabled with CR0_PG)
     sregs.cr3 = pml4_addr.offset();
-    sregs.cr4 |= 0x20; // PAE
+    sregs.cr4 |= 0x80 | 0x20; // PGE & PAE
 
     vcpu.set_sregs(&sregs).expect("failed to set sregs");
 }
@@ -2199,7 +2208,7 @@ fn test_interrupt_ready_when_interrupt_enable_flag_not_set() {
 }
 
 #[test]
-fn test_enter_long_mode() {
+fn test_enter_long_mode_direct() {
     global_asm_data!(
         pub long_mode_asm,
         ".code64",
@@ -2233,7 +2242,6 @@ fn test_enter_long_mode() {
     );
     let regs_matcher = move |_: HypervisorType, regs: &Regs, sregs: &Sregs| {
         assert!((sregs.efer & 0x400) != 0, "Long-Mode Active bit not set");
-        assert_eq!((sregs.cs.l), 1, "Long-mode bit not set in CS");
         assert_eq!(
             regs.rdx, bigly_mem_value,
             "Did not execute instructions correctly in long mode."
@@ -2242,9 +2250,110 @@ fn test_enter_long_mode() {
             regs.rbx, biglier_mem_value,
             "Was not able to access translated memory in long mode."
         );
+        assert_eq!((sregs.cs.l), 1, "Long-mode bit not set in CS");
     };
 
-    let exit_matcher = |_, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match exit {
+    let exit_matcher = |_, exit: &VcpuExit, _: &mut dyn VcpuX86_64| match exit {
+        VcpuExit::Hlt => {
+            true // Break VM runloop
+        }
+        r => panic!("unexpected exit reason: {:?}", r),
+    };
+
+    run_tests!(setup, regs_matcher, exit_matcher);
+}
+
+// KVM fails on the wrmsr instruction with a shutdown vmexit; issues with
+// running the asm in real-mode?
+#[cfg(any(feature = "whpx", feature = "haxm"))]
+#[test]
+fn test_enter_long_mode_asm() {
+    global_asm_data!(
+        pub enter_long_mode_asm,
+        ".code16",
+        "lidt [0xd100]",             // IDT_OFFSET
+        "mov eax, cr4",
+        "or ax, 1 << 7 | 1 << 5",    // Set the PAE-bit (bit 5) and  PGE (bit 7).
+        "mov cr4, eax",
+
+        "mov bx, 0x9000",            // Address of the page table.
+        "mov cr3, ebx",
+
+        "mov ecx, 0xC0000080",       // Set ECX to EFER MSR (0xC0000080)
+        "rdmsr",                     // Read from the MSR
+        "or ax, 1 << 8",             // Set the LM-bit (bit 8).
+        "wrmsr",                     // Write to the MSR
+
+        "mov eax, cr0",
+        "or eax, 1 << 31 | 1 << 0",  // Set PG (31nd bit) & PM (0th bit).
+        "mov cr0, eax",
+
+        "lgdt [0xd000]",             // Address of the GDT limit + base
+        "ljmp 16, 0xe000"            // Address of long_mode_asm
+    );
+
+    global_asm_data!(
+        pub long_mode_asm,
+        ".code64",
+        "mov rdx, r8",
+        "mov rbx, [0x10000]",
+        "hlt"
+    );
+
+    let bigly_mem_value: u64 = 0x1_0000_0000;
+    let biglier_mem_value: u64 = 0x1_0000_0001;
+    let mut setup = TestSetup {
+        assembly: enter_long_mode_asm::data().to_vec(),
+        mem_size: 0x13000,
+        load_addr: GuestAddress(0x1000),
+        initial_regs: Regs {
+            r8: bigly_mem_value,
+            rip: 0x1000,
+            rflags: 0x2,
+            ..Default::default()
+        },
+        extra_vm_setup: Some(Box::new(|_: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            configure_long_mode_memory(vm);
+        })),
+
+        ..Default::default()
+    };
+
+    setup.add_memory_initialization(
+        GuestAddress(0x10000),
+        biglier_mem_value.to_le_bytes().to_vec(),
+    );
+    setup.add_memory_initialization(GuestAddress(0xe000), long_mode_asm::data().to_vec());
+    // GDT limit + base, to be loaded by the lgdt instruction.
+    // Must be within 0xFFFF as it's executed in real-mode.
+    setup.add_memory_initialization(GuestAddress(0xd000), 0xFFFF_u32.to_le_bytes().to_vec());
+    setup.add_memory_initialization(
+        GuestAddress(0xd000 + 2),
+        (GDT_OFFSET as u32).to_le_bytes().to_vec(),
+    );
+
+    // IDT limit + base, to be loaded by the lidt instruction.
+    // Must be within 0xFFFF as it's executed in real-mode.
+    setup.add_memory_initialization(GuestAddress(0xd100), 0xFFFF_u32.to_le_bytes().to_vec());
+    setup.add_memory_initialization(
+        GuestAddress(0xd100 + 2),
+        (IDT_OFFSET as u32).to_le_bytes().to_vec(),
+    );
+
+    let regs_matcher = move |_: HypervisorType, regs: &Regs, sregs: &Sregs| {
+        assert!((sregs.efer & 0x400) != 0, "Long-Mode Active bit not set");
+        assert_eq!(
+            regs.rdx, bigly_mem_value,
+            "Did not execute instructions correctly in long mode."
+        );
+        assert_eq!(
+            regs.rbx, biglier_mem_value,
+            "Was not able to access translated memory in long mode."
+        );
+        assert_eq!((sregs.cs.l), 1, "Long-mode bit not set in CS");
+    };
+
+    let exit_matcher = |_, exit: &VcpuExit, _: &mut dyn VcpuX86_64| match exit {
         VcpuExit::Hlt => {
             true // Break VM runloop
         }
