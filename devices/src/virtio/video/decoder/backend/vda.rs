@@ -286,6 +286,9 @@ impl DecoderSession for VdaDecoderSession {
 /// A VDA decoder backend that can be passed to `Decoder::new` in order to create a working decoder.
 pub struct LibvdaDecoder(libvda::decode::VdaInstance);
 
+/// SAFETY: safe because the Rcs in `VdaInstance` are always used from the same thread.
+unsafe impl Send for LibvdaDecoder {}
+
 impl LibvdaDecoder {
     /// Create a decoder backend instance that can be used to instantiate an decoder.
     pub fn new(backend_type: libvda::decode::VdaImplType) -> VideoResult<Self> {
