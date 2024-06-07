@@ -2283,3 +2283,126 @@ fn test_fsgsbase() {
 
     run_tests!(setup, regs_matcher, exit_matcher);
 }
+
+#[test]
+fn test_interrupt_injection_when_not_ready() {
+    // This test ensures that if we inject an interrupt when it's not ready for interrupt, we
+    // shouldn't end up with crash or hang. And if the interrupt is delivered, it shouldn't be
+    // delivered before we reenable the interrupt.
+    mod assembly {
+        use super::*;
+
+        global_asm_data!(
+            pub init,
+            ".code16",
+            // Set the IDT
+            "lidt [0x200]",
+            // Set up the stack, which will be used when CPU transfers the control to the ISR on
+            // interrupt.
+            "mov sp, 0x900",
+            // Set ax to 0.
+            "xor ax, ax",
+            // Set the address 0x910 to 1 when we disable the interrupt, and restore it to 0 after
+            // we renable the interrupt.
+            "mov word ptr [0x910], 1",
+            "cli",
+            // We can't use hlt for VMEXIT, because HAXM unconditionally allows interrupt injection
+            // for hlt. We will inject an interrupt here although all hypervisors should report not
+            // ready for injection an interrupt. And we don't care if the injection succeeds or not.
+            "out 0x10, ax",
+            "sti",
+            // Set the address 0x910 to 0 when we renable the interrupt.
+            "mov word ptr [0x910], 0",
+            // For hypervisor that injects the interrupt later when it's ready, the interrupt will
+            // be delivered here.
+            "nop",
+            "hlt",
+        );
+
+        // We still need an ISR in case the hypervisor actually delivers an interrupt.
+        global_asm_data!(
+            pub isr,
+            ".code16",
+            // ax will be 0 if the interrupt is delivered after we reenable the interrupt.
+            // Otherwise, ax will be 1, and the test fails.
+            "mov ax, word ptr [0x910]",
+            "iret",
+        );
+    }
+
+    let start_addr: u32 = 0x200;
+    // Allocate exceed 0x900, where we set up our stack.
+    let mem_size: u32 = 0x1000;
+
+    let mut setup = TestSetup {
+        load_addr: GuestAddress(start_addr.into()),
+        initial_regs: Regs {
+            rax: 0,
+            // Set RFLAGS.IF to enable interrupt at the beginning.
+            rflags: 2 | FLAGS_IF_BIT,
+            ..Default::default()
+        },
+        mem_size: mem_size.into(),
+        ..Default::default()
+    };
+
+    let mut cur_addr = start_addr;
+
+    let idtr_size: u32 = 6;
+    assert_eq!(Ok(std::mem::size_of::<Idtr>()), usize::try_from(idtr_size));
+    // The limit is calculated from 256 entries timed by 4 bytes per entry.
+    let idt_size = 256u16 * 4u16;
+    let idtr = Idtr {
+        limit: idt_size - 1,
+        // The IDT right follows the IDTR.
+        base_address: start_addr + idtr_size,
+    };
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), idtr.as_bytes().to_vec());
+    cur_addr += idtr_size;
+
+    let idt_entry = (start_addr + idtr_size + u32::from(idt_size)).to_ne_bytes();
+    // IDT entries are far pointers(CS:IP pair) to the only ISR, which locates right after the IDT.
+    // We set all entries to the same ISR.
+    let idt = (0..256).flat_map(|_| idt_entry).collect::<Vec<_>>();
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), idt.clone());
+    cur_addr += u32::try_from(idt.len()).expect("IDT size should be within u32");
+
+    let isr_assembly = assembly::isr::data().to_vec();
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), isr_assembly.clone());
+    cur_addr += u32::try_from(isr_assembly.len()).expect("ISR size should be within u32");
+
+    let init_assembly = assembly::init::data().to_vec();
+    setup.initial_regs.rip = cur_addr.into();
+    setup.add_memory_initialization(GuestAddress(cur_addr.into()), init_assembly.clone());
+    cur_addr += u32::try_from(init_assembly.len()).expect("init size should be within u32");
+
+    assert!(mem_size > cur_addr);
+
+    run_tests!(
+        setup,
+        |_, regs, _| {
+            assert_eq!(
+                regs.rax, 0,
+                "the interrupt should be either not delivered(ax is kept as the initial value 0) \
+                 or is delivered after we reenable the interrupt(when the ax is set from 0x910, \
+                 0x910 is 0)"
+            );
+        },
+        |_, exit, vcpu: &mut dyn VcpuX86_64| {
+            match exit {
+                // We exit and pass the test either the VCPU run fails or we hit hlt.
+                VcpuExit::FailEntry { .. } | VcpuExit::Shutdown(..) | VcpuExit::Hlt => true,
+                VcpuExit::Io => {
+                    // We are always handling out IO port, so no data to return.
+                    vcpu.handle_io(&mut |_| None)
+                        .expect("should handle IO successfully");
+                    assert!(!vcpu.ready_for_interrupt());
+                    // We don't care whether we inject the interrupt successfully or not.
+                    let _ = vcpu.interrupt(32);
+                    false
+                }
+                r => panic!("unexpected VMEXIT reason: {:?}", r),
+            }
+        }
+    );
+}
