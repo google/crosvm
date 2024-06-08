@@ -527,3 +527,36 @@ fn test_ignore_lost_found() {
         ])
     );
 }
+
+#[test]
+fn test_multiple_block_directory_entry() {
+    // Creates a many files in a directory.
+    // So the sum of the sizes of directory entries exceeds 4KB and they need to be stored in
+    // multiple blocks.
+    //
+    // testdata
+    // ├─  0.txt
+    // ├─  1.txt
+    // ...
+    // └── 999.txt
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+
+    std::fs::create_dir(&dir).unwrap();
+
+    for i in 0..1000 {
+        let path = dir.join(&format!("{i}.txt"));
+        File::create(&path).unwrap();
+    }
+
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group: 2048,
+            inodes_per_group: 4096,
+        },
+        Some(&dir),
+    );
+
+    assert_eq_dirs(&td, &dir, &disk);
+}

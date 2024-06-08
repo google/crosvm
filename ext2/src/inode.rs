@@ -102,7 +102,7 @@ impl InodeBlock {
     const DOUBLE_INDIRECT_BLOCK_TABLE_ID: usize = 13;
 
     /// Set a block id at the given index.
-    fn set_block_id(&mut self, index: usize, block_id: &BlockId) -> Result<()> {
+    pub fn set_block_id(&mut self, index: usize, block_id: &BlockId) -> Result<()> {
         let offset = index * std::mem::size_of::<BlockId>();
         let bytes = block_id.as_bytes();
         if self.0.len() < offset + bytes.len() {
@@ -165,7 +165,7 @@ impl InodeBlock {
 pub(crate) struct Inode {
     mode: u16,
     _uid: u16,
-    size: u32,
+    pub size: u32,
     atime: u32,
     ctime: u32,
     mtime: u32,
@@ -197,8 +197,14 @@ pub(crate) struct Inode {
 pub struct InodeBlocksCount(u32);
 
 impl InodeBlocksCount {
+    const INODE_BLOCKS_SIZE: u32 = 512;
+
     pub fn from_bytes_len(len: u32) -> Self {
-        Self(len / 512)
+        Self(len / Self::INODE_BLOCKS_SIZE)
+    }
+
+    pub fn add(&mut self, v: u32) {
+        self.0 += v / Self::INODE_BLOCKS_SIZE;
     }
 }
 

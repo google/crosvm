@@ -69,9 +69,6 @@ impl<'a> DirEntryWithName<'a> {
         name_str: &OsStr,
         dblock: &mut DirEntryBlock,
     ) -> Result<Self> {
-        if name_str.len() > 255 {
-            anyhow::bail!("name length must not exceed 255: {:?}", name_str);
-        }
         let cs = name_str.as_bytes();
         let name_len = cs.len();
         let aligned_name_len = name_len
@@ -84,11 +81,6 @@ impl<'a> DirEntryWithName<'a> {
         // The padding is inserted because the name is 4-byte aligned.
         let rec_len = 8 + aligned_name_len as u16;
 
-        let dir_entry_size = std::mem::size_of::<DirEntryRaw>();
-        if dblock.offset + dir_entry_size + aligned_name_len > BLOCK_SIZE {
-            bail!("sum of dir_entry size exceeds block size: {} + {dir_entry_size} + {aligned_name_len} > {BLOCK_SIZE}", dblock.offset);
-        }
-
         let de = arena.allocate(dblock.block_id, dblock.offset)?;
         *de = DirEntryRaw {
             inode: inode.into(),
@@ -96,7 +88,7 @@ impl<'a> DirEntryWithName<'a> {
             name_len: name_len as u8,
             file_type: typ.into_dir_entry_file_type(),
         };
-        dblock.offset += dir_entry_size;
+        dblock.offset += std::mem::size_of::<DirEntryRaw>();
 
         let name_slice = arena.allocate_slice(dblock.block_id, dblock.offset, aligned_name_len)?;
         dblock.offset += aligned_name_len;
@@ -130,6 +122,18 @@ struct DirEntryBlock<'a> {
     entries: Vec<DirEntryWithName<'a>>,
 }
 
+impl DirEntryBlock<'_> {
+    fn has_enough_space(&self, name: &OsStr) -> bool {
+        let dir_entry_size = std::mem::size_of::<DirEntryRaw>();
+        let aligned_name_len = name
+            .as_bytes()
+            .len()
+            .checked_next_multiple_of(4)
+            .expect("length must be < 256 bytes so it must not overflow");
+        self.offset + dir_entry_size + aligned_name_len <= BLOCK_SIZE
+    }
+}
+
 /// Information on how to mmap a host file to ext2 blocks.
 struct FileMappingInfo {
     /// The ext2 disk block id that the memory region maps to.
@@ -150,9 +154,7 @@ pub struct Ext2<'a> {
     // TODO(b/331764754): Support multiple block groups.
     group_metadata: GroupMetaData<'a>,
 
-    // TODO(b/331901633): To support larger directory,
-    // the value should be `Vec<DirEntryBlock>`.
-    dentries: BTreeMap<InodeNum, DirEntryBlock<'a>>,
+    dir_entries: BTreeMap<InodeNum, Vec<DirEntryBlock<'a>>>,
 
     fd_mappings: Vec<FileMappingInfo>,
 }
@@ -169,7 +171,7 @@ impl<'a> Ext2<'a> {
         let mut ext2 = Ext2 {
             sb,
             group_metadata,
-            dentries: BTreeMap::new(),
+            dir_entries: BTreeMap::new(),
             fd_mappings: Vec::new(),
         };
 
@@ -270,24 +272,55 @@ impl<'a> Ext2<'a> {
         typ: InodeType,
         name: &OsStr,
     ) -> Result<()> {
+        if name.is_empty() {
+            bail!("directory name must not be empty");
+        } else if name.len() > 255 {
+            bail!("name length must not exceed 255: {:?}", name);
+        }
+
         let block_size = self.block_size();
 
         // Disable false-positive `clippy::map_entry`.
         // https://github.com/rust-lang/rust-clippy/issues/9470
         #[allow(clippy::map_entry)]
-        if !self.dentries.contains_key(&parent) {
+        if !self.dir_entries.contains_key(&parent) {
             let block_id = self.allocate_block()?;
             let inode = self.get_inode_mut(parent)?;
             inode.block.set_direct_blocks(&[block_id])?;
             inode.blocks = InodeBlocksCount::from_bytes_len(block_size as u32);
-            self.dentries.insert(
+            self.dir_entries.insert(
                 parent,
-                DirEntryBlock {
+                vec![DirEntryBlock {
                     block_id,
                     offset: 0,
                     entries: Vec::new(),
-                },
+                }],
             );
+        }
+
+        // Allocates  a new block for dir entries if needed.
+        if !self
+            .dir_entries
+            .get(&parent)
+            .ok_or_else(|| anyhow!("parent {:?} not found for {:?}", parent, inode))?
+            .last()
+            .expect("directory entries must not be empty")
+            .has_enough_space(name)
+        {
+            let idx = self.dir_entries.get(&parent).unwrap().len();
+            let block_id = self.allocate_block()?;
+            let parent_inode = self.get_inode_mut(parent)?;
+            parent_inode.block.set_block_id(idx, &block_id)?;
+            parent_inode.blocks.add(block_size as u32);
+            parent_inode.size += block_size as u32;
+            self.dir_entries
+                .get_mut(&parent)
+                .unwrap()
+                .push(DirEntryBlock {
+                    block_id,
+                    offset: 0,
+                    entries: Vec::new(),
+                });
         }
 
         if typ == InodeType::Directory {
@@ -296,9 +329,11 @@ impl<'a> Ext2<'a> {
         }
 
         let parent_dir = self
-            .dentries
+            .dir_entries
             .get_mut(&parent)
-            .ok_or_else(|| anyhow!("parent {:?} not found for {:?}", parent, inode))?;
+            .ok_or_else(|| anyhow!("parent {:?} not found for {:?}", parent, inode))?
+            .last_mut()
+            .expect("directory entries must not be empty");
 
         let dir_entry = DirEntryWithName::new(arena, inode, typ, name, parent_dir)?;
 
