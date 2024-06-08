@@ -319,12 +319,7 @@ impl BackendClient {
         }
         let hdr = self.send_request_header(FrontendReq::GET_PROTOCOL_FEATURES, None)?;
         let val = self.recv_reply::<VhostUserU64>(&hdr)?;
-        // Should we support forward compatibility?
-        // If so just mask out unrecognized flags instead of return errors.
-        match VhostUserProtocolFeatures::from_bits(val.value) {
-            Some(val) => Ok(val),
-            None => Err(VhostUserError::InvalidMessage),
-        }
+        Ok(VhostUserProtocolFeatures::from_bits_truncate(val.value))
     }
 
     /// Enable protocol features in the underlying vhost implementation.
@@ -727,6 +722,7 @@ mod tests {
     use crate::tests::create_pair;
 
     const BUFFER_SIZE: usize = 0x1001;
+    const INVALID_PROTOCOL_FEATURE: u64 = 1 << 63;
 
     #[test]
     fn create_backend_client() {
@@ -815,7 +811,8 @@ mod tests {
 
         let pfeatures = VhostUserProtocolFeatures::all();
         let hdr = VhostUserMsgHeader::new(FrontendReq::GET_PROTOCOL_FEATURES, 0x4, 8);
-        let msg = VhostUserU64::new(pfeatures.bits());
+        // Unknown feature bits should be ignored.
+        let msg = VhostUserU64::new(pfeatures.bits() | INVALID_PROTOCOL_FEATURE);
         peer.send_message(&hdr, &msg, None).unwrap();
         let features = backend_client.get_protocol_features().unwrap();
         assert_eq!(features, pfeatures);
