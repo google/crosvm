@@ -313,35 +313,33 @@ where
 
             set_lint(0, &mut irq_chip).unwrap();
 
-            loop {
-                match vcpu.run().expect("run failed") {
-                    VcpuExit::Io => {
-                        vcpu.handle_io(&mut |IoParams {
-                                                 address,
-                                                 size,
-                                                 operation: direction,
-                                             }| {
-                            match direction {
-                                IoOperation::Write { data } => {
-                                    // We consider this test to be done when this particular
-                                    // one-byte port-io to port 0xff with the value of 0x12, which
-                                    // was in register eax
-                                    assert_eq!(address, 0xff);
-                                    assert_eq!(size, 1);
-                                    assert_eq!(data[0], 0x12);
-                                }
-                                _ => panic!("unexpected direction {:?}", direction),
+            match vcpu.run().expect("run failed") {
+                VcpuExit::Io => {
+                    vcpu.handle_io(&mut |IoParams {
+                                             address,
+                                             size,
+                                             operation: direction,
+                                         }| {
+                        match direction {
+                            IoOperation::Write { data } => {
+                                // We consider this test to be done when this particular
+                                // one-byte port-io to port 0xff with the value of 0x12, which
+                                // was in register eax
+                                assert_eq!(address, 0xff);
+                                assert_eq!(size, 1);
+                                assert_eq!(data[0], 0x12);
                             }
-                            None
-                        })
-                        .expect("vcpu.handle_io failed");
-                        break;
-                    }
-                    r => {
-                        panic!("unexpected exit {:?}", r);
-                    }
+                            _ => panic!("unexpected direction {:?}", direction),
+                        }
+                        None
+                    })
+                    .expect("vcpu.handle_io failed");
+                }
+                r => {
+                    panic!("unexpected exit {:?}", r);
                 }
             }
+
             let regs = vcpu.get_regs().unwrap();
             // ecx and eax should now contain 0x12
             assert_eq!(regs.rcx, 0x12);
