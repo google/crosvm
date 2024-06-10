@@ -98,7 +98,7 @@ impl Worker {
         needs_interrupt
     }
 
-    fn run(mut self, kill_evt: Event) {
+    fn run(mut self, kill_evt: Event) -> anyhow::Result<()> {
         #[derive(EventToken, Debug)]
         enum Token {
             // A request is ready on the queue.
@@ -109,46 +109,31 @@ impl Worker {
             Kill,
         }
 
-        let wait_ctx = match WaitContext::build_with(&[
+        let wait_ctx = WaitContext::build_with(&[
             (self.queue.event(), Token::QueueAvailable),
             (&kill_evt, Token::Kill),
         ])
-        .and_then(|wc| {
-            if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-                wc.add(resample_evt, Token::InterruptResample)?;
-            }
-            Ok(wc)
-        }) {
-            Ok(pc) => pc,
-            Err(e) => {
-                error!("vtpm failed creating WaitContext: {}", e);
-                return;
-            }
-        };
+        .context("WaitContext::build_with")?;
 
-        'wait: loop {
-            let events = match wait_ctx.wait() {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("vtpm failed waiting for events: {}", e);
-                    break;
-                }
-            };
+        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
+            wait_ctx
+                .add(resample_evt, Token::InterruptResample)
+                .context("WaitContext::add")?;
+        }
 
+        loop {
+            let events = wait_ctx.wait().context("WaitContext::wait")?;
             let mut needs_interrupt = NeedsInterrupt::No;
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::QueueAvailable => {
-                        if let Err(e) = self.queue.event().wait() {
-                            error!("vtpm failed reading queue Event: {}", e);
-                            break 'wait;
-                        }
+                        self.queue.event().wait().context("Event::wait")?;
                         needs_interrupt |= self.process_queue();
                     }
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
                     }
-                    Token::Kill => break 'wait,
+                    Token::Kill => return Ok(()),
                 }
             }
             if needs_interrupt == NeedsInterrupt::Yes {
@@ -212,7 +197,9 @@ impl VirtioDevice for Tpm {
         };
 
         self.worker_thread = Some(WorkerThread::start("v_tpm", |kill_evt| {
-            worker.run(kill_evt)
+            if let Err(e) = worker.run(kill_evt) {
+                error!("virtio-tpm worker failed: {:#}", e);
+            }
         }));
 
         Ok(())
