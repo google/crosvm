@@ -888,8 +888,9 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     wait_ctx: &WaitContext<Token>,
     force_s2idle: bool,
     vcpu_control_channels: &[mpsc::Sender<VcpuControl>],
+    suspended_pvclock_state: &mut Option<hypervisor::ClockState>,
 ) -> Result<Option<ExitState>> {
-    let execute_vm_request = |request: VmRequest, guest_os: &mut RunnableLinuxVm<V, Vcpu>| {
+    let mut execute_vm_request = |request: VmRequest, guest_os: &mut RunnableLinuxVm<V, Vcpu>| {
         let mut run_mode_opt = None;
         let vcpu_size = vcpu_boxes.lock().len();
         let resp = request.execute(
@@ -921,6 +922,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             vcpu_size,
             irq_handler_control,
             || guest_os.irq_chip.as_ref().snapshot(vcpu_size),
+            suspended_pvclock_state,
         );
         (resp, run_mode_opt)
     };
@@ -1448,11 +1450,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         force_calibrated_tsc_leaf,
     )?;
 
+    // See comment on `VmRequest::execute`.
+    let mut suspended_pvclock_state: Option<hypervisor::ClockState> = None;
+
     // Restore VM (if applicable).
     if let Some(path) = restore_path {
         vm_control::do_restore(
             &path,
-            &guest_os.vm,
             |msg| {
                 kick_all_vcpus(
                     run_mode_arc.as_ref(),
@@ -1484,6 +1488,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     .restore(image, guest_os.vcpu_count)
             },
             /* require_encrypted= */ false,
+            &mut suspended_pvclock_state,
         )?;
         // Allow the vCPUs to start for real.
         kick_all_vcpus(
@@ -1546,6 +1551,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 &wait_ctx,
                 force_s2idle,
                 &vcpu_control_channels,
+                &mut suspended_pvclock_state,
             )?;
             if let Some(state) = state {
                 exit_state = state;

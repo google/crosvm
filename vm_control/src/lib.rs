@@ -1628,6 +1628,14 @@ impl VmRequest {
     /// This does not return a result, instead encapsulating the success or failure in a
     /// `VmResponse` with the intended purpose of sending the response back over the  socket that
     /// received this `VmRequest`.
+    ///
+    /// `suspended_pvclock_state`: If the hypervisor has its own pvclock (not the same as
+    /// virtio-pvclock) and the VM is suspended (not just the vCPUs, but the full VM), then
+    /// `suspended_pvclock_state` will be used to store the ClockState saved just after the vCPUs
+    /// were suspended. It is important that we save the value right after the vCPUs are suspended
+    /// and restore it right before the vCPUs are resumed (instead of, more naturally, during the
+    /// snapshot/restore steps) because the pvclock continues to tick even when the vCPUs are
+    /// suspended.
     #[allow(unused_variables)]
     pub fn execute(
         &self,
@@ -1645,6 +1653,7 @@ impl VmRequest {
         vcpu_size: usize,
         irq_handler_control: &Tube,
         snapshot_irqchip: impl Fn() -> anyhow::Result<serde_json::Value>,
+        suspended_pvclock_state: &mut Option<hypervisor::ClockState>,
     ) -> VmResponse {
         match self {
             VmRequest::Exit => {
@@ -1828,6 +1837,18 @@ impl VmRequest {
                     error!("vCPUs failed to all suspend.");
                     return VmResponse::Err(SysError::new(EIO));
                 }
+                // Snapshot the pvclock ASAP after stopping vCPUs.
+                if vm.check_capability(VmCap::PvClock) {
+                    if suspended_pvclock_state.is_none() {
+                        *suspended_pvclock_state = Some(match vm.get_pvclock() {
+                            Ok(x) => x,
+                            Err(e) => {
+                                error!("suspend_pvclock failed: {e:?}");
+                                return VmResponse::Err(SysError::new(EIO));
+                            }
+                        });
+                    }
+                }
                 if let Err(e) = device_control_tube
                     .send(&DeviceControlCommand::SleepDevices)
                     .context("send command to devices control socket")
@@ -1876,6 +1897,16 @@ impl VmRequest {
                     Err(e) => {
                         error!("receive from devices control socket: {:?}", e);
                         return VmResponse::Err(SysError::new(EIO));
+                    }
+                }
+                // Resume the pvclock as late as possible before starting vCPUs.
+                if vm.check_capability(VmCap::PvClock) {
+                    // If None, then we aren't suspended, which is a valid case.
+                    if let Some(x) = suspended_pvclock_state {
+                        if let Err(e) = vm.set_pvclock(x) {
+                            error!("resume_pvclock failed: {e:?}");
+                            return VmResponse::Err(SysError::new(EIO));
+                        }
                     }
                 }
                 kick_vcpus(VcpuControl::RunState(VmRunMode::Running));
@@ -2000,7 +2031,6 @@ impl VmRequest {
                 info!("Starting crosvm snapshot");
                 match do_snapshot(
                     snapshot_path.to_path_buf(),
-                    vm,
                     kick_vcpus,
                     irq_handler_control,
                     device_control_tube,
@@ -2008,6 +2038,7 @@ impl VmRequest {
                     snapshot_irqchip,
                     *compress_memory,
                     *encrypt,
+                    suspended_pvclock_state,
                 ) {
                     Ok(()) => {
                         info!("Finished crosvm snapshot successfully");
@@ -2035,7 +2066,6 @@ impl VmRequest {
 /// Snapshot the VM to file at `snapshot_path`
 fn do_snapshot(
     snapshot_path: PathBuf,
-    vm: &impl Vm,
     kick_vcpus: impl Fn(VcpuControl),
     irq_handler_control: &Tube,
     device_control_tube: &Tube,
@@ -2043,6 +2073,7 @@ fn do_snapshot(
     snapshot_irqchip: impl Fn() -> anyhow::Result<serde_json::Value>,
     compress_memory: bool,
     encrypt: bool,
+    suspended_pvclock_state: &mut Option<hypervisor::ClockState>,
 ) -> anyhow::Result<()> {
     let _vcpu_guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
     let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
@@ -2093,12 +2124,7 @@ fn do_snapshot(
     let snapshot_writer = SnapshotWriter::new(snapshot_path, encrypt)?;
 
     // Snapshot hypervisor's paravirtualized clock.
-    let pvclock_snapshot = if vm.check_capability(VmCap::PvClock) {
-        serde_json::to_value(vm.get_pvclock()?)?
-    } else {
-        serde_json::Value::Null
-    };
-    snapshot_writer.write_fragment("pvclock", &pvclock_snapshot)?;
+    snapshot_writer.write_fragment("pvclock", &serde_json::to_value(suspended_pvclock_state)?)?;
 
     // Snapshot Vcpus
     info!("VCPUs snapshotting...");
@@ -2148,7 +2174,6 @@ fn do_snapshot(
 /// because not all the `VmRequest::execute` arguments are available in the "cold restore" flow.
 pub fn do_restore(
     restore_path: &Path,
-    vm: &impl Vm,
     kick_vcpus: impl Fn(VcpuControl),
     kick_vcpu: impl Fn(VcpuControl, usize),
     irq_handler_control: &Tube,
@@ -2156,6 +2181,7 @@ pub fn do_restore(
     vcpu_size: usize,
     mut restore_irqchip: impl FnMut(serde_json::Value) -> anyhow::Result<()>,
     require_encrypted: bool,
+    suspended_pvclock_state: &mut Option<hypervisor::ClockState>,
 ) -> anyhow::Result<()> {
     let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size);
     let _devices_guard = DeviceSleepGuard::new(device_control_tube)?;
@@ -2163,12 +2189,7 @@ pub fn do_restore(
     let snapshot_reader = SnapshotReader::new(restore_path, require_encrypted)?;
 
     // Restore hypervisor's paravirtualized clock.
-    let pvclock_snapshot: serde_json::Value = snapshot_reader.read_fragment("pvclock")?;
-    if vm.check_capability(VmCap::PvClock) {
-        vm.set_pvclock(&serde_json::from_value(pvclock_snapshot)?)?;
-    } else {
-        anyhow::ensure!(pvclock_snapshot == serde_json::Value::Null);
-    };
+    *suspended_pvclock_state = snapshot_reader.read_fragment("pvclock")?;
 
     // Restore IrqChip
     let irq_snapshot: serde_json::Value = snapshot_reader.read_fragment("irqchip")?;

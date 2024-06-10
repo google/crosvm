@@ -2894,6 +2894,7 @@ struct ControlLoopState<'a, V: VmArch, Vcpu: VcpuArch> {
     #[cfg(feature = "pvclock")]
     pvclock_host_tube: Option<Arc<Tube>>,
     vfio_container_manager: &'a mut VfioContainerManager,
+    suspended_pvclock_state: &'a mut Option<hypervisor::ClockState>,
 }
 
 fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
@@ -3047,6 +3048,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 state.vcpu_handles.len(),
                 state.irq_handler_control,
                 || state.linux.irq_chip.snapshot(state.linux.vcpu_count),
+                state.suspended_pvclock_state,
             );
             if state.cfg.force_s2idle {
                 if let VmRequest::SuspendVcpus = request {
@@ -3645,12 +3647,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     vcpu_thread_barrier.wait();
 
+    // See comment on `VmRequest::execute`.
+    let mut suspended_pvclock_state: Option<hypervisor::ClockState> = None;
+
     // Restore VM (if applicable).
     // Must happen after the vCPU barrier to avoid deadlock.
     if let Some(path) = &cfg.restore_path {
         vm_control::do_restore(
             path,
-            &linux.vm,
             |msg| vcpu::kick_all_vcpus(&vcpu_handles, linux.irq_chip.as_irq_chip(), msg),
             |msg, index| {
                 vcpu::kick_vcpu(&vcpu_handles.get(index), linux.irq_chip.as_irq_chip(), msg)
@@ -3665,6 +3669,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     .restore(image, linux.vcpu_count)
             },
             /* require_encrypted= */ false,
+            &mut suspended_pvclock_state,
         )?;
         // Allow the vCPUs to start for real.
         vcpu::kick_all_vcpus(
@@ -3901,6 +3906,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             #[cfg(feature = "pvclock")]
                             pvclock_host_tube: pvclock_host_tube.clone(),
                             vfio_container_manager: &mut vfio_container_manager,
+                            suspended_pvclock_state: &mut suspended_pvclock_state,
                         };
                         let (exit_requested, mut ids_to_remove, add_tubes) =
                             process_vm_control_event(&mut state, id, socket)?;
