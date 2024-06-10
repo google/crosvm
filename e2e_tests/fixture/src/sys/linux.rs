@@ -189,7 +189,7 @@ impl TestVmSys {
         // Open pipes. Apply timeout to `to_guest` and `from_guest` since it will block until crosvm
         // opens the other end.
         let start = Instant::now();
-        let (to_guest, from_guest) = match run_with_status_check(
+        let run_result = run_with_status_check(
             move || (File::create(to_guest_pipe), File::open(from_guest_pipe)),
             Duration::from_millis(200),
             || {
@@ -203,7 +203,9 @@ impl TestVmSys {
                     true
                 }
             },
-        ) {
+        );
+
+        let (to_guest, from_guest) = match run_result {
             Ok((to_guest, from_guest)) => (
                 to_guest.context("Cannot open to_guest pipe")?,
                 from_guest.context("Cannot open from_guest pipe")?,

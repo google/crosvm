@@ -24,7 +24,7 @@ impl EventTokio {
     pub async fn wait(&self) -> std::io::Result<()> {
         loop {
             let mut guard = self.0.readable().await?;
-            match guard.try_io(|inner| {
+            let io_result = guard.try_io(|inner| {
                 let mut buf: u64 = 0;
                 // SAFETY: This is safe because we made this fd and the pointer we pass can not
                 // overflow because we give the syscall's size parameter properly.
@@ -42,7 +42,9 @@ impl EventTokio {
                     return Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof));
                 }
                 Ok(())
-            }) {
+            });
+
+            match io_result {
                 Ok(result) => return result,
                 Err(_would_block) => continue,
             }

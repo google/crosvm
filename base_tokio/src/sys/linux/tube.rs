@@ -28,7 +28,7 @@ impl TubeTokio {
     ) -> base::TubeResult<()> {
         loop {
             let mut guard = self.0.writable().await.map_err(base::TubeError::Send)?;
-            match guard.try_io(|inner| {
+            let io_result = guard.try_io(|inner| {
                 // Re-using the non-async send is potentially hazardous since it isn't explicitly
                 // written with O_NONBLOCK support. However, since it uses SOCK_SEQPACKET and a
                 // single write syscall, it should be OK.
@@ -40,7 +40,9 @@ impl TubeTokio {
                     Err(base::TubeError::Send(e)) => Err(e),
                     Err(e) => Ok(Err(e)),
                 }
-            }) {
+            });
+
+            match io_result {
                 Ok(result) => {
                     return match result {
                         Ok(Ok(x)) => Ok(x),
@@ -58,7 +60,7 @@ impl TubeTokio {
     ) -> base::TubeResult<T> {
         loop {
             let mut guard = self.0.readable().await.map_err(base::TubeError::Recv)?;
-            match guard.try_io(|inner| {
+            let io_result = guard.try_io(|inner| {
                 // Re-using the non-async recv is potentially hazardous since it isn't explicitly
                 // written with O_NONBLOCK support. However, since it uses SOCK_SEQPACKET and a
                 // single read syscall, it should be OK.
@@ -70,7 +72,9 @@ impl TubeTokio {
                     Err(base::TubeError::Recv(e)) => Err(e),
                     Err(e) => Ok(Err(e)),
                 }
-            }) {
+            });
+
+            match io_result {
                 Ok(result) => {
                     return match result {
                         Ok(Ok(x)) => Ok(x),
