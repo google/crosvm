@@ -2237,17 +2237,16 @@ impl FileSystem for PassthroughFs {
         let _trace = fs_trace!(self.tag, "setattr", inode, handle);
         let inode_data = self.find_inode(inode)?;
 
-        enum Data {
-            Handle(Arc<HandleData>, RawDescriptor),
+        enum Data<'a> {
+            Handle(MutexGuard<'a, File>),
             ProcPath(CString),
         }
 
         // If we have a handle then use it otherwise get a new fd from the inode.
+        let hd;
         let data = if let Some(handle) = handle.filter(|&h| h != 0) {
-            let hd = self.find_handle(handle, inode)?;
-
-            let fd = hd.file.lock().as_raw_descriptor();
-            Data::Handle(hd, fd)
+            hd = self.find_handle(handle, inode)?;
+            Data::Handle(hd.file.lock())
         } else {
             let pathname = CString::new(format!("self/fd/{}", inode_data.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -2258,7 +2257,7 @@ impl FileSystem for PassthroughFs {
             // SAFETY: this doesn't modify any memory and we check the return value.
             syscall!(unsafe {
                 match data {
-                    Data::Handle(_, fd) => libc::fchmod(fd, attr.st_mode),
+                    Data::Handle(ref fd) => libc::fchmod(fd.as_raw_descriptor(), attr.st_mode),
                     Data::ProcPath(ref p) => {
                         libc::fchmodat(self.proc.as_raw_descriptor(), p.as_ptr(), attr.st_mode, 0)
                     }
@@ -2298,9 +2297,9 @@ impl FileSystem for PassthroughFs {
 
         if valid.contains(SetattrValid::SIZE) {
             syscall!(match data {
-                Data::Handle(_, fd) => {
+                Data::Handle(ref fd) => {
                     // SAFETY: this doesn't modify any memory and we check the return value.
-                    unsafe { libc::ftruncate64(fd, attr.st_size) }
+                    unsafe { libc::ftruncate64(fd.as_raw_descriptor(), attr.st_size) }
                 }
                 _ => {
                     // There is no `ftruncateat` so we need to get a new fd and truncate it.
@@ -2340,7 +2339,7 @@ impl FileSystem for PassthroughFs {
             // SAFETY: this doesn't modify any memory and we check the return value.
             syscall!(unsafe {
                 match data {
-                    Data::Handle(_, fd) => libc::futimens(fd, tvs.as_ptr()),
+                    Data::Handle(ref fd) => libc::futimens(fd.as_raw_descriptor(), tvs.as_ptr()),
                     Data::ProcPath(ref p) => {
                         libc::utimensat(self.proc.as_raw_descriptor(), p.as_ptr(), tvs.as_ptr(), 0)
                     }
