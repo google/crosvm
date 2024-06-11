@@ -55,12 +55,6 @@ use x86_64::KERNEL_START_OFFSET;
 use x86_64::X86_64_SCI_IRQ;
 use x86_64::ZERO_PAGE_OFFSET;
 
-enum TaggedControlTube {
-    VmMemory(Tube),
-    VmIrq(Tube),
-    Vm(Tube),
-}
-
 /// Tests the integration of x86_64 with some hypervisor and devices setup. This test can help
 /// narrow down whether boot issues are caused by the interaction between hypervisor and devices
 /// and x86_64, or if they are caused by an invalid kernel or image. You can also swap in parts
@@ -104,7 +98,7 @@ where
     let mut resources =
         SystemAllocator::new(X8664arch::get_system_allocator_config(&vm), None, &[])
             .expect("failed to create system allocator");
-    let (irqchip_tube, device_tube) = Tube::pair().expect("failed to create irq tube");
+    let (_irqchip_tube, device_tube) = Tube::pair().expect("failed to create irq tube");
 
     let mut irq_chip = create_irq_chip(vm.try_clone().expect("failed to clone vm"), 1, device_tube);
 
@@ -112,7 +106,6 @@ where
     let io_bus = Arc::new(Bus::new(BusType::Io));
     let (exit_evt_wrtube, _) = Tube::directional_pair().unwrap();
 
-    let mut control_tubes = vec![TaggedControlTube::VmIrq(irqchip_tube)];
     // Create one control socket per disk.
     let mut disk_device_tubes = Vec::new();
     let mut disk_host_tubes = Vec::new();
@@ -122,9 +115,6 @@ where
         disk_host_tubes.push(disk_host_tube);
         disk_device_tubes.push(disk_device_tube);
     }
-    let (gpu_host_tube, _gpu_device_tube) = Tube::pair().unwrap();
-
-    control_tubes.push(TaggedControlTube::VmMemory(gpu_host_tube));
 
     let devices = vec![];
 
@@ -159,9 +149,8 @@ where
     )
     .unwrap();
 
-    let (host_cmos_tube, cmos_tube) = Tube::pair().unwrap();
+    let (_host_cmos_tube, cmos_tube) = Tube::pair().unwrap();
     X8664arch::setup_legacy_cmos_device(&io_bus, &mut irq_chip, cmos_tube, memory_size).unwrap();
-    control_tubes.push(TaggedControlTube::Vm(host_cmos_tube));
 
     let mut serial_params = BTreeMap::new();
 
