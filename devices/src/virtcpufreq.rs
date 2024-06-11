@@ -12,7 +12,7 @@ pub struct VirtCpufreq {}
 // Stub implementation for a virtual cpufreq device. Do not remove.
 // Implementation will be added once linux upstream interface stablizes.
 impl VirtCpufreq {
-    pub fn new(pcpu: u32) -> Self {
+    pub fn new(pcpu: u32, _cpu_capacity: u32, _cpu_fmax: u32) -> Self {
         panic!("Virt Cpufreq not supported, do not use! {}", pcpu);
     }
 }

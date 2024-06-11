@@ -359,6 +359,11 @@ pub struct VmComponents {
     pub no_i8042: bool,
     pub no_rtc: bool,
     pub no_smt: bool,
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
+    pub normalized_cpu_capacities: BTreeMap<usize, u32>,
     #[cfg(target_arch = "x86_64")]
     pub pci_low_start: Option<u64>,
     #[cfg(target_arch = "x86_64")]
@@ -522,6 +527,9 @@ pub trait LinuxArch {
 
     /// Returns frequency map for each of the host's logical cores.
     fn get_host_cpu_frequencies_khz() -> Result<BTreeMap<usize, Vec<u32>>, Self::Error>;
+
+    /// Returns max-freq map of the host's logical cores.
+    fn get_host_cpu_max_freq_khz() -> Result<BTreeMap<usize, u32>, Self::Error>;
 
     /// Returns capacity map of the host's logical cores.
     fn get_host_cpu_capacity() -> Result<BTreeMap<usize, u32>, Self::Error>;

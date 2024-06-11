@@ -1231,36 +1231,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
 
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     let mut cpu_frequencies = BTreeMap::new();
-
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    if cfg.virt_cpufreq {
-        let host_cpu_frequencies = Arch::get_host_cpu_frequencies_khz()?;
-
-        for cpu_id in 0..cfg.vcpu_count.unwrap_or(1) {
-            let vcpu_affinity = match cfg.vcpu_affinity.clone() {
-                Some(VcpuAffinity::Global(v)) => v,
-                Some(VcpuAffinity::PerVcpu(mut m)) => m.remove(&cpu_id).unwrap_or_default(),
-                None => {
-                    panic!("There must be some vcpu_affinity setting with VirtCpufreq enabled!")
-                }
-            };
-
-            // Check that the physical CPUs that the vCPU is affined to all share the same
-            // frequency domain.
-            if let Some(freq_domain) = host_cpu_frequencies.get(&vcpu_affinity[0]) {
-                for cpu in vcpu_affinity.iter() {
-                    if let Some(frequencies) = host_cpu_frequencies.get(cpu) {
-                        if frequencies != freq_domain {
-                            panic!("Affined CPUs do not share a frequency domain!");
-                        }
-                    }
-                }
-                cpu_frequencies.insert(cpu_id, freq_domain.clone());
-            } else {
-                panic!("No frequency domain for cpu:{}", cpu_id);
-            }
-        }
-    }
+    let mut normalized_cpu_capacities = BTreeMap::new();
 
     // if --enable-fw-cfg or --fw-cfg was given, we want to enable fw_cfg
     let fw_cfg_enable = cfg.enable_fw_cfg || !cfg.fw_cfg_parameters.is_empty();
@@ -1272,6 +1244,62 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     } else {
         (cfg.cpu_clusters.clone(), cfg.cpu_capacity.clone())
     };
+
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    if cfg.virt_cpufreq {
+        if !cfg.cpu_frequencies_khz.is_empty() {
+            cpu_frequencies = cfg.cpu_frequencies_khz.clone();
+        } else {
+            let host_cpu_frequencies = Arch::get_host_cpu_frequencies_khz()?;
+
+            for cpu_id in 0..cfg.vcpu_count.unwrap_or(1) {
+                let vcpu_affinity = match cfg.vcpu_affinity.clone() {
+                    Some(VcpuAffinity::Global(v)) => v,
+                    Some(VcpuAffinity::PerVcpu(mut m)) => m.remove(&cpu_id).unwrap_or_default(),
+                    None => {
+                        panic!("There must be some vcpu_affinity setting with VirtCpufreq enabled!")
+                    }
+                };
+
+                // Check that the physical CPUs that the vCPU is affined to all share the same
+                // frequency domain.
+                if let Some(freq_domain) = host_cpu_frequencies.get(&vcpu_affinity[0]) {
+                    for cpu in vcpu_affinity.iter() {
+                        if let Some(frequencies) = host_cpu_frequencies.get(cpu) {
+                            if frequencies != freq_domain {
+                                panic!("Affined CPUs do not share a frequency domain!");
+                            }
+                        }
+                    }
+                    cpu_frequencies.insert(cpu_id, freq_domain.clone());
+                } else {
+                    panic!("No frequency domain for cpu:{}", cpu_id);
+                }
+            }
+        }
+        let mut max_freqs = Vec::new();
+
+        for (_cpu, frequencies) in cpu_frequencies.iter() {
+            max_freqs.push(*frequencies.iter().max().ok_or(Error::new(libc::EINVAL))?)
+        }
+
+        let host_max_freqs = Arch::get_host_cpu_max_freq_khz()?;
+        let largest_host_max_freq = host_max_freqs
+            .values()
+            .max()
+            .ok_or(Error::new(libc::EINVAL))?;
+
+        for (cpu_id, max_freq) in max_freqs.iter().enumerate() {
+            let normalized_cpu_capacity = (u64::from(*cpu_capacity.get(&cpu_id).unwrap())
+                * u64::from(*max_freq))
+            .checked_div(u64::from(*largest_host_max_freq))
+            .ok_or(Error::new(libc::EINVAL))?;
+            normalized_cpu_capacities.insert(
+                cpu_id,
+                u32::try_from(normalized_cpu_capacity).map_err(|_| Error::new(libc::EINVAL))?,
+            );
+        }
+    }
 
     Ok(VmComponents {
         #[cfg(target_arch = "x86_64")]
@@ -1293,6 +1321,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         fw_cfg_parameters: cfg.fw_cfg_parameters.clone(),
         cpu_clusters,
         cpu_capacity,
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        normalized_cpu_capacities,
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
         hv_cfg: hypervisor::Config {

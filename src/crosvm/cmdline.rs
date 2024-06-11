@@ -79,6 +79,11 @@ use crate::crosvm::config::from_key_values;
 use crate::crosvm::config::parse_bus_id_addr;
 use crate::crosvm::config::parse_cpu_affinity;
 use crate::crosvm::config::parse_cpu_capacity;
+#[cfg(all(
+    any(target_arch = "arm", target_arch = "aarch64"),
+    any(target_os = "android", target_os = "linux")
+))]
+use crate::crosvm::config::parse_cpu_frequencies;
 use crate::crosvm::config::parse_dynamic_power_coefficient;
 #[cfg(target_arch = "x86_64")]
 use crate::crosvm::config::parse_memory_region;
@@ -1132,6 +1137,20 @@ pub struct RunCommand {
     #[merge(strategy = append)]
     /// group the given CPUs into a cluster (default: no clusters)
     pub cpu_cluster: Vec<CpuSet>,
+
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
+    #[argh(
+        option,
+        arg_name = "CPU=FREQS[,CPU=FREQS[,...]]",
+        from_str_fn(parse_cpu_frequencies)
+    )]
+    #[serde(skip)]
+    #[merge(strategy = overwrite_option)]
+    /// set the list of frequencies in KHz for the given CPU (default: no frequencies)
+    pub cpu_frequencies_khz: Option<BTreeMap<usize, Vec<u32>>>, // CPU index -> frequencies
 
     #[argh(option, short = 'c')]
     #[merge(strategy = overwrite_option)]
@@ -2714,6 +2733,9 @@ impl TryFrom<RunCommand> for super::config::Config {
         ))]
         {
             cfg.virt_cpufreq = cmd.virt_cpufreq.unwrap_or_default();
+            if let Some(frequencies) = cmd.cpu_frequencies_khz {
+                cfg.cpu_frequencies_khz = frequencies;
+            }
         }
 
         cfg.vcpu_cgroup_path = cmd.vcpu_cgroup_path;

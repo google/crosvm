@@ -699,6 +699,14 @@ impl arch::LinuxArch for AArch64 {
 
                 let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreq::new(
                     vcpu_affinity[0].try_into().unwrap(),
+                    *components.normalized_cpu_capacities.get(&vcpu).unwrap(),
+                    *components
+                        .cpu_frequencies
+                        .get(&vcpu)
+                        .unwrap()
+                        .iter()
+                        .max()
+                        .unwrap(),
                 )));
 
                 if vcpu as u64 * AARCH64_VIRTFREQ_SIZE + AARCH64_VIRTFREQ_SIZE
@@ -882,6 +890,14 @@ impl arch::LinuxArch for AArch64 {
     ) -> std::result::Result<PciAddress, Self::Error> {
         // hotplug function isn't verified on AArch64, so set it unsupported here.
         Err(Error::Unsupported)
+    }
+
+    fn get_host_cpu_max_freq_khz() -> std::result::Result<BTreeMap<usize, u32>, Self::Error> {
+        Ok(Self::collect_for_each_cpu(base::logical_core_max_freq_khz)
+            .map_err(Error::CpuFrequencies)?
+            .into_iter()
+            .enumerate()
+            .collect())
     }
 
     fn get_host_cpu_frequencies_khz() -> std::result::Result<BTreeMap<usize, Vec<u32>>, Self::Error>
