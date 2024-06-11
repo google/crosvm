@@ -12,6 +12,8 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
+use base::custom_serde::serialize_arc_mutex;
 use base::debug;
 use base::error;
 use base::warn;
@@ -27,6 +29,8 @@ use base::Tube;
 use base::VmEventType;
 use base::WaitContext;
 use base::WorkerThread;
+use serde::Deserialize;
+use serde::Serialize;
 use sync::Mutex;
 use vm_control::VmResponse;
 
@@ -52,10 +56,12 @@ pub const VMWDT_DEFAULT_CLOCK_HZ: u32 = 2;
 // Proc stat indexes
 const PROCSTAT_GUEST_TIME_INDX: usize = 42;
 
+#[derive(Serialize)]
 pub struct VmwdtPerCpu {
     // Flag which indicated if the watchdog is started
     is_enabled: bool,
     // Timer used to generate periodic events at `timer_freq_hz` frequency
+    #[serde(skip_serializing)]
     timer: Timer,
     // The frequency of the `timer`
     timer_freq_hz: u64,
@@ -70,6 +76,17 @@ pub struct VmwdtPerCpu {
     next_expiration_interval_ms: i64,
     // Keep track if the watchdog PPI raised.
     stall_evt_ppi_triggered: bool,
+    // Keep track if the time was armed with oneshot mode or with repeating interval
+    repeating_interval: Option<Duration>,
+}
+
+#[derive(Deserialize)]
+struct VmwdtPerCpuRestore {
+    is_enabled: bool,
+    timer_freq_hz: u64,
+    last_guest_time_ms: i64,
+    next_expiration_interval_ms: i64,
+    repeating_interval: Option<Duration>,
 }
 
 pub struct Vmwdt {
@@ -83,6 +100,19 @@ pub struct Vmwdt {
     // Event to be used to interrupt the guest on detected stalls
     stall_evt: IrqEdgeEvent,
     vm_ctrl_tube: Option<Tube>,
+}
+
+#[derive(Serialize)]
+struct VmwdtSnapshot {
+    #[serde(serialize_with = "serialize_arc_mutex")]
+    vm_wdts: Arc<Mutex<Vec<VmwdtPerCpu>>>,
+    activated: bool,
+}
+
+#[derive(Deserialize)]
+struct VmwdtRestore {
+    vm_wdts: Vec<VmwdtPerCpuRestore>,
+    activated: bool,
 }
 
 impl Vmwdt {
@@ -103,6 +133,7 @@ impl Vmwdt {
                 timer: Timer::new().unwrap(),
                 timer_freq_hz: 0,
                 next_expiration_interval_ms: 0,
+                repeating_interval: None,
             });
         }
         let vm_wdts = Arc::new(Mutex::new(vec));
@@ -204,6 +235,7 @@ impl Vmwdt {
                                     cpu_id, e
                                 );
                             }
+                            watchdog.repeating_interval = None;
                         } else {
                             if watchdog.stall_evt_ppi_triggered {
                                 if let Err(e) = reset_evt_wrtube
@@ -318,9 +350,17 @@ impl BusDevice for Vmwdt {
 
                 if reg_val != 0 {
                     let interval = Duration::from_millis(1000 / cpu_watchdog.timer_freq_hz);
-                    cpu_watchdog.timer.reset_repeating(interval).unwrap();
+                    cpu_watchdog.repeating_interval = Some(interval);
+                    cpu_watchdog
+                        .timer
+                        .reset_repeating(interval)
+                        .expect("Failed to reset timer repeating interval");
                 } else {
-                    cpu_watchdog.timer.clear().unwrap();
+                    cpu_watchdog.repeating_interval = None;
+                    cpu_watchdog
+                        .timer
+                        .clear()
+                        .expect("Failed to clear cpu watchdog timer");
                 }
             }
             VMWDT_REG_LOAD_CNT => {
@@ -352,6 +392,7 @@ impl BusDevice for Vmwdt {
                     {
                         error!("failed to reset one-shot vcpu time {}", cpu_index);
                     }
+                    cpu_watchdog.repeating_interval = None;
                 }
             }
             VMWDT_REG_CURRENT_CNT => {
@@ -389,7 +430,46 @@ impl Suspendable for Vmwdt {
             // processed, and write will not get triggered.
             // The request to get PIDs/TIDs should get processed before any MMIO request occurs.
             self.start(None);
+            let mut vm_wdts = self.vm_wdts.lock();
+            for vmwdt in vm_wdts.iter_mut() {
+                if let Some(interval) = &vmwdt.repeating_interval {
+                    vmwdt
+                        .timer
+                        .reset_repeating(*interval)
+                        .expect("failed to write repeating interval");
+                } else if vmwdt.is_enabled {
+                    vmwdt
+                        .timer
+                        .reset_oneshot(Duration::from_millis(
+                            vmwdt.next_expiration_interval_ms as u64,
+                        ))
+                        .expect("failed to write oneshot interval");
+                }
+            }
         }
+        Ok(())
+    }
+
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(&VmwdtSnapshot {
+            vm_wdts: self.vm_wdts.clone(),
+            activated: self.activated,
+        })
+        .context("failed to snapshot Vmwdt")
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let deser: VmwdtRestore =
+            serde_json::from_value(data).context("failed to deserialize Vmwdt")?;
+        let mut vm_wdts = self.vm_wdts.lock();
+        for (vmwdt_restore, vmwdt) in deser.vm_wdts.iter().zip(vm_wdts.iter_mut()) {
+            vmwdt.is_enabled = vmwdt_restore.is_enabled;
+            vmwdt.timer_freq_hz = vmwdt_restore.timer_freq_hz;
+            vmwdt.last_guest_time_ms = vmwdt_restore.last_guest_time_ms;
+            vmwdt.next_expiration_interval_ms = vmwdt_restore.next_expiration_interval_ms;
+            vmwdt.repeating_interval = vmwdt_restore.repeating_interval;
+        }
+        self.activated = deser.activated;
         Ok(())
     }
 }
