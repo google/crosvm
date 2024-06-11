@@ -14,10 +14,27 @@ use remain::sorted;
 use thiserror::Error;
 
 #[cfg(feature = "gpu")]
-pub use crate::gpu::*;
+pub use crate::gpu::do_gpu_display_add;
+#[cfg(feature = "gpu")]
+pub use crate::gpu::do_gpu_display_list;
+#[cfg(feature = "gpu")]
+pub use crate::gpu::do_gpu_display_remove;
+#[cfg(feature = "gpu")]
+pub use crate::gpu::do_gpu_set_display_mouse_mode;
+#[cfg(feature = "gpu")]
+pub use crate::gpu::ModifyGpuResult;
 pub use crate::sys::handle_request;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use crate::sys::handle_request_with_timeout;
+use crate::BatControlCommand;
+use crate::BatControlResult;
+use crate::BatteryType;
+use crate::SwapCommand;
+use crate::UsbControlCommand;
+use crate::UsbControlResult;
+use crate::VmRequest;
+use crate::VmResponse;
+use crate::USB_CONTROL_MAX_PORTS;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -63,7 +80,8 @@ pub fn do_net_add<T: AsRef<Path> + std::fmt::Debug>(
     tap_name: &str,
     socket_path: T,
 ) -> AnyHowResult<u8> {
-    let request = VmRequest::HotPlugNetCommand(NetControlCommand::AddTap(tap_name.to_owned()));
+    let request =
+        VmRequest::HotPlugNetCommand(crate::NetControlCommand::AddTap(tap_name.to_owned()));
     let response = handle_request(&request, socket_path).map_err(|()| anyhow!("socket error: "))?;
     match response {
         VmResponse::PciHotPlugResponse { bus } => Ok(bus),
@@ -77,7 +95,7 @@ pub fn do_net_add<T: AsRef<Path> + std::fmt::Debug>(
     _tap_name: &str,
     _socket_path: T,
 ) -> AnyHowResult<u8> {
-    bail!("Unsupported: pci-hotplug feature disabled");
+    anyhow::bail!("Unsupported: pci-hotplug feature disabled");
 }
 
 #[cfg(feature = "pci-hotplug")]
@@ -86,7 +104,7 @@ pub fn do_net_remove<T: AsRef<Path> + std::fmt::Debug>(
     bus_num: u8,
     socket_path: T,
 ) -> AnyHowResult<()> {
-    let request = VmRequest::HotPlugNetCommand(NetControlCommand::RemoveTap(bus_num));
+    let request = VmRequest::HotPlugNetCommand(crate::NetControlCommand::RemoveTap(bus_num));
     let response = handle_request(&request, socket_path).map_err(|()| anyhow!("socket error: "))?;
     match response {
         VmResponse::Ok => Ok(()),
@@ -100,7 +118,7 @@ pub fn do_net_remove<T: AsRef<Path> + std::fmt::Debug>(
     _bus_num: u8,
     _socket_path: T,
 ) -> AnyHowResult<()> {
-    bail!("Unsupported: pci-hotplug feature disabled");
+    anyhow::bail!("Unsupported: pci-hotplug feature disabled");
 }
 
 pub fn do_usb_attach<T: AsRef<Path> + std::fmt::Debug>(

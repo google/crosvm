@@ -25,13 +25,24 @@ use std::time::Duration;
 use libc::c_char;
 use libc::ssize_t;
 pub use swap::SwapStatus;
-use vm_control::client::*;
+use vm_control::client::do_modify_battery;
+use vm_control::client::do_net_add;
+use vm_control::client::do_net_remove;
+use vm_control::client::do_security_key_attach;
+use vm_control::client::do_usb_attach;
+use vm_control::client::do_usb_detach;
+use vm_control::client::do_usb_list;
+use vm_control::client::handle_request;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use vm_control::client::handle_request_with_timeout;
+use vm_control::client::vms_request;
 use vm_control::BalloonControlCommand;
 use vm_control::BalloonStats;
 use vm_control::BalloonWS;
 use vm_control::DiskControlCommand;
 #[cfg(feature = "registered_events")]
 use vm_control::RegisteredEvent;
+use vm_control::SwapCommand;
 use vm_control::UsbControlAttachedDevice;
 use vm_control::UsbControlResult;
 use vm_control::VmRequest;
