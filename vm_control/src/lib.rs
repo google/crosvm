@@ -1337,19 +1337,16 @@ pub enum VmRequest {
     /// Command to Snapshot devices
     Snapshot(SnapshotCommand),
     /// Register for event notification
-    #[cfg(feature = "registered_events")]
     RegisterListener {
         socket_addr: String,
         event: RegisteredEvent,
     },
     /// Unregister for notifications for event
-    #[cfg(feature = "registered_events")]
     UnregisterListener {
         socket_addr: String,
         event: RegisteredEvent,
     },
     /// Unregister for all event notification
-    #[cfg(feature = "registered_events")]
     Unregister { socket_addr: String },
     /// Suspend VM VCPUs and Devices until resume.
     SuspendVm,
@@ -1359,7 +1356,6 @@ pub enum VmRequest {
 
 /// NOTE: when making any changes to this enum please also update
 /// RegisteredEventFfi in crosvm_control/src/lib.rs
-#[cfg(feature = "registered_events")]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum RegisteredEvent {
     VirtioBalloonWsReport,
@@ -1367,7 +1363,6 @@ pub enum RegisteredEvent {
     VirtioBalloonOOMDeflation,
 }
 
-#[cfg(feature = "registered_events")]
 #[derive(Serialize, Deserialize, Debug)]
 pub enum RegisteredEventWithData {
     VirtioBalloonWsReport {
@@ -1378,7 +1373,6 @@ pub enum RegisteredEventWithData {
     VirtioBalloonOOMDeflation,
 }
 
-#[cfg(feature = "registered_events")]
 impl RegisteredEventWithData {
     pub fn into_event(&self) -> RegisteredEvent {
         match self {
@@ -1388,6 +1382,7 @@ impl RegisteredEventWithData {
         }
     }
 
+    #[cfg(feature = "registered_events")]
     pub fn into_proto(&self) -> registered_events::RegisteredEvent {
         match self {
             Self::VirtioBalloonWsReport {
@@ -2005,17 +2000,14 @@ impl VmRequest {
                     }
                 }
             }
-            #[cfg(feature = "registered_events")]
             VmRequest::RegisterListener {
                 socket_addr: _,
                 event: _,
             } => VmResponse::Ok,
-            #[cfg(feature = "registered_events")]
             VmRequest::UnregisterListener {
                 socket_addr: _,
                 event: _,
             } => VmResponse::Ok,
-            #[cfg(feature = "registered_events")]
             VmRequest::Unregister { socket_addr: _ } => VmResponse::Ok,
         }
     }

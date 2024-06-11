@@ -9,7 +9,13 @@
 //!
 //! Downstream projects rely on this library maintaining a stable API surface.
 //! Do not make changes to this library without consulting the crosvm externalization team.
-//! Email: crosvm-dev@chromium.org
+//! Email: <crosvm-dev@chromium.org>
+//!
+//! The API of this library should remain the same regardless of which crosvm features are enabled.
+//! Any missing functionality should be handled by returning an error at runtime, not conditional
+//! compilation, so that users can rely on the the same set of functions with the same prototypes
+//! regardless of how crosvm is configured.
+//!
 //! For more information see:
 //! <https://crosvm.dev/book/running_crosvm/programmatic_interaction.html#usage>
 
@@ -19,7 +25,6 @@ use std::ffi::CStr;
 use std::panic::catch_unwind;
 use std::path::Path;
 use std::path::PathBuf;
-#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::time::Duration;
 
 use libc::c_char;
@@ -33,14 +38,12 @@ use vm_control::client::do_usb_attach;
 use vm_control::client::do_usb_detach;
 use vm_control::client::do_usb_list;
 use vm_control::client::handle_request;
-#[cfg(any(target_os = "android", target_os = "linux"))]
 use vm_control::client::handle_request_with_timeout;
 use vm_control::client::vms_request;
 use vm_control::BalloonControlCommand;
 use vm_control::BalloonStats;
 use vm_control::BalloonWS;
 use vm_control::DiskControlCommand;
-#[cfg(feature = "registered_events")]
 use vm_control::RegisteredEvent;
 use vm_control::SwapCommand;
 use vm_control::UsbControlAttachedDevice;
@@ -183,7 +186,6 @@ pub unsafe extern "C" fn crosvm_client_balloon_vms(
 /// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
 /// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
 /// null pointers are passed.
-#[cfg(any(target_os = "android", target_os = "linux"))]
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_balloon_vms_wait_with_timeout(
     socket_path: *const c_char,
@@ -783,13 +785,7 @@ pub unsafe extern "C" fn crosvm_client_balloon_stats(
     stats: *mut BalloonStatsFfi,
     actual: *mut u64,
 ) -> bool {
-    crosvm_client_balloon_stats_impl(
-        socket_path,
-        #[cfg(any(target_os = "android", target_os = "linux"))]
-        None,
-        stats,
-        actual,
-    )
+    crosvm_client_balloon_stats_impl(socket_path, None, stats, actual)
 }
 
 /// See crosvm_client_balloon_stats.
@@ -799,7 +795,6 @@ pub unsafe extern "C" fn crosvm_client_balloon_stats(
 /// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
 /// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
 /// null pointers are passed.
-#[cfg(any(target_os = "android", target_os = "linux"))]
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_balloon_stats_with_timeout(
     socket_path: *const c_char,
@@ -817,16 +812,13 @@ pub unsafe extern "C" fn crosvm_client_balloon_stats_with_timeout(
 
 fn crosvm_client_balloon_stats_impl(
     socket_path: *const c_char,
-    #[cfg(any(target_os = "android", target_os = "linux"))] timeout_ms: Option<Duration>,
+    timeout_ms: Option<Duration>,
     stats: *mut BalloonStatsFfi,
     actual: *mut u64,
 ) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             let request = &VmRequest::BalloonCommand(BalloonControlCommand::Stats {});
-            #[cfg(not(unix))]
-            let resp = handle_request(request, socket_path);
-            #[cfg(any(target_os = "android", target_os = "linux"))]
             let resp = handle_request_with_timeout(request, socket_path, timeout_ms);
             if let Ok(VmResponse::BalloonStats {
                 stats: ref balloon_stats,
@@ -989,19 +981,14 @@ pub unsafe extern "C" fn crosvm_client_balloon_working_set(
 
 /// Publically exposed version of RegisteredEvent enum, implemented as an
 /// integral newtype for FFI safety.
-#[cfg(feature = "registered_events")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct RegisteredEventFfi(u32);
 
-#[cfg(feature = "registered_events")]
 pub const REGISTERED_EVENT_VIRTIO_BALLOON_WS_REPORT: RegisteredEventFfi = RegisteredEventFfi(0);
-#[cfg(feature = "registered_events")]
 pub const REGISTERED_EVENT_VIRTIO_BALLOON_RESIZE: RegisteredEventFfi = RegisteredEventFfi(1);
-#[cfg(feature = "registered_events")]
 pub const REGISTERED_EVENT_VIRTIO_BALLOON_OOM_DEFLATION: RegisteredEventFfi = RegisteredEventFfi(2);
 
-#[cfg(feature = "registered_events")]
 impl TryFrom<RegisteredEventFfi> for RegisteredEvent {
     type Error = &'static str;
 
@@ -1024,7 +1011,6 @@ impl TryFrom<RegisteredEventFfi> for RegisteredEvent {
 /// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
 /// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
 /// null pointers are passed.
-#[cfg(feature = "registered_events")]
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_register_events_listener(
     socket_path: *const c_char,
@@ -1062,7 +1048,6 @@ pub unsafe extern "C" fn crosvm_client_register_events_listener(
 /// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
 /// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
 /// null pointers are passed.
-#[cfg(feature = "registered_events")]
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_unregister_events_listener(
     socket_path: *const c_char,
@@ -1100,7 +1085,6 @@ pub unsafe extern "C" fn crosvm_client_unregister_events_listener(
 /// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
 /// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
 /// null pointers are passed.
-#[cfg(feature = "registered_events")]
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_unregister_listener(
     socket_path: *const c_char,

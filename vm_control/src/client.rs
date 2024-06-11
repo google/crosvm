@@ -24,7 +24,6 @@ pub use crate::gpu::do_gpu_set_display_mouse_mode;
 #[cfg(feature = "gpu")]
 pub use crate::gpu::ModifyGpuResult;
 pub use crate::sys::handle_request;
-#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use crate::sys::handle_request_with_timeout;
 use crate::BatControlCommand;
 use crate::BatControlResult;

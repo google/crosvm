@@ -8,6 +8,7 @@ pub(crate) mod gpu;
 use std::io::Result;
 use std::mem::size_of;
 use std::path::Path;
+use std::time::Duration;
 
 use base::error;
 use base::named_pipes::BlockingMode;
@@ -65,6 +66,19 @@ pub fn handle_request<T: AsRef<Path> + std::fmt::Debug>(
             error!("failed to connect to socket at '{:?}': {}", socket_path, e);
             Err(())
         }
+    }
+}
+
+pub fn handle_request_with_timeout<T: AsRef<Path> + std::fmt::Debug>(
+    request: &VmRequest,
+    socket_path: T,
+    timeout: Option<Duration>,
+) -> HandleRequestResult {
+    if timeout.is_none() {
+        handle_request(request, socket_path)
+    } else {
+        error!("handle_request_with_timeout() not implemented for Windows");
+        Err(())
     }
 }
 
