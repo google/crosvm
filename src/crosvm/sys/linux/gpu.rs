@@ -249,6 +249,11 @@ fn get_gpu_render_server_environment(
         }
     }
 
+    // TODO(b/323284290): workaround to advertise 2 graphics queues in ANV
+    if !env.contains_key("ANV_QUEUE_OVERRIDE") {
+        env.insert("ANV_QUEUE_OVERRIDE".to_string(), "gc=2".to_string());
+    }
+
     // TODO(b/237493180, b/284517235): workaround to enable ETC2/ASTC format emulation in Mesa
     // TODO(b/284361281, b/328827736): workaround to enable legacy sparse binding in RADV
     let driconf_options = [
