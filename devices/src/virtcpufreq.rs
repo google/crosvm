@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::unix::net::UnixStream;
-use std::sync::Arc;
-
-use sync::Mutex;
-
 use crate::pci::CrosvmDeviceId;
 use crate::BusDevice;
 use crate::DeviceId;
@@ -17,7 +12,7 @@ pub struct VirtCpufreq {}
 // Stub implementation for a virtual cpufreq device. Do not remove.
 // Implementation will be added once linux upstream interface stablizes.
 impl VirtCpufreq {
-    pub fn new(pcpu: u32, _socket: Option<Arc<Mutex<UnixStream>>>) -> Self {
+    pub fn new(pcpu: u32) -> Self {
         panic!("Virt Cpufreq not supported, do not use! {}", pcpu);
     }
 }
