@@ -2709,7 +2709,7 @@ mod tests {
 
         let dummy_kernel_path = test_dir.path().join("dummy_kernel.txt");
         OpenOptions::new()
-            .create(true)
+            .create_new(true)
             .write(true)
             .open(&dummy_kernel_path)
             .expect("Could not open file!");

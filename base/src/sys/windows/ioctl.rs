@@ -365,7 +365,7 @@ mod tests {
         // open our random file and write "foo" in it
         let mut f = OpenOptions::new()
             .write(true)
-            .create(true)
+            .create_new(true)
             .open(file_path)
             .unwrap();
         f.write_all(b"foo").expect("Failed to write bytes.");
@@ -449,7 +449,7 @@ mod tests {
         // open our random file and write "foo" in it
         let mut f = OpenOptions::new()
             .write(true)
-            .create(true)
+            .create_new(true)
             .open(file_path)
             .unwrap();
         f.write_all(b"foo").expect("Failed to write bytes.");

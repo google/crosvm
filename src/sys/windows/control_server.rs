@@ -143,14 +143,16 @@ impl ControlServer {
             info!("control server: accepted client");
 
             loop {
-                match base::deserialize_and_recv::<VmRequest, _>(|buf| {
+                let recv_result = base::deserialize_and_recv::<VmRequest, _>(|buf| {
                     client_pipe_read.read_overlapped_blocking(
                         buf,
                         &mut read_overlapped,
                         &exit_evt,
                     )?;
                     Ok(buf.len())
-                }) {
+                });
+
+                match recv_result {
                     Ok(msg) => {
                         control_send.send(&msg).map_err(|e| {
                             error!("unexpected error in control server recv loop: {}", e);

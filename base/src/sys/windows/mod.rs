@@ -67,7 +67,6 @@ pub use system_info::getpid;
 pub use system_info::number_of_logical_cores;
 pub use system_info::pagesize;
 pub use terminal::*;
-pub use timer::*;
 use winapi::shared::minwindef::DWORD;
 pub(crate) use write_zeroes::file_write_zeroes_at;
 

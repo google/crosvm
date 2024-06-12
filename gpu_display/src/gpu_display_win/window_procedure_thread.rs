@@ -253,7 +253,7 @@ impl WindowProcedureThread {
             .try_clone()
             .map_err(|e| anyhow!("Failed to clone close_requested_event: {}", e))?;
 
-        let thread = match ThreadBuilder::new()
+        let thread = ThreadBuilder::new()
             .name("gpu_display_wndproc".into())
             .spawn(move || {
                 match close_requested_event_clone.try_clone() {
@@ -272,10 +272,8 @@ impl WindowProcedureThread {
                 if let Err(e) = close_requested_event_clone.signal() {
                     error!("Failed to signal close requested event: {}", e);
                 }
-            }) {
-            Ok(thread) => thread,
-            Err(e) => bail!("Failed to spawn WndProc thread: {}", e),
-        };
+            })
+            .context("Failed to spawn WndProc thread")?;
 
         match message_router_handle_receiver.recv() {
             Ok(message_router_handle_res) => match message_router_handle_res {

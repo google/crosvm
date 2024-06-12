@@ -90,7 +90,7 @@ pub const MONO_CHANNEL_COUNT: u16 = 1;
 const AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM: u32 = 0x80000000;
 const AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY: u32 = 0x08000000;
 
-thread_local!(static THREAD_ONCE_INIT: Once = Once::new());
+thread_local!(static THREAD_ONCE_INIT: Once = const { Once::new() });
 
 // Used to differentiate between S_FALSE and S_OK. This means `CoInitializeEx` did not get called.
 // Mainly used for testing.

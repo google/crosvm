@@ -1976,20 +1976,13 @@ where
         None
     };
 
-    #[cfg(test)]
-    let bootstrap = if !skip_bootstrap {
-        vec![
-            "--bootstrap".to_string(),
-            (tube_transport_main_child.as_raw_descriptor() as usize).to_string(),
-        ]
-    } else {
-        vec![]
-    };
-    #[cfg(not(test))]
-    let bootstrap = vec![
+    let bootstrap = [
         "--bootstrap".to_string(),
         (tube_transport_main_child.as_raw_descriptor() as usize).to_string(),
     ];
+
+    #[cfg(test)]
+    let bootstrap: &[String] = if skip_bootstrap { &[] } else { &bootstrap };
 
     let input_args: Vec<S> = args.into_iter().collect();
     let args = input_args

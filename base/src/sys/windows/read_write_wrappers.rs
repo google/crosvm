@@ -154,7 +154,6 @@ pub fn read_overlapped_blocking(
 mod tests {
     use std::fs::File;
     use std::fs::OpenOptions;
-    use std::io::Write;
     use std::os::windows::fs::OpenOptionsExt;
     use std::path::PathBuf;
 
@@ -171,7 +170,6 @@ mod tests {
 
     fn open_overlapped(path: &PathBuf) -> File {
         OpenOptions::new()
-            .create(true)
             .read(true)
             .write(true)
             .custom_flags(FILE_FLAG_OVERLAPPED)
@@ -179,23 +177,11 @@ mod tests {
             .unwrap()
     }
 
-    fn open_blocking(path: &PathBuf) -> File {
-        OpenOptions::new()
-            .create(true)
-            .read(true)
-            .write(true)
-            .open(path)
-            .unwrap()
-    }
-
     #[test]
     fn test_read_overlapped() {
         let (file_path, _tmpdir) = tempfile_path();
-        let mut f = open_blocking(&file_path);
         let data: [u8; 6] = [0, 1, 2, 3, 5, 6];
-        f.write_all(&data).unwrap();
-        f.flush().unwrap();
-        drop(f);
+        std::fs::write(&file_path, data).unwrap();
 
         let of = open_overlapped(&file_path);
         let mut buf: [u8; 3] = [0; 3];

@@ -58,7 +58,7 @@ impl Serial {
             };
             self.system_params.kill_evt = Some(self_kill_evt);
 
-            match thread::Builder::new()
+            let thread_result = thread::Builder::new()
                 .name(format!("{} sync thread", self.debug_label()))
                 .spawn(move || {
                     let mut worker = SyncWorker {
@@ -67,7 +67,9 @@ impl Serial {
                     };
                     worker.run();
                     worker
-                }) {
+                });
+
+            match thread_result {
                 Err(e) => {
                     error!("failed to spawn sync thread: {}", e);
                 }

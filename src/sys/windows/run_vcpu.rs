@@ -363,13 +363,15 @@ impl VcpuRunThread {
                     )
                 };
 
-                let final_event_data = match vcpu_fn().unwrap_or_else(|e| {
+                let exit_state = vcpu_fn().unwrap_or_else(|e| {
                     error!(
                         "vcpu {} run loop exited with error: {:#}",
                         context.cpu_id, e
                     );
                     ExitState::Stop
-                }) {
+                });
+
+                let final_event_data = match exit_state {
                     ExitState::Stop => VmEventType::Exit,
                     _ => unreachable!(),
                 };
