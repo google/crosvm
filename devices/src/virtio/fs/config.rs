@@ -178,6 +178,16 @@ pub struct Config {
     // The default value for this option is 0.
     #[serde(default)]
     pub max_dynamic_perm: usize,
+
+    // Maximum number of dynamic xattr paths.
+    //
+    // The dynamic xattr paths are used to set specific paths certain xattr after virtiofs
+    // device is created. It is  for arcvm special usage, normal device should not support
+    // this feature.
+    //
+    // The default value for this option is 0.
+    #[serde(default)]
+    pub max_dynamic_xattr: usize,
 }
 
 impl Default for Config {
@@ -194,6 +204,7 @@ impl Default for Config {
             use_dax: false,
             posix_acl: config_default_posix_acl(),
             max_dynamic_perm: 0,
+            max_dynamic_xattr: 0,
         }
     }
 }

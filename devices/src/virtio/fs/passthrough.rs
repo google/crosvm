@@ -28,6 +28,8 @@ use std::sync::MutexGuard;
 use std::sync::RwLock;
 use std::time::Duration;
 
+#[cfg(feature = "arc_quota")]
+use base::debug;
 use base::error;
 use base::ioctl_ior_nr;
 use base::ioctl_iow_nr;
@@ -72,9 +74,13 @@ use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
 #[cfg(feature = "arc_quota")]
+use crate::virtio::fs::arc_ioctl::FsPathXattrDataBuffer;
+#[cfg(feature = "arc_quota")]
 use crate::virtio::fs::arc_ioctl::FsPermissionDataBuffer;
 #[cfg(feature = "arc_quota")]
 use crate::virtio::fs::arc_ioctl::PermissionData;
+#[cfg(feature = "arc_quota")]
+use crate::virtio::fs::arc_ioctl::XattrData;
 use crate::virtio::fs::caps::Capability;
 use crate::virtio::fs::caps::Caps;
 use crate::virtio::fs::caps::Set as CapSet;
@@ -188,6 +194,9 @@ ioctl_iow_nr!(FS_IOC64_SETFLAGS, 'f' as u32, 2, u64);
 
 #[cfg(feature = "arc_quota")]
 ioctl_iow_nr!(FS_IOC_SETPERMISSION, 'f' as u32, 1, FsPermissionDataBuffer);
+#[cfg(feature = "arc_quota")]
+ioctl_iow_nr!(FS_IOC_SETPATHXATTR, 'f' as u32, 1, FsPathXattrDataBuffer);
+
 #[repr(C)]
 #[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 struct fsverity_enable_arg {
@@ -709,6 +718,10 @@ pub struct PassthroughFs {
     #[cfg(feature = "arc_quota")]
     permission_paths: RwLock<Vec<PermissionData>>,
 
+    // paths and coresponding xattr setting set by `crosvm_client_fs_xattr_set` API
+    #[cfg(feature = "arc_quota")]
+    xattr_paths: RwLock<Vec<XattrData>>,
+
     cfg: Config,
 }
 
@@ -789,6 +802,8 @@ impl PassthroughFs {
             expiring_casefold_lookup_caches,
             #[cfg(feature = "arc_quota")]
             permission_paths: RwLock::new(Vec::new()),
+            #[cfg(feature = "arc_quota")]
+            xattr_paths: RwLock::new(Vec::new()),
             cfg,
         };
 
@@ -1781,6 +1796,99 @@ impl PassthroughFs {
 
         IoctlReply::Done(Ok(Vec::new()))
     }
+
+    // Get xattr value according to path and name
+    fn get_xattr_by_path(&self, path: &str, name: &str) -> Option<String> {
+        self.xattr_paths
+            .read()
+            .expect("acquire permission_paths read lock")
+            .iter()
+            .find(|data| data.need_set_guest_xattr(path, name))
+            .map(|data| data.xattr_value.clone())
+    }
+
+    fn skip_host_set_xattr(&self, path: &str, name: &str) -> bool {
+        self.get_xattr_by_path(path, name).is_some()
+    }
+
+    fn read_xattr_data<R: io::Read>(&self, mut r: R) -> io::Result<XattrData> {
+        let mut fs_path_xattr_data = FsPathXattrDataBuffer::new_zeroed();
+        r.read_exact(fs_path_xattr_data.as_bytes_mut())?;
+
+        let xattr_path = self.string_from_u8_slice(&fs_path_xattr_data.path)?;
+        let xattr_name = self.string_from_u8_slice(&fs_path_xattr_data.xattr_name)?;
+        let xattr_value = self.string_from_u8_slice(&fs_path_xattr_data.xattr_value)?;
+
+        Ok(XattrData {
+            xattr_path,
+            xattr_name,
+            xattr_value,
+        })
+    }
+
+    /// Sets xattr value for all files and directories under a specific path.
+    ///
+    /// This ioctl does not correspond to any upstream FUSE feature. It is used for arcvm.
+    /// It associates the specified path and xattr name with a value.
+    ///
+    /// When the getxattr is called for the specified path and name, the predefined
+    /// value is returned.
+    ///
+    /// # Notes
+    /// - This method affects all existing and future files under the registered path.
+    /// - The SECURITY_CONTEXT feature will be disabled if this ioctl is enabled.
+    /// - The registered path should not be renamed
+    /// - Refer go/remove-mount-passthrough-fuse for more design details
+    fn set_xattr_by_path<R: io::Read>(&self, r: R) -> IoctlReply {
+        if self
+            .xattr_paths
+            .read()
+            .expect("acquire xattr_paths read lock")
+            .len()
+            >= self.cfg.max_dynamic_xattr
+        {
+            error!(
+                "FS_IOC_SETPATHXATTR exceeds limits of max_dynamic_xattr: {}",
+                self.cfg.max_dynamic_xattr
+            );
+            return IoctlReply::Done(Err(io::Error::from_raw_os_error(libc::EINVAL)));
+        }
+
+        let xattr_data = match self.read_xattr_data(r) {
+            Ok(data) => data,
+            Err(e) => {
+                error!("fail to read xattr data: {}", e);
+                return IoctlReply::Done(Err(e));
+            }
+        };
+
+        self.xattr_paths
+            .write()
+            .expect("acquire xattr_paths write lock")
+            .push(xattr_data);
+
+        IoctlReply::Done(Ok(Vec::new()))
+    }
+
+    fn do_getxattr_with_filter(
+        &self,
+        data: Arc<InodeData>,
+        name: Cow<CStr>,
+        buf: &mut [u8],
+    ) -> io::Result<usize> {
+        let res: usize = match self.get_xattr_by_path(&data.path, &name.to_string_lossy()) {
+            Some(predifined_xattr) => {
+                let x = predifined_xattr.into_bytes();
+                if x.len() > buf.len() {
+                    return Err(io::Error::from_raw_os_error(libc::ERANGE));
+                }
+                buf.copy_from_slice(&x);
+                buf.len()
+            }
+            None => self.do_getxattr(&data, &name, &mut buf[..])?,
+        };
+        Ok(res)
+    }
 }
 
 /// Decrements the refcount of the inode.
@@ -1903,8 +2011,15 @@ impl FileSystem for PassthroughFs {
             | FsOptions::READDIRPLUS_AUTO
             | FsOptions::EXPORT_SUPPORT
             | FsOptions::DONT_MASK
-            | FsOptions::CACHE_SYMLINKS
-            | FsOptions::SECURITY_CONTEXT;
+            | FsOptions::CACHE_SYMLINKS;
+
+        // Device using dynamic xattr feature will have different security context in
+        // host and guests. The SECURITY_CONTEXT feature should not be enabled in the
+        // device.
+        if self.cfg.max_dynamic_xattr == 0 {
+            opts |= FsOptions::SECURITY_CONTEXT;
+        }
+
         if self.cfg.posix_acl {
             opts |= FsOptions::POSIX_ACL;
         }
@@ -2828,6 +2943,17 @@ impl FileSystem for PassthroughFs {
 
         let data = self.find_inode(inode)?;
         let name = self.rewrite_xattr_name(name);
+
+        #[cfg(feature = "arc_quota")]
+        if self.skip_host_set_xattr(&data.path, &name.to_string_lossy()) {
+            debug!(
+                "ignore setxattr for path:{} xattr_name:{}",
+                &data.path,
+                &name.to_string_lossy()
+            );
+            return Ok(());
+        }
+
         let file = data.file.lock();
         let o_path_file = (file.1 & libc::O_PATH) != 0;
         if o_path_file {
@@ -2886,8 +3012,12 @@ impl FileSystem for PassthroughFs {
         let name = self.rewrite_xattr_name(name);
         let mut buf = vec![0u8; size as usize];
 
-        // SAFETY: this will only modify the contents of `buf`.
+        #[cfg(feature = "arc_quota")]
+        let res = self.do_getxattr_with_filter(data, name, &mut buf)?;
+
+        #[cfg(not(feature = "arc_quota"))]
         let res = self.do_getxattr(&data, &name, &mut buf[..])?;
+
         if size == 0 {
             Ok(GetxattrReply::Count(res as u32))
         } else {
@@ -3056,6 +3186,8 @@ impl FileSystem for PassthroughFs {
         // Refer go/remove-mount-passthrough-fuse for more design details
         #[cfg(feature = "arc_quota")]
         const SET_PERMISSION: u32 = FS_IOC_SETPERMISSION() as u32;
+        #[cfg(feature = "arc_quota")]
+        const SETPATHXATTR: u32 = FS_IOC_SETPATHXATTR() as u32;
 
         match cmd {
             GET_ENCRYPTION_POLICY_EX => self.get_encryption_policy_ex(inode, handle, r),
@@ -3109,6 +3241,14 @@ impl FileSystem for PassthroughFs {
                     Err(io::Error::from_raw_os_error(libc::EINVAL))
                 } else {
                     Ok(self.set_permission_by_path(r))
+                }
+            }
+            #[cfg(feature = "arc_quota")]
+            SETPATHXATTR => {
+                if in_size == 0 {
+                    Err(io::Error::from_raw_os_error(libc::EINVAL))
+                } else {
+                    Ok(self.set_xattr_by_path(r))
                 }
             }
             _ => Err(io::Error::from_raw_os_error(libc::ENOTTY)),

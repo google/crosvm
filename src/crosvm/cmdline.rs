@@ -2136,6 +2136,12 @@ pub struct RunCommand {
     ///         Error when FS_IOC_SETPERMISSION ioctl is called
     ///         in the device if current dyamic permission path is
     ///         lager or equal to this value.
+    ///     max_dynamic_xattr=uint - Indicates maximum number of
+    ///        dynamic xattrs that the shared directory allows.
+    ///         (default: 0). The fuse server will return EPERM
+    ///         Error when FS_IOC_SETPATHXATTR ioctl is called
+    ///         in the device if current dyamic permission path is
+    ///         lager or equal to this value.
     ///     Options uid and gid are useful when the crosvm process
     ///     has no CAP_SETGID/CAP_SETUID but an identity mapping of
     ///     the current user/group between the VM and the host is
