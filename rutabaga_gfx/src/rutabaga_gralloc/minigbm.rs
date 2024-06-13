@@ -111,7 +111,10 @@ impl Gralloc for MinigbmDevice {
         }
 
         let mut reqs: ImageMemoryRequirements = Default::default();
-        let gbm_buffer = MinigbmBuffer(bo, self.clone());
+        let gbm_buffer = MinigbmBuffer {
+            bo,
+            _device: self.clone(),
+        };
 
         if gbm_buffer.cached() {
             reqs.map_info = RUTABAGA_MAP_CACHE_CACHED;
@@ -174,7 +177,10 @@ impl Gralloc for MinigbmDevice {
             return Err(RutabagaError::IoError(Error::last_os_error()));
         }
 
-        let gbm_buffer = MinigbmBuffer(bo, self.clone());
+        let gbm_buffer = MinigbmBuffer {
+            bo,
+            _device: self.clone(),
+        };
         let dmabuf = gbm_buffer.export()?.into();
         Ok(RutabagaHandle {
             os_handle: dmabuf,
@@ -184,7 +190,10 @@ impl Gralloc for MinigbmDevice {
 }
 
 /// An allocation from a `MinigbmDevice`.
-pub struct MinigbmBuffer(*mut gbm_bo, MinigbmDevice);
+pub struct MinigbmBuffer {
+    bo: *mut gbm_bo,
+    _device: MinigbmDevice,
+}
 
 // SAFETY:
 // Safe because minigbm handles synchronization internally.
@@ -198,56 +207,56 @@ impl MinigbmBuffer {
     pub fn width(&self) -> u32 {
         // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
-        unsafe { gbm_bo_get_width(self.0) }
+        unsafe { gbm_bo_get_width(self.bo) }
     }
 
     /// Height in pixels.
     pub fn height(&self) -> u32 {
         // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
-        unsafe { gbm_bo_get_height(self.0) }
+        unsafe { gbm_bo_get_height(self.bo) }
     }
 
     /// `DrmFormat` of the buffer.
     pub fn format(&self) -> DrmFormat {
         // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
-        unsafe { DrmFormat(gbm_bo_get_format(self.0)) }
+        unsafe { DrmFormat(gbm_bo_get_format(self.bo)) }
     }
 
     /// DrmFormat modifier flags for the buffer.
     pub fn format_modifier(&self) -> u64 {
         // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
-        unsafe { gbm_bo_get_modifier(self.0) }
+        unsafe { gbm_bo_get_modifier(self.bo) }
     }
 
     /// Number of planes present in this buffer.
     pub fn num_planes(&self) -> usize {
         // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
-        unsafe { gbm_bo_get_plane_count(self.0) as usize }
+        unsafe { gbm_bo_get_plane_count(self.bo) as usize }
     }
 
     /// Offset in bytes for the given plane.
     pub fn plane_offset(&self, plane: usize) -> u32 {
         // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
-        unsafe { gbm_bo_get_offset(self.0, plane) }
+        unsafe { gbm_bo_get_offset(self.bo, plane) }
     }
 
     /// Length in bytes of one row for the given plane.
     pub fn plane_stride(&self, plane: usize) -> u32 {
         // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
-        unsafe { gbm_bo_get_stride_for_plane(self.0, plane) }
+        unsafe { gbm_bo_get_stride_for_plane(self.bo, plane) }
     }
 
     /// Should buffer use cached mapping to guest
     pub fn cached(&self) -> bool {
         // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
-        let mode = unsafe { gbm_bo_get_map_info(self.0) };
+        let mode = unsafe { gbm_bo_get_map_info(self.bo) };
         mode == gbm_bo_map_cache_mode::GBM_BO_MAP_CACHE_CACHED
     }
 
@@ -255,7 +264,7 @@ impl MinigbmBuffer {
     pub fn export(&self) -> RutabagaResult<File> {
         // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
-        match unsafe { gbm_bo_get_fd(self.0) } {
+        match unsafe { gbm_bo_get_fd(self.bo) } {
             fd if fd >= 0 => {
                 // SAFETY: fd is expected to be valid.
                 let dmabuf = unsafe { File::from_raw_descriptor(fd) };
@@ -270,6 +279,6 @@ impl Drop for MinigbmBuffer {
     fn drop(&mut self) {
         // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
-        unsafe { gbm_bo_destroy(self.0) }
+        unsafe { gbm_bo_destroy(self.bo) }
     }
 }
