@@ -2492,11 +2492,13 @@ fn test_fsgsbase() {
         ..Default::default()
     };
 
-    let regs_matcher = move |_: HypervisorType, regs: &Regs, _: &_| {
+    let regs_matcher = move |_: HypervisorType, regs: &Regs, sregs: &Sregs| {
         assert_eq!(regs.rcx, fs);
         assert_eq!(regs.rdx, gs);
         assert_eq!(regs.rax, 0xaaaaaaaaaaaaaaaa);
         assert_eq!(regs.rbx, 0xbbbbbbbbbbbbbbbb);
+        assert_eq!(sregs.fs.base, fs);
+        assert_eq!(sregs.gs.base, gs);
     };
 
     let exit_matcher = |_, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match exit {
