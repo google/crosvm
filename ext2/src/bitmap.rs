@@ -38,7 +38,6 @@ impl<'a> BitMap<'a> {
             .iter_mut()
             .take(n / 8)
             .for_each(|v| *v = if value { 0xff } else { 0 });
-
         if n % 8 != 0 {
             if value {
                 self.inner[n / 8] |= 0xff >> (8 - n % 8);
@@ -47,16 +46,16 @@ impl<'a> BitMap<'a> {
             }
         }
     }
+
+    // Returns the number of bits in the bitmap.
+    pub fn len(&self) -> usize {
+        self.inner.len() * 8
+    }
 }
 
 // Implements test utility methods.
 #[cfg(test)]
 impl<'a> BitMap<'a> {
-    // Returns the number of bits in the bitmap.
-    pub fn len(&self) -> usize {
-        self.inner.len() * 8
-    }
-
     // Returns the number of bits in the bitmap that are set.
     pub fn count_zeros(&self) -> usize {
         self.inner.iter().map(|b| b.count_zeros() as usize).sum()

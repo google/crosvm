@@ -1196,8 +1196,9 @@ pub fn create_pmem_ext2_device(
     pmem_device_tube: Tube,
 ) -> DeviceResult {
     let cfg = ext2::Config {
-        inodes_per_group: 4096,
-        blocks_per_group: 1024,
+        inodes_per_group: opts.inodes_per_group,
+        blocks_per_group: opts.blocks_per_group,
+        size: opts.size,
     };
     let arena = ext2::create_ext2_region(&cfg, Some(opts.path.as_path()))?;
     let arena_size = arena.size() as u64;

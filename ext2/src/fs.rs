@@ -29,6 +29,7 @@ use zerocopy::FromZeroes;
 use crate::arena::Arena;
 use crate::arena::BlockId;
 use crate::arena::FileMappingInfo;
+use crate::blockgroup::BlockGroupDescriptor;
 use crate::blockgroup::GroupMetaData;
 use crate::blockgroup::BLOCK_SIZE;
 use crate::inode::Inode;
@@ -138,10 +139,10 @@ impl DirEntryBlock<'_> {
 /// A struct to represent an ext2 filesystem.
 pub struct Ext2<'a> {
     sb: &'a mut SuperBlock,
+    cur_block_group: usize,
+    cur_inode_table: usize,
 
-    // We support only one block group for now.
-    // TODO(b/331764754): Support multiple block groups.
-    group_metadata: GroupMetaData<'a>,
+    group_metadata: Vec<GroupMetaData<'a>>,
 
     dir_entries: BTreeMap<InodeNum, Vec<DirEntryBlock<'a>>>,
 }
@@ -150,13 +151,16 @@ impl<'a> Ext2<'a> {
     /// Create a new ext2 filesystem.
     fn new(cfg: &Config, arena: &'a Arena<'a>) -> Result<Self> {
         let sb = SuperBlock::new(arena, cfg)?;
-        if sb.block_group_nr != 1 {
-            bail!("multiple block group isn't supported");
+
+        let mut group_metadata = vec![];
+        for i in 0..sb.num_groups() {
+            group_metadata.push(GroupMetaData::new(arena, sb, i)?);
         }
 
-        let group_metadata = GroupMetaData::new(arena, sb)?;
         let mut ext2 = Ext2 {
             sb,
+            cur_block_group: 0,
+            cur_inode_table: 0,
             group_metadata,
             dir_entries: BTreeMap::new(),
         };
@@ -188,63 +192,90 @@ impl<'a> Ext2<'a> {
             );
         }
 
-        if self.group_metadata.group_desc.free_inodes_count == 0 {
-            bail!("no free inodes in group 0");
+        if self.group_metadata[self.cur_inode_table]
+            .group_desc
+            .free_inodes_count
+            == 0
+        {
+            self.cur_inode_table += 1;
         }
 
-        let gm = &mut self.group_metadata;
+        let gm = &mut self.group_metadata[self.cur_inode_table];
         let alloc_inode = InodeNum::new(gm.first_free_inode)?;
         // (alloc_inode - 1) because inode is 1-indexed.
         gm.inode_bitmap
-            .set(usize::from(alloc_inode) - 1usize, true)?;
+            .set(
+                (usize::from(alloc_inode) - 1) % self.sb.inodes_per_group as usize,
+                true,
+            )
+            .context("failed to set inode bitmap")?;
+
         gm.first_free_inode += 1;
         gm.group_desc.free_inodes_count -= 1;
         self.sb.free_inodes_count -= 1;
-
         Ok(alloc_inode)
     }
 
     fn allocate_block(&mut self) -> Result<BlockId> {
-        self.allocate_contiguous_blocks(1).map(|v| v[0])
+        self.allocate_contiguous_blocks(1).map(|v| v[0][0])
     }
 
-    fn allocate_contiguous_blocks(&mut self, n: u16) -> Result<Vec<BlockId>> {
+    fn allocate_contiguous_blocks(&mut self, n: u16) -> Result<Vec<Vec<BlockId>>> {
         if n == 0 {
             bail!("n must be positive");
         }
-
-        if self.sb.free_blocks_count == 0 {
+        if self.sb.free_blocks_count < n as u32 {
             bail!(
-                "no free blocks: run out of s_blocks_count={}",
-                self.sb.blocks_count
+                "no free blocks: run out of free_blocks_count={} < {n}",
+                self.sb.free_blocks_count
             );
         }
 
-        if self.group_metadata.group_desc.free_blocks_count < n {
-            // TODO(b/331764754): Support multiple block groups.
-            bail!(
-                "not enough free blocks in group 0.: {} < {}",
-                self.group_metadata.group_desc.free_blocks_count,
-                n
-            );
+        let mut contig_blocks = vec![];
+        let mut remaining = n;
+        while remaining > 0 {
+            let alloc_block_num = std::cmp::min(
+                remaining,
+                self.group_metadata[self.cur_block_group]
+                    .group_desc
+                    .free_blocks_count,
+            ) as u32;
+
+            let gm = &mut self.group_metadata[self.cur_block_group];
+            let alloc_blocks = (gm.first_free_block..gm.first_free_block + alloc_block_num)
+                .map(BlockId::from)
+                .collect();
+            gm.first_free_block += alloc_block_num;
+            gm.group_desc.free_blocks_count -= alloc_block_num as u16;
+            self.sb.free_blocks_count -= alloc_block_num;
+            for &b in &alloc_blocks {
+                let index = u32::from(b) as usize
+                    - self.cur_block_group * self.sb.blocks_per_group as usize;
+                gm.block_bitmap
+                    .set(index, true)
+                    .with_context(|| format!("failed to set block_bitmap at {index}"))?;
+            }
+            remaining -= alloc_block_num as u16;
+            if self.group_metadata[self.cur_block_group]
+                .group_desc
+                .free_blocks_count
+                == 0
+            {
+                self.cur_block_group += 1;
+            }
+            contig_blocks.push(alloc_blocks);
         }
 
-        let gm = &mut self.group_metadata;
-        let alloc_blocks = (gm.first_free_block..gm.first_free_block + n as u32)
-            .map(BlockId::from)
-            .collect();
-        gm.first_free_block += n as u32;
-        gm.group_desc.free_blocks_count -= n;
-        self.sb.free_blocks_count -= n as u32;
-        for &b in &alloc_blocks {
-            gm.block_bitmap.set(u32::from(b) as usize, true)?;
-        }
+        Ok(contig_blocks)
+    }
 
-        Ok(alloc_blocks)
+    fn group_num_for_inode(&self, inode: InodeNum) -> usize {
+        inode.to_table_index() / self.sb.inodes_per_group as usize
     }
 
     fn get_inode_mut(&mut self, num: InodeNum) -> Result<&mut &'a mut Inode> {
-        self.group_metadata
+        let group_id = self.group_num_for_inode(num);
+        self.group_metadata[group_id]
             .inode_table
             .get_mut(&num)
             .ok_or_else(|| anyhow!("{:?} not found", num))
@@ -330,20 +361,21 @@ impl<'a> Ext2<'a> {
 
     fn add_inode(&mut self, num: InodeNum, inode: &'a mut Inode) -> Result<()> {
         let typ = inode.typ().ok_or_else(|| anyhow!("unknown inode type"))?;
-        if self.group_metadata.inode_table.contains_key(&num) {
+        let group_id = self.group_num_for_inode(num);
+        let gm = &mut self.group_metadata[group_id];
+        if gm.inode_table.contains_key(&num) {
             bail!("inode {:?} already exists", &num);
         }
 
         if typ == InodeType::Directory {
-            self.group_metadata.group_desc.used_dirs_count += 1;
+            gm.group_desc.used_dirs_count += 1;
         }
 
-        self.group_metadata.inode_table.insert(num, inode);
-
-        // TODO(b/331764754): To support multiple block groups, need to fix this calculation.
-        self.group_metadata
-            .inode_bitmap
-            .set(num.to_table_index(), true)?;
+        gm.inode_table.insert(num, inode);
+        let inode_index = num.to_table_index() % self.sb.inodes_per_group as usize;
+        gm.inode_bitmap
+            .set(inode_index, true)
+            .with_context(|| format!("failed to set inode bitmap at {}", num.to_table_index()))?;
 
         Ok(())
     }
@@ -358,9 +390,10 @@ impl<'a> Ext2<'a> {
         name: &OsStr,
     ) -> Result<()> {
         let block_size = self.sb.block_size();
+        let group_id = self.group_num_for_inode(inode_num);
         let inode = Inode::new(
             arena,
-            &mut self.group_metadata,
+            &mut self.group_metadata[group_id],
             inode_num,
             InodeType::Directory,
             block_size as u32,
@@ -397,10 +430,11 @@ impl<'a> Ext2<'a> {
         path: &Path,
     ) -> Result<()> {
         let block_size = self.sb.block_size();
+        let group_id = self.group_num_for_inode(inode_num);
 
         let inode = Inode::from_metadata(
             arena,
-            &mut self.group_metadata,
+            &mut self.group_metadata[group_id],
             inode_num,
             &std::fs::metadata(path)?,
             block_size as u32,
@@ -445,23 +479,32 @@ impl<'a> Ext2<'a> {
         block_num: usize,
         file: &File,
         file_size: usize,
-        file_offset: usize,
+        mut file_offset: usize,
     ) -> Result<(Vec<BlockId>, usize)> {
-        let blocks = self.allocate_contiguous_blocks(block_num as u16)?;
-        let length = std::cmp::min(file_size - file_offset, block_num * BLOCK_SIZE);
-        let start_block = blocks[0];
+        let contig_blocks = self.allocate_contiguous_blocks(block_num as u16)?;
 
-        // Reserve the region in arena to prevent from overwriting metadata.
-        arena
-            .reserve_for_mmap(
-                start_block,
-                length,
-                file.try_clone().context("failed to clone file")?,
-                file_offset,
-            )
-            .context("mmap for direct_block is already occupied")?;
-
-        Ok((blocks, length))
+        let mut remaining = std::cmp::min(file_size - file_offset, block_num * BLOCK_SIZE);
+        let mut written = 0;
+        for blocks in &contig_blocks {
+            if remaining == 0 {
+                panic!("remaining == 0. This is a bug");
+            }
+            let length = std::cmp::min(remaining, BLOCK_SIZE * blocks.len());
+            let start_block = blocks[0];
+            // Reserve the region in arena to prevent from overwriting metadata.
+            arena
+                .reserve_for_mmap(
+                    start_block,
+                    length,
+                    file.try_clone().context("failed to clone file")?,
+                    file_offset,
+                )
+                .context("mmap for direct_block is already occupied")?;
+            remaining -= length;
+            written += length;
+            file_offset += length;
+        }
+        Ok((contig_blocks.concat(), written))
     }
 
     fn fill_indirect_block(
@@ -511,6 +554,7 @@ impl<'a> Ext2<'a> {
 
         let mut written = 0;
         let mut used_blocks = 0;
+
         if file_size > 0 {
             let block_num = std::cmp::min(
                 file_size.div_ceil(block_size),
@@ -555,8 +599,9 @@ impl<'a> Ext2<'a> {
                 indirect_blocks.push(indirect_table);
                 used_blocks += 1;
 
-                let length =
-                    self.fill_indirect_block(arena, indirect_table, &file, file_size, written)?;
+                let length = self
+                    .fill_indirect_block(arena, indirect_table, &file, file_size, written)
+                    .context("failed to indirect block for doubly-indirect table")?;
                 written += length;
                 used_blocks += length.div_ceil(block_size);
             }
@@ -565,15 +610,16 @@ impl<'a> Ext2<'a> {
             d_table.copy_from_slice(indirect_blocks.as_bytes());
         }
 
-        if written < file_size {
+        if written != file_size {
             unimplemented!("Triple-indirect block is not supported");
         }
 
         let blocks = InodeBlocksCount::from_bytes_len((used_blocks * block_size) as u32);
+        let group_id = self.group_num_for_inode(inode_num);
         let size = file_size as u32;
         let inode = Inode::from_metadata(
             arena,
-            &mut self.group_metadata,
+            &mut self.group_metadata[group_id],
             inode_num,
             &std::fs::metadata(path)?,
             size,
@@ -581,6 +627,7 @@ impl<'a> Ext2<'a> {
             blocks,
             block,
         )?;
+
         self.add_inode(inode_num, inode)?;
 
         self.allocate_dir_entry(arena, parent_inode, inode_num, InodeType::Regular, name)?;
@@ -607,10 +654,10 @@ impl<'a> Ext2<'a> {
         let inode_num = self.allocate_inode()?;
         let mut block = InodeBlock::default();
         block.set_inline_symlink(dst)?;
-
+        let group_id = self.group_num_for_inode(inode_num);
         let inode = Inode::from_metadata(
             arena,
-            &mut self.group_metadata,
+            &mut self.group_metadata[group_id],
             inode_num,
             &std::fs::symlink_metadata(&link)?,
             dst.len() as u32,
@@ -648,9 +695,10 @@ impl<'a> Ext2<'a> {
         block.set_direct_blocks(&[symlink_block])?;
 
         let block_size = self.block_size() as u32;
+        let group_id = self.group_num_for_inode(inode_num);
         let inode = Inode::from_metadata(
             arena,
-            &mut self.group_metadata,
+            &mut self.group_metadata[group_id],
             inode_num,
             &std::fs::symlink_metadata(link)?,
             dst_len as u32,
@@ -715,20 +763,50 @@ impl<'a> Ext2<'a> {
 
         Ok(())
     }
+
+    fn copy_backup_metadata(self, arena: &'a Arena<'a>) -> Result<()> {
+        // Copy superblock and group_metadata to every block group
+        for i in 1..self.sb.num_groups() as usize {
+            let super_block_id = BlockId::from(self.sb.blocks_per_group * i as u32);
+            let bg_desc_block_id = BlockId::from(u32::from(super_block_id) + 1);
+            self.sb.block_group_nr = i as u16;
+            arena.write_to_mem(super_block_id, 0, self.sb)?;
+            let mut offset = 0;
+            for gm in &self.group_metadata {
+                arena.write_to_mem(bg_desc_block_id, offset, gm.group_desc)?;
+                offset += std::mem::size_of::<BlockGroupDescriptor>();
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Creates a memory mapping region where an ext2 filesystem is constructed.
 pub fn create_ext2_region(cfg: &Config, src_dir: Option<&Path>) -> Result<MemoryMappingArena> {
-    let num_group = 1; // TODO(b/329359333): Support more than 1 group.
-    let mut mem = MemoryMappingBuilder::new(cfg.blocks_per_group as usize * BLOCK_SIZE * num_group)
-        .build()?;
+    let block_group_size = BLOCK_SIZE as u32 * cfg.blocks_per_group;
+    if cfg.size < block_group_size {
+        bail!(
+            "memory size {} is too small to have a block group: block_size={},  block_per_group={}",
+            cfg.size,
+            BLOCK_SIZE,
+            block_group_size
+        );
+    }
+    let mem_size = if cfg.size % block_group_size == 0 {
+        cfg.size
+    } else {
+        // Round down to the largest multiple of block_group_size that is smaller than cfg.size
+        cfg.size.next_multiple_of(block_group_size) - block_group_size
+    };
+
+    let mut mem = MemoryMappingBuilder::new(mem_size as usize).build()?;
 
     let arena = Arena::new(BLOCK_SIZE, &mut mem)?;
     let mut ext2 = Ext2::new(cfg, &arena)?;
     if let Some(dir) = src_dir {
         ext2.copy_dirtree(&arena, dir)?;
     }
-
+    ext2.copy_backup_metadata(&arena)?;
     let file_mappings = arena.into_mapping_info();
 
     mem.msync()?;

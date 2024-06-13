@@ -11,6 +11,7 @@ use zerocopy_derive::FromZeroes;
 
 use crate::arena::Arena;
 use crate::arena::BlockId;
+use crate::blockgroup::BLOCK_SIZE;
 use crate::inode::Inode;
 
 /// A struct to represent the configuration of an ext2 filesystem.
@@ -19,6 +20,18 @@ pub struct Config {
     pub blocks_per_group: u32,
     /// The number of inodes per group.
     pub inodes_per_group: u32,
+    /// The size of the memory region.
+    pub size: u32,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            blocks_per_group: 4096,
+            inodes_per_group: 4096,
+            size: 4096 * 4096,
+        }
+    }
 }
 
 /// The ext2 superblock.
@@ -57,7 +70,7 @@ pub(crate) struct SuperBlock {
     first_ino: u32,
     pub inode_size: u16,
     pub block_group_nr: u16,
-    _feature_compat: u32,
+    feature_compat: u32,
     feature_incompat: u32,
     _feature_ro_compat: u32,
     uuid: [u8; 16],
@@ -67,9 +80,9 @@ pub(crate) struct SuperBlock {
 impl SuperBlock {
     pub fn new<'a>(arena: &'a Arena<'a>, cfg: &Config) -> Result<&'a mut SuperBlock> {
         const EXT2_MAGIC_NUMBER: u16 = 0xEF53;
+        const COMPAT_EXT_ATTR: u32 = 0x8;
 
-        // TODO(b/329359333): Support more than 1 groups for larger data.
-        let block_group_nr = 1u16;
+        let num_groups = cfg.size / (cfg.blocks_per_group * BLOCK_SIZE as u32);
         let blocks_per_group = cfg.blocks_per_group;
         let inodes_per_group = cfg.inodes_per_group;
 
@@ -80,8 +93,8 @@ impl SuperBlock {
             .as_secs() as u32;
 
         let uuid = uuid::Uuid::new_v4().into_bytes();
-        let inodes_count = inodes_per_group * block_group_nr as u32;
-        let blocks_count = blocks_per_group * block_group_nr as u32;
+        let inodes_count = inodes_per_group * num_groups;
+        let blocks_count = blocks_per_group * num_groups;
 
         // Reserve 10 inodes. Usually inode 11 is used for the lost+found directory.
         // <https://docs.kernel.org/filesystems/ext4/special_inodes.html>.
@@ -92,7 +105,7 @@ impl SuperBlock {
         *sb = Self {
             inodes_count,
             blocks_count,
-            free_blocks_count: blocks_count, // All blocks are free
+            free_blocks_count: 0, //blocks_count, // All blocks are free
             free_inodes_count: inodes_count, // All inodes are free
             log_block_size,
             log_frag_size: log_block_size,
@@ -107,16 +120,23 @@ impl SuperBlock {
             rev_level: 1,
             first_ino,
             inode_size: Inode::inode_record_size(),
-            block_group_nr,
+            block_group_nr: 1, // super block is in block group 1
+            feature_compat: COMPAT_EXT_ATTR,
             feature_incompat: 0x2, // Directory entries contain a type field
             uuid,
             ..Default::default()
         };
+
         Ok(sb)
     }
 
     #[inline]
     pub fn block_size(&self) -> u64 {
         1024 << self.log_block_size
+    }
+
+    #[inline]
+    pub fn num_groups(&self) -> u16 {
+        (self.inodes_count / self.inodes_per_group) as u16
     }
 }

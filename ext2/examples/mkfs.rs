@@ -32,6 +32,15 @@ mod linux {
         /// number of inodes for each group
         #[argh(option, default = "1024")]
         inodes_per_group: u32,
+
+        /// size of memory region in bytes.
+        /// If it's not a multiple of 4096, it will be rounded up to the next multiple of 4096.
+        #[argh(option, default = "4194304")]
+        size: u32,
+
+        /// if sepecified, create a file systeon on RAM, but do not write to disk.
+        #[argh(switch, short = 'j')]
+        dry_run: bool,
     }
 
     pub fn main() -> anyhow::Result<()> {
@@ -40,9 +49,14 @@ mod linux {
         let cfg = ext2::Config {
             blocks_per_group: args.blocks_per_group,
             inodes_per_group: args.inodes_per_group,
+            size: args.size,
         };
         let mem = create_ext2_region(&cfg, src_dir)?;
-        println!("Create {}", args.output);
+        if args.dry_run {
+            println!("Done!");
+            return Ok(());
+        }
+
         // SAFETY: `mem` has a valid pointer and its size.
         let buf = unsafe { std::slice::from_raw_parts(mem.as_ptr(), mem.size()) };
         let mut file = OpenOptions::new()
@@ -53,6 +67,8 @@ mod linux {
             .unwrap();
 
         file.write_all(buf).unwrap();
+
+        println!("{} is written!", args.output);
 
         Ok(())
     }

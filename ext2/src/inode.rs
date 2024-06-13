@@ -113,17 +113,26 @@ impl InodeBlock {
     }
 
     /// Set an array of direct block IDs.
-    pub fn set_direct_blocks(&mut self, block_ids: &[BlockId]) -> Result<()> {
+    pub fn set_direct_blocks_from(
+        &mut self,
+        start_idx: usize,
+        block_ids: &[BlockId],
+    ) -> Result<()> {
         let bytes = block_ids.as_bytes();
-        if bytes.len() > self.0.len() {
+        if bytes.len() + start_idx * 4 > self.0.len() {
             bail!(
                 "length of direct blocks is {} bytes, but it must not exceed {}",
                 bytes.len(),
                 self.0.len()
             );
         }
-        self.0[..bytes.len()].copy_from_slice(bytes);
+        self.0[start_idx * 4..(start_idx * 4 + bytes.len())].copy_from_slice(bytes);
         Ok(())
+    }
+
+    /// Set an array of direct block IDs.
+    pub fn set_direct_blocks(&mut self, block_ids: &[BlockId]) -> Result<()> {
+        self.set_direct_blocks_from(0, block_ids)
     }
 
     /// Set a block id to be used as the indirect block table.
@@ -288,8 +297,10 @@ impl Inode {
         blocks: InodeBlocksCount,
         block: InodeBlock,
     ) -> Result<&'a mut Self> {
+        let inodes_per_group = group.inode_bitmap.len();
         // (inode_num - 1) because inode is 1-indexed.
-        let inode_offset = (usize::from(inode_num) - 1) * Inode::inode_record_size() as usize;
+        let inode_offset =
+            ((usize::from(inode_num) - 1) % inodes_per_group) * Inode::inode_record_size() as usize;
         let inode =
             arena.allocate::<Inode>(BlockId::from(group.group_desc.inode_table), inode_offset)?;
 
@@ -323,6 +334,7 @@ impl Inode {
 
             ..Default::default()
         };
+
         Ok(inode)
     }
 

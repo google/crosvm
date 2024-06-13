@@ -272,18 +272,19 @@ impl<'a> Arena<'a> {
         T::mut_from(slice).ok_or_else(|| anyhow!("failed to interpret"))
     }
 
+    pub fn write_to_mem<T: AsBytes + FromBytes + Sized>(
+        &self,
+        block_id: BlockId,
+        block_offset: usize,
+        value: &T,
+    ) -> Result<()> {
+        let slice = self.allocate_slice(block_id, block_offset, std::mem::size_of::<T>())?;
+        slice.copy_from_slice(value.as_bytes());
+        Ok(())
+    }
+
     /// Consumes `Arena` and retrieve mmap information.
     pub fn into_mapping_info(self) -> Vec<FileMappingInfo> {
         self.mappings.take()
-    }
-}
-
-impl<'a> Drop for Arena<'a> {
-    fn drop(&mut self) {
-        if self.mappings.borrow().len() != 0 {
-            panic!(
-                "mmap info was registered, but not consumed. into_mapping_info() must be called"
-            );
-        }
     }
 }

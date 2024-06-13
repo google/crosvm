@@ -30,6 +30,8 @@ use walkdir::WalkDir;
 const FSCK_PATH: &str = "/usr/sbin/e2fsck";
 const DEBUGFS_PATH: &str = "/usr/sbin/debugfs";
 
+const BLOCK_SIZE: u32 = 4096;
+
 fn run_fsck(path: &PathBuf) {
     // Run fsck and scheck its exit code is 0.
     // Passing 'y' to stop attempting interactive repair.
@@ -88,6 +90,7 @@ fn test_mkfs_empty() {
         &Config {
             blocks_per_group: 1024,
             inodes_per_group: 1024,
+            ..Default::default()
         },
         None,
     );
@@ -104,13 +107,16 @@ fn test_mkfs_empty() {
 }
 
 #[test]
-fn test_mkfs_empty_more_blocks() {
+fn test_mkfs_empty_multi_block_groups() {
     let td = tempdir().unwrap();
+    let blocks_per_group = 2048;
+    let num_groups = 2;
     let disk = mkfs(
         &td,
         &Config {
-            blocks_per_group: 2048,
+            blocks_per_group,
             inodes_per_group: 4096,
+            size: 4096 * blocks_per_group * num_groups,
         },
         None,
     );
@@ -200,7 +206,7 @@ fn assert_eq_dirs(td: &TempDir, dir: &Path, disk: &PathBuf) {
         if m1.file_type().is_file() {
             let c1 = std::fs::read_to_string(path1).unwrap();
             let c2 = std::fs::read_to_string(path2).unwrap();
-            assert_eq!(c1, c2, "content mismatch ({name1})");
+            assert_eq!(c1, c2, "content mismatch: ({name1})");
         }
     }
 }
@@ -224,6 +230,7 @@ fn test_simple_dir() {
         &Config {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            ..Default::default()
         },
         Some(&dir),
     );
@@ -255,6 +262,7 @@ fn test_nested_dirs() {
         &Config {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            ..Default::default()
         },
         Some(&dir),
     );
@@ -283,6 +291,7 @@ fn test_file_contents() {
         &Config {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            ..Default::default()
         },
         Some(&dir),
     );
@@ -305,6 +314,7 @@ fn test_max_file_name() {
         &Config {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            ..Default::default()
         },
         Some(&dir),
     );
@@ -333,6 +343,7 @@ fn test_mkfs_indirect_block() {
         &Config {
             blocks_per_group: 4096,
             inodes_per_group: 4096,
+            ..Default::default()
         },
         Some(&dir),
     );
@@ -369,6 +380,7 @@ fn test_mkfs_symlink() {
         &Config {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            ..Default::default()
         },
         Some(&dir),
     );
@@ -399,6 +411,7 @@ fn test_mkfs_abs_symlink() {
         &Config {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            ..Default::default()
         },
         Some(&dir),
     );
@@ -424,6 +437,7 @@ fn test_mkfs_symlink_to_deleted() {
         &Config {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            ..Default::default()
         },
         Some(&dir),
     );
@@ -464,6 +478,7 @@ fn test_mkfs_long_symlink() {
         &Config {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            ..Default::default()
         },
         Some(&dir),
     );
@@ -497,6 +512,7 @@ fn test_ignore_lost_found() {
         &Config {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            ..Default::default()
         },
         Some(&dir),
     );
@@ -554,6 +570,123 @@ fn test_multiple_block_directory_entry() {
         &Config {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            ..Default::default()
+        },
+        Some(&dir),
+    );
+
+    assert_eq_dirs(&td, &dir, &disk);
+}
+
+// Test a case where the inode tables spans multiple block groups.
+#[test]
+fn test_multiple_bg_multi_inode_bitmap() {
+    // testdata
+    // ├─  0.txt
+    // ├─  1.txt
+    // ...
+    // └── 999.txt
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+
+    std::fs::create_dir(&dir).unwrap();
+
+    for i in 0..1000 {
+        let fname = format!("{i}.txt");
+        let path = dir.join(&fname);
+        let mut f = File::create(&path).unwrap();
+        // Write a file name to the file.
+        f.write_all(fname.as_bytes()).unwrap();
+    }
+
+    let blocks_per_group = 1024;
+    // Set `inodes_per_group` to a smaller value than the number of files.
+    // So, the inode table in the 2nd block group will be used.
+    let inodes_per_group = 512;
+    let num_groups = 2;
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group,
+            inodes_per_group,
+            size: BLOCK_SIZE * blocks_per_group * num_groups,
+        },
+        Some(&dir),
+    );
+
+    assert_eq_dirs(&td, &dir, &disk);
+}
+
+/// Test a case where the block tables spans multiple block groups.
+#[test]
+fn test_multiple_bg_multi_block_bitmap() {
+    // testdata
+    // ├─  0.txt
+    // ├─  1.txt
+    // ...
+    // └── 999.txt
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+
+    std::fs::create_dir(&dir).unwrap();
+
+    for i in 0..1000 {
+        let fname = format!("{i}.txt");
+        let path = dir.join(&fname);
+        let mut f = File::create(&path).unwrap();
+        // Write a file name to the file.
+        f.write_all(fname.as_bytes()).unwrap();
+    }
+
+    // Set `blocks_per_group` to a smaller value than the number of files.
+    // So, the block table in the 2nd block group will be used.
+    let blocks_per_group = 512;
+    let inodes_per_group = 2048;
+    let num_groups = 4;
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group,
+            inodes_per_group,
+            size: BLOCK_SIZE * blocks_per_group * num_groups,
+        },
+        Some(&dir),
+    );
+
+    assert_eq_dirs(&td, &dir, &disk);
+}
+
+// Test a case where a file spans multiple block groups.
+#[test]
+fn test_multiple_bg_big_files() {
+    // testdata
+    // ├─  0.txt (200 * 5000 bytes)
+    // ├─  1.txt (200 * 5000 bytes)
+    // ...
+    // └── 9.txt (200 * 5000 bytes)
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+
+    std::fs::create_dir(&dir).unwrap();
+
+    // Prepare a large data.
+    let data = vec!["0123456789"; 5000 * 20].concat();
+    for i in 0..10 {
+        let path = dir.join(&format!("{i}.txt"));
+        let mut f = File::create(&path).unwrap();
+        f.write_all(data.as_bytes()).unwrap();
+    }
+
+    // Set `blocks_per_group` to a value smaller than |size of a file| / 4K.
+    // So, each file spans multiple block groups.
+    let blocks_per_group = 128;
+    let num_groups = 30;
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group,
+            inodes_per_group: 1024,
+            size: BLOCK_SIZE * blocks_per_group * num_groups,
         },
         Some(&dir),
     );
