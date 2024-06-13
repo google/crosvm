@@ -6,6 +6,8 @@
 #![cfg(any(feature = "whpx", feature = "gvm", feature = "haxm", unix))]
 
 use core::mem;
+#[cfg(any(feature = "whpx", feature = "haxm"))]
+use std::arch::asm;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
@@ -2504,6 +2506,120 @@ fn test_fsgsbase() {
     let exit_matcher = |_, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64| match exit {
         VcpuExit::Hlt => {
             true // Break VM runloop
+        }
+        r => panic!("unexpected exit reason: {:?}", r),
+    };
+
+    run_tests!(setup, regs_matcher, exit_matcher);
+}
+
+/// Tests whether MMX state is being preserved by the hypervisor correctly (e.g. the hypervisor is
+/// properly using fxsave/fxrstor, or xsave/xrstor (or xsaves/xrstors)).
+#[cfg(any(feature = "whpx", feature = "haxm"))]
+#[test]
+fn test_mmx_state_is_preserved_by_hypervisor() {
+    // This program stores a sentinel value into mm0 (the first MMX register) and verifies
+    // that after a vmexit, that value is properly restored (we copy it to rbx so it can be checked
+    // by the reg matcher when the VM hlts). In the vmexit handler function below, we make sure the
+    // sentinel value is NOT in mm0. This way we know the mm0 value has changed, so we're guaranteed
+    // the hypervisor has to restore the guest's sentinel value for the test to pass. (The read
+    // from mm0 to rbx happens *after* the vmexit, so the hypervisor has to restore the guest's
+    // mm0 otherwise there will be random garbage in there from the host. This would also be a
+    // security issue.)
+    //
+    // Note: this program also verifies the guest has MMX support. If it does not, rdx will be 1 and
+    // no MMX instructions will be attempted.
+    let sentinel_mm0_value = 0x1337FFFFu64;
+    global_asm_data!(
+        pub mmx_ops_asm,
+        ".code64",
+        "mov eax, 1",
+        "cpuid",
+        "bt edx, 23",
+        "jc HasMMX",
+        "mov rdx, 1",
+        "hlt",
+        "HasMMX:",
+        "xor rdx, rdx",
+        "mov rax, 0x1337FFFF",
+        "mov rbx, 0x0",
+        "movq mm0, rax",
+        "out 0x5, al",
+        "movq rbx, mm0",
+        "emms",
+        "hlt",
+    );
+
+    let code_addr = 0x1000;
+    let setup = TestSetup {
+        assembly: mmx_ops_asm::data().to_vec(),
+        mem_size: 0x12000,
+        load_addr: GuestAddress(code_addr),
+        initial_regs: Regs {
+            rip: code_addr,
+            rflags: 0x2,
+            ..Default::default()
+        },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+        })),
+        memory_initializations: vec![],
+        ..Default::default()
+    };
+
+    let regs_matcher = move |_: HypervisorType, regs: &Regs, _: &_| {
+        assert_ne!(regs.rdx, 1, "guest has no MMX support");
+        assert_eq!(
+            regs.rbx, sentinel_mm0_value,
+            "guest MMX register not restored by hypervisor"
+        );
+    };
+
+    let exit_matcher = |_, exit: &VcpuExit, vcpu: &mut dyn VcpuX86_64| match exit {
+        VcpuExit::Hlt => {
+            true // Break VM runloop
+        }
+        VcpuExit::Cpuid { entry } => {
+            vcpu.handle_cpuid(entry)
+                .expect("should handle cpuid successfully");
+            false
+        }
+        VcpuExit::Io => {
+            vcpu.handle_io(&mut |_| None)
+                .expect("should handle IO successfully");
+
+            // kaiyili@ pointed out we should check the XSAVE state exposed by the hypervisor via
+            // its API (e.g. vm.get_xsave_state). This is used in snapshotting, so if it's wrong,
+            // that would break things. It's also a good cross-check that the hypervisor is properly
+            // handling xsave state.
+            //
+            // There are a couple of things blocking us from doing that today:
+            //      1. gHAXM, our hypervisor of interest, doesn't expose its xsave area state for
+            //         the guest.
+            //      2. We don't have an xsave area parser (yet).
+
+            // mm0 MUST NOT have the guest's sentinel value. If it somehow does, the hypervisor
+            // didn't save the guest's FPU/MMX state / restore the host's state before exiting to
+            // CrosVM.
+            //
+            // Note: MMX is ubiquitous on x86_64, so we don't check for support on the host (the
+            // guest checks, so unless the guest's support is software implemented, it's highly
+            // likely the host has MMX support).
+            let mut mm0_value: u64;
+            // SAFETY: we do not clobber any undeclared registers. Technically emms changes some
+            // x87 state, so there's some UB risk here, but it is not explicitly called out by
+            // the Rust docs as a bad idea.
+            unsafe {
+                asm!(
+                    "movq rax, mm0",
+                    "emms",
+                    out("rax") mm0_value);
+            }
+            assert_ne!(
+                mm0_value, sentinel_mm0_value,
+                "host mm0 value is the same as the guest sentinel value"
+            );
+            false
         }
         r => panic!("unexpected exit reason: {:?}", r),
     };
