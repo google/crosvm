@@ -3610,6 +3610,77 @@ fn test_ready_for_interrupt_for_intercepted_instructions() {
 }
 
 #[test]
+fn test_debug_register_persistence() {
+    global_asm_data!(
+        test_debug_registers_code,
+        ".code64",
+        "mov dr0, rax",
+        "inc rax",
+        "mov dr1, rax",
+        "inc rax",
+        "mov dr2, rax",
+        "inc rax",
+        "mov dr3, rax",
+        // Perform HLT to cause VMEXIT
+        "hlt",
+        "mov r8, dr0",
+        "mov r9, dr1",
+        "mov r10, dr2",
+        "mov r11, dr3",
+        "hlt"
+    );
+
+    let initial_dr_value: u64 = 0x12345678;
+
+    let setup = TestSetup {
+        assembly: test_debug_registers_code::data().to_vec(),
+        mem_size: 0x11000,
+        load_addr: GuestAddress(0x1000),
+        initial_regs: Regs {
+            rax: initial_dr_value,
+            rip: 0x1000,
+            rflags: 2,
+            ..Default::default()
+        },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+        })),
+        ..Default::default()
+    };
+
+    let mut hlt_count = 0;
+
+    run_tests!(
+        setup,
+        |_, regs, _| {
+            assert_eq!(regs.r8, initial_dr_value, "DR0 value mismatch after VMEXIT");
+            assert_eq!(
+                regs.r9,
+                initial_dr_value + 1,
+                "DR1 value mismatch after VMEXIT"
+            );
+            assert_eq!(
+                regs.r10,
+                initial_dr_value + 2,
+                "DR2 value mismatch after VMEXIT"
+            );
+            assert_eq!(
+                regs.r11,
+                initial_dr_value + 3,
+                "DR3 value mismatch after VMEXIT"
+            );
+        },
+        |_, exit, _, _: &mut dyn Vm| match exit {
+            VcpuExit::Hlt => {
+                hlt_count += 1;
+                hlt_count > 1 // Halt execution after the second HLT
+            }
+            r => panic!("unexpected exit reason: {:?}", r),
+        }
+    );
+}
+
+#[test]
 fn test_minimal_exception_injection() {
     // This test tries to write an invalid MSR, causing a General Protection exception to be
     // injected by the hypervisor (since MSR writes cause a VMEXIT). We run it in long mode since
