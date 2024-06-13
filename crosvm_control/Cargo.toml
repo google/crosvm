@@ -12,6 +12,7 @@ registered_events = ["vm_control/registered_events"]
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
+balloon_control = { path = "../common/balloon_control" }
 base = { path = "../base" }
 libc = "0.2.65"
 swap = { path = "../swap", default-features = false }

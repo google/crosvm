@@ -27,6 +27,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use balloon_control::BalloonStats;
+use balloon_control::BalloonWS;
+use balloon_control::WSBucket;
 use libc::c_char;
 use libc::ssize_t;
 pub use swap::SwapStatus;
@@ -41,8 +44,6 @@ use vm_control::client::handle_request;
 use vm_control::client::handle_request_with_timeout;
 use vm_control::client::vms_request;
 use vm_control::BalloonControlCommand;
-use vm_control::BalloonStats;
-use vm_control::BalloonWS;
 use vm_control::DiskControlCommand;
 use vm_control::RegisteredEvent;
 use vm_control::SwapCommand;
@@ -50,7 +51,6 @@ use vm_control::UsbControlAttachedDevice;
 use vm_control::UsbControlResult;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
-use vm_control::WSBucket;
 use vm_control::USB_CONTROL_MAX_PORTS;
 
 pub const VIRTIO_BALLOON_WS_MAX_NUM_BINS: usize = 16;

@@ -9,13 +9,8 @@ use std::collections::VecDeque;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
-pub use balloon_control::BalloonStats;
 use balloon_control::BalloonTubeCommand;
-pub use balloon_control::BalloonTubeResult;
-pub use balloon_control::BalloonWS;
-pub use balloon_control::WSBucket;
-pub use balloon_control::VIRTIO_BALLOON_WS_MAX_NUM_BINS;
-pub use balloon_control::VIRTIO_BALLOON_WS_MIN_NUM_BINS;
+use balloon_control::BalloonTubeResult;
 use base::error;
 use base::Error as SysError;
 use base::Tube;
@@ -94,7 +89,6 @@ pub struct BalloonTube {
     pending_adjust_with_completion: Option<(u64, usize)>,
 }
 
-#[cfg(feature = "balloon")]
 impl BalloonTube {
     pub fn new(tube: Tube) -> Self {
         BalloonTube {
@@ -211,6 +205,8 @@ impl BalloonTube {
 
 #[cfg(test)]
 mod tests {
+    use balloon_control::BalloonStats;
+
     use super::*;
 
     fn balloon_device_respond_stats(device: &Tube) {

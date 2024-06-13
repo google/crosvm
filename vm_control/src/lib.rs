@@ -110,7 +110,9 @@ pub use vm_control_product::ServiceSendToGpu;
 use vm_memory::GuestAddress;
 
 #[cfg(feature = "balloon")]
-pub use crate::balloon_tube::*;
+pub use crate::balloon_tube::BalloonControlCommand;
+#[cfg(feature = "balloon")]
+pub use crate::balloon_tube::BalloonTube;
 #[cfg(feature = "gdb")]
 pub use crate::gdb::VcpuDebug;
 #[cfg(feature = "gdb")]
@@ -1366,7 +1368,7 @@ pub enum RegisteredEvent {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum RegisteredEventWithData {
     VirtioBalloonWsReport {
-        ws_buckets: Vec<WSBucket>,
+        ws_buckets: Vec<balloon_control::WSBucket>,
         balloon_actual: u64,
     },
     VirtioBalloonResize,
@@ -1418,7 +1420,7 @@ impl RegisteredEventWithData {
         }
     }
 
-    pub fn from_ws(ws: &BalloonWS, balloon_actual: u64) -> Self {
+    pub fn from_ws(ws: &balloon_control::BalloonWS, balloon_actual: u64) -> Self {
         RegisteredEventWithData::VirtioBalloonWsReport {
             ws_buckets: ws.ws.clone(),
             balloon_actual,
@@ -2233,12 +2235,15 @@ pub enum VmResponse {
     /// Results of balloon control commands.
     #[cfg(feature = "balloon")]
     BalloonStats {
-        stats: BalloonStats,
+        stats: balloon_control::BalloonStats,
         balloon_actual: u64,
     },
     /// Results of balloon WS-R command
     #[cfg(feature = "balloon")]
-    BalloonWS { ws: BalloonWS, balloon_actual: u64 },
+    BalloonWS {
+        ws: balloon_control::BalloonWS,
+        balloon_actual: u64,
+    },
     /// Results of PCI hot plug
     #[cfg(feature = "pci-hotplug")]
     PciHotPlugResponse { bus: u8 },

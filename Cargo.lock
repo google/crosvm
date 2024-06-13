@@ -891,6 +891,7 @@ name = "crosvm_control"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "balloon_control",
  "base",
  "cbindgen",
  "cc",
