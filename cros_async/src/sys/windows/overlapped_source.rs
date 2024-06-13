@@ -567,7 +567,7 @@ mod tests {
         }
 
         let ex = RawExecutor::<HandleReactor>::new().unwrap();
-        let f = create_overlapped(&file_path);
+        let f = open_overlapped(&file_path);
         let src = OverlappedSource::new(f, &ex, false).unwrap();
         ex.run_until(punch_hole(&src)).unwrap();
         drop(src);
@@ -590,7 +590,7 @@ mod tests {
         }
 
         let ex = RawExecutor::<HandleReactor>::new().unwrap();
-        let f = create_overlapped(&file_path);
+        let f = open_overlapped(&file_path);
         let src = OverlappedSource::new(f, &ex, false).unwrap();
         ex.run_until(punch_hole(&src)).unwrap();
         drop(src);
