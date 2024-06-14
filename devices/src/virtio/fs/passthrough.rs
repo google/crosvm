@@ -24,6 +24,8 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::MutexGuard;
+#[cfg(feature = "arc_quota")]
+use std::sync::RwLock;
 use std::time::Duration;
 
 use base::error;
@@ -69,6 +71,10 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
+#[cfg(feature = "arc_quota")]
+use crate::virtio::fs::arc_ioctl::FsPermissionDataBuffer;
+#[cfg(feature = "arc_quota")]
+use crate::virtio::fs::arc_ioctl::PermissionData;
 use crate::virtio::fs::caps::Capability;
 use crate::virtio::fs::caps::Caps;
 use crate::virtio::fs::caps::Set as CapSet;
@@ -180,6 +186,8 @@ ioctl_iow_nr!(FS_IOC32_SETFLAGS, 'f' as u32, 2, u32);
 ioctl_ior_nr!(FS_IOC64_GETFLAGS, 'f' as u32, 1, u64);
 ioctl_iow_nr!(FS_IOC64_SETFLAGS, 'f' as u32, 2, u64);
 
+#[cfg(feature = "arc_quota")]
+ioctl_iow_nr!(FS_IOC_SETPERMISSION, 'f' as u32, 1, FsPermissionDataBuffer);
 #[repr(C)]
 #[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 struct fsverity_enable_arg {
@@ -697,6 +705,10 @@ pub struct PassthroughFs {
     // if we use PassthroughFs in multi-threaded environments.
     expiring_casefold_lookup_caches: Option<Mutex<ExpiringCasefoldLookupCaches>>,
 
+    // paths and coresponding permission setting set by `crosvm_client_fs_permission_set` API
+    #[cfg(feature = "arc_quota")]
+    permission_paths: RwLock<Vec<PermissionData>>,
+
     cfg: Config,
 }
 
@@ -775,6 +787,8 @@ impl PassthroughFs {
             #[cfg(feature = "arc_quota")]
             dbus_fd,
             expiring_casefold_lookup_caches,
+            #[cfg(feature = "arc_quota")]
+            permission_paths: RwLock::new(Vec::new()),
             cfg,
         };
 
@@ -894,7 +908,16 @@ impl PassthroughFs {
     // Creates a new entry for `f` or increases the refcount of the existing entry for `f`.
     // The inodes mutex lock must not be already taken by the same thread otherwise this
     // will deadlock.
-    fn add_entry(&self, f: File, st: libc::stat64, open_flags: libc::c_int, path: String) -> Entry {
+    fn add_entry(
+        &self,
+        f: File,
+        #[cfg(feature = "arc_quota")] mut st: libc::stat64,
+        #[cfg(not(feature = "arc_quota"))] st: libc::stat64,
+        open_flags: libc::c_int,
+        path: String,
+    ) -> Entry {
+        #[cfg(feature = "arc_quota")]
+        self.set_permission(&mut st, &path);
         let mut inodes = self.inodes.lock();
 
         let altkey = InodeAltKey {
@@ -970,6 +993,9 @@ impl PassthroughFs {
     }
 
     fn do_lookup(&self, parent: &InodeData, name: &CStr) -> io::Result<Entry> {
+        #[cfg(feature = "arc_quota")]
+        let mut st = statat(parent, name)?;
+        #[cfg(not(feature = "arc_quota"))]
         let st = statat(parent, name)?;
 
         let altkey = InodeAltKey {
@@ -977,9 +1003,17 @@ impl PassthroughFs {
             dev: st.st_dev,
         };
 
+        let path = format!(
+            "{}/{}",
+            parent.path.clone(),
+            name.to_str().unwrap_or("<non UTF-8 str>")
+        );
+
         // Check if we already have an entry before opening a new file.
         if let Some(data) = self.inodes.lock().get_alt(&altkey) {
             // Return the same inode with the reference counter increased.
+            #[cfg(feature = "arc_quota")]
+            self.set_permission(&mut st, &path);
             return Ok(Entry {
                 inode: self.increase_inode_refcount(data),
                 generation: 0,
@@ -1034,11 +1068,6 @@ impl PassthroughFs {
 
         // SAFETY: safe because we own the fd.
         let f = unsafe { File::from_raw_descriptor(fd) };
-        let path = format!(
-            "{}/{}",
-            parent.path.clone(),
-            name.to_str().unwrap_or("<non UTF-8 str>")
-        );
         // We made sure the lock acquired for `self.inodes` is released automatically when
         // the if block above is exited, so a call to `self.add_entry()` should not cause a deadlock
         // here. This would not be the case if this were executed in an else block instead.
@@ -1145,8 +1174,12 @@ impl PassthroughFs {
     }
 
     fn do_getattr(&self, inode: &InodeData) -> io::Result<(libc::stat64, Duration)> {
+        #[cfg(feature = "arc_quota")]
+        let mut st = stat(inode)?;
+        #[cfg(feature = "arc_quota")]
+        self.set_permission(&mut st, &inode.path);
+        #[cfg(not(feature = "arc_quota"))]
         let st = stat(inode)?;
-
         Ok((st, self.cfg.timeout))
     }
 
@@ -1629,6 +1662,127 @@ impl PassthroughFs {
     }
 }
 
+#[cfg(feature = "arc_quota")]
+impl PassthroughFs {
+    /// Convert u8 slice to string
+    fn string_from_u8_slice(&self, buf: &[u8]) -> io::Result<String> {
+        match CStr::from_bytes_until_nul(buf).map(|s| s.to_string_lossy().to_string()) {
+            Ok(s) => Ok(s),
+            Err(e) => {
+                error!("fail to convert u8 slice to string: {}", e);
+                Err(io::Error::from_raw_os_error(libc::EINVAL))
+            }
+        }
+    }
+
+    /// Set permission according to path
+    fn set_permission(&self, st: &mut libc::stat64, path: &str) {
+        for perm_data in self
+            .permission_paths
+            .read()
+            .expect("acquire permission_paths read lock")
+            .iter()
+        {
+            if perm_data.need_set_permission(path) {
+                st.st_uid = perm_data.guest_uid;
+                st.st_gid = perm_data.guest_gid;
+                st.st_mode = (st.st_mode & libc::S_IFMT) | (0o777 & !perm_data.umask);
+            }
+        }
+    }
+
+    /// Set host uid/gid to configured value according to path
+    fn change_creds(&self, ctx: &Context, parent_data: &InodeData, name: &CStr) -> (u32, u32) {
+        let path = format!(
+            "{}/{}",
+            parent_data.path.clone(),
+            name.to_str().unwrap_or("<non UTF-8 str>")
+        );
+
+        for perm_data in self
+            .permission_paths
+            .read()
+            .expect("acquire permission_paths read lock")
+            .iter()
+        {
+            if perm_data.need_set_permission(&path) {
+                return (perm_data.host_uid, perm_data.host_gid);
+            }
+        }
+
+        (ctx.uid, ctx.gid)
+    }
+
+    fn read_permission_data<R: io::Read>(&self, mut r: R) -> io::Result<PermissionData> {
+        let mut fs_permission_data = FsPermissionDataBuffer::new_zeroed();
+        r.read_exact(fs_permission_data.as_bytes_mut())?;
+
+        let perm_path = self.string_from_u8_slice(&fs_permission_data.perm_path)?;
+        Ok(PermissionData {
+            guest_uid: fs_permission_data.guest_uid,
+            guest_gid: fs_permission_data.guest_gid,
+            host_uid: fs_permission_data.host_uid,
+            host_gid: fs_permission_data.host_gid,
+            umask: fs_permission_data.umask,
+            perm_path,
+        })
+    }
+
+    /// Sets uid/gid/umask for all files and directories under a specific path.
+    ///
+    /// This ioctl does not correspond to any upstream FUSE feature. It is used for arcvm
+    /// It associates the specified path with the provide uid, gid, and umask values within the
+    /// filesystem metadata.
+    ///
+    /// During subsequent lookup operations, the stored uid/gid/umask values are retrieved and
+    /// applied to all files and directories found under the registered path. Before sending
+    /// file stat information to the client, the uid and gid are substituted by `guest_uid` and
+    /// `guest_gid` if the file falls under the registered path. The file mode is masked by the
+    ///  umask.
+    ///
+    /// When the guest creates a file within the specified path, the file gid/uid stat in host
+    /// will be overwritten to `host_uid` and `host_gid` values.
+    ///
+    /// This functionality enables dynamic configuration of ownership and permissions for a
+    /// specific directory hierarchy within the filesystem.
+    ///
+    /// # Notes
+    /// - This method affects all existing and future files under the registered path.
+    /// - The original file ownership and permissions are overridden by the provided values.
+    /// - The registered path should not be renamed
+    /// - Refer go/remove-mount-passthrough-fuse for more design details
+    fn set_permission_by_path<R: io::Read>(&self, r: R) -> IoctlReply {
+        if self
+            .permission_paths
+            .read()
+            .expect("acquire permission_paths read lock")
+            .len()
+            >= self.cfg.max_dynamic_perm
+        {
+            error!(
+                "FS_IOC_SETPERMISSION exceeds limits of max_dynamic_perm: {}",
+                self.cfg.max_dynamic_perm
+            );
+            return IoctlReply::Done(Err(io::Error::from_raw_os_error(libc::EPERM)));
+        }
+
+        let perm_data = match self.read_permission_data(r) {
+            Ok(data) => data,
+            Err(e) => {
+                error!("fail to read permission data: {}", e);
+                return IoctlReply::Done(Err(e));
+            }
+        };
+
+        self.permission_paths
+            .write()
+            .expect("acquire permission_paths write lock")
+            .push(perm_data);
+
+        IoctlReply::Done(Ok(Vec::new()))
+    }
+}
+
 /// Decrements the refcount of the inode.
 /// Returns `true` if the refcount became 0.
 fn forget_one(
@@ -1883,7 +2037,12 @@ impl FileSystem for PassthroughFs {
             .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
             .transpose()?;
 
-        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+        #[cfg(feature = "arc_quota")]
+        let (uid, gid) = self.change_creds(&ctx, &data, name);
+        #[cfg(not(feature = "arc_quota"))]
+        let (uid, gid) = (ctx.uid, ctx.gid);
+
+        let (_uid, _gid) = set_creds(uid, gid)?;
         {
             let casefold_cache = self.lock_casefold_lookup_caches();
             let _scoped_umask = ScopedUmask::new(umask);
@@ -1990,12 +2149,16 @@ impl FileSystem for PassthroughFs {
             .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
             .transpose()?;
 
-        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
-
         let tmpflags = libc::O_RDWR | libc::O_TMPFILE | libc::O_CLOEXEC | libc::O_NOFOLLOW;
 
         // SAFETY: This string is nul-terminated and does not contain any interior nul bytes
         let current_dir = unsafe { CStr::from_bytes_with_nul_unchecked(b".\0") };
+
+        #[cfg(feature = "arc_quota")]
+        let (uid, gid) = self.change_creds(&ctx, &data, current_dir);
+        #[cfg(not(feature = "arc_quota"))]
+        let (uid, gid) = (ctx.uid, ctx.gid);
+        let (_uid, _gid) = set_creds(uid, gid)?;
 
         let fd = {
             let _scoped_umask = ScopedUmask::new(umask);
@@ -2014,7 +2177,6 @@ impl FileSystem for PassthroughFs {
 
         // SAFETY: safe because we just opened this fd.
         let tmpfile = unsafe { File::from_raw_descriptor(fd) };
-
         let st = stat(&tmpfile)?;
         let path = format!(
             "{}/{}",
@@ -2051,7 +2213,11 @@ impl FileSystem for PassthroughFs {
             .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
             .transpose()?;
 
-        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+        #[cfg(feature = "arc_quota")]
+        let (uid, gid) = self.change_creds(&ctx, &data, name);
+        #[cfg(not(feature = "arc_quota"))]
+        let (uid, gid) = (ctx.uid, ctx.gid);
+        let (_uid, _gid) = set_creds(uid, gid)?;
 
         let create_flags =
             (flags as i32 | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW) & !libc::O_DIRECT;
@@ -2415,7 +2581,11 @@ impl FileSystem for PassthroughFs {
             .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
             .transpose()?;
 
-        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+        #[cfg(feature = "arc_quota")]
+        let (uid, gid) = self.change_creds(&ctx, &data, name);
+        #[cfg(not(feature = "arc_quota"))]
+        let (uid, gid) = (ctx.uid, ctx.gid);
+        let (_uid, _gid) = set_creds(uid, gid)?;
         {
             let _scoped_umask = ScopedUmask::new(umask);
             let casefold_cache = self.lock_casefold_lookup_caches();
@@ -2487,7 +2657,11 @@ impl FileSystem for PassthroughFs {
             .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
             .transpose()?;
 
-        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+        #[cfg(feature = "arc_quota")]
+        let (uid, gid) = self.change_creds(&ctx, &data, name);
+        #[cfg(not(feature = "arc_quota"))]
+        let (uid, gid) = (ctx.uid, ctx.gid);
+        let (_uid, _gid) = set_creds(uid, gid)?;
         {
             let casefold_cache = self.lock_casefold_lookup_caches();
             // SAFETY: this doesn't modify any memory and we check the return value.
@@ -2878,6 +3052,10 @@ impl FileSystem for PassthroughFs {
         const SET_FLAGS64: u32 = FS_IOC64_SETFLAGS() as u32;
         const ENABLE_VERITY: u32 = FS_IOC_ENABLE_VERITY() as u32;
         const MEASURE_VERITY: u32 = FS_IOC_MEASURE_VERITY() as u32;
+        // The following is ARCVM-specific ioctl
+        // Refer go/remove-mount-passthrough-fuse for more design details
+        #[cfg(feature = "arc_quota")]
+        const SET_PERMISSION: u32 = FS_IOC_SETPERMISSION() as u32;
 
         match cmd {
             GET_ENCRYPTION_POLICY_EX => self.get_encryption_policy_ex(inode, handle, r),
@@ -2923,6 +3101,14 @@ impl FileSystem for PassthroughFs {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
                     self.measure_verity(inode, handle, r, out_size)
+                }
+            }
+            #[cfg(feature = "arc_quota")]
+            SET_PERMISSION => {
+                if in_size == 0 {
+                    Err(io::Error::from_raw_os_error(libc::EINVAL))
+                } else {
+                    Ok(self.set_permission_by_path(r))
                 }
             }
             _ => Err(io::Error::from_raw_os_error(libc::ENOTTY)),
@@ -3083,10 +3269,14 @@ impl FileSystem for PassthroughFs {
             umask,
             security_ctx
         );
-        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
-
         // Perform lookup but not create negative dentry
         let data = self.find_inode(parent)?;
+
+        #[cfg(feature = "arc_quota")]
+        let (uid, gid) = self.change_creds(&ctx, &data, name);
+        #[cfg(not(feature = "arc_quota"))]
+        let (uid, gid) = (ctx.uid, ctx.gid);
+        let (_uid, _gid) = set_creds(uid, gid)?;
 
         // This lookup serves two purposes:
         // 1. If the O_CREATE flag is not set, it retrieves the d_entry for the file.

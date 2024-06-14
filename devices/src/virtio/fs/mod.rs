@@ -40,6 +40,8 @@ use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 use crate::virtio::VirtioPciShmCap;
 
+#[cfg(feature = "arc_quota")]
+mod arc_ioctl;
 mod caps;
 mod config;
 mod expiring_map;

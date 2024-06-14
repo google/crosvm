@@ -2130,6 +2130,12 @@ pub struct RunCommand {
     ///        namespace created by minijail. (default: 0)
     ///     gid=GID - gid of the device process in the user
     ///        namespace created by minijail. (default: 0)
+    ///     max_dynamic_perm=uint - Indicates maximum number of
+    ///        dynamic permissions that the shared directory allows.
+    ///         (default: 0). The fuse server will return EPERM
+    ///         Error when FS_IOC_SETPERMISSION ioctl is called
+    ///         in the device if current dyamic permission path is
+    ///         lager or equal to this value.
     ///     Options uid and gid are useful when the crosvm process
     ///     has no CAP_SETGID/CAP_SETUID but an identity mapping of
     ///     the current user/group between the VM and the host is

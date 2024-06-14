@@ -297,8 +297,10 @@ default-no-sandbox = []
 #!
 #! These features will only be functional in ChromeOS builds running on ChromeOS.
 
-## Enables virtio-fs quota reporting for ARCVM. Requires access to the
-## org.chromium.ArcQuota dbus service.
+## Enables ARCVM specified virtio-fs feature including:
+## - Support quota reporting for ARCVM
+##   Requires access to the org.chromium.ArcQuota dbus service.
+## - Support for FS_IOC_SETPERMISSION ioctl
 arc_quota = ["devices/arc_quota"]
 
 ## Enables use of Android AAudio virtio-snd backend.

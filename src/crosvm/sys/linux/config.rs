@@ -137,6 +137,8 @@ impl FromStr for SharedDir {
         //   (default: 0)
         // * gid=GID - gid of the device process in the user namespace created by minijail.
         //   (default: 0)
+        // * max_dynamic_perm=uint - number of maximum number of dynamic permissions paths (default:
+        //   0) This feature is arc_quota specific feature.
         // These two options (uid/gid) are useful when the crosvm process has no
         // CAP_SETGID/CAP_SETUID but an identity mapping of the current user/group
         // between the VM and the host is required.
