@@ -723,6 +723,8 @@ static void error_callback_stub(const char *message) {
 struct dwl_context *dwl_context_new(dwl_error_callback_type error_callback)
 {
 	struct dwl_context *ctx = calloc(1, sizeof(struct dwl_context));
+	if (!ctx)
+		return NULL;
 	ctx->ifaces.context = ctx;
 	ctx->error_callback = error_callback ? error_callback : error_callback_stub;
 	return ctx;
