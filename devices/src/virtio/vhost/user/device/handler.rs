@@ -185,9 +185,7 @@ pub trait VhostUserDevice {
     ///
     /// This method will be called when `VhostUserProtocolFeatures::BACKEND_REQ` is
     /// negotiated.
-    fn set_backend_req_connection(&mut self, _conn: Arc<VhostBackendReqConnection>) {
-        error!("set_backend_req_connection is not implemented");
-    }
+    fn set_backend_req_connection(&mut self, _conn: Arc<VhostBackendReqConnection>) {}
 
     /// Used to stop non queue workers that `VhostUserDevice::stop_queue` can't stop. May or may
     /// not also stop all queue workers.
