@@ -13,6 +13,7 @@ use zerocopy_derive::FromBytes;
 use zerocopy_derive::FromZeroes;
 
 use crate::arena::Arena;
+use crate::arena::BlockId;
 use crate::bitmap::BitMap;
 use crate::inode::Inode;
 use crate::inode::InodeNum;
@@ -71,7 +72,7 @@ impl<'a> GroupMetaData<'a> {
         }
 
         // Allocate a block group descriptor at Block 1.
-        let group_desc = arena.allocate::<BlockGroupDescriptor>(1, 0)?;
+        let group_desc = arena.allocate::<BlockGroupDescriptor>(BlockId::from(1), 0)?;
 
         // First blocks for superblock and group descriptors.
         let block_for_super_block = 0u32;
@@ -95,7 +96,7 @@ impl<'a> GroupMetaData<'a> {
         sb.free_inodes_count = group_desc.free_inodes_count as u32;
 
         // Initialize block bitmap block.
-        let bmap = arena.allocate::<[u8; BLOCK_SIZE]>(group_desc.block_bitmap as usize, 0)?;
+        let bmap = arena.allocate::<[u8; BLOCK_SIZE]>(BlockId::from(group_desc.block_bitmap), 0)?;
         let valid_bmap_bytes = (sb.blocks_per_group / 8) as usize;
         // Unused parts in the block is marked as 1.
         bmap[valid_bmap_bytes..].iter_mut().for_each(|x| *x = 0xff);
@@ -103,7 +104,7 @@ impl<'a> GroupMetaData<'a> {
         let mut block_bitmap = BitMap::from_slice_mut(&mut bmap[..valid_bmap_bytes]);
         block_bitmap.mark_first_elems((first_free_block - block_for_super_block) as usize, true);
 
-        let imap = arena.allocate::<[u8; BLOCK_SIZE]>(group_desc.inode_bitmap as usize, 0)?;
+        let imap = arena.allocate::<[u8; BLOCK_SIZE]>(BlockId::from(group_desc.inode_bitmap), 0)?;
         let valid_imap_bytes = (sb.inodes_per_group / 8) as usize;
         // Unused parts in the block is marked as 1.
         imap[valid_imap_bytes..].iter_mut().for_each(|x| *x = 0xff);

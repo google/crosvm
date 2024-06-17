@@ -12,6 +12,7 @@ use zerocopy_derive::FromBytes;
 use zerocopy_derive::FromZeroes;
 
 use crate::arena::Arena;
+use crate::arena::BlockId;
 use crate::blockgroup::GroupMetaData;
 
 /// Types of inodes.
@@ -91,8 +92,8 @@ impl Default for InodeBlock {
 
 impl InodeBlock {
     /// Set a block id at the given index.
-    pub fn set_block_id(&mut self, index: usize, block_id: u32) {
-        self.0[index * 4..(index + 1) * 4].copy_from_slice(block_id.as_bytes())
+    pub fn set_block_id(&mut self, index: usize, block: BlockId) {
+        self.0[index * 4..(index + 1) * 4].copy_from_slice(u32::from(block).as_bytes())
     }
 }
 
@@ -156,7 +157,8 @@ impl Inode {
         const EXT2_S_IXOTH: u16 = 0x0001; // others execute
 
         let inode_offset = inode_num.to_table_index() * Inode::inode_record_size() as usize;
-        let inode = arena.allocate::<Inode>(group.group_desc.inode_table as usize, inode_offset)?;
+        let inode =
+            arena.allocate::<Inode>(BlockId::from(group.group_desc.inode_table), inode_offset)?;
 
         // Give read and execute permissions
         let mode = ((typ as u16) << 12)

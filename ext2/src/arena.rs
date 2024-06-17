@@ -142,6 +142,22 @@ fn test_region_manager() {
     assert_eq!(rm.to_vec(), vec![&Region { start: 0, len: 30 },]);
 }
 
+#[derive(Debug, Clone, Copy)]
+/// Represents a ID of a disk block.
+pub struct BlockId(u32);
+
+impl From<u32> for BlockId {
+    fn from(value: u32) -> Self {
+        BlockId(value)
+    }
+}
+
+impl From<BlockId> for u32 {
+    fn from(value: BlockId) -> Self {
+        value.0
+    }
+}
+
 /// Memory arena backed by `base::MemoryMapping`.
 ///
 /// This struct takes a mutable referencet to the memory mapping so this arena won't arena the
@@ -168,11 +184,11 @@ impl<'a> Arena<'a> {
     /// Allocate a new slice.
     pub fn allocate_slice(
         &self,
-        block_id: usize,
+        block: BlockId,
         block_offset: usize,
         len: usize,
     ) -> Result<&'a mut [u8]> {
-        let offset = block_id * self.block_size + block_offset;
+        let offset = u32::from(block) as usize * self.block_size + block_offset;
         let mem_end = offset.checked_add(len).context("mem_end overflow")?;
 
         if mem_end > self.mem.size() {
@@ -196,10 +212,10 @@ impl<'a> Arena<'a> {
     /// Allocate a new region for a value with type `T`.
     pub fn allocate<T: AsBytes + FromBytes + Sized>(
         &self,
-        block_id: usize,
+        block: BlockId,
         block_offset: usize,
     ) -> Result<&'a mut T> {
-        let slice = self.allocate_slice(block_id, block_offset, std::mem::size_of::<T>())?;
+        let slice = self.allocate_slice(block, block_offset, std::mem::size_of::<T>())?;
         T::mut_from(slice).ok_or_else(|| anyhow!("failed to interpret"))
     }
 }

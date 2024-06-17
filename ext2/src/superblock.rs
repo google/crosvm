@@ -10,6 +10,7 @@ use zerocopy_derive::FromBytes;
 use zerocopy_derive::FromZeroes;
 
 use crate::arena::Arena;
+use crate::arena::BlockId;
 use crate::inode::Inode;
 
 /// A struct to represent the configuration of an ext2 filesystem.
@@ -87,7 +88,7 @@ impl SuperBlock {
         let first_ino = 11;
 
         // Superblock is located at 1024 bytes in the first block.
-        let sb = arena.allocate::<SuperBlock>(0, 1024)?;
+        let sb = arena.allocate::<SuperBlock>(BlockId::from(0), 1024)?;
         *sb = Self {
             inodes_count,
             blocks_count,

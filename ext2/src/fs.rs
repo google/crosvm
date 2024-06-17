@@ -17,6 +17,7 @@ use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
 use crate::arena::Arena;
+use crate::arena::BlockId;
 use crate::blockgroup::GroupMetaData;
 use crate::blockgroup::BLOCK_SIZE;
 use crate::inode::Inode;
@@ -76,8 +77,7 @@ impl<'a> DirEntryWithName<'a> {
             bail!("sum of dir_entry size exceeds block size: {} + {dir_entry_size} + {aligned_name_len} > {BLOCK_SIZE}", dblock.offset);
         }
 
-        let block_id = dblock.block_id as usize;
-        let de = arena.allocate(block_id, dblock.offset)?;
+        let de = arena.allocate(dblock.block_id, dblock.offset)?;
         *de = DirEntryRaw {
             inode: inode.into(),
             rec_len,
@@ -86,7 +86,7 @@ impl<'a> DirEntryWithName<'a> {
         };
         dblock.offset += dir_entry_size;
 
-        let name_slice = arena.allocate_slice(block_id, dblock.offset, aligned_name_len)?;
+        let name_slice = arena.allocate_slice(dblock.block_id, dblock.offset, aligned_name_len)?;
         dblock.offset += aligned_name_len;
         name_slice[..cs.len()].copy_from_slice(cs);
 
@@ -113,7 +113,7 @@ impl<'a> DirEntryWithName<'a> {
 
 #[derive(Debug)]
 struct DirEntryBlock<'a> {
-    block_id: u32,
+    block_id: BlockId,
     offset: usize,
     entries: Vec<DirEntryWithName<'a>>,
 }
@@ -184,7 +184,7 @@ impl<'a> Ext2<'a> {
         Ok(alloc_inode)
     }
 
-    fn allocate_block(&mut self) -> Result<u32> {
+    fn allocate_block(&mut self) -> Result<BlockId> {
         if self.sb.free_blocks_count == 0 {
             bail!(
                 "no free blocks: run out of s_blocks_count={}",
@@ -204,7 +204,7 @@ impl<'a> Ext2<'a> {
         gm.group_desc.free_blocks_count -= 1;
         self.sb.free_blocks_count -= 1;
 
-        Ok(alloc_block)
+        Ok(BlockId::from(alloc_block))
     }
 
     fn get_inode_mut(&mut self, num: InodeNum) -> Result<&mut &'a mut Inode> {
