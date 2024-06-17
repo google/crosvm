@@ -2627,6 +2627,147 @@ fn test_mmx_state_is_preserved_by_hypervisor() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+/// Tests whether AVX state is being preserved by the hypervisor correctly (e.g. the hypervisor is
+/// properly using xsave/xrstor (or xsaves/xrstors)). This is very similar to the MMX test, but
+/// AVX state is *not* captured by fxsave, so that's how we guarantee xsave state of some kind is
+/// being handled properly.
+#[cfg(any(feature = "whpx", feature = "haxm"))]
+#[test]
+fn test_avx_state_is_preserved_by_hypervisor() {
+    let sentinel_value = 0x1337FFFFu64;
+    global_asm_data!(
+        pub avx_ops_asm,
+        ".code64",
+        "mov eax, 1",
+        "cpuid",
+        "bt ecx, 28",
+        "jc HasAVX",
+        "mov rdx, 1",
+        "hlt",
+        "HasAVX:",
+
+        // Turn on OSXSAVE (we can't touch XCR0 without it).
+        "mov rax, cr4",
+        "or eax, 1 << 18",
+        "mov cr4, rax",
+
+        // AVX won't work unless we enable it.
+        //
+        // Set the relevant XCR0 bits:
+        //   0: X87
+        //   1: SSE
+        //   2: AVX
+        "xor rcx, rcx",
+        "xgetbv",
+        // (7 = 111b)
+        "or eax, 7",
+        "xsetbv",
+
+        // Now that AVX is ready to use, let's start with a clean slate (and signify we have AVX
+        // support to the test assert below by zeroing rdx).
+        "xor rdx, rdx",
+        "xor rax, rax",
+        "xor rbx, rbx",
+        "vzeroall",
+
+        // Here's the actual test (finally). Since AVX is a little tricky to follow, here's what
+        // the test does:
+        //      1. We load 0x1337FFFF into ymm1 via xmm0.
+        //      2. We perform port IO to exit out to CrosVM (our vmexit handler below).
+        //      3. The vmexit handler makes sure ymm1 does NOT contain 0x1337FFFF.
+        //      4. We return to this program. Then we dump the value of ymm1 into ebx. The exit
+        //         register matcher verifies that 0x1337FFFF is in ebx. This means the hypervisor
+        //         properly restored ymm1 for the guest on vmenter.
+        "mov eax, 0x1337FFFF",
+        "vpinsrd xmm0, xmm1, eax, 3",
+        "vinserti128 ymm1, ymm2, xmm0, 1",
+        "out 0x5, al",
+        "vextracti128 xmm3, ymm1, 1",
+        "vpextrd ebx, xmm3, 3",
+        "emms",
+        "hlt",
+    );
+
+    let code_addr = 0x1000;
+    let setup = TestSetup {
+        assembly: avx_ops_asm::data().to_vec(),
+        mem_size: 0x12000,
+        load_addr: GuestAddress(code_addr),
+        initial_regs: Regs {
+            rip: code_addr,
+            rflags: 0x2,
+            ..Default::default()
+        },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+        })),
+        memory_initializations: vec![],
+        ..Default::default()
+    };
+
+    let regs_matcher = move |_: HypervisorType, regs: &Regs, _: &_| {
+        assert_ne!(regs.rdx, 1, "guest has no AVX support");
+        assert_eq!(
+            regs.rbx, sentinel_value,
+            "guest AVX register not restored by hypervisor"
+        );
+    };
+
+    let exit_matcher = |_, exit: &VcpuExit, vcpu: &mut dyn VcpuX86_64| match exit {
+        VcpuExit::Hlt => {
+            true // Break VM runloop
+        }
+        VcpuExit::Cpuid { entry } => {
+            vcpu.handle_cpuid(entry)
+                .expect("should handle cpuid successfully");
+            false
+        }
+        VcpuExit::Io => {
+            vcpu.handle_io(&mut |_| None)
+                .expect("should handle IO successfully");
+
+            // kaiyili@ pointed out we should check the XSAVE state exposed by the hypervisor via
+            // its API (e.g. vm.get_xsave_state). This is used in snapshotting, so if it's wrong,
+            // that would break things. It's also a good cross-check that the hypervisor is properly
+            // handling xsave state.
+            //
+            // There are a couple of things blocking us from doing that today:
+            //      1. gHAXM, our hypervisor of interest, doesn't expose its xsave area state for
+            //         the guest.
+            //      2. We don't have a xsave area parser (yet).
+
+            // ymm1 MUST NOT have the guest's sentinel value. If it somehow does, the hypervisor
+            // didn't save the guest's AVX state / restore the host's state before exiting to
+            // CrosVM.
+            //
+            // Note: AVX is ubiquitous on x86_64, so we don't check for support on the host (the
+            // guest checks, so unless the guest's support is software implemented, it's highly
+            // likely the host has AVX support).
+            let mut ymm1_sub_value: u64;
+            // SAFETY: we don't clobber any undeclared registers. Technically emms changes some
+            // x87 state, so there's some UB risk here, but it is not explicitly called out by
+            // the Rust docs as a bad idea.
+            unsafe {
+                asm!(
+                "vextracti128 xmm4, ymm1, 1",
+                "vpextrd eax, xmm4, 3",
+                "emms",
+                out("rax") ymm1_sub_value,
+                out("xmm4") _);
+            }
+            assert_ne!(
+                ymm1_sub_value, sentinel_value,
+                "host ymm1 value is the same as the guest sentinel value. Hypervisor likely didn't \
+                    save guest's state."
+            );
+            false
+        }
+        r => panic!("unexpected exit reason: {:?}", r),
+    };
+
+    run_tests!(setup, regs_matcher, exit_matcher);
+}
+
 #[test]
 fn test_interrupt_injection_when_not_ready() {
     // This test ensures that if we inject an interrupt when it's not ready for interrupt, we
