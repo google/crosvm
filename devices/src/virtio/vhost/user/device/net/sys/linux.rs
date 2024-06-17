@@ -28,7 +28,6 @@ use net_util::MacAddress;
 use net_util::TapT;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio;
@@ -133,7 +132,6 @@ where
             tap,
             avail_features,
             acked_features: 0,
-            acked_protocol_features: VhostUserProtocolFeatures::empty(),
             mtu,
             workers: Default::default(),
         })

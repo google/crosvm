@@ -11,7 +11,6 @@ use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
-use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
@@ -169,26 +168,6 @@ impl VhostUserDevice for WlBackend {
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         VhostUserProtocolFeatures::BACKEND_REQ | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS
-    }
-
-    fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {
-        if features & self.protocol_features().bits() != self.protocol_features().bits() {
-            Err(anyhow!(
-                "Acked features {:#x} missing required protocol features",
-                features
-            ))
-        } else if features & !self.protocol_features().bits() != 0 {
-            Err(anyhow!(
-                "Acked features {:#x} contains unexpected features",
-                features
-            ))
-        } else {
-            Ok(())
-        }
-    }
-
-    fn acked_protocol_features(&self) -> u64 {
-        VhostUserProtocolFeatures::empty().bits()
     }
 
     fn read_config(&self, _offset: u64, _dst: &mut [u8]) {}

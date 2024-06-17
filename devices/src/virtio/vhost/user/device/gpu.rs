@@ -86,7 +86,6 @@ struct GpuBackend {
     ex: Executor,
     gpu: Rc<RefCell<Gpu>>,
     resource_bridges: Arc<Mutex<Vec<Tube>>>,
-    acked_protocol_features: u64,
     state: Option<Rc<RefCell<gpu::Frontend>>>,
     fence_state: Arc<Mutex<gpu::FenceState>>,
     queue_workers: [Option<WorkerState<Arc<Mutex<Queue>>, ()>>; MAX_QUEUE_NUM],
@@ -113,20 +112,6 @@ impl VhostUserDevice for GpuBackend {
             | VhostUserProtocolFeatures::BACKEND_REQ
             | VhostUserProtocolFeatures::MQ
             | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS
-    }
-
-    fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {
-        let unrequested_features = features & !self.protocol_features().bits();
-        if unrequested_features != 0 {
-            bail!("Unexpected protocol features: {:#x}", unrequested_features);
-        }
-
-        self.acked_protocol_features |= features;
-        Ok(())
-    }
-
-    fn acked_protocol_features(&self) -> u64 {
-        self.acked_protocol_features
     }
 
     fn read_config(&self, offset: u64, dst: &mut [u8]) {

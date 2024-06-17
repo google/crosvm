@@ -9,7 +9,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
@@ -72,7 +71,6 @@ struct FsBackend {
     server: Arc<fuse::Server<PassthroughFs>>,
     tag: [u8; FS_MAX_TAG_LEN],
     avail_features: u64,
-    acked_protocol_features: VhostUserProtocolFeatures,
     workers: [Option<WorkerState<Rc<RefCell<Queue>>, ()>>; MAX_QUEUE_NUM],
     keep_rds: Vec<RawDescriptor>,
 }
@@ -108,7 +106,6 @@ impl FsBackend {
             server,
             tag: fs_tag,
             avail_features,
-            acked_protocol_features: VhostUserProtocolFeatures::empty(),
             workers: Default::default(),
             keep_rds,
         })
@@ -126,18 +123,6 @@ impl VhostUserDevice for FsBackend {
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::MQ
-    }
-
-    fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {
-        let features = VhostUserProtocolFeatures::from_bits(features)
-            .ok_or_else(|| anyhow!("invalid protocol features are given: {:#x}", features))?;
-        let supported = self.protocol_features();
-        self.acked_protocol_features = features & supported;
-        Ok(())
-    }
-
-    fn acked_protocol_features(&self) -> u64 {
-        self.acked_protocol_features.bits()
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {

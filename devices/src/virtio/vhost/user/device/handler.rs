@@ -146,12 +146,6 @@ pub trait VhostUserDevice {
     /// The set of protocol feature bits that this backend supports.
     fn protocol_features(&self) -> VhostUserProtocolFeatures;
 
-    /// Acknowledges that this set of protocol features should be enabled.
-    fn ack_protocol_features(&mut self, _value: u64) -> anyhow::Result<()>;
-
-    /// Returns the set of enabled protocol features.
-    fn acked_protocol_features(&self) -> u64;
-
     /// Reads this device configuration space at `offset`.
     fn read_config(&self, offset: u64, dst: &mut [u8]);
 
@@ -366,6 +360,7 @@ pub struct DeviceRequestHandler<T: VhostUserDevice> {
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
     acked_features: u64,
+    acked_protocol_features: VhostUserProtocolFeatures,
     backend: T,
     backend_req_connection: Arc<Mutex<VhostBackendReqConnectionState>>,
 }
@@ -373,6 +368,7 @@ pub struct DeviceRequestHandler<T: VhostUserDevice> {
 #[derive(Serialize, Deserialize)]
 pub struct DeviceRequestHandlerSnapshot {
     acked_features: u64,
+    acked_protocol_features: u64,
     vrings: Vec<VringSnapshot>,
     backend: Vec<u8>,
 }
@@ -391,6 +387,7 @@ impl<T: VhostUserDevice> DeviceRequestHandler<T> {
             vmm_maps: None,
             mem: None,
             acked_features: 0,
+            acked_protocol_features: VhostUserProtocolFeatures::empty(),
             backend,
             backend_req_connection: Arc::new(Mutex::new(
                 VhostBackendReqConnectionState::NoConnection,
@@ -470,10 +467,18 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
     }
 
     fn set_protocol_features(&mut self, features: u64) -> VhostResult<()> {
-        if let Err(e) = self.backend.ack_protocol_features(features) {
-            error!("failed to set protocol features 0x{:x}: {}", features, e);
-            return Err(VhostError::InvalidOperation);
-        }
+        let features = match VhostUserProtocolFeatures::from_bits(features) {
+            Some(proto_features) => proto_features,
+            None => {
+                error!(
+                    "unsupported bits in VHOST_USER_SET_PROTOCOL_FEATURES: {:#x}",
+                    features
+                );
+                return Err(VhostError::InvalidOperation);
+            }
+        };
+        let supported = self.backend.protocol_features();
+        self.acked_protocol_features = features & supported;
         Ok(())
     }
 
@@ -767,6 +772,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
     fn snapshot(&mut self) -> VhostResult<Vec<u8>> {
         match serde_json::to_vec(&DeviceRequestHandlerSnapshot {
             acked_features: self.acked_features,
+            acked_protocol_features: self.acked_protocol_features.bits(),
             vrings: self
                 .vrings
                 .iter()
@@ -791,6 +797,16 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
             })?;
 
         self.acked_features = device_request_handler_snapshot.acked_features;
+        self.acked_protocol_features = VhostUserProtocolFeatures::from_bits(
+            device_request_handler_snapshot.acked_protocol_features,
+        )
+        .with_context(|| {
+            format!(
+                "unsupported bits in acked_protocol_features: {:#x}",
+                device_request_handler_snapshot.acked_protocol_features
+            )
+        })
+        .map_err(VhostError::RestoreError)?;
 
         let mem = self.mem.as_ref().ok_or(VhostError::InvalidOperation)?;
 
@@ -1011,7 +1027,6 @@ mod tests {
     use std::sync::mpsc::channel;
     use std::sync::Barrier;
 
-    use anyhow::anyhow;
     use anyhow::bail;
     use base::Event;
     use vmm_vhost::BackendServer;
@@ -1038,7 +1053,6 @@ mod tests {
     pub(super) struct FakeBackend {
         avail_features: u64,
         acked_features: u64,
-        acked_protocol_features: VhostUserProtocolFeatures,
         active_queues: Vec<Option<Queue>>,
         allow_backend_req: bool,
         backend_conn: Option<Arc<VhostBackendReqConnection>>,
@@ -1053,7 +1067,6 @@ mod tests {
             Self {
                 avail_features: 1 << VHOST_USER_F_PROTOCOL_FEATURES,
                 acked_features: 0,
-                acked_protocol_features: VhostUserProtocolFeatures::empty(),
                 active_queues,
                 allow_backend_req: false,
                 backend_conn: None,
@@ -1088,20 +1101,6 @@ mod tests {
                 features |= VhostUserProtocolFeatures::BACKEND_REQ;
             }
             features
-        }
-
-        fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {
-            let features = VhostUserProtocolFeatures::from_bits(features).ok_or(anyhow!(
-                "invalid protocol features are given: 0x{:x}",
-                features
-            ))?;
-            let supported = self.protocol_features();
-            self.acked_protocol_features = features & supported;
-            Ok(())
-        }
-
-        fn acked_protocol_features(&self) -> u64 {
-            self.acked_protocol_features.bits()
         }
 
         fn read_config(&self, offset: u64, dst: &mut [u8]) {

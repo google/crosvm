@@ -241,7 +241,6 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         ex: ex.clone(),
         gpu,
         resource_bridges,
-        acked_protocol_features: 0,
         state: None,
         fence_state: Default::default(),
         queue_workers: Default::default(),
