@@ -6,7 +6,6 @@
 mod libaaudio_stub;
 
 use std::os::raw::c_void;
-use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -130,33 +129,9 @@ struct AndroidAudioStreamCommit {
 }
 
 impl BufferCommit for AndroidAudioStreamCommit {
-    fn commit(&mut self, nwritten: usize) {
-        match self.direction {
-            AndroidAudioStreamDirection::Input => {}
-            AndroidAudioStreamDirection::Output => {
-                // SAFETY:
-                // The AAudioStream_write reads buffer for nwritten * frame_size bytes
-                // It is safe since nwritten < buffer_size and the buffer.len() == buffer_size *
-                // frame_size
-                let frames_written: i32 = unsafe {
-                    AAudioStream_write(
-                        self.stream.stream_ptr,
-                        self.buffer_ptr as *const c_void,
-                        nwritten as i32,
-                        0, // this call will not wait.
-                    )
-                };
-                if frames_written < 0 {
-                    warn!("AAudio stream write failed.");
-                } else if (frames_written as usize) < nwritten {
-                    // Currently, the frames unable to write by the AAudio API are dropped.
-                    warn!(
-                        "Android Audio Stream:  Drop {} frames",
-                        nwritten - (frames_written as usize)
-                    );
-                }
-            }
-        }
+    fn commit(&mut self, _nwritten: usize) {
+        // This traits function is never called.
+        unimplemented!();
     }
 }
 
@@ -253,24 +228,8 @@ impl AudioStream {
 
 impl PlaybackBufferStream for AudioStream {
     fn next_playback_buffer<'b, 's: 'b>(&'s mut self) -> Result<PlaybackBuffer<'b>, BoxError> {
-        self.total_frames += (self.buffer.len() / self.frame_size) as i32;
-        let start_time = match self.start_time {
-            Some(time) => {
-                thread::sleep(self.next_frame.saturating_duration_since(Instant::now()));
-                time
-            }
-            None => {
-                let now = Instant::now();
-                self.start_time = Some(now);
-                now
-            }
-        };
-        self.next_frame = start_time
-            + Duration::from_millis(self.total_frames as u64 * 1000 / self.frame_rate as u64);
-        Ok(
-            PlaybackBuffer::new(self.frame_size, self.buffer.as_mut(), &mut self.buffer_drop)
-                .map_err(Box::new)?,
-        )
+        // This traits function is never called.
+        unimplemented!();
     }
 }
 
@@ -392,21 +351,13 @@ impl StreamSource for AndroidAudioStreamSource {
     #[allow(clippy::type_complexity)]
     fn new_playback_stream(
         &mut self,
-        num_channels: usize,
-        format: SampleFormat,
-        frame_rate: u32,
-        buffer_size: usize,
+        _num_channels: usize,
+        _format: SampleFormat,
+        _frame_rate: u32,
+        _buffer_size: usize,
     ) -> Result<(Box<dyn StreamControl>, Box<dyn PlaybackBufferStream>), BoxError> {
-        match AudioStream::new(
-            num_channels,
-            format,
-            frame_rate,
-            buffer_size,
-            AndroidAudioStreamDirection::Output,
-        ) {
-            Ok(audio_stream) => Ok((Box::new(NoopStreamControl::new()), Box::new(audio_stream))),
-            Err(err) => Err(err),
-        }
+        // This traits function is never called.
+        unimplemented!();
     }
 
     #[allow(clippy::type_complexity)]
@@ -418,16 +369,14 @@ impl StreamSource for AndroidAudioStreamSource {
         buffer_size: usize,
         _ex: &dyn AudioStreamsExecutor,
     ) -> Result<(Box<dyn StreamControl>, Box<dyn AsyncPlaybackBufferStream>), BoxError> {
-        match AudioStream::new(
+        let audio_stream = AudioStream::new(
             num_channels,
             format,
             frame_rate,
             buffer_size,
             AndroidAudioStreamDirection::Output,
-        ) {
-            Ok(audio_stream) => Ok((Box::new(NoopStreamControl::new()), Box::new(audio_stream))),
-            Err(err) => Err(err),
-        }
+        )?;
+        Ok((Box::new(NoopStreamControl::new()), Box::new(audio_stream)))
     }
 
     #[allow(clippy::type_complexity)]
