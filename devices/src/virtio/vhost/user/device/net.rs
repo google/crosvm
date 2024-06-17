@@ -5,7 +5,6 @@
 pub mod sys;
 
 use anyhow::anyhow;
-use anyhow::bail;
 use anyhow::Context;
 use base::error;
 use base::AsRawDescriptors;
@@ -155,11 +154,6 @@ where
     }
 
     fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
-        let unrequested_features = value & !self.avail_features;
-        if unrequested_features != 0 {
-            bail!("invalid features are given: {:#x}", unrequested_features);
-        }
-
         self.acked_features |= value;
 
         self.tap

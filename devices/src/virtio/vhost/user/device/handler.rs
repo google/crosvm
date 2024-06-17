@@ -133,7 +133,15 @@ pub trait VhostUserDevice {
     fn features(&self) -> u64;
 
     /// Acknowledges that this set of features should be enabled.
-    fn ack_features(&mut self, value: u64) -> anyhow::Result<()>;
+    ///
+    /// Implementations only need to handle device-specific feature bits; the `DeviceRequestHandler`
+    /// framework will manage generic vhost and vring features.
+    ///
+    /// `DeviceRequestHandler` checks for valid features before calling this function, so the
+    /// features in `value` will always be a subset of those advertised by `features()`.
+    fn ack_features(&mut self, _value: u64) -> anyhow::Result<()> {
+        Ok(())
+    }
 
     /// The set of protocol feature bits that this backend supports.
     fn protocol_features(&self) -> VhostUserProtocolFeatures;

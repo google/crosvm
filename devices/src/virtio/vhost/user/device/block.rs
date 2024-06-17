@@ -5,7 +5,6 @@
 mod sys;
 
 use anyhow::anyhow;
-use anyhow::bail;
 use anyhow::Context;
 use cros_async::Executor;
 use serde::Deserialize;
@@ -29,13 +28,11 @@ struct BlockBackend {
     inner: Box<BlockAsync>,
 
     avail_features: u64,
-    acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
 }
 
 #[derive(Serialize, Deserialize)]
 struct BlockBackendSnapshot {
-    acked_features: u64,
     // `avail_features` and `acked_protocol_features` don't need to be snapshotted, but they are
     // to be used to make sure that the proper features are used on `restore`.
     avail_features: u64,
@@ -48,7 +45,6 @@ impl VhostUserDeviceBuilder for BlockAsync {
         let backend = BlockBackend {
             inner: self,
             avail_features,
-            acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
         };
         let handler = DeviceRequestHandler::new(backend);
@@ -63,17 +59,6 @@ impl VhostUserDevice for BlockBackend {
 
     fn features(&self) -> u64 {
         self.avail_features
-    }
-
-    fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
-        let unrequested_features = value & !self.avail_features;
-        if unrequested_features != 0 {
-            bail!("invalid features are given: {:#x}", unrequested_features);
-        }
-
-        self.acked_features |= value;
-
-        Ok(())
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
@@ -128,7 +113,6 @@ impl VhostUserDevice for BlockBackend {
     fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
         // The queue states are being snapshotted in the device handler.
         let serialized_bytes = serde_json::to_vec(&BlockBackendSnapshot {
-            acked_features: self.acked_features,
             avail_features: self.avail_features,
             acked_protocol_features: self.acked_protocol_features.bits(),
         })
@@ -153,7 +137,6 @@ impl VhostUserDevice for BlockBackend {
             self.acked_protocol_features,
             block_backend_snapshot.acked_protocol_features
         );
-        self.acked_features = block_backend_snapshot.acked_features;
         Ok(())
     }
 }

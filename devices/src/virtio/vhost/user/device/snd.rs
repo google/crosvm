@@ -64,7 +64,6 @@ struct SndBackend {
     ex: Executor,
     cfg: virtio_snd_config,
     avail_features: u64,
-    acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
     workers: [Option<WorkerState<Rc<AsyncRwLock<Queue>>, Result<(), Error>>>; MAX_QUEUE_NUM],
     // tx and rx
@@ -82,7 +81,6 @@ struct SndBackend {
 #[derive(Serialize, Deserialize)]
 struct SndBackendSnapshot {
     avail_features: u64,
-    acked_features: u64,
     acked_protocol_features: u64,
     stream_infos: Option<Vec<StreamInfoSnapshot>>,
     snd_data: SndData,
@@ -131,7 +129,6 @@ impl SndBackend {
             ex: ex.clone(),
             cfg,
             avail_features,
-            acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
             workers: Default::default(),
             response_workers: Default::default(),
@@ -160,21 +157,6 @@ impl VhostUserDevice for SndBackend {
 
     fn features(&self) -> u64 {
         self.avail_features
-    }
-
-    fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
-        let unrequested_features = value & !self.avail_features;
-        if unrequested_features != 0 {
-            bail!(
-                "[Card {}] invalid features are given: {:#x}",
-                self.card_index,
-                unrequested_features
-            );
-        }
-
-        self.acked_features |= value;
-
-        Ok(())
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
@@ -368,7 +350,6 @@ impl VhostUserDevice for SndBackend {
         serde_json::to_vec(&SndBackendSnapshot {
             avail_features: self.avail_features,
             acked_protocol_features: self.acked_protocol_features.bits(),
-            acked_features: self.acked_features,
             stream_infos: stream_info_snaps,
             snd_data: snd_data_ref.clone(),
         })
@@ -407,7 +388,6 @@ impl VhostUserDevice for SndBackend {
             deser.snd_data,
             snd_data,
         );
-        self.acked_features = deser.acked_features;
 
         let ex_clone = self.ex.clone();
         let streams_rc = self.streams.clone();

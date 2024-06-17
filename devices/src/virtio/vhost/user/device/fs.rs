@@ -72,7 +72,6 @@ struct FsBackend {
     server: Arc<fuse::Server<PassthroughFs>>,
     tag: [u8; FS_MAX_TAG_LEN],
     avail_features: u64,
-    acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
     workers: [Option<WorkerState<Rc<RefCell<Queue>>, ()>>; MAX_QUEUE_NUM],
     keep_rds: Vec<RawDescriptor>,
@@ -109,7 +108,6 @@ impl FsBackend {
             server,
             tag: fs_tag,
             avail_features,
-            acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
             workers: Default::default(),
             keep_rds,
@@ -124,17 +122,6 @@ impl VhostUserDevice for FsBackend {
 
     fn features(&self) -> u64 {
         self.avail_features
-    }
-
-    fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
-        let unrequested_features = value & !self.avail_features;
-        if unrequested_features != 0 {
-            bail!("invalid features are given: {:#x}", unrequested_features);
-        }
-
-        self.acked_features |= value;
-
-        Ok(())
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {

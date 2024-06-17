@@ -152,11 +152,6 @@ impl VhostUserDevice for WlBackend {
     }
 
     fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
-        let unrequested_features = value & !self.features();
-        if unrequested_features != 0 {
-            bail!("invalid features are given: {:#x}", unrequested_features);
-        }
-
         self.acked_features |= value;
 
         if value & (1 << VIRTIO_WL_F_TRANS_FLAGS) != 0 {

@@ -73,7 +73,6 @@ impl VhostUserDeviceBuilder for VhostUserConsoleDevice {
 
         let backend = ConsoleBackend {
             device: *self,
-            acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
             ex: ex.clone(),
             active_queues,
@@ -86,7 +85,6 @@ impl VhostUserDeviceBuilder for VhostUserConsoleDevice {
 
 struct ConsoleBackend {
     device: VhostUserConsoleDevice,
-    acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
     ex: Executor,
     active_queues: Vec<Option<Arc<Mutex<Queue>>>>,
@@ -99,17 +97,6 @@ impl VhostUserDevice for ConsoleBackend {
 
     fn features(&self) -> u64 {
         self.device.console.avail_features() | 1 << VHOST_USER_F_PROTOCOL_FEATURES
-    }
-
-    fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
-        let unrequested_features = value & !self.features();
-        if unrequested_features != 0 {
-            bail!("invalid features are given: {:#x}", unrequested_features);
-        }
-
-        self.acked_features |= value;
-
-        Ok(())
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
