@@ -9,6 +9,7 @@ cfg_if::cfg_if! {
 
         use crate::crosvm::sys::config::VfioOption;
         use crate::crosvm::sys::config::SharedDir;
+        use crate::crosvm::sys::config::PmemExt2Option;
     }
 }
 
@@ -94,7 +95,6 @@ use crate::crosvm::config::HypervisorKind;
 use crate::crosvm::config::InputDeviceOption;
 use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::config::MemOptions;
-use crate::crosvm::config::PmemExt2Option;
 use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::config::VhostUserFrontendOption;
 use crate::crosvm::config::VhostUserFsOption;
@@ -1838,6 +1838,7 @@ pub struct RunCommand {
     /// path to a disk image
     pmem_device: Vec<DiskOption>,
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(option, arg_name = "PATH")]
     #[serde(default)]
     #[merge(strategy = append)]
@@ -2898,7 +2899,10 @@ impl TryFrom<RunCommand> for super::config::Config {
             }
         }
 
-        cfg.pmem_ext2 = cmd.pmem_ext2;
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        {
+            cfg.pmem_ext2 = cmd.pmem_ext2;
+        }
 
         #[cfg(feature = "pvclock")]
         {

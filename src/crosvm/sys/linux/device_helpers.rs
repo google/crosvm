@@ -88,10 +88,10 @@ use sync::Mutex;
 use vm_control::api::VmMemoryClient;
 use vm_memory::GuestAddress;
 
-use crate::crosvm::config::PmemExt2Option;
 use crate::crosvm::config::PmemOption;
 use crate::crosvm::config::VhostUserFrontendOption;
 use crate::crosvm::config::VhostUserFsOption;
+use crate::crosvm::sys::config::PmemExt2Option;
 
 pub enum TaggedControlTube {
     Fs(Tube),

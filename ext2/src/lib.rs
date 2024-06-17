@@ -4,7 +4,7 @@
 
 //! This crate provides a logic for creating an ext2 filesystem on memory.
 
-#![cfg(target_os = "linux")]
+#![cfg(any(target_os = "android", target_os = "linux"))]
 #![deny(missing_docs)]
 
 mod arena;

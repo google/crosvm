@@ -220,6 +220,12 @@ impl FromStr for SharedDir {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, serde_keyvalue::FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct PmemExt2Option {
+    pub path: PathBuf,
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -760,5 +766,20 @@ mod tests {
                 .fs_cfg
                 .use_dax
         );
+    }
+
+    #[test]
+    fn parse_pmem_ext2() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--pmem-ext2", "/path/to/dir", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let opt = config.pmem_ext2.first().unwrap();
+
+        assert_eq!(opt.path, PathBuf::from("/path/to/dir"));
     }
 }
