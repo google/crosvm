@@ -120,7 +120,7 @@ fn test_mkfs_empty_more_blocks() {
     );
 }
 
-fn collect_paths(dir: &Path) -> BTreeSet<(String, PathBuf)> {
+fn collect_paths(dir: &Path, skip_lost_found: bool) -> BTreeSet<(String, PathBuf)> {
     WalkDir::new(dir)
         .into_iter()
         .filter_map(|entry| {
@@ -132,9 +132,13 @@ fn collect_paths(dir: &Path) -> BTreeSet<(String, PathBuf)> {
                     .to_string_lossy()
                     .into_owned();
                 let path = e.path().to_path_buf();
-                if name.is_empty() || name == "lost+found" {
+                if name.is_empty() {
                     return None;
                 }
+                if skip_lost_found && name == "lost+found" {
+                    return None;
+                }
+
                 Some((name, path))
             })
         })
@@ -153,8 +157,8 @@ fn assert_eq_dirs(td: &TempDir, dir: &Path, disk: &PathBuf) {
         disk,
     );
 
-    let paths1 = collect_paths(dir);
-    let paths2 = collect_paths(&dump_dir);
+    let paths1 = collect_paths(dir, true);
+    let paths2 = collect_paths(&dump_dir, true);
     if paths1.len() != paths2.len() {
         panic!(
             "number of entries mismatch: {:?}={:?}, {:?}={:?}",
@@ -465,4 +469,61 @@ fn test_mkfs_long_symlink() {
     );
 
     assert_eq_dirs(&td, &dir, &disk);
+}
+
+#[test]
+fn test_ignore_lost_found() {
+    // Ignore /lost+found/ directory in source to avoid conflict.
+    //
+    // testdata
+    // ├── lost+found (ignored and recreated as an empty dir)
+    // │   └── should_be_ignored.txt
+    // └── sub
+    //     └── lost+found (not ignored)
+    //         └── a.txt
+
+    let td = tempdir().unwrap();
+    let dir = td.path().join("testdata");
+
+    create_dir(&dir).unwrap();
+    create_dir(dir.join("lost+found")).unwrap();
+    File::create(dir.join("lost+found").join("should_be_ignored.txt")).unwrap();
+    create_dir(dir.join("sub")).unwrap();
+    create_dir(dir.join("sub").join("lost+found")).unwrap();
+    File::create(dir.join("sub").join("lost+found").join("a.txt")).unwrap();
+
+    let disk = mkfs(
+        &td,
+        &Config {
+            blocks_per_group: 2048,
+            inodes_per_group: 4096,
+        },
+        Some(&dir),
+    );
+
+    // dump the disk contents to `dump_dir`.
+    let dump_dir = td.path().join("dump");
+    std::fs::create_dir(&dump_dir).unwrap();
+    run_debugfs_cmd(
+        &[&format!(
+            "rdump / {}",
+            dump_dir.as_os_str().to_str().unwrap()
+        )],
+        &disk,
+    );
+
+    let paths = collect_paths(&dump_dir, false /* skip_lost_found */)
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        paths,
+        BTreeSet::from([
+            "lost+found".to_string(),
+            // 'lost+found/should_be_ignored.txt' must not in the result.
+            "sub".to_string(),
+            "sub/lost+found".to_string(),
+            "sub/lost+found/a.txt".to_string()
+        ])
+    );
 }

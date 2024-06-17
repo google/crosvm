@@ -17,6 +17,7 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
+use base::info;
 use base::MappedRegion;
 use base::MemoryMappingArena;
 use base::MemoryMappingBuilder;
@@ -638,6 +639,12 @@ impl<'a> Ext2<'a> {
             let entry = entry?;
             let ftype = entry.file_type()?;
             if ftype.is_dir() {
+                // Since we creates `/lost+found` on the root directory, ignore the existing one.
+                if parent_inode.0 == 2 && entry.path().file_name() == Some(OsStr::new("lost+found"))
+                {
+                    info!("ext2: Ignore the existing /lost+found directory");
+                    continue;
+                }
                 let inode = self.allocate_inode()?;
                 self.add_dir(arena, inode, parent_inode, &entry.path())
                     .with_context(|| {
