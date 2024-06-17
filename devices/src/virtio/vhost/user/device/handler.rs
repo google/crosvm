@@ -135,9 +135,6 @@ pub trait VhostUserDevice {
     /// Acknowledges that this set of features should be enabled.
     fn ack_features(&mut self, value: u64) -> anyhow::Result<()>;
 
-    /// Returns the set of enabled features.
-    fn acked_features(&self) -> u64;
-
     /// The set of protocol feature bits that this backend supports.
     fn protocol_features(&self) -> VhostUserProtocolFeatures;
 
@@ -360,12 +357,14 @@ pub struct DeviceRequestHandler<T: VhostUserDevice> {
     owned: bool,
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
+    acked_features: u64,
     backend: T,
     backend_req_connection: Arc<Mutex<VhostBackendReqConnectionState>>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct DeviceRequestHandlerSnapshot {
+    acked_features: u64,
     vrings: Vec<VringSnapshot>,
     backend: Vec<u8>,
 }
@@ -383,6 +382,7 @@ impl<T: VhostUserDevice> DeviceRequestHandler<T> {
             owned: false,
             vmm_maps: None,
             mem: None,
+            acked_features: 0,
             backend,
             backend_req_connection: Arc::new(Mutex::new(
                 VhostBackendReqConnectionState::NoConnection,
@@ -414,6 +414,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
 
     fn reset_owner(&mut self) -> VhostResult<()> {
         self.owned = false;
+        self.acked_features = 0;
         self.backend.reset();
         Ok(())
     }
@@ -428,7 +429,9 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
             return Err(VhostError::InvalidOperation);
         }
 
-        if (features & !(self.backend.features())) != 0 {
+        let unexpected_features = features & !self.backend.features();
+        if unexpected_features != 0 {
+            error!("unexpected set_features {:#x}", unexpected_features);
             return Err(VhostError::InvalidParam);
         }
 
@@ -437,6 +440,8 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
             return Err(VhostError::InvalidOperation);
         }
 
+        self.acked_features |= features;
+
         // If VHOST_USER_F_PROTOCOL_FEATURES has not been negotiated, the ring is initialized in an
         // enabled state.
         // If VHOST_USER_F_PROTOCOL_FEATURES has been negotiated, the ring is initialized in a
@@ -444,8 +449,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
         // Client must not pass data to/from the backend until ring is enabled by
         // VHOST_USER_SET_VRING_ENABLE with parameter 1, or after it has been disabled by
         // VHOST_USER_SET_VRING_ENABLE with parameter 0.
-        let acked_features = self.backend.acked_features();
-        let vring_enabled = acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0;
+        let vring_enabled = self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0;
         for v in &mut self.vrings {
             v.enabled = vring_enabled;
         }
@@ -565,7 +569,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
         let kick_evt = VhostUserRegularOps::set_vring_kick(index, file)?;
 
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
-        vring.queue.ack_features(self.backend.acked_features());
+        vring.queue.ack_features(self.acked_features);
         vring.queue.set_ready(true);
 
         let mem = self
@@ -629,7 +633,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
 
         // This request should be handled only when VHOST_USER_F_PROTOCOL_FEATURES
         // has been negotiated.
-        if self.backend.acked_features() & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
+        if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
             return Err(VhostError::InvalidOperation);
         }
 
@@ -754,6 +758,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
 
     fn snapshot(&mut self) -> VhostResult<Vec<u8>> {
         match serde_json::to_vec(&DeviceRequestHandlerSnapshot {
+            acked_features: self.acked_features,
             vrings: self
                 .vrings
                 .iter()
@@ -776,6 +781,8 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
                 error!("Failed to deserialize DeviceRequestHandlerSnapshot: {}", e);
                 VhostError::DeserializationFailed
             })?;
+
+        self.acked_features = device_request_handler_snapshot.acked_features;
 
         let mem = self.mem.as_ref().ok_or(VhostError::InvalidOperation)?;
 
@@ -1065,10 +1072,6 @@ mod tests {
             }
             self.acked_features |= value;
             Ok(())
-        }
-
-        fn acked_features(&self) -> u64 {
-            self.acked_features
         }
 
         fn protocol_features(&self) -> VhostUserProtocolFeatures {

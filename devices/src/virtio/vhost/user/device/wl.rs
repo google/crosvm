@@ -172,10 +172,6 @@ impl VhostUserDevice for WlBackend {
         Ok(())
     }
 
-    fn acked_features(&self) -> u64 {
-        self.acked_features
-    }
-
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         VhostUserProtocolFeatures::BACKEND_REQ | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS
     }

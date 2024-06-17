@@ -137,10 +137,6 @@ impl VhostUserDevice for FsBackend {
         Ok(())
     }
 
-    fn acked_features(&self) -> u64 {
-        self.acked_features
-    }
-
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::MQ
     }

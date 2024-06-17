@@ -108,10 +108,6 @@ impl VhostUserDevice for GpuBackend {
         Ok(())
     }
 
-    fn acked_features(&self) -> u64 {
-        self.features()
-    }
-
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::BACKEND_REQ
