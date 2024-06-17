@@ -31,6 +31,7 @@ use crate::blockgroup::GroupMetaData;
 use crate::blockgroup::BLOCK_SIZE;
 use crate::inode::Inode;
 use crate::inode::InodeBlock;
+use crate::inode::InodeBlocksCount;
 use crate::inode::InodeNum;
 use crate::inode::InodeType;
 use crate::superblock::Config;
@@ -277,7 +278,7 @@ impl<'a> Ext2<'a> {
             let block_id = self.allocate_block()?;
             let inode = self.get_inode_mut(parent)?;
             inode.block.set_direct_blocks(&[block_id])?;
-            inode.blocks = block_size as u32 / 512;
+            inode.blocks = InodeBlocksCount::from_bytes_len(block_size as u32);
             self.dentries.insert(
                 parent,
                 DirEntryBlock {
@@ -382,7 +383,7 @@ impl<'a> Ext2<'a> {
             &std::fs::metadata(path)?,
             block_size as u32,
             0,
-            0,
+            InodeBlocksCount::from_bytes_len(0),
             InodeBlock::default(),
         )?;
 
@@ -525,10 +526,7 @@ impl<'a> Ext2<'a> {
             unimplemented!("Triple-indirect block is not supported");
         }
 
-        // The spec says that the `blocks` field is a "32-bit value representing the total number
-        // of 512-bytes blocks". This `512` is a fixed number regardless of the actual block size,
-        // which is usuaully 4KB.
-        let blocks = used_blocks as u32 * (block_size as u32 / 512);
+        let blocks = InodeBlocksCount::from_bytes_len((used_blocks * block_size) as u32);
         let size = file_size as u32;
         let inode = Inode::from_metadata(
             arena,
@@ -575,7 +573,7 @@ impl<'a> Ext2<'a> {
             &std::fs::symlink_metadata(&link)?,
             dst.len() as u32,
             1, //links_count,
-            0, //blocks,
+            InodeBlocksCount::from_bytes_len(0),
             block,
         )?;
         self.add_inode(inode_num, inode)?;

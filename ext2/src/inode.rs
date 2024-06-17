@@ -173,7 +173,7 @@ pub(crate) struct Inode {
     _dtime: u32,
     _gid: u16,
     pub links_count: u16,
-    pub blocks: u32,
+    pub blocks: InodeBlocksCount,
     _flags: u32,
     _osd1: u32,
     pub block: InodeBlock,
@@ -187,6 +187,20 @@ pub(crate) struct Inode {
     _uid_high: u16,
     _gid_high: u16,
     _reserved2: u32,
+}
+
+/// Used in `Inode` to represent how many 512-byte blocks are used by a file.
+///
+/// The block size '512' byte is fixed and not related to the actual block size of the file system.
+/// For more details, see notes for `i_blocks_lo` in the specification.
+#[repr(C)]
+#[derive(Default, Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+pub struct InodeBlocksCount(u32);
+
+impl InodeBlocksCount {
+    pub fn from_bytes_len(len: u32) -> Self {
+        Self(len / 512)
+    }
 }
 
 impl Inode {
@@ -266,7 +280,7 @@ impl Inode {
         m: &std::fs::Metadata,
         size: u32,
         links_count: u16,
-        blocks: u32,
+        blocks: InodeBlocksCount,
         block: InodeBlock,
     ) -> Result<&'a mut Self> {
         // (inode_num - 1) because inode is 1-indexed.
