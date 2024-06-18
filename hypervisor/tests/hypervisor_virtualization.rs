@@ -3609,6 +3609,47 @@ fn test_ready_for_interrupt_for_intercepted_instructions() {
     );
 }
 
+#[cfg(feature = "haxm")]
+#[test]
+fn test_cpuid_mwait_not_supported() {
+    global_asm_data!(
+        cpuid_code,
+        ".code64",
+        "mov eax, 1", // CPUID function 1
+        "cpuid",
+        "hlt"
+    );
+
+    let setup = TestSetup {
+        assembly: cpuid_code::data().to_vec(),
+        load_addr: GuestAddress(0x1000),
+        initial_regs: Regs {
+            rip: 0x1000,
+            rflags: 2,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let regs_matcher = |_: HypervisorType, regs: &Regs, _: &Sregs| {
+        // Check if MWAIT is not supported
+        assert_eq!(
+            regs.rcx & (1 << 3),
+            0,
+            "MWAIT is supported, but it should not be."
+        );
+    };
+
+    let exit_matcher = |_, exit: &VcpuExit, _: &mut dyn VcpuX86_64, _: &mut dyn Vm| match exit {
+        VcpuExit::Hlt => {
+            true // Break VM runloop
+        }
+        r => panic!("unexpected exit reason: {:?}", r),
+    };
+
+    run_tests!(setup, regs_matcher, exit_matcher);
+}
+
 #[test]
 fn test_hardware_breakpoint_with_isr() {
     global_asm_data!(
