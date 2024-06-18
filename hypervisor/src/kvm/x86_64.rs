@@ -40,6 +40,7 @@ use crate::DebugRegs;
 use crate::DescriptorTable;
 use crate::DeviceKind;
 use crate::Fpu;
+use crate::FpuReg;
 use crate::HypervisorX86_64;
 use crate::IoapicRedirectionTableEntry;
 use crate::IoapicState;
@@ -1674,7 +1675,7 @@ impl From<&kvm_sregs> for Sregs {
 impl From<&kvm_fpu> for Fpu {
     fn from(r: &kvm_fpu) -> Self {
         Fpu {
-            fpr: r.fpr,
+            fpr: FpuReg::from_16byte_arrays(&r.fpr),
             fcw: r.fcw,
             fsw: r.fsw,
             ftwx: r.ftwx,
@@ -1690,7 +1691,7 @@ impl From<&kvm_fpu> for Fpu {
 impl From<&Fpu> for kvm_fpu {
     fn from(r: &Fpu) -> Self {
         kvm_fpu {
-            fpr: r.fpr,
+            fpr: FpuReg::to_16byte_arrays(&r.fpr),
             fcw: r.fcw,
             fsw: r.fsw,
             ftwx: r.ftwx,

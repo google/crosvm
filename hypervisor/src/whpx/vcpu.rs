@@ -1394,10 +1394,10 @@ mod tests {
         let vcpu = vm.create_vcpu(0).expect("failed to create vcpu");
 
         let mut fpu = vcpu.get_fpu().unwrap();
-        fpu.fpr[0][0] += 3;
+        fpu.fpr[0].significand += 3;
         vcpu.set_fpu(&fpu).unwrap();
         let fpu2 = vcpu.get_fpu().unwrap();
-        assert_eq!(fpu.fpr[0][0], fpu2.fpr[0][0]);
+        assert_eq!(fpu.fpr, fpu2.fpr);
     }
 
     #[test]

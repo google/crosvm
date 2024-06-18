@@ -946,11 +946,83 @@ impl Default for Sregs {
     }
 }
 
+/// x87 80-bit floating point value.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FpuReg {
+    /// 64-bit mantissa.
+    pub significand: u64,
+
+    /// 15-bit biased exponent and sign bit.
+    pub sign_exp: u16,
+}
+
+impl FpuReg {
+    /// Convert an array of 8x16-byte arrays to an array of 8 `FpuReg`.
+    ///
+    /// Ignores any data in the upper 6 bytes of each element; the values represent 80-bit FPU
+    /// registers, so the upper 48 bits are unused.
+    pub fn from_16byte_arrays(byte_arrays: &[[u8; 16]; 8]) -> [FpuReg; 8] {
+        let mut regs = [FpuReg::default(); 8];
+        for (dst, src) in regs.iter_mut().zip(byte_arrays.iter()) {
+            let tbyte: [u8; 10] = src[0..10].try_into().unwrap();
+            *dst = FpuReg::from(tbyte);
+        }
+        regs
+    }
+
+    /// Convert an array of 8 `FpuReg` into 8x16-byte arrays.
+    pub fn to_16byte_arrays(regs: &[FpuReg; 8]) -> [[u8; 16]; 8] {
+        let mut byte_arrays = [[0u8; 16]; 8];
+        for (dst, src) in byte_arrays.iter_mut().zip(regs.iter()) {
+            *dst = (*src).into();
+        }
+        byte_arrays
+    }
+}
+
+impl From<[u8; 10]> for FpuReg {
+    /// Construct a `FpuReg` from an 80-bit representation.
+    fn from(value: [u8; 10]) -> FpuReg {
+        // These array sub-slices can't fail, but there's no (safe) way to express that in Rust
+        // without an `unwrap()`.
+        let significand_bytes = value[0..8].try_into().unwrap();
+        let significand = u64::from_le_bytes(significand_bytes);
+        let sign_exp_bytes = value[8..10].try_into().unwrap();
+        let sign_exp = u16::from_le_bytes(sign_exp_bytes);
+        FpuReg {
+            significand,
+            sign_exp,
+        }
+    }
+}
+
+impl From<FpuReg> for [u8; 10] {
+    /// Convert an `FpuReg` into its 80-bit "TBYTE" representation.
+    fn from(value: FpuReg) -> [u8; 10] {
+        let mut bytes = [0u8; 10];
+        bytes[0..8].copy_from_slice(&value.significand.to_le_bytes());
+        bytes[8..10].copy_from_slice(&value.sign_exp.to_le_bytes());
+        bytes
+    }
+}
+
+impl From<FpuReg> for [u8; 16] {
+    /// Convert an `FpuReg` into its 80-bit representation plus 6 unused upper bytes.
+    /// This is a convenience function for converting to hypervisor types.
+    fn from(value: FpuReg) -> [u8; 16] {
+        let mut bytes = [0u8; 16];
+        bytes[0..8].copy_from_slice(&value.significand.to_le_bytes());
+        bytes[8..10].copy_from_slice(&value.sign_exp.to_le_bytes());
+        bytes
+    }
+}
+
 /// State of a VCPU's floating point unit.
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Fpu {
-    pub fpr: [[u8; 16usize]; 8usize],
+    pub fpr: [FpuReg; 8],
     pub fcw: u16,
     pub fsw: u16,
     pub ftwx: u8,

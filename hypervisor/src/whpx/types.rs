@@ -13,6 +13,7 @@ use crate::CpuIdEntry;
 use crate::DebugRegs;
 use crate::DescriptorTable;
 use crate::Fpu;
+use crate::FpuReg;
 use crate::LapicState;
 use crate::Regs;
 use crate::Segment;
@@ -357,50 +358,26 @@ impl WhpxFpu {
     }
 }
 
+fn whpx_register_from_fpu_reg(fpr: FpuReg) -> WHV_REGISTER_VALUE {
+    WHV_REGISTER_VALUE {
+        Fp: WHV_X64_FP_REGISTER {
+            AsUINT128: WHV_UINT128::from_ne_bytes(fpr.into()),
+        },
+    }
+}
+
 impl From<&Fpu> for WhpxFpu {
     fn from(fpu: &Fpu) -> Self {
         WhpxFpu {
             register_values: [
-                WHV_REGISTER_VALUE {
-                    Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[0]),
-                    },
-                },
-                WHV_REGISTER_VALUE {
-                    Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[1]),
-                    },
-                },
-                WHV_REGISTER_VALUE {
-                    Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[2]),
-                    },
-                },
-                WHV_REGISTER_VALUE {
-                    Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[3]),
-                    },
-                },
-                WHV_REGISTER_VALUE {
-                    Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[4]),
-                    },
-                },
-                WHV_REGISTER_VALUE {
-                    Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[5]),
-                    },
-                },
-                WHV_REGISTER_VALUE {
-                    Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[6]),
-                    },
-                },
-                WHV_REGISTER_VALUE {
-                    Fp: WHV_X64_FP_REGISTER {
-                        AsUINT128: WHV_UINT128::from_ne_bytes(fpu.fpr[7]),
-                    },
-                },
+                whpx_register_from_fpu_reg(fpu.fpr[0]),
+                whpx_register_from_fpu_reg(fpu.fpr[1]),
+                whpx_register_from_fpu_reg(fpu.fpr[2]),
+                whpx_register_from_fpu_reg(fpu.fpr[3]),
+                whpx_register_from_fpu_reg(fpu.fpr[4]),
+                whpx_register_from_fpu_reg(fpu.fpr[5]),
+                whpx_register_from_fpu_reg(fpu.fpr[6]),
+                whpx_register_from_fpu_reg(fpu.fpr[7]),
                 WHV_REGISTER_VALUE {
                     FpControlStatus: WHV_X64_FP_CONTROL_STATUS_REGISTER {
                         __bindgen_anon_1: WHV_X64_FP_CONTROL_STATUS_REGISTER__bindgen_ty_1 {
@@ -481,6 +458,15 @@ impl From<&Fpu> for WhpxFpu {
     }
 }
 
+fn fpu_reg_from_whpx_register(whpx_reg: &WHV_REGISTER_VALUE) -> FpuReg {
+    let fp_reg_bytes: [u8; 10] = unsafe {
+        whpx_reg.Fp.AsUINT128.to_ne_bytes()[0..10]
+            .try_into()
+            .unwrap()
+    };
+    FpuReg::from(fp_reg_bytes)
+}
+
 impl From<&WhpxFpu> for Fpu {
     fn from(whpx_regs: &WhpxFpu) -> Self {
         unsafe {
@@ -492,14 +478,14 @@ impl From<&WhpxFpu> for Fpu {
                 .__bindgen_anon_1;
             Fpu {
                 fpr: [
-                    whpx_regs.register_values[0].Fp.AsUINT128.to_ne_bytes(),
-                    whpx_regs.register_values[1].Fp.AsUINT128.to_ne_bytes(),
-                    whpx_regs.register_values[2].Fp.AsUINT128.to_ne_bytes(),
-                    whpx_regs.register_values[3].Fp.AsUINT128.to_ne_bytes(),
-                    whpx_regs.register_values[4].Fp.AsUINT128.to_ne_bytes(),
-                    whpx_regs.register_values[5].Fp.AsUINT128.to_ne_bytes(),
-                    whpx_regs.register_values[6].Fp.AsUINT128.to_ne_bytes(),
-                    whpx_regs.register_values[7].Fp.AsUINT128.to_ne_bytes(),
+                    fpu_reg_from_whpx_register(&whpx_regs.register_values[0]),
+                    fpu_reg_from_whpx_register(&whpx_regs.register_values[1]),
+                    fpu_reg_from_whpx_register(&whpx_regs.register_values[2]),
+                    fpu_reg_from_whpx_register(&whpx_regs.register_values[3]),
+                    fpu_reg_from_whpx_register(&whpx_regs.register_values[4]),
+                    fpu_reg_from_whpx_register(&whpx_regs.register_values[5]),
+                    fpu_reg_from_whpx_register(&whpx_regs.register_values[6]),
+                    fpu_reg_from_whpx_register(&whpx_regs.register_values[7]),
                 ],
                 fcw: fp_control.FpControl,
                 fsw: fp_control.FpStatus,

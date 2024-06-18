@@ -33,6 +33,7 @@ use crate::CpuIdEntry;
 use crate::DebugRegs;
 use crate::DescriptorTable;
 use crate::Fpu;
+use crate::FpuReg;
 use crate::IoOperation;
 use crate::IoParams;
 use crate::Regs;
@@ -856,7 +857,7 @@ impl From<&DescriptorTable> for segment_desc_t {
 impl From<&fx_layout> for Fpu {
     fn from(item: &fx_layout) -> Self {
         let mut fpu = Fpu {
-            fpr: item.st_mm,
+            fpr: FpuReg::from_16byte_arrays(&item.st_mm),
             fcw: item.fcw,
             fsw: item.fsw,
             ftwx: item.ftw,
@@ -892,7 +893,7 @@ impl From<&Fpu> for fx_layout {
             },
             mxcsr: item.mxcsr,
             mxcsr_mask: 0,
-            st_mm: item.fpr,
+            st_mm: FpuReg::to_16byte_arrays(&item.fpr),
             mmx_1: [[0; 16]; 8],
             mmx_2: [[0; 16]; 8],
             pad: [0; 96],

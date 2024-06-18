@@ -1218,9 +1218,8 @@ impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
         // x87 FPU registers: ST0-ST7
         for (dst, src) in regs.st.iter_mut().zip(fpu.fpr.iter()) {
             // `fpr` contains the x87 floating point registers in FXSAVE format.
-            // Each element contains an 80-bit floating point value in the low 10 bytes.
-            // The upper 6 bytes are reserved and can be ignored.
-            dst.copy_from_slice(&src[0..10])
+            // Each element contains an 80-bit floating point value.
+            *dst = (*src).into();
         }
 
         // SSE registers: XMM0-XMM15
@@ -1278,7 +1277,7 @@ impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
 
         // x87 FPU registers: ST0-ST7
         for (dst, src) in fpu.fpr.iter_mut().zip(regs.st.iter()) {
-            dst[0..10].copy_from_slice(src);
+            *dst = (*src).into();
         }
 
         // SSE registers: XMM0-XMM15
