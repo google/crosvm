@@ -19,28 +19,41 @@ if target_os == 'linux'
   shared_lib = 'librutabaga_gfx_ffi.so'
 endif
 
-cargo = find_program('cargo')
-cmd = [cargo, 'build']
+shared_lib_major = '@0@.0'.format(shared_lib)
+shared_lib_full_ver = '@0@.@1@'.format(shared_lib, meson.project_version())
+
+build_script = find_program('build.sh')
 with_gfxstream = get_option('gfxstream')
+features = ''
 if with_gfxstream
-  cmd += '--features=gfxstream'
+  features += 'gfxstream'
+endif
+
+buildtype = 'debug'
+cargo_release = ''
+if get_option('buildtype') == 'release'
+  buildtype = 'release'
+  cargo_release = '--release'
 endif
 
 rutabaga_gfx_ffi_ct = custom_target(
   'rutabaga_gfx_ffi_build',
-  output: shared_lib,
-  input: ['src/lib.rs', 'Cargo.toml', 'build.rs'],
-  command: cmd,
+  output: [shared_lib, shared_lib_major, shared_lib_full_ver],
+  input: ['src/lib.rs', 'Cargo.toml', 'build.rs', 'build.sh'],
+  command: [build_script, features, meson.current_build_dir(),
+            shared_lib, meson.project_version(), buildtype, cargo_release],
+  install: true,
+  install_dir: get_option('libdir'),
+)
+
+pkg = import('pkgconfig')
+pkg.generate(
+  libraries: '-L${libdir} -lrutabaga_gfx_ffi',
+  name: 'rutabaga_gfx_ffi',
+  version: meson.project_version(),
+  description: 'C FFI bindings to Rutabaga VGI',
 )
 
 rutabaga_gfx_ffi_h = files('src/include/rutabaga_gfx_ffi.h')
-
-rutabaga_gfx_ffi = library(
-  'rutabaga_gfx_ffi',
-  sources: [rutabaga_gfx_ffi_h, rutabaga_gfx_ffi_ct],
-  version: '0.1.3',
-  install: true,
-)
-
 install_headers(rutabaga_gfx_ffi_h,
                 subdir: 'rutabaga_gfx')
