@@ -460,21 +460,6 @@ impl AsyncCompositeDiskFile {
 
 #[async_trait(?Send)]
 impl AsyncDisk for AsyncCompositeDiskFile {
-    fn into_inner(self: Box<Self>) -> Box<dyn DiskFile> {
-        Box::new(CompositeDiskFile {
-            component_disks: self
-                .component_disks
-                .into_iter()
-                .map(|disk| ComponentDiskPart {
-                    file: disk.file.into_inner(),
-                    offset: disk.offset,
-                    length: disk.length,
-                    needs_fsync: disk.needs_fsync,
-                })
-                .collect(),
-        })
-    }
-
     async fn flush(&self) -> crate::Result<()> {
         futures::future::try_join_all(self.component_disks.iter().map(|c| c.file.flush())).await?;
         Ok(())

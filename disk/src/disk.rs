@@ -332,9 +332,6 @@ pub fn create_disk_file_of_type(
 /// An asynchronously accessible disk.
 #[async_trait(?Send)]
 pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
-    /// Returns the inner file consuming self.
-    fn into_inner(self: Box<Self>) -> Box<dyn DiskFile>;
-
     /// Flush intermediary buffers and/or dirty state to file. fsync not required.
     async fn flush(&self) -> Result<()>;
 
@@ -439,10 +436,6 @@ impl FileAllocate for SingleFileDisk {
 
 #[async_trait(?Send)]
 impl AsyncDisk for SingleFileDisk {
-    fn into_inner(self: Box<Self>) -> Box<dyn DiskFile> {
-        Box::new(self.inner.into_source())
-    }
-
     async fn flush(&self) -> Result<()> {
         // Nothing to flush, all file mutations are immediately sent to the OS.
         Ok(())

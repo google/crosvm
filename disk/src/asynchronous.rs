@@ -88,13 +88,6 @@ impl<
             + WriteZeroesAt,
     > AsyncDisk for AsyncDiskFileWrapper<T>
 {
-    fn into_inner(self: Box<Self>) -> Box<dyn DiskFile> {
-        self.blocking_pool
-            .shutdown(None)
-            .expect("AsyncDiskFile pool shutdown failed");
-        Box::new(Arc::try_unwrap(self.inner).expect("AsyncDiskFile arc unwrap failed"))
-    }
-
     async fn flush(&self) -> Result<()> {
         let inner_clone = self.inner.clone();
         self.blocking_pool

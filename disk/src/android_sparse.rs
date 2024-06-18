@@ -355,14 +355,6 @@ impl FileAllocate for AsyncAndroidSparse {
 
 #[async_trait(?Send)]
 impl AsyncDisk for AsyncAndroidSparse {
-    fn into_inner(self: Box<Self>) -> Box<dyn DiskFile> {
-        Box::new(AndroidSparse {
-            file: self.inner.into_source(),
-            total_size: self.total_size,
-            chunks: self.chunks,
-        })
-    }
-
     async fn flush(&self) -> crate::Result<()> {
         // android sparse is read-only, nothing to flush.
         Ok(())
@@ -914,27 +906,6 @@ mod tests {
             let buf = read_exact_at(&*image, 0, 8).await;
             let expected = [10, 20, 10, 20, 30, 40, 30, 40];
             assert_eq!(&expected[..], &buf[..]);
-        })
-        .unwrap();
-    }
-
-    // Convert to sync and back again. There was once a bug where `into_inner` converted the
-    // AndroidSparse into a raw file.
-    //
-    // Skip on windows because `into_source` isn't supported.
-    #[cfg(not(windows))]
-    #[test]
-    fn async_roundtrip_read_dontcare() {
-        let ex = Executor::new().unwrap();
-        ex.run_until(async {
-            let chunks = vec![ChunkWithSize {
-                chunk: Chunk::DontCare,
-                expanded_size: 100,
-            }];
-            let image = test_async_image(chunks, &ex).unwrap();
-            let image = image.into_inner().to_async_disk(&ex).unwrap();
-            let buf = read_exact_at(&*image, 0, 100).await;
-            assert!(buf.iter().all(|x| *x == 0));
         })
         .unwrap();
     }
