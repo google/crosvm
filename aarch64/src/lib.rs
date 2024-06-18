@@ -172,10 +172,13 @@ fn get_bios_addr() -> GuestAddress {
 // Otherwise, returns None.
 fn get_swiotlb_addr(
     memory_size: u64,
+    swiotlb_size: u64,
     hypervisor: &(impl Hypervisor + ?Sized),
 ) -> Option<GuestAddress> {
     if hypervisor.check_capability(HypervisorCap::StaticSwiotlbAllocationRequired) {
-        Some(GuestAddress(AARCH64_PHYS_MEM_START + memory_size))
+        Some(GuestAddress(
+            AARCH64_PHYS_MEM_START + memory_size - swiotlb_size,
+        ))
     } else {
         None
     }
@@ -400,9 +403,18 @@ impl arch::LinuxArch for AArch64 {
         components: &VmComponents,
         hypervisor: &impl Hypervisor,
     ) -> std::result::Result<Vec<(GuestAddress, u64, MemoryRegionOptions)>, Self::Error> {
+        // Static swiotlb is allocated from the end of RAM as a separate memory region, so, if
+        // enabled, make the RAM memory region smaller to leave room for it.
+        let mut main_memory_size = components.memory_size;
+        if let Some(size) = components.swiotlb {
+            if hypervisor.check_capability(HypervisorCap::StaticSwiotlbAllocationRequired) {
+                main_memory_size -= size;
+            }
+        }
+
         let mut memory_regions = vec![(
             GuestAddress(AARCH64_PHYS_MEM_START),
-            components.memory_size,
+            main_memory_size,
             MemoryRegionOptions::new().align(get_block_size()),
         )];
 
@@ -416,7 +428,7 @@ impl arch::LinuxArch for AArch64 {
         }
 
         if let Some(size) = components.swiotlb {
-            if let Some(addr) = get_swiotlb_addr(components.memory_size, hypervisor) {
+            if let Some(addr) = get_swiotlb_addr(components.memory_size, size, hypervisor) {
                 memory_regions.push((
                     addr,
                     size,
@@ -803,7 +815,7 @@ impl arch::LinuxArch for AArch64 {
             psci_version,
             components.swiotlb.map(|size| {
                 (
-                    get_swiotlb_addr(components.memory_size, vm.get_hypervisor()),
+                    get_swiotlb_addr(components.memory_size, size, vm.get_hypervisor()),
                     size,
                 )
             }),

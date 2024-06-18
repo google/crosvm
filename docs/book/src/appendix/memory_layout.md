@@ -69,8 +69,7 @@ These apply for all boot modes.
 | [`AARCH64_AXI_BASE`]              | `4000_0000`     |                 |                | Seemingly unused? Is this hard-coded somewhere in the kernel? |
 | [`AARCH64_PROTECTED_VM_FW_START`] | `7fc0_0000`     | `8000_0000`     | 4 MiB          | pVM firmware (if running a protected VM)                      |
 | [`AARCH64_PHYS_MEM_START`]        | `8000_0000`     |                 | --mem size     | RAM (starts at IPA = 2 GiB)                                   |
-| [`get_swiotlb_addr`]              | after RAM       |                 | --swiotlb size | Only present for hypervisors requiring static swiotlb alloc   |
-| [`plat_mmio_base`]                | after swiotlb   | +0x800000       | 8 MiB          | Platform device MMIO region                                   |
+| [`plat_mmio_base`]                | after RAM       | +0x800000       | 8 MiB          | Platform device MMIO region                                   |
 | [`high_mmio_base`]                | after plat_mmio | max phys addr   |                | High MMIO allocation area                                     |
 
 ### Layout when booting a kernel
@@ -104,7 +103,6 @@ These apply when a bootloader is passed with `--bios`.
 [`aarch64_pvtime_ipa_start`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=100?q=AARCH64_PVTIME_IPA_START
 [`aarch64_protected_vm_fw_start`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=96?q=AARCH64_PROTECTED_VM_FW_START
 [`aarch64_phys_mem_start`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=85?q=AARCH64_PHYS_MEM_START
-[`get_swiotlb_addr`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs?q=get_swiotlb_addr
 [`plat_mmio_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=835?q=plat_mmio_base
 [`high_mmio_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=838?q=high_mmio_base
 [`aarch64_kernel_offset`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=76?q=AARCH64_KERNEL_OFFSET
