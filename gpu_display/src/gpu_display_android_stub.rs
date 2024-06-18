@@ -10,9 +10,9 @@
 
 use std::ffi::c_char;
 
-use crate::gpu_display_android::ANativeWindow;
 use crate::gpu_display_android::ANativeWindow_Buffer;
 use crate::gpu_display_android::AndroidDisplayContext;
+use crate::gpu_display_android::AndroidDisplaySurface;
 use crate::gpu_display_android::ErrorCallback;
 
 #[no_mangle]
@@ -34,14 +34,14 @@ extern "C" fn create_android_surface(
     _width: u32,
     _height: u32,
     _for_cursor: bool,
-) -> *mut ANativeWindow {
+) -> *mut AndroidDisplaySurface {
     unimplemented!();
 }
 
 #[no_mangle]
 extern "C" fn destroy_android_surface(
     _ctx: *mut AndroidDisplayContext,
-    _surface: *mut ANativeWindow,
+    _surface: *mut AndroidDisplaySurface,
 ) {
     unimplemented!();
 }
@@ -54,7 +54,7 @@ extern "C" fn set_android_surface_position(_ctx: *mut AndroidDisplayContext, _x:
 #[no_mangle]
 extern "C" fn get_android_surface_buffer(
     _ctx: *mut AndroidDisplayContext,
-    _surface: *mut ANativeWindow,
+    _surface: *mut AndroidDisplaySurface,
     _out_buffer: *mut ANativeWindow_Buffer,
 ) -> u32 {
     unimplemented!();
@@ -63,7 +63,7 @@ extern "C" fn get_android_surface_buffer(
 #[no_mangle]
 extern "C" fn post_android_surface_buffer(
     _ctx: *mut AndroidDisplayContext,
-    _surface: *mut ANativeWindow,
+    _surface: *mut AndroidDisplaySurface,
 ) {
     unimplemented!();
 }
