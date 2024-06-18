@@ -6,6 +6,7 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
+use std::fs::File;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -165,6 +166,18 @@ impl BlockId {
     }
 }
 
+/// Information on how to mmap a host file to ext2 blocks.
+pub struct FileMappingInfo {
+    /// The ext2 disk block id that the memory region maps to.
+    pub start_block: BlockId,
+    /// The file to be mmap'd.
+    pub file: File,
+    /// The length of the mapping.
+    pub length: usize,
+    /// Offset in the file to start the mapping.
+    pub file_offset: usize,
+}
+
 /// Memory arena backed by `base::MemoryMapping`.
 ///
 /// This struct takes a mutable referencet to the memory mapping so this arena won't arena the
@@ -176,6 +189,8 @@ pub struct Arena<'a> {
     /// Use `RefCell` for interior mutability because the mutablity of `RegionManager` should be
     /// independent from the mutability of the memory mapping.
     regions: RefCell<RegionManager>,
+
+    mappings: RefCell<Vec<FileMappingInfo>>,
 }
 
 impl<'a> Arena<'a> {
@@ -185,16 +200,12 @@ impl<'a> Arena<'a> {
             mem,
             block_size,
             regions: Default::default(),
+            mappings: Default::default(),
         })
     }
 
-    /// Allocate a new slice.
-    pub fn allocate_slice(
-        &self,
-        block: BlockId,
-        block_offset: usize,
-        len: usize,
-    ) -> Result<&'a mut [u8]> {
+    /// A helper function to mark a region as reserved.
+    fn reserve(&self, block: BlockId, block_offset: usize, len: usize) -> Result<()> {
         let offset = u32::from(block) as usize * self.block_size + block_offset;
         let mem_end = offset.checked_add(len).context("mem_end overflow")?;
 
@@ -207,6 +218,41 @@ impl<'a> Arena<'a> {
 
         self.regions.borrow_mut().allocate(offset, len)?;
 
+        Ok(())
+    }
+
+    /// Reserves a region for mmap and stores the mmap information.
+    /// Note that `Arena` will not call  mmap(). Instead, the owner of `Arena` instance must call
+    /// `into_mapping_info()` to retrieve the mapping information and call mmap later instead.
+    pub fn reserve_for_mmap(
+        &self,
+        start_block: BlockId,
+        length: usize,
+        file: File,
+        file_offset: usize,
+    ) -> Result<()> {
+        self.reserve(start_block, 0, length)?;
+        self.mappings.borrow_mut().push(FileMappingInfo {
+            start_block,
+            length,
+            file: file.try_clone()?,
+            file_offset,
+        });
+
+        Ok(())
+    }
+
+    /// Allocate a new slice on an anonymous memory.
+    /// `Arena` structs guarantees that this area is not overlapping with other regions.
+    pub fn allocate_slice(
+        &self,
+        block: BlockId,
+        block_offset: usize,
+        len: usize,
+    ) -> Result<&'a mut [u8]> {
+        self.reserve(block, block_offset, len)?;
+
+        let offset = u32::from(block) as usize * self.block_size + block_offset;
         let new_addr = (self.mem.as_ptr() as usize)
             .checked_add(offset)
             .context("address overflow")?;
@@ -224,5 +270,20 @@ impl<'a> Arena<'a> {
     ) -> Result<&'a mut T> {
         let slice = self.allocate_slice(block, block_offset, std::mem::size_of::<T>())?;
         T::mut_from(slice).ok_or_else(|| anyhow!("failed to interpret"))
+    }
+
+    /// Consumes `Arena` and retrieve mmap information.
+    pub fn into_mapping_info(self) -> Vec<FileMappingInfo> {
+        self.mappings.take()
+    }
+}
+
+impl<'a> Drop for Arena<'a> {
+    fn drop(&mut self) {
+        if self.mappings.borrow().len() != 0 {
+            panic!(
+                "mmap info was registered, but not consumed. into_mapping_info() must be called"
+            );
+        }
     }
 }

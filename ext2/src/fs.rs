@@ -28,6 +28,7 @@ use zerocopy::FromZeroes;
 
 use crate::arena::Arena;
 use crate::arena::BlockId;
+use crate::arena::FileMappingInfo;
 use crate::blockgroup::GroupMetaData;
 use crate::blockgroup::BLOCK_SIZE;
 use crate::inode::Inode;
@@ -134,18 +135,6 @@ impl DirEntryBlock<'_> {
     }
 }
 
-/// Information on how to mmap a host file to ext2 blocks.
-struct FileMappingInfo {
-    /// The ext2 disk block id that the memory region maps to.
-    start_block: BlockId,
-    /// The file to be mmap'd.
-    file: File,
-    /// The length of the mapping.
-    length: usize,
-    /// Offset in the file to start the mapping.
-    file_offset: usize,
-}
-
 /// A struct to represent an ext2 filesystem.
 pub struct Ext2<'a> {
     sb: &'a mut SuperBlock,
@@ -155,8 +144,6 @@ pub struct Ext2<'a> {
     group_metadata: GroupMetaData<'a>,
 
     dir_entries: BTreeMap<InodeNum, Vec<DirEntryBlock<'a>>>,
-
-    fd_mappings: Vec<FileMappingInfo>,
 }
 
 impl<'a> Ext2<'a> {
@@ -172,7 +159,6 @@ impl<'a> Ext2<'a> {
             sb,
             group_metadata,
             dir_entries: BTreeMap::new(),
-            fd_mappings: Vec::new(),
         };
 
         // Add rootdir
@@ -450,6 +436,34 @@ impl<'a> Ext2<'a> {
         Ok(())
     }
 
+    /// Registers a file to be mmaped to the memory region.
+    /// This function just reserves a region for mmap() on `arena` and doesn't call mmap().
+    /// It's `arena`'s owner's responsibility to call mmap() for the registered files at the end.
+    fn register_mmap_file(
+        &mut self,
+        arena: &'a Arena<'a>,
+        block_num: usize,
+        file: &File,
+        file_size: usize,
+        file_offset: usize,
+    ) -> Result<(Vec<BlockId>, usize)> {
+        let blocks = self.allocate_contiguous_blocks(block_num as u16)?;
+        let length = std::cmp::min(file_size - file_offset, block_num * BLOCK_SIZE);
+        let start_block = blocks[0];
+
+        // Reserve the region in arena to prevent from overwriting metadata.
+        arena
+            .reserve_for_mmap(
+                start_block,
+                length,
+                file.try_clone().context("failed to clone file")?,
+                file_offset,
+            )
+            .context("mmap for direct_block is already occupied")?;
+
+        Ok((blocks, length))
+    }
+
     fn fill_indirect_block(
         &mut self,
         arena: &'a Arena<'a>,
@@ -468,17 +482,14 @@ impl<'a> Ext2<'a> {
 
         let length = std::cmp::min(file_size - file_offset, max_data_len);
         let block_num = length.div_ceil(block_size);
-        let blocks = self.allocate_contiguous_blocks(block_num as u16)?;
+
+        let (allocated_blocks, length) = self
+            .register_mmap_file(arena, block_num, file, file_size, file_offset)
+            .context("failed to reserve mmap regions on indirect block")?;
 
         let slice = arena.allocate_slice(indirect_table, 0, 4 * block_num)?;
-        slice.copy_from_slice(blocks.as_bytes());
+        slice.copy_from_slice(allocated_blocks.as_bytes());
 
-        self.fd_mappings.push(FileMappingInfo {
-            start_block: blocks[0],
-            length,
-            file: file.try_clone()?,
-            file_offset,
-        });
         Ok(length)
     }
 
@@ -505,17 +516,13 @@ impl<'a> Ext2<'a> {
                 file_size.div_ceil(block_size),
                 InodeBlock::NUM_DIRECT_BLOCKS,
             );
-            let blocks = self.allocate_contiguous_blocks(block_num as u16)?;
-            let length = std::cmp::min(file_size, block_size * InodeBlock::NUM_DIRECT_BLOCKS);
-            self.fd_mappings.push(FileMappingInfo {
-                start_block: blocks[0],
-                length,
-                file: file.try_clone()?,
-                file_offset: 0,
-            });
-            block.set_direct_blocks(&blocks)?;
-            written = length;
-            used_blocks = block_num;
+            let (allocated_blocks, len) = self
+                .register_mmap_file(arena, block_num, &file, file_size, 0)
+                .context("failed to reserve mmap regions on direct block")?;
+
+            block.set_direct_blocks(&allocated_blocks)?;
+            written += len;
+            used_blocks += block_num;
         }
 
         // Indirect data block
@@ -708,10 +715,6 @@ impl<'a> Ext2<'a> {
 
         Ok(())
     }
-
-    fn into_fd_mappings(self) -> Vec<FileMappingInfo> {
-        self.fd_mappings
-    }
 }
 
 /// Creates a memory mapping region where an ext2 filesystem is constructed.
@@ -725,7 +728,8 @@ pub fn create_ext2_region(cfg: &Config, src_dir: Option<&Path>) -> Result<Memory
     if let Some(dir) = src_dir {
         ext2.copy_dirtree(&arena, dir)?;
     }
-    let file_mappings = ext2.into_fd_mappings();
+
+    let file_mappings = arena.into_mapping_info();
 
     mem.msync()?;
     let mut mmap_arena = MemoryMappingArena::from(mem);
@@ -744,5 +748,6 @@ pub fn create_ext2_region(cfg: &Config, src_dir: Option<&Path>) -> Result<Memory
             Protection::read(),
         )?;
     }
+
     Ok(mmap_arena)
 }
