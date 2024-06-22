@@ -1336,6 +1336,8 @@ pub fn create_pmem_ext2_device(
         vm_memory_client,
         mkfs_tube,
         &opts.path,
+        &opts.ugid,
+        (&opts.uid_map, &opts.gid_map),
         builder,
         jail_config,
     )

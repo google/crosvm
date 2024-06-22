@@ -116,6 +116,47 @@ impl Default for SharedDir {
     }
 }
 
+struct UgidConfig {
+    uid: Option<u32>,
+    gid: Option<u32>,
+    uid_map: String,
+    gid_map: String,
+}
+
+impl Default for UgidConfig {
+    fn default() -> Self {
+        Self {
+            uid: None,
+            gid: None,
+            // SAFETY: geteuid never fails.
+            uid_map: format!("0 {} 1", unsafe { geteuid() }),
+            // SAFETY: getegid never fails.
+            gid_map: format!("0 {} 1", unsafe { getegid() }),
+        }
+    }
+}
+
+impl UgidConfig {
+    /// Parse a key-value pair of ugid config to update `UgidConfig`.
+    /// Returns whether `self` was updated or not.
+    fn parse_ugid_config(&mut self, kind: &str, value: &str) -> anyhow::Result<bool> {
+        match kind {
+            "uid" => {
+                self.uid = Some(value.parse().context("`uid` must be an integer")?);
+            }
+            "gid" => {
+                self.gid = Some(value.parse().context("`gid` must be an integer")?);
+            }
+            "uidmap" => self.uid_map = value.into(),
+            "gidmap" => self.gid_map = value.into(),
+            _ => {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+}
+
 impl FromStr for SharedDir {
     type Err = anyhow::Error;
 
@@ -174,6 +215,7 @@ impl FromStr for SharedDir {
             ..Default::default()
         };
         let mut type_opts = vec![];
+        let mut ugid_cfg = UgidConfig::default();
         for opt in components {
             let mut o = opt.splitn(2, '=');
             let kind = o.next().context("`shared-dir` options must not be empty")?;
@@ -181,23 +223,24 @@ impl FromStr for SharedDir {
                 .next()
                 .context("`shared-dir` options must be of the form `kind=value`")?;
 
-            match kind {
-                "type" => {
-                    shared_dir.kind = value.parse().with_context(|| {
-                        anyhow!("`type` must be one of `fs` or `9p` but {value}")
-                    })?
+            if !ugid_cfg
+                .parse_ugid_config(kind, value)
+                .context("failed to parse ugid config")?
+            {
+                match kind {
+                    "type" => {
+                        shared_dir.kind = value.parse().with_context(|| {
+                            anyhow!("`type` must be one of `fs` or `9p` but {value}")
+                        })?
+                    }
+                    _ => type_opts.push(opt),
                 }
-                "uidmap" => shared_dir.uid_map = value.into(),
-                "gidmap" => shared_dir.gid_map = value.into(),
-                "uid" => {
-                    shared_dir.ugid.0 = Some(value.parse().context("`uid` must be an integer")?);
-                }
-                "gid" => {
-                    shared_dir.ugid.1 = Some(value.parse().context("`gid` must be an integer")?);
-                }
-                _ => type_opts.push(opt),
             }
         }
+        shared_dir.ugid = (ugid_cfg.uid, ugid_cfg.gid);
+        shared_dir.uid_map = ugid_cfg.uid_map;
+        shared_dir.gid_map = ugid_cfg.gid_map;
+
         match shared_dir.kind {
             SharedDirKind::FS => {
                 shared_dir.fs_cfg = from_key_values(&type_opts.join(","))
@@ -233,6 +276,9 @@ pub struct PmemExt2Option {
     pub blocks_per_group: u32,
     pub inodes_per_group: u32,
     pub size: u32,
+    pub ugid: (Option<u32>, Option<u32>),
+    pub uid_map: String,
+    pub gid_map: String,
 }
 
 impl Default for PmemExt2Option {
@@ -240,11 +286,15 @@ impl Default for PmemExt2Option {
         let blocks_per_group = 4096;
         let inodes_per_group = 1024;
         let size = ext2::BLOCK_SIZE as u32 * blocks_per_group; // only one block group
+        let ugid_cfg = UgidConfig::default();
         Self {
             path: Default::default(),
             blocks_per_group,
             inodes_per_group,
             size,
+            ugid: (ugid_cfg.uid, ugid_cfg.gid),
+            uid_map: ugid_cfg.uid_map,
+            gid_map: ugid_cfg.gid_map,
         }
     }
 }
@@ -258,31 +308,41 @@ pub fn parse_pmem_ext2_option(param: &str) -> Result<PmemExt2Option, String> {
             .ok_or("missing source path for `pmem-ext2`")?,
     );
 
+    let mut ugid_cfg = UgidConfig::default();
     for c in components {
         let mut o = c.splitn(2, '=');
         let kind = o.next().ok_or("`pmem-ext2` options must not be empty")?;
         let value = o
             .next()
             .ok_or("`pmem-ext2` options must be of the form `kind=value`")?;
-        match kind {
-            "blocks_per_group" => {
-                opt.blocks_per_group = value
-                    .parse()
-                    .map_err(|e| format!("failed to parse blocks_per_groups '{value}': {:#}", e))?
+
+        if !ugid_cfg
+            .parse_ugid_config(kind, value)
+            .map_err(|e| format!("failed to parse ugid config for pmem-ext2: {:#}", e))?
+        {
+            match kind {
+                "blocks_per_group" => {
+                    opt.blocks_per_group = value.parse().map_err(|e| {
+                        format!("failed to parse blocks_per_groups '{value}': {:#}", e)
+                    })?
+                }
+                "inodes_per_group" => {
+                    opt.inodes_per_group = value.parse().map_err(|e| {
+                        format!("failed to parse inodes_per_groups '{value}': {:#}", e)
+                    })?
+                }
+                "size" => {
+                    opt.size = value
+                        .parse()
+                        .map_err(|e| format!("failed to parse memory size '{value}': {:#}", e))?
+                }
+                _ => return Err(format!("invalid `pmem-ext2` option: {}", kind)),
             }
-            "inodes_per_group" => {
-                opt.inodes_per_group = value
-                    .parse()
-                    .map_err(|e| format!("failed to parse inodes_per_groups '{value}': {:#}", e))?
-            }
-            "size" => {
-                opt.size = value
-                    .parse()
-                    .map_err(|e| format!("failed to parse memory size '{value}': {:#}", e))?
-            }
-            _ => return Err(format!("invalid `pmem-ext2` option: {}", kind)),
         }
     }
+    opt.ugid = (ugid_cfg.uid, ugid_cfg.gid);
+    opt.uid_map = ugid_cfg.uid_map;
+    opt.gid_map = ugid_cfg.gid_map;
 
     Ok(opt)
 }

@@ -35,6 +35,7 @@ use jail::create_base_minijail;
 use jail::create_sandbox_minijail;
 use jail::fork_process;
 use jail::JailConfig;
+use jail::RunAsUser;
 use jail::SandboxConfig;
 use vm_control::api::VmMemoryClient;
 use vm_control::VmMemoryFileMapping;
@@ -46,6 +47,8 @@ pub fn launch(
     vm_memory_client: VmMemoryClient,
     device_tube: Tube, // Connects to a virtio device to send a memory slot number.
     path: &Path,
+    ugid: &(Option<u32>, Option<u32>),
+    ugid_map: (&str, &str),
     builder: ext2::Builder,
     jail_config: &Option<JailConfig>,
 ) -> Result<Pid> {
@@ -56,9 +59,14 @@ pub fn launch(
     let jail = if let Some(jail_config) = jail_config {
         let mut config = SandboxConfig::new(jail_config, "virtual_ext2");
         config.limit_caps = false;
+        config.ugid_map = Some(ugid_map);
         // We want bind mounts from the parent namespaces to propagate into the mkfs's
         // namespace.
         config.remount_mode = Some(libc::MS_SLAVE);
+        config.run_as = match *ugid {
+            (None, None) => RunAsUser::Unspecified,
+            (uid_opt, gid_opt) => RunAsUser::Specified(uid_opt.unwrap_or(0), gid_opt.unwrap_or(0)),
+        };
         create_sandbox_minijail(path, max_open_files, &config)?
     } else {
         create_base_minijail(path, max_open_files)?

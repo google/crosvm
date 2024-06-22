@@ -1896,6 +1896,16 @@ pub struct RunCommand {
     ///       calculated from this value and other given parameters.
     ///       The value of `size` must be larger than (4096 *
     ///        blocks_per_group.) (default: 16777216)
+    ///     uid=UID - uid of the mkfs process in the user
+    ///       namespace created by minijail. (default: 0)
+    ///     gid=GID - gid of the mkfs process in the user
+    ///       namespace created by minijail. (default: 0)
+    ///     uidmap=UIDMAP - a uid map in the format
+    ///       "inner outer count[,inner outer count]". This format
+    ///       is same as one for minijail.
+    ///       (default: "0 <current euid> 1")
+    ///     gidmap=GIDMAP - a gid map in the same format as uidmap
+    ///       (default: "0 <current egid> 1")
     pub pmem_ext2: Vec<PmemExt2Option>,
 
     #[cfg(feature = "process-invariants")]
