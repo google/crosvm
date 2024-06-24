@@ -48,8 +48,7 @@ use super::super::CrossDomainItem;
 use super::super::CrossDomainJob;
 use super::super::CrossDomainState;
 use crate::cross_domain::cross_domain_protocol::CrossDomainInit;
-use crate::cross_domain::CrossDomainEvent;
-use crate::cross_domain::CrossDomainToken;
+use crate::cross_domain::WaitEvent;
 use crate::cross_domain::WAIT_CONTEXT_MAX;
 use crate::rutabaga_os::AsRawDescriptor;
 use crate::rutabaga_os::FromRawDescriptor;
@@ -288,63 +287,43 @@ pub fn channel() -> RutabagaResult<(Sender, Receiver)> {
 
 pub struct WaitContext {
     epoll_ctx: Epoll,
-    data: u64,
-    vec: Vec<(u64, CrossDomainToken)>,
 }
 
 impl WaitContext {
     pub fn new() -> RutabagaResult<WaitContext> {
         let epoll = Epoll::new(EpollCreateFlags::empty())?;
-        Ok(WaitContext {
-            epoll_ctx: epoll,
-            data: 0,
-            vec: Default::default(),
-        })
+        Ok(WaitContext { epoll_ctx: epoll })
     }
 
     pub fn add<Waitable: AsFd>(
         &mut self,
-        token: CrossDomainToken,
+        connection_id: u64,
         waitable: Waitable,
     ) -> RutabagaResult<()> {
-        self.data += 1;
-        self.epoll_ctx
-            .add(waitable, EpollEvent::new(EpollFlags::EPOLLIN, self.data))?;
-        self.vec.push((self.data, token));
+        self.epoll_ctx.add(
+            waitable,
+            EpollEvent::new(EpollFlags::EPOLLIN, connection_id),
+        )?;
         Ok(())
     }
 
-    fn calculate_token(&self, data: u64) -> RutabagaResult<CrossDomainToken> {
-        if let Some(item) = self.vec.iter().find(|item| item.0 == data) {
-            return Ok(item.1);
-        }
-
-        Err(RutabagaError::SpecViolation("unable to find token"))
-    }
-
-    pub fn wait(&mut self) -> RutabagaResult<Vec<CrossDomainEvent>> {
+    pub fn wait(&mut self) -> RutabagaResult<Vec<WaitEvent>> {
         let mut events = [EpollEvent::empty(); WAIT_CONTEXT_MAX];
         let count = self.epoll_ctx.wait(&mut events, EpollTimeout::NONE)?;
         let events = events[0..count]
             .iter()
-            .map(|e| CrossDomainEvent {
-                token: self.calculate_token(e.data()).unwrap(),
+            .map(|e| WaitEvent {
+                connection_id: e.data(),
                 readable: e.events() & EpollFlags::EPOLLIN == EpollFlags::EPOLLIN,
-                hung_up: e.events() & EpollFlags::EPOLLHUP == EpollFlags::EPOLLHUP
-                    || e.events() & EpollFlags::EPOLLRDHUP != EpollFlags::EPOLLRDHUP,
+                hung_up: e.events() & EpollFlags::EPOLLHUP == EpollFlags::EPOLLHUP,
             })
             .collect();
 
         Ok(events)
     }
 
-    pub fn delete<Waitable: AsFd>(
-        &mut self,
-        token: CrossDomainToken,
-        waitable: Waitable,
-    ) -> RutabagaResult<()> {
+    pub fn delete<Waitable: AsFd>(&mut self, waitable: Waitable) -> RutabagaResult<()> {
         self.epoll_ctx.delete(waitable)?;
-        self.vec.retain(|item| item.1 != token);
         Ok(())
     }
 }
