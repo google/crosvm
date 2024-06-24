@@ -113,7 +113,7 @@ unsafe fn set_user_memory_region<F: AsRawDescriptor>(
         userspace_addr: userspace_addr as u64,
     };
 
-    let ret = ioctl_with_ref(fd, KVM_SET_USER_MEMORY_REGION(), &region);
+    let ret = ioctl_with_ref(fd, KVM_SET_USER_MEMORY_REGION, &region);
     if ret == 0 {
         Ok(())
     } else {
@@ -168,7 +168,7 @@ impl Kvm {
         // SAFETY:
         // Safe because we know that our file is a KVM fd and that the extension is one of the ones
         // defined by kernel.
-        unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), c as c_ulong) }
+        unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION, c as c_ulong) }
     }
 
     /// Checks if a particular `Cap` is available.
@@ -180,7 +180,7 @@ impl Kvm {
     pub fn get_vcpu_mmap_size(&self) -> Result<usize> {
         // SAFETY:
         // Safe because we know that our file is a KVM fd and we verify the return result.
-        let res = unsafe { ioctl(self, KVM_GET_VCPU_MMAP_SIZE()) };
+        let res = unsafe { ioctl(self, KVM_GET_VCPU_MMAP_SIZE) };
         if res > 0 {
             Ok(res as usize)
         } else {
@@ -208,13 +208,13 @@ impl Kvm {
     /// X86 specific call to get the system supported CPUID values
     #[cfg(target_arch = "x86_64")]
     pub fn get_supported_cpuid(&self) -> Result<CpuId> {
-        self.get_cpuid(KVM_GET_SUPPORTED_CPUID())
+        self.get_cpuid(KVM_GET_SUPPORTED_CPUID)
     }
 
     /// X86 specific call to get the system emulated CPUID values
     #[cfg(target_arch = "x86_64")]
     pub fn get_emulated_cpuid(&self) -> Result<CpuId> {
-        self.get_cpuid(KVM_GET_EMULATED_CPUID())
+        self.get_cpuid(KVM_GET_EMULATED_CPUID)
     }
 
     /// X86 specific call to get list of supported MSRS
@@ -231,7 +231,7 @@ impl Kvm {
         // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the memory
         // allocated for the struct. The limit is read from nmsrs, which is set to the allocated
         // size (MAX_KVM_MSR_ENTRIES) above.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_MSR_INDEX_LIST(), &mut msr_list[0]) };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_MSR_INDEX_LIST, &mut msr_list[0]) };
         if ret < 0 {
             return errno_result();
         }
@@ -266,8 +266,7 @@ impl Kvm {
     pub fn get_vm_type(&self) -> c_ulong {
         // SAFETY:
         // Safe because we know self is a real kvm fd
-        match unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into()) }
-        {
+        match unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION, KVM_CAP_ARM_VM_IPA_SIZE.into()) } {
             // Not supported? Use 0 as the machine type, which implies 40bit IPA
             ret if ret < 0 => 0,
             // Use the lower 8 bits representing the IPA space as the machine type
@@ -351,7 +350,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know kvm is a real kvm fd as this module is the only one that can make
         // Kvm objects.
-        let ret = unsafe { ioctl_with_val(kvm, KVM_CREATE_VM(), kvm.get_vm_type()) };
+        let ret = unsafe { ioctl_with_val(kvm, KVM_CREATE_VM, kvm.get_vm_type()) };
         if ret >= 0 {
             // SAFETY:
             // Safe because we verify the value of ret and we are the owners of the fd.
@@ -392,7 +391,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a KVM fd and that the extension is one of the ones
         // defined by kernel.
-        unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), c as c_ulong) == 1 }
+        unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION, c as c_ulong) == 1 }
     }
 
     /// Inserts the given `mem` into the VM's address space at `guest_addr`.
@@ -495,7 +494,7 @@ impl Vm {
                 // Safe because the `dirty_bitmap` pointer assigned above is guaranteed to be valid
                 // (because it's from a slice) and we checked that it will be large enough to hold
                 // the entire log.
-                let ret = unsafe { ioctl_with_ref(self, KVM_GET_DIRTY_LOG(), &dirty_log_kvm) };
+                let ret = unsafe { ioctl_with_ref(self, KVM_GET_DIRTY_LOG, &dirty_log_kvm) };
                 if ret == 0 {
                     Ok(())
                 } else {
@@ -521,7 +520,7 @@ impl Vm {
     pub fn set_identity_map_addr(&self, addr: GuestAddress) -> Result<()> {
         // SAFETY:
         // Safe because we know that our file is a VM fd and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_IDENTITY_MAP_ADDR(), &addr.offset()) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_IDENTITY_MAP_ADDR, &addr.offset()) };
         if ret == 0 {
             Ok(())
         } else {
@@ -539,7 +538,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only write
         // correct amount of memory to our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_CLOCK(), &mut clock_data) };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_CLOCK, &mut clock_data) };
         if ret == 0 {
             Ok(clock_data)
         } else {
@@ -555,7 +554,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_CLOCK(), clock_data) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_CLOCK, clock_data) };
         if ret == 0 {
             Ok(())
         } else {
@@ -570,7 +569,7 @@ impl Vm {
     pub fn create_irq_chip(&self) -> Result<()> {
         // SAFETY:
         // Safe because we know that our file is a VM fd and we verify the return result.
-        let ret = unsafe { ioctl(self, KVM_CREATE_IRQCHIP()) };
+        let ret = unsafe { ioctl(self, KVM_CREATE_IRQCHIP) };
         if ret == 0 {
             Ok(())
         } else {
@@ -590,7 +589,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know our file is a VM fd, we know the kernel will only write
         // correct amount of memory to our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_IRQCHIP(), &mut irqchip_state) };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_IRQCHIP, &mut irqchip_state) };
         if ret == 0 {
             Ok(
                 // SAFETY:
@@ -616,7 +615,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_IRQCHIP(), &irqchip_state) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_IRQCHIP, &irqchip_state) };
         if ret == 0 {
             Ok(())
         } else {
@@ -638,7 +637,7 @@ impl Vm {
             // Safe because we know our file is a VM fd, we know the kernel will only write
             // correct amount of memory to our pointer, and we verify the return result.
             unsafe {
-                ioctl_with_mut_ref(self, KVM_GET_IRQCHIP(), &mut irqchip_state)
+                ioctl_with_mut_ref(self, KVM_GET_IRQCHIP, &mut irqchip_state)
         };
         if ret == 0 {
             Ok(
@@ -665,7 +664,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_IRQCHIP(), &irqchip_state) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_IRQCHIP, &irqchip_state) };
         if ret == 0 {
             Ok(())
         } else {
@@ -683,7 +682,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_IRQ_LINE(), &irq_level) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_IRQ_LINE, &irq_level) };
         if ret == 0 {
             Ok(())
         } else {
@@ -700,7 +699,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_CREATE_PIT2(), &pit_config) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_CREATE_PIT2, &pit_config) };
         if ret == 0 {
             Ok(())
         } else {
@@ -718,7 +717,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only write
         // correct amount of memory to our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_PIT2(), &mut pit_state) };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_PIT2, &mut pit_state) };
         if ret == 0 {
             Ok(pit_state)
         } else {
@@ -734,7 +733,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_PIT2(), pit_state) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_PIT2, pit_state) };
         if ret == 0 {
             Ok(())
         } else {
@@ -822,7 +821,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_IOEVENTFD(), &ioeventfd) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_IOEVENTFD, &ioeventfd) };
         if ret == 0 {
             Ok(())
         } else {
@@ -849,7 +848,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_IRQFD(), &irqfd) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_IRQFD, &irqfd) };
         if ret == 0 {
             Ok(())
         } else {
@@ -873,7 +872,7 @@ impl Vm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_IRQFD(), &irqfd) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_IRQFD, &irqfd) };
         if ret == 0 {
             Ok(())
         } else {
@@ -914,7 +913,7 @@ impl Vm {
 
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_GSI_ROUTING(), &irq_routing[0]) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_GSI_ROUTING, &irq_routing[0]) };
         if ret == 0 {
             Ok(())
         } else {
@@ -930,7 +929,7 @@ impl Vm {
     pub unsafe fn kvm_enable_cap(&self, cap: &kvm_enable_cap) -> Result<()> {
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = ioctl_with_ref(self, KVM_ENABLE_CAP(), cap);
+        let ret = ioctl_with_ref(self, KVM_ENABLE_CAP, cap);
         if ret < 0 {
             errno_result()
         } else {
@@ -1044,7 +1043,7 @@ impl Vcpu {
 
         // SAFETY:
         // Safe because we know that vm a VM fd and we verify the return result.
-        let vcpu_fd = unsafe { ioctl_with_val(vm, KVM_CREATE_VCPU(), id) };
+        let vcpu_fd = unsafe { ioctl_with_val(vm, KVM_CREATE_VCPU, id) };
         if vcpu_fd < 0 {
             return errno_result();
         }
@@ -1201,7 +1200,7 @@ impl Vcpu {
         // SAFETY:
         // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_REGS(), &mut regs) };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_REGS, &mut regs) };
         if ret != 0 {
             return errno_result();
         }
@@ -1214,7 +1213,7 @@ impl Vcpu {
         // SAFETY:
         // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_REGS(), regs) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_REGS, regs) };
         if ret != 0 {
             return errno_result();
         }
@@ -1229,7 +1228,7 @@ impl Vcpu {
         // SAFETY:
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
         // correct amount of memory to our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_SREGS(), &mut regs) };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_SREGS, &mut regs) };
         if ret != 0 {
             return errno_result();
         }
@@ -1242,7 +1241,7 @@ impl Vcpu {
         // SAFETY:
         // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_SREGS(), sregs) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_SREGS, sregs) };
         if ret != 0 {
             return errno_result();
         }
@@ -1257,7 +1256,7 @@ impl Vcpu {
         let mut regs = unsafe { std::mem::zeroed() };
         // SAFETY:
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_FPU(), &mut regs) };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_FPU, &mut regs) };
         if ret != 0 {
             return errno_result();
         }
@@ -1272,7 +1271,7 @@ impl Vcpu {
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read past the end of the kvm_fpu struct.
-            unsafe { ioctl_with_ref(self, KVM_SET_FPU(), fpu) }
+            unsafe { ioctl_with_ref(self, KVM_SET_FPU, fpu) }
         };
         if ret < 0 {
             return errno_result();
@@ -1288,7 +1287,7 @@ impl Vcpu {
         // SAFETY:
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
         // correct amount of memory to our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_DEBUGREGS(), &mut regs) };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_DEBUGREGS, &mut regs) };
         if ret != 0 {
             return errno_result();
         }
@@ -1301,7 +1300,7 @@ impl Vcpu {
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read past the end of the kvm_fpu struct.
-            unsafe { ioctl_with_ref(self, KVM_SET_DEBUGREGS(), dregs) }
+            unsafe { ioctl_with_ref(self, KVM_SET_DEBUGREGS, dregs) }
         };
         if ret < 0 {
             return errno_result();
@@ -1317,7 +1316,7 @@ impl Vcpu {
         // SAFETY:
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
         // correct amount of memory to our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_XCRS(), &mut regs) };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_XCRS, &mut regs) };
         if ret != 0 {
             return errno_result();
         }
@@ -1330,7 +1329,7 @@ impl Vcpu {
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read past the end of the kvm_xcrs struct.
-            unsafe { ioctl_with_ref(self, KVM_SET_XCRS(), xcrs) }
+            unsafe { ioctl_with_ref(self, KVM_SET_XCRS, xcrs) }
         };
         if ret < 0 {
             return errno_result();
@@ -1357,7 +1356,7 @@ impl Vcpu {
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read or write past the end of the kvm_msrs struct.
-            unsafe { ioctl_with_ref(self, KVM_GET_MSRS(), &msrs[0]) }
+            unsafe { ioctl_with_ref(self, KVM_GET_MSRS, &msrs[0]) }
         };
         if ret < 0 {
             // KVM_SET_MSRS actually returns the number of msr entries written.
@@ -1383,7 +1382,7 @@ impl Vcpu {
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read past the end of the kvm_msrs struct.
-            unsafe { ioctl_with_ref(self, KVM_SET_MSRS(), msrs) }
+            unsafe { ioctl_with_ref(self, KVM_SET_MSRS, msrs) }
         };
         if ret < 0 {
             // KVM_SET_MSRS actually returns the number of msr entries written.
@@ -1400,7 +1399,7 @@ impl Vcpu {
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read past the end of the kvm_msrs struct.
-            unsafe { ioctl_with_ptr(self, KVM_SET_CPUID2(), cpuid.as_ptr()) }
+            unsafe { ioctl_with_ptr(self, KVM_SET_CPUID2, cpuid.as_ptr()) }
         };
         if ret < 0 {
             return errno_result();
@@ -1419,7 +1418,7 @@ impl Vcpu {
             // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the memory
             // allocated for the struct. The limit is read from nent, which is set to the allocated
             // size(MAX_KVM_CPUID_ENTRIES) above.
-            unsafe { ioctl_with_mut_ptr(self, KVM_GET_SUPPORTED_HV_CPUID(), cpuid.as_mut_ptr()) }
+            unsafe { ioctl_with_mut_ptr(self, KVM_GET_SUPPORTED_HV_CPUID, cpuid.as_mut_ptr()) }
         };
         if ret < 0 {
             return errno_result();
@@ -1439,7 +1438,7 @@ impl Vcpu {
             // SAFETY:
             // The ioctl is unsafe unless you trust the kernel not to write past the end of the
             // local_apic struct.
-            unsafe { ioctl_with_mut_ref(self, KVM_GET_LAPIC(), &mut klapic) }
+            unsafe { ioctl_with_mut_ref(self, KVM_GET_LAPIC, &mut klapic) }
         };
         if ret < 0 {
             return errno_result();
@@ -1456,7 +1455,7 @@ impl Vcpu {
         let ret = {
             // SAFETY:
             // The ioctl is safe because the kernel will only read from the klapic struct.
-            unsafe { ioctl_with_ref(self, KVM_SET_LAPIC(), klapic) }
+            unsafe { ioctl_with_ref(self, KVM_SET_LAPIC, klapic) }
         };
         if ret < 0 {
             return errno_result();
@@ -1478,7 +1477,7 @@ impl Vcpu {
         // SAFETY:
         // Safe because we know that our file is a VCPU fd, we know the kernel will only
         // write correct amount of memory to our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_MP_STATE(), &mut state) };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_MP_STATE, &mut state) };
         if ret < 0 {
             return errno_result();
         }
@@ -1497,7 +1496,7 @@ impl Vcpu {
         let ret = {
             // SAFETY:
             // The ioctl is safe because the kernel will only read from the kvm_mp_state struct.
-            unsafe { ioctl_with_ref(self, KVM_SET_MP_STATE(), state) }
+            unsafe { ioctl_with_ref(self, KVM_SET_MP_STATE, state) }
         };
         if ret < 0 {
             return errno_result();
@@ -1516,7 +1515,7 @@ impl Vcpu {
         // Safe because we know that our file is a VCPU fd, we know the kernel
         // will only write correct amount of memory to our pointer, and we
         // verify the return result.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_VCPU_EVENTS(), &mut events) };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_VCPU_EVENTS, &mut events) };
         if ret < 0 {
             return errno_result();
         }
@@ -1532,7 +1531,7 @@ impl Vcpu {
             // SAFETY:
             // The ioctl is safe because the kernel will only read from the
             // kvm_vcpu_events.
-            unsafe { ioctl_with_ref(self, KVM_SET_VCPU_EVENTS(), events) }
+            unsafe { ioctl_with_ref(self, KVM_SET_VCPU_EVENTS, events) }
         };
         if ret < 0 {
             return errno_result();
@@ -1549,7 +1548,7 @@ impl Vcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = ioctl_with_ref(self, KVM_ENABLE_CAP(), cap);
+        let ret = ioctl_with_ref(self, KVM_ENABLE_CAP, cap);
         if ret < 0 {
             return errno_result();
         }
@@ -1585,7 +1584,7 @@ impl Vcpu {
             // SAFETY:
             // The ioctl is safe because the kernel will only read from the
             // kvm_signal_mask structure.
-            unsafe { ioctl_with_ref(self, KVM_SET_SIGNAL_MASK(), &kvm_sigmask[0]) }
+            unsafe { ioctl_with_ref(self, KVM_SET_SIGNAL_MASK, &kvm_sigmask[0]) }
         };
         if ret < 0 {
             return errno_result();
@@ -1605,7 +1604,7 @@ impl Vcpu {
         // SAFETY:
         // safe because we allocated the struct and we know the kernel will read
         // exactly the size of the struct
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_ONE_REG(), &onereg) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_ONE_REG, &onereg) };
         if ret < 0 {
             return errno_result();
         }
@@ -1640,7 +1639,7 @@ impl RunnableVcpu {
     pub fn run(&self) -> Result<VcpuExit> {
         // SAFETY:
         // Safe because we know that our file is a VCPU fd and we verify the return result.
-        let ret = unsafe { ioctl(self, KVM_RUN()) };
+        let ret = unsafe { ioctl(self, KVM_RUN) };
         if ret == 0 {
             // SAFETY:
             // Safe because we know we mapped enough memory to hold the kvm_run struct because the

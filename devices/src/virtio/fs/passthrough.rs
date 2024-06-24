@@ -41,6 +41,7 @@ use base::unix::FileFlags;
 use base::warn;
 use base::AsRawDescriptor;
 use base::FromRawDescriptor;
+use base::IoctlNr;
 use base::Protection;
 use base::RawDescriptor;
 use fuse::filesystem::Context;
@@ -1317,7 +1318,7 @@ impl PassthroughFs {
 
         let res =
             // SAFETY: the kernel will only write to `arg` and we check the return value.
-            unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_GET_ENCRYPTION_POLICY_EX(), &mut arg) };
+            unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_GET_ENCRYPTION_POLICY_EX, &mut arg) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -1336,7 +1337,7 @@ impl PassthroughFs {
         let mut buf = MaybeUninit::<fsxattr>::zeroed();
 
         // SAFETY: the kernel will only write to `buf` and we check the return value.
-        let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_FSGETXATTR(), buf.as_mut_ptr()) };
+        let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_FSGETXATTR, buf.as_mut_ptr()) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -1372,7 +1373,7 @@ impl PassthroughFs {
             // Get the current fsxattr.
             let mut buf = MaybeUninit::<fsxattr>::zeroed();
             // SAFETY: the kernel will only write to `buf` and we check the return value.
-            let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_FSGETXATTR(), buf.as_mut_ptr()) };
+            let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_FSGETXATTR, buf.as_mut_ptr()) };
             if res < 0 {
                 return Ok(IoctlReply::Done(Err(io::Error::last_os_error())));
             }
@@ -1411,7 +1412,7 @@ impl PassthroughFs {
         }
 
         //  SAFETY: this doesn't modify any memory and we check the return value.
-        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_FSSETXATTR(), &in_attr) };
+        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_FSSETXATTR, &in_attr) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -1430,7 +1431,7 @@ impl PassthroughFs {
         let mut flags: c_int = 0;
 
         // SAFETY: the kernel will only write to `flags` and we check the return value.
-        let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_GETFLAGS(), &mut flags) };
+        let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_GETFLAGS, &mut flags) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -1464,7 +1465,7 @@ impl PassthroughFs {
             // Get the current flag.
             let mut buf = MaybeUninit::<c_int>::zeroed();
             // SAFETY: the kernel will only write to `buf` and we check the return value.
-            let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_GETFLAGS(), buf.as_mut_ptr()) };
+            let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_GETFLAGS, buf.as_mut_ptr()) };
             if res < 0 {
                 return Ok(IoctlReply::Done(Err(io::Error::last_os_error())));
             }
@@ -1502,7 +1503,7 @@ impl PassthroughFs {
         }
 
         // SAFETY: this doesn't modify any memory and we check the return value.
-        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_SETFLAGS(), &in_flags) };
+        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_SETFLAGS, &in_flags) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -1599,7 +1600,7 @@ impl PassthroughFs {
         }
 
         // SAFETY: this doesn't modify any memory and we check the return value.
-        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_ENABLE_VERITY(), &arg) };
+        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_ENABLE_VERITY, &arg) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -1643,7 +1644,7 @@ impl PassthroughFs {
         };
 
         // SAFETY: this will only modify `buf` and we check the return value.
-        let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_MEASURE_VERITY(), buf.as_mut_ptr()) };
+        let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_MEASURE_VERITY, buf.as_mut_ptr()) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -3173,60 +3174,44 @@ impl FileSystem for PassthroughFs {
     ) -> io::Result<IoctlReply> {
         let _trace = fs_trace!(self.tag, "ioctl", inode, handle, cmd, in_size, out_size);
 
-        const GET_ENCRYPTION_POLICY_EX: u32 = FS_IOC_GET_ENCRYPTION_POLICY_EX() as u32;
-        const GET_FSXATTR: u32 = FS_IOC_FSGETXATTR() as u32;
-        const SET_FSXATTR: u32 = FS_IOC_FSSETXATTR() as u32;
-        const GET_FLAGS32: u32 = FS_IOC32_GETFLAGS() as u32;
-        const SET_FLAGS32: u32 = FS_IOC32_SETFLAGS() as u32;
-        const GET_FLAGS64: u32 = FS_IOC64_GETFLAGS() as u32;
-        const SET_FLAGS64: u32 = FS_IOC64_SETFLAGS() as u32;
-        const ENABLE_VERITY: u32 = FS_IOC_ENABLE_VERITY() as u32;
-        const MEASURE_VERITY: u32 = FS_IOC_MEASURE_VERITY() as u32;
-        // The following is ARCVM-specific ioctl
-        // Refer go/remove-mount-passthrough-fuse for more design details
-        #[cfg(feature = "arc_quota")]
-        const SET_PERMISSION: u32 = FS_IOC_SETPERMISSION() as u32;
-        #[cfg(feature = "arc_quota")]
-        const SETPATHXATTR: u32 = FS_IOC_SETPATHXATTR() as u32;
-
-        match cmd {
-            GET_ENCRYPTION_POLICY_EX => self.get_encryption_policy_ex(inode, handle, r),
-            GET_FSXATTR => {
+        match cmd as IoctlNr {
+            FS_IOC_GET_ENCRYPTION_POLICY_EX => self.get_encryption_policy_ex(inode, handle, r),
+            FS_IOC_FSGETXATTR => {
                 if out_size < size_of::<fsxattr>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
                     self.get_fsxattr(inode, handle)
                 }
             }
-            SET_FSXATTR => {
+            FS_IOC_FSSETXATTR => {
                 if in_size < size_of::<fsxattr>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::EINVAL))
                 } else {
                     self.set_fsxattr(ctx, inode, handle, r)
                 }
             }
-            GET_FLAGS32 | GET_FLAGS64 => {
+            FS_IOC32_GETFLAGS | FS_IOC64_GETFLAGS => {
                 if out_size < size_of::<c_int>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
                     self.get_flags(inode, handle)
                 }
             }
-            SET_FLAGS32 | SET_FLAGS64 => {
+            FS_IOC32_SETFLAGS | FS_IOC64_SETFLAGS => {
                 if in_size < size_of::<c_int>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
                     self.set_flags(ctx, inode, handle, r)
                 }
             }
-            ENABLE_VERITY => {
+            FS_IOC_ENABLE_VERITY => {
                 if in_size < size_of::<fsverity_enable_arg>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
                     self.enable_verity(inode, handle, r)
                 }
             }
-            MEASURE_VERITY => {
+            FS_IOC_MEASURE_VERITY => {
                 if in_size < size_of::<fsverity_digest>() as u32
                     || out_size < size_of::<fsverity_digest>() as u32
                 {
@@ -3235,8 +3220,10 @@ impl FileSystem for PassthroughFs {
                     self.measure_verity(inode, handle, r, out_size)
                 }
             }
+            // The following is ARCVM-specific ioctl
+            // Refer go/remove-mount-passthrough-fuse for more design details
             #[cfg(feature = "arc_quota")]
-            SET_PERMISSION => {
+            FS_IOC_SETPERMISSION => {
                 if in_size == 0 {
                     Err(io::Error::from_raw_os_error(libc::EINVAL))
                 } else {
@@ -3244,7 +3231,7 @@ impl FileSystem for PassthroughFs {
                 }
             }
             #[cfg(feature = "arc_quota")]
-            SETPATHXATTR => {
+            FS_IOC_SETPATHXATTR => {
                 if in_size == 0 {
                     Err(io::Error::from_raw_os_error(libc::EINVAL))
                 } else {

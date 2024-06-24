@@ -81,7 +81,7 @@ impl AiaDescriptor {
 
         // Safe because we allocated the struct that's being passed in, and raw_aia_mode is pointing
         // to a uniquely owned local, mutable variable.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR(), &init_attr) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR, &init_attr) };
         if ret != 0 {
             return errno_result();
         }
@@ -101,7 +101,7 @@ impl AiaDescriptor {
 
         // Safe because we allocated the struct that's being passed in, and raw_num_ids is pointing
         // to a uniquely owned local, mutable variable.
-        let ret = unsafe { ioctl_with_ref(self, KVM_GET_DEVICE_ATTR(), &aia_num_ids_attr) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_GET_DEVICE_ATTR, &aia_num_ids_attr) };
         if ret != 0 {
             return errno_result();
         }
@@ -119,7 +119,7 @@ impl AiaDescriptor {
         };
         // Safe because we allocated the struct that's being passed in, and raw_aia_mode is pointing
         // to a uniquely owned local, mutable variable.
-        let ret = unsafe { ioctl_with_ref(self, KVM_GET_DEVICE_ATTR(), &aia_mode_attr) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_GET_DEVICE_ATTR, &aia_mode_attr) };
         if ret != 0 {
             return errno_result();
         }
@@ -136,7 +136,7 @@ impl AiaDescriptor {
         };
         // Safe because we allocated the struct that's being passed in, and raw_aia_mode is pointing
         // to a uniquely owned local, mutable variable.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR(), &kvm_attr) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR, &kvm_attr) };
         if ret != 0 {
             return errno_result();
         }
@@ -153,7 +153,7 @@ impl AiaDescriptor {
         };
         // Safe because we allocated the struct that's being passed in, and raw_aia_mode is pointing
         // to a uniquely owned local, mutable variable.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR(), &kvm_attr) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR, &kvm_attr) };
         if ret != 0 {
             return errno_result();
         }
@@ -172,7 +172,7 @@ impl AiaDescriptor {
         };
         // Safe because we allocated the struct that's being passed in, and raw_aplic_addr is
         // pointing to a uniquely owned local, mutable variable.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR(), &kvm_attr) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR, &kvm_attr) };
         if ret != 0 {
             return errno_result();
         }
@@ -187,7 +187,7 @@ impl AiaDescriptor {
             };
             // Safe because we allocated the struct that's being passed in, and raw_imsic_addr is
             // pointing to a uniquely owned local, mutable variable.
-            let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR(), &kvm_attr) };
+            let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR, &kvm_attr) };
             if ret != 0 {
                 return errno_result();
             }

@@ -82,13 +82,8 @@ impl Geniezone {
     pub fn get_guest_phys_addr_bits(&self) -> u8 {
         // SAFETY:
         // Safe because we know self is a real geniezone fd
-        match unsafe {
-            ioctl_with_val(
-                self,
-                GZVM_CHECK_EXTENSION(),
-                GZVM_CAP_ARM_VM_IPA_SIZE.into(),
-            )
-        } {
+        match unsafe { ioctl_with_val(self, GZVM_CHECK_EXTENSION, GZVM_CAP_ARM_VM_IPA_SIZE.into()) }
+        {
             // Default physical address size is 40 bits if the extension is not supported.
             ret if ret <= 0 => 40,
             ipa => ipa as u8,
@@ -198,7 +193,7 @@ impl VmAArch64 for GeniezoneVm {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will modify exactly the size
         // of the struct.
-        let ret = unsafe { ioctl_with_ref(self, GZVM_SET_DTB_CONFIG(), &dtb_config) };
+        let ret = unsafe { ioctl_with_ref(self, GZVM_SET_DTB_CONFIG, &dtb_config) };
         if ret == 0 {
             Ok(())
         } else {
@@ -226,7 +221,7 @@ impl GeniezoneVcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, GZVM_SET_ONE_REG(), &onereg) };
+        let ret = unsafe { ioctl_with_ref(self, GZVM_SET_ONE_REG, &onereg) };
         if ret == 0 {
             Ok(())
         } else {
@@ -255,7 +250,7 @@ impl GeniezoneVcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, GZVM_GET_ONE_REG(), &onereg) };
+        let ret = unsafe { ioctl_with_ref(self, GZVM_GET_ONE_REG, &onereg) };
         if ret == 0 {
             Ok(())
         } else {
@@ -476,7 +471,7 @@ unsafe fn set_user_memory_region(
         userspace_addr: userspace_addr as u64,
     };
 
-    let ret = ioctl_with_ref(descriptor, GZVM_SET_USER_MEMORY_REGION(), &region);
+    let ret = ioctl_with_ref(descriptor, GZVM_SET_USER_MEMORY_REGION, &region);
     if ret == 0 {
         Ok(())
     } else {
@@ -575,7 +570,7 @@ impl GeniezoneVm {
         // SAFETY:
         // Safe because we know gzvm is a real gzvm fd as this module is the only one that can make
         // gzvm objects.
-        let ret = unsafe { ioctl(geniezone, GZVM_CREATE_VM()) };
+        let ret = unsafe { ioctl(geniezone, GZVM_CREATE_VM) };
         if ret < 0 {
             return errno_result();
         }
@@ -622,7 +617,7 @@ impl GeniezoneVm {
         let fd =
             // SAFETY:
             // Safe because we know that our file is a VM fd and we verify the return result.
-            unsafe { ioctl_with_val(self, GZVM_CREATE_VCPU(), c_ulong::try_from(id).unwrap()) };
+            unsafe { ioctl_with_val(self, GZVM_CREATE_VCPU, c_ulong::try_from(id).unwrap()) };
 
         if fd < 0 {
             return errno_result();
@@ -652,7 +647,7 @@ impl GeniezoneVm {
     pub fn create_irq_chip(&self) -> Result<()> {
         // SAFETY:
         // Safe because we know that our file is a VM fd and we verify the return result.
-        let ret = unsafe { ioctl(self, GZVM_CREATE_IRQCHIP()) };
+        let ret = unsafe { ioctl(self, GZVM_CREATE_IRQCHIP) };
         if ret == 0 {
             Ok(())
         } else {
@@ -669,7 +664,7 @@ impl GeniezoneVm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, GZVM_IRQ_LINE(), &irq_level) };
+        let ret = unsafe { ioctl_with_ref(self, GZVM_IRQ_LINE, &irq_level) };
         if ret == 0 {
             Ok(())
         } else {
@@ -699,7 +694,7 @@ impl GeniezoneVm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, GZVM_IRQFD(), &irqfd) };
+        let ret = unsafe { ioctl_with_ref(self, GZVM_IRQFD, &irqfd) };
         if ret == 0 {
             Ok(())
         } else {
@@ -722,7 +717,7 @@ impl GeniezoneVm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, GZVM_IRQFD(), &irqfd) };
+        let ret = unsafe { ioctl_with_ref(self, GZVM_IRQFD, &irqfd) };
         if ret == 0 {
             Ok(())
         } else {
@@ -780,7 +775,7 @@ impl GeniezoneVm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, GZVM_IOEVENTFD(), &ioeventfd) };
+        let ret = unsafe { ioctl_with_ref(self, GZVM_IOEVENTFD, &ioeventfd) };
         if ret == 0 {
             Ok(())
         } else {
@@ -795,7 +790,7 @@ impl GeniezoneVm {
         // Safe because we know that our file is a GZVM fd, and if the cap is invalid GZVM assumes
         // it's an unavailable extension and returns 0.
         unsafe {
-            ioctl_with_ref(self, GZVM_CHECK_EXTENSION(), &cap);
+            ioctl_with_ref(self, GZVM_CHECK_EXTENSION, &cap);
         }
         cap == 1
     }
@@ -819,7 +814,7 @@ impl GeniezoneVm {
         };
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct, and because we assume the caller has allocated the args appropriately.
-        let ret = ioctl_with_ref(self, GZVM_ENABLE_CAP(), &gzvm_cap);
+        let ret = ioctl_with_ref(self, GZVM_ENABLE_CAP, &gzvm_cap);
         if ret == 0 {
             Ok(gzvm_cap)
         } else {
@@ -831,7 +826,7 @@ impl GeniezoneVm {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will modify exactly the size
         // of the struct and the return value is checked.
-        let ret = unsafe { base::ioctl_with_ref(self, GZVM_CREATE_DEVICE(), &dev) };
+        let ret = unsafe { base::ioctl_with_ref(self, GZVM_CREATE_DEVICE, &dev) };
         if ret == 0 {
             Ok(())
         } else {
@@ -1143,7 +1138,7 @@ impl Vcpu for GeniezoneVcpu {
     fn run(&mut self) -> Result<VcpuExit> {
         // SAFETY:
         // Safe because we know that our file is a VCPU fd and we verify the return result.
-        let ret = unsafe { ioctl_with_val(self, GZVM_RUN(), self.run_mmap.as_ptr() as u64) };
+        let ret = unsafe { ioctl_with_val(self, GZVM_RUN, self.run_mmap.as_ptr() as u64) };
         if ret != 0 {
             return errno_result();
         }

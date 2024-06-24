@@ -127,7 +127,7 @@ unsafe fn android_lend_user_memory_region(
         userspace_addr: userspace_addr as u64,
     };
 
-    let ret = ioctl_with_ref(vm, GH_VM_ANDROID_LEND_USER_MEM(), &region);
+    let ret = ioctl_with_ref(vm, GH_VM_ANDROID_LEND_USER_MEM, &region);
     if ret == 0 {
         Ok(())
     } else {
@@ -163,7 +163,7 @@ unsafe fn set_user_memory_region(
         userspace_addr: userspace_addr as u64,
     };
 
-    let ret = ioctl_with_ref(vm, GH_VM_SET_USER_MEM_REGION(), &region);
+    let ret = ioctl_with_ref(vm, GH_VM_SET_USER_MEM_REGION, &region);
     if ret == 0 {
         Ok(())
     } else {
@@ -199,7 +199,7 @@ impl GunyahVm {
         // SAFETY:
         // Safe because we know gunyah is a real gunyah fd as this module is the only one that can
         // make Gunyah objects.
-        let ret = unsafe { ioctl_with_val(gh, GH_CREATE_VM(), 0 as c_ulong) };
+        let ret = unsafe { ioctl_with_val(gh, GH_CREATE_VM, 0 as c_ulong) };
         if ret < 0 {
             return errno_result();
         }
@@ -273,7 +273,7 @@ impl GunyahVm {
 
         // SAFETY:
         // Safe because we know that our file is a VM fd and we verify the return result.
-        let fd = unsafe { ioctl_with_ref(self, GH_VM_ADD_FUNCTION(), &function_desc) };
+        let fd = unsafe { ioctl_with_ref(self, GH_VM_ADD_FUNCTION, &function_desc) };
         if fd < 0 {
             return errno_result();
         }
@@ -285,7 +285,7 @@ impl GunyahVm {
 
         // SAFETY:
         // Safe because we know this is a Gunyah VCPU
-        let res = unsafe { ioctl(&vcpu, GH_VCPU_MMAP_SIZE()) };
+        let res = unsafe { ioctl(&vcpu, GH_VCPU_MMAP_SIZE) };
         if res < 0 {
             return errno_result();
         }
@@ -321,7 +321,7 @@ impl GunyahVm {
         };
 
         // SAFETY: safe because the return value is checked.
-        let ret = unsafe { ioctl_with_ref(self, GH_VM_ADD_FUNCTION(), &function_desc) };
+        let ret = unsafe { ioctl_with_ref(self, GH_VM_ADD_FUNCTION, &function_desc) };
         if ret == 0 {
             self.routes
                 .lock()
@@ -346,7 +346,7 @@ impl GunyahVm {
         };
 
         // SAFETY: safe because memory is not modified and the return value is checked.
-        let ret = unsafe { ioctl_with_ref(self, GH_VM_REMOVE_FUNCTION(), &function_desc) };
+        let ret = unsafe { ioctl_with_ref(self, GH_VM_REMOVE_FUNCTION, &function_desc) };
         if ret == 0 {
             Ok(())
         } else {
@@ -377,7 +377,7 @@ impl GunyahVm {
 
         // SAFETY:
         // Safe because we know this is a Gunyah VM
-        let ret = unsafe { ioctl_with_ref(self, GH_VM_SET_DTB_CONFIG(), &dtb_config) };
+        let ret = unsafe { ioctl_with_ref(self, GH_VM_SET_DTB_CONFIG, &dtb_config) };
         if ret == 0 {
             Ok(())
         } else {
@@ -393,7 +393,7 @@ impl GunyahVm {
 
         // SAFETY:
         // Safe because we know this is a Gunyah VM
-        let ret = unsafe { ioctl_with_ref(self, GH_VM_ANDROID_SET_FW_CONFIG(), &fw_config) };
+        let ret = unsafe { ioctl_with_ref(self, GH_VM_ANDROID_SET_FW_CONFIG, &fw_config) };
         if ret == 0 {
             Ok(())
         } else {
@@ -403,7 +403,7 @@ impl GunyahVm {
 
     fn start(&self) -> Result<()> {
         // SAFETY: safe because memory is not modified and the return value is checked.
-        let ret = unsafe { ioctl(self, GH_VM_START()) };
+        let ret = unsafe { ioctl(self, GH_VM_START) };
         if ret == 0 {
             Ok(())
         } else {
@@ -592,7 +592,7 @@ impl Vm for GunyahVm {
         };
 
         // SAFETY: safe because memory is not modified and the return value is checked.
-        let ret = unsafe { ioctl_with_ref(self, GH_VM_ADD_FUNCTION(), &function_desc) };
+        let ret = unsafe { ioctl_with_ref(self, GH_VM_ADD_FUNCTION, &function_desc) };
         if ret == 0 {
             Ok(())
         } else {
@@ -624,7 +624,7 @@ impl Vm for GunyahVm {
         };
 
         // SAFETY: safe because memory is not modified and the return value is checked.
-        let ret = unsafe { ioctl_with_ref(self, GH_VM_REMOVE_FUNCTION(), &function_desc) };
+        let ret = unsafe { ioctl_with_ref(self, GH_VM_REMOVE_FUNCTION, &function_desc) };
         if ret == 0 {
             Ok(())
         } else {
@@ -738,7 +738,7 @@ impl Vcpu for GunyahVcpu {
     fn run(&mut self) -> Result<VcpuExit> {
         // SAFETY:
         // Safe because we know our file is a VCPU fd and we verify the return result.
-        let ret = unsafe { ioctl(self, GH_VCPU_RUN()) };
+        let ret = unsafe { ioctl(self, GH_VCPU_RUN) };
         if ret != 0 {
             return errno_result();
         }

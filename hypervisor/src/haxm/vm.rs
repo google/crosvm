@@ -78,7 +78,7 @@ impl HaxmVm {
         // SAFETY:
         // Safe because we know descriptor is a real haxm descriptor as this module is the only
         // one that can make Haxm objects.
-        let ret = unsafe { ioctl_with_mut_ref(haxm, HAX_IOCTL_CREATE_VM(), &mut vm_id) };
+        let ret = unsafe { ioctl_with_mut_ref(haxm, HAX_IOCTL_CREATE_VM, &mut vm_id) };
         if ret != 0 {
             return errno_result();
         }
@@ -116,7 +116,7 @@ impl HaxmVm {
         let ret =
             // SAFETY:
             // Safe because we know that our file is a VM fd and we verify the return result.
-            unsafe { ioctl_with_mut_ref(&self.haxm, HAX_IOCTL_CAPABILITY(), &mut capability_info) };
+            unsafe { ioctl_with_mut_ref(&self.haxm, HAX_IOCTL_CAPABILITY, &mut capability_info) };
 
         if ret != 0 {
             return false;
@@ -144,7 +144,7 @@ impl HaxmVm {
 
             // SAFETY:
             // Safe because we know that our file is a VM fd and we verify the return result.
-            let ret = unsafe { ioctl_with_ref(self, HAX_VM_IOCTL_REGISTER_LOG_FILE(), &log_file) };
+            let ret = unsafe { ioctl_with_ref(self, HAX_VM_IOCTL_REGISTER_LOG_FILE, &log_file) };
 
             if ret != 0 {
                 return errno_result();
@@ -194,7 +194,7 @@ unsafe fn set_user_memory_region(
 
     // SAFETY:
     // Safe because we know that our file is a VM fd and we verify the return result.
-    let ret = ioctl_with_ref(descriptor, HAX_VM_IOCTL_SET_RAM2(), &ram_info);
+    let ret = ioctl_with_ref(descriptor, HAX_VM_IOCTL_SET_RAM2, &ram_info);
     if ret != 0 {
         return errno_result();
     }
@@ -439,7 +439,7 @@ impl VmX86_64 for HaxmVm {
     fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuX86_64>> {
         // SAFETY:
         // Safe because we know that our file is a VM fd and we verify the return result.
-        let fd = unsafe { ioctl_with_ref(self, HAX_VM_IOCTL_VCPU_CREATE(), &(id as u32)) };
+        let fd = unsafe { ioctl_with_ref(self, HAX_VM_IOCTL_VCPU_CREATE, &(id as u32)) };
         if fd < 0 {
             return errno_result();
         }
@@ -452,7 +452,7 @@ impl VmX86_64 for HaxmVm {
         // SAFETY:
         // Safe because we created tunnel_info and we check the return code for errors
         let ret = unsafe {
-            ioctl_with_mut_ref(&descriptor, HAX_VCPU_IOCTL_SETUP_TUNNEL(), &mut tunnel_info)
+            ioctl_with_mut_ref(&descriptor, HAX_VCPU_IOCTL_SETUP_TUNNEL, &mut tunnel_info)
         };
 
         if ret != 0 {

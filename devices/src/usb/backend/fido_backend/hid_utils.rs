@@ -35,7 +35,7 @@ pub fn verify_is_fido_device(hidraw: &File) -> Result<()> {
     unsafe {
         let ret = handle_eintr_errno!(base::ioctl_with_mut_ref(
             hidraw,
-            HIDIOCGRDESCSIZE(),
+            HIDIOCGRDESCSIZE,
             &mut desc_size
         ));
         if ret < 0 || (desc_size as usize) < constants::HID_REPORT_DESC_HEADER.len() {
@@ -55,7 +55,7 @@ pub fn verify_is_fido_device(hidraw: &File) -> Result<()> {
     unsafe {
         let ret = handle_eintr_errno!(base::ioctl_with_mut_ref(
             hidraw,
-            HIDIOCGRDESC(),
+            HIDIOCGRDESC,
             &mut descriptor
         ));
         if ret < 0 {

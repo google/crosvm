@@ -234,7 +234,7 @@ fn is_fence(f: &File) -> bool {
     let info = sync_file_info::default();
     // SAFETY:
     // Safe as f is a valid file
-    unsafe { ioctl_with_ref(f, SYNC_IOC_FILE_INFO(), &info) == 0 }
+    unsafe { ioctl_with_ref(f, SYNC_IOC_FILE_INFO, &info) == 0 }
 }
 
 #[cfg(feature = "minigbm")]
@@ -918,7 +918,7 @@ impl WlVfd {
                 };
                 // SAFETY:
                 // Safe as descriptor is a valid dmabuf and incorrect flags will return an error.
-                if unsafe { ioctl_with_ref(descriptor, DMA_BUF_IOCTL_SYNC(), &sync) } < 0 {
+                if unsafe { ioctl_with_ref(descriptor, DMA_BUF_IOCTL_SYNC, &sync) } < 0 {
                     return Err(WlError::DmabufSync(io::Error::last_os_error()));
                 }
 

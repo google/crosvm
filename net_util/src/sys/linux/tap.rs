@@ -62,7 +62,7 @@ impl Tap {
 
         // Get the interface name since we will need it for some ioctls.
         let mut ifreq: net_sys::ifreq = Default::default();
-        let ret = ioctl_with_mut_ref(&tap_file, net_sys::TUNGETIFF(), &mut ifreq);
+        let ret = ioctl_with_mut_ref(&tap_file, net_sys::TUNGETIFF, &mut ifreq);
 
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
@@ -95,7 +95,7 @@ impl Tap {
         // SAFETY:
         // ioctl is safe since we call it with a valid tap fd and check the return
         // value.
-        let ret = unsafe { ioctl_with_mut_ref(&tuntap, net_sys::TUNSETIFF(), ifreq) };
+        let ret = unsafe { ioctl_with_mut_ref(&tuntap, net_sys::TUNSETIFF, ifreq) };
 
         if ret < 0 {
             return Err(Error::CreateTap(SysError::last()));
@@ -389,7 +389,7 @@ impl TapTCommon for Tap {
         let ret =
         // SAFETY:
         // ioctl is safe. Called with a valid tap descriptor, and we check the return.
-            unsafe { ioctl_with_val(&self.tap_file, net_sys::TUNSETOFFLOAD(), flags as c_ulong) };
+            unsafe { ioctl_with_val(&self.tap_file, net_sys::TUNSETOFFLOAD, flags as c_ulong) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
         }
@@ -431,7 +431,7 @@ impl TapTLinux for Tap {
         let size = size as c_int;
         // SAFETY:
         // ioctl is safe. Called with a valid tap descriptor, and we check the return.
-        let ret = unsafe { ioctl_with_ref(&self.tap_file, net_sys::TUNSETVNETHDRSZ(), &size) };
+        let ret = unsafe { ioctl_with_ref(&self.tap_file, net_sys::TUNSETVNETHDRSZ, &size) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
         }

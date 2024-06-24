@@ -26,15 +26,13 @@ macro_rules! ioctl_expr {
     };
 }
 
-/// Raw macro to declare a function that returns an ioctl number.
+/// Raw macro to declare a constant or a function that returns an ioctl number.
 #[macro_export]
 macro_rules! ioctl_ioc_nr {
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr) => {
         #[allow(non_snake_case)]
-        /// Generates ioctl request number.
-        pub const fn $name() -> $crate::linux::IoctlNr {
-            $crate::ioctl_expr!($dir, $ty, $nr, $size)
-        }
+        /// Constant ioctl request number.
+        pub const $name: $crate::linux::IoctlNr = $crate::ioctl_expr!($dir, $ty, $nr, $size);
     };
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr, $($v:ident),+) => {
         #[allow(non_snake_case)]
@@ -233,10 +231,10 @@ mod tests {
 
     #[test]
     fn ioctl_macros() {
-        assert_eq!(0x0000af01, VHOST_SET_OWNER());
-        assert_eq!(0x800454cf, TUNGETFEATURES());
-        assert_eq!(0x400454d9, TUNSETQUEUE());
-        assert_eq!(0xc004af12, VHOST_GET_VRING_BASE());
+        assert_eq!(0x0000af01, VHOST_SET_OWNER);
+        assert_eq!(0x800454cf, TUNGETFEATURES);
+        assert_eq!(0x400454d9, TUNSETQUEUE);
+        assert_eq!(0xc004af12, VHOST_GET_VRING_BASE);
 
         assert_eq!(0x80804522, EVIOCGBIT(2));
         assert_eq!(0x00004509, FAKE_IOCTL_2_ARG(3, 5));

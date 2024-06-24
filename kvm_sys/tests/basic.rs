@@ -19,7 +19,7 @@ fn get_version() {
     assert!(sys_fd >= 0);
 
     // SAFETY: sys_fd is expected to be valid and return value is checked.
-    let ret = unsafe { ioctl(sys_fd, KVM_GET_API_VERSION(), 0) };
+    let ret = unsafe { ioctl(sys_fd, KVM_GET_API_VERSION, 0) };
     assert_eq!(ret as u32, KVM_API_VERSION);
 }
 
@@ -30,7 +30,7 @@ fn create_vm_fd() {
     assert!(sys_fd >= 0);
 
     // SAFETY: sys_fd is expected to be valid and return value is checked.
-    let vm_fd = unsafe { ioctl(sys_fd, KVM_CREATE_VM(), 0) };
+    let vm_fd = unsafe { ioctl(sys_fd, KVM_CREATE_VM, 0) };
     assert!(vm_fd >= 0);
 }
 
@@ -41,6 +41,6 @@ fn check_vm_extension() {
     assert!(sys_fd >= 0);
 
     // SAFETY: sys_fd is expected to be valid and return value is checked.
-    let has_user_memory = unsafe { ioctl(sys_fd, KVM_CHECK_EXTENSION(), KVM_CAP_USER_MEMORY) };
+    let has_user_memory = unsafe { ioctl(sys_fd, KVM_CHECK_EXTENSION, KVM_CAP_USER_MEMORY) };
     assert_eq!(has_user_memory, 1);
 }

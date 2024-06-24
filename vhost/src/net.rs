@@ -74,7 +74,7 @@ where
         let ret = unsafe {
             ioctl_with_ref(
                 &self.descriptor,
-                virtio_sys::VHOST_NET_SET_BACKEND(),
+                virtio_sys::VHOST_NET_SET_BACKEND,
                 &vring_file,
             )
         };

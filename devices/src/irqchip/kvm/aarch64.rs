@@ -107,14 +107,14 @@ impl KvmKernelIrqChip {
 
         // SAFETY:
         // Safe because we allocated the struct that's being passed in
-        let ret = unsafe { ioctl_with_ref(&vgic, KVM_SET_DEVICE_ATTR(), &cpu_redist_attr) };
+        let ret = unsafe { ioctl_with_ref(&vgic, KVM_SET_DEVICE_ATTR, &cpu_redist_attr) };
         if ret != 0 {
             return errno_result();
         }
 
         // SAFETY:
         // Safe because we allocated the struct that's being passed in
-        let ret = unsafe { ioctl_with_ref(&vgic, KVM_SET_DEVICE_ATTR(), &dist_attr) };
+        let ret = unsafe { ioctl_with_ref(&vgic, KVM_SET_DEVICE_ATTR, &dist_attr) };
         if ret != 0 {
             return errno_result();
         }
@@ -130,7 +130,7 @@ impl KvmKernelIrqChip {
         };
         // SAFETY:
         // Safe because we allocated the struct that's being passed in
-        let ret = unsafe { ioctl_with_ref(&vgic, KVM_SET_DEVICE_ATTR(), &nr_irqs_attr) };
+        let ret = unsafe { ioctl_with_ref(&vgic, KVM_SET_DEVICE_ATTR, &nr_irqs_attr) };
         if ret != 0 {
             return errno_result();
         }
@@ -183,7 +183,7 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
 
         // SAFETY:
         // Safe because we allocated the struct that's being passed in
-        let ret = unsafe { ioctl_with_ref(&self.vgic, KVM_SET_DEVICE_ATTR(), &init_gic_attr) };
+        let ret = unsafe { ioctl_with_ref(&self.vgic, KVM_SET_DEVICE_ATTR, &init_gic_attr) };
         if ret != 0 {
             return errno_result();
         }

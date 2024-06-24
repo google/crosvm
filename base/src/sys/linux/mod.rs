@@ -263,7 +263,7 @@ pub fn discard_block<F: AsRawDescriptor>(file: &F, offset: u64, len: u64) -> Res
     // - ioctl(BLKDISCARD) does not hold the descriptor after the call.
     // - ioctl(BLKDISCARD) does not break the file descriptor.
     // - ioctl(BLKDISCARD) does not modify the given range.
-    syscall!(unsafe { libc::ioctl(file.as_raw_descriptor(), BLKDISCARD(), &range) }).map(|_| ())
+    syscall!(unsafe { libc::ioctl(file.as_raw_descriptor(), BLKDISCARD, &range) }).map(|_| ())
 }
 
 /// A trait used to abstract types that provide a process id that can be operated on.

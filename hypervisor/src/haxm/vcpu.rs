@@ -106,7 +106,7 @@ impl HaxmVcpu {
         let mut state = vcpu_state_t::default();
 
         // SAFETY: trivially safe with return value checked.
-        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_GET_REGS(), &mut state) };
+        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_GET_REGS, &mut state) };
         if ret != 0 {
             return errno_result();
         }
@@ -119,7 +119,7 @@ impl HaxmVcpu {
 
     fn set_vcpu_state(&self, state: &mut VcpuState) -> Result<()> {
         // SAFETY: trivially safe with return value checked.
-        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_SET_REGS(), &mut state.state) };
+        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_SET_REGS, &mut state.state) };
         if ret != 0 {
             return errno_result();
         }
@@ -290,7 +290,7 @@ impl Vcpu for HaxmVcpu {
     fn run(&mut self) -> Result<VcpuExit> {
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
-        let ret = unsafe { ioctl(self, HAX_VCPU_IOCTL_RUN()) };
+        let ret = unsafe { ioctl(self, HAX_VCPU_IOCTL_RUN) };
         if ret != 0 {
             return errno_result();
         }
@@ -348,7 +348,7 @@ impl VcpuX86_64 for HaxmVcpu {
         let irq: u32 = irq.into();
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
-        let ret = unsafe { ioctl_with_ref(self, HAX_VCPU_IOCTL_INTERRUPT(), &irq) };
+        let ret = unsafe { ioctl_with_ref(self, HAX_VCPU_IOCTL_INTERRUPT, &irq) };
         if ret != 0 {
             return errno_result();
         }
@@ -392,7 +392,7 @@ impl VcpuX86_64 for HaxmVcpu {
         let mut fpu = fx_layout::default();
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
-        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_GET_FPU(), &mut fpu) };
+        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_GET_FPU, &mut fpu) };
 
         if ret != 0 {
             return errno_result();
@@ -406,7 +406,7 @@ impl VcpuX86_64 for HaxmVcpu {
         let mut current_fpu = fx_layout::default();
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
-        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_GET_FPU(), &mut current_fpu) };
+        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_GET_FPU, &mut current_fpu) };
 
         if ret != 0 {
             return errno_result();
@@ -420,7 +420,7 @@ impl VcpuX86_64 for HaxmVcpu {
 
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
-        let ret = unsafe { ioctl_with_ref(self, HAX_VCPU_IOCTL_SET_FPU(), &new_fpu) };
+        let ret = unsafe { ioctl_with_ref(self, HAX_VCPU_IOCTL_SET_FPU, &new_fpu) };
 
         if ret != 0 {
             return errno_result();
@@ -480,7 +480,7 @@ impl VcpuX86_64 for HaxmVcpu {
 
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
-        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_GET_MSRS(), &mut msr_data) };
+        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_GET_MSRS, &mut msr_data) };
         if ret != 0 {
             return errno_result();
         }
@@ -503,7 +503,7 @@ impl VcpuX86_64 for HaxmVcpu {
 
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
-        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_SET_MSRS(), &mut msr_data) };
+        let ret = unsafe { ioctl_with_mut_ref(self, HAX_VCPU_IOCTL_SET_MSRS, &mut msr_data) };
         if ret != 0 {
             return errno_result();
         }
@@ -528,7 +528,7 @@ impl VcpuX86_64 for HaxmVcpu {
         let ret = unsafe {
             ioctl_with_ptr_sized(
                 self,
-                HAX_VCPU_IOCTL_SET_CPUID(),
+                HAX_VCPU_IOCTL_SET_CPUID,
                 hax.as_ptr(),
                 size_of::<hax_cpuid>() + total * size_of::<hax_cpuid_entry>(),
             )

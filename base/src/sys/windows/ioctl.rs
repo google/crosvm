@@ -12,7 +12,6 @@ use std::ptr::null_mut;
 
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::ioapiset::DeviceIoControl;
-pub use winapi::um::winioctl::CTL_CODE;
 pub use winapi::um::winioctl::FILE_ANY_ACCESS;
 pub use winapi::um::winioctl::METHOD_BUFFERED;
 
@@ -29,7 +28,7 @@ macro_rules! device_io_control_expr {
     //  just use that for now. However, we may need to support more
     //  options later.
     ($dtype:expr, $code:expr) => {
-        $crate::windows::CTL_CODE(
+        $crate::windows::ctl_code(
             $dtype,
             $code,
             $crate::windows::METHOD_BUFFERED,
@@ -43,9 +42,7 @@ macro_rules! device_io_control_expr {
 macro_rules! ioctl_ioc_nr {
     ($name:ident, $dtype:expr, $code:expr) => {
         #[allow(non_snake_case)]
-        pub fn $name() -> ::std::os::raw::c_ulong {
-            $crate::device_io_control_expr!($dtype, $code)
-        }
+        pub const $name: ::std::os::raw::c_ulong = $crate::device_io_control_expr!($dtype, $code);
     };
     ($name:ident, $dtype:expr, $code:expr, $($v:ident),+) => {
         #[allow(non_snake_case)]
@@ -127,6 +124,14 @@ macro_rules! ioctl_iowr_nr {
 }
 
 pub type IoctlNr = c_ulong;
+
+/// Constructs an I/O control code.
+///
+/// Shifts control code components into the appropriate bitfield locations:
+/// <https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/defining-i-o-control-codes>
+pub const fn ctl_code(device_type: u32, function: u32, method: u32, access: u32) -> IoctlNr {
+    (device_type << 16) | (access << 14) | (function << 2) | method
+}
 
 /// Run an ioctl with no arguments.
 // (colindr) b/144457461 : This will probably not be used on windows.

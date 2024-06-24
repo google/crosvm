@@ -82,7 +82,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // SAFETY:
         // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
-        let ret = unsafe { ioctl(self, virtio_sys::VHOST_SET_OWNER()) };
+        let ret = unsafe { ioctl(self, virtio_sys::VHOST_SET_OWNER) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -95,7 +95,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // SAFETY:
         // This ioctl is called on a valid vhost fd and has its
         // return value checked.
-        let ret = unsafe { ioctl(self, virtio_sys::VHOST_RESET_OWNER()) };
+        let ret = unsafe { ioctl(self, virtio_sys::VHOST_RESET_OWNER) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -109,7 +109,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
         let ret = unsafe {
-            ioctl_with_mut_ref(self, virtio_sys::VHOST_GET_FEATURES(), &mut avail_features)
+            ioctl_with_mut_ref(self, virtio_sys::VHOST_GET_FEATURES, &mut avail_features)
         };
         if ret < 0 {
             return ioctl_result();
@@ -126,7 +126,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // SAFETY:
         // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
-        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_FEATURES(), &features) };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_FEATURES, &features) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -171,7 +171,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // This ioctl is called with a pointer that is valid for the lifetime
         // of this function. The kernel will make its own copy of the memory
         // tables. As always, check the return value.
-        let ret = unsafe { ioctl_with_ptr(self, virtio_sys::VHOST_SET_MEM_TABLE(), vhost_memory) };
+        let ret = unsafe { ioctl_with_ptr(self, virtio_sys::VHOST_SET_MEM_TABLE, vhost_memory) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -195,7 +195,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // SAFETY:
         // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
-        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_NUM(), &vring_state) };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_NUM, &vring_state) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -300,7 +300,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // SAFETY:
         // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
-        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_ADDR(), &vring_addr) };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_ADDR, &vring_addr) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -321,7 +321,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // SAFETY:
         // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
-        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_BASE(), &vring_state) };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_BASE, &vring_state) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -340,9 +340,8 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
 
         // SAFETY:
         // Safe because this will only modify `vring_state` and we check the return value.
-        let ret = unsafe {
-            ioctl_with_mut_ref(self, virtio_sys::VHOST_GET_VRING_BASE(), &mut vring_state)
-        };
+        let ret =
+            unsafe { ioctl_with_mut_ref(self, virtio_sys::VHOST_GET_VRING_BASE, &mut vring_state) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -364,7 +363,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // SAFETY:
         // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
-        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_CALL(), &vring_file) };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_CALL, &vring_file) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -385,7 +384,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // SAFETY:
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
-        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_ERR(), &vring_file) };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_ERR, &vring_file) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -407,7 +406,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // SAFETY:
         // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
-        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_KICK(), &vring_file) };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_KICK, &vring_file) };
         if ret < 0 {
             return ioctl_result();
         }

@@ -119,7 +119,7 @@ pub fn device_ids<T: AsRawDescriptor>(descriptor: &T) -> Result<virtio_input_dev
         // SAFETY:
         // Safe because the kernel won't write more than size of evdev_id and we check the return
         // value
-        unsafe { ioctl_with_mut_ref(descriptor, EVIOCGID(), &mut dev_id) }
+        unsafe { ioctl_with_mut_ref(descriptor, EVIOCGID, &mut dev_id) }
     };
     if len < 0 {
         return Err(InputError::EvdevIdError(errno()));
@@ -139,7 +139,7 @@ pub fn name<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<u8>> {
         // SAFETY:
         // Safe because the kernel won't write more than size of evdev_buffer and we check the
         // return value
-        unsafe { ioctl_with_mut_ref(descriptor, EVIOCGNAME(), &mut name) }
+        unsafe { ioctl_with_mut_ref(descriptor, EVIOCGNAME, &mut name) }
     };
     if len < 0 {
         return Err(InputError::EvdevNameError(errno()));
@@ -154,7 +154,7 @@ pub fn serial_name<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<u8>> {
         // SAFETY:
         // Safe because the kernel won't write more than size of evdev_buffer and we check the
         // return value
-        unsafe { ioctl_with_mut_ref(descriptor, EVIOCGUNIQ(), &mut uniq) }
+        unsafe { ioctl_with_mut_ref(descriptor, EVIOCGUNIQ, &mut uniq) }
     };
     if len < 0 {
         return Err(InputError::EvdevSerialError(errno()));
@@ -169,7 +169,7 @@ pub fn properties<T: AsRawDescriptor>(descriptor: &T) -> Result<virtio_input_bit
         // SAFETY:
         // Safe because the kernel won't write more than size of evdev_buffer and we check the
         // return value
-        unsafe { ioctl_with_mut_ref(descriptor, EVIOCGPROP(), &mut props) }
+        unsafe { ioctl_with_mut_ref(descriptor, EVIOCGPROP, &mut props) }
     };
     if len < 0 {
         return Err(InputError::EvdevPropertiesError(errno()));
@@ -245,7 +245,7 @@ pub fn grab_evdev<T: AsRawDescriptor>(descriptor: &mut T) -> Result<()> {
     let ret = {
         // SAFETY:
         // Safe because the kernel only read the value of the ptr and we check the return value
-        unsafe { ioctl_with_ref(descriptor, EVIOCGRAB(), &val) }
+        unsafe { ioctl_with_ref(descriptor, EVIOCGRAB, &val) }
     };
     if ret == 0 {
         Ok(())
@@ -259,7 +259,7 @@ pub fn ungrab_evdev<T: AsRawDescriptor>(descriptor: &mut T) -> Result<()> {
         // SAFETY:
         // Safe because the kernel only reads the value of the ptr (doesn't dereference) and
         // we check the return value
-        unsafe { ioctl_with_ptr(descriptor, EVIOCGRAB(), null::<u32>()) }
+        unsafe { ioctl_with_ptr(descriptor, EVIOCGRAB, null::<u32>()) }
     };
     if ret == 0 {
         Ok(())

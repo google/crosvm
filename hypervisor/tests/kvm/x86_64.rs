@@ -57,7 +57,7 @@ fn get_msr_index_list() {
 #[test]
 fn entries_double_on_error() {
     let hypervisor = Kvm::new().unwrap();
-    let cpuid = get_cpuid_with_initial_capacity(&hypervisor, KVM_GET_SUPPORTED_CPUID(), 4).unwrap();
+    let cpuid = get_cpuid_with_initial_capacity(&hypervisor, KVM_GET_SUPPORTED_CPUID, 4).unwrap();
     assert!(cpuid.cpu_id_entries.len() > 4);
 }
 

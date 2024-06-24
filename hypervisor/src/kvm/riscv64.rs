@@ -147,7 +147,7 @@ impl VcpuRiscv64 for KvmVcpu {
         };
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_ONE_REG(), &onereg) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_ONE_REG, &onereg) };
         if ret == 0 {
             Ok(())
         } else {
@@ -164,7 +164,7 @@ impl VcpuRiscv64 for KvmVcpu {
 
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, KVM_GET_ONE_REG(), &onereg) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_GET_ONE_REG, &onereg) };
         if ret == 0 {
             Ok(val)
         } else {

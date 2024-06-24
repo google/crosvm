@@ -54,7 +54,7 @@ impl Kvm {
         // SAFETY:
         // Safe because we know self is a real kvm fd
         let ipa_size = match unsafe {
-            ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into())
+            ioctl_with_val(self, KVM_CHECK_EXTENSION, KVM_CAP_ARM_VM_IPA_SIZE.into())
         } {
             // Not supported? Use 0 as the machine type, which implies 40bit IPA
             ret if ret < 0 => 0,
@@ -73,8 +73,7 @@ impl Kvm {
     pub fn get_guest_phys_addr_bits(&self) -> u8 {
         // SAFETY:
         // Safe because we know self is a real kvm fd
-        match unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into()) }
-        {
+        match unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION, KVM_CAP_ARM_VM_IPA_SIZE.into()) } {
             // Default physical address size is 40 bits if the extension is not supported.
             ret if ret <= 0 => 40,
             ipa => ipa as u8,
@@ -228,7 +227,7 @@ impl VmAArch64 for KvmVm {
             reserved: 0,
         };
         // SAFETY: self.vm is a valid KVM fd
-        let ret = unsafe { ioctl_with_ref(&self.vm, KVM_ARM_SET_COUNTER_OFFSET(), &off) };
+        let ret = unsafe { ioctl_with_ref(&self.vm, KVM_ARM_SET_COUNTER_OFFSET, &off) };
         if ret != 0 {
             return errno_result();
         }
@@ -296,7 +295,7 @@ impl KvmVcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_ONE_REG(), &onereg) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_ONE_REG, &onereg) };
         if ret == 0 {
             Ok(())
         } else {
@@ -335,7 +334,7 @@ impl KvmVcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, KVM_GET_ONE_REG(), &onereg) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_GET_ONE_REG, &onereg) };
         if ret == 0 {
             Ok(())
         } else {
@@ -518,7 +517,7 @@ impl VcpuAArch64 for KvmVcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will write exactly the size
         // of the struct.
-        let ret = unsafe { ioctl_with_mut_ref(&self.vm, KVM_ARM_PREFERRED_TARGET(), &mut kvi) };
+        let ret = unsafe { ioctl_with_mut_ref(&self.vm, KVM_ARM_PREFERRED_TARGET, &mut kvi) };
         if ret != 0 {
             return errno_result();
         }
@@ -535,7 +534,7 @@ impl VcpuAArch64 for KvmVcpu {
         let check_extension = |ext: u32| -> bool {
             // SAFETY:
             // Safe because we know self.vm is a real kvm fd
-            unsafe { ioctl_with_val(&self.vm, KVM_CHECK_EXTENSION(), ext.into()) == 1 }
+            unsafe { ioctl_with_val(&self.vm, KVM_CHECK_EXTENSION, ext.into()) == 1 }
         };
         if check_extension(KVM_CAP_ARM_PTRAUTH_ADDRESS)
             && check_extension(KVM_CAP_ARM_PTRAUTH_GENERIC)
@@ -547,7 +546,7 @@ impl VcpuAArch64 for KvmVcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, KVM_ARM_VCPU_INIT(), &kvi) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_ARM_VCPU_INIT, &kvi) };
         if ret == 0 {
             Ok(())
         } else {
@@ -570,7 +569,7 @@ impl VcpuAArch64 for KvmVcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_HAS_DEVICE_ATTR(), &irq_attr) };
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_HAS_DEVICE_ATTR, &irq_attr) };
         if ret < 0 {
             return errno_result();
         }
@@ -578,7 +577,7 @@ impl VcpuAArch64 for KvmVcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &irq_attr) };
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR, &irq_attr) };
         if ret < 0 {
             return errno_result();
         }
@@ -592,7 +591,7 @@ impl VcpuAArch64 for KvmVcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &init_attr) };
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR, &init_attr) };
         if ret < 0 {
             return errno_result();
         }
@@ -612,7 +611,7 @@ impl VcpuAArch64 for KvmVcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_HAS_DEVICE_ATTR(), &pvtime_attr) };
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_HAS_DEVICE_ATTR, &pvtime_attr) };
         ret >= 0
     }
 
@@ -631,7 +630,7 @@ impl VcpuAArch64 for KvmVcpu {
         // SAFETY:
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &pvtime_attr) };
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR, &pvtime_attr) };
         if ret < 0 {
             return errno_result();
         }
@@ -699,7 +698,7 @@ impl VcpuAArch64 for KvmVcpu {
         let max_hw_bps = unsafe {
             ioctl_with_val(
                 &self.vm,
-                KVM_CHECK_EXTENSION(),
+                KVM_CHECK_EXTENSION,
                 KVM_CAP_GUEST_DEBUG_HW_BPS.into(),
             )
         };
@@ -749,7 +748,7 @@ impl VcpuAArch64 for KvmVcpu {
 
         // SAFETY:
         // Safe because the kernel won't read past the end of the kvm_guest_debug struct.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_GUEST_DEBUG(), &dbg) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_GUEST_DEBUG, &dbg) };
         if ret == 0 {
             Ok(())
         } else {

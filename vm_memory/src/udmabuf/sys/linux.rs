@@ -118,7 +118,7 @@ impl UdmabufDriverTrait for UnixUdmabufDriver {
         let fd = unsafe {
             let create_list = list.as_mut_ptr();
             (*create_list).flags = UDMABUF_FLAGS_CLOEXEC;
-            ioctl_with_ptr(&self.driver_fd, UDMABUF_CREATE_LIST(), create_list)
+            ioctl_with_ptr(&self.driver_fd, UDMABUF_CREATE_LIST, create_list)
         };
 
         if fd < 0 {

@@ -35,7 +35,7 @@ impl Vsock {
     /// * `cid` - CID to assign to the guest
     pub fn set_cid(&self, cid: u64) -> Result<()> {
         // SAFETY: Safe because descriptor is valid and the return value is checked.
-        let ret = unsafe { ioctl_with_ref(&self.descriptor, VHOST_VSOCK_SET_GUEST_CID(), &cid) };
+        let ret = unsafe { ioctl_with_ref(&self.descriptor, VHOST_VSOCK_SET_GUEST_CID, &cid) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -55,7 +55,7 @@ impl Vsock {
     fn set_running(&self, running: bool) -> Result<()> {
         let on = ::std::os::raw::c_int::from(running);
         // SAFETY: Safe because descriptor is valid and the return value is checked.
-        let ret = unsafe { ioctl_with_ref(&self.descriptor, VHOST_VSOCK_SET_RUNNING(), &on) };
+        let ret = unsafe { ioctl_with_ref(&self.descriptor, VHOST_VSOCK_SET_RUNNING, &on) };
 
         if ret < 0 {
             return ioctl_result();

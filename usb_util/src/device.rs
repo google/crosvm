@@ -276,7 +276,7 @@ impl Device {
         // Safe because we control the lifetime of the URB via Arc::into_raw() and
         // Arc::from_raw() in poll_transfers().
         unsafe {
-            self.ioctl_with_mut_ptr(usb_sys::USBDEVFS_SUBMITURB(), urb_ptr)?;
+            self.ioctl_with_mut_ptr(usb_sys::USBDEVFS_SUBMITURB, urb_ptr)?;
         }
 
         let weak_transfer = Arc::downgrade(&rc_transfer);
@@ -296,7 +296,7 @@ impl Device {
             let result =
         // SAFETY:
             // Safe because we provide a valid urb_ptr to be filled by the kernel.
-                unsafe { self.ioctl_with_mut_ref(usb_sys::USBDEVFS_REAPURBNDELAY(), &mut urb_ptr) };
+                unsafe { self.ioctl_with_mut_ref(usb_sys::USBDEVFS_REAPURBNDELAY, &mut urb_ptr) };
             match result {
                 // EAGAIN indicates no more completed transfers right now.
                 Err(Error::IoctlFailed(_nr, e)) if e.errno() == EAGAIN => break,
@@ -350,7 +350,7 @@ impl Device {
 
         // SAFETY:
         // Safe because self.fd is a valid usbdevfs file descriptor.
-        let result = unsafe { self.ioctl(usb_sys::USBDEVFS_RESET()) };
+        let result = unsafe { self.ioctl(usb_sys::USBDEVFS_RESET) };
 
         if let Err(Error::IoctlFailed(_nr, errno_err)) = result {
             // The device may disappear after a reset if e.g. its firmware changed.
@@ -375,7 +375,7 @@ impl Device {
         // Safe because self.fd is a valid usbdevfs file descriptor and we pass a valid
         // pointer to a usbdevs_disconnect_claim structure.
         unsafe {
-            self.ioctl_with_ref(usb_sys::USBDEVFS_DISCONNECT_CLAIM(), &disconnect_claim)?;
+            self.ioctl_with_ref(usb_sys::USBDEVFS_DISCONNECT_CLAIM, &disconnect_claim)?;
         }
 
         Ok(())
@@ -388,7 +388,7 @@ impl Device {
         // Safe because self.fd is a valid usbdevfs file descriptor and we pass a valid
         // pointer to unsigned int.
         unsafe {
-            self.ioctl_with_ref(usb_sys::USBDEVFS_RELEASEINTERFACE(), &ifnum)?;
+            self.ioctl_with_ref(usb_sys::USBDEVFS_RELEASEINTERFACE, &ifnum)?;
         }
 
         Ok(())
@@ -408,7 +408,7 @@ impl Device {
         // Safe because self.fd is a valid usbdevfs file descriptor and we pass a valid
         // pointer to a usbdevfs_setinterface structure.
         unsafe {
-            self.ioctl_with_ref(usb_sys::USBDEVFS_SETINTERFACE(), &setinterface)?;
+            self.ioctl_with_ref(usb_sys::USBDEVFS_SETINTERFACE, &setinterface)?;
         }
         Ok(())
     }
@@ -420,7 +420,7 @@ impl Device {
         // Safe because self.fd is a valid usbdevfs file descriptor and we pass a valid
         // pointer to int.
         unsafe {
-            self.ioctl_with_ref(usb_sys::USBDEVFS_SETCONFIGURATION(), &config)?;
+            self.ioctl_with_ref(usb_sys::USBDEVFS_SETCONFIGURATION, &config)?;
         }
 
         Ok(())
@@ -487,7 +487,7 @@ impl Device {
         // Safe because self.fd is a valid usbdevfs file descriptor and we pass a valid
         // pointer to a usbdevfs_ctrltransfer structure.
         unsafe {
-            self.ioctl_with_ref(usb_sys::USBDEVFS_CONTROL(), &ctrl_transfer)?;
+            self.ioctl_with_ref(usb_sys::USBDEVFS_CONTROL, &ctrl_transfer)?;
         }
         Ok(active_config)
     }
@@ -504,7 +504,7 @@ impl Device {
         // Safe because self.fd is a valid usbdevfs file descriptor and we pass a valid
         // pointer to unsigned int.
         unsafe {
-            self.ioctl_with_ref(usb_sys::USBDEVFS_CLEAR_HALT(), &endpoint)?;
+            self.ioctl_with_ref(usb_sys::USBDEVFS_CLEAR_HALT, &endpoint)?;
         }
 
         Ok(())
@@ -513,7 +513,7 @@ impl Device {
     /// Get speed of this device.
     pub fn get_speed(&self) -> Result<Option<DeviceSpeed>> {
         // SAFETY: args are valid and the return value is checked
-        let speed = unsafe { self.ioctl(usb_sys::USBDEVFS_GET_SPEED()) }?;
+        let speed = unsafe { self.ioctl(usb_sys::USBDEVFS_GET_SPEED) }?;
         match speed {
             1 => Ok(Some(DeviceSpeed::Low)),       // Low Speed
             2 => Ok(Some(DeviceSpeed::Full)),      // Full Speed
@@ -541,7 +541,7 @@ impl Device {
         // Safe because self.fd is a valid usbdevfs file descriptor and we pass a valid
         // pointer to a usbdevfs_streams structure.
         unsafe {
-            self.ioctl_with_ref(usb_sys::USBDEVFS_ALLOC_STREAMS(), &streams[0])?;
+            self.ioctl_with_ref(usb_sys::USBDEVFS_ALLOC_STREAMS, &streams[0])?;
         }
         Ok(())
     }
@@ -558,7 +558,7 @@ impl Device {
         // Safe because self.fd is a valid usbdevfs file descriptor and we pass a valid
         // pointer to a usbdevfs_streams structure.
         unsafe {
-            self.ioctl_with_ref(usb_sys::USBDEVFS_FREE_STREAMS(), &streams[0])?;
+            self.ioctl_with_ref(usb_sys::USBDEVFS_FREE_STREAMS, &streams[0])?;
         }
         Ok(())
     }
@@ -699,13 +699,13 @@ impl TransferHandle {
         if unsafe {
             handle_eintr_errno!(base::ioctl_with_mut_ptr(
                 &*fd,
-                usb_sys::USBDEVFS_DISCARDURB(),
+                usb_sys::USBDEVFS_DISCARDURB,
                 urb_ptr
             ))
         } < 0
         {
             return Err(Error::IoctlFailed(
-                usb_sys::USBDEVFS_DISCARDURB(),
+                usb_sys::USBDEVFS_DISCARDURB,
                 base::Error::last(),
             ));
         }

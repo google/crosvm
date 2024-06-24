@@ -195,7 +195,7 @@ impl Factory {
             let res = unsafe {
                 ioctl_with_val(
                     dev_file,
-                    USERFAULTFD_IOC_NEW(),
+                    USERFAULTFD_IOC_NEW,
                     (libc::O_CLOEXEC | libc::O_NONBLOCK) as libc::c_ulong,
                 )
             };
@@ -213,7 +213,7 @@ impl Factory {
             };
             // SAFETY:
             // Safe because ioctl(2) UFFDIO_API with does not change Rust memory safety.
-            let res = unsafe { ioctl_with_mut_ref(&uffd, UFFDIO_API(), &mut api) };
+            let res = unsafe { ioctl_with_mut_ref(&uffd, UFFDIO_API, &mut api) };
             if res < 0 {
                 errno_result().context("UFFDIO_API")
             } else {
