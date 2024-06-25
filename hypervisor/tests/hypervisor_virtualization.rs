@@ -9,6 +9,8 @@ use core::mem;
 #[cfg(any(feature = "whpx", feature = "haxm"))]
 use std::arch::asm;
 use std::cell::RefCell;
+#[cfg(any(feature = "whpx", feature = "haxm"))]
+use std::is_x86_feature_detected;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 
@@ -2634,6 +2636,10 @@ fn test_mmx_state_is_preserved_by_hypervisor() {
 #[cfg(any(feature = "whpx", feature = "haxm"))]
 #[test]
 fn test_avx_state_is_preserved_by_hypervisor() {
+    if !is_x86_feature_detected!("avx") {
+        panic!("this test requires host AVX support and it was not detected");
+    }
+
     let sentinel_value = 0x1337FFFFu64;
     global_asm_data!(
         pub avx_ops_asm,
@@ -2684,7 +2690,6 @@ fn test_avx_state_is_preserved_by_hypervisor() {
         "out 0x5, al",
         "vextracti128 xmm3, ymm1, 1",
         "vpextrd ebx, xmm3, 3",
-        "emms",
         "hlt",
     );
 
@@ -2744,14 +2749,11 @@ fn test_avx_state_is_preserved_by_hypervisor() {
             // guest checks, so unless the guest's support is software implemented, it's highly
             // likely the host has AVX support).
             let mut ymm1_sub_value: u64;
-            // SAFETY: we don't clobber any undeclared registers. Technically emms changes some
-            // x87 state, so there's some UB risk here, but it is not explicitly called out by
-            // the Rust docs as a bad idea.
+            // SAFETY: we don't clobber any undeclared registers.
             unsafe {
                 asm!(
                 "vextracti128 xmm4, ymm1, 1",
                 "vpextrd eax, xmm4, 3",
-                "emms",
                 out("rax") ymm1_sub_value,
                 out("xmm4") _);
             }
