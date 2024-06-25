@@ -14,7 +14,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use base::get_filesystem_type;
 use base::info;
 use base::AsRawDescriptors;
 use base::FileAllocate;
@@ -198,20 +197,14 @@ pub enum ImageType {
     AndroidSparse,
 }
 
-fn log_host_fs_type(file: &File) -> Result<()> {
-    let fstype = get_filesystem_type(file).map_err(Error::HostFsType)?;
-    info!("Disk image file is hosted on file system type {:x}", fstype);
-    Ok(())
-}
-
 /// Detect the type of an image file by checking for a valid header of the supported formats.
 pub fn detect_image_type(file: &File, overlapped_mode: bool) -> Result<ImageType> {
     let mut f = file;
     let disk_size = f.get_len().map_err(Error::SeekingFile)?;
     let orig_seek = f.stream_position().map_err(Error::SeekingFile)?;
 
-    info!("disk size {}, ", disk_size);
-    log_host_fs_type(f)?;
+    info!("disk size {}", disk_size);
+
     // Try to read the disk in a nicely-aligned block size unless the whole file is smaller.
     const MAGIC_BLOCK_SIZE: usize = 4096;
     #[repr(align(4096))]

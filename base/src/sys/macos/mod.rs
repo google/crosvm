@@ -25,10 +25,6 @@ pub fn get_cpu_affinity() -> crate::errno::Result<Vec<usize>> {
     todo!();
 }
 
-pub fn get_filesystem_type(_file: &std::fs::File) -> crate::errno::Result<i64> {
-    todo!();
-}
-
 pub fn getpid() -> Pid {
     todo!();
 }
