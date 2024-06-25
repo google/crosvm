@@ -24,4 +24,3 @@ pub use platform::write_volatile;
 pub use platform::Receiver;
 pub use platform::Sender;
 pub use platform::SystemStream;
-pub use platform::WaitContext;

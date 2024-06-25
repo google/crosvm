@@ -31,11 +31,11 @@ use crate::cross_domain::sys::write_volatile;
 use crate::cross_domain::sys::Receiver;
 use crate::cross_domain::sys::Sender;
 use crate::cross_domain::sys::SystemStream;
-use crate::cross_domain::sys::WaitContext;
 use crate::rutabaga_core::RutabagaComponent;
 use crate::rutabaga_core::RutabagaContext;
 use crate::rutabaga_core::RutabagaResource;
 use crate::rutabaga_os::SafeDescriptor;
+use crate::rutabaga_os::WaitContext;
 use crate::rutabaga_utils::*;
 use crate::DrmFormat;
 use crate::ImageAllocationInfo;
@@ -47,18 +47,9 @@ use crate::RutabagaGrallocFlags;
 mod cross_domain_protocol;
 mod sys;
 
-#[allow(dead_code)]
-const WAIT_CONTEXT_MAX: usize = 16;
-
 const CROSS_DOMAIN_CONTEXT_CHANNEL_ID: u64 = 1;
 const CROSS_DOMAIN_RESAMPLE_ID: u64 = 2;
 const CROSS_DOMAIN_KILL_ID: u64 = 3;
-
-pub struct WaitEvent {
-    connection_id: u64,
-    hung_up: bool,
-    readable: bool,
-}
 
 const CROSS_DOMAIN_DEFAULT_BUFFER_SIZE: usize = 4096;
 const CROSS_DOMAIN_MAX_SEND_RECV_SIZE: usize =

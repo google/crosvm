@@ -15,6 +15,19 @@ pub use memory_mapping::MemoryMapping;
 pub use shm::SharedMemory;
 pub use sys::platform::descriptor::RawDescriptor;
 pub use sys::platform::shm::round_up_to_page_size;
+pub use sys::platform::wait_context::WaitContext;
+
+pub struct WaitEvent {
+    pub connection_id: u64,
+    pub hung_up: bool,
+    pub readable: bool,
+}
+
+#[allow(dead_code)]
+const WAIT_CONTEXT_MAX: usize = 16;
+
+#[allow(dead_code)]
+pub trait WaitTrait {}
 
 /// # Safety
 ///

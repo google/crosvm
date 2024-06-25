@@ -8,7 +8,7 @@ use super::super::cross_domain_protocol::CrossDomainInit;
 use super::super::cross_domain_protocol::CrossDomainSendReceive;
 use super::super::CrossDomainContext;
 use super::super::CrossDomainState;
-use crate::cross_domain::WaitEvent;
+use crate::rutabaga_os::WaitTrait;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaResult;
 
@@ -53,6 +53,12 @@ impl CrossDomainContext {
 pub type Sender = Stub;
 pub type Receiver = Stub;
 
+impl WaitTrait for Stub {}
+impl WaitTrait for &Stub {}
+impl WaitTrait for File {}
+impl WaitTrait for &File {}
+impl WaitTrait for &mut File {}
+
 pub fn channel_signal(_sender: &Sender) -> RutabagaResult<()> {
     Err(RutabagaError::Unsupported)
 }
@@ -71,35 +77,4 @@ pub fn write_volatile(_file: &File, _opaque_data: &[u8]) -> RutabagaResult<()> {
 
 pub fn channel() -> RutabagaResult<(Sender, Receiver)> {
     Err(RutabagaError::Unsupported)
-}
-
-pub type WaitContext = Stub;
-
-pub trait WaitTrait {}
-impl WaitTrait for Stub {}
-impl WaitTrait for &Stub {}
-impl WaitTrait for File {}
-impl WaitTrait for &File {}
-impl WaitTrait for &mut File {}
-
-impl WaitContext {
-    pub fn new() -> RutabagaResult<WaitContext> {
-        Err(RutabagaError::Unsupported)
-    }
-
-    pub fn add<Waitable: WaitTrait>(
-        &mut self,
-        _connection_id: u64,
-        _waitable: Waitable,
-    ) -> RutabagaResult<()> {
-        Err(RutabagaError::Unsupported)
-    }
-
-    pub fn wait(&mut self) -> RutabagaResult<Vec<WaitEvent>> {
-        Err(RutabagaError::Unsupported)
-    }
-
-    pub fn delete<Waitable: WaitTrait>(&mut self, _waitable: Waitable) -> RutabagaResult<()> {
-        Err(RutabagaError::Unsupported)
-    }
 }

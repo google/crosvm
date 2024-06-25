@@ -15,11 +15,6 @@ use libc::O_WRONLY;
 use nix::cmsg_space;
 use nix::fcntl::fcntl;
 use nix::fcntl::FcntlArg;
-use nix::sys::epoll::Epoll;
-use nix::sys::epoll::EpollCreateFlags;
-use nix::sys::epoll::EpollEvent;
-use nix::sys::epoll::EpollFlags;
-use nix::sys::epoll::EpollTimeout;
 use nix::sys::eventfd::EfdFlags;
 use nix::sys::eventfd::EventFd;
 use nix::sys::socket::connect;
@@ -48,8 +43,6 @@ use super::super::CrossDomainItem;
 use super::super::CrossDomainJob;
 use super::super::CrossDomainState;
 use crate::cross_domain::cross_domain_protocol::CrossDomainInit;
-use crate::cross_domain::WaitEvent;
-use crate::cross_domain::WAIT_CONTEXT_MAX;
 use crate::rutabaga_os::AsRawDescriptor;
 use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::RawDescriptor;
@@ -283,47 +276,4 @@ pub fn channel() -> RutabagaResult<(Sender, Receiver)> {
     let sender = EventFd::from_flags(EfdFlags::empty())?;
     let receiver = sender.as_fd().try_clone_to_owned()?.into();
     Ok((sender, receiver))
-}
-
-pub struct WaitContext {
-    epoll_ctx: Epoll,
-}
-
-impl WaitContext {
-    pub fn new() -> RutabagaResult<WaitContext> {
-        let epoll = Epoll::new(EpollCreateFlags::empty())?;
-        Ok(WaitContext { epoll_ctx: epoll })
-    }
-
-    pub fn add<Waitable: AsFd>(
-        &mut self,
-        connection_id: u64,
-        waitable: Waitable,
-    ) -> RutabagaResult<()> {
-        self.epoll_ctx.add(
-            waitable,
-            EpollEvent::new(EpollFlags::EPOLLIN, connection_id),
-        )?;
-        Ok(())
-    }
-
-    pub fn wait(&mut self) -> RutabagaResult<Vec<WaitEvent>> {
-        let mut events = [EpollEvent::empty(); WAIT_CONTEXT_MAX];
-        let count = self.epoll_ctx.wait(&mut events, EpollTimeout::NONE)?;
-        let events = events[0..count]
-            .iter()
-            .map(|e| WaitEvent {
-                connection_id: e.data(),
-                readable: e.events() & EpollFlags::EPOLLIN == EpollFlags::EPOLLIN,
-                hung_up: e.events() & EpollFlags::EPOLLHUP == EpollFlags::EPOLLHUP,
-            })
-            .collect();
-
-        Ok(events)
-    }
-
-    pub fn delete<Waitable: AsFd>(&mut self, waitable: Waitable) -> RutabagaResult<()> {
-        self.epoll_ctx.delete(waitable)?;
-        Ok(())
-    }
 }
