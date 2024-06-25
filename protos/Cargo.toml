@@ -6,11 +6,9 @@ edition = "2021"
 
 [features]
 composite-disk = []
-plugin = ["kvm_sys"]
 registered_events = []
 
 [dependencies]
-kvm_sys = { workspace = true, optional = true }
 protobuf = "3.2"
 
 [build-dependencies]

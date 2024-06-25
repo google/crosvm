@@ -50,7 +50,6 @@ DO_NOT_RUN = [
 DO_NOT_RUN_AARCH64 = [
     "package(hypervisor)",
     "package(e2e_tests)",
-    "package(kvm)",
 ]
 
 # Do not run these tests for win64 builds

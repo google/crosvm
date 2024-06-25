@@ -8,9 +8,6 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 }
 
-#[cfg(feature = "plugin")]
-pub mod plugin;
-
 #[cfg(feature = "composite-disk")]
 pub use generated::cdisk_spec;
 #[cfg(feature = "registered_events")]

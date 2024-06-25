@@ -30,9 +30,6 @@ TEST_DATA_FILES = [
     "*.toml",
     # Configured by .cargo/config.toml to execute tests with the right emulator
     ".cargo/runner.py",
-    # Requried by plugin tests
-    "crosvm_plugin/crosvm.h",
-    "tests/plugin.policy",
 ]
 
 TEST_DATA_EXCLUDE = [

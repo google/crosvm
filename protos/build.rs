@@ -14,8 +14,6 @@ struct LocalProto {
 }
 
 static LOCAL_PROTOS: &[LocalProto] = &[
-    #[cfg(feature = "plugin")]
-    LocalProto { module: "plugin" },
     #[cfg(feature = "composite-disk")]
     LocalProto {
         module: "cdisk_spec",

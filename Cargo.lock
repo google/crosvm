@@ -851,7 +851,6 @@ dependencies = [
  "cros_async",
  "cros_tracing",
  "crosvm_cli",
- "crosvm_plugin",
  "ctrlc",
  "devices",
  "disk",
@@ -866,7 +865,6 @@ dependencies = [
  "jail",
  "kernel_cmdline",
  "kernel_loader",
- "kvm",
  "kvm_sys",
  "libc",
  "libcras",
@@ -954,18 +952,6 @@ dependencies = [
  "swap",
  "tempfile",
  "vm_control",
-]
-
-[[package]]
-name = "crosvm_plugin"
-version = "0.17.0"
-dependencies = [
- "base",
- "kvm",
- "kvm_sys",
- "libc",
- "protobuf",
- "protos",
 ]
 
 [[package]]
@@ -1756,20 +1742,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kvm"
-version = "0.1.0"
-dependencies = [
- "base",
- "data_model",
- "kvm_sys",
- "libc",
- "static_assertions",
- "sync",
- "vm_memory",
- "zerocopy 0.8.14",
-]
-
-[[package]]
 name = "kvm_sys"
 version = "0.1.0"
 dependencies = [
@@ -2529,7 +2501,6 @@ dependencies = [
 name = "protos"
 version = "0.1.0"
 dependencies = [
- "kvm_sys",
  "proto_build_tools",
  "protobuf",
 ]

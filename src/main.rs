@@ -27,8 +27,6 @@ use base::syslog::LogConfig;
 use cmdline::RunCommand;
 mod crosvm;
 use crosvm::cmdline;
-#[cfg(feature = "plugin")]
-use crosvm::config::executable_is_plugin;
 use crosvm::config::Config;
 use devices::virtio::vhost_user_backend::run_block_device;
 #[cfg(feature = "gpu")]
@@ -158,21 +156,6 @@ fn run_vm(cmd: RunCommand, log_config: LogConfig) -> Result<CommandStatus> {
 
     if let Some(ref name) = cfg.name {
         set_thread_name(name).context("Failed to set the name")?;
-    }
-
-    #[cfg(feature = "plugin")]
-    if executable_is_plugin(&cfg.executable_path) {
-        let res = match crosvm::plugin::run_config(cfg) {
-            Ok(_) => {
-                info!("crosvm and plugin have exited normally");
-                Ok(CommandStatus::SuccessOrVmStop)
-            }
-            Err(e) => {
-                eprintln!("{:#}", e);
-                Err(e)
-            }
-        };
-        return res;
     }
 
     #[cfg(feature = "crash-report")]

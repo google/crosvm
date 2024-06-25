@@ -58,7 +58,6 @@ members = [
     "cros_tracing",
     "crosvm_cli",
     "crosvm_control",
-    "crosvm_plugin",
     "devices",
     "disk",
     "e2e_tests",
@@ -73,7 +72,6 @@ members = [
     "kernel_cmdline",
     "kernel_loader",
     "kvm_sys",
-    "kvm",
     "libcras_stub",
     "linux_input_sys",
     "media/ffmpeg",
@@ -145,7 +143,6 @@ cros_fdt = { path = "cros_fdt" }
 cros_tracing = { path = "cros_tracing" }
 crosvm_cli = { path = "crosvm_cli" }
 crosvm_control = { path = "crosvm_control" }
-crosvm_plugin = { path = "crosvm_plugin" }
 crypto = { path = "vendor/generic/crypto", package = "crypto_generic" }
 data_model = { path = "common/data_model" }
 devices = { path = "devices" }
@@ -162,7 +159,6 @@ io_uring = { path = "io_uring" }
 jail = { path = "jail" }
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
-kvm = { path = "kvm" }
 kvm_sys = { path = "kvm_sys" }
 libcras_stub = { path = "libcras_stub" }
 linux_input_sys = { path = "linux_input_sys" }
@@ -436,10 +432,6 @@ libvda = ["devices/libvda"]
 ## only available on ChromeOS.
 libvda-stub = ["devices/libvda-stub"]
 
-## Enables the crosvm plugin API where functionality is provided via a FFI plugin API.
-## This feature is used to integrate Parallels with crosvm and is not functional upstream.
-plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
-
 ## Enables battery reporting via the ChromeOS powerd. Requires access to the
 ## `org.chromium.PowerManager` dbus service.
 power-monitor-powerd = ["arch/power-monitor-powerd"]
@@ -525,8 +517,8 @@ all-x86_64 = [
     "all-default",
     "android_display",
     "android_display_stub",
+    "kvm_sys",
     "libaaudio_stub",
-    "plugin",
     "scudo"
 ]
 
@@ -595,7 +587,6 @@ crash_report = { workspace = true, optional = true }
 cros_async = { workspace = true }
 cros_tracing = { workspace = true }
 crosvm_cli = { workspace = true }
-crosvm_plugin = { workspace = true, optional = true }
 devices = { workspace = true }
 disk = { workspace = true }
 document-features = { version = "0.2", optional = true }
@@ -608,7 +599,6 @@ hypervisor = { workspace = true }
 jail = { workspace = true }
 kernel_cmdline = { workspace = true }
 kernel_loader = { workspace = true }
-kvm = { workspace = true, optional = true }
 kvm_sys = { workspace = true, optional = true }
 libc = { workspace = true }
 libcras = "*"

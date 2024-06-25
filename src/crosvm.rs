@@ -11,8 +11,6 @@ pub mod config;
 pub mod gdb;
 #[cfg(feature = "gpu")]
 mod gpu_config;
-#[cfg(feature = "plugin")]
-pub mod plugin;
 #[cfg(target_arch = "x86_64")]
 pub mod ratelimit;
 pub mod sys;

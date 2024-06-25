@@ -104,12 +104,6 @@ use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::config::MemOptions;
 use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::config::VhostUserFrontendOption;
-#[cfg(feature = "plugin")]
-use crate::crosvm::plugin::parse_plugin_mount_option;
-#[cfg(feature = "plugin")]
-use crate::crosvm::plugin::BindMount;
-#[cfg(feature = "plugin")]
-use crate::crosvm::plugin::GidMap;
 
 #[derive(FromArgs)]
 /// crosvm
@@ -1861,7 +1855,7 @@ pub struct RunCommand {
     #[argh(option, short = 'p', arg_name = "PARAMS")]
     #[serde(default)]
     #[merge(strategy = append)]
-    /// extra kernel or plugin command line arguments. Can be given more than once
+    /// extra kernel command line arguments. Can be given more than once
     pub params: Vec<String>,
 
     #[argh(option)]
@@ -1921,50 +1915,6 @@ pub struct RunCommand {
     #[merge(strategy = overwrite_option)]
     /// path to empty directory to use for sandbox pivot root
     pub pivot_root: Option<PathBuf>,
-
-    #[cfg(feature = "plugin")]
-    #[argh(option, arg_name = "PATH")]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite_option)]
-    /// absolute path to plugin process to run under crosvm
-    pub plugin: Option<PathBuf>,
-
-    #[cfg(feature = "plugin")]
-    #[argh(option, arg_name = "GID:GID:INT")]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = append)]
-    /// supplemental GIDs that should be mapped in plugin jail.  Can be given more than once
-    pub plugin_gid_map: Vec<GidMap>,
-
-    #[cfg(feature = "plugin")]
-    #[argh(option)]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite_option)]
-    /// path to the file listing supplemental GIDs that should be mapped in plugin jail.  Can be
-    /// given more than once
-    pub plugin_gid_map_file: Option<PathBuf>,
-
-    #[cfg(feature = "plugin")]
-    #[argh(option, arg_name = "PATH:PATH:BOOL")]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = append)]
-    /// path to be mounted into the plugin's root filesystem.  Can be given more than once
-    pub plugin_mount: Vec<BindMount>,
-
-    #[cfg(feature = "plugin")]
-    #[argh(option, arg_name = "PATH")]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite_option)]
-    /// path to the file listing paths be mounted into the plugin's root filesystem.  Can be given
-    /// more than once
-    pub plugin_mount_file: Option<PathBuf>,
-
-    #[cfg(feature = "plugin")]
-    #[argh(option, arg_name = "PATH")]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite_option)]
-    /// absolute path to a directory that will become root filesystem for the plugin process.
-    pub plugin_root: Option<PathBuf>,
 
     #[argh(option)]
     #[serde(default)]
@@ -3184,55 +3134,6 @@ impl TryFrom<RunCommand> for super::config::Config {
             );
 
             cfg.vsock = Some(legacy_vsock_config);
-        }
-
-        #[cfg(feature = "plugin")]
-        {
-            use std::fs::File;
-            use std::io::BufRead;
-            use std::io::BufReader;
-
-            if let Some(p) = cmd.plugin {
-                if cfg.executable_path.is_some() {
-                    return Err(format!(
-                        "A VM executable was already specified: {:?}",
-                        cfg.executable_path
-                    ));
-                }
-                cfg.executable_path = Some(Executable::Plugin(p));
-            }
-            cfg.plugin_root = cmd.plugin_root;
-            cfg.plugin_mounts = cmd.plugin_mount;
-
-            if let Some(path) = cmd.plugin_mount_file {
-                let file = File::open(path)
-                    .map_err(|_| String::from("unable to open `plugin-mount-file` file"))?;
-                let reader = BufReader::new(file);
-                for l in reader.lines() {
-                    let line = l.unwrap();
-                    let trimmed_line = line.split_once('#').map_or(&*line, |x| x.0).trim();
-                    if !trimmed_line.is_empty() {
-                        let mount = parse_plugin_mount_option(trimmed_line)?;
-                        cfg.plugin_mounts.push(mount);
-                    }
-                }
-            }
-
-            cfg.plugin_gid_maps = cmd.plugin_gid_map;
-
-            if let Some(path) = cmd.plugin_gid_map_file {
-                let file = File::open(path)
-                    .map_err(|_| String::from("unable to open `plugin-gid-map-file` file"))?;
-                let reader = BufReader::new(file);
-                for l in reader.lines() {
-                    let line = l.unwrap();
-                    let trimmed_line = line.split_once('#').map_or(&*line, |x| x.0).trim();
-                    if !trimmed_line.is_empty() {
-                        let map = trimmed_line.parse()?;
-                        cfg.plugin_gid_maps.push(map);
-                    }
-                }
-            }
         }
 
         #[cfg(any(target_os = "android", target_os = "linux"))]
