@@ -21,6 +21,7 @@ use arch::VmComponents;
 use arch::VmImage;
 use base::Event;
 use base::SendTube;
+use base::Tube;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 use devices::Bus;
@@ -295,7 +296,7 @@ impl arch::LinuxArch for Riscv64 {
         }
 
         // Event used by PMDevice to notify crosvm that guest OS is trying to suspend.
-        let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
+        let (suspend_tube_send, suspend_tube_recv) = Tube::directional_pair().unwrap();
 
         // separate out image loading from other setup to get a specific error for
         // image loading
@@ -417,7 +418,7 @@ impl arch::LinuxArch for Riscv64 {
             hotplug_bus: BTreeMap::new(),
             rt_cpus: components.rt_cpus,
             delay_rt: components.delay_rt,
-            suspend_evt,
+            suspend_tube: (Arc::new(Mutex::new(suspend_tube_send)), suspend_tube_recv),
             bat_control: None,
             #[cfg(feature = "gdb")]
             gdb: components.gdb,
