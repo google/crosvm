@@ -178,10 +178,6 @@ impl HypervisorX86_64 for Kvm {
         self.get_cpuid(KVM_GET_SUPPORTED_CPUID)
     }
 
-    fn get_emulated_cpuid(&self) -> Result<CpuId> {
-        self.get_cpuid(KVM_GET_EMULATED_CPUID)
-    }
-
     fn get_msr_index_list(&self) -> Result<Vec<u32>> {
         const MAX_KVM_MSR_ENTRIES: usize = 256;
 

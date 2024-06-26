@@ -48,9 +48,6 @@ pub trait HypervisorX86_64: Hypervisor {
     /// Get the system supported CPUID values.
     fn get_supported_cpuid(&self) -> Result<CpuId>;
 
-    /// Get the system emulated CPUID values.
-    fn get_emulated_cpuid(&self) -> Result<CpuId>;
-
     /// Gets the list of supported MSRs.
     fn get_msr_index_list(&self) -> Result<Vec<u32>>;
 }

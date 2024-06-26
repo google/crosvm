@@ -226,11 +226,6 @@ impl HypervisorX86_64 for Haxm {
         })
     }
 
-    fn get_emulated_cpuid(&self) -> Result<CpuId> {
-        // HAXM does not emulate any cpuids that the host does not support
-        Ok(CpuId::new(0))
-    }
-
     /// Gets the list of supported MSRs.
     fn get_msr_index_list(&self) -> Result<Vec<u32>> {
         // HAXM supported MSRs come from

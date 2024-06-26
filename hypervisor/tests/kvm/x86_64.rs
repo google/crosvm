@@ -41,13 +41,6 @@ fn get_supported_cpuid() {
 }
 
 #[test]
-fn get_emulated_cpuid() {
-    let hypervisor = Kvm::new().unwrap();
-    let cpuid = hypervisor.get_emulated_cpuid().unwrap();
-    assert!(!cpuid.cpu_id_entries.is_empty());
-}
-
-#[test]
 fn get_msr_index_list() {
     let kvm = Kvm::new().unwrap();
     let msr_list = kvm.get_msr_index_list().unwrap();

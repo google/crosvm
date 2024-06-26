@@ -228,12 +228,6 @@ impl HypervisorX86_64 for Whpx {
         })
     }
 
-    /// Get the system emulated CPUID values.
-    /// TODO: this is only used by the plugin
-    fn get_emulated_cpuid(&self) -> Result<CpuId> {
-        Ok(CpuId::new(0))
-    }
-
     /// Gets the list of supported MSRs.
     /// TODO: this is only used by the plugin
     fn get_msr_index_list(&self) -> Result<Vec<u32>> {
