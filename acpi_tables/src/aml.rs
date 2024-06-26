@@ -92,7 +92,7 @@ pub struct Zero {}
 
 impl Aml for Zero {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.append(&mut vec![ZEROOP]);
+        bytes.push(ZEROOP);
     }
 }
 
@@ -102,7 +102,7 @@ pub struct One {}
 
 impl Aml for One {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.append(&mut vec![ONEOP]);
+        bytes.push(ONEOP);
     }
 }
 
@@ -112,7 +112,7 @@ pub struct Ones {}
 
 impl Aml for Ones {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.append(&mut vec![ONESOP]);
+        bytes.push(ONESOP);
     }
 }
 
@@ -141,8 +141,8 @@ impl Aml for Path {
             }
         };
 
-        for part in self.name_parts.clone().iter_mut() {
-            bytes.append(&mut part.to_vec());
+        for part in &self.name_parts {
+            bytes.extend_from_slice(part);
         }
     }
 }
@@ -194,7 +194,7 @@ impl Aml for Word {
             (*self as Byte).to_aml_bytes(bytes);
         } else {
             bytes.push(WORDPREFIX);
-            bytes.append(&mut self.to_le_bytes().to_vec());
+            bytes.extend_from_slice(&self.to_le_bytes());
         }
     }
 }
@@ -207,7 +207,7 @@ impl Aml for DWord {
             (*self as Word).to_aml_bytes(bytes);
         } else {
             bytes.push(DWORDPREFIX);
-            bytes.append(&mut self.to_le_bytes().to_vec());
+            bytes.extend_from_slice(&self.to_le_bytes());
         }
     }
 }
@@ -220,7 +220,7 @@ impl Aml for QWord {
             (*self as DWord).to_aml_bytes(bytes);
         } else {
             bytes.push(QWORDPREFIX);
-            bytes.append(&mut self.to_le_bytes().to_vec());
+            bytes.extend_from_slice(&self.to_le_bytes());
         }
     }
 }
@@ -232,7 +232,7 @@ pub struct Name {
 
 impl Aml for Name {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.append(&mut self.bytes.clone());
+        bytes.extend_from_slice(&self.bytes);
     }
 }
 
@@ -252,8 +252,7 @@ impl Name {
     ///
     /// * 'field_name' - name string
     pub fn new_field_name(field_name: &str) -> Self {
-        let mut bytes: Vec<u8> = Vec::new();
-        bytes.extend_from_slice(field_name.as_bytes());
+        let bytes = field_name.as_bytes().to_vec();
         Name { bytes }
     }
 }
@@ -265,15 +264,9 @@ pub struct Package {
 
 impl Aml for Package {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let pkg_length = create_pkg_length(&self.children_bytes, true);
-        aml.append(
-            &mut [
-                &[PACKAGEOP],
-                pkg_length.as_slice(),
-                self.children_bytes.as_slice(),
-            ]
-            .concat(),
-        );
+        aml.push(PACKAGEOP);
+        append_pkg_length(aml, self.children_bytes.len());
+        aml.extend_from_slice(&self.children_bytes);
     }
 }
 
@@ -297,18 +290,13 @@ pub struct VarPackageTerm<'a> {
 
 impl<'a> Aml for VarPackageTerm<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
-        self.data.to_aml_bytes(&mut bytes);
+        aml.push(VARPACKAGEOP);
 
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
+        let start = aml.len();
+        self.data.to_aml_bytes(aml);
+        let data_len = aml.len() - start;
 
-        bytes.insert(0, VARPACKAGEOP);
-
-        aml.append(&mut bytes)
+        insert_pkg_length(aml, start, data_len);
     }
 }
 
@@ -335,42 +323,63 @@ package length is 2**28."
 */
 
 /* Also used for NamedField but in that case the length is not included in itself */
-fn create_pkg_length(data: &[u8], include_self: bool) -> Vec<u8> {
-    let mut result = Vec::new();
-
+fn insert_length(aml: &mut Vec<u8>, position: usize, len: usize, include_self: bool) {
     /* PkgLength is inclusive and includes the length bytes */
-    let length_length = if data.len() < (2usize.pow(6) - 1) {
+    let length_length = if len < (2usize.pow(6) - 1) {
         1
-    } else if data.len() < (2usize.pow(12) - 2) {
+    } else if len < (2usize.pow(12) - 2) {
         2
-    } else if data.len() < (2usize.pow(20) - 3) {
+    } else if len < (2usize.pow(20) - 3) {
         3
     } else {
         4
     };
 
-    let length = data.len() + if include_self { length_length } else { 0 };
+    let length = len + if include_self { length_length } else { 0 };
 
     match length_length {
-        1 => result.push(length as u8),
+        1 => aml.insert(position, length as u8),
         2 => {
-            result.push((1u8 << 6) | (length & 0xf) as u8);
-            result.push((length >> 4) as u8)
+            aml.splice(
+                position..position,
+                [(1u8 << 6) | (length & 0xf) as u8, (length >> 4) as u8],
+            );
         }
         3 => {
-            result.push((2u8 << 6) | (length & 0xf) as u8);
-            result.push((length >> 4) as u8);
-            result.push((length >> 12) as u8);
+            aml.splice(
+                position..position,
+                [
+                    (2u8 << 6) | (length & 0xf) as u8,
+                    (length >> 4) as u8,
+                    (length >> 12) as u8,
+                ],
+            );
         }
         _ => {
-            result.push((3u8 << 6) | (length & 0xf) as u8);
-            result.push((length >> 4) as u8);
-            result.push((length >> 12) as u8);
-            result.push((length >> 20) as u8);
+            aml.splice(
+                position..position,
+                [
+                    (3u8 << 6) | (length & 0xf) as u8,
+                    (length >> 4) as u8,
+                    (length >> 12) as u8,
+                    (length >> 20) as u8,
+                ],
+            );
         }
     }
+}
 
-    result
+fn insert_pkg_length(aml: &mut Vec<u8>, position: usize, len: usize) {
+    insert_length(aml, position, len, true);
+}
+
+fn append_pkg_length(aml: &mut Vec<u8>, len: usize) {
+    insert_length(aml, aml.len(), len, true);
+}
+
+// Append a NamedField length, which does not count the size of the encoded length itself.
+fn append_named_field_length(aml: &mut Vec<u8>, len: usize) {
+    insert_length(aml, aml.len(), len, false);
 }
 
 /// EISAName object. 'value' means the encoded u32 EisaIdString.
@@ -420,11 +429,10 @@ impl Aml for Usize {
     }
 }
 
-fn create_aml_string(v: &str) -> Vec<u8> {
-    let mut data = vec![STRINGOP];
+fn append_aml_string(data: &mut Vec<u8>, v: &str) {
+    data.push(STRINGOP);
     data.extend_from_slice(v.as_bytes());
     data.push(0x0); /* NullChar */
-    data
 }
 
 /// implement Aml trait for 'str' so that 'str' can be directly append to the aml vector
@@ -432,7 +440,7 @@ pub type AmlStr = &'static str;
 
 impl Aml for AmlStr {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.append(&mut create_aml_string(self));
+        append_aml_string(bytes, self);
     }
 }
 
@@ -441,7 +449,7 @@ pub type AmlString = String;
 
 impl Aml for AmlString {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.append(&mut create_aml_string(self));
+        append_aml_string(bytes, self);
     }
 }
 
@@ -452,36 +460,29 @@ pub struct ResourceTemplate<'a> {
 
 impl<'a> Aml for ResourceTemplate<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
+        aml.push(BUFFEROP);
+
+        let pos = aml.len();
 
         // Add buffer data
         for child in &self.children {
-            child.to_aml_bytes(&mut bytes);
+            child.to_aml_bytes(aml);
         }
 
         // Mark with end and mark checksum as as always valid
-        bytes.push(ENDTAG);
-        bytes.push(0); /* zero checksum byte */
+        aml.push(ENDTAG);
+        aml.push(0); /* zero checksum byte */
 
         // Buffer length is an encoded integer including buffer data
         // and EndTag and checksum byte
-        let mut buffer_length = Vec::new();
-        bytes.len().to_aml_bytes(&mut buffer_length);
-        buffer_length.reverse();
-        for byte in buffer_length {
-            bytes.insert(0, byte);
-        }
+        let buffer_length = aml.len() - pos;
+        let mut buffer_length_bytes = Vec::new();
+        buffer_length.to_aml_bytes(&mut buffer_length_bytes);
+        aml.splice(pos..pos, buffer_length_bytes);
 
         // PkgLength is everything else
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
-
-        bytes.insert(0, BUFFEROP);
-
-        aml.append(&mut bytes);
+        let len = aml.len() - pos;
+        insert_pkg_length(aml, pos, len);
     }
 }
 
@@ -513,12 +514,12 @@ impl Memory32Fixed {
 impl Aml for Memory32Fixed {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
         bytes.push(MEMORY32FIXEDDESC); /* 32bit Fixed Memory Range Descriptor */
-        bytes.append(&mut 9u16.to_le_bytes().to_vec());
+        bytes.extend_from_slice(&9u16.to_le_bytes());
 
         // 9 bytes of payload
         bytes.push(self.read_write as u8);
-        bytes.append(&mut self.base.to_le_bytes().to_vec());
-        bytes.append(&mut self.length.to_le_bytes().to_vec());
+        bytes.extend_from_slice(&self.base.to_le_bytes());
+        bytes.extend_from_slice(&self.length.to_le_bytes());
     }
 }
 
@@ -580,7 +581,7 @@ impl<T> AddressSpace<T> {
 
     fn push_header(&self, bytes: &mut Vec<u8>, descriptor: u8, length: usize) {
         bytes.push(descriptor); /* Word Address Space Descriptor */
-        bytes.append(&mut (length as u16).to_le_bytes().to_vec());
+        bytes.extend_from_slice(&(length as u16).to_le_bytes());
         bytes.push(self.type_ as u8); /* type */
         let generic_flags = 1 << 2 /* Min Fixed */ | 1 << 3; /* Max Fixed */
         bytes.push(generic_flags);
@@ -596,12 +597,12 @@ impl Aml for AddressSpace<u16> {
             3 + 5 * std::mem::size_of::<u16>(), /* 3 bytes of header + 5 u16 fields */
         );
 
-        bytes.append(&mut 0u16.to_le_bytes().to_vec()); /* Granularity */
-        bytes.append(&mut self.min.to_le_bytes().to_vec()); /* Min */
-        bytes.append(&mut self.max.to_le_bytes().to_vec()); /* Max */
-        bytes.append(&mut 0u16.to_le_bytes().to_vec()); /* Translation */
+        bytes.extend_from_slice(&0u16.to_le_bytes()); /* Granularity */
+        bytes.extend_from_slice(&self.min.to_le_bytes()); /* Min */
+        bytes.extend_from_slice(&self.max.to_le_bytes()); /* Max */
+        bytes.extend_from_slice(&0u16.to_le_bytes()); /* Translation */
         let len = self.max - self.min + 1;
-        bytes.append(&mut len.to_le_bytes().to_vec()); /* Length */
+        bytes.extend_from_slice(&len.to_le_bytes()); /* Length */
     }
 }
 
@@ -613,12 +614,12 @@ impl Aml for AddressSpace<u32> {
             3 + 5 * std::mem::size_of::<u32>(), /* 3 bytes of header + 5 u32 fields */
         );
 
-        bytes.append(&mut 0u32.to_le_bytes().to_vec()); /* Granularity */
-        bytes.append(&mut self.min.to_le_bytes().to_vec()); /* Min */
-        bytes.append(&mut self.max.to_le_bytes().to_vec()); /* Max */
-        bytes.append(&mut 0u32.to_le_bytes().to_vec()); /* Translation */
+        bytes.extend_from_slice(&0u32.to_le_bytes()); /* Granularity */
+        bytes.extend_from_slice(&self.min.to_le_bytes()); /* Min */
+        bytes.extend_from_slice(&self.max.to_le_bytes()); /* Max */
+        bytes.extend_from_slice(&0u32.to_le_bytes()); /* Translation */
         let len = self.max - self.min + 1;
-        bytes.append(&mut len.to_le_bytes().to_vec()); /* Length */
+        bytes.extend_from_slice(&len.to_le_bytes()); /* Length */
     }
 }
 
@@ -630,12 +631,12 @@ impl Aml for AddressSpace<u64> {
             3 + 5 * std::mem::size_of::<u64>(), /* 3 bytes of header + 5 u64 fields */
         );
 
-        bytes.append(&mut 0u64.to_le_bytes().to_vec()); /* Granularity */
-        bytes.append(&mut self.min.to_le_bytes().to_vec()); /* Min */
-        bytes.append(&mut self.max.to_le_bytes().to_vec()); /* Max */
-        bytes.append(&mut 0u64.to_le_bytes().to_vec()); /* Translation */
+        bytes.extend_from_slice(&0u64.to_le_bytes()); /* Granularity */
+        bytes.extend_from_slice(&self.min.to_le_bytes()); /* Min */
+        bytes.extend_from_slice(&self.max.to_le_bytes()); /* Max */
+        bytes.extend_from_slice(&0u64.to_le_bytes()); /* Translation */
         let len = self.max - self.min + 1;
-        bytes.append(&mut len.to_le_bytes().to_vec()); /* Length */
+        bytes.extend_from_slice(&len.to_le_bytes()); /* Length */
     }
 }
 
@@ -663,8 +664,8 @@ impl Aml for IO {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
         bytes.push(IOPORTDESC); /* IO Port Descriptor */
         bytes.push(1); /* IODecode16 */
-        bytes.append(&mut self.min.to_le_bytes().to_vec());
-        bytes.append(&mut self.max.to_le_bytes().to_vec());
+        bytes.extend_from_slice(&self.min.to_le_bytes());
+        bytes.extend_from_slice(&self.max.to_le_bytes());
         bytes.push(self.alignment);
         bytes.push(self.length);
     }
@@ -701,14 +702,14 @@ impl Interrupt {
 impl Aml for Interrupt {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
         bytes.push(EXTIRQDESC); /* Extended IRQ Descriptor */
-        bytes.append(&mut 6u16.to_le_bytes().to_vec());
+        bytes.extend_from_slice(&6u16.to_le_bytes());
         let flags = (self.shared as u8) << 3
             | (self.active_low as u8) << 2
             | (self.edge_triggered as u8) << 1
             | self.consumer as u8;
         bytes.push(flags);
         bytes.push(1u8); /* count */
-        bytes.append(&mut self.number.to_le_bytes().to_vec());
+        bytes.extend_from_slice(&self.number.to_le_bytes());
     }
 }
 
@@ -720,21 +721,17 @@ pub struct Device<'a> {
 
 impl<'a> Aml for Device<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
-        self.path.to_aml_bytes(&mut bytes);
+        aml.push(EXTOPPREFIX); /* ExtOpPrefix */
+        aml.push(DEVICEOP); /* DeviceOp */
+
+        let start = aml.len();
+        self.path.to_aml_bytes(aml);
         for child in &self.children {
-            child.to_aml_bytes(&mut bytes);
+            child.to_aml_bytes(aml);
         }
+        let len = aml.len() - start;
 
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
-
-        bytes.insert(0, DEVICEOP); /* DeviceOp */
-        bytes.insert(0, EXTOPPREFIX); /* ExtOpPrefix */
-        aml.append(&mut bytes)
+        insert_pkg_length(aml, start, len);
     }
 }
 
@@ -753,20 +750,16 @@ pub struct Scope<'a> {
 
 impl<'a> Aml for Scope<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
-        self.path.to_aml_bytes(&mut bytes);
+        aml.push(SCOPEOP);
+
+        let start = aml.len();
+        self.path.to_aml_bytes(aml);
         for child in &self.children {
-            child.to_aml_bytes(&mut bytes);
+            child.to_aml_bytes(aml);
         }
+        let len = aml.len() - start;
 
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
-
-        bytes.insert(0, SCOPEOP);
-        aml.append(&mut bytes)
+        insert_pkg_length(aml, start, len);
     }
 }
 
@@ -779,14 +772,15 @@ impl<'a> Scope<'a> {
     /// Create raw bytes representing a Scope from its children in raw bytes
     pub fn raw(path: Path, mut children: Vec<u8>) -> Vec<u8> {
         let mut bytes = Vec::new();
+        bytes.push(SCOPEOP);
+
+        let start = bytes.len();
         path.to_aml_bytes(&mut bytes);
         bytes.append(&mut children);
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
-        bytes.insert(0, SCOPEOP);
+        let len = bytes.len() - start;
+
+        insert_pkg_length(&mut bytes, start, len);
+
         bytes
     }
 }
@@ -813,22 +807,18 @@ impl<'a> Method<'a> {
 
 impl<'a> Aml for Method<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
-        self.path.to_aml_bytes(&mut bytes);
+        aml.push(METHODOP);
+
+        let start = aml.len();
+        self.path.to_aml_bytes(aml);
         let flags: u8 = (self.args & 0x7) | (self.serialized as u8) << 3;
-        bytes.push(flags);
+        aml.push(flags);
         for child in &self.children {
-            child.to_aml_bytes(&mut bytes);
+            child.to_aml_bytes(aml);
         }
+        let len = aml.len() - start;
 
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
-
-        bytes.insert(0, METHODOP);
-        aml.append(&mut bytes)
+        insert_pkg_length(aml, start, len);
     }
 }
 
@@ -895,35 +885,31 @@ impl Field {
 
 impl Aml for Field {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
-        self.path.to_aml_bytes(&mut bytes);
+        aml.push(EXTOPPREFIX);
+        aml.push(FIELDOP);
+
+        let start = aml.len();
+        self.path.to_aml_bytes(aml);
 
         let flags: u8 =
             self.access_type as u8 | (self.lock_rule as u8) << 4 | (self.update_rule as u8) << 5;
-        bytes.push(flags);
+        aml.push(flags);
 
         for field in self.fields.iter() {
             match field {
                 FieldEntry::Named(name, length) => {
-                    bytes.extend_from_slice(name);
-                    bytes.append(&mut create_pkg_length(&vec![0; *length], false));
+                    aml.extend_from_slice(name);
+                    append_named_field_length(aml, *length);
                 }
                 FieldEntry::Reserved(length) => {
-                    bytes.push(0x0);
-                    bytes.append(&mut create_pkg_length(&vec![0; *length], false));
+                    aml.push(0x0);
+                    append_named_field_length(aml, *length);
                 }
             }
         }
 
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
-
-        bytes.insert(0, FIELDOP);
-        bytes.insert(0, EXTOPPREFIX);
-        aml.append(&mut bytes)
+        let len = aml.len() - start;
+        insert_pkg_length(aml, start, len);
     }
 }
 
@@ -964,14 +950,13 @@ impl<'a> OpRegion<'a> {
 
 impl<'a> Aml for OpRegion<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
-        self.path.to_aml_bytes(&mut bytes);
-        bytes.push(self.space as u8);
-        self.offset.to_aml_bytes(&mut bytes); /* RegionOffset */
-        self.length.to_aml_bytes(&mut bytes); /* RegionLen */
-        bytes.insert(0, OPREGIONOP);
-        bytes.insert(0, EXTOPPREFIX);
-        aml.append(&mut bytes)
+        aml.push(EXTOPPREFIX);
+        aml.push(OPREGIONOP);
+
+        self.path.to_aml_bytes(aml);
+        aml.push(self.space as u8);
+        self.offset.to_aml_bytes(aml); /* RegionOffset */
+        self.length.to_aml_bytes(aml); /* RegionLen */
     }
 }
 
@@ -993,20 +978,16 @@ impl<'a> If<'a> {
 
 impl<'a> Aml for If<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
-        self.predicate.to_aml_bytes(&mut bytes);
+        aml.push(IFOP);
+
+        let start = aml.len();
+        self.predicate.to_aml_bytes(aml);
         for child in self.if_children.iter() {
-            child.to_aml_bytes(&mut bytes);
+            child.to_aml_bytes(aml);
         }
+        let len = aml.len() - start;
 
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
-
-        bytes.insert(0, IFOP);
-        aml.append(&mut bytes)
+        insert_pkg_length(aml, start, len);
     }
 }
 
@@ -1024,19 +1005,15 @@ impl<'a> Else<'a> {
 
 impl<'a> Aml for Else<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
+        aml.push(ELSEOP);
+
+        let start = aml.len();
         for child in self.body.iter() {
-            child.to_aml_bytes(&mut bytes);
+            child.to_aml_bytes(aml);
         }
+        let len = aml.len() - start;
 
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
-
-        bytes.insert(0, ELSEOP);
-        aml.append(&mut bytes)
+        insert_pkg_length(aml, start, len);
     }
 }
 
@@ -1225,20 +1202,16 @@ impl<'a> While<'a> {
 
 impl<'a> Aml for While<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
-        self.predicate.to_aml_bytes(&mut bytes);
+        aml.push(WHILEOP);
+
+        let start = aml.len();
+        self.predicate.to_aml_bytes(aml);
         for child in self.while_children.iter() {
-            child.to_aml_bytes(&mut bytes);
+            child.to_aml_bytes(aml);
         }
+        let len = aml.len() - start;
 
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
-
-        bytes.insert(0, WHILEOP);
-        aml.append(&mut bytes)
+        insert_pkg_length(aml, start, len);
     }
 }
 
@@ -1448,18 +1421,13 @@ impl<'a> BufferTerm<'a> {
 
 impl<'a> Aml for BufferTerm<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
-        self.data.to_aml_bytes(&mut bytes);
+        aml.push(BUFFEROP);
 
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
+        let start = aml.len();
+        self.data.to_aml_bytes(aml);
+        let len = aml.len() - start;
 
-        bytes.insert(0, BUFFEROP);
-
-        aml.append(&mut bytes)
+        insert_pkg_length(aml, start, len);
     }
 }
 
@@ -1477,19 +1445,14 @@ impl BufferData {
 
 impl Aml for BufferData {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
-        self.data.len().to_aml_bytes(&mut bytes);
-        bytes.extend_from_slice(&self.data);
+        aml.push(BUFFEROP);
 
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
+        let start = aml.len();
+        self.data.len().to_aml_bytes(aml);
+        aml.extend_from_slice(&self.data);
+        let len = aml.len() - start;
 
-        bytes.insert(0, BUFFEROP);
-
-        aml.append(&mut bytes)
+        insert_pkg_length(aml, start, len);
     }
 }
 
@@ -1590,32 +1553,27 @@ impl<'a> PowerResource<'a> {
 
 impl<'a> Aml for PowerResource<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
+        aml.push(EXTOPPREFIX);
+        aml.push(POWERRESOURCEOP);
+
+        let start = aml.len();
 
         // Add name string
-        self.name.to_aml_bytes(&mut bytes);
+        self.name.to_aml_bytes(aml);
         // Add system level
-        bytes.push(self.level);
+        aml.push(self.level);
         // Add Resource Order
         let orders = self.order.to_le_bytes();
-        bytes.push(orders[0]);
-        bytes.push(orders[1]);
+        aml.push(orders[0]);
+        aml.push(orders[1]);
         // Add child data
         for child in &self.children {
-            child.to_aml_bytes(&mut bytes);
+            child.to_aml_bytes(aml);
         }
 
-        // PkgLength
-        let mut pkg_length = create_pkg_length(&bytes, true);
-        pkg_length.reverse();
-        for byte in pkg_length {
-            bytes.insert(0, byte);
-        }
+        let len = aml.len() - start;
 
-        bytes.insert(0, POWERRESOURCEOP);
-        bytes.insert(0, EXTOPPREFIX);
-
-        aml.append(&mut bytes);
+        insert_pkg_length(aml, start, len);
     }
 }
 
@@ -1894,14 +1852,19 @@ mod tests {
 
     #[test]
     fn test_pkg_length() {
-        assert_eq!(create_pkg_length(&[0u8; 62], true), vec![63]);
+        let mut pkg_len_62 = Vec::new();
+        insert_pkg_length(&mut pkg_len_62, 0, 62);
+        assert_eq!(pkg_len_62, [63]);
+
+        let mut pkg_len_64 = Vec::new();
+        insert_pkg_length(&mut pkg_len_64, 0, 64);
+        assert_eq!(pkg_len_64, [1 << 6 | (66 & 0xf), 66 >> 4]);
+
+        let mut pkg_len_4096 = Vec::new();
+        insert_pkg_length(&mut pkg_len_4096, 0, 4096);
         assert_eq!(
-            create_pkg_length(&[0u8; 64], true),
-            vec![1 << 6 | (66 & 0xf), 66 >> 4]
-        );
-        assert_eq!(
-            create_pkg_length(&[0u8; 4096], true),
-            vec![
+            pkg_len_4096,
+            [
                 2 << 6 | (4099 & 0xf) as u8,
                 (4099 >> 4) as u8,
                 (4099 >> 12) as u8
