@@ -38,7 +38,13 @@ impl WaitContext {
 
     pub fn wait(&mut self) -> RutabagaResult<Vec<WaitEvent>> {
         let mut events = [EpollEvent::empty(); WAIT_CONTEXT_MAX];
-        let count = self.epoll_ctx.wait(&mut events, EpollTimeout::NONE)?;
+        let count = loop {
+            match self.epoll_ctx.wait(&mut events, EpollTimeout::NONE) {
+                Err(nix::errno::Errno::EINTR) => (),
+                result => break result?,
+            }
+        };
+
         let events = events[0..count]
             .iter()
             .map(|e| WaitEvent {
