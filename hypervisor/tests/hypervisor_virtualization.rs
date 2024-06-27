@@ -2773,7 +2773,7 @@ fn test_avx_state_is_preserved_by_hypervisor() {
 /// Tests whether XSAVE works inside a guest.
 #[cfg(any(feature = "whpx", feature = "haxm"))]
 #[test]
-fn test_xsavee() {
+fn test_xsave() {
     let sentinel_xmm0_value = 0x1337FFFFu64;
     global_asm_data!(
         pub xsave_ops_asm,
