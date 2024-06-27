@@ -10,8 +10,11 @@ license-file = "LICENSE"
 name = "kumquat"
 path = "src/main.rs"
 
+[features]
+gfxstream = ["rutabaga_gfx/gfxstream"]
+
 [dependencies]
-rutabaga_gfx = { path = "../../", version = "0.1.3", features = ["ipc", "gfxstream"]}
+rutabaga_gfx = { path = "../../", version = "0.1.3", features = ["ipc"]}
 nix = { version = "0.28", features = ["event", "feature", "fs", "mman", "socket", "uio", "ioctl"] }
 zerocopy = { version = "0.7", features = ["derive"] }
 log = "0.4"
