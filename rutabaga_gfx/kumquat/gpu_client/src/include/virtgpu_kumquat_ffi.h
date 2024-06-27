@@ -34,6 +34,16 @@ struct drm_kumquat_execbuffer_syncobj {
     uint64_t point;
 };
 
+#define VIRTGPU_KUMQUAT_EXECBUF_FENCE_FD_IN 0x01
+#define VIRTGPU_KUMQUAT_EXECBUF_FENCE_FD_OUT 0x02
+#define VIRTGPU_KUMQUAT_EXECBUF_RING_IDX 0x04
+#define VIRTGPU_KUMQUAT_EXECBUF_SHAREABLE_IN 0x08
+#define VIRTGPU_KUMQUAT_EXECBUF_SHAREABLE_OUT 0x10
+
+#define VIRTGPU_KUMQUAT_EXECBUF_FLAGS                                                              \
+    (VIRTGPU_EXECBUF_FENCE_FD_IN | VIRTGPU_EXECBUF_FENCE_FD_OUT | VIRTGPU_EXECBUF_RING_IDX |       \
+     VIRTGPU_EXECBUF_SHAREABLE_IN | VIRTGPU_EXECBUF_SHAREABLE_OUT | 0)
+
 /* fence_fd is modified on success if VIRTGPU_KUMQUAT_EXECBUF_FENCE_FD_OUT flag is set. */
 struct drm_kumquat_execbuffer {
     uint32_t flags;
@@ -58,7 +68,8 @@ struct drm_kumquat_execbuffer {
 #define VIRTGPU_KUMQUAT_PARAM_CONTEXT_INIT 6         /* DRM_VIRTGPU_KUMQUAT_CONTEXT_INIT */
 #define VIRTGPU_KUMQUAT_PARAM_SUPPORTED_CAPSET_IDs 7 /* Bitmask of supported capability set ids */
 #define VIRTGPU_KUMQUAT_PARAM_EXPLICIT_DEBUG_NAME 8  /* Ability to set debug name from userspace */
-#define VIRTGPU_KUMQUAT_PARAM_CREATE_GUEST_HANDLE 9
+#define VIRTGPU_KUMQUAT_PARAM_FENCE_PASSING 9        /* Host shareable fences */
+#define VIRTGPU_KUMQUAT_PARAM_CREATE_GUEST_HANDLE 10
 
 struct drm_kumquat_getparam {
     uint64_t param;

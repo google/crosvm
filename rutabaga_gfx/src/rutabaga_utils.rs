@@ -671,6 +671,8 @@ pub const RUTABAGA_FENCE_HANDLE_TYPE_SYNC_FD: u32 = 0x0007;
 pub const RUTABAGA_FENCE_HANDLE_TYPE_OPAQUE_WIN32: u32 = 0x0008;
 pub const RUTABAGA_FENCE_HANDLE_TYPE_ZIRCON: u32 = 0x0009;
 
+pub const RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD: u32 = 0x000a;
+
 /// Handle to OS-specific memory or synchronization objects.
 pub struct RutabagaHandle {
     pub os_handle: SafeDescriptor,

@@ -43,6 +43,7 @@ pub const KUMQUAT_GPU_PROTOCOL_RESP_CAPSET_INFO: u32 = 0x3003;
 pub const KUMQUAT_GPU_PROTOCOL_RESP_CAPSET: u32 = 0x3004;
 pub const KUMQUAT_GPU_PROTOCOL_RESP_CONTEXT_CREATE: u32 = 0x3005;
 pub const KUMQUAT_GPU_PROTOCOL_RESP_RESOURCE_CREATE: u32 = 0x3006;
+pub const KUMQUAT_GPU_PROTOCOL_RESP_CMD_SUBMIT_3D: u32 = 0x3007;
 
 #[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
 #[repr(C)]
@@ -195,6 +196,15 @@ pub struct kumquat_gpu_protocol_resp_resource_create {
     pub vulkan_info: VulkanInfo,
 }
 
+#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
+#[repr(C)]
+pub struct kumquat_gpu_protocol_resp_cmd_submit_3d {
+    pub hdr: kumquat_gpu_protocol_ctrl_hdr,
+    pub fence_id: u64,
+    pub handle_type: u32,
+    pub padding: u32,
+}
+
 /// A virtio gpu command and associated metadata specific to each command.
 #[derive(Debug)]
 pub enum KumquatGpuProtocol {
@@ -209,12 +219,7 @@ pub enum KumquatGpuProtocol {
     ResourceCreate3d(kumquat_gpu_protocol_resource_create_3d),
     TransferToHost3d(kumquat_gpu_protocol_transfer_host_3d),
     TransferFromHost3d(kumquat_gpu_protocol_transfer_host_3d),
-    CmdSubmit3d(
-        kumquat_gpu_protocol_cmd_submit,
-        Vec<u8>,
-        Vec<u64>,
-        Option<File>,
-    ),
+    CmdSubmit3d(kumquat_gpu_protocol_cmd_submit, Vec<u8>, Vec<u64>),
     ResourceCreateBlob(kumquat_gpu_protocol_resource_create_blob),
     SnapshotSave,
     SnapshotRestore,
@@ -223,6 +228,7 @@ pub enum KumquatGpuProtocol {
     RespCapset(Vec<u8>),
     RespContextCreate(u32),
     RespResourceCreate(kumquat_gpu_protocol_resp_resource_create, RutabagaHandle),
+    RespCmdSubmit3d(u64, RutabagaHandle),
 }
 
 pub enum KumquatGpuProtocolWrite<T: AsBytes + FromBytes> {

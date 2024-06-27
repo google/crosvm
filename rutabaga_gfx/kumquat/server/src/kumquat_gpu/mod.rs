@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
 use std::collections::BTreeSet as Set;
 use std::fs::File;
@@ -9,12 +10,15 @@ use std::io::Cursor;
 use std::io::Write;
 use std::os::fd::AsFd;
 use std::os::fd::BorrowedFd;
+use std::os::fd::OwnedFd;
 use std::os::raw::c_void;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use log::error;
+use nix::sys::eventfd::EfdFlags;
+use nix::sys::eventfd::EventFd;
 use rutabaga_gfx::calculate_capset_mask;
 use rutabaga_gfx::kumquat_gpu_protocol::*;
 use rutabaga_gfx::ResourceCreate3D;
@@ -26,7 +30,9 @@ use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaError;
 use rutabaga_gfx::RutabagaFence;
 use rutabaga_gfx::RutabagaFenceHandler;
+use rutabaga_gfx::RutabagaFromRawDescriptor;
 use rutabaga_gfx::RutabagaHandle;
+use rutabaga_gfx::RutabagaIntoRawDescriptor;
 use rutabaga_gfx::RutabagaIovec;
 use rutabaga_gfx::RutabagaMemoryMapping;
 use rutabaga_gfx::RutabagaResult;
@@ -35,7 +41,9 @@ use rutabaga_gfx::RutabagaStream;
 use rutabaga_gfx::RutabagaWsi;
 use rutabaga_gfx::Transfer3D;
 use rutabaga_gfx::VulkanInfo;
+use rutabaga_gfx::RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE;
+use rutabaga_gfx::RUTABAGA_FLAG_FENCE_HOST_SHAREABLE;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_RW;
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_SHM;
@@ -49,13 +57,8 @@ pub struct KumquatGpuResource {
     mapping: Option<RutabagaMemoryMapping>,
 }
 
-pub struct KumquatGpuFence {
-    pub fence: RutabagaFence,
-    pub signaler: File,
-}
-
 pub struct FenceData {
-    pub pending_fences: Vec<KumquatGpuFence>,
+    pub pending_fences: Map<u64, RutabagaHandle>,
 }
 
 pub type FenceState = Arc<Mutex<FenceData>>;
@@ -63,13 +66,17 @@ pub type FenceState = Arc<Mutex<FenceData>>;
 pub fn create_fence_handler(fence_state: FenceState) -> RutabagaFenceHandler {
     RutabagaFenceHandler::new(move |completed_fence: RutabagaFence| {
         let mut state = fence_state.lock().unwrap();
-        // TODO: remove signalled fences
-        for server_fence in &mut (*state).pending_fences {
-            if server_fence.fence.fence_id == completed_fence.fence_id {
-                server_fence
-                    .signaler
-                    .write(&mut 1u64.to_ne_bytes())
-                    .unwrap();
+        match (*state).pending_fences.entry(completed_fence.fence_id) {
+            Entry::Occupied(o) => {
+                let (_, signaled_fence) = o.remove_entry();
+                let mut file = unsafe {
+                    File::from_raw_descriptor(signaled_fence.os_handle.into_raw_descriptor())
+                };
+                file.write(&mut 1u64.to_ne_bytes()).unwrap();
+            }
+            Entry::Vacant(_) => {
+                // This is fine, since an actual fence doesn't create emulated sync
+                // entry
             }
         }
     })
@@ -87,7 +94,7 @@ impl KumquatGpu {
     pub fn new(capset_names: String) -> RutabagaResult<KumquatGpu> {
         let capset_mask = calculate_capset_mask(capset_names.as_str().split(":"));
         let fence_state = Arc::new(Mutex::new(FenceData {
-            pending_fences: Vec::new(),
+            pending_fences: Default::default(),
         }));
 
         let fence_handler = create_fence_handler(fence_state.clone());
@@ -317,7 +324,7 @@ impl KumquatGpuConnection {
                         .rutabaga
                         .transfer_read(cmd.ctx_id, resource_id, transfer, None)?;
                 }
-                KumquatGpuProtocol::CmdSubmit3d(cmd, mut cmd_buf, fence_ids, file_opt) => {
+                KumquatGpuProtocol::CmdSubmit3d(cmd, mut cmd_buf, fence_ids) => {
                     kumquat_gpu.rutabaga.submit_command(
                         cmd.ctx_id,
                         &mut cmd_buf[..],
@@ -333,14 +340,54 @@ impl KumquatGpuConnection {
                             ring_idx: cmd.ring_idx,
                         };
 
-                        if let Some(file) = file_opt {
+                        let mut fence_descriptor_opt: Option<RutabagaHandle> = None;
+                        let actual_fence = cmd.flags & RUTABAGA_FLAG_FENCE_HOST_SHAREABLE != 0;
+                        if !actual_fence {
+                            // This code should really be rutabaga_os.
+                            let owned: OwnedFd = EventFd::from_flags(EfdFlags::empty())?.into();
+                            let eventfd: File = owned.into();
+
+                            let emulated_fence = RutabagaHandle {
+                                os_handle: unsafe {
+                                    RutabagaDescriptor::from_raw_descriptor(
+                                        eventfd.into_raw_descriptor(),
+                                    )
+                                },
+                                handle_type: RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD,
+                            };
+
+                            fence_descriptor_opt = Some(emulated_fence.try_clone()?);
                             let mut fence_state = kumquat_gpu.fence_state.lock().unwrap();
-                            (*fence_state).pending_fences.push(KumquatGpuFence {
-                                fence,
-                                signaler: file,
-                            })
+                            (*fence_state)
+                                .pending_fences
+                                .insert(fence_id, emulated_fence);
                         }
+
                         kumquat_gpu.rutabaga.create_fence(fence)?;
+
+                        if actual_fence {
+                            fence_descriptor_opt =
+                                Some(kumquat_gpu.rutabaga.export_fence(fence_id)?);
+                            kumquat_gpu.rutabaga.destroy_fences(&[fence_id])?;
+                        }
+
+                        let fence_descriptor = fence_descriptor_opt
+                            .ok_or(RutabagaError::SpecViolation("No fence descriptor"))?;
+
+                        let resp = kumquat_gpu_protocol_resp_cmd_submit_3d {
+                            hdr: kumquat_gpu_protocol_ctrl_hdr {
+                                type_: KUMQUAT_GPU_PROTOCOL_RESP_CMD_SUBMIT_3D,
+                                ..Default::default()
+                            },
+                            fence_id,
+                            handle_type: fence_descriptor.handle_type,
+                            ..Default::default()
+                        };
+
+                        self.stream.write(KumquatGpuProtocolWrite::CmdWithHandle(
+                            resp,
+                            fence_descriptor,
+                        ))?;
                     }
                 }
                 KumquatGpuProtocol::ResourceCreateBlob(cmd) => {
