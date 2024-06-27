@@ -614,11 +614,14 @@ pub fn logical_core_capacity(cpu_id: usize) -> Result<u32> {
     });
 
     if let Ok(cpu_max_freqs) = cpu_max_freqs {
-        let largest_max_freq = cpu_max_freqs.iter().max().ok_or(Error::new(EINVAL))?;
-        let cpu_max_freq = cpu_max_freqs.get(cpu_id).ok_or(Error::new(EINVAL))?;
-        (cpu_capacity * largest_max_freq)
-            .checked_div(*cpu_max_freq)
-            .ok_or(Error::new(EINVAL))
+        let largest_max_freq = *cpu_max_freqs.iter().max().ok_or(Error::new(EINVAL))?;
+        let cpu_max_freq = *cpu_max_freqs.get(cpu_id).ok_or(Error::new(EINVAL))?;
+        let normalized_cpu_capacity = (u64::from(cpu_capacity) * u64::from(largest_max_freq))
+            .checked_div(u64::from(cpu_max_freq))
+            .ok_or(Error::new(EINVAL))?;
+        normalized_cpu_capacity
+            .try_into()
+            .map_err(|_| Error::new(EINVAL))
     } else {
         // cpu-freq is not enabled. Fall back to using the normalized capacity.
         Ok(cpu_capacity)
