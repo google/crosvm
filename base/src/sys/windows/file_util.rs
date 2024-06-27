@@ -31,14 +31,12 @@ pub fn open_file_or_duplicate<P: AsRef<Path>>(path: P, options: &OpenOptions) ->
 
 /// Marks the given file as sparse. Required if we want hole punching to be performant.
 /// (If a file is not marked as sparse, a hole punch will just write zeros.)
-/// # Safety
-///    handle *must* be File. We accept all AsRawDescriptors for convenience.
-pub fn set_sparse_file<T: AsRawDescriptor>(handle: &T) -> io::Result<()> {
+pub fn set_sparse_file(file: &File) -> io::Result<()> {
     // SAFETY:
     // Safe because we check the return value and handle is guaranteed to be a
     // valid file handle by the caller.
     let result = unsafe {
-        super::ioctl::ioctl_with_ptr(handle, FSCTL_SET_SPARSE, std::ptr::null_mut::<c_void>())
+        super::ioctl::ioctl_with_ptr(file, FSCTL_SET_SPARSE, std::ptr::null_mut::<c_void>())
     };
     if result != 0 {
         return Err(io::Error::from_raw_os_error(result));
