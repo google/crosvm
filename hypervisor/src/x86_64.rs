@@ -82,7 +82,9 @@ pub trait VcpuX86_64: Vcpu {
     /// Injects interrupt vector `irq` into the VCPU.
     ///
     /// This function should only be called when [`Self::ready_for_interrupt`] returns true.
-    /// Otherwise the interrupt injetion may fail or the next VCPU run may fail.
+    /// Otherwise the interrupt injection may fail or the next VCPU run may fail. However, if
+    /// [`Self::interrupt`] returns [`Ok`], the implementation must guarantee that the interrupt
+    /// isn't injected in an uninterruptible window (e.g. right after the mov ss instruction).
     ///
     /// The caller should avoid calling this function more than 1 time for one VMEXIT, because the
     /// hypervisor may behave differently: some hypervisors(e.g. WHPX, KVM) will only try to inject
