@@ -563,13 +563,13 @@ impl PvClockWorker {
         // writes to other fields.
         std::sync::atomic::fence(Ordering::SeqCst);
 
-        // Set the tsc suspended delta and guest_stopped_bit in pvclock struct. We only need to set
+        // Set the guest_stopped_bit and tsc suspended delta in pvclock struct. We only need to set
         // the bit, the guest will unset it once the guest has handled the stoppage.
         // We get the result here because we want to call increment_pvclock_seqlock regardless of
         // the result of these calls.
-        let total_suspended_ticks = self.set_suspended_time()?;
-
-        self.set_guest_stopped_bit()?;
+        let result = self
+            .set_guest_stopped_bit()
+            .and_then(|_| self.set_suspended_time());
 
         // The guest makes sure there are memory barriers in between reads of the seqlock and other
         // fields, we should make sure there are memory barriers in between writes of seqlock and
@@ -579,7 +579,7 @@ impl PvClockWorker {
         // Do a final increment once changes are done.
         self.increment_pvclock_seqlock()?;
 
-        Ok(total_suspended_ticks)
+        result
     }
 
     fn get_suspended_duration(suspend_time: &PvclockInstant) -> Duration {
