@@ -31,6 +31,7 @@ sudo apt install libdrm libglm-dev libstb-dev
 ```sh
 git clone https://android.googlesource.com/platform/hardware/google/aemu
 cd aemu/
+git checkout v0.1.2-aemu-release
 cmake -DAEMU_COMMON_GEN_PKGCONFIG=ON \
        -DAEMU_COMMON_BUILD_CONFIG=gfxstream \
        -DENABLE_VKCEREAL_TESTS=OFF -B build
