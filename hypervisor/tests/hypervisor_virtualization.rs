@@ -2869,6 +2869,139 @@ fn test_xsave() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
+/// Tests whether XSAVES works inside a guest.
+///
+/// Ignored because CET is not available in some nested virtualization
+/// environments (such as CI). (CET is the feature we use to test XSAVES.)
+#[ignore]
+#[cfg(feature = "whpx")]
+#[test]
+fn test_xsaves() {
+    global_asm_data!(
+        pub xsaves_ops_asm,
+        ".code64",
+
+        // Make sure XSAVES is supported.
+        "mov eax, 0xd",
+        "mov ecx, 1",
+        "cpuid",
+        "bt eax, 3",
+        "jc HasXSAVES",
+        "mov rdx, 1",
+        "hlt",
+        "HasXSAVES:",
+
+        // Make sure CET is supported.
+        "mov eax, 7",
+        "mov ecx, 0",
+        "cpuid",
+        "bt ecx, 7",
+        "jc HasCET",
+        "mov rdx, 2",
+        "hlt",
+        "HasCET:",
+
+        // Turn on write protection for ring 0 (required by CET).
+        "mov rax, cr0",
+        "or eax, 1 << 16",
+        "mov cr0, rax",
+
+        // Turn on OSXSAVE (18) and CET (23).
+        "mov rax, cr4",
+        "or eax, 1 << 18",
+        "or eax, 1 << 23",
+        "mov cr4, rax",
+
+        // Set up XSAVES to manage CET state.
+        // IA32_XSS = 0x0DA0
+        "mov ecx, 0x0DA0",
+        "rdmsr",
+        "or eax, 1 << 12",
+        "wrmsr",
+
+        // Enable CET.
+        "mov ecx, 0x6A2",
+        "rdmsr",
+        "or eax, 1",
+        "wrmsr",
+
+        // Now CET is usable and managed by XSAVES. Let's set a sentinel value and make sure xsaves
+        // restores it as expected. Note that PL0_SSP's linear address must be 8 byte aligned.
+        // PL0_SSP = 0x06A5
+        "mov ecx, 0x06A4",
+        "xor edx, edx",
+        "xor eax, eax",
+        "mov eax, 0x13370000",
+        "wrmsr",
+
+        // Set the RFBM / feature mask to include CET.
+        "xor edx, edx"
+        "mov eax, 1 << 12",
+        "xsaves dword ptr [0x10000]",
+
+        // Clear PL0_SSP
+        "xor edx, edx",
+        "xor eax, eax",
+        "mov ecx, 0x06A4",
+        "wrmsr",
+
+        // Set the RFBM / feature mask to include CET.
+        "xor edx, edx",
+        "mov eax, 1 << 12",
+        "xrstors dword ptr [0x10000]",
+
+        // Check to see if PL0_SSP was restored.
+        "mov ecx, 0x06A4",
+        "rdmsr",
+        "cmp eax, 0x13370000",
+        "jz TestPasses",
+        "mov rdx, 3",
+        "hlt",
+        "TestPasses:",
+        "xor rdx, rdx",
+        "hlt",
+    );
+
+    let code_addr = 0x1000;
+    let setup = TestSetup {
+        assembly: xsaves_ops_asm::data().to_vec(),
+        mem_size: 0x12000,
+        load_addr: GuestAddress(code_addr),
+        initial_regs: Regs {
+            rip: code_addr,
+            rflags: 0x2,
+            ..Default::default()
+        },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+        })),
+        memory_initializations: vec![(GuestAddress(0x10000), vec![0; 0x1000])],
+        ..Default::default()
+    };
+
+    let regs_matcher = move |_: HypervisorType, regs: &Regs, _: &_| {
+        assert_ne!(regs.rdx, 1, "guest has no XSAVES support");
+        assert_ne!(regs.rdx, 2, "guest has no CET support");
+        assert_ne!(regs.rdx, 3, "guest didn't restore PL0_SSP as expected");
+        assert_eq!(regs.rdx, 0, "test failed unexpectedly");
+    };
+
+    let exit_matcher = |_, exit: &VcpuExit, vcpu: &mut dyn VcpuX86_64| match exit {
+        VcpuExit::Hlt => {
+            true // Break VM runloop
+        }
+        VcpuExit::Cpuid { entry } => {
+            vcpu.handle_cpuid(entry)
+                .expect("should handle cpuid successfully");
+            false
+        }
+        VcpuExit::MsrAccess => false, // MsrAccess handled by hypervisor impl
+        r => panic!("unexpected exit reason: {:?}", r),
+    };
+
+    run_tests!(setup, regs_matcher, exit_matcher);
+}
+
 #[test]
 fn test_interrupt_injection_when_not_ready() {
     // This test ensures that if we inject an interrupt when it's not ready for interrupt, we
