@@ -1883,8 +1883,8 @@ impl PassthroughFs {
                 if x.len() > buf.len() {
                     return Err(io::Error::from_raw_os_error(libc::ERANGE));
                 }
-                buf.copy_from_slice(&x);
-                buf.len()
+                buf[..x.len()].copy_from_slice(&x);
+                x.len()
             }
             None => self.do_getxattr(&data, &name, &mut buf[..])?,
         };
