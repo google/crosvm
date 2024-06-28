@@ -501,11 +501,11 @@ impl SplitQueue {
 #[cfg(test)]
 mod tests {
     use std::convert::TryInto;
+    use std::mem::offset_of;
 
     use data_model::Le16;
     use data_model::Le32;
     use data_model::Le64;
-    use memoffset::offset_of;
     use zerocopy::AsBytes;
     use zerocopy::FromBytes;
 

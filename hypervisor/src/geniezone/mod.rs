@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
 use std::convert::TryFrom;
 use std::ffi::CString;
+use std::mem::offset_of;
 use std::os::raw::c_ulong;
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
@@ -299,18 +300,15 @@ impl From<GeniezoneVcpuRegister> for u64 {
 
         fn spsr_reg(spsr_reg: u32) -> u64 {
             let n = std::mem::size_of::<u64>() * (spsr_reg as usize);
-            gzvm_reg(memoffset::offset_of!(gzvm_regs, spsr) + n)
+            gzvm_reg(offset_of!(gzvm_regs, spsr) + n)
         }
 
         fn user_pt_reg(offset: usize) -> u64 {
-            gzvm_regs_reg(
-                GZVM_REG_SIZE_U64,
-                memoffset::offset_of!(gzvm_regs, regs) + offset,
-            )
+            gzvm_regs_reg(GZVM_REG_SIZE_U64, offset_of!(gzvm_regs, regs) + offset)
         }
 
         fn user_fpsimd_state_reg(size: u64, offset: usize) -> u64 {
-            gzvm_regs_reg(size, memoffset::offset_of!(gzvm_regs, fp_regs) + offset)
+            gzvm_regs_reg(size, offset_of!(gzvm_regs, fp_regs) + offset)
         }
 
         const fn reg_u64(kind: u64, fields: u64) -> u64 {
@@ -330,44 +328,37 @@ impl From<GeniezoneVcpuRegister> for u64 {
             GeniezoneVcpuRegister::X(n @ 0..=30) => {
                 let n = std::mem::size_of::<u64>() * (n as usize);
 
-                user_pt_reg(memoffset::offset_of!(user_pt_regs, regs) + n)
+                user_pt_reg(offset_of!(user_pt_regs, regs) + n)
             }
             GeniezoneVcpuRegister::X(n) => {
                 unreachable!("invalid GeniezoneVcpuRegister Xn index: {n}")
             }
-            GeniezoneVcpuRegister::Sp => user_pt_reg(memoffset::offset_of!(user_pt_regs, sp)),
-            GeniezoneVcpuRegister::Pc => user_pt_reg(memoffset::offset_of!(user_pt_regs, pc)),
-            GeniezoneVcpuRegister::Pstate => {
-                user_pt_reg(memoffset::offset_of!(user_pt_regs, pstate))
-            }
+            GeniezoneVcpuRegister::Sp => user_pt_reg(offset_of!(user_pt_regs, sp)),
+            GeniezoneVcpuRegister::Pc => user_pt_reg(offset_of!(user_pt_regs, pc)),
+            GeniezoneVcpuRegister::Pstate => user_pt_reg(offset_of!(user_pt_regs, pstate)),
             GeniezoneVcpuRegister::V(n @ 0..=31) => {
                 let n = std::mem::size_of::<u128>() * (n as usize);
-                user_fpsimd_state_reg(
-                    GZVM_REG_SIZE_U128,
-                    memoffset::offset_of!(user_fpsimd_state, vregs) + n,
-                )
+                user_fpsimd_state_reg(GZVM_REG_SIZE_U128, offset_of!(user_fpsimd_state, vregs) + n)
             }
             GeniezoneVcpuRegister::V(n) => {
                 unreachable!("invalid GeniezoneVcpuRegister Vn index: {n}")
             }
-            GeniezoneVcpuRegister::System(AArch64SysRegId::FPSR) => user_fpsimd_state_reg(
-                GZVM_REG_SIZE_U32,
-                memoffset::offset_of!(user_fpsimd_state, fpsr),
-            ),
-            GeniezoneVcpuRegister::System(AArch64SysRegId::FPCR) => user_fpsimd_state_reg(
-                GZVM_REG_SIZE_U32,
-                memoffset::offset_of!(user_fpsimd_state, fpcr),
-            ),
+            GeniezoneVcpuRegister::System(AArch64SysRegId::FPSR) => {
+                user_fpsimd_state_reg(GZVM_REG_SIZE_U32, offset_of!(user_fpsimd_state, fpsr))
+            }
+            GeniezoneVcpuRegister::System(AArch64SysRegId::FPCR) => {
+                user_fpsimd_state_reg(GZVM_REG_SIZE_U32, offset_of!(user_fpsimd_state, fpcr))
+            }
             GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_EL1) => spsr_reg(0),
             GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_abt) => spsr_reg(1),
             GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_und) => spsr_reg(2),
             GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_irq) => spsr_reg(3),
             GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_fiq) => spsr_reg(4),
             GeniezoneVcpuRegister::System(AArch64SysRegId::SP_EL1) => {
-                gzvm_reg(memoffset::offset_of!(gzvm_regs, sp_el1))
+                gzvm_reg(offset_of!(gzvm_regs, sp_el1))
             }
             GeniezoneVcpuRegister::System(AArch64SysRegId::ELR_EL1) => {
-                gzvm_reg(memoffset::offset_of!(gzvm_regs, elr_el1))
+                gzvm_reg(offset_of!(gzvm_regs, elr_el1))
             }
             GeniezoneVcpuRegister::System(sysreg) => {
                 reg_u64(GZVM_REG_ARM64_SYSREG.into(), sysreg.encoded().into())

@@ -8,6 +8,7 @@
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+use std::mem::offset_of;
 
 use base::errno_result;
 use base::error;
@@ -426,18 +427,15 @@ impl From<KvmVcpuRegister> for u64 {
 
         fn spsr_reg(spsr_reg: u32) -> u64 {
             let n = std::mem::size_of::<u64>() * (spsr_reg as usize);
-            kvm_reg(memoffset::offset_of!(kvm_regs, spsr) + n)
+            kvm_reg(offset_of!(kvm_regs, spsr) + n)
         }
 
         fn user_pt_reg(offset: usize) -> u64 {
-            kvm_regs_reg(
-                KVM_REG_SIZE_U64,
-                memoffset::offset_of!(kvm_regs, regs) + offset,
-            )
+            kvm_regs_reg(KVM_REG_SIZE_U64, offset_of!(kvm_regs, regs) + offset)
         }
 
         fn user_fpsimd_state_reg(size: u64, offset: usize) -> u64 {
-            kvm_regs_reg(size, memoffset::offset_of!(kvm_regs, fp_regs) + offset)
+            kvm_regs_reg(size, offset_of!(kvm_regs, fp_regs) + offset)
         }
 
         const fn reg_u64(kind: u64, fields: u64) -> u64 {
@@ -456,39 +454,34 @@ impl From<KvmVcpuRegister> for u64 {
             KvmVcpuRegister::X(n @ 0..=30) => {
                 let n = std::mem::size_of::<u64>() * (n as usize);
 
-                user_pt_reg(memoffset::offset_of!(user_pt_regs, regs) + n)
+                user_pt_reg(offset_of!(user_pt_regs, regs) + n)
             }
             KvmVcpuRegister::X(n) => unreachable!("invalid KvmVcpuRegister Xn index: {n}"),
-            KvmVcpuRegister::Sp => user_pt_reg(memoffset::offset_of!(user_pt_regs, sp)),
-            KvmVcpuRegister::Pc => user_pt_reg(memoffset::offset_of!(user_pt_regs, pc)),
-            KvmVcpuRegister::Pstate => user_pt_reg(memoffset::offset_of!(user_pt_regs, pstate)),
+            KvmVcpuRegister::Sp => user_pt_reg(offset_of!(user_pt_regs, sp)),
+            KvmVcpuRegister::Pc => user_pt_reg(offset_of!(user_pt_regs, pc)),
+            KvmVcpuRegister::Pstate => user_pt_reg(offset_of!(user_pt_regs, pstate)),
             KvmVcpuRegister::V(n @ 0..=31) => {
                 let n = std::mem::size_of::<u128>() * (n as usize);
 
-                user_fpsimd_state_reg(
-                    KVM_REG_SIZE_U128,
-                    memoffset::offset_of!(user_fpsimd_state, vregs) + n,
-                )
+                user_fpsimd_state_reg(KVM_REG_SIZE_U128, offset_of!(user_fpsimd_state, vregs) + n)
             }
             KvmVcpuRegister::V(n) => unreachable!("invalid KvmVcpuRegister Vn index: {n}"),
-            KvmVcpuRegister::System(AArch64SysRegId::FPSR) => user_fpsimd_state_reg(
-                KVM_REG_SIZE_U32,
-                memoffset::offset_of!(user_fpsimd_state, fpsr),
-            ),
-            KvmVcpuRegister::System(AArch64SysRegId::FPCR) => user_fpsimd_state_reg(
-                KVM_REG_SIZE_U32,
-                memoffset::offset_of!(user_fpsimd_state, fpcr),
-            ),
+            KvmVcpuRegister::System(AArch64SysRegId::FPSR) => {
+                user_fpsimd_state_reg(KVM_REG_SIZE_U32, offset_of!(user_fpsimd_state, fpsr))
+            }
+            KvmVcpuRegister::System(AArch64SysRegId::FPCR) => {
+                user_fpsimd_state_reg(KVM_REG_SIZE_U32, offset_of!(user_fpsimd_state, fpcr))
+            }
             KvmVcpuRegister::System(AArch64SysRegId::SPSR_EL1) => spsr_reg(KVM_SPSR_EL1),
             KvmVcpuRegister::System(AArch64SysRegId::SPSR_abt) => spsr_reg(KVM_SPSR_ABT),
             KvmVcpuRegister::System(AArch64SysRegId::SPSR_und) => spsr_reg(KVM_SPSR_UND),
             KvmVcpuRegister::System(AArch64SysRegId::SPSR_irq) => spsr_reg(KVM_SPSR_IRQ),
             KvmVcpuRegister::System(AArch64SysRegId::SPSR_fiq) => spsr_reg(KVM_SPSR_FIQ),
             KvmVcpuRegister::System(AArch64SysRegId::SP_EL1) => {
-                kvm_reg(memoffset::offset_of!(kvm_regs, sp_el1))
+                kvm_reg(offset_of!(kvm_regs, sp_el1))
             }
             KvmVcpuRegister::System(AArch64SysRegId::ELR_EL1) => {
-                kvm_reg(memoffset::offset_of!(kvm_regs, elr_el1))
+                kvm_reg(offset_of!(kvm_regs, elr_el1))
             }
             // The KVM API accidentally swapped CNTV_CVAL_EL0 and CNTVCT_EL0.
             KvmVcpuRegister::System(AArch64SysRegId::CNTV_CVAL_EL0) => reg_u64(

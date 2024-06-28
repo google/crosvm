@@ -6,11 +6,11 @@
 //! <https://www.kernel.org/doc/Documentation/x86/boot.txt>
 
 use std::io;
+use std::mem::offset_of;
 
 use base::debug;
 use base::FileReadWriteAtVolatile;
 use base::VolatileSlice;
-use memoffset::offset_of;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestAddress;

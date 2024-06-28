@@ -17,7 +17,6 @@ dependencies = [
  "kernel_cmdline",
  "kernel_loader",
  "libc",
- "memoffset 0.6.5",
  "minijail",
  "rand",
  "remain",
@@ -1020,7 +1019,6 @@ dependencies = [
  "libtest-mimic",
  "libvda",
  "linux_input_sys",
- "memoffset 0.6.5",
  "metrics",
  "minijail",
  "named-lock",
@@ -1496,7 +1494,6 @@ dependencies = [
  "hypervisor_test_macro",
  "kvm_sys",
  "libc",
- "memoffset 0.6.5",
  "once_cell",
  "serde",
  "serde_json",
@@ -1551,11 +1548,11 @@ dependencies = [
 
 [[package]]
 name = "intrusive-collections"
-version = "0.9.4"
+version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfe531a7789d7120f3e17d4f3f2cd95f54418ba7354f60b7b622b6644a07888a"
+checksum = "b694dc9f70c3bda874626d2aed13b780f137aab435f4e9814121955cf706122e"
 dependencies = [
- "memoffset 0.5.6",
+ "memoffset 0.9.0",
 ]
 
 [[package]]
@@ -1829,24 +1826,6 @@ name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
-
-[[package]]
-name = "memoffset"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "043175f069eda7b85febe4a74abbaeff828d9f8b448515d3151a14a3542811aa"
-dependencies = [
- "autocfg",
-]
-
-[[package]]
-name = "memoffset"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aa361d4faea93603064a027415f07bd8e1d5c88c9fbf68bf56a285428fd79ce"
-dependencies = [
- "autocfg",
-]
 
 [[package]]
 name = "memoffset"
@@ -3524,7 +3503,6 @@ dependencies = [
  "kernel_cmdline",
  "kernel_loader",
  "libc",
- "memoffset 0.6.5",
  "minijail",
  "once_cell",
  "rand",
