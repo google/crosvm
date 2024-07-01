@@ -61,8 +61,6 @@ use base::clear_fd_flags;
 use base::error;
 use base::warn;
 use base::Event;
-use base::FromRawDescriptor;
-use base::IntoRawDescriptor;
 use base::Protection;
 use base::SafeDescriptor;
 use base::SharedMemory;
@@ -965,12 +963,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
                     } => (descriptor, offset, size),
                     VmMemorySource::SharedMemory(shmem) => {
                         let size = shmem.size();
-                        let descriptor =
-                            // SAFETY:
-                            // Safe because we own shmem.
-                            unsafe {
-                                SafeDescriptor::from_raw_descriptor(shmem.into_raw_descriptor())
-                            };
+                        let descriptor = SafeDescriptor::from(shmem);
                         (descriptor, 0, size)
                     }
                     _ => bail!("unsupported source"),

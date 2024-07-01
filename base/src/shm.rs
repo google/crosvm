@@ -10,7 +10,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::descriptor::AsRawDescriptor;
-use crate::descriptor::IntoRawDescriptor;
 use crate::descriptor::SafeDescriptor;
 use crate::Error;
 use crate::RawDescriptor;
@@ -70,12 +69,6 @@ impl SharedMemory {
 impl AsRawDescriptor for SharedMemory {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.descriptor.as_raw_descriptor()
-    }
-}
-
-impl IntoRawDescriptor for SharedMemory {
-    fn into_raw_descriptor(self) -> RawDescriptor {
-        self.descriptor.into_raw_descriptor()
     }
 }
 
