@@ -22,6 +22,7 @@ use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
 use std::convert::TryFrom;
 use std::ffi::CString;
+use std::fs::File;
 use std::os::raw::c_ulong;
 use std::os::raw::c_void;
 use std::os::unix::prelude::OsStrExt;
@@ -36,7 +37,6 @@ use base::ioctl;
 use base::ioctl_with_mut_ref;
 use base::ioctl_with_ref;
 use base::ioctl_with_val;
-use base::linux::MemoryMappingBuilderUnix;
 use base::pagesize;
 use base::AsRawDescriptor;
 use base::Error;
@@ -292,14 +292,14 @@ impl KvmVm {
         // SAFETY:
         // Wrap the vcpu now in case the following ? returns early. This is safe because we verified
         // the value of the fd and we own the fd.
-        let vcpu = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
+        let vcpu = unsafe { File::from_raw_descriptor(fd) };
 
         // The VCPU mapping is held by an `Arc` inside `KvmVcpu`, and it can also be cloned by
         // `signal_handle()` for use in `KvmVcpuSignalHandle`. The mapping will not be destroyed
         // until all references are dropped, so it is safe to reference `kvm_run` fields via the
         // `as_ptr()` function during either type's lifetime.
         let run_mmap = MemoryMappingBuilder::new(run_mmap_size)
-            .from_descriptor(&vcpu)
+            .from_file(&vcpu)
             .build()
             .map_err(|_| Error::new(ENOSPC))?;
 
@@ -884,7 +884,7 @@ impl VcpuSignalHandleInner for KvmVcpuSignalHandle {
 pub struct KvmVcpu {
     kvm: Kvm,
     vm: SafeDescriptor,
-    vcpu: SafeDescriptor,
+    vcpu: File,
     id: usize,
     cap_kvmclock_ctrl: bool,
     run_mmap: Arc<MemoryMapping>,

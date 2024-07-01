@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
 use std::collections::HashSet;
 use std::ffi::CString;
+use std::fs::File;
 use std::mem::size_of;
 use std::os::raw::c_ulong;
 use std::os::unix::prelude::OsStrExt;
@@ -24,7 +25,6 @@ use base::info;
 use base::ioctl;
 use base::ioctl_with_ref;
 use base::ioctl_with_val;
-use base::linux::MemoryMappingBuilderUnix;
 use base::pagesize;
 use base::warn;
 use base::Error;
@@ -281,7 +281,7 @@ impl GunyahVm {
         // SAFETY:
         // Wrap the vcpu now in case the following ? returns early. This is safe because we verified
         // the value of the fd and we own the fd.
-        let vcpu = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
+        let vcpu = unsafe { File::from_raw_descriptor(fd) };
 
         // SAFETY:
         // Safe because we know this is a Gunyah VCPU
@@ -292,7 +292,7 @@ impl GunyahVm {
         let run_mmap_size = res as usize;
 
         let run_mmap = MemoryMappingBuilder::new(run_mmap_size)
-            .from_descriptor(&vcpu)
+            .from_file(&vcpu)
             .build()
             .map_err(|_| Error::new(ENOSPC))?;
 
@@ -690,7 +690,7 @@ const GH_RM_EXIT_TYPE_VM_FORCE_STOPPED: u16 = 7;
 
 pub struct GunyahVcpu {
     vm: SafeDescriptor,
-    vcpu: SafeDescriptor,
+    vcpu: File,
     id: usize,
     run_mmap: Arc<MemoryMapping>,
 }
