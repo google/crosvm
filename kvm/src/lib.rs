@@ -23,7 +23,6 @@ use std::ops::DerefMut;
 use std::os::raw::*;
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
-use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 
@@ -141,9 +140,9 @@ pub struct Kvm {
 }
 
 impl Kvm {
-    /// Opens `/dev/kvm/` and returns a Kvm object on success.
+    /// Opens `/dev/kvm` and returns a Kvm object on success.
     pub fn new() -> Result<Kvm> {
-        Kvm::new_with_path(&PathBuf::from("/dev/kvm"))
+        Kvm::new_with_path(Path::new("/dev/kvm"))
     }
 
     /// Opens a KVM device at `device_path` and returns a Kvm object on success.

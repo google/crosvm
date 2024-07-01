@@ -27,7 +27,6 @@ use std::os::raw::c_ulong;
 use std::os::raw::c_void;
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
-use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 
@@ -190,9 +189,9 @@ impl Kvm {
         })
     }
 
-    /// Opens `/dev/kvm/` and returns a Kvm object on success.
+    /// Opens `/dev/kvm` and returns a Kvm object on success.
     pub fn new() -> Result<Kvm> {
-        Kvm::new_with_path(&PathBuf::from("/dev/kvm"))
+        Kvm::new_with_path(Path::new("/dev/kvm"))
     }
 }
 
