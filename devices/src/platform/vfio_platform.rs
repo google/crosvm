@@ -10,8 +10,6 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::error;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-use base::linux::MemoryMappingBuilderUnix;
 use base::pagesize;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
@@ -19,8 +17,6 @@ use base::Event;
 use base::MappedRegion;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
-#[cfg(windows)]
-use base::MemoryMappingBuilderWindows;
 use base::Protection;
 use base::RawDescriptor;
 use hypervisor::MemCacheType;
@@ -202,7 +198,7 @@ impl VfioPlatformDevice {
             let offset = region_offset + mmap_offset;
 
             let mmap = match MemoryMappingBuilder::new(mmap_size as usize)
-                .from_descriptor(self.device.device_file())
+                .from_file(self.device.device_file())
                 .offset(offset)
                 .build()
             {
