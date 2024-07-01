@@ -230,6 +230,7 @@ pub struct KvmVm {
     mem_regions: Arc<Mutex<BTreeMap<MemSlot, Box<dyn MappedRegion>>>>,
     /// A min heap of MemSlot numbers that were used and then removed and can now be re-used
     mem_slot_gaps: Arc<Mutex<BinaryHeap<Reverse<MemSlot>>>>,
+    cap_kvmclock_ctrl: bool,
 }
 
 impl KvmVm {
@@ -268,13 +269,15 @@ impl KvmVm {
             }?;
         }
 
-        let vm = KvmVm {
+        let mut vm = KvmVm {
             kvm: kvm.try_clone()?,
             vm: vm_descriptor,
             guest_mem,
             mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
             mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
+            cap_kvmclock_ctrl: false,
         };
+        vm.cap_kvmclock_ctrl = vm.check_raw_capability(KvmCap::KvmclockCtrl);
         vm.init_arch(&cfg)?;
         Ok(vm)
     }
@@ -301,14 +304,12 @@ impl KvmVm {
             .build()
             .map_err(|_| Error::new(ENOSPC))?;
 
-        let cap_kvmclock_ctrl = self.check_raw_capability(KvmCap::KvmclockCtrl);
-
         Ok(KvmVcpu {
             kvm: self.kvm.try_clone()?,
             vm: self.vm.try_clone()?,
             vcpu,
             id,
-            cap_kvmclock_ctrl,
+            cap_kvmclock_ctrl: self.cap_kvmclock_ctrl,
             run_mmap: Arc::new(run_mmap),
         })
     }
@@ -552,6 +553,7 @@ impl Vm for KvmVm {
             guest_mem: self.guest_mem.clone(),
             mem_regions: self.mem_regions.clone(),
             mem_slot_gaps: self.mem_slot_gaps.clone(),
+            cap_kvmclock_ctrl: self.cap_kvmclock_ctrl,
         })
     }
 
