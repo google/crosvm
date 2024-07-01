@@ -2969,6 +2969,7 @@ fn test_xsaves() {
         load_addr: GuestAddress(code_addr),
         initial_regs: Regs {
             rip: code_addr,
+            rdx: 0x4,
             rflags: 0x2,
             ..Default::default()
         },
@@ -2983,6 +2984,68 @@ fn test_xsaves() {
         assert_ne!(regs.rdx, 1, "guest has no XSAVES support");
         assert_ne!(regs.rdx, 2, "guest has no CET support");
         assert_ne!(regs.rdx, 3, "guest didn't restore PL0_SSP as expected");
+        assert_eq!(regs.rdx, 0, "test failed unexpectedly");
+    };
+
+    let exit_matcher = |_, exit: &VcpuExit, vcpu: &mut dyn VcpuX86_64| match exit {
+        VcpuExit::Hlt => {
+            true // Break VM runloop
+        }
+        VcpuExit::Cpuid { entry } => {
+            vcpu.handle_cpuid(entry)
+                .expect("should handle cpuid successfully");
+            false
+        }
+        VcpuExit::MsrAccess => false, // MsrAccess handled by hypervisor impl
+        r => panic!("unexpected exit reason: {:?}", r),
+    };
+
+    run_tests!(setup, regs_matcher, exit_matcher);
+}
+
+/// Tests that XSAVES is disabled in gHAXM (it's unsupported).
+///
+/// Note: this test passing in CI is not necessarily a signal that gHAXM is working correctly
+/// because XSAVES is disabled in some nested virtualization environments (e.g. CI).
+#[cfg(feature = "haxm")]
+#[test]
+fn test_xsaves_is_disabled_on_haxm() {
+    global_asm_data!(
+        pub no_xsaves_asm,
+        ".code64",
+
+        "mov eax, 0xd",
+        "mov ecx, 1",
+        "cpuid",
+        "bt eax, 3",
+        "jnc NoXSAVES",
+        "mov rdx, 1",
+        "hlt",
+        "NoXSAVES:",
+        "mov rdx, 0",
+        "hlt",
+    );
+
+    let code_addr = 0x1000;
+    let setup = TestSetup {
+        assembly: no_xsaves_asm::data().to_vec(),
+        mem_size: 0x12000,
+        load_addr: GuestAddress(code_addr),
+        initial_regs: Regs {
+            rip: code_addr,
+            rdx: 0x2,
+            rflags: 0x2,
+            ..Default::default()
+        },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+        })),
+        memory_initializations: vec![],
+        ..Default::default()
+    };
+
+    let regs_matcher = move |_: HypervisorType, regs: &Regs, _: &_| {
+        assert_ne!(regs.rdx, 1, "guest has XSAVES support and shouldn't");
         assert_eq!(regs.rdx, 0, "test failed unexpectedly");
     };
 
