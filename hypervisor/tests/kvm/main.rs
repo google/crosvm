@@ -290,15 +290,6 @@ fn irqfd_resample() {
 }
 
 #[test]
-fn vcpu_mmap_size() {
-    let kvm = Kvm::new().unwrap();
-    let mmap_size = kvm.get_vcpu_mmap_size().unwrap();
-    let page_size = pagesize();
-    assert!(mmap_size >= page_size);
-    assert!(mmap_size % page_size == 0);
-}
-
-#[test]
 fn register_ioevent() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();

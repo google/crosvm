@@ -143,6 +143,7 @@ pub fn dirty_log_bitmap_size(size: usize) -> usize {
 
 pub struct Kvm {
     kvm: SafeDescriptor,
+    vcpu_mmap_size: usize,
 }
 
 impl Kvm {
@@ -175,24 +176,23 @@ impl Kvm {
             return Err(Error::new(ENOSYS));
         }
 
-        Ok(Kvm { kvm })
+        // SAFETY:
+        // Safe because we know that our file is a KVM fd and we verify the return result.
+        let res = unsafe { ioctl(&kvm, KVM_GET_VCPU_MMAP_SIZE) };
+        if res <= 0 {
+            return errno_result();
+        }
+        let vcpu_mmap_size = res as usize;
+
+        Ok(Kvm {
+            kvm,
+            vcpu_mmap_size,
+        })
     }
 
     /// Opens `/dev/kvm/` and returns a Kvm object on success.
     pub fn new() -> Result<Kvm> {
         Kvm::new_with_path(&PathBuf::from("/dev/kvm"))
-    }
-
-    /// Gets the size of the mmap required to use vcpu's `kvm_run` structure.
-    pub fn get_vcpu_mmap_size(&self) -> Result<usize> {
-        // SAFETY:
-        // Safe because we know that our file is a KVM fd and we verify the return result.
-        let res = unsafe { ioctl(self, KVM_GET_VCPU_MMAP_SIZE) };
-        if res > 0 {
-            Ok(res as usize)
-        } else {
-            errno_result()
-        }
     }
 }
 
@@ -206,6 +206,7 @@ impl Hypervisor for Kvm {
     fn try_clone(&self) -> Result<Self> {
         Ok(Kvm {
             kvm: self.kvm.try_clone()?,
+            vcpu_mmap_size: self.vcpu_mmap_size,
         })
     }
 
@@ -280,8 +281,6 @@ impl KvmVm {
     }
 
     pub fn create_kvm_vcpu(&self, id: usize) -> Result<KvmVcpu> {
-        let run_mmap_size = self.kvm.get_vcpu_mmap_size()?;
-
         // SAFETY:
         // Safe because we know that our file is a VM fd and we verify the return result.
         let fd = unsafe { ioctl_with_val(self, KVM_CREATE_VCPU, c_ulong::try_from(id).unwrap()) };
@@ -298,7 +297,7 @@ impl KvmVm {
         // `signal_handle()` for use in `KvmVcpuSignalHandle`. The mapping will not be destroyed
         // until all references are dropped, so it is safe to reference `kvm_run` fields via the
         // `as_ptr()` function during either type's lifetime.
-        let run_mmap = MemoryMappingBuilder::new(run_mmap_size)
+        let run_mmap = MemoryMappingBuilder::new(self.kvm.vcpu_mmap_size)
             .from_file(&vcpu)
             .build()
             .map_err(|_| Error::new(ENOSPC))?;
