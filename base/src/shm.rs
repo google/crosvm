@@ -57,8 +57,10 @@ impl SharedMemory {
     /// Clones the SharedMemory. The new SharedMemory will refer to the same
     /// underlying object as the original.
     pub fn try_clone(&self) -> Result<SharedMemory> {
-        let shmem_descriptor = SafeDescriptor::try_from(self as &dyn AsRawDescriptor)?;
-        SharedMemory::from_safe_descriptor(shmem_descriptor, self.size())
+        Ok(SharedMemory {
+            descriptor: self.descriptor.try_clone()?,
+            size: self.size,
+        })
     }
 }
 
