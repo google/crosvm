@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
+[features]
+collect = []
+experimental = []
+
 [dependencies]
 anyhow = "1"
 base = { path = "../base" }
