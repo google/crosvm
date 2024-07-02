@@ -24,7 +24,6 @@ use std::sync::Arc;
 
 use acpi_tables::sdt::SDT;
 use base::syslog;
-use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::FileGetLen;
 use base::FileReadWriteAtVolatile;
@@ -55,12 +54,10 @@ use devices::PreferredIrq;
 use devices::ProxyDevice;
 use devices::SerialHardware;
 use devices::SerialParameters;
-use devices::VirtioMmioDevice;
 pub use fdt::apply_device_tree_overlays;
 pub use fdt::DtbOverlay;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
-use hypervisor::IoEventAddress;
 use hypervisor::MemCacheType;
 use hypervisor::Vm;
 #[cfg(windows)]
@@ -860,93 +857,6 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     }
 
     Ok(pci_address)
-}
-
-/// Creates Virtio MMIO devices for use by this Vm.
-pub fn generate_virtio_mmio_bus(
-    devices: Vec<(VirtioMmioDevice, Option<Minijail>)>,
-    irq_chip: &mut dyn IrqChip,
-    mmio_bus: &Bus,
-    resources: &mut SystemAllocator,
-    vm: &mut impl Vm,
-    sdts: Vec<SDT>,
-    #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
-) -> Result<(BTreeMap<u32, String>, Vec<SDT>), DeviceRegistrationError> {
-    #[cfg_attr(windows, allow(unused_mut))]
-    let mut pid_labels = BTreeMap::new();
-
-    // sdts can be updated only on x86 platforms.
-    #[cfg(target_arch = "x86_64")]
-    let mut sdts = sdts;
-    for dev_value in devices.into_iter() {
-        #[cfg(any(target_os = "android", target_os = "linux"))]
-        let (mut device, jail) = dev_value;
-        #[cfg(windows)]
-        let (mut device, _) = dev_value;
-
-        let ranges = device
-            .allocate_regions(resources)
-            .map_err(DeviceRegistrationError::AllocateIoResource)?;
-
-        let mut keep_rds = device.keep_rds();
-        syslog::push_descriptors(&mut keep_rds);
-        cros_tracing::push_descriptors!(&mut keep_rds);
-        metrics::push_descriptors(&mut keep_rds);
-
-        let irq_num = resources
-            .allocate_irq()
-            .ok_or(DeviceRegistrationError::AllocateIrq)?;
-        let irq_evt = devices::IrqEdgeEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
-        irq_chip
-            .register_edge_irq_event(irq_num, &irq_evt, IrqEventSource::from_device(&device))
-            .map_err(DeviceRegistrationError::RegisterIrqfd)?;
-        device.assign_irq(&irq_evt, irq_num);
-        keep_rds.extend(irq_evt.as_raw_descriptors());
-
-        for (event, addr, datamatch) in device.ioevents() {
-            let io_addr = IoEventAddress::Mmio(addr);
-            vm.register_ioevent(event, io_addr, datamatch)
-                .map_err(DeviceRegistrationError::RegisterIoevent)?;
-            keep_rds.push(event.as_raw_descriptor());
-        }
-
-        #[cfg(target_arch = "x86_64")]
-        {
-            sdts = device
-                .generate_acpi(sdts)
-                .ok_or(DeviceRegistrationError::GenerateAcpi)?;
-        }
-
-        #[cfg(any(target_os = "android", target_os = "linux"))]
-        let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
-            let proxy = ProxyDevice::new(
-                device,
-                jail,
-                keep_rds,
-                #[cfg(feature = "swap")]
-                swap_controller,
-            )
-            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
-            pid_labels.insert(proxy.pid() as u32, proxy.debug_label());
-            Arc::new(Mutex::new(proxy))
-        } else {
-            device.on_sandboxed();
-            Arc::new(Mutex::new(device))
-        };
-
-        #[cfg(windows)]
-        let arced_dev = {
-            device.on_sandboxed();
-            Arc::new(Mutex::new(device))
-        };
-
-        for range in &ranges {
-            mmio_bus
-                .insert(arced_dev.clone(), range.0, range.1)
-                .map_err(DeviceRegistrationError::MmioInsert)?;
-        }
-    }
-    Ok((pid_labels, sdts))
 }
 
 // Generate pci topology starting from parent bus

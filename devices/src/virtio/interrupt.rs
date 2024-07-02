@@ -28,7 +28,6 @@ use super::INTERRUPT_STATUS_USED_RING;
 use super::VIRTIO_MSI_NO_VECTOR;
 #[cfg(target_arch = "x86_64")]
 use crate::acpi::PmWakeupEvent;
-use crate::irq_event::IrqEdgeEvent;
 use crate::irq_event::IrqLevelEvent;
 use crate::pci::MsixConfig;
 
@@ -41,9 +40,6 @@ struct TransportPci {
 enum Transport {
     Pci {
         pci: TransportPci,
-    },
-    Mmio {
-        irq_evt_edge: IrqEdgeEvent,
     },
     VhostUser {
         call_evt: Event,
@@ -122,11 +118,6 @@ impl Interrupt {
                     pci.irq_evt_lvl.trigger().unwrap();
                 }
             }
-            Transport::Mmio { irq_evt_edge } => {
-                if self.inner.update_interrupt_status(interrupt_status_mask) {
-                    irq_evt_edge.trigger().unwrap();
-                }
-            }
             Transport::VhostUser { call_evt, .. } => {
                 // TODO(b/187487351): To avoid sending unnecessary events, we might want to support
                 // interrupt status. For this purpose, we need a mechanism to share interrupt status
@@ -146,9 +137,6 @@ impl Interrupt {
         match &self.inner.as_ref().transport {
             Transport::Pci { pci } => {
                 self.signal(pci.config_msix_vector, INTERRUPT_STATUS_CONFIG_CHANGED)
-            }
-            Transport::Mmio { .. } => {
-                self.signal(VIRTIO_MSI_NO_VECTOR, INTERRUPT_STATUS_CONFIG_CHANGED)
             }
             Transport::VhostUser {
                 signal_config_changed_fn,
@@ -233,20 +221,6 @@ impl Interrupt {
         }
     }
 
-    pub fn new_mmio(irq_evt_edge: IrqEdgeEvent, async_intr_status: bool) -> Interrupt {
-        Interrupt {
-            inner: Arc::new(InterruptInner {
-                interrupt_status: AtomicUsize::new(0),
-                transport: Transport::Mmio { irq_evt_edge },
-                async_intr_status,
-                pm_state: PmState::new(
-                    #[cfg(target_arch = "x86_64")]
-                    None,
-                ),
-            }),
-        }
-    }
-
     /// Create an `Interrupt` wrapping a vhost-user vring call event and function that sends a
     /// VHOST_USER_BACKEND_CONFIG_CHANGE_MSG to the frontend.
     pub fn new_vhost_user(
@@ -304,7 +278,6 @@ impl Interrupt {
     pub fn get_interrupt_evt(&self) -> &Event {
         match &self.inner.as_ref().transport {
             Transport::Pci { pci } => pci.irq_evt_lvl.get_trigger(),
-            Transport::Mmio { irq_evt_edge } => irq_evt_edge.get_trigger(),
             Transport::VhostUser { call_evt, .. } => call_evt,
         }
     }

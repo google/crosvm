@@ -103,7 +103,6 @@ use devices::virtio::NetParameters;
 use devices::virtio::NetParametersMode;
 use devices::virtio::VirtioDevice;
 use devices::virtio::VirtioDeviceType;
-use devices::virtio::VirtioTransportType;
 use devices::Bus;
 use devices::BusDeviceObj;
 use devices::BusType;
@@ -143,7 +142,6 @@ use devices::PvPanicPciDevice;
 #[cfg(feature = "pci-hotplug")]
 use devices::ResourceCarrier;
 use devices::StubPciDevice;
-use devices::VirtioMmioDevice;
 use devices::VirtioPciDevice;
 #[cfg(feature = "usb")]
 use devices::XhciController;
@@ -1067,60 +1065,50 @@ fn create_devices(
     )?;
 
     for stub in stubs {
-        match stub.dev.transport_type() {
-            VirtioTransportType::Pci => {
-                let (msi_host_tube, msi_device_tube) =
-                    Tube::pair().context("failed to create tube")?;
-                add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
+        let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
+        add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
 
-                let shared_memory_tube = if stub.dev.get_shared_memory_region().is_some() {
-                    let (host_tube, device_tube) =
-                        Tube::pair().context("failed to create shared memory tube")?;
-                    add_control_tube(
-                        VmMemoryTube {
-                            tube: host_tube,
-                            expose_with_viommu: stub.dev.expose_shmem_descriptors_with_viommu(),
-                        }
-                        .into(),
-                    );
-                    Some(device_tube)
-                } else {
-                    None
-                };
+        let shared_memory_tube = if stub.dev.get_shared_memory_region().is_some() {
+            let (host_tube, device_tube) =
+                Tube::pair().context("failed to create shared memory tube")?;
+            add_control_tube(
+                VmMemoryTube {
+                    tube: host_tube,
+                    expose_with_viommu: stub.dev.expose_shmem_descriptors_with_viommu(),
+                }
+                .into(),
+            );
+            Some(device_tube)
+        } else {
+            None
+        };
 
-                let (ioevent_host_tube, ioevent_device_tube) =
-                    Tube::pair().context("failed to create ioevent tube")?;
-                add_control_tube(
-                    VmMemoryTube {
-                        tube: ioevent_host_tube,
-                        expose_with_viommu: false,
-                    }
-                    .into(),
-                );
-
-                let (host_tube, device_tube) =
-                    Tube::pair().context("failed to create device control tube")?;
-                add_control_tube(TaggedControlTube::Vm(host_tube).into());
-
-                let dev = VirtioPciDevice::new(
-                    vm.get_memory().clone(),
-                    stub.dev,
-                    msi_device_tube,
-                    cfg.disable_virtio_intx,
-                    shared_memory_tube.map(VmMemoryClient::new),
-                    VmMemoryClient::new(ioevent_device_tube),
-                    device_tube,
-                )
-                .context("failed to create virtio pci dev")?;
-
-                devices.push((Box::new(dev) as Box<dyn BusDeviceObj>, stub.jail));
+        let (ioevent_host_tube, ioevent_device_tube) =
+            Tube::pair().context("failed to create ioevent tube")?;
+        add_control_tube(
+            VmMemoryTube {
+                tube: ioevent_host_tube,
+                expose_with_viommu: false,
             }
-            VirtioTransportType::Mmio => {
-                let dev = VirtioMmioDevice::new(vm.get_memory().clone(), stub.dev, false)
-                    .context("failed to create virtio mmio dev")?;
-                devices.push((Box::new(dev) as Box<dyn BusDeviceObj>, stub.jail));
-            }
-        }
+            .into(),
+        );
+
+        let (host_tube, device_tube) =
+            Tube::pair().context("failed to create device control tube")?;
+        add_control_tube(TaggedControlTube::Vm(host_tube).into());
+
+        let dev = VirtioPciDevice::new(
+            vm.get_memory().clone(),
+            stub.dev,
+            msi_device_tube,
+            cfg.disable_virtio_intx,
+            shared_memory_tube.map(VmMemoryClient::new),
+            VmMemoryClient::new(ioevent_device_tube),
+            device_tube,
+        )
+        .context("failed to create virtio pci dev")?;
+
+        devices.push((Box::new(dev) as Box<dyn BusDeviceObj>, stub.jail));
     }
 
     #[cfg(feature = "usb")]

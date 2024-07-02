@@ -22,12 +22,6 @@ use crate::pci::PciAddress;
 use crate::pci::PciBarConfiguration;
 use crate::pci::PciCapability;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum VirtioTransportType {
-    Pci,
-    Mmio,
-}
-
 /// Type of Virtio device memory mapping to use.
 pub enum SharedMemoryPrepareType {
     /// On first attempted mapping, the entire SharedMemoryRegion is configured with declared
@@ -179,11 +173,6 @@ pub trait VirtioDevice: Send {
     /// Returns `None` if any address is good for the device.
     fn pci_address(&self) -> Option<PciAddress> {
         None
-    }
-
-    /// Returns the Virtio transport type: PCI (default for crosvm) or MMIO.
-    fn transport_type(&self) -> VirtioTransportType {
-        VirtioTransportType::Pci
     }
 
     /// Returns the device's shared memory region if present.

@@ -220,8 +220,6 @@ pub enum Error {
     CreateTube(base::TubeError),
     #[error("failed to create VCPU: {0}")]
     CreateVcpu(base::Error),
-    #[error("failed to create Virtio MMIO bus: {0}")]
-    CreateVirtioMmioBus(arch::DeviceRegistrationError),
     #[error("invalid e820 setup params")]
     E820Configuration,
     #[error("failed to enable singlestep execution: {0}")]
@@ -1034,7 +1032,7 @@ impl arch::LinuxArch for X8664arch {
         let mmio_bus = Arc::new(Bus::new(BusType::Mmio));
         let io_bus = Arc::new(Bus::new(BusType::Io));
 
-        let (pci_devices, devs): (Vec<_>, Vec<_>) = devs
+        let (pci_devices, _devs): (Vec<_>, Vec<_>) = devs
             .into_iter()
             .partition(|(dev, _)| dev.as_pci_device().is_some());
 
@@ -1043,22 +1041,21 @@ impl arch::LinuxArch for X8664arch {
             .map(|(dev, jail_orig)| (dev.into_pci_device().unwrap(), jail_orig))
             .collect();
 
-        let (pci, pci_irqs, mut pid_debug_label_map, amls, gpe_scope_amls) =
-            arch::generate_pci_root(
-                pci_devices,
-                irq_chip.as_irq_chip_mut(),
-                mmio_bus.clone(),
-                GuestAddress(pcie_cfg_mmio_range.start),
-                12,
-                io_bus.clone(),
-                system_allocator,
-                &mut vm,
-                4, // Share the four pin interrupts (INTx#)
-                Some(pcie_vcfg_range.start),
-                #[cfg(feature = "swap")]
-                swap_controller,
-            )
-            .map_err(Error::CreatePciRoot)?;
+        let (pci, pci_irqs, pid_debug_label_map, amls, gpe_scope_amls) = arch::generate_pci_root(
+            pci_devices,
+            irq_chip.as_irq_chip_mut(),
+            mmio_bus.clone(),
+            GuestAddress(pcie_cfg_mmio_range.start),
+            12,
+            io_bus.clone(),
+            system_allocator,
+            &mut vm,
+            4, // Share the four pin interrupts (INTx#)
+            Some(pcie_vcfg_range.start),
+            #[cfg(feature = "swap")]
+            swap_controller,
+        )
+        .map_err(Error::CreatePciRoot)?;
 
         let pci = Arc::new(Mutex::new(pci));
         pci.lock().enable_pcie_cfg_mmio(pcie_cfg_mmio_range.start);
@@ -1084,28 +1081,6 @@ impl arch::LinuxArch for X8664arch {
                 pcie_vcfg_range.len().unwrap(),
             )
             .unwrap();
-
-        let (virtio_mmio_devices, _others): (Vec<_>, Vec<_>) = devs
-            .into_iter()
-            .partition(|(dev, _)| dev.as_virtio_mmio_device().is_some());
-
-        let virtio_mmio_devices = virtio_mmio_devices
-            .into_iter()
-            .map(|(dev, jail_orig)| (*(dev.into_virtio_mmio_device().unwrap()), jail_orig))
-            .collect();
-        let (mut virtio_mmio_pid, sdts) = arch::generate_virtio_mmio_bus(
-            virtio_mmio_devices,
-            irq_chip.as_irq_chip_mut(),
-            &mmio_bus,
-            system_allocator,
-            &mut vm,
-            components.acpi_sdts,
-            #[cfg(feature = "swap")]
-            swap_controller,
-        )
-        .map_err(Error::CreateVirtioMmioBus)?;
-        components.acpi_sdts = sdts;
-        pid_debug_label_map.append(&mut virtio_mmio_pid);
 
         // Event used to notify crosvm that guest OS is trying to suspend.
         let (suspend_tube_send, suspend_tube_recv) =
