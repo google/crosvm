@@ -121,6 +121,7 @@ pub use self::pci::StubPciParameters;
 pub use self::pflash::Pflash;
 pub use self::pflash::PflashParameters;
 pub use self::pl030::Pl030;
+pub use self::pmc_virt::VirtualPmc;
 pub use self::serial::Serial;
 pub use self::serial_device::Error as SerialError;
 pub use self::serial_device::SerialDevice;
@@ -157,7 +158,6 @@ cfg_if::cfg_if! {
         };
         pub use self::platform::VfioPlatformDevice;
         pub use self::ac_adapter::AcAdapter;
-        pub use self::pmc_virt::VirtualPmc;
         pub use self::proxy::ChildProcIntf;
         pub use self::proxy::Error as ProxyError;
         pub use self::proxy::ProxyDevice;

@@ -2651,6 +2651,7 @@ where
         /* debugcon_jail= */ None,
         None,
         None,
+        /* guest_suspended_cvar= */ None,
         dt_overlays,
     )
     .exit_context(Exit::BuildVm, "the architecture failed to build the vm")?;
