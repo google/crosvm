@@ -673,7 +673,6 @@ pub struct PassthroughFs {
     process_lock: Mutex<()>,
     // virtio-fs tag that the guest uses when mounting. This is only used for debugging
     // when tracing is enabled.
-    #[cfg_attr(not(feature = "trace_marker"), allow(dead_code))]
     tag: String,
 
     // File descriptors for various points in the file system tree.
