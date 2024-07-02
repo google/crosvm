@@ -225,7 +225,7 @@ impl KvmVfioPviommu {
         if ret < 0 {
             Err(VfioError::KvmSetDeviceAttr(get_error()))
         } else {
-            // Safe as we verify the return value.
+            // SAFETY: Safe as we verify the return value.
             Ok(unsafe { File::from_raw_descriptor(ret) })
         }
     }

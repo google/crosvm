@@ -5,7 +5,7 @@
 
 import os
 import typing
-from typing import Generator, List, Literal, Optional, Tuple
+from typing import Generator, List, Literal, Optional, Tuple, Union
 
 from impl.common import (
     CROSVM_ROOT,
@@ -28,8 +28,11 @@ lucicfg = cmd("third_party/depot_tools/lucicfg")
 Platform = Literal["x86_64", "aarch64", "mingw64", "armhf"]
 PLATFORMS: Tuple[Platform, ...] = typing.get_args(Platform)
 
+ClippyOnlyPlatform = Literal["android"]
+CLIPPY_ONLY_PLATFORMS: Tuple[ClippyOnlyPlatform, ...] = typing.get_args(ClippyOnlyPlatform)
 
-def platform_is_supported(platform: Platform):
+
+def platform_is_supported(platform: Union[Platform, ClippyOnlyPlatform]):
     "Returns true if the platform is available as a target in rustup."
     triple = Triple.from_shorthand(platform)
     installed_toolchains = cmd("rustup target list --installed").lines()
@@ -158,7 +161,7 @@ def check_crosvm_build(
     return check
 
 
-def check_clippy(platform: Platform):
+def check_clippy(platform: Union[Platform, ClippyOnlyPlatform]):
     def check(context: CheckContext):
         if not platform_is_supported(platform):
             return None
@@ -294,7 +297,7 @@ CHECKS: List[Check] = [
             can_fix=True,
             priority=True,
         )
-        for platform in PLATFORMS
+        for platform in (*PLATFORMS, *CLIPPY_ONLY_PLATFORMS)
     ),
     Check(
         custom_check("check-copyright-header"),
@@ -373,13 +376,14 @@ GROUPS: List[Group] = [
         checks=[
             "health_checks",
             *(f"linux_{platform}" for platform in PLATFORMS),
+            *(f"clippy_{platform}" for platform in CLIPPY_ONLY_PLATFORMS),
         ],
     ),
     # Convenience groups for local usage:
     Group(
         name="clippy",
         doc="Runs clippy for all platforms",
-        checks=[f"clippy_{platform}" for platform in PLATFORMS],
+        checks=[f"clippy_{platform}" for platform in PLATFORMS + CLIPPY_ONLY_PLATFORMS],
     ),
     Group(
         name="unit_tests",

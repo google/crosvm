@@ -4,7 +4,6 @@
 
 #![cfg(target_os = "android")]
 
-use std::ffi::CStr;
 use std::ffi::CString;
 
 use anyhow::anyhow;
@@ -22,8 +21,8 @@ extern "C" {
 }
 
 // Apply the listed task profiles to all tasks (current and future) in this process.
-pub fn set_process_profiles(profiles: &Vec<String>) -> Result<()> {
-    if (profiles.is_empty()) {
+pub fn set_process_profiles(profiles: &[String]) -> Result<()> {
+    if profiles.is_empty() {
         return Ok(());
     }
     let owned: Vec<CString> = profiles
@@ -34,8 +33,7 @@ pub fn set_process_profiles(profiles: &Vec<String>) -> Result<()> {
     // SAFETY: the ownership of the array of string is not passed. The function copies it
     // internally.
     unsafe {
-        if (android_set_process_profiles(libc::getuid(), libc::getpid(), ptrs.len(), ptrs.as_ptr()))
-        {
+        if android_set_process_profiles(libc::getuid(), libc::getpid(), ptrs.len(), ptrs.as_ptr()) {
             Ok(())
         } else {
             Err(anyhow!("failed to set task profiles"))

@@ -30,7 +30,7 @@ def main(
     chdir(CROSVM_ROOT)
 
     # Note: Clippy checks are configured in .cargo/config.toml
-    common_args = [
+    args = [
         "--message-format=json" if json else None,
         "--locked" if locked else None,
         "--all-targets",
@@ -38,22 +38,23 @@ def main(
         "-Dwarnings",
     ]
     if fix:
-        common_args = [
+        args = [
             "--fix",
             "--allow-no-vcs",
             "--allow-dirty",
             "--allow-staged",
-            *common_args,
+            *args,
         ]
+    # For experimental builds, don't clippy the whole workspace, just what's enabled by features.
+    if triple in (Triple.from_shorthand("riscv64"), Triple.from_shorthand("android")):
+        args = ["--no-default-features", *args]
+    else:
+        args = ["--workspace", *args]
+
     print("Clippy crosvm workspace")
-    exclude_args = []
-    if triple == Triple.from_shorthand("riscv64"):
-        exclude_args = ["--exclude=" + s for s in DO_NOT_BUILD_RISCV64]
     clippy(
-        "--workspace",
         f"--features={triple.feature_flag}",
-        *exclude_args,
-        *common_args,
+        *args,
     ).with_envs(triple.get_cargo_env()).fg()
 
 

@@ -35,6 +35,7 @@ impl CpuSet {
         CpuSet(cpuset)
     }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn to_cpus(&self) -> Vec<usize> {
         let mut cpus = Vec::new();
         for i in 0..(CPU_SETSIZE as usize) {
@@ -70,6 +71,7 @@ impl FromIterator<usize> for CpuSet {
 /// # use base::linux::set_cpu_affinity;
 ///   set_cpu_affinity(vec![0, 1, 5, 6]).unwrap();
 /// ```
+#[allow(clippy::unnecessary_cast)]
 pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(cpus: I) -> Result<()> {
     let CpuSet(cpuset) = cpus
         .into_iter()

@@ -38,3 +38,6 @@ protobuf = "3.2"
 rand = "0.8"
 winapi = "0.3"
 win_util = { path = "../win_util"}
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_log-sys = "0.3.1"

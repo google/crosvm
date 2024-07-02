@@ -37,8 +37,6 @@ use hypervisor::IoParams;
 use hypervisor::VcpuExit;
 use hypervisor::VcpuSignalHandle;
 use libc::c_int;
-use libc::SCHED_FLAG_KEEP_ALL;
-use libc::SCHED_FLAG_RESET_ON_FORK;
 use metrics_events::MetricEventType;
 #[cfg(target_arch = "riscv64")]
 use riscv64::Riscv64 as Arch;
@@ -55,8 +53,12 @@ use super::ExitState;
 use crate::crosvm::ratelimit::Ratelimit;
 
 // TODO(davidai): Import libc constant when updated
+const SCHED_FLAG_RESET_ON_FORK: u64 = 0x1;
+const SCHED_FLAG_KEEP_POLICY: u64 = 0x08;
+const SCHED_FLAG_KEEP_PARAMS: u64 = 0x10;
 const SCHED_FLAG_UTIL_CLAMP_MIN: u64 = 0x20;
 const SCHED_SCALE_CAPACITY: u32 = 1024;
+const SCHED_FLAG_KEEP_ALL: u64 = SCHED_FLAG_KEEP_POLICY | SCHED_FLAG_KEEP_PARAMS;
 
 fn bus_io_handler(bus: &Bus) -> impl FnMut(IoParams) -> Option<[u8; 8]> + '_ {
     |IoParams {
@@ -89,6 +91,7 @@ fn bus_io_handler(bus: &Bus) -> impl FnMut(IoParams) -> Option<[u8; 8]> + '_ {
 
 /// Set the VCPU thread affinity and other per-thread scheduler properties.
 /// This function will be called from each VCPU thread at startup.
+#[allow(clippy::unnecessary_cast)]
 pub fn set_vcpu_thread_scheduling(
     vcpu_affinity: CpuSet,
     core_scheduling: bool,

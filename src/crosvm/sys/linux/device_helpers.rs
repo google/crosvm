@@ -409,7 +409,7 @@ pub fn create_virtio_snd_device(
         Backend::Sys(virtio::snd::sys::StreamSourceBackend::AAUDIO) => "snd_aaudio_device",
         #[cfg(feature = "audio_cras")]
         Backend::Sys(virtio::snd::sys::StreamSourceBackend::CRAS) => "snd_cras_device",
-        #[cfg(not(feature = "audio_cras"))]
+        #[cfg(not(any(feature = "audio_cras", feature = "audio_aaudio")))]
         _ => unreachable!(),
     };
 

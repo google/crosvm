@@ -435,6 +435,25 @@ all-mingw64 = [
 ## All features that are compiled and tested for msvc64
 all-msvc64 = [ "all-mingw64" ]
 
+## All features that are compiled and tested for android builds
+all-android = [
+        "android-sparse",
+        "audio",
+        "audio_aaudio",
+        "balloon",
+        "config-file",
+        "gdb",
+        "gdbstub",
+        "gdbstub_arch",
+        "geniezone",
+        "gunyah",
+        "libaaudio_stub",
+        "net",
+        "qcow",
+        "usb",
+        "composite-disk",
+]
+
 [dependencies]
 anyhow = "1.0.32"
 arch = { path = "arch" }
@@ -464,7 +483,7 @@ kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
 kvm = { path = "kvm", optional = true }
 kvm_sys = { path = "kvm_sys", optional = true }
-libc = "0.2.93"
+libc = "0.2.153"
 libcras = "*"
 # Compile out trace statements in release builds
 log = { version = "0", features = ["release_max_level_debug"]}

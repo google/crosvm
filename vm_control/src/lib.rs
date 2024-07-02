@@ -1628,6 +1628,7 @@ impl VmRequest {
     /// This does not return a result, instead encapsulating the success or failure in a
     /// `VmResponse` with the intended purpose of sending the response back over the  socket that
     /// received this `VmRequest`.
+    #[allow(unused_variables)]
     pub fn execute(
         &self,
         vm: &impl Vm,

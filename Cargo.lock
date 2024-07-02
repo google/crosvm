@@ -71,6 +71,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "android_log-sys"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ecc8056bf6ab9892dcd53216c83d1597487d7dacac16c8df6b877d127df9937"
+
+[[package]]
 name = "anti_tamper"
 version = "0.1.0"
 dependencies = [
@@ -266,6 +272,7 @@ dependencies = [
 name = "base"
 version = "0.1.0"
 dependencies = [
+ "android_log-sys",
  "audio_streams",
  "base_event_token_derive",
  "cfg-if",

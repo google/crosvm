@@ -16,6 +16,7 @@ rustflags = [
     "-Aclippy::needless_bool",
     "-Aclippy::new-ret-no-self",
     "-Aclippy::or_fun_call",
+    "-Aclippy::result_large_err",
     "-Aclippy::result-unit-err",
     "-Aclippy::should_implement_trait",
     "-Aclippy::single_char_pattern",

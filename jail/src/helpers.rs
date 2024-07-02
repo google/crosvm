@@ -110,6 +110,7 @@ impl Drop for ScopedMinijail {
 ///
 /// * `root` - The root path to be changed to by minijail.
 /// * `max_open_files` - The maximum number of file descriptors to allow a jailed process to open.
+#[allow(clippy::unnecessary_cast)]
 pub fn create_base_minijail(root: &Path, max_open_files: u64) -> Result<Minijail> {
     // Validate new root directory. Path::is_dir() also checks the existence.
     if !root.is_dir() {

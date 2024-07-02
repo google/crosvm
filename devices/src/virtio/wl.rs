@@ -72,7 +72,6 @@ use base::Error;
 use base::Event;
 use base::EventToken;
 use base::EventType;
-use base::FromRawDescriptor;
 #[cfg(feature = "gpu")]
 use base::IntoRawDescriptor;
 #[cfg(feature = "minigbm")]
@@ -464,7 +463,7 @@ struct VmRequester {
 fn to_safe_descriptor(r: RutabagaDescriptor) -> SafeDescriptor {
     // SAFETY:
     // Safe because we own the SafeDescriptor at this point.
-    unsafe { SafeDescriptor::from_raw_descriptor(r.into_raw_descriptor()) }
+    unsafe { base::FromRawDescriptor::from_raw_descriptor(r.into_raw_descriptor()) }
 }
 
 impl VmRequester {
@@ -1494,7 +1493,9 @@ impl WlState {
                             *descriptor = dup.into_raw_descriptor();
                             // SAFETY:
                             // Safe because the fd comes from a valid SafeDescriptor.
-                            let file = unsafe { File::from_raw_descriptor(*descriptor) };
+                            let file: File = unsafe {
+                                base::FromRawDescriptor::from_raw_descriptor(*descriptor)
+                            };
                             bridged_files.push(file);
                         }
                         Err(_) => return Ok(WlResp::InvalidId),

@@ -210,6 +210,7 @@ SHORTHANDS = {
     "aarch64": "aarch64-unknown-linux-gnu",
     "riscv64": "riscv64gc-unknown-linux-gnu",
     "x86_64": "x86_64-unknown-linux-gnu",
+    "android": "aarch64-linux-android",
 }
 
 
@@ -285,10 +286,22 @@ class Triple(NamedTuple):
         env["CARGO_BUILD_TARGET"] = cargo_target
         env["CARGO_TARGET_DIR"] = str(self.target_dir)
         env["CROSVM_TARGET_DIR"] = str(crosvm_target_dir())
+        # Android builds are not fully supported and can only be used to run clippy.
+        # Underlying libraries (e.g. minijail) will be built for linux instead
+        # TODO(denniskempin): This could be better done with [env] in Cargo.toml if it supported
+        # per-target configuration. See https://github.com/rust-lang/cargo/issues/10273
+        if str(self).endswith("-linux-android"):
+            env["MINIJAIL_DO_NOT_BUILD"] = "true"
+            env["MINIJAIL_BINDGEN_TARGET"] = f"{self.arch}-unknown-linux-gnu"
         return env
 
     def __str__(self):
-        return f"{self.arch}-{self.vendor}-{self.sys}-{self.abi}"
+        parts = [self.arch, self.vendor]
+        if self.sys:
+            parts = [*parts, self.sys]
+        if self.abi:
+            parts = [*parts, self.abi]
+        return "-".join(parts)
 
 
 def download_file(url: str, filename: Path, attempts: int = 3):

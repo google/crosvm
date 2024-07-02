@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -30,6 +29,7 @@ fn default_gidmap() -> String {
     format!("{} {} 1", egid, egid)
 }
 
+#[allow(clippy::unnecessary_cast)]
 fn jail_and_fork(
     mut keep_rds: Vec<RawDescriptor>,
     dir_path: PathBuf,
@@ -122,26 +122,26 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // We need to set the no setuid fixup secure bit so that we don't drop capabilities when
-    // changing the thread uid/gid. Without this, creating new entries can fail in some corner
-    // cases.
-    const SECBIT_NO_SETUID_FIXUP: i32 = 1 << 2;
-
     // TODO(crbug.com/1199487): Remove this once libc provides the wrapper for all targets.
     #[cfg(target_os = "linux")]
     {
+        // We need to set the no setuid fixup secure bit so that we don't drop capabilities when
+        // changing the thread uid/gid. Without this, creating new entries can fail in some corner
+        // cases.
+        const SECBIT_NO_SETUID_FIXUP: i32 = 1 << 2;
+
         // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let mut securebits = unsafe { libc::prctl(libc::PR_GET_SECUREBITS) };
         if securebits < 0 {
-            bail!(io::Error::last_os_error());
+            bail!(std::io::Error::last_os_error());
         }
         securebits |= SECBIT_NO_SETUID_FIXUP;
         // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) };
         if ret < 0 {
-            bail!(io::Error::last_os_error());
+            bail!(std::io::Error::last_os_error());
         }
     }
 

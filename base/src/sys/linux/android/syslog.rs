@@ -4,8 +4,6 @@
 
 //! Implementation of the Syslog trait as a wrapper around Android's logging library, liblog.
 
-extern crate android_log_sys;
-
 use std::ffi::CString;
 use std::ffi::NulError;
 use std::mem::size_of;
@@ -30,7 +28,7 @@ pub struct PlatformSyslog {
 impl Syslog for PlatformSyslog {
     fn new(
         proc_name: String,
-        facility: Facility,
+        _facility: Facility,
     ) -> Result<(Option<Box<dyn Log + Send>>, Option<RawDescriptor>), Error> {
         Ok((Some(Box::new(Self { proc_name })), None))
     }
@@ -56,7 +54,7 @@ impl Log for PlatformSyslog {
         );
     }
 
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
+    fn enabled(&self, _metadata: &log::Metadata) -> bool {
         true
     }
 
@@ -82,6 +80,7 @@ fn android_log(
 ) -> Result<(), NulError> {
     let tag = CString::new(tag)?;
     let default_pri = LogPriority::VERBOSE;
+    // SAFETY: `tag` is guaranteed to be valid for duration of the call
     if unsafe { __android_log_is_loggable(priority as i32, tag.as_ptr(), default_pri as i32) } != 0
     {
         let c_file_name = match file {
@@ -99,6 +98,7 @@ fn android_log(
             line,
             message: message.as_ptr(),
         };
+        // SAFETY: `log_message` is guaranteed to be valid for duration of the call
         unsafe { __android_log_write_log_message(&mut log_message) };
     }
     Ok(())
