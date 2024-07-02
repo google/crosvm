@@ -52,6 +52,8 @@ use base::Tube;
 use base::TubeError;
 use cros_async::AsyncTube;
 use cros_async::Executor;
+use serde::Deserialize;
+use serde::Serialize;
 use vm_control::DeviceControlCommand;
 use vm_control::DevicesState;
 use vm_control::VmResponse;
@@ -175,9 +177,6 @@ cfg_if::cfg_if! {
 }
 
 /// Request CoIOMMU to unpin a specific range.
-use serde::Deserialize;
-/// Request CoIOMMU to unpin a specific range.
-use serde::Serialize;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UnpinRequest {
     /// The ranges presents (start gfn, count).
