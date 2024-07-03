@@ -2935,7 +2935,7 @@ fn test_xsaves() {
         "wrmsr",
 
         // Set the RFBM / feature mask to include CET.
-        "xor edx, edx"
+        "xor edx, edx",
         "mov eax, 1 << 12",
         "xsaves dword ptr [0x10000]",
 
