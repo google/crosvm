@@ -46,6 +46,21 @@ fn pmem_ext2() -> anyhow::Result<()> {
     let mut vm = TestVm::new(config)?;
     vm.exec_in_guest("mount -t ext2 /dev/pmem0 /mnt/")?;
 
+    // List all files
+    let find_result = vm
+        .exec_in_guest_async("find /mnt/ | sort")?
+        .with_timeout(std::time::Duration::from_secs(1))
+        .wait_ok(&mut vm)?;
+    assert_eq!(
+        find_result.stdout.trim(),
+        r"/mnt/
+/mnt/a.txt
+/mnt/dir
+/mnt/dir/b.txt
+/mnt/dir/symlink_a
+/mnt/lost+found"
+    );
+
     let a_result = vm
         .exec_in_guest_async(&format!("cat /mnt/{A_TXT_NAME}"))?
         .with_timeout(std::time::Duration::from_secs(1))
@@ -56,6 +71,13 @@ fn pmem_ext2() -> anyhow::Result<()> {
         .with_timeout(std::time::Duration::from_secs(1))
         .wait_ok(&mut vm)?;
     assert_eq!(b_result.stdout.trim(), B_TXT_DATA);
+
+    // Trying to read a non-existent file should return an error
+    let non_existent_result = vm
+        .exec_in_guest_async(&format!("cat /mnt/{DIR_NAME}/non-existent"))?
+        .with_timeout(std::time::Duration::from_secs(1))
+        .wait_ok(&mut vm);
+    assert!(non_existent_result.is_err());
 
     let readlink_result = vm
         .exec_in_guest_async(&format!("readlink /mnt/{DIR_NAME}/{SYMLINK_A_NAME}"))?
