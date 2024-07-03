@@ -134,6 +134,8 @@ pub enum Error {
     Proto(protobuf::Error),
     #[error("failed to receive packet: {0}")]
     Recv(io::Error),
+    #[error("attempted to receive too many file descriptors")]
+    RecvTooManyFds,
     #[error("Received a message with a zero sized body. This should not happen.")]
     RecvUnexpectedEmptyBody,
     #[error("failed to send packet: {0}")]

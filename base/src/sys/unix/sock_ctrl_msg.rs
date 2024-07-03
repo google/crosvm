@@ -29,6 +29,7 @@ use libc::SOL_SOCKET;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::error;
 use crate::sys::sendmsg;
 use crate::AsRawDescriptor;
 use crate::FromRawDescriptor;
@@ -36,6 +37,9 @@ use crate::IoBufMut;
 use crate::RawDescriptor;
 use crate::SafeDescriptor;
 use crate::VolatileSlice;
+
+// Linux kernel limits the max number of file descriptors to be sent at once.
+pub const SCM_MAX_FD: usize = 253;
 
 // Each of the following functions performs the same function as their C counterparts. They are
 // reimplemented as const fns here because they are used to size statically allocated arrays.
@@ -123,6 +127,14 @@ impl CmsgBuffer {
 // that is unnecessary when compiling for glibc.
 #[allow(clippy::useless_conversion)]
 fn raw_sendmsg(fd: RawFd, iovec: &[iovec], out_fds: &[RawFd]) -> io::Result<usize> {
+    if out_fds.len() > SCM_MAX_FD {
+        error!(
+            "too many fds to send: {} > SCM_MAX_FD (SCM_MAX_FD)",
+            out_fds.len()
+        );
+        return Err(io::Error::from(io::ErrorKind::InvalidInput));
+    }
+
     let cmsg_capacity = CMSG_SPACE(size_of_val(out_fds));
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
@@ -182,6 +194,11 @@ fn raw_recvmsg(
     iovs: &mut [iovec],
     max_fds: usize,
 ) -> io::Result<(usize, Vec<SafeDescriptor>)> {
+    if max_fds > SCM_MAX_FD {
+        error!("too many fds to recieve: {max_fds} > SCM_MAX_FD (SCM_MAX_FD)");
+        return Err(io::Error::from(io::ErrorKind::InvalidInput));
+    }
+
     let cmsg_capacity = CMSG_SPACE(max_fds * size_of::<RawFd>());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 

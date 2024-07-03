@@ -25,6 +25,7 @@ use crate::ReadNotifier;
 use crate::ScmSocket;
 use crate::StreamChannel;
 use crate::UnixSeqpacket;
+use crate::SCM_SOCKET_MAX_FD_COUNT;
 
 // This size matches the inline buffer size of CmsgBuffer.
 const TUBE_MAX_FDS: usize = 32;
@@ -79,12 +80,24 @@ impl Tube {
             .map_err(Error::Clone)?
     }
 
+    /// Sends a message via a Tube.
+    /// The number of file descriptors that this method can send is limited to `TUBE_MAX_FDS`.
+    /// If you want to send more descriptors, use `send_with_max_fds` instead.
     pub fn send<T: Serialize>(&self, msg: &T) -> Result<()> {
+        self.send_with_max_fds(msg, TUBE_MAX_FDS)
+    }
+
+    /// Sends a message with at most `max_fds` file descriptors via a Tube.
+    /// Note that `max_fds` must not exceed `SCM_SOCKET_MAX_FD_COUNT` (= 253).
+    pub fn send_with_max_fds<T: Serialize>(&self, msg: &T, max_fds: usize) -> Result<()> {
+        if max_fds > SCM_SOCKET_MAX_FD_COUNT {
+            return Err(Error::SendTooManyFds);
+        }
         let msg_serialize = SerializeDescriptors::new(&msg);
         let msg_json = serde_json::to_vec(&msg_serialize).map_err(Error::Json)?;
         let msg_descriptors = msg_serialize.into_descriptors();
 
-        if msg_descriptors.len() > TUBE_MAX_FDS {
+        if msg_descriptors.len() > max_fds {
             return Err(Error::SendTooManyFds);
         }
 
@@ -93,7 +106,19 @@ impl Tube {
         Ok(())
     }
 
+    /// Recieves a message from a Tube.
+    /// If the sender sent file descriptors more than TUBE_MAX_FDS with `send_with_max_fds`, use
+    /// `recv_with_max_fds` instead.
     pub fn recv<T: DeserializeOwned>(&self) -> Result<T> {
+        self.recv_with_max_fds(TUBE_MAX_FDS)
+    }
+
+    /// Recieves a message with at most `max_fds` file descriptors from a Tube.
+    pub fn recv_with_max_fds<T: DeserializeOwned>(&self, max_fds: usize) -> Result<T> {
+        if max_fds > SCM_SOCKET_MAX_FD_COUNT {
+            return Err(Error::RecvTooManyFds);
+        }
+
         // WARNING: The `cros_async` and `base_tokio` tube wrappers both assume that, if the tube
         // is readable, then a call to `Tube::recv` will not block (which ought to be true since we
         // use SOCK_SEQPACKET and a single recvmsg call currently).
@@ -105,7 +130,7 @@ impl Tube {
         let mut msg_json = vec![0u8; msg_size];
 
         let (msg_json_size, msg_descriptors) =
-            handle_eintr!(self.socket.recv_with_fds(&mut msg_json, TUBE_MAX_FDS))
+            handle_eintr!(self.socket.recv_with_fds(&mut msg_json, max_fds))
                 .map_err(Error::Recv)?;
 
         if msg_json_size == 0 {
