@@ -6,10 +6,8 @@
 #![cfg(any(feature = "whpx", feature = "gvm", feature = "haxm", unix))]
 
 use core::mem;
-#[cfg(any(feature = "whpx", feature = "haxm"))]
 use std::arch::asm;
 use std::cell::RefCell;
-#[cfg(any(feature = "whpx", feature = "haxm"))]
 use std::is_x86_feature_detected;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
@@ -188,6 +186,14 @@ pub fn run_configurable_test<H: HypervisorTestSetup>(
 
     if let Some(ref setup_fn) = setup.extra_vm_setup {
         setup_fn(&mut *vcpu, &mut vm);
+    }
+
+    if !vm.check_capability(VmCap::EarlyInitCpuid) {
+        let cpuid = vm
+            .get_hypervisor()
+            .get_supported_cpuid()
+            .expect("get_supported_cpuid() failed");
+        vcpu.set_cpuid(&cpuid).expect("set_cpuid() failed");
     }
 
     loop {
@@ -2267,9 +2273,6 @@ fn test_enter_long_mode_direct() {
     run_tests!(setup, regs_matcher, exit_matcher);
 }
 
-// KVM fails on the wrmsr instruction with a shutdown vmexit; issues with
-// running the asm in real-mode?
-#[cfg(any(feature = "whpx", feature = "haxm"))]
 #[test]
 fn test_enter_long_mode_asm() {
     global_asm_data!(
@@ -2452,7 +2455,6 @@ fn test_request_interrupt_window() {
     );
 }
 
-#[cfg(any(feature = "whpx", feature = "haxm"))]
 #[test]
 fn test_fsgsbase() {
     global_asm_data!(
@@ -2517,7 +2519,6 @@ fn test_fsgsbase() {
 
 /// Tests whether MMX state is being preserved by the hypervisor correctly (e.g. the hypervisor is
 /// properly using fxsave/fxrstor, or xsave/xrstor (or xsaves/xrstors)).
-#[cfg(any(feature = "whpx", feature = "haxm"))]
 #[test]
 fn test_mmx_state_is_preserved_by_hypervisor() {
     // This program stores a sentinel value into mm0 (the first MMX register) and verifies
@@ -2633,7 +2634,6 @@ fn test_mmx_state_is_preserved_by_hypervisor() {
 /// properly using xsave/xrstor (or xsaves/xrstors)). This is very similar to the MMX test, but
 /// AVX state is *not* captured by fxsave, so that's how we guarantee xsave state of some kind is
 /// being handled properly.
-#[cfg(any(feature = "whpx", feature = "haxm"))]
 #[test]
 fn test_avx_state_is_preserved_by_hypervisor() {
     if !is_x86_feature_detected!("avx") {
@@ -2771,7 +2771,6 @@ fn test_avx_state_is_preserved_by_hypervisor() {
 }
 
 /// Tests whether XSAVE works inside a guest.
-#[cfg(any(feature = "whpx", feature = "haxm"))]
 #[test]
 fn test_xsave() {
     let sentinel_xmm0_value = 0x1337FFFFu64;
