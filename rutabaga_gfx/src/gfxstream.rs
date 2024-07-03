@@ -148,6 +148,8 @@ extern "C" {
         num_iovs: *mut c_int,
     );
     fn stream_renderer_create_fence(fence: *const stream_renderer_fence) -> c_int;
+    #[cfg(gfxstream_unstable)]
+    fn stream_renderer_export_fence(fence_id: u64, handle: *mut stream_renderer_handle) -> c_int;
     fn stream_renderer_ctx_attach_resource(ctx_id: c_int, res_handle: c_int);
     fn stream_renderer_ctx_detach_resource(ctx_id: c_int, res_handle: c_int);
     fn stream_renderer_get_cap_set(set: u32, max_ver: *mut u32, max_size: *mut u32);
@@ -198,6 +200,33 @@ pub struct Gfxstream {
 struct GfxstreamContext {
     ctx_id: u32,
     fence_handler: RutabagaFenceHandler,
+}
+
+impl GfxstreamContext {
+    #[cfg(gfxstream_unstable)]
+    fn export_fence(&self, fence_id: u64) -> RutabagaResult<RutabagaHandle> {
+        let mut stream_handle: stream_renderer_handle = Default::default();
+        // SAFETY:
+        // Safe because a correctly formatted stream_handle is given to gfxstream.
+        let ret = unsafe { stream_renderer_export_fence(fence_id, &mut stream_handle) };
+        ret_to_res(ret)?;
+
+        let raw_descriptor = stream_handle.os_handle as RawDescriptor;
+        // SAFETY:
+        // Safe because the handle was just returned by a successful gfxstream call so it must
+        // be valid and owned by us.
+        let handle = unsafe { SafeDescriptor::from_raw_descriptor(raw_descriptor) };
+
+        Ok(RutabagaHandle {
+            os_handle: handle,
+            handle_type: stream_handle.handle_type,
+        })
+    }
+
+    #[cfg(not(gfxstream_unstable))]
+    fn export_fence(&self, _fence_id: u64) -> RutabagaResult<RutabagaHandle> {
+        Err(RutabagaError::Unsupported)
+    }
 }
 
 impl RutabagaContext for GfxstreamContext {
@@ -261,9 +290,14 @@ impl RutabagaContext for GfxstreamContext {
         // SAFETY:
         // Safe because RutabagaFences and stream_renderer_fence are ABI identical
         let ret = unsafe { stream_renderer_create_fence(&fence as *const stream_renderer_fence) };
-
         ret_to_res(ret)?;
-        Ok(None)
+
+        let mut hnd: Option<RutabagaHandle> = None;
+        if fence.flags & RUTABAGA_FLAG_FENCE_HOST_SHAREABLE != 0 {
+            hnd = Some(self.export_fence(fence.fence_id)?);
+        }
+
+        Ok(hnd)
     }
 }
 
