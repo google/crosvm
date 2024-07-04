@@ -44,6 +44,7 @@ win_util = { path = "../win_util" }
 version = "0.39.0"
 features = [
     "Win32_Foundation",
+    "Win32_System_Memory",
 ]
 
 [target.'cfg(windows)'.dev-dependencies]

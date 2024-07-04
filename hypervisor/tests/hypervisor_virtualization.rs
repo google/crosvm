@@ -8,13 +8,14 @@
 use core::mem;
 use std::arch::asm;
 use std::cell::RefCell;
-use std::is_x86_feature_detected;
+use std::ffi::c_void;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
+use base::set_cpu_affinity;
+use base::MappedRegion;
 use base::MemoryMappingBuilder;
-#[cfg(any(target_os = "android", target_os = "linux"))]
 use base::SharedMemory;
 #[cfg(feature = "gvm")]
 use hypervisor::gvm::*;
@@ -28,8 +29,13 @@ use hypervisor::whpx::*;
 use hypervisor::MemCacheType::CacheCoherent;
 use hypervisor::*;
 use hypervisor_test_macro::global_asm_data;
+use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+#[cfg(windows)]
+use windows::Win32::System::Memory::VirtualLock;
+#[cfg(windows)]
+use windows::Win32::System::Memory::VirtualUnlock;
 use zerocopy::AsBytes;
 
 const FLAGS_IF_BIT: u64 = 0x200;
@@ -3083,6 +3089,210 @@ fn test_xsaves_is_disabled_on_haxm() {
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
+}
+
+/// Tests whether SLAT is updated properly when a region is removed from the guest. A correctly
+/// implemented hypervisor will flush the TLB such that this immediately hits a SLAT fault and comes
+/// to us as MMIO. If we don't see that, and the guest actually reads from the removed region, the
+/// test will fail. In the real world, this would be a guest read from a random pfn, which is
+/// UB (and a major security problem).
+///
+/// Flakes should be treated as real failures (this test can show a false negative, but never a
+/// false positive).
+#[test]
+fn test_slat_on_region_removal_is_mmio() {
+    global_asm_data!(
+        pub test_asm,
+        ".code64",
+
+        // Load the TLB with a mapping for the test region.
+        "mov al, byte ptr [0x20000]",
+
+        // Signal to the host that VM is running. On this vmexit, the host will unmap the test
+        // region.
+        "out 0x5, al",
+
+        // This read should result in MMIO, and if it does, the test passes. If we hit the hlt, then
+        // the test fails (since it means we were able to satisfy this read without exiting).
+        "mov al, byte ptr [0x20000]",
+        "hlt"
+    );
+
+    const TEST_MEM_REGION_SIZE: usize = 0x1000;
+    let memslot: Arc<Mutex<Option<MemSlot>>> = Arc::new(Mutex::new(None));
+    let memslot_for_func = memslot.clone();
+
+    let code_addr = 0x1000;
+    let setup = TestSetup {
+        assembly: test_asm::data().to_vec(),
+        mem_size: 0x12000,
+        load_addr: GuestAddress(code_addr),
+        initial_regs: Regs {
+            rip: code_addr,
+            rflags: 0x2,
+            ..Default::default()
+        },
+        extra_vm_setup: Some(Box::new(
+            move |vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+                enter_long_mode(vcpu, vm);
+
+                // Create a test pinned memory region that is all 0xFF.
+                let shm = SharedMemory::new("test", TEST_MEM_REGION_SIZE as u64).unwrap();
+                let test_region = Box::new(
+                    MemoryMappingBuilder::new(TEST_MEM_REGION_SIZE)
+                        .from_shared_memory(&shm)
+                        .build()
+                        .unwrap(),
+                );
+                let ff_init = [0xFFu8; TEST_MEM_REGION_SIZE];
+                test_region.write_slice(&ff_init, 0).unwrap();
+                let test_region = Box::new(
+                    PinnedMemoryRegion::new(test_region).expect("failed to pin test region"),
+                );
+                *memslot_for_func.lock() = Some(
+                    vm.add_memory_region(
+                        GuestAddress(0x20000),
+                        test_region,
+                        false,
+                        false,
+                        MemCacheType::CacheCoherent,
+                    )
+                    .unwrap(),
+                );
+            },
+        )),
+        memory_initializations: vec![],
+        ..Default::default()
+    };
+
+    // Holds the test memory region after it's unmapped and the VM is still running. Without this,
+    // incorrect access to the region by the VM would be unsafe / UB.
+    let test_region_arc: Arc<Mutex<Option<Box<dyn MappedRegion>>>> = Arc::new(Mutex::new(None));
+    let test_region_arc_for_exit = test_region_arc.clone();
+
+    let exit_matcher =
+        move |_, exit: &VcpuExit, vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| match exit {
+            VcpuExit::Io => {
+                // WHPX insists on data being returned here or it throws MemoryCallbackFailed.
+                //
+                // We strictly don't care what this data is, since the VM exits before running any
+                // further instructions.
+                vcpu.handle_io(&mut |_| None)
+                    .expect("should handle IO successfully");
+
+                // Remove the test memory region to cause a SLAT fault (in the passing case).
+                //
+                // This also ensures the memory region remains pinned in host physical memory so any
+                // incorrect accesses to it by the VM will remain safe.
+                *test_region_arc_for_exit.lock() =
+                    Some(vm.remove_memory_region(memslot.lock().unwrap()).unwrap());
+                false
+            }
+            VcpuExit::Mmio => {
+                vcpu.handle_mmio(&mut |IoParams {
+                                           address,
+                                           size,
+                                           operation,
+                                       }| {
+                    assert_eq!(address, 0x20000, "MMIO for wrong address");
+                    assert_eq!(size, 1);
+                    assert!(
+                        matches!(operation, IoOperation::Read),
+                        "got unexpected IO operation {:?}",
+                        operation
+                    );
+                    // We won't vmenter again, so there's no need to actually satisfy the MMIO by
+                    // returning data; however, some hypervisors (WHPX) require it.
+                    Some([0u8; 8])
+                })
+                .unwrap();
+                true
+            }
+            VcpuExit::Hlt => {
+                panic!("VM should not reach the hlt instruction (MMIO should've ended the VM)");
+            }
+            r => panic!("unexpected exit reason: {:?}", r),
+        };
+
+    // We want to catch if the hypervisor doesn't clear the VM's TLB. If we hop between CPUs, then
+    // we're likely to end up with a clean TLB on another CPU.
+    set_cpu_affinity(vec![0]).unwrap();
+
+    run_tests!(setup, move |_, _, _| {}, &exit_matcher);
+}
+
+struct PinnedMemoryRegion {
+    mem_region: Box<dyn MappedRegion>,
+}
+
+impl PinnedMemoryRegion {
+    fn new(mem_region: Box<dyn MappedRegion>) -> base::Result<Self> {
+        // SAFETY:
+        // ptr is a valid pointer and points to a region of the supplied size.
+        unsafe { pin_memory(mem_region.as_ptr() as *mut _, mem_region.size()) }?;
+        Ok(Self { mem_region })
+    }
+}
+
+// SAFETY:
+// Safe because ptr & size a memory range owned by this MemoryMapping that won't be unmapped
+// until it's dropped.
+unsafe impl MappedRegion for PinnedMemoryRegion {
+    fn as_ptr(&self) -> *mut u8 {
+        self.mem_region.as_ptr()
+    }
+
+    fn size(&self) -> usize {
+        self.mem_region.size()
+    }
+}
+
+impl Drop for PinnedMemoryRegion {
+    fn drop(&mut self) {
+        // SAFETY:
+        // memory region passed is a valid pointer and points to a region of the
+        // supplied size. We also panic on failure.
+        unsafe { unpin_memory(self.mem_region.as_ptr() as *mut _, self.mem_region.size()) }
+            .expect("failed to unpin memory")
+    }
+}
+
+unsafe fn pin_memory(ptr: *mut c_void, len: usize) -> base::Result<()> {
+    #[cfg(windows)]
+    {
+        if VirtualLock(ptr, len).into() {
+            Ok(())
+        } else {
+            Err(base::Error::last())
+        }
+    }
+    #[cfg(unix)]
+    {
+        if libc::mlock(ptr, len) != 0 {
+            Err(base::Error::last())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+unsafe fn unpin_memory(ptr: *mut c_void, len: usize) -> base::Result<()> {
+    #[cfg(windows)]
+    {
+        if VirtualUnlock(ptr, len).into() {
+            Ok(())
+        } else {
+            Err(base::Error::last())
+        }
+    }
+    #[cfg(unix)]
+    {
+        if libc::munlock(ptr, len) != 0 {
+            Err(base::Error::last())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[test]
