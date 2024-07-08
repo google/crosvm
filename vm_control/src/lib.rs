@@ -1481,7 +1481,9 @@ fn map_descriptor(
 }
 
 // Get vCPU state. vCPUs are expected to all hold the same state.
-// In this function, there may be a time where vCPUs are not
+// In this function, there may be a time where vCPUs are not holding the same state
+// as they transition from one state to the other. This is expected, and the final result
+// should be all vCPUs holding the same state.
 fn get_vcpu_state(kick_vcpus: impl Fn(VcpuControl), vcpu_num: usize) -> anyhow::Result<VmRunMode> {
     let (send_chan, recv_chan) = mpsc::channel();
     kick_vcpus(VcpuControl::GetStates(send_chan));
