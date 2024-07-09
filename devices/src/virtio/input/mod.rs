@@ -729,6 +729,27 @@ where
     })
 }
 
+/// Creates a new virtio trackpad device which supports multi touch, primary and secondary
+/// buttons as well as X and Y axis.
+pub fn new_multitouch_trackpad<T>(
+    idx: u32,
+    source: T,
+    width: u32,
+    height: u32,
+    name: Option<&str>,
+    virtio_features: u64,
+) -> Result<Input<SocketEventSource<T>>>
+where
+    T: Read + Write + AsRawDescriptor + Send + 'static,
+{
+    Ok(Input {
+        worker_thread: None,
+        config: defaults::new_multitouch_trackpad_config(idx, width, height, name),
+        source: Some(SocketEventSource::new(source)),
+        virtio_features,
+    })
+}
+
 /// Creates a new virtio mouse which supports primary, secondary, wheel and REL events.
 pub fn new_mouse<T>(
     idx: u32,

@@ -1492,6 +1492,7 @@ pub struct RunCommand {
     ///     single-touch[path=PATH,width=W,height=H,name=N]
     ///     switches[path=PATH]
     ///     trackpad[path=PATH,width=W,height=H,name=N]
+    ///     multi-touch-trackpad[path=PATH,width=W,height=H,name=N]
     /// See <https://crosvm.dev/book/devices/input.html> for more
     /// information.
     pub input: Vec<InputDeviceOption>,

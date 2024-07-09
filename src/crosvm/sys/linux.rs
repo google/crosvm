@@ -480,6 +480,7 @@ fn create_virtio_devices(
     let mut multi_touch_idx = 0;
     let mut single_touch_idx = 0;
     let mut trackpad_idx = 0;
+    let mut multi_touch_trackpad_idx = 0;
     for input in &cfg.virtio_input {
         let input_dev = match input {
             InputDeviceOption::Evdev { path } => {
@@ -597,6 +598,24 @@ fn create_virtio_devices(
                     trackpad_idx,
                 )?;
                 trackpad_idx += 1;
+                dev
+            }
+            InputDeviceOption::MultiTouchTrackpad {
+                path,
+                width,
+                height,
+                name,
+            } => {
+                let dev = create_multitouch_trackpad_device(
+                    cfg.protection_type,
+                    &cfg.jail_config,
+                    path.as_path(),
+                    width.unwrap_or(DEFAULT_TOUCH_DEVICE_WIDTH),
+                    height.unwrap_or(DEFAULT_TOUCH_DEVICE_HEIGHT),
+                    name.as_deref(),
+                    multi_touch_trackpad_idx,
+                )?;
+                multi_touch_trackpad_idx += 1;
                 dev
             }
         };

@@ -550,6 +550,35 @@ pub fn create_trackpad_device<T: IntoUnixStream>(
     })
 }
 
+pub fn create_multitouch_trackpad_device<T: IntoUnixStream>(
+    protection_type: ProtectionType,
+    jail_config: &Option<JailConfig>,
+    trackpad_socket: T,
+    width: u32,
+    height: u32,
+    name: Option<&str>,
+    idx: u32,
+) -> DeviceResult {
+    let socket = trackpad_socket
+        .into_unix_stream()
+        .context("failed configuring virtio trackpad")?;
+
+    let dev = virtio::input::new_multitouch_trackpad(
+        idx,
+        socket,
+        width,
+        height,
+        name,
+        virtio::base_features(protection_type),
+    )
+    .context("failed to set up input device")?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: simple_jail(jail_config, "input_device")?,
+    })
+}
+
 pub fn create_mouse_device<T: IntoUnixStream>(
     protection_type: ProtectionType,
     jail_config: &Option<JailConfig>,
