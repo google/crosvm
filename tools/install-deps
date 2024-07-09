@@ -79,6 +79,9 @@ rustup component add llvm-tools-preview
 # Allow cross-compilation via mingw64
 rustup target add x86_64-pc-windows-gnu
 
+# Allow cross-compilation for android
+rustup target add aarch64-linux-android
+
 # Install nightly toolchain. Only used for rustfmt
 rustup toolchain install nightly --profile minimal --component rustfmt
 

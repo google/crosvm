@@ -6,16 +6,12 @@ set -ex
 
 sudo apt-get install --yes --no-install-recommends \
     gcc-arm-linux-gnueabihf \
-    libavcodec-dev:armhf \
-    libavutil-dev:armhf \
     libc-dev:armhf \
     libcap-dev:armhf \
     libdbus-1-dev:armhf \
     libdrm-dev:armhf \
     libepoxy-dev:armhf \
     libssl-dev:armhf \
-    libswscale-dev:armhf \
-    libva-dev:armhf \
     libwayland-dev:armhf \
     libxext-dev:armhf
 

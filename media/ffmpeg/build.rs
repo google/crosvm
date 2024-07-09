@@ -17,6 +17,11 @@ fn main() {
         return;
     }
 
+    // ffmgeg is not supported by CI on 32-bit arm
+    if std::env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "arm" {
+        return;
+    }
+
     // Match all ffmpeg 6.0+ versions.
     Config::new()
         .atleast_version("60")
