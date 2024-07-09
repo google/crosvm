@@ -427,6 +427,13 @@ GROUPS: List[Group] = [
             "python_tests",
         ],
     ),
+    Group(
+        name="android-aarch64",
+        doc="Checks run on the android-aarch64 builder",
+        checks=[
+            "clippy_android",
+        ],
+    ),
     *(
         Group(
             name=f"linux_{platform}",
