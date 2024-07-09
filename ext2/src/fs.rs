@@ -716,6 +716,20 @@ impl<'a> Ext2<'a> {
 
     /// Walks through `src_dir` and copies directories and files to the new file system.
     fn copy_dirtree<P: AsRef<Path>>(&mut self, arena: &'a Arena<'a>, src_dir: P) -> Result<()> {
+        // Update the root directory's metadata with the metadata of `src_dir`.
+        let root_inode_num = InodeNum::new(2).expect("2 is a valid inode number");
+        let group_id = self.group_num_for_inode(root_inode_num);
+        let gm = &mut self.group_metadata[group_id];
+        let inode: &mut &mut Inode = gm
+            .inode_table
+            .get_mut(&root_inode_num)
+            .expect("root dir is not stored");
+        let metadata = src_dir
+            .as_ref()
+            .metadata()
+            .with_context(|| format!("failed to get metadata of {:?}", src_dir.as_ref()))?;
+        inode.update_metadata(&metadata);
+
         self.copy_dirtree_rec(arena, InodeNum(2), src_dir)
     }
 

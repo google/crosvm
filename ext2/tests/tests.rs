@@ -236,6 +236,8 @@ fn test_simple_dir() {
     );
 
     assert_eq_dirs(&td, &dir, &disk);
+
+    td.close().unwrap(); // make sure that tempdir is properly deleted.
 }
 
 #[test]

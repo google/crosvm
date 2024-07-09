@@ -173,13 +173,13 @@ impl InodeBlock {
 #[derive(Default, Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub(crate) struct Inode {
     mode: u16,
-    _uid: u16,
+    uid: u16,
     pub size: u32,
     atime: u32,
     ctime: u32,
     mtime: u32,
     _dtime: u32,
-    _gid: u16,
+    gid: u16,
     pub links_count: u16,
     pub blocks: InodeBlocksCount,
     _flags: u32,
@@ -192,8 +192,8 @@ pub(crate) struct Inode {
     _fragment_num: u8,
     _fragment_size: u8,
     _reserved1: u16,
-    _uid_high: u16,
-    _gid_high: u16,
+    uid_high: u16,
+    gid_high: u16,
     _reserved2: u32,
 }
 
@@ -278,10 +278,10 @@ impl Inode {
             atime: now,
             ctime: now,
             mtime: now,
-            _uid: uid_low,
-            _gid: gid_low,
-            _uid_high: uid_high,
-            _gid_high: gid_high,
+            uid: uid_low,
+            gid: gid_low,
+            uid_high,
+            gid_high,
             ..Default::default()
         };
         Ok(inode)
@@ -319,8 +319,8 @@ impl Inode {
 
         *inode = Inode {
             mode,
-            _uid: uid_low,
-            _gid: gid_low,
+            uid: uid_low,
+            gid: gid_low,
             size,
             atime,
             ctime,
@@ -328,14 +328,27 @@ impl Inode {
             links_count,
             blocks,
             block,
-
-            _uid_high: uid_high,
-            _gid_high: gid_high,
-
+            uid_high,
+            gid_high,
             ..Default::default()
         };
 
         Ok(inode)
+    }
+
+    pub fn update_metadata(&mut self, m: &std::fs::Metadata) {
+        self.mode = m.mode() as u16;
+
+        let uid: u32 = m.uid();
+        self.uid_high = (uid >> 16) as u16;
+        self.uid = uid as u16;
+        let gid = m.gid();
+        self.gid_high = (gid >> 16) as u16;
+        self.gid = gid as u16;
+
+        self.atime = m.atime() as u32;
+        self.ctime = m.ctime() as u32;
+        self.mtime = m.mtime() as u32;
     }
 
     pub fn typ(&self) -> Option<InodeType> {
