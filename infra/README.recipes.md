@@ -15,6 +15,7 @@
   * [crosvm:examples/host_build_context](#recipes-crosvm_examples_host_build_context)
   * [crosvm:examples/source_context](#recipes-crosvm_examples_source_context)
   * [health_check](#recipes-health_check)
+  * [presubmit](#recipes-presubmit)
   * [push_to_github](#recipes-push_to_github)
   * [update_chromeos_merges](#recipes-update_chromeos_merges)
 ## Recipe Modules
@@ -161,6 +162,12 @@ This recipe requires ambient luci authentication. To test locally run:
 
 
 &mdash; **def [RunSteps](/infra/recipes/health_check.py#17)(api):**
+### *recipes* / [presubmit](/infra/recipes/presubmit.py)
+
+[DEPS](/infra/recipes/presubmit.py#11): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/json][recipe_engine/recipe_modules/json], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/raw\_io][recipe_engine/recipe_modules/raw_io], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+
+
+&mdash; **def [RunSteps](/infra/recipes/presubmit.py#23)(api, properties):**
 ### *recipes* / [push\_to\_github](/infra/recipes/push_to_github.py)
 
 [DEPS](/infra/recipes/push_to_github.py#7): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/path][recipe_engine/recipe_modules/path], [recipe\_engine/raw\_io][recipe_engine/recipe_modules/raw_io], [recipe\_engine/step][recipe_engine/recipe_modules/step]

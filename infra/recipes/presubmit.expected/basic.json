@@ -1,0 +1,83 @@
+[
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/presubmit",
+      "--list-checks",
+      "basic"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "env": {
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
+    },
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "List checks to run"
+  },
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
+      "--no-interactive",
+      "--verbose",
+      "tools/presubmit",
+      "--no-delta",
+      "check_a"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "env": {
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
+    },
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "tools/presubmit check_a"
+  },
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
+      "--no-interactive",
+      "--verbose",
+      "tools/presubmit",
+      "--no-delta",
+      "check_b"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "env": {
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
+    },
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "tools/presubmit check_b"
+  }
+]
