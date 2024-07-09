@@ -21,7 +21,7 @@ use crate::virtio::block::DiskOption;
 use crate::virtio::BlockAsync;
 
 pub fn get_seg_max(queue_size: u16) -> u32 {
-    let seg_max = min(max(iov_max(), 1), u32::max_value() as usize) as u32;
+    let seg_max = min(max(iov_max(), 1), u32::MAX as usize) as u32;
 
     // Since we do not currently support indirect descriptors, the maximum
     // number of segments must be smaller than the queue size.

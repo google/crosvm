@@ -105,7 +105,7 @@ impl MsiConfig {
 
     pub fn read_msi_capability(&self, offset: u32, data: u32) -> u32 {
         if offset == 0 {
-            (self.ctrl as u32) << 16 | (data & u16::max_value() as u32)
+            (self.ctrl as u32) << 16 | (data & u16::MAX as u32)
         } else {
             data
         }

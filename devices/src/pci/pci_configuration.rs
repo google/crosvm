@@ -704,7 +704,7 @@ impl PciConfiguration {
             .ok_or(Error::BarAddressInvalid(config.addr, config.size))?;
         match config.region_type {
             PciBarRegionType::Memory32BitRegion | PciBarRegionType::IoRegion => {
-                if end_addr > u64::from(u32::max_value()) {
+                if end_addr > u64::from(u32::MAX) {
                     return Err(Error::BarAddressInvalid(config.addr, config.size));
                 }
             }

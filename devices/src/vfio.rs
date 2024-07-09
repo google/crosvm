@@ -16,7 +16,6 @@ use std::path::PathBuf;
 use std::ptr::addr_of_mut;
 use std::slice;
 use std::sync::Arc;
-use std::u32;
 
 use base::error;
 use base::ioctl;

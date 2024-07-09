@@ -652,10 +652,10 @@ mod tests {
 
         // Assume driver submit another u16::MAX - 0x100 req to device,
         // Device has handled all of them, so increase self.next_used to u16::MAX
-        for _ in device_generate.0..u16::max_value() {
+        for _ in device_generate.0..u16::MAX {
             queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
         }
-        device_generate = Wrapping(u16::max_value());
+        device_generate = Wrapping(u16::MAX);
 
         // At this moment driver just handled 0x100 interrupts, so it
         // should inject interrupt.
@@ -737,10 +737,10 @@ mod tests {
 
         // Assume driver submit another u16::MAX - 0x101 req to device,
         // Device has handled all of them, so increase self.next_used to u16::MAX
-        for _ in device_generate.0..u16::max_value() {
+        for _ in device_generate.0..u16::MAX {
             queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
         }
-        device_generate = Wrapping(u16::max_value());
+        device_generate = Wrapping(u16::MAX);
 
         // At this moment driver hasn't finished last interrupt yet,
         // so interrupt isn't needed.

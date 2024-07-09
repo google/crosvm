@@ -822,7 +822,7 @@ impl BusDevice for PciConfigMmio {
         // Only allow reads to the register boundary.
         let start = info.offset as usize % 4;
         let end = start + data.len();
-        if end > 4 || info.offset > u32::max_value() as u64 {
+        if end > 4 || info.offset > u32::MAX as u64 {
             for d in data {
                 *d = 0xff;
             }
@@ -836,7 +836,7 @@ impl BusDevice for PciConfigMmio {
     }
 
     fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
-        if info.offset > u32::max_value() as u64 {
+        if info.offset > u32::MAX as u64 {
             return;
         }
         self.config_space_write(info.offset as u32, info.offset % 4, data)

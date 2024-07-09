@@ -48,7 +48,7 @@ impl QcowRawFile {
     ) -> io::Result<Vec<u64>> {
         let mut table = vec![0; count as usize];
         self.file.seek(SeekFrom::Start(offset))?;
-        let mask = mask.unwrap_or(u64::max_value());
+        let mask = mask.unwrap_or(u64::MAX);
         for ptr in &mut table {
             let mut value = [0u8; 8];
             self.file.read_exact(&mut value)?;

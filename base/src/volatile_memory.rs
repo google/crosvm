@@ -27,7 +27,6 @@ use std::ptr::write_bytes;
 use std::ptr::write_volatile;
 use std::result;
 use std::slice;
-use std::usize;
 
 use remain::sorted;
 use thiserror::Error;
@@ -474,13 +473,12 @@ mod tests {
 
     #[test]
     fn slice_overflow_error() {
-        use std::usize::MAX;
         let a = VecMem::new(1);
-        let res = a.get_slice(MAX, 1).unwrap_err();
+        let res = a.get_slice(usize::MAX, 1).unwrap_err();
         assert_eq!(
             res,
             Error::Overflow {
-                base: MAX,
+                base: usize::MAX,
                 offset: 1,
             }
         );

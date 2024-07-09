@@ -297,11 +297,11 @@ mod tests {
     fn slice_overflow_error() {
         let shm = SharedMemory::new("test", 1028).unwrap();
         let m = to_crate_mmap(MemoryMapping::from_descriptor(&shm, 5).unwrap());
-        let res = m.get_slice(std::usize::MAX, 3).unwrap_err();
+        let res = m.get_slice(usize::MAX, 3).unwrap_err();
         assert_eq!(
             res,
             VolatileMemoryError::Overflow {
-                base: std::usize::MAX,
+                base: usize::MAX,
                 offset: 3,
             }
         );

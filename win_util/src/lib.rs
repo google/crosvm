@@ -81,7 +81,7 @@ macro_rules! fail_if_zero {
 
 /// Returns the lower 32 bits of a u64 as a u32 (c_ulong/DWORD)
 pub fn get_low_order(number: u64) -> c_ulong {
-    (number & (u32::max_value() as u64)) as c_ulong
+    (number & (u32::MAX as u64)) as c_ulong
 }
 
 /// Returns the upper 32 bits of a u64 as a u32 (c_ulong/DWORD)

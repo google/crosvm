@@ -16,7 +16,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
-use std::u32;
 
 use anyhow::Context;
 use base::debug;

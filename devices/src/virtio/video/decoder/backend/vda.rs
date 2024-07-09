@@ -317,7 +317,7 @@ impl DecoderBackend for LibvdaDecoder {
 
         // Raise the first |# of supported raw formats|-th bits because we can assume that any
         // combination of (a coded format, a raw format) is valid in Chrome.
-        let mask = !(u64::max_value() << caps.output_formats.len());
+        let mask = !(u64::MAX << caps.output_formats.len());
 
         let mut in_fmts = vec![];
         let mut profiles: BTreeMap<Format, Vec<Profile>> = Default::default();
@@ -389,7 +389,7 @@ impl DecoderBackend for LibvdaDecoder {
 
         // Raise the first |# of supported coded formats|-th bits because we can assume that any
         // combination of (a coded format, a raw format) is valid in Chrome.
-        let mask = !(u64::max_value() << caps.input_formats.len());
+        let mask = !(u64::MAX << caps.input_formats.len());
         let out_fmts = caps
             .output_formats
             .iter()

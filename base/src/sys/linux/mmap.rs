@@ -334,7 +334,7 @@ impl MemoryMapping {
         // and set the (ANONYMOUS | NORESERVE) flag.
         let (fd, offset) = match fd {
             Some((fd, offset)) => {
-                if offset > libc::off64_t::max_value() as u64 {
+                if offset > libc::off64_t::MAX as u64 {
                     return Err(Error::InvalidOffset);
                 }
                 // Map private for read-only seal. See below for upstream relax of the restriction.
@@ -1032,11 +1032,11 @@ mod tests {
     #[test]
     fn slice_overflow_error() {
         let m = MemoryMappingBuilder::new(5).build().unwrap();
-        let res = m.get_slice(std::usize::MAX, 3).unwrap_err();
+        let res = m.get_slice(usize::MAX, 3).unwrap_err();
         assert_eq!(
             res,
             VolatileMemoryError::Overflow {
-                base: std::usize::MAX,
+                base: usize::MAX,
                 offset: 3,
             }
         );
@@ -1051,8 +1051,8 @@ mod tests {
     #[test]
     fn from_fd_offset_invalid() {
         let fd = tempfile().unwrap();
-        let res = MemoryMapping::from_fd_offset(&fd, 4096, (libc::off64_t::max_value() as u64) + 1)
-            .unwrap_err();
+        let res =
+            MemoryMapping::from_fd_offset(&fd, 4096, (libc::off64_t::MAX as u64) + 1).unwrap_err();
         match res {
             Error::InvalidOffset => {}
             e => panic!("unexpected error: {}", e),

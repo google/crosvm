@@ -303,9 +303,8 @@ impl arch::LinuxArch for Riscv64 {
                 return Err(Error::ImageTypeUnsupported);
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let kernel_size =
-                    arch::load_image(&mem, kernel_image, get_kernel_addr(), u64::max_value())
-                        .map_err(Error::KernelLoadFailure)?;
+                let kernel_size = arch::load_image(&mem, kernel_image, get_kernel_addr(), u64::MAX)
+                    .map_err(Error::KernelLoadFailure)?;
                 let kernel_end = get_kernel_addr().offset() + kernel_size as u64;
                 initrd = match components.initrd_image {
                     Some(initrd_file) => {

@@ -379,7 +379,7 @@ impl Pmem {
         swap_interval: Option<Duration>,
         mapping_writable: bool,
     ) -> SysResult<Pmem> {
-        if mapping_size > usize::max_value() as u64 {
+        if mapping_size > usize::MAX as u64 {
             return Err(SysError::new(libc::EOVERFLOW));
         }
 

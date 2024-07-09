@@ -37,7 +37,7 @@ const AF_VSOCK: sa_family_t = 40;
 const VMADDR_CID_LOCAL: c_uint = 1;
 
 /// Vsock equivalent of binding on port 0. Binds to a random port.
-pub const VMADDR_PORT_ANY: c_uint = c_uint::max_value();
+pub const VMADDR_PORT_ANY: c_uint = c_uint::MAX;
 
 // The number of bytes of padding to be added to the sockaddr_vm struct.  Taken directly
 // from linux/vm_sockets.h.

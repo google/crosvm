@@ -11,7 +11,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::u32;
 
 use acpi_tables::aml::Aml;
 use base::debug;
@@ -822,7 +821,7 @@ impl VfioPciDevice {
             base_class_code == PciClassCode::DisplayController && vendor_id == PCI_VENDOR_ID_INTEL;
         let device_data = if is_intel_gfx {
             Some(DeviceData::IntelGfxData {
-                opregion_index: u32::max_value(),
+                opregion_index: u32::MAX,
             })
         } else {
             None

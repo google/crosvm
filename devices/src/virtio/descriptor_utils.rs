@@ -1403,7 +1403,7 @@ mod tests {
         } = chain.reader;
 
         let drain = regions
-            .get_remaining_regions_with_count(::std::usize::MAX)
+            .get_remaining_regions_with_count(usize::MAX)
             .fold(0usize, |total, region| total + region.len);
         assert_eq!(drain, 128);
 
@@ -1456,7 +1456,7 @@ mod tests {
         } = chain.reader;
 
         let drain = regions
-            .get_remaining_with_count(&memory, ::std::usize::MAX)
+            .get_remaining_with_count(&memory, usize::MAX)
             .iter()
             .fold(0usize, |total, iov| total + iov.size());
         assert_eq!(drain, 128);

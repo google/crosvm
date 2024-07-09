@@ -1268,7 +1268,7 @@ where
 {
     let size = image.get_len().map_err(LoadImageError::GetLen)?;
 
-    if size > usize::max_value() as u64 || size > max_size {
+    if size > usize::MAX as u64 || size > max_size {
         return Err(LoadImageError::ImageSizeTooLarge(size));
     }
 
@@ -1318,7 +1318,7 @@ where
         return Err(LoadImageError::ZeroSizedImage);
     }
 
-    if size > usize::max_value() as u64 || size > max_size {
+    if size > usize::MAX as u64 || size > max_size {
         return Err(LoadImageError::ImageSizeTooLarge(size));
     }
 

@@ -4,7 +4,6 @@
 
 use std::fs::File;
 use std::sync::Arc;
-use std::u32;
 
 use anyhow::bail;
 use anyhow::Context;

@@ -194,7 +194,7 @@ impl MsixConfig {
         if self.masked {
             msg_ctl |= FUNCTION_MASK_BIT;
         }
-        (msg_ctl as u32) << 16 | (data & u16::max_value() as u32)
+        (msg_ctl as u32) << 16 | (data & u16::MAX as u32)
     }
 
     /// Write to the MSI-X Capability Structure.

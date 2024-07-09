@@ -325,7 +325,7 @@ pub fn max<T: BitFieldSpecifier>() -> u64 {
     if T::FIELD_WIDTH < 64 {
         (1 << T::FIELD_WIDTH) - 1
     } else {
-        u64::max_value()
+        u64::MAX
     }
 }
 

@@ -60,7 +60,7 @@ pub enum P9Error {
     #[error("failed to signal used queue: {0}")]
     SignalUsedQueue(SysError),
     /// The tag for the 9P device was too large to fit in the config space.
-    #[error("P9 device tag is too long: len = {0}, max = {}", ::std::u16::MAX)]
+    #[error("P9 device tag is too long: len = {0}, max = {}", u16::MAX)]
     TagTooLong(usize),
     /// Error while polling for events.
     #[error("failed to wait for events: {0}")]
@@ -142,7 +142,7 @@ pub struct P9 {
 
 impl P9 {
     pub fn new(base_features: u64, tag: &str, p9_cfg: p9::Config) -> P9Result<P9> {
-        if tag.len() > ::std::u16::MAX as usize {
+        if tag.len() > u16::MAX as usize {
             return Err(P9Error::TagTooLong(tag.len()));
         }
 

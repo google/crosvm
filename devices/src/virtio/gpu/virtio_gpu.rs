@@ -873,7 +873,7 @@ impl VirtioGpu {
                 index
             );
             Ok(OkCapsetInfo {
-                capset_id: u32::max_value(),
+                capset_id: u32::MAX,
                 version: 0,
                 size: 0,
             })

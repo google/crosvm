@@ -217,7 +217,7 @@ impl<T: EventToken> EventContext<T> {
             // into `epoll_event` structures after the call.
             unsafe { MaybeUninit::uninit().assume_init() };
 
-        let timeout_millis = if timeout.as_secs() as i64 == i64::max_value() {
+        let timeout_millis = if timeout.as_secs() as i64 == i64::MAX {
             // We make the convenient assumption that 2^63 seconds is an effectively unbounded time
             // frame. This is meant to mesh with `wait` calling us with no timeout.
             -1
@@ -228,8 +228,8 @@ impl<T: EventToken> EventContext<T> {
                 .as_secs()
                 .checked_mul(1_000)
                 .and_then(|ms| ms.checked_add(u64::from(timeout.subsec_nanos()) / 1_000_000))
-                .unwrap_or(i32::max_value() as u64);
-            min(i32::max_value() as u64, millis) as i32
+                .unwrap_or(i32::MAX as u64);
+            min(i32::MAX as u64, millis) as i32
         };
         let ret = {
             let max_events = epoll_events.len() as c_int;

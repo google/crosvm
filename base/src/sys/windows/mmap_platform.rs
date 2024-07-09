@@ -165,8 +165,7 @@ impl MemoryMapping {
 
         // on windows, pages needed to be of fixed granular size, and the
         // maximum valid value is an i64.
-        if file_handle.1 % allocation_granularity() != 0 || file_handle.1 > i64::max_value() as u64
-        {
+        if file_handle.1 % allocation_granularity() != 0 || file_handle.1 > i64::MAX as u64 {
             return Err(Error::InvalidOffset);
         }
 
@@ -266,7 +265,7 @@ mod tests {
         let shm = SharedMemory::new("test", 1028).unwrap();
         let res = MemoryMappingBuilder::new(4096)
             .from_shared_memory(&shm)
-            .offset((i64::max_value() as u64) + 1)
+            .offset((i64::MAX as u64) + 1)
             .build()
             .unwrap_err();
         match res {

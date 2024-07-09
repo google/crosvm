@@ -1053,14 +1053,14 @@ impl WlVfd {
                 .send_vectored_with_fds(&data.get_remaining(), rds)
                 .map_err(WlError::SendVfd)?;
             // All remaining data in `data` is now considered consumed.
-            data.consume(::std::usize::MAX);
+            data.consume(usize::MAX);
             Ok(WlResp::Ok)
         } else if let Some((_, local_pipe)) = &mut self.local_pipe {
             // Impossible to send descriptors over a simple pipe.
             if !rds.is_empty() {
                 return Ok(WlResp::InvalidType);
             }
-            data.read_to(local_pipe, usize::max_value())
+            data.read_to(local_pipe, usize::MAX)
                 .map_err(WlError::WritePipe)?;
             Ok(WlResp::Ok)
         } else {
