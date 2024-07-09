@@ -353,6 +353,28 @@ impl KvmVcpu {
         // No aarch64-specific exits (for now)
         None
     }
+
+    fn get_reg_list(&self) -> Result<Vec<u64>> {
+        let mut kvm_reg_list = vec_with_array_field::<kvm_reg_list, u64>(AARCH64_MAX_REG_COUNT);
+        kvm_reg_list[0].n = AARCH64_MAX_REG_COUNT as u64;
+        let ret =
+            // SAFETY:
+            // We trust the kernel not to read/write past the end of kvm_reg_list struct.
+            unsafe { ioctl_with_mut_ref(self, KVM_GET_REG_LIST, &mut kvm_reg_list[0]) };
+        if ret < 0 {
+            return errno_result();
+        }
+        let n = kvm_reg_list[0].n;
+        assert!(
+            n <= AARCH64_MAX_REG_COUNT as u64,
+            "Get reg list returned more registers than possible"
+        );
+        // SAFETY:
+        // Mapping the unsized array to a slice is unsafe because the length isn't known.
+        // Providing the length used to create the struct guarantees the entire slice is valid.
+        let reg_list: &[u64] = unsafe { kvm_reg_list[0].reg.as_slice(n as usize) };
+        Ok(reg_list.to_vec())
+    }
 }
 
 /// KVM registers as used by the `GET_ONE_REG`/`SET_ONE_REG` ioctl API
@@ -709,35 +731,18 @@ impl VcpuAArch64 for KvmVcpu {
     }
 
     fn get_system_regs(&self) -> Result<BTreeMap<AArch64SysRegId, u64>> {
-        let mut kvm_reg_list = vec_with_array_field::<kvm_reg_list, u64>(AARCH64_MAX_REG_COUNT);
-        kvm_reg_list[0].n = AARCH64_MAX_REG_COUNT as u64;
-        let ret =
-            // SAFETY:
-            // We trust the kernel not to read/write past the end of kvm_reg_list struct.
-            unsafe { ioctl_with_mut_ref(self, KVM_GET_REG_LIST, &mut kvm_reg_list[0]) };
-        if ret < 0 {
-            return errno_result();
-        }
-        let n = kvm_reg_list[0].n;
-        assert!(
-            n <= AARCH64_MAX_REG_COUNT as u64,
-            "Get reg list returned more registers than possible"
-        );
-        // SAFETY:
-        // Mapping the unsized array to a slice is unsafe because the length isn't known.
-        // Providing the length used to create the struct guarantees the entire slice is valid.
-        let reg_list: &[u64] = unsafe { kvm_reg_list[0].reg.as_slice(n as usize) };
+        let reg_list = self.get_reg_list()?;
         let cntvct_el0: u16 = AArch64SysRegId::CNTVCT_EL0.encoded();
         let cntv_cval_el0: u16 = AArch64SysRegId::CNTV_CVAL_EL0.encoded();
         let mut sys_regs = BTreeMap::new();
         for reg in reg_list {
-            if (*reg as u32) & KVM_REG_ARM_COPROC_MASK == KVM_REG_ARM64_SYSREG {
-                if *reg as u16 == cntvct_el0 {
+            if (reg as u32) & KVM_REG_ARM_COPROC_MASK == KVM_REG_ARM64_SYSREG {
+                if reg as u16 == cntvct_el0 {
                     sys_regs.insert(
                         AArch64SysRegId::CNTV_CVAL_EL0,
                         self.get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::CNTV_CVAL_EL0))?,
                     );
-                } else if *reg as u16 == cntv_cval_el0 {
+                } else if reg as u16 == cntv_cval_el0 {
                     sys_regs.insert(
                         AArch64SysRegId::CNTVCT_EL0,
                         self.get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::CNTVCT_EL0))?,
@@ -755,31 +760,43 @@ impl VcpuAArch64 for KvmVcpu {
         Ok(sys_regs)
     }
 
-    fn hypervisor_specific_snapshot(&self) -> anyhow::Result<serde_json::Value> {
-        let mut kvm_reg_list = vec_with_array_field::<kvm_reg_list, u64>(AARCH64_MAX_REG_COUNT);
-        kvm_reg_list[0].n = AARCH64_MAX_REG_COUNT as u64;
-        let ret =
-            // SAFETY:
-            // We trust the kernel not to read/write past the end of kvm_reg_list struct.
-            unsafe { ioctl_with_mut_ref(self, KVM_GET_REG_LIST, &mut kvm_reg_list[0]) };
-        if ret < 0 {
-            return errno_result().context("failed to get registers list");
+    fn get_cache_info(&self) -> Result<BTreeMap<u8, u64>> {
+        const KVM_REG_CCSIDR: u64 = KVM_REG_ARM64 | KVM_REG_SIZE_U32 | (KVM_REG_ARM_DEMUX as u64);
+        const CCSIDR_INDEX_MASK: u64 = 0xFF;
+        let reg_list = self.get_reg_list()?;
+        let mut cache_info = BTreeMap::new();
+        for reg in reg_list {
+            if (reg & !CCSIDR_INDEX_MASK) == KVM_REG_CCSIDR {
+                let idx = reg as u8;
+                cache_info.insert(
+                    idx,
+                    self.get_one_kvm_reg_u32(KvmVcpuRegister::Ccsidr(idx))?
+                        .into(),
+                );
+            }
         }
-        let n = kvm_reg_list[0].n;
-        assert!(
-            n <= AARCH64_MAX_REG_COUNT as u64,
-            "Get reg list returned more registers than possible"
-        );
-        // SAFETY:
-        // Mapping the unsized array to a slice is unsafe because the length isn't known.
-        // Providing the length used to create the struct guarantees the entire slice is valid.
-        let reg_list: &[u64] = unsafe { kvm_reg_list[0].reg.as_slice(n as usize) };
+        Ok(cache_info)
+    }
+
+    fn set_cache_info(&self, cache_info: BTreeMap<u8, u64>) -> Result<()> {
+        for (idx, val) in cache_info {
+            self.set_one_kvm_reg_u32(
+                KvmVcpuRegister::Ccsidr(idx),
+                val.try_into()
+                    .expect("trying to set a u32 register with a u64 value"),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn hypervisor_specific_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        let reg_list = self.get_reg_list()?;
         let mut firmware_regs = BTreeMap::new();
         for reg in reg_list {
-            if (*reg as u32) & KVM_REG_ARM_COPROC_MASK == KVM_REG_ARM_FW {
+            if (reg as u32) & KVM_REG_ARM_COPROC_MASK == KVM_REG_ARM_FW {
                 firmware_regs.insert(
-                    *reg as u16,
-                    self.get_one_kvm_reg_u64(KvmVcpuRegister::Firmware(*reg as u16))?,
+                    reg as u16,
+                    self.get_one_kvm_reg_u64(KvmVcpuRegister::Firmware(reg as u16))?,
                 );
             }
         }

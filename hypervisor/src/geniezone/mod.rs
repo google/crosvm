@@ -437,6 +437,16 @@ impl VcpuAArch64 for GeniezoneVcpu {
         Err(Error::new(EINVAL))
     }
 
+    fn get_cache_info(&self) -> Result<BTreeMap<u8, u64>> {
+        error!("Geniezone: not support get_cache_info");
+        Err(Error::new(EINVAL))
+    }
+
+    fn set_cache_info(&self, _cache_info: BTreeMap<u8, u64>) -> Result<()> {
+        error!("Geniezone: not support set_cache_info");
+        Err(Error::new(EINVAL))
+    }
+
     fn hypervisor_specific_snapshot(&self) -> anyhow::Result<serde_json::Value> {
         // TODO: Geniezone not support gdb currently
         Err(anyhow::anyhow!(

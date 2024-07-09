@@ -253,6 +253,16 @@ pub trait VcpuAArch64: Vcpu {
     /// Gets the max number of hardware breakpoints.
     fn get_max_hw_bps(&self) -> Result<usize>;
 
+    /// Gets the cache architecture information for all cache levels.
+    /// The keys of the map are the lower 4 lower significant bits of CSSELR_EL1, which represents
+    /// the cache level. cache level is actually located in bits [3:1], but the value saves also
+    /// if the cache is an instruction or data.
+    /// The values of the map are CCSIDR_EL1, which is the configuration of the cache.
+    fn get_cache_info(&self) -> Result<BTreeMap<u8, u64>>;
+
+    /// Sets the cache architecture information for all cache levels.
+    fn set_cache_info(&self, cache_info: BTreeMap<u8, u64>) -> Result<()>;
+
     fn snapshot(&self) -> anyhow::Result<VcpuSnapshot> {
         let mut snap = VcpuSnapshot {
             vcpu_id: self.id(),
@@ -261,6 +271,7 @@ pub trait VcpuAArch64: Vcpu {
             pstate: self.get_one_reg(VcpuRegAArch64::Pstate)?,
             hypervisor_data: self.hypervisor_specific_snapshot()?,
             sys: self.get_system_regs()?,
+            cache_arch_info: self.get_cache_info()?,
             ..Default::default()
         };
 
@@ -290,6 +301,7 @@ pub trait VcpuAArch64: Vcpu {
         for (id, val) in &snapshot.sys {
             self.set_one_reg(VcpuRegAArch64::System(*id), *val)?;
         }
+        self.set_cache_info(snapshot.cache_arch_info.clone())?;
         self.hypervisor_specific_restore(snapshot.hypervisor_data.clone())?;
         Ok(())
     }
@@ -305,6 +317,7 @@ pub struct VcpuSnapshot {
     pub x: [u64; 31],
     pub v: [u128; 32],
     pub sys: BTreeMap<AArch64SysRegId, u64>,
+    pub cache_arch_info: BTreeMap<u8, u64>,
     pub hypervisor_data: serde_json::Value,
 }
 

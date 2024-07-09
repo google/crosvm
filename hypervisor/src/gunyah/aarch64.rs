@@ -242,6 +242,14 @@ impl VcpuAArch64 for GunyahVcpu {
         Err(Error::new(ENOTSUP))
     }
 
+    fn get_cache_info(&self) -> Result<BTreeMap<u8, u64>> {
+        Err(Error::new(ENOTSUP))
+    }
+
+    fn set_cache_info(&self, _cache_info: BTreeMap<u8, u64>) -> Result<()> {
+        Err(Error::new(ENOTSUP))
+    }
+
     fn hypervisor_specific_snapshot(&self) -> anyhow::Result<serde_json::Value> {
         unimplemented!()
     }
