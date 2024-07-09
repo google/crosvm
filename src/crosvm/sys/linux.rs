@@ -1672,11 +1672,6 @@ fn get_default_hypervisor() -> Option<HypervisorKind> {
 }
 
 pub fn run_config(cfg: Config) -> Result<ExitState> {
-    if let Some(async_executor) = cfg.async_executor {
-        Executor::set_default_executor_kind(async_executor)
-            .context("Failed to set the default async executor")?;
-    }
-
     let components = setup_vm_components(&cfg)?;
 
     let hypervisor = cfg

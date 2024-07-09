@@ -170,6 +170,12 @@ fn run_vm(cmd: RunCommand, log_config: LogConfig) -> Result<CommandStatus> {
 
     init_log(log_config, &cfg)?;
     cros_tracing::init();
+
+    if let Some(async_executor) = cfg.async_executor {
+        cros_async::Executor::set_default_executor_kind(async_executor)
+            .context("Failed to set the default async executor")?;
+    }
+
     let exit_state = crate::sys::run_config(cfg)?;
     Ok(CommandStatus::from(exit_state))
 }
