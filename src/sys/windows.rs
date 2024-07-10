@@ -116,8 +116,6 @@ use devices::virtio::vhost::user::snd::sys::windows::run_snd_device_worker;
 use devices::virtio::vhost::user::snd::sys::windows::SndSplitConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
-#[cfg(feature = "balloon")]
-use devices::virtio::BalloonMode;
 use devices::virtio::Console;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
@@ -462,11 +460,6 @@ fn create_balloon_device(
         VmMemoryClient::new(dynamic_mapping_device_tube),
         inflate_tube,
         init_balloon_size,
-        if cfg.strict_balloon {
-            BalloonMode::Strict
-        } else {
-            BalloonMode::Relaxed
-        },
         balloon_features,
         #[cfg(feature = "registered_events")]
         None,

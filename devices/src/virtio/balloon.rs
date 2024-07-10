@@ -131,7 +131,6 @@ pub enum BalloonFeatures {
 
 // These feature bits are part of the proposal:
 //  https://lists.oasis-open.org/archives/virtio-comment/202201/msg00139.html
-const VIRTIO_BALLOON_F_RESPONSIVE_DEVICE: u32 = 6; // Device actively watching guest memory
 const VIRTIO_BALLOON_F_EVENTS_VQ: u32 = 7; // Event vq is enabled
 
 // virtio_balloon_config is the balloon device configuration space defined by the virtio spec.
@@ -1307,15 +1306,6 @@ struct BalloonSnapshot {
     ws_num_bins: u8,
 }
 
-/// Operation mode of the balloon.
-#[derive(PartialEq, Eq)]
-pub enum BalloonMode {
-    /// The driver can access pages in the balloon (i.e. F_DEFLATE_ON_OOM)
-    Relaxed,
-    /// The driver cannot access pages in the balloon. Implies F_RESPONSIVE_DEVICE.
-    Strict,
-}
-
 impl Balloon {
     /// Creates a new virtio balloon device.
     /// To let Balloon able to successfully release the memory which are pinned
@@ -1328,7 +1318,6 @@ impl Balloon {
         #[cfg(windows)] vm_memory_client: VmMemoryClient,
         release_memory_tube: Option<Tube>,
         init_balloon_size: u64,
-        mode: BalloonMode,
         enabled_features: u64,
         #[cfg(feature = "registered_events")] registered_evt_q: Option<SendTube>,
         ws_num_bins: u8,
@@ -1337,12 +1326,8 @@ impl Balloon {
             | 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST
             | 1 << VIRTIO_BALLOON_F_STATS_VQ
             | 1 << VIRTIO_BALLOON_F_EVENTS_VQ
-            | enabled_features
-            | if mode == BalloonMode::Strict {
-                1 << VIRTIO_BALLOON_F_RESPONSIVE_DEVICE
-            } else {
-                1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM
-            };
+            | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM
+            | enabled_features;
 
         Ok(Balloon {
             command_tube: Some(command_tube),
@@ -1770,7 +1755,6 @@ mod tests {
                 VmMemoryClient::new(mem_client_tube_device),
                 None,
                 1024,
-                BalloonMode::Relaxed,
                 0,
                 #[cfg(feature = "registered_events")]
                 None,

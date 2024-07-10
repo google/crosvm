@@ -93,8 +93,6 @@ use devices::virtio::vhost::user::VhostUserListener;
 use devices::virtio::vhost::user::VhostUserListenerTrait;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
-#[cfg(feature = "balloon")]
-use devices::virtio::BalloonMode;
 #[cfg(feature = "pci-hotplug")]
 use devices::virtio::NetParameters;
 #[cfg(feature = "pci-hotplug")]
@@ -613,11 +611,6 @@ fn create_virtio_devices(
         devs.push(create_balloon_device(
             cfg.protection_type,
             &cfg.jail_config,
-            if cfg.strict_balloon {
-                BalloonMode::Strict
-            } else {
-                BalloonMode::Relaxed
-            },
             balloon_device_tube,
             balloon_inflate_tube,
             init_balloon_size,

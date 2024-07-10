@@ -2217,13 +2217,6 @@ pub struct RunCommand {
     /// (EXPERIMENTAL) enable split-irqchip support
     pub split_irqchip: Option<bool>,
 
-    #[cfg(feature = "balloon")]
-    #[argh(switch)]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite_option)]
-    /// don't allow guest to use pages from the balloon
-    pub strict_balloon: Option<bool>,
-
     #[argh(
         option,
         arg_name = "DOMAIN:BUS:DEVICE.FUNCTION[,vendor=NUM][,device=NUM][,class=NUM][,subsystem_vendor=NUM][,subsystem_device=NUM][,revision=NUM]"
@@ -3226,7 +3219,6 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.balloon_page_reporting = cmd.balloon_page_reporting.unwrap_or_default();
             cfg.balloon_ws_num_bins = cmd.balloon_ws_num_bins.unwrap_or(4);
             cfg.balloon_ws_reporting = cmd.balloon_ws_reporting.unwrap_or_default();
-            cfg.strict_balloon = cmd.strict_balloon.unwrap_or_default();
             cfg.init_memory = cmd.init_mem;
         }
 

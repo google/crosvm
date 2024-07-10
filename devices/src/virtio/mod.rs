@@ -45,8 +45,6 @@ pub mod vsock;
 pub use self::balloon::Balloon;
 #[cfg(feature = "balloon")]
 pub use self::balloon::BalloonFeatures;
-#[cfg(feature = "balloon")]
-pub use self::balloon::BalloonMode;
 pub use self::block::BlockAsync;
 pub use self::console::Console;
 pub use self::descriptor_chain::DescriptorChain;

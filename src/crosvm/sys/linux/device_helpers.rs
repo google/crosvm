@@ -48,8 +48,6 @@ use devices::virtio::vhost::user::NetBackend;
 use devices::virtio::vhost::user::VhostUserDeviceBuilder;
 use devices::virtio::vhost::user::VhostUserVsockDevice;
 use devices::virtio::vsock::VsockConfig;
-#[cfg(feature = "balloon")]
-use devices::virtio::BalloonMode;
 use devices::virtio::Console;
 #[cfg(feature = "net")]
 use devices::virtio::NetError;
@@ -652,7 +650,6 @@ pub fn create_vinput_device(
 pub fn create_balloon_device(
     protection_type: ProtectionType,
     jail_config: &Option<JailConfig>,
-    mode: BalloonMode,
     tube: Tube,
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
@@ -665,7 +662,6 @@ pub fn create_balloon_device(
         tube,
         inflate_tube,
         init_balloon_size,
-        mode,
         enabled_features,
         #[cfg(feature = "registered_events")]
         registered_evt_q,

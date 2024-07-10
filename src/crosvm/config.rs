@@ -834,8 +834,6 @@ pub struct Config {
     pub socket_path: Option<PathBuf>,
     #[cfg(feature = "audio")]
     pub sound: Option<PathBuf>,
-    #[cfg(feature = "balloon")]
-    pub strict_balloon: bool,
     pub stub_pci_devices: Vec<StubPciParameters>,
     pub suspended: bool,
     pub swap_dir: Option<PathBuf>,
@@ -1050,8 +1048,6 @@ impl Default for Config {
             socket_path: None,
             #[cfg(feature = "audio")]
             sound: None,
-            #[cfg(feature = "balloon")]
-            strict_balloon: false,
             stub_pci_devices: Vec::new(),
             suspended: false,
             swap_dir: None,
