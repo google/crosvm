@@ -1848,8 +1848,22 @@ pub struct RunCommand {
     )]
     #[serde(default)]
     #[merge(strategy = append)]
-    /// (EXPERIMENTAL): construct an ext2 file system on a pmem device
-    /// from the given directory.
+    /// (EXPERIMENTAL): construct an ext2 file system on a pmem
+    /// device from the given directory. The argument is the form of
+    /// "PATH[,key=value[,key=value[,...]]]".
+    /// Valid keys:
+    ///     blocks_per_group=NUM - Number of blocks in a block
+    ///       group. (default: 4096)
+    ///     inodes_per_group=NUM - Number of inodes in a block
+    ///       group. (default: 1024)
+    ///     size=BYTES - Size of the memory region allocated by this
+    ///       device. A file system will be built on the region. If
+    ///       the filesystem doesn't fit within this size, crosvm
+    ///       will fail to start with an error.
+    ///       The number of block groups in the file system is
+    ///       calculated from this value and other given parameters.
+    ///       The value of `size` must be larger than (4096 *
+    ///        blocks_per_group.) (default: 16777216)
     pub pmem_ext2: Vec<PmemExt2Option>,
 
     #[cfg(feature = "process-invariants")]
