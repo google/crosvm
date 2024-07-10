@@ -48,7 +48,7 @@ pub(crate) struct SuperBlock {
     pub free_blocks_count: u32,
     pub free_inodes_count: u32,
     _first_data_block: u32,
-    pub log_block_size: u32,
+    _log_block_size: u32,
     log_frag_size: u32,
     pub blocks_per_group: u32,
     frags_per_group: u32,
@@ -107,7 +107,7 @@ impl SuperBlock {
             blocks_count,
             free_blocks_count: 0, //blocks_count, // All blocks are free
             free_inodes_count: inodes_count, // All inodes are free
-            log_block_size,
+            _log_block_size: log_block_size,
             log_frag_size: log_block_size,
             blocks_per_group,
             frags_per_group: blocks_per_group,
@@ -128,11 +128,6 @@ impl SuperBlock {
         };
 
         Ok(sb)
-    }
-
-    #[inline]
-    pub fn block_size(&self) -> u64 {
-        1024 << self.log_block_size
     }
 
     #[inline]

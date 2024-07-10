@@ -14,5 +14,6 @@ mod fs;
 mod inode;
 mod superblock;
 
+pub use blockgroup::BLOCK_SIZE;
 pub use fs::create_ext2_region;
 pub use superblock::Config;

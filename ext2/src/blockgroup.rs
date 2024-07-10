@@ -60,10 +60,9 @@ impl<'a> GroupMetaData<'a> {
     // This data need to be copied to other block gropups' descriptor tables.
     pub fn new(arena: &'a Arena<'a>, sb: &mut SuperBlock, group_id: u16) -> Result<Self> {
         let gd_size = std::mem::size_of::<BlockGroupDescriptor>() as u32;
-        let num_blocks_for_gds =
-            (gd_size * sb.num_groups() as u32).div_ceil(sb.block_size() as u32);
+        let num_blocks_for_gds = (gd_size * sb.num_groups() as u32).div_ceil(BLOCK_SIZE as u32);
 
-        let inodes_per_block = sb.block_size() / sb.inode_size as u64;
+        let inodes_per_block = BLOCK_SIZE as u64 / sb.inode_size as u64;
         let num_blocks_for_inode_table =
             (sb.inodes_per_group as usize).div_ceil(inodes_per_block as usize);
 

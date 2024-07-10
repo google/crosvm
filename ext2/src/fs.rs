@@ -179,11 +179,6 @@ impl<'a> Ext2<'a> {
         Ok(ext2)
     }
 
-    fn block_size(&self) -> u64 {
-        // Minimal block size is 1024.
-        1024 << self.sb.log_block_size
-    }
-
     fn allocate_inode(&mut self) -> Result<InodeNum> {
         if self.sb.free_inodes_count == 0 {
             bail!(
@@ -295,8 +290,6 @@ impl<'a> Ext2<'a> {
             bail!("name length must not exceed 255: {:?}", name);
         }
 
-        let block_size = self.block_size();
-
         // Disable false-positive `clippy::map_entry`.
         // https://github.com/rust-lang/rust-clippy/issues/9470
         #[allow(clippy::map_entry)]
@@ -304,7 +297,7 @@ impl<'a> Ext2<'a> {
             let block_id = self.allocate_block()?;
             let inode = self.get_inode_mut(parent)?;
             inode.block.set_direct_blocks(&[block_id])?;
-            inode.blocks = InodeBlocksCount::from_bytes_len(block_size as u32);
+            inode.blocks = InodeBlocksCount::from_bytes_len(BLOCK_SIZE as u32);
             self.dir_entries.insert(
                 parent,
                 vec![DirEntryBlock {
@@ -328,8 +321,8 @@ impl<'a> Ext2<'a> {
             let block_id = self.allocate_block()?;
             let parent_inode = self.get_inode_mut(parent)?;
             parent_inode.block.set_block_id(idx, &block_id)?;
-            parent_inode.blocks.add(block_size as u32);
-            parent_inode.size += block_size as u32;
+            parent_inode.blocks.add(BLOCK_SIZE as u32);
+            parent_inode.size += BLOCK_SIZE as u32;
             self.dir_entries
                 .get_mut(&parent)
                 .unwrap()
@@ -389,14 +382,13 @@ impl<'a> Ext2<'a> {
         parent_inode: InodeNum,
         name: &OsStr,
     ) -> Result<()> {
-        let block_size = self.sb.block_size();
         let group_id = self.group_num_for_inode(inode_num);
         let inode = Inode::new(
             arena,
             &mut self.group_metadata[group_id],
             inode_num,
             InodeType::Directory,
-            block_size as u32,
+            BLOCK_SIZE as u32,
         )?;
         self.add_inode(inode_num, inode)?;
 
@@ -429,7 +421,6 @@ impl<'a> Ext2<'a> {
         parent_inode: InodeNum,
         path: &Path,
     ) -> Result<()> {
-        let block_size = self.sb.block_size();
         let group_id = self.group_num_for_inode(inode_num);
 
         let inode = Inode::from_metadata(
@@ -437,7 +428,7 @@ impl<'a> Ext2<'a> {
             &mut self.group_metadata[group_id],
             inode_num,
             &std::fs::metadata(path)?,
-            block_size as u32,
+            BLOCK_SIZE as u32,
             0,
             InodeBlocksCount::from_bytes_len(0),
             InodeBlock::default(),
@@ -515,16 +506,15 @@ impl<'a> Ext2<'a> {
         file_size: usize,
         file_offset: usize,
     ) -> Result<usize> {
-        let block_size = self.block_size() as usize;
         // We use a block as a table of indirect blocks.
         // So, the maximum number of blocks supported by single indirect blocks is limited by the
-        // maximum number of entries in one block, which is (block_size / 4) where 4 is the size of
+        // maximum number of entries in one block, which is (BLOCK_SIZE / 4) where 4 is the size of
         // int.
-        let max_num_blocks = block_size / 4;
-        let max_data_len = max_num_blocks * block_size;
+        let max_num_blocks = BLOCK_SIZE / 4;
+        let max_data_len = max_num_blocks * BLOCK_SIZE;
 
         let length = std::cmp::min(file_size - file_offset, max_data_len);
-        let block_num = length.div_ceil(block_size);
+        let block_num = length.div_ceil(BLOCK_SIZE);
 
         let (allocated_blocks, length) = self
             .register_mmap_file(arena, block_num, file, file_size, file_offset)
@@ -549,7 +539,6 @@ impl<'a> Ext2<'a> {
             .ok_or_else(|| anyhow!("failed to get directory name"))?;
         let file = File::open(path)?;
         let file_size = file.metadata()?.len() as usize;
-        let block_size = self.block_size() as usize;
         let mut block = InodeBlock::default();
 
         let mut written = 0;
@@ -557,7 +546,7 @@ impl<'a> Ext2<'a> {
 
         if file_size > 0 {
             let block_num = std::cmp::min(
-                file_size.div_ceil(block_size),
+                file_size.div_ceil(BLOCK_SIZE),
                 InodeBlock::NUM_DIRECT_BLOCKS,
             );
             let (allocated_blocks, len) = self
@@ -578,7 +567,7 @@ impl<'a> Ext2<'a> {
             let length =
                 self.fill_indirect_block(arena, indirect_table, &file, file_size, written)?;
             written += length;
-            used_blocks += length.div_ceil(block_size);
+            used_blocks += length.div_ceil(BLOCK_SIZE);
         }
 
         // Double-indirect data block
@@ -590,8 +579,8 @@ impl<'a> Ext2<'a> {
             used_blocks += 1;
 
             let mut indirect_blocks: Vec<BlockId> = vec![];
-            // Iterate (block_size / 4) times, as each block id is 4-byte.
-            for _ in 0..block_size / 4 {
+            // Iterate (BLOCK_SIZE / 4) times, as each block id is 4-byte.
+            for _ in 0..BLOCK_SIZE / 4 {
                 if written >= file_size {
                     break;
                 }
@@ -603,7 +592,7 @@ impl<'a> Ext2<'a> {
                     .fill_indirect_block(arena, indirect_table, &file, file_size, written)
                     .context("failed to indirect block for doubly-indirect table")?;
                 written += length;
-                used_blocks += length.div_ceil(block_size);
+                used_blocks += length.div_ceil(BLOCK_SIZE);
             }
 
             let d_table = arena.allocate_slice(d_indirect_table, 0, indirect_blocks.len() * 4)?;
@@ -614,7 +603,7 @@ impl<'a> Ext2<'a> {
             unimplemented!("Triple-indirect block is not supported");
         }
 
-        let blocks = InodeBlocksCount::from_bytes_len((used_blocks * block_size) as u32);
+        let blocks = InodeBlocksCount::from_bytes_len((used_blocks * BLOCK_SIZE) as u32);
         let group_id = self.group_num_for_inode(inode_num);
         let size = file_size as u32;
         let inode = Inode::from_metadata(
@@ -681,7 +670,7 @@ impl<'a> Ext2<'a> {
         dst: &str,
     ) -> Result<()> {
         let dst_len = dst.len();
-        if dst_len > self.block_size() as usize {
+        if dst_len > BLOCK_SIZE {
             bail!("symlink longer than block size: {:?}", dst);
         }
 
@@ -694,7 +683,6 @@ impl<'a> Ext2<'a> {
         let mut block = InodeBlock::default();
         block.set_direct_blocks(&[symlink_block])?;
 
-        let block_size = self.block_size() as u32;
         let group_id = self.group_num_for_inode(inode_num);
         let inode = Inode::from_metadata(
             arena,
@@ -703,7 +691,7 @@ impl<'a> Ext2<'a> {
             &std::fs::symlink_metadata(link)?,
             dst_len as u32,
             1, //links_count,
-            InodeBlocksCount::from_bytes_len(block_size),
+            InodeBlocksCount::from_bytes_len(BLOCK_SIZE as u32),
             block,
         )?;
         self.add_inode(inode_num, inode)?;
