@@ -230,7 +230,7 @@ pub struct CreateCompositeCommand {
     #[argh(positional, arg_name = "PATH")]
     /// image path
     pub path: String,
-    #[argh(positional, arg_name = "LABEL:PARTITION<:writable>")]
+    #[argh(positional, arg_name = "LABEL:PARTITION[:writable][:<GUID>]")]
     /// partitions
     pub partitions: Vec<String>,
 }

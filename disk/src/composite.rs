@@ -567,6 +567,7 @@ pub struct PartitionInfo {
     pub partition_type: ImagePartitionType,
     pub writable: bool,
     pub size: u64,
+    pub part_guid: Option<Uuid>,
 }
 
 /// Round `val` up to the next multiple of 2**`align_log`.
@@ -669,7 +670,7 @@ fn create_gpt_entry(partition: &PartitionInfo, offset: u64) -> GptPartitionEntry
 
     GptPartitionEntry {
         partition_type_guid: partition.partition_type.guid(),
-        unique_partition_guid: Uuid::new_v4(),
+        unique_partition_guid: partition.part_guid.unwrap_or(Uuid::new_v4()),
         first_lba: offset / SECTOR_SIZE,
         last_lba: (offset + partition.aligned_size()) / SECTOR_SIZE - 1,
         attributes: 0,
@@ -1386,6 +1387,7 @@ mod tests {
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: false,
                     size: 0,
+                    part_guid: None,
                 },
                 PartitionInfo {
                     label: "partition2".to_string(),
@@ -1393,6 +1395,7 @@ mod tests {
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: true,
                     size: 0,
+                    part_guid: Some(Uuid::from_u128(0x4049C8DC_6C2B_C740_A95A_BDAA629D4378)),
                 },
             ],
             Path::new("/zero_filler.img"),
@@ -1420,6 +1423,7 @@ mod tests {
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: false,
                     size: 0,
+                    part_guid: None,
                 },
                 PartitionInfo {
                     label: "label".to_string(),
@@ -1427,6 +1431,7 @@ mod tests {
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: true,
                     size: 0,
+                    part_guid: None,
                 },
             ],
             Path::new("/zero_filler.img"),

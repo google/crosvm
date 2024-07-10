@@ -52,6 +52,8 @@ use crosvm::cmdline::CrossPlatformCommands;
 use crosvm::cmdline::CrossPlatformDevicesCommands;
 #[cfg(windows)]
 use sys::windows::setup_metrics_reporting;
+#[cfg(feature = "composite-disk")]
+use uuid::Uuid;
 #[cfg(feature = "gpu")]
 use vm_control::client::do_gpu_display_add;
 #[cfg(feature = "gpu")]
@@ -350,20 +352,35 @@ fn modify_virtio_net(cmd: cmdline::VirtioNetCommand) -> std::result::Result<(), 
 #[cfg(feature = "composite-disk")]
 fn parse_composite_partition_arg(
     partition_arg: &str,
-) -> std::result::Result<(String, String, bool), ()> {
+) -> std::result::Result<(String, String, bool, Option<Uuid>), ()> {
     let mut partition_fields = partition_arg.split(":");
 
     let label = partition_fields.next();
     let path = partition_fields.next();
     let opt = partition_fields.next();
+    let part_guid = partition_fields.next();
 
     if let (Some(label), Some(path)) = (label, path) {
         // By default, composite disk is read-only
         let writable = match opt {
             None => false,
-            Some(opt) => opt.contains("writable"),
+            Some("") => false,
+            Some("writable") => true,
+            Some(value) => {
+                error!(
+                    "Unrecognized option '{}'. Expected 'writable' or nothing.",
+                    value
+                );
+                return Err(());
+            }
         };
-        Ok((label.to_owned(), path.to_owned(), writable))
+
+        let part_guid = part_guid
+            .map(Uuid::parse_str)
+            .transpose()
+            .map_err(|e| error!("Invalid partition GUID: {}", e))?;
+
+        Ok((label.to_owned(), path.to_owned(), writable, part_guid))
     } else {
         error!(
             "Must specify label and path for partition '{}', like LABEL:PARTITION",
@@ -430,7 +447,7 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
         .partitions
         .into_iter()
         .map(|partition_arg| {
-            let (label, path, writable) = parse_composite_partition_arg(&partition_arg)?;
+            let (label, path, writable, part_guid) = parse_composite_partition_arg(&partition_arg)?;
 
             let partition_file =
                 File::open(&path).map_err(|e| error!("Failed to open partition image: {}", e))?;
@@ -453,6 +470,7 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
                 partition_type: ImagePartitionType::LinuxFilesystem,
                 writable,
                 size,
+                part_guid,
             })
         })
         .collect::<Result<Vec<PartitionInfo>, ()>>()?;
@@ -1019,7 +1037,8 @@ mod tests {
             Ok((
                 String::from("LABEL1"),
                 String::from("/partition1.img"),
-                true
+                true,
+                None
             ))
         );
 
@@ -1030,9 +1049,41 @@ mod tests {
             Ok((
                 String::from("LABEL2"),
                 String::from("/partition2.img"),
-                false
+                false,
+                None
             ))
         );
+
+        let arg3 =
+            String::from("LABEL3:/partition3.img:writable:4049C8DC-6C2B-C740-A95A-BDAA629D4378");
+        let res3 = parse_composite_partition_arg(&arg3);
+        assert_eq!(
+            res3,
+            Ok((
+                String::from("LABEL3"),
+                String::from("/partition3.img"),
+                true,
+                Some(Uuid::from_u128(0x4049C8DC_6C2B_C740_A95A_BDAA629D4378))
+            ))
+        );
+
+        // third argument is an empty string. writable: false.
+        let arg4 = String::from("LABEL4:/partition4.img::4049C8DC-6C2B-C740-A95A-BDAA629D4378");
+        let res4 = parse_composite_partition_arg(&arg4);
+        assert_eq!(
+            res4,
+            Ok((
+                String::from("LABEL4"),
+                String::from("/partition4.img"),
+                false,
+                Some(Uuid::from_u128(0x4049C8DC_6C2B_C740_A95A_BDAA629D4378))
+            ))
+        );
+
+        // third argument is not "writable" or an empty string
+        let arg5 = String::from("LABEL5:/partition5.img:4049C8DC-6C2B-C740-A95A-BDAA629D4378");
+        let res5 = parse_composite_partition_arg(&arg5);
+        assert_eq!(res5, Err(()));
     }
 
     #[test]
