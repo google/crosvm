@@ -55,6 +55,7 @@ use devices::virtio::NetError;
 use devices::virtio::NetParameters;
 #[cfg(feature = "net")]
 use devices::virtio::NetParametersMode;
+use devices::virtio::PmemConfig;
 use devices::virtio::VhostUserFrontend;
 use devices::virtio::VirtioDevice;
 use devices::virtio::VirtioDeviceType;
@@ -1169,23 +1170,25 @@ pub fn create_pmem_device(
         arena
     };
 
-    let mapping_address = resources
-        .allocate_mmio(
-            arena_size,
-            Alloc::PmemDevice(index),
-            format!("pmem_disk_image_{}", index),
-            AllocOptions::new()
+    let mapping_address = GuestAddress(
+        resources
+            .allocate_mmio(
+                arena_size,
+                Alloc::PmemDevice(index),
+                format!("pmem_disk_image_{}", index),
+                AllocOptions::new()
                 .top_down(true)
                 .prefetchable(true)
                 // Linux kernel requires pmem namespaces to be 128 MiB aligned.
                 // cf. https://github.com/pmem/ndctl/issues/76
                 .align(128 * 1024 * 1024), /* 128 MiB */
-        )
-        .context("failed to allocate memory for pmem device")?;
+            )
+            .context("failed to allocate memory for pmem device")?,
+    );
 
-    let slot = vm
+    let mapping_arena_slot = vm
         .add_memory_region(
-            GuestAddress(mapping_address),
+            mapping_address,
             Box::new(arena),
             /* read_only = */ pmem.ro,
             /* log_dirty_pages = */ false,
@@ -1195,13 +1198,15 @@ pub fn create_pmem_device(
 
     let dev = virtio::Pmem::new(
         virtio::base_features(protection_type),
-        Some(fd),
-        GuestAddress(mapping_address),
-        slot,
-        arena_size,
-        pmem_device_tube,
-        pmem.swap_interval,
-        !pmem.ro,
+        PmemConfig {
+            disk_image: Some(fd),
+            mapping_address,
+            mapping_arena_slot,
+            mapping_size: arena_size,
+            pmem_device_tube,
+            swap_interval: pmem.swap_interval,
+            mapping_writable: !pmem.ro,
+        },
     )
     .context("failed to create pmem device")?;
 
@@ -1226,25 +1231,27 @@ pub fn create_pmem_ext2_device(
         size: opts.size,
     };
     let arena = ext2::create_ext2_region(&cfg, Some(opts.path.as_path()))?;
-    let arena_size = arena.size() as u64;
+    let mapping_size = arena.size() as u64;
 
-    let mapping_address = resources
-        .allocate_mmio(
-            arena_size,
-            Alloc::PmemDevice(index),
-            format!("pmem_ext2_image_{}", index),
-            AllocOptions::new()
+    let mapping_address = GuestAddress(
+        resources
+            .allocate_mmio(
+                mapping_size,
+                Alloc::PmemDevice(index),
+                format!("pmem_ext2_image_{}", index),
+                AllocOptions::new()
                 .top_down(true)
                 .prefetchable(true)
                 // 2MB alignment for DAX
                 // cf. https://docs.pmem.io/persistent-memory/getting-started-guide/creating-development-environments/linux-environments/advanced-topics/i-o-alignment-considerations#verifying-io-alignment
                 .align(2 * 1024 * 1024),
-        )
-        .context("failed to allocate memory for pmem device")?;
+            )
+            .context("failed to allocate memory for pmem device")?,
+    );
 
-    let slot = vm
+    let mapping_arena_slot = vm
         .add_memory_region(
-            GuestAddress(mapping_address),
+            mapping_address,
             Box::new(arena),
             /* read_only= */ true,
             /* log_dirty_pages= */ false,
@@ -1254,13 +1261,15 @@ pub fn create_pmem_ext2_device(
 
     let dev = virtio::Pmem::new(
         virtio::base_features(protection_type),
-        None,
-        GuestAddress(mapping_address),
-        slot,
-        arena_size,
-        pmem_device_tube,
-        /* swap_interval= */ None,
-        /* mapping_writable= */ false,
+        PmemConfig {
+            disk_image: None,
+            mapping_address,
+            mapping_arena_slot,
+            mapping_size,
+            pmem_device_tube,
+            swap_interval: None,
+            mapping_writable: false,
+        },
     )
     .context("failed to create pmem device")?;
 
