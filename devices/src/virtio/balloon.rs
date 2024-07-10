@@ -108,6 +108,16 @@ const QUEUE_SIZES: &[u16] = &[
     QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE,
 ];
 
+// Virtqueue indexes
+const INFLATEQ: usize = 0;
+const DEFLATEQ: usize = 1;
+const STATSQ: usize = 2;
+const _FREE_PAGE_VQ: usize = 3;
+const REPORTING_VQ: usize = 4;
+const EVENT_VQ: usize = 5;
+const WS_DATA_VQ: usize = 6;
+const WS_OP_VQ: usize = 7;
+
 const VIRTIO_BALLOON_PFN_SHIFT: u32 = 12;
 const VIRTIO_BALLOON_PF_SIZE: u64 = 1 << VIRTIO_BALLOON_PFN_SHIFT;
 
@@ -1373,29 +1383,6 @@ impl Balloon {
         }
     }
 
-    fn num_expected_queues(acked_features: u64) -> usize {
-        // at minimum we have inflate and deflate vqueues.
-        let mut num_queues = 2;
-        // stats vqueue
-        if acked_features & (1 << VIRTIO_BALLOON_F_STATS_VQ) != 0 {
-            num_queues += 1;
-        }
-        // events vqueue
-        if acked_features & (1 << VIRTIO_BALLOON_F_EVENTS_VQ) != 0 {
-            num_queues += 1;
-        }
-        // page reporting vqueue
-        if acked_features & (1 << VIRTIO_BALLOON_F_PAGE_REPORTING) != 0 {
-            num_queues += 1;
-        }
-        // working set vqueues
-        if acked_features & (1 << VIRTIO_BALLOON_F_WS_REPORTING) != 0 {
-            num_queues += 2;
-        }
-
-        num_queues
-    }
-
     fn stop_worker(&mut self) -> StoppedWorker<PausedQueues> {
         if let Some(worker_thread) = self.worker_thread.take() {
             let worker_ret = worker_thread.stop();
@@ -1427,34 +1414,49 @@ impl Balloon {
         &self,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<BalloonQueues> {
-        let expected_queues = Balloon::num_expected_queues(self.acked_features);
-        if queues.len() != expected_queues {
-            return Err(anyhow!(
-                "expected {} queues, got {}",
-                expected_queues,
-                queues.len()
-            ));
+        fn pop_queue(
+            queues: &mut BTreeMap<usize, Queue>,
+            expected_index: usize,
+            name: &str,
+        ) -> anyhow::Result<Queue> {
+            let (queue_index, queue) = queues
+                .pop_first()
+                .with_context(|| format!("missing {}", name))?;
+
+            if queue_index == expected_index {
+                debug!("{name} index {queue_index}");
+            } else {
+                warn!("expected {name} index {expected_index}, got {queue_index}");
+            }
+
+            Ok(queue)
         }
 
         // WARNING: We use `pop_first` instead of explicitly using the indices from the virtio spec
-        // because the Linux virtio drivers only "allocates" queue indices that are used.
-        let inflate_queue = queues.pop_first().unwrap().1;
-        let deflate_queue = queues.pop_first().unwrap().1;
+        // because the Linux virtio drivers only "allocates" queue indices that are used, so queues
+        // need to be removed in order of ascending virtqueue index.
+        let inflate_queue = pop_queue(&mut queues, INFLATEQ, "inflateq")?;
+        let deflate_queue = pop_queue(&mut queues, DEFLATEQ, "deflateq")?;
         let mut queue_struct = BalloonQueues::new(inflate_queue, deflate_queue);
 
         if self.acked_features & (1 << VIRTIO_BALLOON_F_STATS_VQ) != 0 {
-            queue_struct.stats = Some(queues.pop_first().unwrap().1);
+            queue_struct.stats = Some(pop_queue(&mut queues, STATSQ, "statsq")?);
         }
         if self.acked_features & (1 << VIRTIO_BALLOON_F_PAGE_REPORTING) != 0 {
-            queue_struct.reporting = Some(queues.pop_first().unwrap().1);
+            queue_struct.reporting = Some(pop_queue(&mut queues, REPORTING_VQ, "reporting_vq")?);
         }
         if self.acked_features & (1 << VIRTIO_BALLOON_F_EVENTS_VQ) != 0 {
-            queue_struct.events = Some(queues.pop_first().unwrap().1);
+            queue_struct.events = Some(pop_queue(&mut queues, EVENT_VQ, "event_vq")?);
         }
         if self.acked_features & (1 << VIRTIO_BALLOON_F_WS_REPORTING) != 0 {
-            queue_struct.ws_data = Some(queues.pop_first().unwrap().1);
-            queue_struct.ws_op = Some(queues.pop_first().unwrap().1);
+            queue_struct.ws_data = Some(pop_queue(&mut queues, WS_DATA_VQ, "ws_data_vq")?);
+            queue_struct.ws_op = Some(pop_queue(&mut queues, WS_OP_VQ, "ws_op_vq")?);
         }
+
+        if !queues.is_empty() {
+            return Err(anyhow!("unexpected queues {:?}", queues.into_keys()));
+        }
+
         Ok(queue_struct)
     }
 
@@ -1696,39 +1698,6 @@ mod tests {
         assert_eq!(
             addrs[1].0,
             GuestAddress(0xaa55aa55u64 << VIRTIO_BALLOON_PFN_SHIFT)
-        );
-    }
-
-    #[test]
-    fn num_expected_queues() {
-        let to_feature_bits =
-            |features: &[u32]| -> u64 { features.iter().fold(0, |acc, f| acc | (1_u64 << f)) };
-
-        assert_eq!(2, Balloon::num_expected_queues(0));
-        assert_eq!(
-            2,
-            Balloon::num_expected_queues(to_feature_bits(&[VIRTIO_BALLOON_F_MUST_TELL_HOST]))
-        );
-        assert_eq!(
-            3,
-            Balloon::num_expected_queues(to_feature_bits(&[VIRTIO_BALLOON_F_STATS_VQ]))
-        );
-        assert_eq!(
-            5,
-            Balloon::num_expected_queues(to_feature_bits(&[
-                VIRTIO_BALLOON_F_STATS_VQ,
-                VIRTIO_BALLOON_F_EVENTS_VQ,
-                VIRTIO_BALLOON_F_PAGE_REPORTING
-            ]))
-        );
-        assert_eq!(
-            7,
-            Balloon::num_expected_queues(to_feature_bits(&[
-                VIRTIO_BALLOON_F_STATS_VQ,
-                VIRTIO_BALLOON_F_EVENTS_VQ,
-                VIRTIO_BALLOON_F_PAGE_REPORTING,
-                VIRTIO_BALLOON_F_WS_REPORTING
-            ]))
         );
     }
 
