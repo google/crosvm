@@ -856,7 +856,8 @@ struct BalloonQueues {
     stats: Option<Queue>,
     reporting: Option<Queue>,
     events: Option<Queue>,
-    ws: (Option<Queue>, Option<Queue>),
+    ws_data: Option<Queue>,
+    ws_op: Option<Queue>,
 }
 
 impl BalloonQueues {
@@ -867,7 +868,8 @@ impl BalloonQueues {
             stats: None,
             reporting: None,
             events: None,
-            ws: (None, None),
+            ws_data: None,
+            ws_op: None,
         }
     }
 }
@@ -879,7 +881,8 @@ struct PausedQueues {
     stats: Option<Queue>,
     reporting: Option<Queue>,
     events: Option<Queue>,
-    ws: (Option<Queue>, Option<Queue>),
+    ws_data: Option<Queue>,
+    ws_op: Option<Queue>,
 }
 
 impl PausedQueues {
@@ -890,7 +893,8 @@ impl PausedQueues {
             stats: None,
             reporting: None,
             events: None,
-            ws: (None, None),
+            ws_data: None,
+            ws_op: None,
         }
     }
 }
@@ -912,8 +916,8 @@ impl From<Box<PausedQueues>> for BTreeMap<usize, Queue> {
         apply_if_some(queues.stats, |stats| ret.push(stats));
         apply_if_some(queues.reporting, |reporting| ret.push(reporting));
         apply_if_some(queues.events, |events| ret.push(events));
-        apply_if_some(queues.ws.0, |ws_data| ret.push(ws_data));
-        apply_if_some(queues.ws.1, |ws_op| ret.push(ws_op));
+        apply_if_some(queues.ws_data, |ws_data| ret.push(ws_data));
+        apply_if_some(queues.ws_op, |ws_op| ret.push(ws_op));
         // WARNING: We don't use the indices from the virito spec on purpose, see comment in
         // get_queues_from_map for the rationale.
         ret.into_iter().enumerate().collect()
@@ -940,7 +944,8 @@ fn run_worker(
     stats_queue: Option<Queue>,
     reporting_queue: Option<Queue>,
     events_queue: Option<Queue>,
-    ws_queues: (Option<Queue>, Option<Queue>),
+    ws_data_queue: Option<Queue>,
+    ws_op_queue: Option<Queue>,
     command_tube: Tube,
     #[cfg(windows)] vm_memory_client: VmMemoryClient,
     release_memory_tube: Option<Tube>,
@@ -1074,8 +1079,8 @@ fn run_worker(
 
         // If VIRTIO_BALLOON_F_WS_REPORTING is set 2 queues must handled - one for WS data and one
         // for WS notifications.
-        let has_ws_data_queue = ws_queues.0.is_some();
-        let ws_data = if let Some(ws_data_queue) = ws_queues.0 {
+        let has_ws_data_queue = ws_data_queue.is_some();
+        let ws_data = if let Some(ws_data_queue) = ws_data_queue {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             let ws_data_queue_evt = ws_data_queue
                 .event()
@@ -1099,8 +1104,8 @@ fn run_worker(
         pin_mut!(ws_data);
 
         let (ws_op_tx, ws_op_rx) = mpsc::channel::<WSOp>(1);
-        let has_ws_op_queue = ws_queues.1.is_some();
-        let ws_op = if let Some(ws_op_queue) = ws_queues.1 {
+        let has_ws_op_queue = ws_op_queue.is_some();
+        let ws_op = if let Some(ws_op_queue) = ws_op_queue {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             let ws_op_queue_evt = ws_op_queue
                 .event()
@@ -1221,10 +1226,10 @@ fn run_worker(
                 paused_queues.stats = Some(stats.await);
             }
             if has_ws_data_queue {
-                paused_queues.ws.0 = Some(ws_data.await.context("failed to stop ws_data queue")?);
+                paused_queues.ws_data = Some(ws_data.await.context("failed to stop ws_data queue")?);
             }
             if has_ws_op_queue {
-                paused_queues.ws.1 = Some(ws_op.await.context("failed to stop ws_op queue")?);
+                paused_queues.ws_op = Some(ws_op.await.context("failed to stop ws_op queue")?);
             }
             Ok(paused_queues)
         });
@@ -1447,10 +1452,8 @@ impl Balloon {
             queue_struct.events = Some(queues.pop_first().unwrap().1);
         }
         if self.acked_features & (1 << VIRTIO_BALLOON_F_WS_REPORTING) != 0 {
-            queue_struct.ws = (
-                Some(queues.pop_first().unwrap().1),
-                Some(queues.pop_first().unwrap().1),
-            );
+            queue_struct.ws_data = Some(queues.pop_first().unwrap().1);
+            queue_struct.ws_op = Some(queues.pop_first().unwrap().1);
         }
         Ok(queue_struct)
     }
@@ -1487,7 +1490,8 @@ impl Balloon {
                 queues.stats,
                 queues.reporting,
                 queues.events,
-                queues.ws,
+                queues.ws_data,
+                queues.ws_op,
                 command_tube,
                 #[cfg(windows)]
                 vm_memory_client,
