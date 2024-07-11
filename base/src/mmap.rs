@@ -30,12 +30,6 @@ use crate::VolatileMemoryError;
 use crate::VolatileMemoryResult;
 use crate::VolatileSlice;
 
-// TODO: Remove once available in libc bindings
-#[cfg(target_os = "android")]
-const _SC_LEVEL1_DCACHE_LINESIZE: i32 = 0x0094;
-#[cfg(target_os = "linux")]
-use libc::_SC_LEVEL1_DCACHE_LINESIZE;
-
 static CACHELINE_SIZE: OnceLock<usize> = OnceLock::new();
 
 #[allow(unused_assignments)]
@@ -43,6 +37,12 @@ fn get_cacheline_size_once() -> usize {
     let mut assume_reason: &str = "unknown";
     cfg_if::cfg_if! {
         if #[cfg(all(any(target_os = "android", target_os = "linux"), not(target_env = "musl")))] {
+            // TODO: Remove once available in libc bindings
+            #[cfg(target_os = "android")]
+            const _SC_LEVEL1_DCACHE_LINESIZE: i32 = 0x0094;
+            #[cfg(target_os = "linux")]
+            use libc::_SC_LEVEL1_DCACHE_LINESIZE;
+
             // SAFETY:
             // Safe because we check the return value for errors or unsupported requests
             let linesize = unsafe { libc::sysconf(_SC_LEVEL1_DCACHE_LINESIZE) };
