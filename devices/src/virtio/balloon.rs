@@ -1220,11 +1220,11 @@ fn run_worker(
             if has_stats_queue {
                 paused_queues.stats = Some(stats.await);
             }
-            if has_ws_op_queue {
-                paused_queues.ws.0 = Some(ws_op.await.context("failed to stop ws_op queue")?);
-            }
             if has_ws_data_queue {
-                paused_queues.ws.1 = Some(ws_data.await.context("failed to stop ws_data queue")?);
+                paused_queues.ws.0 = Some(ws_data.await.context("failed to stop ws_data queue")?);
+            }
+            if has_ws_op_queue {
+                paused_queues.ws.1 = Some(ws_op.await.context("failed to stop ws_op queue")?);
             }
             Ok(paused_queues)
         });
