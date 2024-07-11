@@ -69,13 +69,15 @@ machine. The following example shows how to run GL and Vulkan apps with `virtio-
 `gfxstream-vulkan`. Full windowing will only work on platforms that support `dma_buf` and
 `dma_fence`.
 
+Only headless apps are likely to work on Nvidia, and requires
+[this change](https://crrev.com/c/5698371).
+
 ## Build GPU-enabled server
 
 First install [libaemu](#install-libaemu) and the [gfxstream-host](#install-gfxstream-host), then:
 
 ```sh
 cd $(crosvm_dir)/rutabaga_gfx/kumquat/server/
-export RUSTFLAGS="--cfg gfxstream_unstable"
 cargo build --features=gfxstream
 ```
 
@@ -112,6 +114,30 @@ In another terminal, run:
 export MESA_LOADER_DRIVER_OVERRIDE=zink
 export VK_ICD_FILENAMES=$(gfxstream_dir)/guest-build/guest/vulkan/gfxstream_vk_devenv_icd.x86_64.json
 vkcube
+```
+
+# Linux guests
+
+To test gfxstream with Debian guests, make sure your display environment is headless.
+
+```
+systemctl set-default multi-user.target
+```
+
+Build gfxstream-vk:
+
+```sh
+cd $(gfxstream_dir)
+meson setup guest-build/ -Dgfxstream-build=guest
+ninja -C guest-build/
+```
+
+Start the compositor:
+
+```sh
+export MESA_LOADER_DRIVER_OVERRIDE=zink
+export VK_ICD_FILENAMES=$(gfxstream_dir)/guest-build/guest/vulkan/gfxstream_vk_devenv_icd.x86_64.json
+weston --backend=drm
 ```
 
 # Contributing to gfxstream
