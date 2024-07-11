@@ -99,6 +99,21 @@ unsafe impl MappedRegion for VulkanoMapping {
     fn size(&self) -> usize {
         self.size
     }
+
+    /// Returns rutabaga mapping representation of the region
+    fn as_rutabaga_mapping(&self) -> RutabagaMapping {
+        let ptr: u64 = unsafe {
+            // Will not panic since the requested range of the device memory was verified on
+            // creation
+            let x = self.mapped_memory.write(0..self.size as u64).unwrap();
+            x.as_mut_ptr() as u64
+        };
+
+        RutabagaMapping {
+            ptr,
+            size: self.size as u64,
+        }
+    }
 }
 
 trait DeviceExt {

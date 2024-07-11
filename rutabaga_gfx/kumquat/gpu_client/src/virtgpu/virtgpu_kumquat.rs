@@ -15,8 +15,11 @@ use rutabaga_gfx::kumquat_gpu_protocol::*;
 use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaError;
 use rutabaga_gfx::RutabagaFromRawDescriptor;
+use rutabaga_gfx::RutabagaGralloc;
+use rutabaga_gfx::RutabagaGrallocBackendFlags;
 use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::RutabagaIntoRawDescriptor;
+use rutabaga_gfx::RutabagaMappedRegion;
 use rutabaga_gfx::RutabagaMapping;
 use rutabaga_gfx::RutabagaMemoryMapping;
 use rutabaga_gfx::RutabagaRawDescriptor;
@@ -25,6 +28,7 @@ use rutabaga_gfx::RutabagaResult;
 use rutabaga_gfx::RutabagaSharedMemory;
 use rutabaga_gfx::RutabagaStream;
 use rutabaga_gfx::RutabagaWriter;
+use rutabaga_gfx::VulkanInfo;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE_HOST_SHAREABLE;
 use rutabaga_gfx::RUTABAGA_FLAG_INFO_RING_IDX;
@@ -34,22 +38,33 @@ use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD;
 
 use crate::virtgpu::defines::*;
 
+const VK_ICD_FILENAMES: &str = "VK_ICD_FILENAMES";
+
 pub struct VirtGpuResource {
     resource_id: u32,
     size: usize,
     handle: RutabagaHandle,
-    mapping: Option<RutabagaMemoryMapping>,
     attached_fences: Vec<RutabagaHandle>,
+    vulkan_info: VulkanInfo,
+    system_mapping: Option<RutabagaMemoryMapping>,
+    gpu_mapping: Option<Box<dyn RutabagaMappedRegion>>,
 }
 
 impl VirtGpuResource {
-    pub fn new(resource_id: u32, size: usize, handle: RutabagaHandle) -> VirtGpuResource {
+    pub fn new(
+        resource_id: u32,
+        size: usize,
+        handle: RutabagaHandle,
+        vulkan_info: VulkanInfo,
+    ) -> VirtGpuResource {
         VirtGpuResource {
             resource_id,
             size,
             handle,
-            mapping: None,
             attached_fences: Vec::new(),
+            vulkan_info,
+            system_mapping: None,
+            gpu_mapping: None,
         }
     }
 }
@@ -61,6 +76,7 @@ pub struct VirtGpuKumquat {
     stream: RutabagaStream,
     capsets: Map<u32, Vec<u8>>,
     resources: Map<u32, VirtGpuResource>,
+    gralloc_opt: Option<RutabagaGralloc>,
 }
 
 impl VirtGpuKumquat {
@@ -122,6 +138,7 @@ impl VirtGpuKumquat {
             stream,
             capsets,
             resources: Default::default(),
+            gralloc_opt: None,
         })
     }
 
@@ -210,7 +227,7 @@ impl VirtGpuKumquat {
         let resource = match protocols.remove(0) {
             KumquatGpuProtocol::RespResourceCreate(resp, handle) => {
                 let size: usize = create_3d.size.try_into()?;
-                VirtGpuResource::new(resp.resource_id, size, handle)
+                VirtGpuResource::new(resp.resource_id, size, handle, resp.vulkan_info)
             }
             _ => return Err(RutabagaError::Unsupported),
         };
@@ -268,7 +285,7 @@ impl VirtGpuKumquat {
         let resource = match protocols.remove(0) {
             KumquatGpuProtocol::RespResourceCreate(resp, handle) => {
                 let size: usize = create_blob.size.try_into()?;
-                VirtGpuResource::new(resp.resource_id, size, handle)
+                VirtGpuResource::new(resp.resource_id, size, handle, resp.vulkan_info)
             }
             _ => {
                 return Err(RutabagaError::Unsupported);
@@ -308,21 +325,50 @@ impl VirtGpuKumquat {
             .get_mut(&bo_handle)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        if let Some(ref mapping) = resource.mapping {
-            let rutabaga_mapping = mapping.as_rutabaga_mapping();
+        if let Some(ref system_mapping) = resource.system_mapping {
+            let rutabaga_mapping = system_mapping.as_rutabaga_mapping();
+            Ok(rutabaga_mapping)
+        } else if let Some(ref gpu_mapping) = resource.gpu_mapping {
+            let rutabaga_mapping = gpu_mapping.as_rutabaga_mapping();
             Ok(rutabaga_mapping)
         } else {
             let clone = resource.handle.try_clone()?;
 
-            let mapping = RutabagaMemoryMapping::from_safe_descriptor(
-                clone.os_handle,
-                resource.size,
-                RUTABAGA_MAP_CACHE_CACHED | RUTABAGA_MAP_ACCESS_RW,
-            )?;
+            if clone.handle_type == RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD {
+                if self.gralloc_opt.is_none() {
+                    // The idea is to make sure the gfxstream ICD isn't loaded when gralloc starts
+                    // up. The Nvidia ICD should be loaded.
+                    let vk_driver = std::env::var(VK_ICD_FILENAMES).unwrap();
+                    std::env::remove_var(VK_ICD_FILENAMES);
+                    self.gralloc_opt =
+                        Some(RutabagaGralloc::new(RutabagaGrallocBackendFlags::new())?);
+                    std::env::set_var(VK_ICD_FILENAMES, vk_driver);
+                }
 
-            let rutabaga_mapping = mapping.as_rutabaga_mapping();
-            resource.mapping = Some(mapping);
-            Ok(rutabaga_mapping)
+                if let Some(ref mut gralloc) = self.gralloc_opt {
+                    let region = gralloc.import_and_map(
+                        clone,
+                        resource.vulkan_info,
+                        resource.size as u64,
+                    )?;
+
+                    let rutabaga_mapping = region.as_rutabaga_mapping();
+                    resource.gpu_mapping = Some(region);
+                    Ok(rutabaga_mapping)
+                } else {
+                    return Err(RutabagaError::SpecViolation("no gralloc"));
+                }
+            } else {
+                let mapping = RutabagaMemoryMapping::from_safe_descriptor(
+                    clone.os_handle,
+                    resource.size,
+                    RUTABAGA_MAP_CACHE_CACHED | RUTABAGA_MAP_ACCESS_RW,
+                )?;
+
+                let rutabaga_mapping = mapping.as_rutabaga_mapping();
+                resource.system_mapping = Some(mapping);
+                Ok(rutabaga_mapping)
+            }
         }
     }
 
@@ -332,7 +378,8 @@ impl VirtGpuKumquat {
             .get_mut(&bo_handle)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        resource.mapping = None;
+        resource.system_mapping = None;
+        resource.gpu_mapping = None;
         Ok(())
     }
 
@@ -582,7 +629,12 @@ impl VirtGpuKumquat {
 
         self.stream
             .write(KumquatGpuProtocolWrite::Cmd(attach_resource))?;
-        let resource = VirtGpuResource::new(*resource_handle, VIRTGPU_KUMQUAT_PAGE_SIZE, handle);
+        let resource = VirtGpuResource::new(
+            *resource_handle,
+            VIRTGPU_KUMQUAT_PAGE_SIZE,
+            handle,
+            Default::default(),
+        );
 
         *bo_handle = self.allocate_id();
         // Should ask the server about the size long-term.
