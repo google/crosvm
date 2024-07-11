@@ -61,8 +61,11 @@ you wish to start fresh, use the `--clean` flag.
 
 ## Building a binary
 
-If you simply want to try crosvm, run `cargo build`. Then the binary is generated at
-`./target/debug/crosvm`. Now you can move to [Example Usage](../running_crosvm/example_usage.md).
+If you simply want to try crosvm, run `cargo build`. Then the executable is generated at
+`./target/debug/crosvm`. In case you are using development container, the executable will be inside
+the dev container at `/scratch/cargo_target/debug/crosvm`.
+
+Now you can move to [Example Usage](../running_crosvm/example_usage.md).
 
 If you want to enable [additional features](../running_crosvm/features.md), use the `--features`
 flag. (e.g. `cargo build --features=gdb`)
@@ -129,7 +132,7 @@ trade off speed and accuracy.
 ## Cross-compilation
 
 Crosvm is built and tested on x86, aarch64, armhf, and riscv64. Your system needs some setup work to
-be able to cross-comple for other architectures, hence it is recommended to use the
+be able to cross-compile for other architectures, hence it is recommended to use the
 [development container](#using-the-development-container), which will have everything configured.
 
 Note: Cross-compilation is **not supported on gLinux**. Please use the development container.
@@ -175,6 +178,18 @@ example config to your cargo configuration:
 
 ```sh
 cat .cargo/config.debian.toml >> ${CARGO_HOME:-~/.cargo}/config.toml
+```
+
+**Note**
+
+In case of cross-compilation, crosvm executable would be at `./target/debug/<target>/crosvm`. If
+cross-compiling inside development container, the executable would be inside dev container at
+`/scratch/cargo_target/<target>/debug/crosvm`.
+
+e.g For aarch64, `target` will be `aarch64-unknown-linux-gnu` and you can build using
+
+```sh
+cargo build --target aarch64-unknown-linux-gnu
 ```
 
 ## Known issues
