@@ -121,7 +121,7 @@ impl Vmwdt {
         reset_evt_wrtube: SendTube,
         evt: IrqEdgeEvent,
         vm_ctrl_tube: Tube,
-    ) -> Vmwdt {
+    ) -> anyhow::Result<Vmwdt> {
         let mut vec = Vec::new();
         for _ in 0..cpu_count {
             vec.push(VmwdtPerCpu {
@@ -130,7 +130,7 @@ impl Vmwdt {
                 process_id: 0,
                 is_enabled: false,
                 stall_evt_ppi_triggered: false,
-                timer: Timer::new().unwrap(),
+                timer: Timer::new().context("failed to create Timer")?,
                 timer_freq_hz: 0,
                 next_expiration_interval_ms: 0,
                 repeating_interval: None,
@@ -138,14 +138,14 @@ impl Vmwdt {
         }
         let vm_wdts = Arc::new(Mutex::new(vec));
 
-        Vmwdt {
+        Ok(Vmwdt {
             vm_wdts,
             worker_thread: None,
             reset_evt_wrtube,
             activated: false,
             stall_evt: evt,
             vm_ctrl_tube: Some(vm_ctrl_tube),
-        }
+        })
     }
 
     pub fn vmwdt_worker_thread(
@@ -155,18 +155,20 @@ impl Vmwdt {
         stall_evt: IrqEdgeEvent,
         vm_ctrl_tube: Tube,
         worker_started_send: Option<SendTube>,
-    ) -> Tube {
+    ) -> anyhow::Result<Tube> {
         let msg = vm_control::VmRequest::VcpuPidTid;
         vm_ctrl_tube
             .send(&msg)
-            .expect("failed to send request to fetch Vcpus PID and TID");
+            .context("failed to send request to fetch Vcpus PID and TID")?;
         let vcpus_pid_tid: BTreeMap<usize, (u32, u32)> = match vm_ctrl_tube
             .recv()
-            .expect("failed to receive vmwdt pids and tids")
+            .context("failed to receive vmwdt pids and tids")?
         {
             VmResponse::VcpuPidTidResponse { pid_tid_map } => pid_tid_map,
             _ => {
-                panic!("Receive incorrect message type when trying to get vcpu pid tid map");
+                return Err(anyhow::anyhow!(
+                    "Receive incorrect message type when trying to get vcpu pid tid map"
+                ));
             }
         };
         {
@@ -174,7 +176,7 @@ impl Vmwdt {
             for (i, vmwdt) in (*vm_wdts).iter_mut().enumerate() {
                 let pid_tid = vcpus_pid_tid
                     .get(&i)
-                    .expect("vmwdts empty, which could indicate no vcpus are initialized");
+                    .context("vmwdts empty, which could indicate no vcpus are initialized")?;
                 vmwdt.process_id = pid_tid.0;
                 vmwdt.thread_id = pid_tid.1;
             }
@@ -182,7 +184,7 @@ impl Vmwdt {
         if let Some(worker_started_send) = worker_started_send {
             worker_started_send
                 .send(&())
-                .expect("failed to send vmwdt worker started");
+                .context("failed to send vmwdt worker started")?;
         }
         #[derive(EventToken)]
         enum Token {
@@ -190,23 +192,26 @@ impl Vmwdt {
             Timer(usize),
         }
 
-        let wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
-        wait_ctx.add(&kill_evt, Token::Kill).unwrap();
+        let wait_ctx: WaitContext<Token> =
+            WaitContext::new().context("Failed to create wait_ctx")?;
+        wait_ctx
+            .add(&kill_evt, Token::Kill)
+            .context("Failed to add Tokens to wait_ctx")?;
 
         let len = vm_wdts.lock().len();
         for clock_id in 0..len {
             let timer_fd = vm_wdts.lock()[clock_id].timer.as_raw_descriptor();
             wait_ctx
                 .add(&Descriptor(timer_fd), Token::Timer(clock_id))
-                .unwrap();
+                .context("Failed to link FDs to Tokens")?;
         }
 
         loop {
-            let events = wait_ctx.wait().unwrap();
+            let events = wait_ctx.wait().context("Failed to wait for events")?;
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::Kill => {
-                        return vm_ctrl_tube;
+                        return Ok(vm_ctrl_tube);
                     }
                     Token::Timer(cpu_id) => {
                         let mut wdts_locked = vm_wdts.lock();
@@ -215,12 +220,9 @@ impl Vmwdt {
                             error!("error waiting for timer event on vcpu {}", cpu_id);
                         }
 
-                        let current_guest_time_ms_result =
-                            Vmwdt::get_guest_time_ms(watchdog.process_id, watchdog.thread_id);
-                        let current_guest_time_ms = match current_guest_time_ms_result {
-                            Ok(value) => value,
-                            Err(_e) => return vm_ctrl_tube,
-                        };
+                        let current_guest_time_ms =
+                            Vmwdt::get_guest_time_ms(watchdog.process_id, watchdog.thread_id)
+                                .context("get_guest_time_ms failed")?;
                         let remaining_time_ms = watchdog.next_expiration_interval_ms
                             - (current_guest_time_ms - watchdog.last_guest_time_ms);
 
@@ -245,7 +247,9 @@ impl Vmwdt {
                                 }
                             }
 
-                            stall_evt.trigger().unwrap();
+                            stall_evt
+                                .trigger()
+                                .context("Failed to trigger stall event")?;
                             watchdog.stall_evt_ppi_triggered = true;
                             watchdog.last_guest_time_ms = current_guest_time_ms;
                         }
@@ -255,11 +259,14 @@ impl Vmwdt {
         }
     }
 
-    fn start(&mut self, worker_started_send: Option<SendTube>) {
+    fn start(&mut self, worker_started_send: Option<SendTube>) -> anyhow::Result<()> {
         let vm_wdts = self.vm_wdts.clone();
         let reset_evt_wrtube = self.reset_evt_wrtube.try_clone().unwrap();
         let stall_event = self.stall_evt.try_clone().unwrap();
-        let vm_ctrl_tube = self.vm_ctrl_tube.take().expect("missing vm control tube");
+        let vm_ctrl_tube = self
+            .vm_ctrl_tube
+            .take()
+            .context("missing vm control tube")?;
 
         self.activated = true;
         self.worker_thread = Some(WorkerThread::start("vmwdt worker", |kill_evt| {
@@ -271,7 +278,9 @@ impl Vmwdt {
                 vm_ctrl_tube,
                 worker_started_send,
             )
+            .expect("failed to start vmwdt worker thread")
         }));
+        Ok(())
     }
 
     fn ensure_started(&mut self) {
@@ -281,7 +290,8 @@ impl Vmwdt {
 
         let (worker_started_send, worker_started_recv) =
             Tube::directional_pair().expect("failed to create vmwdt worker started tubes");
-        self.start(Some(worker_started_send));
+        self.start(Some(worker_started_send))
+            .expect("failed to start Vmwdt");
         worker_started_recv
             .recv::<()>()
             .expect("failed to receive vmwdt worker started");
@@ -370,11 +380,8 @@ impl BusDevice for Vmwdt {
                     let cpu_watchdog = &mut wdts_locked[cpu_index];
                     (cpu_watchdog.process_id, cpu_watchdog.thread_id)
                 };
-                let guest_time_ms_result = Vmwdt::get_guest_time_ms(process_id, thread_id);
-                let guest_time_ms = match guest_time_ms_result {
-                    Ok(time) => time,
-                    Err(_e) => return,
-                };
+                let guest_time_ms = Vmwdt::get_guest_time_ms(process_id, thread_id)
+                    .expect("get_guest_time_ms failed");
 
                 let mut wdts_locked = self.vm_wdts.lock();
                 let cpu_watchdog = &mut wdts_locked[cpu_index];
@@ -429,21 +436,21 @@ impl Suspendable for Vmwdt {
             // At the same time, the Vcpus are still frozen, which means no MMIO will get
             // processed, and write will not get triggered.
             // The request to get PIDs/TIDs should get processed before any MMIO request occurs.
-            self.start(None);
+            self.start(None)?;
             let mut vm_wdts = self.vm_wdts.lock();
             for vmwdt in vm_wdts.iter_mut() {
                 if let Some(interval) = &vmwdt.repeating_interval {
                     vmwdt
                         .timer
                         .reset_repeating(*interval)
-                        .expect("failed to write repeating interval");
+                        .context("failed to write repeating interval")?;
                 } else if vmwdt.is_enabled {
                     vmwdt
                         .timer
                         .reset_oneshot(Duration::from_millis(
                             vmwdt.next_expiration_interval_ms as u64,
                         ))
-                        .expect("failed to write oneshot interval");
+                        .context("failed to write oneshot interval")?;
                 }
             }
         }
@@ -510,7 +517,7 @@ mod tests {
                 })
                 .unwrap();
         }
-        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube, irq, vm_ctrl_rdtube);
+        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube, irq, vm_ctrl_rdtube).unwrap();
 
         // Configure the watchdog device, 2Hz internal clock
         device.write(
@@ -549,7 +556,7 @@ mod tests {
                 })
                 .unwrap();
         }
-        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube, irq, vm_ctrl_rdtube);
+        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube, irq, vm_ctrl_rdtube).unwrap();
 
         // Configure the watchdog device, 2Hz internal clock
         device.write(

@@ -266,6 +266,8 @@ pub enum Error {
     CreateTube(base::TubeError),
     #[error("failed to create VCPU: {0}")]
     CreateVcpu(base::Error),
+    #[error("unable to create vm watchdog timer device: {0}")]
+    CreateVmwdtDevice(anyhow::Error),
     #[error("custom pVM firmware could not be loaded: {0}")]
     CustomPvmFwLoadFailure(arch::LoadImageError),
     #[error("vm created wrong kind of vcpu")]
@@ -1231,7 +1233,8 @@ impl AArch64 {
             vm_evt_wrtube.try_clone().unwrap(),
             vmwdt_evt.try_clone().map_err(Error::CloneEvent)?,
             vmwdt_request_tube,
-        );
+        )
+        .map_err(Error::CreateVmwdtDevice)?;
         irq_chip
             .register_edge_irq_event(
                 AARCH64_VMWDT_IRQ,

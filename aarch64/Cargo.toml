@@ -9,6 +9,7 @@ gdb = ["gdbstub", "gdbstub_arch", "arch/gdb"]
 swap = ["swap/enable"]
 
 [dependencies]
+anyhow = "1"
 arch = { path = "../arch" }
 cros_fdt = { path = "../cros_fdt" }
 devices = { path = "../devices" }
