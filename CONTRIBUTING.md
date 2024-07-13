@@ -106,9 +106,53 @@ pointing to the tip of the branch.
 ### Getting Reviews
 
 All submissions needs to be reviewed by one of the [crosvm owners]. Use the gerrit UI to request a
-review. If you are uncertain about the correct person to review, reach out to the team via
+review and add crosvm-reviews@google.com to assign to a random owner.
+
+If you run into issues with reviews, reach out to the team via
 [chat](https://matrix.to/#/#crosvm:matrix.org) or
 [email list](https://groups.google.com/a/chromium.org/g/crosvm-dev).
+
+**For Googlers**: see [go/crosvm-chat](https://goto.google.com/crosvm-chat).
+
+#### Any change to Cargo.l.ock
+
+When adding a new crate from crates.io, additional review is required to ensure that the crate meets
+the crosvm project standards. This review is provided by the members of `OWNERS_COUNCIL`.
+
+Unfortunately, our tooling cannot tell the difference between adding an external crate and changing
+dependencies within crosvm (e.g. `devices` depending on a new internal crosvm utility crate). For
+those cases, a rubberstamp is still needed from `OWNERS_COUNCIL`.
+
+**For Googlers**: see [go/crosvm/3p_crates](https://goto.google.com/crosvm/3p_crates).
+
+### Reviewing code (for OWNERS)
+
+We have two major types of reviewers on the project:
+
+1. Global OWNERS: these folks are broadly responsible for the health of the crosvm project, and have
+   expertise in multiple project subdomains. While they can technically approve any change, they
+   will often delegate to area OWNERS when a change is outside their expertise.
+1. Area OWNERS: experts in a particular subdomain of the project (e.g. graphics, USB, etc). Major
+   changes in an area SHOULD be reviewed by an area OWNER, if one exists (not all subdomains have
+   OWNERS).
+
+All owners are expected to review code in their areas, and to aim for the following goals in
+reviews:
+
+- Reply to reviews within 1 working day. If this is infeasible (especially if overloaded), reassign
+  to crosvm-reviews@ to pick another OWNER at random.
+- Defer to the [styleguide](./coding_style.md) where it makes sense to do so. Update the styleguide
+  when it does not.
+- Strive to avoid reviews getting stuck in endless back & forth. If you see this happening, you can:
+  - Schedule a meeting to discuss it online. Consider inviting another OWNER to help brainstorm
+    solutions.
+  - Bring the review discussion to the hallway chat to let the group weigh in.
+- Follow generally accepted practices for good code review
+  - Technically: We insist on good documentation, clean APIs especially when broadly consumed, and
+    generally keep code health in mind.
+  - Socially: Our goal, above all else, is to be good peers to each other. So we review *code*, not
+    *authors*. We remember to disagree respectfully, and that a code review is a team effort (author
+    and reviewer) against a hard technical problem.
 
 ### Submitting code
 
