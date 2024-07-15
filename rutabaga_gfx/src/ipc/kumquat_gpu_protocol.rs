@@ -6,8 +6,6 @@
 
 #![allow(dead_code)]
 
-use std::fs::File;
-
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
@@ -235,5 +233,4 @@ pub enum KumquatGpuProtocolWrite<T: AsBytes + FromBytes> {
     Cmd(T),
     CmdWithHandle(T, RutabagaHandle),
     CmdWithData(T, Vec<u8>),
-    CmdWithFile(T, Vec<u8>, File),
 }
