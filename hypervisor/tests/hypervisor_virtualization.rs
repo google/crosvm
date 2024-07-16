@@ -48,6 +48,42 @@ pub enum HypervisorType {
     Gvm,
 }
 
+#[repr(C, packed)]
+#[derive(AsBytes)]
+/// Define IDTR value
+struct Idtr {
+    // The lower 2 bytes are limit.
+    limit: u16,
+    // The higher 4 bytes are base address.
+    base_address: u32,
+}
+
+#[repr(C, packed)]
+#[derive(AsBytes, Debug, Copy, Clone)]
+struct IdtEntry {
+    address_low: u16,
+    selector: u16,
+    ist: u8,
+    flags: u8,
+    address_mid: u16,
+    address_high: u32,
+    reserved: u32,
+}
+
+impl IdtEntry {
+    pub fn new(handler_addr: u64) -> Self {
+        IdtEntry {
+            address_low: (handler_addr & 0xFFFF) as u16,
+            selector: 0x10, // Our long mode CS is the third entry (0x0, 0x8, 0x10).
+            ist: 0,
+            flags: 0x8E, // Present, interrupt gate, DPL 0
+            address_mid: ((handler_addr >> 16) & 0xFFFF) as u16,
+            address_high: (handler_addr >> 32) as u32,
+            reserved: 0,
+        }
+    }
+}
+
 impl std::fmt::Display for HypervisorType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -394,7 +430,8 @@ pub fn enter_long_mode(vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
     sregs.gdt.limit = 0xFFFF;
 
     sregs.idt.base = IDT_OFFSET;
-    sregs.idt.limit = 0xFFFF;
+    // The IDT limit should be 16 bytes * 256 entries - 1.
+    sregs.idt.limit = 0xFFF;
 
     sregs.cs = code_seg;
 
@@ -1679,16 +1716,6 @@ fn test_set_cr_guest() {
         },
         |_, exit, _, _: &mut dyn Vm| matches!(exit, VcpuExit::Hlt)
     );
-}
-
-#[repr(C, packed)]
-#[derive(AsBytes)]
-// Define IDTR value
-struct Idtr {
-    // The lower 2 bytes are limit.
-    limit: u16,
-    // The higher 4 bytes are base address.
-    base_address: u32,
 }
 
 mod test_minimal_interrupt_injection_code {
@@ -3492,5 +3519,136 @@ fn test_ready_for_interrupt_for_intercepted_instructions() {
                 r => panic!("unexpected exit reason: {:?}", r),
             }
         }
+    );
+}
+
+#[test]
+fn test_minimal_exception_injection() {
+    // This test tries to write an invalid MSR, causing a General Protection exception to be
+    // injected by the hypervisor (since MSR writes cause a VMEXIT). We run it in long mode since
+    // real mode exception handling isn't always well supported (failed on Intel HAXM).
+    mod assembly {
+        use super::*;
+
+        // An ISR that handles any generic interrupt.
+        global_asm_data!(
+            pub isr_generic,
+            ".code64",
+            // Set EBX to 888 to observe this is where we halted.
+            "mov ebx, 888",
+            "hlt"
+        );
+
+        // An ISR that handles the General Protection fault specifically.
+        global_asm_data!(
+            pub isr_gp,
+            ".code64",
+            // Set EBX to 999 to observe this is where we halted.
+            "mov ebx, 999",
+            "hlt"
+        );
+
+        // Our VM entry (in long mode).
+        global_asm_data!(
+            pub init,
+            ".code64",
+            // Set up the stack, which will be used when CPU transfers the control to the ISR. If
+            // not set up, can cause faults (stack should be aligned).
+            "mov esp, 0x900",
+            // We will verify EBX, set it here first.
+            "mov ebx, 777",
+            // Should trigger GP fault when we try to write to MSR 0.
+            "wrmsr",
+            // We should never get here since we halt in the fault handlers.
+            "hlt",
+        );
+    }
+
+    let mem_size: u64 = 0x20000;
+
+    let setup = TestSetup {
+        initial_regs: Regs {
+            // WRMSR will try to write to ECX, we set it to zero to point to an old read-only MSR
+            // (IA32_P5_MC_ADDR).
+            rcx: 0,
+            // Intentionally not setting IF flag since exceptions don't check it.
+            rflags: 2,
+            ..Default::default()
+        },
+        mem_size,
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+
+            let start_addr: u64 = 0x1000;
+            let guest_mem = vm.get_memory();
+
+            let isr_assembly = assembly::isr_generic::data().to_vec();
+            let isr_assembly_len =
+                u64::try_from(isr_assembly.len()).expect("ISR size should be within u64");
+
+            let isr_gp_assembly = assembly::isr_gp::data().to_vec();
+            let isr_gp_assembly_len =
+                u64::try_from(isr_gp_assembly.len()).expect("GP ISR size should be within u64");
+
+            let mut cur_addr = start_addr;
+
+            guest_mem
+                .write_at_addr(&isr_assembly, GuestAddress(cur_addr))
+                .expect("Failed to write ISR to guest memory");
+            cur_addr += isr_assembly_len;
+
+            guest_mem
+                .write_at_addr(&isr_gp_assembly, GuestAddress(cur_addr))
+                .expect("Failed to write ISR to guest memory");
+            cur_addr += isr_gp_assembly_len;
+
+            let mut regs = vcpu.get_regs().expect("Failed to get regs");
+            regs.rip = cur_addr;
+            vcpu.set_regs(&regs).expect("Failed to set regs");
+
+            let init_assembly = assembly::init::data().to_vec();
+            guest_mem
+                .write_at_addr(&init_assembly, GuestAddress(cur_addr))
+                .expect("Failed to write init assembly to guest memory");
+
+            let idt_entry_generic = IdtEntry::new(start_addr);
+            let idt_entry_gp = IdtEntry::new(start_addr + isr_assembly_len);
+
+            // Construct an IDT with an entry for each possible vector.
+            let idt = (0..256)
+                .flat_map(|i| {
+                    // GP handler is vector 13.
+                    let isr_address = if i == 0x0D {
+                        idt_entry_gp
+                    } else {
+                        idt_entry_generic
+                    };
+
+                    isr_address.as_bytes().to_owned()
+                })
+                .collect::<Vec<_>>();
+
+            // Write the IDT to memory.
+            let idt_base = 0x12000;
+            guest_mem
+                .write_at_addr(&idt, GuestAddress(idt_base))
+                .expect("Failed to write IDT to guest memory");
+
+            // Set the IDT in our registers.
+            let mut sregs = vcpu.get_sregs().expect("Failed to get sregs");
+            sregs.idt.base = idt_base;
+            sregs.idt.limit = (core::mem::size_of::<IdtEntry>() * 256 - 1) as u16;
+            vcpu.set_sregs(&sregs).expect("Failed to set sregs");
+        })),
+        ..Default::default()
+    };
+
+    run_tests!(
+        setup,
+        |_, regs, _| {
+            // If EBX is 999 the GP handler ran.
+            assert_eq!(regs.rbx, 999);
+        },
+        |_, exit, _, _: &mut dyn Vm| matches!(exit, VcpuExit::Hlt)
     );
 }
