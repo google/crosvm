@@ -177,6 +177,8 @@ fn default_multitouchscreen_absinfo(
     let mut absinfo: BTreeMap<u16, virtio_input_absinfo> = BTreeMap::new();
     absinfo.insert(ABS_MT_SLOT, virtio_input_absinfo::new(0, slot, 0, 0));
     absinfo.insert(ABS_MT_TRACKING_ID, virtio_input_absinfo::new(0, id, 0, 0));
+    absinfo.insert(ABS_X, virtio_input_absinfo::new(0, width, 0, 0));
+    absinfo.insert(ABS_Y, virtio_input_absinfo::new(0, height, 0, 0));
     absinfo.insert(ABS_MT_POSITION_X, virtio_input_absinfo::new(0, width, 0, 0));
     absinfo.insert(
         ABS_MT_POSITION_Y,
@@ -195,6 +197,8 @@ fn default_multitouchscreen_events() -> BTreeMap<u16, virtio_input_bitmap> {
             ABS_MT_TRACKING_ID,
             ABS_MT_POSITION_X,
             ABS_MT_POSITION_Y,
+            ABS_X,
+            ABS_Y,
         ]),
     );
     supported_events
