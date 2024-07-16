@@ -107,7 +107,6 @@ const AARCH64_PLATFORM_MMIO_SIZE: u64 = 0x800000;
 const AARCH64_FDT_OFFSET_IN_BIOS_MODE: u64 = 0x0;
 // Therefore, the BIOS is placed after the FDT in memory.
 const AARCH64_BIOS_OFFSET: u64 = AARCH64_FDT_MAX_SIZE;
-const AARCH64_BIOS_MAX_LEN: u64 = 1 << 20;
 
 const AARCH64_PROTECTED_VM_FW_MAX_SIZE: u64 = 0x400000;
 const AARCH64_PROTECTED_VM_FW_START: u64 =
@@ -477,9 +476,8 @@ impl arch::LinuxArch for AArch64 {
         let mut initrd = None;
         let payload = match components.vm_image {
             VmImage::Bios(ref mut bios) => {
-                let image_size =
-                    arch::load_image(&mem, bios, get_bios_addr(), AARCH64_BIOS_MAX_LEN)
-                        .map_err(Error::BiosLoadFailure)?;
+                let image_size = arch::load_image(&mem, bios, get_bios_addr(), u64::MAX)
+                    .map_err(Error::BiosLoadFailure)?;
                 PayloadType::Bios {
                     entry: get_bios_addr(),
                     image_size: image_size as u64,
