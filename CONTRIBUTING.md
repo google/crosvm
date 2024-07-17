@@ -114,7 +114,7 @@ If you run into issues with reviews, reach out to the team via
 
 **For Googlers**: see [go/crosvm-chat](https://goto.google.com/crosvm-chat).
 
-#### Any change to Cargo.l.ock
+#### Any change to Cargo.lock
 
 When adding a new crate from crates.io, additional review is required to ensure that the crate meets
 the crosvm project standards. This review is provided by the members of `OWNERS_COUNCIL`.
