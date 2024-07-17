@@ -44,6 +44,7 @@ use vm_control::client::handle_request;
 use vm_control::client::handle_request_with_timeout;
 use vm_control::client::vms_request;
 use vm_control::BalloonControlCommand;
+use vm_control::BatProperty;
 use vm_control::DiskControlCommand;
 use vm_control::RegisteredEvent;
 use vm_control::SwapCommand;
@@ -659,9 +660,8 @@ pub unsafe extern "C" fn crosvm_client_net_tap_detach(
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// The caller will ensure the raw pointers in arguments passed in can be safely used by
+/// `CStr::from_ptr()`
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_modify_battery(
     socket_path: *const c_char,
@@ -686,6 +686,92 @@ pub unsafe extern "C" fn crosvm_client_modify_battery(
                 battery_type.to_str().unwrap(),
                 property.to_str().unwrap(),
                 target.to_str().unwrap(),
+            )
+            .is_ok()
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// Fakes the battery status of crosvm instance. The power status will always be on
+/// battery, and the maximum battery capacity could be read by guest is set to the
+/// `max_battery_capacity`.
+///
+/// The function returns true on success or false if an error occurred.
+///
+/// # Arguments
+///
+/// * `socket_path` - Path to the crosvm control socket
+/// * `battery_type` - Type of battery emulation corresponding to vm_tools::BatteryType
+/// * `max_battery_capacity` - maximum battery capacity could be read by guest
+///
+/// # Safety
+///
+/// The caller will ensure the raw pointers in arguments passed in can be safely used by
+/// `CStr::from_ptr()`
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_fake_power(
+    socket_path: *const c_char,
+    battery_type: *const c_char,
+    max_battery_capacity: u32,
+) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            if battery_type.is_null() || max_battery_capacity > 100 {
+                return false;
+            }
+
+            let battery_type = CStr::from_ptr(battery_type);
+            let fake_max_capacity_target: String = max_battery_capacity.to_string();
+
+            do_modify_battery(
+                socket_path.clone(),
+                battery_type.to_str().unwrap(),
+                &BatProperty::SetFakeBatConfig.to_string(),
+                fake_max_capacity_target.as_str(),
+            )
+            .is_ok()
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// Resume the battery status of crosvm instance from fake status
+///
+/// The function returns true on success or false if an error occurred.
+///
+/// # Arguments
+///
+/// * `socket_path` - Path to the crosvm control socket
+/// * `battery_type` - Type of battery emulation corresponding to vm_tools::BatteryType
+///
+/// # Safety
+///
+/// The caller will ensure the raw pointers in arguments passed in can be safely used by
+/// `CStr::from_ptr()`.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_cancel_fake_power(
+    socket_path: *const c_char,
+    battery_type: *const c_char,
+) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            if battery_type.is_null() {
+                return false;
+            }
+
+            // SAFETY: the caller has a responsibility of giving a valid char* pointer
+            let battery_type = CStr::from_ptr(battery_type);
+
+            do_modify_battery(
+                socket_path,
+                battery_type.to_str().unwrap(),
+                &BatProperty::CancelFakeBatConfig.to_string(),
+                "",
             )
             .is_ok()
         } else {

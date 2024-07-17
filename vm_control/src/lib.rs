@@ -1207,6 +1207,7 @@ pub enum BatControlResult {
     NoSuchStatus,
     NoSuchBatType,
     StringParseIntErr,
+    StringParseBoolErr,
 }
 
 impl Display for BatControlResult {
@@ -1221,6 +1222,7 @@ impl Display for BatControlResult {
             NoSuchStatus => write!(f, "Invalid Battery status setting. Only support: unknown/charging/discharging/notcharging/full"),
             NoSuchBatType => write!(f, "Invalid Battery type setting. Only support: goldfish"),
             StringParseIntErr => write!(f, "Battery property target ParseInt error"),
+            StringParseBoolErr => write!(f, "Battery property target ParseBool error"),
         }
     }
 }
@@ -1250,6 +1252,8 @@ pub enum BatProperty {
     Present,
     Capacity,
     ACOnline,
+    SetFakeBatConfig,
+    CancelFakeBatConfig,
 }
 
 impl FromStr for BatProperty {
@@ -1262,7 +1266,23 @@ impl FromStr for BatProperty {
             "present" => Ok(BatProperty::Present),
             "capacity" => Ok(BatProperty::Capacity),
             "aconline" => Ok(BatProperty::ACOnline),
+            "set_fake_bat_config" => Ok(BatProperty::SetFakeBatConfig),
+            "cancel_fake_bat_config" => Ok(BatProperty::CancelFakeBatConfig),
             _ => Err(BatControlResult::NoSuchProperty),
+        }
+    }
+}
+
+impl Display for BatProperty {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            BatProperty::Status => write!(f, "status"),
+            BatProperty::Health => write!(f, "health"),
+            BatProperty::Present => write!(f, "present"),
+            BatProperty::Capacity => write!(f, "capacity"),
+            BatProperty::ACOnline => write!(f, "aconline"),
+            BatProperty::SetFakeBatConfig => write!(f, "set_fake_bat_config"),
+            BatProperty::CancelFakeBatConfig => write!(f, "cancel_fake_bat_config"),
         }
     }
 }
@@ -1350,6 +1370,21 @@ impl From<BatHealth> for u32 {
     }
 }
 
+/// Configuration of fake battery status information.
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub enum BatConfig {
+    // Propagates host's battery status
+    #[default]
+    Real,
+    // Fake on battery status. Simulates a disconnected AC adapter.
+    // This forces ac_online to false and sets the battery status
+    // to DISCHARGING
+    Fake {
+        // Sets the maximum battery capacity reported to the guest
+        max_capacity: u32,
+    },
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub enum BatControlCommand {
     SetStatus(BatStatus),
@@ -1357,6 +1392,8 @@ pub enum BatControlCommand {
     SetPresent(u32),
     SetCapacity(u32),
     SetACOnline(u32),
+    SetFakeBatConfig(u32),
+    CancelFakeConfig,
 }
 
 impl BatControlCommand {
@@ -1380,6 +1417,12 @@ impl BatControlCommand {
                     .parse::<u32>()
                     .map_err(|_| BatControlResult::StringParseIntErr)?,
             )),
+            BatProperty::SetFakeBatConfig => Ok(BatControlCommand::SetFakeBatConfig(
+                target
+                    .parse::<u32>()
+                    .map_err(|_| BatControlResult::StringParseIntErr)?,
+            )),
+            BatProperty::CancelFakeBatConfig => Ok(BatControlCommand::CancelFakeConfig),
         }
     }
 }
