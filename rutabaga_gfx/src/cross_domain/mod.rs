@@ -894,7 +894,7 @@ impl RutabagaComponent for CrossDomain {
         let mut caps: CrossDomainCapabilities = Default::default();
         if let Some(ref channels) = self.channels {
             for channel in channels {
-                caps.supported_channels = 1 << channel.channel_type;
+                caps.supported_channels |= 1 << channel.channel_type;
             }
         }
 
