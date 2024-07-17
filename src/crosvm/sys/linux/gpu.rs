@@ -269,10 +269,10 @@ fn get_gpu_render_server_environment(
     }
 
     // TODO(b/339766043): workaround to disable Vulkan protected memory feature in Mali
-    if !env.contains_key("MALI_HAL_DISABLE_PROTECTED_MODE") {
+    if !env.contains_key("MALI_BASE_PROTECTED_MEMORY_HEAP_SIZE") {
         env.insert(
-            "MALI_HAL_DISABLE_PROTECTED_MODE".to_string(),
-            "1".to_string(),
+            "MALI_BASE_PROTECTED_MEMORY_HEAP_SIZE".to_string(),
+            "0".to_string(),
         );
     }
 
