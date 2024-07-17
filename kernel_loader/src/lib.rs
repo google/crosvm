@@ -17,6 +17,8 @@ use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
+mod multiboot;
+
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
@@ -28,6 +30,8 @@ mod arm64;
 
 pub use arm64::load_arm64_kernel;
 pub use arm64::load_arm64_kernel_lz4;
+pub use multiboot::load_multiboot;
+pub use multiboot::multiboot_header_from_file;
 
 #[sorted]
 #[derive(Error, Debug, PartialEq, Eq)]
@@ -44,6 +48,8 @@ pub enum Error {
     InvalidElfVersion,
     #[error("invalid entry point")]
     InvalidEntryPoint,
+    #[error("invalid flags")]
+    InvalidFlags,
     #[error("invalid kernel offset")]
     InvalidKernelOffset,
     #[error("invalid kernel size")]
