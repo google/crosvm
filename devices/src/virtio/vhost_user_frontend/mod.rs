@@ -459,16 +459,18 @@ impl VirtioDevice for VhostUserFrontend {
     }
 
     fn reset(&mut self) -> anyhow::Result<()> {
-        for (queue_index, _queue) in self.sent_queues.take().into_iter().flatten() {
-            if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
-                self.backend_client
-                    .set_vring_enable(queue_index, false)
-                    .context("set_vring_enable failed during reset")?;
+        if let Some(sent_queues) = self.sent_queues.take() {
+            for queue_index in sent_queues.into_keys() {
+                if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
+                    self.backend_client
+                        .set_vring_enable(queue_index, false)
+                        .context("set_vring_enable failed during reset")?;
+                }
+                let _vring_base = self
+                    .backend_client
+                    .get_vring_base(queue_index)
+                    .context("get_vring_base failed during reset")?;
             }
-            let _vring_base = self
-                .backend_client
-                .get_vring_base(queue_index)
-                .context("get_vring_base failed during reset")?;
         }
 
         if let Some(w) = self.worker_thread.take() {
