@@ -412,7 +412,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     /// If it's Some, then `build_vm` already created the vcpus.
     pub vcpus: Option<Vec<Vcpu>>,
     pub vm: V,
-    pub vm_request_tube: Option<Tube>,
+    pub vm_request_tubes: Vec<Tube>,
 }
 
 /// The device and optional jail.

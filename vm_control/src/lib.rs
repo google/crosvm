@@ -1368,6 +1368,8 @@ pub enum VmRequest {
     SuspendVm,
     /// Resume VM VCPUs and Devices.
     ResumeVm,
+    /// Returns Vcpus PID/TID
+    VcpuPidTid,
 }
 
 /// NOTE: when making any changes to this enum please also update
@@ -2059,6 +2061,7 @@ impl VmRequest {
                 event: _,
             } => VmResponse::Ok,
             VmRequest::Unregister { socket_addr: _ } => VmResponse::Ok,
+            VmRequest::VcpuPidTid => unreachable!(),
         }
     }
 }
@@ -2296,6 +2299,10 @@ pub enum VmResponse {
     SwapStatus(SwapStatus),
     /// Gets the state of Devices (sleep/wake)
     DevicesState(DevicesState),
+    /// Map of the Vcpu PID/TIDs
+    VcpuPidTidResponse {
+        pid_tid_map: BTreeMap<usize, (u32, u32)>,
+    },
 }
 
 impl Display for VmResponse {
@@ -2349,6 +2356,7 @@ impl Display for VmResponse {
                 )
             }
             DevicesState(status) => write!(f, "devices status: {:?}", status),
+            VcpuPidTidResponse { pid_tid_map } => write!(f, "vcpu pid tid map: {:?}", pid_tid_map),
         }
     }
 }

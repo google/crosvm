@@ -5,6 +5,7 @@
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::prelude::*;
+use std::process;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Barrier;
@@ -24,6 +25,7 @@ use arch::LinuxArch;
 use arch::VcpuArch;
 use arch::VcpuInitArch;
 use arch::VmArch;
+use base::gettid;
 use base::sched_attr;
 use base::sched_setattr;
 use base::signal::clear_signal_handler;
@@ -40,6 +42,8 @@ use libc::c_int;
 use metrics_events::MetricEventType;
 #[cfg(target_arch = "riscv64")]
 use riscv64::Riscv64 as Arch;
+use serde::Deserialize;
+use serde::Serialize;
 #[cfg(target_arch = "x86_64")]
 use sync::Mutex;
 use vm_control::*;
@@ -500,6 +504,13 @@ where
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct VcpuPidTid {
+    pub vcpu_id: usize,
+    pub process_id: u32,
+    pub thread_id: u32,
+}
+
 pub fn run_vcpu<V>(
     cpu_id: usize,
     vcpu_id: usize,
@@ -524,6 +535,7 @@ pub fn run_vcpu<V>(
     #[cfg(target_arch = "x86_64")] bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
     run_mode: VmRunMode,
     boost_uclamp: bool,
+    vcpu_pid_tid_tube: mpsc::Sender<VcpuPidTid>,
 ) -> Result<JoinHandle<()>>
 where
     V: VcpuArch + 'static,
@@ -545,6 +557,15 @@ where
                 ) {
                     error!("vcpu thread setup failed: {:#}", e);
                     return ExitState::Stop;
+                }
+
+                if let Err(e) = vcpu_pid_tid_tube.send(VcpuPidTid {
+                    vcpu_id: cpu_id,
+                    process_id: process::id(),
+                    thread_id: gettid() as u32,
+                }) {
+                    error!("Failed to send vcpu process/thread id: {:#}", e);
+                    return ExitState::Crash;
                 }
 
                 #[cfg(feature = "gdb")]

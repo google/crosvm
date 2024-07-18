@@ -205,6 +205,7 @@ use crate::crosvm::ratelimit::Ratelimit;
 use crate::crosvm::sys::cmdline::DevicesCommand;
 use crate::crosvm::sys::config::SharedDir;
 use crate::crosvm::sys::config::SharedDirKind;
+use crate::crosvm::sys::platform::vcpu::VcpuPidTid;
 
 const KVM_PATH: &str = "/dev/kvm";
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -2167,7 +2168,7 @@ where
     )
     .context("the architecture failed to build the vm")?;
 
-    if let Some(tube) = linux.vm_request_tube.take() {
+    for tube in linux.vm_request_tubes.drain(..) {
         control_tubes.push(TaggedControlTube::Vm(tube));
     }
 
@@ -2921,6 +2922,7 @@ struct ControlLoopState<'a, V: VmArch, Vcpu: VcpuArch> {
     pvclock_host_tube: Option<Arc<Tube>>,
     vfio_container_manager: &'a mut VfioContainerManager,
     suspended_pvclock_state: &'a mut Option<hypervisor::ClockState>,
+    vcpus_pid_tid: &'a BTreeMap<usize, (u32, u32)>,
 }
 
 fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
@@ -3045,6 +3047,9 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 VmResponse::Err(base::Error::new(libc::ENOTSUP))
             }
         }
+        VmRequest::VcpuPidTid => VmResponse::VcpuPidTidResponse {
+            pid_tid_map: state.vcpus_pid_tid.clone(),
+        },
         _ => {
             let response = request.execute(
                 &state.linux.vm,
@@ -3541,6 +3546,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     // Architecture-specific code must supply a vcpu_init element for each VCPU.
     assert_eq!(vcpus.len(), linux.vcpu_init.len());
 
+    let (vcpu_pid_tid_sender, vcpu_pid_tid_receiver) = mpsc::channel();
     for ((cpu_id, vcpu), vcpu_init) in vcpus.into_iter().enumerate().zip(linux.vcpu_init.drain(..))
     {
         let (to_vcpu_channel, from_main_channel) = mpsc::channel();
@@ -3612,8 +3618,28 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             bus_lock_ratelimit_ctrl,
             run_mode,
             cfg.boost_uclamp,
+            vcpu_pid_tid_sender.clone(),
         )?;
         vcpu_handles.push((handle, to_vcpu_channel));
+    }
+
+    let mut vcpus_pid_tid = BTreeMap::new();
+    for _ in 0..vcpu_handles.len() {
+        let vcpu_pid_tid: VcpuPidTid = vcpu_pid_tid_receiver
+            .recv()
+            .context("failed receiving vcpu pid/tid")?;
+        if vcpus_pid_tid
+            .insert(
+                vcpu_pid_tid.vcpu_id,
+                (vcpu_pid_tid.process_id, vcpu_pid_tid.thread_id),
+            )
+            .is_some()
+        {
+            return Err(anyhow!(
+                "Vcpu {} returned more than 1 PID and TID",
+                vcpu_pid_tid.vcpu_id
+            ));
+        }
     }
 
     #[cfg(feature = "gdb")]
@@ -3933,6 +3959,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             pvclock_host_tube: pvclock_host_tube.clone(),
                             vfio_container_manager: &mut vfio_container_manager,
                             suspended_pvclock_state: &mut suspended_pvclock_state,
+                            vcpus_pid_tid: &vcpus_pid_tid,
                         };
                         let (exit_requested, mut ids_to_remove, add_tubes) =
                             process_vm_control_event(&mut state, id, socket)?;

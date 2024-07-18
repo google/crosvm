@@ -855,7 +855,7 @@ impl arch::LinuxArch for X8664arch {
                 vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
             )?;
         }
-        let vm_request_tube = if !components.no_rtc {
+        let mut vm_request_tube = if !components.no_rtc {
             let (host_tube, device_tube) = Tube::pair()
                 .context("create tube")
                 .map_err(Error::SetupCmos)?;
@@ -1046,6 +1046,11 @@ impl arch::LinuxArch for X8664arch {
             vcpu.msrs = msrs.clone();
         }
 
+        let mut vm_request_tubes = Vec::new();
+        if let Some(req_tube) = vm_request_tube.take() {
+            vm_request_tubes.push(req_tube);
+        }
+
         Ok(RunnableLinuxVm {
             vm,
             vcpu_count,
@@ -1070,7 +1075,7 @@ impl arch::LinuxArch for X8664arch {
             platform_devices: Vec::new(),
             hotplug_bus: BTreeMap::new(),
             devices_thread: None,
-            vm_request_tube,
+            vm_request_tubes,
         })
     }
 

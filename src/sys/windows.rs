@@ -2627,6 +2627,7 @@ where
 
     let mut vcpu_ids = Vec::new();
 
+    let (vwmdt_host_tube, vmwdt_device_tube) = Tube::pair().context("failed to create tube")?;
     let windows = Arch::build_vm::<V, Vcpu>(
         components,
         &vm_evt_wrtube,
