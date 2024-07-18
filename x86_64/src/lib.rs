@@ -30,6 +30,8 @@ mod msr_index;
 #[allow(clippy::all)]
 mod mpspec;
 
+pub mod multiboot_spec;
+
 pub mod acpi;
 mod bzimage;
 pub mod cpuid;
@@ -123,6 +125,9 @@ use jail::read_jail_addr;
 use jail::FakeMinijailStub as Minijail;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use minijail::Minijail;
+use multiboot_spec::MultibootInfo;
+use multiboot_spec::MultibootMmapEntry;
+use multiboot_spec::MULTIBOOT_BOOTLOADER_MAGIC;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use remain::sorted;
@@ -243,6 +248,8 @@ pub enum Error {
     LoadPflash(io::Error),
     #[error("error loading pVM firmware: {0}")]
     LoadPvmFw(base::Error),
+    #[error("error in multiboot_info setup")]
+    MultibootInfoSetup,
     #[error("error translating address: Page not present")]
     PageNotPresent,
     #[error("pci mmio overlaps with pVM firmware memory")]
@@ -372,6 +379,8 @@ const DEFAULT_PCIE_CFG_MMIO_START: u64 = DEFAULT_PCIE_CFG_MMIO_END - DEFAULT_PCI
 const HIGH_MMIO_MAX_END: u64 = (1u64 << 46) - 1;
 pub const KERNEL_32BIT_ENTRY_OFFSET: u64 = 0x0;
 pub const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
+pub const MULTIBOOT_INFO_OFFSET: u64 = 0x6000;
+pub const MULTIBOOT_INFO_SIZE: u64 = 0x1000;
 pub const ZERO_PAGE_OFFSET: u64 = 0x7000;
 // Set BIOS max size to 16M: this is used only when `unrestricted guest` is disabled
 const BIOS_MAX_SIZE: u64 = 0x1000000;
@@ -513,7 +522,7 @@ fn tss_addr_end() -> GuestAddress {
     GuestAddress(tss_addr_start().offset() + 0x3000)
 }
 
-fn configure_system(
+fn configure_boot_params(
     guest_mem: &GuestMemory,
     cmdline_addr: GuestAddress,
     setup_data: Option<GuestAddress>,
@@ -563,6 +572,109 @@ fn configure_system(
         .map_err(|_| Error::ZeroPageSetup)?;
 
     Ok(())
+}
+
+fn configure_multiboot_info(
+    guest_mem: &GuestMemory,
+    cmdline_addr: GuestAddress,
+    e820_entries: &[E820Entry],
+) -> Result<()> {
+    let mut multiboot_info = MultibootInfo {
+        ..Default::default()
+    };
+
+    // Extra Multiboot-related data is added directly after the info structure.
+    let mut multiboot_data_addr =
+        GuestAddress(MULTIBOOT_INFO_OFFSET + mem::size_of_val(&multiboot_info) as u64);
+    multiboot_data_addr = multiboot_data_addr
+        .align(16)
+        .ok_or(Error::MultibootInfoSetup)?;
+
+    // mem_lower is the amount of RAM below 1 MB, in units of KiB.
+    let mem_lower = guest_mem
+        .regions()
+        .filter(|r| {
+            r.options.purpose == MemoryRegionPurpose::GuestMemoryRegion
+                && r.guest_addr.offset() < 1 * MB
+        })
+        .map(|r| r.size as u64)
+        .sum::<u64>()
+        / KB;
+
+    // mem_upper is the amount of RAM above 1 MB up to the first memory hole, in units of KiB.
+    // We don't have the ISA 15-16 MB hole, so this includes all RAM from 1 MB up to the
+    // beginning of the PCI hole just below 4 GB.
+    let mem_upper = guest_mem
+        .regions()
+        .filter(|r| {
+            r.options.purpose == MemoryRegionPurpose::GuestMemoryRegion
+                && r.guest_addr.offset() >= 1 * MB
+                && r.guest_addr.offset() < 4 * GB
+        })
+        .map(|r| r.size as u64)
+        .sum::<u64>()
+        / KB;
+
+    multiboot_info.mem_lower = mem_lower as u32;
+    multiboot_info.mem_upper = mem_upper as u32;
+    multiboot_info.flags |= MultibootInfo::F_MEM;
+
+    // Memory map - convert from params.e820_table to Multiboot format.
+    let multiboot_mmap: Vec<MultibootMmapEntry> = e820_entries
+        .iter()
+        .map(|e820_entry| MultibootMmapEntry {
+            size: 20, // size of the entry, not including the size field itself
+            base_addr: e820_entry.address.offset(),
+            length: e820_entry.len,
+            type_: e820_entry.mem_type as u32,
+        })
+        .collect();
+    let multiboot_mmap_bytes = multiboot_mmap.as_bytes();
+    let multiboot_mmap_addr =
+        append_multiboot_info(guest_mem, &mut multiboot_data_addr, multiboot_mmap_bytes)?;
+    multiboot_info.mmap_addr = multiboot_mmap_addr.offset() as u32;
+    multiboot_info.mmap_length = multiboot_mmap_bytes.len() as u32;
+    multiboot_info.flags |= MultibootInfo::F_MMAP;
+
+    // Command line
+    multiboot_info.cmdline = cmdline_addr.offset() as u32;
+    multiboot_info.flags |= MultibootInfo::F_CMDLINE;
+
+    // Boot loader name
+    let boot_loader_name_addr =
+        append_multiboot_info(guest_mem, &mut multiboot_data_addr, b"crosvm\0")?;
+    multiboot_info.boot_loader_name = boot_loader_name_addr.offset() as u32;
+    multiboot_info.flags |= MultibootInfo::F_BOOT_LOADER_NAME;
+
+    guest_mem
+        .write_obj_at_addr(multiboot_info, GuestAddress(MULTIBOOT_INFO_OFFSET))
+        .map_err(|_| Error::MultibootInfoSetup)?;
+
+    Ok(())
+}
+
+fn append_multiboot_info(
+    guest_mem: &GuestMemory,
+    addr: &mut GuestAddress,
+    data: &[u8],
+) -> Result<GuestAddress> {
+    let data_addr = *addr;
+    let new_addr = addr
+        .checked_add(data.len() as u64)
+        .and_then(|a| a.align(16))
+        .ok_or(Error::MultibootInfoSetup)?;
+
+    // Make sure we don't write beyond the region reserved for Multiboot info.
+    if new_addr.offset() - MULTIBOOT_INFO_OFFSET > MULTIBOOT_INFO_SIZE {
+        return Err(Error::MultibootInfoSetup);
+    }
+
+    guest_mem
+        .write_all_at_addr(data, data_addr)
+        .map_err(|_| Error::MultibootInfoSetup)?;
+
+    *addr = new_addr;
+    Ok(data_addr)
 }
 
 /// Write setup_data entries in guest memory and link them together with the `next` field.
@@ -1247,6 +1359,11 @@ impl arch::LinuxArch for X8664arch {
                         vcpu_init[0].regs.rsp = BOOT_STACK_POINTER;
                         vcpu_init[0].regs.rsi = ZERO_PAGE_OFFSET;
                     }
+                    KernelType::Multiboot => {
+                        // Provide Multiboot-compatible bootloader information.
+                        vcpu_init[0].regs.rax = MULTIBOOT_BOOTLOADER_MAGIC.into();
+                        vcpu_init[0].regs.rbx = MULTIBOOT_INFO_OFFSET;
+                    }
                 }
 
                 if protection_type.runs_firmware() {
@@ -1503,6 +1620,7 @@ pub enum CpuMode {
 pub enum KernelType {
     BzImage,
     Elf,
+    Multiboot,
 }
 
 impl fmt::Display for KernelType {
@@ -1510,6 +1628,7 @@ impl fmt::Display for KernelType {
         match self {
             KernelType::BzImage => write!(f, "bzImage"),
             KernelType::Elf => write!(f, "ELF"),
+            KernelType::Multiboot => write!(f, "Multiboot"),
         }
     }
 }
@@ -1629,6 +1748,30 @@ impl X8664arch {
         kernel_image: &mut File,
     ) -> Result<(boot_params, AddressRange, GuestAddress, CpuMode, KernelType)> {
         let kernel_start = GuestAddress(KERNEL_START_OFFSET);
+
+        let multiboot =
+            kernel_loader::multiboot_header_from_file(kernel_image).map_err(Error::LoadKernel)?;
+
+        if let Some(multiboot_load) = multiboot.as_ref().and_then(|m| m.load.as_ref()) {
+            let loaded_kernel = kernel_loader::load_multiboot(mem, kernel_image, multiboot_load)
+                .map_err(Error::LoadKernel)?;
+
+            let boot_params = boot_params {
+                hdr: setup_header {
+                    cmdline_size: CMDLINE_MAX_SIZE as u32 - 1,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            return Ok((
+                boot_params,
+                loaded_kernel.address_range,
+                loaded_kernel.entry,
+                CpuMode::FlatProtectedMode,
+                KernelType::Multiboot,
+            ));
+        }
+
         match kernel_loader::load_elf64(mem, kernel_start, kernel_image, 0) {
             Ok(loaded_kernel) => {
                 // ELF kernels don't contain a `boot_params` structure, so synthesize a default one.
@@ -1755,7 +1898,7 @@ impl X8664arch {
             &setup_data,
         )?;
 
-        configure_system(
+        configure_boot_params(
             mem,
             GuestAddress(CMDLINE_OFFSET),
             setup_data,
@@ -1763,6 +1906,9 @@ impl X8664arch {
             params,
             &e820_entries,
         )?;
+
+        configure_multiboot_info(mem, GuestAddress(CMDLINE_OFFSET), &e820_entries)?;
+
         Ok(())
     }
 

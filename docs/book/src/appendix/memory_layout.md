@@ -8,6 +8,7 @@ see the source. All addresses are in hexadecimal.
 | Name/source link             | Address       | End (exclusive) | Size      | Notes                                                                                    |
 | ---------------------------- | ------------- | --------------- | --------- | ---------------------------------------------------------------------------------------- |
 |                              | `0000`        | `A_0000`        | 640 KiB   | RAM (\<1M)                                                                               |
+| [`MULTIBOOT_INFO_OFFSET`]    | `6000`        | `7000`          | 4 KiB     | Multiboot info structure                                                                 |
 | [`ZERO_PAGE_OFFSET`]         | `7000`        |                 |           | Linux boot_params structure                                                              |
 | [`BOOT_STACK_POINTER`]       | `8000`        |                 |           | Boot SP value                                                                            |
 | [`boot_pml4_addr`]           | `9000`        | `A000`          | 4 KiB     | Boot page table                                                                          |
@@ -28,6 +29,7 @@ see the source. All addresses are in hexadecimal.
 |                              | `1_0000_0000` |                 |           | RAM (>4G)                                                                                |
 |                              | (end of RAM)  |                 |           | High (>4G) MMIO allocation area                                                          |
 
+[`multiboot_info_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=381?q=MULITBOOT_INFO_OFFSET
 [`zero_page_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=368?q=ZERO_PAGE_OFFSET
 [`boot_stack_pointer`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=350?q=BOOT_STACK_POINTER
 [`boot_pml4_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/regs.rs;l=297?q=boot_pml4_addr
