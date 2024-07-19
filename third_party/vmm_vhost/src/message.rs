@@ -144,6 +144,12 @@ pub enum FrontendReq {
     /// Query the backend for its device status as defined in the VIRTIO
     /// specification.
     GET_STATUS = 40,
+    /// Front-end and back-end negotiate a channel over which to transfer the back-end’s internal
+    /// state during migration.
+    SET_DEVICE_STATE_FD = 42,
+    /// After transferring the back-end’s internal state during migration, check whether the
+    /// back-end was able to successfully fully process the state.
+    CHECK_DEVICE_STATE = 43,
 
     // Non-standard message types.
     /// Stop all queue handlers and save each queue state.
@@ -441,6 +447,8 @@ bitflags! {
         const STATUS = 0x0001_0000;
         /// Support Xen mmap.
         const XEN_MMAP = 0x0002_0000;
+        /// Support VHOST_USER_SET_DEVICE_STATE_FD and VHOST_USER_CHECK_DEVICE_STATE messages.
+        const DEVICE_STATE = 0x0008_0000;
         /// Support shared memory regions. (Non-standard.)
         const SHARED_MEMORY_REGIONS = 0x8000_0000;
     }
@@ -814,6 +822,23 @@ impl VhostUserMsgValidator for VhostUserInflight {
         if self.num_queues == 0 || self.queue_size == 0 {
             return false;
         }
+        true
+    }
+}
+
+/// VHOST_USER_SET_DEVICE_STATE_FD request payload.
+#[repr(C)]
+#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+pub struct DeviceStateTransferParameters {
+    /// Direction in which the state is transferred
+    pub transfer_direction: u32,
+    /// State in which the VM guest and devices are.
+    pub migration_phase: u32,
+}
+
+impl VhostUserMsgValidator for DeviceStateTransferParameters {
+    fn is_valid(&self) -> bool {
+        // Validated elsewhere.
         true
     }
 }
@@ -1208,6 +1233,17 @@ impl VhostSharedMemoryRegion {
             length,
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum VhostUserTransferDirection {
+    Save,
+    Load,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum VhostUserMigrationPhase {
+    Stopped,
 }
 
 #[cfg(test)]

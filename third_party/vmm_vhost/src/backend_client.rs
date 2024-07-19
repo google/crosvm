@@ -246,6 +246,62 @@ impl BackendClient {
         self.wait_for_ack(&hdr)
     }
 
+    /// Front-end and back-end negotiate a channel over which to transfer the back-end’s internal
+    /// state during migration.
+    ///
+    /// Requires VHOST_USER_PROTOCOL_F_DEVICE_STATE to be negotiated.
+    pub fn set_device_state_fd(
+        &self,
+        transfer_direction: VhostUserTransferDirection,
+        migration_phase: VhostUserMigrationPhase,
+        fd: &impl AsRawDescriptor,
+    ) -> Result<Option<File>> {
+        if self.acked_protocol_features & VhostUserProtocolFeatures::DEVICE_STATE.bits() == 0 {
+            return Err(VhostUserError::InvalidOperation);
+        }
+        // Send request.
+        let req = DeviceStateTransferParameters {
+            transfer_direction: match transfer_direction {
+                VhostUserTransferDirection::Save => 0,
+                VhostUserTransferDirection::Load => 1,
+            },
+            migration_phase: match migration_phase {
+                VhostUserMigrationPhase::Stopped => 0,
+            },
+        };
+        let hdr = self.send_request_with_body(
+            FrontendReq::SET_DEVICE_STATE_FD,
+            &req,
+            Some(&[fd.as_raw_descriptor()]),
+        )?;
+        // Receive reply.
+        let (reply, files) = self.recv_reply_with_files::<VhostUserU64>(&hdr)?;
+        let has_err = reply.value & 0xff != 0;
+        let invalid_fd = reply.value & 0x100 != 0;
+        if has_err {
+            return Err(VhostUserError::BackendInternalError);
+        }
+        match (invalid_fd, files.len()) {
+            (true, 0) => Ok(None),
+            (false, 1) => Ok(files.into_iter().next()),
+            _ => Err(VhostUserError::IncorrectFds),
+        }
+    }
+
+    /// After transferring the back-end’s internal state during migration, check whether the
+    /// back-end was able to successfully fully process the state.
+    pub fn check_device_state(&self) -> Result<()> {
+        if self.acked_protocol_features & VhostUserProtocolFeatures::DEVICE_STATE.bits() == 0 {
+            return Err(VhostUserError::InvalidOperation);
+        }
+        let hdr = self.send_request_header(FrontendReq::CHECK_DEVICE_STATE, None)?;
+        let reply = self.recv_reply::<VhostUserU64>(&hdr)?;
+        if reply.value != 0 {
+            return Err(VhostUserError::BackendInternalError);
+        }
+        Ok(())
+    }
+
     /// Snapshot the device and receive serialized state of the device.
     pub fn snapshot(&self) -> Result<Vec<u8>> {
         let hdr = self.send_request_header(FrontendReq::SNAPSHOT, None)?;

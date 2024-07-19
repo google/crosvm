@@ -69,6 +69,13 @@ pub trait Backend {
     fn get_max_mem_slots(&mut self) -> Result<u64>;
     fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
+    fn set_device_state_fd(
+        &mut self,
+        transfer_direction: VhostUserTransferDirection,
+        migration_phase: VhostUserMigrationPhase,
+        fd: File,
+    ) -> Result<Option<File>>;
+    fn check_device_state(&mut self) -> Result<()>;
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>>;
     fn snapshot(&mut self) -> Result<Vec<u8>>;
     fn restore(&mut self, data_bytes: &[u8]) -> Result<()>;
@@ -189,6 +196,20 @@ where
 
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()> {
         self.as_mut().remove_mem_region(region)
+    }
+
+    fn set_device_state_fd(
+        &mut self,
+        transfer_direction: VhostUserTransferDirection,
+        migration_phase: VhostUserMigrationPhase,
+        fd: File,
+    ) -> Result<Option<File>> {
+        self.as_mut()
+            .set_device_state_fd(transfer_direction, migration_phase, fd)
+    }
+
+    fn check_device_state(&mut self) -> Result<()> {
+        self.as_mut().check_device_state()
     }
 
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
@@ -350,6 +371,9 @@ impl<S: Backend> BackendServer<S> {
         let buf = self.connection.recv_body_bytes(&hdr)?;
         let size = buf.len();
 
+        // TODO: The error handling here is inconsistent. Sometimes we report the error to the
+        // client and keep going, sometimes we report the error and then close the connection,
+        // sometimes we just close the connection.
         match hdr.get_code() {
             Ok(FrontendReq::SET_OWNER) => {
                 self.check_request_size(&hdr, size, 0)?;
@@ -583,6 +607,57 @@ impl<S: Backend> BackendServer<S> {
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
                 let res = self.backend.remove_mem_region(&msg);
                 self.send_ack_message(&hdr, res.is_ok())?;
+                res?;
+            }
+            Ok(FrontendReq::SET_DEVICE_STATE_FD) => {
+                if self.acked_protocol_features & VhostUserProtocolFeatures::DEVICE_STATE.bits()
+                    == 0
+                {
+                    return Err(Error::InvalidOperation);
+                }
+                // Read request.
+                let msg =
+                    self.extract_request_body::<DeviceStateTransferParameters>(&hdr, size, &buf)?;
+                let transfer_direction = match msg.transfer_direction {
+                    0 => VhostUserTransferDirection::Save,
+                    1 => VhostUserTransferDirection::Load,
+                    _ => return Err(Error::InvalidMessage),
+                };
+                let migration_phase = match msg.migration_phase {
+                    0 => VhostUserMigrationPhase::Stopped,
+                    _ => return Err(Error::InvalidMessage),
+                };
+                // Call backend.
+                let res = self.backend.set_device_state_fd(
+                    transfer_direction,
+                    migration_phase,
+                    files.into_iter().next().ok_or(Error::IncorrectFds)?,
+                );
+                // Send response.
+                let (msg, fds) = match &res {
+                    Ok(None) => (VhostUserU64::new(0x100), None),
+                    Ok(Some(file)) => (VhostUserU64::new(0), Some(file.as_raw_descriptor())),
+                    // Just in case, set the "invalid FD" flag on error.
+                    Err(_) => (VhostUserU64::new(0x101), None),
+                };
+                let reply_hdr: VhostUserMsgHeader<FrontendReq> =
+                    self.new_reply_header::<VhostUserU64>(&hdr, 0)?;
+                self.connection.send_message(
+                    &reply_hdr,
+                    &msg,
+                    fds.as_ref().map(std::slice::from_ref),
+                )?;
+                res?;
+            }
+            Ok(FrontendReq::CHECK_DEVICE_STATE) => {
+                if self.acked_protocol_features & VhostUserProtocolFeatures::DEVICE_STATE.bits()
+                    == 0
+                {
+                    return Err(Error::InvalidOperation);
+                }
+                let res = self.backend.check_device_state();
+                let msg = VhostUserU64::new(if res.is_ok() { 0 } else { 1 });
+                self.send_reply_message(&hdr, &msg)?;
                 res?;
             }
             Ok(FrontendReq::GET_SHARED_MEMORY_REGIONS) => {
@@ -829,7 +904,8 @@ impl<S: Backend> BackendServer<S> {
             | Ok(FrontendReq::SET_LOG_FD)
             | Ok(FrontendReq::SET_BACKEND_REQ_FD)
             | Ok(FrontendReq::SET_INFLIGHT_FD)
-            | Ok(FrontendReq::ADD_MEM_REG) => Ok(()),
+            | Ok(FrontendReq::ADD_MEM_REG)
+            | Ok(FrontendReq::SET_DEVICE_STATE_FD) => Ok(()),
             Err(_) => Err(Error::InvalidMessage),
             _ if !files.is_empty() => Err(Error::InvalidMessage),
             _ => Ok(()),

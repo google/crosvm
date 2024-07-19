@@ -121,6 +121,7 @@ impl VhostUserDevice for GpuBackend {
             | VhostUserProtocolFeatures::BACKEND_REQ
             | VhostUserProtocolFeatures::MQ
             | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS
+            | VhostUserProtocolFeatures::DEVICE_STATE
     }
 
     fn read_config(&self, offset: u64, dst: &mut [u8]) {

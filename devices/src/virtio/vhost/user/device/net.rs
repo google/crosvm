@@ -163,7 +163,7 @@ where
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        VhostUserProtocolFeatures::CONFIG
+        VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::DEVICE_STATE
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {

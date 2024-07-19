@@ -157,7 +157,9 @@ impl VhostUserDevice for SndBackend {
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::MQ
+        VhostUserProtocolFeatures::CONFIG
+            | VhostUserProtocolFeatures::MQ
+            | VhostUserProtocolFeatures::DEVICE_STATE
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {

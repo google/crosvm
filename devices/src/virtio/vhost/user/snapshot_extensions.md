@@ -26,38 +26,6 @@ While all vrings are stopped, the device is suspended. In addition to not proces
 **NEW: The frontend can assume those requirements are obeyed both (1) before the first queue is
 started and (2) as soon as it receives a response for the message that stopped the last queue.**
 
-## Front-end message types
-
-### VHOST_USER_SNAPSHOT
-
-id: 1002 (temporary)
-
-equivalent ioctl: N/A
-
-request payload: N/A
-
-reply payload: i8, followed by (payload size - 1) bytes of opaque snapshot data
-
-Backend should create a snapshot of all state needed to perform a restore.
-
-The first byte of the response should be 1 to indicate success or 0 to indicate failure. The rest of
-the response is the snapshot bytes, which are opaque from the perspective of the frontend.
-
-### VHOST_USER_RESTORE
-
-id: 1003 (temporary)
-
-equivalent ioctl: N/A
-
-request payload: (payload size) bytes of opaque snapshot data
-
-reply payload: i8
-
-Backend should restore itself to state of the snapshot provided in the request payload. The request
-will contain the exact same bytes returned from a previous VHOST_USER_SNAPSHOT request.
-
-The one byte response should be 1 to indicate success or 0 to indicate failure.
-
 ## Snapshot-Restore
 
 TODO: write an overview for the feature
@@ -73,7 +41,8 @@ Snapshot sequence:
      somewhere.
    - Backend enters the "suspended device state" when the last queue is stopped.
 1. For each vhost-user device
-   - Frontend sends VHOST_USER_SNAPSHOT request and saves the response payload somewhere.
+   - Frontend sends VHOST_USER_SET_DEVICE_STATE_FD and VHOST_USER_CHECK_DEVICE_STATE requests with
+     transfer direction "save" to save the device state somewhere.
 1. For each vhost-user device
    - Frontend sends VHOST_USER_SET_MEM_TABLE request.
    - Frontend starts all the queues as if from scratch, using the saved vring base in the
@@ -89,7 +58,8 @@ Restore sequence:
      somewhere.
    - Backend enters the "suspended device state" when the last queue is stopped.
 1. For each vhost-user device
-   - Frontend sends VHOST_USER_RESTORE request.
+   - Frontend sends VHOST_USER_SET_DEVICE_STATE_FD and VHOST_USER_CHECK_DEVICE_STATE requests with
+     transfer direction "load" restore the device state.
 1. For each vhost-user device
    - Frontend sends VHOST_USER_SET_MEM_TABLE request.
    - Frontend starts all the queues as if from scratch, using the saved vring base in the

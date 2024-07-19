@@ -27,8 +27,10 @@ use vmm_vhost::message::VhostSharedMemoryRegion;
 use vmm_vhost::message::VhostUserConfigFlags;
 use vmm_vhost::message::VhostUserInflight;
 use vmm_vhost::message::VhostUserMemoryRegion;
+use vmm_vhost::message::VhostUserMigrationPhase;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserSingleMemoryRegion;
+use vmm_vhost::message::VhostUserTransferDirection;
 use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
 use vmm_vhost::Error;
@@ -417,6 +419,19 @@ impl vmm_vhost::Backend for VsockBackend {
     }
 
     fn remove_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion) -> Result<()> {
+        Err(Error::InvalidOperation)
+    }
+
+    fn set_device_state_fd(
+        &mut self,
+        _transfer_direction: VhostUserTransferDirection,
+        _migration_phase: VhostUserMigrationPhase,
+        _fd: File,
+    ) -> Result<Option<File>> {
+        Err(Error::InvalidOperation)
+    }
+
+    fn check_device_state(&mut self) -> Result<()> {
         Err(Error::InvalidOperation)
     }
 

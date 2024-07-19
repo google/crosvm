@@ -264,6 +264,19 @@ impl Backend for TestBackend {
         Ok(())
     }
 
+    fn set_device_state_fd(
+        &mut self,
+        _transfer_direction: VhostUserTransferDirection,
+        _migration_phase: VhostUserMigrationPhase,
+        _fd: File,
+    ) -> Result<Option<File>> {
+        Ok(None)
+    }
+
+    fn check_device_state(&mut self) -> Result<()> {
+        Ok(())
+    }
+
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
         Ok(Vec::new())
     }

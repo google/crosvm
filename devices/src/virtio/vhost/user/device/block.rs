@@ -61,6 +61,7 @@ impl VhostUserDevice for BlockBackend {
         VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::MQ
             | VhostUserProtocolFeatures::BACKEND_REQ
+            | VhostUserProtocolFeatures::DEVICE_STATE
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
