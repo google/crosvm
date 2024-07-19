@@ -66,7 +66,7 @@ impl RutabagaStream {
         let mut writer = Writer::new(&mut self.write_buffer);
         let mut num_descriptors = 0;
 
-        let handle_opt: Option<RutabagaHandle> = match encode {
+        let _handle_opt: Option<RutabagaHandle> = match encode {
             KumquatGpuProtocolWrite::Cmd(cmd) => {
                 writer.write_obj(cmd)?;
                 None
