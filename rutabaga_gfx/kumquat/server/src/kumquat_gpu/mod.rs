@@ -267,6 +267,10 @@ impl KumquatGpuConnection {
                         },
                     );
 
+                    kumquat_gpu
+                        .rutabaga
+                        .context_attach_resource(cmd.ctx_id, resource_id)?;
+
                     let resp = kumquat_gpu_protocol_resp_resource_create {
                         hdr: kumquat_gpu_protocol_ctrl_hdr {
                             type_: KUMQUAT_GPU_PROTOCOL_RESP_RESOURCE_CREATE,

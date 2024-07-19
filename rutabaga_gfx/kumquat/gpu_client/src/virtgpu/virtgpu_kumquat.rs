@@ -219,6 +219,7 @@ impl VirtGpuKumquat {
             flags: create_3d.flags,
             size: create_3d.size,
             stride: create_3d.stride,
+            ctx_id: self.context_id,
         };
 
         self.stream

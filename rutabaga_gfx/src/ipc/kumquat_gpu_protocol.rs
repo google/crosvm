@@ -93,6 +93,7 @@ pub struct kumquat_gpu_protocol_resource_create_3d {
     pub flags: u32,
     pub size: u32,
     pub stride: u32,
+    pub ctx_id: u32,
 }
 
 #[derive(Debug, Copy, FromZeroes, FromBytes, AsBytes)]
