@@ -16,7 +16,7 @@ use rutabaga_gfx::RutabagaError;
 use rutabaga_gfx::RutabagaResult;
 
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about = None, long_about = None)]
 struct Args {
     /// Colon-separated list of virtio-gpu capsets.  For example,
     /// "--capset-names=gfxstream-vulkan:cross-domain"
