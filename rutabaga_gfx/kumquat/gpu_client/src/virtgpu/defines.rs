@@ -74,9 +74,9 @@ pub struct VirtGpuResourceCreate3D {
     pub array_size: u32,
     pub last_level: u32,
     pub nr_samples: u32,
+    pub flags: u32,
     pub bo_handle: u32,
     pub res_handle: u32,
-    pub flags: u32,
     pub size: u32,
     pub stride: u32,
 }
