@@ -26,6 +26,7 @@ use crate::rutabaga_os::DEFAULT_RAW_DESCRIPTOR;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaHandle;
 use crate::rutabaga_utils::RutabagaResult;
+use crate::rutabaga_utils::RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD;
 
 const MAX_DESCRIPTORS: usize = 1;
 const MAX_COMMAND_SIZE: usize = 4096;
@@ -121,10 +122,36 @@ impl RutabagaStream {
                     KumquatGpuProtocol::ResourceCreate3d(reader.read_obj()?)
                 }
                 KUMQUAT_GPU_PROTOCOL_TRANSFER_TO_HOST_3D => {
-                    KumquatGpuProtocol::TransferToHost3d(reader.read_obj()?)
+                    let file = files.pop_front().ok_or(RutabagaError::InvalidResourceId)?;
+                    let resp: kumquat_gpu_protocol_transfer_host_3d = reader.read_obj()?;
+
+                    // SAFETY: Safe because we know the underlying OS descriptor is valid and
+                    // owned by us.
+                    let os_handle =
+                        unsafe { SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
+
+                    let handle = RutabagaHandle {
+                        os_handle,
+                        handle_type: RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD,
+                    };
+
+                    KumquatGpuProtocol::TransferToHost3d(resp, handle)
                 }
                 KUMQUAT_GPU_PROTOCOL_TRANSFER_FROM_HOST_3D => {
-                    KumquatGpuProtocol::TransferFromHost3d(reader.read_obj()?)
+                    let file = files.pop_front().ok_or(RutabagaError::InvalidResourceId)?;
+                    let resp: kumquat_gpu_protocol_transfer_host_3d = reader.read_obj()?;
+
+                    // SAFETY: Safe because we know the underlying OS descriptor is valid and
+                    // owned by us.
+                    let os_handle =
+                        unsafe { SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
+
+                    let handle = RutabagaHandle {
+                        os_handle,
+                        handle_type: RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD,
+                    };
+
+                    KumquatGpuProtocol::TransferFromHost3d(resp, handle)
                 }
                 KUMQUAT_GPU_PROTOCOL_SUBMIT_3D => {
                     let cmd: kumquat_gpu_protocol_cmd_submit = reader.read_obj()?;

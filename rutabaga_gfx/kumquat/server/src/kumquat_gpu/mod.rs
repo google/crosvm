@@ -288,7 +288,7 @@ impl KumquatGpuConnection {
                         },
                     ))?;
                 }
-                KumquatGpuProtocol::TransferToHost3d(cmd) => {
+                KumquatGpuProtocol::TransferToHost3d(cmd, emulated_fence) => {
                     let resource_id = cmd.resource_id;
 
                     let transfer = Transfer3D {
@@ -307,8 +307,17 @@ impl KumquatGpuConnection {
                     kumquat_gpu
                         .rutabaga
                         .transfer_write(cmd.ctx_id, resource_id, transfer)?;
+
+                    // SAFETY: Safe because the emulated fence and owned by us.
+                    let mut file = unsafe {
+                        File::from_raw_descriptor(emulated_fence.os_handle.into_raw_descriptor())
+                    };
+
+                    // TODO(b/356504311): An improvement would be `impl From<RutabagaHandle> for
+                    // RutabagaEvent` + `RutabagaEvent::signal`
+                    file.write(&mut 1u64.to_ne_bytes())?;
                 }
-                KumquatGpuProtocol::TransferFromHost3d(cmd) => {
+                KumquatGpuProtocol::TransferFromHost3d(cmd, emulated_fence) => {
                     let resource_id = cmd.resource_id;
 
                     let transfer = Transfer3D {
@@ -327,6 +336,15 @@ impl KumquatGpuConnection {
                     kumquat_gpu
                         .rutabaga
                         .transfer_read(cmd.ctx_id, resource_id, transfer, None)?;
+
+                    // SAFETY: Safe because the emulated fence and owned by us.
+                    let mut file = unsafe {
+                        File::from_raw_descriptor(emulated_fence.os_handle.into_raw_descriptor())
+                    };
+
+                    // TODO(b/356504311): An improvement would be `impl From<RutabagaHandle> for
+                    // RutabagaEvent` + `RutabagaEvent::signal`
+                    file.write(&mut 1u64.to_ne_bytes())?;
                 }
                 KumquatGpuProtocol::CmdSubmit3d(cmd, mut cmd_buf, fence_ids) => {
                     kumquat_gpu.rutabaga.submit_command(
