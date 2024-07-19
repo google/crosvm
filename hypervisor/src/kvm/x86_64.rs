@@ -1598,7 +1598,7 @@ impl From<&kvm_segment> for Segment {
     fn from(s: &kvm_segment) -> Self {
         Segment {
             base: s.base,
-            limit: s.limit,
+            limit_bytes: s.limit,
             selector: s.selector,
             type_: s.type_,
             present: s.present,
@@ -1616,7 +1616,7 @@ impl From<&Segment> for kvm_segment {
     fn from(s: &Segment) -> Self {
         kvm_segment {
             base: s.base,
-            limit: s.limit,
+            limit: s.limit_bytes,
             selector: s.selector,
             type_: s.type_,
             present: s.present,

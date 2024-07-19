@@ -64,9 +64,19 @@ fn get_type(entry: u64) -> u8 {
 /// * `entry` - The gdt entry.
 /// * `table_index` - Index of the entry in the gdt table.
 pub fn segment_from_gdt(entry: u64, table_index: u8) -> Segment {
+    let g = get_g(entry);
+    let limit = get_limit(entry);
+    let limit_bytes = if g == 0 {
+        // 1-byte granularity
+        limit
+    } else {
+        // 4096-byte granularity
+        (limit * 4096) + 4095
+    };
+
     Segment {
         base: get_base(entry),
-        limit: get_limit(entry),
+        limit_bytes,
         selector: (table_index * 8) as u16,
         type_: get_type(entry),
         present: get_p(entry),
@@ -74,7 +84,7 @@ pub fn segment_from_gdt(entry: u64, table_index: u8) -> Segment {
         db: get_db(entry),
         s: get_s(entry),
         l: get_l(entry),
-        g: get_g(entry),
+        g,
         avl: get_avl(entry),
     }
 }
@@ -101,6 +111,6 @@ mod test {
         assert_eq!(0xB, seg.type_);
         // base and limit
         assert_eq!(0x100000, seg.base);
-        assert_eq!(0xfffff, seg.limit);
+        assert_eq!(0xffffffff, seg.limit_bytes);
     }
 }

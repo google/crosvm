@@ -301,11 +301,15 @@ const IDT_OFFSET: u64 = 0x1528;
 pub fn configure_long_mode_memory(vm: &mut dyn Vm) -> Segment {
     // Condensed version of the function in x86_64\src\gdt.rs
     pub fn segment_from_gdt(entry: u64, table_index: u8) -> Segment {
+        let g = ((entry & 0x0080000000000000) >> 55) as u8;
+        let limit =
+            ((((entry) & 0x000F000000000000) >> 32) | ((entry) & 0x000000000000FFFF)) as u32;
+        let limit_bytes = if g == 0 { limit } else { (limit * 4096) + 4095 };
         Segment {
             base: (((entry) & 0xFF00000000000000) >> 32)
                 | (((entry) & 0x000000FF00000000) >> 16)
                 | (((entry) & 0x00000000FFFF0000) >> 16),
-            limit: ((((entry) & 0x000F000000000000) >> 32) | ((entry) & 0x000000000000FFFF)) as u32,
+            limit_bytes,
             selector: (table_index * 8) as u16,
             type_: ((entry & 0x00000F0000000000) >> 40) as u8,
             present: ((entry & 0x0000800000000000) >> 47) as u8,
@@ -313,7 +317,7 @@ pub fn configure_long_mode_memory(vm: &mut dyn Vm) -> Segment {
             db: ((entry & 0x0040000000000000) >> 54) as u8,
             s: ((entry & 0x0000100000000000) >> 44) as u8,
             l: ((entry & 0x0020000000000000) >> 53) as u8,
-            g: ((entry & 0x0080000000000000) >> 55) as u8,
+            g,
             avl: ((entry & 0x0010000000000000) >> 52) as u8,
         }
     }

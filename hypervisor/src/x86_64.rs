@@ -811,7 +811,8 @@ impl Default for Regs {
 #[derive(Debug, Default, Copy, Clone, Serialize, Deserialize)]
 pub struct Segment {
     pub base: u64,
-    pub limit: u32,
+    /// Limit of the segment - always in bytes, regardless of granularity (`g`) field.
+    pub limit_bytes: u32,
     pub selector: u16,
     pub type_: u8,
     pub present: u8,
@@ -871,7 +872,7 @@ impl Default for Sregs {
         // 16-bit real-mode code segment (reset vector).
         let code_seg = Segment {
             base: 0xffff0000,
-            limit: 0xffff,
+            limit_bytes: 0xffff,
             selector: 0xf000,
             type_: SEG_TYPE_CODE | SEG_TYPE_CODE_READABLE | SEG_TYPE_ACCESSED, // 11
             present: 1,
@@ -882,7 +883,7 @@ impl Default for Sregs {
         // 16-bit real-mode data segment.
         let data_seg = Segment {
             base: 0,
-            limit: 0xffff,
+            limit_bytes: 0xffff,
             selector: 0,
             type_: SEG_TYPE_DATA | SEG_TYPE_DATA_WRITABLE | SEG_TYPE_ACCESSED, // 3
             present: 1,
@@ -893,7 +894,7 @@ impl Default for Sregs {
         // 16-bit TSS segment.
         let task_seg = Segment {
             base: 0,
-            limit: 0xffff,
+            limit_bytes: 0xffff,
             selector: 0,
             type_: SEG_TYPE_CODE | SEG_TYPE_CODE_READABLE | SEG_TYPE_ACCESSED, // 11
             present: 1,
@@ -904,7 +905,7 @@ impl Default for Sregs {
         // Local descriptor table.
         let ldt = Segment {
             base: 0,
-            limit: 0xffff,
+            limit_bytes: 0xffff,
             selector: 0,
             type_: SEG_TYPE_DATA | SEG_TYPE_DATA_WRITABLE, // 2
             present: 1,

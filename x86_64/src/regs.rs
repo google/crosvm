@@ -308,7 +308,7 @@ mod tests {
         assert_eq!(0x0, read_u64(&gm, BOOT_IDT_OFFSET));
 
         assert_eq!(0, sregs.cs.base);
-        assert_eq!(0xfffff, sregs.ds.limit);
+        assert_eq!(0xffffffff, sregs.ds.limit_bytes);
         assert_eq!(0x10, sregs.cs.selector);
         assert_eq!(0x18, sregs.ds.selector);
         assert_eq!(0x18, sregs.es.selector);
@@ -317,7 +317,7 @@ mod tests {
         assert_eq!(1, sregs.gs.g);
         assert_eq!(0, sregs.ss.avl);
         assert_eq!(0, sregs.tr.base);
-        assert_eq!(0xfffff, sregs.tr.limit);
+        assert_eq!(0xffffffff, sregs.tr.limit_bytes);
         assert_eq!(0, sregs.tr.avl);
         assert_eq!(X86_CR0_PE, sregs.cr0 & X86_CR0_PE);
         assert_eq!(EFER_LME, sregs.efer);
