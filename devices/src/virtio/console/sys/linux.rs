@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
+use anyhow::Context;
 use base::error;
 use base::Event;
 use base::EventToken;
@@ -20,6 +21,9 @@ use sync::Mutex;
 use crate::serial::sys::InStreamType;
 use crate::serial_device::SerialInput;
 use crate::serial_device::SerialOptions;
+use crate::virtio::console::device::ConsoleDevice;
+use crate::virtio::console::port::ConsolePort;
+use crate::virtio::console::port::ConsolePortInfo;
 use crate::virtio::console::Console;
 use crate::virtio::ProtectionType;
 use crate::SerialDevice;
@@ -29,91 +33,114 @@ impl SerialDevice for Console {
         protection_type: ProtectionType,
         _event: Event,
         input: Option<Box<dyn SerialInput>>,
-        out: Option<Box<dyn io::Write + Send>>,
+        output: Option<Box<dyn io::Write + Send>>,
         // TODO(b/171331752): connect filesync functionality.
         _sync: Option<Box<dyn FileSync + Send>>,
         options: SerialOptions,
         keep_rds: Vec<RawDescriptor>,
     ) -> Console {
-        Console::new(protection_type, input, out, keep_rds, options.pci_address)
+        Console::new(
+            protection_type,
+            input,
+            output,
+            keep_rds,
+            options.pci_address,
+        )
     }
 }
 
-fn is_a_fatal_input_error(e: &io::Error) -> bool {
-    e.kind() != io::ErrorKind::Interrupted
+impl SerialDevice for ConsoleDevice {
+    fn new(
+        protection_type: ProtectionType,
+        _event: Event,
+        input: Option<Box<dyn SerialInput>>,
+        output: Option<Box<dyn io::Write + Send>>,
+        _sync: Option<Box<dyn FileSync + Send>>,
+        options: SerialOptions,
+        keep_rds: Vec<RawDescriptor>,
+    ) -> ConsoleDevice {
+        let info = ConsolePortInfo {
+            name: options.name,
+            console: options.console,
+        };
+        let port = ConsolePort::new(input, output, Some(info), keep_rds);
+        ConsoleDevice::new_single_port(protection_type, port)
+    }
 }
 
-/// Starts a thread that reads rx and sends the input back via the returned buffer.
+impl SerialDevice for ConsolePort {
+    fn new(
+        _protection_type: ProtectionType,
+        _event: Event,
+        input: Option<Box<dyn SerialInput>>,
+        output: Option<Box<dyn io::Write + Send>>,
+        // TODO(b/171331752): connect filesync functionality.
+        _sync: Option<Box<dyn FileSync + Send>>,
+        options: SerialOptions,
+        keep_rds: Vec<RawDescriptor>,
+    ) -> ConsolePort {
+        let info = ConsolePortInfo {
+            name: options.name,
+            console: options.console,
+        };
+        ConsolePort::new(input, output, Some(info), keep_rds)
+    }
+}
+
+/// Starts a thread that reads input and sends the input back via the provided buffer.
 ///
 /// The caller should listen on `in_avail_evt` for events. When `in_avail_evt` signals that data
-/// is available, the caller should lock the returned `Mutex` and read data out of the inner
+/// is available, the caller should lock `input_buffer` and read data out of the inner
 /// `VecDeque`. The data should be removed from the beginning of the `VecDeque` as it is processed.
 ///
 /// # Arguments
 ///
-/// * `rx` - Data source that the reader thread will wait on to send data back to the buffer
+/// * `input` - Data source that the reader thread will wait on to send data back to the buffer
 /// * `in_avail_evt` - Event triggered by the thread when new input is available on the buffer
 pub(in crate::virtio::console) fn spawn_input_thread(
-    mut rx: InStreamType,
-    in_avail_evt: &Event,
-    input_buffer: VecDeque<u8>,
-) -> (Arc<Mutex<VecDeque<u8>>>, WorkerThread<InStreamType>) {
-    let buffer = Arc::new(Mutex::new(input_buffer));
-    let buffer_cloned = buffer.clone();
-
-    let thread_in_avail_evt = in_avail_evt
-        .try_clone()
-        .expect("failed to clone in_avail_evt");
-
-    let res = WorkerThread::start("v_console_input", move |kill_evt| {
+    mut input: InStreamType,
+    in_avail_evt: Event,
+    input_buffer: Arc<Mutex<VecDeque<u8>>>,
+) -> WorkerThread<InStreamType> {
+    WorkerThread::start("v_console_input", move |kill_evt| {
         // If there is already data, signal immediately.
-        if !buffer.lock().is_empty() {
-            thread_in_avail_evt.signal().unwrap();
+        if !input_buffer.lock().is_empty() {
+            in_avail_evt.signal().unwrap();
         }
-        read_input(&mut rx, &thread_in_avail_evt, buffer, kill_evt);
-        rx
-    });
-    (buffer_cloned, res)
+        if let Err(e) = read_input(&mut input, &in_avail_evt, input_buffer, kill_evt) {
+            error!("console input thread exited with error: {:#}", e);
+        }
+        input
+    })
 }
 
-pub(in crate::virtio::console) fn read_input(
-    rx: &mut InStreamType,
+fn read_input(
+    input: &mut InStreamType,
     thread_in_avail_evt: &Event,
     buffer: Arc<Mutex<VecDeque<u8>>>,
     kill_evt: Event,
-) {
+) -> anyhow::Result<()> {
     #[derive(EventToken)]
     enum Token {
         ConsoleEvent,
         Kill,
     }
 
-    let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
+    let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
         (&kill_evt, Token::Kill),
-        (rx.get_read_notifier(), Token::ConsoleEvent),
-    ]) {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            error!("failed creating WaitContext {:?}", e);
-            return;
-        }
-    };
+        (input.get_read_notifier(), Token::ConsoleEvent),
+    ])
+    .context("failed creating WaitContext")?;
 
     let mut kill_timeout = None;
     let mut rx_buf = [0u8; 1 << 12];
     'wait: loop {
-        let events = match wait_ctx.wait() {
-            Ok(events) => events,
-            Err(e) => {
-                error!("Failed to wait for events. {}", e);
-                return;
-            }
-        };
+        let events = wait_ctx.wait().context("Failed to wait for events")?;
         for event in events.iter() {
             match event.token {
                 Token::Kill => {
                     // Ignore the kill event until there are no other events to process so that
-                    // we drain `rx` as much as possible. The next `wait_ctx.wait()` call will
+                    // we drain `input` as much as possible. The next `wait_ctx.wait()` call will
                     // immediately re-entry this case since we don't call `kill_evt.wait()`.
                     if events.iter().all(|e| matches!(e.token, Token::Kill)) {
                         break 'wait;
@@ -135,25 +162,22 @@ pub(in crate::virtio::console) fn read_input(
                     }
                 }
                 Token::ConsoleEvent => {
-                    match rx.read(&mut rx_buf) {
+                    match input.read(&mut rx_buf) {
                         Ok(0) => break 'wait, // Assume the stream of input has ended.
                         Ok(size) => {
                             buffer.lock().extend(&rx_buf[0..size]);
                             thread_in_avail_evt.signal().unwrap();
                         }
+                        // Being interrupted is not an error, but everything else is.
+                        Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
                         Err(e) => {
-                            // Being interrupted is not an error, but everything else is.
-                            if is_a_fatal_input_error(&e) {
-                                error!(
-                                    "failed to read for bytes to queue into console device: {}",
-                                    e
-                                );
-                                break 'wait;
-                            }
+                            return Err(e).context("failed to read console input");
                         }
                     }
                 }
             }
         }
     }
+
+    Ok(())
 }

@@ -285,7 +285,7 @@ macro_rules! suspendable_virtio_tests {
                     let mut queue = QueueConfig::new(queue_size, 0);
                     queue.set_ready(true);
                     let queue = queue
-                        .activate(mem, Event::new().unwrap())
+                        .activate(mem, base::Event::new().unwrap())
                         .expect("QueueConfig::activate");
                     queues.insert(i, queue);
                 }
@@ -357,7 +357,7 @@ macro_rules! suspendable_virtio_tests {
                 device
                     .virtio_wake(Some((mem.clone(), interrupt.clone(), sleep_result)))
                     .expect("failed to wake");
-                let (_, device) = &mut $dev();
+                let (_ctx2, mut device) = $dev();
                 device
                     .virtio_restore(snap.clone())
                     .expect("failed to restore");

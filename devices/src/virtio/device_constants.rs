@@ -252,7 +252,46 @@ pub mod wl {
 }
 
 pub mod console {
+    use data_model::Le16;
+    use data_model::Le32;
+    use zerocopy::AsBytes;
+    use zerocopy::FromBytes;
+    use zerocopy::FromZeroes;
+
     pub const VIRTIO_CONSOLE_F_SIZE: u32 = 0;
     pub const VIRTIO_CONSOLE_F_MULTIPORT: u32 = 1;
     pub const VIRTIO_CONSOLE_F_EMERG_WRITE: u32 = 2;
+
+    #[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
+    #[repr(C)]
+    pub struct virtio_console_config {
+        pub cols: Le16,
+        pub rows: Le16,
+        pub max_nr_ports: Le32,
+        pub emerg_wr: Le32,
+    }
+
+    #[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
+    #[repr(C)]
+    pub struct virtio_console_control {
+        pub id: Le32,
+        pub event: Le16,
+        pub value: Le16,
+    }
+
+    #[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
+    #[repr(C)]
+    pub struct virtio_console_resize {
+        pub cols: Le16,
+        pub rows: Le16,
+    }
+
+    pub const VIRTIO_CONSOLE_DEVICE_READY: u16 = 0;
+    pub const VIRTIO_CONSOLE_DEVICE_ADD: u16 = 1;
+    pub const VIRTIO_CONSOLE_DEVICE_REMOVE: u16 = 2;
+    pub const VIRTIO_CONSOLE_PORT_READY: u16 = 3;
+    pub const VIRTIO_CONSOLE_CONSOLE_PORT: u16 = 4;
+    pub const VIRTIO_CONSOLE_RESIZE: u16 = 5;
+    pub const VIRTIO_CONSOLE_PORT_OPEN: u16 = 6;
+    pub const VIRTIO_CONSOLE_PORT_NAME: u16 = 7;
 }

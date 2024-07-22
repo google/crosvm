@@ -90,23 +90,13 @@ fn is_a_fatal_input_error(e: &io::Error) -> bool {
 /// * `in_avail_evt` - Event triggered by the thread when new input is available on the buffer
 pub(in crate::virtio::console) fn spawn_input_thread(
     mut rx: Box<named_pipes::PipeConnection>,
-    in_avail_evt: &Event,
-    input_buffer: VecDeque<u8>,
-) -> (
-    Arc<Mutex<VecDeque<u8>>>,
-    WorkerThread<Box<named_pipes::PipeConnection>>,
-) {
-    let buffer = Arc::new(Mutex::new(input_buffer));
-    let buffer_cloned = buffer.clone();
-
-    let thread_in_avail_evt = in_avail_evt
-        .try_clone()
-        .expect("failed to clone in_avail_evt");
-
-    let res = WorkerThread::start("v_console_input", move |kill_evt| {
+    in_avail_evt: Event,
+    input_buffer: Arc<Mutex<VecDeque<u8>>>,
+) -> WorkerThread<Box<named_pipes::PipeConnection>> {
+    WorkerThread::start("v_console_input", move |kill_evt| {
         // If there is already data, signal immediately.
-        if !buffer.lock().is_empty() {
-            thread_in_avail_evt.signal().unwrap();
+        if !input_buffer.lock().is_empty() {
+            in_avail_evt.signal().unwrap();
         }
 
         match rx.wait_for_client_connection_overlapped_blocking(&kill_evt) {
@@ -115,13 +105,12 @@ pub(in crate::virtio::console) fn spawn_input_thread(
             Ok(()) => (),
         }
 
-        read_input(&mut rx, &thread_in_avail_evt, buffer, kill_evt);
+        read_input(&mut rx, &in_avail_evt, input_buffer, kill_evt);
         rx
-    });
-    (buffer_cloned, res)
+    })
 }
 
-pub(in crate::virtio::console) fn read_input(
+fn read_input(
     rx: &mut Box<named_pipes::PipeConnection>,
     thread_in_avail_evt: &Event,
     buffer: Arc<Mutex<VecDeque<u8>>>,

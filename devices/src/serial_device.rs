@@ -105,9 +105,9 @@ impl Display for SerialType {
 #[serde(rename_all = "kebab-case")]
 pub enum SerialHardware {
     Serial,              // Standard PC-style (8250/16550 compatible) UART
-    VirtioConsole,       // virtio-console device (AsyncConsole)
+    VirtioConsole,       // virtio-console device
     Debugcon,            // Bochs style debug port
-    LegacyVirtioConsole, // legacy virtio-console device (Console)
+    LegacyVirtioConsole, // legacy virtio-console device (alias for VirtioConsole)
 }
 
 impl Default for SerialHardware {

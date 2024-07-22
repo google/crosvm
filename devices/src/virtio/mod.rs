@@ -4,7 +4,6 @@
 
 //! Implements virtio devices, queues, and transport mechanisms.
 
-mod async_device;
 mod async_utils;
 #[cfg(feature = "balloon")]
 mod balloon;

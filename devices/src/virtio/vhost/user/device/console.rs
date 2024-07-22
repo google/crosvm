@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
+use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
@@ -13,21 +13,14 @@ use base::Event;
 use base::RawDescriptor;
 use base::Terminal;
 use cros_async::Executor;
-use data_model::Le32;
 use hypervisor::ProtectionType;
-use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
-use zerocopy::AsBytes;
 
-use crate::virtio;
-use crate::virtio::console::asynchronous::ConsoleDevice;
-use crate::virtio::console::asynchronous::ConsolePort;
-use crate::virtio::console::virtio_console_config;
-use crate::virtio::copy_config;
+use crate::virtio::console::device::ConsoleDevice;
+use crate::virtio::console::port::ConsolePort;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
-use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
@@ -59,7 +52,7 @@ impl Drop for VhostUserConsoleDevice {
 }
 
 impl VhostUserDeviceBuilder for VhostUserConsoleDevice {
-    fn build(self: Box<Self>, ex: &Executor) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
+    fn build(mut self: Box<Self>, _ex: &Executor) -> anyhow::Result<Box<dyn vmm_vhost::Backend>> {
         if self.raw_stdin {
             // Set stdin() to raw mode so we can send over individual keystrokes unbuffered
             std::io::stdin()
@@ -67,14 +60,9 @@ impl VhostUserDeviceBuilder for VhostUserConsoleDevice {
                 .context("failed to set terminal in raw mode")?;
         }
 
-        let queue_num = self.console.max_queues();
-        let active_queues = vec![None; queue_num];
+        self.console.start_input_threads();
 
-        let backend = ConsoleBackend {
-            device: *self,
-            ex: ex.clone(),
-            active_queues,
-        };
+        let backend = ConsoleBackend { device: *self };
 
         let handler = DeviceRequestHandler::new(backend);
         Ok(Box::new(handler))
@@ -83,8 +71,6 @@ impl VhostUserDeviceBuilder for VhostUserConsoleDevice {
 
 struct ConsoleBackend {
     device: VhostUserConsoleDevice,
-    ex: Executor,
-    active_queues: Vec<Option<Arc<Mutex<Queue>>>>,
 }
 
 impl VhostUserDevice for ConsoleBackend {
@@ -93,7 +79,7 @@ impl VhostUserDevice for ConsoleBackend {
     }
 
     fn features(&self) -> u64 {
-        self.device.console.avail_features() | 1 << VHOST_USER_F_PROTOCOL_FEATURES
+        self.device.console.features() | 1 << VHOST_USER_F_PROTOCOL_FEATURES
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
@@ -101,52 +87,30 @@ impl VhostUserDevice for ConsoleBackend {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        let max_nr_ports = self.device.console.max_ports();
-        let config = virtio_console_config {
-            max_nr_ports: Le32::from(max_nr_ports as u32),
-            ..Default::default()
-        };
-        copy_config(data, 0, config.as_bytes(), offset);
+        self.device.console.read_config(offset, data);
     }
 
     fn reset(&mut self) {
-        for queue_num in 0..self.max_queue_num() {
-            if let Err(e) = self.stop_queue(queue_num) {
-                error!("Failed to stop_queue during reset: {}", e);
-            }
+        if let Err(e) = self.device.console.reset() {
+            error!("console reset failed: {:#}", e);
         }
     }
 
     fn start_queue(
         &mut self,
         idx: usize,
-        queue: virtio::Queue,
+        queue: Queue,
         _mem: GuestMemory,
         doorbell: Interrupt,
     ) -> anyhow::Result<()> {
-        let queue = Arc::new(Mutex::new(queue));
-        let res = self
-            .device
-            .console
-            .start_queue(&self.ex, idx, queue.clone(), doorbell);
-
-        self.active_queues[idx].replace(queue);
-
-        res
+        self.device.console.start_queue(idx, queue, doorbell)
     }
 
-    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
-        if let Err(e) = self.device.console.stop_queue(idx) {
-            error!("error while stopping queue {}: {}", idx, e);
-        }
-
-        if let Some(active_queue) = self.active_queues[idx].take() {
-            let queue = Arc::try_unwrap(active_queue)
-                .expect("failed to recover queue from worker")
-                .into_inner();
-            Ok(queue)
-        } else {
-            Err(anyhow::Error::new(DeviceError::WorkerNotFound))
+    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<Queue> {
+        match self.device.console.stop_queue(idx) {
+            Ok(Some(queue)) => Ok(queue),
+            Ok(None) => Err(anyhow!("queue {idx} not started")),
+            Err(e) => Err(e).with_context(|| format!("failed to stop queue {idx}")),
         }
     }
 }
@@ -176,7 +140,7 @@ fn create_vu_multi_port_device(
     params: &[SerialParameters],
     keep_rds: &mut Vec<RawDescriptor>,
 ) -> anyhow::Result<VhostUserConsoleDevice> {
-    let mut ports = params
+    let ports = params
         .iter()
         .map(|x| {
             let port = x
@@ -193,8 +157,7 @@ fn create_vu_multi_port_device(
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
 
-    let port0 = ports.remove(0);
-    let device = ConsoleDevice::new_multi_port(ProtectionType::Unprotected, port0, ports);
+    let device = ConsoleDevice::new_multi_port(ProtectionType::Unprotected, ports);
 
     Ok(VhostUserConsoleDevice {
         console: device,

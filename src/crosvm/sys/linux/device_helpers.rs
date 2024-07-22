@@ -25,13 +25,11 @@ use base::linux::MemfdSeals;
 use base::sys::SharedMemoryLinux;
 use base::ReadNotifier;
 use base::*;
-use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 use devices::serial_device::SerialType;
 use devices::vfio::VfioContainerManager;
 use devices::virtio;
 use devices::virtio::block::DiskOption;
-use devices::virtio::console::asynchronous::AsyncConsole;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoBackendType;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
@@ -1382,17 +1380,10 @@ impl VirtioDeviceBuilder for &SerialParameters {
         let mut keep_rds = Vec::new();
         let evt = Event::new().context("failed to create event")?;
 
-        if self.hardware == SerialHardware::LegacyVirtioConsole {
-            Ok(Box::new(
-                self.create_serial_device::<Console>(protection_type, &evt, &mut keep_rds)
-                    .context("failed to create console device")?,
-            ))
-        } else {
-            Ok(Box::new(
-                self.create_serial_device::<AsyncConsole>(protection_type, &evt, &mut keep_rds)
-                    .context("failed to create console device")?,
-            ))
-        }
+        Ok(Box::new(
+            self.create_serial_device::<Console>(protection_type, &evt, &mut keep_rds)
+                .context("failed to create console device")?,
+        ))
     }
 
     fn create_vhost_user_device(
