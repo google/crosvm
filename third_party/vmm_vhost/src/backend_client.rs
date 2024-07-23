@@ -599,7 +599,7 @@ impl BackendClient {
         }
 
         let (reply, body, files) = self.connection.recv_message::<T>()?;
-        if !reply.is_reply_for(hdr) || files.is_empty() || !body.is_valid() {
+        if !reply.is_reply_for(hdr) || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
         Ok((body, files))
