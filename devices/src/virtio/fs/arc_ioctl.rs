@@ -8,11 +8,11 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
-const FS_IOCTL_PATH_MAX_LEN: usize = 128;
+pub const FS_IOCTL_PATH_MAX_LEN: usize = 128;
 const FS_IOCTL_XATTR_NAME_MAX_LEN: usize = 128;
 const FS_IOCTL_XATTR_VALUE_MAX_LEN: usize = 128;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PermissionData {
     pub guest_uid: libc::uid_t,
     pub guest_gid: libc::gid_t,

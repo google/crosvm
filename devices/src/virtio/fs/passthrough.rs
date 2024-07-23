@@ -510,7 +510,7 @@ fn eexist() -> io::Error {
 }
 
 fn stat<F: AsRawDescriptor + ?Sized>(f: &F) -> io::Result<libc::stat64> {
-    let mut st = MaybeUninit::<libc::stat64>::zeroed();
+    let mut st: MaybeUninit<libc::stat64> = MaybeUninit::<libc::stat64>::zeroed();
 
     // SAFETY: this is a constant value that is a nul-terminated string without interior nul bytes.
     let pathname = unsafe { CStr::from_bytes_with_nul_unchecked(EMPTY_CSTR) };
@@ -1733,6 +1733,10 @@ impl PassthroughFs {
         r.read_exact(fs_permission_data.as_bytes_mut())?;
 
         let perm_path = self.string_from_u8_slice(&fs_permission_data.perm_path)?;
+        if !perm_path.starts_with('/') {
+            error!("FS_IOC_SETPERMISSION: perm path must start with '/'");
+            return Err(io::Error::from_raw_os_error(libc::EINVAL));
+        }
         Ok(PermissionData {
             guest_uid: fs_permission_data.guest_uid,
             guest_gid: fs_permission_data.guest_gid,
@@ -3223,7 +3227,7 @@ impl FileSystem for PassthroughFs {
             // Refer go/remove-mount-passthrough-fuse for more design details
             #[cfg(feature = "arc_quota")]
             FS_IOC_SETPERMISSION => {
-                if in_size == 0 {
+                if in_size != size_of::<FsPermissionDataBuffer>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::EINVAL))
                 } else {
                     Ok(self.set_permission_by_path(r))
@@ -3458,6 +3462,8 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    #[cfg(feature = "arc_quota")]
+    use crate::virtio::fs::arc_ioctl::FS_IOCTL_PATH_MAX_LEN;
 
     const UNITTEST_LOCK_NAME: &str = "passthroughfs_unittest_lock";
 
@@ -3502,6 +3508,25 @@ mod tests {
             inode = ent.inode;
         }
         Ok(inode)
+    }
+
+    /// Looks up the given `path` in `fs`.
+    #[cfg(feature = "arc_quota")]
+    fn lookup_ent(fs: &PassthroughFs, path: &Path) -> io::Result<Entry> {
+        let mut inode = 1;
+        let ctx = get_context();
+        let mut entry = Entry::new_negative(Duration::from_secs(10));
+        for name in path.iter() {
+            let name = CString::new(name.to_str().unwrap()).unwrap();
+            entry = match fs.lookup(ctx, inode, &name) {
+                Ok(ent) => ent,
+                Err(e) => {
+                    return Err(e);
+                }
+            };
+            inode = entry.inode;
+        }
+        Ok(entry)
     }
 
     /// Creates a file at the given `path`.
@@ -3580,6 +3605,27 @@ mod tests {
         let name = CString::new(name.to_str().unwrap()).unwrap();
         let linkname = CString::new(linkname.to_str().unwrap()).unwrap();
         fs.symlink(ctx, &linkname, inode, &name, security_ctx)
+    }
+
+    // In this ioctl inode,handle,flags,arg and out_size is irrelavant, set to empty value.
+    #[cfg(feature = "arc_quota")]
+    fn fs_ioc_setpermission<R: io::Read>(
+        fs: &PassthroughFs,
+        in_size: u32,
+        r: R,
+    ) -> io::Result<IoctlReply> {
+        let ctx = get_context();
+        fs.ioctl(
+            ctx,
+            0,
+            0,
+            IoctlFlags::empty(),
+            FS_IOC_SETPERMISSION as u32,
+            0,
+            in_size,
+            0,
+            r,
+        )
     }
 
     #[test]
@@ -4193,5 +4239,190 @@ mod tests {
         assert_eq!(entry.inode, sym1_entry.inode);
         assert!(handler.is_none());
         assert_eq!(open_options, OpenOptions::empty());
+    }
+
+    #[test]
+    #[cfg(feature = "arc_quota")]
+    fn set_permission_ioctl_valid_data() {
+        // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
+        // `NamedLock` before starting each unit test creating a `PassthroughFs` instance.
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let cfg = Config {
+            max_dynamic_perm: 1,
+            ..Default::default()
+        };
+        let p = PassthroughFs::new("tag", cfg).expect("Failed to create PassthroughFs");
+
+        let perm_path_string = String::from("/test");
+        let fs_permission_data_buffer = FsPermissionDataBuffer {
+            guest_uid: 1,
+            guest_gid: 2,
+            host_uid: 3,
+            host_gid: 4,
+            umask: 5,
+            pad: 0,
+            perm_path: {
+                let mut perm_path: [u8; FS_IOCTL_PATH_MAX_LEN] = [0; FS_IOCTL_PATH_MAX_LEN];
+                perm_path[..perm_path_string.len()].copy_from_slice(perm_path_string.as_bytes());
+                perm_path
+            },
+        };
+        let r = std::io::Cursor::new(fs_permission_data_buffer.as_bytes());
+
+        let res = fs_ioc_setpermission(
+            &p,
+            mem::size_of_val(&fs_permission_data_buffer) as u32,
+            r.clone(),
+        )
+        .expect("valid input should get IoctlReply");
+        assert!(matches!(res, IoctlReply::Done(Ok(data)) if data.is_empty()));
+
+        let read_guard = p
+            .permission_paths
+            .read()
+            .expect("read permission_paths failed");
+        let permission_data = read_guard
+            .first()
+            .expect("permission path should not be empty");
+
+        // Check expected data item is added to permission_paths.
+        let expected_data = PermissionData {
+            guest_uid: 1,
+            guest_gid: 2,
+            host_uid: 3,
+            host_gid: 4,
+            umask: 5,
+            perm_path: perm_path_string,
+        };
+        assert_eq!(*permission_data, expected_data);
+
+        // Second ioctl should not succeed since max_dynamic_perm is set to 1
+        let res = fs_ioc_setpermission(
+            &p,
+            mem::size_of_val(&fs_permission_data_buffer) as u32,
+            r.clone(),
+        )
+        .expect("valid input should get IoctlReply");
+        assert!(
+            matches!(res, IoctlReply::Done(Err(err)) if err.raw_os_error().is_some_and(|errno| {
+                errno == libc::EPERM
+            }))
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "arc_quota")]
+    fn set_permission_ioctl_invalid_data() {
+        // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
+        // `NamedLock` before starting each unit test creating a `PassthroughFs` instance.
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let cfg = Config {
+            max_dynamic_perm: 1,
+            ..Default::default()
+        };
+        let p = PassthroughFs::new("tag", cfg).expect("Failed to create PassthroughFs");
+
+        // The perm_path is not valid since it does not start with /.
+        let perm_path_string = String::from("test");
+        let fs_permission_data_buffer = FsPermissionDataBuffer {
+            guest_uid: 1,
+            guest_gid: 2,
+            host_uid: 3,
+            host_gid: 4,
+            umask: 5,
+            pad: 0,
+            perm_path: {
+                let mut perm_path: [u8; FS_IOCTL_PATH_MAX_LEN] = [0; FS_IOCTL_PATH_MAX_LEN];
+                perm_path[..perm_path_string.len()].copy_from_slice(perm_path_string.as_bytes());
+                perm_path
+            },
+        };
+
+        let r = std::io::Cursor::new(fs_permission_data_buffer.as_bytes());
+        // In this ioctl inode,handle,flags,arg and out_size is irrelavant, set to empty value.
+        // This call is supposed to get EINVAL ioctlReply, since the perm_path is invalid.
+        let res = fs_ioc_setpermission(&p, mem::size_of_val(&fs_permission_data_buffer) as u32, r)
+            .expect("invalid perm_path should get IoctlReply");
+        assert!(
+            matches!(res, IoctlReply::Done(Err(err)) if err.raw_os_error().is_some_and(|errno| {
+                errno == libc::EINVAL
+            }))
+        );
+
+        let fake_data_buffer: [u8; 128] = [0; 128];
+        let r = std::io::Cursor::new(fake_data_buffer.as_bytes());
+
+        // This call is supposed to get EINVAL ioctlReply, since the in_size is not the size of
+        // struct FsPermissionDataBuffer.
+        let res = fs_ioc_setpermission(&p, mem::size_of_val(&fake_data_buffer) as u32, r)
+            .expect_err("invalid in_size should get Error");
+        assert!(res
+            .raw_os_error()
+            .is_some_and(|errno| { errno == libc::EINVAL }));
+    }
+
+    #[test]
+    #[cfg(feature = "arc_quota")]
+    fn permission_data_path_matching() {
+        let ctx = get_context();
+        let temp_dir = TempDir::new().unwrap();
+        // Prepare `a.txt` before starting the test.
+        create_test_data(&temp_dir, &["dir"], &["a.txt", "dir/a.txt"]);
+
+        let cfg = Config {
+            max_dynamic_perm: 1,
+            ..Default::default()
+        };
+        let fs = PassthroughFs::new("tag", cfg).unwrap();
+
+        let capable = FsOptions::empty();
+        fs.init(capable).unwrap();
+
+        const BY_PATH_UID: u32 = 655360;
+        const BY_PATH_GID: u32 = 655361;
+        const BY_PATH_UMASK: u32 = 0o007;
+
+        let dir_path = temp_dir.path().join("dir");
+        let permission_data = PermissionData {
+            guest_uid: BY_PATH_UID,
+            guest_gid: BY_PATH_GID,
+            host_uid: ctx.uid,
+            host_gid: ctx.gid,
+            umask: BY_PATH_UMASK,
+            perm_path: dir_path.to_string_lossy().into_owned(),
+        };
+        fs.permission_paths
+            .write()
+            .expect("permission_path lock must be acquired")
+            .push(permission_data);
+
+        // a_path is the path with out set permission by path
+        let a_path = temp_dir.path().join("a.txt");
+        let in_dir_a_path = dir_path.join("a.txt");
+
+        // a.txt should not be set with guest_uid/guest_uid/umask by path
+        let a_entry = lookup_ent(&fs, &a_path).expect("a.txt must exist");
+        assert_ne!(a_entry.attr.st_uid, BY_PATH_UID);
+        assert_ne!(a_entry.attr.st_gid, BY_PATH_GID);
+
+        // a.txt in dir should be set guest_uid/guest_uid/umask by path
+        let in_dir_a_entry = lookup_ent(&fs, &in_dir_a_path).expect("dir/a.txt must exist");
+        assert_eq!(in_dir_a_entry.attr.st_uid, BY_PATH_UID);
+        assert_eq!(in_dir_a_entry.attr.st_gid, BY_PATH_GID);
+        assert_eq!(in_dir_a_entry.attr.st_mode & 0o777, !BY_PATH_UMASK & 0o777);
+
+        // Create dir/b.txt.
+        let in_dir_b_path = dir_path.join("b.txt");
+        create(&fs, &in_dir_b_path).expect("create b.txt");
+
+        // newly created b.txt in dir should be set guest_uid/guest_uid/umask by path
+        let in_dir_b_entry = lookup_ent(&fs, &in_dir_a_path).expect("dir/b.txt must exist");
+        assert_eq!(in_dir_b_entry.attr.st_uid, BY_PATH_UID);
+        assert_eq!(in_dir_b_entry.attr.st_gid, BY_PATH_GID);
+        assert_eq!(in_dir_b_entry.attr.st_mode & 0o777, !BY_PATH_UMASK & 0o777);
     }
 }

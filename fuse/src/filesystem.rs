@@ -147,6 +147,7 @@ pub enum ListxattrReply {
 }
 
 /// A reply to an `ioctl` method call.
+#[derive(Debug)]
 pub enum IoctlReply {
     /// Indicates that the ioctl should be retried. This is only a valid reply when the `flags`
     /// field of the ioctl request contains `IoctlFlags::UNRESTRICTED`. The kernel will read in
