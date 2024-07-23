@@ -216,10 +216,6 @@ use win_util::ProcessType;
 use x86_64::cpuid::adjust_cpuid;
 #[cfg(feature = "whpx")]
 use x86_64::cpuid::CpuIdContext;
-#[cfg(all(target_arch = "x86_64", feature = "haxm"))]
-use x86_64::get_cpu_manufacturer;
-#[cfg(all(target_arch = "x86_64", feature = "haxm"))]
-use x86_64::CpuManufacturer;
 #[cfg(target_arch = "x86_64")]
 use x86_64::X8664arch as Arch;
 
@@ -1982,13 +1978,10 @@ pub fn get_default_hypervisor() -> Option<HypervisorKind> {
     };
 
     #[cfg(feature = "haxm")]
-    if get_cpu_manufacturer() == CpuManufacturer::Intel {
-        // Make sure Haxm device can be opened before selecting it.
-        match Haxm::new() {
-            Ok(_) => return Some(HypervisorKind::Ghaxm),
-            Err(e) => warn!("Cannot initialize HAXM: {}", e),
-        };
-    }
+    match Haxm::new() {
+        Ok(_) => return Some(HypervisorKind::Ghaxm),
+        Err(e) => warn!("Cannot initialize HAXM: {}", e),
+    };
 
     #[cfg(feature = "gvm")]
     // Make sure Gvm device can be opened before selecting it.
