@@ -739,6 +739,7 @@ impl arch::LinuxArch for AArch64 {
                         components.cpu_frequencies.clone(),
                         components.vcpu_domain_paths.get(&vcpu).cloned(),
                         *components.vcpu_domains.get(&vcpu).unwrap_or(&(vcpu as u32)),
+                        *components.normalized_cpu_capacities.get(&vcpu).unwrap(),
                     )));
                     mmio_bus
                         .insert(
