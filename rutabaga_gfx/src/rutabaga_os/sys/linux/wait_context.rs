@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::os::fd::AsFd;
+use std::time::Duration;
 
 use nix::sys::epoll::Epoll;
 use nix::sys::epoll::EpollCreateFlags;
@@ -36,10 +37,23 @@ impl WaitContext {
         Ok(())
     }
 
-    pub fn wait(&mut self) -> RutabagaResult<Vec<WaitEvent>> {
+    pub fn wait(&mut self, duration_opt: Option<Duration>) -> RutabagaResult<Vec<WaitEvent>> {
         let mut events = [EpollEvent::empty(); WAIT_CONTEXT_MAX];
+
+        let epoll_timeout = duration_opt
+            .map(|duration| {
+                if duration.is_zero() {
+                    EpollTimeout::ZERO
+                } else {
+                    // We shouldn't need timeouts greater than 60s.
+                    let timeout: u16 = duration.as_millis().try_into().unwrap_or(u16::MAX);
+                    EpollTimeout::from(timeout)
+                }
+            })
+            .unwrap_or(EpollTimeout::NONE);
+
         let count = loop {
-            match self.epoll_ctx.wait(&mut events, EpollTimeout::NONE) {
+            match self.epoll_ctx.wait(&mut events, epoll_timeout) {
                 Err(nix::errno::Errno::EINTR) => (),
                 result => break result?,
             }

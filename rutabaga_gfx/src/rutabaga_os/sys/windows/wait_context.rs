@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::time::Duration;
+
 use crate::rutabaga_os::WaitEvent;
 use crate::rutabaga_os::WaitTrait;
 use crate::rutabaga_utils::RutabagaError;
@@ -23,7 +25,7 @@ impl WaitContext {
         Err(RutabagaError::Unsupported)
     }
 
-    pub fn wait(&mut self) -> RutabagaResult<Vec<WaitEvent>> {
+    pub fn wait(&mut self, _duration_opt: Option<Duration>) -> RutabagaResult<Vec<WaitEvent>> {
         Err(RutabagaError::Unsupported)
     }
 

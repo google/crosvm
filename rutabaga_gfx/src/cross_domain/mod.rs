@@ -299,7 +299,7 @@ impl CrossDomainWorker {
         thread_resample_evt: &Receiver,
         receive_buf: &mut [u8],
     ) -> RutabagaResult<()> {
-        let events = self.wait_ctx.wait()?;
+        let events = self.wait_ctx.wait(None)?;
 
         // The worker thread must:
         //
