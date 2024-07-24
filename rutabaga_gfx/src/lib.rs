@@ -11,6 +11,8 @@ mod gfxstream;
 mod gfxstream_stub;
 #[macro_use]
 mod macros;
+mod bytestream;
+mod ipc;
 #[cfg(any(feature = "gfxstream", feature = "virgl_renderer"))]
 mod renderer_utils;
 mod rutabaga_2d;
@@ -39,17 +41,14 @@ pub use crate::rutabaga_os::RawDescriptor as RutabagaRawDescriptor;
 pub use crate::rutabaga_os::SafeDescriptor as RutabagaDescriptor;
 pub use crate::rutabaga_utils::*;
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "ipc")] {
-        mod ipc;
-        mod bytestream;
-
-        pub use crate::ipc::kumquat_gpu_protocol;
-        pub use crate::ipc::RutabagaStream;
-        pub use crate::bytestream::Reader as RutabagaReader;
-        pub use crate::bytestream::Writer as RutabagaWriter;
-        pub use crate::rutabaga_os::SharedMemory as RutabagaSharedMemory;
-        pub use crate::rutabaga_os::MemoryMapping as RutabagaMemoryMapping;
-        pub use crate::rutabaga_os::WaitContext as RutabagaWaitContext;
-    }
+pub mod kumquat_support {
+    pub use crate::bytestream::Reader as RutabagaReader;
+    pub use crate::bytestream::Writer as RutabagaWriter;
+    pub use crate::ipc::kumquat_gpu_protocol;
+    pub use crate::ipc::RutabagaStream;
+    pub use crate::rutabaga_os::Listener as RutabagaListener;
+    pub use crate::rutabaga_os::MemoryMapping as RutabagaMemoryMapping;
+    pub use crate::rutabaga_os::SharedMemory as RutabagaSharedMemory;
+    pub use crate::rutabaga_os::Tube as RutabagaTube;
+    pub use crate::rutabaga_os::WaitContext as RutabagaWaitContext;
 }

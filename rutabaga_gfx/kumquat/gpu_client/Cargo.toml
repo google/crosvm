@@ -11,7 +11,7 @@ name = "virtgpu_kumquat_ffi"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-rutabaga_gfx = { path = "../../", version = "0.1.3", features = ["ipc"]}
+rutabaga_gfx = { path = "../../", version = "0.1.3"}
 zerocopy = { version = "0.7", features = ["derive"] }
 libc = "0.2.93"
 log = "0.4"

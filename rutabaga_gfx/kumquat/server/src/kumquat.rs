@@ -5,9 +5,9 @@
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
 
+use rutabaga_gfx::kumquat_support::RutabagaWaitContext;
 use rutabaga_gfx::RutabagaError;
 use rutabaga_gfx::RutabagaResult;
-use rutabaga_gfx::RutabagaWaitContext;
 
 use crate::kumquat_gpu::KumquatGpu;
 use crate::kumquat_gpu::KumquatGpuConnection;

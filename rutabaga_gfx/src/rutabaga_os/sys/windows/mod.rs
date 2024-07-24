@@ -5,6 +5,7 @@
 pub mod descriptor;
 pub mod memory_mapping;
 pub mod shm;
+pub mod tube;
 pub mod wait_context;
 
 pub use memory_mapping::MemoryMapping;

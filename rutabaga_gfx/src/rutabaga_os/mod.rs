@@ -14,7 +14,10 @@ pub use descriptor::SafeDescriptor;
 pub use memory_mapping::MemoryMapping;
 pub use shm::SharedMemory;
 pub use sys::platform::descriptor::RawDescriptor;
+pub use sys::platform::descriptor::DEFAULT_RAW_DESCRIPTOR;
 pub use sys::platform::shm::round_up_to_page_size;
+pub use sys::platform::tube::Listener;
+pub use sys::platform::tube::Tube;
 pub use sys::platform::wait_context::WaitContext;
 
 use crate::rutabaga_utils::RutabagaMapping;

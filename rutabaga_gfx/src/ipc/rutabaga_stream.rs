@@ -4,21 +4,12 @@
 
 use std::collections::VecDeque;
 use std::fs::File;
-use std::io::IoSlice;
-use std::io::IoSliceMut;
 use std::mem::size_of;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::os::fd::AsFd;
-use std::os::fd::AsRawFd;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::os::fd::BorrowedFd;
-use std::os::fd::RawFd;
-use std::os::unix::net::UnixStream;
 
-use nix::cmsg_space;
-use nix::sys::socket::recvmsg;
-use nix::sys::socket::sendmsg;
-use nix::sys::socket::ControlMessage;
-use nix::sys::socket::ControlMessageOwned;
-use nix::sys::socket::MsgFlags;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
@@ -30,6 +21,8 @@ use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::IntoRawDescriptor;
 use crate::rutabaga_os::RawDescriptor;
 use crate::rutabaga_os::SafeDescriptor;
+use crate::rutabaga_os::Tube;
+use crate::rutabaga_os::DEFAULT_RAW_DESCRIPTOR;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaHandle;
 use crate::rutabaga_utils::RutabagaResult;
@@ -38,24 +31,19 @@ const MAX_DESCRIPTORS: usize = 1;
 const MAX_COMMAND_SIZE: usize = 4096;
 
 pub struct RutabagaStream {
-    // This is a stream socket, so there are no message boundaries (the bytes sent by a particular
-    // send() won't necessarily be received by a single corresponding recv()).  This could also
-    // lead to partial commands.  The proper solution would be to leverage SEQPACKET socket, but
-    // std::os::unix::net does not have support yet.  One could leverage nix and do a DIY
-    // RutabagaSocket.
-    stream: UnixStream,
+    stream: Tube,
     write_buffer: [u8; MAX_COMMAND_SIZE],
     read_buffer: [u8; MAX_COMMAND_SIZE],
     descriptors: [RawDescriptor; MAX_DESCRIPTORS],
 }
 
 impl RutabagaStream {
-    pub fn new(stream: UnixStream) -> RutabagaStream {
+    pub fn new(stream: Tube) -> RutabagaStream {
         RutabagaStream {
             stream,
             write_buffer: [0; MAX_COMMAND_SIZE],
             read_buffer: [0; MAX_COMMAND_SIZE],
-            descriptors: [0; MAX_DESCRIPTORS],
+            descriptors: [DEFAULT_RAW_DESCRIPTOR; MAX_DESCRIPTORS],
         }
     }
 
@@ -85,53 +73,24 @@ impl RutabagaStream {
         };
 
         let bytes_written = writer.bytes_written();
-        let cmsg = ControlMessage::ScmRights(&mut self.descriptors[0..num_descriptors]);
-        let _bytes_sent = sendmsg::<()>(
-            self.stream.as_raw_fd(),
-            &[IoSlice::new(&mut self.write_buffer[0..bytes_written])],
-            &[cmsg],
-            MsgFlags::empty(),
-            None,
+        self.stream.send(
+            &self.write_buffer[0..bytes_written],
+            &self.descriptors[0..num_descriptors],
         )?;
-
         Ok(())
     }
 
     pub fn read(&mut self) -> RutabagaResult<Vec<KumquatGpuProtocol>> {
-        let mut iovecs = [IoSliceMut::new(&mut self.read_buffer)];
-        let mut cmsgspace = cmsg_space!([RawFd; 1]);
-        let flags = MsgFlags::empty();
         let mut vec: Vec<KumquatGpuProtocol> = Vec::new();
-
-        let r = recvmsg::<()>(
-            self.stream.as_raw_fd(),
-            &mut iovecs,
-            Some(&mut cmsgspace),
-            flags,
-        )?;
-
-        let bytes_read = r.bytes;
-        let mut files: VecDeque<File> = match r.cmsgs().next() {
-            Some(ControlMessageOwned::ScmRights(fds)) => {
-                fds.into_iter()
-                    .map(|fd| {
-                        // SAFETY:
-                        // Safe since the descriptors from recv_with_fds(..) are owned by us and
-                        // valid.
-                        unsafe { File::from_raw_descriptor(fd) }
-                    })
-                    .collect()
-            }
-            Some(_) => return Err(RutabagaError::Unsupported),
-            None => VecDeque::new(),
-        };
+        let (bytes_read, files_vec) = self.stream.receive(&mut self.read_buffer)?;
+        let mut files: VecDeque<File> = files_vec.into();
 
         if bytes_read == 0 {
             vec.push(KumquatGpuProtocol::OkNoData);
             return Ok(vec);
         }
 
-        let mut reader = Reader::new(&mut self.read_buffer[0..bytes_read]);
+        let mut reader = Reader::new(&self.read_buffer[0..bytes_read]);
         while reader.available_bytes() != 0 {
             let hdr = reader.peek_obj::<kumquat_gpu_protocol_ctrl_hdr>()?;
             let protocol = match hdr.type_ {
@@ -223,6 +182,9 @@ impl RutabagaStream {
                 KUMQUAT_GPU_PROTOCOL_RESP_RESOURCE_CREATE => {
                     let file = files.pop_front().ok_or(RutabagaError::InvalidResourceId)?;
                     let resp: kumquat_gpu_protocol_resp_resource_create = reader.read_obj()?;
+
+                    // SAFETY: Safe because we know the underlying OS descriptor is valid and
+                    // owned by us.
                     let os_handle =
                         unsafe { SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
 
@@ -236,6 +198,9 @@ impl RutabagaStream {
                 KUMQUAT_GPU_PROTOCOL_RESP_CMD_SUBMIT_3D => {
                     let file = files.pop_front().ok_or(RutabagaError::InvalidResourceId)?;
                     let resp: kumquat_gpu_protocol_resp_cmd_submit_3d = reader.read_obj()?;
+
+                    // SAFETY: Safe because we know the underlying OS descriptor is valid and
+                    // owned by us.
                     let os_handle =
                         unsafe { SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
 
@@ -257,6 +222,7 @@ impl RutabagaStream {
         Ok(vec)
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     pub fn as_borrowed_file(&self) -> BorrowedFd<'_> {
         self.stream.as_fd()
     }

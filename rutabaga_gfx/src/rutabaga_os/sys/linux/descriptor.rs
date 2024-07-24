@@ -22,6 +22,7 @@ type Error = std::io::Error;
 type Result<T> = std::result::Result<T, Error>;
 
 pub type RawDescriptor = RawFd;
+pub const DEFAULT_RAW_DESCRIPTOR: RawDescriptor = -1;
 
 /// Clones `fd`, returning a new file descriptor that refers to the same open file description as
 /// `fd`. The cloned fd will have the `FD_CLOEXEC` flag set but will not share any other file

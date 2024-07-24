@@ -12,6 +12,7 @@ use std::os::windows::io::AsRawHandle;
 use std::os::windows::io::FromRawHandle;
 use std::os::windows::io::IntoRawHandle;
 use std::os::windows::io::RawHandle;
+use std::os::windows::raw::HANDLE;
 
 use winapi::shared::minwindef::FALSE;
 use winapi::shared::minwindef::TRUE;
@@ -30,6 +31,8 @@ type Error = std::io::Error;
 type Result<T> = std::result::Result<T, Error>;
 
 pub type RawDescriptor = RawHandle;
+// Same as winapi::um::handleapi::INVALID_HANDLE_VALUE, but avoids compile issues.
+pub const DEFAULT_RAW_DESCRIPTOR: RawDescriptor = -1isize as HANDLE;
 
 impl Drop for SafeDescriptor {
     fn drop(&mut self) {

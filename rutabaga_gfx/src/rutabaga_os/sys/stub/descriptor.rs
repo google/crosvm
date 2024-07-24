@@ -13,6 +13,7 @@ type Error = std::io::Error;
 type Result<T> = std::result::Result<T, Error>;
 
 pub type RawDescriptor = i64;
+pub const DEFAULT_RAW_DESCRIPTOR: RawDescriptor = -1;
 
 impl Drop for SafeDescriptor {
     fn drop(&mut self) {
