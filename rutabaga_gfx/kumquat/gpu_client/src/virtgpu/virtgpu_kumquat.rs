@@ -7,7 +7,7 @@ use std::collections::BTreeMap as Map;
 use std::convert::TryInto;
 use std::fs::File;
 use std::os::fd::AsRawFd;
-use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
 use std::slice::from_raw_parts_mut;
 
 use nix::unistd::read;
@@ -16,6 +16,7 @@ use rutabaga_gfx::kumquat_support::RutabagaMemoryMapping;
 use rutabaga_gfx::kumquat_support::RutabagaReader;
 use rutabaga_gfx::kumquat_support::RutabagaSharedMemory;
 use rutabaga_gfx::kumquat_support::RutabagaStream;
+use rutabaga_gfx::kumquat_support::RutabagaTube;
 use rutabaga_gfx::kumquat_support::RutabagaWriter;
 use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaError;
@@ -81,7 +82,8 @@ pub struct VirtGpuKumquat {
 
 impl VirtGpuKumquat {
     pub fn new() -> RutabagaResult<VirtGpuKumquat> {
-        let connection = UnixStream::connect("/tmp/rutabaga-0")?;
+        let path = PathBuf::from("/tmp/rutabaga-0");
+        let connection = RutabagaTube::new(path)?;
         let mut stream = RutabagaStream::new(connection);
 
         let get_num_capsets = kumquat_gpu_protocol_ctrl_hdr {

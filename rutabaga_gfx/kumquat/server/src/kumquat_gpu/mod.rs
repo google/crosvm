@@ -12,7 +12,6 @@ use std::os::fd::AsFd;
 use std::os::fd::BorrowedFd;
 use std::os::fd::OwnedFd;
 use std::os::raw::c_void;
-use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -24,6 +23,7 @@ use rutabaga_gfx::kumquat_support::kumquat_gpu_protocol::*;
 use rutabaga_gfx::kumquat_support::RutabagaMemoryMapping;
 use rutabaga_gfx::kumquat_support::RutabagaSharedMemory;
 use rutabaga_gfx::kumquat_support::RutabagaStream;
+use rutabaga_gfx::kumquat_support::RutabagaTube;
 use rutabaga_gfx::ResourceCreate3D;
 use rutabaga_gfx::ResourceCreateBlob;
 use rutabaga_gfx::Rutabaga;
@@ -121,7 +121,7 @@ impl KumquatGpu {
 }
 
 impl KumquatGpuConnection {
-    pub fn new(connection: UnixStream) -> KumquatGpuConnection {
+    pub fn new(connection: RutabagaTube) -> KumquatGpuConnection {
         KumquatGpuConnection {
             stream: RutabagaStream::new(connection),
         }

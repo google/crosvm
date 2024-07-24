@@ -5,13 +5,14 @@
 mod kumquat;
 mod kumquat_gpu;
 
+use std::io::Error as IoError;
 use std::io::ErrorKind as IoErrorKind;
-use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 
 use clap::Parser;
 use kumquat::Kumquat;
 use kumquat_gpu::KumquatGpuConnection;
+use rutabaga_gfx::kumquat_support::RutabagaListener;
 use rutabaga_gfx::RutabagaError;
 use rutabaga_gfx::RutabagaResult;
 
@@ -33,26 +34,23 @@ fn main() -> RutabagaResult<()> {
     let mut kumquat = Kumquat::new(args.capset_names)?;
     let mut connection_id: u64 = 0;
 
-    let path = PathBuf::from(&args.gpu_socket_path);
     // Remove path if it exists
-    let _ = std::fs::remove_file(path);
+    let path = PathBuf::from(&args.gpu_socket_path);
+    let _ = std::fs::remove_file(&path);
 
-    let listener = UnixListener::bind(args.gpu_socket_path)?;
-
-    listener.set_nonblocking(true)?;
+    let listener = RutabagaListener::bind(path)?;
     loop {
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    connection_id = connection_id + 1;
-                    kumquat.add_connection(connection_id, KumquatGpuConnection::new(stream))?;
-                }
-                Err(e) => match e.kind() {
-                    IoErrorKind::WouldBlock => break,
-                    _ => return Err(RutabagaError::Unsupported),
-                },
-            };
-        }
+        match listener.accept() {
+            Ok(stream) => {
+                connection_id += 1;
+                kumquat.add_connection(connection_id, KumquatGpuConnection::new(stream))?;
+            }
+            Err(RutabagaError::IoError(e)) => match e.kind() {
+                IoErrorKind::WouldBlock => (),
+                kind => return Err(IoError::from(kind).into()),
+            },
+            Err(e) => return Err(e),
+        };
 
         kumquat.run()?;
     }
