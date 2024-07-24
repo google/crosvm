@@ -1820,6 +1820,10 @@ impl PassthroughFs {
         r.read_exact(fs_path_xattr_data.as_bytes_mut())?;
 
         let xattr_path = self.string_from_u8_slice(&fs_path_xattr_data.path)?;
+        if !xattr_path.starts_with('/') {
+            error!("FS_IOC_SETPATHXATTR: perm path must start with '/'");
+            return Err(io::Error::from_raw_os_error(libc::EINVAL));
+        }
         let xattr_name = self.string_from_u8_slice(&fs_path_xattr_data.xattr_name)?;
         let xattr_value = self.string_from_u8_slice(&fs_path_xattr_data.xattr_value)?;
 
@@ -1855,7 +1859,7 @@ impl PassthroughFs {
                 "FS_IOC_SETPATHXATTR exceeds limits of max_dynamic_xattr: {}",
                 self.cfg.max_dynamic_xattr
             );
-            return IoctlReply::Done(Err(io::Error::from_raw_os_error(libc::EINVAL)));
+            return IoctlReply::Done(Err(io::Error::from_raw_os_error(libc::EPERM)));
         }
 
         let xattr_data = match self.read_xattr_data(r) {
@@ -3235,7 +3239,7 @@ impl FileSystem for PassthroughFs {
             }
             #[cfg(feature = "arc_quota")]
             FS_IOC_SETPATHXATTR => {
-                if in_size == 0 {
+                if in_size != size_of::<FsPathXattrDataBuffer>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::EINVAL))
                 } else {
                     Ok(self.set_xattr_by_path(r))
@@ -3464,6 +3468,10 @@ mod tests {
     use super::*;
     #[cfg(feature = "arc_quota")]
     use crate::virtio::fs::arc_ioctl::FS_IOCTL_PATH_MAX_LEN;
+    #[cfg(feature = "arc_quota")]
+    use crate::virtio::fs::arc_ioctl::FS_IOCTL_XATTR_NAME_MAX_LEN;
+    #[cfg(feature = "arc_quota")]
+    use crate::virtio::fs::arc_ioctl::FS_IOCTL_XATTR_VALUE_MAX_LEN;
 
     const UNITTEST_LOCK_NAME: &str = "passthroughfs_unittest_lock";
 
@@ -3621,6 +3629,27 @@ mod tests {
             0,
             IoctlFlags::empty(),
             FS_IOC_SETPERMISSION as u32,
+            0,
+            in_size,
+            0,
+            r,
+        )
+    }
+
+    // In this ioctl inode,handle,flags,arg and out_size is irrelavant, set to empty value.
+    #[cfg(feature = "arc_quota")]
+    fn fs_ioc_setpathxattr<R: io::Read>(
+        fs: &PassthroughFs,
+        in_size: u32,
+        r: R,
+    ) -> io::Result<IoctlReply> {
+        let ctx = get_context();
+        fs.ioctl(
+            ctx,
+            0,
+            0,
+            IoctlFlags::empty(),
+            FS_IOC_SETPATHXATTR as u32,
             0,
             in_size,
             0,
@@ -4424,5 +4453,215 @@ mod tests {
         assert_eq!(in_dir_b_entry.attr.st_uid, BY_PATH_UID);
         assert_eq!(in_dir_b_entry.attr.st_gid, BY_PATH_GID);
         assert_eq!(in_dir_b_entry.attr.st_mode & 0o777, !BY_PATH_UMASK & 0o777);
+    }
+
+    #[test]
+    #[cfg(feature = "arc_quota")]
+    fn set_path_xattr_ioctl_valid_data() {
+        // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
+        // `NamedLock` before starting each unit test creating a `PassthroughFs` instance.
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let cfg: Config = Config {
+            max_dynamic_xattr: 1,
+            ..Default::default()
+        };
+        let p = PassthroughFs::new("tag", cfg).expect("Failed to create PassthroughFs");
+
+        let path_string = String::from("/test");
+        let xattr_name_string = String::from("test_name");
+        let xattr_value_string = String::from("test_value");
+        let fs_path_xattr_data_buffer = FsPathXattrDataBuffer {
+            path: {
+                let mut path: [u8; FS_IOCTL_PATH_MAX_LEN] = [0; FS_IOCTL_PATH_MAX_LEN];
+                path[..path_string.len()].copy_from_slice(path_string.as_bytes());
+                path
+            },
+            xattr_name: {
+                let mut xattr_name: [u8; FS_IOCTL_XATTR_NAME_MAX_LEN] =
+                    [0; FS_IOCTL_XATTR_NAME_MAX_LEN];
+                xattr_name[..xattr_name_string.len()].copy_from_slice(xattr_name_string.as_bytes());
+                xattr_name
+            },
+            xattr_value: {
+                let mut xattr_value: [u8; FS_IOCTL_XATTR_VALUE_MAX_LEN] =
+                    [0; FS_IOCTL_XATTR_VALUE_MAX_LEN];
+                xattr_value[..xattr_value_string.len()]
+                    .copy_from_slice(xattr_value_string.as_bytes());
+                xattr_value
+            },
+        };
+        let r = std::io::Cursor::new(fs_path_xattr_data_buffer.as_bytes());
+
+        let res = fs_ioc_setpathxattr(
+            &p,
+            mem::size_of_val(&fs_path_xattr_data_buffer) as u32,
+            r.clone(),
+        )
+        .expect("valid input should get IoctlReply");
+        assert!(matches!(res, IoctlReply::Done(Ok(data)) if data.is_empty()));
+
+        let read_guard = p.xattr_paths.read().expect("read xattr_paths failed");
+        let xattr_data = read_guard.first().expect("xattr_paths should not be empty");
+
+        // Check expected data item is added to permission_paths.
+        let expected_data = XattrData {
+            xattr_path: path_string,
+            xattr_name: xattr_name_string,
+            xattr_value: xattr_value_string,
+        };
+        assert_eq!(*xattr_data, expected_data);
+
+        // Second ioctl should not succeed since max_dynamic_perm is set to 1
+        let res = fs_ioc_setpathxattr(
+            &p,
+            mem::size_of_val(&fs_path_xattr_data_buffer) as u32,
+            r.clone(),
+        )
+        .expect("valid input should get IoctlReply");
+        assert!(
+            matches!(res, IoctlReply::Done(Err(err)) if err.raw_os_error().is_some_and(|errno| {
+                errno == libc::EPERM
+            }))
+        );
+    }
+    #[test]
+    #[cfg(feature = "arc_quota")]
+    fn set_path_xattr_ioctl_invalid_data() {
+        // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
+        // `NamedLock` before starting each unit test creating a `PassthroughFs` instance.
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let cfg: Config = Config {
+            max_dynamic_xattr: 1,
+            ..Default::default()
+        };
+        let p = PassthroughFs::new("tag", cfg).expect("Failed to create PassthroughFs");
+
+        let path_string = String::from("test");
+        let xattr_name_string = String::from("test_name");
+        let xattr_value_string = String::from("test_value");
+        let fs_path_xattr_data_buffer = FsPathXattrDataBuffer {
+            path: {
+                let mut path: [u8; FS_IOCTL_PATH_MAX_LEN] = [0; FS_IOCTL_PATH_MAX_LEN];
+                path[..path_string.len()].copy_from_slice(path_string.as_bytes());
+                path
+            },
+            xattr_name: {
+                let mut xattr_name: [u8; FS_IOCTL_XATTR_NAME_MAX_LEN] =
+                    [0; FS_IOCTL_XATTR_NAME_MAX_LEN];
+                xattr_name[..xattr_name_string.len()].copy_from_slice(xattr_name_string.as_bytes());
+                xattr_name
+            },
+            xattr_value: {
+                let mut xattr_value: [u8; FS_IOCTL_XATTR_VALUE_MAX_LEN] =
+                    [0; FS_IOCTL_XATTR_VALUE_MAX_LEN];
+                xattr_value[..xattr_value_string.len()]
+                    .copy_from_slice(xattr_value_string.as_bytes());
+                xattr_value
+            },
+        };
+        let r = std::io::Cursor::new(fs_path_xattr_data_buffer.as_bytes());
+
+        // This call is supposed to get EINVAL ioctlReply, since the perm_path is invalid.
+        let res = fs_ioc_setpathxattr(
+            &p,
+            mem::size_of_val(&fs_path_xattr_data_buffer) as u32,
+            r.clone(),
+        )
+        .expect("valid input should get IoctlReply");
+        assert!(
+            matches!(res, IoctlReply::Done(Err(err)) if err.raw_os_error().is_some_and(|errno| {
+                errno == libc::EINVAL
+            }))
+        );
+
+        let fake_data_buffer: [u8; 128] = [0; 128];
+        let r = std::io::Cursor::new(fake_data_buffer.as_bytes());
+        // This call is supposed to get EINVAL ioctlReply, since the in_size is not the size of
+        // struct FsPathXattrDataBuffer.
+        let res = fs_ioc_setpathxattr(&p, mem::size_of_val(&fake_data_buffer) as u32, r.clone())
+            .expect_err("valid input should get IoctlReply");
+        assert!(res
+            .raw_os_error()
+            .is_some_and(|errno| { errno == libc::EINVAL }));
+    }
+
+    #[test]
+    #[cfg(feature = "arc_quota")]
+    fn xattr_data_path_matching() {
+        let ctx = get_context();
+        let temp_dir = TempDir::new().unwrap();
+        // Prepare `a.txt` before starting the test.
+        create_test_data(&temp_dir, &["dir"], &["a.txt", "dir/a.txt"]);
+
+        let cfg = Config {
+            max_dynamic_xattr: 1,
+            ..Default::default()
+        };
+        let fs = PassthroughFs::new("tag", cfg).unwrap();
+
+        let capable = FsOptions::empty();
+        fs.init(capable).unwrap();
+
+        let dir_path = temp_dir.path().join("dir");
+        let xattr_name_string = String::from("test_name");
+        let xattr_name_cstring = CString::new(xattr_name_string.clone()).expect("create c string");
+        let xattr_value_string = String::from("test_value");
+        let xattr_value_bytes = xattr_value_string.clone().into_bytes();
+
+        let xattr_data = XattrData {
+            xattr_name: xattr_name_string,
+            xattr_value: xattr_value_string,
+            xattr_path: dir_path.to_string_lossy().into_owned(),
+        };
+        fs.xattr_paths
+            .write()
+            .expect("xattr_paths lock must be acquired")
+            .push(xattr_data);
+
+        // a_path is the path with out set xattr by path
+        let a_path: std::path::PathBuf = temp_dir.path().join("a.txt");
+        let in_dir_a_path = dir_path.join("a.txt");
+
+        let a_node = lookup(&fs, a_path.as_path()).expect("lookup a node");
+        // a.txt should not be set with xattr by path
+        assert!(fs
+            .getxattr(
+                ctx,
+                a_node,
+                &xattr_name_cstring,
+                xattr_value_bytes.len() as u32
+            )
+            .is_err());
+
+        let in_dir_a_node = lookup(&fs, in_dir_a_path.as_path()).expect("lookup in dir a node");
+        // a.txt in dir should be set xattr by path
+        let in_dir_a_reply = fs
+            .getxattr(
+                ctx,
+                in_dir_a_node,
+                &xattr_name_cstring,
+                xattr_value_bytes.len() as u32,
+            )
+            .expect("Getxattr should success");
+        assert!(matches!(in_dir_a_reply, GetxattrReply::Value(v) if v == xattr_value_bytes));
+        // Create dir/b.txt.
+        let in_dir_b_path = dir_path.join("b.txt");
+        create(&fs, &in_dir_b_path).expect("create b.txt");
+
+        // newly created b.txt in dir should be set xattr by path
+        let in_dir_b_node = lookup(&fs, in_dir_a_path.as_path()).expect("lookup in dir b node");
+        let in_dir_b_reply = fs
+            .getxattr(
+                ctx,
+                in_dir_b_node,
+                &xattr_name_cstring,
+                xattr_value_bytes.len() as u32,
+            )
+            .expect("Getxattr should success");
+        assert!(matches!(in_dir_b_reply, GetxattrReply::Value(v) if v == xattr_value_bytes));
     }
 }

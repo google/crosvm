@@ -9,8 +9,8 @@ use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
 pub const FS_IOCTL_PATH_MAX_LEN: usize = 128;
-const FS_IOCTL_XATTR_NAME_MAX_LEN: usize = 128;
-const FS_IOCTL_XATTR_VALUE_MAX_LEN: usize = 128;
+pub const FS_IOCTL_XATTR_NAME_MAX_LEN: usize = 128;
+pub const FS_IOCTL_XATTR_VALUE_MAX_LEN: usize = 128;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PermissionData {
@@ -40,6 +40,7 @@ pub(crate) struct FsPermissionDataBuffer {
     pub perm_path: [u8; FS_IOCTL_PATH_MAX_LEN],
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct XattrData {
     pub xattr_name: String,
     pub xattr_value: String,

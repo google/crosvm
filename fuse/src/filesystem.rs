@@ -119,6 +119,7 @@ pub struct DirEntry<'a> {
 }
 
 /// A reply to a `getxattr` method call.
+#[derive(Debug)]
 pub enum GetxattrReply {
     /// The value of the requested extended attribute. This can be arbitrary textual or binary data
     /// and does not need to be nul-terminated.
