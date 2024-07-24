@@ -23,4 +23,3 @@ pub use platform::read_volatile;
 pub use platform::write_volatile;
 pub use platform::Receiver;
 pub use platform::Sender;
-pub use platform::SystemStream;

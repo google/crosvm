@@ -3,31 +3,17 @@
 // found in the LICENSE file.
 
 use std::fs::File;
-use std::io::IoSlice;
-use std::io::IoSliceMut;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::os::fd::AsFd;
 use std::os::unix::io::AsRawFd;
-use std::os::unix::prelude::AsFd;
 
 use libc::O_ACCMODE;
 use libc::O_WRONLY;
-use nix::cmsg_space;
 use nix::fcntl::fcntl;
 use nix::fcntl::FcntlArg;
 use nix::sys::eventfd::EfdFlags;
 use nix::sys::eventfd::EventFd;
-use nix::sys::socket::connect;
-use nix::sys::socket::recvmsg;
-use nix::sys::socket::sendmsg;
-use nix::sys::socket::socket;
-use nix::sys::socket::AddressFamily;
-use nix::sys::socket::ControlMessage;
-use nix::sys::socket::ControlMessageOwned;
-use nix::sys::socket::MsgFlags;
-use nix::sys::socket::SockFlag;
-use nix::sys::socket::SockType;
-use nix::sys::socket::UnixAddr;
 use nix::unistd::pipe;
 use nix::unistd::read;
 use nix::unistd::write;
@@ -41,15 +27,9 @@ use super::super::cross_domain_protocol::CROSS_DOMAIN_MAX_IDENTIFIERS;
 use super::super::CrossDomainContext;
 use super::super::CrossDomainItem;
 use super::super::CrossDomainJob;
-use super::super::CrossDomainState;
-use crate::cross_domain::cross_domain_protocol::CrossDomainInit;
 use crate::rutabaga_os::AsRawDescriptor;
-use crate::rutabaga_os::FromRawDescriptor;
-use crate::rutabaga_os::RawDescriptor;
 use crate::RutabagaError;
 use crate::RutabagaResult;
-
-pub type SystemStream = File;
 
 // Determine type of OS-specific descriptor.  See `from_file` in wl.rs  for explantation on the
 // current, Linux-based method.
@@ -76,89 +56,7 @@ pub fn descriptor_analysis(
     }
 }
 
-impl CrossDomainState {
-    fn send_msg(&self, opaque_data: &[u8], descriptors: &[RawDescriptor]) -> RutabagaResult<usize> {
-        let cmsg = ControlMessage::ScmRights(descriptors);
-        if let Some(connection) = &self.connection {
-            let bytes_sent = sendmsg::<()>(
-                connection.as_raw_descriptor(),
-                &[IoSlice::new(opaque_data)],
-                &[cmsg],
-                MsgFlags::empty(),
-                None,
-            )?;
-
-            return Ok(bytes_sent);
-        }
-
-        Err(RutabagaError::InvalidCrossDomainChannel)
-    }
-
-    pub(crate) fn receive_msg(&self, opaque_data: &mut [u8]) -> RutabagaResult<(usize, Vec<File>)> {
-        // If any errors happen, the socket will get dropped, preventing more reading.
-        let mut iovecs = [IoSliceMut::new(opaque_data)];
-        let mut cmsgspace = cmsg_space!([RawDescriptor; CROSS_DOMAIN_MAX_IDENTIFIERS]);
-        let flags = MsgFlags::empty();
-
-        if let Some(connection) = &self.connection {
-            let r = recvmsg::<()>(
-                connection.as_raw_descriptor(),
-                &mut iovecs,
-                Some(&mut cmsgspace),
-                flags,
-            )?;
-            let len = r.bytes;
-
-            let files = match r.cmsgs().next() {
-                Some(ControlMessageOwned::ScmRights(fds)) => {
-                    fds.into_iter()
-                        .map(|fd| {
-                            // SAFETY:
-                            // Safe since the descriptors from recv_with_fds(..) are owned by us and
-                            // valid.
-                            unsafe { File::from_raw_descriptor(fd) }
-                        })
-                        .collect()
-                }
-                Some(_) => return Err(RutabagaError::Unsupported),
-                None => Vec::new(),
-            };
-
-            Ok((len, files))
-        } else {
-            Err(RutabagaError::InvalidCrossDomainChannel)
-        }
-    }
-}
-
 impl CrossDomainContext {
-    pub(crate) fn get_connection(
-        &mut self,
-        cmd_init: &CrossDomainInit,
-    ) -> RutabagaResult<Option<SystemStream>> {
-        let channels = self
-            .channels
-            .take()
-            .ok_or(RutabagaError::InvalidCrossDomainChannel)?;
-        let base_channel = &channels
-            .iter()
-            .find(|channel| channel.channel_type == cmd_init.channel_type)
-            .ok_or(RutabagaError::InvalidCrossDomainChannel)?
-            .base_channel;
-
-        let socket_fd = socket(
-            AddressFamily::Unix,
-            SockType::Stream,
-            SockFlag::SOCK_CLOEXEC,
-            None,
-        )?;
-
-        let unix_addr = UnixAddr::new(base_channel)?;
-        connect(socket_fd.as_raw_fd(), &unix_addr)?;
-        let stream = socket_fd.into();
-        Ok(Some(stream))
-    }
-
     pub(crate) fn send(
         &self,
         cmd_send: &CrossDomainSendReceive,

@@ -4,16 +4,13 @@
 
 use std::fs::File;
 
-use super::super::cross_domain_protocol::CrossDomainInit;
 use super::super::cross_domain_protocol::CrossDomainSendReceive;
 use super::super::CrossDomainContext;
-use super::super::CrossDomainState;
 use crate::rutabaga_os::WaitTrait;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaResult;
 
 pub struct Stub(());
-pub type SystemStream = Stub;
 
 // Determine type of OS-specific descriptor.
 pub fn descriptor_analysis(
@@ -24,23 +21,7 @@ pub fn descriptor_analysis(
     Err(RutabagaError::Unsupported)
 }
 
-impl CrossDomainState {
-    pub(crate) fn receive_msg(
-        &self,
-        _opaque_data: &mut [u8],
-    ) -> RutabagaResult<(usize, Vec<File>)> {
-        Err(RutabagaError::Unsupported)
-    }
-}
-
 impl CrossDomainContext {
-    pub(crate) fn get_connection(
-        &mut self,
-        _cmd_init: &CrossDomainInit,
-    ) -> RutabagaResult<Option<SystemStream>> {
-        Err(RutabagaError::Unsupported)
-    }
-
     pub(crate) fn send(
         &self,
         _cmd_send: &CrossDomainSendReceive,
