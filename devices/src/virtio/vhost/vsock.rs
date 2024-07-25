@@ -246,6 +246,31 @@ impl VirtioDevice for Vsock {
         Ok(())
     }
 
+    fn reset(&mut self) -> anyhow::Result<()> {
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let worker = worker_thread.stop();
+            worker
+                .vhost_handle
+                .stop()
+                .context("failed to stop vrings")?;
+            // Call get_vring_base to stop the queues.
+            for (pos, _) in worker.queues.iter() {
+                worker
+                    .vhost_handle
+                    .get_vring_base(*pos)
+                    .context("get_vring_base failed")?;
+            }
+
+            self.vhost_handle = Some(worker.vhost_handle);
+            self.interrupts = Some(worker.vhost_interrupt);
+        }
+        self.acked_features = 0;
+        self.vrings_base = None;
+        self.event_queue = None;
+        self.needs_transport_reset = false;
+        Ok(())
+    }
+
     fn on_device_sandboxed(&mut self) {
         // ignore the error but to log the error. We don't need to do
         // anything here because when activate, the other vhost set up
