@@ -110,7 +110,8 @@ impl RutabagaStream {
                     KumquatGpuProtocol::CtxCreate(reader.read_obj()?)
                 }
                 KUMQUAT_GPU_PROTOCOL_CTX_DESTROY => {
-                    KumquatGpuProtocol::CtxDestroy(reader.read_obj()?)
+                    reader.consume(size_of::<kumquat_gpu_protocol_ctrl_hdr>());
+                    KumquatGpuProtocol::CtxDestroy(hdr.payload)
                 }
                 KUMQUAT_GPU_PROTOCOL_CTX_ATTACH_RESOURCE => {
                     KumquatGpuProtocol::CtxAttachResource(reader.read_obj()?)

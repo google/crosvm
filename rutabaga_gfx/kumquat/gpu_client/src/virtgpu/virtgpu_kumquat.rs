@@ -727,7 +727,7 @@ impl Drop for VirtGpuKumquat {
             self.resources.clear();
             let context_destroy = kumquat_gpu_protocol_ctrl_hdr {
                 type_: KUMQUAT_GPU_PROTOCOL_CTX_DESTROY,
-                ..Default::default()
+                payload: self.context_id,
             };
 
             let _ = self
