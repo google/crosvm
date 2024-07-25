@@ -342,6 +342,7 @@ const START_OF_RAM_32BITS: u64 = 0;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 // Linux (with 4-level paging) has a physical memory limit of 46 bits (64 TiB).
 const HIGH_MMIO_MAX_END: u64 = (1u64 << 46) - 1;
+pub const KERNEL_32BIT_ENTRY_OFFSET: u64 = 0x0;
 pub const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
 pub const ZERO_PAGE_OFFSET: u64 = 0x7000;
 // Set BIOS max size to 16M: this is used only when `unrestricted guest` is disabled
@@ -1011,7 +1012,8 @@ impl arch::LinuxArch for X8664arch {
                 // The default values for `Regs` and `Sregs` already set up the reset vector.
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let (params, kernel_end, kernel_entry) = Self::load_kernel(&mem, kernel_image)?;
+                let (params, kernel_end, kernel_entry, cpu_mode) =
+                    Self::load_kernel(&mem, kernel_image)?;
 
                 Self::setup_system_memory(
                     &mem,
@@ -1030,14 +1032,26 @@ impl arch::LinuxArch for X8664arch {
                 vcpu_init[0].regs.rsp = BOOT_STACK_POINTER;
                 vcpu_init[0].regs.rsi = ZERO_PAGE_OFFSET;
 
-                regs::set_long_mode_msrs(&mut msrs);
-                regs::set_mtrr_msrs(&mut msrs, &vm, pci_start);
+                match cpu_mode {
+                    CpuMode::LongMode => {
+                        regs::set_long_mode_msrs(&mut msrs);
 
-                // Set up long mode and enable paging.
-                regs::configure_segments_and_sregs(&mem, &mut vcpu_init[0].sregs)
-                    .map_err(Error::ConfigureSegments)?;
-                regs::setup_page_tables(&mem, &mut vcpu_init[0].sregs)
-                    .map_err(Error::SetupPageTables)?;
+                        // Set up long mode and enable paging.
+                        regs::configure_segments_and_sregs(&mem, &mut vcpu_init[0].sregs)
+                            .map_err(Error::ConfigureSegments)?;
+                        regs::setup_page_tables(&mem, &mut vcpu_init[0].sregs)
+                            .map_err(Error::SetupPageTables)?;
+                    }
+                    CpuMode::FlatProtectedMode => {
+                        regs::set_default_msrs(&mut msrs);
+
+                        // Set up 32-bit protected mode with paging disabled.
+                        regs::configure_segments_and_sregs_flat32(&mem, &mut vcpu_init[0].sregs)
+                            .map_err(Error::ConfigureSegments)?;
+                    }
+                }
+
+                regs::set_mtrr_msrs(&mut msrs, &vm, pci_start);
             }
         }
 
@@ -1536,6 +1550,14 @@ impl Aml for PciRootOSC {
     }
 }
 
+pub enum CpuMode {
+    /// 32-bit protected mode with paging disabled.
+    FlatProtectedMode,
+
+    /// 64-bit long mode.
+    LongMode,
+}
+
 impl X8664arch {
     /// Loads the bios from an open file.
     ///
@@ -1613,11 +1635,11 @@ impl X8664arch {
     /// # Returns
     ///
     /// On success, returns the Linux x86_64 boot protocol parameters, the first address past the
-    /// end of the kernel, and the entry point (initial `RIP` value).
+    /// end of the kernel, the entry point (initial `RIP` value), and the initial CPU mode.
     fn load_kernel(
         mem: &GuestMemory,
         kernel_image: &mut File,
-    ) -> Result<(boot_params, u64, GuestAddress)> {
+    ) -> Result<(boot_params, u64, GuestAddress, CpuMode)> {
         let kernel_start = GuestAddress(KERNEL_START_OFFSET);
         match kernel_loader::load_elf64(mem, kernel_start, kernel_image, 0) {
             Ok(loaded_kernel) => {
@@ -1627,17 +1649,15 @@ impl X8664arch {
                     boot_params,
                     loaded_kernel.address_range.end,
                     loaded_kernel.entry,
+                    CpuMode::LongMode,
                 ))
             }
             Err(kernel_loader::Error::InvalidMagicNumber) => {
                 // The image failed to parse as ELF, so try to load it as a bzImage.
-                let (boot_params, bzimage_end) =
+                let (boot_params, bzimage_end, bzimage_entry, cpu_mode) =
                     bzimage::load_bzimage(mem, kernel_start, kernel_image)
                         .map_err(Error::LoadBzImage)?;
-                let bzimage_entry = mem
-                    .checked_offset(kernel_start, KERNEL_64BIT_ENTRY_OFFSET)
-                    .ok_or(Error::KernelOffsetPastEnd)?;
-                Ok((boot_params, bzimage_end, bzimage_entry))
+                Ok((boot_params, bzimage_end, bzimage_entry, cpu_mode))
             }
             Err(e) => Err(Error::LoadKernel(e)),
         }
