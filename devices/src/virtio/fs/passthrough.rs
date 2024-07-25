@@ -2342,8 +2342,9 @@ impl FileSystem for PassthroughFs {
         let (uid, gid) = (ctx.uid, ctx.gid);
         let (_uid, _gid) = set_creds(uid, gid)?;
 
+        let flags = self.update_open_flags(flags as i32);
         let create_flags =
-            (flags as i32 | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW) & !libc::O_DIRECT;
+            (flags | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW) & !libc::O_DIRECT;
 
         let fd = {
             let _scoped_umask = ScopedUmask::new(umask);
@@ -2381,7 +2382,7 @@ impl FileSystem for PassthroughFs {
                 data,
                 name,
                 entry.inode,
-                flags & !((libc::O_CREAT | libc::O_EXCL | libc::O_NOCTTY) as u32),
+                (flags & !(libc::O_CREAT | libc::O_EXCL | libc::O_NOCTTY)) as u32,
             )
             .map_err(|e| {
                 // Don't leak the entry.
@@ -4663,5 +4664,59 @@ mod tests {
             )
             .expect("Getxattr should success");
         assert!(matches!(in_dir_b_reply, GetxattrReply::Value(v) if v == xattr_value_bytes));
+    }
+
+    /// Creates and open a new file by atomic_open with O_APPEND flag.
+    /// We check O_APPEND is properly handled, depending on writeback cache is enabled or not.
+    fn atomic_open_create_o_append(writeback: bool) {
+        // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
+        // `NamedLock` before starting each unit test creating a `PassthroughFs` instance.
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+
+        let cfg = Config {
+            cache_policy: CachePolicy::Always,
+            writeback,
+            ..Default::default()
+        };
+        let fs = PassthroughFs::new("tag", cfg).unwrap();
+
+        let capable = FsOptions::ZERO_MESSAGE_OPEN | FsOptions::WRITEBACK_CACHE;
+        fs.init(capable).unwrap();
+
+        let (entry, _, _) = atomic_open(
+            &fs,
+            &temp_dir.path().join("a.txt"),
+            0o666,
+            (libc::O_RDWR | libc::O_CREAT | libc::O_APPEND) as u32,
+            0,
+            None,
+        )
+        .expect("atomic_open");
+        assert_ne!(entry.inode, 0);
+
+        let inodes = fs.inodes.lock();
+        let data = inodes.get(&entry.inode).unwrap();
+        let flags = data.file.lock().1;
+        if writeback {
+            // When writeback is enabled, O_APPEND must be handled by the guest kernel.
+            // So, it must be cleared.
+            assert_eq!(flags & libc::O_APPEND, 0);
+        } else {
+            // Without writeback cache, O_APPEND must not be cleared.
+            assert_eq!(flags & libc::O_APPEND, libc::O_APPEND);
+        }
+    }
+
+    #[test]
+    fn test_atomic_open_create_o_append_no_writeback() {
+        atomic_open_create_o_append(false);
+    }
+
+    #[test]
+    fn test_atomic_open_create_o_append_writeback() {
+        atomic_open_create_o_append(true);
     }
 }
