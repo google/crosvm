@@ -345,11 +345,26 @@ impl VirtGpuKumquat {
                 if self.gralloc_opt.is_none() {
                     // The idea is to make sure the gfxstream ICD isn't loaded when gralloc starts
                     // up. The Nvidia ICD should be loaded.
-                    let vk_driver = std::env::var(VK_ICD_FILENAMES).unwrap();
-                    std::env::remove_var(VK_ICD_FILENAMES);
+                    //
+                    // This is mostly useful for developers.  For AOSP hermetic gfxstream end2end
+                    // testing, VK_ICD_FILENAMES shouldn't be defined.  For deqp-vk, this is
+                    // useful, but not safe for multi-threaded tests. Maybe we should do it
+                    // once at virtgpu_kumquat_init?  For now, since this is only used for end2end
+                    // tests, we should be good.
+                    let vk_icd_name_opt = match std::env::var(VK_ICD_FILENAMES) {
+                        Ok(vk_icd_name) => {
+                            std::env::remove_var(VK_ICD_FILENAMES);
+                            Some(vk_icd_name)
+                        }
+                        Err(_) => None,
+                    };
+
                     self.gralloc_opt =
                         Some(RutabagaGralloc::new(RutabagaGrallocBackendFlags::new())?);
-                    std::env::set_var(VK_ICD_FILENAMES, vk_driver);
+
+                    if let Some(vk_icd_name) = vk_icd_name_opt {
+                        std::env::set_var(VK_ICD_FILENAMES, vk_icd_name);
+                    }
                 }
 
                 if let Some(ref mut gralloc) = self.gralloc_opt {

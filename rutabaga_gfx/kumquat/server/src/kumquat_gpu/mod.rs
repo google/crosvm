@@ -91,7 +91,7 @@ pub struct KumquatGpu {
 }
 
 impl KumquatGpu {
-    pub fn new(capset_names: String) -> RutabagaResult<KumquatGpu> {
+    pub fn new(capset_names: String, renderer_features: String) -> RutabagaResult<KumquatGpu> {
         let capset_mask = calculate_capset_mask(capset_names.as_str().split(":"));
         let fence_state = Arc::new(Mutex::new(FenceData {
             pending_fences: Default::default(),
@@ -99,10 +99,17 @@ impl KumquatGpu {
 
         let fence_handler = create_fence_handler(fence_state.clone());
 
+        let renderer_features_opt = if renderer_features.is_empty() {
+            Some(renderer_features)
+        } else {
+            None
+        };
+
         let rutabaga = RutabagaBuilder::new(RutabagaComponentType::CrossDomain, capset_mask)
             .set_use_external_blob(true)
             .set_use_egl(true)
             .set_wsi(RutabagaWsi::Surfaceless)
+            .set_renderer_features(renderer_features_opt)
             .build(fence_handler, None)?;
 
         Ok(KumquatGpu {

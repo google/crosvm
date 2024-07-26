@@ -20,9 +20,9 @@ pub struct Kumquat {
 }
 
 impl Kumquat {
-    pub fn new(capset_names: String) -> RutabagaResult<Kumquat> {
+    pub fn new(capset_names: String, renderer_features: String) -> RutabagaResult<Kumquat> {
         Ok(Kumquat {
-            kumquat_gpu: KumquatGpu::new(capset_names)?,
+            kumquat_gpu: KumquatGpu::new(capset_names, renderer_features)?,
             wait_ctx: RutabagaWaitContext::new()?,
             connections: Default::default(),
         })

@@ -27,11 +27,16 @@ struct Args {
     /// Path to the emulated virtio-gpu socket.
     #[arg(long, default_value = "/tmp/rutabaga-0")]
     gpu_socket_path: String,
+
+    /// Opaque renderer specific features
+    #[arg(long, default_value = "")]
+    renderer_features: String,
 }
 
 fn main() -> RutabagaResult<()> {
     let args = Args::parse();
-    let mut kumquat = Kumquat::new(args.capset_names)?;
+
+    let mut kumquat = Kumquat::new(args.capset_names, args.renderer_features)?;
     let mut connection_id: u64 = 0;
 
     // Remove path if it exists
