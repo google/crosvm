@@ -48,6 +48,8 @@ use rutabaga_gfx::RUTABAGA_MAP_ACCESS_RW;
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_SHM;
 
+const SNAPSHOT_DIR: &str = "/tmp/";
+
 pub struct KumquatGpuConnection {
     stream: RutabagaStream,
 }
@@ -472,12 +474,26 @@ impl KumquatGpuConnection {
                     kumquat_gpu.snapshot_buffer.set_position(0);
                     kumquat_gpu
                         .rutabaga
-                        .snapshot(&mut kumquat_gpu.snapshot_buffer, "")?;
+                        .snapshot(&mut kumquat_gpu.snapshot_buffer, SNAPSHOT_DIR)?;
+
+                    let resp = kumquat_gpu_protocol_ctrl_hdr {
+                        type_: KUMQUAT_GPU_PROTOCOL_RESP_OK_SNAPSHOT,
+                        payload: 0,
+                    };
+
+                    self.stream.write(KumquatGpuProtocolWrite::Cmd(resp))?;
                 }
                 KumquatGpuProtocol::SnapshotRestore => {
                     kumquat_gpu
                         .rutabaga
-                        .restore(&mut kumquat_gpu.snapshot_buffer, "")?;
+                        .restore(&mut kumquat_gpu.snapshot_buffer, SNAPSHOT_DIR)?;
+
+                    let resp = kumquat_gpu_protocol_ctrl_hdr {
+                        type_: KUMQUAT_GPU_PROTOCOL_RESP_OK_SNAPSHOT,
+                        payload: 0,
+                    };
+
+                    self.stream.write(KumquatGpuProtocolWrite::Cmd(resp))?;
                 }
                 KumquatGpuProtocol::OkNoData => {
                     hung_up = true;

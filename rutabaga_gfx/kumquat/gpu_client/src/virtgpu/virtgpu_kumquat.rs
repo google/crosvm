@@ -706,7 +706,12 @@ impl VirtGpuKumquat {
 
         self.stream
             .write(KumquatGpuProtocolWrite::Cmd(snapshot_save))?;
-        Ok(())
+
+        let mut protocols = self.stream.read()?;
+        match protocols.remove(0) {
+            KumquatGpuProtocol::RespOkSnapshot => Ok(()),
+            _ => Err(RutabagaError::Unsupported),
+        }
     }
 
     pub fn restore(&mut self) -> RutabagaResult<()> {
@@ -717,7 +722,12 @@ impl VirtGpuKumquat {
 
         self.stream
             .write(KumquatGpuProtocolWrite::Cmd(snapshot_restore))?;
-        Ok(())
+
+        let mut protocols = self.stream.read()?;
+        match protocols.remove(0) {
+            KumquatGpuProtocol::RespOkSnapshot => Ok(()),
+            _ => Err(RutabagaError::Unsupported),
+        }
     }
 }
 

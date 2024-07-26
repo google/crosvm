@@ -239,6 +239,10 @@ impl RutabagaStream {
 
                     KumquatGpuProtocol::RespCmdSubmit3d(resp.fence_id, handle)
                 }
+                KUMQUAT_GPU_PROTOCOL_RESP_OK_SNAPSHOT => {
+                    reader.consume(size_of::<kumquat_gpu_protocol_ctrl_hdr>());
+                    KumquatGpuProtocol::RespOkSnapshot
+                }
                 _ => {
                     return Err(RutabagaError::Unsupported);
                 }
