@@ -10,6 +10,8 @@ use anyhow::Context;
 use base::linux::max_open_files;
 use base::RawDescriptor;
 use cros_async::Executor;
+use jail::create_base_minijail;
+use jail::set_embedded_bpf_program;
 use minijail::Minijail;
 
 use crate::virtio::vhost::user::device::fs::FsBackend;
@@ -37,39 +39,47 @@ fn jail_and_fork(
     gid: u32,
     uid_map: Option<String>,
     gid_map: Option<String>,
+    disable_sandbox: bool,
 ) -> anyhow::Result<i32> {
-    // Create new minijail sandbox
-    let mut j = Minijail::new()?;
-
-    j.namespace_pids();
-    j.namespace_user();
-    j.namespace_user_disable_setgroups();
-    if uid != 0 {
-        j.change_uid(uid);
-    }
-    if gid != 0 {
-        j.change_gid(gid);
-    }
-    j.uidmap(&uid_map.unwrap_or_else(default_uidmap))?;
-    j.gidmap(&gid_map.unwrap_or_else(default_gidmap))?;
-    j.run_as_init();
-
-    j.namespace_vfs();
-    j.namespace_net();
-    j.no_new_privs();
-
-    // Only pivot_root if we are not re-using the current root directory.
-    if dir_path != Path::new("/") {
-        // It's safe to call `namespace_vfs` multiple times.
-        j.namespace_vfs();
-        j.enter_pivot_root(&dir_path)?;
-    }
-    j.set_remount_mode(libc::MS_SLAVE);
-
     let limit = max_open_files().context("failed to get max open files")?;
-    j.set_rlimit(libc::RLIMIT_NOFILE as i32, limit, limit)?;
-    // vvu locks around 512k memory. Just give 1M.
-    j.set_rlimit(libc::RLIMIT_MEMLOCK as i32, 1 << 20, 1 << 20)?;
+    // Create new minijail sandbox
+    let jail = if disable_sandbox {
+        create_base_minijail(dir_path.as_path(), limit)?
+    } else {
+        let mut j: Minijail = Minijail::new()?;
+        j.namespace_pids();
+        j.namespace_user();
+        j.namespace_user_disable_setgroups();
+        if uid != 0 {
+            j.change_uid(uid);
+        }
+        if gid != 0 {
+            j.change_gid(gid);
+        }
+        j.uidmap(&uid_map.unwrap_or_else(default_uidmap))?;
+        j.gidmap(&gid_map.unwrap_or_else(default_gidmap))?;
+        j.run_as_init();
+
+        j.namespace_vfs();
+        j.namespace_net();
+        j.no_new_privs();
+
+        // Only pivot_root if we are not re-using the current root directory.
+        if dir_path != Path::new("/") {
+            // It's safe to call `namespace_vfs` multiple times.
+            j.namespace_vfs();
+            j.enter_pivot_root(&dir_path)?;
+        }
+        j.set_remount_mode(libc::MS_SLAVE);
+
+        j.set_rlimit(libc::RLIMIT_NOFILE as i32, limit, limit)?;
+        // vvu locks around 512k memory. Just give 1M.
+        j.set_rlimit(libc::RLIMIT_MEMLOCK as i32, 1 << 20, 1 << 20)?;
+        #[cfg(not(feature = "seccomp_trace"))]
+        set_embedded_bpf_program(&mut j, "fs_device_vhost_user")?;
+        j.use_seccomp_filter();
+        j
+    };
 
     // Make sure there are no duplicates in keep_rds
     keep_rds.sort_unstable();
@@ -77,7 +87,7 @@ fn jail_and_fork(
 
     // fork on the jail here
     // SAFETY: trivially safe
-    let pid = unsafe { j.fork(Some(&keep_rds))? };
+    let pid = unsafe { jail.fork(Some(&keep_rds))? };
 
     if pid > 0 {
         // Current FS driver jail does not use seccomp and jail_and_fork() does not have other
@@ -113,6 +123,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         opts.gid,
         opts.uid_map,
         opts.gid_map,
+        opts.disable_sandbox,
     )?;
 
     // Parent, nothing to do but wait and then exit

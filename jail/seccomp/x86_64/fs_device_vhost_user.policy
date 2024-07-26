@@ -1,0 +1,7 @@
+# Copyright 2024 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+@include /usr/share/policy/crosvm/vhost_user.policy
+
+@include /usr/share/policy/crosvm/fs_device.policy

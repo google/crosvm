@@ -28,7 +28,6 @@ use zerocopy::AsBytes;
 
 use crate::config::JailConfig;
 
-#[cfg(not(feature = "seccomp_trace"))]
 static EMBEDDED_BPFS: Lazy<std::collections::HashMap<&str, Vec<u8>>> =
     Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/bpf_includes.in")));
 
@@ -288,20 +287,7 @@ pub fn create_sandbox_minijail(
                 })?;
         }
     } else {
-        let bpf_program = EMBEDDED_BPFS
-            .get(&config.seccomp_policy_name)
-            .with_context(|| {
-                format!(
-                    "failed to find embedded seccomp policy: {}",
-                    &config.seccomp_policy_name
-                )
-            })?;
-        jail.parse_seccomp_bytes(bpf_program).with_context(|| {
-            format!(
-                "failed to parse embedded seccomp policy: {}",
-                &config.seccomp_policy_name
-            )
-        })?;
+        set_embedded_bpf_program(&mut jail, config.seccomp_policy_name)?;
     }
 
     jail.use_seccomp_filter();
@@ -480,5 +466,22 @@ fn add_current_user_to_jail(jail: &mut Minijail) -> Result<()> {
     if crosvm_gid != 0 {
         jail.change_gid(crosvm_gid);
     }
+    Ok(())
+}
+
+/// Set the seccomp policy for a jail from embedded bpfs
+pub fn set_embedded_bpf_program(jail: &mut Minijail, seccomp_policy_name: &str) -> Result<()> {
+    let bpf_program = EMBEDDED_BPFS.get(seccomp_policy_name).with_context(|| {
+        format!(
+            "failed to find embedded seccomp policy: {}",
+            seccomp_policy_name
+        )
+    })?;
+    jail.parse_seccomp_bytes(bpf_program).with_context(|| {
+        format!(
+            "failed to parse embedded seccomp policy: {}",
+            seccomp_policy_name
+        )
+    })?;
     Ok(())
 }

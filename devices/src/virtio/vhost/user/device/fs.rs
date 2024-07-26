@@ -232,4 +232,11 @@ pub struct Options {
     /// gid of the device process in the new user namespace created by minijail.
     /// Default: 0.
     gid: u32,
+    #[argh(switch)]
+    /// disable-sandbox controls whether vhost-user-fs device uses minijail sandbox.
+    /// By default, it is false, the vhost-user-fs will enter new mnt/user/pid/net
+    /// namespace. If the this option is true, the vhost-user-fs device only create
+    /// a new mount namespace and run without seccomp filter.
+    /// Default: false.
+    disable_sandbox: bool,
 }
