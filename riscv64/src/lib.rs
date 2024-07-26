@@ -196,6 +196,7 @@ impl arch::LinuxArch for Riscv64 {
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
         _guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
         device_tree_overlays: Vec<DtbOverlay>,
+        fdt_position: Option<FdtPosition>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmRiscv64,
@@ -366,6 +367,10 @@ impl arch::LinuxArch for Riscv64 {
             })
             .collect();
 
+        assert!(
+            matches!(None | Some(FdtPosition::AfterPayload)),
+            "fdt_position={fdt_position:?} not supported"
+        );
         let fdt_offset = (kernel_initrd_end + (RISCV64_FDT_ALIGN - 1)) & !(RISCV64_FDT_ALIGN - 1);
 
         let timebase_freq: u32 = vcpus[0]

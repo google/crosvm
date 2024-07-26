@@ -138,6 +138,17 @@ pub struct Pstore {
     pub size: u32,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub enum FdtPosition {
+    /// At the start of RAM.
+    Start,
+    /// Near the end of RAM.
+    End,
+    /// After the payload, with some padding for alignment.
+    AfterPayload,
+}
+
 /// Set of CPU cores.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CpuSet(Vec<usize>);
@@ -487,6 +498,7 @@ pub trait LinuxArch {
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
         guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
         device_tree_overlays: Vec<DtbOverlay>,
+        fdt_position: Option<FdtPosition>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmArch,

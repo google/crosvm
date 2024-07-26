@@ -16,6 +16,7 @@ use std::sync::Arc;
 use arch::get_serial_cmdline;
 use arch::CpuSet;
 use arch::DtbOverlay;
+use arch::FdtPosition;
 use arch::GetSerialCmdlineError;
 use arch::RunnableLinuxVm;
 use arch::VcpuAffinity;
@@ -86,9 +87,8 @@ use vm_memory::MemoryRegionPurpose;
 
 mod fdt;
 
-// We place the kernel at the very beginning of physical memory.
-const AARCH64_KERNEL_OFFSET: u64 = 0;
 const AARCH64_FDT_MAX_SIZE: u64 = 0x200000;
+const AARCH64_FDT_ALIGN: u64 = 0x200000;
 const AARCH64_INITRD_ALIGN: u64 = 0x1000000;
 
 // Maximum Linux arm64 kernel command line size (arch/arm64/include/uapi/asm/setup.h).
@@ -102,11 +102,6 @@ const AARCH64_GIC_CPUI_SIZE: u64 = 0x20000;
 const AARCH64_PHYS_MEM_START: u64 = 0x80000000;
 const AARCH64_AXI_BASE: u64 = 0x40000000;
 const AARCH64_PLATFORM_MMIO_SIZE: u64 = 0x800000;
-
-// FDT is placed at the front of RAM when booting in BIOS mode.
-const AARCH64_FDT_OFFSET_IN_BIOS_MODE: u64 = 0x0;
-// Therefore, the BIOS is placed after the FDT in memory.
-const AARCH64_BIOS_OFFSET: u64 = AARCH64_FDT_MAX_SIZE;
 
 const AARCH64_PROTECTED_VM_FW_MAX_SIZE: u64 = 0x400000;
 const AARCH64_PROTECTED_VM_FW_START: u64 =
@@ -157,14 +152,6 @@ impl PayloadType {
             Self::Kernel(k) => k.size,
         }
     }
-}
-
-fn get_kernel_addr() -> GuestAddress {
-    GuestAddress(AARCH64_PHYS_MEM_START + AARCH64_KERNEL_OFFSET)
-}
-
-fn get_bios_addr() -> GuestAddress {
-    GuestAddress(AARCH64_PHYS_MEM_START + AARCH64_BIOS_OFFSET)
 }
 
 // When static swiotlb allocation is required, returns the address it should be allocated at.
@@ -334,25 +321,6 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Returns the address in guest memory at which the FDT should be located.
-fn fdt_address(memory_end: GuestAddress, has_bios: bool) -> GuestAddress {
-    // TODO(rammuthiah) make kernel and BIOS startup use FDT from the same location. ARCVM startup
-    // currently expects the kernel at 0x80080000 and the FDT at the end of RAM for unknown reasons.
-    // Root cause and figure out how to fold these code paths together.
-    if has_bios {
-        GuestAddress(AARCH64_PHYS_MEM_START + AARCH64_FDT_OFFSET_IN_BIOS_MODE)
-    } else {
-        // Put fdt up near the top of memory
-        // TODO(sonnyrao): will have to handle this differently if there's
-        // > 4GB memory
-        memory_end
-            .checked_sub(AARCH64_FDT_MAX_SIZE)
-            .expect("Not enough memory for FDT")
-            .checked_sub(0x10000)
-            .expect("Not enough memory for FDT")
-    }
-}
-
 fn load_kernel(
     guest_mem: &GuestMemory,
     kernel_start: GuestAddress,
@@ -465,6 +433,7 @@ impl arch::LinuxArch for AArch64 {
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
         _guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
         device_tree_overlays: Vec<DtbOverlay>,
+        fdt_position: Option<FdtPosition>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmAArch64,
@@ -473,21 +442,39 @@ impl arch::LinuxArch for AArch64 {
         let has_bios = matches!(components.vm_image, VmImage::Bios(_));
         let mem = vm.get_memory().clone();
 
+        let fdt_position = fdt_position.unwrap_or(if has_bios {
+            FdtPosition::Start
+        } else {
+            FdtPosition::End
+        });
+        let payload_address = match fdt_position {
+            // If FDT is at the start RAM, the payload needs to go somewhere after it.
+            FdtPosition::Start => GuestAddress(AARCH64_PHYS_MEM_START + AARCH64_FDT_MAX_SIZE),
+            // Otherwise, put the payload at the start of RAM.
+            FdtPosition::End | FdtPosition::AfterPayload => GuestAddress(AARCH64_PHYS_MEM_START),
+        };
+
         // separate out image loading from other setup to get a specific error for
         // image loading
         let mut initrd = None;
-        let payload = match components.vm_image {
+        let (payload, payload_end_address) = match components.vm_image {
             VmImage::Bios(ref mut bios) => {
-                let image_size = arch::load_image(&mem, bios, get_bios_addr(), u64::MAX)
+                let image_size = arch::load_image(&mem, bios, payload_address, u64::MAX)
                     .map_err(Error::BiosLoadFailure)?;
-                PayloadType::Bios {
-                    entry: get_bios_addr(),
-                    image_size: image_size as u64,
-                }
+                (
+                    PayloadType::Bios {
+                        entry: payload_address,
+                        image_size: image_size as u64,
+                    },
+                    payload_address
+                        .checked_add(image_size.try_into().unwrap())
+                        .unwrap(),
+                )
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let loaded_kernel = load_kernel(&mem, get_kernel_addr(), kernel_image)?;
+                let loaded_kernel = load_kernel(&mem, payload_address, kernel_image)?;
                 let kernel_end = loaded_kernel.address_range.end;
+                let mut payload_end = GuestAddress(kernel_end);
                 initrd = match components.initrd_image {
                     Some(initrd_file) => {
                         let mut initrd_file = initrd_file;
@@ -499,16 +486,33 @@ impl arch::LinuxArch for AArch64 {
                         let initrd_size =
                             arch::load_image(&mem, &mut initrd_file, initrd_addr, initrd_max_size)
                                 .map_err(Error::InitrdLoadFailure)?;
+                        payload_end = initrd_addr
+                            .checked_add(initrd_size.try_into().unwrap())
+                            .unwrap();
                         Some((initrd_addr, initrd_size))
                     }
                     None => None,
                 };
-                PayloadType::Kernel(loaded_kernel)
+                (PayloadType::Kernel(loaded_kernel), payload_end)
             }
         };
 
         let memory_end = GuestAddress(AARCH64_PHYS_MEM_START + components.memory_size);
-        let fdt_offset = fdt_address(memory_end, has_bios);
+
+        let fdt_address = match fdt_position {
+            FdtPosition::Start => GuestAddress(AARCH64_PHYS_MEM_START),
+            FdtPosition::End => {
+                let addr = memory_end
+                    .checked_sub(AARCH64_FDT_MAX_SIZE)
+                    .expect("Not enough memory for FDT")
+                    .align_down(AARCH64_FDT_ALIGN);
+                assert!(addr >= payload_end_address, "Not enough memory for FDT");
+                addr
+            }
+            FdtPosition::AfterPayload => payload_end_address
+                .align(AARCH64_FDT_ALIGN)
+                .expect("Not enough memory for FDT"),
+        };
 
         let mut use_pmu = vm
             .get_hypervisor()
@@ -533,7 +537,7 @@ impl arch::LinuxArch for AArch64 {
                 Self::vcpu_init(
                     vcpu_id,
                     &payload,
-                    fdt_offset,
+                    fdt_address,
                     components.hv_cfg.protection_type,
                     components.boot_cpu,
                 )
@@ -810,7 +814,7 @@ impl arch::LinuxArch for AArch64 {
             components.cpu_clusters,
             components.cpu_capacity,
             components.cpu_frequencies,
-            fdt_offset,
+            fdt_address,
             cmdline.as_str(),
             (payload.entry(), payload.size() as usize),
             initrd,
@@ -836,7 +840,7 @@ impl arch::LinuxArch for AArch64 {
 
         vm.init_arch(
             payload.entry(),
-            fdt_offset,
+            fdt_address,
             AARCH64_FDT_MAX_SIZE.try_into().unwrap(),
         )
         .map_err(Error::InitVmError)?;

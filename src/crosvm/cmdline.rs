@@ -23,6 +23,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use arch::CpuSet;
+use arch::FdtPosition;
 use arch::Pstore;
 #[cfg(target_arch = "x86_64")]
 use arch::SmbiosOptions;
@@ -1292,6 +1293,18 @@ pub struct RunCommand {
     #[merge(strategy = overwrite_option)]
     /// gather and display statistics on Vm Exits and Bus Reads/Writes.
     pub exit_stats: Option<bool>,
+
+    #[argh(option)]
+    #[serde(skip)]
+    #[merge(strategy = overwrite)]
+    /// where the FDT is placed in memory.
+    ///
+    /// On x86_64, no effect.
+    ///
+    /// On aarch64, defaults to `end` for kernel payloads and to `start` for BIOS payloads.
+    ///
+    /// On riscv64, defaults to `after-payload`.
+    pub fdt_position: Option<FdtPosition>,
 
     #[argh(
         option,
@@ -3569,6 +3582,8 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.stub_pci_devices = cmd.stub_pci_device;
+
+        cfg.fdt_position = cmd.fdt_position;
 
         cfg.file_backed_mappings = cmd.file_backed_mapping;
 

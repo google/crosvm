@@ -55,6 +55,7 @@ use arch::get_serial_cmdline;
 use arch::serial::SerialDeviceInfo;
 use arch::CpuSet;
 use arch::DtbOverlay;
+use arch::FdtPosition;
 use arch::GetSerialCmdlineError;
 use arch::RunnableLinuxVm;
 use arch::VmComponents;
@@ -725,6 +726,7 @@ impl arch::LinuxArch for X8664arch {
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
         guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
         device_tree_overlays: Vec<DtbOverlay>,
+        _fdt_position: Option<FdtPosition>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmX86_64,

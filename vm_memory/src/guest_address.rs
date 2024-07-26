@@ -82,6 +82,17 @@ impl GuestAddress {
         }
         self.checked_add(align - 1).map(|a| a & !(align - 1))
     }
+
+    /// Returns the next lowest address that is a multiple of `align`, or an unchanged copy of the
+    /// address if it's already a multiple of `align`.
+    ///
+    /// `align` must be a power of 2.
+    pub fn align_down(self, align: u64) -> GuestAddress {
+        if align <= 1 {
+            return self;
+        }
+        self & !(align - 1)
+    }
 }
 
 impl BitAnd<u64> for GuestAddress {
@@ -189,5 +200,25 @@ mod tests {
             Some(GuestAddress(u64::MAX & !4095)),
         );
         assert_eq!(GuestAddress(u64::MAX).align(2), None);
+    }
+
+    #[test]
+    fn align_down() {
+        assert_eq!(GuestAddress(12345).align_down(0), GuestAddress(12345));
+        assert_eq!(GuestAddress(12345).align_down(1), GuestAddress(12345));
+        assert_eq!(GuestAddress(12345).align_down(2), GuestAddress(12344));
+        assert_eq!(GuestAddress(0).align_down(4096), GuestAddress(0));
+        assert_eq!(GuestAddress(1).align_down(4096), GuestAddress(0));
+        assert_eq!(GuestAddress(4095).align_down(4096), GuestAddress(0));
+        assert_eq!(GuestAddress(4096).align_down(4096), GuestAddress(4096));
+        assert_eq!(GuestAddress(4097).align_down(4096), GuestAddress(4096));
+        assert_eq!(
+            GuestAddress(u64::MAX & !4095).align_down(4096),
+            GuestAddress(u64::MAX & !4095),
+        );
+        assert_eq!(
+            GuestAddress(u64::MAX).align_down(2),
+            GuestAddress(u64::MAX - 1)
+        );
     }
 }

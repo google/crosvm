@@ -2165,6 +2165,7 @@ where
         &mut swap_controller,
         guest_suspended_cvar.clone(),
         dt_overlays,
+        cfg.fdt_position,
     )
     .context("the architecture failed to build the vm")?;
 
