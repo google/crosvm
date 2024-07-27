@@ -123,14 +123,9 @@ impl From<&Segment> for WHV_X64_SEGMENT_REGISTER {
             segment.db.into(),
             segment.g.into(),
         );
-        let limit = if segment.g == 0 {
-            segment.limit
-        } else {
-            segment.limit / 4096
-        };
         WHV_X64_SEGMENT_REGISTER {
             Base: segment.base,
-            Limit: limit,
+            Limit: segment.limit_bytes,
             Selector: segment.selector,
             __bindgen_anon_1: WHV_X64_SEGMENT_REGISTER__bindgen_ty_1 {
                 __bindgen_anon_1: WHV_X64_SEGMENT_REGISTER__bindgen_ty_1__bindgen_ty_1 {
@@ -146,14 +141,9 @@ impl From<&WHV_X64_SEGMENT_REGISTER> for Segment {
     fn from(whpx_segment: &WHV_X64_SEGMENT_REGISTER) -> Self {
         // safe because the union field can always be interpreteted as a bitfield
         let attributes = unsafe { whpx_segment.__bindgen_anon_1.__bindgen_anon_1 };
-        let limit_bytes = if attributes.Granularity() == 0 {
-            whpx_segment.Limit
-        } else {
-            (whpx_segment.Limit * 4096) + 4095
-        };
         Segment {
             base: whpx_segment.Base,
-            limit_bytes,
+            limit_bytes: whpx_segment.Limit,
             selector: whpx_segment.Selector,
             type_: attributes.SegmentType() as u8,
             present: attributes.Present() as u8,
