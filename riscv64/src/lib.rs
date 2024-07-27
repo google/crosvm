@@ -420,7 +420,7 @@ impl arch::LinuxArch for Riscv64 {
             gdb: components.gdb,
             pm: None,
             devices_thread: None,
-            vm_request_tube: None,
+            vm_request_tubes: Vec::new(),
         })
     }
 
