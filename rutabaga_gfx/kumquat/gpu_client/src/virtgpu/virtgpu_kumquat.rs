@@ -85,8 +85,8 @@ pub struct VirtGpuKumquat {
 }
 
 impl VirtGpuKumquat {
-    pub fn new() -> RutabagaResult<VirtGpuKumquat> {
-        let path = PathBuf::from("/tmp/rutabaga-0");
+    pub fn new(gpu_socket: &str) -> RutabagaResult<VirtGpuKumquat> {
+        let path = PathBuf::from(gpu_socket);
         let connection = RutabagaTube::new(path)?;
         let mut stream = RutabagaStream::new(connection);
 

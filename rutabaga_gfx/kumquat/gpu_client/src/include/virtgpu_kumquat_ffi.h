@@ -221,7 +221,7 @@ struct drm_kumquat_resource_import {
     uint64_t size;
 };
 
-int32_t virtgpu_kumquat_init(struct virtgpu_kumquat **ptr);
+int32_t virtgpu_kumquat_init(struct virtgpu_kumquat **ptr, const char *gpu_socket);
 
 int32_t virtgpu_kumquat_finish(struct virtgpu_kumquat **ptr);
 

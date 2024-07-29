@@ -29,7 +29,7 @@ struct Args {
     capset_names: String,
 
     /// Path to the emulated virtio-gpu socket.
-    #[arg(long, default_value = "/tmp/rutabaga-0")]
+    #[arg(long, default_value = "/tmp/kumquat-gpu-0")]
     gpu_socket_path: String,
 
     /// Opaque renderer specific features

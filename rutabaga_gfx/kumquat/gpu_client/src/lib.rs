@@ -7,6 +7,8 @@ extern crate rutabaga_gfx;
 mod virtgpu;
 
 use std::boxed::Box;
+use std::ffi::CStr;
+use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::panic::catch_unwind;
 use std::panic::AssertUnwindSafe;
@@ -96,11 +98,23 @@ type drm_kumquat_resource_export = VirtGpuResourceExport;
 type drm_kumquat_resource_import = VirtGpuResourceImport;
 
 #[no_mangle]
-pub unsafe extern "C" fn virtgpu_kumquat_init(ptr: &mut *mut virtgpu_kumquat) -> i32 {
+pub unsafe extern "C" fn virtgpu_kumquat_init(
+    ptr: &mut *mut virtgpu_kumquat,
+    gpu_socket: Option<&c_char>,
+) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        let result = VirtGpuKumquat::new();
-        let rtbg = return_on_error!(result);
-        *ptr = Box::into_raw(Box::new(Mutex::new(rtbg))) as _;
+        let gpu_socket_str = match gpu_socket {
+            Some(value) => {
+                let c_str_slice = CStr::from_ptr(value);
+                let result = c_str_slice.to_str();
+                return_on_error!(result)
+            }
+            None => "/tmp/kumquat-gpu-0",
+        };
+
+        let result = VirtGpuKumquat::new(gpu_socket_str);
+        let kmqt = return_on_error!(result);
+        *ptr = Box::into_raw(Box::new(Mutex::new(kmqt))) as _;
         NO_ERROR
     }))
     .unwrap_or(-ESRCH)
