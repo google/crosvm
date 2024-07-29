@@ -69,6 +69,8 @@ pub mod aarch64 {
     pub mod bindings;
     use base::ioctl_ior_nr;
     use base::ioctl_iow_nr;
+    #[cfg(target_os = "android")]
+    use base::ioctl_iowr_nr;
     pub use bindings::*;
 
     ioctl_iow_nr!(KVM_ARM_SET_DEVICE_ADDR, KVMIO, 0xab, kvm_arm_device_addr);
@@ -80,6 +82,9 @@ pub mod aarch64 {
         0xb5,
         kvm_arm_counter_offset
     );
+
+    #[cfg(target_os = "android")]
+    ioctl_iowr_nr!(KVM_PVIOMMU_SET_CONFIG, KVMIO, 0x1, kvm_vfio_iommu_config);
 }
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use crate::aarch64::*;
