@@ -339,6 +339,7 @@ const GB: u64 = 1 << 30;
 
 pub const BOOT_STACK_POINTER: u64 = 0x8000;
 const START_OF_RAM_32BITS: u64 = 0;
+const FIRST_ADDR_PAST_20BITS: u64 = 1 << 20;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 // Linux (with 4-level paging) has a physical memory limit of 46 bits (64 TiB).
 const HIGH_MMIO_MAX_END: u64 = (1u64 << 46) - 1;
@@ -486,17 +487,26 @@ fn configure_system(
         params.ext_ramdisk_size = (initrd_size as u64 >> 32) as u32;
     }
 
+    // Some guest kernels expect a typical PC memory layout where the region between 640 KB and 1 MB
+    // is reserved for device memory/ROMs and get confused if there is a RAM region spanning this
+    // area, so we provide the traditional 640 KB low memory and 1 MB+ high memory regions.
+    let ram_below_1m_end = 640 * 1024;
+    let ram_below_1m = AddressRange {
+        start: START_OF_RAM_32BITS,
+        end: ram_below_1m_end - 1,
+    };
     // GuestMemory::end_addr() returns the first address past the end, so subtract 1 to get the
     // inclusive end.
     let guest_mem_end = guest_mem.end_addr().offset() - 1;
     let ram_below_4g = AddressRange {
-        start: START_OF_RAM_32BITS,
+        start: FIRST_ADDR_PAST_20BITS,
         end: guest_mem_end.min(read_pci_mmio_before_32bit().start - 1),
     };
     let ram_above_4g = AddressRange {
         start: FIRST_ADDR_PAST_32BITS,
         end: guest_mem_end,
     };
+    add_e820_entry(&mut params, ram_below_1m, E820Type::Ram)?;
     add_e820_entry(&mut params, ram_below_4g, E820Type::Ram)?;
     if !ram_above_4g.is_empty() {
         add_e820_entry(&mut params, ram_above_4g, E820Type::Ram)?
