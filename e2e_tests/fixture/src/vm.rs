@@ -282,6 +282,14 @@ impl Config {
         ));
         self
     }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    pub fn with_vhost_user_fs(mut self, socket_path: &Path, tag: &str) -> Self {
+        self.extra_args.push("--vhost-user-fs".to_string());
+        self.extra_args
+            .push(format!("{},tag={}", socket_path.to_str().unwrap(), tag));
+        self
+    }
 }
 
 static PREP_ONCE: Once = Once::new();
