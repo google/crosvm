@@ -2452,6 +2452,13 @@ pub struct RunCommand {
     /// path to a socket for vhost-user block
     pub vhost_user_blk: Vec<VhostUserOption>,
 
+    #[argh(option)]
+    #[serde(skip)]
+    #[merge(strategy = overwrite_option)]
+    /// number of milliseconds to retry if the socket path is missing or has no listener. Defaults
+    /// to no retries.
+    pub vhost_user_connect_timeout_ms: Option<u64>,
+
     #[argh(option, arg_name = "SOCKET_PATH")]
     #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = append)]
@@ -3534,6 +3541,8 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.vhost_user = cmd.vhost_user;
+
+        cfg.vhost_user_connect_timeout_ms = cmd.vhost_user_connect_timeout_ms;
 
         // Convert an option from `VhostUserOption` to `VhostUserFrontendOption` with the given
         // device type.

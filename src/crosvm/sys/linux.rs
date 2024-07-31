@@ -766,7 +766,11 @@ fn create_virtio_devices(
     }
 
     for opt in &cfg.vhost_user {
-        devs.push(create_vhost_user_frontend(cfg.protection_type, opt)?);
+        devs.push(create_vhost_user_frontend(
+            cfg.protection_type,
+            opt,
+            cfg.vhost_user_connect_timeout_ms,
+        )?);
     }
 
     Ok(devs)
