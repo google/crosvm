@@ -778,15 +778,9 @@ impl From<&segment_desc_t> for Segment {
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
-            let g = item.__bindgen_anon_1.__bindgen_anon_1.granularity() as u8;
-            let limit_bytes = if g == 0 {
-                item.limit
-            } else {
-                (item.limit * 4096) + 4095
-            };
             Segment {
                 base: item.base,
-                limit_bytes,
+                limit_bytes: item.limit,
                 selector: item.selector,
                 type_: item.__bindgen_anon_1.__bindgen_anon_1.type_() as u8,
                 present: item.__bindgen_anon_1.__bindgen_anon_1.present() as u8,
@@ -794,7 +788,7 @@ impl From<&segment_desc_t> for Segment {
                 db: item.__bindgen_anon_1.__bindgen_anon_1.operand_size() as u8,
                 s: item.__bindgen_anon_1.__bindgen_anon_1.desc() as u8,
                 l: item.__bindgen_anon_1.__bindgen_anon_1.long_mode() as u8,
-                g,
+                g: item.__bindgen_anon_1.__bindgen_anon_1.granularity() as u8,
                 avl: item.__bindgen_anon_1.__bindgen_anon_1.available() as u8,
             }
         }
@@ -803,14 +797,9 @@ impl From<&segment_desc_t> for Segment {
 
 impl From<&Segment> for segment_desc_t {
     fn from(item: &Segment) -> Self {
-        let limit = if item.g == 0 {
-            item.limit_bytes
-        } else {
-            item.limit_bytes / 4096
-        };
         let mut segment = segment_desc_t {
             base: item.base,
-            limit,
+            limit: item.limit_bytes,
             selector: item.selector,
             ..Default::default()
         };
