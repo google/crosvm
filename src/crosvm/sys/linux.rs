@@ -3087,6 +3087,14 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         VmRequest::VcpuPidTid => VmResponse::VcpuPidTidResponse {
             pid_tid_map: state.vcpus_pid_tid.clone(),
         },
+        VmRequest::Throttle(vcpu, cycles) => {
+            vcpu::kick_vcpu(
+                &state.vcpu_handles.get(vcpu),
+                state.linux.irq_chip.as_irq_chip(),
+                VcpuControl::Throttle(cycles),
+            );
+            return Ok(VmRequestResult::new(None, false));
+        }
         _ => {
             if !state.cfg.force_s2idle {
                 #[cfg(feature = "pvclock")]
@@ -3133,6 +3141,13 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 None,
                 &mut state.linux.bat_control,
                 kick_all_vcpus,
+                |index, msg| {
+                    vcpu::kick_vcpu(
+                        &state.vcpu_handles.get(index),
+                        state.linux.irq_chip.as_irq_chip(),
+                        msg,
+                    )
+                },
                 state.cfg.force_s2idle,
                 #[cfg(feature = "swap")]
                 state.swap_controller.as_ref(),

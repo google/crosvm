@@ -1150,7 +1150,11 @@ pub struct RunCommand {
     )]
     #[serde(skip)]
     #[merge(strategy = overwrite_option)]
-    /// set the list of frequencies in KHz for the given CPU (default: no frequencies)
+    /// set the list of frequencies in KHz for the given CPU (default: no frequencies).
+    /// In the event that the user specifies a frequency (after normalizing for cpu_capacity)
+    /// that results in a performance point that goes below the lowest frequency that the pCPU can
+    /// support, the virtual cpufreq device will actively throttle the vCPU to deliberately slow
+    /// its performance to match the guest's request.
     pub cpu_frequencies_khz: Option<BTreeMap<usize, Vec<u32>>>, // CPU index -> frequencies
 
     #[argh(option, short = 'c')]

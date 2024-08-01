@@ -5,11 +5,23 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 
+use anyhow::Context;
 use base::sched_attr;
 use base::sched_setattr;
+use base::set_cpu_affinity;
 use base::warn;
 use base::Error;
+use base::Event;
+use base::EventToken;
+use base::Timer;
+use base::TimerTrait;
+use base::Tube;
+use base::WaitContext;
+use base::WorkerThread;
+use sync::Mutex;
 
 use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
@@ -24,6 +36,7 @@ const SCHED_FLAG_RESET_ON_FORK: u64 = 0x1;
 const SCHED_FLAG_KEEP_POLICY: u64 = 0x08;
 const SCHED_FLAG_KEEP_PARAMS: u64 = 0x10;
 const SCHED_FLAG_UTIL_CLAMP_MIN: u64 = 0x20;
+const SCHED_FLAG_UTIL_CLAMP_MAX: u64 = 0x40;
 
 const VCPUFREQ_CUR_PERF: u32 = 0x0;
 const VCPUFREQ_SET_PERF: u32 = 0x4;
@@ -33,7 +46,11 @@ const VCPUFREQ_FREQTBL_RD: u32 = 0x10;
 const VCPUFREQ_PERF_DOMAIN: u32 = 0x14;
 
 const SCHED_FLAG_KEEP_ALL: u64 = SCHED_FLAG_KEEP_POLICY | SCHED_FLAG_KEEP_PARAMS;
-const SCHED_SCALE_CAPACITY: u32 = 1024;
+const SCHED_CAPACITY_SCALE: u32 = 1024;
+
+// Timer values in microseconds
+const MIN_TIMER_US: u32 = 75;
+const TIMER_OVERHEAD_US: u32 = 15;
 
 /// Upstream linux compatible version of the virtual cpufreq interface
 pub struct VirtCpufreqV2 {
@@ -49,6 +66,13 @@ pub struct VirtCpufreqV2 {
     vcpu_fmax: u32,
     vcpu_capacity: u32,
     vcpu_relative_capacity: u32,
+    worker: Option<WorkerThread<()>>,
+    timer: Arc<Mutex<Timer>>,
+    vm_ctrl: Arc<Mutex<Tube>>,
+    pcpu_min_cap: u32,
+    requested_util: u32,
+    vcpu_count: usize,
+    shared_domain_vcpus: Vec<usize>,
 }
 
 fn get_cpu_info(cpu_id: u32, property: &str) -> Result<u32, Error> {
@@ -72,6 +96,10 @@ fn get_cpu_maxfreq_khz(cpu_id: u32) -> Result<u32, Error> {
     get_cpu_info(cpu_id, "cpufreq/cpuinfo_max_freq")
 }
 
+fn get_cpu_minfreq_khz(cpu_id: u32) -> Result<u32, Error> {
+    get_cpu_info(cpu_id, "cpufreq/cpuinfo_min_freq")
+}
+
 fn get_cpu_curfreq_khz(cpu_id: u32) -> Result<u32, Error> {
     get_cpu_info(cpu_id, "cpufreq/scaling_cur_freq")
 }
@@ -91,6 +119,9 @@ impl VirtCpufreqV2 {
         vcpu_domain_path: Option<PathBuf>,
         vcpu_domain: u32,
         vcpu_capacity: u32,
+        vcpu_count: usize,
+        vm_ctrl: Arc<Mutex<Tube>>,
+        shared_domain_vcpus: Vec<usize>,
     ) -> Self {
         let pcpu_capacity = get_cpu_capacity(pcpu).expect("Error reading capacity");
         let pcpu_fmax = get_cpu_maxfreq_khz(pcpu).expect("Error reading max freq");
@@ -107,6 +138,8 @@ impl VirtCpufreqV2 {
         let vcpu_relative_capacity =
             u32::try_from(u64::from(vcpu_capacity) * u64::from(pcpu_fmax) / u64::from(vcpu_fmax))
                 .unwrap();
+        let pcpu_min_cap =
+            get_cpu_minfreq_khz(pcpu).expect("Error reading min freq") * pcpu_capacity / pcpu_fmax;
 
         if let Some(cgroup_path) = &vcpu_domain_path {
             domain_uclamp_min = Some(
@@ -142,6 +175,13 @@ impl VirtCpufreqV2 {
             vcpu_fmax,
             vcpu_capacity,
             vcpu_relative_capacity,
+            worker: None,
+            timer: Arc::new(Mutex::new(Timer::new().expect("failed to create Timer"))),
+            vm_ctrl,
+            pcpu_min_cap,
+            requested_util: 0,
+            vcpu_count,
+            shared_domain_vcpus,
         }
     }
 }
@@ -212,7 +252,7 @@ impl BusDevice for VirtCpufreqV2 {
                     Ok(util) => util,
                     Err(e) => {
                         warn!("Potential overflow {:#}", e);
-                        SCHED_SCALE_CAPACITY
+                        SCHED_CAPACITY_SCALE
                     }
                 };
 
@@ -222,7 +262,7 @@ impl BusDevice for VirtCpufreqV2 {
                     (&mut self.domain_uclamp_min, &mut self.domain_uclamp_max)
                 {
                     use std::io::Write;
-                    let val = util as f32 * 100.0 / SCHED_SCALE_CAPACITY as f32;
+                    let val = util as f32 * 100.0 / SCHED_CAPACITY_SCALE as f32;
                     let val_formatted = format!("{:4}", val).into_bytes();
 
                     if self.vcpu_fmax != self.pcpu_fmax {
@@ -235,24 +275,128 @@ impl BusDevice for VirtCpufreqV2 {
                     }
                 } else {
                     let mut sched_attr = sched_attr::default();
-                    sched_attr.sched_flags =
-                        SCHED_FLAG_KEEP_ALL | SCHED_FLAG_UTIL_CLAMP_MIN | SCHED_FLAG_RESET_ON_FORK;
+                    sched_attr.sched_flags = SCHED_FLAG_KEEP_ALL
+                        | SCHED_FLAG_UTIL_CLAMP_MIN
+                        | SCHED_FLAG_UTIL_CLAMP_MAX
+                        | SCHED_FLAG_RESET_ON_FORK;
                     sched_attr.sched_util_min = util;
 
                     if self.vcpu_fmax != self.pcpu_fmax {
                         sched_attr.sched_util_max = util;
                     } else {
-                        sched_attr.sched_util_max = SCHED_SCALE_CAPACITY;
+                        sched_attr.sched_util_max = SCHED_CAPACITY_SCALE;
                     }
 
                     if let Err(e) = sched_setattr(0, &mut sched_attr, 0) {
                         panic!("{}: Error setting util value: {:#}", self.debug_label(), e);
                     }
                 }
+
+                self.requested_util = util_raw;
+                let timer = self.timer.clone();
+                if self.worker.is_none() {
+                    let vcpu_id = info.id;
+                    let vm_ctrl = self.vm_ctrl.clone();
+                    let worker_cpu_affinity = self.pcpu as usize + self.vcpu_count;
+                    let shared_domain_vcpus = self.shared_domain_vcpus.clone();
+
+                    self.worker = Some(WorkerThread::start(
+                        format!("vcpu_throttle{vcpu_id}"),
+                        move |kill_evt| {
+                            vcpufreq_worker_thread(
+                                shared_domain_vcpus,
+                                kill_evt,
+                                timer,
+                                vm_ctrl,
+                                worker_cpu_affinity,
+                            )
+                            .expect("error running vpucfreq_worker")
+                        },
+                    ));
+                } else if util_raw < self.pcpu_min_cap {
+                    // The period is porportional to the performance requested by the vCPU, we
+                    // reduce the timeout period to increase the amount of throttling applied to
+                    // the vCPU as the performance decreases. Ex. If vCPU requests half of the
+                    // performance relatively to its pCPU@FMin, the vCPU will spend 50% of its
+                    // cycles being throttled to increase time for the same workload that otherwise
+                    // would've taken 1/2 of the time if ran at pCPU@FMin. We could've
+                    // alternatively adjusted the workload and used some fixed period (such as
+                    // 250us), but there's a floor for the minimum delay we add (cost of handling
+                    // the userspace exit) and limits the range of performance we can emulate.
+                    let timeout_period = (MIN_TIMER_US + TIMER_OVERHEAD_US) as f32
+                        / (1.0 - (util_raw as f32 / self.pcpu_min_cap as f32));
+                    let _ = timer
+                        .lock()
+                        .reset_repeating(Duration::from_micros(timeout_period as u64));
+                } else {
+                    let _ = timer.lock().clear();
+                }
             }
             VCPUFREQ_FREQTBL_SEL => self.freqtbl_sel = val,
             _ => {
                 warn!("{}: unsupported read address {}", self.debug_label(), info);
+            }
+        }
+    }
+}
+
+pub fn vcpufreq_worker_thread(
+    shared_domain_vcpus: Vec<usize>,
+    kill_evt: Event,
+    timer: Arc<Mutex<Timer>>,
+    vm_ctrl: Arc<Mutex<Tube>>,
+    cpu_affinity: usize,
+) -> anyhow::Result<()> {
+    #[derive(EventToken)]
+    enum Token {
+        // The timer expired.
+        TimerExpire,
+        // The parent thread requested an exit.
+        Kill,
+    }
+
+    let wait_ctx = WaitContext::build_with(&[
+        (&*timer.lock(), Token::TimerExpire),
+        (&kill_evt, Token::Kill),
+    ])
+    .context("Failed to create wait_ctx")?;
+
+    // The vcpufreq thread has strict scheduling requirements, let's affine it away from the vCPU
+    // threads and clamp its util to high value.
+    let cpu_set: Vec<usize> = vec![cpu_affinity];
+    set_cpu_affinity(cpu_set)?;
+
+    let mut sched_attr = sched_attr::default();
+    sched_attr.sched_flags = SCHED_FLAG_KEEP_ALL
+        | SCHED_FLAG_UTIL_CLAMP_MIN
+        | SCHED_FLAG_UTIL_CLAMP_MAX
+        | SCHED_FLAG_RESET_ON_FORK;
+    sched_attr.sched_util_min = SCHED_CAPACITY_SCALE;
+    sched_attr.sched_util_max = SCHED_CAPACITY_SCALE;
+    if let Err(e) = sched_setattr(0, &mut sched_attr, 0) {
+        warn!("Error setting util value: {}", e);
+    }
+
+    loop {
+        let events = wait_ctx.wait().context("Failed to wait for events")?;
+        for event in events.iter().filter(|e| e.is_readable) {
+            match event.token {
+                Token::TimerExpire => {
+                    timer
+                        .lock()
+                        .mark_waited()
+                        .context("failed to reset timer")?;
+                    let vm_ctrl_unlocked = vm_ctrl.lock();
+                    for vcpu_id in &shared_domain_vcpus {
+                        let msg = vm_control::VmRequest::Throttle(*vcpu_id, MIN_TIMER_US);
+                        vm_ctrl_unlocked
+                            .send(&msg)
+                            .context("failed to stall vCPUs")?;
+                    }
+                }
+                Token::Kill => {
+                    return Ok(());
+                }
             }
         }
     }

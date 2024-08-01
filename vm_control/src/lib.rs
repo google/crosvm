@@ -141,6 +141,8 @@ pub enum VcpuControl {
     // the channel after completion/failure.
     Snapshot(SnapshotWriter, mpsc::Sender<anyhow::Result<()>>),
     Restore(VcpuRestoreRequest),
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    Throttle(u32),
 }
 
 /// Request to restore a Vcpu from a given snapshot, and report the results
@@ -1548,6 +1550,8 @@ pub enum VmRequest {
     ResumeVm,
     /// Returns Vcpus PID/TID
     VcpuPidTid,
+    /// Throttles the requested vCPU for microseconds
+    Throttle(usize, u32),
 }
 
 /// NOTE: when making any changes to this enum please also update
@@ -1826,6 +1830,7 @@ impl VmRequest {
         usb_control_tube: Option<&Tube>,
         bat_control: &mut Option<BatControl>,
         kick_vcpus: impl Fn(VcpuControl),
+        #[cfg(any(target_os = "android", target_os = "linux"))] kick_vcpu: impl Fn(usize, VcpuControl),
         force_s2idle: bool,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
         device_control_tube: &Tube,
@@ -2252,6 +2257,7 @@ impl VmRequest {
             } => VmResponse::Ok,
             VmRequest::Unregister { socket_addr: _ } => VmResponse::Ok,
             VmRequest::VcpuPidTid => unreachable!(),
+            VmRequest::Throttle(_, _) => unreachable!(),
         }
     }
 }

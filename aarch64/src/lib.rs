@@ -724,8 +724,16 @@ impl arch::LinuxArch for AArch64 {
             .insert(pci_bus, AARCH64_PCI_CFG_BASE, AARCH64_PCI_CFG_SIZE)
             .map_err(Error::RegisterPci)?;
 
+        let (vcpufreq_host_tube, vcpufreq_control_tube) =
+            Tube::pair().map_err(Error::CreateTube)?;
+        let vcpufreq_shared_tube = Arc::new(Mutex::new(vcpufreq_control_tube));
         #[cfg(any(target_os = "android", target_os = "linux"))]
         if !components.cpu_frequencies.is_empty() {
+            let mut freq_domain_vcpus: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+            for vcpu in 0..vcpu_count {
+                let freq_domain = *components.vcpu_domains.get(&vcpu).unwrap_or(&(vcpu as u32));
+                freq_domain_vcpus.entry(freq_domain).or_default().push(vcpu);
+            }
             for vcpu in 0..vcpu_count {
                 let vcpu_affinity = match components.vcpu_affinity.clone() {
                     Some(VcpuAffinity::Global(v)) => v,
@@ -735,13 +743,17 @@ impl arch::LinuxArch for AArch64 {
 
                 let mut virtfreq_size = AARCH64_VIRTFREQ_SIZE;
                 if components.virt_cpufreq_v2 {
+                    let domain = *components.vcpu_domains.get(&vcpu).unwrap_or(&(vcpu as u32));
                     virtfreq_size = AARCH64_VIRTFREQ_V2_SIZE;
                     let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreqV2::new(
                         vcpu_affinity[0].try_into().unwrap(),
                         components.cpu_frequencies.clone(),
                         components.vcpu_domain_paths.get(&vcpu).cloned(),
-                        *components.vcpu_domains.get(&vcpu).unwrap_or(&(vcpu as u32)),
+                        domain,
                         *components.normalized_cpu_capacities.get(&vcpu).unwrap(),
+                        vcpu_count,
+                        vcpufreq_shared_tube.clone(),
+                        freq_domain_vcpus.get(&domain).unwrap().clone(),
                     )));
                     mmio_bus
                         .insert(
@@ -892,7 +904,7 @@ impl arch::LinuxArch for AArch64 {
         )
         .map_err(Error::InitVmError)?;
 
-        let vm_request_tubes = vec![vmwdt_host_tube];
+        let vm_request_tubes = vec![vmwdt_host_tube, vcpufreq_host_tube];
 
         Ok(RunnableLinuxVm {
             vm,

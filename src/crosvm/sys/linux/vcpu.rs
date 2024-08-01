@@ -345,6 +345,16 @@ where
                                 error!("Failed to send restore response: {}", e);
                             }
                         }
+                        VcpuControl::Throttle(target_us) => {
+                            let start_time = std::time::Instant::now();
+
+                            while start_time.elapsed().as_micros() < target_us.into() {
+                                // TODO: Investigate replacing this with std::hint::spin_loop()
+                                // to hint to the pCPU to potentially save some power. Also revisit
+                                // this when scheduler updates are available on newer kernel
+                                // versions.
+                            }
+                        }
                     }
                 }
                 if run_mode == VmRunMode::Running {
