@@ -447,7 +447,7 @@ bitflags! {
 }
 
 /// A generic message to encapsulate a 64-bit value.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 pub struct VhostUserU64 {
     /// The encapsulated 64-bit common value.
@@ -623,7 +623,7 @@ impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {
 }
 
 /// Vring state descriptor.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 pub struct VhostUserVringState {
     /// Vring index.
@@ -735,7 +735,7 @@ bitflags! {
 }
 
 /// Message to read/write device configuration space.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 pub struct VhostUserConfig {
     /// Offset of virtio device's configuration space.
@@ -820,7 +820,7 @@ impl VhostUserMsgValidator for VhostUserInflight {
 
 /*
  * TODO: support dirty log, live migration and IOTLB operations.
-#[repr(packed)]
+#[repr(C, packed)]
 pub struct VhostUserVringArea {
     pub index: u32,
     pub flags: u32,
@@ -828,13 +828,13 @@ pub struct VhostUserVringArea {
     pub offset: u64,
 }
 
-#[repr(packed)]
+#[repr(C, packed)]
 pub struct VhostUserLog {
     pub size: u64,
     pub offset: u64,
 }
 
-#[repr(packed)]
+#[repr(C, packed)]
 pub struct VhostUserIotlb {
     pub iova: u64,
     pub size: u64,
@@ -1057,7 +1057,7 @@ impl VhostUserShmemUnmapMsg {
 }
 
 /// Inflight I/O descriptor state for split virtqueues
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Clone, Copy, Default)]
 pub struct DescStateSplit {
     /// Indicate whether this descriptor (only head) is inflight or not.
@@ -1078,7 +1078,7 @@ impl DescStateSplit {
 }
 
 /// Inflight I/O queue region for split virtqueues
-#[repr(packed)]
+#[repr(C, packed)]
 pub struct QueueRegionSplit {
     /// Features flags of this region
     pub features: u64,
@@ -1109,7 +1109,7 @@ impl QueueRegionSplit {
 }
 
 /// Inflight I/O descriptor state for packed virtqueues
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Clone, Copy, Default)]
 pub struct DescStatePacked {
     /// Indicate whether this descriptor (only head) is inflight or not.
@@ -1142,7 +1142,7 @@ impl DescStatePacked {
 }
 
 /// Inflight I/O queue region for packed virtqueues
-#[repr(packed)]
+#[repr(C, packed)]
 pub struct QueueRegionPacked {
     /// Features flags of this region
     pub features: u64,
@@ -1188,7 +1188,7 @@ impl QueueRegionPacked {
 }
 
 /// Virtio shared memory descriptor.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub struct VhostSharedMemoryRegion {
     /// The shared memory region's shmid.

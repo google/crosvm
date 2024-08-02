@@ -20,7 +20,7 @@ pub struct virtio_vsock_config {
 
 /// The message header for data packets sent on the tx/rx queues
 #[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
-#[repr(packed)]
+#[repr(C, packed)]
 #[allow(non_camel_case_types)]
 pub struct virtio_vsock_hdr {
     pub src_cid: Le64,
