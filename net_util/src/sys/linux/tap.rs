@@ -666,3 +666,22 @@ pub mod fakes {
     impl TapT for FakeTap {}
     volatile_impl!(FakeTap);
 }
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    #[test]
+    fn sockaddr_byte_order() {
+        let sa = create_sockaddr(net::Ipv4Addr::new(1, 2, 3, 4));
+        assert_eq!(sa.sa_family, 2); // AF_INET
+        assert_eq!(
+            sa.sa_data,
+            [
+                0, 0, // sin_port
+                1, 2, 3, 4, // sin_addr
+                0, 0, 0, 0, 0, 0, 0, 0, // sin_zero
+            ]
+        );
+    }
+}
