@@ -1271,8 +1271,8 @@ pub trait FileSystem {
     ///
     /// b) File exist already (exception is O_EXCL)
     ///    - O_CREAT:
-    ///     - Open the file
-    ///     - Return d_entry and file handler
+    ///      - Open the file
+    ///      - Return d_entry and file handler
     ///    - O_EXCL:
     ///      - EEXIST
     ///

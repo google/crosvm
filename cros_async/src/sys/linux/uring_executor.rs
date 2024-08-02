@@ -10,7 +10,7 @@
 //!
 //! There are two key issues managing asynchronous IO buffers in rust.
 //! 1) The kernel has a mutable reference to the memory until the completion is returned. Rust must
-//! not have any references to it during that time.
+//!    not have any references to it during that time.
 //! 2) The memory must remain valid as long as the kernel has a reference to it.
 //!
 //! ### The kernel's mutable borrow of the buffer

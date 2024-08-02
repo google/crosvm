@@ -361,43 +361,43 @@ pub const ACPIPM_GPE_MAX: u16 = ACPIPM_RESOURCE_GPE0_BLK_LEN as u16 / 2 * 8 - 1;
 
 /// ACPI PM register value definitions
 
-/// 4.8.4.1.1 PM1 Status Registers, ACPI Spec Version 6.4
+/// Section 4.8.4.1.1 PM1 Status Registers, ACPI Spec Version 6.4
 /// Register Location: <PM1a_EVT_BLK / PM1b_EVT_BLK> System I/O or Memory Space (defined in FADT)
 /// Size: PM1_EVT_LEN / 2 (defined in FADT)
 const PM1_STATUS: u16 = 0;
 
-/// 4.8.4.1.2 PM1Enable Registers, ACPI Spec Version 6.4
+/// Section 4.8.4.1.2 PM1Enable Registers, ACPI Spec Version 6.4
 /// Register Location: <<PM1a_EVT_BLK / PM1b_EVT_BLK> + PM1_EVT_LEN / 2 System I/O or Memory Space
 /// (defined in FADT)
 /// Size: PM1_EVT_LEN / 2 (defined in FADT)
 const PM1_ENABLE: u16 = PM1_STATUS + (ACPIPM_RESOURCE_EVENTBLK_LEN as u16 / 2);
 
-/// 4.8.4.2.1 PM1 Control Registers, ACPI Spec Version 6.4
+/// Section 4.8.4.2.1 PM1 Control Registers, ACPI Spec Version 6.4
 /// Register Location: <PM1a_CNT_BLK / PM1b_CNT_BLK> System I/O or Memory Space (defined in FADT)
 /// Size: PM1_CNT_LEN (defined in FADT)
 const PM1_CONTROL: u16 = PM1_STATUS + ACPIPM_RESOURCE_EVENTBLK_LEN as u16;
 
-/// 4.8.5.1 General-Purpose Event Register Blocks, ACPI Spec Version 6.4
+/// Section 4.8.5.1 General-Purpose Event Register Blocks, ACPI Spec Version 6.4
 /// - Each register block contains two registers: an enable and a status register.
 /// - Each register block is 32-bit aligned.
 /// - Each register in the block is accessed as a byte.
-
-/// 4.8.5.1.1 General-Purpose Event 0 Register Block, ACPI Spec Version 6.4
+///
+/// Section 4.8.5.1.1 General-Purpose Event 0 Register Block, ACPI Spec Version 6.4
 /// This register block consists of two registers: The GPE0_STS and the GPE0_EN registers. Each
 /// register’s length is defined to be half the length of the GPE0 register block, and is described
 /// in the ACPI FADT’s GPE0_BLK and GPE0_BLK_LEN operators.
-
-/// 4.8.5.1.1.1 General-Purpose Event 0 Status Register, ACPI Spec Version 6.4
+///
+/// Section 4.8.5.1.1.1 General-Purpose Event 0 Status Register, ACPI Spec Version 6.4
 /// Register Location: <GPE0_STS> System I/O or System Memory Space (defined in FADT)
 /// Size: GPE0_BLK_LEN/2 (defined in FADT)
 const GPE0_STATUS: u16 = PM1_STATUS + ACPIPM_RESOURCE_EVENTBLK_LEN as u16 + 4; // ensure alignment
 
-/// 4.8.5.1.1.2 General-Purpose Event 0 Enable Register, ACPI Spec Version 6.4
+/// Section 4.8.5.1.1.2 General-Purpose Event 0 Enable Register, ACPI Spec Version 6.4
 /// Register Location: <GPE0_EN> System I/O or System Memory Space (defined in FADT)
 /// Size: GPE0_BLK_LEN/2 (defined in FADT)
 const GPE0_ENABLE: u16 = GPE0_STATUS + (ACPIPM_RESOURCE_GPE0_BLK_LEN as u16 / 2);
 
-/// 4.8.4.1.1, 4.8.4.1.2 Fixed event bits in both PM1 Status and PM1 Enable registers.
+/// Section 4.8.4.1.1, 4.8.4.1.2 Fixed event bits in both PM1 Status and PM1 Enable registers.
 const BITSHIFT_PM1_GBL: u16 = 5;
 const BITSHIFT_PM1_PWRBTN: u16 = 8;
 const BITSHIFT_PM1_SLPBTN: u16 = 9;

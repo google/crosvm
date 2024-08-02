@@ -14,7 +14,8 @@
 //! For the purposes of maintaining safety, volatile memory has some rules of its own:
 //! 1. No references or slices to volatile memory (`&` or `&mut`).
 //! 2. Access should always been done with a volatile read or write.
-//! The First rule is because having references of any kind to memory considered volatile would
+//!
+//! The first rule is because having references of any kind to memory considered volatile would
 //! violate pointer aliasing. The second is because unvolatile accesses are inherently undefined if
 //! done concurrently without synchronization. With volatile access we know that the compiler has
 //! not reordered or elided the access.

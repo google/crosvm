@@ -1940,18 +1940,18 @@ fn add_dirent<W: Writer>(
 /// # Arguments
 ///
 /// * `buf` - a byte array that contains the contents following any expected byte string parameters
-/// of the FUSE request from the server. It begins with a struct `SecctxHeader`, and then the
-/// subsequent entry is a struct `Secctx` followed by a nul-terminated string with the xattribute
-/// name and then another nul-terminated string with the value for that xattr.
+///   of the FUSE request from the server. It begins with a struct `SecctxHeader`, and then the
+///   subsequent entry is a struct `Secctx` followed by a nul-terminated string with the xattribute
+///   name and then another nul-terminated string with the value for that xattr.
 ///
 /// # Errors
 ///
 /// * `Error::InvalidHeaderLength` - indicates that there is an inconsistency between the size of
-/// the data read from `buf` and the stated `size` of the `SecctxHeader`, the respective `Secctx`
-/// struct, or `buf` itself.
+///   the data read from `buf` and the stated `size` of the `SecctxHeader`, the respective `Secctx`
+///   struct, or `buf` itself.
 /// * `Error::DecodeMessage` - indicates that the expected structs cannot be read from `buf`.
 /// * `Error::MissingParameter` - indicates that either a security context `name` or `value` is
-/// missing from a security context entry.
+///   missing from a security context entry.
 fn parse_selinux_xattr(buf: &[u8]) -> Result<Option<&CStr>> {
     // Return early if request was not followed by context information
     if buf.is_empty() {

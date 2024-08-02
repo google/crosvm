@@ -224,6 +224,7 @@ impl SocketPlatformConnection {
     /// attached file descriptors, the receiver must obey following rules:
     ///   1) file descriptors are attached to a message.
     ///   2) message(packet) boundaries must be respected on the receive side.
+    ///
     /// In other words, recvmsg() operations must not cross the packet boundary, otherwise the
     /// attached file descriptors will get lost.
     /// Note that this function wraps received file descriptors as `File`.

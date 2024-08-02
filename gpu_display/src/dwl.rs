@@ -11,6 +11,7 @@
 /// - @subpage page_iface_zxdg_surface_v6 - desktop user interface surface base interface
 /// - @subpage page_iface_zxdg_toplevel_v6 - toplevel surface
 /// - @subpage page_iface_zxdg_popup_v6 - short-lived, popup surfaces for menus
+///
 /// @section page_copyright_xdg_shell_unstable_v6 Copyright
 /// <pre>
 ///

@@ -1507,9 +1507,9 @@ impl X8664arch {
     /// Sets up fw_cfg device.
     ///  # Arguments
     ///
-    /// * - `io_bus` - the IO bus object
-    /// * - `fw_cfg_parameters` - command-line specified data to add to device. May contain
-    /// all None fields if user did not specify data to add to the device
+    /// * `io_bus` - the IO bus object
+    /// * `fw_cfg_parameters` - command-line specified data to add to device. May contain all None
+    ///   fields if user did not specify data to add to the device
     fn setup_fw_cfg_device(
         io_bus: &Bus,
         fw_cfg_parameters: Vec<FwCfgParameters>,
@@ -1652,15 +1652,15 @@ impl X8664arch {
     ///
     /// # Arguments
     ///
-    /// * - `io_bus` the I/O bus to add the devices to
-    /// * - `resources` the SystemAllocator to allocate IO and MMIO for acpi devices.
-    /// * - `suspend_tube` the tube object which used to suspend/resume the VM.
-    /// * - `sdts` ACPI system description tables
-    /// * - `irq_chip` the IrqChip object for registering irq events
-    /// * - `battery` indicate whether to create the battery
-    /// * - `mmio_bus` the MMIO bus to add the devices to
-    /// * - `pci_irqs` IRQ assignment of PCI devices. Tuples of (PCI address, gsi, PCI interrupt
-    ///   pin). Note that this matches one of the return values of generate_pci_root.
+    /// * `io_bus` the I/O bus to add the devices to
+    /// * `resources` the SystemAllocator to allocate IO and MMIO for acpi devices.
+    /// * `suspend_tube` the tube object which used to suspend/resume the VM.
+    /// * `sdts` ACPI system description tables
+    /// * `irq_chip` the IrqChip object for registering irq events
+    /// * `battery` indicate whether to create the battery
+    /// * `mmio_bus` the MMIO bus to add the devices to
+    /// * `pci_irqs` IRQ assignment of PCI devices. Tuples of (PCI address, gsi, PCI interrupt pin).
+    ///   Note that this matches one of the return values of generate_pci_root.
     pub fn setup_acpi_devices(
         pci_root: Arc<Mutex<PciRoot>>,
         mem: &GuestMemory,

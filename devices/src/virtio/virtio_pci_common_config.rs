@@ -15,24 +15,24 @@ use super::*;
 /// device.
 ///
 /// * Registers:
-/// ** About the whole device.
-/// le32 device_feature_select;     // read-write
-/// le32 device_feature;            // read-only for driver
-/// le32 driver_feature_select;     // read-write
-/// le32 driver_feature;            // read-write
-/// le16 msix_config;               // read-write
-/// le16 num_queues;                // read-only for driver
-/// u8 device_status;               // read-write (driver_status)
-/// u8 config_generation;           // read-only for driver
-/// ** About a specific virtqueue.
-/// le16 queue_select;              // read-write
-/// le16 queue_size;                // read-write, power of 2, or 0.
-/// le16 queue_msix_vector;         // read-write
-/// le16 queue_enable;              // read-write (Ready)
-/// le16 queue_notify_off;          // read-only for driver
-/// le64 queue_desc;                // read-write
-/// le64 queue_avail;               // read-write
-/// le64 queue_used;                // read-write
+///   * About the whole device.
+///     * le32 device_feature_select;     // read-write
+///     * le32 device_feature;            // read-only for driver
+///     * le32 driver_feature_select;     // read-write
+///     * le32 driver_feature;            // read-write
+///     * le16 msix_config;               // read-write
+///     * le16 num_queues;                // read-only for driver
+///     * u8 device_status;               // read-write (driver_status)
+///     * u8 config_generation;           // read-only for driver
+///   * About a specific virtqueue.
+///     * le16 queue_select;              // read-write
+///     * le16 queue_size;                // read-write, power of 2, or 0.
+///     * le16 queue_msix_vector;         // read-write
+///     * le16 queue_enable;              // read-write (Ready)
+///     * le16 queue_notify_off;          // read-only for driver
+///     * le64 queue_desc;                // read-write
+///     * le64 queue_avail;               // read-write
+///     * le64 queue_used;                // read-write
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct VirtioPciCommonConfig {
     pub driver_status: u8,

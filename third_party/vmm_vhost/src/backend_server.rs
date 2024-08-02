@@ -357,12 +357,12 @@ impl<S: Backend> BackendServer<S> {
     /// See [`BackendServer::recv_header`]'s doc comment for the usage.
     ///
     /// # Return:
-    /// * - `Ok(())`: one request was successfully handled.
-    /// * - `Err(ClientExit)`: the frontend closed the connection properly. This isn't an actual
+    /// * `Ok(())`: one request was successfully handled.
+    /// * `Err(ClientExit)`: the frontend closed the connection properly. This isn't an actual
     ///   failure.
-    /// * - `Err(Disconnect)`: the connection was closed unexpectedly.
-    /// * - `Err(InvalidMessage)`: the vmm sent a illegal message.
-    /// * - other errors: failed to handle a request.
+    /// * `Err(Disconnect)`: the connection was closed unexpectedly.
+    /// * `Err(InvalidMessage)`: the vmm sent a illegal message.
+    /// * other errors: failed to handle a request.
     pub fn process_message(
         &mut self,
         hdr: VhostUserMsgHeader<FrontendReq>,

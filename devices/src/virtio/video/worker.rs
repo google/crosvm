@@ -292,8 +292,7 @@ impl Worker {
     ///
     /// * `device` - Instance of backend device
     /// * `stream_id` - Stream session ID of the event
-    /// * `wait_ctx` - `device` may deregister the completed `Token::BufferBarrier` from
-    /// `wait_ctx`.
+    /// * `wait_ctx` - `device` may deregister the completed `Token::BufferBarrier` from `wait_ctx`.
     fn handle_buffer_barrier(
         &mut self,
         device: &mut dyn Device,
