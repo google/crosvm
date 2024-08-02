@@ -504,30 +504,55 @@ fn create_socket() -> Result<net::UdpSocket> {
     Err(Error::CreateSocket(SysError::last()))
 }
 
+fn sockaddr_from_sockaddr_in(addr_in: libc::sockaddr_in) -> libc::sockaddr {
+    assert_eq!(
+        mem::size_of::<libc::sockaddr_in>(),
+        mem::size_of::<libc::sockaddr>()
+    );
+
+    // SAFETY: trivially safe
+    unsafe { mem::transmute::<libc::sockaddr_in, libc::sockaddr>(addr_in) }
+}
+
+fn sockaddr_in_from_sockaddr(addr: libc::sockaddr) -> Option<libc::sockaddr_in> {
+    if addr.sa_family as i32 != libc::AF_INET {
+        return None;
+    }
+
+    assert_eq!(
+        mem::size_of::<libc::sockaddr_in>(),
+        mem::size_of::<libc::sockaddr>()
+    );
+
+    // SAFETY:
+    // This is safe because sockaddr and sockaddr_in are the same size, and we've checked that
+    // this address is AF_INET.
+    Some(unsafe { mem::transmute::<libc::sockaddr, libc::sockaddr_in>(addr) })
+}
+
 /// Create a sockaddr_in from an IPv4 address, and expose it as
 /// an opaque sockaddr suitable for usage by socket ioctls.
 fn create_sockaddr(ip_addr: net::Ipv4Addr) -> libc::sockaddr {
-    // IPv4 addresses big-endian (network order), but Ipv4Addr will give us
-    // a view of those bytes directly so we can avoid any endian trickiness.
     let addr_in = libc::sockaddr_in {
         sin_family: libc::AF_INET as u16,
         sin_port: 0,
-        // SAFETY: trivially safe
-        sin_addr: unsafe { mem::transmute(ip_addr.octets()) },
+        sin_addr: libc::in_addr {
+            // `Ipv4Addr::octets()` returns the address in network byte order, so use
+            // `from_be_bytes()` to convert it into the native endianness, then `to_be()` to convert
+            // it back into big-endian (network) byte order as required by `sockaddr_in`. This is
+            // effectively a no-op, and we could use `u32::from_ne_bytes()` instead, but it is
+            // easier to understand when written this way.
+            s_addr: u32::from_be_bytes(ip_addr.octets()).to_be(),
+        },
         sin_zero: [0; 8usize],
     };
 
-    // SAFETY: trivially safe
-    unsafe { mem::transmute(addr_in) }
+    sockaddr_from_sockaddr_in(addr_in)
 }
 
 /// Extract the IPv4 address from a sockaddr. Assumes the sockaddr is a sockaddr_in.
 fn read_ipv4_addr(addr: &libc::sockaddr) -> net::Ipv4Addr {
-    debug_assert_eq!(addr.sa_family as i32, libc::AF_INET);
-    // SAFETY:
-    // This is safe because sockaddr and sockaddr_in are the same size, and we've checked that
-    // this address is AF_INET.
-    let in_addr: libc::sockaddr_in = unsafe { mem::transmute(*addr) };
+    let in_addr = sockaddr_in_from_sockaddr(*addr).unwrap();
     net::Ipv4Addr::from(in_addr.sin_addr.s_addr)
 }
 
