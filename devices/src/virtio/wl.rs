@@ -672,7 +672,6 @@ struct CtrlVfdNewDmabuf {
 #[cfg(feature = "minigbm")]
 #[repr(C)]
 #[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes)]
-#[cfg(feature = "minigbm")]
 struct CtrlVfdDmabufSync {
     hdr: CtrlHeader,
     id: Le32,
