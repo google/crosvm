@@ -8,7 +8,6 @@ use std::result;
 
 use devices::PciAddress;
 use devices::PciInterruptPin;
-use libc::c_char;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestAddress;
@@ -54,19 +53,14 @@ pub enum Error {
 
 pub type Result<T> = result::Result<T, Error>;
 
-// Convenience macro for making arrays of diverse character types.
-macro_rules! char_array {
-    ($t:ty; $( $c:expr ),*) => ( [ $( $c as $t ),* ] )
-}
-
 // Most of these variables are sourced from the Intel MP Spec 1.4.
-const SMP_MAGIC_IDENT: [c_char; 4] = char_array!(c_char; '_', 'M', 'P', '_');
-const MPC_SIGNATURE: [c_char; 4] = char_array!(c_char; 'P', 'C', 'M', 'P');
+const SMP_MAGIC_IDENT: [u8; 4] = *b"_MP_";
+const MPC_SIGNATURE: [u8; 4] = *b"PCMP";
 const MPC_SPEC: i8 = 4;
-const MPC_OEM: [c_char; 8] = char_array!(c_char; 'C', 'R', 'O', 'S', 'V', 'M', ' ', ' ');
-const MPC_PRODUCT_ID: [c_char; 12] = ['0' as c_char; 12];
-const BUS_TYPE_ISA: [u8; 6] = char_array!(u8; 'I', 'S', 'A', ' ', ' ', ' ');
-const BUS_TYPE_PCI: [u8; 6] = char_array!(u8; 'P', 'C', 'I', ' ', ' ', ' ');
+const MPC_OEM: [u8; 8] = *b"CROSVM  ";
+const MPC_PRODUCT_ID: [u8; 12] = *b"000000000000";
+const BUS_TYPE_ISA: [u8; 6] = *b"ISA   ";
+const BUS_TYPE_PCI: [u8; 6] = *b"PCI   ";
 // source: linux/arch/x86/include/asm/apicdef.h
 pub const IO_APIC_DEFAULT_PHYS_BASE: u32 = 0xfec00000;
 // source: linux/arch/x86/include/asm/apicdef.h
