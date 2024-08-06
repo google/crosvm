@@ -10,6 +10,8 @@ use std::os::fd::AsRawFd;
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use std::slice::from_raw_parts_mut;
+use std::sync::Mutex;
+use std::sync::OnceLock;
 
 use nix::sys::eventfd::EfdFlags;
 use nix::sys::eventfd::EventFd;
@@ -44,6 +46,42 @@ use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD;
 use crate::virtgpu::defines::*;
 
 const VK_ICD_FILENAMES: &str = "VK_ICD_FILENAMES";
+
+// The Tesla V-100 driver seems to enter a power management mode and stops being available to the
+// Vulkan loader if more than a certain number of VK instances are created in the same process.
+//
+// This behavior is reproducible via:
+//
+// GfxstreamEnd2EndTests --gtest_filter="*MultiThreadedVkMapMemory*"
+//
+// Workaround this by having a singleton gralloc per-process.
+fn gralloc() -> &'static Mutex<RutabagaGralloc> {
+    static GRALLOC: OnceLock<Mutex<RutabagaGralloc>> = OnceLock::new();
+    GRALLOC.get_or_init(|| {
+        // The idea is to make sure the gfxstream ICD isn't loaded when gralloc starts
+        // up. The Nvidia ICD should be loaded.
+        //
+        // This is mostly useful for developers.  For AOSP hermetic gfxstream end2end
+        // testing, VK_ICD_FILENAMES shouldn't be defined.  For deqp-vk, this is
+        // useful, but not safe for multi-threaded tests.  For now, since this is only
+        // used for end2end tests, we should be good.
+        let vk_icd_name_opt = match std::env::var(VK_ICD_FILENAMES) {
+            Ok(vk_icd_name) => {
+                std::env::remove_var(VK_ICD_FILENAMES);
+                Some(vk_icd_name)
+            }
+            Err(_) => None,
+        };
+
+        let gralloc = Mutex::new(RutabagaGralloc::new(RutabagaGrallocBackendFlags::new()).unwrap());
+
+        if let Some(vk_icd_name) = vk_icd_name_opt {
+            std::env::set_var(VK_ICD_FILENAMES, vk_icd_name);
+        }
+
+        gralloc
+    })
+}
 
 pub struct VirtGpuResource {
     resource_id: u32,
@@ -81,7 +119,6 @@ pub struct VirtGpuKumquat {
     stream: RutabagaStream,
     capsets: Map<u32, Vec<u8>>,
     resources: Map<u32, VirtGpuResource>,
-    gralloc_opt: Option<RutabagaGralloc>,
 }
 
 impl VirtGpuKumquat {
@@ -144,7 +181,6 @@ impl VirtGpuKumquat {
             stream,
             capsets,
             resources: Default::default(),
-            gralloc_opt: None,
         })
     }
 
@@ -342,44 +378,15 @@ impl VirtGpuKumquat {
             let clone = resource.handle.try_clone()?;
 
             if clone.handle_type == RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD {
-                if self.gralloc_opt.is_none() {
-                    // The idea is to make sure the gfxstream ICD isn't loaded when gralloc starts
-                    // up. The Nvidia ICD should be loaded.
-                    //
-                    // This is mostly useful for developers.  For AOSP hermetic gfxstream end2end
-                    // testing, VK_ICD_FILENAMES shouldn't be defined.  For deqp-vk, this is
-                    // useful, but not safe for multi-threaded tests. Maybe we should do it
-                    // once at virtgpu_kumquat_init?  For now, since this is only used for end2end
-                    // tests, we should be good.
-                    let vk_icd_name_opt = match std::env::var(VK_ICD_FILENAMES) {
-                        Ok(vk_icd_name) => {
-                            std::env::remove_var(VK_ICD_FILENAMES);
-                            Some(vk_icd_name)
-                        }
-                        Err(_) => None,
-                    };
+                let region = gralloc().lock().unwrap().import_and_map(
+                    clone,
+                    resource.vulkan_info,
+                    resource.size as u64,
+                )?;
 
-                    self.gralloc_opt =
-                        Some(RutabagaGralloc::new(RutabagaGrallocBackendFlags::new())?);
-
-                    if let Some(vk_icd_name) = vk_icd_name_opt {
-                        std::env::set_var(VK_ICD_FILENAMES, vk_icd_name);
-                    }
-                }
-
-                if let Some(ref mut gralloc) = self.gralloc_opt {
-                    let region = gralloc.import_and_map(
-                        clone,
-                        resource.vulkan_info,
-                        resource.size as u64,
-                    )?;
-
-                    let rutabaga_mapping = region.as_rutabaga_mapping();
-                    resource.gpu_mapping = Some(region);
-                    Ok(rutabaga_mapping)
-                } else {
-                    return Err(RutabagaError::SpecViolation("no gralloc"));
-                }
+                let rutabaga_mapping = region.as_rutabaga_mapping();
+                resource.gpu_mapping = Some(region);
+                Ok(rutabaga_mapping)
             } else {
                 let mapping = RutabagaMemoryMapping::from_safe_descriptor(
                     clone.os_handle,
