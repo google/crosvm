@@ -109,6 +109,12 @@ fn jail_and_fork(
 /// Starts a vhost-user fs device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn start_device(opts: Options) -> anyhow::Result<()> {
+    #[cfg(feature = "fs_runtime_ugid_map")]
+    if let Some(ref cfg) = opts.cfg {
+        if !cfg.ugid_map.is_empty() && !opts.disable_sandbox {
+            bail!("uid_gid_map can only be set with disable sandbox option");
+        }
+    }
     let ex = Executor::new().context("Failed to create executor")?;
     let fs_device = FsBackend::new(&opts.tag, opts.cfg)?;
 

@@ -12,22 +12,6 @@ pub const FS_IOCTL_PATH_MAX_LEN: usize = 128;
 pub const FS_IOCTL_XATTR_NAME_MAX_LEN: usize = 128;
 pub const FS_IOCTL_XATTR_VALUE_MAX_LEN: usize = 128;
 
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PermissionData {
-    pub guest_uid: libc::uid_t,
-    pub guest_gid: libc::gid_t,
-    pub host_uid: libc::uid_t,
-    pub host_gid: libc::gid_t,
-    pub umask: libc::mode_t,
-    pub perm_path: String,
-}
-
-impl PermissionData {
-    pub(crate) fn need_set_permission(&self, path: &str) -> bool {
-        path.starts_with(&self.perm_path)
-    }
-}
-
 #[repr(C)]
 #[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 pub(crate) struct FsPermissionDataBuffer {

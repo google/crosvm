@@ -2,9 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(feature = "fs_permission_translation")]
+use std::io;
+#[cfg(feature = "fs_permission_translation")]
+use std::str::FromStr;
 use std::time::Duration;
 
-#[cfg(feature = "arc_quota")]
+#[cfg(feature = "fs_permission_translation")]
+use libc;
+#[allow(unused_imports)]
 use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -71,6 +77,119 @@ fn deserialize_privileged_quota_uids<'de, D: Deserializer<'de>>(
             })
         })
         .collect()
+}
+
+/// Permission structure that is configured to map the UID-GID at runtime
+#[cfg(feature = "fs_permission_translation")]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+pub struct PermissionData {
+    /// UID to be set for all the files in the path inside guest.
+    pub guest_uid: libc::uid_t,
+
+    /// GID to be set for all the files in the path inside guest.
+    pub guest_gid: libc::gid_t,
+
+    /// UID to be set for all the files in the path in the host.
+    pub host_uid: libc::uid_t,
+
+    /// GID to be set for all the files in the path in the host.
+    pub host_gid: libc::gid_t,
+
+    /// umask to be set at runtime for the files in the path.
+    pub umask: libc::mode_t,
+
+    /// This is the relative path from the root of the shared directory.
+    pub perm_path: String,
+}
+
+#[cfg(feature = "fs_runtime_ugid_map")]
+fn process_ugid_map(result: Vec<Vec<String>>) -> Result<Vec<PermissionData>, io::Error> {
+    let mut permissions = Vec::new();
+
+    for inner_vec in result {
+        let guest_uid = match libc::uid_t::from_str(&inner_vec[0]) {
+            Ok(uid) => uid,
+            Err(_) => {
+                return Err(io::Error::from_raw_os_error(libc::EINVAL));
+            }
+        };
+
+        let guest_gid = match libc::gid_t::from_str(&inner_vec[1]) {
+            Ok(gid) => gid,
+            Err(_) => {
+                return Err(io::Error::from_raw_os_error(libc::EINVAL));
+            }
+        };
+
+        let host_uid = match libc::uid_t::from_str(&inner_vec[2]) {
+            Ok(uid) => uid,
+            Err(_) => {
+                return Err(io::Error::from_raw_os_error(libc::EINVAL));
+            }
+        };
+
+        let host_gid = match libc::gid_t::from_str(&inner_vec[3]) {
+            Ok(gid) => gid,
+            Err(_) => {
+                return Err(io::Error::from_raw_os_error(libc::EINVAL));
+            }
+        };
+
+        let umask = match libc::mode_t::from_str(&inner_vec[4]) {
+            Ok(mode) => mode,
+            Err(_) => {
+                return Err(io::Error::from_raw_os_error(libc::EINVAL));
+            }
+        };
+
+        let perm_path = inner_vec[5].clone();
+
+        // Create PermissionData and push it to the vector
+        permissions.push(PermissionData {
+            guest_uid,
+            guest_gid,
+            host_uid,
+            host_gid,
+            umask,
+            perm_path,
+        });
+    }
+
+    Ok(permissions)
+}
+
+#[cfg(feature = "fs_runtime_ugid_map")]
+fn deserialize_ugid_map<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<PermissionData>, D::Error> {
+    // space-separated list
+    let s: &str = serde::Deserialize::deserialize(deserializer)?;
+
+    let result: Vec<Vec<String>> = s
+        .split(';')
+        .map(|group| group.trim().split(' ').map(String::from).collect())
+        .collect();
+
+    // Length Validation for each inner vector
+    for inner_vec in &result {
+        if inner_vec.len() != 6 {
+            return Err(D::Error::custom(
+                "Invalid ugid_map format. Each group must have 6 elements.",
+            ));
+        }
+    }
+
+    let permissions = match process_ugid_map(result) {
+        Ok(p) => p,
+        Err(e) => {
+            return Err(D::Error::custom(format!(
+                "Error processing uid_gid_map: {}",
+                e
+            )));
+        }
+    };
+
+    Ok(permissions)
 }
 
 /// Options that configure the behavior of the file system.
@@ -204,6 +323,27 @@ pub struct Config {
     // The default value for this option is true
     #[serde(default = "config_default_security_ctx")]
     pub security_ctx: bool,
+
+    // Specifies run-time UID/GID mapping that works without user namespaces.
+    //
+    // The virtio-fs usually does mapping of UIDs/GIDs between host and guest with user namespace.
+    // In Android, however, user namespace isn't available for non-root users.
+    // This allows mapping UIDs and GIDs without user namespace by intercepting FUSE
+    // requests and translating UID/GID in virito-fs's process at runtime.
+    //
+    // The format is "guest-uid, guest-gid, host-uid, host-gid, umask, path;{repeat}"
+    //
+    // guest-uid: UID to be set for all the files in the path inside guest.
+    // guest-gid: GID to be set for all the files in the path inside guest.
+    // host-uid: UID to be set for all the files in the path in the host.
+    // host-gid: GID to be set for all the files in the path in the host.
+    // umask: umask to be set at runtime for the files in the path.
+    // path: This is the relative path from the root of the shared directory.
+    //
+    // This follows similar format to ARCVM IOCTL "FS_IOC_SETPERMISSION"
+    #[cfg(feature = "fs_runtime_ugid_map")]
+    #[serde(default, deserialize_with = "deserialize_ugid_map")]
+    pub ugid_map: Vec<PermissionData>,
 }
 
 impl Default for Config {
@@ -222,6 +362,151 @@ impl Default for Config {
             max_dynamic_perm: 0,
             max_dynamic_xattr: 0,
             security_ctx: config_default_security_ctx(),
+            #[cfg(feature = "fs_runtime_ugid_map")]
+            ugid_map: Vec::new(),
         }
+    }
+}
+
+#[cfg(all(test, feature = "fs_runtime_ugid_map"))]
+mod tests {
+
+    use super::*;
+    #[test]
+    fn test_deserialize_ugid_map_valid() {
+        let input_string =
+            "\"1000 1000 1000 1000 0022 /path/to/dir;2000 2000 2000 2000 0022 /path/to/other/dir\"";
+
+        let mut deserializer = serde_json::Deserializer::from_str(input_string);
+        let result = deserialize_ugid_map(&mut deserializer).unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(
+            result,
+            vec![
+                PermissionData {
+                    guest_uid: 1000,
+                    guest_gid: 1000,
+                    host_uid: 1000,
+                    host_gid: 1000,
+                    umask: 22,
+                    perm_path: "/path/to/dir".to_string(),
+                },
+                PermissionData {
+                    guest_uid: 2000,
+                    guest_gid: 2000,
+                    host_uid: 2000,
+                    host_gid: 2000,
+                    umask: 22,
+                    perm_path: "/path/to/other/dir".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_process_ugid_map_valid() {
+        let input_vec = vec![
+            vec![
+                "1000".to_string(),
+                "1000".to_string(),
+                "1000".to_string(),
+                "1000".to_string(),
+                "0022".to_string(),
+                "/path/to/dir".to_string(),
+            ],
+            vec![
+                "2000".to_string(),
+                "2000".to_string(),
+                "2000".to_string(),
+                "2000".to_string(),
+                "0022".to_string(),
+                "/path/to/other/dir".to_string(),
+            ],
+        ];
+
+        let result = process_ugid_map(input_vec).unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(
+            result,
+            vec![
+                PermissionData {
+                    guest_uid: 1000,
+                    guest_gid: 1000,
+                    host_uid: 1000,
+                    host_gid: 1000,
+                    umask: 22,
+                    perm_path: "/path/to/dir".to_string(),
+                },
+                PermissionData {
+                    guest_uid: 2000,
+                    guest_gid: 2000,
+                    host_uid: 2000,
+                    host_gid: 2000,
+                    umask: 22,
+                    perm_path: "/path/to/other/dir".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_deserialize_ugid_map_invalid_format() {
+        let input_string = "\"1000 1000 1000 0022 /path/to/dir\""; // Missing one element
+
+        // Create a Deserializer from the input string
+        let mut deserializer = serde_json::Deserializer::from_str(input_string);
+        let result = deserialize_ugid_map(&mut deserializer);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_ugid_map_invalid_guest_uid() {
+        let input_string = "\"invalid 1000 1000 1000 0022 /path/to/dir\""; // Invalid guest-UID
+
+        // Create a Deserializer from the input string
+        let mut deserializer = serde_json::Deserializer::from_str(input_string);
+        let result = deserialize_ugid_map(&mut deserializer);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_ugid_map_invalid_guest_gid() {
+        let input_string = "\"1000 invalid 1000 1000 0022 /path/to/dir\""; // Invalid guest-GID
+
+        // Create a Deserializer from the input string
+        let mut deserializer = serde_json::Deserializer::from_str(input_string);
+        let result = deserialize_ugid_map(&mut deserializer);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_ugid_map_invalid_umask() {
+        let input_string = "\"1000 1000 1000 1000 invalid /path/to/dir\""; // Invalid umask
+
+        // Create a Deserializer from the input string
+        let mut deserializer = serde_json::Deserializer::from_str(input_string);
+        let result = deserialize_ugid_map(&mut deserializer);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_ugid_map_invalid_host_uid() {
+        let input_string = "\"1000 1000 invalid 1000 0022 /path/to/dir\""; // Invalid host-UID
+
+        // Create a Deserializer from the input string
+        let mut deserializer = serde_json::Deserializer::from_str(input_string);
+        let result = deserialize_ugid_map(&mut deserializer);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_ugid_map_invalid_host_gid() {
+        let input_string = "\"1000 1000 1000 invalid 0022 /path/to/dir\""; // Invalid host-UID
+
+        // Create a Deserializer from the input string
+        let mut deserializer = serde_json::Deserializer::from_str(input_string);
+        let result = deserialize_ugid_map(&mut deserializer);
+        assert!(result.is_err());
     }
 }
