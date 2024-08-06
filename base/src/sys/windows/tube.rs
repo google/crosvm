@@ -531,7 +531,7 @@ impl Drop for FlushOnDropTube {
 
 impl Error {
     fn map_io_error(e: io::Error, err_ctor: fn(io::Error) -> Error) -> Error {
-        if e.kind() == io::ErrorKind::BrokenPipe {
+        if e.kind() == io::ErrorKind::UnexpectedEof || e.kind() == io::ErrorKind::BrokenPipe {
             Error::Disconnected
         } else {
             err_ctor(e)

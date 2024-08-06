@@ -25,6 +25,7 @@ use win_util::SelfRelativeSecurityDescriptor;
 use winapi::shared::minwindef::DWORD;
 use winapi::shared::minwindef::FALSE;
 use winapi::shared::minwindef::TRUE;
+use winapi::shared::winerror::ERROR_BROKEN_PIPE;
 use winapi::shared::winerror::ERROR_IO_INCOMPLETE;
 use winapi::shared::winerror::ERROR_IO_PENDING;
 use winapi::shared::winerror::ERROR_MORE_DATA;
@@ -588,6 +589,9 @@ impl PipeConnection {
         );
         match res {
             Ok(bytes_read) => Ok(bytes_read),
+            // Treat a closed pipe like an EOF.
+            // We check the raw error because `ErrorKind::BrokenPipe` is ambiguous on Windows.
+            Err(e) if e.raw_os_error() == Some(ERROR_BROKEN_PIPE as i32) => Ok(0),
             Err(e)
                 if blocking_mode == BlockingMode::NoWait
                     && e.raw_os_error() == Some(ERROR_NO_DATA as i32) =>
@@ -1631,5 +1635,31 @@ mod tests {
         });
         exit_event.signal().unwrap();
         server.try_join(Duration::from_secs(10)).unwrap();
+    }
+
+    #[test]
+    fn std_io_read_eof() {
+        let (mut w, mut r) = pair(&FramingMode::Byte, &BlockingMode::Wait, 0).unwrap();
+        std::io::Write::write(&mut w, &[1, 2, 3]).unwrap();
+        std::mem::drop(w);
+
+        let mut buffer: [u8; 4] = [0; 4];
+        assert_eq!(std::io::Read::read(&mut r, &mut buffer).unwrap(), 3);
+        assert_eq!(buffer, [1, 2, 3, 0]);
+        assert_eq!(std::io::Read::read(&mut r, &mut buffer).unwrap(), 0);
+        assert_eq!(std::io::Read::read(&mut r, &mut buffer).unwrap(), 0);
+    }
+
+    #[test]
+    fn std_io_write_eof() {
+        let (mut w, r) = pair(&FramingMode::Byte, &BlockingMode::Wait, 0).unwrap();
+        std::mem::drop(r);
+        let result = std::io::Write::write(&mut w, &[1, 2, 3]);
+        // Not required to return BrokenPipe here, something like Ok(0) is also acceptable.
+        assert!(
+            result.is_err()
+                && result.as_ref().unwrap_err().kind() == std::io::ErrorKind::BrokenPipe,
+            "expected Err(BrokenPipe), got {result:?}"
+        );
     }
 }
