@@ -1039,20 +1039,33 @@ mod tests {
         fn set_backend_req_connection(&mut self, conn: Arc<VhostBackendReqConnection>) {
             self.backend_conn = Some(conn);
         }
+
+        fn enter_suspended_state(&mut self) -> anyhow::Result<bool> {
+            Ok(true)
+        }
+
+        fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
+            Ok(vec![1, 2, 3])
+        }
+
+        fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
+            assert_eq!(data, vec![1, 2, 3], "bad snapshot data");
+            Ok(())
+        }
     }
 
     #[test]
-    fn test_vhost_user_activate() {
-        test_vhost_user_activate_parameterized(false);
+    fn test_vhost_user_lifecycle() {
+        test_vhost_user_lifecycle_parameterized(false);
     }
 
     #[test]
     #[cfg(not(windows))] // Windows requries more complex connection setup.
-    fn test_vhost_user_activate_with_backend_req() {
-        test_vhost_user_activate_parameterized(true);
+    fn test_vhost_user_lifecycle_with_backend_req() {
+        test_vhost_user_lifecycle_parameterized(true);
     }
 
-    fn test_vhost_user_activate_parameterized(allow_backend_req: bool) {
+    fn test_vhost_user_lifecycle_parameterized(allow_backend_req: bool) {
         const QUEUES_NUM: usize = 2;
 
         let (dev, vmm) = test_helpers::setup();
@@ -1116,6 +1129,15 @@ mod tests {
                 .virtio_sleep()
                 .unwrap()
                 .expect("virtio_sleep unexpectedly returned None");
+
+            println!("virtio_snapshot");
+            let snapshot = vmm_device
+                .virtio_snapshot()
+                .expect("virtio_snapshot failed");
+            println!("virtio_restore");
+            vmm_device
+                .virtio_restore(snapshot)
+                .expect("virtio_restore failed");
 
             println!("virtio_wake");
             let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
@@ -1201,6 +1223,9 @@ mod tests {
             handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
             handle_request(&mut req_handler, FrontendReq::GET_VRING_BASE).unwrap();
         }
+
+        handle_request(&mut req_handler, FrontendReq::SNAPSHOT).unwrap();
+        handle_request(&mut req_handler, FrontendReq::RESTORE).unwrap();
 
         // VhostUserFrontend::virtio_wake()
         handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
