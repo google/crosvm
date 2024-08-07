@@ -2024,7 +2024,7 @@ impl FileSystem for PassthroughFs {
         // Device using dynamic xattr feature will have different security context in
         // host and guests. The SECURITY_CONTEXT feature should not be enabled in the
         // device.
-        if self.cfg.max_dynamic_xattr == 0 {
+        if self.cfg.max_dynamic_xattr == 0 && self.cfg.security_ctx {
             opts |= FsOptions::SECURITY_CONTEXT;
         }
 

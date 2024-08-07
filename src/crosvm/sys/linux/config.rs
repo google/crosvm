@@ -141,6 +141,7 @@ impl FromStr for SharedDir {
         //   0) This feature is arc_quota specific feature.
         // * max_dynamic_xattr=uint - number of maximum number of dynamic xattr paths (default: 0).
         //   This feature is arc_quota specific feature.
+        // * security_ctx=BOOL - indicates whether use FUSE_SECURITY_CONTEXT feature or not.
         //
         // These two options (uid/gid) are useful when the crosvm process has no
         // CAP_SETGID/CAP_SETUID but an identity mapping of the current user/group

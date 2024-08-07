@@ -2195,6 +2195,11 @@ pub struct RunCommand {
     ///         Error when FS_IOC_SETPATHXATTR ioctl is called
     ///         in the device if current dyamic permission path is
     ///         lager or equal to this value.
+    ///     security_ctx=BOOL - Enables FUSE_SECURITY_CONTEXT
+    ///        feature(default: true). This should be set to false
+    ///        in case the when the host not allowing write to
+    ///        /proc/<pid>/attr/fscreate, or guest directory does
+    ///        care about the security context.
     ///     Options uid and gid are useful when the crosvm process
     ///     has no CAP_SETGID/CAP_SETUID but an identity mapping of
     ///     the current user/group between the VM and the host is
