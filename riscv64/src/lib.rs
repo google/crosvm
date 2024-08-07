@@ -15,6 +15,7 @@ use std::sync::Arc;
 use arch::get_serial_cmdline;
 use arch::CpuSet;
 use arch::DtbOverlay;
+use arch::FdtPosition;
 use arch::GetSerialCmdlineError;
 use arch::RunnableLinuxVm;
 use arch::VmComponents;
