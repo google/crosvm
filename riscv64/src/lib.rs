@@ -369,7 +369,7 @@ impl arch::LinuxArch for Riscv64 {
             .collect();
 
         assert!(
-            matches!(None | Some(FdtPosition::AfterPayload)),
+            matches!(fdt_position, None | Some(FdtPosition::AfterPayload)),
             "fdt_position={fdt_position:?} not supported"
         );
         let fdt_offset = (kernel_initrd_end + (RISCV64_FDT_ALIGN - 1)) & !(RISCV64_FDT_ALIGN - 1);
