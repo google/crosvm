@@ -354,6 +354,7 @@ struct Worker<T: EventSource> {
     event_source: T,
     event_queue: Queue,
     status_queue: Queue,
+    name: String,
 }
 
 impl<T: EventSource> Worker<T> {
@@ -519,6 +520,14 @@ impl<T: EventSource> Worker<T> {
                     }
                 }
             }
+
+            for event in wait_events.iter().filter(|e| e.is_hungup) {
+                if let Token::InputEventsAvailable = event.token {
+                    warn!("input event source for '{}' disconnected", self.name);
+                    let _ = wait_ctx.delete(&self.event_source);
+                }
+            }
+
             if eventq_needs_interrupt {
                 self.event_queue.trigger_interrupt(&self.interrupt);
             }
@@ -593,6 +602,7 @@ where
         let event_queue = queues.remove(&0).unwrap();
         let status_queue = queues.remove(&1).unwrap();
 
+        let name = self.config.name.clone();
         let source = self
             .source
             .take()
@@ -603,6 +613,7 @@ where
                 event_source: source,
                 event_queue,
                 status_queue,
+                name,
             };
             worker.run(kill_evt);
             worker
