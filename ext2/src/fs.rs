@@ -482,10 +482,11 @@ impl<'a> Ext2<'a> {
             }
             let length = std::cmp::min(remaining, BLOCK_SIZE * blocks.len());
             let start_block = blocks[0];
+            let mem_offset = u32::from(start_block) as usize * BLOCK_SIZE;
             // Reserve the region in arena to prevent from overwriting metadata.
             arena
                 .reserve_for_mmap(
-                    start_block,
+                    mem_offset,
                     length,
                     file.try_clone().context("failed to clone file")?,
                     file_offset,
@@ -814,14 +815,14 @@ pub fn create_ext2_region(cfg: &Config, src_dir: Option<&Path>) -> Result<Memory
     mem.msync()?;
     let mut mmap_arena = MemoryMappingArena::from(mem);
     for FileMappingInfo {
-        start_block,
+        mem_offset,
         file,
         length,
         file_offset,
     } in file_mappings
     {
         mmap_arena.add_fd_mapping(
-            u32::from(start_block) as usize * BLOCK_SIZE,
+            mem_offset,
             length,
             &file,
             file_offset as u64, /* fd_offset */

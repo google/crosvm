@@ -168,8 +168,8 @@ impl BlockId {
 
 /// Information on how to mmap a host file to ext2 blocks.
 pub struct FileMappingInfo {
-    /// The ext2 disk block id that the memory region maps to.
-    pub start_block: BlockId,
+    /// Offset in the memory that a file is mapped to.
+    pub mem_offset: usize,
     /// The file to be mmap'd.
     pub file: File,
     /// The length of the mapping.
@@ -205,18 +205,17 @@ impl<'a> Arena<'a> {
     }
 
     /// A helper function to mark a region as reserved.
-    fn reserve(&self, block: BlockId, block_offset: usize, len: usize) -> Result<()> {
-        let offset = u32::from(block) as usize * self.block_size + block_offset;
-        let mem_end = offset.checked_add(len).context("mem_end overflow")?;
+    fn reserve(&self, mem_offset: usize, len: usize) -> Result<()> {
+        let mem_end = mem_offset.checked_add(len).context("mem_end overflow")?;
 
         if mem_end > self.mem.size() {
             bail!(
-                "out of memory region: {offset} + {len} > {}",
+                "out of memory region: {mem_offset} + {len} > {}",
                 self.mem.size()
             );
         }
 
-        self.regions.borrow_mut().allocate(offset, len)?;
+        self.regions.borrow_mut().allocate(mem_offset, len)?;
 
         Ok(())
     }
@@ -226,14 +225,14 @@ impl<'a> Arena<'a> {
     /// `into_mapping_info()` to retrieve the mapping information and call mmap later instead.
     pub fn reserve_for_mmap(
         &self,
-        start_block: BlockId,
+        mem_offset: usize,
         length: usize,
         file: File,
         file_offset: usize,
     ) -> Result<()> {
-        self.reserve(start_block, 0, length)?;
+        self.reserve(mem_offset, length)?;
         self.mappings.borrow_mut().push(FileMappingInfo {
-            start_block,
+            mem_offset,
             length,
             file: file.try_clone()?,
             file_offset,
@@ -250,9 +249,9 @@ impl<'a> Arena<'a> {
         block_offset: usize,
         len: usize,
     ) -> Result<&'a mut [u8]> {
-        self.reserve(block, block_offset, len)?;
-
         let offset = u32::from(block) as usize * self.block_size + block_offset;
+        self.reserve(offset, len)?;
+
         let new_addr = (self.mem.as_ptr() as usize)
             .checked_add(offset)
             .context("address overflow")?;
