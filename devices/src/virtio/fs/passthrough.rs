@@ -2382,7 +2382,7 @@ impl FileSystem for PassthroughFs {
                 data,
                 name,
                 entry.inode,
-                (flags & !(libc::O_CREAT | libc::O_EXCL | libc::O_NOCTTY)) as u32,
+                flags as u32 & !((libc::O_CREAT | libc::O_EXCL | libc::O_NOCTTY) as u32),
             )
             .map_err(|e| {
                 // Don't leak the entry.
