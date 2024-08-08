@@ -102,9 +102,9 @@ impl KumquatGpu {
         let fence_handler = create_fence_handler(fence_state.clone());
 
         let renderer_features_opt = if renderer_features.is_empty() {
-            Some(renderer_features)
-        } else {
             None
+        } else {
+            Some(renderer_features)
         };
 
         let rutabaga = RutabagaBuilder::new(RutabagaComponentType::CrossDomain, capset_mask)
