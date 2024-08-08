@@ -112,6 +112,14 @@ fn errno() -> base::Error {
     base::Error::last()
 }
 
+fn string_from_bytes_with_nul(buffer: &[u8], mut len: usize) -> Result<String> {
+    // Trim NUL byte.
+    if len > 0 && buffer[len] == 0 {
+        len -= 1;
+    }
+    String::from_utf8(buffer[0..len].to_vec()).map_err(InputError::InvalidString)
+}
+
 /// Gets id information from an event device (see EVIOCGID ioctl for details).
 pub fn device_ids<T: AsRawDescriptor>(descriptor: &T) -> Result<virtio_input_device_ids> {
     let mut dev_id = evdev_id::new();
@@ -133,7 +141,7 @@ pub fn device_ids<T: AsRawDescriptor>(descriptor: &T) -> Result<virtio_input_dev
 }
 
 /// Gets the name of an event device (see EVIOCGNAME ioctl for details).
-pub fn name<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<u8>> {
+pub fn name<T: AsRawDescriptor>(descriptor: &T) -> Result<String> {
     let mut name = evdev_buffer::new();
     let len = {
         // SAFETY:
@@ -144,11 +152,11 @@ pub fn name<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<u8>> {
     if len < 0 {
         return Err(InputError::EvdevNameError(errno()));
     }
-    Ok(name.buffer[0..len as usize].to_vec())
+    string_from_bytes_with_nul(&name.buffer, len as usize)
 }
 
 /// Gets the unique (serial) name of an event device (see EVIOCGUNIQ ioctl for details).
-pub fn serial_name<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<u8>> {
+pub fn serial_name<T: AsRawDescriptor>(descriptor: &T) -> Result<String> {
     let mut uniq = evdev_buffer::new();
     let len = {
         // SAFETY:
@@ -159,7 +167,7 @@ pub fn serial_name<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<u8>> {
     if len < 0 {
         return Err(InputError::EvdevSerialError(errno()));
     }
-    Ok(uniq.buffer[0..len as usize].to_vec())
+    string_from_bytes_with_nul(&uniq.buffer, len as usize)
 }
 
 /// Gets the properties of an event device (see EVIOCGPROP ioctl for details).
