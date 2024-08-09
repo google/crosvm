@@ -99,11 +99,11 @@ fn test_whpx_mmio_fetch_memory() {
                                     // Ensure this instruction is the first read
                                     // in the sequence.
                                     assert_eq!(memory_reads.load(Ordering::SeqCst), 1);
-                                    Some([0x88, 0x03, 0x67, 0x8a, 0x01, 0xf4, 0, 0])
+                                    Ok(Some([0x88, 0x03, 0x67, 0x8a, 0x01, 0xf4, 0, 0]))
                                 }
                                 // Second MMIO read is a regular read from an
                                 // unmapped memory.
-                                (0x3010, 1) => Some([0x66, 0, 0, 0, 0, 0, 0, 0]),
+                                (0x3010, 1) => Ok(Some([0x66, 0, 0, 0, 0, 0, 0, 0])),
                                 _ => {
                                     panic!("invalid address({:#x})/size({})", address, size)
                                 }

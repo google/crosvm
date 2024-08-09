@@ -176,7 +176,7 @@ where
                         assert_eq!(address, vcpu_sregs.es.base);
                         assert_eq!(data[0], 0x67);
                         exits.fetch_add(1, Ordering::SeqCst);
-                        None
+                        Ok(None)
                     }
                 })
                 .expect("failed to set the data");

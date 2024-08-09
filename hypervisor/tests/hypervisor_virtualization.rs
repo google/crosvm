@@ -685,11 +685,11 @@ fn test_mmio_exit_cross_page() {
                             (0x1000, 8) => {
                                 // Ensure this instruction is the first read
                                 // in the sequence.
-                                Some([0x88, 0x03, 0x67, 0x8a, 0x01, 0xf4, 0, 0])
+                                Ok(Some([0x88, 0x03, 0x67, 0x8a, 0x01, 0xf4, 0, 0]))
                             }
                             // Second MMIO read is a regular read from an
                             // unmapped memory (pointed to by initial EAX).
-                            (0x3010, 1) => Some([0x66, 0, 0, 0, 0, 0, 0, 0]),
+                            (0x3010, 1) => Ok(Some([0x66, 0, 0, 0, 0, 0, 0, 0])),
                             _ => {
                                 panic!("invalid address({:#x})/size({})", address, size)
                             }
@@ -699,7 +699,7 @@ fn test_mmio_exit_cross_page() {
                         assert_eq!(address, 0x3000);
                         assert_eq!(data[0], 0x33);
                         assert_eq!(size, 1);
-                        None
+                        Ok(None)
                     }
                 }
             })
@@ -793,7 +793,7 @@ fn test_mmio_exit_readonly_memory() {
                     assert_eq!(size, 1);
                     assert_eq!(address, 0x5000);
                     assert_eq!(data[0], 0x67);
-                    None
+                    Ok(None)
                 }
             })
             .expect("failed to set the data");
@@ -3317,7 +3317,7 @@ fn test_slat_on_region_removal_is_mmio() {
                     );
                     // We won't vmenter again, so there's no need to actually satisfy the MMIO by
                     // returning data; however, some hypervisors (WHPX) require it.
-                    Some([0u8; 8])
+                    Ok(Some([0u8; 8]))
                 })
                 .unwrap();
                 true

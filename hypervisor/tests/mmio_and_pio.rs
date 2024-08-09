@@ -124,14 +124,14 @@ where
                             exits.fetch_add(1, Ordering::SeqCst);
                             // this number will be read into al register
                             data.copy_from_slice(&0x66_u64.to_ne_bytes());
-                            Some(data)
+                            Ok(Some(data))
                         }
                         IoOperation::Write { data } => {
                             assert_eq!(address, 0x3000);
                             assert_eq!(data[0], 0x33);
                             assert_eq!(size, 1);
                             exits.fetch_add(1, Ordering::SeqCst);
-                            None
+                            Ok(None)
                         }
                     }
                 })

@@ -789,7 +789,7 @@ where
                                             });
                                     }
                                 }
-                                Some(data)
+                                Ok(Some(data))
                             }
                             IoOperation::Write { data } => {
                                 if size > data.len() {
@@ -814,7 +814,7 @@ where
                                             address, e
                                         ));
                                 }
-                                None
+                                Ok(None)
                             }
                         }
                     }).unwrap_or_else(|e| error!("failed to handle mmio: {}", e));

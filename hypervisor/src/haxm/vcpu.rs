@@ -177,7 +177,10 @@ impl Vcpu for HaxmVcpu {
     /// Once called, it will determine whether a mmio read or mmio write was the reason for the mmio
     /// exit, call `handle_fn` with the respective IoOperation to perform the mmio read or
     /// write, and set the return data in the vcpu so that the vcpu can resume running.
-    fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
+    fn handle_mmio(
+        &self,
+        handle_fn: &mut dyn FnMut(IoParams) -> Result<Option<[u8; 8]>>,
+    ) -> Result<()> {
         // SAFETY:
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
@@ -198,7 +201,12 @@ impl Vcpu for HaxmVcpu {
                     address,
                     size,
                     operation: IoOperation::Read,
-                }) {
+                })
+                // We have to unwrap/panic here because HAXM doesn't have a
+                // facility to inject a GP fault here. Once HAXM can do that, we
+                // should inject a GP fault & bubble the error.
+                .unwrap()
+                {
                     let data = u64::from_ne_bytes(data);
                     // SAFETY:
                     // Safe because we know this is an mmio read, so we need to put data into the
@@ -219,7 +227,9 @@ impl Vcpu for HaxmVcpu {
                     operation: IoOperation::Write {
                         data: data.to_ne_bytes(),
                     },
-                });
+                })
+                // Similarly to the read direction, we MUST panic here.
+                .unwrap();
                 Ok(())
             }
             _ => Err(Error::new(EINVAL)),

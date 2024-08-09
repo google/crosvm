@@ -1209,7 +1209,10 @@ impl Vcpu for GeniezoneVcpu {
         }
     }
 
-    fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
+    fn handle_mmio(
+        &self,
+        handle_fn: &mut dyn FnMut(IoParams) -> Result<Option<[u8; 8]>>,
+    ) -> Result<()> {
         // SAFETY:
         // Safe because we know we mapped enough memory to hold the gzvm_vcpu_run struct because the
         // kernel told us how large it was. The pointer is page aligned so casting to a different
@@ -1231,13 +1234,13 @@ impl Vcpu for GeniezoneVcpu {
                 address,
                 size,
                 operation: IoOperation::Write { data: mmio.data },
-            });
+            })?;
             Ok(())
         } else if let Some(data) = handle_fn(IoParams {
             address,
             size,
             operation: IoOperation::Read,
-        }) {
+        })? {
             mmio.data[..size].copy_from_slice(&data[..size]);
             Ok(())
         } else {

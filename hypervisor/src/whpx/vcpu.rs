@@ -105,7 +105,7 @@ trait InstructionEmulatorCallbacks {
 struct InstructionEmulatorContext<'a> {
     vm_partition: Arc<SafePartition>,
     index: u32,
-    handle_mmio: Option<&'a mut dyn FnMut(IoParams) -> Option<[u8; 8]>>,
+    handle_mmio: Option<&'a mut dyn FnMut(IoParams) -> Result<Option<[u8; 8]>>>,
     handle_io: Option<&'a mut dyn FnMut(IoParams) -> Option<[u8; 8]>>,
 }
 
@@ -174,32 +174,43 @@ impl InstructionEmulatorCallbacks for SafeInstructionEmulator {
         let size = memory_access_info.AccessSize as usize;
         match memory_access_info.Direction {
             WHPX_EXIT_DIRECTION_MMIO_READ => {
-                if let Some(handle_mmio) = &mut ctx.handle_mmio {
-                    if let Some(data) = handle_mmio(IoParams {
-                        address,
-                        size,
-                        operation: IoOperation::Read,
-                    }) {
-                        memory_access_info.Data = data;
-                    }
-                    S_OK
-                } else {
-                    E_UNEXPECTED
-                }
+                ctx.handle_mmio
+                    .as_mut()
+                    .map_or(E_UNEXPECTED, |handle_mmio| {
+                        handle_mmio(IoParams {
+                            address,
+                            size,
+                            operation: IoOperation::Read,
+                        })
+                        .map_err(|e| {
+                            error!("handle_mmio failed with {e}");
+                            e
+                        })
+                        .ok()
+                        .flatten()
+                        .map_or(E_UNEXPECTED, |data| {
+                            memory_access_info.Data = data;
+                            S_OK
+                        })
+                    })
             }
             WHPX_EXIT_DIRECTION_MMIO_WRITE => {
-                if let Some(handle_mmio) = &mut ctx.handle_mmio {
-                    handle_mmio(IoParams {
-                        address,
-                        size,
-                        operation: IoOperation::Write {
-                            data: memory_access_info.Data,
-                        },
-                    });
-                    S_OK
-                } else {
-                    E_UNEXPECTED
-                }
+                ctx.handle_mmio
+                    .as_mut()
+                    .map_or(E_UNEXPECTED, |handle_mmio| {
+                        handle_mmio(IoParams {
+                            address,
+                            size,
+                            operation: IoOperation::Write {
+                                data: memory_access_info.Data,
+                            },
+                        })
+                        .map_err(|e| {
+                            error!("handle_mmio failed with {e}");
+                            e
+                        })
+                        .map_or(E_UNEXPECTED, |_| S_OK)
+                    })
             }
             _ => E_UNEXPECTED,
         }
@@ -548,7 +559,10 @@ impl Vcpu for WhpxVcpu {
     /// Once called, it will determine whether a mmio read or mmio write was the reason for the mmio
     /// exit, call `handle_fn` with the respective IoOperation to perform the mmio read or
     /// write, and set the return data in the vcpu so that the vcpu can resume running.
-    fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
+    fn handle_mmio(
+        &self,
+        handle_fn: &mut dyn FnMut(IoParams) -> Result<Option<[u8; 8]>>,
+    ) -> Result<()> {
         let mut status: WHV_EMULATOR_STATUS = Default::default();
         let mut ctx = InstructionEmulatorContext {
             vm_partition: self.vm_partition.clone(),

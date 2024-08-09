@@ -178,7 +178,7 @@ where
                         assert_eq!(address, 0x3000);
                         assert_eq!(size, 1);
                         data.copy_from_slice(&0x44_u64.to_ne_bytes());
-                        Some(data)
+                        Ok(Some(data))
                     }
                     IoOperation::Write { .. } => {
                         panic!("unexpected mmio write");
