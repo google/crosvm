@@ -208,16 +208,16 @@ where
         Ok(true)
     }
 
-    fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
-        serde_json::to_vec(&NetBackendSnapshot {
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(NetBackendSnapshot {
             acked_feature: self.acked_features,
         })
         .context("Failed to serialize NetBackendSnapshot")
     }
 
-    fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
         let net_backend_snapshot: NetBackendSnapshot =
-            serde_json::from_slice(&data).context("Failed to deserialize NetBackendSnapshot")?;
+            serde_json::from_value(data).context("Failed to deserialize NetBackendSnapshot")?;
         self.acked_features = net_backend_snapshot.acked_feature;
         Ok(())
     }

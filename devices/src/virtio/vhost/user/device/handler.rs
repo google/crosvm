@@ -210,13 +210,13 @@ pub trait VhostUserDevice {
     }
 
     /// Snapshot device and return serialized bytes.
-    fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
         error!("snapshot not implemented for vhost user device");
         // TODO(rizhang): Return error once basic devices support this.
-        Ok(Vec::new())
+        Ok(serde_json::Value::Null)
     }
 
-    fn restore(&mut self, _data: Vec<u8>) -> anyhow::Result<()> {
+    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
         error!("restore not implemented for vhost user device");
         // TODO(rizhang): Return error once basic devices support this.
         Ok(())
@@ -346,7 +346,7 @@ enum DeviceStateThread {
 pub struct DeviceRequestHandlerSnapshot {
     acked_features: u64,
     acked_protocol_features: u64,
-    backend: Vec<u8>,
+    backend: serde_json::Value,
 }
 
 impl<T: VhostUserDevice> DeviceRequestHandler<T> {
@@ -1063,6 +1063,11 @@ mod tests {
         backend_conn: Option<Arc<VhostBackendReqConnection>>,
     }
 
+    #[derive(Deserialize, Serialize)]
+    struct FakeBackendSnapshot {
+        data: Vec<u8>,
+    }
+
     impl FakeBackend {
         const MAX_QUEUE_NUM: usize = 16;
 
@@ -1143,12 +1148,17 @@ mod tests {
             Ok(true)
         }
 
-        fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
-            Ok(vec![1, 2, 3])
+        fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+            serde_json::to_value(FakeBackendSnapshot {
+                data: vec![1, 2, 3],
+            })
+            .context("failed to serialize snapshot")
         }
 
-        fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
-            assert_eq!(data, vec![1, 2, 3], "bad snapshot data");
+        fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+            let snapshot: FakeBackendSnapshot =
+                serde_json::from_value(data).context("failed to deserialize snapshot")?;
+            assert_eq!(snapshot.data, vec![1, 2, 3], "bad snapshot data");
             Ok(())
         }
     }

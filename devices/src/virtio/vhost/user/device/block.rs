@@ -96,19 +96,17 @@ impl VhostUserDevice for BlockBackend {
         Ok(true)
     }
 
-    fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
         // The queue states are being snapshotted in the device handler.
-        let serialized_bytes = serde_json::to_vec(&BlockBackendSnapshot {
+        serde_json::to_value(BlockBackendSnapshot {
             avail_features: self.avail_features,
         })
-        .context("Failed to serialize BlockBackendSnapshot")?;
-
-        Ok(serialized_bytes)
+        .context("Failed to serialize BlockBackendSnapshot")
     }
 
-    fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
         let block_backend_snapshot: BlockBackendSnapshot =
-            serde_json::from_slice(&data).context("Failed to deserialize BlockBackendSnapshot")?;
+            serde_json::from_value(data).context("Failed to deserialize BlockBackendSnapshot")?;
         anyhow::ensure!(
             self.avail_features == block_backend_snapshot.avail_features,
             "Vhost user block restored avail_features do not match. Live: {:?}, snapshot: {:?}",

@@ -306,7 +306,7 @@ impl VhostUserDevice for SndBackend {
         }
     }
 
-    fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
         // now_or_never will succeed here because no workers are running.
         let stream_info_snaps = if let Some(stream_infos) = &self.streams.lock().now_or_never() {
             let mut snaps = Vec::new();
@@ -329,7 +329,7 @@ impl VhostUserDevice for SndBackend {
             None
         };
         let snd_data_ref: &SndData = self.snd_data.borrow();
-        serde_json::to_vec(&SndBackendSnapshot {
+        serde_json::to_value(SndBackendSnapshot {
             avail_features: self.avail_features,
             stream_infos: stream_info_snaps,
             snd_data: snd_data_ref.clone(),
@@ -340,12 +340,11 @@ impl VhostUserDevice for SndBackend {
         ))
     }
 
-    fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
-        let deser: SndBackendSnapshot =
-            serde_json::from_slice(data.as_slice()).context(format!(
-                "[Card {}] Failed to deserialize SndBackendSnapshot",
-                self.card_index
-            ))?;
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let deser: SndBackendSnapshot = serde_json::from_value(data).context(format!(
+            "[Card {}] Failed to deserialize SndBackendSnapshot",
+            self.card_index
+        ))?;
         anyhow::ensure!(
             deser.avail_features == self.avail_features,
             "[Card {}] avail features doesn't match on restore: expected: {}, got: {}",

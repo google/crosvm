@@ -276,16 +276,13 @@ impl VhostUserDevice for GpuBackend {
         }
     }
 
-    fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
         // TODO(b/289431114): Snapshot more fields if needed. Right now we just need a bare bones
         // snapshot of the GPU to create a POC.
-        serde_json::to_vec(&serde_json::Value::Null)
-            .context("Failed to serialize Null in the GPU device")
+        Ok(serde_json::Value::Null)
     }
 
-    fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
-        let data: serde_json::Value = serde_json::from_slice(data.as_slice())
-            .context("Failed to deserialize NULL in the GPU device")?;
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
         anyhow::ensure!(
             data.is_null(),
             "unexpected snapshot data: should be null, got {}",
