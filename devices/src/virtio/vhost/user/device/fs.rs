@@ -187,6 +187,14 @@ impl VhostUserDevice for FsBackend {
             Err(anyhow::Error::new(DeviceError::WorkerNotFound))
         }
     }
+
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+        bail!("snapshot not implemented for vhost-user fs");
+    }
+
+    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+        bail!("snapshot not implemented for vhost-user fs");
+    }
 }
 
 #[derive(FromArgs)]

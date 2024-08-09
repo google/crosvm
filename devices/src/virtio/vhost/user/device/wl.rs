@@ -301,6 +301,14 @@ impl VhostUserDevice for WlBackend {
 
         self.backend_req_conn = VhostBackendReqConnectionState::Connected(conn);
     }
+
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+        bail!("snapshot not implemented for vhost-user wl");
+    }
+
+    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+        bail!("snapshot not implemented for vhost-user wl");
+    }
 }
 
 pub fn parse_wayland_sock(value: &str) -> Result<(String, PathBuf), String> {

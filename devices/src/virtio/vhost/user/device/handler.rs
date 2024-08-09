@@ -209,20 +209,11 @@ pub trait VhostUserDevice {
         Ok(false)
     }
 
-    /// Snapshot device and return serialized bytes.
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        anyhow::bail!(
-            "snapshot not implemented for vhost user device {}",
-            std::any::type_name::<Self>()
-        );
-    }
+    /// Snapshot device and return serialized state.
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value>;
 
-    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
-        anyhow::bail!(
-            "snapshot not implemented for vhost user device {}",
-            std::any::type_name::<Self>()
-        );
-    }
+    /// Restore device state from a snapshot.
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()>;
 }
 
 /// A virtio ring entry.
