@@ -585,6 +585,7 @@ impl Vcpu for WhpxVcpu {
         if success {
             Ok(())
         } else {
+            self.inject_gp_fault()?;
             // safe because we trust the kernel to fill in the union field properly.
             Err(Error::new(unsafe { status.AsUINT32 }))
         }
