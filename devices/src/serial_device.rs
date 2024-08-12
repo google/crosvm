@@ -104,10 +104,15 @@ impl Display for SerialType {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SerialHardware {
-    Serial,              // Standard PC-style (8250/16550 compatible) UART
-    VirtioConsole,       // virtio-console device
-    Debugcon,            // Bochs style debug port
-    LegacyVirtioConsole, // legacy virtio-console device (alias for VirtioConsole)
+    /// Standard PC-style (8250/16550 compatible) UART
+    Serial,
+
+    /// virtio-console device
+    #[serde(alias = "legacy-virtio-console")]
+    VirtioConsole,
+
+    /// Bochs style debug port
+    Debugcon,
 }
 
 impl Default for SerialHardware {
@@ -122,7 +127,6 @@ impl Display for SerialHardware {
             SerialHardware::Serial => "serial".to_string(),
             SerialHardware::VirtioConsole => "virtio-console".to_string(),
             SerialHardware::Debugcon => "debugcon".to_string(),
-            SerialHardware::LegacyVirtioConsole => "legacy-virtio-console".to_string(),
         };
 
         write!(f, "{}", s)

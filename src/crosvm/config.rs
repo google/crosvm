@@ -456,10 +456,7 @@ pub fn validate_serial_parameters(params: &SerialParameters) -> Result<(), Strin
         ));
     }
 
-    if params.pci_address.is_some()
-        && params.hardware != SerialHardware::VirtioConsole
-        && params.hardware != SerialHardware::LegacyVirtioConsole
-    {
+    if params.pci_address.is_some() && params.hardware != SerialHardware::VirtioConsole {
         return Err(invalid_value_err(
             params.pci_address.unwrap().to_string(),
             "Providing serial PCI address is only supported for virtio-console hardware type",
