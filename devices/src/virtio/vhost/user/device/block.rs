@@ -96,7 +96,7 @@ impl VhostUserDevice for BlockBackend {
         Ok(true)
     }
 
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         // The queue states are being snapshotted in the device handler.
         serde_json::to_value(BlockBackendSnapshot {
             avail_features: self.avail_features,

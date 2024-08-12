@@ -306,7 +306,7 @@ impl VhostUserDevice for SndBackend {
         }
     }
 
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         // now_or_never will succeed here because no workers are running.
         let stream_info_snaps = if let Some(stream_infos) = &self.streams.lock().now_or_never() {
             let mut snaps = Vec::new();

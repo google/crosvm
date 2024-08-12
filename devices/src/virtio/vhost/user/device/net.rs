@@ -208,7 +208,7 @@ where
         Ok(true)
     }
 
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         serde_json::to_value(NetBackendSnapshot {
             acked_feature: self.acked_features,
         })

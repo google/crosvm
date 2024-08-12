@@ -210,7 +210,7 @@ pub trait VhostUserDevice {
     }
 
     /// Snapshot device and return serialized bytes.
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         anyhow::bail!(
             "snapshot not implemented for vhost user device {}",
             std::any::type_name::<Self>()
@@ -1150,7 +1150,7 @@ mod tests {
             Ok(true)
         }
 
-        fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
             serde_json::to_value(FakeBackendSnapshot {
                 data: vec![1, 2, 3],
             })

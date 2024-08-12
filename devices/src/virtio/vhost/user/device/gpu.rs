@@ -276,7 +276,7 @@ impl VhostUserDevice for GpuBackend {
         }
     }
 
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         // TODO(b/289431114): Snapshot more fields if needed. Right now we just need a bare bones
         // snapshot of the GPU to create a POC.
         Ok(serde_json::Value::Null)
