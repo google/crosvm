@@ -19,6 +19,7 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio::console::device::ConsoleDevice;
+use crate::virtio::console::device::ConsoleSnapshot;
 use crate::virtio::console::port::ConsolePort;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostUserDevice;
@@ -83,7 +84,9 @@ impl VhostUserDevice for ConsoleBackend {
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::MQ
+        VhostUserProtocolFeatures::CONFIG
+            | VhostUserProtocolFeatures::MQ
+            | VhostUserProtocolFeatures::DEVICE_STATE
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
@@ -112,6 +115,21 @@ impl VhostUserDevice for ConsoleBackend {
             Ok(None) => Err(anyhow!("queue {idx} not started")),
             Err(e) => Err(e).with_context(|| format!("failed to stop queue {idx}")),
         }
+    }
+
+    fn enter_suspended_state(&mut self) -> anyhow::Result<bool> {
+        Ok(true)
+    }
+
+    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+        let snap = self.device.console.snapshot()?;
+        serde_json::to_value(snap).context("failed to snapshot vhost-user console")
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let snap: ConsoleSnapshot =
+            serde_json::from_value(data).context("failed to deserialize vhost-user console")?;
+        self.device.console.restore(&snap)
     }
 }
 
