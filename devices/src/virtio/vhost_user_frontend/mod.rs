@@ -358,6 +358,11 @@ impl VhostUserFrontend {
 }
 
 impl VirtioDevice for VhostUserFrontend {
+    // Override the default debug label to differentiate vhost-user devices from virtio.
+    fn debug_label(&self) -> String {
+        format!("vu-{}", self.device_type())
+    }
+
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         Vec::new()
     }
