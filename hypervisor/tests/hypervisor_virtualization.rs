@@ -175,7 +175,7 @@ impl Default for TestSetup {
         TestSetup {
             assembly: Vec::new(),
             load_addr: GuestAddress(0),
-            mem_size: 0x2000,
+            mem_size: 0xF000, // Big enough default for long mode setup
             initial_regs: Regs::default(),
             extra_vm_setup: None,
             memory_initializations: Vec::new(),
@@ -652,6 +652,7 @@ fn test_mmio_exit_cross_page() {
     let setup = TestSetup {
         assembly: test_mmio_exit_cross_page_code::data().to_vec(),
         load_addr,
+        mem_size: 0x2000,
         initial_regs: Regs {
             rip: load_addr.offset(),
             rax: 0x33,
@@ -732,6 +733,7 @@ fn test_mmio_exit_readonly_memory() {
     let setup = TestSetup {
         assembly: test_mmio_exit_readonly_memory_code::data().to_vec(),
         load_addr: GuestAddress(0x1000),
+        mem_size: 0x2000,
         initial_regs: Regs {
             rip: 0x1000,
             rax: 1,
@@ -1028,9 +1030,14 @@ fn test_msr_access_invalid() {
             rflags: 2,
             ..Default::default()
         },
-        // This run should fail due to the invalid EFER bit being set.
-        expect_run_success: false,
         ..Default::default()
+    };
+
+    let exit_matcher = |_, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64, _: &mut dyn Vm| match exit {
+        VcpuExit::Shutdown(..) => {
+            true // Break VM runloop
+        }
+        r => panic!("unexpected exit reason: {:?}", r),
     };
 
     run_tests!(
@@ -1038,10 +1045,7 @@ fn test_msr_access_invalid() {
         |_, regs, _| {
             assert_eq!(regs.rip, 0x1005); // Should stop at the wrmsr
         },
-        |_, _, _, _: &mut dyn Vm| {
-            /* unused */
-            true
-        }
+        exit_matcher
     );
 }
 
@@ -1102,6 +1106,9 @@ fn test_getsec_instruction() {
             rflags: 2,
             ..Default::default()
         },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+        })),
         ..Default::default()
     };
 
@@ -1117,17 +1124,9 @@ fn test_getsec_instruction() {
     let exit_matcher =
         move |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64, _: &mut dyn Vm| {
             match hypervisor_type {
-                HypervisorType::Kvm => {
-                    match exit {
-                        VcpuExit::InternalError => {
-                            true // Break VM runloop
-                        }
-                        r => panic!("unexpected exit reason: {:?}", r),
-                    }
-                }
                 HypervisorType::Whpx => {
                     match exit {
-                        VcpuExit::Mmio => {
+                        VcpuExit::UnrecoverableException => {
                             true // Break VM runloop
                         }
                         r => panic!("unexpected exit reason: {:?}", r),
@@ -1225,6 +1224,9 @@ fn test_xsetbv_instruction() {
             rflags: 2,
             ..Default::default()
         },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+        })),
         ..Default::default()
     };
 
@@ -1238,35 +1240,14 @@ fn test_xsetbv_instruction() {
             }
         };
 
-    let exit_matcher =
-        |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64, _: &mut dyn Vm| {
-            match hypervisor_type {
-                HypervisorType::Kvm => {
-                    match exit {
-                        VcpuExit::InternalError => {
-                            true // Break VM runloop
-                        }
-                        r => panic!("unexpected exit reason: {:?}", r),
-                    }
-                }
-                HypervisorType::Whpx => {
-                    match exit {
-                        VcpuExit::Mmio => {
-                            true // Break VM runloop
-                        }
-                        r => panic!("unexpected exit reason: {:?}", r),
-                    }
-                }
-                _ => {
-                    match exit {
-                        VcpuExit::Shutdown(_) => {
-                            true // Break VM runloop
-                        }
-                        r => panic!("unexpected exit reason: {:?}", r),
-                    }
-                }
+    let exit_matcher = |_, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64, _: &mut dyn Vm| {
+        match exit {
+            VcpuExit::Mmio => {
+                true // Break VM runloop
             }
-        };
+            r => panic!("unexpected exit reason: {:?}", r),
+        }
+    };
 
     run_tests!(setup, regs_matcher, exit_matcher);
 }
@@ -1278,8 +1259,6 @@ global_asm_data!(
     "hlt",
 );
 
-// TODO(b/342183625): invept instruction is not valid in real mode. Reconsider how we should write
-// this test.
 #[test]
 fn test_invept_instruction() {
     let setup = TestSetup {
@@ -1291,6 +1270,9 @@ fn test_invept_instruction() {
             rflags: 2,
             ..Default::default()
         },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+        })),
         ..Default::default()
     };
 
@@ -1307,17 +1289,9 @@ fn test_invept_instruction() {
     let exit_matcher =
         move |hypervisor_type, exit: &VcpuExit, _vcpu: &mut dyn VcpuX86_64, _: &mut dyn Vm| {
             match hypervisor_type {
-                HypervisorType::Kvm => {
-                    match exit {
-                        VcpuExit::InternalError => {
-                            true // Break VM runloop
-                        }
-                        r => panic!("unexpected exit reason: {:?}", r),
-                    }
-                }
                 HypervisorType::Whpx => {
                     match exit {
-                        VcpuExit::Mmio => {
+                        VcpuExit::UnrecoverableException => {
                             true // Break VM runloop
                         }
                         r => panic!("unexpected exit reason: {:?}", r),
@@ -1357,6 +1331,9 @@ fn test_invvpid_instruction() {
             rflags: 2,
             ..Default::default()
         },
+        extra_vm_setup: Some(Box::new(|vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| {
+            enter_long_mode(vcpu, vm);
+        })),
         ..Default::default()
     };
 
