@@ -382,7 +382,7 @@ impl VirtioGpuScanout {
             .framebuffer_region(surface_id, 0, 0, self.width, self.height)
             .ok_or(ErrUnspec)?;
 
-        let mut transfer = Transfer3D::new_2d(0, 0, self.width, self.height);
+        let mut transfer = Transfer3D::new_2d(0, 0, self.width, self.height, 0);
         transfer.stride = fb.stride();
         let fb_slice = fb.as_volatile_slice();
         let buf = IoSliceMut::new(

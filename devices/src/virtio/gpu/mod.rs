@@ -448,6 +448,7 @@ impl Frontend {
                     info.r.y.to_native(),
                     info.r.width.to_native(),
                     info.r.height.to_native(),
+                    info.offset.to_native(),
                 );
                 self.virtio_gpu.transfer_write(0, resource_id, transfer)
             }
