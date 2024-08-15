@@ -115,7 +115,11 @@ fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
     match tube.recv() {
         Ok(Command::Activate) => {
             if let Err(e) = tube.send(&CommandResult::Ok) {
-                error!("sending activation result failed: {:?}", &e);
+                error!(
+                    "sending {} activation result failed: {}",
+                    device.debug_label(),
+                    e,
+                );
                 return;
             }
         }
@@ -125,7 +129,11 @@ fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
         }
         // Most likely tube error is caused by other end is dropped, release resource.
         Err(e) => {
-            error!("device failed before activation: {:?}. Dropping device", e);
+            error!(
+                "{} device failed before activation: {}. Dropping device",
+                device.debug_label(),
+                e,
+            );
             drop(device);
             return;
         }
@@ -133,8 +141,12 @@ fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
     loop {
         let cmd = match tube.recv() {
             Ok(cmd) => cmd,
-            Err(err) => {
-                error!("child device process failed recv: {}", err);
+            Err(e) => {
+                error!(
+                    "recv from {} child device process failed: {}",
+                    device.debug_label(),
+                    e,
+                );
                 break;
             }
         };
@@ -225,7 +237,11 @@ fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
             }
         };
         if let Err(e) = res {
-            error!("child device process failed send: {}", e);
+            error!(
+                "send to {} child device process failed: {}",
+                device.debug_label(),
+                e,
+            );
         }
     }
 }
