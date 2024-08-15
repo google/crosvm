@@ -117,8 +117,8 @@ impl VhostUserDevice for ConsoleBackend {
         }
     }
 
-    fn enter_suspended_state(&mut self) -> anyhow::Result<bool> {
-        Ok(true)
+    fn enter_suspended_state(&mut self) -> anyhow::Result<()> {
+        Ok(())
     }
 
     fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {

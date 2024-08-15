@@ -88,12 +88,12 @@ impl VhostUserDevice for BlockBackend {
         self.inner.stop_queue(idx)
     }
 
-    fn enter_suspended_state(&mut self) -> anyhow::Result<bool> {
+    fn enter_suspended_state(&mut self) -> anyhow::Result<()> {
         // TODO: This assumes that `reset` only stops workers which might not be true in the
         // future. Consider moving the `reset` code into a `stop_all_workers` method or, maybe,
         // make `stop_queue` implicitly stop a worker thread when there is no active queue.
         self.inner.reset()?;
-        Ok(true)
+        Ok(())
     }
 
     fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {

@@ -302,9 +302,9 @@ impl VhostUserDevice for WlBackend {
         self.backend_req_conn = VhostBackendReqConnectionState::Connected(conn);
     }
 
-    fn enter_suspended_state(&mut self) -> anyhow::Result<bool> {
+    fn enter_suspended_state(&mut self) -> anyhow::Result<()> {
         // No non-queue workers.
-        Ok(true)
+        Ok(())
     }
 
     fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {

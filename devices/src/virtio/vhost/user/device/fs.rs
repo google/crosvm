@@ -188,9 +188,9 @@ impl VhostUserDevice for FsBackend {
         }
     }
 
-    fn enter_suspended_state(&mut self) -> anyhow::Result<bool> {
+    fn enter_suspended_state(&mut self) -> anyhow::Result<()> {
         // No non-queue workers.
-        Ok(true)
+        Ok(())
     }
 
     fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {

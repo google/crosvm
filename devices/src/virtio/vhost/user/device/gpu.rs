@@ -241,9 +241,9 @@ impl VhostUserDevice for GpuBackend {
         }
     }
 
-    fn enter_suspended_state(&mut self) -> anyhow::Result<bool> {
+    fn enter_suspended_state(&mut self) -> anyhow::Result<()> {
         self.stop_non_queue_workers()?;
-        Ok(true)
+        Ok(())
     }
 
     fn reset(&mut self) {
