@@ -205,9 +205,7 @@ pub trait VhostUserDevice {
     /// * Ok(true)  => device successfully suspended
     /// * Ok(false) => "suspended device state" not supported
     /// * Err(_)    => unrecoverable error
-    fn enter_suspended_state(&mut self) -> anyhow::Result<bool> {
-        Ok(false)
-    }
+    fn enter_suspended_state(&mut self) -> anyhow::Result<bool>;
 
     /// Snapshot device and return serialized state.
     fn snapshot(&mut self) -> anyhow::Result<serde_json::Value>;

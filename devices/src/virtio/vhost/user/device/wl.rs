@@ -302,6 +302,11 @@ impl VhostUserDevice for WlBackend {
         self.backend_req_conn = VhostBackendReqConnectionState::Connected(conn);
     }
 
+    fn enter_suspended_state(&mut self) -> anyhow::Result<bool> {
+        // No non-queue workers.
+        Ok(true)
+    }
+
     fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
         bail!("snapshot not implemented for vhost-user wl");
     }
