@@ -820,6 +820,7 @@ where
                     }).unwrap_or_else(|e| error!("failed to handle mmio: {}", e));
                 }
                 Ok(VcpuExit::IoapicEoi { vector }) => {
+                    let _trace_event = trace_event!(crosvm, "VcpuExit::IoapicEoi");
                     irq_chip.broadcast_eoi(vector).unwrap_or_else(|e| {
                         error!(
                             "failed to broadcast eoi {} on vcpu {}: {}",
@@ -827,7 +828,9 @@ where
                         )
                     });
                 }
-                Ok(VcpuExit::IrqWindowOpen) => {}
+                Ok(VcpuExit::IrqWindowOpen) => {
+                    let _trace_event = trace_event!(crosvm, "VcpuExit::IrqWindowOpen");
+                }
                 Ok(VcpuExit::Hlt) => irq_chip.halted(context.cpu_id),
 
                 // VcpuExit::Shutdown is always an error on Windows.  HAXM exits with
@@ -865,8 +868,14 @@ where
                 // can happen during normal operation too, when GVM's timer finds requests
                 // pending from the host.  So we set check_vm_shutdown, then below check the
                 // VmRunMode state to see if we should exit the run loop.
-                Ok(VcpuExit::Intr) => check_vm_shutdown = true,
-                Ok(VcpuExit::Canceled) => check_vm_shutdown = true,
+                Ok(VcpuExit::Intr) => {
+                    let _trace_event = trace_event!(crosvm, "VcpuExit::Intr");
+                    check_vm_shutdown = true
+                }
+                Ok(VcpuExit::Canceled) => {
+                    let _trace_event = trace_event!(crosvm, "VcpuExit::Canceled");
+                    check_vm_shutdown = true
+                }
                 #[cfg(target_arch = "x86_64")]
                 Ok(VcpuExit::Cpuid { mut entry }) => {
                     let _trace_event = trace_event!(crosvm, "VcpuExit::Cpuid");
@@ -882,8 +891,11 @@ where
                     });
                 }
                 #[cfg(target_arch = "x86_64")]
-                Ok(VcpuExit::MsrAccess) => {} // MsrAccess handled by hypervisor impl
+                Ok(VcpuExit::MsrAccess) => {
+                    let _trace_event = trace_event!(crosvm, "VcpuExit::MsrAccess");
+                } // MsrAccess handled by hypervisor impl
                 Ok(r) => {
+                    let _trace_event = trace_event!(crosvm, "VcpuExit::Unexpected");
                     error!("unexpected vcpu.run return value: {:?}", r);
                     check_vm_shutdown = true;
                 }
