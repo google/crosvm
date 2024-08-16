@@ -122,6 +122,13 @@ impl HaxmVm {
             return false;
         }
 
+        // If wstatus is zero, HAXM is not usable.
+        // In this case, the winfo bits indicate why, rather than communicating capability
+        // information.
+        if capability_info.wstatus == 0 {
+            return false;
+        }
+
         (cap & capability_info.winfo as u32) != 0
     }
 
