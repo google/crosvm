@@ -115,6 +115,9 @@ pub enum Error {
     /// Too many shmem regions.
     #[error("too many shmem regions: {0} > 1")]
     TooManyShmemRegions(usize),
+    /// vring base from vhost-user backend is too big.
+    #[error("vring base returned by vhost-user backend is too big: {0}")]
+    VringBaseTooBig(u32),
     /// failed to wake the vhost user device.
     #[error("failed to wake the vhost user device.")]
     Wake(VhostError),
