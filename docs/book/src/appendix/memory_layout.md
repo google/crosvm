@@ -19,6 +19,7 @@ see the source. All addresses are in hexadecimal.
 | [`KERNEL_START_OFFSET`]      | `20_0000`     |                 |           | Linux kernel image load address                                                          |
 | [`initrd_start`]             | after kernel  |                 |           | Initial RAM disk for Linux kernel (optional)                                             |
 | [`END_ADDR_BEFORE_32BITS`]   | after initrd  | `D000_0000`     | ~3.24 GiB | RAM (\<4G)                                                                               |
+| [`PROTECTED_VM_FW_START`]    | `CFC0_0000`   | `D000_0000`     | 4 MiB     | pVM firmware (if running a protected VM)                                                 |
 | [`END_ADDR_BEFORE_32BITS`]   | `D000_0000`   | `F400_0000`     | 576 MiB   | Low (\<4G) MMIO allocation area                                                          |
 | [`PCIE_CFG_MMIO_START`]      | `F400_0000`   | `F800_0000`     | 64 MiB    | PCIe enhanced config (ECAM)                                                              |
 | [`RESERVED_MEM_SIZE`]        | `F800_0000`   | `1_0000_0000`   | 128 MiB   | LAPIC/IOAPIC/HPET/…                                                                      |
@@ -38,6 +39,7 @@ see the source. All addresses are in hexadecimal.
 [`acpi_hi_rsdp_window_base`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=357?q=ACPI_HI_RSDP_WINDOW_BASE
 [`kernel_start_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=341?q=KERNEL_START_OFFSET
 [`initrd_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=1633?q=initrd_start
+[`protected_vm_fw_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=394?q=PROTECTED_VM_FW_START
 [`end_addr_before_32bits`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=230?q=END_ADDR_BEFORE_32BITS
 [`pcie_cfg_mmio_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=400?q=PCIE_CFG_MMIO_START
 [`reserved_mem_size`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=395?q=RESERVED_MEM_SIZE

@@ -158,11 +158,11 @@ impl Kvm {
 
     // The x86 machine type is always 0. Protected VMs are not supported.
     pub fn get_vm_type(&self, protection_type: ProtectionType) -> Result<u32> {
-        if protection_type == ProtectionType::Unprotected {
-            Ok(0)
-        } else {
+        if protection_type.isolates_memory() {
             error!("Protected mode is not supported on x86_64.");
             Err(Error::new(libc::EINVAL))
+        } else {
+            Ok(0)
         }
     }
 

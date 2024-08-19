@@ -118,7 +118,6 @@ pub enum MemoryRegionPurpose {
     // General purpose guest memory
     #[default]
     GuestMemoryRegion,
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     ProtectedFirmwareRegion,
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     StaticSwiotlbRegion,
