@@ -4,7 +4,6 @@
 
 use core::ffi::c_void;
 use std::arch::x86_64::CpuidResult;
-use std::cmp::min;
 use std::collections::BTreeMap;
 use std::intrinsics::copy_nonoverlapping;
 use std::mem::size_of;
@@ -255,39 +254,44 @@ impl Vcpu for HaxmVcpu {
         // union field to use.
         let io = unsafe { (*self.tunnel).__bindgen_anon_1.io };
         let address = io.port.into();
-        let size = (io.count as usize) * (io.size as usize);
+        let size = io.size as usize;
+        let count = io.count as usize;
+        let mut io_buffer_ptr = self.io_buffer as *mut u8;
         match io.direction as u32 {
             HAX_EXIT_DIRECTION_PIO_IN => {
-                if let Some(data) = handle_fn(IoParams {
-                    address,
-                    size,
-                    operation: IoOperation::Read,
-                }) {
-                    // SAFETY:
-                    // Safe because the exit_reason (which comes from the kernel) told us that
-                    // this is port io, where the iobuf can be treated as a *u8
-                    unsafe {
-                        copy_nonoverlapping(data.as_ptr(), self.io_buffer as *mut u8, size);
+                for _ in 0..count {
+                    if let Some(data) = handle_fn(IoParams {
+                        address,
+                        size,
+                        operation: IoOperation::Read,
+                    }) {
+                        // SAFETY:
+                        // Safe because the exit_reason (which comes from the kernel) told us that
+                        // this is port io, where the iobuf can be treated as a *u8
+                        unsafe {
+                            copy_nonoverlapping(data.as_ptr(), io_buffer_ptr, size);
+                            io_buffer_ptr = io_buffer_ptr.add(size);
+                        }
                     }
                 }
                 Ok(())
             }
             HAX_EXIT_DIRECTION_PIO_OUT => {
-                let mut data = [0; 8];
-                // SAFETY:
-                // safe because we check the size, from what the kernel told us is the max to copy.
-                unsafe {
-                    copy_nonoverlapping(
-                        self.io_buffer as *const u8,
-                        data.as_mut_ptr(),
-                        min(size, data.len()),
-                    );
+                for _ in 0..count {
+                    let mut data = [0; 8];
+                    // SAFETY:
+                    // safe because we check the size, from what the kernel told us is the max to
+                    // copy.
+                    unsafe {
+                        copy_nonoverlapping(io_buffer_ptr, data.as_mut_ptr(), size);
+                        io_buffer_ptr = io_buffer_ptr.add(size);
+                    }
+                    handle_fn(IoParams {
+                        address,
+                        size,
+                        operation: IoOperation::Write { data },
+                    });
                 }
-                handle_fn(IoParams {
-                    address,
-                    size,
-                    operation: IoOperation::Write { data },
-                });
                 Ok(())
             }
             _ => Err(Error::new(EINVAL)),
