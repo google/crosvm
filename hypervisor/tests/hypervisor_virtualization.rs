@@ -920,6 +920,97 @@ fn test_io_exit_handler() {
 }
 
 global_asm_data!(
+    test_io_rep_string_code,
+    ".code16",
+    "cld",
+    "mov dx, 0x80",  // read data from I/O port 80h
+    "mov di, 0x100", // write data to memory address 0x100
+    "mov cx, 5",     // repeat 5 times
+    "rep insb",
+    "mov si, 0x100", // read data from memory address 0x100
+    "mov dx, 0x80",  // write data to I/O port 80h
+    "mov cx, 5",     // repeat 5 times
+    "rep outsb",
+    "mov cx, 0x5678",
+    "hlt",
+);
+
+#[cfg(not(feature = "haxm"))]
+#[test]
+fn test_io_rep_string() {
+    // Test the REP OUTS*/REP INS* string I/O instructions, which should call the IO handler
+    // multiple times to handle the requested repeat count.
+    let load_addr = GuestAddress(0x1000);
+    let setup = TestSetup {
+        assembly: test_io_rep_string_code::data().to_vec(),
+        load_addr,
+        initial_regs: Regs {
+            rip: load_addr.offset(),
+            rax: 0x1234,
+            rflags: 2,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let regs_matcher = |_, regs: &Regs, _: &_| {
+        // The string I/O instructions should not modify AX.
+        assert_eq!(regs.rax, 0x1234);
+        assert_eq!(regs.rcx, 0x5678);
+    };
+
+    let read_data = AtomicU8::new(0);
+    let write_data = AtomicU8::new(0);
+    let exit_matcher =
+        move |_, exit: &VcpuExit, vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| match exit {
+            VcpuExit::Io => {
+                vcpu.handle_io(&mut |IoParams {
+                                         address,
+                                         size,
+                                         operation,
+                                     }| {
+                    match operation {
+                        IoOperation::Read => {
+                            let mut data = [0u8; 8];
+                            assert_eq!(address, 0x80);
+                            assert_eq!(size, 1);
+                            // Return 0, 1, 2, 3, 4 for subsequent reads.
+                            data[0] = read_data.fetch_add(1, Ordering::SeqCst);
+                            Some(data)
+                        }
+                        IoOperation::Write { data } => {
+                            assert_eq!(address, 0x80);
+                            assert_eq!(size, 1);
+                            // Expect 0, 1, 2, 3, 4 to be written.
+                            let expected_write = write_data.fetch_add(1, Ordering::SeqCst);
+                            assert_eq!(data[0], expected_write);
+                            None
+                        }
+                    }
+                })
+                .expect("failed to set the data");
+                false // Continue VM runloop
+            }
+            VcpuExit::Hlt => {
+                // Verify 5 reads and writes occurred.
+                assert_eq!(read_data.load(Ordering::SeqCst), 5);
+                assert_eq!(write_data.load(Ordering::SeqCst), 5);
+
+                // Verify the data that should have been written to memory by REP INSB.
+                let mem = vm.get_memory();
+                let mut data = [0u8; 5];
+                mem.read_exact_at_addr(&mut data, GuestAddress(0x100))
+                    .unwrap();
+                assert_eq!(data, [0, 1, 2, 3, 4]);
+
+                true // Break VM runloop
+            }
+            r => panic!("unexpected exit reason: {:?}", r),
+        };
+    run_tests!(setup, regs_matcher, &exit_matcher);
+}
+
+global_asm_data!(
     test_mmio_exit_cross_page_code,
     ".code16",
     "mov byte ptr [ebx], al",
