@@ -18,6 +18,7 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::ops::Deref;
+use std::os::fd::OwnedFd;
 use std::os::unix::ffi::OsStringExt;
 use std::path::Path;
 use std::path::PathBuf;
@@ -741,6 +742,12 @@ impl UnixSeqpacketListener {
 impl AsRawDescriptor for UnixSeqpacketListener {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.descriptor.as_raw_descriptor()
+    }
+}
+
+impl From<UnixSeqpacketListener> for OwnedFd {
+    fn from(val: UnixSeqpacketListener) -> Self {
+        val.descriptor.into()
     }
 }
 
