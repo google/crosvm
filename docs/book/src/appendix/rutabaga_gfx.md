@@ -95,7 +95,7 @@ The same repo as gfxstream host is used, but with a different build configuratio
 
 ```sh
 cd $(gfxstream_dir)
-meson setup guest-build/ -Dgfxstream-build=guest-test
+meson setup guest-build/ -Dgfxstream-build=guest
 ninja -C guest-build/
 ```
 
@@ -112,6 +112,7 @@ In another terminal, run:
 
 ```sh
 export MESA_LOADER_DRIVER_OVERRIDE=zink
+export VIRTGPU_KUMQUAT=1
 export VK_ICD_FILENAMES=$(gfxstream_dir)/guest-build/guest/vulkan/gfxstream_vk_devenv_icd.x86_64.json
 vkcube
 ```
