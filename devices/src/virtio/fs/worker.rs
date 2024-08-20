@@ -147,7 +147,6 @@ pub struct Worker<F: FileSystem + Sync> {
 }
 
 pub fn process_fs_queue<F: FileSystem + Sync>(
-    interrupt: &Interrupt,
     queue: &mut Queue,
     server: &Arc<fuse::Server<F>>,
     tube: &Arc<Mutex<Tube>>,
@@ -159,7 +158,7 @@ pub fn process_fs_queue<F: FileSystem + Sync>(
             server.handle_message(&mut avail_desc.reader, &mut avail_desc.writer, &mapper)?;
 
         queue.add_used(avail_desc, total as u32);
-        queue.trigger_interrupt(interrupt);
+        queue.trigger_interrupt();
     }
 
     Ok(())
@@ -252,13 +251,9 @@ impl<F: FileSystem + Sync> Worker<F> {
                 match event.token {
                     Token::QueueReady => {
                         self.queue.event().wait().map_err(Error::ReadQueueEvent)?;
-                        if let Err(e) = process_fs_queue(
-                            &self.irq,
-                            &mut self.queue,
-                            &self.server,
-                            &self.tube,
-                            self.slot,
-                        ) {
+                        if let Err(e) =
+                            process_fs_queue(&mut self.queue, &self.server, &self.tube, self.slot)
+                        {
                             error!("virtio-fs transport error: {}", e);
                             return Err(e);
                         }

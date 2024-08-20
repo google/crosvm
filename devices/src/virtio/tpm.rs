@@ -137,7 +137,7 @@ impl Worker {
                 }
             }
             if needs_interrupt == NeedsInterrupt::Yes {
-                self.queue.trigger_interrupt(&self.interrupt);
+                self.queue.trigger_interrupt();
             }
         }
     }

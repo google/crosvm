@@ -26,7 +26,6 @@ use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::VhostUserDeviceBuilder;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::SerialHardware;
 use crate::SerialParameters;
@@ -99,14 +98,8 @@ impl VhostUserDevice for ConsoleBackend {
         }
     }
 
-    fn start_queue(
-        &mut self,
-        idx: usize,
-        queue: Queue,
-        _mem: GuestMemory,
-        doorbell: Interrupt,
-    ) -> anyhow::Result<()> {
-        self.device.console.start_queue(idx, queue, doorbell)
+    fn start_queue(&mut self, idx: usize, queue: Queue, _mem: GuestMemory) -> anyhow::Result<()> {
+        self.device.console.start_queue(idx, queue)
     }
 
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<Queue> {

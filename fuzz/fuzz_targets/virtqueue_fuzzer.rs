@@ -12,7 +12,9 @@ use std::mem::size_of;
 use base::Event;
 use crosvm_fuzz::fuzz_target;
 use crosvm_fuzz::rand::FuzzRng;
+use devices::virtio::Interrupt;
 use devices::virtio::QueueConfig;
+use devices::IrqLevelEvent;
 use rand::Rng;
 use rand::RngCore;
 use vm_memory::GuestAddress;
@@ -58,6 +60,14 @@ struct virtq_used {
 }
 
 fuzz_target!(|data: &[u8]| {
+    let interrupt = Interrupt::new(
+        IrqLevelEvent::new().unwrap(),
+        None,   // msix_config
+        0xFFFF, // VIRTIO_MSI_NO_VECTOR
+        #[cfg(target_arch = "x86_64")]
+        None,
+    );
+
     let mut q = QueueConfig::new(MAX_QUEUE_SIZE, 0);
     let mut rng = FuzzRng::new(data);
     q.set_size(rng.gen());
@@ -75,7 +85,7 @@ fuzz_target!(|data: &[u8]| {
     q.set_ready(true);
 
     GUEST_MEM.with(|mem| {
-        let mut q = if let Ok(q) = q.activate(mem, Event::new().unwrap()) {
+        let mut q = if let Ok(q) = q.activate(mem, Event::new().unwrap(), interrupt) {
             q
         } else {
             return;

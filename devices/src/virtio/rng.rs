@@ -57,7 +57,7 @@ impl Worker {
         }
 
         if needs_interrupt {
-            self.queue.trigger_interrupt(&self.interrupt);
+            self.queue.trigger_interrupt();
         }
     }
 

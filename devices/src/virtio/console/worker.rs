@@ -172,7 +172,7 @@ impl Worker {
                                 .event()
                                 .wait()
                                 .context("failed reading transmit queue Event")?;
-                            process_transmit_queue(&self.interrupt, transmitq, &mut port.output);
+                            process_transmit_queue(transmitq, &mut port.output);
                         }
                     }
                     Token::ReceiveQueueAvailable(port_id) | Token::InputAvailable(port_id) => {
@@ -191,7 +191,7 @@ impl Worker {
 
                         if let (Some(port), Some(receiveq)) = (port, receiveq) {
                             let mut input_buffer = port.input_buffer.lock();
-                            process_receive_queue(&self.interrupt, &mut input_buffer, receiveq);
+                            process_receive_queue(&mut input_buffer, receiveq);
                         }
                     }
                     Token::ControlReceiveQueueAvailable => {
@@ -202,7 +202,6 @@ impl Worker {
                                 .context("failed waiting on control event")?;
                             process_control_receive_queue(
                                 ctrl_receiveq,
-                                &self.interrupt,
                                 &mut self.pending_receive_control_msgs,
                             );
                         }
@@ -215,7 +214,6 @@ impl Worker {
                                 .context("failed waiting on control event")?;
                             process_control_transmit_queue(
                                 ctrl_transmitq,
-                                &self.interrupt,
                                 &self.ports,
                                 &mut self.pending_receive_control_msgs,
                             );
@@ -225,7 +223,6 @@ impl Worker {
                         if let Some(ctrl_receiveq) = self.queues.get_mut(&CONTROL_RECEIVEQ_IDX) {
                             process_control_receive_queue(
                                 ctrl_receiveq,
-                                &self.interrupt,
                                 &mut self.pending_receive_control_msgs,
                             )
                         }

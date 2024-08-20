@@ -41,7 +41,6 @@ use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
 use crate::virtio::DescriptorChain;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::Reader;
 use crate::virtio::Writer;
@@ -524,7 +523,6 @@ async fn defer_pcm_response_to_worker(
 fn send_pcm_response(
     mut desc_chain: DescriptorChain,
     queue: &mut Queue,
-    interrupt: &Interrupt,
     status: virtio_snd_pcm_status,
 ) -> Result<(), Error> {
     let writer = &mut desc_chain.writer;
@@ -537,7 +535,7 @@ fn send_pcm_response(
     writer.write_obj(status).map_err(Error::WriteResponse)?;
     let len = writer.bytes_written() as u32;
     queue.add_used(desc_chain, len);
-    queue.trigger_interrupt(interrupt);
+    queue.trigger_interrupt();
     Ok(())
 }
 
@@ -556,7 +554,6 @@ async fn await_reset_signal(reset_signal_option: Option<&(AsyncRwLock<bool>, Con
 
 pub async fn send_pcm_response_worker(
     queue: Rc<AsyncRwLock<Queue>>,
-    interrupt: Interrupt,
     recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
     reset_signal: Option<&(AsyncRwLock<bool>, Condvar)>,
 ) -> Result<(), Error> {
@@ -573,7 +570,7 @@ pub async fn send_pcm_response_worker(
         };
 
         if let Some(r) = res {
-            send_pcm_response(r.desc_chain, &mut *queue.lock().await, &interrupt, r.status)?;
+            send_pcm_response(r.desc_chain, &mut *queue.lock().await, r.status)?;
 
             // Resume pcm_worker
             if let Some(done) = r.done {
@@ -680,7 +677,6 @@ pub async fn handle_ctrl_queue(
     snd_data: &SndData,
     queue: Rc<AsyncRwLock<Queue>>,
     queue_event: &mut EventAsync,
-    interrupt: Interrupt,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
     card_index: usize,
@@ -932,7 +928,7 @@ pub async fn handle_ctrl_queue(
         handle_ctrl_msg.await?;
         let len = writer.bytes_written() as u32;
         queue.add_used(desc_chain, len);
-        queue.trigger_interrupt(&interrupt);
+        queue.trigger_interrupt();
     }
     Ok(())
 }
@@ -941,7 +937,6 @@ pub async fn handle_ctrl_queue(
 pub async fn handle_event_queue(
     mut queue: Queue,
     mut queue_event: EventAsync,
-    interrupt: Interrupt,
 ) -> Result<(), Error> {
     loop {
         let desc_chain = queue
@@ -951,6 +946,6 @@ pub async fn handle_event_queue(
 
         // TODO(woodychow): Poll and forward events from cras asynchronously (API to be added)
         queue.add_used(desc_chain, 0);
-        queue.trigger_interrupt(&interrupt);
+        queue.trigger_interrupt();
     }
 }

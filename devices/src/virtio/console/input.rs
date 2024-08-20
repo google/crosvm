@@ -7,7 +7,6 @@
 use std::collections::VecDeque;
 use std::io::Write;
 
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 /// Checks for input from `buffer` and transfers it to the receive queue, if any.
@@ -17,11 +16,7 @@ use crate::virtio::Queue;
 /// * `interrupt` - Interrupt used to signal that the queue has been used
 /// * `buffer` - Ring buffer providing data to put into the guest
 /// * `receive_queue` - The receive virtio Queue
-pub fn process_receive_queue(
-    interrupt: &Interrupt,
-    buffer: &mut VecDeque<u8>,
-    receive_queue: &mut Queue,
-) {
+pub fn process_receive_queue(buffer: &mut VecDeque<u8>, receive_queue: &mut Queue) {
     while let Some(mut desc) = receive_queue.peek() {
         if buffer.is_empty() {
             break;
@@ -44,7 +39,7 @@ pub fn process_receive_queue(
         if bytes_written > 0 {
             let desc = desc.pop();
             receive_queue.add_used(desc, bytes_written);
-            receive_queue.trigger_interrupt(interrupt);
+            receive_queue.trigger_interrupt();
         }
     }
 }

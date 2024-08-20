@@ -283,7 +283,6 @@ fn process_ctrl_request<T: TapT>(
 }
 
 pub fn process_ctrl<T: TapT>(
-    interrupt: &Interrupt,
     ctrl_queue: &mut Queue,
     tap: &mut T,
     acked_features: u64,
@@ -307,7 +306,7 @@ pub fn process_ctrl<T: TapT>(
         ctrl_queue.add_used(desc_chain, len);
     }
 
-    ctrl_queue.trigger_interrupt(interrupt);
+    ctrl_queue.trigger_interrupt();
     Ok(())
 }
 
@@ -352,7 +351,7 @@ where
     T: TapT + ReadNotifier,
 {
     fn process_tx(&mut self) {
-        process_tx(&self.interrupt, &mut self.tx_queue, &mut self.tap)
+        process_tx(&mut self.tx_queue, &mut self.tap)
     }
 
     fn process_ctrl(&mut self) -> Result<(), NetError> {
@@ -362,7 +361,6 @@ where
         };
 
         process_ctrl(
-            &self.interrupt,
             ctrl_queue,
             &mut self.tap,
             self.acked_features,

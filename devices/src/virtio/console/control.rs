@@ -21,7 +21,6 @@ use crate::virtio::device_constants::console::VIRTIO_CONSOLE_DEVICE_READY;
 use crate::virtio::device_constants::console::VIRTIO_CONSOLE_PORT_NAME;
 use crate::virtio::device_constants::console::VIRTIO_CONSOLE_PORT_OPEN;
 use crate::virtio::device_constants::console::VIRTIO_CONSOLE_PORT_READY;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::Reader;
 
@@ -122,7 +121,6 @@ fn process_control_msg(
 
 pub fn process_control_transmit_queue(
     queue: &mut Queue,
-    interrupt: &Interrupt,
     ports: &[WorkerPort],
     pending_receive_control_msgs: &mut VecDeque<ControlMsgBytes>,
 ) {
@@ -140,13 +138,12 @@ pub fn process_control_transmit_queue(
     }
 
     if needs_interrupt {
-        queue.trigger_interrupt(interrupt);
+        queue.trigger_interrupt();
     }
 }
 
 pub fn process_control_receive_queue(
     queue: &mut Queue,
-    interrupt: &Interrupt,
     pending_receive_control_msgs: &mut VecDeque<ControlMsgBytes>,
 ) {
     let mut needs_interrupt = false;
@@ -175,6 +172,6 @@ pub fn process_control_receive_queue(
     }
 
     if needs_interrupt {
-        queue.trigger_interrupt(interrupt);
+        queue.trigger_interrupt();
     }
 }

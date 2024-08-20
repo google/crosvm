@@ -156,7 +156,7 @@ impl VirtioMmioDevice {
                 Ok((
                     queue_index,
                     queue
-                        .activate(&mem, queue_evt)
+                        .activate(&mem, queue_evt, interrupt.clone())
                         .context("failed to activate queue")?,
                 ))
             })

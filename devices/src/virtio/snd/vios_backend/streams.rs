@@ -28,7 +28,6 @@ use crate::virtio::snd::common::from_virtio_frame_rate;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
 use crate::virtio::DescriptorChain;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 /// Messages that the worker can send to the stream (thread).
@@ -58,7 +57,6 @@ pub struct Stream {
     vios_client: Arc<Mutex<VioSClient>>,
     control_queue: Arc<Mutex<Queue>>,
     io_queue: Arc<Mutex<Queue>>,
-    interrupt: Interrupt,
     capture: bool,
     current_state: StreamState,
     period: Duration,
@@ -79,7 +77,6 @@ impl Stream {
     pub fn try_new(
         stream_id: u32,
         vios_client: Arc<Mutex<VioSClient>>,
-        interrupt: Interrupt,
         control_queue: Arc<Mutex<Queue>>,
         io_queue: Arc<Mutex<Queue>>,
         capture: bool,
@@ -111,7 +108,6 @@ impl Stream {
                     vios_client: vios_client.clone(),
                     control_queue,
                     io_queue,
-                    interrupt,
                     capture,
                     current_state,
                     period,
@@ -249,7 +245,7 @@ impl Stream {
                 return Ok(false);
             }
         };
-        reply_control_op_status(code, desc, &self.control_queue, &self.interrupt)?;
+        reply_control_op_status(code, desc, &self.control_queue)?;
         self.current_state = next_state;
         Ok(true)
     }
@@ -310,7 +306,7 @@ impl Stream {
                     {
                         let mut io_queue_lock = self.io_queue.lock();
                         io_queue_lock.add_used(desc, len);
-                        io_queue_lock.trigger_interrupt(&self.interrupt);
+                        io_queue_lock.trigger_interrupt();
                     }
                 }
             }
@@ -322,13 +318,7 @@ impl Stream {
                 // guarantee if a buffer arrives after release is requested. Luckily it seems to
                 // work fine if the buffer is released after the release command is completed.
                 while let Some(desc) = self.buffer_queue.pop_front() {
-                    reply_pcm_buffer_status(
-                        VIRTIO_SND_S_OK,
-                        0,
-                        desc,
-                        &self.io_queue,
-                        &self.interrupt,
-                    )?;
+                    reply_pcm_buffer_status(VIRTIO_SND_S_OK, 0, desc, &self.io_queue)?;
                 }
             }
             StreamState::Prepared => {} // Do nothing, any buffers will be processed after start
@@ -351,13 +341,7 @@ impl Drop for Stream {
 
         // Also release any pending buffer
         while let Some(desc) = self.buffer_queue.pop_front() {
-            if let Err(e) = reply_pcm_buffer_status(
-                VIRTIO_SND_S_IO_ERR,
-                0,
-                desc,
-                &self.io_queue,
-                &self.interrupt,
-            ) {
+            if let Err(e) = reply_pcm_buffer_status(VIRTIO_SND_S_IO_ERR, 0, desc, &self.io_queue) {
                 error!(
                     "virtio-snd: Failed to reply buffer on stream {}: {}",
                     self.stream_id, e
@@ -443,7 +427,6 @@ pub fn reply_control_op_status(
     code: u32,
     mut desc: DescriptorChain,
     queue: &Arc<Mutex<Queue>>,
-    interrupt: &Interrupt,
 ) -> Result<()> {
     let writer = &mut desc.writer;
     writer
@@ -455,7 +438,7 @@ pub fn reply_control_op_status(
     {
         let mut queue_lock = queue.lock();
         queue_lock.add_used(desc, len);
-        queue_lock.trigger_interrupt(interrupt);
+        queue_lock.trigger_interrupt();
     }
     Ok(())
 }
@@ -466,7 +449,6 @@ pub fn reply_pcm_buffer_status(
     latency_bytes: u32,
     mut desc: DescriptorChain,
     queue: &Arc<Mutex<Queue>>,
-    interrupt: &Interrupt,
 ) -> Result<()> {
     let writer = &mut desc.writer;
     if writer.available_bytes() > std::mem::size_of::<virtio_snd_pcm_status>() {
@@ -483,7 +465,7 @@ pub fn reply_pcm_buffer_status(
     {
         let mut queue_lock = queue.lock();
         queue_lock.add_used(desc, len);
-        queue_lock.trigger_interrupt(interrupt);
+        queue_lock.trigger_interrupt();
     }
     Ok(())
 }

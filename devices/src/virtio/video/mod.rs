@@ -214,7 +214,7 @@ impl VirtioDevice for VideoDevice {
     fn activate(
         &mut self,
         mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
@@ -237,7 +237,7 @@ impl VirtioDevice for VideoDevice {
             .resource_bridge
             .take()
             .context("no resource bridge is passed")?;
-        let mut worker = Worker::new(cmd_queue, interrupt.clone(), event_queue, interrupt);
+        let mut worker = Worker::new(cmd_queue, event_queue);
 
         let worker_result = match &self.device_type {
             #[cfg(feature = "video-decoder")]

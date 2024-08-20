@@ -33,7 +33,6 @@ use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Gpu;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
@@ -44,7 +43,6 @@ const MAX_QUEUE_NUM: usize = NUM_QUEUES;
 #[derive(Clone)]
 struct SharedReader {
     queue: Arc<Mutex<Queue>>,
-    doorbell: Interrupt,
 }
 
 impl gpu::QueueReader for SharedReader {
@@ -57,7 +55,7 @@ impl gpu::QueueReader for SharedReader {
     }
 
     fn signal_used(&self) {
-        self.queue.lock().trigger_interrupt(&self.doorbell);
+        self.queue.lock().trigger_interrupt();
     }
 }
 
@@ -132,17 +130,13 @@ impl VhostUserDevice for GpuBackend {
         self.gpu.borrow_mut().write_config(offset, data)
     }
 
-    fn start_queue(
-        &mut self,
-        idx: usize,
-        queue: Queue,
-        mem: GuestMemory,
-        doorbell: Interrupt,
-    ) -> anyhow::Result<()> {
+    fn start_queue(&mut self, idx: usize, queue: Queue, mem: GuestMemory) -> anyhow::Result<()> {
         if self.queue_workers[idx].is_some() {
             warn!("Starting new queue handler without stopping old handler");
             self.stop_queue(idx)?;
         }
+
+        let doorbell = queue.interrupt().clone();
 
         // Create a refcounted queue. The GPU control queue uses a SharedReader which allows us to
         // handle fences in the RutabagaFenceHandler, and also handle queue messages in
@@ -164,7 +158,6 @@ impl VhostUserDevice for GpuBackend {
                     .context("failed to create EventAsync for kick_evt")?;
                 let reader = SharedReader {
                     queue: queue.clone(),
-                    doorbell: doorbell.clone(),
                 };
 
                 let state = if let Some(s) = self.state.as_ref() {

@@ -79,11 +79,19 @@ fuzz_target!(|bytes| {
         return;
     }
 
+    let interrupt = Interrupt::new(
+        IrqLevelEvent::new().unwrap(),
+        None,   // msix_config
+        0xFFFF, // VIRTIO_MSI_NO_VECTOR
+        #[cfg(target_arch = "x86_64")]
+        None,
+    );
+
     let mut q = QueueConfig::new(QUEUE_SIZE, 0);
     q.set_size(QUEUE_SIZE / 2);
     q.set_ready(true);
     let q = q
-        .activate(&mem, Event::new().unwrap())
+        .activate(&mem, Event::new().unwrap(), interrupt.clone())
         .expect("QueueConfig::activate");
     let queue_evt = q.event().try_clone().unwrap();
 
@@ -102,17 +110,7 @@ fuzz_target!(|bytes| {
     .unwrap();
 
     block
-        .activate(
-            mem,
-            Interrupt::new(
-                IrqLevelEvent::new().unwrap(),
-                None,   // msix_config
-                0xFFFF, // VIRTIO_MSI_NO_VECTOR
-                #[cfg(target_arch = "x86_64")]
-                None,
-            ),
-            BTreeMap::from([(0, q)]),
-        )
+        .activate(mem, interrupt, BTreeMap::from([(0, q)]))
         .unwrap();
 
     queue_evt.signal().unwrap(); // Rings the doorbell

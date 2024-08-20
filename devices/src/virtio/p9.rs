@@ -86,7 +86,7 @@ impl Worker {
 
             self.queue.add_used(avail_desc, len);
         }
-        self.queue.trigger_interrupt(&self.interrupt);
+        self.queue.trigger_interrupt();
 
         Ok(())
     }

@@ -67,7 +67,6 @@ impl Worker {
                 streams.push(Stream::try_new(
                     stream_id,
                     vios_client.clone(),
-                    interrupt.clone(),
                     control_queue.clone(),
                     io_queue.clone(),
                     capture,
@@ -79,7 +78,6 @@ impl Worker {
             .and_then(|e| Ok((e.try_clone()?, e)))
             .map_err(SoundError::CreateEvent)?;
 
-        let interrupt_clone = interrupt.clone();
         let senders: Vec<Sender<Box<StreamMsg>>> =
             streams.iter().map(|sp| sp.msg_sender().clone()).collect();
         let tx_queue_thread = tx_queue.clone();
@@ -89,13 +87,7 @@ impl Worker {
             .spawn(move || {
                 try_set_real_time_priority();
 
-                io_loop(
-                    interrupt_clone,
-                    tx_queue_thread,
-                    rx_queue_thread,
-                    senders,
-                    kill_io,
-                )
+                io_loop(tx_queue_thread, rx_queue_thread, senders, kill_io)
             })
             .map_err(SoundError::CreateThread)?;
         Ok(Worker {
@@ -223,7 +215,6 @@ impl Worker {
                     VIRTIO_SND_S_BAD_MSG,
                     avail_desc,
                     &self.control_queue,
-                    &self.interrupt,
                 );
             }
             let mut read_buf = vec![0u8; available_bytes];
@@ -300,7 +291,7 @@ impl Worker {
                     {
                         let mut queue_lock = self.control_queue.lock();
                         queue_lock.add_used(avail_desc, len);
-                        queue_lock.trigger_interrupt(&self.interrupt);
+                        queue_lock.trigger_interrupt();
                     }
                 }
                 VIRTIO_SND_R_CHMAP_INFO => {
@@ -386,7 +377,6 @@ impl Worker {
                         VIRTIO_SND_S_NOT_SUPP,
                         avail_desc,
                         &self.control_queue,
-                        &self.interrupt,
                     )?;
                 }
             }
@@ -401,7 +391,7 @@ impl Worker {
                 writer.write_obj(evt).map_err(SoundError::QueueIO)?;
                 let len = writer.bytes_written() as u32;
                 event_queue.add_used(desc, len);
-                event_queue.trigger_interrupt(&self.interrupt);
+                event_queue.trigger_interrupt();
             } else {
                 warn!("virtio-snd: Dropping event because there are no buffers in virtqueue");
             }
@@ -431,12 +421,7 @@ impl Worker {
                 "virtio-snd: The driver sent a buffer of the wrong size for a set_params struct: {}",
                 read_buf.len()
                 );
-            return reply_control_op_status(
-                VIRTIO_SND_S_BAD_MSG,
-                desc,
-                &self.control_queue,
-                &self.interrupt,
-            );
+            return reply_control_op_status(VIRTIO_SND_S_BAD_MSG, desc, &self.control_queue);
         }
         let mut params: virtio_snd_pcm_set_params = Default::default();
         params.as_bytes_mut().copy_from_slice(read_buf);
@@ -448,12 +433,7 @@ impl Worker {
                 "virtio-snd: Driver requested operation on invalid stream: {}",
                 stream_id
             );
-            reply_control_op_status(
-                VIRTIO_SND_S_BAD_MSG,
-                desc,
-                &self.control_queue,
-                &self.interrupt,
-            )
+            reply_control_op_status(VIRTIO_SND_S_BAD_MSG, desc, &self.control_queue)
         }
     }
 
@@ -474,7 +454,6 @@ impl Worker {
                     _ => panic!("virtio-snd: Can't handle message. This is a BUG!!"),
                 },
                 &self.control_queue,
-                &self.interrupt,
             );
         }
         let mut pcm_hdr: virtio_snd_pcm_hdr = Default::default();
@@ -497,7 +476,6 @@ impl Worker {
                     _ => panic!("virtio-snd: Can't handle message. This is a BUG!!"),
                 },
                 &self.control_queue,
-                &self.interrupt,
             )
         }
     }
@@ -521,7 +499,7 @@ impl Worker {
         {
             let mut queue_lock = self.control_queue.lock();
             queue_lock.add_used(desc, len);
-            queue_lock.trigger_interrupt(&self.interrupt);
+            queue_lock.trigger_interrupt();
         }
         Ok(())
     }
@@ -534,7 +512,6 @@ impl Drop for Worker {
 }
 
 fn io_loop(
-    interrupt: Interrupt,
     tx_queue: Arc<Mutex<Queue>>,
     rx_queue: Arc<Mutex<Queue>>,
     senders: Vec<Sender<Box<StreamMsg>>>,
@@ -587,7 +564,7 @@ fn io_loop(
                         "virtio-snd: Driver sent buffer for invalid stream: {}",
                         stream_id
                     );
-                    reply_pcm_buffer_status(VIRTIO_SND_S_IO_ERR, 0, avail_desc, queue, &interrupt)?;
+                    reply_pcm_buffer_status(VIRTIO_SND_S_IO_ERR, 0, avail_desc, queue)?;
                 } else {
                     StreamProxy::send_msg(
                         &senders[stream_id as usize],

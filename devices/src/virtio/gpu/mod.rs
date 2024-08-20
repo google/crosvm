@@ -184,14 +184,12 @@ pub trait QueueReader {
 
 struct LocalQueueReader {
     queue: RefCell<Queue>,
-    interrupt: Interrupt,
 }
 
 impl LocalQueueReader {
-    fn new(queue: Queue, interrupt: Interrupt) -> Self {
+    fn new(queue: Queue) -> Self {
         Self {
             queue: RefCell::new(queue),
-            interrupt,
         }
     }
 }
@@ -206,21 +204,19 @@ impl QueueReader for LocalQueueReader {
     }
 
     fn signal_used(&self) {
-        self.queue.borrow_mut().trigger_interrupt(&self.interrupt);
+        self.queue.borrow_mut().trigger_interrupt();
     }
 }
 
 #[derive(Clone)]
 struct SharedQueueReader {
     queue: Arc<Mutex<Queue>>,
-    interrupt: Interrupt,
 }
 
 impl SharedQueueReader {
-    fn new(queue: Queue, interrupt: Interrupt) -> Self {
+    fn new(queue: Queue) -> Self {
         Self {
             queue: Arc::new(Mutex::new(queue)),
-            interrupt,
         }
     }
 }
@@ -235,7 +231,7 @@ impl QueueReader for SharedQueueReader {
     }
 
     fn signal_used(&self) {
-        self.queue.lock().trigger_interrupt(&self.interrupt);
+        self.queue.lock().trigger_interrupt();
     }
 }
 
@@ -1755,8 +1751,8 @@ impl VirtioDevice for Gpu {
             ));
         }
 
-        let ctrl_queue = SharedQueueReader::new(queues.remove(&0).unwrap(), interrupt.clone());
-        let cursor_queue = LocalQueueReader::new(queues.remove(&1).unwrap(), interrupt.clone());
+        let ctrl_queue = SharedQueueReader::new(queues.remove(&0).unwrap());
+        let cursor_queue = LocalQueueReader::new(queues.remove(&1).unwrap());
 
         match self
             .worker_thread

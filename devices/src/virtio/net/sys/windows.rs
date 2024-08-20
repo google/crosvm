@@ -77,7 +77,6 @@ fn rx_single_frame(rx_queue: &mut Queue, rx_buf: &mut [u8], rx_count: usize) -> 
 }
 
 pub fn process_rx<T: TapT>(
-    interrupt: &Interrupt,
     rx_queue: &mut Queue,
     tap: &mut T,
     rx_buf: &mut [u8],
@@ -103,7 +102,7 @@ pub fn process_rx<T: TapT>(
                     *deferred_rx = true;
                     break;
                 } else if first_frame {
-                    interrupt.signal_used_queue(rx_queue.vector());
+                    rx_queue.trigger_interrupt();
                     first_frame = false;
                 } else {
                     needs_interrupt = true;
@@ -155,7 +154,7 @@ pub fn process_rx<T: TapT>(
     needs_interrupt
 }
 
-pub fn process_tx<T: TapT>(interrupt: &Interrupt, tx_queue: &mut Queue, tap: &mut T) {
+pub fn process_tx<T: TapT>(tx_queue: &mut Queue, tap: &mut T) {
     // Reads up to `buf.len()` bytes or until there is no more data in `r`, whichever
     // is smaller.
     fn read_to_end(r: &mut Reader, buf: &mut [u8]) -> io::Result<usize> {
@@ -187,7 +186,7 @@ pub fn process_tx<T: TapT>(interrupt: &Interrupt, tx_queue: &mut Queue, tap: &mu
         tx_queue.add_used(desc_chain, 0);
     }
 
-    tx_queue.trigger_interrupt(interrupt);
+    tx_queue.trigger_interrupt();
 }
 
 impl<T> Worker<T>
@@ -196,7 +195,6 @@ where
 {
     pub(super) fn process_rx_slirp(&mut self) -> bool {
         process_rx(
-            &self.interrupt,
             &mut self.rx_queue,
             &mut self.tap,
             &mut self.rx_buf,

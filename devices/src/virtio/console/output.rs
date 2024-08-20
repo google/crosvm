@@ -9,7 +9,6 @@ use std::io::Read;
 
 use base::error;
 
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::Reader;
 
@@ -35,11 +34,7 @@ fn process_transmit_request(reader: &mut Reader, output: &mut dyn io::Write) -> 
 /// * `interrupt` - Interrupt used to signal (if required) that the queue has been used
 /// * `transmit_queue` - The transmit virtio Queue
 /// * `output` - The output sink we are going to write the data into
-pub fn process_transmit_queue(
-    interrupt: &Interrupt,
-    transmit_queue: &mut Queue,
-    output: &mut dyn io::Write,
-) {
+pub fn process_transmit_queue(transmit_queue: &mut Queue, output: &mut dyn io::Write) {
     let mut needs_interrupt = false;
     while let Some(mut avail_desc) = transmit_queue.pop() {
         if let Err(e) = process_transmit_request(&mut avail_desc.reader, output) {
@@ -51,6 +46,6 @@ pub fn process_transmit_queue(
     }
 
     if needs_interrupt {
-        transmit_queue.trigger_interrupt(interrupt);
+        transmit_queue.trigger_interrupt();
     }
 }

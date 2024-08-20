@@ -87,11 +87,11 @@ impl VirtioDevice for Console {
     fn activate(
         &mut self,
         _mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         for (idx, queue) in queues.into_iter() {
-            self.console.start_queue(idx, queue, interrupt.clone())?
+            self.console.start_queue(idx, queue)?
         }
         Ok(())
     }
@@ -128,9 +128,9 @@ impl VirtioDevice for Console {
         &mut self,
         queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
-        if let Some((_mem, interrupt, queues)) = queues_state {
+        if let Some((_mem, _interrupt, queues)) = queues_state {
             for (idx, queue) in queues.into_iter() {
-                self.console.start_queue(idx, queue, interrupt.clone())?;
+                self.console.start_queue(idx, queue)?;
             }
         }
         Ok(())

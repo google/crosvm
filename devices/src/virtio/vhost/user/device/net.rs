@@ -35,7 +35,6 @@ use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::VhostUserDeviceBuilder;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 thread_local! {
@@ -49,7 +48,6 @@ const MAX_QUEUE_NUM: usize = 3; /* rx, tx, ctrl */
 async fn run_tx_queue<T: TapT>(
     mut queue: Queue,
     mut tap: T,
-    doorbell: Interrupt,
     kick_evt: EventAsync,
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Queue {
@@ -69,7 +67,7 @@ async fn run_tx_queue<T: TapT>(
             }
         }
 
-        process_tx(&doorbell, &mut queue, &mut tap);
+        process_tx(&mut queue, &mut tap);
     }
     queue
 }
@@ -77,7 +75,6 @@ async fn run_tx_queue<T: TapT>(
 async fn run_ctrl_queue<T: TapT>(
     mut queue: Queue,
     mut tap: T,
-    doorbell: Interrupt,
     kick_evt: EventAsync,
     acked_features: u64,
     vq_pairs: u16,
@@ -99,7 +96,7 @@ async fn run_ctrl_queue<T: TapT>(
             }
         }
 
-        if let Err(e) = process_ctrl(&doorbell, &mut queue, &mut tap, acked_features, vq_pairs) {
+        if let Err(e) = process_ctrl(&mut queue, &mut tap, acked_features, vq_pairs) {
             error!("Failed to process ctrl queue: {}", e);
             break;
         }
@@ -178,9 +175,8 @@ where
         idx: usize,
         queue: virtio::Queue,
         mem: GuestMemory,
-        doorbell: Interrupt,
     ) -> anyhow::Result<()> {
-        sys::start_queue(self, idx, queue, mem, doorbell)
+        sys::start_queue(self, idx, queue, mem)
     }
 
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {

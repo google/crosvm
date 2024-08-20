@@ -116,13 +116,8 @@ impl ConsoleDevice {
         }
     }
 
-    pub fn start_queue(
-        &mut self,
-        idx: usize,
-        queue: Queue,
-        interrupt: Interrupt,
-    ) -> anyhow::Result<()> {
-        let worker = self.ensure_worker_started(interrupt);
+    pub fn start_queue(&mut self, idx: usize, queue: Queue) -> anyhow::Result<()> {
+        let worker = self.ensure_worker_started(queue.interrupt().clone());
         worker.start_queue(idx, queue)
     }
 

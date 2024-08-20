@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -73,6 +74,12 @@ impl InterruptInner {
 #[derive(Clone)]
 pub struct Interrupt {
     inner: Arc<InterruptInner>,
+}
+
+impl fmt::Debug for Interrupt {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Interrupt")
+    }
 }
 
 #[derive(Serialize, Deserialize)]

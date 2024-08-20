@@ -157,13 +157,7 @@ pub trait VhostUserDevice {
     /// Indicates that the backend should start processing requests for virtio queue number `idx`.
     /// This method must not block the current thread so device backends should either spawn an
     /// async task or another thread to handle messages from the Queue.
-    fn start_queue(
-        &mut self,
-        idx: usize,
-        queue: Queue,
-        mem: GuestMemory,
-        doorbell: Interrupt,
-    ) -> anyhow::Result<()>;
+    fn start_queue(&mut self, idx: usize, queue: Queue, mem: GuestMemory) -> anyhow::Result<()>;
 
     /// Indicates that the backend should stop processing requests for virtio queue number `idx`.
     /// This method should return the queue passed to `start_queue` for the corresponding `idx`.
@@ -579,7 +573,9 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
             .cloned()
             .ok_or(VhostError::InvalidOperation)?;
 
-        let queue = match vring.queue.activate(&mem, kick_evt) {
+        let doorbell = vring.doorbell.clone().ok_or(VhostError::InvalidOperation)?;
+
+        let queue = match vring.queue.activate(&mem, kick_evt, doorbell) {
             Ok(queue) => queue,
             Err(e) => {
                 error!("failed to activate vring: {:#}", e);
@@ -587,12 +583,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
             }
         };
 
-        let doorbell = vring.doorbell.clone().ok_or(VhostError::InvalidOperation)?;
-
-        if let Err(e) = self
-            .backend
-            .start_queue(index as usize, queue, mem, doorbell)
-        {
+        if let Err(e) = self.backend.start_queue(index as usize, queue, mem) {
             error!("Failed to start queue {}: {}", index, e);
             return Err(VhostError::BackendInternalError);
         }
@@ -1122,7 +1113,6 @@ mod tests {
             idx: usize,
             queue: Queue,
             _mem: GuestMemory,
-            _doorbell: Interrupt,
         ) -> anyhow::Result<()> {
             self.active_queues[idx] = Some(queue);
             Ok(())
@@ -1218,7 +1208,7 @@ mod tests {
                     let mut queue = QueueConfig::new(0x10, 0);
                     queue.set_ready(true);
                     let queue = queue
-                        .activate(&mem, Event::new().unwrap())
+                        .activate(&mem, Event::new().unwrap(), interrupt.clone())
                         .expect("QueueConfig::activate");
                     queues.insert(idx, queue);
                 }

@@ -260,7 +260,12 @@ impl QueueConfig {
     }
 
     /// Convert the queue configuration into an active queue.
-    pub fn activate(&mut self, mem: &GuestMemory, event: Event) -> Result<Queue> {
+    pub fn activate(
+        &mut self,
+        mem: &GuestMemory,
+        event: Event,
+        interrupt: Interrupt,
+    ) -> Result<Queue> {
         if !self.ready {
             bail!("attempted to activate a non-ready queue");
         }
@@ -271,12 +276,12 @@ impl QueueConfig {
         // If VIRTIO_F_RING_PACKED feature bit is set, create a packed queue, otherwise create a
         // split queue
         let queue: Queue = if ((self.acked_features >> VIRTIO_F_RING_PACKED) & 1) != 0 {
-            let pq =
-                PackedQueue::new(self, mem, event).context("Failed to create a packed queue.")?;
+            let pq = PackedQueue::new(self, mem, event, interrupt)
+                .context("Failed to create a packed queue.")?;
             Queue::PackedVirtQueue(pq)
         } else {
-            let sq =
-                SplitQueue::new(self, mem, event).context("Failed to create a split queue.")?;
+            let sq = SplitQueue::new(self, mem, event, interrupt)
+                .context("Failed to create a split queue.")?;
             Queue::SplitVirtQueue(sq)
         };
 
@@ -436,10 +441,10 @@ impl Queue {
     /// inject interrupt into guest on this queue
     /// return true: interrupt is injected into guest for this queue
     ///        false: interrupt isn't injected
-    pub fn trigger_interrupt(&mut self, interrupt: &Interrupt) -> bool {
+    pub fn trigger_interrupt(&mut self) -> bool {
         match self {
-            Queue::SplitVirtQueue(sq) => sq.trigger_interrupt(interrupt),
-            Queue::PackedVirtQueue(pq) => pq.trigger_interrupt(interrupt),
+            Queue::SplitVirtQueue(sq) => sq.trigger_interrupt(),
+            Queue::PackedVirtQueue(pq) => pq.trigger_interrupt(),
         }
     }
 
@@ -449,11 +454,12 @@ impl Queue {
         queue_value: serde_json::Value,
         mem: &GuestMemory,
         event: Event,
+        interrupt: Interrupt,
     ) -> anyhow::Result<Queue> {
         if queue_config.acked_features & 1 << VIRTIO_F_RING_PACKED != 0 {
-            PackedQueue::restore(queue_value, mem, event).map(Queue::PackedVirtQueue)
+            PackedQueue::restore(queue_value, mem, event, interrupt).map(Queue::PackedVirtQueue)
         } else {
-            SplitQueue::restore(queue_value, mem, event).map(Queue::SplitVirtQueue)
+            SplitQueue::restore(queue_value, mem, event, interrupt).map(Queue::SplitVirtQueue)
         }
     }
 
@@ -515,6 +521,12 @@ impl Queue {
         /// Get a reference to the queue's event.
         event,
         &Event,
+    );
+
+    define_queue_method!(
+        /// Get a reference to the queue's interrupt.
+        interrupt,
+        &Interrupt,
     );
 
     define_queue_method!(

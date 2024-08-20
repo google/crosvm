@@ -46,13 +46,11 @@ use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::wl;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SharedMemoryRegion;
 
 async fn run_out_queue(
     queue: Rc<RefCell<Queue>>,
-    doorbell: Interrupt,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
 ) {
@@ -62,17 +60,12 @@ async fn run_out_queue(
             break;
         }
 
-        wl::process_out_queue(
-            &doorbell,
-            &mut queue.borrow_mut(),
-            &mut wlstate.borrow_mut(),
-        );
+        wl::process_out_queue(&mut queue.borrow_mut(), &mut wlstate.borrow_mut());
     }
 }
 
 async fn run_in_queue(
     queue: Rc<RefCell<Queue>>,
-    doorbell: Interrupt,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
     wlstate_ctx: IoSource<AsyncWrapper<SafeDescriptor>>,
@@ -86,11 +79,8 @@ async fn run_in_queue(
             break;
         }
 
-        if wl::process_in_queue(
-            &doorbell,
-            &mut queue.borrow_mut(),
-            &mut wlstate.borrow_mut(),
-        ) == Err(wl::DescriptorsExhausted)
+        if wl::process_in_queue(&mut queue.borrow_mut(), &mut wlstate.borrow_mut())
+            == Err(wl::DescriptorsExhausted)
         {
             if let Err(e) = kick_evt.next_val().await {
                 error!("Failed to read kick event for in queue: {}", e);
@@ -172,13 +162,7 @@ impl VhostUserDevice for WlBackend {
 
     fn read_config(&self, _offset: u64, _dst: &mut [u8]) {}
 
-    fn start_queue(
-        &mut self,
-        idx: usize,
-        queue: Queue,
-        _mem: GuestMemory,
-        doorbell: Interrupt,
-    ) -> anyhow::Result<()> {
+    fn start_queue(&mut self, idx: usize, queue: Queue, _mem: GuestMemory) -> anyhow::Result<()> {
         if self.workers[idx].is_some() {
             warn!("Starting new queue handler without stopping old handler");
             self.stop_queue(idx)?;
@@ -248,17 +232,12 @@ impl VhostUserDevice for WlBackend {
                             .context("failed to create async WaitContext")
                     })?;
 
-                self.ex.spawn_local(run_in_queue(
-                    queue.clone(),
-                    doorbell,
-                    kick_evt,
-                    wlstate,
-                    wlstate_ctx,
-                ))
+                self.ex
+                    .spawn_local(run_in_queue(queue.clone(), kick_evt, wlstate, wlstate_ctx))
             }
             1 => self
                 .ex
-                .spawn_local(run_out_queue(queue.clone(), doorbell, kick_evt, wlstate)),
+                .spawn_local(run_out_queue(queue.clone(), kick_evt, wlstate)),
             _ => bail!("attempted to start unknown queue: {}", idx),
         };
         self.workers[idx] = Some(WorkerState { queue_task, queue });

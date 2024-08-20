@@ -598,7 +598,6 @@ async fn request_queue(
     state: &Rc<RefCell<State>>,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    interrupt: Interrupt,
 ) -> Result<()> {
     loop {
         let mut avail_desc = queue
@@ -628,7 +627,7 @@ async fn request_queue(
         }
 
         queue.add_used(avail_desc, len as u32);
-        queue.trigger_interrupt(&interrupt);
+        queue.trigger_interrupt();
     }
 }
 
@@ -651,7 +650,7 @@ fn run(
         .expect("Failed to clone queue event");
     let req_evt = EventAsync::new(req_evt, &ex).expect("Failed to create async event for queue");
 
-    let f_resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
+    let f_resample = async_utils::handle_irq_resample(&ex, interrupt);
     let f_kill = async_utils::await_and_exit(&ex, kill_evt);
 
     let request_tube = translate_request_rx
@@ -669,7 +668,7 @@ fn run(
 
     let f_handle_translate_request =
         sys::handle_translate_request(&ex, &state, request_tube, response_tubes);
-    let f_request = request_queue(&state, req_queue, req_evt, interrupt);
+    let f_request = request_queue(&state, req_queue, req_evt);
 
     let command_tube = AsyncTube::new(&ex, iommu_device_tube).unwrap();
     // Future to handle command messages from host, such as passing vfio containers.

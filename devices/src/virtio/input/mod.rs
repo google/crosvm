@@ -529,10 +529,10 @@ impl<T: EventSource> Worker<T> {
             }
 
             if eventq_needs_interrupt {
-                self.event_queue.trigger_interrupt(&self.interrupt);
+                self.event_queue.trigger_interrupt();
             }
             if statusq_needs_interrupt {
-                self.status_queue.trigger_interrupt(&self.interrupt);
+                self.status_queue.trigger_interrupt();
             }
         }
 

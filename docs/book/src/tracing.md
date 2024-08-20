@@ -123,7 +123,7 @@ pub fn process_fs_queue<F: FileSystem + Sync>(
         let total = server.handle_message(reader, writer, &mapper)?;
 
         queue.add_used(mem, avail_desc.index, total as u32);
-        queue.trigger_interrupt(mem, &*interrupt);
+        queue.trigger_interrupt();
     }
 ```
 
@@ -157,7 +157,7 @@ pub fn process_fs_queue<F: FileSystem + Sync>(
         let total = server.handle_message(reader, writer, &mapper)?;
 
         queue.add_used(mem, avail_desc.index, total as u32);
-        queue.trigger_interrupt(mem, &*interrupt);
+        queue.trigger_interrupt();
     }
 ```
 

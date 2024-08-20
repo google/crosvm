@@ -1765,7 +1765,6 @@ pub struct DescriptorsExhausted;
 
 /// Handle incoming events and forward them to the VM over the input queue.
 pub fn process_in_queue(
-    interrupt: &Interrupt,
     in_queue: &mut Queue,
     state: &mut WlState,
 ) -> ::std::result::Result<(), DescriptorsExhausted> {
@@ -1804,7 +1803,7 @@ pub fn process_in_queue(
     }
 
     if needs_interrupt {
-        in_queue.trigger_interrupt(interrupt);
+        in_queue.trigger_interrupt();
     }
 
     if exhausted_queue {
@@ -1815,7 +1814,7 @@ pub fn process_in_queue(
 }
 
 /// Handle messages from the output queue and forward them to the display sever, if necessary.
-pub fn process_out_queue(interrupt: &Interrupt, out_queue: &mut Queue, state: &mut WlState) {
+pub fn process_out_queue(out_queue: &mut Queue, state: &mut WlState) {
     let mut needs_interrupt = false;
     while let Some(mut desc) = out_queue.pop() {
         let resp = match state.execute(&mut desc.reader) {
@@ -1836,7 +1835,7 @@ pub fn process_out_queue(interrupt: &Interrupt, out_queue: &mut Queue, state: &m
     }
 
     if needs_interrupt {
-        out_queue.trigger_interrupt(interrupt);
+        out_queue.trigger_interrupt();
     }
 }
 
@@ -1927,12 +1926,12 @@ impl Worker {
                     }
                     Token::OutQueue => {
                         let _ = self.out_queue.event().wait();
-                        process_out_queue(&self.interrupt, &mut self.out_queue, &mut self.state);
+                        process_out_queue(&mut self.out_queue, &mut self.state);
                     }
                     Token::Kill => break 'wait,
                     Token::State => {
                         if let Err(DescriptorsExhausted) =
-                            process_in_queue(&self.interrupt, &mut self.in_queue, &mut self.state)
+                            process_in_queue(&mut self.in_queue, &mut self.state)
                         {
                             if let Err(e) =
                                 wait_ctx.modify(&self.state.wait_ctx, EventType::None, Token::State)

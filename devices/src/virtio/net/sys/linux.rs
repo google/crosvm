@@ -17,7 +17,6 @@ use virtio_sys::virtio_net::virtio_net_hdr_v1;
 use super::super::super::net::NetError;
 use super::super::super::net::Token;
 use super::super::super::net::Worker;
-use super::super::super::Interrupt;
 use super::super::super::Queue;
 
 // Ensure that the tap interface has the correct flags and sets the offload and VNET header size
@@ -81,11 +80,7 @@ pub fn virtio_features_to_tap_offload(features: u64) -> u32 {
     tap_offloads
 }
 
-pub fn process_rx<T: TapT>(
-    interrupt: &Interrupt,
-    rx_queue: &mut Queue,
-    mut tap: &mut T,
-) -> result::Result<(), NetError> {
+pub fn process_rx<T: TapT>(rx_queue: &mut Queue, mut tap: &mut T) -> result::Result<(), NetError> {
     let mut needs_interrupt = false;
     let mut exhausted_queue = false;
 
@@ -128,7 +123,7 @@ pub fn process_rx<T: TapT>(
     }
 
     if needs_interrupt {
-        rx_queue.trigger_interrupt(interrupt);
+        rx_queue.trigger_interrupt();
     }
 
     if exhausted_queue {
@@ -138,7 +133,7 @@ pub fn process_rx<T: TapT>(
     }
 }
 
-pub fn process_tx<T: TapT>(interrupt: &Interrupt, tx_queue: &mut Queue, mut tap: &mut T) {
+pub fn process_tx<T: TapT>(tx_queue: &mut Queue, mut tap: &mut T) {
     while let Some(mut desc_chain) = tx_queue.pop() {
         let reader = &mut desc_chain.reader;
         let expected_count = reader.available_bytes();
@@ -160,7 +155,7 @@ pub fn process_tx<T: TapT>(interrupt: &Interrupt, tx_queue: &mut Queue, mut tap:
         tx_queue.add_used(desc_chain, 0);
     }
 
-    tx_queue.trigger_interrupt(interrupt);
+    tx_queue.trigger_interrupt();
 }
 
 impl<T> Worker<T>
@@ -195,6 +190,6 @@ where
         Ok(())
     }
     pub(super) fn process_rx(&mut self) -> result::Result<(), NetError> {
-        process_rx(&self.interrupt, &mut self.rx_queue, &mut self.tap)
+        process_rx(&mut self.rx_queue, &mut self.tap)
     }
 }

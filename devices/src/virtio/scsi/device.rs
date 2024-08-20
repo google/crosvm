@@ -759,7 +759,6 @@ async fn run_worker(
     let queue_handler = handle_queue(
         Rc::new(RefCell::new(queue)),
         EventAsync::new(kick_evt, ex).expect("Failed to create async event for queue"),
-        interrupt,
         queue_type,
         sense_size,
         cdb_size,
@@ -777,7 +776,6 @@ async fn run_worker(
 async fn handle_queue(
     queue: Rc<RefCell<Queue>>,
     evt: EventAsync,
-    interrupt: Interrupt,
     queue_type: QueueType,
     sense_size: u32,
     cdb_size: u32,
@@ -800,7 +798,6 @@ async fn handle_queue(
             background_tasks.push(process_one_chain(
                 &queue,
                 chain,
-                &interrupt,
                 &queue_type,
                 sense_size,
                 cdb_size,
@@ -812,7 +809,6 @@ async fn handle_queue(
 async fn process_one_chain(
     queue: &RefCell<Queue>,
     mut avail_desc: DescriptorChain,
-    interrupt: &Interrupt,
     queue_type: &QueueType,
     sense_size: u32,
     cdb_size: u32,
@@ -821,7 +817,7 @@ async fn process_one_chain(
     let len = process_one_request(&mut avail_desc, queue_type, sense_size, cdb_size).await;
     let mut queue = queue.borrow_mut();
     queue.add_used(avail_desc, len as u32);
-    queue.trigger_interrupt(interrupt);
+    queue.trigger_interrupt();
 }
 
 async fn process_one_request(

@@ -347,7 +347,6 @@ async fn handle_queue<F>(
     mut queue: Queue,
     mut queue_event: EventAsync,
     release_memory_tube: Option<&Tube>,
-    interrupt: Interrupt,
     mut desc_handler: F,
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Queue
@@ -372,7 +371,7 @@ where
             error!("balloon: failed to process inflate addresses: {}", e);
         }
         queue.add_used(avail_desc, 0);
-        queue.trigger_interrupt(&interrupt);
+        queue.trigger_interrupt();
     }
 }
 
@@ -400,7 +399,6 @@ async fn handle_reporting_queue<F>(
     mut queue: Queue,
     mut queue_event: EventAsync,
     release_memory_tube: Option<&Tube>,
-    interrupt: Interrupt,
     mut desc_handler: F,
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Queue
@@ -424,7 +422,7 @@ where
             error!("balloon: failed to process reported buffer: {}", e);
         }
         queue.add_used(avail_desc, 0);
-        queue.trigger_interrupt(&interrupt);
+        queue.trigger_interrupt();
     }
 }
 
@@ -453,7 +451,6 @@ async fn handle_stats_queue(
     command_tube: &AsyncTube,
     #[cfg(feature = "registered_events")] registered_evt_q: Option<&SendTubeAsync>,
     state: Arc<AsyncRwLock<BalloonState>>,
-    interrupt: Interrupt,
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Queue {
     let mut avail_desc = match queue
@@ -487,7 +484,7 @@ async fn handle_stats_queue(
 
         // Request a new stats_desc to the guest.
         queue.add_used(avail_desc, 0);
-        queue.trigger_interrupt(&interrupt);
+        queue.trigger_interrupt();
 
         avail_desc = match queue.next_async(&mut queue_event).await {
             Err(e) => {
@@ -543,7 +540,6 @@ async fn handle_ws_op_queue(
     mut queue_event: EventAsync,
     mut ws_op_rx: mpsc::Receiver<WSOp>,
     state: Arc<AsyncRwLock<BalloonState>>,
-    interrupt: Interrupt,
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Result<Queue> {
     loop {
@@ -604,7 +600,7 @@ async fn handle_ws_op_queue(
 
         let len = writer.bytes_written() as u32;
         queue.add_used(avail_desc, len);
-        queue.trigger_interrupt(&interrupt);
+        queue.trigger_interrupt();
     }
 
     Ok(queue)
@@ -641,7 +637,6 @@ async fn handle_ws_data_queue(
     command_tube: &AsyncTube,
     #[cfg(feature = "registered_events")] registered_evt_q: Option<&SendTubeAsync>,
     state: Arc<AsyncRwLock<BalloonState>>,
-    interrupt: Interrupt,
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Result<Queue> {
     loop {
@@ -682,7 +677,7 @@ async fn handle_ws_data_queue(
         }
 
         queue.add_used(avail_desc, 0);
-        queue.trigger_interrupt(&interrupt);
+        queue.trigger_interrupt();
     }
 }
 
@@ -906,7 +901,6 @@ fn run_worker(
             inflate_queue,
             EventAsync::new(inflate_queue_evt, &ex).expect("failed to create async event"),
             release_memory_tube.as_ref(),
-            interrupt.clone(),
             |guest_address, len| {
                 sys::free_memory(
                     &guest_address,
@@ -932,7 +926,6 @@ fn run_worker(
             deflate_queue,
             EventAsync::new(deflate_queue_evt, &ex).expect("failed to create async event"),
             None,
-            interrupt.clone(),
             |guest_address, len| {
                 sys::reclaim_memory(
                     &guest_address,
@@ -963,7 +956,6 @@ fn run_worker(
                 #[cfg(feature = "registered_events")]
                 registered_evt_q_async.as_ref(),
                 state.clone(),
-                interrupt.clone(),
                 stop_rx,
             )
             .left_future()
@@ -985,7 +977,6 @@ fn run_worker(
                 reporting_queue,
                 EventAsync::new(reporting_queue_evt, &ex).expect("failed to create async event"),
                 release_memory_tube.as_ref(),
-                interrupt.clone(),
                 |guest_address, len| {
                     sys::free_memory(
                         &guest_address,
@@ -1021,7 +1012,6 @@ fn run_worker(
                 #[cfg(feature = "registered_events")]
                 registered_evt_q_async.as_ref(),
                 state.clone(),
-                interrupt.clone(),
                 stop_rx,
             )
             .left_future()
@@ -1044,7 +1034,6 @@ fn run_worker(
                 EventAsync::new(ws_op_queue_evt, &ex).expect("failed to create async event"),
                 ws_op_rx,
                 state.clone(),
-                interrupt.clone(),
                 stop_rx,
             )
             .left_future()

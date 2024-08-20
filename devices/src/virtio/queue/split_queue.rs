@@ -37,6 +37,7 @@ pub struct SplitQueue {
     mem: GuestMemory,
 
     event: Event,
+    interrupt: Interrupt,
 
     /// The queue size in elements the driver selected. This is always guaranteed to be a power of
     /// two, as required for split virtqueues.
@@ -84,7 +85,12 @@ struct virtq_used_elem {
 
 impl SplitQueue {
     /// Constructs an activated split virtio queue with the given configuration.
-    pub fn new(config: &QueueConfig, mem: &GuestMemory, event: Event) -> Result<SplitQueue> {
+    pub fn new(
+        config: &QueueConfig,
+        mem: &GuestMemory,
+        event: Event,
+        interrupt: Interrupt,
+    ) -> Result<SplitQueue> {
         let size = config.size();
         if !size.is_power_of_two() {
             bail!("split queue size {size} is not a power of 2");
@@ -114,6 +120,7 @@ impl SplitQueue {
         Ok(SplitQueue {
             mem: mem.clone(),
             event,
+            interrupt,
             size,
             vector: config.vector(),
             desc_table: config.desc_table(),
@@ -178,6 +185,11 @@ impl SplitQueue {
     /// Get a reference to the queue's "kick event"
     pub fn event(&self) -> &Event {
         &self.event
+    }
+
+    /// Get a reference to the queue's interrupt
+    pub fn interrupt(&self) -> &Interrupt {
+        &self.interrupt
     }
 
     // Return `index` modulo the currently configured queue size.
@@ -473,10 +485,10 @@ impl SplitQueue {
     /// inject interrupt into guest on this queue
     /// return true: interrupt is injected into guest for this queue
     ///        false: interrupt isn't injected
-    pub fn trigger_interrupt(&mut self, interrupt: &Interrupt) -> bool {
+    pub fn trigger_interrupt(&mut self) -> bool {
         if self.queue_wants_interrupt() {
             self.last_used = self.next_used;
-            interrupt.signal_used_queue(self.vector);
+            self.interrupt.signal_used_queue(self.vector);
             true
         } else {
             false
@@ -502,11 +514,13 @@ impl SplitQueue {
         queue_value: serde_json::Value,
         mem: &GuestMemory,
         event: Event,
+        interrupt: Interrupt,
     ) -> anyhow::Result<SplitQueue> {
         let s: SplitQueueSnapshot = serde_json::from_value(queue_value)?;
         let queue = SplitQueue {
             mem: mem.clone(),
             event,
+            interrupt,
             size: s.size,
             vector: s.vector,
             desc_table: s.desc_table,
@@ -537,7 +551,6 @@ mod tests {
     use crate::virtio::Desc;
     use crate::virtio::Interrupt;
     use crate::virtio::Queue;
-    use crate::IrqLevelEvent;
 
     const GUEST_MEMORY_SIZE: u64 = 0x10000;
     const DESC_OFFSET: u64 = 0;
@@ -625,7 +638,7 @@ mod tests {
         queue.set_ready(true);
 
         queue
-            .activate(mem, Event::new().unwrap())
+            .activate(mem, Event::new().unwrap(), Interrupt::new_for_test())
             .expect("QueueConfig::activate failed")
     }
 
@@ -642,14 +655,6 @@ mod tests {
         let mem = GuestMemory::new(&[(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
         let mut queue = setup_vq(&mut queue, &mem);
 
-        let interrupt = Interrupt::new(
-            IrqLevelEvent::new().unwrap(),
-            None,
-            10,
-            #[cfg(target_arch = "x86_64")]
-            None,
-        );
-
         // Offset of used_event within Avail structure
         let used_event_offset = offset_of!(Avail, used_event) as u64;
         let used_event_address = GuestAddress(AVAIL_OFFSET + used_event_offset);
@@ -663,7 +668,7 @@ mod tests {
 
         // At this moment driver hasn't handled any interrupts yet, so it
         // should inject interrupt.
-        assert_eq!(queue.trigger_interrupt(&interrupt), true);
+        assert_eq!(queue.trigger_interrupt(), true);
 
         // Driver handle all the interrupts and update avail.used_event to 0x100
         let mut driver_handled = device_generate;
@@ -671,7 +676,7 @@ mod tests {
 
         // At this moment driver have handled all the interrupts, and
         // device doesn't generate more data, so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&interrupt), false);
+        assert_eq!(queue.trigger_interrupt(), false);
 
         // Assume driver submit another u16::MAX - 0x100 req to device,
         // Device has handled all of them, so increase self.next_used to u16::MAX
@@ -682,7 +687,7 @@ mod tests {
 
         // At this moment driver just handled 0x100 interrupts, so it
         // should inject interrupt.
-        assert_eq!(queue.trigger_interrupt(&interrupt), true);
+        assert_eq!(queue.trigger_interrupt(), true);
 
         // driver handle all the interrupts and update avail.used_event to u16::MAX
         driver_handled = device_generate;
@@ -690,7 +695,7 @@ mod tests {
 
         // At this moment driver have handled all the interrupts, and
         // device doesn't generate more data, so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&interrupt), false);
+        assert_eq!(queue.trigger_interrupt(), false);
 
         // Assume driver submit another 1 request,
         // device has handled it, so wrap self.next_used to 0
@@ -699,7 +704,7 @@ mod tests {
 
         // At this moment driver has handled all the previous interrupts, so it
         // should inject interrupt again.
-        assert_eq!(queue.trigger_interrupt(&interrupt), true);
+        assert_eq!(queue.trigger_interrupt(), true);
 
         // driver handle that interrupts and update avail.used_event to 0
         driver_handled = device_generate;
@@ -707,7 +712,7 @@ mod tests {
 
         // At this moment driver have handled all the interrupts, and
         // device doesn't generate more data, so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&interrupt), false);
+        assert_eq!(queue.trigger_interrupt(), false);
     }
 
     #[test]
@@ -717,14 +722,6 @@ mod tests {
         let memory_start_addr = GuestAddress(0x0);
         let mem = GuestMemory::new(&[(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
         let mut queue = setup_vq(&mut queue, &mem);
-
-        let interrupt = Interrupt::new(
-            IrqLevelEvent::new().unwrap(),
-            None,
-            10,
-            #[cfg(target_arch = "x86_64")]
-            None,
-        );
 
         // Offset of used_event within Avail structure
         let used_event_offset = offset_of!(Avail, used_event) as u64;
@@ -739,7 +736,7 @@ mod tests {
 
         // At this moment driver hasn't handled any interrupts yet, so it
         // should inject interrupt.
-        assert_eq!(queue.trigger_interrupt(&interrupt), true);
+        assert_eq!(queue.trigger_interrupt(), true);
 
         // Driver handle part of the interrupts and update avail.used_event to 0x80
         let mut driver_handled = Wrapping(0x80);
@@ -747,7 +744,7 @@ mod tests {
 
         // At this moment driver hasn't finished last interrupt yet,
         // so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&interrupt), false);
+        assert_eq!(queue.trigger_interrupt(), false);
 
         // Assume driver submit another 1 request,
         // device has handled it, so increment self.next_used.
@@ -756,7 +753,7 @@ mod tests {
 
         // At this moment driver hasn't finished last interrupt yet,
         // so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&interrupt), false);
+        assert_eq!(queue.trigger_interrupt(), false);
 
         // Assume driver submit another u16::MAX - 0x101 req to device,
         // Device has handled all of them, so increase self.next_used to u16::MAX
@@ -767,7 +764,7 @@ mod tests {
 
         // At this moment driver hasn't finished last interrupt yet,
         // so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&interrupt), false);
+        assert_eq!(queue.trigger_interrupt(), false);
 
         // driver handle most of the interrupts and update avail.used_event to u16::MAX - 1,
         driver_handled = device_generate - Wrapping(1);
@@ -780,7 +777,7 @@ mod tests {
 
         // At this moment driver has already finished the last interrupt(0x100),
         // and device service other request, so new interrupt is needed.
-        assert_eq!(queue.trigger_interrupt(&interrupt), true);
+        assert_eq!(queue.trigger_interrupt(), true);
 
         // Assume driver submit another 1 request,
         // device has handled it, so increment self.next_used to 1
@@ -789,7 +786,7 @@ mod tests {
 
         // At this moment driver hasn't finished last interrupt((Wrapping(0)) yet,
         // so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&interrupt), false);
+        assert_eq!(queue.trigger_interrupt(), false);
 
         // driver handle all the remain interrupts and wrap avail.used_event to 0x1.
         driver_handled = device_generate;
@@ -797,7 +794,7 @@ mod tests {
 
         // At this moment driver has handled all the interrupts, and
         // device doesn't generate more data, so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&interrupt), false);
+        assert_eq!(queue.trigger_interrupt(), false);
 
         // Assume driver submit another 1 request,
         // device has handled it, so increase self.next_used.
@@ -806,6 +803,6 @@ mod tests {
 
         // At this moment driver has finished all the previous interrupts, so it
         // should inject interrupt again.
-        assert_eq!(queue.trigger_interrupt(&interrupt), true);
+        assert_eq!(queue.trigger_interrupt(), true);
     }
 }

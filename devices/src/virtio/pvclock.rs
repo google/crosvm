@@ -854,7 +854,7 @@ fn run_main_worker(
                     };
 
                     set_pvclock_page_queue.add_used(desc_chain, len);
-                    set_pvclock_page_queue.trigger_interrupt(&interrupt);
+                    set_pvclock_page_queue.trigger_interrupt();
                 }
                 Token::SuspendResume => {
                     let req = match suspend_tube.recv::<PvClockCommand>() {
@@ -1078,11 +1078,17 @@ mod tests {
         let mut fake_queue = QueueConfig::new(TEST_QUEUE_SIZE, 0);
         fake_queue.set_ready(true);
         let mem = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let interrupt = make_interrupt();
         pvclock_device
             .activate(
                 mem.clone(),
-                make_interrupt(),
-                BTreeMap::from([(0, fake_queue.activate(&mem, Event::new().unwrap()).unwrap())]),
+                interrupt.clone(),
+                BTreeMap::from([(
+                    0,
+                    fake_queue
+                        .activate(&mem, Event::new().unwrap(), interrupt)
+                        .unwrap(),
+                )]),
             )
             .expect("activate should succeed");
         let queues = pvclock_device
@@ -1103,9 +1109,15 @@ mod tests {
         // by the device in these tests.
         let mut wake_queues = BTreeMap::new();
         let mut fake_queue = QueueConfig::new(TEST_QUEUE_SIZE, 0);
+        let interrupt = make_interrupt();
         fake_queue.set_ready(true);
-        wake_queues.insert(0, fake_queue.activate(mem, Event::new().unwrap()).unwrap());
-        let queues_state = (mem.clone(), make_interrupt(), wake_queues);
+        wake_queues.insert(
+            0,
+            fake_queue
+                .activate(mem, Event::new().unwrap(), interrupt.clone())
+                .unwrap(),
+        );
+        let queues_state = (mem.clone(), interrupt, wake_queues);
         pvclock_device
             .virtio_wake(Some(queues_state))
             .expect("wake should succeed");

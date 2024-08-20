@@ -657,7 +657,6 @@ fn run_worker(
         if run_worker_once(
             &ex,
             &streams,
-            interrupt.clone(),
             &snd_data,
             &mut f_kill,
             &mut f_resample,
@@ -680,7 +679,6 @@ fn run_worker(
         if let Err(e) = reset_streams(
             &ex,
             &streams,
-            interrupt.clone(),
             &tx_queue,
             &mut tx_recv,
             &rx_queue,
@@ -744,7 +742,6 @@ async fn notify_reset_signal(reset_signal: &(AsyncRwLock<bool>, Condvar)) {
 fn run_worker_once(
     ex: &Executor,
     streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
-    interrupt: Interrupt,
     snd_data: &SndData,
     mut f_kill: &mut (impl FusedFuture<Output = anyhow::Result<()>> + Unpin),
     mut f_resample: &mut (impl FusedFuture<Output = anyhow::Result<()>> + Unpin),
@@ -771,7 +768,6 @@ fn run_worker_once(
         snd_data,
         ctrl_queue,
         ctrl_queue_evt,
-        interrupt.clone(),
         tx_send,
         rx_send,
         card_index,
@@ -795,8 +791,7 @@ fn run_worker_once(
         Some(&reset_signal),
     )
     .fuse();
-    let f_tx_response =
-        send_pcm_response_worker(tx_queue, interrupt.clone(), tx_recv, Some(&reset_signal)).fuse();
+    let f_tx_response = send_pcm_response_worker(tx_queue, tx_recv, Some(&reset_signal)).fuse();
     let f_rx = handle_pcm_queue(
         streams,
         rx_send2,
@@ -806,8 +801,7 @@ fn run_worker_once(
         Some(&reset_signal),
     )
     .fuse();
-    let f_rx_response =
-        send_pcm_response_worker(rx_queue, interrupt, rx_recv, Some(&reset_signal)).fuse();
+    let f_rx_response = send_pcm_response_worker(rx_queue, rx_recv, Some(&reset_signal)).fuse();
 
     pin_mut!(f_ctrl, f_tx, f_tx_response, f_rx, f_rx_response);
 
@@ -870,7 +864,6 @@ fn run_worker_once(
 fn reset_streams(
     ex: &Executor,
     streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
-    interrupt: Interrupt,
     tx_queue: &Rc<AsyncRwLock<Queue>>,
     tx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
     rx_queue: &Rc<AsyncRwLock<Queue>>,
@@ -902,26 +895,16 @@ fn reset_streams(
 
     // Run these in a loop to ensure that they will survive until do_reset is finished
     let f_tx_response = async {
-        while send_pcm_response_worker(
-            tx_queue.clone(),
-            interrupt.clone(),
-            tx_recv,
-            Some(&reset_signal),
-        )
-        .await
-        .is_err()
+        while send_pcm_response_worker(tx_queue.clone(), tx_recv, Some(&reset_signal))
+            .await
+            .is_err()
         {}
     };
 
     let f_rx_response = async {
-        while send_pcm_response_worker(
-            rx_queue.clone(),
-            interrupt.clone(),
-            rx_recv,
-            Some(&reset_signal),
-        )
-        .await
-        .is_err()
+        while send_pcm_response_worker(rx_queue.clone(), rx_recv, Some(&reset_signal))
+            .await
+            .is_err()
         {}
     };
 

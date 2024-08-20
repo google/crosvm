@@ -36,19 +36,14 @@ use crate::virtio::video::response::Response;
 use crate::virtio::video::Error;
 use crate::virtio::video::Result;
 use crate::virtio::DescriptorChain;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 /// Worker that takes care of running the virtio video device.
 pub struct Worker {
     /// VirtIO queue for Command queue
     cmd_queue: Queue,
-    /// Device-to-driver notification for command queue
-    cmd_queue_interrupt: Interrupt,
     /// VirtIO queue for Event queue
     event_queue: Queue,
-    /// Device-to-driver notification for the event queue.
-    event_queue_interrupt: Interrupt,
     /// Stores descriptor chains in which responses for asynchronous commands will be written
     desc_map: AsyncCmdDescMap,
 }
@@ -57,17 +52,10 @@ pub struct Worker {
 type WritableResp = (DescriptorChain, response::CmdResponse);
 
 impl Worker {
-    pub fn new(
-        cmd_queue: Queue,
-        cmd_queue_interrupt: Interrupt,
-        event_queue: Queue,
-        event_queue_interrupt: Interrupt,
-    ) -> Self {
+    pub fn new(cmd_queue: Queue, event_queue: Queue) -> Self {
         Self {
             cmd_queue,
-            cmd_queue_interrupt,
             event_queue,
-            event_queue_interrupt,
             desc_map: Default::default(),
         }
     }
@@ -87,7 +75,7 @@ impl Worker {
             let len = desc.writer.bytes_written() as u32;
             self.cmd_queue.add_used(desc, len);
         }
-        self.cmd_queue.trigger_interrupt(&self.cmd_queue_interrupt);
+        self.cmd_queue.trigger_interrupt();
         Ok(())
     }
 
@@ -103,8 +91,7 @@ impl Worker {
             .map_err(|error| Error::WriteEventFailure { event, error })?;
         let len = desc.writer.bytes_written() as u32;
         self.event_queue.add_used(desc, len);
-        self.event_queue
-            .trigger_interrupt(&self.event_queue_interrupt);
+        self.event_queue.trigger_interrupt();
         Ok(())
     }
 
@@ -334,7 +321,7 @@ impl Worker {
         .and_then(|wc| {
             // resampling event exists per-PCI-INTx basis, so the two queues have the same event.
             // Thus, checking only cmd_queue_interrupt suffices.
-            if let Some(resample_evt) = self.cmd_queue_interrupt.get_resample_evt() {
+            if let Some(resample_evt) = self.cmd_queue.interrupt().get_resample_evt() {
                 wc.add(resample_evt, Token::InterruptResample)?;
             }
             Ok(wc)
@@ -364,11 +351,12 @@ impl Worker {
                         // resample exists. resampling event exists per-PCI-INTx basis, so the
                         // two queues have the same event.
                         let _ = self
-                            .cmd_queue_interrupt
+                            .cmd_queue
+                            .interrupt()
                             .get_resample_evt()
                             .expect("resample event for the command queue doesn't exist")
                             .wait();
-                        self.cmd_queue_interrupt.do_interrupt_resample();
+                        self.cmd_queue.interrupt().do_interrupt_resample();
                     }
                     Token::Kill => return Ok(()),
                 }

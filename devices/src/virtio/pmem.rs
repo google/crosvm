@@ -264,7 +264,6 @@ fn handle_request(
 async fn handle_queue(
     queue: &mut Queue,
     mut queue_event: EventAsync,
-    interrupt: Interrupt,
     pmem_device_tube: &Tube,
     mapping_arena_slot: u32,
     mapping_size: usize,
@@ -291,7 +290,7 @@ async fn handle_queue(
             }
         };
         queue.add_used(avail_desc, written as u32);
-        queue.trigger_interrupt(&interrupt);
+        queue.trigger_interrupt();
     }
 }
 
@@ -316,7 +315,6 @@ fn run_worker(
     let queue_fut = handle_queue(
         queue,
         queue_evt,
-        interrupt.clone(),
         pmem_device_tube,
         mapping_arena_slot,
         mapping_size,

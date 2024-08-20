@@ -721,7 +721,7 @@ impl Worker {
             }
 
             queue.add_used(avail_desc, 0);
-            queue.trigger_interrupt(&self.interrupt);
+            queue.trigger_interrupt();
         }
 
         Ok(queue)
@@ -1379,7 +1379,7 @@ impl Worker {
         let bytes_written = writer.bytes_written() as u32;
         if bytes_written > 0 {
             queue.add_used(desc_chain, bytes_written);
-            queue.trigger_interrupt(&self.interrupt);
+            queue.trigger_interrupt();
             Ok(())
         } else {
             error!("vsock: failed to write bytes to queue");

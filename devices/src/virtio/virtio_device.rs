@@ -278,6 +278,7 @@ macro_rules! suspendable_virtio_tests {
                 num_queues: usize,
                 queue_size: u16,
                 mem: &GuestMemory,
+                interrupt: Interrupt,
             ) -> BTreeMap<usize, Queue> {
                 let mut queues = BTreeMap::new();
                 for i in 0..num_queues {
@@ -285,7 +286,7 @@ macro_rules! suspendable_virtio_tests {
                     let mut queue = QueueConfig::new(queue_size, 0);
                     queue.set_ready(true);
                     let queue = queue
-                        .activate(mem, base::Event::new().unwrap())
+                        .activate(mem, base::Event::new().unwrap(), interrupt.clone())
                         .expect("QueueConfig::activate");
                     queues.insert(i, queue);
                 }
@@ -314,6 +315,7 @@ macro_rules! suspendable_virtio_tests {
                         .cloned()
                         .expect("missing queue size"),
                     &mem,
+                    interrupt.clone(),
                 );
                 device
                     .activate(mem.clone(), interrupt.clone(), queues)
@@ -341,6 +343,7 @@ macro_rules! suspendable_virtio_tests {
                         .cloned()
                         .expect("missing queue size"),
                     &mem,
+                    interrupt.clone(),
                 );
                 device
                     .activate(mem.clone(), interrupt.clone(), queues)

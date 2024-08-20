@@ -41,7 +41,6 @@ use crate::virtio::vhost::user::device::net::run_ctrl_queue;
 use crate::virtio::vhost::user::device::net::run_tx_queue;
 use crate::virtio::vhost::user::device::net::NetBackend;
 use crate::virtio::vhost::user::device::net::NET_EXECUTOR;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 struct TapConfig {
@@ -141,7 +140,6 @@ where
 async fn run_rx_queue<T: TapT>(
     mut queue: Queue,
     mut tap: IoSource<T>,
-    doorbell: Interrupt,
     kick_evt: EventAsync,
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Queue {
@@ -162,7 +160,7 @@ async fn run_rx_queue<T: TapT>(
             }
         }
 
-        match process_rx(&doorbell, &mut queue, tap.as_source_mut()) {
+        match process_rx(&mut queue, tap.as_source_mut()) {
             Ok(()) => {}
             Err(NetError::RxDescriptorsExhausted) => {
                 if let Err(e) = kick_evt.next_val().await {
@@ -185,7 +183,6 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
     idx: usize,
     queue: virtio::Queue,
     _mem: GuestMemory,
-    doorbell: Interrupt,
 ) -> anyhow::Result<()> {
     if backend.workers[idx].is_some() {
         warn!("Starting new queue handler without stopping old handler");
@@ -214,14 +211,14 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
 
                 let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
                 (
-                    ex.spawn_local(run_rx_queue(queue, tap, doorbell, kick_evt, stop_rx)),
+                    ex.spawn_local(run_rx_queue(queue, tap, kick_evt, stop_rx)),
                     stop_tx,
                 )
             }
             1 => {
                 let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
                 (
-                    ex.spawn_local(run_tx_queue(queue, tap, doorbell, kick_evt, stop_rx)),
+                    ex.spawn_local(run_tx_queue(queue, tap, kick_evt, stop_rx)),
                     stop_tx,
                 )
             }
@@ -231,7 +228,6 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                     ex.spawn_local(run_ctrl_queue(
                         queue,
                         tap,
-                        doorbell,
                         kick_evt,
                         backend.acked_features,
                         1, /* vq_pairs */

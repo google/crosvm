@@ -275,7 +275,6 @@ async fn process_one_chain(
     queue: &RefCell<Queue>,
     mut avail_desc: DescriptorChain,
     disk_state: &AsyncRwLock<DiskState>,
-    interrupt: &Interrupt,
     flush_timer: &RefCell<TimerAsync<Timer>>,
     flush_timer_armed: &RefCell<bool>,
 ) {
@@ -292,7 +291,7 @@ async fn process_one_chain(
 
     let mut queue = queue.borrow_mut();
     queue.add_used(avail_desc, len as u32);
-    queue.trigger_interrupt(interrupt);
+    queue.trigger_interrupt();
 }
 
 // There is one async task running `handle_queue` per virtio queue in use.
@@ -302,7 +301,6 @@ async fn handle_queue(
     disk_state: Rc<AsyncRwLock<DiskState>>,
     queue: Queue,
     evt: EventAsync,
-    interrupt: Interrupt,
     flush_timer: Rc<RefCell<TimerAsync<Timer>>>,
     flush_timer_armed: Rc<RefCell<bool>>,
     mut stop_rx: oneshot::Receiver<()>,
@@ -339,7 +337,6 @@ async fn handle_queue(
                 &queue,
                 descriptor_chain,
                 &disk_state,
-                &interrupt,
                 &flush_timer,
                 &flush_timer_armed,
             ));
@@ -448,7 +445,6 @@ enum WorkerCmd {
     StartQueue {
         index: usize,
         queue: Queue,
-        interrupt: Interrupt,
     },
     StopQueue {
         index: usize,
@@ -526,16 +522,16 @@ async fn run_worker(
             worker_cmd = worker_rx.next() => {
                 match worker_cmd {
                     None => anyhow::bail!("worker control channel unexpectedly closed"),
-                    Some(WorkerCmd::StartQueue{index, queue, interrupt}) => {
+                    Some(WorkerCmd::StartQueue{index, queue}) => {
                         if matches!(&*resample_future, futures::future::Either::Left(_)) {
                             resample_future.set(
-                                async_utils::handle_irq_resample(ex, interrupt.clone())
+                                async_utils::handle_irq_resample(ex, queue.interrupt().clone())
                                     .fuse()
                                     .right_future(),
                             );
                         }
                         if control_interrupt.borrow().is_none() {
-                            *control_interrupt.borrow_mut() = Some(interrupt.clone());
+                            *control_interrupt.borrow_mut() = Some(queue.interrupt().clone());
                         }
 
                         let (tx, rx) = oneshot::channel();
@@ -544,7 +540,6 @@ async fn run_worker(
                             Rc::clone(disk_state),
                             queue,
                             EventAsync::new(kick_evt, ex).expect("Failed to create async event for queue"),
-                            interrupt,
                             Rc::clone(&flush_timer),
                             Rc::clone(&flush_timer_armed),
                             rx,
@@ -1057,15 +1052,10 @@ impl BlockAsync {
         idx: usize,
         queue: Queue,
         _mem: GuestMemory,
-        doorbell: Interrupt,
     ) -> anyhow::Result<()> {
         let (_, worker_tx) = self.start_worker(idx)?;
         worker_tx
-            .unbounded_send(WorkerCmd::StartQueue {
-                index: idx,
-                queue,
-                interrupt: doorbell,
-            })
+            .unbounded_send(WorkerCmd::StartQueue { index: idx, queue })
             .expect("worker channel closed early");
         self.activated_queues.insert(idx);
         Ok(())
@@ -1139,11 +1129,11 @@ impl VirtioDevice for BlockAsync {
     fn activate(
         &mut self,
         mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         for (i, q) in queues {
-            self.start_queue(i, q, mem.clone(), interrupt.clone())?;
+            self.start_queue(i, q, mem.clone())?;
         }
         Ok(())
     }
@@ -1176,9 +1166,9 @@ impl VirtioDevice for BlockAsync {
         &mut self,
         queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
-        if let Some((mem, interrupt, queues)) = queues_state {
+        if let Some((mem, _interrupt, queues)) = queues_state {
             for (i, q) in queues {
-                self.start_queue(i, q, mem.clone(), interrupt.clone())?
+                self.start_queue(i, q, mem.clone())?
             }
         }
         Ok(())
@@ -1641,25 +1631,23 @@ mod tests {
         )
         .unwrap();
 
+        let interrupt = Interrupt::new_for_test();
+
         // activate with queues of an arbitrary size.
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
         let q0 = q0
-            .activate(&mem, Event::new().unwrap())
+            .activate(&mem, Event::new().unwrap(), interrupt.clone())
             .expect("QueueConfig::activate");
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
         let q1 = q1
-            .activate(&mem, Event::new().unwrap())
+            .activate(&mem, Event::new().unwrap(), interrupt.clone())
             .expect("QueueConfig::activate");
 
-        b.activate(
-            mem.clone(),
-            Interrupt::new_for_test(),
-            BTreeMap::from([(0, q0), (1, q1)]),
-        )
-        .expect("activate should succeed");
+        b.activate(mem.clone(), interrupt, BTreeMap::from([(0, q0), (1, q1)]))
+            .expect("activate should succeed");
         // assert resources are consumed
         if !enables_multiple_workers {
             assert!(
@@ -1695,24 +1683,21 @@ mod tests {
         assert_eq!(b.id, Some(*b"Block serial number\0"));
 
         // re-activate should succeed
+        let interrupt = Interrupt::new_for_test();
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
         let q0 = q0
-            .activate(&mem, Event::new().unwrap())
+            .activate(&mem, Event::new().unwrap(), interrupt.clone())
             .expect("QueueConfig::activate");
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
         let q1 = q1
-            .activate(&mem, Event::new().unwrap())
+            .activate(&mem, Event::new().unwrap(), interrupt.clone())
             .expect("QueueConfig::activate");
 
-        b.activate(
-            mem,
-            Interrupt::new_for_test(),
-            BTreeMap::from([(0, q0), (1, q1)]),
-        )
-        .expect("re-activate should succeed");
+        b.activate(mem, interrupt, BTreeMap::from([(0, q0), (1, q1)]))
+            .expect("re-activate should succeed");
     }
 
     #[test]
@@ -1760,20 +1745,21 @@ mod tests {
         )
         .unwrap();
 
+        let interrupt = Interrupt::new_for_test();
+
         // activate with queues of an arbitrary size.
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
         let q0 = q0
-            .activate(&mem, Event::new().unwrap())
+            .activate(&mem, Event::new().unwrap(), interrupt.clone())
             .expect("QueueConfig::activate");
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
         let q1 = q1
-            .activate(&mem, Event::new().unwrap())
+            .activate(&mem, Event::new().unwrap(), interrupt.clone())
             .expect("QueueConfig::activate");
 
-        let interrupt = Interrupt::new_for_test();
         b.activate(mem, interrupt.clone(), BTreeMap::from([(0, q0), (1, q1)]))
             .expect("activate should succeed");
 
@@ -1861,24 +1847,21 @@ mod tests {
         .unwrap();
 
         // activate with queues of an arbitrary size.
+        let interrupt = Interrupt::new_for_test();
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
         let q0 = q0
-            .activate(&mem, Event::new().unwrap())
+            .activate(&mem, Event::new().unwrap(), interrupt.clone())
             .expect("QueueConfig::activate");
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
         let q1 = q1
-            .activate(&mem, Event::new().unwrap())
+            .activate(&mem, Event::new().unwrap(), interrupt.clone())
             .expect("QueueConfig::activate");
 
-        b.activate(
-            mem.clone(),
-            Interrupt::new_for_test(),
-            BTreeMap::from([(0, q0), (1, q1)]),
-        )
-        .expect("activate should succeed");
+        b.activate(mem.clone(), interrupt, BTreeMap::from([(0, q0), (1, q1)]))
+            .expect("activate should succeed");
 
         assert_eq!(b.worker_threads.len(), 1, "1 threads should be spawned.");
         drop(b);
@@ -1894,24 +1877,21 @@ mod tests {
         let mut b = BlockAsync::new(features, disk_image, &disk_option, None, None, None).unwrap();
 
         // activate should succeed
+        let interrupt = Interrupt::new_for_test();
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
         let q0 = q0
-            .activate(&mem, Event::new().unwrap())
+            .activate(&mem, Event::new().unwrap(), interrupt.clone())
             .expect("QueueConfig::activate");
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
         let q1 = q1
-            .activate(&mem, Event::new().unwrap())
+            .activate(&mem, Event::new().unwrap(), interrupt.clone())
             .expect("QueueConfig::activate");
 
-        b.activate(
-            mem,
-            Interrupt::new_for_test(),
-            BTreeMap::from([(0, q0), (1, q1)]),
-        )
-        .expect("activate should succeed");
+        b.activate(mem, interrupt, BTreeMap::from([(0, q0), (1, q1)]))
+            .expect("activate should succeed");
 
         assert_eq!(b.worker_threads.len(), 2, "2 threads should be spawned.");
     }

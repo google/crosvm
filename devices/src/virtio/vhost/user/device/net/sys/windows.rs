@@ -86,7 +86,6 @@ where
 async fn run_rx_queue<T: TapT>(
     mut queue: Queue,
     mut tap: IoSource<T>,
-    call_evt: Interrupt,
     kick_evt: EventAsync,
     read_notifier: EventAsync,
     mut overlapped_wrapper: OverlappedWrapper,
@@ -132,7 +131,6 @@ async fn run_rx_queue<T: TapT>(
         }
 
         let needs_interrupt = process_rx(
-            &call_evt,
             &mut queue,
             tap.as_source_mut(),
             &mut rx_buf,
@@ -141,7 +139,7 @@ async fn run_rx_queue<T: TapT>(
             &mut overlapped_wrapper,
         );
         if needs_interrupt {
-            call_evt.signal_used_queue(queue.vector());
+            queue.trigger_interrupt();
         }
 
         // There aren't any RX descriptors available for us to write packets to. Wait for the guest
@@ -171,7 +169,6 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
     idx: usize,
     queue: virtio::Queue,
     _mem: GuestMemory,
-    doorbell: Interrupt,
 ) -> anyhow::Result<()> {
     if backend.workers.get(idx).is_some() {
         warn!("Starting new queue handler without stopping old handler");
@@ -213,7 +210,6 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                     ex.spawn_local(run_rx_queue(
                         queue,
                         tap,
-                        doorbell,
                         kick_evt,
                         read_notifier,
                         overlapped_wrapper,
@@ -225,7 +221,7 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
             1 => {
                 let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
                 (
-                    ex.spawn_local(run_tx_queue(queue, tap, doorbell, kick_evt, stop_rx)),
+                    ex.spawn_local(run_tx_queue(queue, tap, kick_evt, stop_rx)),
                     stop_tx,
                 )
             }
@@ -235,7 +231,6 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                     ex.spawn_local(run_ctrl_queue(
                         queue,
                         tap,
-                        doorbell,
                         kick_evt,
                         backend.acked_features,
                         1, /* vq_pairs */

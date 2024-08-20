@@ -51,7 +51,6 @@ use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::VhostUserDeviceBuilder;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 // Async workers:
@@ -177,7 +176,6 @@ impl VhostUserDevice for SndBackend {
         idx: usize,
         queue: virtio::Queue,
         _mem: GuestMemory,
-        doorbell: Interrupt,
     ) -> anyhow::Result<()> {
         if self.workers[idx].is_some() {
             warn!(
@@ -214,7 +212,6 @@ impl VhostUserDevice for SndBackend {
                         &snd_data,
                         ctrl_queue,
                         &mut kick_evt,
-                        doorbell,
                         tx_send,
                         rx_send,
                         card_index,
@@ -248,7 +245,7 @@ impl VhostUserDevice for SndBackend {
 
                 let queue_response_queue = queue.clone();
                 let response_queue_task = self.ex.spawn_local(async move {
-                    send_pcm_response_worker(queue_response_queue, doorbell, &mut recv, None).await
+                    send_pcm_response_worker(queue_response_queue, &mut recv, None).await
                 });
 
                 self.response_workers[idx - PCM_RESPONSE_WORKER_IDX_OFFSET] = Some(WorkerState {

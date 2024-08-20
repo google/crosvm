@@ -651,7 +651,7 @@ impl VirtioPciDevice {
                 Ok((
                     queue_index,
                     queue
-                        .activate(&self.mem, queue_evt)
+                        .activate(&self.mem, queue_evt, interrupt.clone())
                         .context("failed to activate queue")?,
                 ))
             })
@@ -1316,6 +1316,30 @@ impl Suspendable for VirtioPciDevice {
         self.msix_config.lock().restore(deser.msix_config)?;
         self.common_config = deser.common_config;
 
+        // Restore the interrupt. This must be done after restoring the MSI-X configuration, but
+        // before restoring the queues.
+        if let Some(deser_interrupt) = deser.interrupt {
+            self.interrupt = Some(Interrupt::new_from_snapshot(
+                self.interrupt_evt
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("{} interrupt_evt is none", self.debug_label()))?
+                    .try_clone()
+                    .with_context(|| {
+                        format!("{} failed to clone interrupt_evt", self.debug_label())
+                    })?,
+                Some(self.msix_config.clone()),
+                self.common_config.msix_config,
+                deser_interrupt,
+                #[cfg(target_arch = "x86_64")]
+                Some((
+                    PmWakeupEvent::new(self.vm_control_tube.clone(), self.pm_config.clone()),
+                    MetricEventType::VirtioWakeup {
+                        virtio_id: self.device.device_type() as u32,
+                    },
+                )),
+            ));
+        }
+
         assert_eq!(
             self.queues.len(),
             deser.queues.len(),
@@ -1337,6 +1361,10 @@ impl Suspendable for VirtioPciDevice {
         };
         // Restore `sleep_state`.
         if let Some(activated_queues_snapshot) = deser.activated_queues {
+            let interrupt = self
+                .interrupt
+                .as_ref()
+                .context("tried to restore active queues without an interrupt")?;
             let mut activated_queues = BTreeMap::new();
             for (index, queue_snapshot) in activated_queues_snapshot {
                 let queue_config = self
@@ -1352,7 +1380,13 @@ impl Suspendable for VirtioPciDevice {
                     .context("failed to clone queue event")?;
                 activated_queues.insert(
                     index,
-                    Queue::restore(queue_config, queue_snapshot, &self.mem, queue_evt)?,
+                    Queue::restore(
+                        queue_config,
+                        queue_snapshot,
+                        &self.mem,
+                        queue_evt,
+                        interrupt.clone(),
+                    )?,
                 );
             }
 
@@ -1360,32 +1394,6 @@ impl Suspendable for VirtioPciDevice {
             self.sleep_state = Some(SleepState::Active { activated_queues });
         } else {
             self.sleep_state = Some(SleepState::Inactive);
-        }
-
-        // Also replicate the other work in activate: initialize the interrupt and queues
-        // events. This could just as easily be done in `wake` instead.
-        // NOTE: Needs to be done last in `restore` because it relies on the other VirtioPciDevice
-        // fields.
-        if let Some(deser_interrupt) = deser.interrupt {
-            self.interrupt = Some(Interrupt::new_from_snapshot(
-                self.interrupt_evt
-                    .as_ref()
-                    .ok_or_else(|| anyhow!("{} interrupt_evt is none", self.debug_label()))?
-                    .try_clone()
-                    .with_context(|| {
-                        format!("{} failed to clone interrupt_evt", self.debug_label())
-                    })?,
-                Some(self.msix_config.clone()),
-                self.common_config.msix_config,
-                deser_interrupt,
-                #[cfg(target_arch = "x86_64")]
-                Some((
-                    PmWakeupEvent::new(self.vm_control_tube.clone(), self.pm_config.clone()),
-                    MetricEventType::VirtioWakeup {
-                        virtio_id: self.device.device_type() as u32,
-                    },
-                )),
-            ));
         }
 
         // Call register_io_events for the activated queue events.
