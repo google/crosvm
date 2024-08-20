@@ -107,6 +107,12 @@ impl ConsoleDevice {
         })
     }
 
+    fn ensure_worker_stopped(&mut self) {
+        if let Some(mut worker) = self.worker.take() {
+            worker.stop();
+        }
+    }
+
     pub fn start_queue(
         &mut self,
         idx: usize,
@@ -128,6 +134,7 @@ impl ConsoleDevice {
         for idx in 0..self.max_queues() {
             let _ = self.stop_queue(idx);
         }
+        self.ensure_worker_stopped();
         Ok(())
     }
 

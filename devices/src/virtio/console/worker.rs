@@ -294,7 +294,7 @@ impl Worker {
 }
 
 pub struct WorkerHandle {
-    worker_thread: WorkerThread<()>,
+    worker_thread: Option<WorkerThread<()>>,
     worker_sender: mpsc::Sender<WorkerRequest>,
     worker_event: Event,
 }
@@ -312,7 +312,7 @@ impl WorkerHandle {
             }
         });
         Ok(WorkerHandle {
-            worker_thread,
+            worker_thread: Some(worker_thread),
             worker_sender,
             worker_event,
         })
@@ -342,11 +342,11 @@ impl WorkerHandle {
         self.worker_event.signal().context("Event::signal")?;
         response_receiver.recv().context("mpsc::Receiver::recv")
     }
-}
 
-impl Drop for WorkerHandle {
-    fn drop(&mut self) {
-        let _ = self.worker_thread.signal();
+    pub fn stop(&mut self) {
+        if let Some(worker_thread) = self.worker_thread.take() {
+            worker_thread.stop();
+        }
     }
 }
 
