@@ -299,7 +299,7 @@ impl Worker {
 }
 
 pub struct WorkerHandle {
-    worker_thread: Option<WorkerThread<Vec<WorkerPort>>>,
+    worker_thread: WorkerThread<Vec<WorkerPort>>,
     worker_sender: mpsc::Sender<WorkerRequest>,
     worker_event: Event,
 }
@@ -318,7 +318,7 @@ impl WorkerHandle {
             worker.ports
         });
         Ok(WorkerHandle {
-            worker_thread: Some(worker_thread),
+            worker_thread,
             worker_sender,
             worker_event,
         })
@@ -349,12 +349,8 @@ impl WorkerHandle {
         response_receiver.recv().context("mpsc::Receiver::recv")
     }
 
-    pub fn stop(&mut self) -> Vec<WorkerPort> {
-        if let Some(worker_thread) = self.worker_thread.take() {
-            worker_thread.stop()
-        } else {
-            Vec::new()
-        }
+    pub fn stop(self) -> Vec<WorkerPort> {
+        self.worker_thread.stop()
     }
 }
 
