@@ -570,7 +570,7 @@ impl arch::LinuxArch for AArch64 {
             .map_err(Error::MapPvtimeError)?;
         }
 
-        if components.hv_cfg.protection_type.loads_firmware() {
+        if components.hv_cfg.protection_type.needs_firmware_loaded() {
             arch::load_image(
                 &mem,
                 &mut components
@@ -1296,7 +1296,7 @@ impl AArch64 {
 
         // Other cpus are powered off initially
         if vcpu_id == boot_cpu {
-            let entry_addr = if protection_type.loads_firmware() {
+            let entry_addr = if protection_type.needs_firmware_loaded() {
                 Some(AARCH64_PROTECTED_VM_FW_START)
             } else if protection_type.runs_firmware() {
                 None // Initial PC value is set by the hypervisor

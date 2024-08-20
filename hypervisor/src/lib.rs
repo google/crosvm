@@ -578,7 +578,7 @@ impl ProtectionType {
     }
 
     /// Returns whether the VMM needs to load the pVM firmware.
-    pub fn loads_firmware(&self) -> bool {
+    pub fn needs_firmware_loaded(&self) -> bool {
         matches!(
             self,
             Self::UnprotectedWithFirmware | Self::ProtectedWithCustomFirmware
@@ -587,7 +587,7 @@ impl ProtectionType {
 
     /// Returns whether the VM runs a pVM firmware.
     pub fn runs_firmware(&self) -> bool {
-        self.loads_firmware() || matches!(self, Self::Protected)
+        self.needs_firmware_loaded() || matches!(self, Self::Protected)
     }
 }
 
