@@ -109,7 +109,10 @@ impl ConsoleDevice {
 
     fn ensure_worker_stopped(&mut self) {
         if let Some(mut worker) = self.worker.take() {
-            worker.stop();
+            let ports = worker.stop();
+            for (worker_port, port) in ports.into_iter().zip(self.ports.iter_mut()) {
+                worker_port.into_console_port(port);
+            }
         }
     }
 

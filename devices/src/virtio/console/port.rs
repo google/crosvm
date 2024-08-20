@@ -91,6 +91,10 @@ impl ConsolePort {
         self.output.take()
     }
 
+    pub fn restore_output(&mut self, output: Box<dyn std::io::Write + Send>) {
+        self.output = Some(output);
+    }
+
     pub fn port_info(&self) -> Option<&ConsolePortInfo> {
         self.info.as_ref()
     }
