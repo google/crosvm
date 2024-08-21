@@ -18,6 +18,7 @@ ioctl: arg1 & 0x6400
 openat: 1
 setpriority: 1
 socket: arg0 == AF_UNIX
+socketpair: arg0 == AF_UNIX
 prctl: arg0 == PR_SET_NAME
 # for libmojo used by libvda
 process_vm_readv: 1

@@ -25,6 +25,7 @@ openat: 1
 send: 1
 setpriority: 1
 socket: arg0 == AF_UNIX
+socketpair: arg0 == AF_UNIX
 statx: 1
 stat64: 1
 prctl: arg0 == PR_SET_NAME
