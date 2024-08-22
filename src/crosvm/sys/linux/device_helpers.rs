@@ -4,10 +4,12 @@
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+use std::fs;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::ErrorKind;
 use std::ops::RangeInclusive;
+use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::path::PathBuf;
@@ -367,6 +369,25 @@ fn vhost_user_connection(path: &Path, connect_timeout_ms: Option<u64>) -> Result
     }
 }
 
+fn is_socket(path: &PathBuf) -> bool {
+    match fs::metadata(path) {
+        Ok(metadata) => metadata.file_type().is_socket(),
+        Err(_) => false, // Assume not a socket if we can't get metadata
+    }
+}
+
+fn vhost_user_connection_from_socket_fd(fd: u32) -> Result<UnixStream> {
+    let path = PathBuf::from(format!("/proc/self/fd/{}", fd));
+    if !is_socket(&path) {
+        anyhow::bail!("path {} is not socket", path.display());
+    }
+
+    let safe_fd = safe_descriptor_from_fd(fd as i32)?;
+
+    let stream: UnixStream = UnixStream::from(safe_fd);
+    Ok(stream)
+}
+
 pub fn create_vhost_user_frontend(
     protection_type: ProtectionType,
     opt: &VhostUserFrontendOption,
@@ -392,9 +413,15 @@ pub fn create_vhost_user_fs_device(
     protection_type: ProtectionType,
     option: &VhostUserFsOption,
 ) -> DeviceResult {
+    let connection = match (&option.socket_path, option.socket_fd) {
+        (Some(socket), None) => vhost_user_connection(socket, None)?,
+        (None, Some(fd)) => vhost_user_connection_from_socket_fd(fd)?,
+        (Some(_), Some(_)) => bail!("Cannot specify both a UDS path and a file descriptor"),
+        (None, None) => bail!("Must specify either a socket or a file descriptor"),
+    };
     let dev = VhostUserFrontend::new_fs(
         virtio::base_features(protection_type),
-        vhost_user_connection(&option.socket, None)?,
+        connection,
         option.max_queue_size,
         option.tag.as_deref(),
     )
