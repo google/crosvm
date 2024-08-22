@@ -388,6 +388,7 @@ enum Token {
     CommandQueue,
     V4l2Session(u32),
     Kill,
+    InterruptResample,
 }
 
 /// Newtype to implement `SessionPoller` on `Rc<WaitContext<Token>>`.
@@ -444,6 +445,12 @@ where
     }
 
     fn run(&mut self) -> anyhow::Result<()> {
+        if let Some(resample_evt) = self.cmd_queue.1.get_resample_evt() {
+            self.wait_ctx
+                .add(resample_evt, Token::InterruptResample)
+                .context("failed adding resample event to WaitContext.")?;
+        }
+
         loop {
             let wait_events = self.wait_ctx.wait().context("Wait error")?;
 
@@ -485,6 +492,9 @@ where
                                 self.runner.device.close_session(session);
                             }
                         }
+                    }
+                    Token::InterruptResample => {
+                        self.cmd_queue.1.interrupt_resample();
                     }
                 }
             }
