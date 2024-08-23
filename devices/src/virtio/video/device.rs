@@ -28,7 +28,6 @@ pub enum Token {
         id: u32,
     },
     Kill,
-    InterruptResample,
 }
 
 /// A tag for commands being processed asynchronously in the back-end device.

@@ -26,7 +26,6 @@ use vm_control::VmResponse;
 
 use crate::virtio::fs::Error;
 use crate::virtio::fs::Result;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::Reader;
 use crate::virtio::Writer;
@@ -141,7 +140,6 @@ impl fuse::Mapper for Mapper {
 pub struct Worker<F: FileSystem + Sync> {
     pub(crate) queue: Queue,
     server: Arc<fuse::Server<F>>,
-    irq: Interrupt,
     tube: Arc<Mutex<Tube>>,
     slot: u32,
 }
@@ -168,20 +166,18 @@ impl<F: FileSystem + Sync> Worker<F> {
     pub fn new(
         queue: Queue,
         server: Arc<fuse::Server<F>>,
-        irq: Interrupt,
         tube: Arc<Mutex<Tube>>,
         slot: u32,
     ) -> Worker<F> {
         Worker {
             queue,
             server,
-            irq,
             tube,
             slot,
         }
     }
 
-    pub fn run(&mut self, kill_evt: Event, watch_resample_event: bool) -> Result<()> {
+    pub fn run(&mut self, kill_evt: Event) -> Result<()> {
         let mut ruid: libc::uid_t = 0;
         let mut euid: libc::uid_t = 0;
         let mut suid: libc::uid_t = 0;
@@ -225,8 +221,6 @@ impl<F: FileSystem + Sync> Worker<F> {
         enum Token {
             // A request is ready on the queue.
             QueueReady,
-            // Check if any interrupts need to be re-asserted.
-            InterruptResample,
             // The parent thread requested an exit.
             Kill,
         }
@@ -236,14 +230,6 @@ impl<F: FileSystem + Sync> Worker<F> {
             (&kill_evt, Token::Kill),
         ])
         .map_err(Error::CreateWaitContext)?;
-
-        if watch_resample_event {
-            if let Some(resample_evt) = self.irq.get_resample_evt() {
-                wait_ctx
-                    .add(resample_evt, Token::InterruptResample)
-                    .map_err(Error::CreateWaitContext)?;
-            }
-        }
 
         loop {
             let events = wait_ctx.wait().map_err(Error::WaitError)?;
@@ -257,9 +243,6 @@ impl<F: FileSystem + Sync> Worker<F> {
                             error!("virtio-fs transport error: {}", e);
                             return Err(e);
                         }
-                    }
-                    Token::InterruptResample => {
-                        self.irq.interrupt_resample();
                     }
                     Token::Kill => return Ok(()),
                 }

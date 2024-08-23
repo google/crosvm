@@ -754,7 +754,6 @@ fn run_main_worker(
     enum Token {
         SetPvClockPageQueue,
         SuspendResume,
-        InterruptResample,
         Kill,
     }
 
@@ -777,19 +776,6 @@ fn run_main_worker(
             };
         }
     };
-    if let Some(resample_evt) = interrupt.get_resample_evt() {
-        if wait_ctx
-            .add(resample_evt, Token::InterruptResample)
-            .is_err()
-        {
-            error!("failed creating WaitContext");
-            return MainWorkerReturn {
-                suspend_tube,
-                set_pvclock_page_queue,
-                worker,
-            };
-        }
-    }
 
     'wait: loop {
         let events = match wait_ctx.wait() {
@@ -895,10 +881,6 @@ fn run_main_worker(
                     if let Err(e) = suspend_tube.send(&resp) {
                         error!("error sending PvClockCommandResponse: {}", e);
                     }
-                }
-
-                Token::InterruptResample => {
-                    interrupt.interrupt_resample();
                 }
                 Token::Kill => {
                     break 'wait;

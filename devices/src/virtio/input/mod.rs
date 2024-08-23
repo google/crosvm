@@ -381,7 +381,6 @@ impl VirtioInputConfig {
 }
 
 struct Worker<T: EventSource> {
-    interrupt: Interrupt,
     event_source: T,
     event_queue: Queue,
     status_queue: Queue,
@@ -483,7 +482,6 @@ impl<T: EventSource> Worker<T> {
             EventQAvailable,
             StatusQAvailable,
             InputEventsAvailable,
-            InterruptResample,
             Kill,
         }
         let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
@@ -498,15 +496,6 @@ impl<T: EventSource> Worker<T> {
                 return;
             }
         };
-        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            if wait_ctx
-                .add(resample_evt, Token::InterruptResample)
-                .is_err()
-            {
-                error!("failed adding resample event to WaitContext.");
-                return;
-            }
-        }
 
         'wait: loop {
             let wait_events = match wait_ctx.wait() {
@@ -542,9 +531,6 @@ impl<T: EventSource> Worker<T> {
                         Err(e) => error!("error receiving events: {}", e),
                         Ok(_cnt) => eventq_needs_interrupt |= self.send_events(),
                     },
-                    Token::InterruptResample => {
-                        self.interrupt.interrupt_resample();
-                    }
                     Token::Kill => {
                         let _ = kill_evt.wait();
                         break 'wait;
@@ -623,7 +609,7 @@ where
     fn activate(
         &mut self,
         _mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != 2 {
@@ -639,7 +625,6 @@ where
             .context("tried to activate device without a source for events")?;
         self.worker_thread = Some(WorkerThread::start("v_input", move |kill_evt| {
             let mut worker = Worker {
-                interrupt,
                 event_source: source,
                 event_queue,
                 status_queue,

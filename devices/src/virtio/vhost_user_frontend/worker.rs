@@ -36,7 +36,6 @@ impl Worker {
         enum Token {
             Kill,
             NonMsixEvt,
-            Resample,
             ReqHandlerRead,
             #[cfg(target_os = "windows")]
             ReqHandlerClose,
@@ -48,12 +47,6 @@ impl Worker {
             (&self.kill_evt, Token::Kill),
         ])
         .context("failed to build WaitContext")?;
-
-        if let Some(resample_evt) = interrupt.get_resample_evt() {
-            wait_ctx
-                .add(resample_evt, Token::Resample)
-                .context("failed to add resample event to WaitContext")?;
-        }
 
         if let Some(backend_req_handler) = self.backend_req_handler.as_mut() {
             wait_ctx
@@ -105,9 +98,6 @@ impl Worker {
                         // The parameter vector of signal_used_queue is used only when msix is
                         // enabled.
                         interrupt.signal_used_queue(VIRTIO_MSI_NO_VECTOR);
-                    }
-                    Token::Resample => {
-                        interrupt.interrupt_resample();
                     }
                     Token::ReqHandlerRead => {
                         let Some(backend_req_handler) = self.backend_req_handler.as_mut() else {

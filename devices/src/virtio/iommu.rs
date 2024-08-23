@@ -643,7 +643,6 @@ fn run(
     iommu_device_tube: Tube,
     mut queues: BTreeMap<usize, Queue>,
     kill_evt: Event,
-    interrupt: Interrupt,
     translate_response_senders: Option<BTreeMap<u32, Tube>>,
     translate_request_rx: Option<Tube>,
 ) -> Result<()> {
@@ -657,7 +656,6 @@ fn run(
         .expect("Failed to clone queue event");
     let req_evt = EventAsync::new(req_evt, &ex).expect("Failed to create async event for queue");
 
-    let f_resample = async_utils::handle_irq_resample(&ex, interrupt);
     let f_kill = async_utils::await_and_exit(&ex, kill_evt);
 
     let request_tube = translate_request_rx
@@ -684,7 +682,6 @@ fn run(
     let done = async {
         select! {
             res = f_request.fuse() => res.context("error in handling request queue"),
-            res = f_resample.fuse() => res.context("error in handle_irq_resample"),
             res = f_kill.fuse() => res.context("error in await_and_exit"),
             res = f_handle_translate_request.fuse() => {
                 res.context("error in handle_translate_request")
@@ -820,7 +817,7 @@ impl VirtioDevice for Iommu {
     fn activate(
         &mut self,
         mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
@@ -860,7 +857,6 @@ impl VirtioDevice for Iommu {
                 iommu_device_tube,
                 queues,
                 kill_evt,
-                interrupt,
                 translate_response_senders,
                 translate_request_rx,
             );

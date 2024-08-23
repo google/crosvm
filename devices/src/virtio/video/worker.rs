@@ -317,14 +317,6 @@ impl Worker {
             (self.event_queue.event(), Token::EventQueue),
             (kill_evt, Token::Kill),
         ])
-        .and_then(|wc| {
-            // resampling event exists per-PCI-INTx basis, so the two queues have the same event.
-            // Thus, checking only cmd_queue_interrupt suffices.
-            if let Some(resample_evt) = self.cmd_queue.interrupt().get_resample_evt() {
-                wc.add(resample_evt, Token::InterruptResample)?;
-            }
-            Ok(wc)
-        })
         .map_err(Error::WaitContextCreationFailed)?;
 
         loop {
@@ -344,18 +336,6 @@ impl Worker {
                     }
                     Token::BufferBarrier { id } => {
                         self.handle_buffer_barrier(device.as_mut(), id, &wait_ctx)?;
-                    }
-                    Token::InterruptResample => {
-                        // Clear the event. `expect` is ok since the token fires if and only if
-                        // resample exists. resampling event exists per-PCI-INTx basis, so the
-                        // two queues have the same event.
-                        let _ = self
-                            .cmd_queue
-                            .interrupt()
-                            .get_resample_evt()
-                            .expect("resample event for the command queue doesn't exist")
-                            .wait();
-                        self.cmd_queue.interrupt().do_interrupt_resample();
                     }
                     Token::Kill => return Ok(()),
                 }

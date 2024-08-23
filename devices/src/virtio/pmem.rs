@@ -20,8 +20,8 @@ use base::Timer;
 use base::Tube;
 use base::TubeError;
 use base::WorkerThread;
+use cros_async::select2;
 use cros_async::select3;
-use cros_async::select4;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
 use cros_async::Executor;
@@ -299,7 +299,6 @@ async fn handle_queue(
 fn run_worker(
     queue: &mut Queue,
     pmem_device_tube: &Tube,
-    interrupt: Interrupt,
     kill_evt: Event,
     mapping_arena_slot: u32,
     mapping_size: usize,
@@ -323,17 +322,13 @@ fn run_worker(
     );
     pin_mut!(queue_fut);
 
-    // Process any requests to resample the irq value.
-    let resample = async_utils::handle_irq_resample(&ex, interrupt);
-    pin_mut!(resample);
-
     // Exit if the kill event is triggered.
     let kill = async_utils::await_and_exit(&ex, kill_evt);
     pin_mut!(kill);
 
     let interval = swap_interval.unwrap_or(Duration::ZERO);
     if interval.is_zero() {
-        if let Err(e) = ex.run_until(select3(queue_fut, resample, kill)) {
+        if let Err(e) = ex.run_until(select2(queue_fut, kill)) {
             error!("error happened in executor: {}", e);
         }
     } else {
@@ -345,7 +340,7 @@ fn run_worker(
             mapping_size,
         );
         pin_mut!(pageout_fut);
-        if let Err(e) = ex.run_until(select4(queue_fut, resample, kill, pageout_fut)) {
+        if let Err(e) = ex.run_until(select3(queue_fut, kill, pageout_fut)) {
             error!("error happened in executor: {}", e);
         }
     }
@@ -469,7 +464,7 @@ impl VirtioDevice for Pmem {
     fn activate(
         &mut self,
         _memory: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != 1 {
@@ -499,7 +494,6 @@ impl VirtioDevice for Pmem {
             run_worker(
                 &mut queue,
                 &pmem_device_tube,
-                interrupt,
                 kill_event,
                 mapping_arena_slot,
                 mapping_size,

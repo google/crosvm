@@ -456,7 +456,7 @@ impl VirtioDevice for VirtioSnd {
     fn activate(
         &mut self,
         _guest_mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != self.queue_sizes.len() {
@@ -478,7 +478,6 @@ impl VirtioDevice for VirtioSnd {
                 warn!("Failed to set audio thread to real time: {}", e);
             };
             run_worker(
-                interrupt,
                 queues,
                 snd_data,
                 kill_evt,
@@ -585,7 +584,6 @@ enum LoopState {
 }
 
 fn run_worker(
-    interrupt: Interrupt,
     queues: BTreeMap<usize, Queue>,
     snd_data: SndData,
     kill_evt: Event,
@@ -665,12 +663,10 @@ fn run_worker(
     let tx_queue = Rc::new(AsyncRwLock::new(tx_queue));
     let rx_queue = Rc::new(AsyncRwLock::new(rx_queue));
 
-    let f_resample = async_utils::handle_irq_resample(&ex, interrupt.clone()).fuse();
-
     // Exit if the kill event is triggered.
     let f_kill = async_utils::await_and_exit(&ex, kill_evt).fuse();
 
-    pin_mut!(f_resample, f_kill);
+    pin_mut!(f_kill);
 
     loop {
         if run_worker_once(
@@ -678,7 +674,6 @@ fn run_worker(
             &streams,
             &snd_data,
             &mut f_kill,
-            &mut f_resample,
             ctrl_queue.clone(),
             &mut ctrl_queue_evt,
             tx_queue.clone(),
@@ -755,7 +750,7 @@ async fn notify_reset_signal(reset_signal: &(AsyncRwLock<bool>, Condvar)) {
 
 /// Runs all workers once and exit if any worker exit.
 ///
-/// Returns [`LoopState::Break`] if the worker `f_kill` or `f_resample` exit, or something went
+/// Returns [`LoopState::Break`] if the worker `f_kill` exits, or something went
 /// wrong on shutdown process. The caller should not run the worker again and should exit the main
 /// loop.
 ///
@@ -766,7 +761,6 @@ fn run_worker_once(
     streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     snd_data: &SndData,
     mut f_kill: &mut (impl FusedFuture<Output = anyhow::Result<()>> + Unpin),
-    mut f_resample: &mut (impl FusedFuture<Output = anyhow::Result<()>> + Unpin),
     ctrl_queue: Rc<AsyncRwLock<Queue>>,
     ctrl_queue_evt: &mut EventAsync,
     tx_queue: Rc<AsyncRwLock<Queue>>,
@@ -805,7 +799,6 @@ fn run_worker_once(
     //     snd_state,
     //     event_queue,
     //     event_queue_evt,
-    //     interrupt,
     // );
     let f_tx = handle_pcm_queue(
         streams,
@@ -847,7 +840,6 @@ fn run_worker_once(
             res = f_rx_response => (res.context("error in handling rx response"), LoopState::Continue),
 
             // For following workers, do not continue the loop
-            res = f_resample => (res.context("error in handle_irq_resample"), LoopState::Break),
             res = f_kill => (res.context("error in await_and_exit"), LoopState::Break),
         }
     };

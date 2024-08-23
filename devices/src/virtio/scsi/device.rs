@@ -622,7 +622,7 @@ impl VirtioDevice for Controller {
     fn activate(
         &mut self,
         _mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         let executor_kind = self.executor_kind;
@@ -656,14 +656,12 @@ impl VirtioDevice for Controller {
             )]
         };
 
-        let intr = interrupt.clone();
         let worker_thread = WorkerThread::start("v_scsi_ctrlq", move |kill_evt| {
             let ex =
                 Executor::with_executor_kind(executor_kind).expect("Failed to create an executor");
             if let Err(err) = ex
                 .run_until(run_worker(
                     &ex,
-                    intr,
                     controlq,
                     kill_evt,
                     QueueType::Control { target_ids },
@@ -678,7 +676,6 @@ impl VirtioDevice for Controller {
         self.worker_threads.push(worker_thread);
 
         for (i, (queue, targets)) in request_queues.into_iter().enumerate() {
-            let interrupt = interrupt.clone();
             let worker_thread =
                 WorkerThread::start(format!("v_scsi_req_{}", i + 2), move |kill_evt| {
                     let ex = Executor::with_executor_kind(executor_kind)
@@ -694,7 +691,6 @@ impl VirtioDevice for Controller {
                     if let Err(err) = ex
                         .run_until(run_worker(
                             &ex,
-                            interrupt,
                             queue,
                             kill_evt,
                             QueueType::Request(async_logical_unit),
@@ -719,7 +715,6 @@ enum QueueType {
 
 async fn run_worker(
     ex: &Executor,
-    interrupt: Interrupt,
     queue: Queue,
     kill_evt: Event,
     queue_type: QueueType,
@@ -728,9 +723,6 @@ async fn run_worker(
 ) -> anyhow::Result<()> {
     let kill = async_utils::await_and_exit(ex, kill_evt).fuse();
     pin_mut!(kill);
-
-    let resample = async_utils::handle_irq_resample(ex, interrupt.clone()).fuse();
-    pin_mut!(resample);
 
     let kick_evt = queue
         .event()
@@ -748,7 +740,6 @@ async fn run_worker(
 
     futures::select! {
         _ = queue_handler => anyhow::bail!("queue handler exited unexpectedly"),
-        r = resample => r.context("failed to resample an irq value"),
         r = kill => r.context("failed to wait on the kill event"),
     }
 }

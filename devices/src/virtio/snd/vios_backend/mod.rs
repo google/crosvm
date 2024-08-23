@@ -120,7 +120,7 @@ impl VirtioDevice for Sound {
     fn activate(
         &mut self,
         _mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if self.worker_thread.is_some() {
@@ -149,7 +149,6 @@ impl VirtioDevice for Sound {
                 "v_snd_vios",
                 move |kill_evt| match Worker::try_new(
                     vios_client,
-                    interrupt,
                     Arc::new(Mutex::new(control_queue)),
                     event_queue,
                     Arc::new(Mutex::new(tx_queue)),

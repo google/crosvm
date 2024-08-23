@@ -1843,7 +1843,6 @@ pub fn process_out_queue(out_queue: &mut Queue, state: &mut WlState) {
 }
 
 struct Worker {
-    interrupt: Interrupt,
     in_queue: Queue,
     out_queue: Queue,
     state: WlState,
@@ -1851,7 +1850,6 @@ struct Worker {
 
 impl Worker {
     fn new(
-        interrupt: Interrupt,
         in_queue: Queue,
         out_queue: Queue,
         wayland_paths: BTreeMap<String, PathBuf>,
@@ -1863,7 +1861,6 @@ impl Worker {
         address_offset: Option<u64>,
     ) -> Worker {
         Worker {
-            interrupt,
             in_queue,
             out_queue,
             state: WlState::new(
@@ -1886,7 +1883,6 @@ impl Worker {
             OutQueue,
             Kill,
             State,
-            InterruptResample,
         }
 
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
@@ -1896,12 +1892,6 @@ impl Worker {
             (&self.state.wait_ctx, Token::State),
         ])
         .context("failed creating WaitContext")?;
-
-        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            wait_ctx
-                .add(resample_evt, Token::InterruptResample)
-                .context("failed adding resample event to WaitContext.")?;
-        }
 
         let mut watching_state_ctx = true;
         'wait: loop {
@@ -1947,9 +1937,6 @@ impl Worker {
                             }
                             watching_state_ctx = false;
                         }
-                    }
-                    Token::InterruptResample => {
-                        self.interrupt.interrupt_resample();
                     }
                 }
             }
@@ -2043,7 +2030,7 @@ impl VirtioDevice for Wl {
     fn activate(
         &mut self,
         _mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
@@ -2074,7 +2061,6 @@ impl VirtioDevice for Wl {
 
         self.worker_thread = Some(WorkerThread::start("v_wl", move |kill_evt| {
             Worker::new(
-                interrupt,
                 queues.pop_first().unwrap().1,
                 queues.pop_first().unwrap().1,
                 wayland_paths,

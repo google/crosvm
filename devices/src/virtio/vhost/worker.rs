@@ -143,7 +143,6 @@ impl<T: Vhost> Worker<T> {
         #[derive(EventToken)]
         enum Token {
             VhostIrqi { index: usize },
-            InterruptResample,
             Kill,
             ControlNotify,
         }
@@ -161,11 +160,6 @@ impl<T: Vhost> Worker<T> {
                 .add(socket, Token::ControlNotify)
                 .map_err(Error::CreateWaitContext)?;
         }
-        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            wait_ctx
-                .add(resample_evt, Token::InterruptResample)
-                .map_err(Error::CreateWaitContext)?;
-        }
 
         'wait: loop {
             let events = wait_ctx.wait().map_err(Error::WaitError)?;
@@ -178,9 +172,6 @@ impl<T: Vhost> Worker<T> {
                             .map_err(Error::VhostIrqRead)?;
                         self.interrupt
                             .signal_used_queue(self.queues[&index].vector());
-                    }
-                    Token::InterruptResample => {
-                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => {
                         let _ = kill_evt.wait();

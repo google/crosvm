@@ -19,7 +19,6 @@ use crate::virtio::console::worker::WorkerPort;
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::console::virtio_console_config;
 use crate::virtio::device_constants::console::VIRTIO_CONSOLE_F_MULTIPORT;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 pub struct ConsoleDevice {
@@ -96,14 +95,14 @@ impl ConsoleDevice {
         self.ports.iter().flat_map(ConsolePort::keep_rds).collect()
     }
 
-    fn ensure_worker_started(&mut self, interrupt: Interrupt) -> &mut WorkerHandle {
+    fn ensure_worker_started(&mut self) -> &mut WorkerHandle {
         self.worker.get_or_insert_with(|| {
             let ports = self
                 .ports
                 .iter_mut()
                 .map(WorkerPort::from_console_port)
                 .collect();
-            WorkerHandle::new(interrupt, ports).expect("failed to create console worker")
+            WorkerHandle::new(ports).expect("failed to create console worker")
         })
     }
 
@@ -117,7 +116,7 @@ impl ConsoleDevice {
     }
 
     pub fn start_queue(&mut self, idx: usize, queue: Queue) -> anyhow::Result<()> {
-        let worker = self.ensure_worker_started(queue.interrupt().clone());
+        let worker = self.ensure_worker_started();
         worker.start_queue(idx, queue)
     }
 

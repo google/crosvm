@@ -393,7 +393,6 @@ enum Token {
     CommandQueue,
     V4l2Session(u32),
     Kill,
-    InterruptResample,
 }
 
 /// Newtype to implement `SessionPoller` on `Rc<WaitContext<Token>>`.
@@ -419,7 +418,7 @@ impl SessionPoller for WaitContextPoller {
 /// Worker to operate a virtio-media device inside a worker thread.
 struct Worker<D: VirtioMediaDevice<Reader, Writer>> {
     runner: VirtioMediaDeviceRunner<Reader, Writer, D, WaitContextPoller>,
-    cmd_queue: (Queue, Interrupt),
+    cmd_queue: Queue,
     wait_ctx: Rc<WaitContext<Token>>,
 }
 
@@ -431,7 +430,6 @@ where
     fn new(
         device: D,
         cmd_queue: Queue,
-        cmd_interrupt: Interrupt,
         kill_evt: Event,
         wait_ctx: Rc<WaitContext<Token>>,
     ) -> anyhow::Result<Self> {
@@ -444,32 +442,26 @@ where
 
         Ok(Self {
             runner: VirtioMediaDeviceRunner::new(device, WaitContextPoller(Rc::clone(&wait_ctx))),
-            cmd_queue: (cmd_queue, cmd_interrupt),
+            cmd_queue,
             wait_ctx,
         })
     }
 
     fn run(&mut self) -> anyhow::Result<()> {
-        if let Some(resample_evt) = self.cmd_queue.1.get_resample_evt() {
-            self.wait_ctx
-                .add(resample_evt, Token::InterruptResample)
-                .context("failed adding resample event to WaitContext.")?;
-        }
-
         loop {
             let wait_events = self.wait_ctx.wait().context("Wait error")?;
 
             for wait_event in wait_events.iter() {
                 match wait_event.token {
                     Token::CommandQueue => {
-                        let _ = self.cmd_queue.0.event().wait();
-                        while let Some(mut desc) = self.cmd_queue.0.pop() {
+                        let _ = self.cmd_queue.event().wait();
+                        while let Some(mut desc) = self.cmd_queue.pop() {
                             self.runner
                                 .handle_command(&mut desc.reader, &mut desc.writer);
                             // Return the descriptor to the guest.
                             let written = desc.writer.bytes_written() as u32;
-                            self.cmd_queue.0.add_used(desc, written);
-                            self.cmd_queue.0.trigger_interrupt();
+                            self.cmd_queue.add_used(desc, written);
+                            self.cmd_queue.trigger_interrupt();
                         }
                     }
                     Token::Kill => {
@@ -497,9 +489,6 @@ where
                                 self.runner.device.close_session(session);
                             }
                         }
-                    }
-                    Token::InterruptResample => {
-                        self.cmd_queue.1.interrupt_resample();
                     }
                 }
             }
@@ -582,7 +571,7 @@ where
     fn activate(
         &mut self,
         mem: vm_memory::GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
@@ -618,7 +607,7 @@ where
 
         let worker_thread = WorkerThread::start("v_media_worker", move |e| {
             let wait_ctx = Rc::new(wait_ctx);
-            let mut worker = match Worker::new(device, cmd_queue, interrupt, e, wait_ctx) {
+            let mut worker = match Worker::new(device, cmd_queue, e, wait_ctx) {
                 Ok(worker) => worker,
                 Err(e) => {
                     error!("failed to create virtio-media worker: {:#}", e);

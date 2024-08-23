@@ -1058,10 +1058,6 @@ fn run_worker(
         );
         pin_mut!(command);
 
-        // Process any requests to resample the irq value.
-        let resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
-        pin_mut!(resample);
-
         // Send a message if balloon target reached event is triggered.
         let target_reached = handle_target_reached(&ex, target_reached_evt, &vm_memory_client);
         pin_mut!(target_reached);
@@ -1087,7 +1083,6 @@ fn run_worker(
                 _ = reporting => return Err(anyhow!("reporting stopped unexpectedly")),
                 _ = command.fuse() => return Err(anyhow!("command stopped unexpectedly")),
                 _ = ws_op => return Err(anyhow!("ws_op stopped unexpectedly")),
-                _ = resample.fuse() => return Err(anyhow!("resample stopped unexpectedly")),
                 _ = pending_adjusted.fuse() => return Err(anyhow!("pending_adjusted stopped unexpectedly")),
                 _ = ws_data => return Err(anyhow!("ws_data stopped unexpectedly")),
                 _ = target_reached.fuse() => return Err(anyhow!("target_reached stopped unexpectedly")),

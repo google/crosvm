@@ -38,7 +38,6 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
 const TPM_BUFSIZE: usize = 4096;
 
 struct Worker {
-    interrupt: Interrupt,
     queue: Queue,
     backend: Box<dyn TpmBackend>,
 }
@@ -103,8 +102,6 @@ impl Worker {
         enum Token {
             // A request is ready on the queue.
             QueueAvailable,
-            // Check if any interrupts need to be re-asserted.
-            InterruptResample,
             // The parent thread requested an exit.
             Kill,
         }
@@ -115,12 +112,6 @@ impl Worker {
         ])
         .context("WaitContext::build_with")?;
 
-        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            wait_ctx
-                .add(resample_evt, Token::InterruptResample)
-                .context("WaitContext::add")?;
-        }
-
         loop {
             let events = wait_ctx.wait().context("WaitContext::wait")?;
             let mut needs_interrupt = NeedsInterrupt::No;
@@ -129,9 +120,6 @@ impl Worker {
                     Token::QueueAvailable => {
                         self.queue.event().wait().context("Event::wait")?;
                         needs_interrupt |= self.process_queue();
-                    }
-                    Token::InterruptResample => {
-                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => return Ok(()),
                 }
@@ -180,7 +168,7 @@ impl VirtioDevice for Tpm {
     fn activate(
         &mut self,
         _mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != 1 {
@@ -190,11 +178,7 @@ impl VirtioDevice for Tpm {
 
         let backend = self.backend.take().context("no backend in vtpm")?;
 
-        let worker = Worker {
-            interrupt,
-            queue,
-            backend,
-        };
+        let worker = Worker { queue, backend };
 
         self.worker_thread = Some(WorkerThread::start("v_tpm", |kill_evt| {
             if let Err(e) = worker.run(kill_evt) {

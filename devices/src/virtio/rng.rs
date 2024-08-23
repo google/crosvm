@@ -31,7 +31,6 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
 const CHUNK_SIZE: usize = 64;
 
 struct Worker {
-    interrupt: Interrupt,
     queue: Queue,
 }
 
@@ -66,7 +65,6 @@ impl Worker {
         #[derive(EventToken)]
         enum Token {
             QueueAvailable,
-            InterruptResample,
             Kill,
         }
 
@@ -75,12 +73,6 @@ impl Worker {
             (&kill_evt, Token::Kill),
         ])
         .context("failed creating WaitContext")?;
-
-        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            wait_ctx
-                .add(resample_evt, Token::InterruptResample)
-                .context("failed adding resample event to WaitContext.")?;
-        }
 
         let mut exiting = false;
         while !exiting {
@@ -93,9 +85,6 @@ impl Worker {
                             .wait()
                             .context("failed reading queue Event")?;
                         self.process_queue();
-                    }
-                    Token::InterruptResample => {
-                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => exiting = true,
                 }
@@ -142,7 +131,7 @@ impl VirtioDevice for Rng {
     fn activate(
         &mut self,
         _mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != 1 {
@@ -152,7 +141,7 @@ impl VirtioDevice for Rng {
         let queue = queues.remove(&0).unwrap();
 
         self.worker_thread = Some(WorkerThread::start("v_rng", move |kill_evt| {
-            let mut worker = Worker { interrupt, queue };
+            let mut worker = Worker { queue };
             if let Err(e) = worker.run(kill_evt) {
                 error!("rng worker thread failed: {:#}", e);
             }

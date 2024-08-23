@@ -25,7 +25,6 @@ use crate::virtio::console::input::process_receive_queue;
 use crate::virtio::console::output::process_transmit_queue;
 use crate::virtio::console::port::ConsolePort;
 use crate::virtio::console::port::ConsolePortInfo;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 const PORT0_RECEIVEQ_IDX: usize = 0;
@@ -83,7 +82,6 @@ enum Token {
     InputAvailable(u32),
     ControlReceiveQueueAvailable,
     ControlTransmitQueueAvailable,
-    InterruptResample,
     WorkerRequest,
     Kill,
 }
@@ -102,7 +100,6 @@ pub enum WorkerRequest {
 
 pub struct Worker {
     wait_ctx: WaitContext<Token>,
-    interrupt: Interrupt,
 
     // Currently running queues.
     queues: BTreeMap<usize, Queue>,
@@ -120,7 +117,6 @@ pub struct Worker {
 
 impl Worker {
     pub fn new(
-        interrupt: Interrupt,
         ports: Vec<WorkerPort>,
         worker_receiver: mpsc::Receiver<WorkerRequest>,
         worker_event: Event,
@@ -134,13 +130,8 @@ impl Worker {
             wait_ctx.add(&port.in_avail_evt, Token::InputAvailable(port_id))?;
         }
 
-        if let Some(resample_evt) = interrupt.get_resample_evt() {
-            wait_ctx.add(resample_evt, Token::InterruptResample)?;
-        }
-
         Ok(Worker {
             wait_ctx,
-            interrupt,
             queues: BTreeMap::new(),
             ports,
             pending_receive_control_msgs: VecDeque::new(),
@@ -227,9 +218,6 @@ impl Worker {
                             )
                         }
                     }
-                    Token::InterruptResample => {
-                        self.interrupt.interrupt_resample();
-                    }
                     Token::WorkerRequest => {
                         self.worker_event.wait()?;
                         self.process_worker_requests();
@@ -302,12 +290,12 @@ pub struct WorkerHandle {
 }
 
 impl WorkerHandle {
-    pub fn new(interrupt: Interrupt, ports: Vec<WorkerPort>) -> anyhow::Result<Self> {
+    pub fn new(ports: Vec<WorkerPort>) -> anyhow::Result<Self> {
         let worker_event = Event::new().context("Event::new")?;
         let worker_event_clone = worker_event.try_clone().context("Event::try_clone")?;
         let (worker_sender, worker_receiver) = mpsc::channel();
         let worker_thread = WorkerThread::start("v_console", move |kill_evt| {
-            let mut worker = Worker::new(interrupt, ports, worker_receiver, worker_event_clone)
+            let mut worker = Worker::new(ports, worker_receiver, worker_event_clone)
                 .expect("console Worker::new() failed");
             if let Err(e) = worker.run(&kill_evt) {
                 error!("console worker failed: {:#}", e);

@@ -24,12 +24,10 @@ use super::Result;
 use super::SoundError;
 use super::*;
 use crate::virtio::DescriptorChain;
-use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 pub struct Worker {
     // Lock order: Must never hold more than one queue lock at the same time.
-    interrupt: Interrupt,
     pub control_queue: Arc<Mutex<Queue>>,
     pub event_queue: Option<Queue>,
     vios_client: Arc<Mutex<VioSClient>>,
@@ -48,7 +46,6 @@ impl Worker {
     /// Creates a new virtio-snd worker.
     pub fn try_new(
         vios_client: Arc<Mutex<VioSClient>>,
-        interrupt: Interrupt,
         control_queue: Arc<Mutex<Queue>>,
         event_queue: Queue,
         tx_queue: Arc<Mutex<Queue>>,
@@ -92,7 +89,6 @@ impl Worker {
             })
             .map_err(SoundError::CreateThread)?;
         Ok(Worker {
-            interrupt,
             control_queue,
             event_queue: Some(event_queue),
             vios_client,
@@ -117,7 +113,6 @@ impl Worker {
         enum Token {
             ControlQAvailable,
             EventQAvailable,
-            InterruptResample,
             EventTriggered,
             Kill,
         }
@@ -132,11 +127,6 @@ impl Worker {
         ])
         .map_err(SoundError::WaitCtx)?;
 
-        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            wait_ctx
-                .add(resample_evt, Token::InterruptResample)
-                .map_err(SoundError::WaitCtx)?;
-        }
         let mut event_queue = self.event_queue.take().expect("event_queue missing");
         'wait: loop {
             let wait_events = wait_ctx.wait().map_err(SoundError::WaitCtx)?;
@@ -160,9 +150,6 @@ impl Worker {
                     Token::EventTriggered => {
                         event_notifier.wait().map_err(SoundError::QueueEvt)?;
                         self.process_event_triggered(&mut event_queue)?;
-                    }
-                    Token::InterruptResample => {
-                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => {
                         let _ = kill_evt.wait();

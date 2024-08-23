@@ -322,14 +322,11 @@ pub enum Token {
     TxQueue,
     // The control queue has a message.
     CtrlQueue,
-    // Check if any interrupts need to be re-asserted.
-    InterruptResample,
     // crosvm has requested the device to shut down.
     Kill,
 }
 
 pub(super) struct Worker<T: TapT> {
-    pub(super) interrupt: Interrupt,
     pub(super) rx_queue: Queue,
     pub(super) tx_queue: Queue,
     pub(super) ctrl_queue: Option<Queue>,
@@ -370,7 +367,7 @@ where
         )
     }
 
-    fn run(&mut self, handle_interrupt_resample: bool) -> Result<(), NetError> {
+    fn run(&mut self) -> Result<(), NetError> {
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             // This doesn't use get_read_notifier() because of overlapped io; we
             // have overlapped wrapper separate from the TAP so that we can pass
@@ -393,14 +390,6 @@ where
             wait_ctx
                 .add(ctrl_queue.event(), Token::CtrlQueue)
                 .map_err(NetError::CreateWaitContext)?;
-        }
-
-        if handle_interrupt_resample {
-            if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-                wait_ctx
-                    .add(resample_evt, Token::InterruptResample)
-                    .map_err(NetError::CreateWaitContext)?;
-            }
         }
 
         let mut tap_polling_enabled = true;
@@ -445,13 +434,6 @@ where
                             error!("net: failed to process control message: {}", e);
                             break 'wait;
                         }
-                    }
-                    Token::InterruptResample => {
-                        let _trace =
-                            cros_tracing::trace_event!(VirtioNet, "handle InterruptResample event");
-                        // We can unwrap safely because interrupt must have the event.
-                        let _ = self.interrupt.get_resample_evt().unwrap().wait();
-                        self.interrupt.do_interrupt_resample();
                     }
                     Token::Kill => {
                         let _ = self.kill_evt.wait();
@@ -664,7 +646,7 @@ where
     fn activate(
         &mut self,
         _mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         let ctrl_vq_enabled = self.acked_features & (1 << virtio_net::VIRTIO_NET_F_CTRL_VQ) != 0;
@@ -700,7 +682,6 @@ where
         for i in 0..vq_pairs {
             let tap = self.taps.remove(0);
             let acked_features = self.acked_features;
-            let interrupt = interrupt.clone();
             let first_queue = i == 0;
             // Queues alternate between rx0, tx0, rx1, tx1, ..., rxN, txN, ctrl.
             let rx_queue = queues.pop_first().unwrap().1;
@@ -710,15 +691,12 @@ where
             } else {
                 None
             };
-            // Handle interrupt resampling on the first queue's thread.
-            let handle_interrupt_resample = first_queue;
             let pairs = vq_pairs as u16;
             #[cfg(windows)]
             let overlapped_wrapper = OverlappedWrapper::new(true).unwrap();
             self.worker_threads
                 .push(WorkerThread::start(format!("v_net:{i}"), move |kill_evt| {
                     let mut worker = Worker {
-                        interrupt,
                         rx_queue,
                         tx_queue,
                         ctrl_queue,
@@ -735,7 +713,7 @@ where
                         deferred_rx: false,
                         kill_evt,
                     };
-                    let result = worker.run(handle_interrupt_resample);
+                    let result = worker.run();
                     if let Err(e) = result {
                         error!("net worker thread exited with error: {}", e);
                     }

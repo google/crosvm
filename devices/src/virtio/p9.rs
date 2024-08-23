@@ -70,7 +70,6 @@ pub enum P9Error {
 pub type P9Result<T> = result::Result<T, P9Error>;
 
 struct Worker {
-    interrupt: Interrupt,
     queue: Queue,
     server: p9::Server,
 }
@@ -96,8 +95,6 @@ impl Worker {
         enum Token {
             // A request is ready on the queue.
             QueueReady,
-            // Check if any interrupts need to be re-asserted.
-            InterruptResample,
             // The parent thread requested an exit.
             Kill,
         }
@@ -107,11 +104,6 @@ impl Worker {
             (&kill_evt, Token::Kill),
         ])
         .map_err(P9Error::CreateWaitContext)?;
-        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            wait_ctx
-                .add(resample_evt, Token::InterruptResample)
-                .map_err(P9Error::CreateWaitContext)?;
-        }
 
         loop {
             let events = wait_ctx.wait().map_err(P9Error::WaitError)?;
@@ -120,9 +112,6 @@ impl Worker {
                     Token::QueueReady => {
                         self.queue.event().wait().map_err(P9Error::ReadQueueEvent)?;
                         self.process_queue()?;
-                    }
-                    Token::InterruptResample => {
-                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => return Ok(()),
                 }
@@ -205,7 +194,7 @@ impl VirtioDevice for P9 {
     fn activate(
         &mut self,
         _guest_mem: GuestMemory,
-        interrupt: Interrupt,
+        _interrupt: Interrupt,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != 1 {
@@ -217,11 +206,7 @@ impl VirtioDevice for P9 {
         let server = self.server.take().context("missing server")?;
 
         self.worker = Some(WorkerThread::start("v_9p", move |kill_evt| {
-            let mut worker = Worker {
-                interrupt,
-                queue,
-                server,
-            };
+            let mut worker = Worker { queue, server };
 
             worker.run(kill_evt)
         }));

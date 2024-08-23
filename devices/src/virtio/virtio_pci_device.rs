@@ -20,6 +20,7 @@ use base::RawDescriptor;
 use base::Result;
 use base::SharedMemory;
 use base::Tube;
+use base::WorkerThread;
 use data_model::Le32;
 use hypervisor::Datamatch;
 use hypervisor::MemCacheType;
@@ -297,6 +298,8 @@ pub struct VirtioPciDevice {
 
     interrupt: Option<Interrupt>,
     interrupt_evt: Option<IrqLevelEvent>,
+    interrupt_resample_worker: Option<WorkerThread<()>>,
+
     queues: Vec<QueueConfig>,
     queue_evts: Vec<QueueEvent>,
     mem: GuestMemory,
@@ -501,6 +504,7 @@ impl VirtioPciDevice {
             disable_intx,
             interrupt: None,
             interrupt_evt: None,
+            interrupt_resample_worker: None,
             queues,
             queue_evts,
             mem,
@@ -632,6 +636,7 @@ impl VirtioPciDevice {
             )),
         );
         self.interrupt = Some(interrupt.clone());
+        self.interrupt_resample_worker = interrupt.spawn_resample_thread();
 
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar);
         let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
@@ -981,6 +986,9 @@ impl PciDevice for VirtioPciDevice {
                 if let Err(e) = self.unregister_ioevents() {
                     error!("failed to unregister ioevents: {:#}", e);
                 }
+                if let Some(interrupt_resample_worker) = self.interrupt_resample_worker.take() {
+                    interrupt_resample_worker.stop();
+                }
             }
         }
     }
@@ -1314,7 +1322,7 @@ impl Suspendable for VirtioPciDevice {
         // Restore the interrupt. This must be done after restoring the MSI-X configuration, but
         // before restoring the queues.
         if let Some(deser_interrupt) = deser.interrupt {
-            self.interrupt = Some(Interrupt::new_from_snapshot(
+            let interrupt = Interrupt::new_from_snapshot(
                 self.interrupt_evt
                     .as_ref()
                     .ok_or_else(|| anyhow!("{} interrupt_evt is none", self.debug_label()))?
@@ -1332,7 +1340,9 @@ impl Suspendable for VirtioPciDevice {
                         virtio_id: self.device.device_type() as u32,
                     },
                 )),
-            ));
+            );
+            self.interrupt_resample_worker = interrupt.spawn_resample_thread();
+            self.interrupt = Some(interrupt);
         }
 
         assert_eq!(

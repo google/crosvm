@@ -815,7 +815,6 @@ enum WorkerToken {
     CursorQueue,
     Display,
     GpuControl,
-    InterruptResample,
     Sleep,
     Kill,
     ResourceBridge {
@@ -1158,12 +1157,6 @@ impl Worker {
         ])
         .context("failed creating gpu worker WaitContext")?;
 
-        if let Some(resample_evt) = activation_resources.interrupt.get_resample_evt() {
-            event_manager
-                .add(resample_evt, WorkerToken::InterruptResample)
-                .context("failed adding interrupt resample event to WaitContext")?;
-        }
-
         let poll_desc: SafeDescriptor;
         if let Some(desc) = self.state.virtio_gpu.poll_descriptor() {
             poll_desc = desc;
@@ -1267,9 +1260,6 @@ impl Worker {
                     }
                     WorkerToken::ResourceBridge { index } => {
                         self.resource_bridges.set_should_process(index);
-                    }
-                    WorkerToken::InterruptResample => {
-                        activation_resources.interrupt.interrupt_resample();
                     }
                     WorkerToken::VirtioGpuPoll => {
                         self.state.event_poll();

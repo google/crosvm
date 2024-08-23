@@ -227,7 +227,7 @@ where
         }
         needs_interrupt |= self.process_rx_slirp();
         if needs_interrupt {
-            self.interrupt.signal_used_queue(self.rx_queue.vector());
+            self.rx_queue.trigger_interrupt();
         }
         Ok(())
     }
@@ -250,7 +250,7 @@ where
                 }
             }
             self.deferred_rx = false;
-            self.interrupt.signal_used_queue(self.rx_queue.vector());
+            self.rx_queue.trigger_interrupt();
         }
         Ok(())
     }
