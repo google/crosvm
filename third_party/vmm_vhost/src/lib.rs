@@ -141,6 +141,9 @@ pub enum Error {
     /// Generic socket errors.
     #[error("socket error: {0}")]
     SocketError(std::io::Error),
+    /// Fail to get socket from the fd
+    #[error("Failed get socket from the fd: {0}")]
+    SocketFromFdError(std::path::PathBuf),
     /// Should retry the socket operation again.
     #[error("temporary socket error: {0}")]
     SocketRetry(std::io::Error),

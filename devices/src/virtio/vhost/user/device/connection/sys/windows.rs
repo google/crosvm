@@ -15,8 +15,19 @@ use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 /// constructor string, and the future returned by `run_backend` can be listened to alonside the
 /// close and exit events.
 pub struct VhostUserListener;
+pub struct VhostUserStream;
 
 impl VhostUserConnectionTrait for VhostUserListener {
+    fn run_req_handler<'e>(
+        self,
+        _handler: Box<dyn vmm_vhost::Backend>,
+        _ex: &'e Executor,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
+        todo!()
+    }
+}
+
+impl VhostUserConnectionTrait for VhostUserStream {
     fn run_req_handler<'e>(
         self,
         _handler: Box<dyn vmm_vhost::Backend>,

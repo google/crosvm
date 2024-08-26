@@ -15,6 +15,7 @@ pub mod snd;
 pub use block::run_block_device;
 pub use block::Options as BlockOptions;
 pub use connection::sys::VhostUserListener;
+pub use connection::sys::VhostUserStream;
 pub use connection::VhostUserConnectionTrait;
 use cros_async::Executor;
 #[cfg(feature = "gpu")]

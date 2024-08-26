@@ -524,6 +524,16 @@ pub fn safe_descriptor_from_path<P: AsRef<Path>>(path: P) -> Result<Option<SafeD
     }
 }
 
+// Validate the fd and Returns SafeDescriptor
+pub fn safe_descriptor_from_fd(fd: RawFd) -> Result<SafeDescriptor> {
+    let validated_fd = validate_raw_fd(fd)?;
+    Ok(
+        // SAFETY:
+        // Safe because nothing else has access to validated_fd after this call.
+        unsafe { SafeDescriptor::from_raw_descriptor(validated_fd) },
+    )
+}
+
 /// Open the file with the given path, or if it is of the form `/proc/self/fd/N` then just use the
 /// file descriptor.
 ///

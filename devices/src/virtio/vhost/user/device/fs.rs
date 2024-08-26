@@ -203,8 +203,13 @@ impl VhostUserDevice for FsBackend {
 /// FS Device
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
-    /// path to a vhost-user socket
-    socket: String,
+    /// the UDS path to a vhost-user socket.
+    /// If this flag is set, --fd cannot be specified.
+    socket: Option<String>,
+    #[argh(option, arg_name = "FD")]
+    /// file descriptor of a connected vhost-user socket.
+    /// If this flag is set, --socket cannot be specified.
+    fd: Option<i32>,
     #[argh(option, arg_name = "TAG")]
     /// the virtio-fs tag
     tag: String,

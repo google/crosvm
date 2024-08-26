@@ -13,3 +13,4 @@ cfg_if::cfg_if! {
 }
 
 pub use platform::VhostUserListener;
+pub use platform::VhostUserStream;

@@ -15,6 +15,7 @@ use jail::set_embedded_bpf_program;
 use minijail::Minijail;
 
 use crate::virtio::vhost::user::device::connection::sys::VhostUserListener;
+use crate::virtio::vhost::user::device::connection::sys::VhostUserStream;
 use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
 use crate::virtio::vhost::user::device::fs::FsBackend;
 use crate::virtio::vhost::user::device::fs::Options;
@@ -110,7 +111,19 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let fs_device = FsBackend::new(&ex, &opts.tag, opts.cfg)?;
 
     let mut keep_rds = fs_device.keep_rds.clone();
-    let listener = VhostUserListener::new_socket(&opts.socket, Some(&mut keep_rds))?;
+
+    let (listener, stream) = match (opts.socket, opts.fd) {
+        (Some(socket), None) => {
+            let listener = VhostUserListener::new_socket(&socket, Some(&mut keep_rds))?;
+            (Some(listener), None)
+        }
+        (None, Some(fd)) => {
+            let stream = VhostUserStream::new_socket_from_fd(fd, Some(&mut keep_rds))?;
+            (None, Some(stream))
+        }
+        (Some(_), Some(_)) => bail!("Cannot specify both a socket path and a file descriptor"),
+        (None, None) => bail!("Must specify either a socket or a file descriptor"),
+    };
 
     base::syslog::push_descriptors(&mut keep_rds);
     cros_tracing::push_descriptors!(&mut keep_rds);
@@ -156,6 +169,11 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         }
     }
 
-    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    ex.run_until(listener.run_backend(fs_device, &ex))?
+    if let Some(listener) = listener {
+        // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+        ex.run_until(listener.run_backend(fs_device, &ex))?
+    } else {
+        let stream = stream.expect("if listener is none, the stream should be some");
+        ex.run_until(stream.run_backend(fs_device, &ex))?
+    }
 }
