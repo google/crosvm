@@ -526,7 +526,11 @@ pub unsafe extern "C" fn rutabaga_resource_create_blob(
     catch_unwind(AssertUnwindSafe(|| {
         let mut iovecs_opt: Option<Vec<RutabagaIovec>> = None;
         if let Some(iovs) = iovecs {
-            let slice = from_raw_parts((*iovs).iovecs, (*iovs).num_iovecs);
+            let slice = if iovs.num_iovecs != 0 {
+                from_raw_parts(iovs.iovecs, iovs.num_iovecs)
+            } else {
+                &[]
+            };
             let vecs = slice
                 .iter()
                 .map(|iov| RutabagaIovec {
