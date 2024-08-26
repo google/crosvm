@@ -699,11 +699,6 @@ fn prepare_argh_args<I: IntoIterator<Item = String>>(args_iter: I) -> Vec<String
                 eprintln!("Please use `--host-ip` instead");
                 args.push("--host-ip".to_string());
             }
-            "--balloon_bias_mib" => {
-                eprintln!("`--balloon_bias_mib` option is deprecated!");
-                eprintln!("Please use `--balloon-bias-mib` instead");
-                args.push("--balloon-bias-mib".to_string());
-            }
             "-h" => args.push("--help".to_string()),
             arg if is_flag(arg) => {
                 // Split `--arg=val` into `--arg val`, since argh doesn't support the former.
@@ -963,16 +958,6 @@ mod tests {
                 ["crosvm", "run", "--host_ip", "1.2.3.4", "vm_kernel"].map(|x| x.to_string())
             ),
             ["crosvm", "run", "--host-ip", "1.2.3.4", "vm_kernel"]
-        );
-    }
-
-    #[test]
-    fn args_balloon_bias_mib() {
-        assert_eq!(
-            prepare_argh_args(
-                ["crosvm", "run", "--balloon_bias_mib", "1234", "vm_kernel"].map(|x| x.to_string())
-            ),
-            ["crosvm", "run", "--balloon-bias-mib", "1234", "vm_kernel"]
         );
     }
 
