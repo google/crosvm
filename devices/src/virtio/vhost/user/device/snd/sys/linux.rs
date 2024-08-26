@@ -7,8 +7,8 @@ use argh::FromArgs;
 use cros_async::Executor;
 
 use crate::virtio::snd::parameters::Parameters;
-use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
-use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
+use crate::virtio::vhost::user::device::connection::sys::VhostUserListener;
+use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
 use crate::virtio::vhost::user::device::snd::SndBackend;
 
 #[derive(FromArgs)]

@@ -3,10 +3,10 @@
 // found in the LICENSE file.
 
 mod block;
+mod connection;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 mod handler;
-mod listener;
 #[cfg(feature = "net")]
 mod net;
 #[cfg(feature = "audio")]
@@ -14,6 +14,8 @@ pub mod snd;
 
 pub use block::run_block_device;
 pub use block::Options as BlockOptions;
+pub use connection::sys::VhostUserListener;
+pub use connection::VhostUserConnectionTrait;
 use cros_async::Executor;
 #[cfg(feature = "gpu")]
 pub use gpu::run_gpu_device;
@@ -21,8 +23,6 @@ pub use gpu::run_gpu_device;
 pub use gpu::Options as GpuOptions;
 pub use handler::VhostBackendReqConnectionState;
 pub use handler::VhostUserDevice;
-pub use listener::sys::VhostUserListener;
-pub use listener::VhostUserListenerTrait;
 #[cfg(feature = "net")]
 pub use net::run_net_device;
 #[cfg(feature = "net")]

@@ -15,13 +15,21 @@ use vmm_vhost::connection::Listener;
 use vmm_vhost::unix::SocketListener;
 use vmm_vhost::BackendServer;
 
+use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
 use crate::virtio::vhost::user::device::handler::sys::linux::run_handler;
-use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 
 /// On Unix we can listen to a socket.
 pub struct VhostUserListener(SocketListener);
 
 impl VhostUserListener {
+    /// Create a vhost-user listener from a UNIX domain socket path.
+    ///
+    /// `keep_rds` can be specified to retrieve the raw descriptors that must be preserved for this
+    /// listener to keep working after forking.
+    pub fn new(path: &str, keep_rds: Option<&mut Vec<RawDescriptor>>) -> anyhow::Result<Self> {
+        Self::new_socket(path, keep_rds)
+    }
+
     /// Creates a new regular vhost-user listener, listening on `path`.
     ///
     /// `keep_rds` can be specified to retrieve the raw descriptors that must be preserved for this
@@ -74,15 +82,7 @@ async fn run_with_handler(
     }
 }
 
-impl VhostUserListenerTrait for VhostUserListener {
-    /// Create a vhost-user listener from a UNIX domain socket path.
-    ///
-    /// `keep_rds` can be specified to retrieve the raw descriptors that must be preserved for this
-    /// listener to keep working after forking.
-    fn new(path: &str, keep_rds: Option<&mut Vec<RawDescriptor>>) -> anyhow::Result<Self> {
-        Self::new_socket(path, keep_rds)
-    }
-
+impl VhostUserConnectionTrait for VhostUserListener {
     fn run_req_handler<'e>(
         self,
         handler: Box<dyn vmm_vhost::Backend>,

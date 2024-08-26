@@ -42,9 +42,9 @@ use crate::virtio::device_constants::vsock::NUM_QUEUES;
 use crate::virtio::vhost::user::device::handler::vmm_va_to_gpa;
 use crate::virtio::vhost::user::device::handler::MappingInfo;
 use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
+use crate::virtio::vhost::user::VhostUserConnectionTrait;
 use crate::virtio::vhost::user::VhostUserDeviceBuilder;
 use crate::virtio::vhost::user::VhostUserListener;
-use crate::virtio::vhost::user::VhostUserListenerTrait;
 use crate::virtio::Queue;
 use crate::virtio::QueueConfig;
 

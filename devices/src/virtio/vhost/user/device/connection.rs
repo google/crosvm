@@ -6,10 +6,8 @@ pub mod sys;
 use std::any::Any;
 use std::pin::Pin;
 
-use base::RawDescriptor;
 use cros_async::Executor;
 use futures::Future;
-pub use sys::VhostUserListener;
 
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostUserDevice;
@@ -17,17 +15,7 @@ use crate::virtio::vhost::user::VhostUserDeviceBuilder;
 
 /// Trait that the platform-specific type `VhostUserListener` needs to implement. It contains all
 /// the methods that are ok to call from non-platform specific code.
-pub trait VhostUserListenerTrait {
-    /// Creates a VhostUserListener from `path`, which is a platform-specific string describing how
-    /// to establish the vhost-user channel. For instance, it can be a path to a socket.
-    ///
-    /// `keep_rds` is a vector of `RawDescriptor`s to which the descriptors needed for this listener
-    /// to operate properly will be added if it is `Some()`.
-    fn new(
-        path: &str,
-        keep_rds: Option<&mut Vec<RawDescriptor>>,
-    ) -> anyhow::Result<VhostUserListener>;
-
+pub trait VhostUserConnectionTrait {
     /// Take and return resources owned by the parent process in case of a incoming fork.
     ///
     /// This method needs to be called only if you are going to use the listener in a jailed child

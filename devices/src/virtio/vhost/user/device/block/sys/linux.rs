@@ -10,8 +10,8 @@ use hypervisor::ProtectionType;
 
 use crate::virtio::base_features;
 use crate::virtio::block::DiskOption;
-use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
-use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
+use crate::virtio::vhost::user::device::connection::sys::VhostUserListener;
+use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
 use crate::virtio::BlockAsync;
 
 #[derive(FromArgs)]

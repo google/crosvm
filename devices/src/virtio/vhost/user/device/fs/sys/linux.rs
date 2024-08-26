@@ -14,10 +14,10 @@ use jail::create_base_minijail;
 use jail::set_embedded_bpf_program;
 use minijail::Minijail;
 
+use crate::virtio::vhost::user::device::connection::sys::VhostUserListener;
+use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
 use crate::virtio::vhost::user::device::fs::FsBackend;
 use crate::virtio::vhost::user::device::fs::Options;
-use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
-use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 
 fn default_uidmap() -> String {
     // SAFETY: trivially safe
