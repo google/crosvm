@@ -89,6 +89,8 @@ pub struct GpuParameters {
     pub allow_implicit_render_server_exec: bool,
     // Passthrough parameters sent to the underlying renderer in a renderer-specific format.
     pub renderer_features: Option<String>,
+    // Path to the custom cursor file.
+    pub custom_cursor_path: Option<String>,
 }
 
 impl Default for GpuParameters {
@@ -120,6 +122,7 @@ impl Default for GpuParameters {
             fixed_blob_mapping: cfg!(target_os = "linux") && !cfg!(feature = "gfxstream"),
             allow_implicit_render_server_exec: false,
             renderer_features: None,
+            custom_cursor_path: None,
         }
     }
 }

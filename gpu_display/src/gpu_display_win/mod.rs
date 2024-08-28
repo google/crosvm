@@ -85,6 +85,9 @@ pub struct DisplayWin {
     vulkan_displays: HashMap<u32, Arc<Mutex<VulkanDisplayWrapper>>>,
     #[allow(dead_code)]
     vulkan_display_create_params: Option<VulkanCreateParams>,
+    // TODO(b/362813373): remove dead_code attr when handled.
+    #[allow(dead_code)]
+    custom_cursor_path: Option<String>,
 }
 
 impl DisplayWin {
@@ -93,6 +96,7 @@ impl DisplayWin {
         win_metrics: Option<Weak<Metrics>>,
         gpu_display_wait_descriptor_ctrl: SendTube,
         vulkan_display_create_params: Option<VulkanCreateParams>,
+        custom_cursor_path: Option<String>,
     ) -> Result<DisplayWin, GpuDisplayError> {
         let close_requested_event =
             wndproc_thread
@@ -110,6 +114,7 @@ impl DisplayWin {
             event_device_wait_descriptor_requests: Vec::new(),
             vulkan_displays: HashMap::new(),
             vulkan_display_create_params,
+            custom_cursor_path,
         })
     }
 
