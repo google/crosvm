@@ -216,8 +216,13 @@ impl Vmwdt {
                     Token::Timer(cpu_id) => {
                         let mut wdts_locked = vm_wdts.lock();
                         let watchdog = &mut wdts_locked[cpu_id];
-                        if let Err(_e) = watchdog.timer.wait() {
-                            error!("error waiting for timer event on vcpu {}", cpu_id);
+                        match watchdog.timer.mark_waited() {
+                            Ok(true) => continue, // timer not actually ready
+                            Ok(false) => {}
+                            Err(e) => {
+                                error!("error waiting for timer event on vcpu {cpu_id}: {e:#}");
+                                continue;
+                            }
                         }
 
                         let current_guest_time_ms =
