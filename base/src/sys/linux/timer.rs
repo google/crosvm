@@ -15,6 +15,7 @@ use libc::CLOCK_MONOTONIC;
 use libc::EAGAIN;
 use libc::POLLIN;
 use libc::TFD_CLOEXEC;
+use libc::TFD_NONBLOCK;
 
 use super::super::errno_result;
 use super::super::Error;
@@ -39,7 +40,7 @@ impl Timer {
     pub fn new() -> Result<Timer> {
         // SAFETY:
         // Safe because this doesn't modify any memory and we check the return value.
-        let ret = unsafe { timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC) };
+        let ret = unsafe { timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK) };
         if ret < 0 {
             return errno_result();
         }
@@ -121,8 +122,8 @@ impl TimerTrait for Timer {
     fn mark_waited(&mut self) -> Result<bool> {
         let mut count = 0u64;
 
-        // SAFETY:
         // The timerfd is in non-blocking mode, so this should return immediately.
+        // SAFETY: We own the FD and provide a valid buffer we have exclusive access to.
         let ret = unsafe {
             libc::read(
                 self.as_raw_descriptor(),

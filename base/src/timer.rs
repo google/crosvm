@@ -219,6 +219,8 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
+    use crate::EventToken;
+    use crate::WaitContext;
 
     #[test]
     fn one_shot() {
@@ -262,6 +264,34 @@ mod tests {
         assert!(now.elapsed() >= interval * 2);
         tfd.wait().expect("unable to wait for timer");
         assert!(now.elapsed() >= interval * 3);
+    }
+
+    #[test]
+    fn mark_waited_inactive() {
+        let mut tfd = Timer::new().expect("failed to create Timer");
+        // This ought to return true, but Windows always returns false, so we can't assert it here.
+        tfd.mark_waited().expect("mark_waited failed");
+    }
+
+    #[test]
+    fn mark_waited_active() {
+        let mut tfd = Timer::new().expect("failed to create Timer");
+        tfd.reset_oneshot(Duration::from_nanos(1))
+            .expect("failed to arm timer");
+
+        // Use a WaitContext to block until the timer has fired.
+        #[derive(EventToken)]
+        enum Token {
+            Timer,
+        }
+        let wait_ctx: WaitContext<Token> =
+            WaitContext::build_with(&[(&tfd, Token::Timer)]).unwrap();
+        let _events = wait_ctx.wait().unwrap();
+
+        assert!(
+            !tfd.mark_waited().expect("mark_waited failed"),
+            "expected mark_waited to return false",
+        );
     }
 
     #[test]
