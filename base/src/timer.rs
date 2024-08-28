@@ -220,118 +220,48 @@ mod tests {
 
     use super::*;
 
-    // clock error is 2*clock_resolution + 100 microseconds to handle
-    // time change from calling now() to arming timer
-    fn get_clock_error() -> Duration {
-        Timer::new()
-            .unwrap()
-            .resolution()
-            .expect("expected to be able to read timer resolution")
-            .checked_mul(2)
-            .expect("timer resolution x 2 should not overflow")
-            .checked_add(Duration::from_micros(100))
-            .expect("timer resolution x 2 + 100 microsecond should not overflow")
-    }
-
     #[test]
-    #[ignore]
     fn one_shot() {
-        // This test relies on the host having a reliable clock and not being
-        // overloaded, so it's marked as "ignore".  You can run by running
-        // cargo test -p base timer -- --ignored
-
         let mut tfd = Timer::new().expect("failed to create Timer");
 
-        let dur = Duration::from_millis(1000);
-        let clock_error = get_clock_error();
-
+        let dur = Duration::from_millis(10);
         let now = Instant::now();
         tfd.reset_oneshot(dur).expect("failed to arm timer");
-
         tfd.wait().expect("unable to wait for timer");
         let elapsed = now.elapsed();
-        // elapsed is within +-clock_error from expected duration
-        assert!(
-            elapsed - clock_error <= dur,
-            "expected {:?} - {:?} <= {:?}",
-            elapsed,
-            clock_error,
-            dur
-        );
-        assert!(
-            elapsed + clock_error >= dur,
-            "expected {:?} + {:?} >= {:?}",
-            elapsed,
-            clock_error,
-            dur
-        );
+        assert!(elapsed >= dur, "expected {:?} >= {:?}", elapsed, dur);
     }
 
     /// Similar to one_shot, except this one waits for a clone of the timer.
     #[test]
-    #[ignore]
     fn one_shot_cloned() {
         let mut tfd = Timer::new().expect("failed to create Timer");
-        let dur = Duration::from_millis(1000);
         let mut cloned_tfd = tfd.try_clone().expect("failed to clone timer");
 
-        // clock error is 2*clock_resolution + 100 microseconds to handle
-        // time change from calling now() to arming timer
-        let clock_error = get_clock_error();
-
+        let dur = Duration::from_millis(10);
         let now = Instant::now();
         tfd.reset_oneshot(dur).expect("failed to arm timer");
         cloned_tfd.wait().expect("unable to wait for timer");
         let elapsed = now.elapsed();
-
-        // elapsed is within +-clock_error from expected duration
-        assert!(
-            elapsed - clock_error <= dur,
-            "expected {:?} - {:?} <= {:?}",
-            elapsed,
-            clock_error,
-            dur
-        );
-        assert!(
-            elapsed + clock_error >= dur,
-            "expected {:?} + {:?} >= {:?}",
-            elapsed,
-            clock_error,
-            dur
-        );
+        assert!(elapsed >= dur, "expected {:?} >= {:?}", elapsed, dur);
     }
 
     #[test]
-    #[ignore]
     fn repeating() {
-        // This test relies on the host having a reliable clock and not being
-        // overloaded, so it's marked as "ignore".  You can run by running
-        // cargo test -p base timer -- --ignored
-
         let mut tfd = Timer::new().expect("failed to create Timer");
 
-        // clock error is 2*clock_resolution + 100 microseconds to handle
-        // time change from calling now() to arming timer
-        let clock_error = Timer::new()
-            .unwrap()
-            .resolution()
-            .expect("expected to be able to read timer resolution")
-            .checked_mul(2)
-            .expect("timer resolution x 2 should not overflow")
-            .checked_add(Duration::from_micros(100))
-            .expect("timer resolution x 2 + 100 microsecond should not overflow");
-        let interval = Duration::from_millis(100);
+        let interval = Duration::from_millis(10);
         let now = Instant::now();
         tfd.reset_repeating(interval).expect("failed to arm timer");
 
         tfd.wait().expect("unable to wait for timer");
         // should take `interval` duration for the first wait
-        assert!(now.elapsed() + clock_error >= interval);
+        assert!(now.elapsed() >= interval);
         tfd.wait().expect("unable to wait for timer");
         // subsequent waits should take "interval" duration
-        assert!(now.elapsed() + clock_error >= interval * 2);
+        assert!(now.elapsed() >= interval * 2);
         tfd.wait().expect("unable to wait for timer");
-        assert!(now.elapsed() + clock_error >= interval * 3);
+        assert!(now.elapsed() >= interval * 3);
     }
 
     #[test]
