@@ -204,6 +204,7 @@ impl SyncWorker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::Sync => {
+                        timer.mark_waited().unwrap();
                         if let Err(e) = self.file.fsync() {
                             error!("failed to fsync serial device, stopping sync thread: {}", e);
                             return;
