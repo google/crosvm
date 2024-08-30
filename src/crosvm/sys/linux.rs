@@ -2802,6 +2802,7 @@ pub fn trigger_vm_suspend_and_wait_for_entry(
 }
 
 #[cfg(feature = "pvclock")]
+#[derive(Debug)]
 /// The action requested by the pvclock device to perform on the main thread.
 enum PvClockAction {
     #[cfg(target_arch = "aarch64")]
@@ -3068,18 +3069,11 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         },
         _ => {
             if !state.cfg.force_s2idle {
-                // if not doing s2idle, the guest clock should
-                // behave as the host does, so let the guest
-                // know about the suspend / resume via
-                // virtio-pvclock.
                 #[cfg(feature = "pvclock")]
                 if let Some(ref pvclock_host_tube) = state.pvclock_host_tube {
-                    let cmd = match request {
-                        VmRequest::SuspendVcpus => Some(PvClockCommand::Suspend),
-                        VmRequest::ResumeVcpus => Some(PvClockCommand::Resume),
-                        _ => None,
-                    };
-                    if let Some(cmd) = cmd {
+                    // Update clock offset when pvclock is used.
+                    if let VmRequest::ResumeVcpus = request {
+                        let cmd = PvClockCommand::Resume;
                         match send_pvclock_cmd(pvclock_host_tube, cmd.clone()) {
                             Ok(action) => {
                                 info!("{:?} command successfully processed", cmd);
@@ -3153,6 +3147,23 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     // For s2idle, omit the response since it will be sent by
                     // s2idle_wait thread when suspension actually happens.
                     return Ok(VmRequestResult::new(None, false));
+                }
+            } else {
+                #[cfg(feature = "pvclock")]
+                if let Some(ref pvclock_host_tube) = state.pvclock_host_tube {
+                    // Record the time after VCPUs are suspended to track suspension duration.
+                    if let VmRequest::SuspendVcpus = request {
+                        let cmd = PvClockCommand::Suspend;
+                        match send_pvclock_cmd(pvclock_host_tube, cmd.clone()) {
+                            Ok(action) => {
+                                info!("{:?} command successfully processed", cmd);
+                                if let Some(action) = action {
+                                    error!("Unexpected action {:?} requested for suspend", action);
+                                }
+                            }
+                            Err(e) => error!("{:?} command failed: {:#}", cmd, e),
+                        };
+                    }
                 }
             }
             response
