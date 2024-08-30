@@ -207,8 +207,8 @@ mod tests {
         assert_eq!(cl.insert("hello", "world"), Err(Error::TooLarge));
         assert_eq!(cl.insert("a", "world"), Err(Error::TooLarge));
         assert_eq!(cl.insert("hello", "b"), Err(Error::TooLarge));
-        assert!(cl.insert("a", "b").is_ok());
-        assert_eq!(cl.insert("a", "b"), Err(Error::TooLarge));
+        assert!(cl.insert("a", "b").is_ok()); // start off with 3.
+        assert_eq!(cl.insert("a", "b"), Err(Error::TooLarge)); // adds 4. " a=b"
         assert_eq!(cl.insert_str("a"), Err(Error::TooLarge));
         assert_eq!(cl.as_str(), "a=b");
 
@@ -216,5 +216,11 @@ mod tests {
         assert!(cl.insert("ab", "ba").is_ok()); // adds 5 length
         assert_eq!(cl.insert("c", "da"), Err(Error::TooLarge)); // adds 5 (including space) length
         assert!(cl.insert("c", "d").is_ok()); // adds 4 (including space) length
+
+        let mut cl = Cmdline::new(10);
+        assert!(cl.insert("ab", "ba").is_ok()); // adds 5 length
+        assert_eq!(cl.insert_str("1234"), Err(Error::TooLarge)); // adds 5 (including space) length
+        assert!(cl.insert_str("123").is_ok()); // adds 4 (including space) length
+        assert_eq!(cl.as_str(), "ab=ba 123");
     }
 }
