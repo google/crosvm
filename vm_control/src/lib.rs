@@ -1642,7 +1642,6 @@ impl VmRequest {
     pub fn execute(
         &self,
         vm: &impl Vm,
-        run_mode: &mut Option<VmRunMode>,
         disk_host_tubes: &[Tube],
         pm: &mut Option<Arc<Mutex<dyn PmResource + Send>>>,
         gpu_control_tube: Option<&Tube>,
@@ -1659,8 +1658,7 @@ impl VmRequest {
     ) -> VmResponse {
         match self {
             VmRequest::Exit => {
-                *run_mode = Some(VmRunMode::Exiting);
-                VmResponse::Ok
+                panic!("VmRequest::Exit should be handled by the platform run loop");
             }
             VmRequest::Powerbtn => {
                 if let Some(pm) = pm {
@@ -1685,7 +1683,7 @@ impl VmRequest {
                     match clear_evt.try_clone() {
                         Ok(clear_evt) => {
                             pm.lock().rtc_evt(clear_evt);
-                            *run_mode = Some(VmRunMode::Running);
+                            kick_vcpus(VcpuControl::RunState(VmRunMode::Running));
                             VmResponse::Ok
                         }
                         Err(err) => {
@@ -1699,7 +1697,20 @@ impl VmRequest {
                 }
             }
             VmRequest::SuspendVcpus => {
-                *run_mode = Some(VmRunMode::Suspending);
+                if !force_s2idle {
+                    kick_vcpus(VcpuControl::RunState(VmRunMode::Suspending));
+                    let current_mode = match get_vcpu_state(kick_vcpus, vcpu_size) {
+                        Ok(state) => state,
+                        Err(e) => {
+                            error!("failed to get vcpu state: {e}");
+                            return VmResponse::Err(SysError::new(EIO));
+                        }
+                    };
+                    if current_mode != VmRunMode::Suspending {
+                        error!("vCPUs failed to all suspend.");
+                        return VmResponse::Err(SysError::new(EIO));
+                    }
+                }
                 VmResponse::Ok
             }
             VmRequest::ResumeVcpus => {
@@ -1722,7 +1733,6 @@ impl VmRequest {
                     error!("Trying to wake Vcpus while Devices are asleep. Did you mean to use `crosvm resume --full`?");
                     return VmResponse::Err(SysError::new(EINVAL));
                 }
-                *run_mode = Some(VmRunMode::Running);
 
                 if force_s2idle {
                     // During resume also emulate powerbtn event which will allow to wakeup fully
@@ -1734,6 +1744,8 @@ impl VmRequest {
                         return VmResponse::Err(SysError::new(ENOTSUP));
                     }
                 }
+
+                kick_vcpus(VcpuControl::RunState(VmRunMode::Running));
                 VmResponse::Ok
             }
             VmRequest::Swap(SwapCommand::Enable) => {
