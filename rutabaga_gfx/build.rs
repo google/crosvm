@@ -278,6 +278,9 @@ fn gfxstream() -> Result<()> {
 }
 
 fn main() -> Result<()> {
+    println!("cargo:rustc-check-cfg=cfg(gfxstream_unstable)");
+    println!("cargo:rustc-check-cfg=cfg(virgl_renderer_unstable)");
+
     // Skip installing dependencies when generating documents.
     if env::var("CARGO_DOC").is_ok() {
         return Ok(());
