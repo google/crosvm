@@ -342,6 +342,7 @@ impl DisplayT for DisplayWl {
                     virtio_input_event::multitouch_tracking_id(tracking_id),
                     virtio_input_event::multitouch_absolute_x(max(0, event.params[0])),
                     virtio_input_event::multitouch_absolute_y(max(0, event.params[1])),
+                    virtio_input_event::touch(true),
                 ];
                 Some(GpuDisplayEvents {
                     events,
@@ -352,6 +353,7 @@ impl DisplayT for DisplayWl {
                 let events = vec![
                     virtio_input_event::multitouch_slot(0),
                     virtio_input_event::multitouch_tracking_id(-1),
+                    virtio_input_event::touch(false),
                 ];
                 Some(GpuDisplayEvents {
                     events,
