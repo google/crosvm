@@ -296,6 +296,85 @@ const DESC_ACCESS_EXEC: u8 = 1 << 3;
 const DESC_ACCESS_RW: u8 = 1 << 1;
 const DESC_ACCESS_ACCESSED: u8 = 1 << 0;
 
+#[derive(Debug, Clone, Copy)]
+struct LongModePageTableEntry {
+    execute_disable: bool,
+    protection_key: u8,
+    address: u64,
+    global: bool,
+    page_attribute_table: bool,
+    dirty: bool,
+    accessed: bool,
+    cache_disable: bool,
+    write_through: bool,
+    user_supervisor: bool,
+    read_write: bool,
+    present: bool,
+}
+
+impl LongModePageTableEntry {
+    fn from_address(address: u64) -> Self {
+        assert!(address < 1 << 52, "the address must fit in 52 bits");
+        assert!(address & 0xFFF == 0, "the address must be aligned to 4k");
+        Self {
+            execute_disable: false,
+            protection_key: 0,
+            address,
+            global: false,
+            page_attribute_table: false,
+            dirty: false,
+            accessed: false,
+            cache_disable: false,
+            write_through: false,
+            user_supervisor: false,
+            read_write: false,
+            present: false,
+        }
+    }
+}
+
+impl From<LongModePageTableEntry> for u64 {
+    fn from(page_table_entry: LongModePageTableEntry) -> Self {
+        let mut res = 0;
+        if page_table_entry.present {
+            res |= 1;
+        }
+        if page_table_entry.read_write {
+            res |= 1 << 1;
+        }
+        if page_table_entry.user_supervisor {
+            res |= 1 << 2;
+        }
+        if page_table_entry.write_through {
+            res |= 1 << 3;
+        }
+        if page_table_entry.cache_disable {
+            res |= 1 << 4;
+        }
+        if page_table_entry.accessed {
+            res |= 1 << 5;
+        }
+        if page_table_entry.dirty {
+            res |= 1 << 6;
+        }
+        if page_table_entry.page_attribute_table {
+            res |= 1 << 7;
+        }
+        if page_table_entry.global {
+            res |= 1 << 8;
+        }
+        assert!(page_table_entry.address < 1 << 52);
+        assert!(page_table_entry.address & 0xFFF == 0);
+        res |= page_table_entry.address;
+        assert!(page_table_entry.protection_key < 1 << 4);
+        res |= u64::from(page_table_entry.protection_key) << 59;
+        if page_table_entry.execute_disable {
+            res |= 1 << 63;
+        }
+        res
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ModeConfig {
     idt: Vec<u8>,
@@ -303,6 +382,7 @@ struct ModeConfig {
     gdt: Vec<Segment>,
     gdt_base_addr: u64,
     code_segment_index: u16,
+    page_table: Option<Box<[u8; 0x1000]>>,
     long_mode: bool,
 }
 
@@ -573,11 +653,6 @@ impl ModeConfig {
     pub fn configure_long_mode_memory(&self, vm: &mut dyn Vm) {
         let guest_mem = vm.get_memory();
 
-        assert!(
-            guest_mem.range_overlap(GuestAddress(0x1500), GuestAddress(0xc000)),
-            "Long-mode setup requires 0x1500-0xc000 to be mapped in the guest."
-        );
-
         self.configure_gdt_memory(guest_mem);
         self.configure_idt_memory(guest_mem);
 
@@ -585,6 +660,12 @@ impl ModeConfig {
         let pml4_addr = GuestAddress(0x9000);
         let pdpte_addr = GuestAddress(0xa000);
         let pde_addr = GuestAddress(0xb000);
+        let pte_addr = GuestAddress(0xc000);
+
+        assert!(
+            guest_mem.range_overlap(GuestAddress(0x9000), GuestAddress(0xd000)),
+            "the memory range for page tables should be mapped."
+        );
 
         // Pointing to PDPTE with present and RW flags
         guest_mem
@@ -597,8 +678,15 @@ impl ModeConfig {
             .expect("failed to write PDPTE entry");
 
         for i in 0..512 {
-            // Each 2MiB page present and RW
-            let pd_entry_bytes = ((i << 21) | 0x83u64).to_le_bytes();
+            // All pages are present and RW.
+            let flags: u64 = if i == 0 {
+                3
+            } else {
+                // The first 2MiB are 4K pages, the rest are 2M pages.
+                0x83
+            };
+            let addr = if i == 0 { pte_addr.offset() } else { i << 21 };
+            let pd_entry_bytes = (addr | flags).to_le_bytes();
             guest_mem
                 .write_at_addr(
                     &pd_entry_bytes,
@@ -606,6 +694,16 @@ impl ModeConfig {
                 )
                 .expect("Failed to write PDE entry");
         }
+
+        guest_mem
+            .write_at_addr(
+                self.page_table
+                    .as_ref()
+                    .expect("page table must present for long mode")
+                    .as_slice(),
+                pte_addr,
+            )
+            .expect("Failed to write PTE entry");
     }
 
     pub fn enter_long_mode(&self, vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
@@ -643,6 +741,10 @@ impl ModeConfig {
         sregs.gdt = self.get_gdtr_value();
         sregs.idt = self.get_idtr_value();
 
+        assert!(
+            self.page_table.is_none(),
+            "setting page tables for protected mode is not supported yet"
+        );
         // 32-bit protected mode, paging disabled
         sregs.cr0 |= 0x1; // PE
         sregs.cr0 &= !0x80000000; // ~PG
@@ -651,6 +753,18 @@ impl ModeConfig {
     }
 
     fn default_long_mode() -> Self {
+        let page_table = (0u64..512)
+            .flat_map(|page_frame_number| {
+                let page_table_entry = LongModePageTableEntry {
+                    present: true,
+                    read_write: true,
+                    ..LongModePageTableEntry::from_address(page_frame_number << 12)
+                };
+                u64::from(page_table_entry).as_bytes().to_owned()
+            })
+            .collect::<Box<[u8]>>()
+            .try_into()
+            .expect("the length of the slice must match");
         Self {
             idt_base_addr: DEFAULT_IDT_OFFSET,
             idt: vec![0; Self::IDT64_SIZE],
@@ -661,6 +775,7 @@ impl ModeConfig {
                 Self::default_code_segment_long_mode(),
             ],
             code_segment_index: 2,
+            page_table: Some(page_table),
             long_mode: true,
         }
     }
@@ -676,6 +791,7 @@ impl ModeConfig {
                 Self::default_code_segment_protected_mode(),
             ],
             code_segment_index: 2,
+            page_table: None,
             long_mode: false,
         }
     }
