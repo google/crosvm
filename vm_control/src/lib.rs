@@ -1682,8 +1682,8 @@ impl VmRequest {
                 if let Some(pm) = pm.as_ref() {
                     match clear_evt.try_clone() {
                         Ok(clear_evt) => {
+                            // RTC event will asynchronously trigger wakeup.
                             pm.lock().rtc_evt(clear_evt);
-                            kick_vcpus(VcpuControl::RunState(VmRunMode::Running));
                             VmResponse::Ok
                         }
                         Err(err) => {
