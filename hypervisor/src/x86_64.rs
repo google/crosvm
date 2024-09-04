@@ -808,7 +808,7 @@ impl Default for Regs {
 
 /// State of a memory segment.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Segment {
     pub base: u64,
     /// Limit of the segment - always in bytes, regardless of granularity (`g`) field.

@@ -289,72 +289,20 @@ macro_rules! run_tests {
     };
 }
 
-const GDT_OFFSET: u64 = 0x1500;
+const DEFAULT_GDT_OFFSET: u64 = 0x1500;
 const DEFAULT_IDT_OFFSET: u64 = 0x1528;
 
-// Condensed version of the function in x86_64\src\gdt.rs
-pub fn segment_from_gdt(entry: u64, table_index: u8) -> Segment {
-    let g = ((entry & 0x0080000000000000) >> 55) as u8;
-    let limit = ((((entry) & 0x000F000000000000) >> 32) | ((entry) & 0x000000000000FFFF)) as u32;
-    let limit_bytes = if g == 0 { limit } else { (limit * 4096) + 4095 };
-    Segment {
-        base: (((entry) & 0xFF00000000000000) >> 32)
-            | (((entry) & 0x000000FF00000000) >> 16)
-            | (((entry) & 0x00000000FFFF0000) >> 16),
-        limit_bytes,
-        selector: (table_index * 8) as u16,
-        type_: ((entry & 0x00000F0000000000) >> 40) as u8,
-        present: ((entry & 0x0000800000000000) >> 47) as u8,
-        dpl: ((entry & 0x0000600000000000) >> 45) as u8,
-        db: ((entry & 0x0040000000000000) >> 54) as u8,
-        s: ((entry & 0x0000100000000000) >> 44) as u8,
-        l: ((entry & 0x0020000000000000) >> 53) as u8,
-        g,
-        avl: ((entry & 0x0010000000000000) >> 52) as u8,
-    }
-}
-
-pub fn null_descriptor() -> [u8; 8] {
-    [0u8; 8]
-}
-
-const DESC_ACCESS_PRESENT: u8 = 1 << 7;
-const DESC_ACCESS_NOT_SYS: u8 = 1 << 4;
 const DESC_ACCESS_EXEC: u8 = 1 << 3;
 const DESC_ACCESS_RW: u8 = 1 << 1;
 const DESC_ACCESS_ACCESSED: u8 = 1 << 0;
-
-const DESC_FLAG_GRAN_4K: u8 = 1 << 7;
-const DESC_FLAG_DEFAULT_OP_SIZE_32: u8 = 1 << 6;
-const DESC_FLAG_LONG_MODE: u8 = 1 << 5;
-
-pub fn segment_descriptor(base: u32, limit: u32, access: u8, flags: u8) -> [u8; 8] {
-    assert!(limit < (1 << 20)); // limit value must fit in 20 bits
-    assert!(flags & 0x0F == 0x00); // flags must be in the high 4 bits only
-
-    [
-        limit as u8,                 // limit [7:0]
-        (limit >> 8) as u8,          // limit [15:8]
-        base as u8,                  // base [7:0]
-        (base >> 8) as u8,           // base [15:8]
-        (base >> 16) as u8,          // base [23:16]
-        access,                      // type + s + dpl + p
-        (limit >> 16) as u8 | flags, // limit [19:16] + flags
-        (base >> 24) as u8,          // base [31:24]
-    ]
-}
-
-pub fn write_gdt(guest_mem: &GuestMemory, gdt: &[u8]) {
-    let gdt_addr = GuestAddress(GDT_OFFSET);
-    guest_mem
-        .write_at_addr(gdt, gdt_addr)
-        .expect("Failed to write GDT entry to guest memory");
-}
 
 #[derive(Debug, Clone)]
 struct ModeConfig {
     idt: Vec<u8>,
     idt_base_addr: u64,
+    gdt: Vec<Segment>,
+    gdt_base_addr: u64,
+    code_segment_index: u16,
     long_mode: bool,
 }
 
@@ -376,6 +324,179 @@ impl ModeConfig {
     fn set_idt_base_addr(&mut self, idt_base_addr: u64) -> &mut Self {
         self.idt_base_addr = idt_base_addr;
         self
+    }
+
+    fn default_code_segment_long_mode() -> Segment {
+        Segment {
+            base: 0,
+            limit_bytes: 0xffff_ffff,
+            type_: DESC_ACCESS_EXEC | DESC_ACCESS_RW | DESC_ACCESS_ACCESSED,
+            present: 1,
+            dpl: 0,
+            db: 0,
+            s: 1,
+            l: 1,
+            g: 1,
+            ..Default::default()
+        }
+    }
+
+    fn default_code_segment_protected_mode() -> Segment {
+        Segment {
+            base: 0,
+            limit_bytes: 0xffff_ffff,
+            type_: DESC_ACCESS_EXEC | DESC_ACCESS_RW | DESC_ACCESS_ACCESSED,
+            present: 1,
+            dpl: 0,
+            db: 1,
+            s: 1,
+            l: 0,
+            g: 1,
+            ..Default::default()
+        }
+    }
+
+    fn segment_to_bytes(segment: &Segment, long_mode: bool) -> Vec<u8> {
+        if *segment == Segment::default() {
+            // Special handle for null descriptor, so that it won't be recognized as a 64
+            // bit system segment.
+            return vec![0u8; 8];
+        }
+        let Segment {
+            base,
+            limit_bytes,
+            type_,
+            present,
+            dpl,
+            db,
+            s,
+            l,
+            g,
+            ..
+        } = *segment;
+
+        let limit = if g != 0 {
+            // 4096-byte granularity
+            limit_bytes / 4096
+        } else {
+            // 1-byte granularity
+            limit_bytes
+        };
+
+        assert!(limit < (1 << 20)); // limit value must fit in 20 bits
+        let flags = {
+            let mut flags = 0;
+            if g != 0 {
+                flags |= 1 << 3;
+            }
+            if db != 0 {
+                flags |= 1 << 2;
+            }
+            if l != 0 {
+                flags |= 1 << 1;
+            }
+            flags << 4
+        };
+        assert!(flags & 0x0F == 0x00); // flags must be in the high 4 bits only
+        let access = {
+            assert!(type_ < (1 << 4), "type must fit in 4 bits");
+            let mut access = type_;
+            if present != 0 {
+                access |= 1 << 7;
+            }
+            assert!(dpl < (1 << 2), "DPL must fit in 2 bits");
+            access |= dpl << 5;
+            if s != 0 {
+                access |= 1 << 4;
+            }
+            access
+        };
+
+        let limit_lo = (limit & 0xffff).try_into().unwrap();
+        let base_lo = (base & 0xffff).try_into().unwrap();
+        let base_mid0 = ((base >> 16) & 0xff).try_into().unwrap();
+        let limit_hi_and_flags = u8::try_from((limit >> 16) & 0xf).unwrap() | flags;
+        let base_mid1 = ((base >> 24) & 0xff).try_into().unwrap();
+        let base_hi = (base >> 32).try_into().unwrap();
+
+        if long_mode && s == 0 {
+            // 64 bit system segment descriptor.
+            #[repr(C, packed)]
+            #[derive(AsBytes)]
+            struct Descriptor {
+                limit_lo: u16,
+                base_lo: u16,
+                base_mid0: u8,
+                access: u8,
+                limit_hi_and_flags: u8,
+                base_mid1: u8,
+                base_hi: u32,
+                _reserved: [u8; 4],
+            }
+
+            Descriptor {
+                limit_lo,
+                base_lo,
+                base_mid0,
+                access,
+                limit_hi_and_flags,
+                base_mid1,
+                base_hi,
+                _reserved: [0; 4],
+            }
+            .as_bytes()
+            .to_owned()
+        } else {
+            #[repr(C, packed)]
+            #[derive(AsBytes)]
+            struct Descriptor {
+                limit_lo: u16,
+                base_lo: u16,
+                base_mid: u8,
+                access: u8,
+                limit_hi_and_flags: u8,
+                base_hi: u8,
+            }
+
+            assert_eq!(base_hi, 0, "the base address must be within 32 bit range");
+            Descriptor {
+                limit_lo,
+                base_lo,
+                base_mid: base_mid0,
+                access,
+                limit_hi_and_flags,
+                base_hi: base_mid1,
+            }
+            .as_bytes()
+            .to_owned()
+        }
+    }
+
+    fn get_gdt_bytes(&self) -> Vec<u8> {
+        self.gdt
+            .iter()
+            .flat_map(|segment| Self::segment_to_bytes(segment, self.long_mode))
+            .collect()
+    }
+
+    fn configure_gdt_memory(&self, guest_mem: &GuestMemory) {
+        let gdt_bytes = self.get_gdt_bytes();
+        let gdt_start_addr = GuestAddress(self.gdt_base_addr);
+        let gdt_end_addr = gdt_start_addr
+            .checked_add(
+                gdt_bytes
+                    .len()
+                    .try_into()
+                    .expect("the GDT size must be within usize"),
+            )
+            .expect("the end of GDT address shouldn't overflow");
+        assert!(
+            guest_mem.range_overlap(GuestAddress(self.gdt_base_addr), gdt_end_addr),
+            "the address for GDT is not mapped"
+        );
+        guest_mem
+            .write_at_addr(&gdt_bytes, GuestAddress(self.gdt_base_addr))
+            .expect("Failed to write GDT entry to guest memory");
     }
 
     fn configure_idt_memory(&self, guest_mem: &GuestMemory) {
@@ -425,7 +546,31 @@ impl ModeConfig {
         }
     }
 
-    pub fn configure_long_mode_memory(&self, vm: &mut dyn Vm) -> Segment {
+    fn get_gdtr_value(&self) -> DescriptorTable {
+        DescriptorTable {
+            base: self.gdt_base_addr,
+            limit: (self.get_gdt_bytes().len() - 1)
+                .try_into()
+                .expect("the GDT limit should fit in 16 bits"),
+        }
+    }
+
+    fn get_segment_register_value(&self, segment_index: u16) -> Segment {
+        let offset: usize = self
+            .gdt
+            .iter()
+            .take(segment_index.into())
+            .map(|segment| Self::segment_to_bytes(segment, self.long_mode).len())
+            .sum();
+        Segment {
+            selector: offset
+                .try_into()
+                .expect("the offset should be within the range of u16"),
+            ..self.gdt[usize::from(segment_index)]
+        }
+    }
+
+    pub fn configure_long_mode_memory(&self, vm: &mut dyn Vm) {
         let guest_mem = vm.get_memory();
 
         assert!(
@@ -433,38 +578,7 @@ impl ModeConfig {
             "Long-mode setup requires 0x1500-0xc000 to be mapped in the guest."
         );
 
-        // Setup GDT
-        let mut gdt = Vec::new();
-        // 0x00
-        gdt.extend_from_slice(&null_descriptor());
-        // 0x08
-        gdt.extend_from_slice(&null_descriptor());
-        // 0x10: code segment descriptor
-        gdt.extend_from_slice(&segment_descriptor(
-            0x0,
-            0xFFFFF,
-            DESC_ACCESS_PRESENT
-                | DESC_ACCESS_NOT_SYS
-                | DESC_ACCESS_EXEC
-                | DESC_ACCESS_RW
-                | DESC_ACCESS_ACCESSED,
-            DESC_FLAG_GRAN_4K | DESC_FLAG_LONG_MODE,
-        ));
-
-        write_gdt(guest_mem, &gdt);
-
-        // Convert the GDT entries to a vector of u64
-        let gdt_entries: Vec<u64> = gdt
-            .chunks(8)
-            .map(|chunk| {
-                let mut array = [0u8; 8];
-                array.copy_from_slice(chunk);
-                u64::from_le_bytes(array)
-            })
-            .collect();
-
-        let code_seg = segment_from_gdt(gdt_entries[2], 2);
-
+        self.configure_gdt_memory(guest_mem);
         self.configure_idt_memory(guest_mem);
 
         // Setup paging
@@ -492,25 +606,19 @@ impl ModeConfig {
                 )
                 .expect("Failed to write PDE entry");
         }
-
-        code_seg
     }
 
     pub fn enter_long_mode(&self, vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
-        let code_seg = self.configure_long_mode_memory(vm);
+        self.configure_long_mode_memory(vm);
 
         let mut sregs = vcpu.get_sregs().expect("failed to get sregs");
 
-        let pml4_addr = GuestAddress(0x9000);
-
-        sregs.gdt.base = GDT_OFFSET;
-        sregs.gdt.limit = 0xFFFF;
-
+        sregs.gdt = self.get_gdtr_value();
         sregs.idt = self.get_idtr_value();
-
-        sregs.cs = code_seg;
+        sregs.cs = self.get_segment_register_value(self.code_segment_index);
 
         // Long mode
+        let pml4_addr = GuestAddress(0x9000);
         sregs.cr0 |= 0x1 | 0x80000000; // PE & PG
         sregs.efer |= 0x100 | 0x400; // LME & LMA (Must be auto-enabled with CR0_PG)
         sregs.cr3 = pml4_addr.offset();
@@ -519,62 +627,20 @@ impl ModeConfig {
         vcpu.set_sregs(&sregs).expect("failed to set sregs");
     }
 
-    pub fn configure_flat_protected_mode_memory(&self, vm: &mut dyn Vm) -> Segment {
+    pub fn configure_flat_protected_mode_memory(&self, vm: &mut dyn Vm) {
         let guest_mem = vm.get_memory();
 
-        assert!(
-            guest_mem.range_overlap(GuestAddress(0x1500), GuestAddress(0xc000)),
-            "Protected-mode setup requires 0x1500-0xc000 to be mapped in the guest."
-        );
-
-        // Setup GDT
-        let mut gdt = Vec::new();
-
-        // 0x00
-        gdt.extend_from_slice(&null_descriptor());
-        // 0x08
-        gdt.extend_from_slice(&null_descriptor());
-        // 0x10: code segment descriptor
-        gdt.extend_from_slice(&segment_descriptor(
-            0x0,
-            0xFFFFF,
-            DESC_ACCESS_PRESENT
-                | DESC_ACCESS_NOT_SYS
-                | DESC_ACCESS_EXEC
-                | DESC_ACCESS_RW
-                | DESC_ACCESS_ACCESSED,
-            DESC_FLAG_GRAN_4K | DESC_FLAG_DEFAULT_OP_SIZE_32,
-        ));
-
-        write_gdt(guest_mem, &gdt);
-
-        // Convert the GDT entries to a vector of u64
-        let gdt_entries: Vec<u64> = gdt
-            .chunks(8)
-            .map(|chunk| {
-                let mut array = [0u8; 8];
-                array.copy_from_slice(chunk);
-                u64::from_le_bytes(array)
-            })
-            .collect();
-
-        let code_seg = segment_from_gdt(gdt_entries[2], 2);
-
+        self.configure_gdt_memory(guest_mem);
         self.configure_idt_memory(guest_mem);
-
-        code_seg
     }
 
     pub fn enter_protected_mode(&self, vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm) {
-        let code_seg = self.configure_flat_protected_mode_memory(vm);
+        self.configure_flat_protected_mode_memory(vm);
 
         let mut sregs = vcpu.get_sregs().expect("failed to get sregs");
 
-        sregs.cs = code_seg;
-
-        sregs.gdt.base = GDT_OFFSET;
-        sregs.gdt.limit = 0xFFFF;
-
+        sregs.cs = self.get_segment_register_value(self.code_segment_index);
+        sregs.gdt = self.get_gdtr_value();
         sregs.idt = self.get_idtr_value();
 
         // 32-bit protected mode, paging disabled
@@ -588,6 +654,13 @@ impl ModeConfig {
         Self {
             idt_base_addr: DEFAULT_IDT_OFFSET,
             idt: vec![0; Self::IDT64_SIZE],
+            gdt_base_addr: DEFAULT_GDT_OFFSET,
+            gdt: vec![
+                Segment::default(),
+                Segment::default(),
+                Self::default_code_segment_long_mode(),
+            ],
+            code_segment_index: 2,
             long_mode: true,
         }
     }
@@ -596,6 +669,13 @@ impl ModeConfig {
         Self {
             idt_base_addr: DEFAULT_IDT_OFFSET,
             idt: vec![0; Self::IDT32_SIZE],
+            gdt_base_addr: DEFAULT_GDT_OFFSET,
+            gdt: vec![
+                Segment::default(),
+                Segment::default(),
+                Self::default_code_segment_protected_mode(),
+            ],
+            code_segment_index: 2,
             long_mode: false,
         }
     }
@@ -2545,7 +2625,7 @@ fn test_enter_long_mode_asm() {
     setup.add_memory_initialization(GuestAddress(0xd000), 0xFFFF_u32.to_le_bytes().to_vec());
     setup.add_memory_initialization(
         GuestAddress(0xd000 + 2),
-        (GDT_OFFSET as u32).to_le_bytes().to_vec(),
+        (DEFAULT_GDT_OFFSET as u32).to_le_bytes().to_vec(),
     );
 
     // IDT limit + base, to be loaded by the lidt instruction.
