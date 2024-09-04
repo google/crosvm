@@ -114,7 +114,7 @@ fn test_whpx_mmio_fetch_memory() {
                             assert_eq!(data[0], 0x33);
                             assert_eq!(size, 1);
                             memory_writes.fetch_add(1, Ordering::SeqCst);
-                            None
+                            Ok(None)
                         }
                     }
                 })
