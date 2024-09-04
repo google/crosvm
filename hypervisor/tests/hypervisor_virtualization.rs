@@ -382,6 +382,7 @@ struct ModeConfig {
     gdt: Vec<Segment>,
     gdt_base_addr: u64,
     code_segment_index: u16,
+    task_segment_index: Option<u16>,
     page_table: Option<Box<[u8; 0x1000]>>,
     long_mode: bool,
 }
@@ -715,6 +716,10 @@ impl ModeConfig {
         sregs.idt = self.get_idtr_value();
         sregs.cs = self.get_segment_register_value(self.code_segment_index);
 
+        if let Some(task_segment_index) = self.task_segment_index {
+            sregs.tr = self.get_segment_register_value(task_segment_index);
+        }
+
         // Long mode
         let pml4_addr = GuestAddress(0x9000);
         sregs.cr0 |= 0x1 | 0x80000000; // PE & PG
@@ -740,6 +745,11 @@ impl ModeConfig {
         sregs.cs = self.get_segment_register_value(self.code_segment_index);
         sregs.gdt = self.get_gdtr_value();
         sregs.idt = self.get_idtr_value();
+
+        assert!(
+            self.task_segment_index.is_none(),
+            "task segment not supported for protected mode yet."
+        );
 
         assert!(
             self.page_table.is_none(),
@@ -775,6 +785,7 @@ impl ModeConfig {
                 Self::default_code_segment_long_mode(),
             ],
             code_segment_index: 2,
+            task_segment_index: None,
             page_table: Some(page_table),
             long_mode: true,
         }
@@ -791,6 +802,7 @@ impl ModeConfig {
                 Self::default_code_segment_protected_mode(),
             ],
             code_segment_index: 2,
+            task_segment_index: None,
             page_table: None,
             long_mode: false,
         }
