@@ -734,7 +734,7 @@ impl Vm for KvmVm {
     }
 
     fn create_device(&self, kind: DeviceKind) -> Result<SafeDescriptor> {
-        let device = if let Some(dev) = self.get_device_params_arch(kind) {
+        let mut device = if let Some(dev) = self.get_device_params_arch(kind) {
             dev
         } else {
             match kind {
@@ -753,7 +753,7 @@ impl Vm for KvmVm {
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only write correct
         // amount of memory to our pointer, and we verify the return result.
-        let ret = unsafe { base::ioctl_with_ref(self, KVM_CREATE_DEVICE, &device) };
+        let ret = unsafe { base::ioctl_with_mut_ref(self, KVM_CREATE_DEVICE, &mut device) };
         if ret == 0 {
             Ok(
                 // SAFETY:
