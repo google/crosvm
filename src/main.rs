@@ -40,6 +40,8 @@ use disk::create_composite_disk;
 use disk::create_disk_file;
 #[cfg(feature = "composite-disk")]
 use disk::create_zero_filler;
+#[cfg(any(feature = "composite-disk", feature = "qcow"))]
+use disk::DiskFileParams;
 #[cfg(feature = "composite-disk")]
 use disk::ImagePartitionType;
 #[cfg(feature = "composite-disk")]
@@ -456,9 +458,13 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
             // (e.g. via an option), and it has no runtime effect.
             let size = create_disk_file(
                 partition_file,
-                /* is_sparse_file= */ true,
-                disk::MAX_NESTING_DEPTH,
-                Path::new(&path),
+                DiskFileParams {
+                    path: PathBuf::from(&path),
+                    is_read_only: !writable,
+                    is_sparse_file: true,
+                    is_overlapped: false,
+                    depth: 0,
+                },
             )
             .map_err(|e| error!("Failed to create DiskFile instance: {}", e))?
             .get_len()
@@ -496,6 +502,8 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
 
 #[cfg(feature = "qcow")]
 fn create_qcow2(cmd: cmdline::CreateQcow2Command) -> std::result::Result<(), ()> {
+    use std::path::PathBuf;
+
     if !(cmd.size.is_some() ^ cmd.backing_file.is_some()) {
         println!(
             "Create a new QCOW2 image at `PATH` of either the specified `SIZE` in bytes or
@@ -514,17 +522,21 @@ fn create_qcow2(cmd: cmdline::CreateQcow2Command) -> std::result::Result<(), ()>
             error!("Failed opening qcow file at '{}': {}", cmd.file_path, e);
         })?;
 
+    let params = DiskFileParams {
+        path: PathBuf::from(&cmd.file_path),
+        is_read_only: false,
+        is_sparse_file: false,
+        is_overlapped: false,
+        depth: 0,
+    };
     match (cmd.size, cmd.backing_file) {
-        (Some(size), None) => QcowFile::new(file, size).map_err(|e| {
+        (Some(size), None) => QcowFile::new(file, params, size).map_err(|e| {
             error!("Failed to create qcow file at '{}': {}", cmd.file_path, e);
         })?,
-        (None, Some(backing_file)) => {
-            QcowFile::new_from_backing(file, &backing_file, disk::MAX_NESTING_DEPTH).map_err(
-                |e| {
-                    error!("Failed to create qcow file at '{}': {}", cmd.file_path, e);
-                },
-            )?
-        }
+        (None, Some(backing_file)) => QcowFile::new_from_backing(file, params, &backing_file)
+            .map_err(|e| {
+                error!("Failed to create qcow file at '{}': {}", cmd.file_path, e);
+            })?,
         _ => unreachable!(),
     };
     Ok(())

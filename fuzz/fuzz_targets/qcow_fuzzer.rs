@@ -27,11 +27,19 @@ fuzz_target!(|bytes| {
     let mut disk_image = Cursor::new(bytes);
     let addr = read_u64(&mut disk_image);
     let value = read_u64(&mut disk_image);
-    let max_nesting_depth = 10;
     let mut disk_file = tempfile::tempfile().unwrap();
     disk_file.write_all(&bytes[16..]).unwrap();
     disk_file.seek(SeekFrom::Start(0)).unwrap();
-    if let Ok(qcow) = QcowFile::from(disk_file, max_nesting_depth) {
+    if let Ok(qcow) = QcowFile::from(
+        disk_file,
+        disk::DiskFileParams {
+            path: "/foo".into(),
+            is_read_only: false,
+            is_sparse_file: false,
+            is_overlapped: false,
+            depth: 0,
+        },
+    ) {
         let mut mem = value.to_le_bytes().to_owned();
         let vslice = VolatileSlice::new(&mut mem);
         let _ = qcow.write_all_at_volatile(vslice, addr);

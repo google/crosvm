@@ -30,7 +30,16 @@ impl ScsiOption {
             .with_context(|| format!("failed to lock disk image {}", self.path.display()))?;
 
         // We only support sparse disks for now.
-        disk::create_disk_file(raw_image, true, disk::MAX_NESTING_DEPTH, &self.path)
-            .context("create_disk_file failed")
+        disk::create_disk_file(
+            raw_image,
+            disk::DiskFileParams {
+                path: self.path.clone(),
+                is_read_only: self.read_only,
+                is_sparse_file: true,
+                is_overlapped: false,
+                depth: 0,
+            },
+        )
+        .context("create_disk_file failed")
     }
 }

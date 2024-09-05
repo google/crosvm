@@ -55,6 +55,7 @@ use crate::gpt::GPT_PARTITION_ENTRY_SIZE;
 use crate::gpt::SECTOR_SIZE;
 use crate::AsyncDisk;
 use crate::DiskFile;
+use crate::DiskFileParams;
 use crate::DiskGetLen;
 use crate::ImageType;
 use crate::ToAsyncDisk;
@@ -186,12 +187,7 @@ impl CompositeDiskFile {
     /// Set up a composite disk by reading the specification from a file. The file must consist of
     /// the CDISK_MAGIC string followed by one binary instance of the CompositeDisk protocol
     /// buffer. Returns an error if it could not read the file or if the specification was invalid.
-    pub fn from_file(
-        mut file: File,
-        is_sparse_file: bool,
-        max_nesting_depth: u32,
-        image_path: &Path,
-    ) -> Result<CompositeDiskFile> {
+    pub fn from_file(mut file: File, params: DiskFileParams) -> Result<CompositeDiskFile> {
         file.seek(SeekFrom::Start(0))
             .map_err(Error::ReadSpecificationError)?;
         let mut magic_space = [0u8; CDISK_MAGIC.len()];
@@ -209,11 +205,12 @@ impl CompositeDiskFile {
             .component_disks
             .iter()
             .map(|disk| {
+                // TODO: If `params.is_read_only == true`, we should make components read only too.
                 let writable = disk.read_write_capability
                     == cdisk_spec::ReadWriteCapability::READ_WRITE.into();
                 let component_path = PathBuf::from(&disk.file_path);
                 let path = if component_path.is_relative() || proto.version > 1 {
-                    image_path.parent().unwrap().join(component_path)
+                    params.path.parent().unwrap().join(component_path)
                 } else {
                     component_path
                 };
@@ -233,9 +230,14 @@ impl CompositeDiskFile {
                 Ok(ComponentDiskPart {
                     file: create_disk_file(
                         comp_file,
-                        is_sparse_file && writable,
-                        max_nesting_depth,
-                        &path,
+                        DiskFileParams {
+                            path: path.to_owned(),
+                            is_read_only: !writable,
+                            is_sparse_file: params.is_sparse_file && writable,
+                            // TODO: Should pass `params.is_overlapped` through here. Needs testing.
+                            is_overlapped: false,
+                            depth: params.depth + 1,
+                        },
                     )
                     .map_err(|e| Error::DiskError(Box::new(e)))?,
                     offset: disk.offset,

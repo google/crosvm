@@ -54,8 +54,17 @@ impl DiskOption {
                 .with_context(|| format!("failed to set O_DIRECT to {}", &self.path.display()))?;
         }
 
-        disk::create_disk_file(raw_image, self.sparse, disk::MAX_NESTING_DEPTH, &self.path)
-            .context("create_disk_file failed")
+        disk::create_disk_file(
+            raw_image,
+            disk::DiskFileParams {
+                path: self.path.clone(),
+                is_read_only: self.read_only,
+                is_sparse_file: self.sparse,
+                is_overlapped: false,
+                depth: 0,
+            },
+        )
+        .context("create_disk_file failed")
     }
 }
 

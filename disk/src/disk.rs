@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io;
 use std::io::Seek;
 use std::io::SeekFrom;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -66,7 +66,7 @@ use android_sparse::SPARSE_HEADER_MAGIC;
 use sys::read_from_disk;
 
 /// Nesting depth limit for disk formats that can open other disk files.
-pub const MAX_NESTING_DEPTH: u32 = 10;
+const MAX_NESTING_DEPTH: u32 = 10;
 
 #[derive(ThisError, Debug)]
 pub enum Error {
@@ -254,62 +254,40 @@ impl DiskFile for File {
     }
 }
 
-/// Inspect the image file type and create an appropriate disk file to match it.
-pub fn create_disk_file(
-    raw_image: File,
-    is_sparse_file: bool,
-    max_nesting_depth: u32,
-    image_path: &Path,
-) -> Result<Box<dyn DiskFile>> {
-    let image_type = detect_image_type(&raw_image, false)?;
-    create_disk_file_of_type(
-        raw_image,
-        is_sparse_file,
-        max_nesting_depth,
-        image_path,
-        image_type,
-    )
+pub struct DiskFileParams {
+    pub path: PathBuf,
+    pub is_read_only: bool,
+    // Whether to call `base::set_sparse_file` on the file. Currently only affects Windows and is
+    // irrelevant for read only files.
+    pub is_sparse_file: bool,
+    // Whether to open the file in overlapped mode. Only affects Windows.
+    pub is_overlapped: bool,
+    // The nesting depth of the file. Used to avoid infinite recursion. Users outside the disk
+    // crate should set this to zero.
+    pub depth: u32,
 }
 
-/// create an appropriate disk file to match give image type.
-pub fn create_disk_file_of_type(
-    raw_image: File,
-    is_sparse_file: bool,
-    // max_nesting_depth is only used if the composite-disk or qcow features are enabled.
-    #[allow(unused_variables)] mut max_nesting_depth: u32,
-    // image_path is only used if the composite-disk feature is enabled.
-    #[allow(unused_variables)] image_path: &Path,
-    image_type: ImageType,
-) -> Result<Box<dyn DiskFile>> {
-    if max_nesting_depth == 0 {
+/// Inspect the image file type and create an appropriate disk file to match it.
+pub fn create_disk_file(raw_image: File, params: DiskFileParams) -> Result<Box<dyn DiskFile>> {
+    if params.depth > MAX_NESTING_DEPTH {
         return Err(Error::MaxNestingDepthExceeded);
     }
-    #[allow(unused_assignments)]
-    {
-        max_nesting_depth -= 1;
-    }
 
+    let image_type = detect_image_type(&raw_image, params.is_overlapped)?;
     Ok(match image_type {
         ImageType::Raw => {
-            sys::apply_raw_disk_file_options(&raw_image, is_sparse_file)?;
+            sys::apply_raw_disk_file_options(&raw_image, params.is_sparse_file)?;
             Box::new(raw_image) as Box<dyn DiskFile>
         }
         #[cfg(feature = "qcow")]
-        ImageType::Qcow2 => {
-            Box::new(QcowFile::from(raw_image, max_nesting_depth).map_err(Error::QcowError)?)
-                as Box<dyn DiskFile>
-        }
+        ImageType::Qcow2 => Box::new(QcowFile::from(raw_image, params).map_err(Error::QcowError)?)
+            as Box<dyn DiskFile>,
         #[cfg(feature = "composite-disk")]
         ImageType::CompositeDisk => {
             // Valid composite disk header present
             Box::new(
-                CompositeDiskFile::from_file(
-                    raw_image,
-                    is_sparse_file,
-                    max_nesting_depth,
-                    image_path,
-                )
-                .map_err(Error::CreateCompositeDisk)?,
+                CompositeDiskFile::from_file(raw_image, params)
+                    .map_err(Error::CreateCompositeDisk)?,
             ) as Box<dyn DiskFile>
         }
         #[cfg(feature = "android-sparse")]
