@@ -13,4 +13,5 @@ cfg_if::cfg_if! {
 }
 
 pub(crate) use platform::apply_raw_disk_file_options;
+pub(crate) use platform::lock_file;
 pub(crate) use platform::read_from_disk;

@@ -18,6 +18,15 @@ pub fn apply_raw_disk_file_options(_raw_image: &File, _is_sparse_file: bool) -> 
     Ok(())
 }
 
+pub fn lock_file(file: &File, read_only: bool) -> Result<()> {
+    let lock_op = if read_only {
+        base::FlockOperation::LockShared
+    } else {
+        base::FlockOperation::LockExclusive
+    };
+    base::flock(file, lock_op, true).map_err(Error::LockFileFailure)
+}
+
 pub fn read_from_disk(
     mut file: &File,
     offset: u64,

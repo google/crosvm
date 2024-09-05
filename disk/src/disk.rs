@@ -86,6 +86,8 @@ pub enum Error {
     Fdatasync(cros_async::AsyncError),
     #[error("failure with fsync: {0}")]
     Fsync(cros_async::AsyncError),
+    #[error("failed to lock file: {0}")]
+    LockFileFailure(base::Error),
     #[error("failure with fdatasync: {0}")]
     IoFdatasync(io::Error),
     #[error("failure with flush: {0}")]
@@ -272,6 +274,9 @@ pub fn create_disk_file(raw_image: File, params: DiskFileParams) -> Result<Box<d
     if params.depth > MAX_NESTING_DEPTH {
         return Err(Error::MaxNestingDepthExceeded);
     }
+
+    // Lock the disk image to prevent other crosvm instances from using it.
+    sys::lock_file(&raw_image, params.is_read_only)?;
 
     let image_type = detect_image_type(&raw_image, params.is_overlapped)?;
     Ok(match image_type {

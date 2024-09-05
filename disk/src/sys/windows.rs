@@ -30,6 +30,11 @@ pub fn apply_raw_disk_file_options(raw_image: &File, is_sparse_file: bool) -> Re
     Ok(())
 }
 
+pub fn lock_file(_file: &File, _read_only: bool) -> Result<()> {
+    // Not implemented on Windows yet.
+    Ok(())
+}
+
 pub fn read_from_disk(
     mut file: &File,
     offset: u64,
