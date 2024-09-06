@@ -815,7 +815,9 @@ impl arch::LinuxArch for AArch64 {
             components.cpu_capacity,
             components.cpu_frequencies,
             fdt_address,
-            cmdline.as_str(),
+            cmdline
+                .as_str_with_max_len(AARCH64_CMDLINE_MAX_SIZE - 1)
+                .map_err(Error::Cmdline)?,
             (payload.entry(), payload.size() as usize),
             initrd,
             components.android_fstab,
@@ -1160,7 +1162,7 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
 impl AArch64 {
     /// This returns a base part of the kernel command for this architecture
     fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
-        let mut cmdline = kernel_cmdline::Cmdline::new(AARCH64_CMDLINE_MAX_SIZE);
+        let mut cmdline = kernel_cmdline::Cmdline::new();
         cmdline.insert_str("panic=-1").unwrap();
         cmdline
     }

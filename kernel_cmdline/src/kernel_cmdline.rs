@@ -23,8 +23,8 @@ pub enum Error {
     #[error("string contains non-printable ASCII character")]
     InvalidAscii,
     /// Operation would have made the command line too large.
-    #[error("inserting string would make command line too long")]
-    TooLarge,
+    #[error("command line length {0} exceeds maximum {1}")]
+    TooLarge(usize, usize),
 }
 
 /// Specialized Result type for command line operations.
@@ -54,43 +54,22 @@ fn valid_element(s: &str) -> Result<()> {
     }
 }
 
-/// A builder for a kernel command line string that validates the string as its being built. A
-/// `CString` can be constructed from this directly using `CString::new`.
+/// A builder for a kernel command line string that validates the string as it is built.
+#[derive(Default)]
 pub struct Cmdline {
     line: String,
-    capacity: usize,
 }
 
 impl Cmdline {
-    /// Constructs an empty Cmdline with the given capacity, which includes the nul terminator.
-    /// Capacity must be greater than 0.
-    pub fn new(capacity: usize) -> Cmdline {
-        assert_ne!(capacity, 0);
-        Cmdline {
-            line: String::new(),
-            capacity,
-        }
+    /// Constructs an empty Cmdline.
+    pub fn new() -> Cmdline {
+        Cmdline::default()
     }
 
-    fn has_capacity(&self, more: usize) -> Result<()> {
-        let needs_space = if self.line.is_empty() { 0 } else { 1 };
-        if self.line.len() + more + needs_space < self.capacity {
-            Ok(())
-        } else {
-            Err(Error::TooLarge)
-        }
-    }
-
-    fn start_push(&mut self) {
+    fn push_space_if_needed(&mut self) {
         if !self.line.is_empty() {
             self.line.push(' ');
         }
-    }
-
-    fn end_push(&mut self) {
-        // This assert is always true because of the `has_capacity` check that each insert method
-        // uses.
-        assert!(self.line.len() < self.capacity);
     }
 
     /// Validates and inserts a key value pair into this command line
@@ -100,13 +79,11 @@ impl Cmdline {
 
         valid_element(k)?;
         valid_element(v)?;
-        self.has_capacity(k.len() + v.len() + 1)?;
 
-        self.start_push();
+        self.push_space_if_needed();
         self.line.push_str(k);
         self.line.push('=');
         self.line.push_str(v);
-        self.end_push();
 
         Ok(())
     }
@@ -116,11 +93,8 @@ impl Cmdline {
         let s = slug.as_ref();
         valid_str(s)?;
 
-        self.has_capacity(s.len())?;
-
-        self.start_push();
+        self.push_space_if_needed();
         self.line.push_str(s);
-        self.end_push();
 
         Ok(())
     }
@@ -129,34 +103,56 @@ impl Cmdline {
     pub fn as_str(&self) -> &str {
         self.line.as_str()
     }
-}
 
-impl From<Cmdline> for Vec<u8> {
-    fn from(c: Cmdline) -> Vec<u8> {
-        c.line.into_bytes()
+    /// Returns the current command line as a string with a maximum length.
+    ///
+    /// # Arguments
+    ///
+    /// `max_len`: maximum number of bytes (not including NUL terminator)
+    pub fn as_str_with_max_len(&self, max_len: usize) -> Result<&str> {
+        let s = self.line.as_str();
+        if s.len() <= max_len {
+            Ok(s)
+        } else {
+            Err(Error::TooLarge(s.len(), max_len))
+        }
+    }
+
+    /// Converts the command line into a `Vec<u8>` with a maximum length.
+    ///
+    /// # Arguments
+    ///
+    /// `max_len`: maximum number of bytes (not including NUL terminator)
+    pub fn into_bytes_with_max_len(self, max_len: usize) -> Result<Vec<u8>> {
+        let bytes: Vec<u8> = self.line.into_bytes();
+        if bytes.len() <= max_len {
+            Ok(bytes)
+        } else {
+            Err(Error::TooLarge(bytes.len(), max_len))
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::CString;
-
     use super::*;
 
     #[test]
     fn insert_hello_world() {
-        let mut cl = Cmdline::new(100);
+        let mut cl = Cmdline::new();
         assert_eq!(cl.as_str(), "");
         assert!(cl.insert("hello", "world").is_ok());
         assert_eq!(cl.as_str(), "hello=world");
 
-        let s = CString::new(cl).expect("failed to create CString from Cmdline");
-        assert_eq!(s, CString::new("hello=world").unwrap());
+        let bytes = cl
+            .into_bytes_with_max_len(100)
+            .expect("failed to convert Cmdline into bytes");
+        assert_eq!(bytes, b"hello=world");
     }
 
     #[test]
     fn insert_multi() {
-        let mut cl = Cmdline::new(100);
+        let mut cl = Cmdline::new();
         assert!(cl.insert("hello", "world").is_ok());
         assert!(cl.insert("foo", "bar").is_ok());
         assert_eq!(cl.as_str(), "hello=world foo=bar");
@@ -164,7 +160,7 @@ mod tests {
 
     #[test]
     fn insert_space() {
-        let mut cl = Cmdline::new(100);
+        let mut cl = Cmdline::new();
         assert_eq!(cl.insert("a ", "b"), Err(Error::HasSpace));
         assert_eq!(cl.insert("a", "b "), Err(Error::HasSpace));
         assert_eq!(cl.insert("a ", "b "), Err(Error::HasSpace));
@@ -174,7 +170,7 @@ mod tests {
 
     #[test]
     fn insert_equals() {
-        let mut cl = Cmdline::new(100);
+        let mut cl = Cmdline::new();
         assert_eq!(cl.insert("a=", "b"), Err(Error::HasEquals));
         assert_eq!(cl.insert("a", "b="), Err(Error::HasEquals));
         assert_eq!(cl.insert("a=", "b "), Err(Error::HasEquals));
@@ -185,7 +181,7 @@ mod tests {
 
     #[test]
     fn insert_emoji() {
-        let mut cl = Cmdline::new(100);
+        let mut cl = Cmdline::new();
         assert_eq!(cl.insert("heart", "💖"), Err(Error::InvalidAscii));
         assert_eq!(cl.insert("💖", "love"), Err(Error::InvalidAscii));
         assert_eq!(cl.as_str(), "");
@@ -193,7 +189,7 @@ mod tests {
 
     #[test]
     fn insert_string() {
-        let mut cl = Cmdline::new(13);
+        let mut cl = Cmdline::new();
         assert_eq!(cl.as_str(), "");
         assert!(cl.insert_str("noapic").is_ok());
         assert_eq!(cl.as_str(), "noapic");
@@ -202,25 +198,25 @@ mod tests {
     }
 
     #[test]
-    fn insert_too_large() {
-        let mut cl = Cmdline::new(4);
-        assert_eq!(cl.insert("hello", "world"), Err(Error::TooLarge));
-        assert_eq!(cl.insert("a", "world"), Err(Error::TooLarge));
-        assert_eq!(cl.insert("hello", "b"), Err(Error::TooLarge));
+    fn as_str_too_large() {
+        let mut cl = Cmdline::new();
         assert!(cl.insert("a", "b").is_ok()); // start off with 3.
-        assert_eq!(cl.insert("a", "b"), Err(Error::TooLarge)); // adds 4. " a=b"
-        assert_eq!(cl.insert_str("a"), Err(Error::TooLarge));
         assert_eq!(cl.as_str(), "a=b");
+        assert_eq!(cl.as_str_with_max_len(2), Err(Error::TooLarge(3, 2)));
+        assert_eq!(cl.as_str_with_max_len(3), Ok("a=b"));
 
-        let mut cl = Cmdline::new(10);
+        let mut cl = Cmdline::new();
         assert!(cl.insert("ab", "ba").is_ok()); // adds 5 length
-        assert_eq!(cl.insert("c", "da"), Err(Error::TooLarge)); // adds 5 (including space) length
         assert!(cl.insert("c", "d").is_ok()); // adds 4 (including space) length
+        assert_eq!(cl.as_str(), "ab=ba c=d");
+        assert_eq!(cl.as_str_with_max_len(8), Err(Error::TooLarge(9, 8)));
+        assert_eq!(cl.as_str_with_max_len(9), Ok("ab=ba c=d"));
 
-        let mut cl = Cmdline::new(10);
+        let mut cl = Cmdline::new();
         assert!(cl.insert("ab", "ba").is_ok()); // adds 5 length
-        assert_eq!(cl.insert_str("1234"), Err(Error::TooLarge)); // adds 5 (including space) length
         assert!(cl.insert_str("123").is_ok()); // adds 4 (including space) length
         assert_eq!(cl.as_str(), "ab=ba 123");
+        assert_eq!(cl.as_str_with_max_len(8), Err(Error::TooLarge(9, 8)));
+        assert_eq!(cl.as_str_with_max_len(9), Ok("ab=ba 123"));
     }
 }

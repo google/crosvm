@@ -1354,7 +1354,9 @@ impl X8664arch {
             .get_slice_at_addr(guest_addr, CMDLINE_MAX_SIZE as usize)
             .map_err(|_| Error::CommandLineOverflow)?;
 
-        let mut cmdline_bytes: Vec<u8> = cmdline.into();
+        let mut cmdline_bytes: Vec<u8> = cmdline
+            .into_bytes_with_max_len(CMDLINE_MAX_SIZE as usize - 1)
+            .map_err(Error::Cmdline)?;
         cmdline_bytes.push(0u8); // Add NUL terminator.
 
         cmdline_guest_mem_slice
@@ -1498,7 +1500,7 @@ impl X8664arch {
 
     /// This returns a minimal kernel command for this architecture
     pub fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
-        let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
+        let mut cmdline = kernel_cmdline::Cmdline::new();
         cmdline.insert_str("panic=-1").unwrap();
 
         cmdline
@@ -2290,7 +2292,7 @@ mod tests {
     fn cmdline_overflow() {
         const MEM_SIZE: u64 = 0x1000;
         let gm = GuestMemory::new(&[(GuestAddress(0x0), MEM_SIZE)]).unwrap();
-        let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
+        let mut cmdline = kernel_cmdline::Cmdline::new();
         cmdline.insert_str("12345").unwrap();
         let cmdline_address = GuestAddress(MEM_SIZE - 5);
         let err = X8664arch::load_cmdline(&gm, cmdline_address, cmdline).unwrap_err();
@@ -2301,7 +2303,7 @@ mod tests {
     fn cmdline_write_end() {
         const MEM_SIZE: u64 = 0x1000;
         let gm = GuestMemory::new(&[(GuestAddress(0x0), MEM_SIZE)]).unwrap();
-        let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
+        let mut cmdline = kernel_cmdline::Cmdline::new();
         cmdline.insert_str("1234").unwrap();
         let mut cmdline_address = GuestAddress(45);
         X8664arch::load_cmdline(&gm, cmdline_address, cmdline).unwrap();

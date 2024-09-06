@@ -391,7 +391,9 @@ impl arch::LinuxArch for Riscv64 {
             fdt_offset,
             aia_num_ids,
             aia_num_sources,
-            cmdline.as_str(),
+            cmdline
+                .as_str_with_max_len(RISCV64_CMDLINE_MAX_SIZE - 1)
+                .map_err(Error::Cmdline)?,
             initrd,
             timebase_freq,
             device_tree_overlays,
@@ -548,7 +550,7 @@ fn get_high_mmio_base_size(mem_size: u64, guest_phys_addr_bits: u8) -> (u64, u64
 }
 
 fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
-    let mut cmdline = kernel_cmdline::Cmdline::new(RISCV64_CMDLINE_MAX_SIZE);
+    let mut cmdline = kernel_cmdline::Cmdline::new();
     cmdline.insert_str("panic=-1").unwrap();
     cmdline
 }

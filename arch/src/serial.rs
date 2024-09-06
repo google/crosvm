@@ -252,7 +252,7 @@ mod tests {
 
     #[test]
     fn get_serial_cmdline_default() {
-        let mut cmdline = Cmdline::new(4096);
+        let mut cmdline = Cmdline::new();
         let mut serial_parameters = BTreeMap::new();
         let io_bus = Bus::new(BusType::Io);
         let evt1_3 = Event::new().unwrap();
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn get_serial_cmdline_virtio_console() {
-        let mut cmdline = Cmdline::new(4096);
+        let mut cmdline = Cmdline::new();
         let mut serial_parameters = BTreeMap::new();
         let io_bus = Bus::new(BusType::Io);
         let evt1_3 = Event::new().unwrap();
@@ -325,7 +325,7 @@ mod tests {
 
     #[test]
     fn get_serial_cmdline_virtio_console_serial_earlycon() {
-        let mut cmdline = Cmdline::new(4096);
+        let mut cmdline = Cmdline::new();
         let mut serial_parameters = BTreeMap::new();
         let io_bus = Bus::new(BusType::Io);
         let evt1_3 = Event::new().unwrap();
@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn get_serial_cmdline_virtio_console_invalid_earlycon() {
-        let mut cmdline = Cmdline::new(4096);
+        let mut cmdline = Cmdline::new();
         let mut serial_parameters = BTreeMap::new();
         let io_bus = Bus::new(BusType::Io);
         let evt1_3 = Event::new().unwrap();
