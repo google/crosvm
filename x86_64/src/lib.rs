@@ -41,8 +41,6 @@ pub mod smbios;
 
 use std::arch::x86_64::CpuidResult;
 use std::collections::BTreeMap;
-use std::ffi::CStr;
-use std::ffi::CString;
 use std::fs::File;
 use std::io;
 use std::mem;
@@ -1004,11 +1002,7 @@ impl arch::LinuxArch for X8664arch {
         match components.vm_image {
             VmImage::Bios(ref mut bios) => {
                 // Allow a bios to hardcode CMDLINE_OFFSET and read the kernel command line from it.
-                Self::load_cmdline(
-                    &mem,
-                    GuestAddress(CMDLINE_OFFSET),
-                    &CString::new(cmdline).unwrap(),
-                )?;
+                Self::load_cmdline(&mem, GuestAddress(CMDLINE_OFFSET), cmdline)?;
                 Self::load_bios(&mem, bios)?;
                 regs::set_default_msrs(&mut msrs);
                 // The default values for `Regs` and `Sregs` already set up the reset vector.
@@ -1019,7 +1013,7 @@ impl arch::LinuxArch for X8664arch {
 
                 Self::setup_system_memory(
                     &mem,
-                    &CString::new(cmdline).unwrap(),
+                    cmdline,
                     components.initrd_image,
                     components.android_fstab,
                     kernel_end,
@@ -1353,22 +1347,21 @@ impl X8664arch {
     fn load_cmdline(
         guest_mem: &GuestMemory,
         guest_addr: GuestAddress,
-        cmdline: &CStr,
+        cmdline: kernel_cmdline::Cmdline,
     ) -> Result<()> {
-        let len = cmdline.to_bytes().len();
-        if len == 0 {
-            return Ok(());
-        }
+        let mut cmdline_bytes: Vec<u8> = cmdline.into();
+        cmdline_bytes.push(0u8); // Add NUL terminator.
+        let cmdline_size = cmdline_bytes.len();
 
         let end = guest_addr
-            .checked_add(len as u64 + 1)
-            .ok_or(Error::CommandLineOverflow)?; // Extra for null termination.
+            .checked_add(cmdline_size as u64)
+            .ok_or(Error::CommandLineOverflow)?;
         if end > guest_mem.end_addr() {
             return Err(Error::CommandLineOverflow);
         }
 
         guest_mem
-            .write_at_addr(cmdline.to_bytes_with_nul(), guest_addr)
+            .write_at_addr(&cmdline_bytes, guest_addr)
             .map_err(|_| Error::CommandLineCopy)?;
 
         Ok(())
@@ -1422,7 +1415,7 @@ impl X8664arch {
     /// * `initrd_file` - an initial ramdisk image
     pub fn setup_system_memory(
         mem: &GuestMemory,
-        cmdline: &CStr,
+        cmdline: kernel_cmdline::Cmdline,
         initrd_file: Option<File>,
         android_fstab: Option<File>,
         kernel_end: u64,
@@ -2300,13 +2293,10 @@ mod tests {
     fn cmdline_overflow() {
         const MEM_SIZE: u64 = 0x1000;
         let gm = GuestMemory::new(&[(GuestAddress(0x0), MEM_SIZE)]).unwrap();
+        let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
+        cmdline.insert_str("12345").unwrap();
         let cmdline_address = GuestAddress(MEM_SIZE - 5);
-        let err = X8664arch::load_cmdline(
-            &gm,
-            cmdline_address,
-            CStr::from_bytes_with_nul(b"12345\0").unwrap(),
-        )
-        .unwrap_err();
+        let err = X8664arch::load_cmdline(&gm, cmdline_address, cmdline).unwrap_err();
         assert!(matches!(err, Error::CommandLineOverflow));
     }
 
@@ -2314,13 +2304,10 @@ mod tests {
     fn cmdline_write_end() {
         const MEM_SIZE: u64 = 0x1000;
         let gm = GuestMemory::new(&[(GuestAddress(0x0), MEM_SIZE)]).unwrap();
+        let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
+        cmdline.insert_str("1234").unwrap();
         let mut cmdline_address = GuestAddress(45);
-        X8664arch::load_cmdline(
-            &gm,
-            cmdline_address,
-            CStr::from_bytes_with_nul(b"1234\0").unwrap(),
-        )
-        .unwrap();
+        X8664arch::load_cmdline(&gm, cmdline_address, cmdline).unwrap();
         let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
         assert_eq!(val, b'1');
         cmdline_address = cmdline_address.unchecked_add(1);
