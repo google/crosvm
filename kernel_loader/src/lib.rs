@@ -4,7 +4,6 @@
 
 //! Linux kernel ELF file loader.
 
-use std::ffi::CStr;
 use std::mem;
 
 use base::FileReadWriteAtVolatile;
@@ -38,10 +37,6 @@ pub use multiboot::multiboot_header_from_file;
 pub enum Error {
     #[error("trying to load big-endian binary on little-endian machine")]
     BigEndianOnLittle,
-    #[error("failed writing command line to guest memory")]
-    CommandLineCopy,
-    #[error("command line overflowed guest memory")]
-    CommandLineOverflow,
     #[error("invalid elf class")]
     InvalidElfClass,
     #[error("invalid elf version")]
@@ -255,37 +250,6 @@ where
     })
 }
 
-/// Writes the command line string to the given memory slice.
-///
-/// # Arguments
-///
-/// * `guest_mem` - A u8 slice that will be partially overwritten by the command line.
-/// * `guest_addr` - The address in `guest_mem` at which to load the command line.
-/// * `cmdline` - The kernel command line.
-pub fn load_cmdline(
-    guest_mem: &GuestMemory,
-    guest_addr: GuestAddress,
-    cmdline: &CStr,
-) -> Result<()> {
-    let len = cmdline.to_bytes().len();
-    if len == 0 {
-        return Ok(());
-    }
-
-    let end = guest_addr
-        .checked_add(len as u64 + 1)
-        .ok_or(Error::CommandLineOverflow)?; // Extra for null termination.
-    if end > guest_mem.end_addr() {
-        return Err(Error::CommandLineOverflow);
-    }
-
-    guest_mem
-        .write_at_addr(cmdline.to_bytes_with_nul(), guest_addr)
-        .map_err(|_| Error::CommandLineCopy)?;
-
-    Ok(())
-}
-
 struct Elf64 {
     file_header: elf::Elf64_Ehdr,
     program_headers: Vec<elf::Elf64_Phdr>,
@@ -418,48 +382,6 @@ mod test {
 
     fn create_guest_mem() -> GuestMemory {
         GuestMemory::new(&[(GuestAddress(0x0), MEM_SIZE)]).unwrap()
-    }
-
-    #[test]
-    fn cmdline_overflow() {
-        let gm = create_guest_mem();
-        let cmdline_address = GuestAddress(MEM_SIZE - 5);
-        assert_eq!(
-            Err(Error::CommandLineOverflow),
-            load_cmdline(
-                &gm,
-                cmdline_address,
-                CStr::from_bytes_with_nul(b"12345\0").unwrap()
-            )
-        );
-    }
-
-    #[test]
-    fn cmdline_write_end() {
-        let gm = create_guest_mem();
-        let mut cmdline_address = GuestAddress(45);
-        assert_eq!(
-            Ok(()),
-            load_cmdline(
-                &gm,
-                cmdline_address,
-                CStr::from_bytes_with_nul(b"1234\0").unwrap()
-            )
-        );
-        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
-        assert_eq!(val, b'1');
-        cmdline_address = cmdline_address.unchecked_add(1);
-        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
-        assert_eq!(val, b'2');
-        cmdline_address = cmdline_address.unchecked_add(1);
-        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
-        assert_eq!(val, b'3');
-        cmdline_address = cmdline_address.unchecked_add(1);
-        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
-        assert_eq!(val, b'4');
-        cmdline_address = cmdline_address.unchecked_add(1);
-        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
-        assert_eq!(val, b'\0');
     }
 
     // Elf32 image that prints hello world on x86.

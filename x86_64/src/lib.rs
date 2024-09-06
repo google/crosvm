@@ -165,6 +165,10 @@ pub enum Error {
     CloneTube(TubeError),
     #[error("the given kernel command line was invalid: {0}")]
     Cmdline(kernel_cmdline::Error),
+    #[error("failed writing command line to guest memory")]
+    CommandLineCopy,
+    #[error("command line overflowed guest memory")]
+    CommandLineOverflow,
     #[error("failed to configure hotplugged pci device: {0}")]
     ConfigurePciDevice(arch::DeviceRegistrationError),
     #[error("failed to configure segment registers: {0}")]
@@ -222,8 +226,6 @@ pub enum Error {
     LoadBios(io::Error),
     #[error("error loading kernel bzImage: {0}")]
     LoadBzImage(bzimage::Error),
-    #[error("error loading command line: {0}")]
-    LoadCmdline(kernel_loader::Error),
     #[error("error loading initrd: {0}")]
     LoadInitrd(arch::LoadImageError),
     #[error("error loading Kernel: {0}")]
@@ -1004,12 +1006,11 @@ impl arch::LinuxArch for X8664arch {
         match components.vm_image {
             VmImage::Bios(ref mut bios) => {
                 // Allow a bios to hardcode CMDLINE_OFFSET and read the kernel command line from it.
-                kernel_loader::load_cmdline(
+                Self::load_cmdline(
                     &mem,
                     GuestAddress(CMDLINE_OFFSET),
                     &CString::new(cmdline).unwrap(),
-                )
-                .map_err(Error::LoadCmdline)?;
+                )?;
                 Self::load_bios(&mem, bios)?;
                 regs::set_default_msrs(&mut msrs);
                 // The default values for `Regs` and `Sregs` already set up the reset vector.
@@ -1344,6 +1345,37 @@ impl X8664arch {
         Ok(())
     }
 
+    /// Writes the command line string to the given memory slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `guest_mem` - A u8 slice that will be partially overwritten by the command line.
+    /// * `guest_addr` - The address in `guest_mem` at which to load the command line.
+    /// * `cmdline` - The kernel command line.
+    fn load_cmdline(
+        guest_mem: &GuestMemory,
+        guest_addr: GuestAddress,
+        cmdline: &CStr,
+    ) -> Result<()> {
+        let len = cmdline.to_bytes().len();
+        if len == 0 {
+            return Ok(());
+        }
+
+        let end = guest_addr
+            .checked_add(len as u64 + 1)
+            .ok_or(Error::CommandLineOverflow)?; // Extra for null termination.
+        if end > guest_mem.end_addr() {
+            return Err(Error::CommandLineOverflow);
+        }
+
+        guest_mem
+            .write_at_addr(cmdline.to_bytes_with_nul(), guest_addr)
+            .map_err(|_| Error::CommandLineCopy)?;
+
+        Ok(())
+    }
+
     /// Loads the kernel from an open file.
     ///
     /// # Arguments
@@ -1400,8 +1432,7 @@ impl X8664arch {
         dump_device_tree_blob: Option<PathBuf>,
         device_tree_overlays: Vec<DtbOverlay>,
     ) -> Result<()> {
-        kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)
-            .map_err(Error::LoadCmdline)?;
+        Self::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)?;
 
         let mut setup_data = Vec::<SetupData>::new();
         if let Some(android_fstab) = android_fstab {
@@ -2266,5 +2297,46 @@ mod tests {
             mem.read_obj_from_addr::<[u8; 9]>(entry2_data_addr).unwrap(),
             entry2_data
         );
+    }
+
+    #[test]
+    fn cmdline_overflow() {
+        const MEM_SIZE: u64 = 0x1000;
+        let gm = GuestMemory::new(&[(GuestAddress(0x0), MEM_SIZE)]).unwrap();
+        let cmdline_address = GuestAddress(MEM_SIZE - 5);
+        let err = X8664arch::load_cmdline(
+            &gm,
+            cmdline_address,
+            CStr::from_bytes_with_nul(b"12345\0").unwrap(),
+        )
+        .unwrap_err();
+        assert!(matches!(err, Error::CommandLineOverflow));
+    }
+
+    #[test]
+    fn cmdline_write_end() {
+        const MEM_SIZE: u64 = 0x1000;
+        let gm = GuestMemory::new(&[(GuestAddress(0x0), MEM_SIZE)]).unwrap();
+        let mut cmdline_address = GuestAddress(45);
+        X8664arch::load_cmdline(
+            &gm,
+            cmdline_address,
+            CStr::from_bytes_with_nul(b"1234\0").unwrap(),
+        )
+        .unwrap();
+        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
+        assert_eq!(val, b'1');
+        cmdline_address = cmdline_address.unchecked_add(1);
+        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
+        assert_eq!(val, b'2');
+        cmdline_address = cmdline_address.unchecked_add(1);
+        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
+        assert_eq!(val, b'3');
+        cmdline_address = cmdline_address.unchecked_add(1);
+        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
+        assert_eq!(val, b'4');
+        cmdline_address = cmdline_address.unchecked_add(1);
+        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
+        assert_eq!(val, b'\0');
     }
 }
