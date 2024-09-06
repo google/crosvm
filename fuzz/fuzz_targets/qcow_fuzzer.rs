@@ -37,6 +37,7 @@ fuzz_target!(|bytes| {
             is_read_only: false,
             is_sparse_file: false,
             is_overlapped: false,
+            is_direct: false,
             depth: 0,
         },
     ) {

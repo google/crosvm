@@ -22,7 +22,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use base::open_file_or_duplicate;
 use base::AsRawDescriptors;
 use base::FileAllocate;
 use base::FileReadWriteAtVolatile;
@@ -42,7 +41,6 @@ use remain::sorted;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::create_disk_file;
 use crate::gpt;
 use crate::gpt::write_gpt_header;
 use crate::gpt::write_protective_mbr;
@@ -53,6 +51,7 @@ use crate::gpt::GPT_HEADER_SIZE;
 use crate::gpt::GPT_NUM_PARTITIONS;
 use crate::gpt::GPT_PARTITION_ENTRY_SIZE;
 use crate::gpt::SECTOR_SIZE;
+use crate::open_disk_file;
 use crate::AsyncDisk;
 use crate::DiskFile;
 use crate::DiskFileParams;
@@ -217,12 +216,6 @@ impl CompositeDiskFile {
                 } else {
                     component_path
                 };
-                let comp_file = open_file_or_duplicate(
-                    &path,
-                    OpenOptions::new().read(true).write(writable), /* TODO(b/190435784): add
-                                                                    * support for O_DIRECT. */
-                )
-                .map_err(|e| Error::OpenFile(e.into(), disk.file_path.to_string()))?;
 
                 // Note that a read-only parts of a composite disk should NOT be marked sparse,
                 // as the action of marking them sparse is a write. This may seem a little hacky,
@@ -231,17 +224,15 @@ impl CompositeDiskFile {
                 //         part (the proto does not have fields for it).
                 //    (b)  this override of sorts always matches the correct user intent.
                 Ok(ComponentDiskPart {
-                    file: create_disk_file(
-                        comp_file,
-                        DiskFileParams {
-                            path: path.to_owned(),
-                            is_read_only: !writable,
-                            is_sparse_file: params.is_sparse_file && writable,
-                            // TODO: Should pass `params.is_overlapped` through here. Needs testing.
-                            is_overlapped: false,
-                            depth: params.depth + 1,
-                        },
-                    )
+                    file: open_disk_file(DiskFileParams {
+                        path: path.to_owned(),
+                        is_read_only: !writable,
+                        is_sparse_file: params.is_sparse_file && writable,
+                        // TODO: Should pass `params.is_overlapped` through here. Needs testing.
+                        is_overlapped: false,
+                        is_direct: params.is_direct,
+                        depth: params.depth + 1,
+                    })
                     .map_err(|e| Error::DiskError(Box::new(e)))?,
                     offset: disk.offset,
                     length: 0, // Assigned later

@@ -4,13 +4,8 @@
 
 use std::cmp::max;
 use std::cmp::min;
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::os::fd::AsRawFd;
 
 use anyhow::Context;
-use base::add_fd_flags;
-use base::open_file_or_duplicate;
 use base::unix::iov_max;
 use cros_async::Executor;
 use disk::DiskFile;
@@ -30,31 +25,15 @@ pub fn get_seg_max(queue_size: u16) -> u32 {
 impl DiskOption {
     /// Open the specified disk file.
     pub fn open(&self) -> anyhow::Result<Box<dyn DiskFile>> {
-        let mut options = OpenOptions::new();
-        options.read(true).write(!self.read_only);
-
-        let raw_image: File = open_file_or_duplicate(&self.path, &options)
-            .with_context(|| format!("failed to load disk image {}", self.path.display()))?;
-
-        // If O_DIRECT is requested, set the flag via fcntl. It is not done at
-        // open_file_or_reuse time because it will reuse existing fd and will
-        // not actually use the given OpenOptions.
-        if self.direct {
-            add_fd_flags(raw_image.as_raw_fd(), libc::O_DIRECT)
-                .with_context(|| format!("failed to set O_DIRECT to {}", &self.path.display()))?;
-        }
-
-        disk::create_disk_file(
-            raw_image,
-            disk::DiskFileParams {
-                path: self.path.clone(),
-                is_read_only: self.read_only,
-                is_sparse_file: self.sparse,
-                is_overlapped: false,
-                depth: 0,
-            },
-        )
-        .context("create_disk_file failed")
+        disk::open_disk_file(disk::DiskFileParams {
+            path: self.path.clone(),
+            is_read_only: self.read_only,
+            is_sparse_file: self.sparse,
+            is_overlapped: false,
+            is_direct: self.direct,
+            depth: 0,
+        })
+        .context("open_disk_file failed")
     }
 }
 

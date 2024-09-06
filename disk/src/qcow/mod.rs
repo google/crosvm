@@ -9,19 +9,16 @@ mod vec_cache;
 use std::cmp::max;
 use std::cmp::min;
 use std::fs::File;
-use std::fs::OpenOptions;
 use std::io;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::mem::size_of;
-use std::path::Path;
 use std::path::PathBuf;
 use std::str;
 
 use base::error;
-use base::open_file_or_duplicate;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::FileAllocate;
@@ -42,7 +39,7 @@ use sync::Mutex;
 use thiserror::Error;
 
 use crate::asynchronous::DiskFlush;
-use crate::create_disk_file;
+use crate::open_disk_file;
 use crate::qcow::qcow_raw_file::QcowRawFile;
 use crate::qcow::refcount::RefCount;
 use crate::qcow::vec_cache::CacheMap;
@@ -411,6 +408,7 @@ fn max_refcount_clusters(refcount_order: u32, cluster_size: u32, num_clusters: u
 ///         is_read_only: false,
 ///         is_sparse_file: false,
 ///         is_overlapped: false,
+///         is_direct: false,
 ///         depth: 0,
 ///     }).expect("Can't open qcow file");
 ///     let mut buf = [0u8; 12];
@@ -479,25 +477,17 @@ impl QcowFile {
         }
 
         let backing_file = if let Some(backing_file_path) = header.backing_file_path.as_ref() {
-            let path = backing_file_path.clone();
-            let backing_raw_file = open_file_or_duplicate(
-                Path::new(&path),
-                OpenOptions::new().read(true), // TODO(b/190435784): Add support for O_DIRECT.
-            )
-            .map_err(|e| Error::BackingFileIo(e.into()))?;
-            let backing_file = create_disk_file(
-                backing_raw_file,
-                DiskFileParams {
-                    path: PathBuf::from(path),
-                    // The backing file is only read from.
-                    is_read_only: true,
-                    // Sparse isn't meaningful for read only files.
-                    is_sparse_file: false,
-                    // TODO: Should pass `params.is_overlapped` through here. Needs testing.
-                    is_overlapped: false,
-                    depth: params.depth + 1,
-                },
-            )
+            let backing_file = open_disk_file(DiskFileParams {
+                path: PathBuf::from(backing_file_path),
+                // The backing file is only read from.
+                is_read_only: true,
+                // Sparse isn't meaningful for read only files.
+                is_sparse_file: false,
+                // TODO: Should pass `params.is_overlapped` through here. Needs testing.
+                is_overlapped: false,
+                is_direct: params.is_direct,
+                depth: params.depth + 1,
+            })
             .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
             Some(backing_file)
         } else {
@@ -643,25 +633,17 @@ impl QcowFile {
         // Open the backing file as a `DiskFile` to determine its size (which may not match the
         // filesystem size).
         let size = {
-            let backing_path = Path::new(backing_file_name);
-            let backing_raw_file = open_file_or_duplicate(
-                backing_path,
-                OpenOptions::new().read(true), // TODO(b/190435784): add support for O_DIRECT.
-            )
-            .map_err(|e| Error::BackingFileIo(e.into()))?;
-            let backing_file = create_disk_file(
-                backing_raw_file,
-                DiskFileParams {
-                    path: backing_path.to_owned(),
-                    // The backing file is only read from.
-                    is_read_only: true,
-                    // Sparse isn't meaningful for read only files.
-                    is_sparse_file: false,
-                    // TODO: Should pass `params.is_overlapped` through here. Needs testing.
-                    is_overlapped: false,
-                    depth: params.depth + 1,
-                },
-            )
+            let backing_file = open_disk_file(DiskFileParams {
+                path: PathBuf::from(backing_file_name),
+                // The backing file is only read from.
+                is_read_only: true,
+                // Sparse isn't meaningful for read only files.
+                is_sparse_file: false,
+                // TODO: Should pass `params.is_overlapped` through here. Needs testing.
+                is_overlapped: false,
+                is_direct: params.is_direct,
+                depth: params.depth + 1,
+            })
             .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
             backing_file.get_len().map_err(Error::BackingFileIo)?
         };
@@ -1737,6 +1719,7 @@ mod tests {
             is_read_only: false,
             is_sparse_file: false,
             is_overlapped: false,
+            is_direct: false,
             depth: 0,
         }
     }

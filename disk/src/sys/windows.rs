@@ -6,10 +6,17 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::os::windows::fs::OpenOptionsExt;
 
+use base::info;
 use base::read_overlapped_blocking;
 use cros_async::Executor;
+use winapi::um::winbase::FILE_FLAG_NO_BUFFERING;
+use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
+use winapi::um::winnt::FILE_SHARE_READ;
+use winapi::um::winnt::FILE_SHARE_WRITE;
 
+use crate::DiskFileParams;
 use crate::Error;
 use crate::Result;
 use crate::SingleFileDisk;
@@ -22,16 +29,35 @@ impl SingleFileDisk {
     }
 }
 
+pub fn open_raw_disk_image(params: &DiskFileParams) -> Result<File> {
+    let mut options = File::options();
+    options.read(true).write(!params.is_read_only);
+    options.share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+
+    let mut flags = 0;
+    if params.is_direct {
+        info!("Opening disk file with no buffering");
+        flags |= FILE_FLAG_NO_BUFFERING;
+    }
+    if params.is_overlapped {
+        info!("Opening disk file for overlapped IO");
+        flags |= FILE_FLAG_OVERLAPPED;
+    }
+    if flags != 0 {
+        options.custom_flags(flags);
+    }
+
+    let raw_image = base::open_file_or_duplicate(&params.path, &options)
+        .map_err(|e| Error::OpenFile(params.path.display().to_string(), e))?;
+
+    Ok(raw_image)
+}
+
 /// On Windows, if the file is sparse, we set the option. On Linux this is not needed.
 pub fn apply_raw_disk_file_options(raw_image: &File, is_sparse_file: bool) -> Result<()> {
     if is_sparse_file {
         base::set_sparse_file(raw_image).map_err(Error::SetSparseFailure)?;
     }
-    Ok(())
-}
-
-pub fn lock_file(_file: &File, _read_only: bool) -> Result<()> {
-    // Not implemented on Windows yet.
     Ok(())
 }
 

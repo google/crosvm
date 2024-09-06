@@ -1086,6 +1086,7 @@ dependencies = [
  "thiserror",
  "uuid",
  "vm_memory",
+ "winapi",
  "zerocopy",
 ]
 

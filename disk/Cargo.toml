@@ -30,6 +30,9 @@ uuid = { version = "1", features = ["v4"], optional = true }
 vm_memory = { path = "../vm_memory" }
 zerocopy = { version = "0.7", features = ["derive"] }
 
+[target.'cfg(windows)'.dependencies]
+winapi = "0.3"
+
 [dependencies.futures]
 version = "0.3"
 default-features = false
