@@ -43,6 +43,7 @@ use std::arch::x86_64::CpuidResult;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io;
+use std::io::Write;
 use std::mem;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -1349,20 +1350,16 @@ impl X8664arch {
         guest_addr: GuestAddress,
         cmdline: kernel_cmdline::Cmdline,
     ) -> Result<()> {
+        let mut cmdline_guest_mem_slice = guest_mem
+            .get_slice_at_addr(guest_addr, CMDLINE_MAX_SIZE as usize)
+            .map_err(|_| Error::CommandLineOverflow)?;
+
         let mut cmdline_bytes: Vec<u8> = cmdline.into();
         cmdline_bytes.push(0u8); // Add NUL terminator.
-        let cmdline_size = cmdline_bytes.len();
 
-        let end = guest_addr
-            .checked_add(cmdline_size as u64)
-            .ok_or(Error::CommandLineOverflow)?;
-        if end > guest_mem.end_addr() {
-            return Err(Error::CommandLineOverflow);
-        }
-
-        guest_mem
-            .write_at_addr(&cmdline_bytes, guest_addr)
-            .map_err(|_| Error::CommandLineCopy)?;
+        cmdline_guest_mem_slice
+            .write_all(&cmdline_bytes)
+            .map_err(|_| Error::CommandLineOverflow)?;
 
         Ok(())
     }
