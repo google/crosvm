@@ -62,7 +62,6 @@ use arch::GetSerialCmdlineError;
 use arch::RunnableLinuxVm;
 use arch::VmComponents;
 use arch::VmImage;
-#[cfg(feature = "seccomp_trace")]
 use base::debug;
 use base::warn;
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -141,6 +140,7 @@ use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
 use crate::bootparam::boot_params;
+use crate::bootparam::setup_header;
 use crate::bootparam::XLF_CAN_BE_LOADED_ABOVE_4G;
 use crate::cpuid::EDX_HYBRID_CPU_SHIFT;
 
@@ -1003,7 +1003,12 @@ impl arch::LinuxArch for X8664arch {
         match components.vm_image {
             VmImage::Bios(ref mut bios) => {
                 // Allow a bios to hardcode CMDLINE_OFFSET and read the kernel command line from it.
-                Self::load_cmdline(&mem, GuestAddress(CMDLINE_OFFSET), cmdline)?;
+                Self::load_cmdline(
+                    &mem,
+                    GuestAddress(CMDLINE_OFFSET),
+                    cmdline,
+                    CMDLINE_MAX_SIZE as usize - 1,
+                )?;
                 Self::load_bios(&mem, bios)?;
                 regs::set_default_msrs(&mut msrs);
                 // The default values for `Regs` and `Sregs` already set up the reset vector.
@@ -1345,17 +1350,20 @@ impl X8664arch {
     /// * `guest_mem` - A u8 slice that will be partially overwritten by the command line.
     /// * `guest_addr` - The address in `guest_mem` at which to load the command line.
     /// * `cmdline` - The kernel command line.
+    /// * `kernel_max_cmdline_len` - The maximum command line length (without NUL terminator)
+    ///   supported by the kernel.
     fn load_cmdline(
         guest_mem: &GuestMemory,
         guest_addr: GuestAddress,
         cmdline: kernel_cmdline::Cmdline,
+        kernel_max_cmdline_len: usize,
     ) -> Result<()> {
         let mut cmdline_guest_mem_slice = guest_mem
             .get_slice_at_addr(guest_addr, CMDLINE_MAX_SIZE as usize)
             .map_err(|_| Error::CommandLineOverflow)?;
 
         let mut cmdline_bytes: Vec<u8> = cmdline
-            .into_bytes_with_max_len(CMDLINE_MAX_SIZE as usize - 1)
+            .into_bytes_with_max_len(kernel_max_cmdline_len)
             .map_err(Error::Cmdline)?;
         cmdline_bytes.push(0u8); // Add NUL terminator.
 
@@ -1385,7 +1393,13 @@ impl X8664arch {
         match kernel_loader::load_elf64(mem, kernel_start, kernel_image, 0) {
             Ok(loaded_kernel) => {
                 // ELF kernels don't contain a `boot_params` structure, so synthesize a default one.
-                let boot_params = Default::default();
+                let boot_params = boot_params {
+                    hdr: setup_header {
+                        cmdline_size: CMDLINE_MAX_SIZE as u32 - 1,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                };
                 Ok((
                     boot_params,
                     loaded_kernel.address_range.end,
@@ -1422,7 +1436,19 @@ impl X8664arch {
         dump_device_tree_blob: Option<PathBuf>,
         device_tree_overlays: Vec<DtbOverlay>,
     ) -> Result<()> {
-        Self::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)?;
+        let kernel_max_cmdline_len = if params.hdr.cmdline_size == 0 {
+            // Old kernels have a maximum length of 255 bytes, not including the NUL.
+            255
+        } else {
+            params.hdr.cmdline_size as usize
+        };
+        debug!("kernel_max_cmdline_len={kernel_max_cmdline_len}");
+        Self::load_cmdline(
+            mem,
+            GuestAddress(CMDLINE_OFFSET),
+            cmdline,
+            kernel_max_cmdline_len,
+        )?;
 
         let mut setup_data = Vec::<SetupData>::new();
         if let Some(android_fstab) = android_fstab {
@@ -2295,7 +2321,9 @@ mod tests {
         let mut cmdline = kernel_cmdline::Cmdline::new();
         cmdline.insert_str("12345").unwrap();
         let cmdline_address = GuestAddress(MEM_SIZE - 5);
-        let err = X8664arch::load_cmdline(&gm, cmdline_address, cmdline).unwrap_err();
+        let err =
+            X8664arch::load_cmdline(&gm, cmdline_address, cmdline, CMDLINE_MAX_SIZE as usize - 1)
+                .unwrap_err();
         assert!(matches!(err, Error::CommandLineOverflow));
     }
 
@@ -2306,7 +2334,8 @@ mod tests {
         let mut cmdline = kernel_cmdline::Cmdline::new();
         cmdline.insert_str("1234").unwrap();
         let mut cmdline_address = GuestAddress(45);
-        X8664arch::load_cmdline(&gm, cmdline_address, cmdline).unwrap();
+        X8664arch::load_cmdline(&gm, cmdline_address, cmdline, CMDLINE_MAX_SIZE as usize - 1)
+            .unwrap();
         let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
         assert_eq!(val, b'1');
         cmdline_address = cmdline_address.unchecked_add(1);
