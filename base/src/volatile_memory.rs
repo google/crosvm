@@ -384,8 +384,22 @@ impl PartialEq<VolatileSlice<'_>> for VolatileSlice<'_> {
 /// The `PartialEq` implementation for `VolatileSlice` is reflexive, symmetric, and transitive.
 impl Eq for VolatileSlice<'_> {}
 
+impl std::io::Write for VolatileSlice<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let len = buf.len().min(self.size());
+        self.copy_from(&buf[..len]);
+        self.advance(len);
+        Ok(len)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
     use std::sync::Arc;
     use std::sync::Barrier;
     use std::thread::spawn;
@@ -547,5 +561,96 @@ mod tests {
         }
         a.get_slice(17, 1).unwrap().write_bytes(1);
         assert!(slice.is_all_zero());
+    }
+
+    #[test]
+    fn write_partial() {
+        let mem = VecMem::new(1024);
+        let mut slice = mem.get_slice(1, 16).unwrap();
+        slice.write_bytes(0xCC);
+
+        // Writing 4 bytes should succeed and advance the slice by 4 bytes.
+        let write_len = slice.write(&[1, 2, 3, 4]).unwrap();
+        assert_eq!(write_len, 4);
+        assert_eq!(slice.size(), 16 - 4);
+
+        // The written data should appear in the memory at offset 1.
+        assert_eq!(mem.mem[1..=4], [1, 2, 3, 4]);
+
+        // The next byte of the slice should be unmodified.
+        assert_eq!(mem.mem[5], 0xCC);
+    }
+
+    #[test]
+    fn write_multiple() {
+        let mem = VecMem::new(1024);
+        let mut slice = mem.get_slice(1, 16).unwrap();
+        slice.write_bytes(0xCC);
+
+        // Writing 4 bytes should succeed and advance the slice by 4 bytes.
+        let write_len = slice.write(&[1, 2, 3, 4]).unwrap();
+        assert_eq!(write_len, 4);
+        assert_eq!(slice.size(), 16 - 4);
+
+        // The next byte of the slice should be unmodified.
+        assert_eq!(mem.mem[5], 0xCC);
+
+        // Writing another 4 bytes should succeed and advance the slice again.
+        let write2_len = slice.write(&[5, 6, 7, 8]).unwrap();
+        assert_eq!(write2_len, 4);
+        assert_eq!(slice.size(), 16 - 4 - 4);
+
+        // The written data should appear in the memory at offset 1.
+        assert_eq!(mem.mem[1..=8], [1, 2, 3, 4, 5, 6, 7, 8]);
+
+        // The next byte of the slice should be unmodified.
+        assert_eq!(mem.mem[9], 0xCC);
+    }
+
+    #[test]
+    fn write_exact_slice_size() {
+        let mem = VecMem::new(1024);
+        let mut slice = mem.get_slice(1, 4).unwrap();
+        slice.write_bytes(0xCC);
+
+        // Writing 4 bytes should succeed and consume the entire slice.
+        let write_len = slice.write(&[1, 2, 3, 4]).unwrap();
+        assert_eq!(write_len, 4);
+        assert_eq!(slice.size(), 0);
+
+        // The written data should appear in the memory at offset 1.
+        assert_eq!(mem.mem[1..=4], [1, 2, 3, 4]);
+
+        // The byte after the slice should be unmodified.
+        assert_eq!(mem.mem[5], 0);
+    }
+
+    #[test]
+    fn write_more_than_slice_size() {
+        let mem = VecMem::new(1024);
+        let mut slice = mem.get_slice(1, 4).unwrap();
+        slice.write_bytes(0xCC);
+
+        // Attempting to write 5 bytes should succeed but only write 4 bytes.
+        let write_len = slice.write(&[1, 2, 3, 4, 5]).unwrap();
+        assert_eq!(write_len, 4);
+        assert_eq!(slice.size(), 0);
+
+        // The written data should appear in the memory at offset 1.
+        assert_eq!(mem.mem[1..=4], [1, 2, 3, 4]);
+
+        // The byte after the slice should be unmodified.
+        assert_eq!(mem.mem[5], 0);
+    }
+
+    #[test]
+    fn write_empty_slice() {
+        let mem = VecMem::new(1024);
+        let mut slice = mem.get_slice(1, 0).unwrap();
+
+        // Writing to an empty slice should always return 0.
+        assert_eq!(slice.write(&[1, 2, 3, 4]).unwrap(), 0);
+        assert_eq!(slice.write(&[5, 6, 7, 8]).unwrap(), 0);
+        assert_eq!(slice.write(&[]).unwrap(), 0);
     }
 }
