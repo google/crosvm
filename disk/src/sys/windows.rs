@@ -14,7 +14,6 @@ use cros_async::Executor;
 use winapi::um::winbase::FILE_FLAG_NO_BUFFERING;
 use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
 use winapi::um::winnt::FILE_SHARE_READ;
-use winapi::um::winnt::FILE_SHARE_WRITE;
 
 use crate::DiskFileParams;
 use crate::Error;
@@ -33,8 +32,13 @@ pub fn open_raw_disk_image(params: &DiskFileParams) -> Result<File> {
     let mut options = File::options();
     options.read(true).write(!params.is_read_only);
     if params.lock {
-        // We only prevent file deletion and renaming right now.
-        options.share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+        if params.is_read_only {
+            // Shared read-only file access.
+            options.share_mode(FILE_SHARE_READ);
+        } else {
+            // Exclusive file access.
+            options.share_mode(0);
+        }
     }
 
     let mut flags = 0;

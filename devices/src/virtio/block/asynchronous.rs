@@ -1598,6 +1598,9 @@ mod tests {
         // Create an empty disk image
         let f = tempfile::NamedTempFile::new().unwrap();
         f.as_file().set_len(0x1000).unwrap();
+        // Close the file so that it is possible for the disk implementation to take exclusive
+        // access when opening it.
+        let path: tempfile::TempPath = f.into_temp_path();
 
         // Create an empty guest memory
         let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
@@ -1612,7 +1615,7 @@ mod tests {
         let features = base_features(ProtectionType::Unprotected);
         let id = b"Block serial number\0";
         let disk_option = DiskOption {
-            path: f.path().to_owned(),
+            path: path.to_path_buf(),
             read_only: true,
             id: Some(*id),
             sparse: false,
