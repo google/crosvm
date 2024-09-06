@@ -207,9 +207,9 @@ impl CompositeDiskFile {
             .component_disks
             .iter()
             .map(|disk| {
-                // TODO: If `params.is_read_only == true`, we should make components read only too.
-                let writable = disk.read_write_capability
-                    == cdisk_spec::ReadWriteCapability::READ_WRITE.into();
+                let writable = !params.is_read_only
+                    && disk.read_write_capability
+                        == cdisk_spec::ReadWriteCapability::READ_WRITE.into();
                 let component_path = PathBuf::from(&disk.file_path);
                 let path = if component_path.is_relative() || proto.version > 1 {
                     params.path.parent().unwrap().join(component_path)
