@@ -454,7 +454,6 @@ fn tss_addr_end() -> GuestAddress {
 fn configure_system(
     guest_mem: &GuestMemory,
     cmdline_addr: GuestAddress,
-    cmdline_size: usize,
     setup_data: Option<GuestAddress>,
     initrd: Option<(GuestAddress, usize)>,
     mut params: boot_params,
@@ -469,7 +468,6 @@ fn configure_system(
     params.hdr.header = KERNEL_HDR_MAGIC;
     params.hdr.cmd_line_ptr = cmdline_addr.offset() as u32;
     params.ext_cmd_line_ptr = (cmdline_addr.offset() >> 32) as u32;
-    params.hdr.cmdline_size = cmdline_size as u32;
     params.hdr.kernel_alignment = KERNEL_MIN_ALIGNMENT_BYTES;
     if let Some(setup_data) = setup_data {
         params.hdr.setup_data = setup_data.offset();
@@ -1477,7 +1475,6 @@ impl X8664arch {
         configure_system(
             mem,
             GuestAddress(CMDLINE_OFFSET),
-            cmdline.to_bytes().len() + 1,
             setup_data,
             initrd,
             params,
