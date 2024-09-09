@@ -450,17 +450,17 @@ impl Drop for UnlinkUnixListener {
 /// Verifies that |raw_descriptor| is actually owned by this process and duplicates it
 /// to ensure that we have a unique handle to it.
 pub fn validate_raw_descriptor(raw_descriptor: RawDescriptor) -> Result<RawDescriptor> {
-    validate_raw_fd(raw_descriptor)
+    validate_raw_fd(&raw_descriptor)
 }
 
 /// Verifies that |raw_fd| is actually owned by this process and duplicates it to ensure that
 /// we have a unique handle to it.
-pub fn validate_raw_fd(raw_fd: RawFd) -> Result<RawFd> {
+pub fn validate_raw_fd(raw_fd: &RawFd) -> Result<RawFd> {
     // Checking that close-on-exec isn't set helps filter out FDs that were opened by
     // crosvm as all crosvm FDs are close on exec.
     // SAFETY:
     // Safe because this doesn't modify any memory and we check the return value.
-    let flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFD) };
+    let flags = unsafe { libc::fcntl(*raw_fd, libc::F_GETFD) };
     if flags < 0 || (flags & libc::FD_CLOEXEC) != 0 {
         return Err(Error::new(libc::EBADF));
     }
@@ -469,7 +469,7 @@ pub fn validate_raw_fd(raw_fd: RawFd) -> Result<RawFd> {
     // Duplicate the fd to ensure that we don't accidentally close an fd previously
     // opened by another subsystem.  Safe because this doesn't modify any memory and
     // we check the return value.
-    let dup_fd = unsafe { libc::fcntl(raw_fd, libc::F_DUPFD_CLOEXEC, 0) };
+    let dup_fd = unsafe { libc::fcntl(*raw_fd, libc::F_DUPFD_CLOEXEC, 0) };
     if dup_fd < 0 {
         return Err(Error::last());
     }
@@ -513,7 +513,7 @@ pub fn safe_descriptor_from_path<P: AsRef<Path>>(path: P) -> Result<Option<SafeD
             .and_then(|fd_osstr| fd_osstr.to_str())
             .and_then(|fd_str| fd_str.parse::<RawFd>().ok())
             .ok_or_else(|| Error::new(EINVAL))?;
-        let validated_fd = validate_raw_fd(raw_descriptor)?;
+        let validated_fd = validate_raw_fd(&raw_descriptor)?;
         Ok(Some(
             // SAFETY:
             // Safe because nothing else has access to validated_fd after this call.
@@ -524,8 +524,10 @@ pub fn safe_descriptor_from_path<P: AsRef<Path>>(path: P) -> Result<Option<SafeD
     }
 }
 
-// Validate the fd and Returns SafeDescriptor
-pub fn safe_descriptor_from_fd(fd: RawFd) -> Result<SafeDescriptor> {
+/// Check FD is not opened by crosvm and returns a FD that is freshly DUPFD_CLOEXEC's.
+/// A SafeDescriptor is created from the duplicated fd. It does not take ownership of
+/// fd passed by argument.
+pub fn safe_descriptor_from_cmdline_fd(fd: &RawFd) -> Result<SafeDescriptor> {
     let validated_fd = validate_raw_fd(fd)?;
     Ok(
         // SAFETY:

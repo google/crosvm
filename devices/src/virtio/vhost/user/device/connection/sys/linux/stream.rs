@@ -9,7 +9,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 
-use base::safe_descriptor_from_fd;
+use base::safe_descriptor_from_cmdline_fd;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
 use cros_async::Executor;
@@ -52,7 +52,7 @@ impl VhostUserStream {
             return Err(SocketFromFdError(path).into());
         }
 
-        let safe_fd = safe_descriptor_from_fd(socket_fd)?;
+        let safe_fd = safe_descriptor_from_cmdline_fd(&socket_fd)?;
 
         if let Some(rds) = keep_rds {
             rds.push(safe_fd.as_raw_descriptor());
@@ -79,10 +79,6 @@ async fn stream_run_with_handler(
     handler: Box<dyn vmm_vhost::Backend>,
     ex: &Executor,
 ) -> anyhow::Result<()> {
-    stream.set_nonblocking(true)?;
-
-    // SAFETY:
-    // fd is ensured to be opened when obtained in from_socket_path
     let req_handler = BackendServer::new(Connection::from(stream), handler);
     run_handler(req_handler, ex).await
 }

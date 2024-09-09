@@ -382,7 +382,7 @@ fn vhost_user_connection_from_socket_fd(fd: u32) -> Result<UnixStream> {
         anyhow::bail!("path {} is not socket", path.display());
     }
 
-    let safe_fd = safe_descriptor_from_fd(fd as i32)?;
+    let safe_fd = safe_descriptor_from_cmdline_fd(&(fd as i32))?;
 
     let stream: UnixStream = UnixStream::from(safe_fd);
     Ok(stream)
