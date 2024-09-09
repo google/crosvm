@@ -869,7 +869,7 @@ impl VcpuX86_64 for KvmVcpu {
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read or write past the end of the kvm_msrs struct.
-            unsafe { ioctl_with_ref(self, KVM_GET_MSRS, &msrs[0]) }
+            unsafe { ioctl_with_mut_ref(self, KVM_GET_MSRS, &mut msrs[0]) }
         };
         if ret < 0 {
             return errno_result();
@@ -909,7 +909,7 @@ impl VcpuX86_64 for KvmVcpu {
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read or write past the end of the kvm_msrs struct.
-            unsafe { ioctl_with_ref(self, KVM_GET_MSRS, &kvm_msrs[0]) }
+            unsafe { ioctl_with_mut_ref(self, KVM_GET_MSRS, &mut kvm_msrs[0]) }
         };
         if ret < 0 {
             return errno_result();

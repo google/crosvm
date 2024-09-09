@@ -1355,7 +1355,7 @@ impl Vcpu {
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read or write past the end of the kvm_msrs struct.
-            unsafe { ioctl_with_ref(self, KVM_GET_MSRS, &msrs[0]) }
+            unsafe { ioctl_with_mut_ref(self, KVM_GET_MSRS, &mut msrs[0]) }
         };
         if ret < 0 {
             // KVM_SET_MSRS actually returns the number of msr entries written.
