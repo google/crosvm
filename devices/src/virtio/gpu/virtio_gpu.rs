@@ -646,29 +646,16 @@ impl VirtioGpu {
 
     /// Removes the specified displays from the device.
     fn remove_displays(&mut self, display_ids: Vec<u32>) -> GpuControlResult {
-        let display_ids_to_remove = Set::from_iter(display_ids.iter());
-        display_ids_to_remove
-            .into_iter()
-            .try_for_each(|display_id| {
-                self.scanouts
-                    .get_mut(display_id)
-                    .ok_or(GpuControlResult::NoSuchDisplay {
-                        display_id: *display_id,
-                    })
-                    .map(|scanout| {
-                        scanout.release_surface(&self.display);
-                        scanout
-                    })?;
+        for display_id in display_ids {
+            if let Some(mut scanout) = self.scanouts.remove(&display_id) {
+                scanout.release_surface(&self.display);
+            } else {
+                return GpuControlResult::NoSuchDisplay { display_id };
+            }
+        }
 
-                self.scanouts.remove(display_id);
-
-                Ok(())
-            })
-            .err()
-            .unwrap_or_else(|| {
-                self.scanouts_updated.store(true, Ordering::Relaxed);
-                GpuControlResult::DisplaysUpdated
-            })
+        self.scanouts_updated.store(true, Ordering::Relaxed);
+        GpuControlResult::DisplaysUpdated
     }
 
     fn set_display_mouse_mode(
