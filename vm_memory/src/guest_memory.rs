@@ -58,8 +58,8 @@ pub enum Error {
     MemoryCreationFailed(#[source] SysError),
     #[error("failed to map guest memory: {0}")]
     MemoryMappingFailed(#[source] MmapError),
-    #[error("shm regions must be page aligned")]
-    MemoryNotAligned,
+    #[error("guest memory region {0}+{1:#x} is not page aligned")]
+    MemoryNotAligned(GuestAddress, u64),
     #[error("memory regions overlap")]
     MemoryRegionOverlap,
     #[error("memory region size {0} is too large")]
@@ -250,7 +250,7 @@ impl GuestMemory {
         let pg_size = pagesize();
         for range in ranges {
             if range.1 % pg_size as u64 != 0 {
-                return Err(Error::MemoryNotAligned);
+                return Err(Error::MemoryNotAligned(range.0, range.1));
             }
 
             aligned_size += range.1;
