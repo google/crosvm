@@ -826,7 +826,7 @@ unsafe impl<T: ?Sized + Send> Send for RwLock<T> {}
 #[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl<T: ?Sized + Send> Sync for RwLock<T> {}
 
-impl<T: ?Sized + Default> Default for RwLock<T> {
+impl<T: Default> Default for RwLock<T> {
     fn default() -> Self {
         Self::new(Default::default())
     }

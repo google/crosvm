@@ -100,7 +100,7 @@ unsafe impl<T: ?Sized + Send> Send for SpinLock<T> {}
 #[allow(clippy::undocumented_unsafe_blocks)]
 unsafe impl<T: ?Sized + Send> Sync for SpinLock<T> {}
 
-impl<T: ?Sized + Default> Default for SpinLock<T> {
+impl<T: Default> Default for SpinLock<T> {
     fn default() -> Self {
         Self::new(Default::default())
     }
