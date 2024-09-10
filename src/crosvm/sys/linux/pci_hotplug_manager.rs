@@ -86,9 +86,8 @@ impl WorkerClient {
                 control_evt_cpy,
                 &kill_evt,
             )?;
-            worker.run(kill_evt).map_err(|e| {
-                error!("Worker exited with error: {:?}", &e);
-                e
+            worker.run(kill_evt).inspect_err(|e| {
+                error!("Worker exited with error: {:?}", e);
             })
         });
         Ok(WorkerClient {

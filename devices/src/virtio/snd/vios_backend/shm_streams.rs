@@ -167,11 +167,10 @@ impl ShmStreamSource<base::Error> for VioSShmStreamSource {
                 client_shm,
                 buffer_offsets,
             )
-            .map_err(|e| {
+            .inspect_err(|_e| {
                 // Attempt to release the stream so that it can be used later. This is a best effort
                 // attempt, so we ignore any error it may return.
                 let _ = self.vios_client.lock().release_stream(stream_id);
-                e
             })?;
         *self.stream_descs[stream_id as usize].state.lock() = StreamState::Acquired;
         Ok(stream)

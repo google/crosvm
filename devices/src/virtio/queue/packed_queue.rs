@@ -266,9 +266,8 @@ impl PackedQueue {
         let desc = self
             .mem
             .read_obj_from_addr::<PackedDesc>(desc_addr)
-            .map_err(|e| {
+            .inspect_err(|_e| {
                 error!("failed to read desc {:#x}", desc_addr.offset());
-                e
             })
             .ok()?;
 
