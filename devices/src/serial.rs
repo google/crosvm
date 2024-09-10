@@ -679,10 +679,10 @@ mod tests {
             Vec::new(),
         );
 
-        serial.write(serial_bus_address(DATA), &[b'a']);
-        serial.write(serial_bus_address(DATA), &[b'b']);
-        serial.write(serial_bus_address(DATA), &[b'c']);
-        assert_eq!(serial_out.buf.lock().as_slice(), &[b'a', b'b', b'c']);
+        serial.write(serial_bus_address(DATA), b"a");
+        serial.write(serial_bus_address(DATA), b"b");
+        serial.write(serial_bus_address(DATA), b"c");
+        assert_eq!(serial_out.buf.lock().as_slice(), b"abc");
     }
 
     #[test]
@@ -701,7 +701,7 @@ mod tests {
         );
 
         serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
-        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+        serial.queue_input_bytes(b"abc").unwrap();
 
         assert_eq!(intr_evt.wait(), Ok(()));
         let mut data = [0u8; 1];
@@ -729,7 +729,7 @@ mod tests {
         );
 
         serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
-        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+        serial.queue_input_bytes(b"abc").unwrap();
 
         assert_eq!(intr_evt.wait(), Ok(()));
         let mut data = [0u8; 1];
@@ -778,7 +778,7 @@ mod tests {
         );
 
         serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
-        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+        serial.queue_input_bytes(b"abc").unwrap();
 
         assert_eq!(intr_evt.wait(), Ok(()));
         let mut data = [0u8; 1];
@@ -817,7 +817,7 @@ mod tests {
         );
 
         serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
-        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+        serial.queue_input_bytes(b"abc").unwrap();
 
         assert_eq!(intr_evt.wait(), Ok(()));
         let mut data = [0u8; 1];
@@ -826,7 +826,7 @@ mod tests {
         // Take snapshot after reading b'a'. Serial still contains b'b' and b'c'.
         let snap = serial.snapshot().expect("failed to snapshot serial");
         serial.clear_in_buffer();
-        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+        serial.queue_input_bytes(b"abc").unwrap();
         serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], b'a');
         serial.read(serial_bus_address(DATA), &mut data[..]);
@@ -864,7 +864,7 @@ mod tests {
         );
 
         serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
-        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+        serial.queue_input_bytes(b"abc").unwrap();
 
         assert_eq!(intr_evt.wait(), Ok(()));
         let mut data = [0u8; 1];
@@ -924,7 +924,7 @@ mod tests {
         );
 
         serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
-        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+        serial.queue_input_bytes(b"abc").unwrap();
 
         assert_eq!(intr_evt.wait(), Ok(()));
         let mut data = [0u8; 1];
@@ -948,7 +948,7 @@ mod tests {
 
     fn modify_device(serial: &mut Serial) {
         serial.clear_in_buffer();
-        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+        serial.queue_input_bytes(b"abc").unwrap();
     }
 
     suspendable_tests!(
@@ -999,18 +999,18 @@ mod tests {
             Vec::new(),
         );
 
-        serial.write(serial_bus_address(DATA), &[b'a']);
-        serial.write(serial_bus_address(DATA), &[b'\n']);
+        serial.write(serial_bus_address(DATA), b"a");
+        serial.write(serial_bus_address(DATA), b"\n");
         assert_timestamp_is_present(serial_out.buf.lock().as_slice(), "a");
         serial_out.buf.lock().clear();
 
-        serial.write(serial_bus_address(DATA), &[b'b']);
-        serial.write(serial_bus_address(DATA), &[b'\n']);
+        serial.write(serial_bus_address(DATA), b"b");
+        serial.write(serial_bus_address(DATA), b"\n");
         assert_timestamp_is_present(serial_out.buf.lock().as_slice(), "b");
         serial_out.buf.lock().clear();
 
-        serial.write(serial_bus_address(DATA), &[b'c']);
-        serial.write(serial_bus_address(DATA), &[b'\n']);
+        serial.write(serial_bus_address(DATA), b"c");
+        serial.write(serial_bus_address(DATA), b"\n");
         assert_timestamp_is_present(serial_out.buf.lock().as_slice(), "c");
         serial_out.buf.lock().clear();
     }

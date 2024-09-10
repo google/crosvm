@@ -165,10 +165,10 @@ mod tests {
             Vec::new(),
         );
 
-        debugcon.write(ADDR, &[b'a']);
-        debugcon.write(ADDR, &[b'b']);
-        debugcon.write(ADDR, &[b'c']);
-        assert_eq!(debugcon_out.buf.lock().as_slice(), [b'a', b'b', b'c']);
+        debugcon.write(ADDR, b"a");
+        debugcon.write(ADDR, b"b");
+        debugcon.write(ADDR, b"c");
+        assert_eq!(debugcon_out.buf.lock().as_slice(), b"abc");
     }
 
     #[test]

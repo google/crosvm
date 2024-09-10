@@ -109,7 +109,7 @@ fn syslogger_char() {
     }
 
     syslogger
-        .write_all(&[b'\n'])
+        .write_all(b"\n")
         .expect("error writing newline char");
 
     std::mem::drop(syslogger);
