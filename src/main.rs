@@ -458,6 +458,7 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
                 is_sparse_file: true,
                 is_overlapped: false,
                 is_direct: false,
+                lock: true,
                 depth: 0,
             })
             .map_err(|e| error!("Failed to create DiskFile instance: {}", e))?
@@ -522,6 +523,7 @@ fn create_qcow2(cmd: cmdline::CreateQcow2Command) -> std::result::Result<(), ()>
         is_sparse_file: false,
         is_overlapped: false,
         is_direct: false,
+        lock: true,
         depth: 0,
     };
     match (cmd.size, cmd.backing_file) {

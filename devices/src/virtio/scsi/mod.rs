@@ -16,6 +16,9 @@ mod device;
 pub use device::Controller;
 pub use device::DiskConfig;
 
+fn scsi_option_lock_default() -> bool {
+    true
+}
 fn scsi_option_block_size_default() -> u32 {
     512
 }
@@ -29,6 +32,9 @@ pub struct ScsiOption {
     // Indicates whether the device is ready only.
     #[serde(default, rename = "ro")]
     pub read_only: bool,
+    /// Whether to lock the disk files. Uses flock on Unix and FILE_SHARE_* flags on Windows.
+    #[serde(default = "scsi_option_lock_default")]
+    pub lock: bool,
     // The block size of the device.
     #[serde(default = "scsi_option_block_size_default")]
     pub block_size: u32,
@@ -54,6 +60,7 @@ mod tests {
             ScsiOption {
                 path: Path::new("/path/to/image").to_path_buf(),
                 read_only: false,
+                lock: scsi_option_lock_default(),
                 block_size: 512,
                 root: false,
             }
@@ -65,6 +72,7 @@ mod tests {
             ScsiOption {
                 path: Path::new("/path/to/image").to_path_buf(),
                 read_only: true,
+                lock: scsi_option_lock_default(),
                 block_size: 512,
                 root: false,
             }
@@ -76,6 +84,7 @@ mod tests {
             ScsiOption {
                 path: Path::new("/path/to/image").to_path_buf(),
                 read_only: false,
+                lock: scsi_option_lock_default(),
                 block_size: 1024,
                 root: false,
             }
@@ -88,6 +97,7 @@ mod tests {
             ScsiOption {
                 path: Path::new("/path/to/image").to_path_buf(),
                 read_only: false,
+                lock: scsi_option_lock_default(),
                 block_size: 1024,
                 root: true,
             }

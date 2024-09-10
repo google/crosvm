@@ -32,7 +32,10 @@ impl SingleFileDisk {
 pub fn open_raw_disk_image(params: &DiskFileParams) -> Result<File> {
     let mut options = File::options();
     options.read(true).write(!params.is_read_only);
-    options.share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+    if params.lock {
+        // We only prevent file deletion and renaming right now.
+        options.share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+    }
 
     let mut flags = 0;
     if params.is_direct {

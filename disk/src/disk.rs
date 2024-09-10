@@ -270,6 +270,8 @@ pub struct DiskFileParams {
     pub is_overlapped: bool,
     // Whether to disable OS page caches / buffering.
     pub is_direct: bool,
+    // Whether to lock the file.
+    pub lock: bool,
     // The nesting depth of the file. Used to avoid infinite recursion. Users outside the disk
     // crate should set this to zero.
     pub depth: u32,

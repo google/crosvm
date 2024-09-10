@@ -231,6 +231,7 @@ impl CompositeDiskFile {
                         // TODO: Should pass `params.is_overlapped` through here. Needs testing.
                         is_overlapped: false,
                         is_direct: params.is_direct,
+                        lock: params.lock,
                         depth: params.depth + 1,
                     })
                     .map_err(|e| Error::DiskError(Box::new(e)))?,

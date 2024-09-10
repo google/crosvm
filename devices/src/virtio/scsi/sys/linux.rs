@@ -16,6 +16,7 @@ impl ScsiOption {
             is_sparse_file: true,
             is_overlapped: false,
             is_direct: false,
+            lock: self.lock,
             depth: 0,
         })
         .context("open_disk_file failed")

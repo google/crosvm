@@ -22,6 +22,9 @@ pub use asynchronous::BlockAsync;
 fn block_option_sparse_default() -> bool {
     true
 }
+fn block_option_lock_default() -> bool {
+    true
+}
 fn block_option_block_size_default() -> u32 {
     512
 }
@@ -93,6 +96,9 @@ pub struct DiskOption {
     // camel_case variant allowed for backward compatibility.
     #[serde(default, alias = "o_direct")]
     pub direct: bool,
+    /// Whether to lock the disk files. Uses flock on Unix and FILE_SHARE_* flags on Windows.
+    #[serde(default = "block_option_lock_default")]
+    pub lock: bool,
     // camel_case variant allowed for backward compatibility.
     #[serde(default = "block_option_block_size_default", alias = "block_size")]
     pub block_size: u32,
@@ -141,6 +147,7 @@ impl Default for DiskOption {
             root: false,
             sparse: block_option_sparse_default(),
             direct: false,
+            lock: block_option_lock_default(),
             block_size: block_option_block_size_default(),
             id: None,
             #[cfg(windows)]
@@ -200,6 +207,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -222,6 +230,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -244,6 +253,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -266,6 +276,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -288,6 +299,7 @@ mod tests {
                 root: true,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -310,6 +322,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -330,6 +343,7 @@ mod tests {
                 root: false,
                 sparse: false,
                 direct: false,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -352,6 +366,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: true,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -374,6 +389,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: true,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -396,6 +412,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 128,
                 id: None,
                 #[cfg(windows)]
@@ -418,6 +435,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 128,
                 id: None,
                 async_executor: None,
@@ -442,6 +460,7 @@ mod tests {
                     root: false,
                     sparse: true,
                     direct: false,
+                    lock: true,
                     block_size: 512,
                     id: None,
                     io_concurrency: NonZeroU32::new(4).unwrap(),
@@ -461,6 +480,7 @@ mod tests {
                     root: false,
                     sparse: true,
                     direct: false,
+                    lock: true,
                     block_size: 512,
                     id: None,
                     io_concurrency: NonZeroU32::new(1).unwrap(),
@@ -482,6 +502,7 @@ mod tests {
                     root: false,
                     sparse: true,
                     direct: false,
+                    lock: true,
                     block_size: 512,
                     id: None,
                     io_concurrency: NonZeroU32::new(1).unwrap(),
@@ -509,6 +530,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 512,
                 id: Some(*b"DISK\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
                 #[cfg(windows)]
@@ -544,6 +566,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -566,6 +589,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -588,6 +612,7 @@ mod tests {
                 root: false,
                 sparse: true,
                 direct: false,
+                lock: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -601,6 +626,51 @@ mod tests {
                     dev: 1,
                     func: 1,
                 }),
+            }
+        );
+
+        // lock=true
+        let params = from_block_arg("/path/to/disk.img,lock=true").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/path/to/disk.img".into(),
+                read_only: false,
+                root: false,
+                sparse: true,
+                direct: false,
+                lock: true,
+                block_size: 512,
+                id: None,
+                #[cfg(windows)]
+                io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
+                async_executor: None,
+                packed_queue: false,
+                bootindex: None,
+                pci_address: None,
+            }
+        );
+        // lock=false
+        let params = from_block_arg("/path/to/disk.img,lock=false").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/path/to/disk.img".into(),
+                read_only: false,
+                root: false,
+                sparse: true,
+                direct: false,
+                lock: false,
+                block_size: 512,
+                id: None,
+                #[cfg(windows)]
+                io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
+                async_executor: None,
+                packed_queue: false,
+                bootindex: None,
+                pci_address: None,
             }
         );
 
@@ -618,6 +688,7 @@ mod tests {
                 root: true,
                 sparse: false,
                 direct: true,
+                lock: true,
                 block_size: 256,
                 id: Some(*b"DISK_LABEL\0\0\0\0\0\0\0\0\0\0"),
                 #[cfg(windows)]
@@ -644,6 +715,7 @@ mod tests {
             root: false,
             sparse: true,
             direct: false,
+            lock: true,
             block_size: 512,
             id: None,
             #[cfg(windows)]
@@ -665,6 +737,7 @@ mod tests {
             root: false,
             sparse: true,
             direct: false,
+            lock: true,
             block_size: 512,
             id: Some(*b"BLK\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
             #[cfg(windows)]
@@ -686,6 +759,7 @@ mod tests {
             root: false,
             sparse: true,
             direct: false,
+            lock: true,
             block_size: 512,
             id: Some(*b"QWERTYUIOPASDFGHJKL:"),
             #[cfg(windows)]

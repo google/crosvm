@@ -409,6 +409,7 @@ fn max_refcount_clusters(refcount_order: u32, cluster_size: u32, num_clusters: u
 ///         is_sparse_file: false,
 ///         is_overlapped: false,
 ///         is_direct: false,
+///         lock: true,
 ///         depth: 0,
 ///     }).expect("Can't open qcow file");
 ///     let mut buf = [0u8; 12];
@@ -486,6 +487,7 @@ impl QcowFile {
                 // TODO: Should pass `params.is_overlapped` through here. Needs testing.
                 is_overlapped: false,
                 is_direct: params.is_direct,
+                lock: params.lock,
                 depth: params.depth + 1,
             })
             .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
@@ -642,6 +644,7 @@ impl QcowFile {
                 // TODO: Should pass `params.is_overlapped` through here. Needs testing.
                 is_overlapped: false,
                 is_direct: params.is_direct,
+                lock: params.lock,
                 depth: params.depth + 1,
             })
             .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
@@ -1720,6 +1723,7 @@ mod tests {
             is_sparse_file: false,
             is_overlapped: false,
             is_direct: false,
+            lock: true,
             depth: 0,
         }
     }

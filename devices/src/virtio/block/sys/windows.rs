@@ -28,6 +28,7 @@ impl DiskOption {
                 ExecutorKind::SysVariants(ExecutorKindSys::Overlapped { .. })
             ),
             is_direct: self.direct,
+            lock: self.lock,
             depth: 0,
         })?)
     }

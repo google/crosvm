@@ -31,6 +31,7 @@ impl DiskOption {
             is_sparse_file: self.sparse,
             is_overlapped: false,
             is_direct: self.direct,
+            lock: self.lock,
             depth: 0,
         })
         .context("open_disk_file failed")
