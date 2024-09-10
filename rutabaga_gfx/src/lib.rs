@@ -46,6 +46,7 @@ pub mod kumquat_support {
     pub use crate::bytestream::Writer as RutabagaWriter;
     pub use crate::ipc::kumquat_gpu_protocol;
     pub use crate::ipc::RutabagaStream;
+    pub use crate::rutabaga_os::Event as RutabagaEvent;
     pub use crate::rutabaga_os::Listener as RutabagaListener;
     pub use crate::rutabaga_os::MemoryMapping as RutabagaMemoryMapping;
     pub use crate::rutabaga_os::SharedMemory as RutabagaSharedMemory;

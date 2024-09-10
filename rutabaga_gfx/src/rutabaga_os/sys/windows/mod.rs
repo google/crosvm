@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 pub mod descriptor;
+pub mod event;
 pub mod memory_mapping;
 pub mod shm;
 pub mod tube;
