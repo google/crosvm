@@ -1285,12 +1285,16 @@ pub fn create_pmem_ext2_device(
     index: usize,
     pmem_device_tube: Tube,
 ) -> DeviceResult {
-    let cfg = ext2::Config {
+    let builder = ext2::Builder {
         inodes_per_group: opts.inodes_per_group,
         blocks_per_group: opts.blocks_per_group,
         size: opts.size,
     };
-    let arena = ext2::create_ext2_region(&cfg, Some(opts.path.as_path()))?;
+    let arena = builder
+        .allocate_memory()?
+        .build_mmap_info(Some(opts.path.as_path()))?
+        .do_mmap()?;
+
     let mapping_size = arena.size() as u64;
 
     let mapping_address = GuestAddress(

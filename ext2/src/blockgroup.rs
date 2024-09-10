@@ -131,7 +131,7 @@ mod test {
     use base::MemoryMappingBuilder;
 
     use super::*;
-    use crate::superblock::Config;
+    use crate::Builder;
 
     // Check if `GroupMetaData` is correctly initialized from `SuperBlock` with one block group.
     #[test]
@@ -143,7 +143,7 @@ mod test {
         let arena = Arena::new(BLOCK_SIZE, &mut mem).unwrap();
         let sb = SuperBlock::new(
             &arena,
-            &Config {
+            &Builder {
                 inodes_per_group: 1024,
                 blocks_per_group,
                 size,
@@ -196,7 +196,7 @@ mod test {
         let arena = Arena::new(BLOCK_SIZE, &mut mem).unwrap();
         let sb = SuperBlock::new(
             &arena,
-            &Config {
+            &Builder {
                 inodes_per_group: 512,
                 blocks_per_group,
                 size: mem_size,

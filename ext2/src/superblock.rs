@@ -12,27 +12,10 @@ use zerocopy_derive::FromZeroes;
 use crate::arena::Arena;
 use crate::arena::BlockId;
 use crate::blockgroup::BLOCK_SIZE;
+use crate::builder::Builder;
 use crate::inode::Inode;
 
 /// A struct to represent the configuration of an ext2 filesystem.
-pub struct Config {
-    /// The number of blocks per group.
-    pub blocks_per_group: u32,
-    /// The number of inodes per group.
-    pub inodes_per_group: u32,
-    /// The size of the memory region.
-    pub size: u32,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            blocks_per_group: 4096,
-            inodes_per_group: 4096,
-            size: 4096 * 4096,
-        }
-    }
-}
 
 /// The ext2 superblock.
 ///
@@ -78,7 +61,7 @@ pub(crate) struct SuperBlock {
 }
 
 impl SuperBlock {
-    pub fn new<'a>(arena: &'a Arena<'a>, cfg: &Config) -> Result<&'a mut SuperBlock> {
+    pub fn new<'a>(arena: &'a Arena<'a>, cfg: &Builder) -> Result<&'a mut SuperBlock> {
         const EXT2_MAGIC_NUMBER: u16 = 0xEF53;
         const COMPAT_EXT_ATTR: u32 = 0x8;
 
