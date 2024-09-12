@@ -41,6 +41,7 @@ pub mod smbios;
 
 use std::arch::x86_64::CpuidResult;
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs::File;
 use std::io;
 use std::io::Write;
@@ -63,6 +64,7 @@ use arch::RunnableLinuxVm;
 use arch::VmComponents;
 use arch::VmImage;
 use base::debug;
+use base::info;
 use base::warn;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use base::AsRawDescriptors;
@@ -1014,8 +1016,10 @@ impl arch::LinuxArch for X8664arch {
                 // The default values for `Regs` and `Sregs` already set up the reset vector.
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let (params, kernel_end, kernel_entry, cpu_mode) =
+                let (params, kernel_end, kernel_entry, cpu_mode, kernel_type) =
                     Self::load_kernel(&mem, kernel_image)?;
+
+                info!("Loaded {} kernel", kernel_type);
 
                 Self::setup_system_memory(
                     &mem,
@@ -1028,11 +1032,16 @@ impl arch::LinuxArch for X8664arch {
                     device_tree_overlays,
                 )?;
 
-                // Configure the bootstrap VCPU for the Linux/x86 64-bit boot protocol.
-                // <https://www.kernel.org/doc/html/latest/x86/boot.html>
                 vcpu_init[0].regs.rip = kernel_entry.offset();
-                vcpu_init[0].regs.rsp = BOOT_STACK_POINTER;
-                vcpu_init[0].regs.rsi = ZERO_PAGE_OFFSET;
+
+                match kernel_type {
+                    KernelType::BzImage | KernelType::Elf => {
+                        // Configure the bootstrap VCPU for the Linux/x86 boot protocol.
+                        // <https://www.kernel.org/doc/html/latest/x86/boot.html>
+                        vcpu_init[0].regs.rsp = BOOT_STACK_POINTER;
+                        vcpu_init[0].regs.rsi = ZERO_PAGE_OFFSET;
+                    }
+                }
 
                 match cpu_mode {
                     CpuMode::LongMode => {
@@ -1276,6 +1285,21 @@ pub enum CpuMode {
     LongMode,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum KernelType {
+    BzImage,
+    Elf,
+}
+
+impl fmt::Display for KernelType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            KernelType::BzImage => write!(f, "bzImage"),
+            KernelType::Elf => write!(f, "ELF"),
+        }
+    }
+}
+
 impl X8664arch {
     /// Loads the bios from an open file.
     ///
@@ -1384,11 +1408,12 @@ impl X8664arch {
     /// # Returns
     ///
     /// On success, returns the Linux x86_64 boot protocol parameters, the first address past the
-    /// end of the kernel, the entry point (initial `RIP` value), and the initial CPU mode.
+    /// end of the kernel, the entry point (initial `RIP` value), the initial CPU mode, and the type
+    /// of kernel.
     fn load_kernel(
         mem: &GuestMemory,
         kernel_image: &mut File,
-    ) -> Result<(boot_params, u64, GuestAddress, CpuMode)> {
+    ) -> Result<(boot_params, u64, GuestAddress, CpuMode, KernelType)> {
         let kernel_start = GuestAddress(KERNEL_START_OFFSET);
         match kernel_loader::load_elf64(mem, kernel_start, kernel_image, 0) {
             Ok(loaded_kernel) => {
@@ -1405,6 +1430,7 @@ impl X8664arch {
                     loaded_kernel.address_range.end,
                     loaded_kernel.entry,
                     CpuMode::LongMode,
+                    KernelType::Elf,
                 ))
             }
             Err(kernel_loader::Error::InvalidMagicNumber) => {
@@ -1412,7 +1438,13 @@ impl X8664arch {
                 let (boot_params, bzimage_end, bzimage_entry, cpu_mode) =
                     bzimage::load_bzimage(mem, kernel_start, kernel_image)
                         .map_err(Error::LoadBzImage)?;
-                Ok((boot_params, bzimage_end, bzimage_entry, cpu_mode))
+                Ok((
+                    boot_params,
+                    bzimage_end,
+                    bzimage_entry,
+                    cpu_mode,
+                    KernelType::BzImage,
+                ))
             }
             Err(e) => Err(Error::LoadKernel(e)),
         }
