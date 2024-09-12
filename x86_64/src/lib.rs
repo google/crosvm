@@ -324,9 +324,17 @@ pub struct SetupData {
     pub type_: SetupDataType,
 }
 
+#[derive(Copy, Clone, Debug)]
 enum E820Type {
     Ram = 0x01,
     Reserved = 0x2,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct E820Entry {
+    pub address: GuestAddress,
+    pub len: u64,
+    pub mem_type: E820Type,
 }
 
 const MB: u64 = 1 << 20;
@@ -458,6 +466,7 @@ fn configure_system(
     setup_data: Option<GuestAddress>,
     initrd: Option<(GuestAddress, usize)>,
     mut params: boot_params,
+    e820_entries: &[E820Entry],
 ) -> Result<()> {
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
     const KERNEL_HDR_MAGIC: u32 = 0x5372_6448;
@@ -480,49 +489,16 @@ fn configure_system(
         params.ext_ramdisk_size = (initrd_size as u64 >> 32) as u32;
     }
 
-    // Some guest kernels expect a typical PC memory layout where the region between 640 KB and 1 MB
-    // is reserved for device memory/ROMs and get confused if there is a RAM region spanning this
-    // area, so we provide the traditional 640 KB low memory and 1 MB+ high memory regions.
-    let ram_below_1m_end = 640 * 1024;
-    let ram_below_1m = AddressRange {
-        start: START_OF_RAM_32BITS,
-        end: ram_below_1m_end - 1,
-    };
-    // GuestMemory::end_addr() returns the first address past the end, so subtract 1 to get the
-    // inclusive end.
-    let guest_mem_end = guest_mem.end_addr().offset() - 1;
-    let ram_below_4g = AddressRange {
-        start: FIRST_ADDR_PAST_20BITS,
-        end: guest_mem_end.min(read_pci_mmio_before_32bit().start - 1),
-    };
-    let ram_above_4g = AddressRange {
-        start: FIRST_ADDR_PAST_32BITS,
-        end: guest_mem_end,
-    };
-    add_e820_entry(&mut params, ram_below_1m, E820Type::Ram)?;
-    add_e820_entry(&mut params, ram_below_4g, E820Type::Ram)?;
-    if !ram_above_4g.is_empty() {
-        add_e820_entry(&mut params, ram_above_4g, E820Type::Ram)?
+    if e820_entries.len() >= params.e820_table.len() {
+        return Err(Error::E820Configuration);
     }
 
-    let pcie_cfg_mmio_range = read_pcie_cfg_mmio();
-    add_e820_entry(&mut params, pcie_cfg_mmio_range, E820Type::Reserved)?;
-
-    add_e820_entry(
-        &mut params,
-        X8664arch::get_pcie_vcfg_mmio_range(guest_mem, &pcie_cfg_mmio_range),
-        E820Type::Reserved,
-    )?;
-
-    // Reserve memory section for Identity map and TSS
-    add_e820_entry(
-        &mut params,
-        AddressRange {
-            start: identity_map_addr_start().offset(),
-            end: tss_addr_end().offset() - 1,
-        },
-        E820Type::Reserved,
-    )?;
+    for (src, dst) in e820_entries.iter().zip(params.e820_table.iter_mut()) {
+        dst.addr = src.address.offset();
+        dst.size = src.len;
+        dst.type_ = src.mem_type as u32;
+    }
+    params.e820_entries = e820_entries.len() as u8;
 
     let zero_page_addr = GuestAddress(ZERO_PAGE_OFFSET);
     if !guest_mem.is_valid_range(zero_page_addr, mem::size_of::<boot_params>() as u64) {
@@ -614,20 +590,55 @@ fn setup_data_rng_seed() -> SetupData {
 }
 
 /// Add an e820 region to the e820 map.
-/// Returns Ok(()) if successful, or an error if there is no space left in the map.
-fn add_e820_entry(params: &mut boot_params, range: AddressRange, mem_type: E820Type) -> Result<()> {
-    if params.e820_entries >= params.e820_table.len() as u8 {
-        return Err(Error::E820Configuration);
-    }
-
-    let size = range.len().ok_or(Error::E820Configuration)?;
-
-    params.e820_table[params.e820_entries as usize].addr = range.start;
-    params.e820_table[params.e820_entries as usize].size = size;
-    params.e820_table[params.e820_entries as usize].type_ = mem_type as u32;
-    params.e820_entries += 1;
+fn add_e820_entry(
+    e820_entries: &mut Vec<E820Entry>,
+    range: AddressRange,
+    mem_type: E820Type,
+) -> Result<()> {
+    e820_entries.push(E820Entry {
+        address: GuestAddress(range.start),
+        len: range.len().ok_or(Error::E820Configuration)?,
+        mem_type,
+    });
 
     Ok(())
+}
+
+/// Generate a memory map in INT 0x15 AX=0xE820 format.
+fn generate_e820_memory_map(
+    guest_mem: &GuestMemory,
+    ram_below_1m: AddressRange,
+    ram_below_4g: AddressRange,
+    ram_above_4g: AddressRange,
+) -> Result<Vec<E820Entry>> {
+    let mut e820_entries = Vec::new();
+
+    add_e820_entry(&mut e820_entries, ram_below_1m, E820Type::Ram)?;
+    add_e820_entry(&mut e820_entries, ram_below_4g, E820Type::Ram)?;
+    if !ram_above_4g.is_empty() {
+        add_e820_entry(&mut e820_entries, ram_above_4g, E820Type::Ram)?
+    }
+
+    let pcie_cfg_mmio_range = read_pcie_cfg_mmio();
+    add_e820_entry(&mut e820_entries, pcie_cfg_mmio_range, E820Type::Reserved)?;
+
+    add_e820_entry(
+        &mut e820_entries,
+        X8664arch::get_pcie_vcfg_mmio_range(guest_mem, &pcie_cfg_mmio_range),
+        E820Type::Reserved,
+    )?;
+
+    // Reserve memory section for Identity map and TSS
+    add_e820_entry(
+        &mut e820_entries,
+        AddressRange {
+            start: identity_map_addr_start().offset(),
+            end: tss_addr_end().offset() - 1,
+        },
+        E820Type::Reserved,
+    )?;
+
+    Ok(e820_entries)
 }
 
 /// Returns a Vec of the valid memory addresses.
@@ -1468,6 +1479,31 @@ impl X8664arch {
         dump_device_tree_blob: Option<PathBuf>,
         device_tree_overlays: Vec<DtbOverlay>,
     ) -> Result<()> {
+        // Some guest kernels expect a typical PC memory layout where the region between 640 KB and
+        // 1 MB is reserved for device memory/ROMs and get confused if there is a RAM region
+        // spanning this area, so we provide the traditional 640 KB low memory and 1 MB+
+        // high memory regions.
+        let ram_below_1m_end = 640 * 1024;
+        let ram_below_1m = AddressRange {
+            start: START_OF_RAM_32BITS,
+            end: ram_below_1m_end - 1,
+        };
+
+        // GuestMemory::end_addr() returns the first address past the end, so subtract 1 to get the
+        // inclusive end.
+        let guest_mem_end = mem.end_addr().offset() - 1;
+        let ram_below_4g = AddressRange {
+            start: FIRST_ADDR_PAST_20BITS,
+            end: guest_mem_end.min(read_pci_mmio_before_32bit().start - 1),
+        };
+
+        let ram_above_4g = AddressRange {
+            start: FIRST_ADDR_PAST_32BITS,
+            end: guest_mem_end,
+        };
+
+        let e820_entries = generate_e820_memory_map(mem, ram_below_1m, ram_below_4g, ram_above_4g)?;
+
         let kernel_max_cmdline_len = if params.hdr.cmdline_size == 0 {
             // Old kernels have a maximum length of 255 bytes, not including the NUL.
             255
@@ -1528,6 +1564,7 @@ impl X8664arch {
             setup_data,
             initrd,
             params,
+            &e820_entries,
         )?;
         Ok(())
     }
