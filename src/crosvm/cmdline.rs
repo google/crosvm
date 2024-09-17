@@ -2199,7 +2199,7 @@ pub struct RunCommand {
     ///        feature(default: true). This should be set to false
     ///        in case the when the host not allowing write to
     ///        /proc/<pid>/attr/fscreate, or guest directory does
-    ///        care about the security context.
+    ///        not care about the security context.
     ///     Options uid and gid are useful when the crosvm process
     ///     has no CAP_SETGID/CAP_SETUID but an identity mapping of
     ///     the current user/group between the VM and the host is
