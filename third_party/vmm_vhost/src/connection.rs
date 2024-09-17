@@ -6,7 +6,6 @@
 use std::fs::File;
 use std::io::IoSliceMut;
 use std::mem;
-use std::path::Path;
 
 use base::AsRawDescriptor;
 use base::RawDescriptor;
@@ -19,7 +18,6 @@ use crate::message::*;
 use crate::sys::PlatformConnection;
 use crate::Error;
 use crate::Result;
-use crate::SystemStream;
 
 /// Listener for accepting connections.
 pub trait Listener: Sized {
@@ -58,32 +56,13 @@ fn advance_slices_mut(bufs: &mut &mut [&mut [u8]], mut count: usize) {
 /// bytes and file descriptors (a thin cross-platform abstraction for unix domain sockets).
 pub struct Connection<R: Req>(
     pub(crate) PlatformConnection,
-    std::marker::PhantomData<R>,
+    pub(crate) std::marker::PhantomData<R>,
     // Mark `Connection` as `!Sync` because message sends and recvs cannot safely be done
     // concurrently.
-    std::marker::PhantomData<std::cell::Cell<()>>,
+    pub(crate) std::marker::PhantomData<std::cell::Cell<()>>,
 );
 
-impl<R: Req> From<SystemStream> for Connection<R> {
-    fn from(sock: SystemStream) -> Self {
-        Self(
-            PlatformConnection::from(sock),
-            std::marker::PhantomData,
-            std::marker::PhantomData,
-        )
-    }
-}
-
 impl<R: Req> Connection<R> {
-    /// Create a new stream by connecting to server at `path`.
-    pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
-        Ok(Self(
-            PlatformConnection::connect(path)?,
-            std::marker::PhantomData,
-            std::marker::PhantomData,
-        ))
-    }
-
     /// Sends a header-only message with optional attached file descriptors.
     pub fn send_header_only_message(
         &self,
@@ -251,11 +230,10 @@ pub(crate) mod tests {
     use super::*;
     use crate::message::VhostUserEmptyMessage;
     use crate::message::VhostUserU64;
-    use crate::tests::create_connection_pair;
 
     #[test]
     fn send_header_only() {
-        let (client_connection, server_connection) = create_connection_pair();
+        let (client_connection, server_connection) = Connection::pair().unwrap();
         let hdr1 = VhostUserMsgHeader::new(FrontendReq::GET_FEATURES, 0, 0);
         client_connection
             .send_header_only_message(&hdr1, None)
@@ -269,7 +247,7 @@ pub(crate) mod tests {
 
     #[test]
     fn send_data() {
-        let (client_connection, server_connection) = create_connection_pair();
+        let (client_connection, server_connection) = Connection::pair().unwrap();
         let hdr1 = VhostUserMsgHeader::new(FrontendReq::SET_FEATURES, 0, 8);
         client_connection
             .send_message(&hdr1, &VhostUserU64::new(0xf00dbeefdeadf00d), None)
@@ -283,7 +261,7 @@ pub(crate) mod tests {
 
     #[test]
     fn send_fd() {
-        let (client_connection, server_connection) = create_connection_pair();
+        let (client_connection, server_connection) = Connection::pair().unwrap();
 
         let mut fd = tempfile().unwrap();
         write!(fd, "test").unwrap();

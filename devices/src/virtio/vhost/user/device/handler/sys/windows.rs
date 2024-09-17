@@ -23,6 +23,7 @@ use tube_transporter::TubeTransporterReader;
 use vmm_vhost::message::FrontendReq;
 use vmm_vhost::message::VhostUserMsgHeader;
 use vmm_vhost::BackendServer;
+use vmm_vhost::Connection;
 
 pub fn read_from_tube_transporter(
     raw_transport_tube: RawDescriptor,
@@ -65,7 +66,7 @@ pub async fn run_handler(
         .context("failed to create an async event")?;
     let exit_event = EventAsync::new(exit_event, ex).context("failed to create an async event")?;
 
-    let mut backend_server = BackendServer::from_stream(vhost_user_tube, handler);
+    let mut backend_server = BackendServer::new(Connection::from(vhost_user_tube), handler);
 
     let read_event_fut = read_event.next_val().fuse();
     let close_event_fut = close_event.next_val().fuse();
@@ -111,24 +112,5 @@ pub async fn run_handler(
                 return Ok(())
             }
         }
-    }
-}
-
-#[cfg(test)]
-pub mod test_helpers {
-    use base::Tube;
-    use vmm_vhost::message::FrontendReq;
-    use vmm_vhost::BackendServer;
-
-    pub(crate) fn setup() -> (Tube, Tube) {
-        Tube::pair().unwrap()
-    }
-
-    pub(crate) fn connect(tube: Tube) -> Tube {
-        tube
-    }
-
-    pub(crate) fn listen<S: vmm_vhost::Backend>(dev_tube: Tube, handler: S) -> BackendServer<S> {
-        BackendServer::from_stream(dev_tube, handler)
     }
 }

@@ -15,13 +15,10 @@ cfg_if::cfg_if! {
     }
 }
 
-pub use platform::to_system_stream;
 pub(crate) use platform::PlatformConnection;
-pub use platform::SystemStream;
 
 #[cfg(test)]
 pub(crate) mod tests {
     pub(crate) use super::platform::tests::create_client_server_pair;
-    pub(crate) use super::platform::tests::create_connection_pair;
     pub(crate) use super::platform::tests::create_pair;
 }

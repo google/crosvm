@@ -12,7 +12,6 @@ use crate::Connection;
 use crate::Error;
 use crate::HandlerResult;
 use crate::Result;
-use crate::SystemStream;
 
 /// Trait for vhost-user frontends to respond to requests from the backend.
 ///
@@ -67,10 +66,10 @@ pub struct FrontendServer<S: Frontend> {
 }
 
 impl<S: Frontend> FrontendServer<S> {
-    /// Create a server to handle requests from `stream`.
-    pub(crate) fn new(frontend: S, stream: SystemStream) -> Result<Self> {
+    /// Create a server to handle requests from `connection`.
+    pub(crate) fn new(frontend: S, connection: Connection<BackendReq>) -> Result<Self> {
         Ok(FrontendServer {
-            sub_sock: Connection::from(stream),
+            sub_sock: connection,
             reply_ack_negotiated: false,
             frontend,
         })

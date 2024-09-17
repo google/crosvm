@@ -22,6 +22,7 @@ use base::ScmSocket;
 use crate::connection::Listener;
 use crate::frontend_server::FrontendServer;
 use crate::message::FrontendReq;
+use crate::message::Req;
 use crate::message::MAX_ATTACHED_FD_ENTRIES;
 use crate::Connection;
 use crate::Error;
@@ -30,9 +31,6 @@ use crate::Result;
 
 /// Alias to enable platform independent code.
 pub type SystemListener = UnixListener;
-
-/// Alias to enable platform independent code.
-pub type SystemStream = UnixStream;
 
 pub use SocketPlatformConnection as PlatformConnection;
 
@@ -90,7 +88,7 @@ impl Listener for SocketListener {
         loop {
             match self.fd.accept() {
                 Ok((stream, _addr)) => {
-                    return Ok(Some(Connection::from(stream)));
+                    return Ok(Some(Connection::try_from(stream)?));
                 }
                 Err(e) => {
                     match e.kind() {
@@ -125,16 +123,7 @@ impl AsRawDescriptor for SocketListener {
 
 /// Unix domain socket based vhost-user connection.
 pub struct SocketPlatformConnection {
-    sock: ScmSocket<SystemStream>,
-}
-
-// TODO: Switch to TryFrom to avoid the unwrap.
-impl From<SystemStream> for SocketPlatformConnection {
-    fn from(sock: SystemStream) -> Self {
-        Self {
-            sock: sock.try_into().unwrap(),
-        }
-    }
+    sock: ScmSocket<UnixStream>,
 }
 
 // Advance the internal cursor of the slices.
@@ -157,16 +146,6 @@ fn advance_slices(bufs: &mut &mut [&[u8]], mut count: usize) {
 }
 
 impl SocketPlatformConnection {
-    /// Create a new stream by connecting to server at `str`.
-    ///
-    /// # Return:
-    /// * - the new SocketPlatformConnection object on success.
-    /// * - SocketConnect: failed to connect to peer.
-    pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let sock = SystemStream::connect(path).map_err(Error::SocketConnect)?;
-        Ok(Self::from(sock))
-    }
-
     /// Sends all bytes from scatter-gather vectors with optional attached file descriptors. Will
     /// loop until all data has been transfered.
     ///
@@ -264,19 +243,36 @@ impl AsRawDescriptor for SocketPlatformConnection {
     }
 }
 
-impl AsMut<SystemStream> for SocketPlatformConnection {
-    fn as_mut(&mut self) -> &mut SystemStream {
-        self.sock.inner_mut()
+impl<R: Req> TryFrom<SafeDescriptor> for Connection<R> {
+    type Error = Error;
+
+    fn try_from(fd: SafeDescriptor) -> Result<Self> {
+        UnixStream::from(fd).try_into()
     }
 }
 
-/// Convert a `SafeDescriptor` to a `UnixStream`.
-///
-/// # Safety
-///
-/// `file` must represent a unix domain socket.
-pub unsafe fn to_system_stream(fd: SafeDescriptor) -> Result<SystemStream> {
-    Ok(fd.into())
+impl<R: Req> TryFrom<UnixStream> for Connection<R> {
+    type Error = Error;
+
+    fn try_from(sock: UnixStream) -> Result<Self> {
+        Ok(Self(
+            SocketPlatformConnection {
+                sock: sock.try_into()?,
+            },
+            std::marker::PhantomData,
+            std::marker::PhantomData,
+        ))
+    }
+}
+
+impl<R: Req> Connection<R> {
+    /// Create a pair of unnamed vhost-user connections connected to each other.
+    pub fn pair() -> Result<(Self, Self)> {
+        let (client, server) = UnixStream::pair()?;
+        let client_connection = Connection::try_from(client)?;
+        let server_connection = Connection::try_from(server)?;
+        Ok((client_connection, server_connection))
+    }
 }
 
 impl<S: Frontend> AsRawDescriptor for FrontendServer<S> {
@@ -294,9 +290,10 @@ impl<S: Frontend> FrontendServer<S> {
     ///
     /// [BackendClient::set_slave_request_fd()]: struct.BackendClient.html#method.set_slave_request_fd
     pub fn with_stream(backend: S) -> Result<(Self, SafeDescriptor)> {
-        let (tx, rx) = SystemStream::pair()?;
+        let (tx, rx) = UnixStream::pair()?;
+        let rx_connection = Connection::try_from(rx)?;
         Ok((
-            Self::new(backend, rx)?,
+            Self::new(backend, rx_connection)?,
             SafeDescriptor::from(OwnedFd::from(tx)),
         ))
     }
@@ -319,26 +316,21 @@ pub(crate) mod tests {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
     }
 
+    fn connect(path: &Path) -> Result<Connection<FrontendReq>> {
+        let sock = UnixStream::connect(path).map_err(Error::SocketConnect)?;
+        Connection::try_from(sock)
+    }
+
     pub(crate) fn create_pair() -> (BackendClient, Connection<FrontendReq>) {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let backend_client = BackendClient::connect(path).unwrap();
+        let backend_connection = connect(&path).unwrap();
+        let backend_client = BackendClient::new(backend_connection);
         let server_connection = listener.accept().unwrap().unwrap();
         (backend_client, server_connection)
-    }
-
-    pub(crate) fn create_connection_pair() -> (Connection<FrontendReq>, Connection<FrontendReq>) {
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let mut listener = SocketListener::new(&path, true).unwrap();
-        listener.set_nonblocking(true).unwrap();
-        let client_connection = Connection::<FrontendReq>::connect(path).unwrap();
-        let server_connection = listener.accept().unwrap().unwrap();
-        (client_connection, server_connection)
     }
 
     pub(crate) fn create_client_server_pair<S>(backend: S) -> (BackendClient, BackendServer<S>)
@@ -349,7 +341,8 @@ pub(crate) mod tests {
         let mut path = dir.path().to_owned();
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
-        let backend_client = BackendClient::connect(&path).unwrap();
+        let backend_connection = connect(&path).unwrap();
+        let backend_client = BackendClient::new(backend_connection);
         let connection = listener.accept().unwrap().unwrap();
         let req_handler = BackendServer::new(connection, backend);
         (backend_client, req_handler)
@@ -385,13 +378,14 @@ pub(crate) mod tests {
         path.push("sock");
         let _ = SocketListener::new(&path, true).unwrap();
         let _ = SocketListener::new(&path, false).is_err();
-        assert!(BackendClient::connect(&path).is_err());
+        assert!(connect(&path).is_err());
 
         let mut listener = SocketListener::new(&path, true).unwrap();
         assert!(SocketListener::new(&path, false).is_err());
         listener.set_nonblocking(true).unwrap();
 
-        let _backend_client = BackendClient::connect(&path).unwrap();
+        let backend_connection = connect(&path).unwrap();
+        let _backend_client = BackendClient::new(backend_connection);
         let _server_connection = listener.accept().unwrap().unwrap();
     }
 

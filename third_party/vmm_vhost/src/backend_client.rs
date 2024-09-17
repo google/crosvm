@@ -3,7 +3,6 @@
 
 use std::fs::File;
 use std::mem;
-use std::path::Path;
 
 use anyhow::anyhow;
 use base::AsRawDescriptor;
@@ -22,7 +21,6 @@ use crate::Error as VhostUserError;
 use crate::FrontendReq;
 use crate::Result as VhostUserResult;
 use crate::Result;
-use crate::SystemStream;
 
 /// Client for a vhost-user device. The API is a thin abstraction over the vhost-user protocol.
 pub struct BackendClient {
@@ -36,48 +34,14 @@ pub struct BackendClient {
 }
 
 impl BackendClient {
-    /// Create a new instance from a Unix stream socket.
-    pub fn from_stream(sock: SystemStream) -> Self {
-        Self::new(Connection::from(sock))
-    }
-
     /// Create a new instance.
-    fn new(connection: Connection<FrontendReq>) -> Self {
+    pub fn new(connection: Connection<FrontendReq>) -> Self {
         BackendClient {
             connection,
             virtio_features: 0,
             acked_virtio_features: 0,
             acked_protocol_features: 0,
         }
-    }
-
-    /// Create a new instance.
-    ///
-    /// Will retry as the backend may not be ready to accept the connection.
-    ///
-    /// # Arguments
-    /// * `path` - path of Unix domain socket listener to connect to
-    pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let mut retry_count = 5;
-        let connection = loop {
-            match Connection::connect(&path) {
-                Ok(connection) => break Ok(connection),
-                Err(e) => match &e {
-                    VhostUserError::SocketConnect(why) => {
-                        if why.kind() == std::io::ErrorKind::ConnectionRefused && retry_count > 0 {
-                            std::thread::sleep(std::time::Duration::from_millis(100));
-                            retry_count -= 1;
-                            continue;
-                        } else {
-                            break Err(e);
-                        }
-                    }
-                    _ => break Err(e),
-                },
-            }
-        }?;
-
-        Ok(Self::new(connection))
     }
 
     /// Get a bitmask of supported virtio/vhost features.

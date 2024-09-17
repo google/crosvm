@@ -15,7 +15,6 @@ use crate::Error;
 use crate::Frontend;
 use crate::HandlerResult;
 use crate::Result;
-use crate::SystemStream;
 
 /// Client for a vhost-user frontend. Allows a backend to send requests to the frontend.
 pub struct FrontendClient {
@@ -36,11 +35,6 @@ impl FrontendClient {
             reply_ack_negotiated: false,
             error: None,
         }
-    }
-
-    /// Create a new instance from a `SystemStream` object.
-    pub fn from_stream(connection: SystemStream) -> Self {
-        Self::new(Connection::from(connection))
     }
 
     fn send_message<T>(
@@ -143,14 +137,12 @@ impl Frontend for FrontendClient {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
-    use crate::SystemStream;
 
     #[test]
     fn test_backend_req_set_failed() {
-        let (p1, _p2) = SystemStream::pair().unwrap();
-        let mut frontend_client = FrontendClient::from_stream(p1);
+        let (p1, _p2) = Connection::pair().unwrap();
+        let mut frontend_client = FrontendClient::new(p1);
 
         assert!(frontend_client.error.is_none());
         frontend_client.set_failed(libc::EAGAIN);

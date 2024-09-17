@@ -50,39 +50,3 @@ where
         backend_server.process_message(hdr, files)?;
     }
 }
-
-#[cfg(test)]
-pub mod test_helpers {
-    use std::os::unix::net::UnixStream;
-
-    use tempfile::TempDir;
-    use vmm_vhost::connection::Listener;
-    use vmm_vhost::unix::SocketListener;
-    use vmm_vhost::BackendServer;
-
-    pub(crate) fn setup() -> (SocketListener, TempDir) {
-        let dir = tempfile::Builder::new()
-            .prefix("/tmp/vhost_test")
-            .tempdir()
-            .unwrap();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let listener = SocketListener::new(&path, true).unwrap();
-
-        (listener, dir)
-    }
-
-    pub(crate) fn connect(dir: tempfile::TempDir) -> UnixStream {
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        UnixStream::connect(path).unwrap()
-    }
-
-    pub(crate) fn listen<S: vmm_vhost::Backend>(
-        mut listener: SocketListener,
-        handler: S,
-    ) -> BackendServer<S> {
-        let connection = listener.accept().unwrap().unwrap();
-        BackendServer::new(connection, handler)
-    }
-}

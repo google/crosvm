@@ -49,8 +49,8 @@ mod sys;
 pub use connection::Connection;
 pub use message::BackendReq;
 pub use message::FrontendReq;
-pub use sys::SystemStream;
-pub use sys::*;
+#[cfg(unix)]
+pub use sys::unix;
 
 pub(crate) mod backend_client;
 pub use backend_client::BackendClient;
@@ -248,7 +248,6 @@ mod tests {
     use super::*;
     use crate::message::*;
     pub(crate) use crate::sys::tests::create_client_server_pair;
-    pub(crate) use crate::sys::tests::create_connection_pair;
     pub(crate) use crate::sys::tests::create_pair;
     use crate::test_backend::TestBackend;
     use crate::test_backend::VIRTIO_FEATURES;

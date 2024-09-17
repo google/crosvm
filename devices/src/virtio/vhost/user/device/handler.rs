@@ -1024,7 +1024,6 @@ mod tests {
     use zerocopy::FromBytes;
     use zerocopy::FromZeroes;
 
-    use super::sys::test_helpers;
     use super::*;
     use crate::virtio::vhost_user_frontend::VhostUserFrontend;
     use crate::virtio::DeviceType;
@@ -1175,7 +1174,8 @@ mod tests {
     ) {
         const QUEUES_NUM: usize = 2;
 
-        let (dev, vmm) = test_helpers::setup();
+        let (client_connection, server_connection) =
+            vmm_vhost::Connection::<FrontendReq>::pair().unwrap();
 
         let vmm_bar = Arc::new(Barrier::new(2));
         let dev_bar = vmm_bar.clone();
@@ -1187,10 +1187,9 @@ mod tests {
             // VMM side
             ready_rx.recv().unwrap(); // Ensure the device is ready.
 
-            let connection = test_helpers::connect(vmm);
-
             let mut vmm_device =
-                VhostUserFrontend::new(DeviceType::Console, 0, connection, None, None).unwrap();
+                VhostUserFrontend::new(DeviceType::Console, 0, client_connection, None, None)
+                    .unwrap();
 
             println!("read_config");
             let mut buf = vec![0; std::mem::size_of::<FakeConfig>()];
@@ -1271,7 +1270,7 @@ mod tests {
         // Notify listener is ready.
         ready_tx.send(()).unwrap();
 
-        let mut req_handler = test_helpers::listen(dev, handler);
+        let mut req_handler = BackendServer::new(server_connection, handler);
 
         // VhostUserFrontend::new()
         handle_request(&mut req_handler, FrontendReq::SET_OWNER).unwrap();

@@ -99,7 +99,7 @@ impl VhostUserFrontend {
     pub fn new(
         device_type: DeviceType,
         base_features: u64,
-        connection: vmm_vhost::SystemStream,
+        connection: vmm_vhost::Connection<vmm_vhost::FrontendReq>,
         max_queue_size: Option<u16>,
         pci_address: Option<PciAddress>,
     ) -> Result<VhostUserFrontend> {
@@ -124,7 +124,7 @@ impl VhostUserFrontend {
     /// - `cfg`: bytes to return for the virtio configuration space (queried from device if not
     ///   specified)
     pub(crate) fn new_internal(
-        connection: vmm_vhost::SystemStream,
+        connection: vmm_vhost::Connection<vmm_vhost::FrontendReq>,
         device_type: DeviceType,
         max_queue_size: Option<u16>,
         mut base_features: u64,
@@ -145,7 +145,7 @@ impl VhostUserFrontend {
         #[cfg(windows)]
         let backend_pid = connection.target_pid();
 
-        let mut backend_client = BackendClient::from_stream(connection);
+        let mut backend_client = BackendClient::new(connection);
 
         backend_client.set_owner().map_err(Error::SetOwner)?;
 

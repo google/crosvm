@@ -15,7 +15,7 @@ use crate::virtio::DeviceType;
 impl VhostUserFrontend {
     pub fn new_fs(
         base_features: u64,
-        connection: vmm_vhost::SystemStream,
+        connection: vmm_vhost::Connection<vmm_vhost::FrontendReq>,
         max_queue_size: Option<u16>,
         tag: Option<&str>,
     ) -> Result<VhostUserFrontend> {

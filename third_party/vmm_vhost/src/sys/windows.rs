@@ -6,7 +6,6 @@
 use std::cmp::min;
 use std::fs::File;
 use std::io::IoSliceMut;
-use std::path::Path;
 use std::ptr::copy_nonoverlapping;
 
 use base::AsRawDescriptor;
@@ -19,16 +18,14 @@ use base::Tube;
 use serde::Deserialize;
 use serde::Serialize;
 use tube_transporter::packed_tube;
+pub use TubePlatformConnection as PlatformConnection;
 
+use crate::message::Req;
+use crate::Connection;
 use crate::Error;
 use crate::Frontend;
 use crate::FrontendServer;
 use crate::Result;
-
-/// Alias to enable platform independent code.
-pub type SystemStream = Tube;
-
-pub use TubePlatformConnection as PlatformConnection;
 
 #[derive(Serialize, Deserialize)]
 struct RawDescriptorContainer {
@@ -60,10 +57,6 @@ impl From<Tube> for TubePlatformConnection {
 }
 
 impl TubePlatformConnection {
-    pub fn connect<P: AsRef<Path>>(_path: P) -> Result<Self> {
-        unimplemented!("connections not supported on Tubes")
-    }
-
     /// Sends a single message over the socket with optional attached file descriptors.
     ///
     /// - `hdr`: vhost message header
@@ -172,15 +165,36 @@ impl TubePlatformConnection {
     }
 }
 
-/// Convert a`SafeDescriptor` to a `Tube`.
-///
-/// # Safety
-///
-/// `fd` must represent a packed tube.
-pub unsafe fn to_system_stream(fd: SafeDescriptor) -> Result<SystemStream> {
-    // SAFETY: Safe because the file represents a packed tube.
-    let tube = unsafe { packed_tube::unpack(fd).expect("unpacked Tube") };
-    Ok(tube)
+impl<R: Req> TryFrom<SafeDescriptor> for Connection<R> {
+    type Error = Error;
+
+    fn try_from(fd: SafeDescriptor) -> Result<Self> {
+        // SAFETY: Safe because the file represents a packed tube.
+        let tube = unsafe { packed_tube::unpack(fd).expect("unpacked Tube") };
+        Ok(tube.into())
+    }
+}
+
+impl<R: Req> From<Tube> for Connection<R> {
+    fn from(tube: Tube) -> Self {
+        Self(
+            PlatformConnection::from(tube),
+            std::marker::PhantomData,
+            std::marker::PhantomData,
+        )
+    }
+}
+
+impl<R: Req> Connection<R> {
+    /// Create a pair of unnamed vhost-user connections connected to each other.
+    pub fn pair() -> Result<(Self, Self)> {
+        let (client, server) = Tube::pair()?;
+        Ok((Self::from(client), Self::from(server)))
+    }
+
+    pub fn target_pid(&self) -> Option<u32> {
+        self.0.tube.target_pid()
+    }
 }
 
 impl AsRawDescriptor for TubePlatformConnection {
@@ -200,11 +214,12 @@ impl<S: Frontend> FrontendServer<S> {
     ///
     /// [BackendClient::set_slave_request_fd()]: struct.BackendClient.html#method.set_slave_request_fd
     pub fn with_tube(backend: S, backend_pid: u32) -> Result<(Self, SafeDescriptor)> {
-        let (tx, rx) = SystemStream::pair()?;
+        let (tx, rx) = Tube::pair()?;
+        let rx_connection = Connection::from(rx);
         // SAFETY:
         // Safe because we expect the tube to be unpacked in the other process.
         let tx = unsafe { packed_tube::pack(tx, backend_pid).expect("packed tube") };
-        Ok((Self::new(backend, rx)?, tx))
+        Ok((Self::new(backend, rx_connection)?, tx))
     }
 }
 
@@ -229,29 +244,22 @@ pub(crate) mod tests {
     use crate::backend_server::BackendServer;
     use crate::message::FrontendReq;
     use crate::Connection;
-    use crate::SystemStream;
 
     pub(crate) fn create_pair() -> (BackendClient, Connection<FrontendReq>) {
-        let (client_tube, server_tube) = SystemStream::pair().unwrap();
-        let backend_client = BackendClient::from_stream(client_tube);
-        (backend_client, Connection::from(server_tube))
-    }
-
-    pub(crate) fn create_connection_pair() -> (Connection<FrontendReq>, Connection<FrontendReq>) {
-        let (client_tube, server_tube) = SystemStream::pair().unwrap();
-        let backend_connection = Connection::<FrontendReq>::from(client_tube);
-        (backend_connection, Connection::from(server_tube))
+        let (client_connection, server_connection) = Connection::pair().unwrap();
+        let backend_client = BackendClient::new(client_connection);
+        (backend_client, server_connection)
     }
 
     pub(crate) fn create_client_server_pair<S>(backend: S) -> (BackendClient, BackendServer<S>)
     where
         S: Backend,
     {
-        let (client_tube, server_tube) = SystemStream::pair().unwrap();
-        let backend_client = BackendClient::from_stream(client_tube);
+        let (client_connection, server_connection) = Connection::pair().unwrap();
+        let backend_client = BackendClient::new(client_connection);
         (
             backend_client,
-            BackendServer::<S>::from_stream(server_tube, backend),
+            BackendServer::<S>::new(server_connection, backend),
         )
     }
 }

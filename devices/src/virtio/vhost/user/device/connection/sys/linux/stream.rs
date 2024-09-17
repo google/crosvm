@@ -79,6 +79,6 @@ async fn stream_run_with_handler(
     handler: Box<dyn vmm_vhost::Backend>,
     ex: &Executor,
 ) -> anyhow::Result<()> {
-    let req_handler = BackendServer::new(Connection::from(stream), handler);
+    let req_handler = BackendServer::new(Connection::try_from(stream)?, handler);
     run_handler(req_handler, ex).await
 }
