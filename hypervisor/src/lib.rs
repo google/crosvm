@@ -56,9 +56,27 @@ pub struct MemRegion {
     pub size: u64,
 }
 
+/// Signal to the hypervisor on kernels that support the KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA (or
+/// equivalent) that during user memory region (memslot) configuration, a guest page's memtype
+/// should be considered in SLAT effective memtype determination rather than implicitly respecting
+/// only the host page's memtype.
+///
+/// This explicit control is needed for Virtio devices (e.g. gpu) that configure memslots for host
+/// WB page mappings with guest WC page mappings. See b/316337317, b/360295883 for more detail.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MemCacheType {
+    /// Don't provide any explicit instruction to the hypervisor on how it should determine a
+    /// memslot's effective memtype.
+    ///
+    /// On KVM-VMX (Intel), this means that the memslot is flagged with VMX_EPT_IPAT_BIT such that
+    /// only the host memtype is respected.
     CacheCoherent,
+    /// explicitly instruct the hypervisor to respect the guest page's memtype when determining the
+    /// memslot's effective memtype.
+    ///
+    /// On KVM-VMX (Intel), this means the memslot is NOT flagged with VMX_EPT_IPAT_BIT, and the
+    /// effective memtype will generally decay to the weaker amongst the host/guest memtypes and
+    /// the MTRR for the physical address.
     CacheNonCoherent,
 }
 

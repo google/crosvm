@@ -98,6 +98,7 @@ pub use self::vhost_user_frontend::VhostUserFrontend;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 pub use self::video::VideoDevice;
 pub use self::virtio_device::SharedMemoryMapper;
+pub use self::virtio_device::SharedMemoryPrepareType;
 pub use self::virtio_device::SharedMemoryRegion;
 pub use self::virtio_device::VirtioDevice;
 pub use self::virtio_device::VirtioTransportType;

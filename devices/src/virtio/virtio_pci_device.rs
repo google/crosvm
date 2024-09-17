@@ -9,6 +9,7 @@ use std::sync::Arc;
 use acpi_tables::sdt::SDT;
 use anyhow::anyhow;
 use anyhow::Context;
+use base::debug;
 use base::error;
 use base::trace;
 use base::AsRawDescriptor;
@@ -1093,19 +1094,25 @@ where
             bar: config.bar_index() as u8,
         };
 
+        let vm_memory_client = virtio_pci_device
+            .shared_memory_vm_memory_client
+            .take()
+            .expect("missing shared_memory_tube");
+
+        // See comment VmMemoryRequest::execute
+        let can_prepare = !virtio_pci_device
+            .device
+            .expose_shmem_descriptors_with_viommu();
+        let prepare_type = if can_prepare {
+            virtio_pci_device.device.get_shared_memory_prepare_type()
+        } else {
+            SharedMemoryPrepareType::DynamicPerMapping
+        };
+
+        let vm_requester = Box::new(VmRequester::new(vm_memory_client, alloc, prepare_type));
         virtio_pci_device
             .device
-            .set_shared_memory_mapper(Box::new(VmRequester::new(
-                virtio_pci_device
-                    .shared_memory_vm_memory_client
-                    .take()
-                    .expect("missing shared_memory_tube"),
-                alloc,
-                // See comment VmMemoryRequest::execute
-                !virtio_pci_device
-                    .device
-                    .expose_shmem_descriptors_with_viommu(),
-            )));
+            .set_shared_memory_mapper(vm_requester);
 
         vec![config]
     };
@@ -1441,16 +1448,22 @@ struct VmRequester {
     vm_memory_client: VmMemoryClient,
     alloc: Alloc,
     mappings: BTreeMap<u64, VmMemoryRegionId>,
-    needs_prepare: bool,
+    prepare_type: SharedMemoryPrepareType,
+    prepared: bool,
 }
 
 impl VmRequester {
-    fn new(vm_memory_client: VmMemoryClient, alloc: Alloc, do_prepare: bool) -> Self {
+    fn new(
+        vm_memory_client: VmMemoryClient,
+        alloc: Alloc,
+        prepare_type: SharedMemoryPrepareType,
+    ) -> Self {
         Self {
             vm_memory_client,
             alloc,
             mappings: BTreeMap::new(),
-            needs_prepare: do_prepare,
+            prepare_type,
+            prepared: false,
         }
     }
 }
@@ -1463,11 +1476,31 @@ impl SharedMemoryMapper for VmRequester {
         prot: Protection,
         cache: MemCacheType,
     ) -> anyhow::Result<()> {
-        if self.needs_prepare {
-            self.vm_memory_client
-                .prepare_shared_memory_region(self.alloc, cache)
-                .context("prepare_shared_memory_region failed")?;
-            self.needs_prepare = false;
+        if !self.prepared {
+            if let SharedMemoryPrepareType::SingleMappingOnFirst(prepare_cache_type) =
+                self.prepare_type
+            {
+                debug!(
+                    "lazy prepare_shared_memory_region with {:?}",
+                    prepare_cache_type
+                );
+                self.vm_memory_client
+                    .prepare_shared_memory_region(self.alloc, prepare_cache_type)
+                    .context("lazy prepare_shared_memory_region failed")?;
+            }
+            self.prepared = true;
+        }
+
+        // devices must implement VirtioDevice::get_shared_memory_prepare_type(), returning
+        // SharedMemoryPrepareType::SingleMappingOnFirst(MemCacheType::CacheNonCoherent) in order to
+        // add any mapping that requests MemCacheType::CacheNonCoherent.
+        if cache == MemCacheType::CacheNonCoherent {
+            if let SharedMemoryPrepareType::SingleMappingOnFirst(MemCacheType::CacheCoherent) =
+                self.prepare_type
+            {
+                error!("invalid request to map with CacheNonCoherent for device with prepared CacheCoherent memory");
+                return Err(anyhow!("invalid MemCacheType"));
+            }
         }
 
         let id = self
