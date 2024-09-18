@@ -759,7 +759,7 @@ impl<'a> Ext2<'a> {
             } else if ftype.is_symlink() {
                 self.add_symlink(arena, parent_inode, &entry)?;
             } else {
-                panic!("unknown file type: {:?}", ftype);
+                bail!("unknown file type {:?} for {:?}", ftype, entry.file_name());
             }
         }
 

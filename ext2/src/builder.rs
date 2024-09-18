@@ -14,6 +14,7 @@ use base::MemoryMapping;
 use base::MemoryMappingArena;
 use base::MemoryMappingBuilder;
 use base::Protection;
+use base::SharedMemory;
 
 use crate::arena::Arena;
 use crate::arena::FileMappingInfo;
@@ -68,6 +69,15 @@ impl Builder {
             .context("failed to allocate memory for ext2")?;
         Ok(MemRegion { cfg: self, mem })
     }
+
+    /// Builds memory region on the given shared memory.
+    pub fn build_on_shm(self, shm: &SharedMemory) -> Result<MemRegion> {
+        let mem = MemoryMappingBuilder::new(shm.size() as usize)
+            .from_shared_memory(shm)
+            .build()
+            .expect("failed to build MemoryMapping from shared memory");
+        Ok(MemRegion { cfg: self, mem })
+    }
 }
 
 /// Memory region for ext2 with its config.
@@ -102,7 +112,7 @@ impl MemRegion {
 /// Memory regions where ext2 metadata were written with information of mmap operations to be done.
 pub struct MemRegionWithMappingInfo {
     mem: MemoryMapping,
-    mapping_info: Vec<FileMappingInfo>,
+    pub mapping_info: Vec<FileMappingInfo>,
 }
 
 impl MemRegionWithMappingInfo {

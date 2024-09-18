@@ -125,6 +125,7 @@ cfg_if::cfg_if! {
         pub use self::p9::P9;
         pub use self::pmem::Pmem;
         pub use self::pmem::PmemConfig;
+        pub use self::pmem::MemSlotConfig;
         #[cfg(feature = "audio")]
         pub use self::snd::new_sound;
         pub use self::wl::Wl;

@@ -8,7 +8,6 @@
 
 use std::os::unix::fs::symlink;
 
-use anyhow::bail;
 use fixture::vm::Config;
 use fixture::vm::TestVm;
 
@@ -95,31 +94,6 @@ fn pmem_ext2() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn set_num_files_limit(num_files: u64) -> anyhow::Result<()> {
-    let mut buf = std::mem::MaybeUninit::<libc::rlimit64>::zeroed();
-    // SAFETY: Safe because this will only modify `buf` and we check the return value.
-    let res =
-        unsafe { libc::prlimit64(0, libc::RLIMIT_NOFILE, std::ptr::null(), buf.as_mut_ptr()) };
-    if res != 0 {
-        bail!("failed to call prlimit64");
-    }
-
-    // SAFETY: Safe because the kernel guarantees that the struct is fully initialized.
-    let mut limit = unsafe { buf.assume_init() };
-    if limit.rlim_max < num_files {
-        bail!("rlim_max < num_files: {} < {}", limit.rlim_max, num_files);
-    }
-
-    limit.rlim_cur = num_files;
-    // SAFETY: Safe because limit is properly initialized.
-    let res = unsafe { libc::setrlimit64(libc::RLIMIT_NOFILE, &limit) };
-    if res != 0 {
-        bail!("failed to call setrlimit64");
-    }
-
-    Ok(())
-}
-
 /// Check a case with 1000 files in a directory.
 #[test]
 fn pmem_ext2_manyfiles() -> anyhow::Result<()> {
@@ -127,10 +101,6 @@ fn pmem_ext2_manyfiles() -> anyhow::Result<()> {
     // ├── 0.txt
     // ...
     // └── 999.txt
-
-    // TODO(crrev.com/c/5644847): Remove `set_num_files_limi` once we add a logic to fork a separate
-    // process for ext2 creation with larger files limit.
-    set_num_files_limit(2048)?;
 
     let temp_dir = tempfile::tempdir()?;
     for i in 0..1000 {

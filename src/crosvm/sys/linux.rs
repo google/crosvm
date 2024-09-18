@@ -7,6 +7,7 @@ mod android;
 pub mod cmdline;
 pub mod config;
 mod device_helpers;
+pub(crate) mod ext2;
 #[cfg(feature = "gpu")]
 pub(crate) mod gpu;
 #[cfg(feature = "pci-hotplug")]
@@ -224,7 +225,9 @@ fn create_virtio_devices(
     #[cfg(feature = "balloon")] init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
+    pmem_ext2_mem_clients: &mut Vec<VmMemoryClient>,
     fs_device_tubes: &mut Vec<Tube>,
+    worker_process_pids: &mut BTreeSet<Pid>,
     #[cfg(feature = "gpu")] gpu_control_tube: Tube,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     #[cfg(feature = "gpu")] has_vfio_gfx_device: bool,
@@ -404,14 +407,16 @@ fn create_virtio_devices(
 
     for (index, pmem_ext2) in cfg.pmem_ext2.iter().enumerate() {
         let pmem_device_tube = pmem_device_tubes.remove(0);
+        let vm_memory_client = pmem_ext2_mem_clients.remove(0);
         devs.push(create_pmem_ext2_device(
             cfg.protection_type,
             &cfg.jail_config,
-            vm,
             resources,
             pmem_ext2,
             index,
+            vm_memory_client,
             pmem_device_tube,
+            worker_process_pids,
         )?);
     }
 
@@ -789,6 +794,7 @@ fn create_devices(
     #[cfg(feature = "balloon")] init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
+    pmem_ext2_mem_clients: &mut Vec<VmMemoryClient>,
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "usb")] usb_provider: DeviceProvider,
     #[cfg(feature = "gpu")] gpu_control_tube: Tube,
@@ -797,6 +803,8 @@ fn create_devices(
     #[cfg(feature = "registered_events")] registered_evt_q: &SendTube,
     #[cfg(feature = "pvclock")] pvclock_device_tube: Option<Tube>,
     vfio_container_manager: &mut VfioContainerManager,
+    // Stores a set of PID of child processes that are suppose to exit cleanly.
+    worker_process_pids: &mut BTreeSet<Pid>,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     #[cfg(feature = "balloon")]
@@ -931,7 +939,9 @@ fn create_devices(
         init_balloon_size,
         disk_device_tubes,
         pmem_device_tubes,
+        pmem_ext2_mem_clients,
         fs_device_tubes,
+        worker_process_pids,
         #[cfg(feature = "gpu")]
         gpu_control_tube,
         #[cfg(feature = "gpu")]
@@ -1848,6 +1858,19 @@ where
         pmem_device_tubes.push(pmem_device_tube);
         control_tubes.push(TaggedControlTube::VmMsync(pmem_host_tube));
     }
+    let mut pmem_ext2_mem_client = Vec::new();
+    for _ in 0..cfg.pmem_ext2.len() {
+        let (pmem_ext2_host_tube, pmem_ext2_device_tube) =
+            Tube::pair().context("failed to create tube")?;
+        // Prepare two communication channels for pmem-ext2 device
+        // - pmem_ext2_mem_client: To send a request for mmap() and memory registeration.
+        // - vm_memory_control_tubes: To receive a memory slot number once the memory is registered.
+        pmem_ext2_mem_client.push(VmMemoryClient::new(pmem_ext2_device_tube));
+        vm_memory_control_tubes.push(VmMemoryTube {
+            tube: pmem_ext2_host_tube,
+            expose_with_viommu: false,
+        });
+    }
 
     if let Some(ioapic_host_tube) = ioapic_host_tube {
         irq_control_tubes.push(ioapic_host_tube);
@@ -1956,6 +1979,8 @@ where
     let (reg_evt_wrtube, reg_evt_rdtube) =
         Tube::directional_pair().context("failed to create registered event tube")?;
 
+    let mut worker_process_pids = BTreeSet::new();
+
     let mut devices = create_devices(
         &cfg,
         &mut vm,
@@ -1971,6 +1996,7 @@ where
         init_balloon_size,
         &mut disk_device_tubes,
         &mut pmem_device_tubes,
+        &mut pmem_ext2_mem_client,
         &mut fs_device_tubes,
         #[cfg(feature = "usb")]
         usb_provider,
@@ -1984,6 +2010,7 @@ where
         #[cfg(feature = "pvclock")]
         pvclock_device_tube,
         &mut vfio_container_manager,
+        &mut worker_process_pids,
     )?;
 
     #[cfg(feature = "pci-hotplug")]
@@ -2265,6 +2292,7 @@ where
         pvclock_host_tube,
         metrics_recv,
         vfio_container_manager,
+        worker_process_pids,
     )
 }
 
@@ -3366,6 +3394,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(feature = "pvclock")] pvclock_host_tube: Option<Tube>,
     metrics_tube: RecvTube,
     mut vfio_container_manager: VfioContainerManager,
+    // A set of PID of child processes whose clean exit is expected and can be ignored.
+    mut worker_process_pids: BTreeSet<Pid>,
 ) -> Result<ExitState> {
     #[derive(EventToken)]
     enum Token {
@@ -3896,6 +3926,16 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             && siginfo.ssi_code == libc::CLD_EXITED
                             && siginfo.ssi_status == 0
                         {
+                            continue;
+                        }
+
+                        // Allow clean exits of a child process in `worker_process_pids`.
+                        if siginfo.ssi_signo == libc::SIGCHLD as u32
+                            && siginfo.ssi_code == libc::CLD_EXITED
+                            && siginfo.ssi_status == 0
+                            && worker_process_pids.remove(&(pid as Pid))
+                        {
+                            info!("child {pid} exited successfully");
                             continue;
                         }
 

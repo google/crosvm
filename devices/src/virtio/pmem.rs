@@ -349,12 +349,25 @@ fn run_worker(
     }
 }
 
+/// Specifies how memory slot is initialized.
+pub enum MemSlotConfig {
+    /// The memory region has already been mapped to the guest.
+    MemSlot {
+        /// index of the guest-mapped memory regions.
+        idx: MemSlot,
+    },
+    /// The memory region that is not initialized yet and whose slot index will be provided via
+    /// `Tube` later. e.g. pmem-ext2 device, where fs construction will be done in the main
+    /// process.
+    LazyInit { tube: Tube },
+}
+
 pub struct Pmem {
     worker_thread: Option<WorkerThread<(Queue, Tube)>>,
     features: u64,
     disk_image: Option<File>,
     mapping_address: GuestAddress,
-    mapping_arena_slot: MemSlot,
+    mem_slot: MemSlotConfig,
     mapping_size: u64,
     pmem_device_tube: Option<Tube>,
     swap_interval: Option<Duration>,
@@ -373,8 +386,7 @@ pub struct PmemConfig {
     pub disk_image: Option<File>,
     /// Guest physical address where the memory will be mapped.
     pub mapping_address: GuestAddress,
-    /// The index of the guest-mapped memory regions.
-    pub mapping_arena_slot: MemSlot,
+    pub mem_slot: MemSlotConfig,
     /// The size of the mapped region.
     pub mapping_size: u64,
     /// A communication channel to the main process to send memory requests.
@@ -393,6 +405,11 @@ impl Pmem {
 
         let mut avail_features = base_features;
         if cfg.mapping_writable {
+            if let MemSlotConfig::LazyInit { .. } = cfg.mem_slot {
+                error!("pmem-ext2 must be a read-only device");
+                return Err(SysError::new(libc::EINVAL));
+            }
+
             avail_features |= 1 << VIRTIO_PMEM_F_DISCARD;
         }
 
@@ -401,7 +418,7 @@ impl Pmem {
             features: avail_features,
             disk_image: cfg.disk_image,
             mapping_address: cfg.mapping_address,
-            mapping_arena_slot: cfg.mapping_arena_slot,
+            mem_slot: cfg.mem_slot,
             mapping_size: cfg.mapping_size,
             pmem_device_tube: Some(cfg.pmem_device_tube),
             swap_interval: cfg.swap_interval,
@@ -419,6 +436,11 @@ impl VirtioDevice for Pmem {
         if let Some(ref pmem_device_tube) = self.pmem_device_tube {
             keep_rds.push(pmem_device_tube.as_raw_descriptor());
         }
+
+        if let MemSlotConfig::LazyInit { tube } = &self.mem_slot {
+            keep_rds.push(tube.as_raw_descriptor());
+        }
+
         keep_rds
     }
 
@@ -454,7 +476,6 @@ impl VirtioDevice for Pmem {
 
         let mut queue = queues.remove(&0).unwrap();
 
-        let mapping_arena_slot = self.mapping_arena_slot;
         // We checked that this fits in a usize in `Pmem::new`.
         let mapping_size = self.mapping_size as usize;
 
@@ -464,6 +485,13 @@ impl VirtioDevice for Pmem {
             .context("missing pmem device tube")?;
 
         let swap_interval = self.swap_interval;
+
+        let mapping_arena_slot = match &self.mem_slot {
+            MemSlotConfig::MemSlot { idx } => *idx,
+            MemSlotConfig::LazyInit { tube } => tube
+                .recv::<u32>()
+                .context("failed to receive memory slot for ext2 pmem device")?,
+        };
 
         self.worker_thread = Some(WorkerThread::start("v_pmem", move |kill_event| {
             run_worker(

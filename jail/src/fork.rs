@@ -64,7 +64,7 @@ impl Child {
 
 impl Drop for Child {
     fn drop(&mut self) {
-        warn!("the child process have not been waited.");
+        warn!("the child process have not been waited.: {}", self.pid);
     }
 }
 

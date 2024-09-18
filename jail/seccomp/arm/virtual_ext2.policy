@@ -1,0 +1,24 @@
+# Copyright 2024 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+close: 1
+exit_group: 1
+fcntl: arg1 == F_GETFD || arg1 == F_SETFD || arg1 == F_DUPFD_CLOEXEC
+fstatat64: 1
+fstatfs: 1
+fstatfs64: 1
+getdents64: 1
+getegid: 1
+geteuid: 1
+getrandom: 1
+mmap2: arg2 in ~PROT_EXEC
+msync: 1
+munmap: 1
+openat: arg3 in O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY
+readlinkat: 1
+recvfrom: 1
+recvmsg: 1
+sendmsg: 1
+sigaltstack: 1
+statx: 1
