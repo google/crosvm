@@ -43,7 +43,9 @@ fn jail_and_fork(
     gid_map: Option<String>,
     disable_sandbox: bool,
 ) -> anyhow::Result<i32> {
-    let limit = max_open_files().context("failed to get max open files")?;
+    let limit = max_open_files()
+        .context("failed to get max open files")?
+        .rlim_max;
     // Create new minijail sandbox
     let jail = if disable_sandbox {
         create_base_minijail(dir_path.as_path(), limit)?

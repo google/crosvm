@@ -552,8 +552,8 @@ pub fn open_file_or_duplicate<P: AsRef<Path>>(path: P, options: &OpenOptions) ->
     })
 }
 
-/// Get the max number of open files allowed by the environment.
-pub fn max_open_files() -> Result<u64> {
+/// Get the soft and hard limits of max number of open files allowed by the environment.
+pub fn max_open_files() -> Result<libc::rlimit64> {
     let mut buf = mem::MaybeUninit::<libc::rlimit64>::zeroed();
 
     // SAFETY:
@@ -563,7 +563,7 @@ pub fn max_open_files() -> Result<u64> {
         // SAFETY:
         // Safe because the kernel guarantees that the struct is fully initialized.
         let limit = unsafe { buf.assume_init() };
-        Ok(limit.rlim_max)
+        Ok(limit)
     } else {
         errno_result()
     }
