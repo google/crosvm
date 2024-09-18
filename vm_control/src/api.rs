@@ -35,6 +35,8 @@ pub enum ApiClientError {
     RequestFailed(#[from] base::Error),
     #[error("API client tube send failed: {0}")]
     Send(TubeError),
+    #[error("API client tube sending FDs failed: {0}")]
+    SendFds(TubeError),
     #[error("Unexpected tube response")]
     UnexpectedResponse,
 }
@@ -87,8 +89,40 @@ impl VmMemoryClient {
         };
         match self.request(&request)? {
             VmMemoryResponse::Err(e) => Err(ApiClientError::RequestFailed(e)),
-            VmMemoryResponse::RegisterMemory(region_id) => Ok(region_id),
+            VmMemoryResponse::RegisterMemory { region_id, .. } => Ok(region_id),
             _other => Err(ApiClientError::UnexpectedResponse),
+        }
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    pub fn mmap_and_register_memory(
+        &self,
+        mapping_address: GuestAddress,
+        shm: base::SharedMemory,
+        file_mapping_info: Vec<crate::VmMemoryFileMapping>,
+    ) -> Result<u32> {
+        let num_file_mappings = file_mapping_info.len();
+        let req = VmMemoryRequest::MmapAndRegisterMemory {
+            shm,
+            dest: VmMemoryDestination::GuestPhysicalAddress(mapping_address.0),
+            num_file_mappings,
+        };
+
+        self.tube.send(&req).map_err(ApiClientError::Send)?;
+
+        // Since the number of FDs that can be sent via Tube at once is limited to
+        // SCM_MAX_FD, split `file_mappings` to chunks and send them
+        // repeatedly.
+        for m in file_mapping_info.chunks(base::unix::SCM_MAX_FD) {
+            self.tube
+                .send_with_max_fds(&m, m.len())
+                .map_err(ApiClientError::SendFds)?;
+        }
+
+        match self.tube.recv().map_err(ApiClientError::Recv)? {
+            VmMemoryResponse::RegisterMemory { slot, .. } => Ok(slot),
+            VmMemoryResponse::Err(e) => Err(ApiClientError::RequestFailed(e)),
+            _ => Err(ApiClientError::UnexpectedResponse),
         }
     }
 

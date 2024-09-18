@@ -2308,9 +2308,9 @@ fn start_pci_root_worker(
                 })
                 .context("failed to send request")?;
             match self.vm_control_tube.recv::<VmMemoryResponse>() {
-                Ok(VmMemoryResponse::RegisterMemory(slot)) => {
+                Ok(VmMemoryResponse::RegisterMemory { region_id, .. }) => {
                     let cur_id = self.next_id;
-                    self.registered_regions.insert(cur_id, slot);
+                    self.registered_regions.insert(cur_id, region_id);
                     self.next_id += 1;
                     Ok(cur_id)
                 }
@@ -4443,6 +4443,7 @@ fn vm_memory_handler_thread(
                         match tube.recv::<VmMemoryRequest>() {
                             Ok(request) => {
                                 let response = request.execute(
+                                    tube,
                                     &mut vm,
                                     &mut sys_allocator_mutex.lock(),
                                     &mut gralloc,
