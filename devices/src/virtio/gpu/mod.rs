@@ -42,6 +42,7 @@ use base::WorkerThread;
 use data_model::*;
 pub use gpu_display::EventDevice;
 use gpu_display::*;
+use hypervisor::MemCacheType;
 pub use parameters::AudioDeviceMode;
 pub use parameters::GpuParameters;
 use rutabaga_gfx::*;
@@ -85,6 +86,7 @@ use super::Interrupt;
 use super::Queue;
 use super::Reader;
 use super::SharedMemoryMapper;
+use super::SharedMemoryPrepareType;
 use super::SharedMemoryRegion;
 use super::VirtioDevice;
 use super::Writer;
@@ -1793,6 +1795,19 @@ impl VirtioDevice for Gpu {
     fn expose_shmem_descriptors_with_viommu(&self) -> bool {
         // TODO(b/323368701): integrate with fixed_blob_mapping so this can always return true.
         !self.fixed_blob_mapping
+    }
+
+    fn get_shared_memory_prepare_type(&mut self) -> SharedMemoryPrepareType {
+        if self.fixed_blob_mapping {
+            let cache_type = if cfg!(feature = "noncoherent-dma") {
+                MemCacheType::CacheNonCoherent
+            } else {
+                MemCacheType::CacheCoherent
+            };
+            SharedMemoryPrepareType::SingleMappingOnFirst(cache_type)
+        } else {
+            SharedMemoryPrepareType::DynamicPerMapping
+        }
     }
 
     // Notes on sleep/wake/snapshot/restore functionality.
