@@ -473,7 +473,7 @@ pub struct Options {
 pub fn run_vsock_device(opts: Options) -> anyhow::Result<()> {
     let ex = Executor::new().context("failed to create executor")?;
 
-    let listener = VhostUserListener::new_socket(&opts.socket, None)?;
+    let listener = VhostUserListener::new(&opts.socket, None)?;
 
     let vsock_device = Box::new(VhostUserVsockDevice::new(opts.cid, opts.vhost_socket)?);
 

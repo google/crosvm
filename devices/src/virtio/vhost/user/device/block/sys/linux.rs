@@ -50,7 +50,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         None,
     )?);
 
-    let listener = VhostUserListener::new_socket(&opts.socket, None)?;
+    let listener = VhostUserListener::new(&opts.socket, None)?;
     info!("vhost-user disk device ready, starting run loop...");
 
     listener.run_device(ex, block)

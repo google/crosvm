@@ -351,7 +351,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
                     NET_EXECUTOR.with(|thread_ex| {
                         let _ = thread_ex.set(ex.clone());
                     });
-                    let listener = VhostUserListener::new_socket(&socket, None)?;
+                    let listener = VhostUserListener::new(&socket, None)?;
                     // run_until() returns an Result<Result<..>> which the ? operator lets us
                     // flatten.
                     ex.run_until(listener.run_backend(backend, &ex))?

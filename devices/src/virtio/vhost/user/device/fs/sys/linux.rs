@@ -114,7 +114,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
 
     let (listener, stream) = match (opts.socket, opts.fd) {
         (Some(socket), None) => {
-            let listener = VhostUserListener::new_socket(&socket, Some(&mut keep_rds))?;
+            let listener = VhostUserListener::new(&socket, Some(&mut keep_rds))?;
             (Some(listener), None)
         }
         (None, Some(fd)) => {

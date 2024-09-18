@@ -365,7 +365,7 @@ pub fn run_wl_device(opts: Options) -> anyhow::Result<()> {
 
     let ex = Executor::new().context("failed to create executor")?;
 
-    let listener = VhostUserListener::new_socket(&socket, None)?;
+    let listener = VhostUserListener::new(&socket, None)?;
 
     let backend = WlBackend::new(&ex, wayland_paths, resource_bridge);
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
