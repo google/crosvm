@@ -4577,8 +4577,9 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
     let device = params
         .create_vhost_user_device(&mut keep_rds)
         .context("failed to create vhost-user device")?;
-    let mut listener = VhostUserListener::new(vhost, Some(&mut keep_rds))
-        .context("failed to create the vhost listener")?;
+    let mut listener =
+        VhostUserListener::new(vhost).context("failed to create the vhost listener")?;
+    keep_rds.push(listener.as_raw_descriptor());
     let parent_resources = listener.take_parent_process_resources();
 
     // Executor must be created before jail in order to prevent the jailed process from creating

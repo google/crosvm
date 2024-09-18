@@ -187,7 +187,7 @@ fn run_multi_port_device(opts: Options) -> anyhow::Result<()> {
     let device = Box::new(create_vu_multi_port_device(&opts.port, &mut Vec::new())?);
     let ex = Executor::new().context("Failed to create executor")?;
 
-    let listener = VhostUserListener::new(&opts.socket, None)?;
+    let listener = VhostUserListener::new(&opts.socket)?;
 
     listener.run_device(ex, device)
 }
@@ -256,7 +256,7 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
     let device = Box::new(create_vu_console_device(&params, &mut Vec::new())?);
     let ex = Executor::new().context("Failed to create executor")?;
 
-    let listener = VhostUserListener::new(&opts.socket, None)?;
+    let listener = VhostUserListener::new(&opts.socket)?;
 
     listener.run_device(ex, device)
 }

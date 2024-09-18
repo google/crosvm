@@ -23,16 +23,16 @@ pub struct VhostUserListener(SocketListener);
 
 impl VhostUserListener {
     /// Create a vhost-user listener from a UNIX domain socket path.
-    ///
-    /// `keep_rds` can be specified to retrieve the raw descriptors that must be preserved for this
-    /// listener to keep working after forking.
-    pub fn new(path: &str, keep_rds: Option<&mut Vec<RawDescriptor>>) -> anyhow::Result<Self> {
+    pub fn new(path: &str) -> anyhow::Result<Self> {
         let listener = SocketListener::new(path, true)?;
-        if let Some(rds) = keep_rds {
-            rds.push(listener.as_raw_descriptor());
-        }
 
         Ok(VhostUserListener(listener))
+    }
+}
+
+impl AsRawDescriptor for VhostUserListener {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.0.as_raw_descriptor()
     }
 }
 

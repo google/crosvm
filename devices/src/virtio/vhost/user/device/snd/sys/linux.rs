@@ -50,7 +50,7 @@ pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
     let ex = Executor::new().context("Failed to create executor")?;
     let snd_device = Box::new(SndBackend::new(&ex, opts.params, 0)?);
 
-    let listener = VhostUserListener::new(&opts.socket, None)?;
+    let listener = VhostUserListener::new(&opts.socket)?;
 
     listener.run_device(ex, snd_device)
 }

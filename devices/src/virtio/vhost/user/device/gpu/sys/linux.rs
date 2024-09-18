@@ -220,7 +220,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     let base_features = virtio::base_features(ProtectionType::Unprotected);
 
-    let listener = VhostUserListener::new(&socket, None)?;
+    let listener = VhostUserListener::new(&socket)?;
 
     let gpu = Rc::new(RefCell::new(Gpu::new(
         exit_evt_wrtube,

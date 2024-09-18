@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use anyhow::bail;
 use anyhow::Context;
 use base::linux::max_open_files;
+use base::AsRawDescriptor;
 use base::RawDescriptor;
 use cros_async::Executor;
 use jail::create_base_minijail;
@@ -114,7 +115,8 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
 
     let (listener, stream) = match (opts.socket, opts.fd) {
         (Some(socket), None) => {
-            let listener = VhostUserListener::new(&socket, Some(&mut keep_rds))?;
+            let listener = VhostUserListener::new(&socket)?;
+            keep_rds.push(listener.as_raw_descriptor());
             (Some(listener), None)
         }
         (None, Some(fd)) => {
