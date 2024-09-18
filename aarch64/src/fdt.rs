@@ -5,6 +5,8 @@
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::PathBuf;
 
 use arch::apply_device_tree_overlays;
@@ -13,6 +15,7 @@ use arch::CpuSet;
 use arch::DtbOverlay;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use arch::PlatformBusResources;
+use base::open_file_or_duplicate;
 use cros_fdt::Error;
 use cros_fdt::Fdt;
 use cros_fdt::Result;
@@ -742,7 +745,16 @@ pub fn create_fdt(
     let fdt_final = fdt.finish()?;
 
     if let Some(file_path) = dump_device_tree_blob {
-        std::fs::write(&file_path, &fdt_final)
+        let mut fd = open_file_or_duplicate(
+            &file_path,
+            OpenOptions::new()
+                .read(true)
+                .create(true)
+                .truncate(true)
+                .write(true),
+        )
+        .map_err(|e| Error::FdtIoError(e.into()))?;
+        fd.write_all(&fdt_final)
             .map_err(|e| Error::FdtDumpIoError(e, file_path.clone()))?;
     }
 
