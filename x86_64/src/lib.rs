@@ -344,6 +344,15 @@ pub const BOOT_STACK_POINTER: u64 = 0x8000;
 const START_OF_RAM_32BITS: u64 = 0;
 const FIRST_ADDR_PAST_20BITS: u64 = 1 << 20;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
+// Make sure it align to 256MB for MTRR convenient
+const MEM_32BIT_GAP_SIZE: u64 = 768 * MB;
+// Reserved memory for nand_bios/LAPIC/IOAPIC/HPET/.....
+const RESERVED_MEM_SIZE: u64 = 0x800_0000;
+const PCI_MMIO_END: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - 1;
+// Reserve 64MB for pcie enhanced configuration
+const DEFAULT_PCIE_CFG_MMIO_SIZE: u64 = 0x400_0000;
+const DEFAULT_PCIE_CFG_MMIO_END: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - 1;
+const DEFAULT_PCIE_CFG_MMIO_START: u64 = DEFAULT_PCIE_CFG_MMIO_END - DEFAULT_PCIE_CFG_MMIO_SIZE + 1;
 // Linux (with 4-level paging) has a physical memory limit of 46 bits (64 TiB).
 const HIGH_MMIO_MAX_END: u64 = (1u64 << 46) - 1;
 pub const KERNEL_32BIT_ENTRY_OFFSET: u64 = 0x0;
@@ -393,16 +402,6 @@ static LOW_MEMORY_LAYOUT: OnceCell<LowMemoryLayout> = OnceCell::new();
 
 pub fn init_low_memory_layout(pcie_ecam: Option<AddressRange>, pci_low_start: Option<u64>) {
     LOW_MEMORY_LAYOUT.get_or_init(|| {
-        // Make sure it align to 256MB for MTRR convenient
-        const MEM_32BIT_GAP_SIZE: u64 = 768 * MB;
-        // Reserved memory for nand_bios/LAPIC/IOAPIC/HPET/.....
-        const RESERVED_MEM_SIZE: u64 = 0x800_0000;
-        const PCI_MMIO_END: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - 1;
-        // Reserve 64MB for pcie enhanced configuration
-        const DEFAULT_PCIE_CFG_MMIO_SIZE: u64 = 0x400_0000;
-        const DEFAULT_PCIE_CFG_MMIO_END: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - 1;
-        const DEFAULT_PCIE_CFG_MMIO_START: u64 =
-            DEFAULT_PCIE_CFG_MMIO_END - DEFAULT_PCIE_CFG_MMIO_SIZE + 1;
         const DEFAULT_PCIE_CFG_MMIO: AddressRange = AddressRange {
             start: DEFAULT_PCIE_CFG_MMIO_START,
             end: DEFAULT_PCIE_CFG_MMIO_END,
