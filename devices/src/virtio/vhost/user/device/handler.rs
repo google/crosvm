@@ -797,54 +797,6 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
             Vec::new()
         })
     }
-
-    fn snapshot(&mut self) -> VhostResult<Vec<u8>> {
-        if !self.all_queues_stopped() {
-            return Err(VhostError::InvalidOperation);
-        }
-        match serde_json::to_vec(&DeviceRequestHandlerSnapshot {
-            acked_features: self.acked_features,
-            acked_protocol_features: self.acked_protocol_features.bits(),
-            // TODO: The backend's snapshot is getting double serialized. Consider serializing just
-            // the other fields and then passing along the backend's snapshot as is.
-            backend: self.backend.snapshot().map_err(VhostError::SnapshotError)?,
-        }) {
-            Ok(serialized_json) => Ok(serialized_json),
-            Err(e) => {
-                error!("Failed to serialize DeviceRequestHandlerSnapshot: {}", e);
-                Err(VhostError::SerializationFailed)
-            }
-        }
-    }
-
-    fn restore(&mut self, data_bytes: &[u8]) -> VhostResult<()> {
-        if !self.all_queues_stopped() {
-            return Err(VhostError::InvalidOperation);
-        }
-        let device_request_handler_snapshot: DeviceRequestHandlerSnapshot =
-            serde_json::from_slice(data_bytes).map_err(|e| {
-                error!("Failed to deserialize DeviceRequestHandlerSnapshot: {}", e);
-                VhostError::DeserializationFailed
-            })?;
-
-        self.acked_features = device_request_handler_snapshot.acked_features;
-        self.acked_protocol_features = VhostUserProtocolFeatures::from_bits(
-            device_request_handler_snapshot.acked_protocol_features,
-        )
-        .with_context(|| {
-            format!(
-                "unsupported bits in acked_protocol_features: {:#x}",
-                device_request_handler_snapshot.acked_protocol_features
-            )
-        })
-        .map_err(VhostError::RestoreError)?;
-
-        self.backend
-            .restore(device_request_handler_snapshot.backend)
-            .map_err(VhostError::RestoreError)?;
-
-        Ok(())
-    }
 }
 
 /// Indicates the state of backend request connection
@@ -1043,7 +995,6 @@ mod tests {
         acked_features: u64,
         active_queues: Vec<Option<Queue>>,
         allow_backend_req: bool,
-        supports_device_state: bool,
         backend_conn: Option<Arc<VhostBackendReqConnection>>,
     }
 
@@ -1063,7 +1014,6 @@ mod tests {
                 acked_features: 0,
                 active_queues,
                 allow_backend_req: false,
-                supports_device_state: false,
                 backend_conn: None,
             }
         }
@@ -1091,12 +1041,10 @@ mod tests {
         }
 
         fn protocol_features(&self) -> VhostUserProtocolFeatures {
-            let mut features = VhostUserProtocolFeatures::CONFIG;
+            let mut features =
+                VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::DEVICE_STATE;
             if self.allow_backend_req {
                 features |= VhostUserProtocolFeatures::BACKEND_REQ;
-            }
-            if self.supports_device_state {
-                features |= VhostUserProtocolFeatures::DEVICE_STATE;
             }
             features
         }
@@ -1148,30 +1096,16 @@ mod tests {
 
     #[test]
     fn test_vhost_user_lifecycle() {
-        test_vhost_user_lifecycle_parameterized(false, true);
-    }
-
-    #[test]
-    fn test_vhost_user_lifecycle_legacy_snapshot() {
-        test_vhost_user_lifecycle_parameterized(false, false);
+        test_vhost_user_lifecycle_parameterized(false);
     }
 
     #[test]
     #[cfg(not(windows))] // Windows requries more complex connection setup.
     fn test_vhost_user_lifecycle_with_backend_req() {
-        test_vhost_user_lifecycle_parameterized(true, true);
+        test_vhost_user_lifecycle_parameterized(true);
     }
 
-    #[test]
-    #[cfg(not(windows))] // Windows requries more complex connection setup.
-    fn test_vhost_user_lifecycle_with_backend_req_legacy_snapshot() {
-        test_vhost_user_lifecycle_parameterized(true, false);
-    }
-
-    fn test_vhost_user_lifecycle_parameterized(
-        allow_backend_req: bool,
-        supports_device_state: bool,
-    ) {
+    fn test_vhost_user_lifecycle_parameterized(allow_backend_req: bool) {
         const QUEUES_NUM: usize = 2;
 
         let (client_connection, server_connection) =
@@ -1265,7 +1199,6 @@ mod tests {
         // Device side
         let mut handler = DeviceRequestHandler::new(FakeBackend::new());
         handler.as_mut().allow_backend_req = allow_backend_req;
-        handler.as_mut().supports_device_state = supports_device_state;
 
         // Notify listener is ready.
         ready_tx.send(()).unwrap();
@@ -1331,19 +1264,12 @@ mod tests {
             handle_request(&mut req_handler, FrontendReq::GET_VRING_BASE).unwrap();
         }
 
-        if supports_device_state {
-            // VhostUserFrontend::virtio_snapshot()
-            handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();
-            handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
-            // VhostUserFrontend::virtio_restore()
-            handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();
-            handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
-        } else {
-            // VhostUserFrontend::virtio_snapshot()
-            handle_request(&mut req_handler, FrontendReq::SNAPSHOT).unwrap();
-            // VhostUserFrontend::virtio_restore()
-            handle_request(&mut req_handler, FrontendReq::RESTORE).unwrap();
-        }
+        // VhostUserFrontend::virtio_snapshot()
+        handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();
+        handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
+        // VhostUserFrontend::virtio_restore()
+        handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();
+        handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
 
         // VhostUserFrontend::virtio_wake()
         handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();

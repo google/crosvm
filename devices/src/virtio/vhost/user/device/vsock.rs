@@ -438,16 +438,6 @@ impl vmm_vhost::Backend for VsockBackend {
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
         Ok(vec![])
     }
-
-    fn snapshot(&mut self) -> Result<Vec<u8>> {
-        base::warn!("snapshot not implemented for vsock.");
-        Ok(Vec::new())
-    }
-
-    fn restore(&mut self, _data_bytes: &[u8]) -> Result<()> {
-        base::warn!("restore not implemented for vsock.");
-        Ok(())
-    }
 }
 
 #[derive(FromArgs)]

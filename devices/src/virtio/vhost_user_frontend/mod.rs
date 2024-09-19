@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::io::Write;
 
+use anyhow::bail;
 use anyhow::Context;
 use base::error;
 use base::trace;
@@ -607,85 +608,79 @@ impl VirtioDevice for VhostUserFrontend {
     }
 
     fn virtio_snapshot(&mut self) -> anyhow::Result<Value> {
-        let snapshot_bytes = if self
+        if !self
             .protocol_features
             .contains(VhostUserProtocolFeatures::DEVICE_STATE)
         {
-            // Send the backend an FD to write the device state to. If it gives us an FD back, then
-            // we need to read from that instead.
-            let (mut r, w) = new_pipe_pair()?;
-            let backend_r = self
-                .backend_client
-                .set_device_state_fd(
-                    VhostUserTransferDirection::Save,
-                    VhostUserMigrationPhase::Stopped,
-                    &w,
-                )
-                .context("failed to negotiate device state fd")?;
-            // EOF signals end of the device state bytes, so it is important to close our copy of
-            // the write FD before we start reading.
-            std::mem::drop(w);
-            // Read the device state.
-            let mut buf = Vec::new();
-            if let Some(mut backend_r) = backend_r {
-                backend_r.read_to_end(&mut buf)
-            } else {
-                r.read_to_end(&mut buf)
-            }
-            .context("failed to read device state")?;
-            // Call `check_device_state` to ensure the data transfer was successful.
-            self.backend_client
-                .check_device_state()
-                .context("failed to transfer device state")?;
-            buf
+            bail!("snapshot requires VHOST_USER_PROTOCOL_F_DEVICE_STATE");
+        }
+        // Send the backend an FD to write the device state to. If it gives us an FD back, then
+        // we need to read from that instead.
+        let (mut r, w) = new_pipe_pair()?;
+        let backend_r = self
+            .backend_client
+            .set_device_state_fd(
+                VhostUserTransferDirection::Save,
+                VhostUserMigrationPhase::Stopped,
+                &w,
+            )
+            .context("failed to negotiate device state fd")?;
+        // EOF signals end of the device state bytes, so it is important to close our copy of
+        // the write FD before we start reading.
+        std::mem::drop(w);
+        // Read the device state.
+        let mut snapshot_bytes = Vec::new();
+        if let Some(mut backend_r) = backend_r {
+            backend_r.read_to_end(&mut snapshot_bytes)
         } else {
-            // TODO: Delete fallback to old style snapshot once non-crosvm users are migrated off.
-            self.backend_client.snapshot().map_err(Error::Snapshot)?
-        };
+            r.read_to_end(&mut snapshot_bytes)
+        }
+        .context("failed to read device state")?;
+        // Call `check_device_state` to ensure the data transfer was successful.
+        self.backend_client
+            .check_device_state()
+            .context("failed to transfer device state")?;
         Ok(serde_json::to_value(snapshot_bytes).map_err(Error::SliceToSerdeValue)?)
     }
 
     fn virtio_restore(&mut self, data: Value) -> anyhow::Result<()> {
-        let data_bytes: Vec<u8> = serde_json::from_value(data).map_err(Error::SerdeValueToSlice)?;
-        if self
+        if !self
             .protocol_features
             .contains(VhostUserProtocolFeatures::DEVICE_STATE)
         {
-            // Send the backend an FD to read the device state from. If it gives us an FD back,
-            // then we need to write to that instead.
-            let (r, w) = new_pipe_pair()?;
-            let backend_w = self
-                .backend_client
-                .set_device_state_fd(
-                    VhostUserTransferDirection::Load,
-                    VhostUserMigrationPhase::Stopped,
-                    &r,
-                )
-                .context("failed to negotiate device state fd")?;
-            // Write the device state.
-            {
-                // EOF signals the end of the device state bytes, so we need to ensure the write
-                // objects are dropped before the `check_device_state` call. Done here by moving
-                // them into this scope.
-                let backend_w = backend_w;
-                let mut w = w;
-                if let Some(mut backend_w) = backend_w {
-                    backend_w.write_all(data_bytes.as_slice())
-                } else {
-                    w.write_all(data_bytes.as_slice())
-                }
-                .context("failed to write device state")?;
-            }
-            // Call `check_device_state` to ensure the data transfer was successful.
-            self.backend_client
-                .check_device_state()
-                .context("failed to transfer device state")?;
-        } else {
-            // TODO: Delete fallback to old style restore once non-crosvm users are migrated off.
-            self.backend_client
-                .restore(data_bytes.as_slice())
-                .map_err(Error::Restore)?;
+            bail!("restore requires VHOST_USER_PROTOCOL_F_DEVICE_STATE");
         }
+
+        let data_bytes: Vec<u8> = serde_json::from_value(data).map_err(Error::SerdeValueToSlice)?;
+        // Send the backend an FD to read the device state from. If it gives us an FD back,
+        // then we need to write to that instead.
+        let (r, w) = new_pipe_pair()?;
+        let backend_w = self
+            .backend_client
+            .set_device_state_fd(
+                VhostUserTransferDirection::Load,
+                VhostUserMigrationPhase::Stopped,
+                &r,
+            )
+            .context("failed to negotiate device state fd")?;
+        // Write the device state.
+        {
+            // EOF signals the end of the device state bytes, so we need to ensure the write
+            // objects are dropped before the `check_device_state` call. Done here by moving
+            // them into this scope.
+            let backend_w = backend_w;
+            let mut w = w;
+            if let Some(mut backend_w) = backend_w {
+                backend_w.write_all(data_bytes.as_slice())
+            } else {
+                w.write_all(data_bytes.as_slice())
+            }
+            .context("failed to write device state")?;
+        }
+        // Call `check_device_state` to ensure the data transfer was successful.
+        self.backend_client
+            .check_device_state()
+            .context("failed to transfer device state")?;
         Ok(())
     }
 }

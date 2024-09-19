@@ -4,7 +4,6 @@
 use std::fs::File;
 use std::mem;
 
-use base::error;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
 use base::SafeDescriptor;
@@ -76,8 +75,6 @@ pub trait Backend {
     ) -> Result<Option<File>>;
     fn check_device_state(&mut self) -> Result<()>;
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>>;
-    fn snapshot(&mut self) -> Result<Vec<u8>>;
-    fn restore(&mut self, data_bytes: &[u8]) -> Result<()>;
 }
 
 impl<T> Backend for T
@@ -213,14 +210,6 @@ where
 
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
         self.as_mut().get_shared_memory_regions()
-    }
-
-    fn snapshot(&mut self) -> Result<Vec<u8>> {
-        self.as_mut().snapshot()
-    }
-
-    fn restore(&mut self, data_bytes: &[u8]) -> Result<()> {
-        self.as_mut().restore(data_bytes)
     }
 }
 
@@ -660,21 +649,6 @@ impl<S: Backend> BackendServer<S> {
                     buf.extend_from_slice(r.as_bytes())
                 }
                 self.send_reply_with_payload(&hdr, &msg, buf.as_slice())?;
-            }
-            Ok(FrontendReq::SNAPSHOT) => {
-                let (success_msg, payload) = match self.backend.snapshot() {
-                    Ok(snapshot_payload) => (VhostUserSuccess::new(true), snapshot_payload),
-                    Err(e) => {
-                        error!("Failed to snapshot: {}", e);
-                        (VhostUserSuccess::new(false), Vec::new())
-                    }
-                };
-                self.send_reply_with_payload(&hdr, &success_msg, payload.as_slice())?;
-            }
-            Ok(FrontendReq::RESTORE) => {
-                let res = self.backend.restore(buf.as_slice());
-                let msg = VhostUserSuccess::new(res.is_ok());
-                self.send_reply_message(&hdr, &msg)?;
             }
             _ => {
                 return Err(Error::InvalidMessage);

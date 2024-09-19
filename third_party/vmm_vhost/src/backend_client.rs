@@ -4,7 +4,6 @@
 use std::fs::File;
 use std::mem;
 
-use anyhow::anyhow;
 use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
@@ -264,34 +263,6 @@ impl BackendClient {
             return Err(VhostUserError::BackendInternalError);
         }
         Ok(())
-    }
-
-    /// Snapshot the device and receive serialized state of the device.
-    pub fn snapshot(&self) -> Result<Vec<u8>> {
-        let hdr = self.send_request_header(FrontendReq::SNAPSHOT, None)?;
-        let (success_msg, buf_reply, _) = self.recv_reply_with_payload::<VhostUserSuccess>(&hdr)?;
-        if !success_msg.success() {
-            Err(VhostUserError::SnapshotError(anyhow!(
-                "Device process responded with a failure on SNAPSHOT."
-            )))
-        } else {
-            Ok(buf_reply)
-        }
-    }
-
-    /// Restore the device.
-    pub fn restore(&mut self, data_bytes: &[u8]) -> Result<()> {
-        let body = VhostUserEmptyMsg;
-
-        let hdr = self.send_request_with_payload(FrontendReq::RESTORE, &body, data_bytes, None)?;
-        let reply = self.recv_reply::<VhostUserSuccess>(&hdr)?;
-        if !reply.success() {
-            Err(VhostUserError::RestoreError(anyhow!(
-                "Device process responded with a failure on RESTORE."
-            )))
-        } else {
-            Ok(())
-        }
     }
 
     /// Get the protocol feature bitmask from the underlying vhost implementation.

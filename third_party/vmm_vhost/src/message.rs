@@ -157,9 +157,9 @@ pub enum FrontendReq {
     /// Start up all queue handlers with their saved queue state.
     DEPRECATED__WAKE = 1001,
     /// Request serialized state of vhost process.
-    SNAPSHOT = 1002,
+    DEPRECATED__SNAPSHOT = 1002,
     /// Request to restore state of vhost process.
-    RESTORE = 1003,
+    DEPRECATED__RESTORE = 1003,
     /// Get a list of the device's shared memory regions.
     GET_SHARED_MEMORY_REGIONS = 1004,
 }
@@ -477,33 +477,6 @@ impl VhostUserMsgValidator for VhostUserU64 {}
 pub struct VhostUserEmptyMsg;
 
 impl VhostUserMsgValidator for VhostUserEmptyMsg {}
-
-/// A generic message to encapsulate a success or failure.
-/// use i8 instead of bool to allow FromBytes to be derived.
-/// type layout is same for all supported architectures.
-#[repr(C, packed)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
-pub struct VhostUserSuccess {
-    /// True if request was successful.
-    bool_store: i8,
-}
-
-impl VhostUserSuccess {
-    /// Create a new instance.
-    pub fn new(success: bool) -> Self {
-        VhostUserSuccess {
-            bool_store: success.into(),
-        }
-    }
-
-    /// Convert i8 storage back to bool
-    #[inline(always)]
-    pub fn success(&self) -> bool {
-        self.bool_store != 0
-    }
-}
-
-impl VhostUserMsgValidator for VhostUserSuccess {}
 
 /// A generic message for empty message.
 /// ZST in repr(C) has same type layout as repr(rust)

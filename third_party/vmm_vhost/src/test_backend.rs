@@ -280,12 +280,4 @@ impl Backend for TestBackend {
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
         Ok(Vec::new())
     }
-
-    fn snapshot(&mut self) -> Result<Vec<u8>> {
-        Ok(Vec::new())
-    }
-
-    fn restore(&mut self, _data_bytes: &[u8]) -> Result<()> {
-        Ok(())
-    }
 }
