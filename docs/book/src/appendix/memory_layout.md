@@ -28,23 +28,23 @@ see the source. All addresses are in hexadecimal.
 |                              | `1_0000_0000` |                 |           | RAM (>4G)                                                                                |
 |                              | (end of RAM)  |                 |           | High (>4G) MMIO allocation area                                                          |
 
-[`start_of_ram_32bits`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=335?q=START_OF_RAM_32BITS
-[`zero_page_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=338?q=ZERO_PAGE_OFFSET
-[`boot_stack_pointer`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=332?q=BOOT_STACK_POINTER
-[`boot_pml4_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/regs.rs;l=299?q=boot_pml4_addr
-[`boot_pdpte_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/regs.rs;l=300?q=boot_pdpte_addr
-[`boot_pde_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/regs.rs;l=301?q=boot_pde_addr
-[`cmdline_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=342?q=CMDLINE_OFFSET
-[`setup_data_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=344?q=SETUP_DATA_START
-[`acpi_hi_rsdp_window_base`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=357?q=ACPI_HI_RSDP_WINDOW_BASE
-[`kernel_start_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=341?q=KERNEL_START_OFFSET
-[`initrd_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=1633?q=initrd_start
+[`start_of_ram_32bits`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=351?q=START_OF_RAM_32BITS
+[`zero_page_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=368?q=ZERO_PAGE_OFFSET
+[`boot_stack_pointer`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=350?q=BOOT_STACK_POINTER
+[`boot_pml4_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/regs.rs;l=297?q=boot_pml4_addr
+[`boot_pdpte_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/regs.rs;l=298?q=boot_pdpte_addr
+[`boot_pde_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/regs.rs;l=299?q=boot_pde_addr
+[`cmdline_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=373?q=CMDLINE_OFFSET
+[`setup_data_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=375?q=SETUP_DATA_START
+[`acpi_hi_rsdp_window_base`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=388?q=ACPI_HI_RSDP_WINDOW_BASE
+[`kernel_start_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=372?q=KERNEL_START_OFFSET
+[`initrd_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=1692?q=initrd_start
 [`protected_vm_fw_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=394?q=PROTECTED_VM_FW_START
-[`end_addr_before_32bits`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=230?q=END_ADDR_BEFORE_32BITS
-[`pcie_cfg_mmio_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=400?q=PCIE_CFG_MMIO_START
-[`reserved_mem_size`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=395?q=RESERVED_MEM_SIZE
-[`identity_map_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=339?q=identity_map_addr_start
-[`tss_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=339?q=tss_addr_start
+[`end_addr_before_32bits`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=356?q=END_ADDR_BEFORE_32BITS
+[`pcie_cfg_mmio_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=363?q=PCIE_CFG_MMIO_START
+[`reserved_mem_size`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=358?q=RESERVED_MEM_SIZE
+[`identity_map_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=500?q=identity_map_addr_start
+[`tss_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=505?q=tss_addr_start
 
 ## aarch64 guest physical memory map
 
