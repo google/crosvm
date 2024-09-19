@@ -1550,6 +1550,7 @@ impl X8664arch {
                     &mut initrd_file,
                     GuestAddress(kernel_end),
                     GuestAddress(initrd_addr_max),
+                    None,
                     base::pagesize() as u64,
                 )
                 .map_err(Error::LoadInitrd)?;

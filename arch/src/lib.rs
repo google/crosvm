@@ -93,6 +93,7 @@ use vm_control::PmResource;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
+use vm_memory::MemoryRegionInformation;
 use vm_memory::MemoryRegionOptions;
 
 cfg_if::cfg_if! {
@@ -1308,6 +1309,8 @@ where
 /// * `image` - The file containing the image to be loaded.
 /// * `min_guest_addr` - The minimum address of the start of the image.
 /// * `max_guest_addr` - The address to load the last byte of the image.
+/// * `region_filter` - The optional filter function for determining if the given guest memory
+///   region is suitable for loading the image into it.
 /// * `align` - The minimum alignment of the start address of the image in bytes (must be a power of
 ///   two).
 ///
@@ -1317,6 +1320,7 @@ pub fn load_image_high<F>(
     image: &mut F,
     min_guest_addr: GuestAddress,
     max_guest_addr: GuestAddress,
+    region_filter: Option<fn(&MemoryRegionInformation) -> bool>,
     align: u64,
 ) -> Result<(GuestAddress, usize), LoadImageError>
 where
@@ -1339,7 +1343,10 @@ where
 
     // Sort the list of guest memory regions by address so we can iterate over them in reverse order
     // (high to low).
-    let mut regions: Vec<_> = guest_mem.regions().collect();
+    let mut regions: Vec<_> = guest_mem
+        .regions()
+        .filter(region_filter.unwrap_or(|_| true))
+        .collect();
     regions.sort_unstable_by(|a, b| a.guest_addr.cmp(&b.guest_addr));
 
     // Find the highest valid address inside a guest memory region that satisfies the requested
@@ -1487,6 +1494,7 @@ mod tests {
             &mut test_image,
             GuestAddress(0x8000),
             GuestAddress(0xFFFF_FFFF), // max_guest_addr beyond highest guest memory region
+            None,
             TEST_ALIGN,
         )
         .unwrap();
