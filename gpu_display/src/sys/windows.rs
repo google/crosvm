@@ -66,7 +66,6 @@ pub trait WinGpuDisplayExt {
         win_metrics: Option<Weak<Metrics>>,
         gpu_display_wait_descriptor_ctrl: SendTube,
         vulkan_display_create_params: Option<VulkanCreateParams>,
-        custom_cursor_path: Option<String>,
     ) -> GpuDisplayResult<GpuDisplay>;
 }
 
@@ -76,14 +75,12 @@ impl WinGpuDisplayExt for GpuDisplay {
         win_metrics: Option<Weak<Metrics>>,
         gpu_display_wait_descriptor_ctrl: SendTube,
         vulkan_display_create_params: Option<VulkanCreateParams>,
-        custom_cursor_path: Option<String>,
     ) -> GpuDisplayResult<GpuDisplay> {
         let display = DisplayWin::new(
             wndproc_thread,
             win_metrics,
             gpu_display_wait_descriptor_ctrl,
             vulkan_display_create_params,
-            custom_cursor_path,
         )?;
 
         let wait_ctx = WaitContext::new()?;
