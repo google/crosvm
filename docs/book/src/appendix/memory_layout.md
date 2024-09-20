@@ -10,9 +10,9 @@ see the source. All addresses are in hexadecimal.
 | [`START_OF_RAM_32BITS`]      | `0000`        |                 |           | RAM                                                                                      |
 | [`ZERO_PAGE_OFFSET`]         | `7000`        |                 |           | Linux boot_params structure                                                              |
 | [`BOOT_STACK_POINTER`]       | `8000`        |                 |           | Boot SP value                                                                            |
-| [`boot_pml4_addr`]           | `9000`        |                 |           | Boot page table                                                                          |
-| [`boot_pdpte_addr`]          | `A000`        |                 |           | Boot page table                                                                          |
-| [`boot_pde_addr`]            | `B000`        |                 |           | Boot page table                                                                          |
+| [`boot_pml4_addr`]           | `9000`        | `A000`          | 4 KiB     | Boot page table                                                                          |
+| [`boot_pdpte_addr`]          | `A000`        | `B000`          | 4 KiB     | Boot page table                                                                          |
+| [`boot_pde_addr`]            | `B000`        | `F000`          | 16 KiB    | Boot page tables                                                                         |
 | [`CMDLINE_OFFSET`]           | `2_0000`      | `2_0800`        | 2 KiB     | Linux kernel command line                                                                |
 | [`SETUP_DATA_START`]         | `2_0800`      | `E_0000`        | 766 KiB   | Linux kernel `setup_data` linked list                                                    |
 | [`ACPI_HI_RSDP_WINDOW_BASE`] | `E_0000`      |                 |           | ACPI tables                                                                              |
