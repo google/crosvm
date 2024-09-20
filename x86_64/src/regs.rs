@@ -291,6 +291,7 @@ pub fn configure_segments_and_sregs_flat32(mem: &GuestMemory, sregs: &mut Sregs)
 }
 
 /// Configures the system page tables and control registers for long mode with paging.
+/// Prepares identity mapping for the low 4GB memory.
 pub fn setup_page_tables(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
     // Puts PML4 right after zero page but aligned to 4k.
     let boot_pml4_addr = GuestAddress(0x9000);
@@ -301,16 +302,28 @@ pub fn setup_page_tables(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
     mem.write_obj_at_addr(boot_pdpte_addr.offset() | 0x03, boot_pml4_addr)
         .map_err(|_| Error::WritePML4Address)?;
 
-    // Entry covering VA [0..1GB)
-    mem.write_obj_at_addr(boot_pde_addr.offset() | 0x03, boot_pdpte_addr)
+    // Identity mapping for VA [0..4GB)
+    for i in 0..4 {
+        let pde_addr = boot_pde_addr.unchecked_add(i * 0x1000);
+
+        // Entry covering a single 1GB VA area
+        mem.write_obj_at_addr(
+            pde_addr.offset() | 0x03,
+            boot_pdpte_addr.unchecked_add(i * 8),
+        )
         .map_err(|_| Error::WritePDPTEAddress)?;
 
-    // 512 2MB entries together covering VA [0..1GB). Note we are assuming
-    // CPU supports 2MB pages (/proc/cpuinfo has 'pse'). All modern CPUs do.
-    for i in 0..512 {
-        mem.write_obj_at_addr((i << 21) + 0x83u64, boot_pde_addr.unchecked_add(i * 8))
+        // 512 2MB entries together covering a single 1GB VA area. Note we are assuming
+        // CPU supports 2MB pages (/proc/cpuinfo has 'pse'). All modern CPUs do.
+        for j in 0..512 {
+            mem.write_obj_at_addr(
+                (i << 30) | (j << 21) | 0x83u64,
+                pde_addr.unchecked_add(j * 8),
+            )
             .map_err(|_| Error::WritePDEAddress)?;
+        }
     }
+
     sregs.cr3 = boot_pml4_addr.offset();
     sregs.cr4 |= X86_CR4_PAE;
     sregs.cr0 |= X86_CR0_PG;
