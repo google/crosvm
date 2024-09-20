@@ -35,28 +35,18 @@ fn path_is_socket(path: &Path) -> bool {
 impl VhostUserStream {
     /// Creates a new vhost-user listener from an existing connected socket file descriptor.
     ///
-    /// `keep_rds` can be specified to retrieve the raw descriptor that must be preserved for this
-    /// listener to keep working after forking.
-    ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - The provided file descriptor is not a socket.
     /// - An error occurs while creating the underlying `SocketListener`.
-    pub fn new_socket_from_fd(
-        socket_fd: RawDescriptor,
-        keep_rds: Option<&mut Vec<RawDescriptor>>,
-    ) -> anyhow::Result<Self> {
+    pub fn new_socket_from_fd(socket_fd: RawDescriptor) -> anyhow::Result<Self> {
         let path = PathBuf::from(format!("/proc/self/fd/{}", socket_fd));
         if !path_is_socket(&path) {
             return Err(SocketFromFdError(path).into());
         }
 
         let safe_fd = safe_descriptor_from_cmdline_fd(&socket_fd)?;
-
-        if let Some(rds) = keep_rds {
-            rds.push(safe_fd.as_raw_descriptor());
-        }
 
         let stream = UnixStream::from(safe_fd);
 
@@ -71,6 +61,12 @@ impl VhostUserConnectionTrait for VhostUserStream {
         ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
         async { stream_run_with_handler(self.0, handler, ex).await }.boxed_local()
+    }
+}
+
+impl AsRawDescriptor for VhostUserStream {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.0.as_raw_descriptor()
     }
 }
 

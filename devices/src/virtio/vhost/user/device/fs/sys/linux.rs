@@ -122,7 +122,8 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
             (Some(listener), None)
         }
         (None, Some(fd)) => {
-            let stream = VhostUserStream::new_socket_from_fd(fd, Some(&mut keep_rds))?;
+            let stream = VhostUserStream::new_socket_from_fd(fd)?;
+            keep_rds.push(stream.as_raw_descriptor());
             (None, Some(stream))
         }
         (Some(_), Some(_)) => bail!("Cannot specify both a socket path and a file descriptor"),
