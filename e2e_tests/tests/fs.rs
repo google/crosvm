@@ -170,7 +170,7 @@ pub fn create_vu_fs_config(socket: &Path, shared_dir: &Path, tag: &str) -> VuCon
     println!("socket={socket_path}, tag={tag}, shared_dir={shared_dir_path}");
     VuConfig::new(CmdType::Device, "vhost-user-fs").extra_args(vec![
         "fs".to_string(),
-        format!("--socket={socket_path}"),
+        format!("--socket-path={socket_path}"),
         format!("--shared-dir={shared_dir_path}"),
         format!("--tag={tag}"),
         format!("--uid-map=0 {uid} 1"),

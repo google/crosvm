@@ -35,6 +35,8 @@ pub use snd::run_snd_device;
 #[cfg(feature = "audio")]
 pub use snd::Options as SndOptions;
 
+pub use crate::virtio::vhost::user::device::connection::BackendConnection;
+
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
         mod console;

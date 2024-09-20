@@ -21,10 +21,9 @@ use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 use crate::virtio::console::device::ConsoleDevice;
 use crate::virtio::console::device::ConsoleSnapshot;
 use crate::virtio::console::port::ConsolePort;
-use crate::virtio::vhost::user::device::connection::sys::VhostUserListener;
-use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostUserDevice;
+use crate::virtio::vhost::user::device::BackendConnection;
 use crate::virtio::vhost::user::device::VhostUserDeviceBuilder;
 use crate::virtio::Queue;
 use crate::SerialHardware;
@@ -130,9 +129,18 @@ impl VhostUserDevice for ConsoleBackend {
 #[argh(subcommand, name = "console")]
 /// Console device
 pub struct Options {
+    #[argh(option, arg_name = "PATH", hidden_help)]
+    /// deprecated - please use --socket-path instead
+    socket: Option<String>,
     #[argh(option, arg_name = "PATH")]
-    /// path to a vhost-user socket
-    socket: String,
+    /// path to the vhost-user socket to bind to.
+    /// If this flag is set, --fd cannot be specified.
+    socket_path: Option<String>,
+    #[argh(option, arg_name = "FD")]
+    /// file descriptor of a connected vhost-user socket.
+    /// If this flag is set, --socket-path cannot be specified.
+    fd: Option<RawDescriptor>,
+
     #[argh(option, arg_name = "OUTFILE")]
     /// path to a file
     output_file: Option<PathBuf>,
@@ -187,9 +195,9 @@ fn run_multi_port_device(opts: Options) -> anyhow::Result<()> {
     let device = Box::new(create_vu_multi_port_device(&opts.port, &mut Vec::new())?);
     let ex = Executor::new().context("Failed to create executor")?;
 
-    let listener = VhostUserListener::new(&opts.socket)?;
-
-    listener.run_device(ex, device)
+    let conn =
+        BackendConnection::from_opts(opts.socket.as_deref(), opts.socket_path.as_deref(), opts.fd)?;
+    conn.run_device(ex, device)
 }
 
 /// Return a new vhost-user console device. `params` are the device's configuration, and `keep_rds`
@@ -256,7 +264,8 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
     let device = Box::new(create_vu_console_device(&params, &mut Vec::new())?);
     let ex = Executor::new().context("Failed to create executor")?;
 
-    let listener = VhostUserListener::new(&opts.socket)?;
+    let conn =
+        BackendConnection::from_opts(opts.socket.as_deref(), opts.socket_path.as_deref(), opts.fd)?;
 
-    listener.run_device(ex, device)
+    conn.run_device(ex, device)
 }

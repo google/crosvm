@@ -17,6 +17,7 @@ use argh::FromArgs;
 use base::clone_descriptor;
 use base::error;
 use base::warn;
+use base::RawDescriptor;
 use base::SafeDescriptor;
 use base::Tube;
 use base::UnixSeqpacket;
@@ -38,13 +39,12 @@ use crate::virtio::device_constants::wl::NUM_QUEUES;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_SEND_FENCES;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_TRANS_FLAGS;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
-use crate::virtio::vhost::user::device::connection::sys::VhostUserListener;
-use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::handler::WorkerState;
+use crate::virtio::vhost::user::device::BackendConnection;
 use crate::virtio::wl;
 use crate::virtio::Queue;
 use crate::virtio::SharedMemoryRegion;
@@ -321,9 +321,18 @@ pub fn parse_wayland_sock(value: &str) -> Result<(String, PathBuf), String> {
 #[argh(subcommand, name = "wl")]
 /// Wayland device
 pub struct Options {
+    #[argh(option, arg_name = "PATH", hidden_help)]
+    /// deprecated - please use --socket-path instead
+    socket: Option<String>,
     #[argh(option, arg_name = "PATH")]
-    /// path to bind a listening vhost-user socket
-    socket: String,
+    /// path to the vhost-user socket to bind to.
+    /// If this flag is set, --fd cannot be specified.
+    socket_path: Option<String>,
+    #[argh(option, arg_name = "FD")]
+    /// file descriptor of a connected vhost-user socket.
+    /// If this flag is set, --socket-path cannot be specified.
+    fd: Option<RawDescriptor>,
+
     #[argh(option, from_str_fn(parse_wayland_sock), arg_name = "PATH[,name=NAME]")]
     /// path to one or more Wayland sockets. The unnamed socket is used for
     /// displaying virtual screens while the named ones are used for IPC
@@ -339,6 +348,8 @@ pub fn run_wl_device(opts: Options) -> anyhow::Result<()> {
     let Options {
         wayland_sock,
         socket,
+        socket_path,
+        fd,
         resource_bridge,
     } = opts;
 
@@ -365,9 +376,9 @@ pub fn run_wl_device(opts: Options) -> anyhow::Result<()> {
 
     let ex = Executor::new().context("failed to create executor")?;
 
-    let listener = VhostUserListener::new(&socket)?;
+    let conn = BackendConnection::from_opts(socket.as_deref(), socket_path.as_deref(), fd)?;
 
     let backend = WlBackend::new(&ex, wayland_paths, resource_bridge);
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    ex.run_until(listener.run_backend(backend, &ex))?
+    ex.run_until(conn.run_backend(backend, &ex))?
 }

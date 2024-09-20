@@ -12,6 +12,7 @@ use anyhow::Context;
 use argh::FromArgs;
 use base::clone_descriptor;
 use base::error;
+use base::RawDescriptor;
 use base::SafeDescriptor;
 use base::Tube;
 use base::UnixSeqpacketListener;
@@ -25,10 +26,9 @@ use sync::Mutex;
 use crate::virtio;
 use crate::virtio::gpu;
 use crate::virtio::gpu::ProcessDisplayResult;
-use crate::virtio::vhost::user::device::connection::sys::VhostUserListener;
-use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
 use crate::virtio::vhost::user::device::gpu::GpuBackend;
 use crate::virtio::vhost::user::device::wl::parse_wayland_sock;
+use crate::virtio::vhost::user::device::BackendConnection;
 use crate::virtio::Gpu;
 use crate::virtio::GpuDisplayParameters;
 use crate::virtio::GpuParameters;
@@ -119,9 +119,18 @@ fn gpu_parameters_from_str(input: &str) -> Result<GpuParameters, String> {
 /// GPU device
 #[argh(subcommand, name = "gpu")]
 pub struct Options {
+    #[argh(option, arg_name = "PATH", hidden_help)]
+    /// deprecated - please use --socket-path instead
+    socket: Option<String>,
     #[argh(option, arg_name = "PATH")]
-    /// path to bind a listening vhost-user socket
-    socket: String,
+    /// path to the vhost-user socket to bind to.
+    /// If this flag is set, --fd cannot be specified.
+    socket_path: Option<String>,
+    #[argh(option, arg_name = "FD")]
+    /// file descriptor of a connected vhost-user socket.
+    /// If this flag is set, --socket-path cannot be specified.
+    fd: Option<RawDescriptor>,
+
     #[argh(option, from_str_fn(parse_wayland_sock), arg_name = "PATH[,name=NAME]")]
     /// path to one or more Wayland sockets. The unnamed socket is
     /// used for displaying virtual screens while the named ones are used for IPC
@@ -149,6 +158,8 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         params: mut gpu_parameters,
         resource_bridge,
         socket,
+        socket_path,
+        fd,
         wayland_sock,
     } = opts;
 
@@ -220,7 +231,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     let base_features = virtio::base_features(ProtectionType::Unprotected);
 
-    let listener = VhostUserListener::new(&socket)?;
+    let conn = BackendConnection::from_opts(socket.as_deref(), socket_path.as_deref(), fd)?;
 
     let gpu = Rc::new(RefCell::new(Gpu::new(
         exit_evt_wrtube,
@@ -249,7 +260,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     };
 
     // Run until the backend is finished.
-    let _ = ex.run_until(listener.run_backend(backend, &ex))?;
+    let _ = ex.run_until(conn.run_backend(backend, &ex))?;
 
     // Process any tasks from the backend's destructor.
     Ok(ex.run_until(async {})?)

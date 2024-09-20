@@ -4,26 +4,34 @@
 
 use anyhow::Context;
 use argh::FromArgs;
-use base::info;
+use base::RawDescriptor;
 use cros_async::Executor;
 use hypervisor::ProtectionType;
 
 use crate::virtio::base_features;
 use crate::virtio::block::DiskOption;
-use crate::virtio::vhost::user::device::connection::sys::VhostUserListener;
-use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
+use crate::virtio::vhost::user::device::BackendConnection;
 use crate::virtio::BlockAsync;
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "block")]
 /// Block device
 pub struct Options {
+    #[argh(option, arg_name = "PATH", hidden_help)]
+    /// deprecated - please use --socket-path instead
+    socket: Option<String>,
+    #[argh(option, arg_name = "PATH")]
+    /// path to the vhost-user socket to bind to.
+    /// If this flag is set, --fd cannot be specified.
+    socket_path: Option<String>,
+    #[argh(option, arg_name = "FD")]
+    /// file descriptor of a connected vhost-user socket.
+    /// If this flag is set, --socket-path cannot be specified.
+    fd: Option<RawDescriptor>,
+
     #[argh(option, arg_name = "PATH<:read-only>")]
     /// path and options of the disk file.
     file: String,
-    #[argh(option, arg_name = "PATH")]
-    /// path to a vhost-user socket
-    socket: String,
 }
 
 /// Starts a vhost-user block device.
@@ -50,8 +58,8 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         None,
     )?);
 
-    let listener = VhostUserListener::new(&opts.socket)?;
-    info!("vhost-user disk device ready, starting run loop...");
+    let conn =
+        BackendConnection::from_opts(opts.socket.as_deref(), opts.socket_path.as_deref(), opts.fd)?;
 
-    listener.run_device(ex, block)
+    conn.run_device(ex, block)
 }

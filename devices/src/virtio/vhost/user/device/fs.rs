@@ -202,15 +202,18 @@ impl VhostUserDevice for FsBackend {
 #[argh(subcommand, name = "fs")]
 /// FS Device
 pub struct Options {
-    #[argh(option, arg_name = "PATH")]
-    /// the UDS path to a vhost-user socket.
-    /// If this flag is set, --fd cannot be specified.
+    #[argh(option, arg_name = "PATH", hidden_help)]
+    /// deprecated - please use --socket-path instead
     socket: Option<String>,
-    #[cfg(unix)]
+    #[argh(option, arg_name = "PATH")]
+    /// path to the vhost-user socket to bind to.
+    /// If this flag is set, --fd cannot be specified.
+    socket_path: Option<String>,
     #[argh(option, arg_name = "FD")]
     /// file descriptor of a connected vhost-user socket.
-    /// If this flag is set, --socket cannot be specified.
-    fd: Option<i32>,
+    /// If this flag is set, --socket-path cannot be specified.
+    fd: Option<RawDescriptor>,
+
     #[argh(option, arg_name = "TAG")]
     /// the virtio-fs tag
     tag: String,

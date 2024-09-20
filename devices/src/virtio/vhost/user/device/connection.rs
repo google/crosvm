@@ -12,6 +12,13 @@ use futures::Future;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::VhostUserDeviceBuilder;
+use crate::virtio::vhost::user::VhostUserListener;
+use crate::virtio::vhost::user::VhostUserStream;
+
+pub enum BackendConnection {
+    Listener(VhostUserListener),
+    Stream(VhostUserStream),
+}
 
 /// Trait that the platform-specific type `VhostUserConnection` needs to implement. It contains all
 /// the methods that are ok to call from non-platform specific code.

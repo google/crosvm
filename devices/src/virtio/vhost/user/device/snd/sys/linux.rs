@@ -4,20 +4,29 @@
 
 use anyhow::Context;
 use argh::FromArgs;
+use base::RawDescriptor;
 use cros_async::Executor;
 
 use crate::virtio::snd::parameters::Parameters;
-use crate::virtio::vhost::user::device::connection::sys::VhostUserListener;
-use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
 use crate::virtio::vhost::user::device::snd::SndBackend;
+use crate::virtio::vhost::user::device::BackendConnection;
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "snd")]
 /// Snd device
 pub struct Options {
+    #[argh(option, arg_name = "PATH", hidden_help)]
+    /// deprecated - please use --socket-path instead
+    socket: Option<String>,
     #[argh(option, arg_name = "PATH")]
-    /// path to bind a listening vhost-user socket
-    socket: String,
+    /// path to the vhost-user socket to bind to.
+    /// If this flag is set, --fd cannot be specified.
+    socket_path: Option<String>,
+    #[argh(option, arg_name = "FD")]
+    /// file descriptor of a connected vhost-user socket.
+    /// If this flag is set, --socket-path cannot be specified.
+    fd: Option<RawDescriptor>,
+
     #[argh(
         option,
         arg_name = "CONFIG",
@@ -50,7 +59,8 @@ pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
     let ex = Executor::new().context("Failed to create executor")?;
     let snd_device = Box::new(SndBackend::new(&ex, opts.params, 0)?);
 
-    let listener = VhostUserListener::new(&opts.socket)?;
+    let conn =
+        BackendConnection::from_opts(opts.socket.as_deref(), opts.socket_path.as_deref(), opts.fd)?;
 
-    listener.run_device(ex, snd_device)
+    conn.run_device(ex, snd_device)
 }

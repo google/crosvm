@@ -268,7 +268,7 @@ fn create_vu_config(cmd_type: CmdType, socket: &Path, cid: u32) -> VuConfig {
     match cmd_type {
         CmdType::Device => VuConfig::new(cmd_type, "vsock").extra_args(vec![
             "vsock".to_string(),
-            "--socket".to_string(),
+            "--socket-path".to_string(),
             socket_path.to_string(),
             "--cid".to_string(),
             cid.to_string(),

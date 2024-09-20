@@ -209,7 +209,7 @@ pub fn create_vu_block_config(cmd_type: CmdType, socket: &Path, disk: &Path) -> 
     match cmd_type {
         CmdType::Device => VuConfig::new(cmd_type, "block").extra_args(vec![
             "block".to_string(),
-            "--socket".to_string(),
+            "--socket-path".to_string(),
             socket_path.to_string(),
             "--file".to_string(),
             disk_path.to_string(),
@@ -229,7 +229,7 @@ pub fn create_vu_console_multiport_config(
 
     let mut args = vec![
         "console".to_string(),
-        "--socket".to_string(),
+        "--socket-path".to_string(),
         socket_path.to_string(),
     ];
 

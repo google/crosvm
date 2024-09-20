@@ -48,7 +48,7 @@ fn do_playback_with_vhost_user() {
         "snd".to_string(),
         "--config".to_string(),
         get_virtio_snd_args(temp_dir_path_str),
-        "--socket".to_string(),
+        "--socket-path".to_string(),
         socket_path_str.to_string(),
     ]);
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
