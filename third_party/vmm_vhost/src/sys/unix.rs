@@ -306,8 +306,6 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::backend_client::BackendClient;
-    use crate::backend_server::Backend;
-    use crate::backend_server::BackendServer;
     use crate::connection::Listener;
     use crate::message::FrontendReq;
     use crate::Connection;
@@ -319,33 +317,6 @@ pub(crate) mod tests {
     fn connect(path: &Path) -> Result<Connection<FrontendReq>> {
         let sock = UnixStream::connect(path).map_err(Error::SocketConnect)?;
         Connection::try_from(sock)
-    }
-
-    pub(crate) fn create_pair() -> (BackendClient, Connection<FrontendReq>) {
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let mut listener = SocketListener::new(&path, true).unwrap();
-        listener.set_nonblocking(true).unwrap();
-        let backend_connection = connect(&path).unwrap();
-        let backend_client = BackendClient::new(backend_connection);
-        let server_connection = listener.accept().unwrap().unwrap();
-        (backend_client, server_connection)
-    }
-
-    pub(crate) fn create_client_server_pair<S>(backend: S) -> (BackendClient, BackendServer<S>)
-    where
-        S: Backend,
-    {
-        let dir = Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let mut listener = SocketListener::new(&path, true).unwrap();
-        let backend_connection = connect(&path).unwrap();
-        let backend_client = BackendClient::new(backend_connection);
-        let connection = listener.accept().unwrap().unwrap();
-        let req_handler = BackendServer::new(connection, backend);
-        (backend_client, req_handler)
     }
 
     #[test]

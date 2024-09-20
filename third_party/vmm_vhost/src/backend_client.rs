@@ -672,10 +672,15 @@ mod tests {
     use tempfile::tempfile;
 
     use super::*;
-    use crate::tests::create_pair;
 
     const BUFFER_SIZE: usize = 0x1001;
     const INVALID_PROTOCOL_FEATURE: u64 = 1 << 63;
+
+    fn create_pair() -> (BackendClient, Connection<FrontendReq>) {
+        let (client_connection, server_connection) = Connection::pair().unwrap();
+        let backend_client = BackendClient::new(client_connection);
+        (backend_client, server_connection)
+    }
 
     #[test]
     fn create_backend_client() {

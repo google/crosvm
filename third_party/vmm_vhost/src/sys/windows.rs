@@ -236,30 +236,3 @@ impl<S: Frontend> CloseNotifier for FrontendServer<S> {
         self.sub_sock.0.get_tube().get_close_notifier()
     }
 }
-
-#[cfg(test)]
-pub(crate) mod tests {
-    use crate::backend_client::BackendClient;
-    use crate::backend_server::Backend;
-    use crate::backend_server::BackendServer;
-    use crate::message::FrontendReq;
-    use crate::Connection;
-
-    pub(crate) fn create_pair() -> (BackendClient, Connection<FrontendReq>) {
-        let (client_connection, server_connection) = Connection::pair().unwrap();
-        let backend_client = BackendClient::new(client_connection);
-        (backend_client, server_connection)
-    }
-
-    pub(crate) fn create_client_server_pair<S>(backend: S) -> (BackendClient, BackendServer<S>)
-    where
-        S: Backend,
-    {
-        let (client_connection, server_connection) = Connection::pair().unwrap();
-        let backend_client = BackendClient::new(client_connection);
-        (
-            backend_client,
-            BackendServer::<S>::new(server_connection, backend),
-        )
-    }
-}

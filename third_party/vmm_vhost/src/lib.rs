@@ -247,12 +247,22 @@ mod tests {
 
     use super::*;
     use crate::message::*;
-    pub(crate) use crate::sys::tests::create_client_server_pair;
-    pub(crate) use crate::sys::tests::create_pair;
     use crate::test_backend::TestBackend;
     use crate::test_backend::VIRTIO_FEATURES;
     use crate::VhostUserMemoryRegionInfo;
     use crate::VringConfigData;
+
+    fn create_client_server_pair<S>(backend: S) -> (BackendClient, BackendServer<S>)
+    where
+        S: Backend,
+    {
+        let (client_connection, server_connection) = Connection::pair().unwrap();
+        let backend_client = BackendClient::new(client_connection);
+        (
+            backend_client,
+            BackendServer::<S>::new(server_connection, backend),
+        )
+    }
 
     /// Utility function to process a header and a message together.
     fn handle_request(h: &mut BackendServer<TestBackend>) -> Result<()> {

@@ -16,9 +16,3 @@ cfg_if::cfg_if! {
 }
 
 pub(crate) use platform::PlatformConnection;
-
-#[cfg(test)]
-pub(crate) mod tests {
-    pub(crate) use super::platform::tests::create_client_server_pair;
-    pub(crate) use super::platform::tests::create_pair;
-}
