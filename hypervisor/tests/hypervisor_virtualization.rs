@@ -1381,6 +1381,7 @@ global_asm_data!(
     "hlt",
 );
 
+#[cfg(not(unix))]
 #[test]
 fn test_getsec_instruction() {
     let setup = TestSetup {
@@ -1605,6 +1606,7 @@ global_asm_data!(
 
 // TODO(b/342183625): invvpid instruction is not valid in real mode. Reconsider how we should write
 // this test.
+#[cfg(not(unix))]
 #[test]
 fn test_invvpid_instruction() {
     let setup = TestSetup {
