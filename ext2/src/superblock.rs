@@ -98,11 +98,11 @@ impl SuperBlock {
             mtime: now,
             wtime: now,
             magic: EXT2_MAGIC_NUMBER,
-            state: 1,  // clean
-            errors: 1, // continue on errors
-            rev_level: 1,
+            state: 1,     // clean
+            errors: 1,    // continue on errors
+            rev_level: 1, // Rev 1 for variable inode sizes
             first_ino,
-            inode_size: Inode::inode_record_size(),
+            inode_size: Inode::INODE_RECORD_SIZE as u16,
             block_group_nr: 1, // super block is in block group 1
             feature_compat: COMPAT_EXT_ATTR,
             feature_incompat: 0x2, // Directory entries contain a type field

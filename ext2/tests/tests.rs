@@ -687,7 +687,7 @@ fn test_multiple_bg_big_files() {
     // Set `blocks_per_group` to a value smaller than |size of a file| / 4K.
     // So, each file spans multiple block groups.
     let blocks_per_group = 128;
-    let num_groups = 30;
+    let num_groups = 50;
     let disk = mkfs(
         &td,
         Builder {

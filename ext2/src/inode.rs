@@ -4,6 +4,7 @@
 
 //! Defines the inode structure.
 
+use std::mem::MaybeUninit;
 use std::os::unix::fs::MetadataExt;
 
 use anyhow::bail;
@@ -170,7 +171,7 @@ impl InodeBlock {
 ///
 /// The field names are based on [the specification](https://www.nongnu.org/ext2-doc/ext2.html#inode-table).
 #[repr(C)]
-#[derive(Default, Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
 pub(crate) struct Inode {
     mode: u16,
     uid: u16,
@@ -194,7 +195,24 @@ pub(crate) struct Inode {
     _reserved1: u16,
     uid_high: u16,
     gid_high: u16,
-    _reserved2: u32,
+    _reserved2: u32, // 128-th byte
+
+    // We don't use any inode metadata region beyond the basic 128 bytes.
+    // However set `extra_size` to the minimum value to let Linux kernel know that there are
+    // inline extended attribute data. The minimum possible is 4 bytes, so define extra_size
+    // and add the next padding.
+    pub extra_size: u16,
+    _paddings: u16, // padding for 32-bit alignment
+}
+
+impl Default for Inode {
+    fn default() -> Self {
+        // SAFETY: zero-filled value is a valid value.
+        let mut r: Self = unsafe { MaybeUninit::zeroed().assume_init() };
+        // Set extra size to 4 for `extra_size` and `paddings` fields.
+        r.extra_size = 4;
+        r
+    }
 }
 
 /// Used in `Inode` to represent how many 512-byte blocks are used by a file.
@@ -219,17 +237,14 @@ impl InodeBlocksCount {
 
 impl Inode {
     /// Size of the inode record in bytes.
-    /// Its return value must be stored in `Superblock` and used to calculate the size of
-    /// inode tables.
+    ///
+    /// From ext2 revision 1, inode size larger than 128 bytes is supported.
+    /// We use 256 byte here, which is the default value for ext4.
     ///
     /// Note that inode "record" size can be larger that inode "structure" size.
     /// The gap between the end of the inode structure and the end of the inode record can be used
     /// to store extended attributes.
-    pub fn inode_record_size() -> u16 {
-        // TODO(b/333988434): Support larger inode size (258 bytes) for extended attributes.
-        const EXT2_GOOD_OLD_INODE_SIZE: u16 = 128;
-        EXT2_GOOD_OLD_INODE_SIZE
-    }
+    pub const INODE_RECORD_SIZE: usize = 256;
 
     pub fn new<'a>(
         arena: &'a Arena<'a>,
@@ -245,7 +260,7 @@ impl Inode {
         const EXT2_S_IROTH: u16 = 0x0004; // others read
         const EXT2_S_IXOTH: u16 = 0x0001; // others execute
 
-        let inode_offset = inode_num.to_table_index() * Inode::inode_record_size() as usize;
+        let inode_offset = inode_num.to_table_index() * Inode::INODE_RECORD_SIZE;
         let inode =
             arena.allocate::<Inode>(BlockId::from(group.group_desc.inode_table), inode_offset)?;
 
@@ -300,7 +315,7 @@ impl Inode {
         let inodes_per_group = group.inode_bitmap.len();
         // (inode_num - 1) because inode is 1-indexed.
         let inode_offset =
-            ((usize::from(inode_num) - 1) % inodes_per_group) * Inode::inode_record_size() as usize;
+            ((usize::from(inode_num) - 1) % inodes_per_group) * Inode::INODE_RECORD_SIZE;
         let inode =
             arena.allocate::<Inode>(BlockId::from(group.group_desc.inode_table), inode_offset)?;
 
@@ -353,5 +368,23 @@ impl Inode {
 
     pub fn typ(&self) -> Option<InodeType> {
         InodeType::n((self.mode >> 12) as u8)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_inode_size() {
+        assert_eq!(std::mem::offset_of!(Inode, extra_size), 128);
+        // Check that no implicit paddings is inserted after the padding field.
+        assert_eq!(
+            std::mem::offset_of!(Inode, _paddings) + std::mem::size_of::<u16>(),
+            std::mem::size_of::<Inode>()
+        );
+
+        assert!(128 < std::mem::size_of::<Inode>());
+        assert!(std::mem::size_of::<Inode>() <= Inode::INODE_RECORD_SIZE);
     }
 }
