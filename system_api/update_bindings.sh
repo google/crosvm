@@ -16,6 +16,7 @@ fi
 FILES=(
     "src/bindings/client/org_chromium_spaced.rs"
     "src/bindings/client/org_chromium_vtpm.rs"
+    "src/bindings/client/org_chromium_power_manager.rs"
     "src/protos/spaced.rs"
     "src/protos/vtpm_interface.rs"
 )

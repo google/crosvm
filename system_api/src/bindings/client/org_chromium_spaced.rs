@@ -12,6 +12,9 @@ pub trait OrgChromiumSpaced {
     fn get_quota_current_space_for_uid(&self, path: &str, uid: u32) -> Result<i64, dbus::Error>;
     fn get_quota_current_space_for_gid(&self, path: &str, gid: u32) -> Result<i64, dbus::Error>;
     fn get_quota_current_space_for_project_id(&self, path: &str, project_id: u32) -> Result<i64, dbus::Error>;
+    fn get_quota_current_spaces_for_ids(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
+    fn get_quota_overall_usage(&self, path: &str) -> Result<Vec<u8>, dbus::Error>;
+    fn get_quota_overall_usage_pretty_print(&self, path: &str) -> Result<String, dbus::Error>;
     fn set_project_id(&self, fd: arg::OwnedFd, project_id: u32) -> Result<Vec<u8>, dbus::Error>;
     fn set_project_inheritance_flag(&self, fd: arg::OwnedFd, enable: bool) -> Result<Vec<u8>, dbus::Error>;
 }
@@ -75,6 +78,21 @@ impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiu
     fn get_quota_current_space_for_project_id(&self, path: &str, project_id: u32) -> Result<i64, dbus::Error> {
         self.method_call("org.chromium.Spaced", "GetQuotaCurrentSpaceForProjectId", (path, project_id, ))
             .and_then(|r: (i64, )| Ok(r.0, ))
+    }
+
+    fn get_quota_current_spaces_for_ids(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
+        self.method_call("org.chromium.Spaced", "GetQuotaCurrentSpacesForIds", (request, ))
+            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
+    }
+
+    fn get_quota_overall_usage(&self, path: &str) -> Result<Vec<u8>, dbus::Error> {
+        self.method_call("org.chromium.Spaced", "GetQuotaOverallUsage", (path, ))
+            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
+    }
+
+    fn get_quota_overall_usage_pretty_print(&self, path: &str) -> Result<String, dbus::Error> {
+        self.method_call("org.chromium.Spaced", "GetQuotaOverallUsagePrettyPrint", (path, ))
+            .and_then(|r: (String, )| Ok(r.0, ))
     }
 
     fn set_project_id(&self, fd: arg::OwnedFd, project_id: u32) -> Result<Vec<u8>, dbus::Error> {
