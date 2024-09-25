@@ -109,6 +109,7 @@ struct VirtioGpuResourceSnapshot {
     size: u64,
 
     backing_iovecs: Option<Vec<(GuestAddress, usize)>>,
+    shmem_offset: Option<u64>,
 }
 
 impl VirtioGpuResource {
@@ -129,17 +130,17 @@ impl VirtioGpuResource {
     }
 
     fn snapshot(&self) -> VirtioGpuResourceSnapshot {
-        // Only the 2D backend is support and it doesn't use these fields.
-        assert!(self.shmem_offset.is_none());
+        // Only the 2D backend is fully supported and it doesn't use these fields. 3D is WIP.
         assert!(self.scanout_data.is_none());
         assert!(self.display_import.is_none());
-        assert_eq!(self.rutabaga_external_mapping, false);
+
         VirtioGpuResourceSnapshot {
             resource_id: self.resource_id,
             width: self.width,
             height: self.height,
             size: self.size,
             backing_iovecs: self.backing_iovecs.clone(),
+            shmem_offset: self.shmem_offset,
         }
     }
 
@@ -1351,9 +1352,13 @@ impl VirtioGpu {
 
         for (id, s) in snapshot.resources.into_iter() {
             let backing_iovecs = s.backing_iovecs.clone();
+            let shmem_offset = s.shmem_offset;
             self.resources.insert(id, VirtioGpuResource::restore(s));
             if let Some(backing_iovecs) = backing_iovecs {
                 self.attach_backing(id, mem, backing_iovecs)?;
+            }
+            if let Some(shmem_offset) = shmem_offset {
+                self.resource_map_blob(id, shmem_offset)?;
             }
         }
 
