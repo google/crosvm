@@ -49,7 +49,7 @@ pub fn launch(
     path: &Path,
     ugid: &(Option<u32>, Option<u32>),
     ugid_map: (&str, &str),
-    builder: ext2::Builder,
+    mut builder: ext2::Builder,
     jail_config: &Option<JailConfig>,
 ) -> Result<Pid> {
     let max_open_files = base::linux::max_open_files()
@@ -71,6 +71,9 @@ pub fn launch(
     } else {
         create_base_minijail(path, max_open_files)?
     };
+
+    // Use "/" in the new mount namespace as the root for mkfs.
+    builder.root_dir = Some(std::path::PathBuf::from("/"));
 
     let shm = SharedMemory::new("pmem_ext2_shm", builder.size as u64)
         .context("failed to create shared memory")?;
@@ -102,11 +105,10 @@ fn mkfs_callback(
     builder: ext2::Builder,
     shm: SharedMemory,
 ) -> Result<()> {
-    let jailed_root = Some(std::path::Path::new("/"));
     let file_mappings = builder
         .build_on_shm(&shm)
         .context("failed to build memory region")?
-        .build_mmap_info(jailed_root)
+        .build_mmap_info()
         .context("failed to build ext2")?
         .mapping_info;
 

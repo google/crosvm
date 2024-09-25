@@ -147,6 +147,7 @@ mod test {
                 inodes_per_group: 1024,
                 blocks_per_group,
                 size,
+                root_dir: None,
             },
         )
         .unwrap();
@@ -200,6 +201,7 @@ mod test {
                 inodes_per_group: 512,
                 blocks_per_group,
                 size: mem_size,
+                root_dir: None,
             },
         )
         .unwrap();

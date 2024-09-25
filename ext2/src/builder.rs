@@ -4,7 +4,7 @@
 
 //! Provides structs and logic to build ext2 file system with configurations.
 
-use std::path::Path;
+use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Context;
@@ -29,6 +29,8 @@ pub struct Builder {
     pub inodes_per_group: u32,
     /// The size of the memory region.
     pub size: u32,
+    /// The roof directory to be copied to the file system.
+    pub root_dir: Option<PathBuf>,
 }
 
 impl Default for Builder {
@@ -37,6 +39,7 @@ impl Default for Builder {
             blocks_per_group: 4096,
             inodes_per_group: 4096,
             size: 4096 * 4096,
+            root_dir: None,
         }
     }
 }
@@ -88,10 +91,10 @@ pub struct MemRegion {
 
 impl MemRegion {
     /// Constructs an ext2 metadata by traversing `src_dir`.
-    pub fn build_mmap_info(mut self, src_dir: Option<&Path>) -> Result<MemRegionWithMappingInfo> {
+    pub fn build_mmap_info(mut self) -> Result<MemRegionWithMappingInfo> {
         let arena = Arena::new(BLOCK_SIZE, &mut self.mem).context("failed to allocate arena")?;
         let mut ext2 = Ext2::new(&self.cfg, &arena).context("failed to create Ext2 struct")?;
-        if let Some(dir) = src_dir {
+        if let Some(dir) = self.cfg.root_dir {
             ext2.copy_dirtree(&arena, dir)
                 .context("failed to copy directory tree")?;
         }

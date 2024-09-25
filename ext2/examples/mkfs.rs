@@ -8,7 +8,7 @@
 mod linux {
     use std::fs::OpenOptions;
     use std::io::Write;
-    use std::path::Path;
+    use std::path::PathBuf;
 
     use argh::FromArgs;
     use base::MappedRegion;
@@ -44,16 +44,14 @@ mod linux {
 
     pub fn main() -> anyhow::Result<()> {
         let args: Args = argh::from_env();
-        let src_dir = args.src.as_ref().map(|s| Path::new(s.as_str()));
+        let src_dir = args.src.as_ref().map(|s| PathBuf::new().join(s));
         let builder = ext2::Builder {
             blocks_per_group: args.blocks_per_group,
             inodes_per_group: args.inodes_per_group,
             size: args.size,
+            root_dir: src_dir,
         };
-        let mem = builder
-            .allocate_memory()?
-            .build_mmap_info(src_dir)?
-            .do_mmap()?;
+        let mem = builder.allocate_memory()?.build_mmap_info()?.do_mmap()?;
         if args.dry_run {
             println!("Done!");
             return Ok(());

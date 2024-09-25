@@ -63,12 +63,12 @@ fn run_debugfs_cmd(args: &[&str], disk: &PathBuf) -> String {
     stdout.trim_start().trim_end().to_string()
 }
 
-fn mkfs(td: &TempDir, builder: Builder, src_dir: Option<&Path>) -> PathBuf {
+fn mkfs(td: &TempDir, builder: Builder) -> PathBuf {
     let path = td.path().join("empty.ext2");
     let mem = builder
         .allocate_memory()
         .unwrap()
-        .build_mmap_info(src_dir)
+        .build_mmap_info()
         .unwrap()
         .do_mmap()
         .unwrap();
@@ -97,7 +97,6 @@ fn test_mkfs_empty() {
             inodes_per_group: 1024,
             ..Default::default()
         },
-        None,
     );
 
     // Ensure the content of the generated disk image with `debugfs`.
@@ -122,8 +121,8 @@ fn test_mkfs_empty_multi_block_groups() {
             blocks_per_group,
             inodes_per_group: 4096,
             size: 4096 * blocks_per_group * num_groups,
+            ..Default::default()
         },
-        None,
     );
     assert_eq!(
         run_debugfs_cmd(&["ls"], &disk),
@@ -235,9 +234,9 @@ fn test_simple_dir() {
         Builder {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            root_dir: Some(dir.clone()),
             ..Default::default()
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -269,9 +268,9 @@ fn test_nested_dirs() {
         Builder {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            root_dir: Some(dir.clone()),
             ..Default::default()
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -298,9 +297,9 @@ fn test_file_contents() {
         Builder {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            root_dir: Some(dir.clone()),
             ..Default::default()
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -321,9 +320,9 @@ fn test_max_file_name() {
         Builder {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            root_dir: Some(dir.clone()),
             ..Default::default()
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -350,9 +349,9 @@ fn test_mkfs_indirect_block() {
         Builder {
             blocks_per_group: 4096,
             inodes_per_group: 4096,
+            root_dir: Some(dir.clone()),
             ..Default::default()
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -387,9 +386,9 @@ fn test_mkfs_symlink() {
         Builder {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            root_dir: Some(dir.clone()),
             ..Default::default()
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -418,9 +417,9 @@ fn test_mkfs_abs_symlink() {
         Builder {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            root_dir: Some(dir.clone()),
             ..Default::default()
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -444,9 +443,9 @@ fn test_mkfs_symlink_to_deleted() {
         Builder {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            root_dir: Some(dir.clone()),
             ..Default::default()
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -485,9 +484,9 @@ fn test_mkfs_long_symlink() {
         Builder {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            root_dir: Some(dir.clone()),
             ..Default::default()
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -519,9 +518,9 @@ fn test_ignore_lost_found() {
         Builder {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            root_dir: Some(dir.clone()),
             ..Default::default()
         },
-        Some(&dir),
     );
 
     // dump the disk contents to `dump_dir`.
@@ -577,9 +576,9 @@ fn test_multiple_block_directory_entry() {
         Builder {
             blocks_per_group: 2048,
             inodes_per_group: 4096,
+            root_dir: Some(dir.clone()),
             ..Default::default()
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -617,8 +616,8 @@ fn test_multiple_bg_multi_inode_bitmap() {
             blocks_per_group,
             inodes_per_group,
             size: BLOCK_SIZE * blocks_per_group * num_groups,
+            root_dir: Some(dir.clone()),
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -656,8 +655,8 @@ fn test_multiple_bg_multi_block_bitmap() {
             blocks_per_group,
             inodes_per_group,
             size: BLOCK_SIZE * blocks_per_group * num_groups,
+            root_dir: Some(dir.clone()),
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);
@@ -694,8 +693,8 @@ fn test_multiple_bg_big_files() {
             blocks_per_group,
             inodes_per_group: 1024,
             size: BLOCK_SIZE * blocks_per_group * num_groups,
+            root_dir: Some(dir.clone()),
         },
-        Some(&dir),
     );
 
     assert_eq_dirs(&td, &dir, &disk);

@@ -1308,6 +1308,7 @@ pub fn create_pmem_ext2_device(
         inodes_per_group: opts.inodes_per_group,
         blocks_per_group: opts.blocks_per_group,
         size: mapping_size as u32,
+        ..Default::default()
     };
 
     let max_open_files = base::linux::max_open_files()

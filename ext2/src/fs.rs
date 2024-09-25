@@ -132,7 +132,7 @@ impl DirEntryBlock<'_> {
 }
 
 /// A struct to represent an ext2 filesystem.
-pub struct Ext2<'a> {
+pub(crate) struct Ext2<'a> {
     sb: &'a mut SuperBlock,
     cur_block_group: usize,
     cur_inode_table: usize,
@@ -143,10 +143,8 @@ pub struct Ext2<'a> {
 }
 
 impl<'a> Ext2<'a> {
-    /// Create a new ext2 filesystem.
-    pub(crate) fn new(cfg: &Builder, arena: &'a Arena<'a>) -> Result<Self> {
-        let sb = SuperBlock::new(arena, cfg)?;
-
+    pub(crate) fn new(builder: &Builder, arena: &'a Arena<'a>) -> Result<Self> {
+        let sb = SuperBlock::new(arena, builder)?;
         let mut group_metadata = vec![];
         for i in 0..sb.num_groups() {
             group_metadata.push(GroupMetaData::new(arena, sb, i)?);
