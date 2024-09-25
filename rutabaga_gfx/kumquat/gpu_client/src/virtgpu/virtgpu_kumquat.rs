@@ -5,18 +5,13 @@
 use std::cmp::min;
 use std::collections::BTreeMap as Map;
 use std::convert::TryInto;
-use std::fs::File;
-use std::os::fd::AsRawFd;
-use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use std::slice::from_raw_parts_mut;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
-use nix::sys::eventfd::EfdFlags;
-use nix::sys::eventfd::EventFd;
-use nix::unistd::read;
 use rutabaga_gfx::kumquat_support::kumquat_gpu_protocol::*;
+use rutabaga_gfx::kumquat_support::RutabagaEvent;
 use rutabaga_gfx::kumquat_support::RutabagaMemoryMapping;
 use rutabaga_gfx::kumquat_support::RutabagaReader;
 use rutabaga_gfx::kumquat_support::RutabagaSharedMemory;
@@ -25,7 +20,6 @@ use rutabaga_gfx::kumquat_support::RutabagaTube;
 use rutabaga_gfx::kumquat_support::RutabagaWriter;
 use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaError;
-use rutabaga_gfx::RutabagaFromRawDescriptor;
 use rutabaga_gfx::RutabagaGralloc;
 use rutabaga_gfx::RutabagaGrallocBackendFlags;
 use rutabaga_gfx::RutabagaHandle;
@@ -35,7 +29,6 @@ use rutabaga_gfx::RutabagaMapping;
 use rutabaga_gfx::RutabagaRawDescriptor;
 use rutabaga_gfx::RutabagaResult;
 use rutabaga_gfx::VulkanInfo;
-use rutabaga_gfx::RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE_HOST_SHAREABLE;
 use rutabaga_gfx::RUTABAGA_FLAG_INFO_RING_IDX;
@@ -418,17 +411,8 @@ impl VirtGpuKumquat {
             .get_mut(&transfer.bo_handle)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        // TODO(b/356504311): We should really move EventFd creation into rutabaga_os..
-        let owned: OwnedFd = EventFd::from_flags(EfdFlags::empty())?.into();
-        let eventfd: File = owned.into();
-
-        // SAFETY: Safe because the eventfd is valid and owned by us.
-        let emulated_fence = RutabagaHandle {
-            os_handle: unsafe {
-                RutabagaDescriptor::from_raw_descriptor(eventfd.into_raw_descriptor())
-            },
-            handle_type: RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD,
-        };
+        let event = RutabagaEvent::new()?;
+        let emulated_fence: RutabagaHandle = event.into();
 
         resource.attached_fences.push(emulated_fence.try_clone()?);
 
@@ -467,17 +451,8 @@ impl VirtGpuKumquat {
             .get_mut(&transfer.bo_handle)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        // TODO(b/356504311): We should really move EventFd creation into rutabaga_os..
-        let owned: OwnedFd = EventFd::from_flags(EfdFlags::empty())?.into();
-        let eventfd: File = owned.into();
-
-        // SAFETY: Safe because the eventfd is valid and owned by us.
-        let emulated_fence = RutabagaHandle {
-            os_handle: unsafe {
-                RutabagaDescriptor::from_raw_descriptor(eventfd.into_raw_descriptor())
-            },
-            handle_type: RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD,
-        };
+        let event = RutabagaEvent::new()?;
+        let emulated_fence: RutabagaHandle = event.into();
 
         resource.attached_fences.push(emulated_fence.try_clone()?);
         let transfer_from_host = kumquat_gpu_protocol_transfer_host_3d {
@@ -607,8 +582,8 @@ impl VirtGpuKumquat {
 
         let new_fences: Vec<RutabagaHandle> = std::mem::take(&mut resource.attached_fences);
         for fence in new_fences {
-            let file = unsafe { File::from_raw_descriptor(fence.os_handle.into_raw_descriptor()) };
-            read(file.as_raw_fd(), &mut 1u64.to_ne_bytes())?;
+            let event: RutabagaEvent = fence.try_into()?;
+            event.wait()?;
         }
 
         Ok(())

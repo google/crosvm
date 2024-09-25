@@ -10,16 +10,14 @@ use std::io::Cursor;
 use std::io::Write;
 use std::os::fd::AsFd;
 use std::os::fd::BorrowedFd;
-use std::os::fd::OwnedFd;
 use std::os::raw::c_void;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use log::error;
-use nix::sys::eventfd::EfdFlags;
-use nix::sys::eventfd::EventFd;
 use rutabaga_gfx::calculate_capset_mask;
 use rutabaga_gfx::kumquat_support::kumquat_gpu_protocol::*;
+use rutabaga_gfx::kumquat_support::RutabagaEvent;
 use rutabaga_gfx::kumquat_support::RutabagaMemoryMapping;
 use rutabaga_gfx::kumquat_support::RutabagaSharedMemory;
 use rutabaga_gfx::kumquat_support::RutabagaStream;
@@ -41,7 +39,6 @@ use rutabaga_gfx::RutabagaResult;
 use rutabaga_gfx::RutabagaWsi;
 use rutabaga_gfx::Transfer3D;
 use rutabaga_gfx::VulkanInfo;
-use rutabaga_gfx::RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE_HOST_SHAREABLE;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_RW;
@@ -60,7 +57,7 @@ pub struct KumquatGpuResource {
 }
 
 pub struct FenceData {
-    pub pending_fences: Map<u64, RutabagaHandle>,
+    pub pending_fences: Map<u64, RutabagaEvent>,
 }
 
 pub type FenceState = Arc<Mutex<FenceData>>;
@@ -70,11 +67,8 @@ pub fn create_fence_handler(fence_state: FenceState) -> RutabagaFenceHandler {
         let mut state = fence_state.lock().unwrap();
         match (*state).pending_fences.entry(completed_fence.fence_id) {
             Entry::Occupied(o) => {
-                let (_, signaled_fence) = o.remove_entry();
-                let mut file = unsafe {
-                    File::from_raw_descriptor(signaled_fence.os_handle.into_raw_descriptor())
-                };
-                file.write(&mut 1u64.to_ne_bytes()).unwrap();
+                let (_, mut event) = o.remove_entry();
+                event.signal().unwrap();
             }
             Entry::Vacant(_) => {
                 // This is fine, since an actual fence doesn't create emulated sync
@@ -374,24 +368,13 @@ impl KumquatGpuConnection {
                         let mut fence_descriptor_opt: Option<RutabagaHandle> = None;
                         let actual_fence = cmd.flags & RUTABAGA_FLAG_FENCE_HOST_SHAREABLE != 0;
                         if !actual_fence {
-                            // This code should really be rutabaga_os.
-                            let owned: OwnedFd = EventFd::from_flags(EfdFlags::empty())?.into();
-                            let eventfd: File = owned.into();
+                            let event: RutabagaEvent = RutabagaEvent::new()?;
+                            let clone = event.try_clone()?;
+                            let emulated_fence: RutabagaHandle = clone.into();
 
-                            let emulated_fence = RutabagaHandle {
-                                os_handle: unsafe {
-                                    RutabagaDescriptor::from_raw_descriptor(
-                                        eventfd.into_raw_descriptor(),
-                                    )
-                                },
-                                handle_type: RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD,
-                            };
-
-                            fence_descriptor_opt = Some(emulated_fence.try_clone()?);
+                            fence_descriptor_opt = Some(emulated_fence);
                             let mut fence_state = kumquat_gpu.fence_state.lock().unwrap();
-                            (*fence_state)
-                                .pending_fences
-                                .insert(fence_id, emulated_fence);
+                            (*fence_state).pending_fences.insert(fence_id, event);
                         }
 
                         kumquat_gpu.rutabaga.create_fence(fence)?;
