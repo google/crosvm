@@ -804,6 +804,7 @@ enum WorkerToken {
     Display,
     GpuControl,
     InterruptResample,
+    Sleep,
     Kill,
     ResourceBridge {
         index: usize,
@@ -856,25 +857,18 @@ impl<'a> EventManager<'a> {
 }
 
 struct Worker {
-    interrupt: Interrupt,
+    activation_resources_receiver: mpsc::Receiver<GpuActivationResources>,
+    deactivation_resources_sender: mpsc::Sender<GpuDeactivationResources>,
     exit_evt_wrtube: SendTube,
     gpu_control_tube: Tube,
-    mem: GuestMemory,
-    ctrl_queue: SharedQueueReader,
-    cursor_queue: LocalQueueReader,
     resource_bridges: ResourceBridges,
+    sleep_evt: Event,
     kill_evt: Event,
     state: Frontend,
+    fence_state: Arc<Mutex<FenceState>>,
+    fence_handler_resources: Arc<Mutex<Option<FenceHandlerActivationResources<SharedQueueReader>>>>,
     #[cfg(windows)]
     gpu_display_wait_descriptor_ctrl_rd: RecvTube,
-}
-
-struct WorkerReturn {
-    gpu_control_tube: Tube,
-    resource_bridges: ResourceBridges,
-    event_devices: Vec<EventDevice>,
-    // None if device not yet activated.
-    activated_state: Option<(Vec<Queue>, WorkerSnapshot)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -883,34 +877,186 @@ struct WorkerSnapshot {
     virtio_gpu_snapshot: VirtioGpuSnapshot,
 }
 
-impl Worker {
-    fn run(&mut self) {
-        let display_desc =
-            match SafeDescriptor::try_from(&*self.state.display().borrow() as &dyn AsRawDescriptor)
-            {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("failed getting event descriptor for display: {}", e);
-                    return;
-                }
-            };
+#[derive(Copy, Clone)]
+enum WorkerStopReason {
+    Sleep,
+    Kill,
+}
 
-        let ctrl_evt = self
+impl Worker {
+    fn new(
+        rutabaga_builder: RutabagaBuilder,
+        rutabaga_server_descriptor: Option<RutabagaDescriptor>,
+        display_backends: Vec<DisplayBackend>,
+        display_params: Vec<GpuDisplayParameters>,
+        display_event: Arc<AtomicBool>,
+        mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
+        event_devices: Vec<EventDevice>,
+        external_blob: bool,
+        fixed_blob_mapping: bool,
+        udmabuf: bool,
+        activation_resources_receiver: mpsc::Receiver<GpuActivationResources>,
+        deactivation_resources_sender: mpsc::Sender<GpuDeactivationResources>,
+        exit_evt_wrtube: SendTube,
+        gpu_control_tube: Tube,
+        resource_bridges: ResourceBridges,
+        sleep_evt: Event,
+        kill_evt: Event,
+        #[cfg(windows)] mut wndproc_thread: Option<WindowProcedureThread>,
+        #[cfg(windows)] gpu_display_wait_descriptor_ctrl_rd: RecvTube,
+        #[cfg(windows)] gpu_display_wait_descriptor_ctrl_wr: SendTube,
+    ) -> anyhow::Result<Worker> {
+        let fence_state = Arc::new(Mutex::new(Default::default()));
+        let fence_handler_resources = Arc::new(Mutex::new(None));
+        let fence_handler =
+            create_fence_handler(fence_handler_resources.clone(), fence_state.clone());
+        let rutabaga = rutabaga_builder.build(fence_handler, rutabaga_server_descriptor)?;
+        let mut virtio_gpu = build(
+            &display_backends,
+            display_params,
+            display_event,
+            rutabaga,
+            mapper,
+            external_blob,
+            fixed_blob_mapping,
+            #[cfg(windows)]
+            &mut wndproc_thread,
+            udmabuf,
+            #[cfg(windows)]
+            gpu_display_wait_descriptor_ctrl_wr,
+        )
+        .ok_or_else(|| anyhow!("failed to build virtio gpu"))?;
+
+        for event_device in event_devices {
+            virtio_gpu
+                .import_event_device(event_device)
+                // We lost the `EventDevice`, so fail hard.
+                .context("failed to import event device")?;
+        }
+
+        Ok(Worker {
+            activation_resources_receiver,
+            deactivation_resources_sender,
+            exit_evt_wrtube,
+            gpu_control_tube,
+            resource_bridges,
+            sleep_evt,
+            kill_evt,
+            state: Frontend::new(virtio_gpu, fence_state.clone()),
+            fence_state,
+            fence_handler_resources,
+            #[cfg(windows)]
+            gpu_display_wait_descriptor_ctrl_rd,
+        })
+    }
+
+    fn run(&mut self) -> anyhow::Result<()> {
+        'activate_and_deactivate_loop: loop {
+            let mut activation_resources = self.activation_resources_receiver.recv()?;
+
+            self.on_activate(&mut activation_resources)?;
+
+            let stop_reason = self.run_until_sleep_or_exit(&activation_resources)?;
+
+            let deactivation_resources = self.on_deactivate(activation_resources, stop_reason)?;
+
+            self.deactivation_resources_sender
+                .send(deactivation_resources)?;
+
+            if let WorkerStopReason::Kill = stop_reason {
+                break 'activate_and_deactivate_loop;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn on_activate(
+        &mut self,
+        activation_resources: &mut GpuActivationResources,
+    ) -> anyhow::Result<()> {
+        self.fence_handler_resources
+            .lock()
+            .replace(FenceHandlerActivationResources {
+                mem: activation_resources.mem.clone(),
+                ctrl_queue: activation_resources.ctrl_queue.clone(),
+            });
+
+        // If a snapshot was provided, restore from it.
+        if let Some(snapshot) = activation_resources.worker_snapshot.take() {
+            self.fence_state
+                .lock()
+                .restore(snapshot.fence_state_snapshot);
+
+            self.state
+                .virtio_gpu
+                .restore(snapshot.virtio_gpu_snapshot, &activation_resources.mem)
+                .context("failed to restore VirtioGpu")?;
+        }
+
+        Ok(())
+    }
+
+    fn on_deactivate(
+        &mut self,
+        activation_resources: GpuActivationResources,
+        stop_reason: WorkerStopReason,
+    ) -> anyhow::Result<GpuDeactivationResources> {
+        self.fence_handler_resources.lock().take();
+
+        let mut deactivation_resources = GpuDeactivationResources {
+            queues: None,
+            snapshot: None,
+        };
+
+        // If the worker was stopped because of a virtio_sleep request, then take a
+        // snapshot and reclaim the queues.
+        if let WorkerStopReason::Sleep = stop_reason {
+            deactivation_resources.snapshot = Some(WorkerSnapshot {
+                fence_state_snapshot: self.fence_state.lock().snapshot(),
+                virtio_gpu_snapshot: self
+                    .state
+                    .virtio_gpu
+                    .snapshot()
+                    .context("failed to snapshot VirtioGpu")?,
+            });
+
+            deactivation_resources.queues = Some(vec![
+                match Arc::try_unwrap(activation_resources.ctrl_queue.queue) {
+                    Ok(x) => x.into_inner(),
+                    Err(_) => panic!("too many refs on ctrl_queue"),
+                },
+                activation_resources.cursor_queue.queue.into_inner(),
+            ]);
+        }
+
+        Ok(deactivation_resources)
+    }
+
+    fn run_until_sleep_or_exit(
+        &mut self,
+        activation_resources: &GpuActivationResources,
+    ) -> anyhow::Result<WorkerStopReason> {
+        let display_desc =
+            SafeDescriptor::try_from(&*self.state.display().borrow() as &dyn AsRawDescriptor)
+                .context("failed getting event descriptor for display")?;
+
+        let ctrl_evt = activation_resources
             .ctrl_queue
             .queue
             .lock()
             .event()
             .try_clone()
-            .expect("failed to clone queue event");
-        let cursor_evt = self
+            .context("failed to clone queue event")?;
+        let cursor_evt = activation_resources
             .cursor_queue
             .queue
             .borrow()
             .event()
             .try_clone()
-            .expect("failed to clone queue event");
+            .context("failed to clone queue event")?;
 
-        let mut event_manager = match EventManager::build_with(&[
+        let mut event_manager = EventManager::build_with(&[
             (&ctrl_evt, WorkerToken::CtrlQueue),
             (&cursor_evt, WorkerToken::CursorQueue),
             (&display_desc, WorkerToken::Display),
@@ -918,37 +1064,28 @@ impl Worker {
                 self.gpu_control_tube.get_read_notifier(),
                 WorkerToken::GpuControl,
             ),
+            (&self.sleep_evt, WorkerToken::Sleep),
             (&self.kill_evt, WorkerToken::Kill),
             #[cfg(windows)]
             (
                 self.gpu_display_wait_descriptor_ctrl_rd.get_read_notifier(),
                 WorkerToken::DisplayDescriptorRequest,
             ),
-        ]) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed creating WaitContext: {}", e);
-                return;
-            }
-        };
+        ])
+        .context("failed creating gpu worker WaitContext")?;
 
-        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            if let Err(e) = event_manager.add(resample_evt, WorkerToken::InterruptResample) {
-                error!(
-                    "failed adding interrupt resample event to WaitContext: {}",
-                    e
-                );
-                return;
-            }
+        if let Some(resample_evt) = activation_resources.interrupt.get_resample_evt() {
+            event_manager
+                .add(resample_evt, WorkerToken::InterruptResample)
+                .context("failed adding interrupt resample event to WaitContext")?;
         }
 
         let poll_desc: SafeDescriptor;
         if let Some(desc) = self.state.virtio_gpu.poll_descriptor() {
             poll_desc = desc;
-            if let Err(e) = event_manager.add(&poll_desc, WorkerToken::VirtioGpuPoll) {
-                error!("failed adding poll event to WaitContext: {}", e);
-                return;
-            }
+            event_manager
+                .add(&poll_desc, WorkerToken::VirtioGpuPoll)
+                .context("failed adding poll event to WaitContext")?;
         }
 
         self.resource_bridges
@@ -962,14 +1099,12 @@ impl Worker {
         // might be handled first instead of the other way around.  In practice, the cursor queue
         // isn't used so this isn't a huge issue.
 
-        'wait: loop {
-            let events = match event_manager.wait_ctx.wait() {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("failed polling for events: {}", e);
-                    break;
-                }
-            };
+        loop {
+            let events = event_manager
+                .wait_ctx
+                .wait()
+                .context("failed polling for gpu worker events")?;
+
             let mut signal_used_cursor = false;
             let mut signal_used_ctrl = false;
             let mut ctrl_available = false;
@@ -996,7 +1131,10 @@ impl Worker {
                     }
                     WorkerToken::CursorQueue => {
                         let _ = cursor_evt.wait();
-                        if self.state.process_queue(&self.mem, &self.cursor_queue) {
+                        if self.state.process_queue(
+                            &activation_resources.mem,
+                            &activation_resources.cursor_queue,
+                        ) {
                             signal_used_cursor = true;
                         }
                     }
@@ -1029,36 +1167,34 @@ impl Worker {
                         }
                     }
                     WorkerToken::GpuControl => {
-                        let req = match self.gpu_control_tube.recv() {
-                            Ok(req) => req,
-                            Err(e) => {
-                                error!("gpu control socket failed recv: {:?}", e);
-                                break 'wait;
-                            }
-                        };
-
+                        let req = self
+                            .gpu_control_tube
+                            .recv()
+                            .context("failed to recv from gpu control socket")?;
                         let resp = self.state.process_gpu_control_command(req);
 
                         if let GpuControlResult::DisplaysUpdated = resp {
                             needs_config_interrupt = true;
                         }
 
-                        if let Err(e) = self.gpu_control_tube.send(&resp) {
-                            error!("display control socket failed send: {}", e);
-                            break 'wait;
-                        }
+                        self.gpu_control_tube
+                            .send(&resp)
+                            .context("failed to send gpu control socket response")?;
                     }
                     WorkerToken::ResourceBridge { index } => {
                         self.resource_bridges.set_should_process(index);
                     }
                     WorkerToken::InterruptResample => {
-                        self.interrupt.interrupt_resample();
+                        activation_resources.interrupt.interrupt_resample();
                     }
                     WorkerToken::VirtioGpuPoll => {
                         self.state.event_poll();
                     }
+                    WorkerToken::Sleep => {
+                        return Ok(WorkerStopReason::Sleep);
+                    }
                     WorkerToken::Kill => {
-                        break 'wait;
+                        return Ok(WorkerStopReason::Kill);
                     }
                 }
             }
@@ -1076,7 +1212,11 @@ impl Worker {
                 };
             }
 
-            if ctrl_available && self.state.process_queue(&self.mem, &self.ctrl_queue) {
+            if ctrl_available
+                && self
+                    .state
+                    .process_queue(&activation_resources.mem, &activation_resources.ctrl_queue)
+            {
                 signal_used_ctrl = true;
             }
 
@@ -1090,15 +1230,15 @@ impl Worker {
                 .process_resource_bridges(&mut self.state, &mut event_manager.wait_ctx);
 
             if signal_used_ctrl {
-                self.ctrl_queue.signal_used();
+                activation_resources.ctrl_queue.signal_used();
             }
 
             if signal_used_cursor {
-                self.cursor_queue.signal_used();
+                activation_resources.cursor_queue.signal_used();
             }
 
             if needs_config_interrupt {
-                self.interrupt.signal_config_changed();
+                activation_resources.interrupt.signal_config_changed();
             }
         }
     }
@@ -1169,20 +1309,22 @@ struct GpuActivationResources {
     worker_snapshot: Option<WorkerSnapshot>,
 }
 
+struct GpuDeactivationResources {
+    queues: Option<Vec<Queue>>,
+    snapshot: Option<WorkerSnapshot>,
+}
+
 pub struct Gpu {
     exit_evt_wrtube: SendTube,
     pub gpu_control_tube: Option<Tube>,
     mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     resource_bridges: Option<ResourceBridges>,
     event_devices: Option<Vec<EventDevice>>,
-    // The worker thread + a channel used to activate it.
-    // NOTE: The worker thread doesn't respond to `WorkerThread::stop` when in the pre-activate
-    // phase. You must drop the channel first. That is also why the channel is first in the tuple
-    // (tuple members are dropped in order).
-    worker_thread: Option<(
-        mpsc::Sender<GpuActivationResources>,
-        WorkerThread<WorkerReturn>,
-    )>,
+    worker_activation_resources_sender: Option<mpsc::Sender<GpuActivationResources>>,
+    worker_deactivation_resources_receiver: Option<mpsc::Receiver<GpuDeactivationResources>>,
+    worker_sleep_evt: Option<Event>,
+    worker_snapshot: Option<WorkerSnapshot>,
+    worker_thread: Option<WorkerThread<anyhow::Result<()>>>,
     display_backends: Vec<DisplayBackend>,
     display_params: Vec<GpuDisplayParameters>,
     display_event: Arc<AtomicBool>,
@@ -1209,10 +1351,6 @@ pub struct Gpu {
     capset_mask: u64,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     gpu_cgroup_path: Option<PathBuf>,
-    /// Used to differentiate worker kill events that are for shutdown vs sleep. `virtio_sleep`
-    /// sets this to true while stopping the worker.
-    sleep_requested: Arc<AtomicBool>,
-    worker_snapshot: Option<WorkerSnapshot>,
 }
 
 impl Gpu {
@@ -1295,6 +1433,9 @@ impl Gpu {
             mapper: Arc::new(Mutex::new(None)),
             resource_bridges: Some(ResourceBridges::new(resource_bridges)),
             event_devices: Some(event_devices),
+            worker_activation_resources_sender: None,
+            worker_deactivation_resources_receiver: None,
+            worker_sleep_evt: None,
             worker_thread: None,
             display_backends,
             display_params,
@@ -1317,7 +1458,6 @@ impl Gpu {
             capset_mask: gpu_parameters.capset_mask,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             gpu_cgroup_path: gpu_cgroup_path.cloned(),
-            sleep_requested: Arc::new(AtomicBool::new(false)),
             worker_snapshot: None,
         }
     }
@@ -1370,6 +1510,12 @@ impl Gpu {
 
     // This is not invoked when running with vhost-user GPU.
     fn start_worker_thread(&mut self) {
+        let sleep_evt = Event::new().unwrap();
+        let sleep_evt_copy = sleep_evt
+            .try_clone()
+            .context("error cloning sleep event")
+            .unwrap();
+
         let exit_evt_wrtube = self
             .exit_evt_wrtube
             .try_clone()
@@ -1395,7 +1541,6 @@ impl Gpu {
         let external_blob = self.external_blob;
         let fixed_blob_mapping = self.fixed_blob_mapping;
         let udmabuf = self.udmabuf;
-        let fence_state = Arc::new(Mutex::new(Default::default()));
 
         #[cfg(windows)]
         let mut wndproc_thread = self.wndproc_thread.take();
@@ -1423,8 +1568,9 @@ impl Gpu {
         });
 
         let (init_finished_tx, init_finished_rx) = mpsc::channel();
-        let (activate_tx, activate_rx) = mpsc::channel();
-        let sleep_requested = self.sleep_requested.clone();
+
+        let (activation_resources_sender, activation_resources_receiver) = mpsc::channel();
+        let (deactivation_resources_sender, deactivation_resources_receiver) = mpsc::channel();
 
         let worker_thread = WorkerThread::start("v_gpu", move |kill_evt| {
             #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -1433,157 +1579,46 @@ impl Gpu {
                     .expect("Failed to move v_gpu into requested cgroup");
             }
 
-            let rutabaga_fence_handler_resources = Arc::new(Mutex::new(None));
-            let rutabaga_fence_handler = create_fence_handler(
-                rutabaga_fence_handler_resources.clone(),
-                fence_state.clone(),
-            );
-            let rutabaga =
-                match rutabaga_builder.build(rutabaga_fence_handler, rutabaga_server_descriptor) {
-                    Ok(rutabaga) => rutabaga,
-                    Err(e) => {
-                        error!("failed to build rutabaga {}", e);
-                        return WorkerReturn {
-                            gpu_control_tube,
-                            resource_bridges,
-                            event_devices,
-                            activated_state: None,
-                        };
-                    }
-                };
-
-            let mut virtio_gpu = match build(
-                &display_backends,
+            let mut worker = Worker::new(
+                rutabaga_builder,
+                rutabaga_server_descriptor,
+                display_backends,
                 display_params,
                 display_event,
-                rutabaga,
                 mapper,
+                event_devices,
                 external_blob,
                 fixed_blob_mapping,
-                #[cfg(windows)]
-                &mut wndproc_thread,
                 udmabuf,
+                activation_resources_receiver,
+                deactivation_resources_sender,
+                exit_evt_wrtube,
+                gpu_control_tube,
+                resource_bridges,
+                sleep_evt_copy,
+                kill_evt,
+                #[cfg(windows)]
+                wndproc_thread,
+                #[cfg(windows)]
+                gpu_display_wait_descriptor_ctrl_rd,
                 #[cfg(windows)]
                 gpu_display_wait_descriptor_ctrl_wr,
-            ) {
-                Some(backend) => backend,
-                None => {
-                    return WorkerReturn {
-                        gpu_control_tube,
-                        resource_bridges,
-                        event_devices,
-                        activated_state: None,
-                    };
-                }
-            };
-
-            for event_device in event_devices {
-                virtio_gpu
-                    .import_event_device(event_device)
-                    // We lost the `EventDevice`, so fail hard.
-                    .expect("failed to import event device");
-            }
+            )?;
 
             // Tell the parent thread that the init phase is complete.
             let _ = init_finished_tx.send(());
 
-            let activation_resources: GpuActivationResources = match activate_rx.recv() {
-                Ok(x) => x,
-                // Other half of channel was dropped.
-                Err(mpsc::RecvError) => {
-                    return WorkerReturn {
-                        gpu_control_tube,
-                        resource_bridges,
-                        event_devices: virtio_gpu.display().borrow_mut().take_event_devices(),
-                        activated_state: None,
-                    };
-                }
-            };
-
-            rutabaga_fence_handler_resources
-                .lock()
-                .replace(FenceHandlerActivationResources {
-                    mem: activation_resources.mem.clone(),
-                    ctrl_queue: activation_resources.ctrl_queue.clone(),
-                });
-            // Drop so we don't hold extra refs on the queue's `Arc`.
-            std::mem::drop(rutabaga_fence_handler_resources);
-
-            let mut worker = Worker {
-                interrupt: activation_resources.interrupt,
-                exit_evt_wrtube,
-                gpu_control_tube,
-                mem: activation_resources.mem,
-                ctrl_queue: activation_resources.ctrl_queue,
-                cursor_queue: activation_resources.cursor_queue,
-                resource_bridges,
-                kill_evt,
-                state: Frontend::new(virtio_gpu, fence_state),
-                #[cfg(windows)]
-                gpu_display_wait_descriptor_ctrl_rd,
-            };
-
-            // If a snapshot was provided, restore from it.
-            if let Some(snapshot) = activation_resources.worker_snapshot {
-                worker
-                    .state
-                    .fence_state
-                    .lock()
-                    .restore(snapshot.fence_state_snapshot);
-                worker
-                    .state
-                    .virtio_gpu
-                    .restore(snapshot.virtio_gpu_snapshot, &worker.mem)
-                    .expect("failed to restore VirtioGpu");
-            }
-
-            worker.run();
-
-            let event_devices = worker
-                .state
-                .virtio_gpu
-                .display()
-                .borrow_mut()
-                .take_event_devices();
-            // If we are stopping the worker because of a virtio_sleep request, then take a
-            // snapshot and reclaim the queues.
-            let activated_state = if sleep_requested.load(Ordering::SeqCst) {
-                let worker_snapshot = WorkerSnapshot {
-                    fence_state_snapshot: worker.state.fence_state.lock().snapshot(),
-                    virtio_gpu_snapshot: worker
-                        .state
-                        .virtio_gpu
-                        .snapshot()
-                        .expect("failed to snapshot VirtioGpu"),
-                };
-                // Need to drop `Frontend` for the `Arc::try_unwrap` below to succeed.
-                std::mem::drop(worker.state);
-                Some((
-                    vec![
-                        match Arc::try_unwrap(worker.ctrl_queue.queue) {
-                            Ok(x) => x.into_inner(),
-                            Err(_) => panic!("too many refs on ctrl_queue"),
-                        },
-                        worker.cursor_queue.queue.into_inner(),
-                    ],
-                    worker_snapshot,
-                ))
-            } else {
-                None
-            };
-            WorkerReturn {
-                gpu_control_tube: worker.gpu_control_tube,
-                resource_bridges: worker.resource_bridges,
-                event_devices,
-                activated_state,
-            }
+            worker.run()
         });
 
-        self.worker_thread = Some((activate_tx, worker_thread));
+        self.worker_activation_resources_sender = Some(activation_resources_sender);
+        self.worker_deactivation_resources_receiver = Some(deactivation_resources_receiver);
+        self.worker_sleep_evt = Some(sleep_evt);
+        self.worker_thread = Some(worker_thread);
 
         match init_finished_rx.recv() {
             Ok(()) => {}
-            Err(mpsc::RecvError) => error!("virtio-gpu worker thread init failed"),
+            Err(mpsc::RecvError) => panic!("virtio-gpu worker thread init failed"),
         }
     }
 
@@ -1758,10 +1793,9 @@ impl VirtioDevice for Gpu {
         let cursor_queue = LocalQueueReader::new(queues.remove(&1).unwrap());
 
         match self
-            .worker_thread
-            .as_mut()
+            .worker_activation_resources_sender
+            .as_ref()
             .expect("worker thread missing on activate")
-            .0
             .send(GpuActivationResources {
                 mem,
                 interrupt,
@@ -1821,34 +1855,26 @@ impl VirtioDevice for Gpu {
     //     completes them synchronously.
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
-        if let Some((activate_tx, worker_thread)) = self.worker_thread.take() {
-            self.sleep_requested.store(true, Ordering::SeqCst);
-            drop(activate_tx);
-            let WorkerReturn {
-                gpu_control_tube,
-                resource_bridges,
-                event_devices,
-                activated_state,
-            } = worker_thread.stop();
-            self.sleep_requested.store(false, Ordering::SeqCst);
+        if let (Some(deactivate_receiver), Some(sleep_evt)) = (
+            &self.worker_deactivation_resources_receiver,
+            &self.worker_sleep_evt,
+        ) {
+            sleep_evt
+                .signal()
+                .context("failed to signal virtio gpu worker sleep event")?;
+            let GpuDeactivationResources { queues, snapshot } = deactivate_receiver.recv()?;
+            sleep_evt
+                .reset()
+                .context("failed to reset virtio gpu worker sleep event")?;
 
-            self.resource_bridges = Some(resource_bridges);
-            self.gpu_control_tube = Some(gpu_control_tube);
-            self.event_devices = Some(event_devices);
-
-            match activated_state {
-                Some((queues, worker_snapshot)) => {
-                    self.worker_snapshot = Some(worker_snapshot);
-                    return Ok(Some(queues.into_iter().enumerate().collect()));
-                }
-                // Device not activated yet.
-                None => {
-                    self.worker_snapshot = None;
-                    return Ok(None);
-                }
+            if let Some(snapshot) = snapshot {
+                self.worker_snapshot = Some(snapshot);
             }
+
+            Ok(queues.map(|q| q.into_iter().enumerate().collect()))
+        } else {
+            Ok(None)
         }
-        Ok(None)
     }
 
     fn virtio_wake(
@@ -1858,8 +1884,6 @@ impl VirtioDevice for Gpu {
         match queues_state {
             None => Ok(()),
             Some((mem, interrupt, queues)) => {
-                assert!(self.worker_thread.is_none());
-                self.start_worker_thread();
                 // TODO(khei): activate is just what we want at the moment, but we should probably
                 // move it into a "start workers" function to make it obvious that it isn't
                 // strictly used for activate events.
@@ -1875,6 +1899,13 @@ impl VirtioDevice for Gpu {
 
     fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
         self.worker_snapshot = serde_json::from_value(data)?;
+        Ok(())
+    }
+
+    fn reset(&mut self) -> anyhow::Result<()> {
+        if let Some(worker_thread) = self.worker_thread.take() {
+            worker_thread.stop()?;
+        }
         Ok(())
     }
 }
