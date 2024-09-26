@@ -4,6 +4,7 @@
 
 use base::errno_result;
 use base::error;
+use base::ioctl_with_mut_ref;
 use base::ioctl_with_ref;
 use base::Error;
 use base::Result;
@@ -156,10 +157,10 @@ impl VcpuRiscv64 for KvmVcpu {
     }
 
     fn get_one_reg(&self, reg: VcpuRegister) -> Result<u64> {
-        let val: u64 = 0;
+        let mut val: u64 = 0;
         let onereg = kvm_one_reg {
             id: vcpu_reg_id(reg),
-            addr: (&val as *const u64) as u64,
+            addr: (&mut val as *mut u64) as u64,
         };
 
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
