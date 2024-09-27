@@ -8,6 +8,7 @@ edition = "2021"
 haxm = []
 whpx = []
 geniezone = []
+gvm = []
 gunyah = []
 noncoherent-dma = []
 
