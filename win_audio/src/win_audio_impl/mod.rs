@@ -47,6 +47,7 @@ use base::Error;
 use base::Event;
 use base::EventExt;
 use base::EventWaitResult;
+use base::IntoRawDescriptor;
 use completion_handler::WinAudioActivateAudioInterfaceCompletionHandler;
 use sync::Mutex;
 use thiserror::Error as ThisError;
@@ -1671,13 +1672,10 @@ fn create_and_set_audio_client_event(
     )?;
 
     let async_ready_event = if let Some(ex) = ex {
-        // SAFETY:
-        // Unsafe if `ready_event` and `async_ready_event` have different
-        // lifetimes because both can close the underlying `RawDescriptor`. However, both
-        // will be stored in the `DeviceRenderer` or `DeviceCapturer` fields, so this should be
-        // safe.
+        let ready_event = ready_event.try_clone().map_err(WinAudioError::CloneEvent)?;
+        // SAFETY: ready_event is cloned from an Event. Its RawDescriptor must be also an Event.
         Some(unsafe {
-            ex.async_event(ready_event.as_raw_descriptor())
+            ex.async_event(ready_event.into_raw_descriptor())
                 .map_err(|e| {
                     WinAudioError::AsyncError(e, "Failed to create async event".to_string())
                 })?
