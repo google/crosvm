@@ -795,7 +795,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 None => None,
                 Some(cgroup_path) => {
                     // Move main process to cgroup_path
-                    let mut f = File::create(&cgroup_path.join("tasks"))?;
+                    let mut f = File::create(cgroup_path.join("tasks"))?;
                     f.write_all(std::process::id().to_string().as_bytes())?;
                     Some(f)
                 }
