@@ -104,8 +104,8 @@ fn pmem_ext2_manyfiles() -> anyhow::Result<()> {
 
     let temp_dir = tempfile::tempdir()?;
     for i in 0..1000 {
-        let f = temp_dir.path().join(&format!("{i}.txt"));
-        std::fs::write(f, &format!("{i}"))?;
+        let f = temp_dir.path().join(format!("{i}.txt"));
+        std::fs::write(f, format!("{i}"))?;
     }
 
     let config = Config::new().extra_args(vec![

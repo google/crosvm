@@ -594,7 +594,7 @@ fn test_multiple_block_directory_entry() {
     std::fs::create_dir(&dir).unwrap();
 
     for i in 0..1000 {
-        let path = dir.join(&format!("{i}.txt"));
+        let path = dir.join(format!("{i}.txt"));
         File::create(&path).unwrap();
     }
 
@@ -705,7 +705,7 @@ fn test_multiple_bg_big_files() {
     // Prepare a large data.
     let data = vec!["0123456789"; 5000 * 20].concat();
     for i in 0..10 {
-        let path = dir.join(&format!("{i}.txt"));
+        let path = dir.join(format!("{i}.txt"));
         let mut f = File::create(&path).unwrap();
         f.write_all(data.as_bytes()).unwrap();
     }
