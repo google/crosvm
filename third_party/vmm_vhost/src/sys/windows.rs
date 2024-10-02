@@ -205,6 +205,19 @@ impl AsRawDescriptor for TubePlatformConnection {
     }
 }
 
+impl CloseNotifier for TubePlatformConnection {
+    /// Used for closing.
+    fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
+        self.tube.get_close_notifier()
+    }
+}
+
+impl ReadNotifier for TubePlatformConnection {
+    fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+        self.tube.get_close_notifier()
+    }
+}
+
 impl<S: Frontend> FrontendServer<S> {
     /// Create a `FrontendServer` that uses a Tube internally. Must specify the backend process
     /// which will receive the Tube.

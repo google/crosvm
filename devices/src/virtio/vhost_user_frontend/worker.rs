@@ -2,9 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::sync::Arc;
+
 use anyhow::bail;
 use anyhow::Context;
 use base::info;
+use base::warn;
 #[cfg(windows)]
 use base::CloseNotifier;
 use base::Event;
@@ -12,6 +15,8 @@ use base::EventToken;
 use base::EventType;
 use base::ReadNotifier;
 use base::WaitContext;
+use sync::Mutex;
+use vmm_vhost::BackendClient;
 use vmm_vhost::Error as VhostError;
 
 use crate::virtio::vhost_user_frontend::handler::BackendReqHandler;
@@ -22,6 +27,8 @@ pub struct Worker {
     pub kill_evt: Event,
     pub non_msix_evt: Event,
     pub backend_req_handler: Option<BackendReqHandler>,
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    pub backend_client: Arc<Mutex<BackendClient>>,
 }
 
 impl Worker {
@@ -33,8 +40,10 @@ impl Worker {
             Resample,
             ReqHandlerRead,
             ReqHandlerClose,
+            // monitor whether backend_client_fd is broken
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            BackendCloseNotify,
         }
-
         let wait_ctx = WaitContext::build_with(&[
             (&self.non_msix_evt, Token::NonMsixEvt),
             (&self.kill_evt, Token::Kill),
@@ -71,6 +80,15 @@ impl Worker {
                 )
                 .context("failed to add backend req handler close notifier to WaitContext")?;
         }
+
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        wait_ctx
+            .add_for_event(
+                self.backend_client.lock().get_read_notifier(),
+                EventType::None,
+                Token::BackendCloseNotify,
+            )
+            .context("failed to add backend client close notifier to WaitContext")?;
 
         'wait: loop {
             let events = wait_ctx.wait().context("WaitContext::wait() failed")?;
@@ -124,6 +142,16 @@ impl Worker {
                         #[cfg(target_os = "windows")]
                         let _ = wait_ctx.delete(backend_req_handler.get_close_notifier());
                         self.backend_req_handler = None;
+                    }
+                    #[cfg(any(target_os = "android", target_os = "linux"))]
+                    Token::BackendCloseNotify => {
+                        // For linux domain socket, the close notifier fd is same with read/write
+                        // notifier We need check whether the event is caused by socket broken.
+                        if !event.is_hungup {
+                            warn!("event besides hungup should not be notified");
+                            continue;
+                        }
+                        panic!("Backend device disconnected");
                     }
                 }
             }

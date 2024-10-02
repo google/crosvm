@@ -5,8 +5,11 @@ use std::fs::File;
 use std::mem;
 
 use base::AsRawDescriptor;
+#[cfg(windows)]
+use base::CloseNotifier;
 use base::Event;
 use base::RawDescriptor;
+use base::ReadNotifier;
 use base::INVALID_DESCRIPTOR;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
@@ -640,6 +643,19 @@ impl BackendClient {
         size: u32,
     ) -> VhostUserMsgHeader<FrontendReq> {
         VhostUserMsgHeader::new(request, 0x1, size)
+    }
+}
+
+#[cfg(windows)]
+impl CloseNotifier for BackendClient {
+    fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
+        self.connection.0.get_close_notifier()
+    }
+}
+
+impl ReadNotifier for BackendClient {
+    fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+        self.connection.0.get_read_notifier()
     }
 }
 
