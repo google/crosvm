@@ -377,7 +377,11 @@ macro_rules! suspendable_virtio_tests {
                 device
                     .virtio_wake(Some((mem.clone(), interrupt.clone(), sleep_result)))
                     .expect("failed to wake");
+
+                // Create a new device to restore the previously taken snapshot
                 let (_ctx2, mut device) = $dev();
+                // Sleep the device before restore
+                assert!(device.virtio_sleep().expect("failed to sleep").is_none());
                 device
                     .virtio_restore(snap.clone())
                     .expect("failed to restore");
