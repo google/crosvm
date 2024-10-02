@@ -13,4 +13,3 @@ cfg_if::cfg_if! {
 }
 
 pub(in super::super) use platform::create_backend_req_handler;
-pub(super) use platform::run_backend_request_handler;

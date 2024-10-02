@@ -2,19 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::pin::pin;
-
+use anyhow::bail;
 use anyhow::Context;
+use base::info;
+#[cfg(windows)]
+use base::CloseNotifier;
 use base::Event;
-use cros_async::EventAsync;
-use cros_async::Executor;
-use futures::channel::oneshot;
-use futures::select_biased;
-use futures::FutureExt;
+use base::EventToken;
+use base::EventType;
+use base::ReadNotifier;
+use base::WaitContext;
+use vmm_vhost::Error as VhostError;
 
-use crate::virtio::async_utils;
 use crate::virtio::vhost_user_frontend::handler::BackendReqHandler;
-use crate::virtio::vhost_user_frontend::sys::run_backend_request_handler;
 use crate::virtio::Interrupt;
 use crate::virtio::VIRTIO_MSI_NO_VECTOR;
 
@@ -25,61 +25,110 @@ pub struct Worker {
 }
 
 impl Worker {
-    // Runs asynchronous tasks.
-    pub async fn run(&mut self, ex: &Executor, interrupt: Interrupt) -> anyhow::Result<()> {
-        let non_msix_evt = self
-            .non_msix_evt
-            .try_clone()
-            .expect("failed to clone non_msix_evt");
-        let mut handle_non_msix_evt =
-            pin!(handle_non_msix_evt(ex, non_msix_evt, interrupt.clone()).fuse());
-
-        let mut resample = pin!(async_utils::handle_irq_resample(ex, interrupt).fuse());
-
-        let kill_evt = self.kill_evt.try_clone().expect("failed to clone kill_evt");
-        let mut kill = pin!(async_utils::await_and_exit(ex, kill_evt).fuse());
-
-        let (stop_tx, stop_rx) = oneshot::channel();
-        let mut req_handler = pin!(if let Some(backend_req_handler) =
-            self.backend_req_handler.as_mut()
-        {
-            run_backend_request_handler(ex, backend_req_handler, stop_rx)
-                .fuse()
-                .left_future()
-        } else {
-            stop_rx.map(|_| Ok(())).right_future()
+    pub fn run(&mut self, interrupt: Interrupt) -> anyhow::Result<()> {
+        #[derive(EventToken)]
+        enum Token {
+            Kill,
+            NonMsixEvt,
+            Resample,
+            ReqHandlerRead,
+            ReqHandlerClose,
         }
-        .fuse());
 
-        select_biased! {
-            r = kill => {
-                r.context("failed to wait on the kill event")?;
-                // Stop req_handler cooperatively.
-                let _ = stop_tx.send(());
-                req_handler.await.context("backend request failure on stop")?;
+        let wait_ctx = WaitContext::build_with(&[
+            (&self.non_msix_evt, Token::NonMsixEvt),
+            (&self.kill_evt, Token::Kill),
+        ])
+        .context("failed to build WaitContext")?;
+
+        if let Some(resample_evt) = interrupt.get_resample_evt() {
+            wait_ctx
+                .add(resample_evt, Token::Resample)
+                .context("failed to add resample event to WaitContext")?;
+        }
+
+        if let Some(backend_req_handler) = self.backend_req_handler.as_mut() {
+            wait_ctx
+                .add(
+                    backend_req_handler.get_read_notifier(),
+                    Token::ReqHandlerRead,
+                )
+                .context("failed to add backend req handler to WaitContext")?;
+
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            wait_ctx
+                .add_for_event(
+                    backend_req_handler.get_read_notifier(),
+                    EventType::None, // only get hangup events from the close notifier
+                    Token::ReqHandlerClose,
+                )
+                .context("failed to add backend req handler close notifier to WaitContext")?;
+            #[cfg(target_os = "windows")]
+            wait_ctx
+                .add(
+                    backend_req_handler.get_close_notifier(),
+                    Token::ReqHandlerClose,
+                )
+                .context("failed to add backend req handler close notifier to WaitContext")?;
+        }
+
+        'wait: loop {
+            let events = wait_ctx.wait().context("WaitContext::wait() failed")?;
+            for event in events {
+                match event.token {
+                    Token::Kill => {
+                        break 'wait;
+                    }
+                    Token::NonMsixEvt => {
+                        // The vhost-user protocol allows the backend to signal events, but for
+                        // non-MSI-X devices, a device must also update the interrupt status mask.
+                        // `non_msix_evt` proxies events from the vhost-user backend to update the
+                        // status mask.
+                        let _ = self.non_msix_evt.wait();
+
+                        // The parameter vector of signal_used_queue is used only when msix is
+                        // enabled.
+                        interrupt.signal_used_queue(VIRTIO_MSI_NO_VECTOR);
+                    }
+                    Token::Resample => {
+                        interrupt.interrupt_resample();
+                    }
+                    Token::ReqHandlerRead => {
+                        let Some(backend_req_handler) = self.backend_req_handler.as_mut() else {
+                            continue;
+                        };
+
+                        match backend_req_handler.handle_request() {
+                            Ok(_) => (),
+                            Err(VhostError::ClientExit) | Err(VhostError::Disconnect) => {
+                                info!("backend req handler connection closed");
+                                // Stop monitoring `backend_req_handler` as the client closed
+                                // the connection.
+                                let _ = wait_ctx.delete(backend_req_handler.get_read_notifier());
+                                #[cfg(target_os = "windows")]
+                                let _ = wait_ctx.delete(backend_req_handler.get_close_notifier());
+                                self.backend_req_handler = None;
+                            }
+                            Err(e) => {
+                                bail!("failed to handle a vhost-user request: {}", e);
+                            }
+                        }
+                    }
+                    Token::ReqHandlerClose => {
+                        let Some(backend_req_handler) = self.backend_req_handler.as_mut() else {
+                            continue;
+                        };
+
+                        info!("backend req handler connection closed");
+                        let _ = wait_ctx.delete(backend_req_handler.get_read_notifier());
+                        #[cfg(target_os = "windows")]
+                        let _ = wait_ctx.delete(backend_req_handler.get_close_notifier());
+                        self.backend_req_handler = None;
+                    }
+                }
             }
-            r = handle_non_msix_evt => r.context("non msix event failure")?,
-            r = resample => r.context("failed to resample a irq value")?,
-            r = req_handler => r.context("backend request failure")?,
         }
 
         Ok(())
-    }
-}
-
-// The vhost-user protocol allows the backend to signal events, but for non-MSI-X devices,
-// a device must also update the interrupt status mask. `handle_non_msix_evt` proxies events
-// from the vhost-user backend to update the status mask.
-async fn handle_non_msix_evt(
-    ex: &Executor,
-    non_msix_evt: Event,
-    interrupt: Interrupt,
-) -> anyhow::Result<()> {
-    let event_async =
-        EventAsync::new(non_msix_evt, ex).expect("failed to create async non_msix_evt");
-    loop {
-        let _ = event_async.next_val().await;
-        // The parameter vector of signal_used_queue is used only when msix is enabled.
-        interrupt.signal_used_queue(VIRTIO_MSI_NO_VECTOR);
     }
 }

@@ -16,6 +16,7 @@ use std::path::PathBuf;
 
 use base::AsRawDescriptor;
 use base::RawDescriptor;
+use base::ReadNotifier;
 use base::SafeDescriptor;
 use base::ScmSocket;
 
@@ -243,6 +244,12 @@ impl AsRawDescriptor for SocketPlatformConnection {
     }
 }
 
+impl ReadNotifier for SocketPlatformConnection {
+    fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+        &self.sock
+    }
+}
+
 impl<R: Req> TryFrom<SafeDescriptor> for Connection<R> {
     type Error = Error;
 
@@ -276,9 +283,14 @@ impl<R: Req> Connection<R> {
 }
 
 impl<S: Frontend> AsRawDescriptor for FrontendServer<S> {
-    /// Used for polling.
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.sub_sock.as_raw_descriptor()
+    }
+}
+
+impl<S: Frontend> ReadNotifier for FrontendServer<S> {
+    fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+        self.sub_sock.0.get_read_notifier()
     }
 }
 

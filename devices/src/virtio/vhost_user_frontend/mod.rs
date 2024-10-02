@@ -358,20 +358,15 @@ impl VhostUserFrontend {
         }
 
         self.worker_thread = Some(WorkerThread::start(label.clone(), move |kill_evt| {
-            let ex = cros_async::Executor::new().expect("failed to create an executor");
-            let ex2 = ex.clone();
-            ex.run_until(async {
-                let mut worker = Worker {
-                    kill_evt,
-                    non_msix_evt,
-                    backend_req_handler,
-                };
-                if let Err(e) = worker.run(&ex2, interrupt).await {
-                    error!("failed to run {} worker: {:#}", label, e);
-                }
-                worker.backend_req_handler
-            })
-            .expect("run_until failed")
+            let mut worker = Worker {
+                kill_evt,
+                non_msix_evt,
+                backend_req_handler,
+            };
+            if let Err(e) = worker.run(interrupt) {
+                error!("failed to run {} worker: {:#}", label, e);
+            }
+            worker.backend_req_handler
         }));
     }
 }
