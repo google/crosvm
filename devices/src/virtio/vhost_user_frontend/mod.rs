@@ -349,7 +349,7 @@ impl VhostUserFrontend {
             "BUG: attempted to start worker twice"
         );
 
-        let label = format!("vhost_user_virtio_{}", self.device_type);
+        let label = self.debug_label();
 
         let mut backend_req_handler = self.backend_req_handler.take();
         if let Some(handler) = &mut backend_req_handler {
