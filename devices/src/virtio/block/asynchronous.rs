@@ -278,7 +278,6 @@ async fn process_one_chain(
     flush_timer: &RefCell<TimerAsync<Timer>>,
     flush_timer_armed: &RefCell<bool>,
 ) {
-    let _trace = cros_tracing::trace_event!(VirtioBlk, "process_one_chain");
     let len = match process_one_request(&mut avail_desc, disk_state, flush_timer, flush_timer_armed)
         .await
     {
@@ -822,7 +821,6 @@ impl BlockAsync {
                 let offset = sector
                     .checked_shl(u32::from(SECTOR_SHIFT))
                     .ok_or(ExecuteError::OutOfRange)?;
-                let _trace = cros_tracing::trace_event!(VirtioBlk, "in", offset, data_len);
                 check_range(offset, data_len as u64, disk_size)?;
                 let disk_image = &disk_state.disk_image;
                 writer
@@ -842,7 +840,6 @@ impl BlockAsync {
                 let offset = sector
                     .checked_shl(u32::from(SECTOR_SHIFT))
                     .ok_or(ExecuteError::OutOfRange)?;
-                let _trace = cros_tracing::trace_event!(VirtioBlk, "out", offset, data_len);
                 check_range(offset, data_len as u64, disk_size)?;
                 let disk_image = &disk_state.disk_image;
                 reader
@@ -865,12 +862,6 @@ impl BlockAsync {
                 }
             }
             VIRTIO_BLK_T_DISCARD | VIRTIO_BLK_T_WRITE_ZEROES => {
-                #[allow(clippy::if_same_then_else)]
-                let _trace = if req_type == VIRTIO_BLK_T_DISCARD {
-                    cros_tracing::trace_event!(VirtioBlk, "discard")
-                } else {
-                    cros_tracing::trace_event!(VirtioBlk, "write_zeroes")
-                };
                 if req_type == VIRTIO_BLK_T_DISCARD && !disk_state.sparse {
                     // Discard is a hint; if this is a non-sparse disk, just ignore it.
                     return Ok(());
@@ -926,7 +917,6 @@ impl BlockAsync {
                 }
             }
             VIRTIO_BLK_T_FLUSH => {
-                let _trace = cros_tracing::trace_event!(VirtioBlk, "flush");
                 disk_state
                     .disk_image
                     .fdatasync()
@@ -942,7 +932,6 @@ impl BlockAsync {
                 }
             }
             VIRTIO_BLK_T_GET_ID => {
-                let _trace = cros_tracing::trace_event!(VirtioBlk, "get_id");
                 if let Some(id) = disk_state.id {
                     writer.write_all(&id).map_err(ExecuteError::CopyId)?;
                 } else {
