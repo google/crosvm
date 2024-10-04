@@ -54,8 +54,7 @@ pub use config::CachePolicy;
 pub use config::Config;
 use fuse::Server;
 use passthrough::PassthroughFs;
-pub use worker::process_fs_queue;
-use worker::Worker;
+pub use worker::Worker;
 
 const QUEUE_SIZE: u16 = 1024;
 

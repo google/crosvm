@@ -139,14 +139,14 @@ impl fuse::Mapper for Mapper {
 }
 
 pub struct Worker<F: FileSystem + Sync> {
-    queue: Queue,
+    pub(crate) queue: Queue,
     server: Arc<fuse::Server<F>>,
     irq: Interrupt,
     tube: Arc<Mutex<Tube>>,
     slot: u32,
 }
 
-pub fn process_fs_queue<F: FileSystem + Sync>(
+fn process_fs_queue<F: FileSystem + Sync>(
     queue: &mut Queue,
     server: &Arc<fuse::Server<F>>,
     tube: &Arc<Mutex<Tube>>,
