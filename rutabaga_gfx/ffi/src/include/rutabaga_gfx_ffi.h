@@ -364,6 +364,8 @@ int32_t rutabaga_snapshot(struct rutabaga *ptr, const char *dir);
  */
 int32_t rutabaga_restore(struct rutabaga *ptr, const char *dir);
 
+int32_t rutabaga_resource_wait_sync(struct rutabaga *ptr, uint32_t resource_id);
+
 #ifdef __cplusplus
 }
 #endif

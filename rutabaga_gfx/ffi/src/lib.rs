@@ -697,3 +697,12 @@ pub unsafe extern "C" fn rutabaga_restore(ptr: &mut rutabaga, dir: *const c_char
     }))
     .unwrap_or(-ESRCH)
 }
+
+#[no_mangle]
+pub extern "C" fn rutabaga_resource_wait_sync(ptr: &mut rutabaga, resource_id: u32) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        let result = ptr.wait_sync(resource_id);
+        return_result(result)
+    }))
+    .unwrap_or(-ESRCH)
+}

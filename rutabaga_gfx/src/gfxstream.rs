@@ -189,6 +189,9 @@ extern "C" {
 
     #[cfg(gfxstream_unstable)]
     fn stream_renderer_restore(dir: *const c_char) -> c_int;
+
+    #[cfg(gfxstream_unstable)]
+    fn stream_renderer_wait_sync_resource(res_handle: u32) -> c_int;
 }
 
 /// The virtio-gpu backend state tracker which supports accelerated rendering.
@@ -804,5 +807,11 @@ impl RutabagaComponent for Gfxstream {
         let ret = unsafe { stream_renderer_restore(cstring.as_ptr() as *const c_char) };
         ret_to_res(ret)?;
         Ok(())
+    }
+
+    #[cfg(gfxstream_unstable)]
+    fn wait_sync(&self, resource: &RutabagaResource) -> RutabagaResult<()> {
+        let ret = unsafe { stream_renderer_wait_sync_resource(resource.resource_id) };
+        ret_to_res(ret)
     }
 }
