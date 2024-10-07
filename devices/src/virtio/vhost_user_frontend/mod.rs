@@ -362,7 +362,6 @@ impl VhostUserFrontend {
             handler.frontend_mut().set_interrupt(interrupt.clone());
         }
 
-        #[cfg(any(target_os = "android", target_os = "linux"))]
         let backend_client = self.backend_client.clone();
 
         self.worker_thread = Some(WorkerThread::start(label.clone(), move |kill_evt| {
@@ -370,7 +369,6 @@ impl VhostUserFrontend {
                 kill_evt,
                 non_msix_evt,
                 backend_req_handler,
-                #[cfg(any(target_os = "android", target_os = "linux"))]
                 backend_client,
             };
             if let Err(e) = worker.run(interrupt) {

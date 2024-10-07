@@ -27,7 +27,6 @@ pub struct Worker {
     pub kill_evt: Event,
     pub non_msix_evt: Event,
     pub backend_req_handler: Option<BackendReqHandler>,
-    #[cfg(any(target_os = "android", target_os = "linux"))]
     pub backend_client: Arc<Mutex<BackendClient>>,
 }
 
@@ -41,7 +40,6 @@ impl Worker {
             ReqHandlerRead,
             ReqHandlerClose,
             // monitor whether backend_client_fd is broken
-            #[cfg(any(target_os = "android", target_os = "linux"))]
             BackendCloseNotify,
         }
         let wait_ctx = WaitContext::build_with(&[
@@ -86,6 +84,13 @@ impl Worker {
             .add_for_event(
                 self.backend_client.lock().get_read_notifier(),
                 EventType::None,
+                Token::BackendCloseNotify,
+            )
+            .context("failed to add backend client close notifier to WaitContext")?;
+        #[cfg(target_os = "windows")]
+        wait_ctx
+            .add(
+                self.backend_client.lock().get_close_notifier(),
                 Token::BackendCloseNotify,
             )
             .context("failed to add backend client close notifier to WaitContext")?;
@@ -143,10 +148,10 @@ impl Worker {
                         let _ = wait_ctx.delete(backend_req_handler.get_close_notifier());
                         self.backend_req_handler = None;
                     }
-                    #[cfg(any(target_os = "android", target_os = "linux"))]
                     Token::BackendCloseNotify => {
                         // For linux domain socket, the close notifier fd is same with read/write
                         // notifier We need check whether the event is caused by socket broken.
+                        #[cfg(any(target_os = "android", target_os = "linux"))]
                         if !event.is_hungup {
                             warn!("event besides hungup should not be notified");
                             continue;
