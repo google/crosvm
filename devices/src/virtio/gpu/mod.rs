@@ -19,6 +19,8 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Context;
+use base::custom_serde::deserialize_map_from_kv_vec;
+use base::custom_serde::serialize_map_as_kv_vec;
 use base::debug;
 use base::error;
 use base::info;
@@ -161,6 +163,12 @@ pub struct FenceState {
 
 #[derive(Serialize, Deserialize)]
 struct FenceStateSnapshot {
+    // Customize serialization to avoid errors when trying to use objects as keys in JSON
+    // dictionaries.
+    #[serde(
+        serialize_with = "serialize_map_as_kv_vec",
+        deserialize_with = "deserialize_map_from_kv_vec"
+    )]
     completed_fences: BTreeMap<VirtioGpuRing, u64>,
 }
 

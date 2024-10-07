@@ -60,3 +60,36 @@ where
     })?;
     Ok(vals_arr)
 }
+
+pub fn serialize_map_as_kv_vec<
+    'se,
+    MapKeyType: 'se + Serialize,
+    MapValType: 'se + Serialize,
+    MapType: std::iter::IntoIterator<Item = (&'se MapKeyType, &'se MapValType)>,
+    S,
+>(
+    map: MapType,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let kv_vec: Vec<(&MapKeyType, &MapValType)> = map.into_iter().collect();
+    serde::Serialize::serialize(&kv_vec, serializer)
+}
+
+pub fn deserialize_map_from_kv_vec<
+    'de,
+    MapKeyType: Deserialize<'de>,
+    MapValType: Deserialize<'de>,
+    MapType: std::iter::FromIterator<(MapKeyType, MapValType)>,
+    D,
+>(
+    deserializer: D,
+) -> Result<MapType, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let kv_vec: Vec<(MapKeyType, MapValType)> = serde::Deserialize::deserialize(deserializer)?;
+    Ok(MapType::from_iter(kv_vec))
+}
