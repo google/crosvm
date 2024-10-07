@@ -445,6 +445,10 @@ impl VirtioPciDevice {
                 PciClassCode::MultimediaController,
                 &PciMultimediaSubclass::VideoController as &dyn PciSubclass,
             ),
+            DeviceType::Media => (
+                PciClassCode::MultimediaController,
+                &PciMultimediaSubclass::VideoController as &dyn PciSubclass,
+            ),
             DeviceType::Scmi => (
                 PciClassCode::BaseSystemPeripheral,
                 &PciBaseSystemPeripheralSubclass::Other as &dyn PciSubclass,

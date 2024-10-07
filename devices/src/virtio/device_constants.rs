@@ -156,6 +156,11 @@ pub mod snd {
     }
 }
 
+pub mod media {
+    const QUEUE_SIZE: u16 = 256;
+    pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
+}
+
 pub mod video {
     use data_model::Le32;
     use serde::Deserialize;
