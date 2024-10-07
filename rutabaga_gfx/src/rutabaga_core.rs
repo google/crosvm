@@ -416,7 +416,7 @@ impl Rutabaga {
                     .collect::<RutabagaResult<_>>()?,
             };
 
-            return snapshot.serialize_to(w).map_err(RutabagaError::IoError);
+            serde_json::to_writer(w, &snapshot).map_err(|e| RutabagaError::IoError(e.into()))
         } else {
             Err(RutabagaError::Unsupported)
         }
@@ -452,7 +452,8 @@ impl Rutabaga {
 
             component.restore(directory)
         } else if self.default_component == RutabagaComponentType::Rutabaga2D {
-            let snapshot = RutabagaSnapshot::deserialize_from(r).map_err(RutabagaError::IoError)?;
+            let snapshot: RutabagaSnapshot =
+                serde_json::from_reader(r).map_err(|e| RutabagaError::IoError(e.into()))?;
 
             self.resources = snapshot
                 .resources

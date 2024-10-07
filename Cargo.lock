@@ -2594,6 +2594,8 @@ dependencies = [
  "nix 0.28.0",
  "pkg-config",
  "remain",
+ "serde",
+ "serde_json",
  "thiserror",
  "winapi",
  "zerocopy",
