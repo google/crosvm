@@ -884,27 +884,20 @@ fn test_io_exit_handler() {
     let exit_matcher =
         move |_, exit: &VcpuExit, vcpu: &mut dyn VcpuX86_64, _: &mut dyn Vm| match exit {
             VcpuExit::Io => {
-                vcpu.handle_io(&mut |IoParams {
-                                         address,
-                                         size,
-                                         operation,
-                                     }| {
+                vcpu.handle_io(&mut |IoParams { address, operation }| {
                     match operation {
-                        IoOperation::Read => {
-                            let mut data = [0u8; 8];
+                        IoOperation::Read(data) => {
                             assert_eq!(address, 0x20);
-                            assert_eq!(size, 1);
+                            assert_eq!(data.len(), 1);
                             // The original number written below will be doubled and
                             // passed back.
                             data[0] = cached_byte.load(Ordering::SeqCst) * 2;
-                            Some(data)
                         }
-                        IoOperation::Write { data } => {
+                        IoOperation::Write(data) => {
                             assert_eq!(address, 0x10);
-                            assert_eq!(size, 1);
+                            assert_eq!(data.len(), 1);
                             assert_eq!(data[0], 0x34);
                             cached_byte.fetch_add(data[0], Ordering::SeqCst);
-                            None
                         }
                     }
                 })
@@ -964,27 +957,20 @@ fn test_io_rep_string() {
     let exit_matcher =
         move |_, exit: &VcpuExit, vcpu: &mut dyn VcpuX86_64, vm: &mut dyn Vm| match exit {
             VcpuExit::Io => {
-                vcpu.handle_io(&mut |IoParams {
-                                         address,
-                                         size,
-                                         operation,
-                                     }| {
+                vcpu.handle_io(&mut |IoParams { address, operation }| {
                     match operation {
-                        IoOperation::Read => {
-                            let mut data = [0u8; 8];
+                        IoOperation::Read(data) => {
                             assert_eq!(address, 0x80);
-                            assert_eq!(size, 1);
+                            assert_eq!(data.len(), 1);
                             // Return 0, 1, 2, 3, 4 for subsequent reads.
                             data[0] = read_data.fetch_add(1, Ordering::SeqCst);
-                            Some(data)
                         }
-                        IoOperation::Write { data } => {
+                        IoOperation::Write(data) => {
                             assert_eq!(address, 0x80);
-                            assert_eq!(size, 1);
+                            assert_eq!(data.len(), 1);
                             // Expect 0, 1, 2, 3, 4 to be written.
                             let expected_write = write_data.fetch_add(1, Ordering::SeqCst);
                             assert_eq!(data[0], expected_write);
-                            None
                         }
                     }
                 })
@@ -1046,14 +1032,10 @@ fn test_mmio_exit_cross_page() {
 
     let exit_matcher = |_, exit: &VcpuExit, vcpu: &mut dyn VcpuX86_64, _: &mut dyn Vm| match exit {
         VcpuExit::Mmio => {
-            vcpu.handle_mmio(&mut |IoParams {
-                                       address,
-                                       size,
-                                       operation,
-                                   }| {
+            vcpu.handle_mmio(&mut |IoParams { address, operation }| {
                 match operation {
-                    IoOperation::Read => {
-                        match (address, size) {
+                    IoOperation::Read(data) => {
+                        match (address, data.len()) {
                             // First MMIO read asks to load the first 8 bytes
                             // of a new execution page, when an instruction
                             // crosses page boundary.
@@ -1062,21 +1044,25 @@ fn test_mmio_exit_cross_page() {
                             (0x1000, 8) => {
                                 // Ensure this instruction is the first read
                                 // in the sequence.
-                                Ok(Some([0x88, 0x03, 0x67, 0x8a, 0x01, 0xf4, 0, 0]))
+                                data.copy_from_slice(&[0x88, 0x03, 0x67, 0x8a, 0x01, 0xf4, 0, 0]);
+                                Ok(())
                             }
                             // Second MMIO read is a regular read from an
                             // unmapped memory (pointed to by initial EAX).
-                            (0x3010, 1) => Ok(Some([0x66, 0, 0, 0, 0, 0, 0, 0])),
+                            (0x3010, 1) => {
+                                data.copy_from_slice(&[0x66]);
+                                Ok(())
+                            }
                             _ => {
-                                panic!("invalid address({:#x})/size({})", address, size)
+                                panic!("invalid address({:#x})/size({})", address, data.len())
                             }
                         }
                     }
-                    IoOperation::Write { data } => {
+                    IoOperation::Write(data) => {
                         assert_eq!(address, 0x3000);
                         assert_eq!(data[0], 0x33);
-                        assert_eq!(size, 1);
-                        Ok(None)
+                        assert_eq!(data.len(), 1);
+                        Ok(())
                     }
                 }
             })
@@ -1159,19 +1145,15 @@ fn test_mmio_exit_readonly_memory() {
 
     let exit_matcher = |_, exit: &VcpuExit, vcpu: &mut dyn VcpuX86_64, _: &mut dyn Vm| match exit {
         VcpuExit::Mmio => {
-            vcpu.handle_mmio(&mut |IoParams {
-                                       address,
-                                       size,
-                                       operation,
-                                   }| match operation {
-                IoOperation::Read => {
+            vcpu.handle_mmio(&mut |IoParams { address, operation }| match operation {
+                IoOperation::Read(_) => {
                     panic!("unexpected mmio read call");
                 }
-                IoOperation::Write { data } => {
-                    assert_eq!(size, 1);
+                IoOperation::Write(data) => {
+                    assert_eq!(data.len(), 1);
                     assert_eq!(address, 0x5000);
                     assert_eq!(data[0], 0x67);
-                    Ok(None)
+                    Ok(())
                 }
             })
             .expect("failed to set the data");
@@ -2638,7 +2620,6 @@ fn test_interrupt_ready_when_normally_not_interruptible() {
                         }
                         instrumentation_traces.borrow_mut().push(instrumentation);
                         // We are always handling out IO port, so no data to return.
-                        None
                     })
                     .expect("should handle IO successfully");
                     if should_inject_interrupt {
@@ -2696,7 +2677,6 @@ fn test_interrupt_ready_when_interrupt_enable_flag_not_set() {
                     vcpu.handle_io(&mut |io_params| {
                         addr = io_params.address;
                         // We are always handling out IO port, so no data to return.
-                        None
                     })
                     .expect("should handle IO successfully");
                     let regs = vcpu
@@ -2942,7 +2922,7 @@ fn test_request_interrupt_window() {
                     VcpuExit::Intr => false,
                     VcpuExit::Io => {
                         // We are always handling out IO port, so no data to return.
-                        vcpu.handle_io(&mut |_| None)
+                        vcpu.handle_io(&mut |_| {})
                             .expect("should handle IO successfully");
 
                         assert!(!vcpu.ready_for_interrupt());
@@ -3098,7 +3078,7 @@ fn test_mmx_state_is_preserved_by_hypervisor() {
             false
         }
         VcpuExit::Io => {
-            vcpu.handle_io(&mut |_| None)
+            vcpu.handle_io(&mut |_| {})
                 .expect("should handle IO successfully");
 
             // kaiyili@ pointed out we should check the XSAVE state exposed by the hypervisor via
@@ -3238,7 +3218,7 @@ fn test_avx_state_is_preserved_by_hypervisor() {
             false
         }
         VcpuExit::Io => {
-            vcpu.handle_io(&mut |_| None)
+            vcpu.handle_io(&mut |_| {})
                 .expect("should handle IO successfully");
 
             // kaiyili@ pointed out we should check the XSAVE state exposed by the hypervisor via
@@ -3660,7 +3640,7 @@ fn test_slat_on_region_removal_is_mmio() {
                 //
                 // We strictly don't care what this data is, since the VM exits before running any
                 // further instructions.
-                vcpu.handle_io(&mut |_| None)
+                vcpu.handle_io(&mut |_| {})
                     .expect("should handle IO successfully");
 
                 // Remove the test memory region to cause a SLAT fault (in the passing case).
@@ -3672,21 +3652,18 @@ fn test_slat_on_region_removal_is_mmio() {
                 false
             }
             VcpuExit::Mmio => {
-                vcpu.handle_mmio(&mut |IoParams {
-                                           address,
-                                           size,
-                                           operation,
-                                       }| {
+                vcpu.handle_mmio(&mut |IoParams { address, operation }| {
                     assert_eq!(address, 0x20000, "MMIO for wrong address");
-                    assert_eq!(size, 1);
-                    assert!(
-                        matches!(operation, IoOperation::Read),
-                        "got unexpected IO operation {:?}",
-                        operation
-                    );
-                    // We won't vmenter again, so there's no need to actually satisfy the MMIO by
-                    // returning data; however, some hypervisors (WHPX) require it.
-                    Ok(Some([0u8; 8]))
+                    match operation {
+                        IoOperation::Read(data) => {
+                            assert_eq!(data.len(), 1);
+                            data[0] = 0;
+                            Ok(())
+                        }
+                        IoOperation::Write(_) => {
+                            panic!("got unexpected IO operation {:?}", operation);
+                        }
+                    }
                 })
                 .unwrap();
                 true
@@ -3891,7 +3868,7 @@ fn test_interrupt_injection_when_not_ready() {
                 VcpuExit::FailEntry { .. } | VcpuExit::Shutdown(..) | VcpuExit::Hlt => true,
                 VcpuExit::Io => {
                     // We are always handling out IO port, so no data to return.
-                    vcpu.handle_io(&mut |_| None)
+                    vcpu.handle_io(&mut |_| {})
                         .expect("should handle IO successfully");
                     assert!(!vcpu.ready_for_interrupt());
                     // We don't care whether we inject the interrupt successfully or not.
@@ -3959,7 +3936,6 @@ fn test_ready_for_interrupt_for_intercepted_instructions() {
                     vcpu.handle_io(&mut |params| {
                         io_port = params.address;
                         // We are always handling out IO port, so no data to return.
-                        None
                     })
                     .expect("should handle port IO successfully");
                     match io_port {

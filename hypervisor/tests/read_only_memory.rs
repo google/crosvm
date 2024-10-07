@@ -163,20 +163,16 @@ where
             VcpuExit::Intr => continue,
             VcpuExit::Hlt => break,
             VcpuExit::Mmio => {
-                vcpu.handle_mmio(&mut |IoParams {
-                                           address,
-                                           size,
-                                           operation,
-                                       }| match operation {
-                    IoOperation::Read => {
+                vcpu.handle_mmio(&mut |IoParams { address, operation }| match operation {
+                    IoOperation::Read(_) => {
                         panic!("unexpected mmio read call");
                     }
-                    IoOperation::Write { data } => {
-                        assert_eq!(size, 1);
+                    IoOperation::Write(data) => {
+                        assert_eq!(data.len(), 1);
                         assert_eq!(address, vcpu_sregs.es.base);
                         assert_eq!(data[0], 0x67);
                         exits.fetch_add(1, Ordering::SeqCst);
-                        Ok(None)
+                        Ok(())
                     }
                 })
                 .expect("failed to set the data");

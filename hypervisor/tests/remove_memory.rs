@@ -168,19 +168,14 @@ where
             VcpuExit::Intr => continue,
             VcpuExit::Hlt => break,
             VcpuExit::Mmio => {
-                vcpu.handle_mmio(&mut |IoParams {
-                                           address,
-                                           size,
-                                           operation,
-                                       }| match operation {
-                    IoOperation::Read => {
-                        let mut data = [0u8; 8];
+                vcpu.handle_mmio(&mut |IoParams { address, operation }| match operation {
+                    IoOperation::Read(data) => {
                         assert_eq!(address, 0x3000);
-                        assert_eq!(size, 1);
-                        data.copy_from_slice(&0x44_u64.to_ne_bytes());
-                        Ok(Some(data))
+                        assert_eq!(data.len(), 1);
+                        data.copy_from_slice(&[0x44]);
+                        Ok(())
                     }
-                    IoOperation::Write { .. } => {
+                    IoOperation::Write(_) => {
                         panic!("unexpected mmio write");
                     }
                 })

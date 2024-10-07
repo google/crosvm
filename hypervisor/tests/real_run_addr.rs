@@ -108,19 +108,14 @@ where
     loop {
         match vcpu.run().expect("run failed") {
             VcpuExit::Io => {
-                vcpu.handle_io(&mut |IoParams {
-                                         address,
-                                         size,
-                                         operation,
-                                     }| match operation {
-                    IoOperation::Read => {
+                vcpu.handle_io(&mut |IoParams { address, operation }| match operation {
+                    IoOperation::Read(_) => {
                         panic!("unexpected io in call");
                     }
-                    IoOperation::Write { data } => {
+                    IoOperation::Write(data) => {
                         assert_eq!(address, 0x3f8);
-                        assert_eq!(size, 1);
+                        assert_eq!(data.len(), 1);
                         out.lock().push(data[0] as char);
-                        None
                     }
                 })
                 .expect("failed to set the data");

@@ -6,7 +6,6 @@
 mod aarch64;
 
 mod gunyah_sys;
-use std::cmp::min;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
@@ -810,10 +809,7 @@ impl Vcpu for GunyahVcpu {
         }
     }
 
-    fn handle_mmio(
-        &self,
-        handle_fn: &mut dyn FnMut(IoParams) -> Result<Option<[u8; 8]>>,
-    ) -> Result<()> {
+    fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Result<()>) -> Result<()> {
         // SAFETY:
         // Safe because we know we mapped enough memory to hold the gh_vcpu_run struct because the
         // kernel told us how large it was. The pointer is page aligned so casting to a different
@@ -826,27 +822,21 @@ impl Vcpu for GunyahVcpu {
         // union field to use.
         let mmio = unsafe { &mut run.__bindgen_anon_1.mmio };
         let address = mmio.phys_addr;
-        let size = min(mmio.len as usize, mmio.data.len());
+        let data = &mut mmio.data[..mmio.len as usize];
         if mmio.is_write != 0 {
             handle_fn(IoParams {
                 address,
-                size,
-                operation: IoOperation::Write { data: mmio.data },
-            })?;
-            Ok(())
-        } else if let Some(data) = handle_fn(IoParams {
-            address,
-            size,
-            operation: IoOperation::Read,
-        })? {
-            mmio.data[..size].copy_from_slice(&data[..size]);
-            Ok(())
+                operation: IoOperation::Write(data),
+            })
         } else {
-            Err(Error::new(EINVAL))
+            handle_fn(IoParams {
+                address,
+                operation: IoOperation::Read(data),
+            })
         }
     }
 
-    fn handle_io(&self, _handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
+    fn handle_io(&self, _handle_fn: &mut dyn FnMut(IoParams)) -> Result<()> {
         unreachable!()
     }
 

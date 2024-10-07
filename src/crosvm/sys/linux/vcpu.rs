@@ -64,35 +64,6 @@ const SCHED_FLAG_UTIL_CLAMP_MIN: u64 = 0x20;
 const SCHED_SCALE_CAPACITY: u32 = 1024;
 const SCHED_FLAG_KEEP_ALL: u64 = SCHED_FLAG_KEEP_POLICY | SCHED_FLAG_KEEP_PARAMS;
 
-fn bus_io_handler(bus: &Bus) -> impl FnMut(IoParams) -> Option<[u8; 8]> + '_ {
-    |IoParams {
-         address,
-         mut size,
-         operation: direction,
-     }| match direction {
-        IoOperation::Read => {
-            let mut data = [0u8; 8];
-            if size > data.len() {
-                error!("unsupported Read size of {} bytes", size);
-                size = data.len();
-            }
-            // Ignore the return value of `read()`. If no device exists on the bus at the given
-            // location, return the initial value of data, which is all zeroes.
-            let _ = bus.read(address, &mut data[..size]);
-            Some(data)
-        }
-        IoOperation::Write { data } => {
-            if size > data.len() {
-                error!("unsupported Write size of {} bytes", size);
-                size = data.len()
-            }
-            let data = &data[..size];
-            bus.write(address, data);
-            None
-        }
-    }
-}
-
 /// Set the VCPU thread affinity and other per-thread scheduler properties.
 /// This function will be called from each VCPU thread at startup.
 #[allow(clippy::unnecessary_cast)]
@@ -399,13 +370,31 @@ where
         if !interrupted_by_signal {
             match vcpu.run() {
                 Ok(VcpuExit::Io) => {
-                    if let Err(e) = vcpu.handle_io(&mut bus_io_handler(&io_bus)) {
+                    if let Err(e) =
+                        vcpu.handle_io(&mut |IoParams { address, operation }| match operation {
+                            IoOperation::Read(data) => {
+                                io_bus.read(address, data);
+                            }
+                            IoOperation::Write(data) => {
+                                io_bus.write(address, data);
+                            }
+                        })
+                    {
                         error!("failed to handle io: {}", e)
                     }
                 }
                 Ok(VcpuExit::Mmio) => {
                     if let Err(e) =
-                        vcpu.handle_mmio(&mut |io_params| Ok(bus_io_handler(&mmio_bus)(io_params)))
+                        vcpu.handle_mmio(&mut |IoParams { address, operation }| match operation {
+                            IoOperation::Read(data) => {
+                                mmio_bus.read(address, data);
+                                Ok(())
+                            }
+                            IoOperation::Write(data) => {
+                                mmio_bus.write(address, data);
+                                Ok(())
+                            }
+                        })
                     {
                         error!("failed to handle mmio: {}", e);
                     }

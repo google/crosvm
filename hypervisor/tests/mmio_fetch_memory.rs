@@ -80,15 +80,11 @@ fn test_whpx_mmio_fetch_memory() {
         match vcpu.run().expect("run failed") {
             VcpuExit::Mmio => {
                 exits.fetch_add(1, Ordering::SeqCst);
-                vcpu.handle_mmio(&mut |IoParams {
-                                           address,
-                                           size,
-                                           operation,
-                                       }| {
+                vcpu.handle_mmio(&mut |IoParams { address, operation }| {
                     match operation {
-                        IoOperation::Read => {
+                        IoOperation::Read(data) => {
                             memory_reads.fetch_add(1, Ordering::SeqCst);
-                            match (address, size) {
+                            match (address, data.len()) {
                                 // First MMIO read from the WHV_EMULATOR asks to
                                 // load the first 8 bytes of a new execution
                                 // page, when an instruction crosses page
@@ -99,22 +95,28 @@ fn test_whpx_mmio_fetch_memory() {
                                     // Ensure this instruction is the first read
                                     // in the sequence.
                                     assert_eq!(memory_reads.load(Ordering::SeqCst), 1);
-                                    Ok(Some([0x88, 0x03, 0x67, 0x8a, 0x01, 0xf4, 0, 0]))
+                                    data.copy_from_slice(&[
+                                        0x88, 0x03, 0x67, 0x8a, 0x01, 0xf4, 0, 0,
+                                    ]);
+                                    Ok(())
                                 }
                                 // Second MMIO read is a regular read from an
                                 // unmapped memory.
-                                (0x3010, 1) => Ok(Some([0x66, 0, 0, 0, 0, 0, 0, 0])),
+                                (0x3010, 1) => {
+                                    data.copy_from_slice(&[0x66]);
+                                    Ok(())
+                                }
                                 _ => {
-                                    panic!("invalid address({:#x})/size({})", address, size)
+                                    panic!("invalid address({:#x})/size({})", address, data.len())
                                 }
                             }
                         }
-                        IoOperation::Write { data } => {
+                        IoOperation::Write(data) => {
                             assert_eq!(address, 0x3000);
                             assert_eq!(data[0], 0x33);
-                            assert_eq!(size, 1);
+                            assert_eq!(data.len(), 1);
                             memory_writes.fetch_add(1, Ordering::SeqCst);
-                            Ok(None)
+                            Ok(())
                         }
                     }
                 })

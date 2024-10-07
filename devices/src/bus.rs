@@ -700,10 +700,14 @@ impl Bus {
 
     /// Reads data from the device that owns the range containing `addr` and puts it into `data`.
     ///
-    /// Returns true on success, otherwise `data` is untouched.
+    /// Returns true on success, otherwise `data` is filled with zeroes.
     pub fn read(&self, addr: u64, data: &mut [u8]) -> bool {
         #[cfg(feature = "stats")]
         let start = self.stats.lock().start_stat();
+
+        // Initialize `data` with all zeroes to ensure consistent results even if device `read()`
+        // implementations don't always fill every byte.
+        data.fill(0);
 
         let device_index = if let Some((offset, address, entry)) = self.get_device(addr) {
             let io = BusAccessInfo {

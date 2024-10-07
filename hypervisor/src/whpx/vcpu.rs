@@ -7,6 +7,7 @@ use std::arch::x86_64::CpuidResult;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::mem::size_of;
+use std::mem::size_of_val;
 use std::sync::Arc;
 
 use base::Error;
@@ -105,8 +106,8 @@ trait InstructionEmulatorCallbacks {
 struct InstructionEmulatorContext<'a> {
     vm_partition: Arc<SafePartition>,
     index: u32,
-    handle_mmio: Option<&'a mut dyn FnMut(IoParams) -> Result<Option<[u8; 8]>>>,
-    handle_io: Option<&'a mut dyn FnMut(IoParams) -> Option<[u8; 8]>>,
+    handle_mmio: Option<&'a mut dyn FnMut(IoParams) -> Result<()>>,
+    handle_io: Option<&'a mut dyn FnMut(IoParams)>,
 }
 
 impl InstructionEmulatorCallbacks for SafeInstructionEmulator {
@@ -117,46 +118,33 @@ impl InstructionEmulatorCallbacks for SafeInstructionEmulator {
         // unsafe because windows could decide to call this at any time.
         // However, we trust the kernel to call this while the vm/vcpu is valid.
         let ctx = unsafe { &mut *(context as *mut InstructionEmulatorContext) };
+        let Some(handle_io) = &mut ctx.handle_io else {
+            return E_UNEXPECTED;
+        };
+
         // safe because we trust the kernel to fill in the io_access
         let io_access_info = unsafe { &mut *io_access };
         let address = io_access_info.Port.into();
         let size = io_access_info.AccessSize as usize;
+        // SAFETY: We trust the kernel to fill in the io_access
+        let data: &mut [u8] = unsafe {
+            assert!(size <= size_of_val(&io_access_info.Data));
+            std::slice::from_raw_parts_mut(&mut io_access_info.Data as *mut u32 as *mut u8, size)
+        };
         match io_access_info.Direction {
             WHPX_EXIT_DIRECTION_PIO_IN => {
-                if let Some(handle_io) = &mut ctx.handle_io {
-                    if let Some(data) = handle_io(IoParams {
-                        address,
-                        size,
-                        operation: IoOperation::Read,
-                    }) {
-                        // Safe because we know this is an io_access_info field of u32,
-                        //  so casting as a &mut [u8] of len 4 is safe.
-                        let buffer = unsafe {
-                            std::slice::from_raw_parts_mut(
-                                &mut io_access_info.Data as *mut u32 as *mut u8,
-                                4,
-                            )
-                        };
-                        buffer[..size].copy_from_slice(&data[..size]);
-                    }
-                    S_OK
-                } else {
-                    E_UNEXPECTED
-                }
+                handle_io(IoParams {
+                    address,
+                    operation: IoOperation::Read(data),
+                });
+                S_OK
             }
             WHPX_EXIT_DIRECTION_PIO_OUT => {
-                if let Some(handle_io) = &mut ctx.handle_io {
-                    handle_io(IoParams {
-                        address,
-                        size,
-                        operation: IoOperation::Write {
-                            data: (io_access_info.Data as u64).to_ne_bytes(),
-                        },
-                    });
-                    S_OK
-                } else {
-                    E_UNEXPECTED
-                }
+                handle_io(IoParams {
+                    address,
+                    operation: IoOperation::Write(data),
+                });
+                S_OK
             }
             _ => E_UNEXPECTED,
         }
@@ -168,49 +156,38 @@ impl InstructionEmulatorCallbacks for SafeInstructionEmulator {
         // unsafe because windows could decide to call this at any time.
         // However, we trust the kernel to call this while the vm/vcpu is valid.
         let ctx = unsafe { &mut *(context as *mut InstructionEmulatorContext) };
+        let Some(handle_mmio) = &mut ctx.handle_mmio else {
+            return E_UNEXPECTED;
+        };
+
         // safe because we trust the kernel to fill in the memory_access
         let memory_access_info = unsafe { &mut *memory_access };
         let address = memory_access_info.GpaAddress;
         let size = memory_access_info.AccessSize as usize;
+        let data = &mut memory_access_info.Data[..size];
+
         match memory_access_info.Direction {
             WHPX_EXIT_DIRECTION_MMIO_READ => {
-                ctx.handle_mmio
-                    .as_mut()
-                    .map_or(E_UNEXPECTED, |handle_mmio| {
-                        handle_mmio(IoParams {
-                            address,
-                            size,
-                            operation: IoOperation::Read,
-                        })
-                        .map_err(|e| {
-                            error!("handle_mmio failed with {e}");
-                            e
-                        })
-                        .ok()
-                        .flatten()
-                        .map_or(E_UNEXPECTED, |data| {
-                            memory_access_info.Data = data;
-                            S_OK
-                        })
-                    })
+                if let Err(e) = handle_mmio(IoParams {
+                    address,
+                    operation: IoOperation::Read(data),
+                }) {
+                    error!("handle_mmio failed with {e}");
+                    E_UNEXPECTED
+                } else {
+                    S_OK
+                }
             }
             WHPX_EXIT_DIRECTION_MMIO_WRITE => {
-                ctx.handle_mmio
-                    .as_mut()
-                    .map_or(E_UNEXPECTED, |handle_mmio| {
-                        handle_mmio(IoParams {
-                            address,
-                            size,
-                            operation: IoOperation::Write {
-                                data: memory_access_info.Data,
-                            },
-                        })
-                        .map_err(|e| {
-                            error!("handle_mmio failed with {e}");
-                            e
-                        })
-                        .map_or(E_UNEXPECTED, |_| S_OK)
-                    })
+                if let Err(e) = handle_mmio(IoParams {
+                    address,
+                    operation: IoOperation::Write(data),
+                }) {
+                    error!("handle_mmio write with {e}");
+                    E_UNEXPECTED
+                } else {
+                    S_OK
+                }
             }
             _ => E_UNEXPECTED,
         }
@@ -559,10 +536,7 @@ impl Vcpu for WhpxVcpu {
     /// Once called, it will determine whether a mmio read or mmio write was the reason for the mmio
     /// exit, call `handle_fn` with the respective IoOperation to perform the mmio read or
     /// write, and set the return data in the vcpu so that the vcpu can resume running.
-    fn handle_mmio(
-        &self,
-        handle_fn: &mut dyn FnMut(IoParams) -> Result<Option<[u8; 8]>>,
-    ) -> Result<()> {
+    fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Result<()>) -> Result<()> {
         let mut status: WHV_EMULATOR_STATUS = Default::default();
         let mut ctx = InstructionEmulatorContext {
             vm_partition: self.vm_partition.clone(),
@@ -596,7 +570,7 @@ impl Vcpu for WhpxVcpu {
     /// Once called, it will determine whether an io in or io out was the reason for the io exit,
     /// call `handle_fn` with the respective IoOperation to perform the io in or io out,
     /// and set the return data in the vcpu so that the vcpu can resume running.
-    fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
+    fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams)) -> Result<()> {
         let mut status: WHV_EMULATOR_STATUS = Default::default();
         let mut ctx = InstructionEmulatorContext {
             vm_partition: self.vm_partition.clone(),

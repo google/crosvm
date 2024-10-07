@@ -16,7 +16,6 @@ mod riscv64;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
-use std::cmp::min;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
@@ -27,7 +26,6 @@ use std::os::raw::c_ulong;
 use std::os::raw::c_void;
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
-use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 
 use base::errno_result;
@@ -1039,14 +1037,10 @@ impl Vcpu for KvmVcpu {
         }
     }
 
-    fn handle_mmio(
-        &self,
-        handle_fn: &mut dyn FnMut(IoParams) -> Result<Option<[u8; 8]>>,
-    ) -> Result<()> {
+    fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Result<()>) -> Result<()> {
         // SAFETY:
         // Safe because we know we mapped enough memory to hold the kvm_run struct because the
-        // kernel told us how large it was. The pointer is page aligned so casting to a different
-        // type is well defined, hence the clippy allow attribute.
+        // kernel told us how large it was.
         let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
         // Verify that the handler is called in the right context.
         assert!(run.exit_reason == KVM_EXIT_MMIO);
@@ -1055,31 +1049,24 @@ impl Vcpu for KvmVcpu {
         // union field to use.
         let mmio = unsafe { &mut run.__bindgen_anon_1.mmio };
         let address = mmio.phys_addr;
-        let size = min(mmio.len as usize, mmio.data.len());
+        let data = &mut mmio.data[..mmio.len as usize];
         if mmio.is_write != 0 {
             handle_fn(IoParams {
                 address,
-                size,
-                operation: IoOperation::Write { data: mmio.data },
-            })?;
-            Ok(())
-        } else if let Some(data) = handle_fn(IoParams {
-            address,
-            size,
-            operation: IoOperation::Read,
-        })? {
-            mmio.data[..size].copy_from_slice(&data[..size]);
-            Ok(())
+                operation: IoOperation::Write(data),
+            })
         } else {
-            Err(Error::new(EINVAL))
+            handle_fn(IoParams {
+                address,
+                operation: IoOperation::Read(data),
+            })
         }
     }
 
-    fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
+    fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams)) -> Result<()> {
         // SAFETY:
         // Safe because we know we mapped enough memory to hold the kvm_run struct because the
-        // kernel told us how large it was. The pointer is page aligned so casting to a different
-        // type is well defined, hence the clippy allow attribute.
+        // kernel told us how large it was.
         let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
         // Verify that the handler is called in the right context.
         assert!(run.exit_reason == KVM_EXIT_IO);
@@ -1087,52 +1074,42 @@ impl Vcpu for KvmVcpu {
         // Safe because the exit_reason (which comes from the kernel) told us which
         // union field to use.
         let io = unsafe { run.__bindgen_anon_1.io };
+        let address = u64::from(io.port);
         let size = usize::from(io.size);
+        let count = io.count as usize;
+        let data_len = count * size;
+        let data_offset = io.data_offset as usize;
+        assert!(data_offset + data_len <= self.run_mmap.size());
 
         // SAFETY:
         // The data_offset is defined by the kernel to be some number of bytes into the kvm_run
         // structure, which we have fully mmap'd.
-        let mut data_ptr = unsafe { (run as *mut kvm_run as *mut u8).add(io.data_offset as usize) };
+        let buffer: &mut [u8] = unsafe {
+            std::slice::from_raw_parts_mut(
+                (run as *mut kvm_run as *mut u8).add(data_offset),
+                data_len,
+            )
+        };
+        let data_chunks = buffer.chunks_mut(size);
 
-        match io.direction as u32 {
-            KVM_EXIT_IO_IN => {
-                for _ in 0..io.count {
-                    if let Some(data) = handle_fn(IoParams {
-                        address: io.port.into(),
-                        size,
-                        operation: IoOperation::Read,
-                    }) {
-                        // TODO(b/315998194): Add safety comment
-                        #[allow(clippy::undocumented_unsafe_blocks)]
-                        unsafe {
-                            copy_nonoverlapping(data.as_ptr(), data_ptr, size);
-                            data_ptr = data_ptr.add(size);
-                        }
-                    } else {
-                        return Err(Error::new(EINVAL));
-                    }
-                }
-                Ok(())
+        if io.direction == KVM_EXIT_IO_IN as u8 {
+            for data in data_chunks {
+                handle_fn(IoParams {
+                    address,
+                    operation: IoOperation::Read(data),
+                });
             }
-            KVM_EXIT_IO_OUT => {
-                for _ in 0..io.count {
-                    let mut data = [0; 8];
-                    // TODO(b/315998194): Add safety comment
-                    #[allow(clippy::undocumented_unsafe_blocks)]
-                    unsafe {
-                        copy_nonoverlapping(data_ptr, data.as_mut_ptr(), min(size, data.len()));
-                        data_ptr = data_ptr.add(size);
-                    }
-                    handle_fn(IoParams {
-                        address: io.port.into(),
-                        size,
-                        operation: IoOperation::Write { data },
-                    });
-                }
-                Ok(())
+        } else {
+            debug_assert_eq!(io.direction, KVM_EXIT_IO_OUT as u8);
+            for data in data_chunks {
+                handle_fn(IoParams {
+                    address,
+                    operation: IoOperation::Write(data),
+                });
             }
-            _ => Err(Error::new(EINVAL)),
         }
+
+        Ok(())
     }
 }
 

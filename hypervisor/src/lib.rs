@@ -268,23 +268,22 @@ pub trait Vm: Send {
 }
 
 /// Operation for Io and Mmio
-#[derive(Copy, Clone, Debug)]
-pub enum IoOperation {
-    Read,
-    Write {
-        /// Data to be written.
-        ///
-        /// For 64 bit architecture, Mmio and Io only work with at most 8 bytes of data.
-        data: [u8; 8],
-    },
+#[derive(Debug)]
+pub enum IoOperation<'a> {
+    /// Data to be read from a device on the bus.
+    ///
+    /// The `handle_fn` should fill the entire slice with the read data.
+    Read(&'a mut [u8]),
+
+    /// Data to be written to a device on the bus.
+    Write(&'a [u8]),
 }
 
 /// Parameters describing an MMIO or PIO from the guest.
-#[derive(Copy, Clone, Debug)]
-pub struct IoParams {
+#[derive(Debug)]
+pub struct IoParams<'a> {
     pub address: u64,
-    pub size: usize,
-    pub operation: IoOperation,
+    pub operation: IoOperation<'a>,
 }
 
 /// Handle to a virtual CPU that may be used to request a VM exit from within a signal handler.
@@ -350,10 +349,7 @@ pub trait Vcpu: downcast_rs::DowncastSync {
     /// Once called, it will determine whether a MMIO read or MMIO write was the reason for the MMIO
     /// exit, call `handle_fn` with the respective IoParams to perform the MMIO read or write, and
     /// set the return data in the vcpu so that the vcpu can resume running.
-    fn handle_mmio(
-        &self,
-        handle_fn: &mut dyn FnMut(IoParams) -> Result<Option<[u8; 8]>>,
-    ) -> Result<()>;
+    fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Result<()>) -> Result<()>;
 
     /// Handles an incoming PIO from the guest.
     ///
@@ -363,7 +359,7 @@ pub trait Vcpu: downcast_rs::DowncastSync {
     /// Once called, it will determine whether an input or output was the reason for the Io exit,
     /// call `handle_fn` with the respective IoParams to perform the input/output operation, and set
     /// the return data in the vcpu so that the vcpu can resume running.
-    fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()>;
+    fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams)) -> Result<()>;
 
     /// Signals to the hypervisor that this Vcpu is being paused by userspace.
     fn on_suspend(&self) -> Result<()>;

@@ -111,54 +111,42 @@ where
     loop {
         match vcpu.run().expect("run failed") {
             VcpuExit::Mmio => {
-                vcpu.handle_mmio(&mut |IoParams {
-                                           address,
-                                           size,
-                                           operation,
-                                       }| {
+                vcpu.handle_mmio(&mut |IoParams { address, operation }| {
                     match operation {
-                        IoOperation::Read => {
-                            let mut data = [0u8; 8];
+                        IoOperation::Read(data) => {
                             assert_eq!(address, 0x3010);
-                            assert_eq!(size, 1);
+                            assert_eq!(data.len(), 1);
                             exits.fetch_add(1, Ordering::SeqCst);
                             // this number will be read into al register
-                            data.copy_from_slice(&0x66_u64.to_ne_bytes());
-                            Ok(Some(data))
+                            data.copy_from_slice(&[0x66]);
+                            Ok(())
                         }
-                        IoOperation::Write { data } => {
+                        IoOperation::Write(data) => {
                             assert_eq!(address, 0x3000);
                             assert_eq!(data[0], 0x33);
-                            assert_eq!(size, 1);
+                            assert_eq!(data.len(), 1);
                             exits.fetch_add(1, Ordering::SeqCst);
-                            Ok(None)
+                            Ok(())
                         }
                     }
                 })
                 .expect("failed to set the data");
             }
             VcpuExit::Io => {
-                vcpu.handle_io(&mut |IoParams {
-                                         address,
-                                         size,
-                                         operation,
-                                     }| {
+                vcpu.handle_io(&mut |IoParams { address, operation }| {
                     match operation {
-                        IoOperation::Read => {
-                            let mut data = [0u8; 8];
+                        IoOperation::Read(data) => {
                             assert_eq!(address, 0x20);
-                            assert_eq!(size, 1);
+                            assert_eq!(data.len(), 1);
                             exits.fetch_add(1, Ordering::SeqCst);
                             // this number will be read into the al register
-                            data.copy_from_slice(&0x77_u64.to_ne_bytes());
-                            Some(data)
+                            data.copy_from_slice(&[0x77]);
                         }
-                        IoOperation::Write { data } => {
+                        IoOperation::Write(data) => {
                             assert_eq!(address, 0x19);
-                            assert_eq!(size, 1);
+                            assert_eq!(data.len(), 1);
                             assert_eq!(data[0], 0x66);
                             exits.fetch_add(1, Ordering::SeqCst);
-                            None
                         }
                     }
                 })
@@ -282,27 +270,20 @@ where
     loop {
         match vcpu.run().expect("run failed") {
             VcpuExit::Io => {
-                vcpu.handle_io(&mut |IoParams {
-                                         address,
-                                         size,
-                                         operation,
-                                     }| {
-                    match operation {
-                        IoOperation::Read => panic!("unexpected PIO read"),
-                        IoOperation::Write { data } => {
-                            assert!((1..=4).contains(&address));
-                            if address % 2 == 0 {
-                                assert_eq!(size, 1);
-                                assert_eq!(data[0], address as u8);
-                            } else {
-                                assert_eq!(size, 2);
-                                assert_eq!(data[0], address as u8);
-                                assert_eq!(data[1], 0);
-                            }
-                            exit_bits.fetch_or(1 << (address - 1), Ordering::SeqCst);
-                            exit_count.fetch_add(1, Ordering::SeqCst);
-                            None
+                vcpu.handle_io(&mut |IoParams { address, operation }| match operation {
+                    IoOperation::Read(_) => panic!("unexpected PIO read"),
+                    IoOperation::Write(data) => {
+                        assert!((1..=4).contains(&address));
+                        if address % 2 == 0 {
+                            assert_eq!(data.len(), 1);
+                            assert_eq!(data[0], address as u8);
+                        } else {
+                            assert_eq!(data.len(), 2);
+                            assert_eq!(data[0], address as u8);
+                            assert_eq!(data[1], 0);
                         }
+                        exit_bits.fetch_or(1 << (address - 1), Ordering::SeqCst);
+                        exit_count.fetch_add(1, Ordering::SeqCst);
                     }
                 })
                 .expect("failed to set the data");
@@ -427,31 +408,23 @@ where
     loop {
         match vcpu.run().expect("run failed") {
             VcpuExit::Io => {
-                vcpu.handle_io(&mut |IoParams {
-                                         address,
-                                         size,
-                                         operation,
-                                     }| {
-                    match operation {
-                        IoOperation::Read => {
-                            let mut data = [0u8; 8];
-                            assert!((1..=4).contains(&address));
+                vcpu.handle_io(&mut |IoParams { address, operation }| match operation {
+                    IoOperation::Read(data) => {
+                        assert!((1..=4).contains(&address));
 
-                            if address % 2 == 0 {
-                                assert_eq!(size, 1);
-                                data[0] = address as u8;
-                            } else {
-                                assert_eq!(size, 2);
-                                data[0] = address as u8;
-                                data[1] = address as u8;
-                            }
-
-                            exit_bits.fetch_or(1 << (address - 1), Ordering::SeqCst);
-                            exit_count.fetch_add(1, Ordering::SeqCst);
-                            Some(data)
+                        if address % 2 == 0 {
+                            assert_eq!(data.len(), 1);
+                            data[0] = address as u8;
+                        } else {
+                            assert_eq!(data.len(), 2);
+                            data[0] = address as u8;
+                            data[1] = address as u8;
                         }
-                        IoOperation::Write { .. } => panic!("unexpected PIO write"),
+
+                        exit_bits.fetch_or(1 << (address - 1), Ordering::SeqCst);
+                        exit_count.fetch_add(1, Ordering::SeqCst);
                     }
+                    IoOperation::Write(_) => panic!("unexpected PIO write"),
                 })
                 .expect("failed to set the data");
             }
