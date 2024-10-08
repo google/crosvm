@@ -152,14 +152,6 @@ pub enum FrontendReq {
     CHECK_DEVICE_STATE = 43,
 
     // Non-standard message types.
-    /// Stop all queue handlers and save each queue state.
-    DEPRECATED__SLEEP = 1000,
-    /// Start up all queue handlers with their saved queue state.
-    DEPRECATED__WAKE = 1001,
-    /// Request serialized state of vhost process.
-    DEPRECATED__SNAPSHOT = 1002,
-    /// Request to restore state of vhost process.
-    DEPRECATED__RESTORE = 1003,
     /// Get a list of the device's shared memory regions.
     GET_SHARED_MEMORY_REGIONS = 1004,
 }
