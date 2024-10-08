@@ -9,10 +9,10 @@ use std::str;
 
 use libc::EINVAL;
 use log::error;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
-use zerocopy::Ref;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use super::errno_result;
 use super::getpid;
@@ -36,7 +36,7 @@ const NLA_HDRLEN: usize = std::mem::size_of::<NlAttr>();
 const NLATTR_ALIGN_TO: usize = 4;
 
 #[repr(C)]
-#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct NlMsgHdr {
     pub nlmsg_len: u32,
     pub nlmsg_type: u16,
@@ -47,7 +47,7 @@ struct NlMsgHdr {
 
 /// Netlink attribute struct, can be used by netlink consumer
 #[repr(C)]
-#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct NlAttr {
     pub len: u16,
     pub _type: u16,
@@ -55,7 +55,7 @@ pub struct NlAttr {
 
 /// Generic netlink header struct, can be used by netlink consumer
 #[repr(C)]
-#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct GenlMsgHdr {
     pub cmd: u8,
     pub version: u8,
@@ -76,10 +76,6 @@ pub struct NlAttrWithData<'a> {
     pub data: &'a [u8],
 }
 
-fn nlattr_align(offset: usize) -> usize {
-    (offset + NLATTR_ALIGN_TO - 1) & !(NLATTR_ALIGN_TO - 1)
-}
-
 /// Iterator over `struct NlAttr` as received from a netlink socket.
 pub struct NetlinkGenericDataIter<'a> {
     // `data` must be properly aligned for NlAttr.
@@ -90,28 +86,13 @@ impl<'a> Iterator for NetlinkGenericDataIter<'a> {
     type Item = NlAttrWithData<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.data.len() < NLA_HDRLEN {
-            return None;
-        }
-        let nl_hdr = NlAttr::read_from(&self.data[..NLA_HDRLEN])?;
-
-        // Make sure NlAtrr fits
+        let (nl_hdr, _) = NlAttr::read_from_prefix(self.data).ok()?;
         let nl_data_len = nl_hdr.len as usize;
-        if nl_data_len < NLA_HDRLEN || nl_data_len > self.data.len() {
-            return None;
-        }
-
-        // Get data related to processed NlAttr
-        let data_start = NLA_HDRLEN;
-        let data = &self.data[data_start..nl_data_len];
+        let data = self.data.get(NLA_HDRLEN..nl_data_len)?;
 
         // Get next NlAttr
-        let next_hdr = nlattr_align(nl_data_len);
-        if next_hdr >= self.data.len() {
-            self.data = &[];
-        } else {
-            self.data = &self.data[next_hdr..];
-        }
+        let next_hdr = nl_data_len.next_multiple_of(NLATTR_ALIGN_TO);
+        self.data = self.data.get(next_hdr..).unwrap_or(&[]);
 
         Some(NlAttrWithData {
             _type: nl_hdr._type,
@@ -131,29 +112,13 @@ impl<'a> Iterator for NetlinkMessageIter<'a> {
     type Item = NetlinkMessage<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.data.len() < NLMSGHDR_SIZE {
-            return None;
-        }
-        let hdr = NlMsgHdr::read_from(&self.data[..NLMSGHDR_SIZE])?;
-
-        // NLMSG_OK
+        let (hdr, _) = NlMsgHdr::read_from_prefix(self.data).ok()?;
         let msg_len = hdr.nlmsg_len as usize;
-        if msg_len < NLMSGHDR_SIZE || msg_len > self.data.len() {
-            return None;
-        }
-
-        // NLMSG_DATA
-        let data_start = NLMSGHDR_SIZE;
-        let data = &self.data[data_start..msg_len];
+        let data = self.data.get(NLMSGHDR_SIZE..msg_len)?;
 
         // NLMSG_NEXT
-        let align_to = std::mem::align_of::<NlMsgHdr>();
-        let next_hdr = (msg_len + align_to - 1) & !(align_to - 1);
-        if next_hdr >= self.data.len() {
-            self.data = &[];
-        } else {
-            self.data = &self.data[next_hdr..];
-        }
+        let next_hdr = msg_len.next_multiple_of(std::mem::align_of::<NlMsgHdr>());
+        self.data = self.data.get(next_hdr..).unwrap_or(&[]);
 
         Some(NetlinkMessage {
             _type: hdr.nlmsg_type,
@@ -262,9 +227,7 @@ impl NetlinkGenericSocket {
         let data = unsafe { allocation.as_mut_slice(buf_size) };
 
         // Prepare the netlink message header
-        let hdr = Ref::<_, NlMsgHdr>::new(&mut data[..NLMSGHDR_SIZE])
-            .expect("failed to unwrap")
-            .into_mut();
+        let (hdr, genl_hdr) = NlMsgHdr::mut_from_prefix(data).expect("failed to unwrap");
         hdr.nlmsg_len = NLMSGHDR_SIZE as u32 + GENL_HDRLEN as u32;
         hdr.nlmsg_len += NLA_HDRLEN as u32 + family_name.len() as u32 + 1;
         hdr.nlmsg_flags = libc::NLM_F_REQUEST as u16;
@@ -272,36 +235,26 @@ impl NetlinkGenericSocket {
         hdr.nlmsg_pid = getpid() as u32;
 
         // Prepare generic netlink message header
-        let genl_hdr_end = NLMSGHDR_SIZE + GENL_HDRLEN;
-        let genl_hdr = Ref::<_, GenlMsgHdr>::new(&mut data[NLMSGHDR_SIZE..genl_hdr_end])
-            .expect("unable to get GenlMsgHdr from slice")
-            .into_mut();
+        let (genl_hdr, nlattr) =
+            GenlMsgHdr::mut_from_prefix(genl_hdr).expect("unable to get GenlMsgHdr from slice");
         genl_hdr.cmd = libc::CTRL_CMD_GETFAMILY as u8;
         genl_hdr.version = 0x1;
 
         // Netlink attributes
-        let nlattr_start = genl_hdr_end;
-        let nlattr_end = nlattr_start + NLA_HDRLEN;
-        let nl_attr = Ref::<_, NlAttr>::new(&mut data[nlattr_start..nlattr_end])
-            .expect("unable to get NlAttr from slice")
-            .into_mut();
+        let (nl_attr, payload) =
+            NlAttr::mut_from_prefix(nlattr).expect("unable to get NlAttr from slice");
         nl_attr._type = libc::CTRL_ATTR_FAMILY_NAME as u16;
         nl_attr.len = family_name.len() as u16 + 1 + NLA_HDRLEN as u16;
 
         // Fill the message payload with the family name
-        let payload_start = nlattr_end;
-        let payload_end = payload_start + family_name.len();
-        data[payload_start..payload_end].copy_from_slice(family_name.as_bytes());
+        payload[..family_name.len()].copy_from_slice(family_name.as_bytes());
+
+        let len = NLMSGHDR_SIZE + GENL_HDRLEN + NLA_HDRLEN + family_name.len() + 1;
 
         // SAFETY:
         // Safe because we pass a valid, owned socket fd and a valid pointer/size for the buffer.
         unsafe {
-            let res = libc::send(
-                self.sock.as_raw_fd(),
-                allocation.as_ptr(),
-                payload_end + 1,
-                0,
-            );
+            let res = libc::send(self.sock.as_raw_fd(), allocation.as_ptr(), len, 0);
             if res < 0 {
                 error!("failed to send get_family_cmd");
                 return errno_result();

@@ -36,7 +36,7 @@ kvm_sys = { path = "../kvm_sys" }
 
 [target.'cfg(target_arch = "x86_64")'.dev-dependencies]
 hypervisor_test_macro = { path = "hypervisor_test_macro" }
-zerocopy = { version = "0.7", features = ["derive"] }
+zerocopy = { version = "0.8.13", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
 thiserror = "1"

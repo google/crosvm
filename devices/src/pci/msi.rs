@@ -12,9 +12,10 @@ use base::Tube;
 use bit_field::*;
 use vm_control::VmIrqRequest;
 use vm_control::VmIrqResponse;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::pci::pci_configuration::PciCapConfig;
 use crate::pci::pci_configuration::PciCapConfigWriteResult;
@@ -265,7 +266,7 @@ impl MsiConfig {
 }
 
 #[bitfield]
-#[derive(Copy, Clone, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct MsiCtrl {
     enable: B1,
     multi_msg_capable: B3,
@@ -279,7 +280,7 @@ pub struct MsiCtrl {
 
 #[allow(dead_code)]
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 /// MSI Capability Structure
 pub struct MsiCap {
     // To make add_capability() happy

@@ -4,16 +4,17 @@
 
 //! Data structures and logic for virtio-fs IOCTLs specific to ARCVM.
 
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 pub const FS_IOCTL_PATH_MAX_LEN: usize = 128;
 pub const FS_IOCTL_XATTR_NAME_MAX_LEN: usize = 128;
 pub const FS_IOCTL_XATTR_VALUE_MAX_LEN: usize = 128;
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub(crate) struct FsPermissionDataBuffer {
     pub guest_uid: u32,
     pub guest_gid: u32,
@@ -37,7 +38,7 @@ impl XattrData {
     }
 }
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub(crate) struct FsPathXattrDataBuffer {
     pub path: [u8; FS_IOCTL_PATH_MAX_LEN],
     pub xattr_name: [u8; FS_IOCTL_XATTR_NAME_MAX_LEN],

@@ -45,8 +45,8 @@ use protobuf::Message;
 use protos::plugin::*;
 use static_assertions::const_assert;
 use sync::Mutex;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::IntoBytes;
 
 use super::*;
 
@@ -118,35 +118,39 @@ fn set_vcpu_state_enum_or_unknown(
 fn set_vcpu_state(vcpu: &Vcpu, state_set: vcpu_request::StateSet, state: &[u8]) -> SysResult<()> {
     match state_set {
         vcpu_request::StateSet::REGS => {
-            let regs = kvm_regs::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let regs = kvm_regs::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vcpu.set_regs(&regs)
         }
         vcpu_request::StateSet::SREGS => {
-            let sregs = kvm_sregs::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let sregs = kvm_sregs::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vcpu.set_sregs(&sregs)
         }
         vcpu_request::StateSet::FPU => {
-            let fpu = kvm_fpu::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let fpu = kvm_fpu::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vcpu.set_fpu(&fpu)
         }
         vcpu_request::StateSet::DEBUGREGS => {
-            let debugregs = kvm_debugregs::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let debugregs =
+                kvm_debugregs::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vcpu.set_debugregs(&debugregs)
         }
         vcpu_request::StateSet::XCREGS => {
-            let xcrs = kvm_xcrs::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let xcrs = kvm_xcrs::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vcpu.set_xcrs(&xcrs)
         }
         vcpu_request::StateSet::LAPIC => {
-            let lapic_state = kvm_lapic_state::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let lapic_state =
+                kvm_lapic_state::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vcpu.set_lapic(&lapic_state)
         }
         vcpu_request::StateSet::MP => {
-            let mp_state = kvm_mp_state::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let mp_state =
+                kvm_mp_state::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vcpu.set_mp_state(&mp_state)
         }
         vcpu_request::StateSet::EVENTS => {
-            let vcpu_events = kvm_vcpu_events::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let vcpu_events =
+                kvm_vcpu_events::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vcpu.set_vcpu_events(&vcpu_events)
         }
     }

@@ -58,8 +58,8 @@ use protobuf::Message;
 use protos::plugin::*;
 use sync::Mutex;
 use vm_memory::GuestAddress;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::IntoBytes;
 
 use super::*;
 
@@ -84,23 +84,28 @@ fn set_vm_state(
 ) -> SysResult<()> {
     match state_set.enum_value().map_err(|_| SysError::new(EINVAL))? {
         main_request::StateSet::PIC0 => {
-            let pic_state = kvm_pic_state::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let pic_state =
+                kvm_pic_state::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vm.set_pic_state(PicId::Primary, &pic_state)
         }
         main_request::StateSet::PIC1 => {
-            let pic_state = kvm_pic_state::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let pic_state =
+                kvm_pic_state::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vm.set_pic_state(PicId::Secondary, &pic_state)
         }
         main_request::StateSet::IOAPIC => {
-            let ioapic_state = IoapicState::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let ioapic_state =
+                IoapicState::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vm.set_ioapic_state(&ioapic_state)
         }
         main_request::StateSet::PIT => {
-            let pit_state = kvm_pit_state2::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let pit_state =
+                kvm_pit_state2::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vm.set_pit_state(&pit_state)
         }
         main_request::StateSet::CLOCK => {
-            let clock_data = kvm_clock_data::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let clock_data =
+                kvm_clock_data::read_from_bytes(state).map_err(|_| SysError::new(EINVAL))?;
             vm.set_clock(&clock_data)
         }
     }

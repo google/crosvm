@@ -16,9 +16,10 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
@@ -81,7 +82,7 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C)]
 struct MsgHeader {
     msg_json_size: usize,
@@ -308,7 +309,7 @@ pub fn deserialize_and_recv<T: DeserializeOwned, F: FnMut(&mut [u8]) -> io::Resu
     mut read_fn: F,
 ) -> Result<T> {
     let mut header = MsgHeader::default();
-    perform_read(&mut read_fn, header.as_bytes_mut()).map_err(Error::from_recv_io_error)?;
+    perform_read(&mut read_fn, header.as_mut_bytes()).map_err(Error::from_recv_io_error)?;
 
     let mut msg_json = vec![0u8; header.msg_json_size];
     perform_read(&mut read_fn, msg_json.as_mut_slice()).map_err(Error::from_recv_io_error)?;

@@ -30,7 +30,7 @@ sync = { path = "../common/sync" }
 thiserror = "1"
 uuid = { version = "1", features = ["v4"], optional = true }
 vm_memory = { path = "../vm_memory" }
-zerocopy = { version = "0.7", features = ["derive"] }
+zerocopy = { version = "0.8.13", features = ["derive"] }
 zstd = { version = "0.13", optional = true }
 
 [target.'cfg(windows)'.dependencies]

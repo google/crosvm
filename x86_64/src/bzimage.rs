@@ -19,7 +19,7 @@ use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::bootparam::boot_params;
 use crate::bootparam::XLF_KERNEL_64;
@@ -99,7 +99,7 @@ where
     // rather than reading into `params.hdr`. The bounds check in `.get_mut()` will ensure we do not
     // read beyond the end of `boot_params`.
     let setup_header_slice = params
-        .as_bytes_mut()
+        .as_mut_bytes()
         .get_mut(setup_header_start..setup_header_end)
         .ok_or(Error::InvalidSetupHeaderEnd(setup_header_end))?;
 

@@ -11,8 +11,9 @@ use base::Event;
 use base::RawDescriptor;
 use base::ReadNotifier;
 use base::INVALID_DESCRIPTOR;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 use crate::backend::VhostUserMemoryRegionInfo;
 use crate::backend::VringConfigData;
@@ -518,8 +519,10 @@ impl BackendClient {
         for _ in 0..body_reply.value {
             regions.push(
                 // Can't fail because the input is the correct size.
-                VhostSharedMemoryRegion::read_from(&buf_reply[offset..(offset + struct_size)])
-                    .unwrap(),
+                VhostSharedMemoryRegion::read_from_bytes(
+                    &buf_reply[offset..(offset + struct_size)],
+                )
+                .unwrap(),
             );
             offset += struct_size;
         }
@@ -536,7 +539,7 @@ impl BackendClient {
         Ok(hdr)
     }
 
-    fn send_request_with_body<T: Sized + AsBytes>(
+    fn send_request_with_body<T: IntoBytes + Immutable>(
         &self,
         code: FrontendReq,
         msg: &T,
@@ -547,7 +550,7 @@ impl BackendClient {
         Ok(hdr)
     }
 
-    fn send_request_with_payload<T: Sized + AsBytes>(
+    fn send_request_with_payload<T: IntoBytes + Immutable>(
         &self,
         code: FrontendReq,
         msg: &T,
@@ -588,7 +591,7 @@ impl BackendClient {
         Ok(hdr)
     }
 
-    fn recv_reply<T: Sized + FromBytes + AsBytes + Default + VhostUserMsgValidator>(
+    fn recv_reply<T: Sized + FromBytes + IntoBytes + Default + VhostUserMsgValidator>(
         &self,
         hdr: &VhostUserMsgHeader<FrontendReq>,
     ) -> VhostUserResult<T> {
@@ -604,7 +607,7 @@ impl BackendClient {
         Ok(body)
     }
 
-    fn recv_reply_with_files<T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator>(
+    fn recv_reply_with_files<T: Sized + IntoBytes + FromBytes + Default + VhostUserMsgValidator>(
         &self,
         hdr: &VhostUserMsgHeader<FrontendReq>,
     ) -> VhostUserResult<(T, Vec<File>)> {
@@ -621,7 +624,9 @@ impl BackendClient {
         Ok((body, files))
     }
 
-    fn recv_reply_with_payload<T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator>(
+    fn recv_reply_with_payload<
+        T: Sized + IntoBytes + FromBytes + Default + VhostUserMsgValidator,
+    >(
         &self,
         hdr: &VhostUserMsgHeader<FrontendReq>,
     ) -> VhostUserResult<(T, Vec<u8>, Vec<File>)> {

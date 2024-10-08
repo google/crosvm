@@ -11,7 +11,7 @@ use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use super::xhci_abi::EventRingSegmentTableEntry;
 use super::xhci_abi::Trb;

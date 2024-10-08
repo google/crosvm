@@ -9,9 +9,10 @@
 #![allow(dead_code)]
 
 // Added by kvm_sys/bindgen.sh
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 // TODO(b/388092267): Replace this with an upstream equivalent when available.
 // The original index (236) used in the ChromeOS v6.6 kernel was reused upstream for another

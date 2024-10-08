@@ -13,7 +13,7 @@ use linux_input_sys::constants::*;
 use linux_input_sys::input_event;
 use linux_input_sys::virtio_input_event;
 use linux_input_sys::InputEventDecoder;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use super::evdev::grab_evdev;
 use super::evdev::ungrab_evdev;
@@ -253,7 +253,7 @@ mod tests {
     use data_model::Le16;
     use data_model::SLe32;
     use linux_input_sys::InputEventDecoder;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
 
     use crate::virtio::input::event_source::input_event;
     use crate::virtio::input::event_source::virtio_input_event;

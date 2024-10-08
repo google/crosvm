@@ -48,8 +48,9 @@ use thiserror::Error;
 use vfio_sys::vfio::vfio_acpi_dsm;
 use vfio_sys::vfio::VFIO_IRQ_SET_DATA_BOOL;
 use vfio_sys::*;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 use crate::IommuDevType;
 
@@ -318,7 +319,7 @@ fn extract_vfio_struct<T>(bytes: &[u8], offset: usize) -> Option<T>
 where
     T: FromBytes,
 {
-    bytes.get(offset..).and_then(T::read_from_prefix)
+    Some(T::read_from_prefix(bytes.get(offset..)?).ok()?.0)
 }
 
 const VFIO_API_VERSION: u8 = 0;
@@ -1818,8 +1819,8 @@ impl VfioDevice {
     }
 
     /// Writes data into the specified `VfioRegionAddr.addr` + `offset`.
-    pub fn region_write_to_addr<T: AsBytes>(&self, val: &T, addr: &VfioRegionAddr, offset: u64) {
-        self.region_write(addr.index, val.as_bytes(), addr.addr + offset);
+    pub fn region_write_to_addr(&self, data: &[u8], addr: &VfioRegionAddr, offset: u64) {
+        self.region_write(addr.index, data, addr.addr + offset);
     }
 
     /// get vfio device's descriptors which are passed into minijail process
@@ -1898,17 +1899,17 @@ impl VfioPciConfig {
         VfioPciConfig { device }
     }
 
-    pub fn read_config<T: AsBytes + FromBytes>(&self, offset: u32) -> T {
+    pub fn read_config<T: IntoBytes + FromBytes>(&self, offset: u32) -> T {
         let mut config = T::new_zeroed();
         self.device.region_read(
             VFIO_PCI_CONFIG_REGION_INDEX as usize,
-            config.as_bytes_mut(),
+            config.as_mut_bytes(),
             offset.into(),
         );
         config
     }
 
-    pub fn write_config<T: AsBytes>(&self, config: T, offset: u32) {
+    pub fn write_config<T: Immutable + IntoBytes>(&self, config: T, offset: u32) {
         self.device.region_write(
             VFIO_PCI_CONFIG_REGION_INDEX as usize,
             config.as_bytes(),

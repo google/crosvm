@@ -12,7 +12,10 @@
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
-use zerocopy::AsBytes;
+use zerocopy::FromBytes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 pub const VIRTIO_VSOCK_F_SEQPACKET: u32 = 1;
 #[repr(C, packed)]
@@ -23,7 +26,7 @@ pub struct virtio_vsock_config {
 pub const virtio_vsock_event_id_VIRTIO_VSOCK_EVENT_TRANSPORT_RESET: virtio_vsock_event_id = 0;
 pub type virtio_vsock_event_id = ::std::os::raw::c_uint;
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct virtio_vsock_event {
     pub id: Le32,
 }

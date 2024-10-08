@@ -981,16 +981,18 @@ mod tests {
     use base::Event;
     use vmm_vhost::BackendServer;
     use vmm_vhost::FrontendReq;
-    use zerocopy::AsBytes;
     use zerocopy::FromBytes;
-    use zerocopy::FromZeroes;
+    use zerocopy::FromZeros;
+    use zerocopy::Immutable;
+    use zerocopy::IntoBytes;
+    use zerocopy::KnownLayout;
 
     use super::*;
     use crate::virtio::vhost_user_frontend::VhostUserFrontend;
     use crate::virtio::DeviceType;
     use crate::virtio::VirtioDevice;
 
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, AsBytes, FromZeroes, FromBytes)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, FromBytes, Immutable, IntoBytes, KnownLayout)]
     #[repr(C, packed(4))]
     struct FakeConfig {
         x: u32,
@@ -1135,10 +1137,9 @@ mod tests {
                     .unwrap();
 
             println!("read_config");
-            let mut buf = vec![0; std::mem::size_of::<FakeConfig>()];
-            vmm_device.read_config(0, &mut buf);
+            let mut config = FakeConfig::new_zeroed();
+            vmm_device.read_config(0, config.as_mut_bytes());
             // Check if the obtained config data is correct.
-            let config = FakeConfig::read_from(buf.as_bytes()).unwrap();
             assert_eq!(config, FAKE_CONFIG_DATA);
 
             let activate = |vmm_device: &mut VhostUserFrontend| {

@@ -11,7 +11,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use base::debug;
 use base::error;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::virtio::console::worker::WorkerPort;
 use crate::virtio::device_constants::console::virtio_console_control;

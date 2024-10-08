@@ -9,9 +9,10 @@
 #![allow(dead_code)]
 
 // Added by virtio_sys/bindgen.sh
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 pub const VIRTIO_SCSI_CDB_DEFAULT_SIZE: u32 = 32;
 pub const VIRTIO_SCSI_SENSE_DEFAULT_SIZE: u32 = 96;
@@ -61,7 +62,7 @@ pub type __virtio16 = u16;
 pub type __virtio32 = u32;
 pub type __virtio64 = u64;
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct virtio_scsi_cmd_req {
     pub lun: [u8; 8usize],
     pub tag: __virtio64,
@@ -71,7 +72,7 @@ pub struct virtio_scsi_cmd_req {
     pub cdb: [u8; 32usize],
 }
 #[repr(C, packed)]
-#[derive(Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct virtio_scsi_cmd_resp {
     pub sense_len: __virtio32,
     pub resid: __virtio32,
@@ -90,7 +91,7 @@ impl Default for virtio_scsi_cmd_resp {
     }
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct virtio_scsi_ctrl_tmf_req {
     pub type_: __virtio32,
     pub subtype: __virtio32,
@@ -98,19 +99,19 @@ pub struct virtio_scsi_ctrl_tmf_req {
     pub tag: __virtio64,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct virtio_scsi_ctrl_tmf_resp {
     pub response: u8,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct virtio_scsi_ctrl_an_req {
     pub type_: __virtio32,
     pub lun: [u8; 8usize],
     pub event_requested: __virtio32,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct virtio_scsi_ctrl_an_resp {
     pub event_actual: __virtio32,
     pub response: u8,
@@ -123,7 +124,7 @@ pub struct virtio_scsi_event {
     pub reason: __virtio32,
 }
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct virtio_scsi_config {
     pub num_queues: __virtio32,
     pub seg_max: __virtio32,

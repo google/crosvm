@@ -41,9 +41,10 @@ use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
 use thiserror::Error as ThisError;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
@@ -175,7 +176,7 @@ impl VioSClient {
         let mut config: VioSConfig = Default::default();
         const NUM_FDS: usize = 5;
         let (recv_size, mut safe_fds) = client_socket
-            .recv_with_fds(config.as_bytes_mut(), NUM_FDS)
+            .recv_with_fds(config.as_mut_bytes(), NUM_FDS)
             .map_err(Error::ServerError)?;
 
         if recv_size != std::mem::size_of::<VioSConfig>() {
@@ -499,7 +500,7 @@ impl VioSClient {
         Ok(())
     }
 
-    fn request_info<T: AsBytes + FromBytes + Default + Copy + Clone>(
+    fn request_info<T: IntoBytes + FromBytes + Default + Copy + Clone>(
         &self,
         req_code: u32,
         count: usize,
@@ -515,13 +516,13 @@ impl VioSClient {
             size: (std::mem::size_of::<virtio_snd_query_info>() as u32).into(),
         };
         let control_socket_lock = self.control_socket.lock();
-        seq_socket_send(&control_socket_lock, req)?;
+        seq_socket_send(&control_socket_lock, req.as_bytes())?;
         let reply = control_socket_lock
             .recv_as_vec()
             .map_err(Error::ServerIOError)?;
         let mut status: virtio_snd_hdr = Default::default();
         status
-            .as_bytes_mut()
+            .as_mut_bytes()
             .copy_from_slice(&reply[0..status_size]);
         if status.code.to_native() != VIRTIO_SND_S_OK {
             return Err(Error::CommandFailed(status.code.to_native()));
@@ -533,7 +534,7 @@ impl VioSClient {
         }
         Ok(reply[status_size..]
             .chunks(info_size)
-            .map(|info_buffer| T::read_from(info_buffer).unwrap())
+            .map(|info_buffer| T::read_from_bytes(info_buffer).unwrap())
             .collect())
     }
 
@@ -630,7 +631,7 @@ fn recv_buffer_status_msg(
 ) -> Result<()> {
     let mut msg: IoStatusMsg = Default::default();
     let size = socket
-        .recv(msg.as_bytes_mut())
+        .recv(msg.as_mut_bytes())
         .map_err(Error::ServerIOError)?;
     if size != std::mem::size_of::<IoStatusMsg>() {
         return Err(Error::ProtocolError(
@@ -668,7 +669,7 @@ fn recv_buffer_status_msg(
 fn recv_event(socket: &UnixSeqpacket) -> Result<virtio_snd_event> {
     let mut msg: virtio_snd_event = Default::default();
     let size = socket
-        .recv(msg.as_bytes_mut())
+        .recv(msg.as_mut_bytes())
         .map_err(Error::ServerIOError)?;
     if size != std::mem::size_of::<virtio_snd_event>() {
         return Err(Error::ProtocolError(
@@ -794,7 +795,7 @@ impl IoBufferQueue {
 
     fn send_buffer(&self, stream_id: u32, offset: usize, size: usize) -> Result<()> {
         let msg = IoTransferMsg::new(stream_id, offset, size);
-        seq_socket_send(&self.socket, msg)
+        seq_socket_send(&self.socket, msg.as_bytes())
     }
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {
@@ -835,15 +836,15 @@ impl From<(u32, VioSStreamParams)> for virtio_snd_pcm_set_params {
     }
 }
 
-fn send_cmd<T: AsBytes>(control_socket: &UnixSeqpacket, data: T) -> Result<()> {
-    seq_socket_send(control_socket, data)?;
+fn send_cmd<T: Immutable + IntoBytes>(control_socket: &UnixSeqpacket, data: T) -> Result<()> {
+    seq_socket_send(control_socket, data.as_bytes())?;
     recv_cmd_status(control_socket)
 }
 
 fn recv_cmd_status(control_socket: &UnixSeqpacket) -> Result<()> {
     let mut status: virtio_snd_hdr = Default::default();
     control_socket
-        .recv(status.as_bytes_mut())
+        .recv(status.as_mut_bytes())
         .map_err(Error::ServerIOError)?;
     if status.code.to_native() == VIRTIO_SND_S_OK {
         Ok(())
@@ -852,9 +853,9 @@ fn recv_cmd_status(control_socket: &UnixSeqpacket) -> Result<()> {
     }
 }
 
-fn seq_socket_send<T: AsBytes>(socket: &UnixSeqpacket, data: T) -> Result<()> {
+fn seq_socket_send(socket: &UnixSeqpacket, data: &[u8]) -> Result<()> {
     loop {
-        let send_res = socket.send(data.as_bytes());
+        let send_res = socket.send(data);
         if let Err(e) = send_res {
             match e.kind() {
                 // Retry if interrupted
@@ -875,9 +876,10 @@ const VIOS_VERSION: u32 = 2;
     Copy,
     Clone,
     Default,
-    AsBytes,
-    FromZeroes,
     FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
     Serialize,
     Deserialize,
     PartialEq,
@@ -898,7 +900,7 @@ struct BufferReleaseMsg {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct IoTransferMsg {
     io_xfer: virtio_snd_pcm_xfer,
     buffer_offset: u32,
@@ -918,7 +920,7 @@ impl IoTransferMsg {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct IoStatusMsg {
     status: virtio_snd_pcm_status,
     buffer_offset: u32,

@@ -5,9 +5,10 @@
 //! Defines the superblock structure.
 
 use anyhow::Result;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::arena::Arena;
 use crate::arena::BlockId;
@@ -21,7 +22,7 @@ use crate::inode::Inode;
 /// Note that this struct only holds the fields at the beginning of the superblock. All fields after
 /// the fields supported by this structure are filled with zeros.
 #[repr(C)]
-#[derive(Default, Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Default, Debug, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub(crate) struct SuperBlock {
     pub inodes_count: u32,
     pub blocks_count: u32,

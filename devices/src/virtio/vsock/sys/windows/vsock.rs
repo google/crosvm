@@ -55,9 +55,9 @@ use serde::Serialize;
 use snapshot::AnySnapshot;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::FromZeros;
+use zerocopy::IntoBytes;
 
 use crate::virtio::async_utils;
 use crate::virtio::copy_config;
@@ -610,7 +610,7 @@ impl Worker {
                     src_port: Le32::from(port.host),
                     dst_port: guest_port,
                     len: Le32::from(data_size as u32),
-                    r#type: TYPE_STREAM_SOCKET.into(),
+                    type_: TYPE_STREAM_SOCKET.into(),
                     op: vsock_op::VIRTIO_VSOCK_OP_RW.into(),
                     buf_alloc: Le32::from(connection.buf_alloc as u32),
                     fwd_cnt: Le32::from(connection.recv_cnt as u32),
@@ -1104,7 +1104,7 @@ impl Worker {
                     src_port: { header.dst_port },
                     dst_port: { header.src_port },
                     len: 0.into(),
-                    r#type: TYPE_STREAM_SOCKET.into(),
+                    type_: TYPE_STREAM_SOCKET.into(),
                     op: resp_op.into(),
                     buf_alloc: Le32::from(buf_alloc),
                     fwd_cnt: Le32::from(fwd_cnt),
@@ -1148,7 +1148,7 @@ impl Worker {
                         src_port: { header.dst_port },
                         dst_port: { header.src_port },
                         len: 0.into(),
-                        r#type: TYPE_STREAM_SOCKET.into(),
+                        type_: TYPE_STREAM_SOCKET.into(),
                         op: vsock_op::VIRTIO_VSOCK_OP_RST.into(),
                         // There is no buffer on a closed connection
                         buf_alloc: 0.into(),
@@ -1161,7 +1161,7 @@ impl Worker {
                     self.write_bytes_to_queue(
                         &mut *send_queue.lock().await,
                         rx_queue_evt,
-                        response.as_bytes_mut(),
+                        response.as_mut_bytes(),
                     )
                     .await
                     .expect("vsock: failed to write to queue");
@@ -1261,7 +1261,7 @@ impl Worker {
                 src_port: { header.dst_port },
                 dst_port: { header.src_port },
                 len: 0.into(),
-                r#type: TYPE_STREAM_SOCKET.into(),
+                type_: TYPE_STREAM_SOCKET.into(),
                 op: vsock_op::VIRTIO_VSOCK_OP_CREDIT_UPDATE.into(),
                 buf_alloc: Le32::from(connection.buf_alloc as u32),
                 fwd_cnt: Le32::from(connection.recv_cnt as u32),
@@ -1275,7 +1275,7 @@ impl Worker {
             self.write_bytes_to_queue(
                 &mut *send_queue.lock().await,
                 rx_queue_evt,
-                response.as_bytes_mut(),
+                response.as_mut_bytes(),
             )
             .await
             .unwrap_or_else(|_| panic!("vsock: port {}: failed to write to queue", port));
@@ -1302,7 +1302,7 @@ impl Worker {
                 src_port: { header.dst_port },
                 dst_port: { header.src_port },
                 len: 0.into(),
-                r#type: TYPE_STREAM_SOCKET.into(),
+                type_: TYPE_STREAM_SOCKET.into(),
                 op: vsock_op::VIRTIO_VSOCK_OP_RST.into(),
                 buf_alloc: Le32::from(connection.buf_alloc as u32),
                 fwd_cnt: Le32::from(connection.recv_cnt as u32),
@@ -1314,7 +1314,7 @@ impl Worker {
             self.write_bytes_to_queue(
                 &mut *send_queue.lock().await,
                 rx_queue_evt,
-                response.as_bytes_mut(),
+                response.as_mut_bytes(),
             )
             .await
             .expect("failed to write to queue");

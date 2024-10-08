@@ -55,7 +55,7 @@ use winapi::um::winsock2::SOCKET;
 use winapi::um::winsock2::SOCKET_ERROR;
 use winapi::um::winsock2::WSADATA;
 use winapi::um::winsock2::WSAPOLLFD;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::slirp::context::CallbackHandler;
 use crate::slirp::context::Context;

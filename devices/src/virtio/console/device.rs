@@ -9,7 +9,7 @@ use data_model::Le32;
 use hypervisor::ProtectionType;
 use serde::Deserialize;
 use serde::Serialize;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::virtio::base_features;
 use crate::virtio::console::port::ConsolePort;

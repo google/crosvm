@@ -673,7 +673,7 @@ impl<T: Encoder> EncoderDevice<T> {
                             // Safe because we confirmed the correct type for the resource.
                             // unwrap() is also safe here because we just tested above that
                             // `entries` had exactly one element.
-                            unsafe { entries.first().unwrap().object },
+                            entries.first().unwrap().object(),
                             &self.resource_bridge,
                             &stream.src_params,
                         )
@@ -723,7 +723,7 @@ impl<T: Encoder> EncoderDevice<T> {
                             // Safe because we confirmed the correct type for the resource.
                             // unwrap() is also safe here because we just tested above that
                             // `entries` had exactly one element.
-                            unsafe { entries.first().unwrap().object },
+                            entries.first().unwrap().object(),
                             &self.resource_bridge,
                             &stream.dst_params,
                         )

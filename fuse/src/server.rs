@@ -15,9 +15,9 @@ use std::time::Duration;
 use base::error;
 use base::pagesize;
 use base::Protection;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 use crate::filesystem::Context;
 use crate::filesystem::DirEntry;
@@ -39,9 +39,9 @@ const SELINUX_XATTR_CSTR: &[u8] = b"security.selinux\0";
 
 /// A trait for reading from the underlying FUSE endpoint.
 pub trait Reader: io::Read {
-    fn read_struct<T: AsBytes + FromBytes + FromZeroes>(&mut self) -> Result<T> {
+    fn read_struct<T: IntoBytes + FromBytes>(&mut self) -> Result<T> {
         let mut out = T::new_zeroed();
-        self.read_exact(out.as_bytes_mut())
+        self.read_exact(out.as_mut_bytes())
             .map_err(Error::DecodeMessage)?;
         Ok(out)
     }
@@ -1813,7 +1813,7 @@ fn reply_readdir<W: Writer>(len: usize, unique: u64, mut w: W) -> Result<usize> 
     Ok(out.len as usize)
 }
 
-fn reply_ok<T: AsBytes, W: Writer>(
+fn reply_ok<T: IntoBytes + Immutable, W: Writer>(
     out: Option<T>,
     data: Option<&[u8]>,
     unique: u64,
@@ -1963,9 +1963,8 @@ fn parse_selinux_xattr(buf: &[u8]) -> Result<Option<&CStr>> {
     // Because the security context data block may have been preceded by variable-length strings,
     // `SecctxHeader` and the subsequent `Secctx` structs may not be correctly byte-aligned
     // within `buf`.
-    let secctx_header = SecctxHeader::read_from_prefix(buf).ok_or(Error::DecodeMessage(
-        io::Error::from_raw_os_error(libc::EINVAL),
-    ))?;
+    let (secctx_header, _) = SecctxHeader::read_from_prefix(buf)
+        .map_err(|_| Error::DecodeMessage(io::Error::from_raw_os_error(libc::EINVAL)))?;
 
     // FUSE 7.38 introduced a generic request extension with the same structure as  `SecctxHeader`.
     // A `nr_secctx` value above `MAX_NR_SECCTX` indicates that this data block does not contain
@@ -1986,9 +1985,8 @@ fn parse_selinux_xattr(buf: &[u8]) -> Result<Option<&CStr>> {
         }
 
         let secctx =
-            Secctx::read_from(&buf[cur_secctx_pos..(cur_secctx_pos + size_of::<Secctx>())]).ok_or(
-                Error::DecodeMessage(io::Error::from_raw_os_error(libc::EINVAL)),
-            )?;
+            Secctx::read_from_bytes(&buf[cur_secctx_pos..(cur_secctx_pos + size_of::<Secctx>())])
+                .map_err(|_| Error::DecodeMessage(io::Error::from_raw_os_error(libc::EINVAL)))?;
 
         cur_secctx_pos += size_of::<Secctx>();
 

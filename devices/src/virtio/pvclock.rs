@@ -83,9 +83,10 @@ use vm_control::PvClockCommandResponse;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use super::copy_config;
 use super::DeviceType;
@@ -187,7 +188,7 @@ fn freq_scale_shift(scaled_hz: u64, base_hz: u64) -> (u32, i8) {
 
 // The config structure being exposed to the guest to tell them how much suspend time should be
 // injected to the guest's CLOCK_BOOTTIME.
-#[derive(Debug, Clone, Copy, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Debug, Clone, Copy, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[allow(non_camel_case_types)]
 #[repr(C)]
 struct virtio_pvclock_config {
@@ -199,7 +200,7 @@ struct virtio_pvclock_config {
     padding: u32,
 }
 
-#[derive(Debug, Clone, Copy, Default, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Clone, Copy, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[allow(non_camel_case_types)]
 #[repr(C)]
 struct virtio_pvclock_set_pvclock_page_req {

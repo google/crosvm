@@ -2,12 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 #[repr(C, packed)]
-#[derive(Clone, Copy, Default, FromZeroes, FromBytes, AsBytes)]
+#[derive(Clone, Copy, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct FACS {
     pub signature: [u8; 4],
     pub length: u32,

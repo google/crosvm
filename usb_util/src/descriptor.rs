@@ -131,11 +131,11 @@ pub fn parse_usbfs_descriptors(data: &[u8]) -> Result<DeviceDescriptorTree> {
     ) -> Result<(T, usize)> {
         let desc_type = T::descriptor_type() as u8;
         loop {
-            let hdr = DescriptorHeader::read_from(
+            let hdr = DescriptorHeader::read_from_bytes(
                 data.get(*offset..*offset + size_of::<DescriptorHeader>())
                     .ok_or(Error::DescriptorParse)?,
             )
-            .ok_or(Error::DescriptorParse)?;
+            .map_err(|_| Error::DescriptorParse)?;
             if hdr.bDescriptorType == desc_type {
                 if usize::from(hdr.bLength) < size_of::<DescriptorHeader>() + size_of::<T>() {
                     return Err(Error::DescriptorParse);
@@ -144,11 +144,11 @@ pub fn parse_usbfs_descriptors(data: &[u8]) -> Result<DeviceDescriptorTree> {
                 let desc_offset = *offset;
 
                 *offset += size_of::<DescriptorHeader>();
-                let desc = T::read_from(
+                let desc = T::read_from_bytes(
                     data.get(*offset..*offset + size_of::<T>())
                         .ok_or(Error::DescriptorParse)?,
                 )
-                .ok_or(Error::DescriptorParse)?;
+                .map_err(|_| Error::DescriptorParse)?;
                 *offset += hdr.bLength as usize - size_of::<DescriptorHeader>();
                 return Ok((desc, desc_offset));
             } else {

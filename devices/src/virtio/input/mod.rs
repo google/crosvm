@@ -38,9 +38,10 @@ use serde::Serialize;
 use snapshot::AnySnapshot;
 use thiserror::Error;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use self::event_source::EvdevEventSource;
 use self::event_source::EventSource;
@@ -105,7 +106,18 @@ pub enum InputError {
 
 pub type Result<T> = std::result::Result<T, InputError>;
 
-#[derive(Copy, Clone, Default, Debug, AsBytes, FromZeroes, FromBytes, Serialize, Deserialize)]
+#[derive(
+    Copy,
+    Clone,
+    Default,
+    Debug,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    Serialize,
+    Deserialize,
+)]
 #[repr(C)]
 pub struct virtio_input_device_ids {
     bustype: Le16,
@@ -126,7 +138,17 @@ impl virtio_input_device_ids {
 }
 
 #[derive(
-    Copy, Clone, Default, Debug, AsBytes, FromZeroes, FromBytes, PartialEq, Serialize, Deserialize,
+    Copy,
+    Clone,
+    Default,
+    Debug,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Serialize,
+    Deserialize,
 )]
 #[repr(C)]
 pub struct virtio_input_absinfo {
@@ -147,7 +169,7 @@ impl virtio_input_absinfo {
     }
 }
 
-#[derive(Copy, Clone, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C)]
 struct virtio_input_config {
     select: u8,
@@ -352,7 +374,7 @@ impl VirtioInputConfig {
 
     fn write(&mut self, offset: usize, data: &[u8]) {
         let mut config = self.build_config_memory();
-        copy_config(config.as_bytes_mut(), offset as u64, data, 0);
+        copy_config(config.as_mut_bytes(), offset as u64, data, 0);
         self.select = config.select;
         self.subsel = config.subsel;
     }

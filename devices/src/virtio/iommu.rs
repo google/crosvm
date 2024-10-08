@@ -52,11 +52,13 @@ use vm_control::VmMemoryRegionId;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
-use zerocopy::AsBytes;
 #[cfg(target_arch = "x86_64")]
 use zerocopy::FromBytes;
 #[cfg(target_arch = "x86_64")]
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+#[cfg(target_arch = "x86_64")]
+use zerocopy::KnownLayout;
 
 #[cfg(target_arch = "x86_64")]
 use crate::pci::PciAddress;
@@ -86,7 +88,7 @@ const VIRTIO_IOMMU_VIOT_NODE_PCI_RANGE: u8 = 1;
 #[cfg(target_arch = "x86_64")]
 const VIRTIO_IOMMU_VIOT_NODE_VIRTIO_IOMMU_PCI: u8 = 3;
 
-#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C, packed)]
 #[cfg(target_arch = "x86_64")]
 struct VirtioIommuViotHeader {
@@ -95,7 +97,7 @@ struct VirtioIommuViotHeader {
     reserved: [u8; 8],
 }
 
-#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C, packed)]
 #[cfg(target_arch = "x86_64")]
 struct VirtioIommuViotVirtioPciNode {
@@ -107,7 +109,7 @@ struct VirtioIommuViotVirtioPciNode {
     reserved2: [u8; 8],
 }
 
-#[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C, packed)]
 #[cfg(target_arch = "x86_64")]
 struct VirtioIommuViotPciRangeNode {

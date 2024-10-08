@@ -89,18 +89,20 @@ use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 #[cfg(target_arch = "x86_64")]
-use zerocopy::AsBytes;
-#[cfg(target_arch = "x86_64")]
 use zerocopy::FromBytes;
 #[cfg(target_arch = "x86_64")]
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+#[cfg(target_arch = "x86_64")]
+use zerocopy::IntoBytes;
+#[cfg(target_arch = "x86_64")]
+use zerocopy::KnownLayout;
 
 pub use crate::cap::*;
 
 /// A structure with the same layout as `kvm_ioapic_state` but without the union, making it
 /// zerocopy-able.
 #[cfg(target_arch = "x86_64")]
-#[derive(Copy, Clone, Default, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Default, Debug, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C)]
 pub struct IoapicState {
     pub base_address: u64,

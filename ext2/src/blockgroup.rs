@@ -7,9 +7,10 @@
 use std::collections::BTreeMap;
 
 use anyhow::Result;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::arena::Arena;
 use crate::arena::BlockId;
@@ -26,7 +27,7 @@ pub const BLOCK_SIZE: usize = 4096;
 ///
 /// See [the specification](https://www.nongnu.org/ext2-doc/ext2.html#block-group-descriptor-table) for the details.
 #[repr(C)]
-#[derive(Default, Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Default, Debug, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub(crate) struct BlockGroupDescriptor {
     /// Index of the first block of the block bitmap.
     pub block_bitmap: u32,

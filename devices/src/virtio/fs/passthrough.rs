@@ -76,9 +76,11 @@ use system_api::client::OrgChromiumSpaced;
 use system_api::spaced::SetProjectIdReply;
 #[cfg(feature = "arc_quota")]
 use system_api::spaced::SetProjectInheritanceFlagReply;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 #[cfg(feature = "arc_quota")]
 use crate::virtio::fs::arc_ioctl::FsPathXattrDataBuffer;
@@ -124,7 +126,7 @@ macro_rules! fs_trace {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct fscrypt_policy_v1 {
     _version: u8,
     _contents_encryption_mode: u8,
@@ -134,7 +136,7 @@ struct fscrypt_policy_v1 {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct fscrypt_policy_v2 {
     _version: u8,
     _contents_encryption_mode: u8,
@@ -145,7 +147,7 @@ struct fscrypt_policy_v2 {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, FromBytes, Immutable, KnownLayout)]
 union fscrypt_policy {
     _version: u8,
     _v1: fscrypt_policy_v1,
@@ -153,7 +155,7 @@ union fscrypt_policy {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, FromBytes, Immutable, KnownLayout)]
 struct fscrypt_get_policy_ex_arg {
     policy_size: u64,       /* input/output */
     policy: fscrypt_policy, /* output */
@@ -176,7 +178,7 @@ impl From<&fscrypt_get_policy_ex_arg> for &[u8] {
 ioctl_iowr_nr!(FS_IOC_GET_ENCRYPTION_POLICY_EX, 'f' as u32, 22, [u8; 9]);
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct fsxattr {
     fsx_xflags: u32,     /* xflags field value (get/set) */
     fsx_extsize: u32,    /* extsize field value (get/set) */
@@ -204,7 +206,7 @@ ioctl_iow_nr!(FS_IOC_SETPERMISSION, 'f' as u32, 1, FsPermissionDataBuffer);
 ioctl_iow_nr!(FS_IOC_SETPATHXATTR, 'f' as u32, 1, FsPathXattrDataBuffer);
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct fsverity_enable_arg {
     _version: u32,
     _hash_algorithm: u32,
@@ -218,7 +220,7 @@ struct fsverity_enable_arg {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct fsverity_digest {
     _digest_algorithm: u16,
     digest_size: u16,
@@ -1358,7 +1360,7 @@ impl PassthroughFs {
 
         // SAFETY: this struct only has integer fields and any value is valid.
         let mut arg = unsafe { MaybeUninit::<fscrypt_get_policy_ex_arg>::zeroed().assume_init() };
-        r.read_exact(arg.policy_size.as_bytes_mut())?;
+        r.read_exact(arg.policy_size.as_mut_bytes())?;
 
         let policy_size = cmp::min(arg.policy_size, size_of::<fscrypt_policy>() as u64);
         arg.policy_size = policy_size;
@@ -1408,7 +1410,7 @@ impl PassthroughFs {
         };
 
         let mut in_attr = fsxattr::new_zeroed();
-        r.read_exact(in_attr.as_bytes_mut())?;
+        r.read_exact(in_attr.as_mut_bytes())?;
 
         #[cfg(feature = "arc_quota")]
         let st = stat(&*data)?;
@@ -1501,7 +1503,7 @@ impl PassthroughFs {
 
         // The ioctl encoding is a long but the parameter is actually an int.
         let mut in_flags: c_int = 0;
-        r.read_exact(in_flags.as_bytes_mut())?;
+        r.read_exact(in_flags.as_mut_bytes())?;
 
         #[cfg(feature = "arc_quota")]
         let st = stat(&*data)?;
@@ -1619,7 +1621,7 @@ impl PassthroughFs {
         };
 
         let mut arg = fsverity_enable_arg::new_zeroed();
-        r.read_exact(arg.as_bytes_mut())?;
+        r.read_exact(arg.as_mut_bytes())?;
 
         let mut salt;
         if arg.salt_size > 0 {
@@ -1672,7 +1674,7 @@ impl PassthroughFs {
         };
 
         let mut digest = fsverity_digest::new_zeroed();
-        r.read_exact(digest.as_bytes_mut())?;
+        r.read_exact(digest.as_mut_bytes())?;
 
         // Taken from fs/verity/fsverity_private.h.
         const FS_VERITY_MAX_DIGEST_SIZE: u16 = 64;
@@ -1877,7 +1879,7 @@ impl PassthroughFs {
 
     fn read_permission_data<R: io::Read>(&self, mut r: R) -> io::Result<PermissionData> {
         let mut fs_permission_data = FsPermissionDataBuffer::new_zeroed();
-        r.read_exact(fs_permission_data.as_bytes_mut())?;
+        r.read_exact(fs_permission_data.as_mut_bytes())?;
 
         let perm_path = self.string_from_u8_slice(&fs_permission_data.perm_path)?;
         if !perm_path.starts_with('/') {
@@ -1964,7 +1966,7 @@ impl PassthroughFs {
 
     fn read_xattr_data<R: io::Read>(&self, mut r: R) -> io::Result<XattrData> {
         let mut fs_path_xattr_data = FsPathXattrDataBuffer::new_zeroed();
-        r.read_exact(fs_path_xattr_data.as_bytes_mut())?;
+        r.read_exact(fs_path_xattr_data.as_mut_bytes())?;
 
         let xattr_path = self.string_from_u8_slice(&fs_path_xattr_data.path)?;
         if !xattr_path.starts_with('/') {

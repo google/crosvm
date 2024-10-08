@@ -23,7 +23,7 @@ use usb_util::TransferBuffer;
 use usb_util::TransferHandle;
 use usb_util::TransferStatus;
 use usb_util::UsbRequestSetup;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::usb::backend::device::BackendDevice;
 use crate::usb::backend::device::DeviceState;

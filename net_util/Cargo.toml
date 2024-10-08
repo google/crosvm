@@ -22,7 +22,7 @@ serde = { version = "1", features = [ "derive" ] }
 smallvec = "1"
 thiserror = "1"
 virtio_sys = { path = "../virtio_sys" }
-zerocopy = { version = "0.7", features = ["derive"] }
+zerocopy = { version = "0.8.13", features = ["derive"] }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 net_sys = { path = "../net_sys" }

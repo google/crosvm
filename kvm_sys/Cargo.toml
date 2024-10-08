@@ -8,4 +8,4 @@ edition = "2021"
 data_model = { path = "../common/data_model" }
 libc = "0.2"
 base = { path = "../base" }
-zerocopy = {version = "0.7", features = ["derive"]}
+zerocopy = { version = "0.8.13", features = ["derive"] }

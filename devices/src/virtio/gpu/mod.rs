@@ -65,7 +65,7 @@ pub use vm_control::gpu::DEFAULT_REFRESH_RATE;
 use vm_control::ModifyWaitContext;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 pub use self::protocol::virtio_gpu_config;
 pub use self::protocol::VIRTIO_GPU_F_CONTEXT_INIT;
@@ -1842,7 +1842,7 @@ impl VirtioDevice for Gpu {
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
         let mut cfg = self.get_config();
-        copy_config(cfg.as_bytes_mut(), offset, data, 0);
+        copy_config(cfg.as_mut_bytes(), offset, data, 0);
         if (cfg.events_clear.to_native() & VIRTIO_GPU_EVENT_DISPLAY) != 0 {
             self.display_event.store(false, Ordering::Relaxed);
         }

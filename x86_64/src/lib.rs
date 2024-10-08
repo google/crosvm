@@ -145,9 +145,10 @@ use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 use vm_memory::MemoryRegionOptions;
 use vm_memory::MemoryRegionPurpose;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::bootparam::boot_params;
 use crate::bootparam::setup_header;
@@ -328,7 +329,7 @@ pub struct X8664arch;
 // Like `bootparam::setup_data` without the incomplete array field at the end, which allows us to
 // safely implement Copy, Clone
 #[repr(C)]
-#[derive(Copy, Clone, Default, FromZeroes, FromBytes, AsBytes)]
+#[derive(Copy, Clone, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct setup_data_hdr {
     pub next: u64,
     pub type_: u32,

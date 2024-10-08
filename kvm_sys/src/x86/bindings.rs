@@ -9,9 +9,10 @@
 #![allow(dead_code)]
 
 // Added by kvm_sys/bindgen.sh
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 // TODO(b/388092267): Replace this with an upstream equivalent when available.
 // The original index (236) used in the ChromeOS v6.6 kernel was reused upstream for another
@@ -758,7 +759,7 @@ pub type __sum16 = u16;
 pub type __wsum = u32;
 pub type __poll_t = ::std::os::raw::c_uint;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_pic_state {
     pub last_irr: u8,
     pub irr: u8,
@@ -957,7 +958,7 @@ impl Default for kvm_ioapic_state {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_regs {
     pub rax: u64,
     pub rbx: u64,
@@ -979,7 +980,7 @@ pub struct kvm_regs {
     pub rflags: u64,
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_lapic_state {
     pub regs: [::std::os::raw::c_char; 1024usize],
 }
@@ -993,7 +994,7 @@ impl Default for kvm_lapic_state {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_segment {
     pub base: u64,
     pub limit: u32,
@@ -1010,14 +1011,14 @@ pub struct kvm_segment {
     pub padding: u8,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_dtable {
     pub base: u64,
     pub limit: u16,
     pub padding: [u16; 3usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_sregs {
     pub cs: kvm_segment,
     pub ds: kvm_segment,
@@ -1062,7 +1063,7 @@ pub struct kvm_sregs2 {
     pub pdptrs: [u64; 4usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_fpu {
     pub fpr: [[u8; 16usize]; 8usize],
     pub fcw: u16,
@@ -1165,7 +1166,7 @@ pub struct kvm_cpuid2 {
     pub entries: __IncompleteArrayField<kvm_cpuid_entry2>,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_pit_channel_state {
     pub count: u32,
     pub latched_count: u16,
@@ -1201,7 +1202,7 @@ pub struct kvm_pit_state {
     pub channels: [kvm_pit_channel_state; 3usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_pit_state2 {
     pub channels: [kvm_pit_channel_state; 3usize],
     pub flags: u32,
@@ -1214,7 +1215,7 @@ pub struct kvm_reinject_control {
     pub reserved: [u8; 31usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_vcpu_events {
     pub exception: kvm_vcpu_events__bindgen_ty_1,
     pub interrupt: kvm_vcpu_events__bindgen_ty_2,
@@ -1228,7 +1229,7 @@ pub struct kvm_vcpu_events {
     pub exception_payload: u64,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_vcpu_events__bindgen_ty_1 {
     pub injected: u8,
     pub nr: u8,
@@ -1237,7 +1238,7 @@ pub struct kvm_vcpu_events__bindgen_ty_1 {
     pub error_code: u32,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_vcpu_events__bindgen_ty_2 {
     pub injected: u8,
     pub nr: u8,
@@ -1245,7 +1246,7 @@ pub struct kvm_vcpu_events__bindgen_ty_2 {
     pub shadow: u8,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_vcpu_events__bindgen_ty_3 {
     pub injected: u8,
     pub pending: u8,
@@ -1253,7 +1254,7 @@ pub struct kvm_vcpu_events__bindgen_ty_3 {
     pub pad: u8,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_vcpu_events__bindgen_ty_4 {
     pub smm: u8,
     pub pending: u8,
@@ -1261,12 +1262,12 @@ pub struct kvm_vcpu_events__bindgen_ty_4 {
     pub latched_init: u8,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_vcpu_events__bindgen_ty_5 {
     pub pending: u8,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_debugregs {
     pub db: [u64; 4usize],
     pub dr6: u64,
@@ -1290,14 +1291,14 @@ impl Default for kvm_xsave {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_xcr {
     pub xcr: u32,
     pub reserved: u32,
     pub value: u64,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_xcrs {
     pub nr_xcrs: u32,
     pub flags: u32,
@@ -2545,7 +2546,7 @@ pub struct kvm_vapic_addr {
     pub vapic_addr: u64,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_mp_state {
     pub mp_state: u32,
 }
@@ -2721,7 +2722,7 @@ pub struct kvm_irqfd {
     pub pad: [u8; 16usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_clock_data {
     pub clock: u64,
     pub flags: u32,

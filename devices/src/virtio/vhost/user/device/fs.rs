@@ -24,7 +24,7 @@ use virtio_sys::virtio_fs::virtio_fs_config;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::virtio;
 use crate::virtio::copy_config;

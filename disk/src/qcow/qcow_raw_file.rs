@@ -15,7 +15,7 @@ use std::mem::size_of_val;
 use base::FileReadWriteAtVolatile;
 use base::VolatileSlice;
 use base::WriteZeroesAt;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 /// A qcow file. Allows reading/writing clusters and appending clusters.
 #[derive(Debug)]
@@ -49,7 +49,7 @@ impl QcowRawFile {
     ) -> io::Result<Vec<u64>> {
         let mut table = vec![0; count as usize];
         self.file.seek(SeekFrom::Start(offset))?;
-        self.file.read_exact(table.as_bytes_mut())?;
+        self.file.read_exact(table.as_mut_bytes())?;
         let mask = mask.unwrap_or(u64::MAX);
         for ptr in &mut table {
             *ptr = u64::from_be(*ptr) & mask;
@@ -93,7 +93,7 @@ impl QcowRawFile {
         let count = self.cluster_size / size_of::<u16>() as u64;
         let mut table = vec![0; count as usize];
         self.file.seek(SeekFrom::Start(offset))?;
-        self.file.read_exact(table.as_bytes_mut())?;
+        self.file.read_exact(table.as_mut_bytes())?;
         for refcount in &mut table {
             *refcount = u16::from_be(*refcount);
         }

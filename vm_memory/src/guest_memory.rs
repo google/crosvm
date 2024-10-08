@@ -37,8 +37,9 @@ use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 use snapshot::AnySnapshot;
 use thiserror::Error;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 use crate::guest_address::GuestAddress;
 
@@ -719,7 +720,11 @@ impl GuestMemory {
     ///         .map_err(|_| ())
     /// # }
     /// ```
-    pub fn write_obj_at_addr<T: AsBytes>(&self, val: T, guest_addr: GuestAddress) -> Result<()> {
+    pub fn write_obj_at_addr<T: IntoBytes + Immutable>(
+        &self,
+        val: T,
+        guest_addr: GuestAddress,
+    ) -> Result<()> {
         let (mapping, offset, _) = self.find_region(guest_addr)?;
         mapping
             .write_obj(val, offset)
@@ -744,7 +749,7 @@ impl GuestMemory {
     ///         .map_err(|_| ())
     /// # }
     /// ```
-    pub fn write_obj_at_addr_volatile<T: AsBytes>(
+    pub fn write_obj_at_addr_volatile<T: IntoBytes + Immutable>(
         &self,
         val: T,
         guest_addr: GuestAddress,

@@ -56,7 +56,7 @@ use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use vm_control::DiskControlCommand;
 use vm_control::DiskControlResult;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::virtio::async_utils;
 use crate::virtio::block::sys::*;

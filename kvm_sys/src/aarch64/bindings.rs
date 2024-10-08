@@ -9,9 +9,10 @@
 #![allow(dead_code)]
 
 // Added by kvm_sys/bindgen.sh
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 // TODO(b/388092267): Replace this with an upstream equivalent when available.
 // The original index (236) used in the ChromeOS v6.6 kernel was reused upstream for another
@@ -828,7 +829,7 @@ pub type __sum16 = u16;
 pub type __wsum = u32;
 pub type __poll_t = ::std::os::raw::c_uint;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct user_pt_regs {
     pub regs: [u64; 31usize],
     pub sp: u64,
@@ -837,7 +838,7 @@ pub struct user_pt_regs {
 }
 #[repr(C)]
 #[repr(align(16))]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct user_fpsimd_state {
     pub vregs: [__uint128_t; 32usize],
     pub fpsr: u32,
@@ -901,7 +902,7 @@ pub struct user_za_header {
 }
 #[repr(C)]
 #[repr(align(16))]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_regs {
     pub regs: user_pt_regs,
     pub sp_el1: u64,
@@ -917,10 +918,10 @@ pub struct kvm_vcpu_init {
     pub features: [u32; 7usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_sregs {}
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_fpu {}
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -951,13 +952,13 @@ pub struct kvm_pmu_event_filter {
     pub pad: [u8; 3usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_vcpu_events {
     pub exception: kvm_vcpu_events__bindgen_ty_1,
     pub reserved: [u32; 12usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_vcpu_events__bindgen_ty_1 {
     pub serror_pending: u8,
     pub serror_has_esr: u8,
@@ -1726,7 +1727,7 @@ pub struct kvm_vapic_addr {
     pub vapic_addr: u64,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_mp_state {
     pub mp_state: u32,
 }

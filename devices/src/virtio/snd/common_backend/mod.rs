@@ -42,7 +42,7 @@ use serde::Serialize;
 use snapshot::AnySnapshot;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::virtio::async_utils;
 use crate::virtio::copy_config;

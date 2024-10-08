@@ -11,9 +11,10 @@ use std::mem::size_of;
 use constants::*;
 use data_model::Le16;
 use data_model::SLe32;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 /// Allows a raw input event of the implementor's type to be decoded into
 /// a virtio_input_event.
@@ -22,7 +23,9 @@ pub trait InputEventDecoder {
     fn decode(data: &[u8]) -> virtio_input_event;
 }
 
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, FromZeroes, FromBytes, AsBytes)]
+#[derive(
+    Copy, Clone, Debug, Default, Eq, PartialEq, FromBytes, Immutable, IntoBytes, KnownLayout,
+)]
 #[repr(C)]
 pub struct input_event {
     pub timestamp_fields: [u64; 2],
@@ -46,7 +49,7 @@ impl InputEventDecoder for input_event {
     const SIZE: usize = size_of::<Self>();
 
     fn decode(data: &[u8]) -> virtio_input_event {
-        let e = input_event::read_from(data).unwrap();
+        let e = input_event::read_from_bytes(data).unwrap();
         virtio_input_event {
             type_: Le16::from(e.type_),
             code: Le16::from(e.code),
@@ -55,7 +58,9 @@ impl InputEventDecoder for input_event {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, AsBytes, FromZeroes, FromBytes)]
+#[derive(
+    Copy, Clone, Debug, Default, Eq, PartialEq, FromBytes, Immutable, IntoBytes, KnownLayout,
+)]
 #[repr(C)]
 pub struct virtio_input_event {
     pub type_: Le16,
@@ -67,7 +72,7 @@ impl InputEventDecoder for virtio_input_event {
     const SIZE: usize = size_of::<Self>();
 
     fn decode(data: &[u8]) -> virtio_input_event {
-        virtio_input_event::read_from(data).unwrap()
+        virtio_input_event::read_from_bytes(data).unwrap()
     }
 }
 

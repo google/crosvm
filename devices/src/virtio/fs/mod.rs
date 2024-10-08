@@ -24,7 +24,7 @@ use virtio_sys::virtio_fs::VIRTIO_FS_SHMCAP_ID_CACHE;
 use vm_control::FsMappingRequest;
 use vm_control::VmResponse;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::pci::PciAddress;
 use crate::pci::PciBarConfiguration;

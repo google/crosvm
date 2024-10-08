@@ -16,7 +16,6 @@ use base::EventType;
 use base::RawDescriptor;
 use sync::Mutex;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
 
 use crate::usb::backend::fido_backend::constants;
 use crate::usb::backend::fido_backend::error::Error;
@@ -27,7 +26,7 @@ use crate::usb::backend::fido_backend::hid_utils::verify_is_fido_device;
 use crate::usb::backend::fido_backend::poll_thread::PollTimer;
 use crate::utils::EventLoop;
 
-#[derive(FromZeroes, FromBytes, Debug)]
+#[derive(FromBytes, Debug)]
 #[repr(C)]
 pub struct InitPacket {
     cid: [u8; constants::CID_SIZE],
@@ -52,7 +51,7 @@ impl InitPacket {
             return Err(Error::InvalidInitPacket);
         }
 
-        InitPacket::read_from(bytes).ok_or_else(|| Error::CannotConvertInitPacketFromBytes)
+        InitPacket::read_from_bytes(bytes).map_err(|_| Error::CannotConvertInitPacketFromBytes)
     }
 
     pub fn bcnt(&self) -> u16 {

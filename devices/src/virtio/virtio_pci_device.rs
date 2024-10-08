@@ -46,9 +46,10 @@ use vm_control::VmMemoryDestination;
 use vm_control::VmMemoryRegionId;
 use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
 use super::*;
@@ -110,7 +111,7 @@ pub enum PciCapabilityType {
 
 #[allow(dead_code)]
 #[repr(C)]
-#[derive(Clone, Copy, FromZeroes, FromBytes, AsBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VirtioPciCap {
     // cap_vndr and cap_next are autofilled based on id() in pci configuration
     pub cap_vndr: u8, // Generic PCI field: PCI_CAP_ID_VNDR
@@ -160,7 +161,7 @@ impl VirtioPciCap {
 
 #[allow(dead_code)]
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VirtioPciNotifyCap {
     cap: VirtioPciCap,
     notify_off_multiplier: Le32,
@@ -206,7 +207,7 @@ impl VirtioPciNotifyCap {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VirtioPciShmCap {
     cap: VirtioPciCap,
     offset_hi: Le32, // Most sig 32 bits of offset

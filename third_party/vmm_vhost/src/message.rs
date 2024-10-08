@@ -14,9 +14,10 @@ use std::marker::PhantomData;
 
 use base::Protection;
 use bitflags::bitflags;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::VringConfigData;
 
@@ -461,7 +462,7 @@ bitflags! {
 
 /// A generic message to encapsulate a 64-bit value.
 #[repr(C, packed)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserU64 {
     /// The encapsulated 64-bit common value.
     pub value: u64,
@@ -478,7 +479,7 @@ impl VhostUserMsgValidator for VhostUserU64 {}
 
 /// An empty message.
 #[repr(C)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserEmptyMsg;
 
 impl VhostUserMsgValidator for VhostUserEmptyMsg {}
@@ -486,14 +487,14 @@ impl VhostUserMsgValidator for VhostUserEmptyMsg {}
 /// A generic message for empty message.
 /// ZST in repr(C) has same type layout as repr(rust)
 #[repr(C)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserEmptyMessage;
 
 impl VhostUserMsgValidator for VhostUserEmptyMessage {}
 
 /// Memory region descriptor for the SET_MEM_TABLE request.
 #[repr(C, packed)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserMemory {
     /// Number of memory regions in the payload.
     pub num_regions: u32,
@@ -525,7 +526,7 @@ impl VhostUserMsgValidator for VhostUserMemory {
 
 /// Memory region descriptors as payload for the SET_MEM_TABLE request.
 #[repr(C, packed)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserMemoryRegion {
     /// Guest physical address of the memory region.
     pub guest_phys_addr: u64,
@@ -568,7 +569,7 @@ pub type VhostUserMemoryPayload = Vec<VhostUserMemoryRegion>;
 /// Single memory region descriptor as payload for ADD_MEM_REG and REM_MEM_REG
 /// requests.
 #[repr(C)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserSingleMemoryRegion {
     /// Padding for correct alignment
     padding: u64,
@@ -610,7 +611,7 @@ impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {
 
 /// Vring state descriptor.
 #[repr(C, packed)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserVringState {
     /// Vring index.
     pub index: u32,
@@ -641,7 +642,7 @@ bitflags! {
 
 /// Vring address descriptor.
 #[repr(C, packed)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserVringAddr {
     /// Vring index.
     pub index: u32,
@@ -722,7 +723,7 @@ bitflags! {
 
 /// Message to read/write device configuration space.
 #[repr(C, packed)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserConfig {
     /// Offset of virtio device's configuration space.
     pub offset: u32,
@@ -768,7 +769,7 @@ pub type VhostUserConfigPayload = Vec<u8>;
 /// Interestingly, all our supported archs (arm, aarch64, x86_64) has same
 /// data layout for this type.
 #[repr(C)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserInflight {
     /// Size of the area to track inflight I/O.
     pub mmap_size: u64,
@@ -806,7 +807,7 @@ impl VhostUserMsgValidator for VhostUserInflight {
 
 /// VHOST_USER_SET_DEVICE_STATE_FD request payload.
 #[repr(C)]
-#[derive(Default, Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct DeviceStateTransferParameters {
     /// Direction in which the state is transferred
     pub transfer_direction: u32,
@@ -850,9 +851,10 @@ pub struct VhostUserIotlb {
 /// Flags for SHMEM_MAP messages.
 #[repr(transparent)]
 #[derive(
-    AsBytes,
-    FromZeroes,
     FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
     Copy,
     Clone,
     Debug,
@@ -900,7 +902,7 @@ impl From<VhostUserShmemMapMsgFlags> for Protection {
 
 /// Backend request message to map a file into a shared memory region.
 #[repr(C, packed)]
-#[derive(Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserShmemMapMsg {
     /// Flags for the mmap operation
     pub flags: VhostUserShmemMapMsgFlags,
@@ -945,7 +947,7 @@ impl VhostUserShmemMapMsg {
 
 /// Backend request message to map GPU memory into a shared memory region.
 #[repr(C, packed)]
-#[derive(Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserGpuMapMsg {
     /// Shared memory region id.
     pub shmid: u8,
@@ -996,7 +998,7 @@ impl VhostUserGpuMapMsg {
 
 /// Backend request message to map external memory into a shared memory region.
 #[repr(C, packed)]
-#[derive(Default, Copy, Clone, AsBytes, FromZeroes, FromBytes)]
+#[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserExternalMapMsg {
     /// Shared memory region id.
     pub shmid: u8,
@@ -1030,7 +1032,7 @@ impl VhostUserExternalMapMsg {
 
 /// Backend request message to unmap part of a shared memory region.
 #[repr(C, packed)]
-#[derive(Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserShmemUnmapMsg {
     /// Shared memory region id.
     pub shmid: u8,
@@ -1192,7 +1194,7 @@ impl QueueRegionPacked {
 
 /// Virtio shared memory descriptor.
 #[repr(C, packed)]
-#[derive(Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostSharedMemoryRegion {
     /// The shared memory region's shmid.
     pub id: u8,

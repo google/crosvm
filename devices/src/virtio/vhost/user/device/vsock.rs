@@ -37,7 +37,7 @@ use vmm_vhost::message::VhostUserVringState;
 use vmm_vhost::Error;
 use vmm_vhost::Result;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use super::BackendConnection;
 use crate::virtio::device_constants::vsock::NUM_QUEUES;

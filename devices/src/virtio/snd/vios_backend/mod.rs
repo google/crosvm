@@ -36,7 +36,7 @@ use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use worker::*;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::snd::virtio_snd_config;

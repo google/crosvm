@@ -49,9 +49,10 @@ use virtio_sys::virtio_scsi::VIRTIO_SCSI_T_TMF;
 use virtio_sys::virtio_scsi::VIRTIO_SCSI_T_TMF_I_T_NEXUS_RESET;
 use virtio_sys::virtio_scsi::VIRTIO_SCSI_T_TMF_LOGICAL_UNIT_RESET;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::virtio::async_utils;
 use crate::virtio::block::sys::get_seg_max;
@@ -98,7 +99,7 @@ const MAX_SECTORS: u32 = u32::MAX;
 const FIXED_FORMAT_SENSE_SIZE: u32 = 18;
 
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct VirtioScsiCmdReqHeader {
     lun: [u8; 8usize],
     tag: u64,
@@ -108,7 +109,7 @@ struct VirtioScsiCmdReqHeader {
 }
 
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct VirtioScsiCmdRespHeader {
     sense_len: u32,
     resid: u32,
@@ -612,7 +613,7 @@ impl VirtioDevice for Controller {
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
         let mut config = self.build_config_space();
-        copy_config(config.as_bytes_mut(), offset, data, 0);
+        copy_config(config.as_mut_bytes(), offset, data, 0);
         // Only `sense_size` and `cdb_size` are modifiable by the driver.
         self.sense_size = config.sense_size;
         self.cdb_size = config.cdb_size;

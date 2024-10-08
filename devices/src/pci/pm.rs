@@ -4,9 +4,10 @@
 
 #![cfg_attr(windows, allow(dead_code))]
 
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::pci::pci_configuration::PciCapConfig;
 use crate::pci::pci_configuration::PciCapConfigWriteResult;
@@ -35,7 +36,7 @@ pub enum PciDevicePower {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct PciPmCap {
     _cap_vndr: u8,
     _cap_next: u8,

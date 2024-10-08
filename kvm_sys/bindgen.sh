@@ -11,9 +11,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source tools/impl/bindgen-common.sh
 
 KVM_EXTRAS="// Added by kvm_sys/bindgen.sh
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 // TODO(b/388092267): Replace this with an upstream equivalent when available.
 // The original index (236) used in the ChromeOS v6.6 kernel was reused upstream for another
@@ -52,26 +53,26 @@ bindgen_generate \
     --blocklist-item='__BITS_PER_.*' \
     --blocklist-item='__FD_SETSIZE' \
     --blocklist-item='_?IOC.*' \
-    --with-derive-custom "kvm_regs=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_sregs=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_fpu=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_debugregs=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_xcr=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_xcrs=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_lapic_state=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_mp_state=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_vcpu_events=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_vcpu_events__bindgen_ty_1=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_vcpu_events__bindgen_ty_2=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_vcpu_events__bindgen_ty_3=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_vcpu_events__bindgen_ty_4=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_vcpu_events__bindgen_ty_5=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_dtable=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_segment=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_pic_state=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_pit_state2=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_clock_data=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_pit_channel_state=FromZeroes,FromBytes,AsBytes" \
+    --with-derive-custom "kvm_regs=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_sregs=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_fpu=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_debugregs=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_xcr=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_xcrs=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_lapic_state=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_mp_state=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_vcpu_events=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_vcpu_events__bindgen_ty_1=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_vcpu_events__bindgen_ty_2=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_vcpu_events__bindgen_ty_3=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_vcpu_events__bindgen_ty_4=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_vcpu_events__bindgen_ty_5=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_dtable=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_segment=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_pic_state=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_pit_state2=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_clock_data=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_pit_channel_state=FromBytes,Immutable,IntoBytes,KnownLayout" \
     "${BINDGEN_LINUX_X86_HEADERS}/include/linux/kvm.h" \
     -- \
     -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
@@ -84,14 +85,14 @@ bindgen_generate \
     --blocklist-item='__BITS_PER_.*' \
     --blocklist-item='__FD_SETSIZE' \
     --blocklist-item='_?IOC.*' \
-    --with-derive-custom "kvm_regs=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_sregs=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_fpu=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_vcpu_events=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_vcpu_events__bindgen_ty_1=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "kvm_mp_state=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "user_fpsimd_state=FromZeroes,FromBytes,AsBytes" \
-    --with-derive-custom "user_pt_regs=FromZeroes,FromBytes,AsBytes" \
+    --with-derive-custom "kvm_regs=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_sregs=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_fpu=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_vcpu_events=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_vcpu_events__bindgen_ty_1=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_mp_state=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "user_fpsimd_state=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "user_pt_regs=FromBytes,Immutable,IntoBytes,KnownLayout" \
     "${BINDGEN_LINUX_ARM64_HEADERS}/include/linux/kvm.h" \
     -- \
     -isystem "${BINDGEN_LINUX_ARM64_HEADERS}/include" \

@@ -9,4 +9,4 @@ license-file = "LICENSE"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-zerocopy = { version = "0.7", features = ["derive"] }
+zerocopy = { version = "0.8.13", features = ["derive"] }

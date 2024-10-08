@@ -13,8 +13,8 @@ use resources::AddressRange;
 use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::IntoBytes;
 
 mod multiboot;
 
@@ -303,11 +303,11 @@ where
 fn read_elf_by_type<F, FileHeader, ProgramHeader>(file: &mut F) -> Result<Elf64>
 where
     F: FileReadWriteAtVolatile,
-    FileHeader: AsBytes + FromBytes + Default + Into<elf::Elf64_Ehdr>,
-    ProgramHeader: AsBytes + FromBytes + Clone + Default + Into<elf::Elf64_Phdr>,
+    FileHeader: IntoBytes + FromBytes + Default + Into<elf::Elf64_Ehdr>,
+    ProgramHeader: IntoBytes + FromBytes + Clone + Default + Into<elf::Elf64_Phdr>,
 {
     let mut ehdr = FileHeader::new_zeroed();
-    file.read_exact_at_volatile(VolatileSlice::new(ehdr.as_bytes_mut()), 0)
+    file.read_exact_at_volatile(VolatileSlice::new(ehdr.as_mut_bytes()), 0)
         .map_err(|_| Error::ReadHeader)?;
     let ehdr: elf::Elf64_Ehdr = ehdr.into();
 
@@ -321,7 +321,7 @@ where
 
     let num_phdrs = ehdr.e_phnum as usize;
     let mut phdrs = vec![ProgramHeader::default(); num_phdrs];
-    file.read_exact_at_volatile(VolatileSlice::new(phdrs.as_bytes_mut()), ehdr.e_phoff)
+    file.read_exact_at_volatile(VolatileSlice::new(phdrs.as_mut_bytes()), ehdr.e_phoff)
         .map_err(|_| Error::ReadProgramHeader)?;
 
     Ok(Elf64 {

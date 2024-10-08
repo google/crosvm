@@ -23,15 +23,17 @@ use lz4_flex::frame::FrameDecoder as Lz4FrameDecoder;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::Error;
 use crate::LoadedKernel;
 use crate::Result;
 
-#[derive(Copy, Clone, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[allow(unused)]
 #[repr(C)]
 struct Arm64ImageHeader {
@@ -92,7 +94,7 @@ where
 {
     let mut header = Arm64ImageHeader::new_zeroed();
     kernel_image
-        .read_exact_at_volatile(VolatileSlice::new(header.as_bytes_mut()), 0)
+        .read_exact_at_volatile(VolatileSlice::new(header.as_mut_bytes()), 0)
         .map_err(|_| Error::ReadHeader)?;
     let load_addr = header.parse_load_addr(kernel_start)?;
 
@@ -125,7 +127,7 @@ fn load_arm64_kernel_from_reader<F: BufRead>(
 
     // Read and parse the kernel header.
     kernel_image
-        .read_exact(header.as_bytes_mut())
+        .read_exact(header.as_mut_bytes())
         .map_err(|_| Error::ReadHeader)?;
     let load_addr = header.parse_load_addr(kernel_start)?;
 

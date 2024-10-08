@@ -21,7 +21,7 @@ use vhost::NetT as VhostNetT;
 use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use super::control_socket::*;
 use super::worker::Worker;

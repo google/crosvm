@@ -23,8 +23,8 @@ use vm_control::HotPlugDeviceInfo;
 use vm_control::HotPlugDeviceType;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::IntoBytes;
 
 use crate::pci::pci_configuration::PciBridgeSubclass;
 use crate::pci::pci_configuration::CAPABILITY_LIST_HEAD_OFFSET;
@@ -66,7 +66,7 @@ impl PciHostConfig {
     }
 
     // Read host pci device's config register
-    fn read_config<T: AsBytes + FromBytes + Copy + Default>(&self, offset: u64) -> T {
+    fn read_config<T: IntoBytes + FromBytes + Copy + Default>(&self, offset: u64) -> T {
         let length = std::mem::size_of::<T>();
         let mut val = T::default();
         if offset % length as u64 != 0 {
@@ -74,7 +74,7 @@ impl PciHostConfig {
                 "read_config, offset {} isn't aligned to length {}",
                 offset, length
             );
-        } else if let Err(e) = self.config_file.read_exact_at(val.as_bytes_mut(), offset) {
+        } else if let Err(e) = self.config_file.read_exact_at(val.as_mut_bytes(), offset) {
             error!("failed to read host sysfs config: {}", e);
         }
 

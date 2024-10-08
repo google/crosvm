@@ -17,8 +17,8 @@ use linux_input_sys::virtio_input_event;
 use linux_input_sys::InputEventDecoder;
 use serde::Deserialize;
 use serde::Serialize;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::FromZeros;
+use zerocopy::IntoBytes;
 
 const EVENT_SIZE: usize = virtio_input_event::SIZE;
 const EVENT_BUFFER_LEN_MAX: usize = 64 * EVENT_SIZE;
@@ -150,7 +150,7 @@ impl EventDevice {
 
     pub fn recv_event_encoded(&self) -> io::Result<virtio_input_event> {
         let mut event = virtio_input_event::new_zeroed();
-        (&self.event_socket).read_exact(event.as_bytes_mut())?;
+        (&self.event_socket).read_exact(event.as_mut_bytes())?;
         Ok(event)
     }
 }

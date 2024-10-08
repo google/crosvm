@@ -23,7 +23,9 @@ use once_cell::sync::Lazy;
 #[cfg(feature = "seccomp_trace")]
 use static_assertions::const_assert;
 #[cfg(feature = "seccomp_trace")]
-use zerocopy::AsBytes;
+use zerocopy::Immutable;
+#[cfg(feature = "seccomp_trace")]
+use zerocopy::IntoBytes;
 
 use crate::config::JailConfig;
 
@@ -260,7 +262,7 @@ pub fn create_sandbox_minijail(
     #[cfg(feature = "seccomp_trace")]
     {
         #[repr(C)]
-        #[derive(AsBytes)]
+        #[derive(Immutable, IntoBytes)]
         struct sock_filter {
             /* Filter block */
             code: u16, /* Actual filter code */

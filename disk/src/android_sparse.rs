@@ -28,9 +28,11 @@ use data_model::Le16;
 use data_model::Le32;
 use remain::sorted;
 use thiserror::Error;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::AsyncDisk;
 use crate::DiskFile;
@@ -56,7 +58,7 @@ pub const SPARSE_HEADER_MAGIC: u32 = 0xed26ff3a;
 const MAJOR_VERSION: u16 = 1;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, Debug, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct SparseHeader {
     magic: Le32,          // SPARSE_HEADER_MAGIC
     major_version: Le16,  // (0x1) - reject images with higher major versions
@@ -77,7 +79,7 @@ const CHUNK_TYPE_DONT_CARE: u16 = 0xCAC3;
 const CHUNK_TYPE_CRC32: u16 = 0xCAC4;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, Debug, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct ChunkHeader {
     chunk_type: Le16, /* 0xCAC1 -> raw; 0xCAC2 -> fill; 0xCAC3 -> don't care */
     reserved1: u16,
@@ -117,7 +119,7 @@ fn parse_chunk<T: Read + Seek>(input: &mut T, blk_sz: u64) -> Result<Option<Chun
         .map_err(Error::ReadSpecificationError)?;
     let mut chunk_header = ChunkHeader::new_zeroed();
     input
-        .read_exact(chunk_header.as_bytes_mut())
+        .read_exact(chunk_header.as_mut_bytes())
         .map_err(Error::ReadSpecificationError)?;
     let chunk_body_size = (chunk_header.total_sz.to_native() as usize)
         .checked_sub(HEADER_SIZE)
@@ -168,7 +170,7 @@ impl AndroidSparse {
         file.seek(SeekFrom::Start(0))
             .map_err(Error::ReadSpecificationError)?;
         let mut sparse_header = SparseHeader::new_zeroed();
-        file.read_exact(sparse_header.as_bytes_mut())
+        file.read_exact(sparse_header.as_mut_bytes())
             .map_err(Error::ReadSpecificationError)?;
         if sparse_header.magic != SPARSE_HEADER_MAGIC {
             return Err(Error::InvalidSpecification(format!(

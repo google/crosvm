@@ -13,4 +13,4 @@ thiserror = "1"
 base = { path = "../base" }
 usb_sys = { path = "../usb_sys" }
 sync = { path = "../common/sync" }
-zerocopy = { version = "0.7", features = ["derive"] }
+zerocopy = { version = "0.8.13", features = ["derive"] }

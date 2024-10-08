@@ -12,7 +12,7 @@ use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::mpspec::*;
 
@@ -71,16 +71,16 @@ const CPU_FEATURE_APIC: u32 = 0x200;
 const CPU_FEATURE_FPU: u32 = 0x001;
 pub const MPTABLE_START: u64 = 0x400 * 639; // Last 1k of Linux's 640k base RAM.
 
-fn compute_checksum<T: AsBytes>(v: &T) -> u8 {
+fn compute_checksum(v: &[u8]) -> u8 {
     let mut checksum: u8 = 0;
-    for i in v.as_bytes() {
+    for i in v {
         checksum = checksum.wrapping_add(*i);
     }
     checksum
 }
 
 fn mpf_intel_compute_checksum(v: &mpf_intel) -> u8 {
-    let checksum = compute_checksum(v).wrapping_sub(v.checksum);
+    let checksum = compute_checksum(v.as_bytes()).wrapping_sub(v.checksum);
     (!checksum).wrapping_add(1)
 }
 
@@ -165,7 +165,7 @@ pub fn setup_mptable(
         mem.write_obj_at_addr(mpc_cpu, base_mp)
             .map_err(|_| Error::WriteMpcCpu)?;
         base_mp = base_mp.unchecked_add(size as u64);
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_cpu));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_cpu.as_bytes()));
     }
     {
         let size = mem::size_of::<mpc_ioapic>();
@@ -179,7 +179,7 @@ pub fn setup_mptable(
         mem.write_obj_at_addr(mpc_ioapic, base_mp)
             .map_err(|_| Error::WriteMpcIoapic)?;
         base_mp = base_mp.unchecked_add(size as u64);
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_ioapic));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_ioapic.as_bytes()));
     }
     for pci_bus_id in 0..isa_bus_id {
         let size = mem::size_of::<mpc_bus>();
@@ -191,7 +191,7 @@ pub fn setup_mptable(
         mem.write_obj_at_addr(mpc_bus, base_mp)
             .map_err(|_| Error::WriteMpcBus)?;
         base_mp = base_mp.unchecked_add(size as u64);
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_bus));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_bus.as_bytes()));
     }
     {
         let size = mem::size_of::<mpc_bus>();
@@ -203,7 +203,7 @@ pub fn setup_mptable(
         mem.write_obj_at_addr(mpc_bus, base_mp)
             .map_err(|_| Error::WriteMpcBus)?;
         base_mp = base_mp.unchecked_add(size as u64);
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_bus));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_bus.as_bytes()));
     }
     {
         let size = mem::size_of::<mpc_intsrc>();
@@ -219,7 +219,7 @@ pub fn setup_mptable(
         mem.write_obj_at_addr(mpc_intsrc, base_mp)
             .map_err(|_| Error::WriteMpcIntsrc)?;
         base_mp = base_mp.unchecked_add(size as u64);
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_intsrc.as_bytes()));
     }
     let sci_irq = super::X86_64_SCI_IRQ as u8;
     // Per kvm_setup_default_irq_routing() in kernel
@@ -237,7 +237,7 @@ pub fn setup_mptable(
         mem.write_obj_at_addr(mpc_intsrc, base_mp)
             .map_err(|_| Error::WriteMpcIntsrc)?;
         base_mp = base_mp.unchecked_add(size as u64);
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_intsrc.as_bytes()));
     }
     // Insert SCI interrupt before PCI interrupts. Set the SCI interrupt
     // to be the default trigger/polarity of PCI bus, which is level/low.
@@ -256,7 +256,7 @@ pub fn setup_mptable(
         mem.write_obj_at_addr(mpc_intsrc, base_mp)
             .map_err(|_| Error::WriteMpcIntsrc)?;
         base_mp = base_mp.unchecked_add(size as u64);
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_intsrc.as_bytes()));
     }
 
     // Insert PCI interrupts after platform IRQs.
@@ -274,7 +274,7 @@ pub fn setup_mptable(
         mem.write_obj_at_addr(mpc_intsrc, base_mp)
             .map_err(|_| Error::WriteMpcIntsrc)?;
         base_mp = base_mp.unchecked_add(size as u64);
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_intsrc.as_bytes()));
     }
 
     let starting_isa_irq_num = pci_irqs
@@ -297,7 +297,7 @@ pub fn setup_mptable(
         mem.write_obj_at_addr(mpc_intsrc, base_mp)
             .map_err(|_| Error::WriteMpcIntsrc)?;
         base_mp = base_mp.unchecked_add(size as u64);
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_intsrc.as_bytes()));
     }
     {
         let size = mem::size_of::<mpc_lintsrc>();
@@ -313,7 +313,7 @@ pub fn setup_mptable(
         mem.write_obj_at_addr(mpc_lintsrc, base_mp)
             .map_err(|_| Error::WriteMpcLintsrc)?;
         base_mp = base_mp.unchecked_add(size as u64);
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_lintsrc));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_lintsrc.as_bytes()));
     }
     {
         let size = mem::size_of::<mpc_lintsrc>();
@@ -329,7 +329,7 @@ pub fn setup_mptable(
         mem.write_obj_at_addr(mpc_lintsrc, base_mp)
             .map_err(|_| Error::WriteMpcLintsrc)?;
         base_mp = base_mp.unchecked_add(size as u64);
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_lintsrc));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_lintsrc.as_bytes()));
     }
 
     // At this point we know the size of the mp_table.
@@ -345,7 +345,7 @@ pub fn setup_mptable(
             lapic: APIC_DEFAULT_PHYS_BASE,
             ..Default::default()
         };
-        checksum = checksum.wrapping_add(compute_checksum(&mpc_table));
+        checksum = checksum.wrapping_add(compute_checksum(mpc_table.as_bytes()));
         mpc_table.checksum = (!checksum).wrapping_add(1) as i8;
         mem.write_obj_at_addr(mpc_table, table_base)
             .map_err(|_| Error::WriteMpcTable)?;

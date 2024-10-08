@@ -11,12 +11,13 @@ use std::ops::DerefMut;
 use base::AsRawDescriptor;
 use fuse::filesystem::DirEntry;
 use fuse::filesystem::DirectoryIterator;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 #[repr(C, packed)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct LinuxDirent64 {
     d_ino: libc::ino64_t,
     d_off: libc::off64_t,
@@ -76,17 +77,8 @@ impl<P: Deref<Target = [u8]>> DirectoryIterator for ReadDir<P> {
             return None;
         }
 
-        // We only use debug asserts here because these values are coming from the kernel and we
-        // trust them implicitly.
-        debug_assert!(
-            rem.len() >= size_of::<LinuxDirent64>(),
-            "not enough space left in `rem`"
-        );
-
-        let (front, back) = rem.split_at(size_of::<LinuxDirent64>());
-
-        let dirent64 =
-            LinuxDirent64::read_from(front).expect("unable to get LinuxDirent64 from slice");
+        let (dirent64, back) =
+            LinuxDirent64::read_from_prefix(rem).expect("unable to get LinuxDirent64 from slice");
 
         let namelen = dirent64.d_reclen as usize - size_of::<LinuxDirent64>();
         debug_assert!(namelen <= back.len(), "back is smaller than `namelen`");

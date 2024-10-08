@@ -37,9 +37,10 @@ use vm_control::VmMemoryMappingRequest;
 use vm_control::VmMemoryMappingResponse;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use super::async_utils;
 use super::copy_config;
@@ -60,26 +61,26 @@ const VIRTIO_PMEM_REQ_TYPE_DISCARD: u32 = u32::MAX;
 const VIRTIO_PMEM_RESP_TYPE_OK: u32 = 0;
 const VIRTIO_PMEM_RESP_TYPE_EIO: u32 = 1;
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C)]
 struct virtio_pmem_config {
     start_address: Le64,
     size: Le64,
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C)]
 struct virtio_pmem_resp {
     status_code: Le32,
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C)]
 struct virtio_pmem_req {
     type_: Le32,
 }
 
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C)]
 struct virtio_pmem_range_req {
     type_: Le32,

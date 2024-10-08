@@ -14,8 +14,10 @@ use anyhow::Context;
 use anyhow::Result;
 use base::MappedRegion;
 use base::MemoryMapping;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Region {
@@ -143,7 +145,7 @@ fn test_region_manager() {
     assert_eq!(rm.to_vec(), vec![&Region { start: 0, len: 30 },]);
 }
 
-#[derive(Debug, Clone, Copy, AsBytes)]
+#[derive(Debug, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C)]
 /// Represents a ID of a disk block.
 pub struct BlockId(u32);
@@ -262,16 +264,16 @@ impl<'a> Arena<'a> {
     }
 
     /// Allocate a new region for a value with type `T`.
-    pub fn allocate<T: AsBytes + FromBytes + Sized>(
+    pub fn allocate<T: FromBytes + IntoBytes + KnownLayout>(
         &self,
         block: BlockId,
         block_offset: usize,
     ) -> Result<&'a mut T> {
         let slice = self.allocate_slice(block, block_offset, std::mem::size_of::<T>())?;
-        T::mut_from(slice).ok_or_else(|| anyhow!("failed to interpret"))
+        T::mut_from_bytes(slice).map_err(|_| anyhow!("failed to interpret"))
     }
 
-    pub fn write_to_mem<T: AsBytes + FromBytes + Sized>(
+    pub fn write_to_mem<T: IntoBytes + Immutable>(
         &self,
         block_id: BlockId,
         block_offset: usize,

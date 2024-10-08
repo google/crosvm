@@ -5,21 +5,22 @@
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 pub const TYPE_STREAM_SOCKET: u16 = 1;
 
 /// virtio_vsock_config is the vsock device configuration space defined by the virtio spec.
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C)]
 pub struct virtio_vsock_config {
     pub guest_cid: Le64,
 }
 
 /// The message header for data packets sent on the tx/rx queues
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C, packed)]
 #[allow(non_camel_case_types)]
 pub struct virtio_vsock_hdr {
@@ -28,7 +29,7 @@ pub struct virtio_vsock_hdr {
     pub src_port: Le32,
     pub dst_port: Le32,
     pub len: Le32,
-    pub r#type: Le16,
+    pub type_: Le16,
     pub op: Le16,
     pub flags: Le32,
     pub buf_alloc: Le32,
@@ -36,7 +37,7 @@ pub struct virtio_vsock_hdr {
 }
 
 /// An event sent to the event queue
-#[derive(Copy, Clone, Debug, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 #[repr(C)]
 pub struct virtio_vsock_event {
     // ID from the virtio_vsock_event_id struct in the virtio spec

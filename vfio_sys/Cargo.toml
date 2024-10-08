@@ -6,4 +6,4 @@ edition = "2021"
 
 [dependencies]
 base = { path = "../base" }
-zerocopy = { version = "0.7", features = ["derive"] }
+zerocopy = { version = "0.8.13", features = ["derive"] }

@@ -10,9 +10,10 @@ use std::os::unix::fs::MetadataExt;
 use anyhow::bail;
 use anyhow::Result;
 use enumn::N;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 use crate::arena::Arena;
 use crate::arena::BlockId;
@@ -87,7 +88,7 @@ const INODE_BLOCK_LEN: usize = 60;
 ///
 /// This is a wrapper of `[u8; 60]` to implement `Default` manually.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub(crate) struct InodeBlock(pub [u8; INODE_BLOCK_LEN]);
 
 impl Default for InodeBlock {
@@ -172,7 +173,7 @@ impl InodeBlock {
 ///
 /// The field names are based on [the specification](https://www.nongnu.org/ext2-doc/ext2.html#inode-table).
 #[repr(C)]
-#[derive(Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub(crate) struct Inode {
     mode: u16,
     uid: u16,
@@ -221,7 +222,7 @@ impl Default for Inode {
 /// The block size '512' byte is fixed and not related to the actual block size of the file system.
 /// For more details, see notes for `i_blocks_lo` in the specification.
 #[repr(C)]
-#[derive(Default, Debug, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Default, Debug, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct InodeBlocksCount(u32);
 
 impl InodeBlocksCount {

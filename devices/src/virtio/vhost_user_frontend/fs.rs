@@ -4,7 +4,7 @@
 
 use data_model::Le32;
 use virtio_sys::virtio_fs::virtio_fs_config;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
 use crate::virtio::vhost_user_frontend::Error;

@@ -24,7 +24,7 @@ use data_model::Le32;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 use crate::virtio::copy_config;
 use crate::virtio::virtio_device::VirtioDevice;
@@ -208,7 +208,7 @@ impl VirtioDevice for VideoDevice {
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let mut cfg = build_config(self.backend);
-        copy_config(data, 0, cfg.as_bytes_mut(), offset);
+        copy_config(data, 0, cfg.as_mut_bytes(), offset);
     }
 
     fn activate(
