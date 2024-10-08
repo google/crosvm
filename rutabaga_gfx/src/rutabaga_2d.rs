@@ -284,4 +284,12 @@ impl RutabagaComponent for Rutabaga2D {
         resource.info_2d = Some(info_2d);
         Ok(())
     }
+
+    fn snapshot(&self, _directory: &str) -> RutabagaResult<()> {
+        Ok(())
+    }
+
+    fn restore(&self, _directory: &str) -> RutabagaResult<()> {
+        Ok(())
+    }
 }
