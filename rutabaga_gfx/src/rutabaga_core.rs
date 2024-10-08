@@ -10,14 +10,15 @@ use std::io::Read;
 use std::io::Write;
 use std::sync::Arc;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use crate::cross_domain::CrossDomain;
 #[cfg(feature = "gfxstream")]
 use crate::gfxstream::Gfxstream;
 use crate::rutabaga_2d::Rutabaga2D;
 use crate::rutabaga_os::MemoryMapping;
 use crate::rutabaga_os::OwnedDescriptor;
-use crate::rutabaga_snapshot::RutabagaResourceSnapshot;
-use crate::rutabaga_snapshot::RutabagaSnapshot;
 use crate::rutabaga_utils::*;
 #[cfg(feature = "virgl_renderer")]
 use crate::virgl_renderer::VirglRenderer;
@@ -49,6 +50,64 @@ pub struct RutabagaResource {
     pub component_mask: u8,
     pub size: u64,
     pub mapping: Option<MemoryMapping>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct RutabagaResourceSnapshot {
+    pub resource_id: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl TryFrom<&RutabagaResource> for RutabagaResourceSnapshot {
+    type Error = RutabagaError;
+    fn try_from(resource: &RutabagaResource) -> Result<Self, Self::Error> {
+        let info = resource
+            .info_2d
+            .as_ref()
+            .ok_or(RutabagaError::Unsupported)?;
+        assert_eq!(
+            usize::try_from(info.width * info.height * 4).unwrap(),
+            info.host_mem.len()
+        );
+        assert_eq!(usize::try_from(resource.size).unwrap(), info.host_mem.len());
+        Ok(RutabagaResourceSnapshot {
+            resource_id: resource.resource_id,
+            width: info.width,
+            height: info.height,
+        })
+    }
+}
+
+impl TryFrom<RutabagaResourceSnapshot> for RutabagaResource {
+    type Error = RutabagaError;
+    fn try_from(snapshot: RutabagaResourceSnapshot) -> Result<Self, Self::Error> {
+        let size = u64::from(snapshot.width * snapshot.height * 4);
+        Ok(RutabagaResource {
+            resource_id: snapshot.resource_id,
+            handle: None,
+            blob: false,
+            blob_mem: 0,
+            blob_flags: 0,
+            map_info: None,
+            info_2d: Some(Rutabaga2DInfo {
+                width: snapshot.width,
+                height: snapshot.height,
+                host_mem: vec![0; usize::try_from(size).unwrap()],
+            }),
+            info_3d: None,
+            vulkan_info: None,
+            // NOTE: `RutabagaResource::backing_iovecs` isn't snapshotted because the
+            // pointers won't be valid at restore time, see the `Rutabaga::restore` doc.
+            // If the client doesn't attach new iovecs, the restored resource will
+            // behave as if they had been detached (instead of segfaulting on the stale
+            // iovec pointers).
+            backing_iovecs: None,
+            component_mask: 1 << (RutabagaComponentType::Rutabaga2D as u8),
+            size,
+            mapping: None,
+        })
+    }
 }
 
 /// A RutabagaComponent is a building block of the Virtual Graphics Interface (VGI).  Each component
@@ -374,6 +433,13 @@ pub struct Rutabaga {
     fence_handler: RutabagaFenceHandler,
 }
 
+/// The serialized and deserialized parts of `Rutabaga` that are preserved across
+/// snapshot() and restore().
+#[derive(Deserialize, Serialize)]
+pub struct RutabagaSnapshot {
+    pub resources: Map<u32, RutabagaResourceSnapshot>,
+}
+
 impl Rutabaga {
     pub fn suspend(&self) -> RutabagaResult<()> {
         let component = self
@@ -399,20 +465,7 @@ impl Rutabaga {
                 resources: self
                     .resources
                     .iter()
-                    .map(|(i, r)| {
-                        let info = r.info_2d.as_ref().ok_or(RutabagaError::Unsupported)?;
-                        assert_eq!(
-                            usize::try_from(info.width * info.height * 4).unwrap(),
-                            info.host_mem.len()
-                        );
-                        assert_eq!(usize::try_from(r.size).unwrap(), info.host_mem.len());
-                        let s = RutabagaResourceSnapshot {
-                            resource_id: r.resource_id,
-                            width: info.width,
-                            height: info.height,
-                        };
-                        Ok((*i, s))
-                    })
+                    .map(|(i, r)| Ok((*i, RutabagaResourceSnapshot::try_from(r)?)))
                     .collect::<RutabagaResult<_>>()?,
             };
 
@@ -458,35 +511,8 @@ impl Rutabaga {
             self.resources = snapshot
                 .resources
                 .into_iter()
-                .map(|(i, s)| {
-                    let size = u64::from(s.width * s.height * 4);
-                    let r = RutabagaResource {
-                        resource_id: s.resource_id,
-                        handle: None,
-                        blob: false,
-                        blob_mem: 0,
-                        blob_flags: 0,
-                        map_info: None,
-                        info_2d: Some(Rutabaga2DInfo {
-                            width: s.width,
-                            height: s.height,
-                            host_mem: vec![0; usize::try_from(size).unwrap()],
-                        }),
-                        info_3d: None,
-                        vulkan_info: None,
-                        // NOTE: `RutabagaResource::backing_iovecs` isn't snapshotted because the
-                        // pointers won't be valid at restore time, see the `Rutabaga::restore` doc.
-                        // If the client doesn't attach new iovecs, the restored resource will
-                        // behave as if they had been detached (instead of segfaulting on the stale
-                        // iovec pointers).
-                        backing_iovecs: None,
-                        component_mask: 1 << (RutabagaComponentType::Rutabaga2D as u8),
-                        size,
-                        mapping: None,
-                    };
-                    (i, r)
-                })
-                .collect();
+                .map(|(i, s)| Ok((i, RutabagaResource::try_from(s)?)))
+                .collect::<RutabagaResult<_>>()?;
 
             return Ok(());
         } else {
