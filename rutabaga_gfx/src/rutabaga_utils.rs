@@ -17,6 +17,8 @@ use std::sync::Arc;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use nix::Error as NixError;
 use remain::sorted;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 #[cfg(feature = "vulkano")]
 use vulkano::device::DeviceCreationError;
@@ -59,7 +61,7 @@ unsafe impl Sync for RutabagaIovec {}
 pub const RUTABAGA_PIPE_TEXTURE_2D: u32 = 2;
 pub const RUTABAGA_PIPE_BIND_RENDER_TARGET: u32 = 2;
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct ResourceCreate3D {
     pub target: u32,
     pub format: u32,
@@ -99,7 +101,7 @@ pub struct RutabagaMapping {
 
 /// Metadata associated with a swapchain, video or camera image.
 #[repr(C)]
-#[derive(Default, Copy, Clone, Debug)]
+#[derive(Default, Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct Resource3DInfo {
     pub width: u32,
     pub height: u32,
@@ -127,6 +129,7 @@ pub struct Resource3DInfo {
     Immutable,
 )]
 #[repr(C)]
+#[derive(Deserialize, Serialize)]
 pub struct DeviceId {
     pub device_uuid: [u8; 16],
     pub driver_uuid: [u8; 16],
@@ -148,6 +151,7 @@ pub struct DeviceId {
     Immutable,
 )]
 #[repr(C)]
+#[derive(Deserialize, Serialize)]
 pub struct VulkanInfo {
     pub memory_idx: u32,
     pub device_id: DeviceId,
