@@ -97,9 +97,63 @@ use crate::crosvm::config::VhostUserFrontendOption;
 use crate::crosvm::config::VhostUserFsOption;
 use crate::crosvm::sys::config::PmemExt2Option;
 
+/// All the tube types collected and passed to `run_control`.
+///
+/// This mainly exists to simplify the device setup plumbing. We collect the tubes of all the
+/// devices into one list using this enum and then separate them out in `run_control` to be handled
+/// individually.
+#[remain::sorted]
+pub enum AnyControlTube {
+    DeviceControlTube(DeviceControlTube),
+    /// Receives `IrqHandlerRequest`.
+    IrqTube(Tube),
+    TaggedControlTube(TaggedControlTube),
+    VmMemoryTube(VmMemoryTube),
+}
+
+impl From<DeviceControlTube> for AnyControlTube {
+    fn from(value: DeviceControlTube) -> Self {
+        AnyControlTube::DeviceControlTube(value)
+    }
+}
+
+impl From<TaggedControlTube> for AnyControlTube {
+    fn from(value: TaggedControlTube) -> Self {
+        AnyControlTube::TaggedControlTube(value)
+    }
+}
+
+impl From<VmMemoryTube> for AnyControlTube {
+    fn from(value: VmMemoryTube) -> Self {
+        AnyControlTube::VmMemoryTube(value)
+    }
+}
+
+/// Tubes that initiate requests to devices.
+#[remain::sorted]
+pub enum DeviceControlTube {
+    // See `BalloonTube`.
+    #[cfg(feature = "balloon")]
+    Balloon(Tube),
+    // Sends `DiskControlCommand`.
+    Disk(Tube),
+    // Sends `GpuControlCommand`.
+    #[cfg(feature = "gpu")]
+    Gpu(Tube),
+    // Sends `PvClockCommand`.
+    #[cfg(feature = "pvclock")]
+    PvClock(Tube),
+}
+
+/// Tubes that service requests from devices.
+///
+/// Only includes those that happen to be handled together in the main `WaitContext` loop.
 pub enum TaggedControlTube {
+    /// Receives `FsMappingRequest`.
     Fs(Tube),
+    /// Receives `VmRequest`.
     Vm(Tube),
+    /// Receives `VmMemoryMappingRequest`.
     VmMsync(Tube),
 }
 
@@ -124,6 +178,7 @@ impl ReadNotifier for TaggedControlTube {
     }
 }
 
+/// Tubes that service `VmMemoryRequest` requests from devices.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct VmMemoryTube {
     pub tube: Tube,
@@ -1503,9 +1558,7 @@ pub fn create_vfio_device(
     jail_config: &Option<JailConfig>,
     vm: &impl Vm,
     resources: &mut SystemAllocator,
-    irq_control_tubes: &mut Vec<Tube>,
-    vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
-    control_tubes: &mut Vec<TaggedControlTube>,
+    add_control_tube: &mut impl FnMut(AnyControlTube),
     vfio_path: &Path,
     hotplug: bool,
     hotplug_bus: Option<u8>,
@@ -1521,13 +1574,16 @@ pub fn create_vfio_device(
 
     let (vfio_host_tube_mem, vfio_device_tube_mem) =
         Tube::pair().context("failed to create tube")?;
-    vm_memory_control_tubes.push(VmMemoryTube {
-        tube: vfio_host_tube_mem,
-        expose_with_viommu: false,
-    });
+    add_control_tube(
+        VmMemoryTube {
+            tube: vfio_host_tube_mem,
+            expose_with_viommu: false,
+        }
+        .into(),
+    );
 
     let (vfio_host_tube_vm, vfio_device_tube_vm) = Tube::pair().context("failed to create tube")?;
-    control_tubes.push(TaggedControlTube::Vm(vfio_host_tube_vm));
+    add_control_tube(TaggedControlTube::Vm(vfio_host_tube_vm).into());
 
     let vfio_device =
         VfioDevice::new_passthrough(&vfio_path, vm, vfio_container.clone(), iommu_dev, dt_symbol)
@@ -1537,11 +1593,11 @@ pub fn create_vfio_device(
         VfioDeviceType::Pci => {
             let (vfio_host_tube_msi, vfio_device_tube_msi) =
                 Tube::pair().context("failed to create tube")?;
-            irq_control_tubes.push(vfio_host_tube_msi);
+            add_control_tube(AnyControlTube::IrqTube(vfio_host_tube_msi));
 
             let (vfio_host_tube_msix, vfio_device_tube_msix) =
                 Tube::pair().context("failed to create tube")?;
-            irq_control_tubes.push(vfio_host_tube_msix);
+            add_control_tube(AnyControlTube::IrqTube(vfio_host_tube_msix));
 
             let mut vfio_pci_device = VfioPciDevice::new(
                 vfio_path,

@@ -219,19 +219,13 @@ fn create_virtio_devices(
     cfg: &Config,
     vm: &mut impl VmArch,
     resources: &mut SystemAllocator,
+    add_control_tube: &mut impl FnMut(AnyControlTube),
     #[cfg_attr(not(feature = "gpu"), allow(unused_variables))] vm_evt_wrtube: &SendTube,
-    #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
     #[cfg(feature = "balloon")] balloon_inflate_tube: Option<Tube>,
-    disk_device_tubes: &mut Vec<Tube>,
-    pmem_device_tubes: &mut Vec<Tube>,
-    pmem_ext2_mem_clients: &mut Vec<VmMemoryClient>,
-    fs_device_tubes: &mut Vec<Tube>,
     worker_process_pids: &mut BTreeSet<Pid>,
-    #[cfg(feature = "gpu")] gpu_control_tube: Tube,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     #[cfg(feature = "gpu")] has_vfio_gfx_device: bool,
     #[cfg(feature = "registered_events")] registered_evt_q: &SendTube,
-    #[cfg(feature = "pvclock")] pvclock_device_tube: Option<Tube>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -357,10 +351,13 @@ fn create_virtio_devices(
                 event_devices.push(EventDevice::keyboard(event_device_socket));
             }
 
+            let (gpu_control_host_tube, gpu_control_device_tube) =
+                Tube::pair().context("failed to create gpu tube")?;
+            add_control_tube(DeviceControlTube::Gpu(gpu_control_host_tube).into());
             devs.push(create_gpu_device(
                 cfg,
                 vm_evt_wrtube,
-                gpu_control_tube,
+                gpu_control_device_tube,
                 resource_bridges,
                 render_server_fd,
                 has_vfio_gfx_device,
@@ -378,7 +375,9 @@ fn create_virtio_devices(
     }
 
     for disk in &cfg.disks {
-        let disk_config = DiskConfig::new(disk, Some(disk_device_tubes.remove(0)));
+        let (disk_host_tube, disk_device_tube) = Tube::pair().context("failed to create tube")?;
+        add_control_tube(DeviceControlTube::Disk(disk_host_tube).into());
+        let disk_config = DiskConfig::new(disk, Some(disk_device_tube));
         devs.push(
             disk_config.create_virtio_device_and_jail(cfg.protection_type, &cfg.jail_config)?,
         );
@@ -392,7 +391,8 @@ fn create_virtio_devices(
     }
 
     for (index, pmem_disk) in cfg.pmems.iter().enumerate() {
-        let pmem_device_tube = pmem_device_tubes.remove(0);
+        let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
+        add_control_tube(TaggedControlTube::VmMsync(pmem_host_tube).into());
         devs.push(create_pmem_device(
             cfg.protection_type,
             &cfg.jail_config,
@@ -405,8 +405,20 @@ fn create_virtio_devices(
     }
 
     for (index, pmem_ext2) in cfg.pmem_ext2.iter().enumerate() {
-        let pmem_device_tube = pmem_device_tubes.remove(0);
-        let vm_memory_client = pmem_ext2_mem_clients.remove(0);
+        // Prepare a `VmMemoryClient` for pmem-ext2 device to send a request for mmap() and memory
+        // registeration.
+        let (pmem_ext2_host_tube, pmem_ext2_device_tube) =
+            Tube::pair().context("failed to create tube")?;
+        let vm_memory_client = VmMemoryClient::new(pmem_ext2_device_tube);
+        add_control_tube(
+            VmMemoryTube {
+                tube: pmem_ext2_host_tube,
+                expose_with_viommu: false,
+            }
+            .into(),
+        );
+        let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
+        add_control_tube(TaggedControlTube::VmMsync(pmem_host_tube).into());
         devs.push(create_pmem_ext2_device(
             cfg.protection_type,
             &cfg.jail_config,
@@ -424,7 +436,11 @@ fn create_virtio_devices(
     }
 
     #[cfg(feature = "pvclock")]
-    if let Some(suspend_tube) = pvclock_device_tube {
+    if cfg.pvclock {
+        // pvclock gets a tube for handling suspend/resume requests from the main thread.
+        let (host_suspend_tube, suspend_tube) = Tube::pair().context("failed to create tube")?;
+        add_control_tube(DeviceControlTube::PvClock(host_suspend_tube).into());
+
         let frequency: u64;
         #[cfg(target_arch = "x86_64")]
         {
@@ -628,7 +644,22 @@ fn create_virtio_devices(
     }
 
     #[cfg(feature = "balloon")]
-    if let Some(balloon_device_tube) = balloon_device_tube {
+    if cfg.balloon {
+        let balloon_device_tube = if let Some(ref path) = cfg.balloon_control {
+            Tube::new_from_unix_seqpacket(UnixSeqpacket::connect(path).with_context(|| {
+                format!(
+                    "failed to connect to balloon control socket {}",
+                    path.display(),
+                )
+            })?)?
+        } else {
+            // Balloon gets a special socket so balloon requests can be forwarded
+            // from the main process.
+            let (host, device) = Tube::pair().context("failed to create tube")?;
+            add_control_tube(DeviceControlTube::Balloon(host).into());
+            device
+        };
+
         let balloon_features = (cfg.balloon_page_reporting as u64)
             << BalloonFeatures::PageReporting as u64
             | (cfg.balloon_ws_reporting as u64) << BalloonFeatures::WSReporting as u64;
@@ -753,7 +784,9 @@ fn create_virtio_devices(
 
         let dev = match kind {
             SharedDirKind::FS => {
-                let device_tube = fs_device_tubes.remove(0);
+                let (host_tube, device_tube) = Tube::pair().context("failed to create tube")?;
+                add_control_tube(TaggedControlTube::Fs(host_tube).into());
+
                 create_fs_device(
                     cfg.protection_type,
                     &cfg.jail_config,
@@ -804,22 +837,13 @@ fn create_devices(
     cfg: &Config,
     vm: &mut impl VmArch,
     resources: &mut SystemAllocator,
+    add_control_tube: &mut impl FnMut(AnyControlTube),
     vm_evt_wrtube: &SendTube,
     iommu_attached_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
-    irq_control_tubes: &mut Vec<Tube>,
-    vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
-    control_tubes: &mut Vec<TaggedControlTube>,
-    #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
-    disk_device_tubes: &mut Vec<Tube>,
-    pmem_device_tubes: &mut Vec<Tube>,
-    pmem_ext2_mem_clients: &mut Vec<VmMemoryClient>,
-    fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "usb")] usb_provider: DeviceProvider,
-    #[cfg(feature = "gpu")] gpu_control_tube: Tube,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     iova_max_addr: &mut Option<u64>,
     #[cfg(feature = "registered_events")] registered_evt_q: &SendTube,
-    #[cfg(feature = "pvclock")] pvclock_device_tube: Option<Tube>,
     vfio_container_manager: &mut VfioContainerManager,
     // Stores a set of PID of child processes that are suppose to exit cleanly.
     worker_process_pids: &mut BTreeSet<Pid>,
@@ -837,9 +861,7 @@ fn create_devices(
                 &cfg.jail_config,
                 vm,
                 resources,
-                irq_control_tubes,
-                vm_memory_control_tubes,
-                control_tubes,
+                add_control_tube,
                 &vfio_dev.path,
                 false,
                 None,
@@ -913,10 +935,13 @@ fn create_devices(
                 .context("failed to get vfio container")?;
             let (coiommu_host_tube, coiommu_device_tube) =
                 Tube::pair().context("failed to create coiommu tube")?;
-            vm_memory_control_tubes.push(VmMemoryTube {
-                tube: coiommu_host_tube,
-                expose_with_viommu: false,
-            });
+            add_control_tube(
+                VmMemoryTube {
+                    tube: coiommu_host_tube,
+                    expose_with_viommu: false,
+                }
+                .into(),
+            );
             let vcpu_count = cfg.vcpu_count.unwrap_or(1) as u64;
             #[cfg(feature = "balloon")]
             match Tube::pair() {
@@ -948,26 +973,17 @@ fn create_devices(
         cfg,
         vm,
         resources,
+        add_control_tube,
         vm_evt_wrtube,
         #[cfg(feature = "balloon")]
-        balloon_device_tube,
-        #[cfg(feature = "balloon")]
         balloon_inflate_tube,
-        disk_device_tubes,
-        pmem_device_tubes,
-        pmem_ext2_mem_clients,
-        fs_device_tubes,
         worker_process_pids,
-        #[cfg(feature = "gpu")]
-        gpu_control_tube,
         #[cfg(feature = "gpu")]
         render_server_fd,
         #[cfg(feature = "gpu")]
         has_vfio_gfx_device,
         #[cfg(feature = "registered_events")]
         registered_evt_q,
-        #[cfg(feature = "pvclock")]
-        pvclock_device_tube,
     )?;
 
     for stub in stubs {
@@ -975,15 +991,18 @@ fn create_devices(
             VirtioTransportType::Pci => {
                 let (msi_host_tube, msi_device_tube) =
                     Tube::pair().context("failed to create tube")?;
-                irq_control_tubes.push(msi_host_tube);
+                add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
 
                 let shared_memory_tube = if stub.dev.get_shared_memory_region().is_some() {
                     let (host_tube, device_tube) =
                         Tube::pair().context("failed to create shared memory tube")?;
-                    vm_memory_control_tubes.push(VmMemoryTube {
-                        tube: host_tube,
-                        expose_with_viommu: stub.dev.expose_shmem_descriptors_with_viommu(),
-                    });
+                    add_control_tube(
+                        VmMemoryTube {
+                            tube: host_tube,
+                            expose_with_viommu: stub.dev.expose_shmem_descriptors_with_viommu(),
+                        }
+                        .into(),
+                    );
                     Some(device_tube)
                 } else {
                     None
@@ -991,14 +1010,17 @@ fn create_devices(
 
                 let (ioevent_host_tube, ioevent_device_tube) =
                     Tube::pair().context("failed to create ioevent tube")?;
-                vm_memory_control_tubes.push(VmMemoryTube {
-                    tube: ioevent_host_tube,
-                    expose_with_viommu: false,
-                });
+                add_control_tube(
+                    VmMemoryTube {
+                        tube: ioevent_host_tube,
+                        expose_with_viommu: false,
+                    }
+                    .into(),
+                );
 
                 let (host_tube, device_tube) =
                     Tube::pair().context("failed to create device control tube")?;
-                control_tubes.push(TaggedControlTube::Vm(host_tube));
+                add_control_tube(TaggedControlTube::Vm(host_tube).into());
 
                 let dev = VirtioPciDevice::new(
                     vm.get_memory().clone(),
@@ -1136,7 +1158,7 @@ impl HotPlugStub {
 /// find the empty bus and create a total virtual pcie rp
 fn create_pure_virtual_pcie_root_port(
     sys_allocator: &mut SystemAllocator,
-    irq_control_tubes: &mut Vec<Tube>,
+    add_control_tube: &mut impl FnMut(AnyControlTube),
     devices: &mut Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
     hp_bus_count: u8,
 ) -> Result<HotPlugStub> {
@@ -1156,7 +1178,7 @@ fn create_pure_virtual_pcie_root_port(
             .pme_notify_devs
             .insert(i, pcie_root_port.clone() as Arc<Mutex<dyn PmeNotify>>);
         let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-        irq_control_tubes.push(msi_host_tube);
+        add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
         let pci_bridge = Box::new(PciBridge::new(pcie_root_port.clone(), msi_device_tube));
         // no ipc is used if the root port disables hotplug
         devices.push((pci_bridge, None));
@@ -1174,7 +1196,7 @@ fn create_pure_virtual_pcie_root_port(
             pcie_root_port.clone() as Arc<Mutex<dyn PmeNotify>>,
         );
         let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-        irq_control_tubes.push(msi_host_tube);
+        add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
         let pci_bridge = Box::new(PciBridge::new(pcie_root_port.clone(), msi_device_tube));
 
         hp_stub.iommu_bus_ranges.push(RangeInclusive::new(
@@ -1801,10 +1823,6 @@ where
         None
     };
 
-    #[cfg(feature = "gpu")]
-    let (gpu_control_host_tube, gpu_control_device_tube) =
-        Tube::pair().context("failed to create gpu tube")?;
-
     #[cfg(feature = "usb")]
     let (usb_control_tube, usb_provider) =
         DeviceProvider::new().context("failed to create usb provider")?;
@@ -1821,75 +1839,19 @@ where
         None => None,
     };
 
-    let mut control_tubes = Vec::new();
-    let mut irq_control_tubes = Vec::new();
-    let mut vm_memory_control_tubes = Vec::new();
+    let mut all_control_tubes = Vec::new();
+    let mut add_control_tube = |t| all_control_tubes.push(t);
 
     #[cfg(feature = "gdb")]
     if let Some(port) = cfg.gdb {
         // GDB needs a control socket to interrupt vcpus.
         let (gdb_host_tube, gdb_control_tube) = Tube::pair().context("failed to create tube")?;
-        control_tubes.push(TaggedControlTube::Vm(gdb_host_tube));
+        add_control_tube(TaggedControlTube::Vm(gdb_host_tube).into());
         components.gdb = Some((port, gdb_control_tube));
     }
 
-    #[cfg(feature = "balloon")]
-    let (balloon_host_tube, balloon_device_tube) = if cfg.balloon {
-        if let Some(ref path) = cfg.balloon_control {
-            (
-                None,
-                Some(Tube::new_from_unix_seqpacket(
-                    UnixSeqpacket::connect(path).with_context(|| {
-                        format!(
-                            "failed to connect to balloon control socket {}",
-                            path.display(),
-                        )
-                    })?,
-                )?),
-            )
-        } else {
-            // Balloon gets a special socket so balloon requests can be forwarded
-            // from the main process.
-            let (host, device) = Tube::pair().context("failed to create tube")?;
-            (Some(host), Some(device))
-        }
-    } else {
-        (None, None)
-    };
-
-    // Create one control socket per disk.
-    let mut disk_device_tubes = Vec::new();
-    let mut disk_host_tubes = Vec::new();
-    let disk_count = cfg.disks.len();
-    for _ in 0..disk_count {
-        let (disk_host_tub, disk_device_tube) = Tube::pair().context("failed to create tube")?;
-        disk_host_tubes.push(disk_host_tub);
-        disk_device_tubes.push(disk_device_tube);
-    }
-
-    let mut pmem_device_tubes = Vec::new();
-    let pmem_count = cfg.pmems.len() + cfg.pmem_ext2.len();
-    for _ in 0..pmem_count {
-        let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
-        pmem_device_tubes.push(pmem_device_tube);
-        control_tubes.push(TaggedControlTube::VmMsync(pmem_host_tube));
-    }
-    let mut pmem_ext2_mem_client = Vec::new();
-    for _ in 0..cfg.pmem_ext2.len() {
-        let (pmem_ext2_host_tube, pmem_ext2_device_tube) =
-            Tube::pair().context("failed to create tube")?;
-        // Prepare two communication channels for pmem-ext2 device
-        // - pmem_ext2_mem_client: To send a request for mmap() and memory registeration.
-        // - vm_memory_control_tubes: To receive a memory slot number once the memory is registered.
-        pmem_ext2_mem_client.push(VmMemoryClient::new(pmem_ext2_device_tube));
-        vm_memory_control_tubes.push(VmMemoryTube {
-            tube: pmem_ext2_host_tube,
-            expose_with_viommu: false,
-        });
-    }
-
     if let Some(ioapic_host_tube) = ioapic_host_tube {
-        irq_control_tubes.push(ioapic_host_tube);
+        add_control_tube(AnyControlTube::IrqTube(ioapic_host_tube));
     }
 
     let battery = if cfg.battery_config.is_some() {
@@ -1920,18 +1882,6 @@ where
     } else {
         (cfg.battery_config.as_ref().map(|c| c.type_), None)
     };
-
-    let fs_count = cfg
-        .shared_dirs
-        .iter()
-        .filter(|sd| sd.kind == SharedDirKind::FS)
-        .count();
-    let mut fs_device_tubes = Vec::with_capacity(fs_count);
-    for _ in 0..fs_count {
-        let (fs_host_tube, fs_device_tube) = Tube::pair().context("failed to create tube")?;
-        control_tubes.push(TaggedControlTube::Fs(fs_host_tube));
-        fs_device_tubes.push(fs_device_tube);
-    }
 
     let (vm_evt_wrtube, vm_evt_rdtube) =
         Tube::directional_pair().context("failed to create vm event tube")?;
@@ -1974,15 +1924,6 @@ where
 
     let mut vfio_container_manager = VfioContainerManager::new();
 
-    // pvclock gets a tube for handling suspend/resume requests from the main thread.
-    #[cfg(feature = "pvclock")]
-    let (pvclock_host_tube, pvclock_device_tube) = if cfg.pvclock {
-        let (host, device) = Tube::pair().context("failed to create tube")?;
-        (Some(host), Some(device))
-    } else {
-        (None, None)
-    };
-
     #[cfg(feature = "registered_events")]
     let (reg_evt_wrtube, reg_evt_rdtube) =
         Tube::directional_pair().context("failed to create registered event tube")?;
@@ -1993,28 +1934,16 @@ where
         &cfg,
         &mut vm,
         &mut sys_allocator,
+        &mut add_control_tube,
         &vm_evt_wrtube,
         &mut iommu_attached_endpoints,
-        &mut irq_control_tubes,
-        &mut vm_memory_control_tubes,
-        &mut control_tubes,
-        #[cfg(feature = "balloon")]
-        balloon_device_tube,
-        &mut disk_device_tubes,
-        &mut pmem_device_tubes,
-        &mut pmem_ext2_mem_client,
-        &mut fs_device_tubes,
         #[cfg(feature = "usb")]
         usb_provider,
-        #[cfg(feature = "gpu")]
-        gpu_control_device_tube,
         #[cfg(feature = "gpu")]
         render_server_fd,
         &mut iova_max_addr,
         #[cfg(feature = "registered_events")]
         &reg_evt_wrtube,
-        #[cfg(feature = "pvclock")]
-        pvclock_device_tube,
         &mut vfio_container_manager,
         &mut worker_process_pids,
     )?;
@@ -2029,7 +1958,7 @@ where
     #[cfg(target_arch = "x86_64")]
     let hp_stub = create_pure_virtual_pcie_root_port(
         &mut sys_allocator,
-        &mut irq_control_tubes,
+        &mut add_control_tube,
         &mut devices,
         pci_hotplug_slots.unwrap_or(1),
     )?;
@@ -2112,16 +2041,19 @@ where
         )?;
 
         let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-        irq_control_tubes.push(msi_host_tube);
+        add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
         let (ioevent_host_tube, ioevent_device_tube) =
             Tube::pair().context("failed to create ioevent tube")?;
-        vm_memory_control_tubes.push(VmMemoryTube {
-            tube: ioevent_host_tube,
-            expose_with_viommu: false,
-        });
+        add_control_tube(
+            VmMemoryTube {
+                tube: ioevent_host_tube,
+                expose_with_viommu: false,
+            }
+            .into(),
+        );
         let (host_tube, device_tube) =
             Tube::pair().context("failed to create device control tube")?;
-        control_tubes.push(TaggedControlTube::Vm(host_tube));
+        add_control_tube(TaggedControlTube::Vm(host_tube).into());
         let mut dev = VirtioPciDevice::new(
             vm.get_memory().clone(),
             iommu_dev.dev,
@@ -2207,7 +2139,7 @@ where
     .context("the architecture failed to build the vm")?;
 
     for tube in linux.vm_request_tubes.drain(..) {
-        control_tubes.push(TaggedControlTube::Vm(tube));
+        add_control_tube(TaggedControlTube::Vm(tube).into());
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -2240,10 +2172,13 @@ where
 
         let (hp_vm_mem_host_tube, hp_vm_mem_worker_tube) =
             Tube::pair().context("failed to create tube")?;
-        vm_memory_control_tubes.push(VmMemoryTube {
-            tube: hp_vm_mem_host_tube,
-            expose_with_viommu: false,
-        });
+        add_control_tube(
+            VmMemoryTube {
+                tube: hp_vm_mem_host_tube,
+                expose_with_viommu: false,
+            }
+            .into(),
+        );
 
         let supports_readonly_mapping = linux.vm.supports_readonly_mapping();
         let pci_root = linux.root_config.clone();
@@ -2267,14 +2202,7 @@ where
         sys_allocator,
         cfg,
         control_server_socket,
-        irq_control_tubes,
-        vm_memory_control_tubes,
-        control_tubes,
-        #[cfg(feature = "balloon")]
-        balloon_host_tube,
-        &disk_host_tubes,
-        #[cfg(feature = "gpu")]
-        gpu_control_host_tube,
+        all_control_tubes,
         #[cfg(feature = "usb")]
         usb_control_tube,
         vm_evt_rdtube,
@@ -2294,8 +2222,6 @@ where
         #[cfg(feature = "registered_events")]
         reg_evt_rdtube,
         guest_suspended_cvar,
-        #[cfg(feature = "pvclock")]
-        pvclock_host_tube,
         metrics_recv,
         vfio_container_manager,
         worker_process_pids,
@@ -2404,9 +2330,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
     cfg: &Config,
-    irq_control_tubes: &mut Vec<Tube>,
-    vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
-    control_tubes: &mut Vec<TaggedControlTube>,
+    add_control_tube: &mut impl FnMut(AnyControlTube),
     hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: Option<&Tube>,
     device: &HotPlugDeviceInfo,
@@ -2420,9 +2344,9 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     let (hotplug_key, pci_address) = match device.device_type {
         HotPlugDeviceType::UpstreamPort | HotPlugDeviceType::DownstreamPort => {
             let (vm_host_tube, vm_device_tube) = Tube::pair().context("failed to create tube")?;
-            control_tubes.push(TaggedControlTube::Vm(vm_host_tube));
+            add_control_tube(TaggedControlTube::Vm(vm_host_tube).into());
             let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-            irq_control_tubes.push(msi_host_tube);
+            add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
             let pcie_host = PcieHostPort::new(device.path.as_path(), vm_device_tube)?;
             let (hotplug_key, pci_bridge) = match device.device_type {
                 HotPlugDeviceType::UpstreamPort => {
@@ -2473,9 +2397,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                 &cfg.jail_config,
                 &linux.vm,
                 sys_allocator,
-                irq_control_tubes,
-                vm_memory_control_tubes,
-                control_tubes,
+                add_control_tube,
                 &device.path,
                 true,
                 None,
@@ -2538,22 +2460,23 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
 fn add_hotplug_net<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
-    irq_control_tubes: &mut Vec<Tube>,
-    vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
-    vm_control_tubes: &mut Vec<TaggedControlTube>,
+    add_control_tube: &mut impl FnMut(AnyControlTube),
     hotplug_manager: &mut PciHotPlugManager,
     net_param: NetParameters,
 ) -> Result<u8> {
     let (msi_host_tube, msi_device_tube) = Tube::pair().context("create tube")?;
-    irq_control_tubes.push(msi_host_tube);
+    add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
     let (ioevent_host_tube, ioevent_device_tube) = Tube::pair().context("create tube")?;
     let ioevent_vm_memory_client = VmMemoryClient::new(ioevent_device_tube);
-    vm_memory_control_tubes.push(VmMemoryTube {
-        tube: ioevent_host_tube,
-        expose_with_viommu: false,
-    });
+    add_control_tube(
+        VmMemoryTube {
+            tube: ioevent_host_tube,
+            expose_with_viommu: false,
+        }
+        .into(),
+    );
     let (vm_control_host_tube, vm_control_device_tube) = Tube::pair().context("create tube")?;
-    vm_control_tubes.push(TaggedControlTube::Vm(vm_control_host_tube));
+    add_control_tube(TaggedControlTube::Vm(vm_control_host_tube).into());
     let net_carrier_device = NetResourceCarrier::new(
         net_param,
         msi_device_tube,
@@ -2572,18 +2495,14 @@ fn handle_hotplug_net_command<V: VmArch, Vcpu: VcpuArch>(
     net_cmd: NetControlCommand,
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
-    irq_control_tubes: &mut Vec<Tube>,
-    vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
-    vm_control_tubes: &mut Vec<TaggedControlTube>,
+    add_control_tube: &mut impl FnMut(AnyControlTube),
     hotplug_manager: &mut PciHotPlugManager,
 ) -> VmResponse {
     match net_cmd {
         NetControlCommand::AddTap(tap_name) => handle_hotplug_net_add(
             linux,
             sys_allocator,
-            irq_control_tubes,
-            vm_memory_control_tubes,
-            vm_control_tubes,
+            add_control_tube,
             hotplug_manager,
             &tap_name,
         ),
@@ -2597,9 +2516,7 @@ fn handle_hotplug_net_command<V: VmArch, Vcpu: VcpuArch>(
 fn handle_hotplug_net_add<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
-    irq_control_tubes: &mut Vec<Tube>,
-    vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
-    vm_control_tubes: &mut Vec<TaggedControlTube>,
+    add_control_tube: &mut impl FnMut(AnyControlTube),
     hotplug_manager: &mut PciHotPlugManager,
     tap_name: &str,
 ) -> VmResponse {
@@ -2617,9 +2534,7 @@ fn handle_hotplug_net_add<V: VmArch, Vcpu: VcpuArch>(
     let ret = add_hotplug_net(
         linux,
         sys_allocator,
-        irq_control_tubes,
-        vm_memory_control_tubes,
-        vm_control_tubes,
+        add_control_tube,
         hotplug_manager,
         net_param,
     );
@@ -2885,9 +2800,7 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
     cfg: &Config,
-    add_irq_control_tubes: &mut Vec<Tube>,
-    add_vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
-    add_tubes: &mut Vec<TaggedControlTube>,
+    add_control_tube: &mut impl FnMut(AnyControlTube),
     hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: Option<&Tube>,
     device: &HotPlugDeviceInfo,
@@ -2906,9 +2819,7 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
             linux,
             sys_allocator,
             cfg,
-            add_irq_control_tubes,
-            add_vm_memory_control_tubes,
-            add_tubes,
+            add_control_tube,
             hp_control_tube,
             iommu_host_tube,
             device,
@@ -2923,8 +2834,7 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     match ret {
         Ok(()) => VmResponse::Ok,
         Err(e) => {
-            error!("hanlde_hotplug_command failure: {}", e);
-            add_tubes.clear();
+            error!("handle_hotplug_command failure: {}", e);
             VmResponse::Err(base::Error::new(libc::EINVAL))
         }
     }
@@ -2937,7 +2847,7 @@ struct ControlLoopState<'a, V: VmArch, Vcpu: VcpuArch> {
     control_tubes: &'a BTreeMap<usize, TaggedControlTube>,
     disk_host_tubes: &'a [Tube],
     #[cfg(feature = "gpu")]
-    gpu_control_tube: &'a Tube,
+    gpu_control_tube: Option<&'a Tube>,
     #[cfg(feature = "usb")]
     usb_control_tube: &'a Tube,
     #[cfg(target_arch = "x86_64")]
@@ -2992,6 +2902,16 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
     let mut add_vm_memory_control_tubes = Vec::new();
 
+    #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
+    let mut add_control_tube = |t| match t {
+        AnyControlTube::DeviceControlTube(_) => {
+            panic!("hotplugging DeviceControlTube not supported yet")
+        }
+        AnyControlTube::IrqTube(t) => add_irq_control_tubes.push(t),
+        AnyControlTube::TaggedControlTube(t) => add_tubes.push(t),
+        AnyControlTube::VmMemoryTube(t) => add_vm_memory_control_tubes.push(t),
+    };
+
     let response = match request {
         VmRequest::Exit => {
             return Ok(VmRequestResult::new(Some(VmResponse::Ok), true));
@@ -3003,9 +2923,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     state.linux,
                     &mut state.sys_allocator.lock(),
                     state.cfg,
-                    &mut add_irq_control_tubes,
-                    &mut add_vm_memory_control_tubes,
-                    add_tubes,
+                    &mut add_control_tube,
                     state.hp_control_tube,
                     state.iommu_host_tube.as_ref().map(|t| t.lock()).as_deref(),
                     &device,
@@ -3031,9 +2949,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     net_cmd,
                     state.linux,
                     &mut state.sys_allocator.lock(),
-                    &mut add_irq_control_tubes,
-                    &mut add_vm_memory_control_tubes,
-                    add_tubes,
+                    &mut add_control_tube,
                     hotplug_manager,
                 )
             } else {
@@ -3138,7 +3054,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 state.disk_host_tubes,
                 &mut state.linux.pm,
                 #[cfg(feature = "gpu")]
-                Some(state.gpu_control_tube),
+                state.gpu_control_tube,
                 #[cfg(not(feature = "gpu"))]
                 None,
                 #[cfg(feature = "usb")]
@@ -3376,12 +3292,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     sys_allocator: SystemAllocator,
     cfg: Config,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
-    irq_control_tubes: Vec<Tube>,
-    vm_memory_control_tubes: Vec<VmMemoryTube>,
-    control_tubes: Vec<TaggedControlTube>,
-    #[cfg(feature = "balloon")] balloon_host_tube: Option<Tube>,
-    disk_host_tubes: &[Tube],
-    #[cfg(feature = "gpu")] gpu_control_tube: Tube,
+    all_control_tubes: Vec<AnyControlTube>,
     #[cfg(feature = "usb")] usb_control_tube: Tube,
     vm_evt_rdtube: RecvTube,
     vm_evt_wrtube: SendTube,
@@ -3397,12 +3308,48 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     mut swap_controller: Option<SwapController>,
     #[cfg(feature = "registered_events")] reg_evt_rdtube: RecvTube,
     guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
-    #[cfg(feature = "pvclock")] pvclock_host_tube: Option<Tube>,
     metrics_tube: RecvTube,
     mut vfio_container_manager: VfioContainerManager,
     // A set of PID of child processes whose clean exit is expected and can be ignored.
     mut worker_process_pids: BTreeSet<Pid>,
 ) -> Result<ExitState> {
+    // Split up `all_control_tubes`.
+    #[cfg(feature = "balloon")]
+    let mut balloon_host_tube = None;
+    let mut disk_host_tubes = Vec::new();
+    #[cfg(feature = "gpu")]
+    let mut gpu_control_tube = None;
+    #[cfg(feature = "pvclock")]
+    let mut pvclock_host_tube = None;
+    let mut irq_control_tubes = Vec::new();
+    let mut vm_memory_control_tubes = Vec::new();
+    let mut control_tubes = Vec::new();
+    for t in all_control_tubes {
+        match t {
+            #[cfg(feature = "balloon")]
+            AnyControlTube::DeviceControlTube(DeviceControlTube::Balloon(t)) => {
+                assert!(balloon_host_tube.is_none());
+                balloon_host_tube = Some(t)
+            }
+            AnyControlTube::DeviceControlTube(DeviceControlTube::Disk(t)) => {
+                disk_host_tubes.push(t)
+            }
+            #[cfg(feature = "gpu")]
+            AnyControlTube::DeviceControlTube(DeviceControlTube::Gpu(t)) => {
+                assert!(gpu_control_tube.is_none());
+                gpu_control_tube = Some(t)
+            }
+            #[cfg(feature = "pvclock")]
+            AnyControlTube::DeviceControlTube(DeviceControlTube::PvClock(t)) => {
+                assert!(pvclock_host_tube.is_none());
+                pvclock_host_tube = Some(Arc::new(t))
+            }
+            AnyControlTube::IrqTube(t) => irq_control_tubes.push(t),
+            AnyControlTube::TaggedControlTube(t) => control_tubes.push(t),
+            AnyControlTube::VmMemoryTube(t) => vm_memory_control_tubes.push(t),
+        }
+    }
+
     #[derive(EventToken)]
     enum Token {
         VmEvent,
@@ -3578,9 +3525,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     } else {
         (run_mode, run_mode)
     };
-
-    #[cfg(feature = "pvclock")]
-    let pvclock_host_tube = pvclock_host_tube.map(Arc::new);
 
     // Architecture-specific code must supply a vcpu_init element for each VCPU.
     assert_eq!(vcpus.len(), linux.vcpu_init.len());
@@ -3981,9 +3925,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             cfg: &cfg,
                             sys_allocator: &sys_allocator_mutex,
                             control_tubes: &control_tubes,
-                            disk_host_tubes,
+                            disk_host_tubes: &disk_host_tubes[..],
                             #[cfg(feature = "gpu")]
-                            gpu_control_tube: &gpu_control_tube,
+                            gpu_control_tube: gpu_control_tube.as_ref(),
                             #[cfg(feature = "usb")]
                             usb_control_tube: &usb_control_tube,
                             #[cfg(target_arch = "x86_64")]
