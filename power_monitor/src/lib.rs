@@ -16,12 +16,13 @@ pub trait PowerClient {
     fn get_power_data(&mut self) -> std::result::Result<PowerData, Box<dyn Error>>;
 }
 
+#[derive(Debug)]
 pub struct PowerData {
     pub ac_online: bool,
     pub battery: Option<BatteryData>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct BatteryData {
     pub status: BatteryStatus,
     pub percent: u32,
@@ -35,7 +36,7 @@ pub struct BatteryData {
     pub charge_full: u32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum BatteryStatus {
     Unknown,
     Charging,
@@ -50,6 +51,16 @@ pub trait CreatePowerMonitorFn:
 
 impl<T> CreatePowerMonitorFn for T where
     T: Send + Fn() -> std::result::Result<Box<dyn PowerMonitor>, Box<dyn Error>>
+{
+}
+
+pub trait CreatePowerClientFn:
+    Send + Fn() -> std::result::Result<Box<dyn PowerClient>, Box<dyn Error>>
+{
+}
+
+impl<T> CreatePowerClientFn for T where
+    T: Send + Fn() -> std::result::Result<Box<dyn PowerClient>, Box<dyn Error>>
 {
 }
 

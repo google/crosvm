@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
+use anyhow::bail;
 use anyhow::Context;
 use base::error;
 use base::warn;
@@ -17,6 +18,7 @@ use base::Tube;
 use base::WaitContext;
 use base::WorkerThread;
 use power_monitor::BatteryStatus;
+use power_monitor::CreatePowerClientFn;
 use power_monitor::CreatePowerMonitorFn;
 use remain::sorted;
 use serde::Deserialize;
@@ -62,6 +64,7 @@ struct GoldfishBatteryState {
     current: u32,
     charge_counter: u32,
     charge_full: u32,
+    initialized: bool,
 }
 
 macro_rules! create_battery_func {
@@ -117,6 +120,7 @@ pub struct GoldfishBattery {
     monitor_thread: Option<WorkerThread<()>>,
     tube: Option<Tube>,
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
+    create_powerd_client: Option<Box<dyn CreatePowerClientFn>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -323,6 +327,7 @@ impl GoldfishBattery {
         irq_evt: IrqLevelEvent,
         tube: Tube,
         create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
+        create_powerd_client: Option<Box<dyn CreatePowerClientFn>>,
     ) -> Result<Self> {
         if mmio_base + GOLDFISHBAT_MMIO_LEN - 1 > u32::MAX as u64 {
             return Err(BatteryError::Non32BitMmioAddress);
@@ -339,6 +344,7 @@ impl GoldfishBattery {
             current: 0,
             charge_counter: 0,
             charge_full: 0,
+            initialized: false,
         }));
 
         Ok(GoldfishBattery {
@@ -350,6 +356,7 @@ impl GoldfishBattery {
             monitor_thread: None,
             tube: Some(tube),
             create_power_monitor,
+            create_powerd_client,
         })
     }
 
@@ -383,6 +390,46 @@ impl GoldfishBattery {
             self.activated = true;
         }
     }
+
+    fn initialize_battery_state(&mut self) -> anyhow::Result<()> {
+        let mut power_client = match &self.create_powerd_client {
+            Some(f) => match f() {
+                Ok(c) => c,
+                Err(e) => bail!("failed to connect to the powerd: {:#}", e),
+            },
+            None => return Ok(()),
+        };
+        match power_client.get_power_data() {
+            Ok(data) => {
+                let mut bat_state = self.state.lock();
+                bat_state.set_ac_online(data.ac_online.into());
+
+                match data.battery {
+                    Some(battery_data) => {
+                        bat_state.set_capacity(battery_data.percent);
+                        let battery_status = match battery_data.status {
+                            BatteryStatus::Unknown => BATTERY_STATUS_VAL_UNKNOWN,
+                            BatteryStatus::Charging => BATTERY_STATUS_VAL_CHARGING,
+                            BatteryStatus::Discharging => BATTERY_STATUS_VAL_DISCHARGING,
+                            BatteryStatus::NotCharging => BATTERY_STATUS_VAL_NOT_CHARGING,
+                        };
+                        bat_state.set_status(battery_status);
+                        bat_state.set_voltage(battery_data.voltage);
+                        bat_state.set_current(battery_data.current);
+                        bat_state.set_charge_counter(battery_data.charge_counter);
+                        bat_state.set_charge_full(battery_data.charge_full);
+                    }
+                    None => {
+                        bat_state.set_present(0);
+                    }
+                }
+                Ok(())
+            }
+            Err(e) => {
+                bail!("failed to get response from powerd: {:#}", e);
+            }
+        }
+    }
 }
 
 impl Drop for GoldfishBattery {
@@ -410,6 +457,20 @@ impl BusDevice for GoldfishBattery {
                 data.len()
             );
             return;
+        }
+
+        // Before first read, we try to ask powerd the actual power data to initialize `self.state`.
+        if !self.state.lock().initialized {
+            match self.initialize_battery_state() {
+                Ok(()) => self.state.lock().initialized = true,
+                Err(e) => {
+                    error!(
+                        "{}: failed to get power data and update: {:#}",
+                        self.debug_label(),
+                        e
+                    );
+                }
+            }
         }
 
         let val = match info.offset as u32 {
@@ -546,6 +607,7 @@ mod tests {
             0,
             IrqLevelEvent::new().unwrap(),
             Tube::pair().unwrap().1,
+            None,
             None,
         ).unwrap(),
         modify_device
