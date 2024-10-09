@@ -458,6 +458,7 @@ pub struct VirtioGpu {
     external_blob: bool,
     fixed_blob_mapping: bool,
     udmabuf_driver: Option<UdmabufDriver>,
+    deferred_snapshot_load: Option<VirtioGpuSnapshot>,
 }
 
 // Only the 2D mode is supported. Notes on `VirtioGpu` fields:
@@ -565,6 +566,7 @@ impl VirtioGpu {
             external_blob,
             fixed_blob_mapping,
             udmabuf_driver,
+            deferred_snapshot_load: None,
         })
     }
 
@@ -1319,53 +1321,60 @@ impl VirtioGpu {
         })
     }
 
-    pub fn restore(
-        &mut self,
-        snapshot: VirtioGpuSnapshot,
-        mem: &GuestMemory,
-    ) -> anyhow::Result<()> {
-        assert!(self.scanouts.keys().eq(snapshot.scanouts.keys()));
-        for (i, s) in snapshot.scanouts.into_iter() {
-            self.scanouts.get_mut(&i).unwrap().restore(
-                s,
-                // Only the cursor scanout can have a parent.
-                None,
-                &self.display,
-            )?;
-        }
-        self.scanouts_updated
-            .store(snapshot.scanouts_updated, Ordering::SeqCst);
-
-        let cursor_parent_surface_id = snapshot
-            .cursor_scanout
-            .parent_scanout_id
-            .and_then(|i| self.scanouts.get(&i).unwrap().surface_id);
-        self.cursor_scanout.restore(
-            snapshot.cursor_scanout,
-            cursor_parent_surface_id,
-            &self.display,
-        )?;
-
-        self.rutabaga
-            .restore(&mut &snapshot.rutabaga[..], "")
-            .context("failed to restore rutabaga")?;
-
-        for (id, s) in snapshot.resources.into_iter() {
-            let backing_iovecs = s.backing_iovecs.clone();
-            let shmem_offset = s.shmem_offset;
-            self.resources.insert(id, VirtioGpuResource::restore(s));
-            if let Some(backing_iovecs) = backing_iovecs {
-                self.attach_backing(id, mem, backing_iovecs)?;
-            }
-            if let Some(shmem_offset) = shmem_offset {
-                self.resource_map_blob(id, shmem_offset)?;
-            }
-        }
-
+    pub fn restore(&mut self, snapshot: VirtioGpuSnapshot) -> anyhow::Result<()> {
+        self.deferred_snapshot_load = Some(snapshot);
         Ok(())
     }
 
-    pub fn resume(&self) -> anyhow::Result<()> {
+    pub fn resume(&mut self, mem: &GuestMemory) -> anyhow::Result<()> {
+        if let Some(snapshot) = self.deferred_snapshot_load.take() {
+            assert!(self.scanouts.keys().eq(snapshot.scanouts.keys()));
+            for (i, s) in snapshot.scanouts.into_iter() {
+                self.scanouts
+                    .get_mut(&i)
+                    .unwrap()
+                    .restore(
+                        s,
+                        // Only the cursor scanout can have a parent.
+                        None,
+                        &self.display,
+                    )
+                    .context("failed to restore scanouts")?;
+            }
+            self.scanouts_updated
+                .store(snapshot.scanouts_updated, Ordering::SeqCst);
+
+            let cursor_parent_surface_id = snapshot
+                .cursor_scanout
+                .parent_scanout_id
+                .and_then(|i| self.scanouts.get(&i).unwrap().surface_id);
+            self.cursor_scanout
+                .restore(
+                    snapshot.cursor_scanout,
+                    cursor_parent_surface_id,
+                    &self.display,
+                )
+                .context("failed to restore cursor scanout")?;
+
+            self.rutabaga
+                .restore(&mut &snapshot.rutabaga[..], "")
+                .context("failed to restore rutabaga")?;
+
+            for (id, s) in snapshot.resources.into_iter() {
+                let backing_iovecs = s.backing_iovecs.clone();
+                let shmem_offset = s.shmem_offset;
+                self.resources.insert(id, VirtioGpuResource::restore(s));
+                if let Some(backing_iovecs) = backing_iovecs {
+                    self.attach_backing(id, mem, backing_iovecs)
+                        .context("failed to restore resource backing")?;
+                }
+                if let Some(shmem_offset) = shmem_offset {
+                    self.resource_map_blob(id, shmem_offset)
+                        .context("failed to restore resource mapping")?;
+                }
+            }
+        }
+
         self.rutabaga.resume().context("failed to resume rutabaga")
     }
 }
