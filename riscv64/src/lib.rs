@@ -158,15 +158,25 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub struct ArchMemoryLayout {}
+
 pub struct Riscv64;
 
 impl arch::LinuxArch for Riscv64 {
     type Error = Error;
+    type ArchMemoryLayout = ArchMemoryLayout;
+
+    fn arch_memory_layout(
+        _components: &VmComponents,
+    ) -> std::result::Result<Self::ArchMemoryLayout, Self::Error> {
+        Ok(ArchMemoryLayout {})
+    }
 
     /// Returns a Vec of the valid memory addresses.
     /// These should be used to configure the GuestMemory structure for the platfrom.
     fn guest_memory_layout(
         components: &VmComponents,
+        _arch_memory_layout: &Self::ArchMemoryLayout,
         _hypervisor: &impl Hypervisor,
     ) -> std::result::Result<Vec<(GuestAddress, u64, MemoryRegionOptions)>, Self::Error> {
         Ok(vec![(
@@ -176,12 +186,16 @@ impl arch::LinuxArch for Riscv64 {
         )])
     }
 
-    fn get_system_allocator_config<V: Vm>(vm: &V) -> SystemAllocatorConfig {
+    fn get_system_allocator_config<V: Vm>(
+        vm: &V,
+        _arch_memory_layout: &Self::ArchMemoryLayout,
+    ) -> SystemAllocatorConfig {
         get_resource_allocator_config(vm.get_memory().memory_size(), vm.get_guest_phys_addr_bits())
     }
 
     fn build_vm<V, Vcpu>(
         mut components: VmComponents,
+        _arch_memory_layout: &Self::ArchMemoryLayout,
         _vm_evt_wrtube: &SendTube,
         system_allocator: &mut SystemAllocator,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,

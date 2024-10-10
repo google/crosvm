@@ -1481,9 +1481,10 @@ fn punch_holes_in_guest_mem_layout_for_mappings(
 fn create_guest_memory(
     cfg: &Config,
     components: &VmComponents,
+    arch_memory_layout: &<Arch as LinuxArch>::ArchMemoryLayout,
     hypervisor: &impl Hypervisor,
 ) -> Result<GuestMemory> {
-    let guest_mem_layout = Arch::guest_memory_layout(components, hypervisor)
+    let guest_mem_layout = Arch::guest_memory_layout(components, arch_memory_layout, hypervisor)
         .context("failed to create guest memory layout")?;
 
     let guest_mem_layout =
@@ -1525,7 +1526,9 @@ fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> 
     let gzvm = Geniezone::new_with_path(device_path)
         .with_context(|| format!("failed to open GenieZone device {}", device_path.display()))?;
 
-    let guest_mem = create_guest_memory(&cfg, &components, &gzvm)?;
+    let arch_memory_layout =
+        Arch::arch_memory_layout(&components).context("failed to create arch memory layout")?;
+    let guest_mem = create_guest_memory(&cfg, &components, &arch_memory_layout, &gzvm)?;
 
     #[cfg(feature = "swap")]
     let swap_controller = if let Some(swap_dir) = cfg.swap_dir.as_ref() {
@@ -1560,6 +1563,7 @@ fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> 
     run_vm::<GeniezoneVcpu, GeniezoneVm>(
         cfg,
         components,
+        &arch_memory_layout,
         vm,
         &mut irq_chip,
         ioapic_host_tube,
@@ -1580,7 +1584,9 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
     let kvm = Kvm::new_with_path(device_path)
         .with_context(|| format!("failed to open KVM device {}", device_path.display()))?;
 
-    let guest_mem = create_guest_memory(&cfg, &components, &kvm)?;
+    let arch_memory_layout =
+        Arch::arch_memory_layout(&components).context("failed to create arch memory layout")?;
+    let guest_mem = create_guest_memory(&cfg, &components, &arch_memory_layout, &kvm)?;
 
     #[cfg(feature = "swap")]
     let swap_controller = if let Some(swap_dir) = cfg.swap_dir.as_ref() {
@@ -1658,6 +1664,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
     run_vm::<KvmVcpu, KvmVm>(
         cfg,
         components,
+        &arch_memory_layout,
         vm,
         irq_chip.as_mut(),
         ioapic_host_tube,
@@ -1681,7 +1688,9 @@ fn run_gunyah(
     let gunyah = Gunyah::new_with_path(device_path)
         .with_context(|| format!("failed to open Gunyah device {}", device_path.display()))?;
 
-    let guest_mem = create_guest_memory(&cfg, &components, &gunyah)?;
+    let arch_memory_layout =
+        Arch::arch_memory_layout(&components).context("failed to create arch memory layout")?;
+    let guest_mem = create_guest_memory(&cfg, &components, &arch_memory_layout, &gunyah)?;
 
     #[cfg(feature = "swap")]
     let swap_controller = if let Some(swap_dir) = cfg.swap_dir.as_ref() {
@@ -1705,6 +1714,7 @@ fn run_gunyah(
     run_vm::<GunyahVcpu, GunyahVm>(
         cfg,
         components,
+        &arch_memory_layout,
         vm,
         &mut GunyahIrqChip::new(vm_clone)?,
         None,
@@ -1778,6 +1788,7 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
 fn run_vm<Vcpu, V>(
     cfg: Config,
     #[allow(unused_mut)] mut components: VmComponents,
+    arch_memory_layout: &<Arch as LinuxArch>::ArchMemoryLayout,
     mut vm: V,
     irq_chip: &mut dyn IrqChipArch,
     ioapic_host_tube: Option<Tube>,
@@ -1880,7 +1891,7 @@ where
 
     let pstore_size = components.pstore.as_ref().map(|pstore| pstore.size as u64);
     let mut sys_allocator = SystemAllocator::new(
-        Arch::get_system_allocator_config(&vm),
+        Arch::get_system_allocator_config(&vm, arch_memory_layout),
         pstore_size,
         &cfg.mmio_address_ranges,
     )
@@ -2106,6 +2117,7 @@ where
 
     let mut linux = Arch::build_vm::<V, Vcpu>(
         components,
+        arch_memory_layout,
         &vm_evt_wrtube,
         &mut sys_allocator,
         &cfg.serial_parameters,

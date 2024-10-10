@@ -378,13 +378,23 @@ fn main_memory_size(components: &VmComponents, hypervisor: &(impl Hypervisor + ?
     main_memory_size
 }
 
+pub struct ArchMemoryLayout {}
+
 impl arch::LinuxArch for AArch64 {
     type Error = Error;
+    type ArchMemoryLayout = ArchMemoryLayout;
+
+    fn arch_memory_layout(
+        _components: &VmComponents,
+    ) -> std::result::Result<Self::ArchMemoryLayout, Self::Error> {
+        Ok(ArchMemoryLayout {})
+    }
 
     /// Returns a Vec of the valid memory addresses.
     /// These should be used to configure the GuestMemory structure for the platform.
     fn guest_memory_layout(
         components: &VmComponents,
+        _arch_memory_layout: &Self::ArchMemoryLayout,
         hypervisor: &impl Hypervisor,
     ) -> std::result::Result<Vec<(GuestAddress, u64, MemoryRegionOptions)>, Self::Error> {
         let main_memory_size = main_memory_size(components, hypervisor);
@@ -417,7 +427,10 @@ impl arch::LinuxArch for AArch64 {
         Ok(memory_regions)
     }
 
-    fn get_system_allocator_config<V: Vm>(vm: &V) -> SystemAllocatorConfig {
+    fn get_system_allocator_config<V: Vm>(
+        vm: &V,
+        _arch_memory_layout: &Self::ArchMemoryLayout,
+    ) -> SystemAllocatorConfig {
         Self::get_resource_allocator_config(
             vm.get_memory().end_addr(),
             vm.get_guest_phys_addr_bits(),
@@ -426,6 +439,7 @@ impl arch::LinuxArch for AArch64 {
 
     fn build_vm<V, Vcpu>(
         mut components: VmComponents,
+        _arch_memory_layout: &Self::ArchMemoryLayout,
         _vm_evt_wrtube: &SendTube,
         system_allocator: &mut SystemAllocator,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,

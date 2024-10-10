@@ -2291,12 +2291,14 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
 
 fn create_guest_memory(
     components: &VmComponents,
+    arch_memory_layout: &<Arch as LinuxArch>::ArchMemoryLayout,
     hypervisor: &impl Hypervisor,
 ) -> Result<GuestMemory> {
-    let guest_mem_layout = Arch::guest_memory_layout(components, hypervisor).exit_context(
-        Exit::GuestMemoryLayout,
-        "failed to create guest memory layout",
-    )?;
+    let guest_mem_layout = Arch::guest_memory_layout(components, arch_memory_layout, hypervisor)
+        .exit_context(
+            Exit::GuestMemoryLayout,
+            "failed to create guest memory layout",
+        )?;
     GuestMemory::new_with_options(&guest_mem_layout)
         .exit_context(Exit::CreateGuestMemory, "failed to create guest memory")
 }
@@ -2312,6 +2314,7 @@ fn run_config_inner(
     cros_tracing::add_per_trace_callback(set_tsc_clock_snapshot);
 
     let components: VmComponents = setup_vm_components(&cfg)?;
+    let arch_memory_layout = Arch::arch_memory_layout(&components)?;
 
     #[allow(unused_mut)]
     let mut hypervisor = cfg
@@ -2333,7 +2336,7 @@ fn run_config_inner(
             }
             info!("Creating HAXM ghaxm={}", get_use_ghaxm());
             let haxm = Haxm::new()?;
-            let guest_mem = create_guest_memory(&components, &haxm)?;
+            let guest_mem = create_guest_memory(&components, &arch_memory_layout, &haxm)?;
             let vm = create_haxm_vm(haxm, guest_mem, &cfg.kernel_log_file)?;
             let (ioapic_host_tube, ioapic_device_tube) =
                 Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
@@ -2342,6 +2345,7 @@ fn run_config_inner(
             run_vm::<HaxmVcpu, HaxmVm>(
                 cfg,
                 components,
+                &arch_memory_layout,
                 vm,
                 WindowsIrqChip::Userspace(irq_chip).as_mut(),
                 Some(ioapic_host_tube),
@@ -2370,7 +2374,7 @@ fn run_config_inner(
 
             info!("Creating Whpx");
             let whpx = Whpx::new()?;
-            let guest_mem = create_guest_memory(&components, &whpx)?;
+            let guest_mem = create_guest_memory(&components, &arch_memory_layout, &whpx)?;
             let vm = create_whpx_vm(
                 whpx,
                 guest_mem,
@@ -2404,6 +2408,7 @@ fn run_config_inner(
             run_vm::<WhpxVcpu, WhpxVm>(
                 cfg,
                 components,
+                &arch_memory_layout,
                 vm,
                 irq_chip.as_mut(),
                 Some(ioapic_host_tube),
@@ -2415,7 +2420,7 @@ fn run_config_inner(
         HypervisorKind::Gvm => {
             info!("Creating GVM");
             let gvm = Gvm::new()?;
-            let guest_mem = create_guest_memory(&components, &gvm)?;
+            let guest_mem = create_guest_memory(&components, &arch_memory_layout, &gvm)?;
             let vm = create_gvm_vm(gvm, guest_mem)?;
             let ioapic_host_tube;
             let mut irq_chip = match cfg.irq_chip.unwrap_or(IrqChipKind::Kernel) {
@@ -2437,6 +2442,7 @@ fn run_config_inner(
             run_vm::<GvmVcpu, GvmVm>(
                 cfg,
                 components,
+                &arch_memory_layout,
                 vm,
                 irq_chip.as_mut(),
                 ioapic_host_tube,
@@ -2451,6 +2457,7 @@ fn run_config_inner(
 fn run_vm<Vcpu, V>(
     #[allow(unused_mut)] mut cfg: Config,
     #[allow(unused_mut)] mut components: VmComponents,
+    arch_memory_layout: &<Arch as LinuxArch>::ArchMemoryLayout,
     mut vm: V,
     irq_chip: &mut dyn IrqChipArch,
     ioapic_host_tube: Option<Tube>,
@@ -2514,7 +2521,7 @@ where
 
     let pstore_size = components.pstore.as_ref().map(|pstore| pstore.size as u64);
     let mut sys_allocator = SystemAllocator::new(
-        Arch::get_system_allocator_config(&vm),
+        Arch::get_system_allocator_config(&vm, arch_memory_layout),
         pstore_size,
         &cfg.mmio_address_ranges,
     )
@@ -2641,6 +2648,7 @@ where
     let (vwmdt_host_tube, vmwdt_device_tube) = Tube::pair().context("failed to create tube")?;
     let windows = Arch::build_vm::<V, Vcpu>(
         components,
+        arch_memory_layout,
         &vm_evt_wrtube,
         &mut sys_allocator,
         &cfg.serial_parameters,
