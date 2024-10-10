@@ -798,13 +798,27 @@ impl Display for GpuResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::GpuResponse::*;
         match self {
+            OkNoData => write!(f, "ok no data"),
+            OkDisplayInfo(_) => write!(f, "ok display info"),
+            OkCapsetInfo { .. } => write!(f, "ok capset info"),
+            OkCapset(_) => write!(f, "ok capset"),
+            OkEdid(_) => write!(f, "ok edid"),
+            OkResourcePlaneInfo { .. } => write!(f, "ok resource plane info"),
+            OkResourceUuid { .. } => write!(f, "ok resource uuid"),
+            OkMapInfo { map_info } => write!(f, "ok map info: {}", map_info),
+            ErrUnspec => write!(f, "unspecified error"),
             ErrTube(e) => write!(f, "tube error: {}", e),
             ErrBase(e) => write!(f, "base error: {}", e),
             ErrRutabaga(e) => write!(f, "renderer error: {}", e),
             ErrDisplay(e) => write!(f, "display error: {}", e),
             ErrScanout { num_scanouts } => write!(f, "non-zero scanout: {}", num_scanouts),
+            ErrEdid(e) => write!(f, "edid error: {}", e),
+            ErrOutOfMemory => write!(f, "out of memory error"),
+            ErrInvalidScanoutId => write!(f, "invalid scanout id"),
+            ErrInvalidResourceId => write!(f, "invalid resource id"),
+            ErrInvalidContextId => write!(f, "invalid context id"),
+            ErrInvalidParameter => write!(f, "invalid parameter"),
             ErrUdmabuf(e) => write!(f, "udmabuf error: {}", e),
-            _ => Ok(()),
         }
     }
 }
