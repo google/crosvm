@@ -222,7 +222,6 @@ fn create_virtio_devices(
     #[cfg_attr(not(feature = "gpu"), allow(unused_variables))] vm_evt_wrtube: &SendTube,
     #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
     #[cfg(feature = "balloon")] balloon_inflate_tube: Option<Tube>,
-    #[cfg(feature = "balloon")] init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
     pmem_ext2_mem_clients: &mut Vec<VmMemoryClient>,
@@ -633,6 +632,26 @@ fn create_virtio_devices(
         let balloon_features = (cfg.balloon_page_reporting as u64)
             << BalloonFeatures::PageReporting as u64
             | (cfg.balloon_ws_reporting as u64) << BalloonFeatures::WSReporting as u64;
+
+        let init_balloon_size = if let Some(init_memory) = cfg.init_memory {
+            let init_memory_bytes = init_memory.saturating_mul(1024 * 1024);
+            let total_memory_bytes = vm.get_memory().memory_size();
+
+            if init_memory_bytes > total_memory_bytes {
+                bail!(
+                    "initial memory {} cannot be greater than total memory {}",
+                    init_memory,
+                    total_memory_bytes / (1024 * 1024),
+                );
+            }
+
+            // The initial balloon size is the total memory size minus the initial memory size.
+            total_memory_bytes - init_memory_bytes
+        } else {
+            // No --init-mem specified; start with balloon completely deflated.
+            0
+        };
+
         devs.push(create_balloon_device(
             cfg.protection_type,
             &cfg.jail_config,
@@ -791,7 +810,6 @@ fn create_devices(
     vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
     control_tubes: &mut Vec<TaggedControlTube>,
     #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
-    #[cfg(feature = "balloon")] init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
     pmem_ext2_mem_clients: &mut Vec<VmMemoryClient>,
@@ -935,8 +953,6 @@ fn create_devices(
         balloon_device_tube,
         #[cfg(feature = "balloon")]
         balloon_inflate_tube,
-        #[cfg(feature = "balloon")]
-        init_balloon_size,
         disk_device_tubes,
         pmem_device_tubes,
         pmem_ext2_mem_clients,
@@ -1952,14 +1968,6 @@ where
             (None, None)
         };
 
-    #[cfg(feature = "balloon")]
-    let init_balloon_size = components
-        .memory_size
-        .checked_sub(cfg.init_memory.map_or(components.memory_size, |m| {
-            m.checked_mul(1024 * 1024).unwrap_or(u64::MAX)
-        }))
-        .context("failed to calculate init balloon size")?;
-
     let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>> =
         BTreeMap::new();
     let mut iova_max_addr: Option<u64> = None;
@@ -1992,8 +2000,6 @@ where
         &mut control_tubes,
         #[cfg(feature = "balloon")]
         balloon_device_tube,
-        #[cfg(feature = "balloon")]
-        init_balloon_size,
         &mut disk_device_tubes,
         &mut pmem_device_tubes,
         &mut pmem_ext2_mem_client,
