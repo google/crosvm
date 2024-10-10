@@ -12,6 +12,7 @@ base = { path = "../base" }
 dbus = { version = "0.9", optional = true }
 protobuf = "3.2"
 remain = "0.2"
+system_api = { path = "../system_api"}
 thiserror = "1.0.20"
 
 [build-dependencies]

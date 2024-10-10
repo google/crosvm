@@ -14,7 +14,10 @@ use crate::PowerData;
 
 // Interface name from power_manager/dbus_bindings/org.chromium.PowerManager.xml.
 pub const POWER_INTERFACE_NAME: &str = "org.chromium.PowerManager";
+// Object path from power_manager/dbus_bindings/org.chromium.PowerManager.xml.
+pub const POWER_OBJECT_PATH: &str = "/org/chromium/PowerManager";
 
+pub mod client;
 pub mod monitor;
 
 impl From<PowerSupplyProperties> for PowerData {
