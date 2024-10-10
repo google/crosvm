@@ -59,8 +59,10 @@ pub fn add_goldfish_battery(
         Tube::pair().map_err(DeviceRegistrationError::CreateTube)?;
 
     #[cfg(feature = "power-monitor-powerd")]
-    let create_monitor = Some(Box::new(power_monitor::powerd::DBusMonitor::connect)
-        as Box<dyn power_monitor::CreatePowerMonitorFn>);
+    let create_monitor = Some(
+        Box::new(power_monitor::powerd::monitor::DBusMonitor::connect)
+            as Box<dyn power_monitor::CreatePowerMonitorFn>,
+    );
 
     #[cfg(not(feature = "power-monitor-powerd"))]
     let create_monitor = None;
