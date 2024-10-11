@@ -1662,16 +1662,13 @@ impl X8664arch {
         )?;
 
         let mut setup_data = Vec::<SetupData>::new();
-        if let Some(android_fstab) = android_fstab {
+        if android_fstab.is_some() || !device_tree_overlays.is_empty() {
             setup_data.push(
-                fdt::create_fdt(
-                    Some(android_fstab),
-                    dump_device_tree_blob,
-                    device_tree_overlays,
-                )
-                .map_err(Error::CreateFdt)?,
+                fdt::create_fdt(android_fstab, dump_device_tree_blob, device_tree_overlays)
+                    .map_err(Error::CreateFdt)?,
             );
         }
+
         setup_data.push(setup_data_rng_seed());
 
         let setup_data = write_setup_data(
