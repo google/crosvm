@@ -1231,8 +1231,6 @@ impl arch::LinuxArch for X8664arch {
             rt_cpus: components.rt_cpus,
             delay_rt: components.delay_rt,
             bat_control,
-            #[cfg(feature = "gdb")]
-            gdb: components.gdb,
             pm: Some(acpi_dev_resource.pm),
             root_config: pci,
             #[cfg(any(target_os = "android", target_os = "linux"))]

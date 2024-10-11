@@ -424,8 +424,6 @@ impl arch::LinuxArch for Riscv64 {
             delay_rt: components.delay_rt,
             suspend_tube: (Arc::new(Mutex::new(suspend_tube_send)), suspend_tube_recv),
             bat_control: None,
-            #[cfg(feature = "gdb")]
-            gdb: components.gdb,
             pm: None,
             devices_thread: None,
             vm_request_tubes: Vec::new(),

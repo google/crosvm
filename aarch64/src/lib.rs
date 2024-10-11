@@ -871,8 +871,6 @@ impl arch::LinuxArch for AArch64 {
             rt_cpus: components.rt_cpus,
             delay_rt: components.delay_rt,
             bat_control,
-            #[cfg(feature = "gdb")]
-            gdb: components.gdb,
             pm: None,
             resume_notify_devices: Vec::new(),
             root_config: pci_root,

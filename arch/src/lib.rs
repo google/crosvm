@@ -360,8 +360,6 @@ pub struct VmComponents {
     pub force_s2idle: bool,
     pub fw_cfg_enable: bool,
     pub fw_cfg_parameters: Vec<FwCfgParameters>,
-    #[cfg(feature = "gdb")]
-    pub gdb: Option<(u32, Tube)>, // port and control tube.
     pub host_cpu_topology: bool,
     pub hugepages: bool,
     pub hv_cfg: hypervisor::Config,
@@ -401,8 +399,6 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub bat_control: Option<BatControl>,
     pub delay_rt: bool,
     pub devices_thread: Option<std::thread::JoinHandle<()>>,
-    #[cfg(feature = "gdb")]
-    pub gdb: Option<(u32, Tube)>,
     pub hotplug_bus: BTreeMap<u8, Arc<Mutex<dyn HotPlugBus>>>,
     pub io_bus: Arc<Bus>,
     pub irq_chip: Box<dyn IrqChipArch>,

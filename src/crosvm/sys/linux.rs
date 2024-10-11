@@ -1407,8 +1407,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             .collect::<Result<Vec<SDT>>>()?,
         rt_cpus: cfg.rt_cpus.clone(),
         delay_rt: cfg.delay_rt,
-        #[cfg(feature = "gdb")]
-        gdb: None,
         no_i8042: cfg.no_i8042,
         no_rtc: cfg.no_rtc,
         #[cfg(target_arch = "x86_64")]
@@ -1841,14 +1839,6 @@ where
 
     let mut all_control_tubes = Vec::new();
     let mut add_control_tube = |t| all_control_tubes.push(t);
-
-    #[cfg(feature = "gdb")]
-    if let Some(port) = cfg.gdb {
-        // GDB needs a control socket to interrupt vcpus.
-        let (gdb_host_tube, gdb_control_tube) = Tube::pair().context("failed to create tube")?;
-        add_control_tube(TaggedControlTube::Vm(gdb_host_tube).into());
-        components.gdb = Some((port, gdb_control_tube));
-    }
 
     if let Some(ioapic_host_tube) = ioapic_host_tube {
         add_control_tube(AnyControlTube::IrqTube(ioapic_host_tube));
@@ -3350,6 +3340,21 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         }
     }
 
+    #[cfg(feature = "gdb")]
+    let (to_gdb_channel, gdb) = if let Some(port) = cfg.gdb {
+        // GDB needs a control socket to interrupt vcpus.
+        let (gdb_host_tube, gdb_control_tube) = Tube::pair().context("failed to create tube")?;
+        control_tubes.push(TaggedControlTube::Vm(gdb_host_tube));
+        // Create a channel for GDB thread.
+        let (to_gdb_channel, from_vcpu_channel) = mpsc::channel();
+        (
+            Some(to_gdb_channel),
+            Some((port, gdb_control_tube, from_vcpu_channel)),
+        )
+    } else {
+        (None, None)
+    };
+
     #[derive(EventToken)]
     enum Token {
         VmEvent,
@@ -3408,15 +3413,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         // Before starting VCPUs, in case we started with some capabilities, drop them all.
         drop_capabilities().context("failed to drop process capabilities")?;
     }
-
-    #[cfg(feature = "gdb")]
-    // Create a channel for GDB thread.
-    let (to_gdb_channel, from_vcpu_channel) = if linux.gdb.is_some() {
-        let (s, r) = mpsc::channel();
-        (Some(s), Some(r))
-    } else {
-        (None, None)
-    };
 
     let (device_ctrl_tube, device_ctrl_resp) = Tube::pair().context("failed to create tube")?;
     // Create devices thread, and restore if a restore file exists.
@@ -3627,16 +3623,12 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     #[cfg(feature = "gdb")]
     // Spawn GDB thread.
-    if let Some((gdb_port_num, gdb_control_tube)) = linux.gdb.take() {
+    if let Some((gdb_port_num, gdb_control_tube, from_vcpu_channel)) = gdb {
         let to_vcpu_channels = vcpu_handles
             .iter()
             .map(|(_handle, channel)| channel.clone())
             .collect();
-        let target = GdbStub::new(
-            gdb_control_tube,
-            to_vcpu_channels,
-            from_vcpu_channel.unwrap(), // Must succeed to unwrap()
-        );
+        let target = GdbStub::new(gdb_control_tube, to_vcpu_channels, from_vcpu_channel);
         std::thread::Builder::new()
             .name("gdb".to_owned())
             .spawn(move || gdb_thread(target, gdb_port_num))
