@@ -16,11 +16,8 @@ use base::open_file_or_duplicate;
 use cros_fdt::Error;
 use cros_fdt::Fdt;
 
-use crate::SetupData;
-use crate::SetupDataType;
-
 /// Creates a flattened device tree containing all of the parameters for the
-/// kernel and returns it as `SetupData`.
+/// kernel and returns it as DTB.
 ///
 /// # Arguments
 ///
@@ -29,7 +26,7 @@ pub fn create_fdt(
     android_fstab: Option<File>,
     dump_device_tree_blob: Option<PathBuf>,
     device_tree_overlays: Vec<DtbOverlay>,
-) -> Result<SetupData, Error> {
+) -> Result<Vec<u8>, Error> {
     let mut fdt = Fdt::new(&[]);
     // The whole thing is put into one giant node with some top level properties
     if let Some(android_fstab) = android_fstab {
@@ -62,8 +59,5 @@ pub fn create_fdt(
             .map_err(|e| Error::FdtDumpIoError(e, file_path.clone()))?;
     }
 
-    Ok(SetupData {
-        data: fdt_final,
-        type_: SetupDataType::Dtb,
-    })
+    Ok(fdt_final)
 }
