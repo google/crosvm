@@ -26,13 +26,15 @@ use crate::SetupDataType;
 ///
 /// * `android_fstab` - the File object for the android fstab
 pub fn create_fdt(
-    android_fstab: File,
+    android_fstab: Option<File>,
     dump_device_tree_blob: Option<PathBuf>,
     device_tree_overlays: Vec<DtbOverlay>,
 ) -> Result<SetupData, Error> {
     let mut fdt = Fdt::new(&[]);
     // The whole thing is put into one giant node with some top level properties
-    create_android_fdt(&mut fdt, android_fstab)?;
+    if let Some(android_fstab) = android_fstab {
+        create_android_fdt(&mut fdt, android_fstab)?;
+    }
 
     // Done writing base FDT, now apply DT overlays
     apply_device_tree_overlays(
