@@ -23,6 +23,11 @@ pub use sys::platform::wait_context::WaitContext;
 
 use crate::rutabaga_utils::RutabagaMapping;
 
+pub enum TubeType {
+    Stream,
+    Packet,
+}
+
 pub struct WaitEvent {
     pub connection_id: u64,
     pub hung_up: bool,

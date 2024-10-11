@@ -36,6 +36,7 @@ use nix::NixPath;
 use crate::rutabaga_os::AsRawDescriptor;
 use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::RawDescriptor;
+use crate::rutabaga_os::TubeType;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaResult;
 
@@ -46,13 +47,21 @@ pub struct Tube {
 }
 
 impl Tube {
-    pub fn new<P: AsRef<Path> + NixPath>(path: P) -> RutabagaResult<Tube> {
-        let socket_fd = socket(
-            AddressFamily::Unix,
-            SockType::SeqPacket,
-            SockFlag::empty(),
-            None,
-        )?;
+    pub fn new<P: AsRef<Path> + NixPath>(path: P, kind: TubeType) -> RutabagaResult<Tube> {
+        let socket_fd = match kind {
+            TubeType::Packet => socket(
+                AddressFamily::Unix,
+                SockType::SeqPacket,
+                SockFlag::empty(),
+                None,
+            )?,
+            TubeType::Stream => socket(
+                AddressFamily::Unix,
+                SockType::Stream,
+                SockFlag::SOCK_CLOEXEC,
+                None,
+            )?,
+        };
 
         let unix_addr = UnixAddr::new(&path)?;
         connect(socket_fd.as_raw_fd(), &unix_addr)?;

@@ -6,6 +6,7 @@ use std::fs::File;
 use std::path::Path;
 
 use crate::rutabaga_os::RawDescriptor;
+use crate::rutabaga_os::TubeType;
 use crate::rutabaga_os::WaitTrait;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaResult;
@@ -15,7 +16,7 @@ pub type Tube = Stub;
 pub type Listener = Stub;
 
 impl Tube {
-    pub fn new<P: AsRef<Path>>(_path: P) -> RutabagaResult<Tube> {
+    pub fn new<P: AsRef<Path>>(_path: P, _kind: TubeType) -> RutabagaResult<Tube> {
         Err(RutabagaError::Unsupported)
     }
 

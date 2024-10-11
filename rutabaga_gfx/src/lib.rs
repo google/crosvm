@@ -51,5 +51,6 @@ pub mod kumquat_support {
     pub use crate::rutabaga_os::MemoryMapping as RutabagaMemoryMapping;
     pub use crate::rutabaga_os::SharedMemory as RutabagaSharedMemory;
     pub use crate::rutabaga_os::Tube as RutabagaTube;
+    pub use crate::rutabaga_os::TubeType as RutabagaTubeType;
     pub use crate::rutabaga_os::WaitContext as RutabagaWaitContext;
 }

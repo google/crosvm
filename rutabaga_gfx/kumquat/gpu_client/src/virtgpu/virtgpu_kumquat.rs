@@ -17,6 +17,7 @@ use rutabaga_gfx::kumquat_support::RutabagaReader;
 use rutabaga_gfx::kumquat_support::RutabagaSharedMemory;
 use rutabaga_gfx::kumquat_support::RutabagaStream;
 use rutabaga_gfx::kumquat_support::RutabagaTube;
+use rutabaga_gfx::kumquat_support::RutabagaTubeType;
 use rutabaga_gfx::kumquat_support::RutabagaWriter;
 use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaError;
@@ -117,7 +118,7 @@ pub struct VirtGpuKumquat {
 impl VirtGpuKumquat {
     pub fn new(gpu_socket: &str) -> RutabagaResult<VirtGpuKumquat> {
         let path = PathBuf::from(gpu_socket);
-        let connection = RutabagaTube::new(path)?;
+        let connection = RutabagaTube::new(path, RutabagaTubeType::Packet)?;
         let mut stream = RutabagaStream::new(connection);
 
         let get_num_capsets = kumquat_gpu_protocol_ctrl_hdr {

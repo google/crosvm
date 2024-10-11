@@ -36,6 +36,7 @@ use crate::rutabaga_core::RutabagaResource;
 use crate::rutabaga_os::RawDescriptor;
 use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_os::Tube;
+use crate::rutabaga_os::TubeType;
 use crate::rutabaga_os::WaitContext;
 use crate::rutabaga_utils::*;
 use crate::DrmFormat;
@@ -492,7 +493,7 @@ impl CrossDomainContext {
             .ok_or(RutabagaError::InvalidCrossDomainChannel)?
             .base_channel;
 
-        Tube::new(base_channel.clone())
+        Tube::new(base_channel.clone(), TubeType::Stream)
     }
 
     fn initialize(&mut self, cmd_init: &CrossDomainInit) -> RutabagaResult<()> {
