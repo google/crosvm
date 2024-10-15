@@ -5,14 +5,14 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [features]
-powerd = ["dbus"]
+powerd = ["dbus", "system_api"]
 
 [dependencies]
 base = { path = "../base" }
 dbus = { version = "0.9", optional = true }
 protobuf = "3.2"
 remain = "0.2"
-system_api = { path = "../system_api"}
+system_api = { path = "../system_api", optional = true }
 thiserror = "1.0.20"
 
 [build-dependencies]
