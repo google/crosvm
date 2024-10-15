@@ -442,22 +442,22 @@ all-msvc64 = [ "all-mingw64" ]
 
 ## All features that are compiled and tested for android builds
 all-android = [
-        "android-sparse",
-        "audio",
-        "audio_aaudio",
-        "balloon",
-        "composite-disk",
-        "config-file",
-	"fs_runtime_ugid_map",
-        "gdb",
-        "gdbstub",
-        "gdbstub_arch",
-        "geniezone",
-        "gunyah",
-        "libaaudio_stub",
-        "net",
-        "qcow",
-        "usb",
+    "android-sparse",
+    "audio",
+    "audio_aaudio",
+    "balloon",
+    "composite-disk",
+    "config-file",
+    "fs_runtime_ugid_map",
+    "gdb",
+    "gdbstub",
+    "gdbstub_arch",
+    "geniezone",
+    "gunyah",
+    "libaaudio_stub",
+    "net",
+    "qcow",
+    "usb",
 ]
 
 [dependencies]
