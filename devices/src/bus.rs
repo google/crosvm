@@ -969,6 +969,17 @@ mod tests {
         assert!(bus.write(0x15, &values));
     }
 
+    #[test]
+    fn bus_read_no_device() {
+        let bus = Bus::new(BusType::Io);
+
+        // read() should return false, since there is no device at address 0x10, but it should
+        // also fill the data with 0s.
+        let mut values = [1, 2, 3, 4];
+        assert!(!bus.read(0x10, &mut values));
+        assert_eq!(values, [0, 0, 0, 0]);
+    }
+
     suspendable_tests!(
         constant_device_true,
         ConstantDevice {
