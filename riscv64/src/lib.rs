@@ -198,6 +198,7 @@ impl arch::LinuxArch for Riscv64 {
         _guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
         device_tree_overlays: Vec<DtbOverlay>,
         fdt_position: Option<FdtPosition>,
+        _no_pmu: bool,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmRiscv64,

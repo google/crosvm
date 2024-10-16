@@ -819,6 +819,7 @@ impl arch::LinuxArch for X8664arch {
         guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
         device_tree_overlays: Vec<DtbOverlay>,
         _fdt_position: Option<FdtPosition>,
+        _no_pmu: bool,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmX86_64,

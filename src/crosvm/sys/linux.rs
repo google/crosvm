@@ -2125,6 +2125,7 @@ where
         guest_suspended_cvar.clone(),
         dt_overlays,
         cfg.fdt_position,
+        cfg.no_pmu,
     )
     .context("the architecture failed to build the vm")?;
 

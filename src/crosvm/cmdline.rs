@@ -1711,6 +1711,13 @@ pub struct RunCommand {
     /// don't use legacy KBD devices emulation
     pub no_i8042: Option<bool>,
 
+    #[cfg(target_arch = "aarch64")]
+    #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// disable Performance Monitor Unit (PMU)
+    pub no_pmu: Option<bool>,
+
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -2799,6 +2806,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                 );
             }
             cfg.mte = cmd.mte.unwrap_or_default();
+            cfg.no_pmu = cmd.no_pmu.unwrap_or_default();
             cfg.swiotlb = cmd.swiotlb;
         }
 

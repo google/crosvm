@@ -439,6 +439,7 @@ impl arch::LinuxArch for AArch64 {
         _guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
         device_tree_overlays: Vec<DtbOverlay>,
         fdt_position: Option<FdtPosition>,
+        no_pmu: bool,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmAArch64,
@@ -524,6 +525,7 @@ impl arch::LinuxArch for AArch64 {
         let mut use_pmu = vm
             .get_hypervisor()
             .check_capability(HypervisorCap::ArmPmuV3);
+        use_pmu &= !no_pmu;
         let vcpu_count = components.vcpu_count;
         let mut has_pvtime = true;
         let mut vcpus = Vec::with_capacity(vcpu_count);

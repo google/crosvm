@@ -2658,6 +2658,7 @@ where
         /* guest_suspended_cvar= */ None,
         dt_overlays,
         cfg.fdt_position,
+        cfg.no_pmu,
     )
     .exit_context(Exit::BuildVm, "the architecture failed to build the vm")?;
 

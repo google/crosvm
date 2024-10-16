@@ -827,6 +827,7 @@ pub struct Config {
     #[cfg(windows)]
     pub net_vhost_user_tube: Option<Tube>,
     pub no_i8042: bool,
+    pub no_pmu: bool,
     pub no_rtc: bool,
     pub no_smt: bool,
     pub params: Vec<String>,
@@ -1054,6 +1055,7 @@ impl Default for Config {
             #[cfg(windows)]
             net_vhost_user_tube: None,
             no_i8042: false,
+            no_pmu: false,
             no_rtc: false,
             no_smt: false,
             params: Vec::new(),
