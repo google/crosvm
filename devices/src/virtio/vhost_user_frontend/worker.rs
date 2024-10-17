@@ -125,9 +125,7 @@ impl Worker {
                                 let _ = wait_ctx.delete(backend_req_handler.get_close_notifier());
                                 self.backend_req_handler = None;
                             }
-                            Err(e) => {
-                                bail!("failed to handle a vhost-user request: {}", e);
-                            }
+                            Err(e) => return Err(e).context("failed to handle vhost-user request"),
                         }
                     }
                     #[cfg(target_os = "windows")]
@@ -149,7 +147,7 @@ impl Worker {
                             warn!("event besides hungup should not be notified");
                             continue;
                         }
-                        panic!("Backend device disconnected");
+                        bail!("Backend device disconnected early");
                     }
                 }
             }

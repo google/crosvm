@@ -371,9 +371,10 @@ impl VhostUserFrontend {
                 backend_req_handler,
                 backend_client,
             };
-            if let Err(e) = worker.run(interrupt) {
-                error!("failed to run {} worker: {:#}", label, e);
-            }
+            worker
+                .run(interrupt)
+                .with_context(|| format!("{label}: vhost_user_frontend worker failed"))
+                .unwrap();
             worker.backend_req_handler
         }));
     }
