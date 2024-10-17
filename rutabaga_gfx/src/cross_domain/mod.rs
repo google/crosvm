@@ -33,8 +33,8 @@ use crate::cross_domain::sys::Sender;
 use crate::rutabaga_core::RutabagaComponent;
 use crate::rutabaga_core::RutabagaContext;
 use crate::rutabaga_core::RutabagaResource;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
-use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_os::Tube;
 use crate::rutabaga_os::TubeType;
 use crate::rutabaga_os::WaitContext;
@@ -59,7 +59,7 @@ const CROSS_DOMAIN_MAX_SEND_RECV_SIZE: usize =
 
 pub(crate) enum CrossDomainItem {
     ImageRequirements(ImageMemoryRequirements),
-    WaylandKeymap(SafeDescriptor),
+    WaylandKeymap(OwnedDescriptor),
     #[allow(dead_code)] // `WaylandReadPipe` is never constructed on Windows.
     WaylandReadPipe(File),
     WaylandWritePipe(File),
@@ -132,8 +132,8 @@ pub struct CrossDomain {
 }
 
 // TODO(gurchetansingh): optimize the item tracker.  Each requirements blob is long-lived and can
-// be stored in a Slab or vector.  Descriptors received from the Wayland socket *seem* to come one
-// at a time, and can be stored as options.  Need to confirm.
+// be stored in a Slab or vector.  OwnedDescriptors received from the Wayland socket *seem* to come
+// one at a time, and can be stored as options.  Need to confirm.
 pub(crate) fn add_item(item_state: &CrossDomainItemState, item: CrossDomainItem) -> u32 {
     let mut items = item_state.lock().unwrap();
 

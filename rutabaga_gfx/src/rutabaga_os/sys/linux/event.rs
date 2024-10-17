@@ -15,7 +15,7 @@ use nix::unistd::read;
 
 use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::IntoRawDescriptor;
-use crate::rutabaga_os::SafeDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaHandle;
 use crate::rutabaga_utils::RutabagaResult;
@@ -65,7 +65,7 @@ impl From<Event> for RutabagaHandle {
         RutabagaHandle {
             // SAFETY: Safe because the file is valid and owned by us.
             os_handle: unsafe {
-                SafeDescriptor::from_raw_descriptor(evt.file.into_raw_descriptor())
+                OwnedDescriptor::from_raw_descriptor(evt.file.into_raw_descriptor())
             },
             handle_type: RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD,
         }

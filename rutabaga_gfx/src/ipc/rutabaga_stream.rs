@@ -19,8 +19,8 @@ use crate::ipc::kumquat_gpu_protocol::*;
 use crate::rutabaga_os::AsRawDescriptor;
 use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::IntoRawDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
-use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_os::Tube;
 use crate::rutabaga_os::DEFAULT_RAW_DESCRIPTOR;
 use crate::rutabaga_utils::RutabagaError;
@@ -129,7 +129,7 @@ impl RutabagaStream {
                     // SAFETY: Safe because we know the underlying OS descriptor is valid and
                     // owned by us.
                     let os_handle =
-                        unsafe { SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
+                        unsafe { OwnedDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
 
                     let handle = RutabagaHandle {
                         os_handle,
@@ -145,7 +145,7 @@ impl RutabagaStream {
                     // SAFETY: Safe because we know the underlying OS descriptor is valid and
                     // owned by us.
                     let os_handle =
-                        unsafe { SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
+                        unsafe { OwnedDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
 
                     let handle = RutabagaHandle {
                         os_handle,
@@ -214,7 +214,7 @@ impl RutabagaStream {
                     // SAFETY: Safe because we know the underlying OS descriptor is valid and
                     // owned by us.
                     let os_handle =
-                        unsafe { SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
+                        unsafe { OwnedDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
 
                     let handle = RutabagaHandle {
                         os_handle,
@@ -230,7 +230,7 @@ impl RutabagaStream {
                     // SAFETY: Safe because we know the underlying OS descriptor is valid and
                     // owned by us.
                     let os_handle =
-                        unsafe { SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
+                        unsafe { OwnedDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
 
                     let handle = RutabagaHandle {
                         os_handle,

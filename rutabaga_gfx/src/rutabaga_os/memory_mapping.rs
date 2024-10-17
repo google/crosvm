@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use crate::rutabaga_os::sys::platform::MemoryMapping as PlatformMapping;
-use crate::rutabaga_os::SafeDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_utils::RutabagaMapping;
 use crate::rutabaga_utils::RutabagaResult;
 
@@ -13,7 +13,7 @@ pub struct MemoryMapping {
 
 impl MemoryMapping {
     pub fn from_safe_descriptor(
-        descriptor: SafeDescriptor,
+        descriptor: OwnedDescriptor,
         size: usize,
         map_info: u32,
     ) -> RutabagaResult<MemoryMapping> {

@@ -4,6 +4,8 @@
 
 use std::convert::TryInto;
 use std::ffi::CStr;
+use std::os::fd::AsRawFd;
+use std::os::fd::IntoRawFd;
 use std::os::unix::io::OwnedFd;
 
 use libc::off_t;
@@ -54,13 +56,13 @@ impl SharedMemory {
 
 impl AsRawDescriptor for SharedMemory {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.fd.as_raw_descriptor()
+        self.fd.as_raw_fd()
     }
 }
 
 impl IntoRawDescriptor for SharedMemory {
     fn into_raw_descriptor(self) -> RawDescriptor {
-        self.fd.into_raw_descriptor()
+        self.fd.into_raw_fd()
     }
 }
 

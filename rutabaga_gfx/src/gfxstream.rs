@@ -31,8 +31,8 @@ use crate::rutabaga_core::RutabagaContext;
 use crate::rutabaga_core::RutabagaResource;
 use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::IntoRawDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
-use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_utils::*;
 
 // See `virtgpu-gfxstream-renderer.h` for definitions
@@ -218,7 +218,7 @@ impl GfxstreamContext {
         // SAFETY:
         // Safe because the handle was just returned by a successful gfxstream call so it must
         // be valid and owned by us.
-        let handle = unsafe { SafeDescriptor::from_raw_descriptor(raw_descriptor) };
+        let handle = unsafe { OwnedDescriptor::from_raw_descriptor(raw_descriptor) };
 
         Ok(RutabagaHandle {
             os_handle: handle,
@@ -449,7 +449,7 @@ impl Gfxstream {
         // SAFETY:
         // Safe because the handle was just returned by a successful gfxstream call so it must be
         // valid and owned by us.
-        let handle = unsafe { SafeDescriptor::from_raw_descriptor(raw_descriptor) };
+        let handle = unsafe { OwnedDescriptor::from_raw_descriptor(raw_descriptor) };
 
         Ok(Arc::new(RutabagaHandle {
             os_handle: handle,

@@ -15,7 +15,7 @@ use crate::cross_domain::CrossDomain;
 use crate::gfxstream::Gfxstream;
 use crate::rutabaga_2d::Rutabaga2D;
 use crate::rutabaga_os::MemoryMapping;
-use crate::rutabaga_os::SafeDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_snapshot::RutabagaResourceSnapshot;
 use crate::rutabaga_snapshot::RutabagaSnapshot;
 use crate::rutabaga_utils::*;
@@ -85,7 +85,7 @@ pub trait RutabagaComponent {
 
     /// Used only by VirglRenderer to return a poll_descriptor that is signaled when a poll() is
     /// necessary.
-    fn poll_descriptor(&self) -> Option<SafeDescriptor> {
+    fn poll_descriptor(&self) -> Option<OwnedDescriptor> {
         None
     }
 
@@ -576,7 +576,7 @@ impl Rutabaga {
 
     /// Returns a pollable descriptor for the default rutabaga component. In practice, it is only
     /// not None if the default component is virglrenderer.
-    pub fn poll_descriptor(&self) -> Option<SafeDescriptor> {
+    pub fn poll_descriptor(&self) -> Option<OwnedDescriptor> {
         let component = self.components.get(&self.default_component).or(None)?;
         component.poll_descriptor()
     }
@@ -1179,7 +1179,7 @@ impl RutabagaBuilder {
     pub fn build(
         mut self,
         fence_handler: RutabagaFenceHandler,
-        #[allow(unused_variables)] rutabaga_server_descriptor: Option<SafeDescriptor>,
+        #[allow(unused_variables)] rutabaga_server_descriptor: Option<OwnedDescriptor>,
     ) -> RutabagaResult<Rutabaga> {
         let mut rutabaga_components: Map<RutabagaComponentType, Box<dyn RutabagaComponent>> =
             Default::default();

@@ -12,7 +12,7 @@ use nix::sys::mman::munmap;
 use nix::sys::mman::MapFlags;
 use nix::sys::mman::ProtFlags;
 
-use crate::rutabaga_os::descriptor::SafeDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaResult;
 use crate::rutabaga_utils::RUTABAGA_MAP_ACCESS_MASK;
@@ -41,7 +41,7 @@ impl Drop for MemoryMapping {
 
 impl MemoryMapping {
     pub fn from_safe_descriptor(
-        descriptor: SafeDescriptor,
+        descriptor: OwnedDescriptor,
         size: usize,
         map_info: u32,
     ) -> RutabagaResult<MemoryMapping> {

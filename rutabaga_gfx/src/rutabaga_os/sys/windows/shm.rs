@@ -6,14 +6,14 @@ use std::ffi::CStr;
 
 use crate::rutabaga_os::descriptor::AsRawDescriptor;
 use crate::rutabaga_os::descriptor::IntoRawDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
-use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaResult;
 
 /// A shared memory file descriptor and its size.
 pub struct SharedMemory {
-    pub descriptor: SafeDescriptor,
+    pub descriptor: OwnedDescriptor,
     pub size: u64,
 }
 

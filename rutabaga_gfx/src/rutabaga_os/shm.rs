@@ -8,8 +8,8 @@ use crate::rutabaga_os::sys::platform::SharedMemory as SysUtilSharedMemory;
 use crate::rutabaga_os::AsRawDescriptor;
 use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::IntoRawDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
-use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_utils::RutabagaResult;
 
 pub struct SharedMemory(pub(crate) SysUtilSharedMemory);
@@ -40,10 +40,10 @@ impl IntoRawDescriptor for SharedMemory {
     }
 }
 
-impl From<SharedMemory> for SafeDescriptor {
-    fn from(sm: SharedMemory) -> SafeDescriptor {
+impl From<SharedMemory> for OwnedDescriptor {
+    fn from(sm: SharedMemory) -> OwnedDescriptor {
         // SAFETY:
         // Safe because we own the SharedMemory at this point.
-        unsafe { SafeDescriptor::from_raw_descriptor(sm.into_raw_descriptor()) }
+        unsafe { OwnedDescriptor::from_raw_descriptor(sm.into_raw_descriptor()) }
     }
 }

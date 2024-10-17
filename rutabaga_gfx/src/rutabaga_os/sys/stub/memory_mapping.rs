@@ -6,7 +6,7 @@ use std::ptr::NonNull;
 
 use libc::c_void;
 
-use crate::rutabaga_os::SafeDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaResult;
 
@@ -20,7 +20,7 @@ pub struct MemoryMapping {
 
 impl MemoryMapping {
     pub fn from_safe_descriptor(
-        _descriptor: SafeDescriptor,
+        _descriptor: OwnedDescriptor,
         _size: usize,
         _map_info: u32,
     ) -> RutabagaResult<MemoryMapping> {

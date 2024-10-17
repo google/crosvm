@@ -36,7 +36,7 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
-use crate::rutabaga_os::SafeDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 
 /// Represents a buffer.  `base` contains the address of a buffer, while `len` contains the length
 /// of the buffer.
@@ -675,7 +675,7 @@ pub const RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD: u32 = 0x000a;
 
 /// Handle to OS-specific memory or synchronization objects.
 pub struct RutabagaHandle {
-    pub os_handle: SafeDescriptor,
+    pub os_handle: OwnedDescriptor,
     pub handle_type: u32,
 }
 

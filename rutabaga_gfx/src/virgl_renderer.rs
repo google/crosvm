@@ -8,15 +8,14 @@
 #![cfg(feature = "virgl_renderer")]
 
 use std::cmp::min;
-use std::convert::TryFrom;
 use std::io::Error as SysError;
 use std::io::IoSliceMut;
 use std::mem::size_of;
 use std::mem::transmute;
+use std::mem::ManuallyDrop;
 use std::os::raw::c_char;
 use std::os::raw::c_int;
 use std::os::raw::c_void;
-use std::os::unix::io::AsRawFd;
 use std::panic::catch_unwind;
 use std::process::abort;
 use std::ptr::null_mut;
@@ -36,10 +35,24 @@ use crate::rutabaga_core::RutabagaContext;
 use crate::rutabaga_core::RutabagaResource;
 use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::IntoRawDescriptor;
-use crate::rutabaga_os::SafeDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
+use crate::rutabaga_os::RawDescriptor;
 use crate::rutabaga_utils::*;
 
 type Query = virgl_renderer_export_query;
+
+fn dup(rd: RawDescriptor) -> RutabagaResult<OwnedDescriptor> {
+    // SAFETY:
+    // Safe because the underlying raw descriptor is guaranteed valid by rd's existence.
+    //
+    // Note that we are cloning the underlying raw descriptor since we have no guarantee of
+    // its existence after this function returns.
+    let rd_as_safe_desc = ManuallyDrop::new(unsafe { OwnedDescriptor::from_raw_descriptor(rd) });
+
+    // We have to clone rd because we have no guarantee ownership was transferred (rd is
+    // borrowed).
+    Ok(rd_as_safe_desc.try_clone()?)
+}
 
 /// The virtio-gpu backend state tracker which supports accelerated rendering.
 pub struct VirglRenderer {}
@@ -278,7 +291,7 @@ unsafe extern "C" fn get_server_fd(cookie: *mut c_void, version: u32) -> c_int {
         cookie
             .render_server_fd
             .take()
-            .map(SafeDescriptor::into_raw_descriptor)
+            .map(OwnedDescriptor::into_raw_descriptor)
             .unwrap_or(-1)
     })
     .unwrap_or_else(|_| abort())
@@ -319,7 +332,7 @@ impl VirglRenderer {
     pub fn init(
         virglrenderer_flags: VirglRendererFlags,
         fence_handler: RutabagaFenceHandler,
-        render_server_fd: Option<SafeDescriptor>,
+        render_server_fd: Option<OwnedDescriptor>,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
         if cfg!(debug_assertions) {
             // TODO(b/315870313): Add safety comment
@@ -415,7 +428,7 @@ impl VirglRenderer {
         // SAFETY:
         // Safe because the FD was just returned by a successful virglrenderer
         // call so it must be valid and owned by us.
-        let handle = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
+        let handle = unsafe { OwnedDescriptor::from_raw_descriptor(fd) };
 
         let handle_type = match fd_type {
             VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF => RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
@@ -495,12 +508,13 @@ impl RutabagaComponent for VirglRenderer {
         };
     }
 
-    fn poll_descriptor(&self) -> Option<SafeDescriptor> {
+    fn poll_descriptor(&self) -> Option<OwnedDescriptor> {
         // SAFETY:
         // Safe because it can be called anytime and returns -1 in the event of an error.
         let fd = unsafe { virgl_renderer_get_poll_fd() };
         if fd >= 0 {
-            if let Ok(dup_fd) = SafeDescriptor::try_from(&fd as &dyn AsRawFd) {
+            let descriptor: RawDescriptor = fd as RawDescriptor;
+            if let Ok(dup_fd) = dup(descriptor) {
                 return Some(dup_fd);
             }
         }
@@ -760,7 +774,7 @@ impl RutabagaComponent for VirglRenderer {
             // SAFETY:
             // Safe because the FD was just returned by a successful virglrenderer call so it must
             // be valid and owned by us.
-            let fence = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
+            let fence = unsafe { OwnedDescriptor::from_raw_descriptor(fd) };
             Ok(RutabagaHandle {
                 os_handle: fence,
                 handle_type: RUTABAGA_FENCE_HANDLE_TYPE_SYNC_FD,
