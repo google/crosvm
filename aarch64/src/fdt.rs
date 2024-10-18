@@ -49,6 +49,7 @@ use crate::AARCH64_RTC_SIZE;
 use crate::AARCH64_SERIAL_SPEED;
 use crate::AARCH64_VIRTFREQ_BASE;
 use crate::AARCH64_VIRTFREQ_SIZE;
+use crate::AARCH64_VIRTFREQ_V2_SIZE;
 use crate::AARCH64_VMWDT_IRQ;
 
 // This is an arbitrary number to specify the node for the GIC.
@@ -245,6 +246,16 @@ fn create_virt_cpufreq_node(fdt: &mut Fdt, num_cpus: u64) -> Result<()> {
     let vcf_node = fdt.root_mut().subnode_mut("cpufreq")?;
     let reg = [AARCH64_VIRTFREQ_BASE, AARCH64_VIRTFREQ_SIZE * num_cpus];
 
+    vcf_node.set_prop("reg", &reg)?;
+    Ok(())
+}
+
+fn create_virt_cpufreq_v2_node(fdt: &mut Fdt, num_cpus: u64) -> Result<()> {
+    let compatible = "qemu,virtual-cpufreq";
+    let vcf_node = fdt.root_mut().subnode_mut("cpufreq")?;
+    let reg = [AARCH64_VIRTFREQ_BASE, AARCH64_VIRTFREQ_V2_SIZE * num_cpus];
+
+    vcf_node.set_prop("compatible", compatible)?;
     vcf_node.set_prop("reg", &reg)?;
     Ok(())
 }
@@ -663,6 +674,7 @@ pub fn create_fdt(
     dynamic_power_coefficient: BTreeMap<usize, u32>,
     device_tree_overlays: Vec<DtbOverlay>,
     serial_devices: &[SerialDeviceInfo],
+    virt_cpufreq_v2: bool,
 ) -> Result<()> {
     let mut fdt = Fdt::new(&[]);
     let mut phandles_key_cache = Vec::new();
@@ -717,7 +729,11 @@ pub fn create_fdt(
     create_kvm_cpufreq_node(&mut fdt)?;
     vm_generator(&mut fdt, &phandles)?;
     if !cpu_frequencies.is_empty() {
-        create_virt_cpufreq_node(&mut fdt, num_cpus as u64)?;
+        if virt_cpufreq_v2 {
+            create_virt_cpufreq_v2_node(&mut fdt, num_cpus as u64)?;
+        } else {
+            create_virt_cpufreq_node(&mut fdt, num_cpus as u64)?;
+        }
     }
 
     let pviommu_ids = get_pkvm_pviommu_ids(&platform_dev_resources)?;

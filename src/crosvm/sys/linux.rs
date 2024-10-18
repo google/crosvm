@@ -1299,7 +1299,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     };
 
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    if cfg.virt_cpufreq {
+    if cfg.virt_cpufreq || cfg.virt_cpufreq_v2 {
         if !cfg.cpu_frequencies_khz.is_empty() {
             cpu_frequencies = cfg.cpu_frequencies_khz.clone();
         } else {
@@ -1422,6 +1422,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         pci_low_start: cfg.pci_low_start,
         dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
         boot_cpu: cfg.boot_cpu,
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        virt_cpufreq_v2: cfg.virt_cpufreq_v2,
     })
 }
 
