@@ -2579,6 +2579,17 @@ pub struct RunCommand {
     /// enable a virtual cpu freq device
     pub virt_cpufreq: Option<bool>,
 
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
+    #[argh(switch)]
+    #[serde(skip)]
+    #[merge(strategy = overwrite_option)]
+    /// enable version of the virtual cpu freq device compatible
+    /// with the driver in upstream linux
+    pub virt_cpufreq_upstream: Option<bool>,
+
     #[cfg(feature = "audio")]
     #[argh(
         option,
@@ -2775,6 +2786,10 @@ impl TryFrom<RunCommand> for super::config::Config {
         ))]
         {
             cfg.virt_cpufreq = cmd.virt_cpufreq.unwrap_or_default();
+            cfg.virt_cpufreq_v2 = cmd.virt_cpufreq_upstream.unwrap_or_default();
+            if cfg.virt_cpufreq && cfg.virt_cpufreq_v2 {
+                return Err("Only one version of virt-cpufreq can be used!".to_string());
+            }
             if let Some(frequencies) = cmd.cpu_frequencies_khz {
                 cfg.cpu_frequencies_khz = frequencies;
             }
