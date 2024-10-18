@@ -215,8 +215,7 @@ fn main() -> Result<()> {
     for (i, line) in commandline_flags.iter().enumerate() {
         match *line {
             "--shared-dir" => shared_dir_params.push(commandline_flags[i + 1]),
-            "--rwdisk" => disk_params.push(commandline_flags[i + 1]),
-            "--disk" => disk_params.push(commandline_flags[i + 1]),
+            "--block" => disk_params.push(commandline_flags[i + 1]),
             "--socket" => socket = commandline_flags[i + 1],
             _ => {
                 // Skip other flags.
