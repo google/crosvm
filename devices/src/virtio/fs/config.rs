@@ -98,7 +98,7 @@ pub struct PermissionData {
     /// umask to be set at runtime for the files in the path.
     pub umask: libc::mode_t,
 
-    /// This is the relative path from the root of the shared directory.
+    /// This is the absolute path from the root of the shared directory.
     pub perm_path: String,
 }
 
@@ -338,7 +338,7 @@ pub struct Config {
     // host-uid: UID to be set for all the files in the path in the host.
     // host-gid: GID to be set for all the files in the path in the host.
     // umask: umask to be set at runtime for the files in the path.
-    // path: This is the relative path from the root of the shared directory.
+    // path: This is the absolute path from the root of the shared directory.
     //
     // This follows similar format to ARCVM IOCTL "FS_IOC_SETPERMISSION"
     #[cfg(feature = "fs_runtime_ugid_map")]

@@ -47,7 +47,13 @@ struct FsBackend {
 }
 
 impl FsBackend {
-    pub fn new(tag: &str, cfg: Option<Config>) -> anyhow::Result<Self> {
+    #[allow(unused_variables)]
+    pub fn new(
+        tag: &str,
+        shared_dir: &str,
+        skip_pivot_root: bool,
+        cfg: Option<Config>,
+    ) -> anyhow::Result<Self> {
         if tag.len() > FS_MAX_TAG_LEN {
             bail!(
                 "fs tag is too long: {} (max supported: {})",
@@ -60,7 +66,12 @@ impl FsBackend {
             | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
 
         // Use default passthroughfs config
-        let fs = PassthroughFs::new(tag, cfg.unwrap_or_default())?;
+        #[allow(unused_mut)]
+        let mut fs = PassthroughFs::new(tag, cfg.unwrap_or_default())?;
+        #[cfg(feature = "fs_runtime_ugid_map")]
+        if skip_pivot_root {
+            fs.set_root_dir(shared_dir.to_string())?;
+        }
 
         let mut keep_rds: Vec<RawDescriptor> = [0, 1, 2].to_vec();
         keep_rds.append(&mut fs.keep_rds());
@@ -221,4 +232,17 @@ pub struct Options {
     /// a new mount namespace and run without seccomp filter.
     /// Default: false.
     disable_sandbox: bool,
+    #[argh(option, arg_name = "skip_pivot_root", default = "false")]
+    /// disable pivot_root when process is jailed.
+    ///
+    /// virtio-fs typically uses mount namespaces and pivot_root for file system isolation,
+    /// making the jailed process's root directory "/".
+    ///
+    /// Android's security model restricts crosvm's access to certain system capabilities,
+    /// specifically those related to managing mount namespaces and using pivot_root.
+    /// These capabilities are typically associated with the SYS_ADMIN capability.
+    /// To maintain a secure environment, Android relies on mechanisms like SELinux to
+    /// enforce isolation and control access to directories.
+    #[allow(dead_code)]
+    skip_pivot_root: bool,
 }

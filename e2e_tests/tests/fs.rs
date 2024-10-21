@@ -213,3 +213,112 @@ fn vhost_user_fs_mount_rw() {
 
     mount_rw(vm, tag, temp_dir);
 }
+
+fn copy_file_validate_ugid_mapping(
+    mut vm: TestVm,
+    tag: &str,
+    dir: TempDir,
+    mapped_uid: u32,
+    mapped_gid: u32,
+) {
+    use std::os::linux::fs::MetadataExt;
+    const ORIGINAL_FILE_NAME: &str = "original.txt";
+    const NEW_FILE_NAME: &str = "new.txt";
+    const TEST_DATA: &str = "Hello world!";
+
+    let orig_file = dir.path().join(ORIGINAL_FILE_NAME);
+
+    std::fs::write(orig_file, TEST_DATA).unwrap();
+
+    vm.exec_in_guest(&format!(
+        "mount -t virtiofs {tag} /mnt && cp /mnt/{} /mnt/{} && sync",
+        ORIGINAL_FILE_NAME, NEW_FILE_NAME,
+    ))
+    .unwrap();
+
+    let output = vm
+        .exec_in_guest(&format!("stat /mnt/{}", ORIGINAL_FILE_NAME,))
+        .unwrap();
+
+    assert!(output.stdout.contains(&format!("Uid: ({}/", mapped_uid)));
+    assert!(output.stdout.contains(&format!("Gid: ({}/", mapped_gid)));
+
+    let new_file = dir.path().join(NEW_FILE_NAME);
+    let output_stat = std::fs::metadata(new_file.clone());
+
+    assert_eq!(
+        output_stat
+            .as_ref()
+            .expect("stat of new_file failed")
+            .st_uid(),
+        base::geteuid()
+    );
+    assert_eq!(
+        output_stat
+            .as_ref()
+            .expect("stat of new_file failed")
+            .st_gid(),
+        base::getegid()
+    );
+
+    let contents = std::fs::read(new_file).unwrap();
+    assert_eq!(TEST_DATA.as_bytes(), &contents);
+}
+
+pub fn create_ugid_map_config(
+    socket: &Path,
+    shared_dir: &Path,
+    tag: &str,
+    mapped_uid: u32,
+    mapped_gid: u32,
+) -> VuConfig {
+    let socket_path = socket.to_str().unwrap();
+    let shared_dir_path = shared_dir.to_str().unwrap();
+
+    let uid = base::geteuid();
+    let gid = base::getegid();
+    let ugid_map_value = format!("{} {} {} {} 7 /", mapped_uid, mapped_gid, uid, gid,);
+
+    let cfg_arg = format!("writeback=true,ugid_map='{}'", ugid_map_value);
+
+    println!("socket={socket_path}, tag={tag}, shared_dir={shared_dir_path}");
+
+    VuConfig::new(CmdType::Device, "vhost-user-fs").extra_args(vec![
+        "fs".to_string(),
+        format!("--socket-path={socket_path}"),
+        format!("--shared-dir={shared_dir_path}"),
+        format!("--tag={tag}"),
+        format!("--cfg={cfg_arg}"),
+        format!("--disable-sandbox"),
+        format!("--skip-pivot-root=true"),
+    ])
+}
+
+/// Tests file copy with disabled sandbox
+///
+/// 1. Create `original.txt` on a temporal directory.
+/// 3: Setup ugid_map for vhost-user-fs backend
+/// 2. Start a VM with a virtiofs device for the temporal directory.
+/// 3. Copy `original.txt` to `new.txt` in the guest.
+/// 4. Check that `new.txt` is created in the host.
+/// 5: Verify the UID/GID of the files both in the guest and the host.
+#[test]
+fn vhost_user_fs_without_sandbox_and_pivot_root() {
+    let socket = NamedTempFile::new().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
+
+    let config = Config::new();
+    let tag = "android";
+
+    let mapped_uid = 123456;
+    let mapped_gid = 12345;
+    let vu_config =
+        create_ugid_map_config(socket.path(), temp_dir.path(), tag, mapped_uid, mapped_gid);
+
+    let _vu_device = VhostUserBackend::new(vu_config).unwrap();
+
+    let config = config.with_vhost_user_fs(socket.path(), tag);
+    let vm = TestVm::new(config).unwrap();
+
+    copy_file_validate_ugid_mapping(vm, tag, temp_dir, mapped_uid, mapped_gid);
+}

@@ -13,6 +13,7 @@ use base::AsRawDescriptors;
 use base::RawDescriptor;
 use cros_async::Executor;
 use jail::create_base_minijail;
+use jail::create_base_minijail_without_pivot_root;
 use jail::set_embedded_bpf_program;
 use minijail::Minijail;
 
@@ -41,13 +42,18 @@ fn jail_and_fork(
     uid_map: Option<String>,
     gid_map: Option<String>,
     disable_sandbox: bool,
+    pivot_root: bool,
 ) -> anyhow::Result<i32> {
     let limit = max_open_files()
         .context("failed to get max open files")?
         .rlim_max;
     // Create new minijail sandbox
     let jail = if disable_sandbox {
-        create_base_minijail(dir_path.as_path(), limit)?
+        if pivot_root {
+            create_base_minijail(dir_path.as_path(), limit)
+        } else {
+            create_base_minijail_without_pivot_root(dir_path.as_path(), limit)
+        }?
     } else {
         let mut j: Minijail = Minijail::new()?;
         j.namespace_pids();
@@ -108,15 +114,29 @@ fn jail_and_fork(
 
 /// Starts a vhost-user fs device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
-pub fn start_device(opts: Options) -> anyhow::Result<()> {
+#[allow(unused_mut)]
+pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
+    #[allow(unused_mut)]
+    let mut is_pivot_root_required = true;
     #[cfg(feature = "fs_runtime_ugid_map")]
-    if let Some(ref cfg) = opts.cfg {
-        if !cfg.ugid_map.is_empty() && !opts.disable_sandbox {
-            bail!("uid_gid_map can only be set with disable sandbox option");
+    if let Some(ref mut cfg) = opts.cfg {
+        if !cfg.ugid_map.is_empty() && (!opts.disable_sandbox || !opts.skip_pivot_root) {
+            bail!("uid_gid_map can only be set with disable sandbox and skip_pivot_root option");
+        }
+
+        if opts.skip_pivot_root {
+            is_pivot_root_required = false;
         }
     }
     let ex = Executor::new().context("Failed to create executor")?;
-    let fs_device = FsBackend::new(&opts.tag, opts.cfg)?;
+    let fs_device = FsBackend::new(
+        &opts.tag,
+        opts.shared_dir
+            .to_str()
+            .expect("Failed to convert opts.shared_dir to str()"),
+        opts.skip_pivot_root,
+        opts.cfg,
+    )?;
 
     let mut keep_rds = fs_device.keep_rds.clone();
     keep_rds.append(&mut ex.as_raw_descriptors());
@@ -128,7 +148,6 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     base::syslog::push_descriptors(&mut keep_rds);
     cros_tracing::push_descriptors!(&mut keep_rds);
     metrics::push_descriptors(&mut keep_rds);
-
     let pid = jail_and_fork(
         keep_rds,
         opts.shared_dir,
@@ -137,6 +156,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         opts.uid_map,
         opts.gid_map,
         opts.disable_sandbox,
+        is_pivot_root_required,
     )?;
 
     // Parent, nothing to do but wait and then exit

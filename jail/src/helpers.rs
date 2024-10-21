@@ -120,18 +120,52 @@ pub fn create_base_minijail(root: &Path, max_open_files: u64) -> Result<Minijail
         bail!("{:?} is not absolute path", root);
     }
 
-    // All child jails run in a new user namespace without any users mapped, they run as nobody
-    // unless otherwise configured.
     let mut jail = Minijail::new().context("failed to jail device")?;
 
     // Only pivot_root if we are not re-using the current root directory.
     if root != Path::new("/") {
-        // It's safe to call `namespace_vfs` multiple times.
+        // Run in a new mount namespace.
         jail.namespace_vfs();
         jail.enter_pivot_root(root)
             .context("failed to pivot root device")?;
     }
 
+    jail.set_rlimit(libc::RLIMIT_NOFILE as i32, max_open_files, max_open_files)
+        .context("error setting max open files")?;
+
+    Ok(jail)
+}
+
+/// Creates a [Minijail] instance which just invokes a jail process and sets
+/// `max_open_files` using `RLIMIT_NOFILE`. This is helpful with crosvm process
+/// runs as a non-root user without SYS_ADMIN capabilities.
+///
+/// Unlike `create_base_minijail`, this function doesn't call `pivot_root`
+/// and `mount namespace`. So, it runs as a non-root user without
+/// SYS_ADMIN capabilities.
+///
+/// Note that since there is no file system isolation provided by this function,
+/// caller of this function should enforce other security mechanisum such as selinux
+/// on the host to protect directories.
+///
+/// # Arguments
+///
+/// * `root` - The root path to checked before the process is jailed
+/// * `max_open_files` - The maximum number of file descriptors to allow a jailed process to open.
+#[allow(clippy::unnecessary_cast)]
+pub fn create_base_minijail_without_pivot_root(
+    root: &Path,
+    max_open_files: u64,
+) -> Result<Minijail> {
+    // Validate new root directory. Path::is_dir() also checks the existence.
+    if !root.is_dir() {
+        bail!("{:?} is not a directory, cannot create jail", root);
+    }
+    if !root.is_absolute() {
+        bail!("{:?} is not absolute path", root);
+    }
+
+    let mut jail = Minijail::new().context("failed to jail device")?;
     jail.set_rlimit(libc::RLIMIT_NOFILE as i32, max_open_files, max_open_files)
         .context("error setting max open files")?;
 

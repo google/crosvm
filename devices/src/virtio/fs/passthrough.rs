@@ -9,6 +9,8 @@ use std::collections::btree_map;
 use std::collections::BTreeMap;
 use std::ffi::CStr;
 use std::ffi::CString;
+#[cfg(feature = "fs_runtime_ugid_map")]
+use std::ffi::OsStr;
 use std::fs::File;
 use std::io;
 use std::mem;
@@ -16,6 +18,10 @@ use std::mem::size_of;
 use std::mem::MaybeUninit;
 use std::os::raw::c_int;
 use std::os::raw::c_long;
+#[cfg(feature = "fs_runtime_ugid_map")]
+use std::os::unix::ffi::OsStrExt;
+#[cfg(feature = "fs_runtime_ugid_map")]
+use std::path::Path;
 use std::ptr;
 use std::ptr::addr_of;
 use std::ptr::addr_of_mut;
@@ -93,7 +99,6 @@ use crate::virtio::fs::multikey::MultikeyBTreeMap;
 use crate::virtio::fs::read_dir::ReadDir;
 
 const EMPTY_CSTR: &[u8] = b"\0";
-const ROOT_CSTR: &[u8] = b"/\0";
 const PROC_CSTR: &[u8] = b"/proc\0";
 const UNLABELED_CSTR: &[u8] = b"unlabeled\0";
 
@@ -730,6 +735,16 @@ pub struct PassthroughFs {
     xattr_paths: RwLock<Vec<XattrData>>,
 
     cfg: Config,
+
+    // Set the root directory when pivot root isn't enabled for jailed process.
+    //
+    // virtio-fs typically uses mount namespaces and pivot_root for file system isolation,
+    // making the jailed process's root directory "/".
+    //
+    // However, Android's security model prevents crosvm from having the necessary SYS_ADMIN
+    // capability for mount namespaces and pivot_root. This lack of isolation means that
+    // root_dir defaults to the path provided via "--shared-dir".
+    root_dir: String,
 }
 
 impl std::fmt::Debug for PassthroughFs {
@@ -813,6 +828,7 @@ impl PassthroughFs {
             #[cfg(feature = "arc_quota")]
             xattr_paths: RwLock::new(Vec::new()),
             cfg,
+            root_dir: "/".to_string(),
         };
 
         #[cfg(feature = "fs_runtime_ugid_map")]
@@ -835,6 +851,21 @@ impl PassthroughFs {
                 .expect("Failed to acquire write lock on permission_paths");
             *write_lock = self.cfg.ugid_map.clone();
         }
+    }
+
+    #[cfg(feature = "fs_runtime_ugid_map")]
+    pub fn set_root_dir(&mut self, shared_dir: String) -> io::Result<()> {
+        let canonicalized_root = match std::fs::canonicalize(shared_dir) {
+            Ok(path) => path,
+            Err(e) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Failed to canonicalize root_dir: {}", e),
+                ));
+            }
+        };
+        self.root_dir = canonicalized_root.to_string_lossy().to_string();
+        Ok(())
     }
 
     pub fn cfg(&self) -> &Config {
@@ -1704,9 +1735,12 @@ impl PassthroughFs {
 
 #[cfg(feature = "fs_runtime_ugid_map")]
 impl PassthroughFs {
-    /// Set permission according to path
-    fn set_ugid_permission(&self, st: &mut libc::stat64, path: &str) {
-        let is_root_path = path.is_empty();
+    fn find_and_set_ugid_permission(
+        &self,
+        st: &mut libc::stat64,
+        path: &str,
+        is_root_path: bool,
+    ) -> bool {
         for perm_data in self
             .permission_paths
             .read()
@@ -1718,11 +1752,35 @@ impl PassthroughFs {
                     && perm_data.perm_path != "/"
                     && perm_data.need_set_permission(path))
             {
-                st.st_uid = perm_data.guest_uid;
-                st.st_gid = perm_data.guest_gid;
-                st.st_mode = (st.st_mode & libc::S_IFMT) | (0o777 & !perm_data.umask);
-                return;
+                self.set_permission_from_data(st, perm_data);
+                return true;
             }
+        }
+        false
+    }
+
+    fn set_permission_from_data(&self, st: &mut libc::stat64, perm_data: &PermissionData) {
+        st.st_uid = perm_data.guest_uid;
+        st.st_gid = perm_data.guest_gid;
+        st.st_mode = (st.st_mode & libc::S_IFMT) | (0o777 & !perm_data.umask);
+    }
+
+    /// Set permission according to path
+    fn set_ugid_permission(&self, st: &mut libc::stat64, path: &str) {
+        let is_root_path = path.is_empty();
+
+        if self.find_and_set_ugid_permission(st, path, is_root_path) {
+            return;
+        }
+
+        if let Some(perm_data) = self
+            .permission_paths
+            .read()
+            .expect("acquire permission_paths read lock")
+            .iter()
+            .find(|pd| pd.perm_path == "/")
+        {
+            self.set_permission_from_data(st, perm_data);
         }
     }
 
@@ -1735,6 +1793,25 @@ impl PassthroughFs {
         );
 
         let is_root_path = path.is_empty();
+
+        if self.find_ugid_creds_for_path(&path, is_root_path).is_some() {
+            return self.find_ugid_creds_for_path(&path, is_root_path).unwrap();
+        }
+
+        if let Some(perm_data) = self
+            .permission_paths
+            .read()
+            .expect("acquire permission_paths read lock")
+            .iter()
+            .find(|pd| pd.perm_path == "/")
+        {
+            return (perm_data.host_uid, perm_data.host_gid);
+        }
+
+        (ctx.uid, ctx.gid)
+    }
+
+    fn find_ugid_creds_for_path(&self, path: &str, is_root_path: bool) -> Option<(u32, u32)> {
         for perm_data in self
             .permission_paths
             .read()
@@ -1744,13 +1821,12 @@ impl PassthroughFs {
             if (is_root_path && perm_data.perm_path == "/")
                 || (!is_root_path
                     && perm_data.perm_path != "/"
-                    && perm_data.need_set_permission(&path))
+                    && perm_data.need_set_permission(path))
             {
-                return (perm_data.host_uid, perm_data.host_gid);
+                return Some((perm_data.host_uid, perm_data.host_gid));
             }
         }
-
-        (ctx.uid, ctx.gid)
+        None
     }
 }
 
@@ -2053,9 +2129,10 @@ impl FileSystem for PassthroughFs {
     type DirIter = ReadDir<Box<[u8]>>;
 
     fn init(&self, capable: FsOptions) -> io::Result<FsOptions> {
-        // SAFETY: this is a constant value that is a nul-terminated string without interior
-        // nul bytes.
-        let root = unsafe { CStr::from_bytes_with_nul_unchecked(ROOT_CSTR) };
+        let mut root_str_with_null: Vec<u8> = self.root_dir.clone().into_bytes();
+        root_str_with_null.push(0u8);
+        // SAFETY: this is a nul-terminated string without interior nul bytes.
+        let root = unsafe { CStr::from_bytes_with_nul_unchecked(&root_str_with_null) };
 
         let flags = libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
         // SAFETY: this doesn't modify any memory and we check the return value.
@@ -2916,6 +2993,17 @@ impl FileSystem for PassthroughFs {
         })?;
 
         buf.resize(res as usize, 0);
+
+        #[cfg(feature = "fs_runtime_ugid_map")]
+        {
+            let link_target = Path::new(OsStr::from_bytes(&buf[..res as usize]));
+            if !link_target.starts_with(&self.root_dir) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Symbolic link points outside of root_dir",
+                ));
+            }
+        }
         Ok(buf)
     }
 
