@@ -994,7 +994,10 @@ impl Worker {
                 .context("failed to restore VirtioGpu")?;
         }
 
-        Ok(())
+        self.state
+            .virtio_gpu
+            .resume()
+            .context("failed to resume VirtioGpu")
     }
 
     fn on_deactivate(
@@ -1002,6 +1005,11 @@ impl Worker {
         activation_resources: GpuActivationResources,
         stop_reason: WorkerStopReason,
     ) -> anyhow::Result<GpuDeactivationResources> {
+        self.state
+            .virtio_gpu
+            .suspend()
+            .context("failed to suspend VirtioGpu")?;
+
         self.fence_handler_resources.lock().take();
 
         let mut deactivation_resources = GpuDeactivationResources {

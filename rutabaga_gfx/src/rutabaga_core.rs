@@ -200,6 +200,11 @@ pub trait RutabagaComponent {
         Err(RutabagaError::Unsupported)
     }
 
+    /// Implementations should stop workers.
+    fn suspend(&self) -> RutabagaResult<()> {
+        Err(RutabagaError::Unsupported)
+    }
+
     /// Implementations must snapshot to the specified directory
     fn snapshot(&self, _directory: &str) -> RutabagaResult<()> {
         Err(RutabagaError::Unsupported)
@@ -207,6 +212,11 @@ pub trait RutabagaComponent {
 
     /// Implementations must restore from the specified directory
     fn restore(&self, _directory: &str) -> RutabagaResult<()> {
+        Err(RutabagaError::Unsupported)
+    }
+
+    /// Implementations should resume workers.
+    fn resume(&self) -> RutabagaResult<()> {
         Err(RutabagaError::Unsupported)
     }
 
@@ -365,6 +375,15 @@ pub struct Rutabaga {
 }
 
 impl Rutabaga {
+    pub fn suspend(&self) -> RutabagaResult<()> {
+        let component = self
+            .components
+            .get(&self.default_component)
+            .ok_or(RutabagaError::InvalidComponent)?;
+
+        component.suspend()
+    }
+
     /// Take a snapshot of Rutabaga's current state. The snapshot is serialized into an opaque byte
     /// stream and written to `w`.
     pub fn snapshot(&self, w: &mut impl Write, directory: &str) -> RutabagaResult<()> {
@@ -472,6 +491,15 @@ impl Rutabaga {
         } else {
             Err(RutabagaError::Unsupported)
         }
+    }
+
+    pub fn resume(&self) -> RutabagaResult<()> {
+        let component = self
+            .components
+            .get(&self.default_component)
+            .ok_or(RutabagaError::InvalidComponent)?;
+
+        component.resume()
     }
 
     fn capset_id_to_component_type(&self, capset_id: u32) -> RutabagaResult<RutabagaComponentType> {

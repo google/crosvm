@@ -180,3 +180,27 @@ extern "C" fn stream_renderer_context_create(
 extern "C" fn stream_renderer_create_fence(_fence: *const stream_renderer_fence) -> c_int {
     unimplemented!();
 }
+
+#[cfg(gfxstream_unstable)]
+#[no_mangle]
+extern "C" fn stream_renderer_suspend() -> c_int {
+    unimplemented!();
+}
+
+#[cfg(gfxstream_unstable)]
+#[no_mangle]
+extern "C" fn stream_renderer_snapshot(dir: *const c_char) -> c_int {
+    unimplemented!();
+}
+
+#[cfg(gfxstream_unstable)]
+#[no_mangle]
+extern "C" fn stream_renderer_restore(dir: *const c_char) -> c_int {
+    unimplemented!();
+}
+
+#[cfg(gfxstream_unstable)]
+#[no_mangle]
+extern "C" fn stream_renderer_resume() -> c_int {
+    unimplemented!();
+}
