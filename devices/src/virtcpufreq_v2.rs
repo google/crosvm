@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
+use std::fs::File;
+use std::path::PathBuf;
 
 use base::sched_attr;
 use base::sched_setattr;
@@ -31,6 +33,7 @@ const VCPUFREQ_FREQTBL_RD: u32 = 0x10;
 const VCPUFREQ_PERF_DOMAIN: u32 = 0x14;
 
 const SCHED_FLAG_KEEP_ALL: u64 = SCHED_FLAG_KEEP_POLICY | SCHED_FLAG_KEEP_PARAMS;
+const SCHED_SCALE_CAPACITY: u32 = 1024;
 
 /// Upstream linux compatible version of the virtual cpufreq interface
 pub struct VirtCpufreqV2 {
@@ -40,6 +43,9 @@ pub struct VirtCpufreqV2 {
     pcpu: u32,
     util_factor: u32,
     freqtbl_sel: u32,
+    vcpu_domain: u32,
+    domain_uclamp_min: Option<File>,
+    domain_uclamp_max: Option<File>,
 }
 
 fn get_cpu_info(cpu_id: u32, property: &str) -> Result<u32, Error> {
@@ -76,12 +82,40 @@ fn get_cpu_util_factor(cpu_id: u32) -> Result<u32, Error> {
 }
 
 impl VirtCpufreqV2 {
-    pub fn new(pcpu: u32, cpu_frequencies: BTreeMap<usize, Vec<u32>>) -> Self {
+    pub fn new(
+        pcpu: u32,
+        cpu_frequencies: BTreeMap<usize, Vec<u32>>,
+        vcpu_domain_path: Option<PathBuf>,
+        vcpu_domain: u32,
+    ) -> Self {
         let cpu_capacity = get_cpu_capacity(pcpu).expect("Error reading capacity");
         let cpu_fmax = get_cpu_maxfreq_khz(pcpu).expect("Error reading max freq");
         let util_factor = get_cpu_util_factor(pcpu).expect("Error getting util factor");
         let cpu_freq_table = cpu_frequencies.get(&(pcpu as usize)).unwrap().clone();
         let freqtbl_sel = 0;
+        let mut domain_uclamp_min = None;
+        let mut domain_uclamp_max = None;
+
+        if let Some(cgroup_path) = &vcpu_domain_path {
+            domain_uclamp_min = Some(
+                File::create(cgroup_path.join("cpu.uclamp.min")).unwrap_or_else(|err| {
+                    panic!(
+                        "Err: {}, Unable to open: {}",
+                        err,
+                        cgroup_path.join("cpu.uclamp.min").display()
+                    )
+                }),
+            );
+            domain_uclamp_max = Some(
+                File::create(cgroup_path.join("cpu.uclamp.max")).unwrap_or_else(|err| {
+                    panic!(
+                        "Err: {}, Unable to open: {}",
+                        err,
+                        cgroup_path.join("cpu.uclamp.max").display()
+                    )
+                }),
+            );
+        }
 
         VirtCpufreqV2 {
             cpu_freq_table,
@@ -90,6 +124,9 @@ impl VirtCpufreqV2 {
             pcpu,
             util_factor,
             freqtbl_sel,
+            vcpu_domain,
+            domain_uclamp_min,
+            domain_uclamp_max,
         }
     }
 }
@@ -116,7 +153,7 @@ impl BusDevice for VirtCpufreqV2 {
         let val = match info.offset as u32 {
             VCPUFREQ_CUR_PERF => get_cpu_curfreq_khz(self.pcpu).unwrap_or(0),
             VCPUFREQ_FREQTBL_LEN => self.cpu_freq_table.len() as u32,
-            VCPUFREQ_PERF_DOMAIN => self.pcpu,
+            VCPUFREQ_PERF_DOMAIN => self.vcpu_domain,
             VCPUFREQ_FREQTBL_RD => *self
                 .cpu_freq_table
                 .get(self.freqtbl_sel as usize)
@@ -154,13 +191,28 @@ impl BusDevice for VirtCpufreqV2 {
                     0
                 }) / self.cpu_fmax;
 
-                let mut sched_attr = sched_attr::default();
-                sched_attr.sched_flags =
-                    SCHED_FLAG_KEEP_ALL | SCHED_FLAG_UTIL_CLAMP_MIN | SCHED_FLAG_RESET_ON_FORK;
-                sched_attr.sched_util_min = util;
+                if let (Some(domain_uclamp_min), Some(domain_uclamp_max)) =
+                    (&mut self.domain_uclamp_min, &mut self.domain_uclamp_max)
+                {
+                    use std::io::Write;
+                    let val = util as f32 * 100.0 / SCHED_SCALE_CAPACITY as f32;
+                    let val_formatted = format!("{:4}", val).into_bytes();
 
-                if let Err(e) = sched_setattr(0, &mut sched_attr, 0) {
-                    panic!("{}: Error setting util value: {:#}", self.debug_label(), e);
+                    if let Err(e) = domain_uclamp_max.write(&val_formatted) {
+                        warn!("Error setting uclamp_max: {:#}", e);
+                    }
+                    if let Err(e) = domain_uclamp_min.write(&val_formatted) {
+                        warn!("Error setting uclamp_min: {:#}", e);
+                    }
+                } else {
+                    let mut sched_attr = sched_attr::default();
+                    sched_attr.sched_flags =
+                        SCHED_FLAG_KEEP_ALL | SCHED_FLAG_UTIL_CLAMP_MIN | SCHED_FLAG_RESET_ON_FORK;
+                    sched_attr.sched_util_min = util;
+
+                    if let Err(e) = sched_setattr(0, &mut sched_attr, 0) {
+                        panic!("{}: Error setting util value: {:#}", self.debug_label(), e);
+                    }
                 }
             }
             VCPUFREQ_FREQTBL_SEL => self.freqtbl_sel = val,

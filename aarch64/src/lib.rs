@@ -737,6 +737,8 @@ impl arch::LinuxArch for AArch64 {
                     let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreqV2::new(
                         vcpu_affinity[0].try_into().unwrap(),
                         components.cpu_frequencies.clone(),
+                        components.vcpu_domain_paths.get(&vcpu).cloned(),
+                        *components.vcpu_domains.get(&vcpu).unwrap_or(&(vcpu as u32)),
                     )));
                     mmio_bus
                         .insert(

@@ -394,6 +394,16 @@ pub struct VmComponents {
         any(target_arch = "arm", target_arch = "aarch64"),
         any(target_os = "android", target_os = "linux")
     ))]
+    pub vcpu_domain_paths: BTreeMap<usize, PathBuf>,
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
+    pub vcpu_domains: BTreeMap<usize, u32>,
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
     pub virt_cpufreq_v2: bool,
     pub vm_image: VmImage,
 }
