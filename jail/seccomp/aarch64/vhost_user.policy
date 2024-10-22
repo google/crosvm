@@ -12,3 +12,5 @@ ioctl: arg1 == FIONBIO || arg1 == TCGETS || arg1 == TCSETS
 accept4: 1
 # For creating a socket if the specified socket path does not exits
 socketpair: arg0 == AF_UNIX
+# For crosvm to reap child after vhost_user device exits
+wait4: 1
