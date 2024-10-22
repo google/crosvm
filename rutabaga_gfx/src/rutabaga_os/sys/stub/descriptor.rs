@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::fs::File;
+use std::io::ErrorKind as IoErrorKind;
 use std::os::fd::AsFd;
 use std::os::fd::BorrowedFd;
 use std::os::fd::OwnedFd;
@@ -14,6 +15,7 @@ use std::os::unix::io::RawFd;
 use crate::rutabaga_os::descriptor::AsRawDescriptor;
 use crate::rutabaga_os::descriptor::FromRawDescriptor;
 use crate::rutabaga_os::descriptor::IntoRawDescriptor;
+use crate::rutabaga_os::DescriptorType;
 
 pub type RawDescriptor = RawFd;
 pub const DEFAULT_RAW_DESCRIPTOR: RawDescriptor = -1;
@@ -29,6 +31,10 @@ impl OwnedDescriptor {
     pub fn try_clone(&self) -> Result<OwnedDescriptor> {
         let clone = self.owned.try_clone()?;
         Ok(OwnedDescriptor { owned: clone })
+    }
+
+    pub fn determine_type(&self) -> Result<DescriptorType> {
+        Err(Error::from(IoErrorKind::Unsupported))
     }
 }
 

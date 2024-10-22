@@ -2,14 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
 use std::io::Error as IoError;
 use std::io::IoSlice;
 use std::io::IoSliceMut;
-use std::os::fd::AsFd;
 use std::os::fd::AsRawFd;
-use std::os::fd::BorrowedFd;
-use std::os::fd::OwnedFd;
 use std::path::Path;
 
 use nix::cmsg_space;
@@ -33,8 +29,10 @@ use nix::sys::socket::SockType;
 use nix::sys::socket::UnixAddr;
 use nix::NixPath;
 
+use crate::rutabaga_os::AsBorrowedDescriptor;
 use crate::rutabaga_os::AsRawDescriptor;
 use crate::rutabaga_os::FromRawDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
 use crate::rutabaga_os::TubeType;
 use crate::rutabaga_utils::RutabagaError;
@@ -43,7 +41,7 @@ use crate::rutabaga_utils::RutabagaResult;
 const MAX_IDENTIFIERS: usize = 28;
 
 pub struct Tube {
-    socket: File,
+    socket: OwnedDescriptor,
 }
 
 impl Tube {
@@ -65,9 +63,10 @@ impl Tube {
 
         let unix_addr = UnixAddr::new(&path)?;
         connect(socket_fd.as_raw_fd(), &unix_addr)?;
-        let socket: File = socket_fd.into();
 
-        Ok(Tube { socket })
+        Ok(Tube {
+            socket: socket_fd.into(),
+        })
     }
 
     pub fn send(&self, opaque_data: &[u8], descriptors: &[RawDescriptor]) -> RutabagaResult<usize> {
@@ -83,7 +82,7 @@ impl Tube {
         Ok(bytes_sent)
     }
 
-    pub fn receive(&self, opaque_data: &mut [u8]) -> RutabagaResult<(usize, Vec<File>)> {
+    pub fn receive(&self, opaque_data: &mut [u8]) -> RutabagaResult<(usize, Vec<OwnedDescriptor>)> {
         let mut iovecs = [IoSliceMut::new(opaque_data)];
         let mut cmsgspace = cmsg_space!([RawDescriptor; MAX_IDENTIFIERS]);
         let flags = MsgFlags::empty();
@@ -96,14 +95,14 @@ impl Tube {
         )?;
 
         let len = r.bytes;
-        let files = match r.cmsgs().next() {
+        let descriptors = match r.cmsgs().next() {
             Some(ControlMessageOwned::ScmRights(fds)) => {
                 fds.into_iter()
                     .map(|fd| {
                         // SAFETY:
                         // Safe since the descriptors from recvmsg(..) are owned by us and
                         // valid.
-                        unsafe { File::from_raw_descriptor(fd) }
+                        unsafe { OwnedDescriptor::from_raw_descriptor(fd) }
                     })
                     .collect()
             }
@@ -111,24 +110,18 @@ impl Tube {
             None => Vec::new(),
         };
 
-        Ok((len, files))
+        Ok((len, descriptors))
     }
 }
 
-impl AsFd for Tube {
-    fn as_fd(&self) -> BorrowedFd {
-        self.socket.as_fd()
-    }
-}
-
-impl From<File> for Tube {
-    fn from(file: File) -> Tube {
-        Tube { socket: file }
+impl AsBorrowedDescriptor for Tube {
+    fn as_borrowed_descriptor(&self) -> &OwnedDescriptor {
+        &self.socket
     }
 }
 
 pub struct Listener {
-    socket: OwnedFd,
+    socket: OwnedDescriptor,
 }
 
 impl Listener {
@@ -147,18 +140,20 @@ impl Listener {
 
         fcntl(socket.as_raw_fd(), FcntlArg::F_SETFL(OFlag::O_NONBLOCK))?;
 
-        Ok(Listener { socket })
+        Ok(Listener {
+            socket: socket.into(),
+        })
     }
 
     pub fn accept(&self) -> RutabagaResult<Tube> {
-        let sock = match accept(self.socket.as_raw_fd()) {
+        let sock = match accept(self.socket.as_raw_descriptor()) {
             Ok(socket) => socket,
             Err(_) => return Err(IoError::last_os_error().into()),
         };
 
         // SAFETY: Safe because we know the underlying OS descriptor is valid and
         // owned by us.
-        let descriptor: File = unsafe { File::from_raw_descriptor(sock) };
-        Ok(descriptor.into())
+        let descriptor: OwnedDescriptor = unsafe { OwnedDescriptor::from_raw_descriptor(sock) };
+        Ok(Tube { socket: descriptor })
     }
 }

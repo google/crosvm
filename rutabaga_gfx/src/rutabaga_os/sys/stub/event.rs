@@ -5,6 +5,8 @@
 use std::convert::From;
 use std::convert::TryFrom;
 
+use crate::rutabaga_os::AsBorrowedDescriptor;
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaHandle;
 use crate::rutabaga_utils::RutabagaResult;
@@ -38,6 +40,12 @@ impl TryFrom<RutabagaHandle> for Event {
 
 impl From<Event> for RutabagaHandle {
     fn from(_evt: Event) -> Self {
+        unimplemented!()
+    }
+}
+
+impl AsBorrowedDescriptor for Event {
+    fn as_borrowed_descriptor(&self) -> &OwnedDescriptor {
         unimplemented!()
     }
 }

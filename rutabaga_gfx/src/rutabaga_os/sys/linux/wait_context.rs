@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::fd::AsFd;
 use std::time::Duration;
 
 use nix::sys::epoll::Epoll;
@@ -11,6 +10,7 @@ use nix::sys::epoll::EpollEvent;
 use nix::sys::epoll::EpollFlags;
 use nix::sys::epoll::EpollTimeout;
 
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::WaitEvent;
 use crate::rutabaga_os::WAIT_CONTEXT_MAX;
 use crate::rutabaga_utils::RutabagaResult;
@@ -25,13 +25,9 @@ impl WaitContext {
         Ok(WaitContext { epoll_ctx: epoll })
     }
 
-    pub fn add<Waitable: AsFd>(
-        &mut self,
-        connection_id: u64,
-        waitable: Waitable,
-    ) -> RutabagaResult<()> {
+    pub fn add(&mut self, connection_id: u64, descriptor: &OwnedDescriptor) -> RutabagaResult<()> {
         self.epoll_ctx.add(
-            waitable,
+            descriptor,
             EpollEvent::new(EpollFlags::EPOLLIN, connection_id),
         )?;
         Ok(())
@@ -71,8 +67,8 @@ impl WaitContext {
         Ok(events)
     }
 
-    pub fn delete<Waitable: AsFd>(&mut self, waitable: Waitable) -> RutabagaResult<()> {
-        self.epoll_ctx.delete(waitable)?;
+    pub fn delete(&mut self, descriptor: &OwnedDescriptor) -> RutabagaResult<()> {
+        self.epoll_ctx.delete(descriptor)?;
         Ok(())
     }
 }

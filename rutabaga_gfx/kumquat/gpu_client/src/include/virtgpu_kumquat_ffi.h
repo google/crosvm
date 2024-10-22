@@ -34,24 +34,24 @@ struct drm_kumquat_execbuffer_syncobj {
     uint64_t point;
 };
 
-#define VIRTGPU_KUMQUAT_EXECBUF_FENCE_FD_IN 0x01
-#define VIRTGPU_KUMQUAT_EXECBUF_FENCE_FD_OUT 0x02
+#define VIRTGPU_KUMQUAT_EXECBUF_FENCE_HANDLE_IN 0x01
+#define VIRTGPU_KUMQUAT_EXECBUF_FENCE_HANDLE_OUT 0x02
 #define VIRTGPU_KUMQUAT_EXECBUF_RING_IDX 0x04
 #define VIRTGPU_KUMQUAT_EXECBUF_SHAREABLE_IN 0x08
 #define VIRTGPU_KUMQUAT_EXECBUF_SHAREABLE_OUT 0x10
 
 #define VIRTGPU_KUMQUAT_EXECBUF_FLAGS                                                              \
-    (VIRTGPU_EXECBUF_FENCE_FD_IN | VIRTGPU_EXECBUF_FENCE_FD_OUT | VIRTGPU_EXECBUF_RING_IDX |       \
-     VIRTGPU_EXECBUF_SHAREABLE_IN | VIRTGPU_EXECBUF_SHAREABLE_OUT | 0)
+    (VIRTGPU_EXECBUF_FENCE_HANDLE_IN | VIRTGPU_EXECBUF_FENCE_HANDLE_OUT |                          \
+     VIRTGPU_EXECBUF_RING_IDX | VIRTGPU_EXECBUF_SHAREABLE_IN | VIRTGPU_EXECBUF_SHAREABLE_OUT | 0)
 
-/* fence_fd is modified on success if VIRTGPU_KUMQUAT_EXECBUF_FENCE_FD_OUT flag is set. */
+/* fence_fd is modified on success if VIRTGPU_KUMQUAT_EXECBUF_FENCE_HANDLE_OUT flag is set. */
 struct drm_kumquat_execbuffer {
     uint32_t flags;
     uint32_t size;
     uint64_t command; /* void* */
     uint64_t bo_handles;
     uint32_t num_bo_handles;
-    int32_t fence_fd;        /* in/out fence fd (see VIRTGPU_KUMQUAT_EXECBUF_FENCE_FD_IN/OUT) */
+    int64_t fence_handle;    /* in/out fence fd (see VIRTGPU_KUMQUAT_EXECBUF_FENCE_HANDLE_IN/OUT) */
     uint32_t ring_idx;       /* command ring index (see VIRTGPU_KUMQUAT_EXECBUF_RING_IDX) */
     uint32_t syncobj_stride; /* size of @drm_kumquat_execbuffer_syncobj */
     uint32_t num_in_syncobjs;

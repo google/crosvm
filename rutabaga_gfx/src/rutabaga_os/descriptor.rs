@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
 
 /// Trait for forfeiting ownership of the current raw descriptor, and returning the raw descriptor
@@ -31,4 +32,14 @@ pub trait FromRawDescriptor {
     /// Safe only if the caller ensures nothing has access to the descriptor after passing it to
     /// `from_raw_descriptor`
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self;
+}
+
+impl IntoRawDescriptor for i64 {
+    fn into_raw_descriptor(self) -> RawDescriptor {
+        self as RawDescriptor
+    }
+}
+
+pub trait AsBorrowedDescriptor {
+    fn as_borrowed_descriptor(&self) -> &OwnedDescriptor;
 }

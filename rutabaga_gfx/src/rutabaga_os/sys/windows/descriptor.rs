@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::fs::File;
+use std::io::ErrorKind as IoErrorKind;
 use std::os::windows::io::AsRawHandle;
 use std::os::windows::io::FromRawHandle;
 use std::os::windows::io::IntoRawHandle;
@@ -13,6 +14,7 @@ use std::os::windows::raw::HANDLE;
 use crate::rutabaga_os::descriptor::AsRawDescriptor;
 use crate::rutabaga_os::descriptor::FromRawDescriptor;
 use crate::rutabaga_os::descriptor::IntoRawDescriptor;
+use crate::rutabaga_os::DescriptorType;
 
 pub type RawDescriptor = RawHandle;
 // Same as winapi::um::handleapi::INVALID_HANDLE_VALUE, but avoids compile issues.
@@ -29,6 +31,10 @@ impl OwnedDescriptor {
     pub fn try_clone(&self) -> Result<OwnedDescriptor> {
         let clone = self.owned.try_clone()?;
         Ok(OwnedDescriptor { owned: clone })
+    }
+
+    pub fn determine_type(&self) -> Result<DescriptorType> {
+        Err(Error::from(IoErrorKind::Unsupported))
     }
 }
 

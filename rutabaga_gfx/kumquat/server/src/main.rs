@@ -5,19 +5,17 @@
 mod kumquat;
 mod kumquat_gpu;
 
-use std::convert::TryInto;
-use std::fs::File;
 use std::io::Error as IoError;
 use std::io::ErrorKind as IoErrorKind;
-use std::io::Write;
 use std::path::PathBuf;
 
 use clap::Parser;
 use kumquat::Kumquat;
 use kumquat_gpu::KumquatGpuConnection;
 use rutabaga_gfx::kumquat_support::RutabagaListener;
+use rutabaga_gfx::kumquat_support::RutabagaWritePipe;
 use rutabaga_gfx::RutabagaError;
-use rutabaga_gfx::RutabagaFromRawDescriptor;
+use rutabaga_gfx::RutabagaIntoRawDescriptor;
 use rutabaga_gfx::RutabagaResult;
 
 #[derive(Parser, Debug)]
@@ -54,10 +52,8 @@ fn main() -> RutabagaResult<()> {
     let listener = RutabagaListener::bind(path)?;
 
     if args.pipe_descriptor != 0 {
-        // SAFETY: We trust the user to provide a valid descriptor. The subsequent write call
-        // should fail otherwise.
-        let mut pipe: File = unsafe { File::from_raw_descriptor(args.pipe_descriptor.try_into()?) };
-        pipe.write(&1u64.to_ne_bytes())?;
+        let write_pipe = RutabagaWritePipe::new(args.pipe_descriptor.into_raw_descriptor());
+        write_pipe.write(&1u64.to_ne_bytes())?;
     }
 
     loop {

@@ -3,12 +3,7 @@
 // found in the LICENSE file.
 
 use std::collections::VecDeque;
-use std::fs::File;
 use std::mem::size_of;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-use std::os::fd::AsFd;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-use std::os::fd::BorrowedFd;
 
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
@@ -16,9 +11,8 @@ use zerocopy::FromBytes;
 use crate::bytestream::Reader;
 use crate::bytestream::Writer;
 use crate::ipc::kumquat_gpu_protocol::*;
+use crate::rutabaga_os::AsBorrowedDescriptor;
 use crate::rutabaga_os::AsRawDescriptor;
-use crate::rutabaga_os::FromRawDescriptor;
-use crate::rutabaga_os::IntoRawDescriptor;
 use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
 use crate::rutabaga_os::Tube;
@@ -83,8 +77,8 @@ impl RutabagaStream {
 
     pub fn read(&mut self) -> RutabagaResult<Vec<KumquatGpuProtocol>> {
         let mut vec: Vec<KumquatGpuProtocol> = Vec::new();
-        let (bytes_read, files_vec) = self.stream.receive(&mut self.read_buffer)?;
-        let mut files: VecDeque<File> = files_vec.into();
+        let (bytes_read, descriptor_vec) = self.stream.receive(&mut self.read_buffer)?;
+        let mut descriptors: VecDeque<OwnedDescriptor> = descriptor_vec.into();
 
         if bytes_read == 0 {
             vec.push(KumquatGpuProtocol::OkNoData);
@@ -123,13 +117,10 @@ impl RutabagaStream {
                     KumquatGpuProtocol::ResourceCreate3d(reader.read_obj()?)
                 }
                 KUMQUAT_GPU_PROTOCOL_TRANSFER_TO_HOST_3D => {
-                    let file = files.pop_front().ok_or(RutabagaError::InvalidResourceId)?;
+                    let os_handle = descriptors
+                        .pop_front()
+                        .ok_or(RutabagaError::InvalidResourceId)?;
                     let resp: kumquat_gpu_protocol_transfer_host_3d = reader.read_obj()?;
-
-                    // SAFETY: Safe because we know the underlying OS descriptor is valid and
-                    // owned by us.
-                    let os_handle =
-                        unsafe { OwnedDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
 
                     let handle = RutabagaHandle {
                         os_handle,
@@ -139,13 +130,10 @@ impl RutabagaStream {
                     KumquatGpuProtocol::TransferToHost3d(resp, handle)
                 }
                 KUMQUAT_GPU_PROTOCOL_TRANSFER_FROM_HOST_3D => {
-                    let file = files.pop_front().ok_or(RutabagaError::InvalidResourceId)?;
+                    let os_handle = descriptors
+                        .pop_front()
+                        .ok_or(RutabagaError::InvalidResourceId)?;
                     let resp: kumquat_gpu_protocol_transfer_host_3d = reader.read_obj()?;
-
-                    // SAFETY: Safe because we know the underlying OS descriptor is valid and
-                    // owned by us.
-                    let os_handle =
-                        unsafe { OwnedDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
 
                     let handle = RutabagaHandle {
                         os_handle,
@@ -208,13 +196,10 @@ impl RutabagaStream {
                     KumquatGpuProtocol::RespContextCreate(hdr.payload)
                 }
                 KUMQUAT_GPU_PROTOCOL_RESP_RESOURCE_CREATE => {
-                    let file = files.pop_front().ok_or(RutabagaError::InvalidResourceId)?;
+                    let os_handle = descriptors
+                        .pop_front()
+                        .ok_or(RutabagaError::InvalidResourceId)?;
                     let resp: kumquat_gpu_protocol_resp_resource_create = reader.read_obj()?;
-
-                    // SAFETY: Safe because we know the underlying OS descriptor is valid and
-                    // owned by us.
-                    let os_handle =
-                        unsafe { OwnedDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
 
                     let handle = RutabagaHandle {
                         os_handle,
@@ -224,13 +209,10 @@ impl RutabagaStream {
                     KumquatGpuProtocol::RespResourceCreate(resp, handle)
                 }
                 KUMQUAT_GPU_PROTOCOL_RESP_CMD_SUBMIT_3D => {
-                    let file = files.pop_front().ok_or(RutabagaError::InvalidResourceId)?;
+                    let os_handle = descriptors
+                        .pop_front()
+                        .ok_or(RutabagaError::InvalidResourceId)?;
                     let resp: kumquat_gpu_protocol_resp_cmd_submit_3d = reader.read_obj()?;
-
-                    // SAFETY: Safe because we know the underlying OS descriptor is valid and
-                    // owned by us.
-                    let os_handle =
-                        unsafe { OwnedDescriptor::from_raw_descriptor(file.into_raw_descriptor()) };
 
                     let handle = RutabagaHandle {
                         os_handle,
@@ -254,8 +236,7 @@ impl RutabagaStream {
         Ok(vec)
     }
 
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    pub fn as_borrowed_file(&self) -> BorrowedFd<'_> {
-        self.stream.as_fd()
+    pub fn as_borrowed_descriptor(&self) -> &OwnedDescriptor {
+        self.stream.as_borrowed_descriptor()
     }
 }

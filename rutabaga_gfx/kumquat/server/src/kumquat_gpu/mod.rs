@@ -5,11 +5,7 @@
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
 use std::collections::BTreeSet as Set;
-use std::fs::File;
 use std::io::Cursor;
-use std::io::Write;
-use std::os::fd::AsFd;
-use std::os::fd::BorrowedFd;
 use std::os::raw::c_void;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -25,15 +21,14 @@ use rutabaga_gfx::kumquat_support::RutabagaTube;
 use rutabaga_gfx::ResourceCreate3D;
 use rutabaga_gfx::ResourceCreateBlob;
 use rutabaga_gfx::Rutabaga;
+use rutabaga_gfx::RutabagaAsBorrowedDescriptor as AsBorrowedDescriptor;
 use rutabaga_gfx::RutabagaBuilder;
 use rutabaga_gfx::RutabagaComponentType;
 use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaError;
 use rutabaga_gfx::RutabagaFence;
 use rutabaga_gfx::RutabagaFenceHandler;
-use rutabaga_gfx::RutabagaFromRawDescriptor;
 use rutabaga_gfx::RutabagaHandle;
-use rutabaga_gfx::RutabagaIntoRawDescriptor;
 use rutabaga_gfx::RutabagaIovec;
 use rutabaga_gfx::RutabagaResult;
 use rutabaga_gfx::RutabagaWsi;
@@ -311,14 +306,8 @@ impl KumquatGpuConnection {
                         .rutabaga
                         .transfer_write(cmd.ctx_id, resource_id, transfer)?;
 
-                    // SAFETY: Safe because the emulated fence and owned by us.
-                    let mut file = unsafe {
-                        File::from_raw_descriptor(emulated_fence.os_handle.into_raw_descriptor())
-                    };
-
-                    // TODO(b/356504311): An improvement would be `impl From<RutabagaHandle> for
-                    // RutabagaEvent` + `RutabagaEvent::signal`
-                    file.write(&mut 1u64.to_ne_bytes())?;
+                    let mut event: RutabagaEvent = emulated_fence.try_into()?;
+                    event.signal()?;
                 }
                 KumquatGpuProtocol::TransferFromHost3d(cmd, emulated_fence) => {
                     let resource_id = cmd.resource_id;
@@ -340,14 +329,8 @@ impl KumquatGpuConnection {
                         .rutabaga
                         .transfer_read(cmd.ctx_id, resource_id, transfer, None)?;
 
-                    // SAFETY: Safe because the emulated fence and owned by us.
-                    let mut file = unsafe {
-                        File::from_raw_descriptor(emulated_fence.os_handle.into_raw_descriptor())
-                    };
-
-                    // TODO(b/356504311): An improvement would be `impl From<RutabagaHandle> for
-                    // RutabagaEvent` + `RutabagaEvent::signal`
-                    file.write(&mut 1u64.to_ne_bytes())?;
+                    let mut event: RutabagaEvent = emulated_fence.try_into()?;
+                    event.signal()?;
                 }
                 KumquatGpuProtocol::CmdSubmit3d(cmd, mut cmd_buf, fence_ids) => {
                     kumquat_gpu.rutabaga.submit_command(
@@ -493,8 +476,8 @@ impl KumquatGpuConnection {
     }
 }
 
-impl AsFd for KumquatGpuConnection {
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.stream.as_borrowed_file()
+impl AsBorrowedDescriptor for KumquatGpuConnection {
+    fn as_borrowed_descriptor(&self) -> &RutabagaDescriptor {
+        self.stream.as_borrowed_descriptor()
     }
 }

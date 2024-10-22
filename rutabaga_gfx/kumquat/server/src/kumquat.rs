@@ -7,6 +7,7 @@ use std::collections::BTreeMap as Map;
 use std::time::Duration;
 
 use rutabaga_gfx::kumquat_support::RutabagaWaitContext;
+use rutabaga_gfx::RutabagaAsBorrowedDescriptor as AsBorrowedDescriptor;
 use rutabaga_gfx::RutabagaError;
 use rutabaga_gfx::RutabagaResult;
 
@@ -33,7 +34,8 @@ impl Kumquat {
         connection_id: u64,
         connection: KumquatGpuConnection,
     ) -> RutabagaResult<()> {
-        let _ = self.wait_ctx.add(connection_id, &connection);
+        self.wait_ctx
+            .add(connection_id, connection.as_borrowed_descriptor())?;
         self.connections.insert(connection_id, connection);
         Ok(())
     }
@@ -58,7 +60,7 @@ impl Kumquat {
                     }
 
                     if hung_up {
-                        self.wait_ctx.delete(&connection)?;
+                        self.wait_ctx.delete(connection.as_borrowed_descriptor())?;
                         o.remove_entry();
                     }
                 }

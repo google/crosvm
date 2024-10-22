@@ -132,7 +132,7 @@ pub struct VirtGpuExecBuffer {
     pub command: u64,
     pub bo_handles: u64,
     pub num_bo_handles: u32,
-    pub fence_fd: i32,
+    pub fence_handle: i64,
     pub ring_idx: u32,
     pub syncobj_stride: u32,
     pub num_in_syncobjs: u32,

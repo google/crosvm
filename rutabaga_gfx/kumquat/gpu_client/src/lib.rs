@@ -20,6 +20,7 @@ use std::sync::Mutex;
 use libc::EINVAL;
 use libc::ESRCH;
 use log::error;
+use rutabaga_gfx::kumquat_support::RUTABAGA_DEFAULT_RAW_DESCRIPTOR;
 use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaFromRawDescriptor;
 use rutabaga_gfx::RutabagaHandle;
@@ -283,14 +284,17 @@ pub unsafe extern "C" fn virtgpu_kumquat_execbuffer(
         // TODO
         let in_fences: &[u64] = &[0; 0];
 
+        let mut descriptor: RutabagaRawDescriptor = RUTABAGA_DEFAULT_RAW_DESCRIPTOR;
         let result = ptr.lock().unwrap().submit_command(
             cmd.flags,
             bo_handles,
             cmd_buf,
             cmd.ring_idx,
             in_fences,
-            &mut cmd.fence_fd as &mut RutabagaRawDescriptor,
+            &mut descriptor,
         );
+
+        cmd.fence_handle = descriptor as i64;
         return_result(result)
     }))
     .unwrap_or(-ESRCH)
@@ -335,7 +339,7 @@ pub unsafe extern "C" fn virtgpu_kumquat_resource_import(
     catch_unwind(AssertUnwindSafe(|| {
         let handle = RutabagaHandle {
             os_handle: RutabagaDescriptor::from_raw_descriptor(
-                (*cmd).os_handle.try_into().unwrap(),
+                (*cmd).os_handle.into_raw_descriptor(),
             ),
             handle_type: (*cmd).handle_type,
         };
