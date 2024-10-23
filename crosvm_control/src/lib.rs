@@ -56,10 +56,13 @@ use vm_control::USB_CONTROL_MAX_PORTS;
 pub const VIRTIO_BALLOON_WS_MAX_NUM_BINS: usize = 16;
 pub const VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS: usize = 15;
 
-fn validate_socket_path(socket_path: *const c_char) -> Option<PathBuf> {
+/// # Safety
+///
+/// This function is safe when the caller ensures the socket_path raw pointer can be safely passed
+/// to `CStr::from_ptr()`.
+unsafe fn validate_socket_path(socket_path: *const c_char) -> Option<PathBuf> {
     if !socket_path.is_null() {
-        // SAFETY: just checked that `socket_path` is not null.
-        let socket_path = unsafe { CStr::from_ptr(socket_path) };
+        let socket_path = CStr::from_ptr(socket_path);
         Some(PathBuf::from(socket_path.to_str().ok()?))
     } else {
         None
@@ -810,7 +813,11 @@ pub unsafe extern "C" fn crosvm_client_balloon_stats_with_timeout(
     )
 }
 
-fn crosvm_client_balloon_stats_impl(
+/// # Safety
+///
+/// This function is safe when the caller ensures the socket_path raw pointer can be safely passed
+/// to `CStr::from_ptr()`.
+unsafe fn crosvm_client_balloon_stats_impl(
     socket_path: *const c_char,
     timeout_ms: Option<Duration>,
     stats: *mut BalloonStatsFfi,
