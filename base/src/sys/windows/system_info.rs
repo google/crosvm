@@ -56,3 +56,8 @@ pub fn getpid() -> Pid {
     // Safe because we only use the return value.
     unsafe { GetCurrentProcessId() }
 }
+
+/// Set the name of the thread.
+pub fn set_thread_name(_name: &str) -> Result<()> {
+    todo!();
+}

@@ -186,6 +186,7 @@ pub use platform::getpid;
 pub use platform::open_file_or_duplicate;
 pub use platform::platform_timer_resolution::enable_high_res_timers;
 pub use platform::set_cpu_affinity;
+pub use platform::set_thread_name;
 pub use platform::BlockingMode;
 pub use platform::EventContext;
 pub use platform::FramingMode;

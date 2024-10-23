@@ -40,6 +40,7 @@ mod timer;
 pub mod vsock;
 mod write_zeroes;
 
+use std::ffi::CString;
 use std::fs::remove_file;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -69,6 +70,7 @@ use libc::c_int;
 use libc::c_long;
 use libc::fcntl;
 use libc::pipe2;
+use libc::prctl;
 use libc::syscall;
 use libc::waitpid;
 use libc::SYS_getpid;
@@ -76,6 +78,7 @@ use libc::SYS_getppid;
 use libc::SYS_gettid;
 use libc::EINVAL;
 use libc::O_CLOEXEC;
+use libc::PR_SET_NAME;
 use libc::SIGKILL;
 use libc::WNOHANG;
 pub use mmap::*;
@@ -113,6 +116,19 @@ use crate::Pid;
 pub type Uid = libc::uid_t;
 pub type Gid = libc::gid_t;
 pub type Mode = libc::mode_t;
+
+/// Safe wrapper for PR_SET_NAME(2const)
+#[inline(always)]
+pub fn set_thread_name(name: &str) -> Result<()> {
+    let name = CString::new(name).or(Err(Error::new(EINVAL)))?;
+    // SAFETY: prctl copies name and doesn't expect it to outlive this function.
+    let ret = unsafe { prctl(PR_SET_NAME, name.as_c_str()) };
+    if ret == 0 {
+        Ok(())
+    } else {
+        errno_result()
+    }
+}
 
 /// This bypasses `libc`'s caching `getpid(2)` wrapper which can be invalid if a raw clone was used
 /// elsewhere.

@@ -21,6 +21,10 @@ pub(in crate::sys) use net::sockaddr_un;
 pub(in crate::sys) use net::sockaddrv4_to_lib_c;
 pub(in crate::sys) use net::sockaddrv6_to_lib_c;
 
+pub fn set_thread_name(_name: &str) -> crate::errno::Result<()> {
+    todo!();
+}
+
 pub fn get_cpu_affinity() -> crate::errno::Result<Vec<usize>> {
     todo!();
 }

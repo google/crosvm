@@ -1634,6 +1634,14 @@ pub struct RunCommand {
     /// to 800x1280) and a name for the input device
     pub multi_touch: Vec<TouchDeviceOption>,
 
+    #[argh(option)]
+    #[merge(strategy = overwrite_option)]
+    /// optional name for the VM. This is used as the name of the crosvm
+    /// process which is helpful to distinguish multiple crosvm processes.
+    /// A name longer than 15 bytes is truncated on Linux-like OSes. This
+    /// is no-op on Windows and MacOS at the moment.
+    pub name: Option<String>,
+
     #[cfg(all(unix, feature = "net"))]
     #[argh(
         option,
@@ -3666,6 +3674,8 @@ impl TryFrom<RunCommand> for super::config::Config {
         if cmd.disable_sandbox.unwrap_or_default() {
             cfg.jail_config = None;
         }
+
+        cfg.name = cmd.name;
 
         // Now do validation of constructed config
         super::config::validate_config(&mut cfg)?;

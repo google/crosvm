@@ -18,6 +18,7 @@ use argh::FromArgs;
 use base::debug;
 use base::error;
 use base::info;
+use base::set_thread_name;
 use base::syslog;
 use base::syslog::LogArgs;
 use base::syslog::LogConfig;
@@ -150,6 +151,10 @@ fn run_vm(cmd: RunCommand, log_config: LogConfig) -> Result<CommandStatus> {
             return Err(anyhow!("{}", e));
         }
     };
+
+    if let Some(ref name) = cfg.name {
+        set_thread_name(name).context("Failed to set the name")?;
+    }
 
     #[cfg(feature = "plugin")]
     if executable_is_plugin(&cfg.executable_path) {

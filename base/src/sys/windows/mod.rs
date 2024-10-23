@@ -64,6 +64,7 @@ pub use system_info::allocation_granularity;
 pub use system_info::getpid;
 pub use system_info::number_of_logical_cores;
 pub use system_info::pagesize;
+pub use system_info::set_thread_name;
 pub use terminal::*;
 use winapi::shared::minwindef::DWORD;
 pub(crate) use write_zeroes::file_write_zeroes_at;
