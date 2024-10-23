@@ -29,8 +29,6 @@ mod suspendable;
 mod sys;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod virtcpufreq;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-mod virtcpufreq_v2;
 pub mod virtio;
 #[cfg(feature = "vtpm")]
 mod vtpm_proxy;
@@ -134,8 +132,6 @@ pub use self::suspendable::DeviceState;
 pub use self::suspendable::Suspendable;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::virtcpufreq::VirtCpufreq;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-pub use self::virtcpufreq_v2::VirtCpufreqV2;
 pub use self::virtio::VirtioMmioDevice;
 pub use self::virtio::VirtioPciDevice;
 #[cfg(feature = "vtpm")]
