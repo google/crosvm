@@ -101,20 +101,11 @@ impl From<libvda::decode::Event> for DecoderEvent {
             LibvdaEvent::PictureReady {
                 buffer_id,
                 bitstream_id,
-                left,
-                top,
-                right,
-                bottom,
+                ..
             } => DecoderEvent::PictureReady {
                 picture_buffer_id: buffer_id,
                 // Restore the truncated timestamp to its original value (hopefully).
                 timestamp: TIMESTAMP_TRUNCATE_FACTOR.wrapping_mul(bitstream_id as u64),
-                visible_rect: Rect {
-                    left,
-                    top,
-                    right,
-                    bottom,
-                },
             },
             LibvdaEvent::NotifyEndOfBitstreamBuffer { bitstream_id } => {
                 // We will patch the timestamp to the actual bitstream ID in `read_event`.

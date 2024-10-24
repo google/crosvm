@@ -387,16 +387,9 @@ impl FfmpegDecoderSession {
 
         // Prepare the picture ready event that we will emit once the frame is written into the
         // target buffer.
-        let avframe_ref = avframe.as_ref();
         let picture_ready_event = DecoderEvent::PictureReady {
             picture_buffer_id: picture_buffer_id as i32,
-            timestamp: avframe_ref.pts as u64,
-            visible_rect: Rect {
-                left: 0,
-                top: 0,
-                right: avframe_ref.width,
-                bottom: avframe_ref.height,
-            },
+            timestamp: avframe.pts as u64,
         };
 
         // Convert the frame into the target buffer and emit the picture ready event.

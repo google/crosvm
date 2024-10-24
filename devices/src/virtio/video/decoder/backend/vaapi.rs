@@ -520,7 +520,6 @@ impl VaapiDecoderSession {
         decoded_frame: &dyn DecodedHandle<Descriptor = BufferDescWithPicId>,
         event_queue: &mut EventQueue<DecoderEvent>,
     ) -> Result<()> {
-        let display_resolution = decoded_frame.display_resolution();
         let timestamp = decoded_frame.timestamp();
 
         let buffer_desc = decoded_frame.resource();
@@ -553,12 +552,6 @@ impl VaapiDecoderSession {
             .queue_event(DecoderEvent::PictureReady {
                 picture_buffer_id,
                 timestamp,
-                visible_rect: Rect {
-                    left: 0,
-                    top: 0,
-                    right: display_resolution.width as i32,
-                    bottom: display_resolution.height as i32,
-                },
             })
             .map_err(|e| {
                 VideoError::BackendFailure(anyhow!("Can't queue the PictureReady event {}", e))

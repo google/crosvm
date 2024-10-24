@@ -231,7 +231,6 @@ pub enum DecoderEvent {
     PictureReady {
         picture_buffer_id: i32,
         timestamp: u64,
-        visible_rect: Rect,
     },
     /// Emitted when an input buffer passed to `decode()` is not used by the
     /// device anymore and can be reused by the decoder. The parameter corresponds
@@ -387,43 +386,32 @@ mod tests {
         let mut decoded_frames_count = 0usize;
         let mut expected_frames_crcs = H264_STREAM_CRCS.lines();
 
-        let mut on_frame_decoded =
-            |session: &mut D::Session, picture_buffer_id: i32, visible_rect: Rect| {
-                assert_eq!(
-                    visible_rect,
-                    Rect {
-                        left: 0,
-                        top: 0,
-                        right: H264_STREAM_WIDTH,
-                        bottom: H264_STREAM_HEIGHT,
-                    }
-                );
+        let mut on_frame_decoded = |session: &mut D::Session, picture_buffer_id: i32| {
+            // Verify that the CRC of the decoded frame matches the expected one.
+            let mapping = MemoryMappingBuilder::new(OUTPUT_BUFFER_SIZE)
+                .from_shared_memory(&output_buffers[picture_buffer_id as usize])
+                .build()
+                .unwrap();
+            let mut frame_data = vec![0u8; mapping.size()];
+            assert_eq!(
+                mapping.read_slice(&mut frame_data, 0).unwrap(),
+                mapping.size()
+            );
 
-                // Verify that the CRC of the decoded frame matches the expected one.
-                let mapping = MemoryMappingBuilder::new(OUTPUT_BUFFER_SIZE)
-                    .from_shared_memory(&output_buffers[picture_buffer_id as usize])
-                    .build()
-                    .unwrap();
-                let mut frame_data = vec![0u8; mapping.size()];
-                assert_eq!(
-                    mapping.read_slice(&mut frame_data, 0).unwrap(),
-                    mapping.size()
-                );
+            let mut hasher = crc32fast::Hasher::new();
+            hasher.update(&frame_data);
+            let frame_crc = hasher.finalize();
+            assert_eq!(
+                format!("{:08x}", frame_crc),
+                expected_frames_crcs
+                    .next()
+                    .expect("No CRC for decoded frame")
+            );
 
-                let mut hasher = crc32fast::Hasher::new();
-                hasher.update(&frame_data);
-                let frame_crc = hasher.finalize();
-                assert_eq!(
-                    format!("{:08x}", frame_crc),
-                    expected_frames_crcs
-                        .next()
-                        .expect("No CRC for decoded frame")
-                );
-
-                // We can recycle the frame now.
-                session.reuse_output_buffer(picture_buffer_id).unwrap();
-                decoded_frames_count += 1;
-            };
+            // We can recycle the frame now.
+            session.reuse_output_buffer(picture_buffer_id).unwrap();
+            decoded_frames_count += 1;
+        };
 
         // Simple value by which we will multiply the frame number to obtain a fake timestamp.
         const TIMESTAMP_FOR_INPUT_ID_FACTOR: u64 = 1_000_000;
@@ -521,10 +509,8 @@ mod tests {
             for event in events {
                 match event {
                     DecoderEvent::PictureReady {
-                        picture_buffer_id,
-                        visible_rect,
-                        ..
-                    } => on_frame_decoded(&mut session, picture_buffer_id, visible_rect),
+                        picture_buffer_id, ..
+                    } => on_frame_decoded(&mut session, picture_buffer_id),
                     e => panic!("Unexpected event: {:?}", e),
                 }
             }
@@ -537,10 +523,8 @@ mod tests {
         while !wait_ctx.wait_timeout(Duration::ZERO).unwrap().is_empty() {
             match session.read_event().unwrap() {
                 DecoderEvent::PictureReady {
-                    picture_buffer_id,
-                    visible_rect,
-                    ..
-                } => on_frame_decoded(&mut session, picture_buffer_id, visible_rect),
+                    picture_buffer_id, ..
+                } => on_frame_decoded(&mut session, picture_buffer_id),
                 DecoderEvent::FlushCompleted(Ok(())) => {
                     received_flush_completed = true;
                     break;
