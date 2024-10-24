@@ -283,6 +283,15 @@ whpx = ["devices/whpx", "hypervisor/whpx"]
 ## Enables a libslirp based network device. Currently only supported on Windows.
 slirp = ["devices/slirp", "net_util/slirp"]
 
+## Enables slirp debugging.
+slirp-debug = ["net_util/slirp-debug"]
+
+## Enables slirp capture.
+slirp-ring-capture = [
+    "net_util/slirp-ring-capture",
+    "devices/slirp-ring-capture",
+]
+
 #! ### Non-additive feature flags
 #!
 #! These feature flags change the behavior of crosvm instead of adding functionality.
@@ -344,6 +353,9 @@ vtpm = ["devices/vtpm"]
 
 ## Enables reporting of crosvm crashes
 crash-report = ["broker_ipc/crash-report", "crash_report"]
+
+process-invariants = []
+sandbox = []
 
 #! ### Platform Feature Sets
 #!
@@ -432,6 +444,7 @@ all-mingw64 = [
     "haxm",
     "net",
     "slirp",
+    "slirp-debug",
     "stats",
     "vulkan_display",
     "pvclock",

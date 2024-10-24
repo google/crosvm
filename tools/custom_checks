@@ -93,7 +93,10 @@ def check_rust_lockfiles(*files: str):
 KNOWN_DISABLED_FEATURES = [
     "default-no-sandbox",
     "libvda",
+    "process-invariants",
+    "sandbox",
     "seccomp_trace",
+    "slirp-ring-capture",
     "vulkano",
     "whpx",
 ]
