@@ -284,12 +284,4 @@ impl RutabagaComponent for Rutabaga2D {
         resource.info_2d = Some(info_2d);
         Ok(())
     }
-
-    fn suspend(&self) -> RutabagaResult<()> {
-        Ok(())
-    }
-
-    fn resume(&self) -> RutabagaResult<()> {
-        Ok(())
-    }
 }

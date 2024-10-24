@@ -202,7 +202,7 @@ pub trait RutabagaComponent {
 
     /// Implementations should stop workers.
     fn suspend(&self) -> RutabagaResult<()> {
-        Err(RutabagaError::Unsupported)
+        Ok(())
     }
 
     /// Implementations must snapshot to the specified directory
@@ -217,7 +217,7 @@ pub trait RutabagaComponent {
 
     /// Implementations should resume workers.
     fn resume(&self) -> RutabagaResult<()> {
-        Err(RutabagaError::Unsupported)
+        Ok(())
     }
 
     /// Implementations must perform a blocking wait-sync on the resource identified by resource_id
