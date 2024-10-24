@@ -662,7 +662,7 @@ impl Process {
             // cap is cast back to an integer and fed to an ioctl. If the extension name is actually
             // invalid, the kernel will safely reject the extension under the assumption that the
             // capability is legitimately unsupported.
-            let cap = unsafe { transmute(request.check_extension().extension) };
+            let cap = unsafe { transmute::<u32, kvm::Cap>(request.check_extension().extension) };
             response.mut_check_extension().has_extension = vm.check_extension(cap);
             Ok(())
         } else if request.has_reserve_range() {
