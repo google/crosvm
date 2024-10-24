@@ -84,7 +84,7 @@ If you require exclusive access to a device or file, you have to use
 [file-based locking](https://docs.rs/named-lock/latest/named_lock) to prevent access by other test
 processes.
 
-## Platorms tested
+## Platforms tested
 
 The platforms below can all be tested using `tools/run_tests -p $platform`. The table indicates how
 these tests are executed:
@@ -98,6 +98,33 @@ these tests are executed:
 | mingw64[^windows] (windows) |   🚧   |             🚧             |         🚧         |     ❌     |
 
 Crosvm CI will use the same configuration as `tools/run_tests`.
+
+## Debugging Tips
+
+Here are some tips for developing or/and debugging crosvm tests.
+
+### Enter a test VM to see logs
+
+When you run a test on a VM with `./tools/run_tests --dut=vm`, if the test fails, you'll see
+extracted log messages. To see the full messages or monitor the test process during the runtime, you
+may want to enter the test VM.
+
+First, enter the VM's shell and start printing the syslog:
+
+```console
+$ ./tools/dev_container # Enter the dev_container
+$ ./tools/x86vm shell   # Enter the test VM
+crosvm@testvm-x8664:~$ journalctl -f
+# syslog messages will be printed...
+```
+
+Then, open another terminal and run a test:
+
+```console
+$ ./tools/run_tests --dut=vm --filter-expr 'package(e2e_tests) and test(boot)'
+```
+
+So you'll see the crosvm log in the first terminal.
 
 [^qemu-user]: qemu-aarch64-static or qemu-arm-static translate instructions into x86 and executes them on the
     host kernel. This works well for unit tests, but will fail when interacting with platform
