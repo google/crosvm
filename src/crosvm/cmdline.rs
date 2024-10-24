@@ -646,6 +646,7 @@ pub struct UsbAttachCommand {
         arg_name = "BUS_ID:ADDR:BUS_NUM:DEV_NUM",
         from_str_fn(parse_bus_id_addr)
     )]
+    #[allow(dead_code)]
     pub addr: (u8, u8, u16, u16),
     #[argh(positional)]
     /// usb device path

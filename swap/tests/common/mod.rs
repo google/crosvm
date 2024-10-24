@@ -18,6 +18,7 @@ pub fn create_uffd_for_test() -> Userfaultfd {
 }
 
 pub struct SharedMemoryMapping {
+    #[allow(dead_code)]
     pub shm: SharedMemory,
     pub mmap: MemoryMapping,
 }

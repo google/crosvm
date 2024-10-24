@@ -131,6 +131,7 @@ pub trait RegisterInterface: Send {
     /// Handle write.
     fn write(&self, _addr: RegisterOffset, _data: &[u8]) {}
     /// Reset this register to default value.
+    #[allow(dead_code)]
     fn reset(&self) {}
 }
 
