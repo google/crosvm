@@ -367,12 +367,7 @@ impl XhciBackendDevice for HostDevice {
     }
 
     fn get_speed(&self) -> Option<DeviceSpeed> {
-        let speed = self.device.lock().get_speed();
-        if let Ok(speed) = speed {
-            speed
-        } else {
-            None
-        }
+        self.device.lock().get_speed().unwrap_or(None)
     }
 
     fn alloc_streams(&self, ep: u8, num_streams: u16) -> Result<()> {

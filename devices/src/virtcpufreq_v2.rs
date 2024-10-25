@@ -114,10 +114,7 @@ impl BusDevice for VirtCpufreqV2 {
         }
 
         let val = match info.offset as u32 {
-            VCPUFREQ_CUR_PERF => match get_cpu_curfreq_khz(self.pcpu) {
-                Ok(freq) => freq,
-                Err(_e) => 0,
-            },
+            VCPUFREQ_CUR_PERF => get_cpu_curfreq_khz(self.pcpu).unwrap_or(0),
             VCPUFREQ_FREQTBL_LEN => self.cpu_freq_table.len() as u32,
             VCPUFREQ_PERF_DOMAIN => self.pcpu,
             VCPUFREQ_FREQTBL_RD => *self
