@@ -26,7 +26,6 @@ use cros_async::AsyncTube;
 use cros_async::AsyncWrapper;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use futures::SinkExt;
 use gpu_display::EventDevice;
 use gpu_display::WindowProcedureThread;
 use gpu_display::WindowProcedureThreadBuilder;
