@@ -26,6 +26,7 @@ use cros_async::AsyncTube;
 use cros_async::AsyncWrapper;
 use cros_async::EventAsync;
 use cros_async::Executor;
+use futures::SinkExt;
 use gpu_display::EventDevice;
 use gpu_display::WindowProcedureThread;
 use gpu_display::WindowProcedureThreadBuilder;
@@ -130,7 +131,9 @@ impl GpuBackend {
         let task = self
             .ex
             .spawn_local(run_display(display, state.clone(), self.gpu.clone()));
-        self.platform_workers.borrow_mut().push(task);
+        self.platform_worker_tx
+            .unbounded_send(task)
+            .context("sending the run_display task for the initial display")?;
 
         let task = self.ex.spawn_local(run_gpu_control_command_handler(
             AsyncTube::new(
@@ -145,7 +148,9 @@ impl GpuBackend {
             state,
             interrupt,
         ));
-        self.platform_workers.borrow_mut().push(task);
+        self.platform_worker_tx
+            .unbounded_send(task)
+            .context("sending the run_gpu_control_command_handler task")?;
 
         Ok(())
     }
@@ -310,6 +315,7 @@ pub fn run_gpu_device_worker(
 
     let ex = Executor::new().context("failed to create executor")?;
 
+    let (platform_worker_tx, platform_worker_rx) = futures::channel::mpsc::unbounded();
     let backend = GpuBackend {
         ex: ex.clone(),
         gpu,
@@ -317,7 +323,8 @@ pub fn run_gpu_device_worker(
         state: None,
         fence_state: Default::default(),
         queue_workers: Default::default(),
-        platform_workers: Default::default(),
+        platform_worker_tx,
+        platform_worker_rx,
         shmem_mapper: Arc::new(Mutex::new(None)),
     };
 

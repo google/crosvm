@@ -17,6 +17,8 @@ use base::Tube;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::TaskHandle;
+use futures::FutureExt;
+use futures::StreamExt;
 use sync::Mutex;
 pub use sys::run_gpu_device;
 pub use sys::Options;
@@ -87,15 +89,21 @@ struct GpuBackend {
     state: Option<Rc<RefCell<gpu::Frontend>>>,
     fence_state: Arc<Mutex<gpu::FenceState>>,
     queue_workers: [Option<WorkerState<Arc<Mutex<Queue>>, ()>>; MAX_QUEUE_NUM],
-    platform_workers: Rc<RefCell<Vec<TaskHandle<()>>>>,
+    // In the downstream, we may add platform workers after start_platform_workers returns.
+    platform_worker_tx: futures::channel::mpsc::UnboundedSender<TaskHandle<()>>,
+    platform_worker_rx: futures::channel::mpsc::UnboundedReceiver<TaskHandle<()>>,
     shmem_mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
 }
 
 impl GpuBackend {
     fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
-        for handle in self.platform_workers.borrow_mut().drain(..) {
-            let _ = self.ex.run_until(handle.cancel());
-        }
+        self.ex
+            .run_until(async {
+                while let Some(Some(handle)) = self.platform_worker_rx.next().now_or_never() {
+                    handle.cancel().await;
+                }
+            })
+            .context("stopping the non-queue workers for GPU")?;
         Ok(())
     }
 }

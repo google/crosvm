@@ -92,7 +92,9 @@ impl GpuBackend {
             let task = self
                 .ex
                 .spawn_local(run_resource_bridge(tube, state.clone()));
-            self.platform_workers.borrow_mut().push(task);
+            self.platform_worker_tx
+                .unbounded_send(task)
+                .context("sending the run_resource_bridge task")?;
         }
 
         // Start handling the display.
@@ -106,7 +108,9 @@ impl GpuBackend {
             })?;
 
         let task = self.ex.spawn_local(run_display(display, state));
-        self.platform_workers.borrow_mut().push(task);
+        self.platform_worker_tx
+            .unbounded_send(task)
+            .context("sending the run_display task")?;
 
         Ok(())
     }
@@ -248,6 +252,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         None,
     )));
 
+    let (platform_worker_tx, platform_worker_rx) = futures::channel::mpsc::unbounded();
     let backend = GpuBackend {
         ex: ex.clone(),
         gpu,
@@ -255,7 +260,8 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         state: None,
         fence_state: Default::default(),
         queue_workers: Default::default(),
-        platform_workers: Default::default(),
+        platform_worker_rx,
+        platform_worker_tx,
         shmem_mapper: Arc::new(Mutex::new(None)),
     };
 
