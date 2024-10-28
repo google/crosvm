@@ -75,12 +75,6 @@ pub fn set_vcpu_thread_scheduling(
     run_rt: bool,
     boost_uclamp: bool,
 ) -> anyhow::Result<()> {
-    if !vcpu_affinity.is_empty() {
-        if let Err(e) = set_cpu_affinity(vcpu_affinity) {
-            error!("Failed to set CPU affinity: {}", e);
-        }
-    }
-
     if boost_uclamp {
         let mut sched_attr = sched_attr::default();
         sched_attr.sched_flags = SCHED_FLAG_KEEP_ALL as u64
@@ -104,6 +98,15 @@ pub fn set_vcpu_thread_scheduling(
     if let Some(mut f) = vcpu_cgroup_tasks_file {
         f.write_all(base::gettid().to_string().as_bytes())
             .context("failed to write vcpu tid to cgroup tasks")?;
+    }
+
+    // vcpu_affinity needs to be set after moving to cgroup
+    // or it will be overriden by cgroup settings, vcpu_affinity
+    // here is bounded by the cpuset specified in the cgroup
+    if !vcpu_affinity.is_empty() {
+        if let Err(e) = set_cpu_affinity(vcpu_affinity) {
+            error!("Failed to set CPU affinity: {}", e);
+        }
     }
 
     if run_rt {
