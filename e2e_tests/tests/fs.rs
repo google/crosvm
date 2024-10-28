@@ -297,11 +297,11 @@ pub fn create_ugid_map_config(
 /// Tests file copy with disabled sandbox
 ///
 /// 1. Create `original.txt` on a temporal directory.
-/// 3: Setup ugid_map for vhost-user-fs backend
-/// 2. Start a VM with a virtiofs device for the temporal directory.
-/// 3. Copy `original.txt` to `new.txt` in the guest.
-/// 4. Check that `new.txt` is created in the host.
-/// 5: Verify the UID/GID of the files both in the guest and the host.
+/// 2. Setup ugid_map for vhost-user-fs backend
+/// 3. Start a VM with a virtiofs device for the temporal directory.
+/// 4. Copy `original.txt` to `new.txt` in the guest.
+/// 5. Check that `new.txt` is created in the host.
+/// 6. Verify the UID/GID of the files both in the guest and the host.
 #[test]
 fn vhost_user_fs_without_sandbox_and_pivot_root() {
     let socket = NamedTempFile::new().unwrap();
