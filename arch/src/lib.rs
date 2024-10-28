@@ -896,7 +896,7 @@ pub fn generate_virtio_mmio_bus(
 }
 
 // Generate pci topology starting from parent bus
-pub fn generate_pci_topology(
+fn generate_pci_topology(
     parent_bus: Arc<Mutex<PciBus>>,
     resources: &mut SystemAllocator,
     io_ranges: &mut BTreeMap<usize, Vec<BarRange>>,
