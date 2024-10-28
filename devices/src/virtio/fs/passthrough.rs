@@ -2121,10 +2121,8 @@ impl FileSystem for PassthroughFs {
     type DirIter = ReadDir<Box<[u8]>>;
 
     fn init(&self, capable: FsOptions) -> io::Result<FsOptions> {
-        let mut root_str_with_null: Vec<u8> = self.root_dir.clone().into_bytes();
-        root_str_with_null.push(0u8);
-        // SAFETY: this is a nul-terminated string without interior nul bytes.
-        let root = unsafe { CStr::from_bytes_with_nul_unchecked(&root_str_with_null) };
+        let root = CString::new(self.root_dir.clone())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
         let flags = libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
         // SAFETY: this doesn't modify any memory and we check the return value.
