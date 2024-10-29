@@ -356,6 +356,8 @@ pub enum VcpuFeature {
     PmuV3,
     /// Starts the VCPU in a power-off state.
     PowerOff,
+    /// Scalable Vector Extension support
+    SVE,
 }
 
 #[cfg(test)]

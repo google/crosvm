@@ -82,6 +82,7 @@ pub mod aarch64 {
         0xb5,
         kvm_arm_counter_offset
     );
+    ioctl_iow_nr!(KVM_ARM_VCPU_FINALIZE, KVMIO, 0xc2, libc::c_int);
 
     #[cfg(target_os = "android")]
     ioctl_iowr_nr!(KVM_PVIOMMU_SET_CONFIG, KVMIO, 0x1, kvm_vfio_iommu_config);

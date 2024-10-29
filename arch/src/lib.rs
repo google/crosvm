@@ -173,6 +173,15 @@ impl FromIterator<usize> for CpuSet {
     }
 }
 
+/// The SVE config for Vcpus.
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct SveConfig {
+    /// Use SVE
+    pub enable: bool,
+}
+
 fn parse_cpu_range(s: &str, cpuset: &mut Vec<usize>) -> Result<(), String> {
     fn parse_cpu(s: &str) -> Result<usize, String> {
         s.parse().map_err(|_| {
@@ -387,6 +396,8 @@ pub struct VmComponents {
     pub rt_cpus: CpuSet,
     #[cfg(target_arch = "x86_64")]
     pub smbios: SmbiosOptions,
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    pub sve_config: SveConfig,
     pub swiotlb: Option<u64>,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub vcpu_count: usize,

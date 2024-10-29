@@ -17,6 +17,8 @@ use arch::FdtPosition;
 use arch::Pstore;
 #[cfg(target_arch = "x86_64")]
 use arch::SmbiosOptions;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use arch::SveConfig;
 use arch::VcpuAffinity;
 use base::debug;
 use base::pagesize;
@@ -144,6 +146,9 @@ pub struct CpuOptions {
     /// Vector of CPU ids to be grouped into the same freq domain.
     #[serde(default)]
     pub freq_domains: Vec<CpuSet>,
+    /// Scalable Vector Extension.
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    pub sve: Option<SveConfig>,
 }
 
 /// Device tree overlay configuration.
@@ -890,6 +895,8 @@ pub struct Config {
     pub sound: Option<PathBuf>,
     pub stub_pci_devices: Vec<StubPciParameters>,
     pub suspended: bool,
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    pub sve: Option<SveConfig>,
     pub swap_dir: Option<PathBuf>,
     pub swiotlb: Option<u64>,
     #[cfg(target_os = "android")]
@@ -1114,6 +1121,8 @@ impl Default for Config {
             sound: None,
             stub_pci_devices: Vec::new(),
             suspended: false,
+            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            sve: None,
             swap_dir: None,
             swiotlb: None,
             #[cfg(target_os = "android")]

@@ -19,6 +19,7 @@ use arch::DtbOverlay;
 use arch::FdtPosition;
 use arch::GetSerialCmdlineError;
 use arch::RunnableLinuxVm;
+use arch::SveConfig;
 use arch::VcpuAffinity;
 use arch::VmComponents;
 use arch::VmImage;
@@ -576,8 +577,9 @@ impl arch::LinuxArch for AArch64 {
 
         // Initialize Vcpus after all Vcpu objects have been created.
         for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
-            vcpu.init(&Self::vcpu_features(vcpu_id, use_pmu, components.boot_cpu))
-                .map_err(Error::VcpuInit)?;
+            let features =
+                &Self::vcpu_features(vcpu_id, use_pmu, components.boot_cpu, components.sve_config);
+            vcpu.init(features).map_err(Error::VcpuInit)?;
         }
 
         irq_chip.finalize().map_err(Error::FinalizeIrqChip)?;
@@ -1306,7 +1308,12 @@ impl AArch64 {
     ///
     /// * `vcpu_id` - The VM's index for `vcpu`.
     /// * `use_pmu` - Should `vcpu` be configured to use the Performance Monitor Unit.
-    fn vcpu_features(vcpu_id: usize, use_pmu: bool, boot_cpu: usize) -> Vec<VcpuFeature> {
+    fn vcpu_features(
+        vcpu_id: usize,
+        use_pmu: bool,
+        boot_cpu: usize,
+        sve: SveConfig,
+    ) -> Vec<VcpuFeature> {
         let mut features = vec![VcpuFeature::PsciV0_2];
         if use_pmu {
             features.push(VcpuFeature::PmuV3);
@@ -1314,6 +1321,9 @@ impl AArch64 {
         // Non-boot cpus are powered off initially
         if vcpu_id != boot_cpu {
             features.push(VcpuFeature::PowerOff);
+        }
+        if sve.enable {
+            features.push(VcpuFeature::SVE);
         }
 
         features
