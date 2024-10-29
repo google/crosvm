@@ -83,6 +83,7 @@ impl QcowRawFile {
             };
             buffer.write_all(&val.to_be_bytes())?;
         }
+        buffer.flush()?;
         Ok(())
     }
 
@@ -107,6 +108,7 @@ impl QcowRawFile {
         for count in table {
             buffer.write_all(&count.to_be_bytes())?;
         }
+        buffer.flush()?;
         Ok(())
     }
 
