@@ -1307,7 +1307,10 @@ pub fn create_pmem_device(
                 Alloc::PmemDevice(index),
                 format!("pmem_disk_image_{}", index),
                 AllocOptions::new()
-                .top_down(true)
+                // Allocate from the bottom up rather than top down to avoid exceeding PHYSMEM_END
+                // with kaslr.
+                // TODO: b/375506171: Find a proper fix.
+                .top_down(false)
                 .prefetchable(true)
                 // Linux kernel requires pmem namespaces to be 128 MiB aligned.
                 // cf. https://github.com/pmem/ndctl/issues/76
