@@ -5,10 +5,12 @@
 //! Loader for bzImage-format Linux kernels as described in
 //! <https://www.kernel.org/doc/Documentation/x86/boot.txt>
 
+use std::cmp::Ordering;
 use std::io;
 use std::mem::offset_of;
 
 use base::debug;
+use base::FileGetLen;
 use base::FileReadWriteAtVolatile;
 use base::VolatileSlice;
 use remain::sorted;
@@ -31,6 +33,8 @@ pub enum Error {
     BadSignature,
     #[error("entry point out of range")]
     EntryPointOutOfRange,
+    #[error("unable to get kernel file size: {0}")]
+    GetFileLen(io::Error),
     #[error("guest memory error {0}")]
     GuestMemoryError(GuestMemoryError),
     #[error("invalid setup_header_end value {0}")]
@@ -62,7 +66,7 @@ pub fn load_bzimage<F>(
     kernel_image: &mut F,
 ) -> Result<(boot_params, u64, GuestAddress, CpuMode)>
 where
-    F: FileReadWriteAtVolatile,
+    F: FileReadWriteAtVolatile + FileGetLen,
 {
     let mut params = boot_params::default();
 
@@ -120,9 +124,29 @@ where
         .checked_mul(16)
         .ok_or(Error::InvalidSysSize(params.hdr.syssize))?;
 
+    let file_size = kernel_image.get_len().map_err(Error::GetFileLen)?;
+    let load_size = file_size
+        .checked_sub(kernel_offset)
+        .and_then(|n| usize::try_from(n).ok())
+        .ok_or(Error::InvalidSetupSects(params.hdr.setup_sects))?;
+
+    match kernel_size.cmp(&load_size) {
+        Ordering::Greater => {
+            // `syssize` from header was larger than the actual file.
+            return Err(Error::InvalidSysSize(params.hdr.syssize));
+        }
+        Ordering::Less => {
+            debug!(
+                "loading {} extra bytes appended to bzImage",
+                load_size - kernel_size
+            );
+        }
+        Ordering::Equal => {}
+    }
+
     // Load the whole kernel image to kernel_start
     let guest_slice = guest_mem
-        .get_slice_at_addr(kernel_start, kernel_size)
+        .get_slice_at_addr(kernel_start, load_size)
         .map_err(Error::GuestMemoryError)?;
     kernel_image
         .read_exact_at_volatile(guest_slice, kernel_offset)
@@ -140,7 +164,7 @@ where
 
     Ok((
         params,
-        kernel_start.offset() + kernel_size as u64,
+        kernel_start.offset() + load_size as u64,
         bzimage_entry,
         cpu_mode,
     ))
