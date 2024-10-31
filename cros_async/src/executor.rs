@@ -142,7 +142,6 @@ impl<'de> Deserialize<'de> for ExecutorKind {
     where
         D: serde::Deserializer<'de>,
     {
-        base::error!("ExecutorKind::deserialize");
         let string = String::deserialize(deserializer)?;
         ExecutorKind::from_arg_value(&string).map_err(serde::de::Error::custom)
     }
