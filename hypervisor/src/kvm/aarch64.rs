@@ -389,7 +389,7 @@ impl KvmVcpu {
                 VcpuFeature::PsciV0_2 => KVM_ARM_VCPU_PSCI_0_2,
                 VcpuFeature::PmuV3 => KVM_ARM_VCPU_PMU_V3,
                 VcpuFeature::PowerOff => KVM_ARM_VCPU_POWER_OFF,
-                VcpuFeature::SVE => {
+                VcpuFeature::Sve => {
                     if !check_extension(KVM_CAP_ARM_SVE) {
                         return Err(Error::new(ENOTSUP));
                     }

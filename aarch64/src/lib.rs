@@ -1323,7 +1323,7 @@ impl AArch64 {
             features.push(VcpuFeature::PowerOff);
         }
         if sve.enable {
-            features.push(VcpuFeature::SVE);
+            features.push(VcpuFeature::Sve);
         }
 
         features
