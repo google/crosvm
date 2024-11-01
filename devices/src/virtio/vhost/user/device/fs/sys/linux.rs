@@ -14,7 +14,6 @@ use base::RawDescriptor;
 use cros_async::Executor;
 use jail::create_base_minijail;
 use jail::create_base_minijail_without_pivot_root;
-use jail::set_embedded_bpf_program;
 use minijail::Minijail;
 
 use crate::virtio::vhost::user::device::fs::FsBackend;
@@ -85,7 +84,7 @@ fn jail_and_fork(
         // vvu locks around 512k memory. Just give 1M.
         j.set_rlimit(libc::RLIMIT_MEMLOCK as i32, 1 << 20, 1 << 20)?;
         #[cfg(not(feature = "seccomp_trace"))]
-        set_embedded_bpf_program(&mut j, "fs_device_vhost_user")?;
+        jail::set_embedded_bpf_program(&mut j, "fs_device_vhost_user")?;
         j.use_seccomp_filter();
         j
     };
