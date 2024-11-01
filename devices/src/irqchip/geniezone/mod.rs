@@ -55,7 +55,7 @@ const AARCH64_GIC_DIST_SIZE: u64 = 0x10000;
 
 // These constants indicate the placement of the GIC registers in the physical
 // address space.
-const AARCH64_GIC_DIST_BASE: u64 = AARCH64_AXI_BASE - AARCH64_GIC_DIST_SIZE;
+const AARCH64_GIC_DIST_BASE: u64 = 0x40000000 - AARCH64_GIC_DIST_SIZE;
 const AARCH64_GIC_REDIST_SIZE: u64 = 0x20000;
 
 // This is the minimum number of SPI interrupts aligned to 32 + 32 for the
@@ -63,8 +63,6 @@ const AARCH64_GIC_REDIST_SIZE: u64 = 0x20000;
 // pub const AARCH64_GIC_NR_IRQS: u32 = 64;
 // Number of SPIs (32), which is the NR_IRQS (64) minus the number of PPIs (16) and GSIs (16)
 pub const AARCH64_GIC_NR_SPIS: u32 = 32;
-
-const AARCH64_AXI_BASE: u64 = 0x40000000;
 
 impl GeniezoneKernelIrqChip {
     /// Construct a new GzvmKernelIrqchip.
