@@ -1251,8 +1251,8 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         any(target_os = "android", target_os = "linux")
     ))]
     if !cfg.cpu_frequencies_khz.is_empty() {
-        if !cfg.virt_cpufreq {
-            return Err("`cpu-frequencies` requires `virt-cpufreq`".to_string());
+        if !cfg.virt_cpufreq_v2 {
+            return Err("`cpu-frequencies` requires `virt-cpufreq-upstream`".to_string());
         }
 
         if cfg.host_cpu_topology {
