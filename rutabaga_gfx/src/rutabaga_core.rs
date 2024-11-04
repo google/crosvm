@@ -500,6 +500,17 @@ impl Rutabaga {
         serde_json::to_writer(w, &snapshot).map_err(|e| RutabagaError::IoError(e.into()))
     }
 
+    fn destroy_objects(&mut self) -> RutabagaResult<()> {
+        let resource_ids: Vec<_> = self.resources.keys().cloned().collect();
+        resource_ids
+            .into_iter()
+            .try_for_each(|resource_id| self.unref_resource(resource_id))?;
+
+        self.contexts.clear();
+
+        Ok(())
+    }
+
     /// Restore Rutabaga to a previously snapshot'd state.
     ///
     /// Snapshotting on one host machine and then restoring on another ("host migration") might
@@ -522,6 +533,8 @@ impl Rutabaga {
     /// approach would scale to support 3D modes, which have others problems that require VMM help,
     /// like resource handles.
     pub fn restore(&mut self, r: &mut impl Read, directory: &str) -> RutabagaResult<()> {
+        self.destroy_objects()?;
+
         let component = self
             .components
             .get_mut(&self.default_component)
