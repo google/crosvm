@@ -467,6 +467,7 @@ impl KumquatGpuConnection {
                     self.stream.write(KumquatGpuProtocolWrite::Cmd(resp))?;
                 }
                 KumquatGpuProtocol::SnapshotRestore => {
+                    kumquat_gpu.snapshot_buffer.set_position(0);
                     kumquat_gpu
                         .rutabaga
                         .restore(&mut kumquat_gpu.snapshot_buffer, SNAPSHOT_DIR)?;
