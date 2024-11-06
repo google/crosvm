@@ -180,3 +180,60 @@ crosvm run \
   --input trackpad[path=/tmp/trackpad-socket,width=1920,height=1080,name=mytouch1]
   ...
 ```
+
+### Custom
+
+Add a custom virtio-input device.
+
+- `path` (required): path to event source socket
+- `config_path` (required): path to file configuring device
+
+```sh
+crosvm run \
+  --input custom[path=/tmp/keyboard-socket,config-path=/tmp/custom-keyboard-config.json] \
+  ...
+```
+
+This config_path requires a JSON-formatted configuration file. "events" configures the supported
+events. "name" defines the customized device name, "serial" defines customized serial name. The
+properties and axis info are yet to be supported.
+
+Here is an example of event config file:
+
+```
+{
+  "name": "Virtio Custom",
+  "serial_name": "virtio-custom",
+  "events": [
+    {
+      "event_type": "EV_KEY",
+      "event_type_code": 1,
+      "supported_events": {
+        "KEY_ESC": 1,
+        "KEY_1": 2,
+        "KEY_2": 3,
+        "KEY_A": 30,
+        "KEY_B": 48,
+        "KEY_SPACE": 57
+      }
+    },
+    {
+      "event_type": "EV_REP",
+      "event_type_code": 20,
+      "supported_events": {
+        "REP_DELAY": 0,
+        "REP_PERIOD": 1
+      }
+    },
+    {
+      "event_type": "EV_LED",
+      "event_type_code": 17,
+      "supported_events": {
+        "LED_NUML": 0,
+        "LED_CAPSL": 1,
+        "LED_SCROLLL": 2
+      }
+    }
+  ]
+}
+```

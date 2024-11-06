@@ -8,8 +8,10 @@ mod evdev;
 mod event_source;
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::io::Read;
 use std::io::Write;
+use std::path::PathBuf;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -17,6 +19,7 @@ use anyhow::Context;
 use base::custom_serde::deserialize_seq_to_arr;
 use base::custom_serde::serialize_arr;
 use base::error;
+use base::info;
 use base::warn;
 use base::AsRawDescriptor;
 use base::Event;
@@ -88,6 +91,9 @@ pub enum InputError {
     // Invalid UTF-8 string
     #[error("invalid UTF-8 string: {0}")]
     InvalidString(std::string::FromUtf8Error),
+    // Failed to parse event config file
+    #[error("failed to parse event config file: {0}")]
+    ParseEventConfigError(String),
     // Error while reading from virtqueue
     #[error("failed to read from virtqueue: {0}")]
     ReadQueue(std::io::Error),
@@ -193,7 +199,7 @@ impl virtio_input_config {
     }
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[repr(C)]
 pub struct virtio_input_bitmap {
     #[serde(
@@ -834,4 +840,191 @@ where
         source: Some(SocketEventSource::new(source)),
         virtio_features,
     })
+}
+
+/// Creates a new custom virtio input device
+pub fn new_custom<T>(
+    idx: u32,
+    source: T,
+    input_config_path: PathBuf,
+    virtio_features: u64,
+) -> Result<Input<SocketEventSource<T>>>
+where
+    T: Read + Write + AsRawDescriptor + Send + 'static,
+{
+    let config = parse_input_config_file(&input_config_path, idx)?;
+
+    Ok(Input {
+        worker_thread: None,
+        config: defaults::new_custom_config(
+            idx,
+            &config.name,
+            &config.serial_name,
+            config.supported_events,
+        ),
+        source: Some(SocketEventSource::new(source)),
+        virtio_features,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+struct InputConfigFile {
+    name: Option<String>,
+    serial_name: Option<String>,
+    events: Vec<InputConfigFileEvent>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InputConfigFileEvent {
+    event_type: String,
+    event_type_code: u16,
+    supported_events: BTreeMap<String, u16>,
+}
+
+struct CustomInputConfig {
+    name: String,
+    serial_name: String,
+    supported_events: BTreeMap<u16, virtio_input_bitmap>,
+}
+
+// Read and parse input event config file to input device bitmaps. If parsing is successful, this
+// function returns a CustomInputConfig. The field in CustomInputConfig are corresponding to the
+// same field in struct VirtioInputConfig.
+fn parse_input_config_file(config_path: &PathBuf, device_idx: u32) -> Result<CustomInputConfig> {
+    let mut supported_events: BTreeMap<u16, virtio_input_bitmap> = BTreeMap::new();
+
+    // Read the json file to String
+    let contents = fs::read_to_string(config_path).map_err(|e| {
+        InputError::ParseEventConfigError(format!(
+            "Failed to read input event config from {}: {}",
+            config_path.display(),
+            e
+        ))
+    })?;
+
+    // Parse the string into a JSON object
+    let config_file: InputConfigFile = serde_json::from_str(contents.as_str()).map_err(|e| {
+        InputError::ParseEventConfigError(format!("Failed to parse json string: {}", e))
+    })?;
+    // Parse the supported events
+    for event in config_file.events {
+        let mut bit_map_idx: Vec<u16> = Vec::new();
+        for (event_name, event_code) in event.supported_events {
+            if event_code >= 1024 {
+                return Err(InputError::ParseEventConfigError(format!(
+                    "The {} config file's {} event has event_code exceeds bounds(>=1024)",
+                    config_path.display(),
+                    event_name
+                )));
+            }
+            bit_map_idx.push(event_code);
+        }
+        let bitmap = virtio_input_bitmap::from_bits(&bit_map_idx);
+        if supported_events
+            .insert(event.event_type_code, bitmap)
+            .is_some()
+        {
+            return Err(InputError::ParseEventConfigError(format!(
+                "The {} event has been repeatedly defined by {}",
+                event.event_type,
+                config_path.display()
+            )));
+        }
+        info!(
+            "{} event is defined by {} for input device id {}",
+            event.event_type,
+            config_path.display(),
+            device_idx
+        );
+    }
+
+    let name = config_file
+        .name
+        .unwrap_or_else(|| "Crosvm Virtio Custom".to_string());
+    let serial_name = config_file
+        .serial_name
+        .unwrap_or_else(|| "virtio-custom".to_string());
+
+    Ok(CustomInputConfig {
+        name,
+        serial_name,
+        supported_events,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::*;
+    #[test]
+    fn parse_keyboard_like_input_config_file_success() {
+        pub const EV_KEY: u16 = 0x01;
+        pub const EV_LED: u16 = 0x11;
+        pub const EV_REP: u16 = 0x14;
+        // Create a sample JSON file for testing
+        let temp_file = TempDir::new().unwrap();
+        let path = temp_file.path().join("test.json");
+        let test_json = r#"
+        {
+          "name": "Virtio Custom Test",
+          "serial_name": "virtio-custom-test",
+          "events": [
+            {
+              "event_type": "EV_KEY",
+              "event_type_code": 1,
+              "supported_events": {
+                "KEY_ESC": 1,
+                "KEY_1": 2,
+                "KEY_2": 3,
+                "KEY_A": 30,
+                "KEY_B": 48,
+                "KEY_SPACE": 57
+              }
+            },
+            {
+              "event_type": "EV_REP",
+              "event_type_code": 20,
+              "supported_events": {
+                "REP_DELAY": 0,
+                "REP_PERIOD": 1
+            }
+            },
+            {
+              "event_type": "EV_LED",
+              "event_type_code": 17,
+              "supported_events": {
+                "LED_NUML": 0,
+                "LED_CAPSL": 1,
+                "LED_SCROLLL": 2
+              }
+            }
+          ]
+        }"#;
+        fs::write(&path, test_json).expect("Unable to write test file");
+
+        // Call the function and assert the result
+        let result = parse_input_config_file(&path, 0);
+        assert!(result.is_ok());
+
+        let supported_event = result.unwrap().supported_events;
+        // EV_KEY type
+        let ev_key_events = supported_event.get(&EV_KEY);
+        assert!(ev_key_events.is_some());
+        let ev_key_bitmap = ev_key_events.unwrap();
+        let expected_ev_key_bitmap = &virtio_input_bitmap::from_bits(&[1, 2, 3, 30, 48, 57]);
+        assert_eq!(ev_key_bitmap, expected_ev_key_bitmap);
+        // EV_REP type
+        let ev_rep_events = supported_event.get(&EV_REP);
+        assert!(ev_rep_events.is_some());
+        let ev_rep_bitmap = ev_rep_events.unwrap();
+        let expected_ev_rep_bitmap = &virtio_input_bitmap::from_bits(&[0, 1]);
+        assert_eq!(ev_rep_bitmap, expected_ev_rep_bitmap);
+        // EV_LED type
+        let ev_led_events = supported_event.get(&EV_LED);
+        assert!(ev_led_events.is_some());
+        let ev_led_bitmap = ev_led_events.unwrap();
+        let expected_ev_led_bitmap = &virtio_input_bitmap::from_bits(&[0, 1, 2]);
+        assert_eq!(ev_led_bitmap, expected_ev_led_bitmap);
+    }
 }

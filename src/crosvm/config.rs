@@ -379,6 +379,11 @@ pub enum InputDeviceOption {
         height: Option<u32>,
         name: Option<String>,
     },
+    #[serde(rename_all = "kebab-case")]
+    Custom {
+        path: PathBuf,
+        config_path: PathBuf,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, FromKeyValues)]

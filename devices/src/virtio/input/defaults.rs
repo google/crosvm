@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 
+use base::warn;
 use linux_input_sys::constants::*;
 
 use super::virtio_input_absinfo;
@@ -142,6 +143,39 @@ pub fn new_multi_touch_config(
         virtio_input_bitmap::from_bits(&[INPUT_PROP_DIRECT]),
         default_multitouchscreen_events(),
         default_multitouchscreen_absinfo(width, height, 10, 10),
+    )
+}
+
+/// Initializes a VirtioInputConfig object for a custom virtio-input device.
+///
+/// # Arguments
+///
+/// * `idx` - input device index
+/// * `name` - input device name
+/// * `serial_name` - input device serial name
+/// * `supported_events` - Event configuration provided by a configuration file
+pub fn new_custom_config(
+    idx: u32,
+    name: &str,
+    serial_name: &str,
+    supported_events: BTreeMap<u16, virtio_input_bitmap>,
+) -> VirtioInputConfig {
+    let name: String = format!("{name} {idx}");
+    let serial_name = format!("{serial_name}-{idx}");
+    if name.as_bytes().len() > 128 {
+        warn!("name: {name} exceeds 128 bytes, will be truncated.");
+    }
+    if serial_name.as_bytes().len() > 128 {
+        warn!("serial_name: {serial_name} exceeds 128 bytes, will be truncated.");
+    }
+
+    VirtioInputConfig::new(
+        virtio_input_device_ids::new(0, 0, 0, 0),
+        name,
+        serial_name,
+        virtio_input_bitmap::new([0u8; 128]),
+        supported_events,
+        BTreeMap::new(),
     )
 }
 

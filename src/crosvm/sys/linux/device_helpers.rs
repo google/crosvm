@@ -804,6 +804,31 @@ pub fn create_vinput_device(
     })
 }
 
+pub fn create_custom_device<T: IntoUnixStream>(
+    protection_type: ProtectionType,
+    jail_config: &Option<JailConfig>,
+    custom_device_socket: T,
+    idx: u32,
+    input_config_path: PathBuf,
+) -> DeviceResult {
+    let socket = custom_device_socket
+        .into_unix_stream()
+        .context("failed configuring custom virtio input device")?;
+
+    let dev = virtio::input::new_custom(
+        idx,
+        socket,
+        input_config_path,
+        virtio::base_features(protection_type),
+    )
+    .context("failed to set up input device")?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: simple_jail(jail_config, "input_device")?,
+    })
+}
+
 #[cfg(feature = "balloon")]
 pub fn create_balloon_device(
     protection_type: ProtectionType,
