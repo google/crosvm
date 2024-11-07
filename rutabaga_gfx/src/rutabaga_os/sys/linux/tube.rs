@@ -157,3 +157,9 @@ impl Listener {
         Ok(Tube { socket: descriptor })
     }
 }
+
+impl AsBorrowedDescriptor for Listener {
+    fn as_borrowed_descriptor(&self) -> &OwnedDescriptor {
+        &self.socket
+    }
+}
