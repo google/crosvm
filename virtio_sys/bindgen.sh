@@ -59,7 +59,7 @@ VIRTIO_IDS_EXTRAS="
 // TODO(b/236144983): Fix this id when an official virtio-id is assigned to this device.
 pub const VIRTIO_ID_PVCLOCK: u32 = 61;
 // TODO: Remove this once the ID is included in the Linux headers.
-pub const VIRTIO_ID_MEDIA: u32 = 49;
+pub const VIRTIO_ID_MEDIA: u32 = 48;
 "
 
 bindgen_generate \
