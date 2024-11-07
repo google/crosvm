@@ -36,6 +36,7 @@ use crate::rutabaga_os::ReadPipe;
 use crate::rutabaga_os::Tube;
 use crate::rutabaga_os::TubeType;
 use crate::rutabaga_os::WaitContext;
+use crate::rutabaga_os::WaitTimeout;
 use crate::rutabaga_os::WritePipe;
 use crate::rutabaga_os::DEFAULT_RAW_DESCRIPTOR;
 use crate::rutabaga_utils::*;
@@ -295,7 +296,7 @@ impl CrossDomainWorker {
         thread_resample_evt: &Event,
         receive_buf: &mut [u8],
     ) -> RutabagaResult<()> {
-        let events = self.wait_ctx.wait(None)?;
+        let events = self.wait_ctx.wait(WaitTimeout::NoTimeout)?;
 
         // The worker thread must:
         //

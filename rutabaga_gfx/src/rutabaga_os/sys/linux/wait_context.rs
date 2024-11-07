@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::time::Duration;
-
 use nix::sys::epoll::Epoll;
 use nix::sys::epoll::EpollCreateFlags;
 use nix::sys::epoll::EpollEvent;
@@ -12,6 +10,7 @@ use nix::sys::epoll::EpollTimeout;
 
 use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::WaitEvent;
+use crate::rutabaga_os::WaitTimeout;
 use crate::rutabaga_os::WAIT_CONTEXT_MAX;
 use crate::rutabaga_utils::RutabagaResult;
 
@@ -33,20 +32,17 @@ impl WaitContext {
         Ok(())
     }
 
-    pub fn wait(&mut self, duration_opt: Option<Duration>) -> RutabagaResult<Vec<WaitEvent>> {
+    pub fn wait(&mut self, timeout: WaitTimeout) -> RutabagaResult<Vec<WaitEvent>> {
         let mut events = [EpollEvent::empty(); WAIT_CONTEXT_MAX];
 
-        let epoll_timeout = duration_opt
-            .map(|duration| {
-                if duration.is_zero() {
-                    EpollTimeout::ZERO
-                } else {
-                    // We shouldn't need timeouts greater than 60s.
-                    let timeout: u16 = duration.as_millis().try_into().unwrap_or(u16::MAX);
-                    EpollTimeout::from(timeout)
-                }
-            })
-            .unwrap_or(EpollTimeout::NONE);
+        let epoll_timeout = match timeout {
+            WaitTimeout::Finite(duration) => {
+                // We shouldn't need timeouts greater than 60s.
+                let timeout: u16 = duration.as_millis().try_into().unwrap_or(u16::MAX);
+                EpollTimeout::from(timeout)
+            }
+            WaitTimeout::NoTimeout => EpollTimeout::NONE,
+        };
 
         let count = loop {
             match self.epoll_ctx.wait(&mut events, epoll_timeout) {
