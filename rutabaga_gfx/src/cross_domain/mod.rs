@@ -56,16 +56,15 @@ const CROSS_DOMAIN_DEFAULT_BUFFER_SIZE: usize = 4096;
 const CROSS_DOMAIN_MAX_SEND_RECV_SIZE: usize =
     CROSS_DOMAIN_DEFAULT_BUFFER_SIZE - size_of::<CrossDomainSendReceive>();
 
-pub(crate) enum CrossDomainItem {
+enum CrossDomainItem {
     ImageRequirements(ImageMemoryRequirements),
     WaylandKeymap(OwnedDescriptor),
     WaylandReadPipe(ReadPipe),
     WaylandWritePipe(WritePipe),
 }
 
-pub(crate) enum CrossDomainJob {
+enum CrossDomainJob {
     HandleFence(RutabagaFence),
-    #[allow(dead_code)] // `AddReadPipe` is never constructed on Windows.
     AddReadPipe(u32),
     Finish,
 }
@@ -75,17 +74,16 @@ enum RingWrite<'a, T> {
     WriteFromPipe(CrossDomainReadWrite, &'a mut ReadPipe, bool),
 }
 
-pub(crate) type CrossDomainResources = Arc<Mutex<Map<u32, CrossDomainResource>>>;
+type CrossDomainResources = Arc<Mutex<Map<u32, CrossDomainResource>>>;
 type CrossDomainJobs = Mutex<Option<VecDeque<CrossDomainJob>>>;
-pub(crate) type CrossDomainItemState = Arc<Mutex<CrossDomainItems>>;
+type CrossDomainItemState = Arc<Mutex<CrossDomainItems>>;
 
-pub(crate) struct CrossDomainResource {
-    #[allow(dead_code)] // `handle` is never used on Windows.
-    pub handle: Option<Arc<RutabagaHandle>>,
-    pub backing_iovecs: Option<Vec<RutabagaIovec>>,
+struct CrossDomainResource {
+    handle: Option<Arc<RutabagaHandle>>,
+    backing_iovecs: Option<Vec<RutabagaIovec>>,
 }
 
-pub(crate) struct CrossDomainItems {
+struct CrossDomainItems {
     descriptor_id: u32,
     requirements_blob_id: u32,
     read_pipe_id: u32,
@@ -104,17 +102,16 @@ struct CrossDomainState {
 struct CrossDomainWorker {
     wait_ctx: WaitContext,
     state: Arc<CrossDomainState>,
-    pub(crate) item_state: CrossDomainItemState,
+    item_state: CrossDomainItemState,
     fence_handler: RutabagaFenceHandler,
 }
 
-pub(crate) struct CrossDomainContext {
-    #[allow(dead_code)] // `channels` is unused on Windows.
-    pub(crate) channels: Option<Vec<RutabagaChannel>>,
+struct CrossDomainContext {
+    channels: Option<Vec<RutabagaChannel>>,
     gralloc: Arc<Mutex<RutabagaGralloc>>,
     state: Option<Arc<CrossDomainState>>,
-    pub(crate) context_resources: CrossDomainResources,
-    pub(crate) item_state: CrossDomainItemState,
+    context_resources: CrossDomainResources,
+    item_state: CrossDomainItemState,
     fence_handler: RutabagaFenceHandler,
     worker_thread: Option<thread::JoinHandle<RutabagaResult<()>>>,
     resample_evt: Option<Event>,
@@ -486,7 +483,7 @@ impl CrossDomain {
 }
 
 impl CrossDomainContext {
-    pub fn get_connection(&mut self, cmd_init: &CrossDomainInit) -> RutabagaResult<Tube> {
+    fn get_connection(&mut self, cmd_init: &CrossDomainInit) -> RutabagaResult<Tube> {
         let channels = self
             .channels
             .take()
@@ -622,7 +619,7 @@ impl CrossDomainContext {
         }
     }
 
-    pub fn send(
+    fn send(
         &mut self,
         cmd_send: &CrossDomainSendReceive,
         opaque_data: &[u8],
