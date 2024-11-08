@@ -101,3 +101,11 @@ cargo binstall --no-confirm mdbook-linkcheck --version "0.7.7"
 
 # Nextest is an improved test runner for cargo
 cargo binstall --no-confirm cargo-nextest --version "0.9.49"
+
+Red='\033[0;31m'
+Reset='\033[0m'
+# Check if submodules were initialized. If a submodule is not initialized, git
+# submodule status will be prefixed with `-`
+if git submodule status | grep '^-'; then
+    >&2 echo -e "${Red}ERROR${Reset}: Git modules were not initialized. Run 'git submodule update --init' to initialize them."
+fi
