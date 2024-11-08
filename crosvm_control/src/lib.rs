@@ -114,6 +114,9 @@ pub unsafe extern "C" fn crosvm_client_suspend_vm(socket_path: *const c_char) ->
 
 /// Resumes the crosvm instance whose control socket is listening on `socket_path`.
 ///
+/// Note: this function just resumes vcpus of the vm. If you need to perform a full resume, call
+/// crosvm_client_resume_vm_full.
+///
 /// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
@@ -126,6 +129,29 @@ pub unsafe extern "C" fn crosvm_client_resume_vm(socket_path: *const c_char) -> 
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             vms_request(&VmRequest::ResumeVcpus, socket_path).is_ok()
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// Resumes the crosvm instance whose control socket is listening on `socket_path`.
+///
+/// Note: unlike crosvm_client_resume_vm, this function resumes both vcpus and devices.
+///
+/// The function returns true on success or false if an error occurred.
+///
+/// # Safety
+///
+/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
+/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
+/// null pointers are passed.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_resume_vm_full(socket_path: *const c_char) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            vms_request(&VmRequest::ResumeVm, socket_path).is_ok()
         } else {
             false
         }
