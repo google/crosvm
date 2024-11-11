@@ -53,7 +53,9 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 use zerocopy::AsBytes;
+#[cfg(target_arch = "x86_64")]
 use zerocopy::FromBytes;
+#[cfg(target_arch = "x86_64")]
 use zerocopy::FromZeroes;
 
 #[cfg(target_arch = "x86_64")]
@@ -86,6 +88,7 @@ const VIRTIO_IOMMU_VIOT_NODE_VIRTIO_IOMMU_PCI: u8 = 3;
 
 #[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
+#[cfg(target_arch = "x86_64")]
 struct VirtioIommuViotHeader {
     node_count: u16,
     node_offset: u16,
@@ -94,6 +97,7 @@ struct VirtioIommuViotHeader {
 
 #[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
+#[cfg(target_arch = "x86_64")]
 struct VirtioIommuViotVirtioPciNode {
     type_: u8,
     reserved: [u8; 1],
@@ -105,6 +109,7 @@ struct VirtioIommuViotVirtioPciNode {
 
 #[derive(Copy, Clone, Debug, Default, FromZeroes, FromBytes, AsBytes)]
 #[repr(C, packed)]
+#[cfg(target_arch = "x86_64")]
 struct VirtioIommuViotPciRangeNode {
     type_: u8,
     reserved: [u8; 1],
