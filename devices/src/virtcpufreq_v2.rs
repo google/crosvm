@@ -71,7 +71,13 @@ pub struct VirtCpufreqV2 {
     vm_ctrl: Arc<Mutex<Tube>>,
     pcpu_min_cap: u32,
     requested_util: u32,
-    vcpu_count: usize,
+    /// The largest(or the last) pCPU index to be used by all the vCPUs. This index is used to
+    /// figure out the proper placement of the throttle workers which are placed on pCPUs right
+    /// after the last pCPU being used the vCPUs. Throttle workers require their own exclusive
+    /// pCPU allocation and this ensure that the workers are placed contiguously and makes it
+    /// easier for user to manage pCPU allocations when running multiple instances on a large
+    /// server.
+    largest_pcpu_idx: usize,
     shared_domain_vcpus: Vec<usize>,
 }
 
@@ -119,7 +125,7 @@ impl VirtCpufreqV2 {
         vcpu_domain_path: Option<PathBuf>,
         vcpu_domain: u32,
         vcpu_capacity: u32,
-        vcpu_count: usize,
+        largest_pcpu_idx: usize,
         vm_ctrl: Arc<Mutex<Tube>>,
         shared_domain_vcpus: Vec<usize>,
     ) -> Self {
@@ -180,7 +186,7 @@ impl VirtCpufreqV2 {
             vm_ctrl,
             pcpu_min_cap,
             requested_util: 0,
-            vcpu_count,
+            largest_pcpu_idx,
             shared_domain_vcpus,
         }
     }
@@ -297,7 +303,7 @@ impl BusDevice for VirtCpufreqV2 {
                 if self.worker.is_none() {
                     let vcpu_id = info.id;
                     let vm_ctrl = self.vm_ctrl.clone();
-                    let worker_cpu_affinity = self.pcpu as usize + self.vcpu_count;
+                    let worker_cpu_affinity = self.largest_pcpu_idx + self.vcpu_domain as usize + 1;
                     let shared_domain_vcpus = self.shared_domain_vcpus.clone();
 
                     self.worker = Some(WorkerThread::start(

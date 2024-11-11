@@ -730,28 +730,30 @@ impl arch::LinuxArch for AArch64 {
         #[cfg(any(target_os = "android", target_os = "linux"))]
         if !components.cpu_frequencies.is_empty() {
             let mut freq_domain_vcpus: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+            let mut vcpu_affinities: Vec<u32> = Vec::new();
             for vcpu in 0..vcpu_count {
                 let freq_domain = *components.vcpu_domains.get(&vcpu).unwrap_or(&(vcpu as u32));
                 freq_domain_vcpus.entry(freq_domain).or_default().push(vcpu);
-            }
-            for vcpu in 0..vcpu_count {
                 let vcpu_affinity = match components.vcpu_affinity.clone() {
                     Some(VcpuAffinity::Global(v)) => v,
                     Some(VcpuAffinity::PerVcpu(mut m)) => m.remove(&vcpu).unwrap_or_default(),
                     None => panic!("vcpu_affinity needs to be set for VirtCpufreq"),
                 };
-
+                vcpu_affinities.push(vcpu_affinity[0].try_into().unwrap());
+            }
+            let largest_vcpu_affinity_idx = *vcpu_affinities.iter().max().unwrap() as usize;
+            for (vcpu, vcpu_affinity) in vcpu_affinities.iter().enumerate() {
                 let mut virtfreq_size = AARCH64_VIRTFREQ_SIZE;
                 if components.virt_cpufreq_v2 {
                     let domain = *components.vcpu_domains.get(&vcpu).unwrap_or(&(vcpu as u32));
                     virtfreq_size = AARCH64_VIRTFREQ_V2_SIZE;
                     let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreqV2::new(
-                        vcpu_affinity[0].try_into().unwrap(),
+                        *vcpu_affinity,
                         components.cpu_frequencies.clone(),
                         components.vcpu_domain_paths.get(&vcpu).cloned(),
                         domain,
                         *components.normalized_cpu_capacities.get(&vcpu).unwrap(),
-                        vcpu_count,
+                        largest_vcpu_affinity_idx,
                         vcpufreq_shared_tube.clone(),
                         freq_domain_vcpus.get(&domain).unwrap().clone(),
                     )));
@@ -764,7 +766,7 @@ impl arch::LinuxArch for AArch64 {
                         .map_err(Error::RegisterVirtCpufreq)?;
                 } else {
                     let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreq::new(
-                        vcpu_affinity[0].try_into().unwrap(),
+                        *vcpu_affinity,
                         *components.normalized_cpu_capacities.get(&vcpu).unwrap(),
                         *components
                             .cpu_frequencies
