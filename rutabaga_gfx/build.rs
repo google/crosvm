@@ -94,6 +94,7 @@ fn build_and_probe_minigbm(out_dir: &Path) -> Result<()> {
         .env("MAKEFLAGS", make_flags)
         .env("VERBOSE", "1")
         .env("CROSS_COMPILE", get_cross_compile_prefix())
+        .env("PKG_CONFIG", "pkg-config")
         .arg(format!("OUT={}", out_dir.display()))
         .arg("CC_STATIC_LIBRARY(libminigbm.pie.a)")
         .current_dir(SOURCE_DIR)
