@@ -25,12 +25,18 @@ pub trait SizeExtension {
         expected_aspect_ratio: f32,
         should_adjust_width: bool,
     ) -> Self;
+    #[allow(dead_code)]
     fn get_largest_inner_rect_size(original_size: &Self, expected_aspect_ratio: f32) -> Self;
+    #[allow(dead_code)]
     fn scale(&self, ratio: f32) -> Self;
+    #[allow(dead_code)]
     fn transpose(&self) -> Self;
+    #[allow(dead_code)]
     fn shorter_edge(&self) -> i32;
     fn aspect_ratio(&self) -> f32;
+    #[allow(dead_code)]
     fn is_square(&self) -> bool;
+    #[allow(dead_code)]
     fn is_landscape(&self) -> bool;
 }
 

@@ -226,7 +226,7 @@ impl TestVmSys {
             "--kernel-log-file",
             hypervisor_log_str,
         ]);
-        command.args(&get_hypervisor_args());
+        command.args(get_hypervisor_args());
         command.args(cfg.extra_args);
 
         println!("Running command: {:?}", command);

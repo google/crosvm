@@ -279,6 +279,7 @@ pub(crate) trait BasicWindow {
     }
 
     /// Calls `RemovePropW()` internally.
+    #[allow(dead_code)]
     fn remove_property(&self, property: &str) -> Result<()> {
         // SAFETY:
         // Safe because the window object won't outlive the HWND, and failures are handled below.

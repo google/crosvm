@@ -228,16 +228,11 @@ impl AsyncPlaybackBufferStream for WinAudioRenderer {
                             self.device.guest_frame_rate,
                             self.device.incoming_buffer_size_in_frames,
                         )
-                        .map_err(|e| {
-                            match &e {
-                                RenderError::WinAudioError(win_audio_error) => {
-                                    log_playback_error_with_limit(win_audio_error.into())
-                                }
-                                _ => {
-                                    log_playback_error_with_limit((&WinAudioError::Unknown).into())
-                                }
+                        .inspect_err(|e| match &e {
+                            RenderError::WinAudioError(win_audio_error) => {
+                                log_playback_error_with_limit(win_audio_error.into())
                             }
-                            e
+                            _ => log_playback_error_with_limit((&WinAudioError::Unknown).into()),
                         })?;
                 }
             }

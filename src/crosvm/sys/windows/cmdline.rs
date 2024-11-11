@@ -37,6 +37,7 @@ pub struct RunMainCommand {
 /// Start a new metrics instance
 pub struct RunMetricsCommand {
     #[argh(option, arg_name = "TRANSPORT_TUBE_RD")]
+    #[allow(dead_code)]
     /// tube transporter descriptor used to bootstrap the metrics process.
     pub bootstrap: usize,
 }

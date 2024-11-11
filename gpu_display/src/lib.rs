@@ -262,21 +262,25 @@ trait GpuDisplaySurface {
     }
 
     /// Returns the type of the completed buffer.
+    #[allow(dead_code)]
     fn buffer_completion_type(&self) -> u32 {
         0
     }
 
     /// Draws the current buffer on the screen.
+    #[allow(dead_code)]
     fn draw_current_buffer(&mut self) {
         // no-op
     }
 
     /// Handles a compositor-specific client event.
+    #[allow(dead_code)]
     fn on_client_message(&mut self, _client_data: u64) {
         // no-op
     }
 
     /// Handles a compositor-specific shared memory completion event.
+    #[allow(dead_code)]
     fn on_shm_completion(&mut self, _shm_complete: u64) {
         // no-op
     }

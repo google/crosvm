@@ -20,13 +20,13 @@ struct FILE_ZERO_DATA_INFORMATION {
 }
 
 pub(crate) fn file_punch_hole(handle: &File, offset: u64, length: u64) -> io::Result<()> {
-    let large_offset = if offset > std::i64::MAX as u64 {
+    let large_offset = if offset > i64::MAX as u64 {
         return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
     } else {
         LargeInteger::new(offset as i64)
     };
 
-    if (offset + length) > std::i64::MAX as u64 {
+    if (offset + length) > i64::MAX as u64 {
         return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
     }
 

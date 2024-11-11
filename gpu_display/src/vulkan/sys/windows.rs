@@ -368,7 +368,7 @@ static WND_CLASS_REGISTRATION_SUCCESS: Mutex<bool> = Mutex::new(false);
 
 /// # Safety
 ///  - The passed in `worker` must not be destroyed before the created window is destroyed if the
-/// window creation succeeds.
+///    window creation succeeds.
 ///  - The WNDPROC must be called within the same thread that calls create_window.
 /// # Arguments
 /// * `worker` - we use the runtime borrow checker to make sure there is no unwanted borrowing to

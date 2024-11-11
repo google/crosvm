@@ -273,8 +273,8 @@ mod tests {
         #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             // Check that serial output is sent to the pipe
-            device.write(serial_bus_address(DATA), &[b'T']);
-            device.write(serial_bus_address(DATA), &[b'D']);
+            device.write(serial_bus_address(DATA), b"T");
+            device.write(serial_bus_address(DATA), b"D");
 
             let mut read_buf: [u8; 2] = [0; 2];
 

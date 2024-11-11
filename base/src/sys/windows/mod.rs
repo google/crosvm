@@ -4,8 +4,6 @@
 
 //! Small system utility modules for usage by other modules.
 
-#![cfg(windows)]
-
 #[macro_use]
 pub mod ioctl;
 #[macro_use]

@@ -354,7 +354,10 @@ vtpm = ["devices/vtpm"]
 ## Enables reporting of crosvm crashes
 crash-report = ["broker_ipc/crash-report", "crash_report"]
 
+gvm = []
+perfetto = []
 process-invariants = []
+prod-build = []
 sandbox = []
 
 #! ### Platform Feature Sets
