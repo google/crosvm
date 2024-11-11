@@ -1041,7 +1041,6 @@ impl Drop for AvFrame {
 
 #[cfg(test)]
 mod tests {
-    use std::ptr;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
@@ -1078,7 +1077,7 @@ mod tests {
         }
         impl AvBufferSource for DropTestBufferSource {
             fn as_ptr(&self) -> *const u8 {
-                ptr::null()
+                [].as_ptr()
             }
 
             fn len(&self) -> usize {
