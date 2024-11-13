@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU32;
 use std::sync::mpsc;
 use std::sync::Arc;
 
@@ -730,6 +731,7 @@ impl arch::LinuxArch for AArch64 {
         #[cfg(any(target_os = "android", target_os = "linux"))]
         if !components.cpu_frequencies.is_empty() {
             let mut freq_domain_vcpus: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+            let mut freq_domain_perfs: BTreeMap<u32, Arc<AtomicU32>> = BTreeMap::new();
             let mut vcpu_affinities: Vec<u32> = Vec::new();
             for vcpu in 0..vcpu_count {
                 let freq_domain = *components.vcpu_domains.get(&vcpu).unwrap_or(&(vcpu as u32));
@@ -740,6 +742,10 @@ impl arch::LinuxArch for AArch64 {
                     None => panic!("vcpu_affinity needs to be set for VirtCpufreq"),
                 };
                 vcpu_affinities.push(vcpu_affinity[0].try_into().unwrap());
+            }
+            for domain in freq_domain_vcpus.keys() {
+                let domain_perf = Arc::new(AtomicU32::new(0));
+                freq_domain_perfs.insert(*domain, domain_perf);
             }
             let largest_vcpu_affinity_idx = *vcpu_affinities.iter().max().unwrap() as usize;
             for (vcpu, vcpu_affinity) in vcpu_affinities.iter().enumerate() {
@@ -756,6 +762,7 @@ impl arch::LinuxArch for AArch64 {
                         largest_vcpu_affinity_idx,
                         vcpufreq_shared_tube.clone(),
                         freq_domain_vcpus.get(&domain).unwrap().clone(),
+                        freq_domain_perfs.get(&domain).unwrap().clone(),
                     )));
                     mmio_bus
                         .insert(

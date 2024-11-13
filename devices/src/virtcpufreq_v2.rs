@@ -5,6 +5,8 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -70,7 +72,6 @@ pub struct VirtCpufreqV2 {
     timer: Arc<Mutex<Timer>>,
     vm_ctrl: Arc<Mutex<Tube>>,
     pcpu_min_cap: u32,
-    requested_util: u32,
     /// The largest(or the last) pCPU index to be used by all the vCPUs. This index is used to
     /// figure out the proper placement of the throttle workers which are placed on pCPUs right
     /// after the last pCPU being used the vCPUs. Throttle workers require their own exclusive
@@ -78,7 +79,9 @@ pub struct VirtCpufreqV2 {
     /// easier for user to manage pCPU allocations when running multiple instances on a large
     /// server.
     largest_pcpu_idx: usize,
+    //TODO: Put the shared_domain_members in a struct
     shared_domain_vcpus: Vec<usize>,
+    shared_domain_perf: Arc<AtomicU32>,
 }
 
 fn get_cpu_info(cpu_id: u32, property: &str) -> Result<u32, Error> {
@@ -128,6 +131,7 @@ impl VirtCpufreqV2 {
         largest_pcpu_idx: usize,
         vm_ctrl: Arc<Mutex<Tube>>,
         shared_domain_vcpus: Vec<usize>,
+        shared_domain_perf: Arc<AtomicU32>,
     ) -> Self {
         let pcpu_capacity = get_cpu_capacity(pcpu).expect("Error reading capacity");
         let pcpu_fmax = get_cpu_maxfreq_khz(pcpu).expect("Error reading max freq");
@@ -185,9 +189,9 @@ impl VirtCpufreqV2 {
             timer: Arc::new(Mutex::new(Timer::new().expect("failed to create Timer"))),
             vm_ctrl,
             pcpu_min_cap,
-            requested_util: 0,
             largest_pcpu_idx,
             shared_domain_vcpus,
+            shared_domain_perf,
         }
     }
 }
@@ -212,14 +216,21 @@ impl BusDevice for VirtCpufreqV2 {
         }
 
         let val = match info.offset as u32 {
-            VCPUFREQ_CUR_PERF => match get_cpu_curfreq_khz(self.pcpu) {
-                Ok(freq) => u32::try_from(
-                    u64::from(freq) * u64::from(self.pcpu_capacity)
-                        / u64::from(self.vcpu_relative_capacity),
-                )
-                .unwrap(),
-                Err(_) => 0,
-            },
+            VCPUFREQ_CUR_PERF => {
+                let shared_util = self.shared_domain_perf.load(Ordering::SeqCst);
+                if shared_util != 0 && shared_util < self.pcpu_min_cap {
+                    shared_util * self.vcpu_fmax / self.vcpu_capacity
+                } else {
+                    match get_cpu_curfreq_khz(self.pcpu) {
+                        Ok(freq) => u32::try_from(
+                            u64::from(freq) * u64::from(self.pcpu_capacity)
+                                / u64::from(self.vcpu_relative_capacity),
+                        )
+                        .unwrap(),
+                        Err(_) => 0,
+                    }
+                }
+            }
             VCPUFREQ_FREQTBL_LEN => self.vcpu_freq_table.len() as u32,
             VCPUFREQ_PERF_DOMAIN => self.vcpu_domain,
             VCPUFREQ_FREQTBL_RD => *self
@@ -298,7 +309,7 @@ impl BusDevice for VirtCpufreqV2 {
                     }
                 }
 
-                self.requested_util = util_raw;
+                self.shared_domain_perf.store(util_raw, Ordering::SeqCst);
                 let timer = self.timer.clone();
                 if self.worker.is_none() {
                     let vcpu_id = info.id;
