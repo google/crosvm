@@ -773,24 +773,19 @@ impl VcpuAArch64 for KvmVcpu {
         let mut sys_regs = BTreeMap::new();
         for reg in reg_list {
             if (reg as u32) & KVM_REG_ARM_COPROC_MASK == KVM_REG_ARM64_SYSREG {
-                if reg as u16 == cntvct_el0 {
-                    sys_regs.insert(
-                        AArch64SysRegId::CNTV_CVAL_EL0,
-                        self.get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::CNTV_CVAL_EL0))?,
-                    );
+                let r = if reg as u16 == cntvct_el0 {
+                    AArch64SysRegId::CNTV_CVAL_EL0
                 } else if reg as u16 == cntv_cval_el0 {
-                    sys_regs.insert(
-                        AArch64SysRegId::CNTVCT_EL0,
-                        self.get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::CNTVCT_EL0))?,
-                    );
+                    AArch64SysRegId::CNTVCT_EL0
                 } else {
-                    sys_regs.insert(
-                        AArch64SysRegId::from_encoded((reg & 0xFFFF) as u16),
-                        self.get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::from_encoded(
-                            (reg & 0xFFFF) as u16,
-                        )))?,
-                    );
-                }
+                    AArch64SysRegId::from_encoded((reg & 0xFFFF) as u16)
+                };
+                sys_regs.insert(r, self.get_one_reg(VcpuRegAArch64::System(r))?);
+                // The register representations are tricky. Double check they round trip correctly.
+                assert_eq!(
+                    Ok(reg),
+                    self.kvm_reg_id(VcpuRegAArch64::System(r)).map(u64::from),
+                );
             }
         }
         Ok(sys_regs)
