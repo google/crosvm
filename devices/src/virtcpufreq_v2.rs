@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
@@ -124,7 +123,7 @@ fn get_cpu_util_factor(cpu_id: u32) -> Result<u32, Error> {
 impl VirtCpufreqV2 {
     pub fn new(
         pcpu: u32,
-        cpu_frequencies: BTreeMap<usize, Vec<u32>>,
+        vcpu_freq_table: Vec<u32>,
         vcpu_domain_path: Option<PathBuf>,
         vcpu_domain: u32,
         vcpu_capacity: u32,
@@ -136,7 +135,6 @@ impl VirtCpufreqV2 {
         let pcpu_capacity = get_cpu_capacity(pcpu).expect("Error reading capacity");
         let pcpu_fmax = get_cpu_maxfreq_khz(pcpu).expect("Error reading max freq");
         let util_factor = get_cpu_util_factor(pcpu).expect("Error getting util factor");
-        let vcpu_freq_table = cpu_frequencies.get(&(pcpu as usize)).unwrap().clone();
         let freqtbl_sel = 0;
         let mut domain_uclamp_min = None;
         let mut domain_uclamp_max = None;

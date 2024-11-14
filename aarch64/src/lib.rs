@@ -755,7 +755,7 @@ impl arch::LinuxArch for AArch64 {
                     virtfreq_size = AARCH64_VIRTFREQ_V2_SIZE;
                     let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreqV2::new(
                         *vcpu_affinity,
-                        components.cpu_frequencies.clone(),
+                        components.cpu_frequencies.get(&vcpu).unwrap().clone(),
                         components.vcpu_domain_paths.get(&vcpu).cloned(),
                         domain,
                         *components.normalized_cpu_capacities.get(&vcpu).unwrap(),
