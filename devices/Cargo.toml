@@ -107,7 +107,7 @@ jail = { path = "../jail" }
 libcras = { version = "*", optional = true }
 minijail = "*"
 net_sys = { path = "../net_sys" }
-p9 = "0.2"
+p9 = "0.3.1"
 usb_util = { path = "../usb_util" }
 vfio_sys = { path = "../vfio_sys" }
 vhost = { path = "../vhost" }

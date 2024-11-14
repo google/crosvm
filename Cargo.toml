@@ -555,7 +555,7 @@ aarch64 = { path = "aarch64" }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 minijail = "*" # provided by ebuild
-p9 = "0.2.3"
+p9 = "0.3.1"
 vhost = { path = "vhost" }
 android_audio = { path = "android_audio"}
 
