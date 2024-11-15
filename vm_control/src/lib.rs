@@ -712,9 +712,8 @@ fn try_map_to_prepared_region(
         return Some(VmMemoryResponse::Err(err));
     }
 
-    let guest_address = guest_address.0 + dest_offset;
-    let gfn = guest_address >> 12;
-    let region_id = VmMemoryRegionId(gfn);
+    let guest_address = GuestAddress(guest_address.0 + dest_offset);
+    let region_id = VmMemoryRegionId(guest_address);
     region_state.registered_memory.insert(
         region_id,
         RegisteredMemory::FixedMapping {
@@ -808,7 +807,7 @@ impl VmMemoryRequest {
                     Err(e) => return VmMemoryResponse::Err(e),
                 };
 
-                let region_id = VmMemoryRegionId(guest_addr.0 >> 12);
+                let region_id = VmMemoryRegionId(guest_addr);
                 if let (Some(descriptor), Some(iommu_client)) = (descriptor, iommu_client) {
                     let request =
                         VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDmabufMap {
@@ -925,7 +924,7 @@ impl VmMemoryRequest {
                     Err(e) => return VmMemoryResponse::Err(e),
                 };
 
-                let region_id = VmMemoryRegionId(guest_addr.0 >> 12);
+                let region_id = VmMemoryRegionId(guest_addr);
 
                 region_state
                     .registered_memory
@@ -1055,8 +1054,8 @@ impl VmMemoryRequest {
 
 #[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq, Eq, Ord, Clone, Copy)]
 /// Identifer for registered memory regions. Globally unique.
-// The current implementation uses gfn as the unique identifier.
-pub struct VmMemoryRegionId(u64);
+// The current implementation uses guest physical address as the unique identifier.
+pub struct VmMemoryRegionId(GuestAddress);
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum VmMemoryResponse {
