@@ -255,8 +255,8 @@ impl FsMappingRequest {
                     alloc,
                     MemCacheType::CacheCoherent,
                 ) {
-                    Ok(VmMappedMemoryRegion { gfn, slot }) => {
-                        VmResponse::RegisterMemory { gfn, slot }
+                    Ok(VmMappedMemoryRegion { gfn: _, slot }) => {
+                        VmResponse::RegisterMemory { slot }
                     }
                     Err(e) => VmResponse::Err(e),
                 }

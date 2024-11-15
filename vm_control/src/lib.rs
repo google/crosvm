@@ -2466,9 +2466,8 @@ pub enum VmResponse {
     Err(SysError),
     /// Indicates the request encountered some error during execution.
     ErrString(String),
-    /// The request to register memory into guest address space was successfully done at guest page
-    /// frame number `gfn` and memory slot number `slot`.
-    RegisterMemory { gfn: u64, slot: u32 },
+    /// The memory was registered into guest address space in memory slot number `slot`.
+    RegisterMemory { slot: u32 },
     /// Results of balloon control commands.
     #[cfg(feature = "balloon")]
     BalloonStats {
@@ -2509,11 +2508,7 @@ impl Display for VmResponse {
             Ok => write!(f, "ok"),
             Err(e) => write!(f, "error: {}", e),
             ErrString(e) => write!(f, "error: {}", e),
-            RegisterMemory { gfn, slot } => write!(
-                f,
-                "memory registered to guest page frame number {:#x} and memory slot {}",
-                gfn, slot
-            ),
+            RegisterMemory { slot } => write!(f, "memory registered in slot {}", slot),
             #[cfg(feature = "balloon")]
             VmResponse::BalloonStats {
                 stats,
