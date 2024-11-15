@@ -156,11 +156,9 @@ impl Kvm {
         get_cpuid_with_initial_capacity(self, kind, KVM_MAX_ENTRIES)
     }
 
-    // The x86 machine type is always 0. Protected VMs are not supported.
     pub fn get_vm_type(&self, protection_type: ProtectionType) -> Result<u32> {
         if protection_type.isolates_memory() {
-            error!("Protected mode is not supported on x86_64.");
-            Err(Error::new(libc::EINVAL))
+            Ok(KVM_X86_PKVM_PROTECTED_VM)
         } else {
             Ok(0)
         }

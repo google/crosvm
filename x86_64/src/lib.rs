@@ -822,10 +822,6 @@ impl arch::LinuxArch for X8664arch {
         V: VmX86_64,
         Vcpu: VcpuX86_64,
     {
-        if components.hv_cfg.protection_type.isolates_memory() {
-            return Err(Error::UnsupportedProtectionType);
-        }
-
         let mem = vm.get_memory().clone();
 
         let vcpu_count = components.vcpu_count;

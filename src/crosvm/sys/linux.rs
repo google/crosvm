@@ -1667,6 +1667,9 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
     }
 
     // Check that the VM was actually created in protected mode as expected.
+    // This check is only needed on aarch64. On x86_64, protected VM creation will fail
+    // if protected mode is not supported.
+    #[cfg(not(target_arch = "x86_64"))]
     if cfg.protection_type.isolates_memory() && !vm.check_capability(VmCap::Protected) {
         bail!("Failed to create protected VM");
     }
