@@ -65,6 +65,17 @@ use android_sparse::AndroidSparse;
 use android_sparse::SPARSE_HEADER_MAGIC;
 use sys::read_from_disk;
 
+#[cfg(feature = "zstd")]
+mod zstd;
+#[cfg(feature = "zstd")]
+use zstd::ZstdDisk;
+#[cfg(feature = "zstd")]
+use zstd::ZSTD_FRAME_MAGIC;
+#[cfg(feature = "zstd")]
+use zstd::ZSTD_SKIPPABLE_MAGIC_HIGH;
+#[cfg(feature = "zstd")]
+use zstd::ZSTD_SKIPPABLE_MAGIC_LOW;
+
 /// Nesting depth limit for disk formats that can open other disk files.
 const MAX_NESTING_DEPTH: u32 = 10;
 
@@ -80,6 +91,9 @@ pub enum Error {
     #[cfg(feature = "composite-disk")]
     #[error("failure in composite disk: {0}")]
     CreateCompositeDisk(composite::Error),
+    #[cfg(feature = "zstd")]
+    #[error("failure in zstd disk: {0}")]
+    CreateZstdDisk(anyhow::Error),
     #[error("failure creating single file disk: {0}")]
     CreateSingleFileDisk(cros_async::AsyncError),
     #[error("failed to set O_DIRECT on disk image: {0}")]
@@ -201,6 +215,7 @@ pub enum ImageType {
     Qcow2,
     CompositeDisk,
     AndroidSparse,
+    Zstd,
 }
 
 /// Detect the type of an image file by checking for a valid header of the supported formats.
@@ -239,8 +254,12 @@ pub fn detect_image_type(file: &File, overlapped_mode: bool) -> Result<ImageType
         }
     }
 
-    #[allow(unused_variables)] // magic4 is only used with the qcow or android-sparse features.
-    if let Some(magic4) = magic.data.get(0..4) {
+    #[allow(unused_variables)] // magic4 is only used with the qcow/android-sparse/zstd features.
+    if let Some(magic4) = magic
+        .data
+        .get(0..4)
+        .and_then(|v| <&[u8] as std::convert::TryInto<[u8; 4]>>::try_into(v).ok())
+    {
         #[cfg(feature = "qcow")]
         if magic4 == QCOW_MAGIC.to_be_bytes() {
             return Ok(ImageType::Qcow2);
@@ -248,6 +267,13 @@ pub fn detect_image_type(file: &File, overlapped_mode: bool) -> Result<ImageType
         #[cfg(feature = "android-sparse")]
         if magic4 == SPARSE_HEADER_MAGIC.to_le_bytes() {
             return Ok(ImageType::AndroidSparse);
+        }
+        #[cfg(feature = "zstd")]
+        if u32::from_le_bytes(magic4) == ZSTD_FRAME_MAGIC
+            || (u32::from_le_bytes(magic4) >= ZSTD_SKIPPABLE_MAGIC_LOW
+                && u32::from_le_bytes(magic4) <= ZSTD_SKIPPABLE_MAGIC_HIGH)
+        {
+            return Ok(ImageType::Zstd);
         }
     }
 
@@ -306,6 +332,9 @@ pub fn open_disk_file(params: DiskFileParams) -> Result<Box<dyn DiskFile>> {
             Box::new(AndroidSparse::from_file(raw_image).map_err(Error::CreateAndroidSparseDisk)?)
                 as Box<dyn DiskFile>
         }
+        #[cfg(feature = "zstd")]
+        ImageType::Zstd => Box::new(ZstdDisk::from_file(raw_image).map_err(Error::CreateZstdDisk)?)
+            as Box<dyn DiskFile>,
         #[allow(unreachable_patterns)]
         _ => return Err(Error::UnknownType),
     })
