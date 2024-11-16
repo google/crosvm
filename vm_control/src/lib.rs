@@ -649,7 +649,7 @@ enum RegisteredMemory {
 }
 
 pub struct VmMappedMemoryRegion {
-    gfn: u64,
+    guest_address: GuestAddress,
     slot: MemSlot,
 }
 
@@ -674,7 +674,10 @@ fn try_map_to_prepared_region(
         return None;
     };
 
-    let VmMappedMemoryRegion { gfn, slot } = region_state.mapped_regions.get(allocation)?;
+    let VmMappedMemoryRegion {
+        guest_address,
+        slot,
+    } = region_state.mapped_regions.get(allocation)?;
 
     let (descriptor, file_offset, size) = match source {
         VmMemorySource::Descriptor {
@@ -709,7 +712,8 @@ fn try_map_to_prepared_region(
         return Some(VmMemoryResponse::Err(err));
     }
 
-    let gfn = gfn + (dest_offset >> 12);
+    let guest_address = guest_address.0 + dest_offset;
+    let gfn = guest_address >> 12;
     let region_id = VmMemoryRegionId(gfn);
     region_state.registered_memory.insert(
         region_id,

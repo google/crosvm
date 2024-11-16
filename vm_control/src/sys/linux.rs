@@ -212,7 +212,7 @@ pub fn prepare_shared_memory_region(
                 cache,
             ) {
                 Ok(slot) => Ok(VmMappedMemoryRegion {
-                    gfn: range.start >> 12,
+                    guest_address: GuestAddress(range.start),
                     slot,
                 }),
                 Err(e) => Err(e),
@@ -255,9 +255,7 @@ impl FsMappingRequest {
                     alloc,
                     MemCacheType::CacheCoherent,
                 ) {
-                    Ok(VmMappedMemoryRegion { gfn: _, slot }) => {
-                        VmResponse::RegisterMemory { slot }
-                    }
+                    Ok(VmMappedMemoryRegion { slot, .. }) => VmResponse::RegisterMemory { slot },
                     Err(e) => VmResponse::Err(e),
                 }
             }
