@@ -3,8 +3,9 @@
 Crosvm supports [vhost-user] devices for most virtio devices (block, net, etc ) so that device
 emulation can be done outside of the main vmm process.
 
-Here is a diagram showing how vhost-user block device back-end and a vhost-user block front-end in
-crosvm VMM work together.
+Here is a diagram showing how vhost-user block device back-end (implementing the actual disk in
+userspace) and a vhost-user block front-end (implementing the device facing the guest OS) in crosvm
+VMM work together.
 
 <!-- Image from https://docs.google.com/presentation/d/1s6wH5L_F8NNiXls5UgWbD34jtBmijoZuiyLu76Fc2NM/edit#slide=id.ge5067b4ec2_0_55 -->
 
@@ -28,7 +29,7 @@ VHOST_USER_SOCK=/tmp/vhost-user.socket
 crosvm devices --block vhost=${VHOST_USER_SOCK},path=disk.img
 ```
 
-Then, open another terminal and start a vmm process with `--vhost-user` flag.
+Then, open another terminal and start a vmm process with `--vhost-user` flag (the frontend).
 
 ```sh
 crosvm run \
@@ -39,4 +40,4 @@ crosvm run \
 
 As a result, `disk.img` should be exposed as `/dev/vda` just like with `--block disk.img`.
 
-[vhost-user]: https://qemu.readthedocs.io/en/latest/interop/vhost-user.html
+[vhost-user]: https://qemu-project.gitlab.io/qemu/interop/vhost-user.html
