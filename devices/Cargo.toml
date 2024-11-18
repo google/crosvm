@@ -90,6 +90,7 @@ serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
 smallvec = "1.6.1"
 sync = { path = "../common/sync" }
 system_api = { path = "../system_api", optional = true }
+tempfile = "3"
 thiserror = "1.0.20"
 cros_tracing = { path = "../cros_tracing" }
 swap = { path = "../swap" }
