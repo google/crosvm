@@ -954,6 +954,9 @@ fn parse_input_config_file(config_path: &PathBuf, device_idx: u32) -> Result<Cus
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
+    use defaults::new_keyboard_config;
     use tempfile::TempDir;
 
     use super::*;
@@ -1026,5 +1029,16 @@ mod tests {
         let ev_led_bitmap = ev_led_events.unwrap();
         let expected_ev_led_bitmap = &virtio_input_bitmap::from_bits(&[0, 1, 2]);
         assert_eq!(ev_led_bitmap, expected_ev_led_bitmap);
+    }
+
+    // Test the example custom device config file(tests/data/input/example_custom_input_config.json)
+    // provides the same supported events as default keyboard's supported events.
+    #[test]
+    fn example_custom_config_file_events_eq_default_keyboard_events() {
+        let keyboard_supported_events = new_keyboard_config(0).supported_events;
+        let path = PathBuf::from_str("tests/data/input/example_custom_input_config.json").unwrap();
+        let custom_supported_events = parse_input_config_file(&path, 0).unwrap().supported_events;
+
+        assert_eq!(keyboard_supported_events, custom_supported_events);
     }
 }

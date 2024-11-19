@@ -198,42 +198,14 @@ This config_path requires a JSON-formatted configuration file. "events" configur
 events. "name" defines the customized device name, "serial" defines customized serial name. The
 properties and axis info are yet to be supported.
 
-Here is an example of event config file:
+You can find an example config JSON from
+[`/devices/tests/data/input/example_custom_input_config.json`](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/tests/data/input/example_custom_input_config.json).
+It configs the same supported events as keyboard's supported events(`default_keyboard_events` in
+[`devices/src/virtio/input/defaults.rs`](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/input/defaults.rs#320)).
+Here is a portion of the example config file:
 
 ```
-{
-  "name": "Virtio Custom",
-  "serial_name": "virtio-custom",
-  "events": [
-    {
-      "event_type": "EV_KEY",
-      "event_type_code": 1,
-      "supported_events": {
-        "KEY_ESC": 1,
-        "KEY_1": 2,
-        "KEY_2": 3,
-        "KEY_A": 30,
-        "KEY_B": 48,
-        "KEY_SPACE": 57
-      }
-    },
-    {
-      "event_type": "EV_REP",
-      "event_type_code": 20,
-      "supported_events": {
-        "REP_DELAY": 0,
-        "REP_PERIOD": 1
-      }
-    },
-    {
-      "event_type": "EV_LED",
-      "event_type_code": 17,
-      "supported_events": {
-        "LED_NUML": 0,
-        "LED_CAPSL": 1,
-        "LED_SCROLLL": 2
-      }
-    }
-  ]
-}
+{{#include ../../../../devices/tests/data/input/example_custom_input_config.json::11}}
+          ...
+{{#include ../../../../devices/tests/data/input/example_custom_input_config.json:115:}}
 ```
