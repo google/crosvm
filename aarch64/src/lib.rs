@@ -127,6 +127,51 @@ const PSR_I_BIT: u64 = 0x00000080;
 const PSR_A_BIT: u64 = 0x00000100;
 const PSR_D_BIT: u64 = 0x00000200;
 
+// This was the speed kvmtool used, not sure if it matters.
+const AARCH64_SERIAL_SPEED: u32 = 1843200;
+// The serial device gets the first interrupt line
+// Which gets mapped to the first SPI interrupt (physical 32).
+const AARCH64_SERIAL_1_3_IRQ: u32 = 0;
+const AARCH64_SERIAL_2_4_IRQ: u32 = 2;
+
+// Place the RTC device at page 2
+const AARCH64_RTC_ADDR: u64 = 0x2000;
+// The RTC device gets one 4k page
+const AARCH64_RTC_SIZE: u64 = 0x1000;
+// The RTC device gets the second interrupt line
+const AARCH64_RTC_IRQ: u32 = 1;
+
+// The Goldfish battery device gets the 3rd interrupt line
+const AARCH64_BAT_IRQ: u32 = 3;
+
+// Place the virtual watchdog device at page 3
+const AARCH64_VMWDT_ADDR: u64 = 0x3000;
+// The virtual watchdog device gets one 4k page
+const AARCH64_VMWDT_SIZE: u64 = 0x1000;
+
+// PCI MMIO configuration region base address.
+const AARCH64_PCI_CFG_BASE: u64 = 0x10000;
+// PCI MMIO configuration region size.
+const AARCH64_PCI_CFG_SIZE: u64 = 0x1000000;
+// This is the base address of MMIO devices.
+const AARCH64_MMIO_BASE: u64 = 0x2000000;
+// Size of the whole MMIO region.
+const AARCH64_MMIO_SIZE: u64 = 0x2000000;
+// Virtio devices start at SPI interrupt number 4
+const AARCH64_IRQ_BASE: u32 = 4;
+
+// Virtual CPU Frequency Device.
+const AARCH64_VIRTFREQ_BASE: u64 = 0x1040000;
+const AARCH64_VIRTFREQ_SIZE: u64 = 0x8;
+const AARCH64_VIRTFREQ_MAXSIZE: u64 = 0x10000;
+const AARCH64_VIRTFREQ_V2_SIZE: u64 = 0x1000;
+
+// PMU PPI interrupt, same as qemu
+const AARCH64_PMU_IRQ: u32 = 7;
+
+// VCPU stall detector interrupt
+const AARCH64_VMWDT_IRQ: u32 = 15;
+
 enum PayloadType {
     Bios {
         entry: GuestAddress,
@@ -172,51 +217,6 @@ fn get_swiotlb_addr(
         None
     }
 }
-
-// This was the speed kvmtool used, not sure if it matters.
-const AARCH64_SERIAL_SPEED: u32 = 1843200;
-// The serial device gets the first interrupt line
-// Which gets mapped to the first SPI interrupt (physical 32).
-const AARCH64_SERIAL_1_3_IRQ: u32 = 0;
-const AARCH64_SERIAL_2_4_IRQ: u32 = 2;
-
-// Place the RTC device at page 2
-const AARCH64_RTC_ADDR: u64 = 0x2000;
-// The RTC device gets one 4k page
-const AARCH64_RTC_SIZE: u64 = 0x1000;
-// The RTC device gets the second interrupt line
-const AARCH64_RTC_IRQ: u32 = 1;
-
-// The Goldfish battery device gets the 3rd interrupt line
-const AARCH64_BAT_IRQ: u32 = 3;
-
-// Place the virtual watchdog device at page 3
-const AARCH64_VMWDT_ADDR: u64 = 0x3000;
-// The virtual watchdog device gets one 4k page
-const AARCH64_VMWDT_SIZE: u64 = 0x1000;
-
-// PCI MMIO configuration region base address.
-const AARCH64_PCI_CFG_BASE: u64 = 0x10000;
-// PCI MMIO configuration region size.
-const AARCH64_PCI_CFG_SIZE: u64 = 0x1000000;
-// This is the base address of MMIO devices.
-const AARCH64_MMIO_BASE: u64 = 0x2000000;
-// Size of the whole MMIO region.
-const AARCH64_MMIO_SIZE: u64 = 0x2000000;
-// Virtio devices start at SPI interrupt number 4
-const AARCH64_IRQ_BASE: u32 = 4;
-
-// Virtual CPU Frequency Device.
-const AARCH64_VIRTFREQ_BASE: u64 = 0x1040000;
-const AARCH64_VIRTFREQ_SIZE: u64 = 0x8;
-const AARCH64_VIRTFREQ_MAXSIZE: u64 = 0x10000;
-const AARCH64_VIRTFREQ_V2_SIZE: u64 = 0x1000;
-
-// PMU PPI interrupt, same as qemu
-const AARCH64_PMU_IRQ: u32 = 7;
-
-// VCPU stall detector interrupt
-const AARCH64_VMWDT_IRQ: u32 = 15;
 
 #[sorted]
 #[derive(Error, Debug)]
