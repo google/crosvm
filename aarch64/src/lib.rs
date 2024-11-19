@@ -432,10 +432,32 @@ impl arch::LinuxArch for AArch64 {
         vm: &V,
         _arch_memory_layout: &Self::ArchMemoryLayout,
     ) -> SystemAllocatorConfig {
-        Self::get_resource_allocator_config(
-            vm.get_memory().end_addr(),
-            vm.get_guest_phys_addr_bits(),
-        )
+        let guest_phys_end = 1u64 << vm.get_guest_phys_addr_bits();
+        // The platform MMIO region is immediately past the end of RAM.
+        let plat_mmio_base = vm.get_memory().end_addr().offset();
+        let plat_mmio_size = AARCH64_PLATFORM_MMIO_SIZE;
+        // The high MMIO region is the rest of the address space after the platform MMIO region.
+        let high_mmio_base = plat_mmio_base + plat_mmio_size;
+        let high_mmio_size = guest_phys_end
+            .checked_sub(high_mmio_base)
+            .unwrap_or_else(|| {
+                panic!(
+                    "guest_phys_end {:#x} < high_mmio_base {:#x}",
+                    guest_phys_end, high_mmio_base,
+                );
+            });
+        SystemAllocatorConfig {
+            io: None,
+            low_mmio: AddressRange::from_start_and_size(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
+                .expect("invalid mmio region"),
+            high_mmio: AddressRange::from_start_and_size(high_mmio_base, high_mmio_size)
+                .expect("invalid high mmio region"),
+            platform_mmio: Some(
+                AddressRange::from_start_and_size(plat_mmio_base, plat_mmio_size)
+                    .expect("invalid platform mmio region"),
+            ),
+            first_irq: AARCH64_IRQ_BASE,
+        }
     }
 
     fn build_vm<V, Vcpu>(
@@ -1228,44 +1250,6 @@ impl AArch64 {
         let mut cmdline = kernel_cmdline::Cmdline::new();
         cmdline.insert_str("panic=-1").unwrap();
         cmdline
-    }
-
-    /// Returns a system resource allocator configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `memory_end` - The first address beyond the end of guest memory.
-    /// * `guest_phys_addr_bits` - Size of guest physical addresses (IPA) in bits.
-    fn get_resource_allocator_config(
-        memory_end: GuestAddress,
-        guest_phys_addr_bits: u8,
-    ) -> SystemAllocatorConfig {
-        let guest_phys_end = 1u64 << guest_phys_addr_bits;
-        // The platform MMIO region is immediately past the end of RAM.
-        let plat_mmio_base = memory_end.offset();
-        let plat_mmio_size = AARCH64_PLATFORM_MMIO_SIZE;
-        // The high MMIO region is the rest of the address space after the platform MMIO region.
-        let high_mmio_base = plat_mmio_base + plat_mmio_size;
-        let high_mmio_size = guest_phys_end
-            .checked_sub(high_mmio_base)
-            .unwrap_or_else(|| {
-                panic!(
-                    "guest_phys_end {:#x} < high_mmio_base {:#x}",
-                    guest_phys_end, high_mmio_base,
-                );
-            });
-        SystemAllocatorConfig {
-            io: None,
-            low_mmio: AddressRange::from_start_and_size(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
-                .expect("invalid mmio region"),
-            high_mmio: AddressRange::from_start_and_size(high_mmio_base, high_mmio_size)
-                .expect("invalid high mmio region"),
-            platform_mmio: Some(
-                AddressRange::from_start_and_size(plat_mmio_base, plat_mmio_size)
-                    .expect("invalid platform mmio region"),
-            ),
-            first_irq: AARCH64_IRQ_BASE,
-        }
     }
 
     /// This adds any early platform devices for this architecture.
