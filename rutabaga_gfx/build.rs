@@ -279,6 +279,7 @@ fn gfxstream() -> Result<()> {
 }
 
 fn main() -> Result<()> {
+    println!("cargo:rustc-check-cfg=cfg(fence_passing_option1)");
     println!("cargo:rustc-check-cfg=cfg(gfxstream_unstable)");
     println!("cargo:rustc-check-cfg=cfg(virgl_renderer_unstable)");
     let mut use_fence_passing_option1 = true;
