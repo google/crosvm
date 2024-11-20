@@ -1326,96 +1326,107 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         if !cfg.cpu_frequencies_khz.is_empty() {
             cpu_frequencies = cfg.cpu_frequencies_khz.clone();
         } else {
-            let host_cpu_frequencies = Arch::get_host_cpu_frequencies_khz()?;
-
-            for cpu_id in 0..cfg.vcpu_count.unwrap_or(1) {
-                let vcpu_affinity = match cfg.vcpu_affinity.clone() {
-                    Some(VcpuAffinity::Global(v)) => v,
-                    Some(VcpuAffinity::PerVcpu(mut m)) => m.remove(&cpu_id).unwrap_or_default(),
-                    None => {
-                        panic!("There must be some vcpu_affinity setting with VirtCpufreq enabled!")
-                    }
-                };
-
-                // Check that the physical CPUs that the vCPU is affined to all share the same
-                // frequency domain.
-                if let Some(freq_domain) = host_cpu_frequencies.get(&vcpu_affinity[0]) {
-                    for cpu in vcpu_affinity.iter() {
-                        if let Some(frequencies) = host_cpu_frequencies.get(cpu) {
-                            if frequencies != freq_domain {
-                                panic!("Affined CPUs do not share a frequency domain!");
+            match Arch::get_host_cpu_frequencies_khz() {
+                Ok(host_cpu_frequencies) => {
+                    for cpu_id in 0..cfg.vcpu_count.unwrap_or(1) {
+                        let vcpu_affinity = match cfg.vcpu_affinity.clone() {
+                            Some(VcpuAffinity::Global(v)) => v,
+                            Some(VcpuAffinity::PerVcpu(mut m)) => {
+                                m.remove(&cpu_id).unwrap_or_default()
                             }
+                            None => {
+                                panic!("There must be some vcpu_affinity setting with VirtCpufreq enabled!")
+                            }
+                        };
+
+                        // Check that the physical CPUs that the vCPU is affined to all share the
+                        // same frequency domain.
+                        if let Some(freq_domain) = host_cpu_frequencies.get(&vcpu_affinity[0]) {
+                            for cpu in vcpu_affinity.iter() {
+                                if let Some(frequencies) = host_cpu_frequencies.get(cpu) {
+                                    if frequencies != freq_domain {
+                                        panic!("Affined CPUs do not share a frequency domain!");
+                                    }
+                                }
+                            }
+                            cpu_frequencies.insert(cpu_id, freq_domain.clone());
+                        } else {
+                            panic!("No frequency domain for cpu:{}", cpu_id);
                         }
                     }
-                    cpu_frequencies.insert(cpu_id, freq_domain.clone());
-                } else {
-                    panic!("No frequency domain for cpu:{}", cpu_id);
+                }
+                Err(e) => {
+                    warn!("Unable to get host cpu frequencies {:#}", e);
                 }
             }
         }
-        let mut max_freqs = Vec::new();
 
-        for (_cpu, frequencies) in cpu_frequencies.iter() {
-            max_freqs.push(*frequencies.iter().max().ok_or(Error::new(libc::EINVAL))?)
-        }
+        if !cpu_frequencies.is_empty() {
+            let mut max_freqs = Vec::new();
 
-        let host_max_freqs = Arch::get_host_cpu_max_freq_khz()?;
-        let largest_host_max_freq = host_max_freqs
-            .values()
-            .max()
-            .ok_or(Error::new(libc::EINVAL))?;
-
-        for (cpu_id, max_freq) in max_freqs.iter().enumerate() {
-            let normalized_cpu_capacity = (u64::from(*cpu_capacity.get(&cpu_id).unwrap())
-                * u64::from(*max_freq))
-            .checked_div(u64::from(*largest_host_max_freq))
-            .ok_or(Error::new(libc::EINVAL))?;
-            normalized_cpu_capacities.insert(
-                cpu_id,
-                u32::try_from(normalized_cpu_capacity).map_err(|_| Error::new(libc::EINVAL))?,
-            );
-        }
-
-        if !cfg.cpu_freq_domains.is_empty() {
-            let cgroup_path = cfg
-                .vcpu_cgroup_path
-                .clone()
-                .context("cpu_freq_domains requires vcpu_cgroup_path")?;
-
-            if !cgroup_path.join("cgroup.controllers").exists() {
-                panic!("CGroupsV2 must be enabled for cpu freq domain support!");
+            for (_cpu, frequencies) in cpu_frequencies.iter() {
+                max_freqs.push(*frequencies.iter().max().ok_or(Error::new(libc::EINVAL))?)
             }
 
-            // Assign parent crosvm process to top level cgroup
-            let cgroup_procs_path = cgroup_path.join("cgroup.procs");
-            std::fs::write(
-                cgroup_procs_path.clone(),
-                process::id().to_string().as_bytes(),
-            )
-            .with_context(|| {
-                format!(
-                    "failed to create vcpu-cgroup-path {}",
-                    cgroup_procs_path.display(),
+            let host_max_freqs = Arch::get_host_cpu_max_freq_khz()?;
+            let largest_host_max_freq = host_max_freqs
+                .values()
+                .max()
+                .ok_or(Error::new(libc::EINVAL))?;
+
+            for (cpu_id, max_freq) in max_freqs.iter().enumerate() {
+                let normalized_cpu_capacity = (u64::from(*cpu_capacity.get(&cpu_id).unwrap())
+                    * u64::from(*max_freq))
+                .checked_div(u64::from(*largest_host_max_freq))
+                .ok_or(Error::new(libc::EINVAL))?;
+                normalized_cpu_capacities.insert(
+                    cpu_id,
+                    u32::try_from(normalized_cpu_capacity).map_err(|_| Error::new(libc::EINVAL))?,
+                );
+            }
+
+            if !cfg.cpu_freq_domains.is_empty() {
+                let cgroup_path = cfg
+                    .vcpu_cgroup_path
+                    .clone()
+                    .context("cpu_freq_domains requires vcpu_cgroup_path")?;
+
+                if !cgroup_path.join("cgroup.controllers").exists() {
+                    panic!("CGroupsV2 must be enabled for cpu freq domain support!");
+                }
+
+                // Assign parent crosvm process to top level cgroup
+                let cgroup_procs_path = cgroup_path.join("cgroup.procs");
+                std::fs::write(
+                    cgroup_procs_path.clone(),
+                    process::id().to_string().as_bytes(),
                 )
-            })?;
-
-            for (freq_domain_idx, cpus) in cfg.cpu_freq_domains.iter().enumerate() {
-                let vcpu_domain_path = cgroup_path.join(format!("vcpu-domain{}", freq_domain_idx));
-                // Create subtree for domain
-                create_dir_all(&vcpu_domain_path)?;
-
-                // Set vcpu_domain cgroup type as 'threaded' to get thread level granularity
-                // controls
-                let cgroup_type_path = cgroup_path.join(vcpu_domain_path.join("cgroup.type"));
-                std::fs::write(cgroup_type_path.clone(), b"threaded").with_context(|| {
+                .with_context(|| {
                     format!(
                         "failed to create vcpu-cgroup-path {}",
-                        cgroup_type_path.display(),
+                        cgroup_procs_path.display(),
                     )
                 })?;
-                for core_idx in cpus.iter() {
-                    vcpu_domain_paths.insert(*core_idx, vcpu_domain_path.clone());
-                    vcpu_domains.insert(*core_idx, freq_domain_idx as u32);
+
+                for (freq_domain_idx, cpus) in cfg.cpu_freq_domains.iter().enumerate() {
+                    let vcpu_domain_path =
+                        cgroup_path.join(format!("vcpu-domain{}", freq_domain_idx));
+                    // Create subtree for domain
+                    create_dir_all(&vcpu_domain_path)?;
+
+                    // Set vcpu_domain cgroup type as 'threaded' to get thread level granularity
+                    // controls
+                    let cgroup_type_path = cgroup_path.join(vcpu_domain_path.join("cgroup.type"));
+                    std::fs::write(cgroup_type_path.clone(), b"threaded").with_context(|| {
+                        format!(
+                            "failed to create vcpu-cgroup-path {}",
+                            cgroup_type_path.display(),
+                        )
+                    })?;
+                    for core_idx in cpus.iter() {
+                        vcpu_domain_paths.insert(*core_idx, vcpu_domain_path.clone());
+                        vcpu_domains.insert(*core_idx, freq_domain_idx as u32);
+                    }
                 }
             }
         }
