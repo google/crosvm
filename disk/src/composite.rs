@@ -1387,7 +1387,8 @@ mod tests {
                     path: "/partition1.img".to_string().into(),
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: false,
-                    size: 0,
+                    // Needs small amount of padding.
+                    size: 4000,
                     part_guid: None,
                 },
                 PartitionInfo {
@@ -1395,7 +1396,8 @@ mod tests {
                     path: "/partition2.img".to_string().into(),
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: true,
-                    size: 0,
+                    // Needs no padding.
+                    size: 4096,
                     part_guid: Some(Uuid::from_u128(0x4049C8DC_6C2B_C740_A95A_BDAA629D4378)),
                 },
             ],
@@ -1407,6 +1409,54 @@ mod tests {
             &mut composite_image,
         )
         .unwrap();
+
+        // Check magic.
+        composite_image.rewind().unwrap();
+        let mut magic_space = [0u8; CDISK_MAGIC.len()];
+        composite_image.read_exact(&mut magic_space[..]).unwrap();
+        assert_eq!(magic_space, CDISK_MAGIC.as_bytes());
+        // Check proto.
+        let proto = CompositeDisk::parse_from_reader(&mut composite_image).unwrap();
+        assert_eq!(
+            proto,
+            CompositeDisk {
+                version: 2,
+                component_disks: vec![
+                    ComponentDisk {
+                        file_path: "/header_path.img".to_string(),
+                        offset: 0,
+                        read_write_capability: ReadWriteCapability::READ_ONLY.into(),
+                        ..ComponentDisk::new()
+                    },
+                    ComponentDisk {
+                        file_path: "/partition1.img".to_string(),
+                        offset: 0x5000, // GPT_BEGINNING_SIZE,
+                        read_write_capability: ReadWriteCapability::READ_ONLY.into(),
+                        ..ComponentDisk::new()
+                    },
+                    ComponentDisk {
+                        file_path: "/zero_filler.img".to_string(),
+                        offset: 0x5fa0, // GPT_BEGINNING_SIZE + 4000,
+                        read_write_capability: ReadWriteCapability::READ_ONLY.into(),
+                        ..ComponentDisk::new()
+                    },
+                    ComponentDisk {
+                        file_path: "/partition2.img".to_string(),
+                        offset: 0x6000, // GPT_BEGINNING_SIZE + 4096,
+                        read_write_capability: ReadWriteCapability::READ_WRITE.into(),
+                        ..ComponentDisk::new()
+                    },
+                    ComponentDisk {
+                        file_path: "/footer_path.img".to_string(),
+                        offset: 0x7000, // GPT_BEGINNING_SIZE + 4096 + 4096,
+                        read_write_capability: ReadWriteCapability::READ_ONLY.into(),
+                        ..ComponentDisk::new()
+                    },
+                ],
+                length: 0x10000, // 1 << DISK_SIZE_SHIFT
+                ..CompositeDisk::new()
+            }
+        );
     }
 
     /// Attempts to create a composite disk image with two partitions with the same label.
