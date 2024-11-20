@@ -65,6 +65,12 @@ pub trait VmX86_64: Vm {
 
     /// Sets the address of a one-page region in the VM's address space.
     fn set_identity_map_addr(&self, addr: GuestAddress) -> Result<()>;
+
+    /// Load pVM firmware for the VM, creating a memslot for it as needed.
+    ///
+    /// Only works on protected VMs (i.e. those with vm_type == KVM_X86_PKVM_PROTECTED_VM).
+    fn load_protected_vm_firmware(&mut self, fw_addr: GuestAddress, fw_max_size: u64)
+        -> Result<()>;
 }
 
 /// A wrapper around creating and using a VCPU on x86_64.

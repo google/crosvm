@@ -485,6 +485,15 @@ impl VmX86_64 for HaxmVm {
     fn set_identity_map_addr(&self, _addr: GuestAddress) -> Result<()> {
         Ok(())
     }
+
+    fn load_protected_vm_firmware(
+        &mut self,
+        _fw_addr: GuestAddress,
+        _fw_max_size: u64,
+    ) -> Result<()> {
+        // Haxm does not support protected VMs
+        Err(Error::new(libc::ENXIO))
+    }
 }
 
 // TODO(b:241252288): Enable tests disabled with dummy feature flag - enable_haxm_tests.

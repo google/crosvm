@@ -776,6 +776,15 @@ impl VmX86_64 for WhpxVm {
     fn set_identity_map_addr(&self, _addr: GuestAddress) -> Result<()> {
         Ok(())
     }
+
+    fn load_protected_vm_firmware(
+        &mut self,
+        _fw_addr: GuestAddress,
+        _fw_max_size: u64,
+    ) -> Result<()> {
+        // WHPX does not support protected VMs
+        Err(Error::new(libc::ENXIO))
+    }
 }
 
 // NOTE: WHPX Tests need to be run serially as otherwise it barfs unless we map new regions of guest

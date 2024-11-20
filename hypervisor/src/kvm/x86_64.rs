@@ -23,7 +23,9 @@ use data_model::FlexibleArrayWrapper;
 use kvm_sys::*;
 use libc::E2BIG;
 use libc::EAGAIN;
+use libc::EINVAL;
 use libc::EIO;
+use libc::ENOMEM;
 use libc::ENXIO;
 use serde::Deserialize;
 use serde::Serialize;
@@ -31,6 +33,7 @@ use vm_memory::GuestAddress;
 
 use super::Config;
 use super::Kvm;
+use super::KvmCap;
 use super::KvmVcpu;
 use super::KvmVm;
 use crate::host_phys_addr_bits;
@@ -445,11 +448,69 @@ impl KvmVm {
             Ok(())
         }
     }
+
+    /// Get pKVM hypervisor details, e.g. the firmware size.
+    ///
+    /// Returns `Err` if not running under pKVM.
+    ///
+    /// Uses `KVM_ENABLE_CAP` internally, but it is only a getter, there should be no side effects
+    /// in KVM.
+    fn get_protected_vm_info(&self) -> Result<KvmProtectedVmInfo> {
+        let mut info = KvmProtectedVmInfo {
+            firmware_size: 0,
+            reserved: [0; 7],
+        };
+        // SAFETY:
+        // Safe because we allocated the struct and we know the kernel won't write beyond the end of
+        // the struct or keep a pointer to it.
+        unsafe {
+            self.enable_raw_capability(
+                KvmCap::X86ProtectedVm,
+                KVM_CAP_X86_PROTECTED_VM_FLAGS_INFO,
+                &[&mut info as *mut KvmProtectedVmInfo as u64, 0, 0, 0],
+            )
+        }?;
+        Ok(info)
+    }
+
+    fn set_protected_vm_firmware_gpa(&self, fw_addr: GuestAddress) -> Result<()> {
+        // SAFETY:
+        // Safe because none of the args are pointers.
+        unsafe {
+            self.enable_raw_capability(
+                KvmCap::X86ProtectedVm,
+                KVM_CAP_X86_PROTECTED_VM_FLAGS_SET_FW_GPA,
+                &[fw_addr.0, 0, 0, 0],
+            )
+        }
+    }
+}
+
+#[repr(C)]
+struct KvmProtectedVmInfo {
+    firmware_size: u64,
+    reserved: [u64; 7],
 }
 
 impl VmX86_64 for KvmVm {
     fn get_hypervisor(&self) -> &dyn HypervisorX86_64 {
         &self.kvm
+    }
+
+    fn load_protected_vm_firmware(
+        &mut self,
+        fw_addr: GuestAddress,
+        fw_max_size: u64,
+    ) -> Result<()> {
+        let info = self.get_protected_vm_info()?;
+        if info.firmware_size == 0 {
+            Err(Error::new(EINVAL))
+        } else {
+            if info.firmware_size > fw_max_size {
+                return Err(Error::new(ENOMEM));
+            }
+            self.set_protected_vm_firmware_gpa(fw_addr)
+        }
     }
 
     fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuX86_64>> {

@@ -241,6 +241,8 @@ pub enum Error {
     LoadKernel(kernel_loader::Error),
     #[error("error loading pflash: {0}")]
     LoadPflash(io::Error),
+    #[error("error loading pVM firmware: {0}")]
+    LoadPvmFw(base::Error),
     #[error("error translating address: Page not present")]
     PageNotPresent,
     #[error("pci mmio overlaps with pVM firmware memory")]
@@ -1180,15 +1182,26 @@ impl arch::LinuxArch for X8664arch {
                         PROTECTED_VM_FW_MAX_SIZE,
                     )
                     .map_err(Error::LoadCustomPvmFw)?;
+                } else if protection_type.runs_firmware() {
+                    // Tell the hypervisor to load the pVM firmware.
+                    vm.load_protected_vm_firmware(
+                        GuestAddress(PROTECTED_VM_FW_START),
+                        PROTECTED_VM_FW_MAX_SIZE,
+                    )
+                    .map_err(Error::LoadPvmFw)?;
                 }
 
-                let entry_addr = if protection_type.runs_firmware() {
-                    PROTECTED_VM_FW_START
+                let entry_addr = if protection_type.needs_firmware_loaded() {
+                    Some(PROTECTED_VM_FW_START)
+                } else if protection_type.runs_firmware() {
+                    None // Initial RIP value is set by the hypervisor
                 } else {
-                    kernel_entry.offset()
+                    Some(kernel_entry.offset())
                 };
 
-                vcpu_init[0].regs.rip = entry_addr;
+                if let Some(entry) = entry_addr {
+                    vcpu_init[0].regs.rip = entry;
+                }
 
                 match kernel_type {
                     KernelType::BzImage | KernelType::Elf => {
