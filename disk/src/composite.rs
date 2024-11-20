@@ -67,8 +67,6 @@ const PARTITION_ALIGNMENT_SIZE: usize = GPT_BEGINNING_SIZE as usize
 const HEADER_PADDING_LENGTH: usize = SECTOR_SIZE as usize - GPT_HEADER_SIZE as usize;
 // Keep all partitions 4k aligned for performance.
 const PARTITION_SIZE_SHIFT: u8 = 12;
-// Keep the disk size a multiple of 64k for crosvm's virtio_blk driver.
-const DISK_SIZE_SHIFT: u8 = 16;
 
 // From https://en.wikipedia.org/wiki/GUID_Partition_Table#Partition_type_GUIDs.
 const LINUX_FILESYSTEM_GUID: Uuid = Uuid::from_u128(0x0FC63DAF_8483_4772_8E79_3D69D8477DE4);
@@ -568,7 +566,7 @@ pub struct PartitionInfo {
 }
 
 /// Round `val` up to the next multiple of 2**`align_log`.
-fn align_to_power_of_2(val: u64, align_log: u8) -> u64 {
+const fn align_to_power_of_2(val: u64, align_log: u8) -> u64 {
     let align = 1 << align_log;
     ((val + (align - 1)) / align) * align
 }
@@ -635,7 +633,6 @@ fn write_end(
     partitions: &[u8],
     partition_entries_crc32: u32,
     secondary_table_offset: u64,
-    disk_size: u64,
 ) -> Result<()> {
     // Write partition entries, including unused ones.
     file.write_all(partitions).map_err(Error::WriteHeader)?;
@@ -649,12 +646,6 @@ fn write_end(
         true,
     )?;
     file.write_all(&[0; HEADER_PADDING_LENGTH])
-        .map_err(Error::WriteHeader)?;
-
-    // Pad out to the aligned disk size.
-    let used_disk_size = secondary_table_offset + GPT_END_SIZE;
-    let padding = disk_size - used_disk_size;
-    file.write_all(&vec![0; padding as usize])
         .map_err(Error::WriteHeader)?;
 
     Ok(())
@@ -771,12 +762,17 @@ pub fn create_composite_disk(
 
         next_disk_offset += partition.aligned_size();
     }
-    let secondary_table_offset = next_disk_offset;
-    let disk_size = align_to_power_of_2(secondary_table_offset + GPT_END_SIZE, DISK_SIZE_SHIFT);
-
+    // The secondary GPT needs to be at the very end of the file, but its size (0x4200) is not
+    // aligned to the chosen partition size (0x1000). We compensate for that by writing some
+    // padding to the start of the footer file.
+    const FOOTER_PADDING: u64 =
+        align_to_power_of_2(GPT_END_SIZE, PARTITION_SIZE_SHIFT) - GPT_END_SIZE;
+    let footer_file_offset = next_disk_offset;
+    let secondary_table_offset = footer_file_offset + FOOTER_PADDING;
+    let disk_size = secondary_table_offset + GPT_END_SIZE;
     composite_proto.component_disks.push(ComponentDisk {
         file_path: footer_path,
-        offset: secondary_table_offset,
+        offset: footer_file_offset,
         read_write_capability: ReadWriteCapability::READ_ONLY.into(),
         ..ComponentDisk::new()
     });
@@ -795,13 +791,16 @@ pub fn create_composite_disk(
         secondary_table_offset,
         disk_size,
     )?;
+
+    footer_file
+        .write_all(&[0; FOOTER_PADDING as usize])
+        .map_err(Error::WriteHeader)?;
     write_end(
         footer_file,
         disk_guid,
         &partitions_buffer,
         partition_entries_crc32,
         secondary_table_offset,
-        disk_size,
     )?;
 
     composite_proto.length = disk_size;
@@ -1328,30 +1327,10 @@ mod tests {
             &partitions,
             42,
             disk_size - GPT_END_SIZE,
-            disk_size,
         )
         .unwrap();
 
         assert_eq!(buffer.len(), GPT_END_SIZE as usize);
-    }
-
-    #[test]
-    fn end_size_with_padding() {
-        let mut buffer = vec![];
-        let partitions = [0u8; GPT_NUM_PARTITIONS as usize * GPT_PARTITION_ENTRY_SIZE as usize];
-        let disk_size = 1000 * SECTOR_SIZE;
-        let padding = 3 * SECTOR_SIZE;
-        write_end(
-            &mut buffer,
-            Uuid::from_u128(0x12345678_1234_5678_abcd_12345678abcd),
-            &partitions,
-            42,
-            disk_size - GPT_END_SIZE - padding,
-            disk_size,
-        )
-        .unwrap();
-
-        assert_eq!(buffer.len(), GPT_END_SIZE as usize + padding as usize);
     }
 
     /// Creates a composite disk image with no partitions.
@@ -1453,7 +1432,7 @@ mod tests {
                         ..ComponentDisk::new()
                     },
                 ],
-                length: 0x10000, // 1 << DISK_SIZE_SHIFT
+                length: 0xc000,
                 ..CompositeDisk::new()
             }
         );
