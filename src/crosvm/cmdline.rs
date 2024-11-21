@@ -24,6 +24,8 @@ use std::sync::atomic::Ordering;
 
 use arch::CpuSet;
 use arch::FdtPosition;
+#[cfg(target_arch = "x86_64")]
+use arch::MemoryRegionConfig;
 use arch::PciConfig;
 use arch::Pstore;
 #[cfg(target_arch = "x86_64")]
@@ -1790,6 +1792,9 @@ pub struct RunCommand {
     #[serde(default)]
     #[merge(strategy = overwrite_option)]
     /// PCI parameters.
+    ///
+    /// Possible key values:
+    ///     mem=[start=INT,size=INT] - region for non-prefetchable PCI device memory below 4G
     ///
     /// Possible key values (aarch64 only):
     ///     cam=[start=INT,size=INT] - region for PCI Configuration Access Mechanism
@@ -3617,10 +3622,20 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.enable_hwp = cmd.enable_hwp.unwrap_or_default();
             cfg.force_s2idle = cmd.s2idle.unwrap_or_default();
             cfg.pcie_ecam = cmd.pcie_ecam;
-            cfg.pci_low_start = cmd.pci_start;
             cfg.no_i8042 = cmd.no_i8042.unwrap_or_default();
             cfg.no_rtc = cmd.no_rtc.unwrap_or_default();
             cfg.smbios = cmd.smbios.unwrap_or_default();
+
+            if let Some(pci_start) = cmd.pci_start {
+                if cfg.pci_config.mem.is_some() {
+                    return Err("--pci-start cannot be used with --pci mem=[...]".to_string());
+                }
+                log::warn!("`--pci-start` is deprecated; use `--pci mem=[start={pci_start:#?}]");
+                cfg.pci_config.mem = Some(MemoryRegionConfig {
+                    start: pci_start,
+                    size: None,
+                });
+            }
 
             if !cmd.oem_strings.is_empty() {
                 log::warn!(

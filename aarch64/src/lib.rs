@@ -112,7 +112,7 @@ const AARCH64_PROTECTED_VM_FW_START: u64 =
     AARCH64_PHYS_MEM_START - AARCH64_PROTECTED_VM_FW_MAX_SIZE;
 
 const AARCH64_PVTIME_IPA_MAX_SIZE: u64 = 0x10000;
-const AARCH64_PVTIME_IPA_START: u64 = AARCH64_MMIO_BASE - AARCH64_PVTIME_IPA_MAX_SIZE;
+const AARCH64_PVTIME_IPA_START: u64 = 0x1ff0000;
 const AARCH64_PVTIME_SIZE: u64 = 64;
 
 // These constants indicate the placement of the GIC registers in the physical
@@ -154,10 +154,10 @@ const AARCH64_VMWDT_SIZE: u64 = 0x1000;
 const AARCH64_PCI_CAM_BASE_DEFAULT: u64 = 0x10000;
 // Default PCI MMIO configuration region size.
 const AARCH64_PCI_CAM_SIZE_DEFAULT: u64 = 0x1000000;
-// This is the base address of MMIO devices.
-const AARCH64_MMIO_BASE: u64 = 0x2000000;
-// Size of the whole MMIO region.
-const AARCH64_MMIO_SIZE: u64 = 0x2000000;
+// Default PCI mem base address.
+const AARCH64_PCI_MEM_BASE_DEFAULT: u64 = 0x2000000;
+// Default PCI mem size.
+const AARCH64_PCI_MEM_SIZE_DEFAULT: u64 = 0x2000000;
 // Virtio devices start at SPI interrupt number 4
 const AARCH64_IRQ_BASE: u32 = 4;
 
@@ -236,6 +236,8 @@ pub enum Error {
     Cmdline(kernel_cmdline::Error),
     #[error("bad PCI CAM configuration: {0}")]
     ConfigurePciCam(String),
+    #[error("bad PCI mem configuration: {0}")]
+    ConfigurePciMem(String),
     #[error("failed to configure CPU Frequencies: {0}")]
     CpuFrequencies(base::Error),
     #[error("failed to configure CPU topology: {0}")]
@@ -384,6 +386,7 @@ fn main_memory_size(components: &VmComponents, hypervisor: &(impl Hypervisor + ?
 
 pub struct ArchMemoryLayout {
     pci_cam: AddressRange,
+    pci_mem: AddressRange,
 }
 
 impl arch::LinuxArch for AArch64 {
@@ -414,7 +417,20 @@ impl arch::LinuxArch for AArch64 {
             )));
         }
 
-        Ok(ArchMemoryLayout { pci_cam })
+        let pci_mem = match components.pci_config.mem {
+            Some(MemoryRegionConfig { start, size }) => AddressRange::from_start_and_size(
+                start,
+                size.unwrap_or(AARCH64_PCI_MEM_SIZE_DEFAULT),
+            )
+            .ok_or(Error::ConfigurePciMem("region overflowed".to_string()))?,
+            None => AddressRange::from_start_and_size(
+                AARCH64_PCI_MEM_BASE_DEFAULT,
+                AARCH64_PCI_MEM_SIZE_DEFAULT,
+            )
+            .unwrap(),
+        };
+
+        Ok(ArchMemoryLayout { pci_cam, pci_mem })
     }
 
     /// Returns a Vec of the valid memory addresses.
@@ -456,7 +472,7 @@ impl arch::LinuxArch for AArch64 {
 
     fn get_system_allocator_config<V: Vm>(
         vm: &V,
-        _arch_memory_layout: &Self::ArchMemoryLayout,
+        arch_memory_layout: &Self::ArchMemoryLayout,
     ) -> SystemAllocatorConfig {
         let guest_phys_end = 1u64 << vm.get_guest_phys_addr_bits();
         // The platform MMIO region is immediately past the end of RAM.
@@ -474,8 +490,7 @@ impl arch::LinuxArch for AArch64 {
             });
         SystemAllocatorConfig {
             io: None,
-            low_mmio: AddressRange::from_start_and_size(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
-                .expect("invalid mmio region"),
+            low_mmio: arch_memory_layout.pci_mem,
             high_mmio: AddressRange::from_start_and_size(high_mmio_base, high_mmio_size)
                 .expect("invalid high mmio region"),
             platform_mmio: Some(

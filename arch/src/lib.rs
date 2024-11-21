@@ -344,7 +344,6 @@ pub enum VcpuAffinity {
 }
 
 /// Memory region with optional size.
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, FromKeyValues)]
 pub struct MemoryRegionConfig {
     pub start: u64,
@@ -357,6 +356,8 @@ pub struct PciConfig {
     /// region for PCI Configuration Access Mechanism
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     pub cam: Option<MemoryRegionConfig>,
+    /// region for non-prefetchable PCI device memory below 4G
+    pub mem: Option<MemoryRegionConfig>,
 }
 
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
@@ -400,8 +401,6 @@ pub struct VmComponents {
     ))]
     pub normalized_cpu_capacities: BTreeMap<usize, u32>,
     pub pci_config: PciConfig,
-    #[cfg(target_arch = "x86_64")]
-    pub pci_low_start: Option<u64>,
     #[cfg(target_arch = "x86_64")]
     pub pcie_ecam: Option<AddressRange>,
     pub pflash_block_size: u32,

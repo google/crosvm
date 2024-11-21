@@ -843,8 +843,6 @@ pub struct Config {
     #[cfg(feature = "pci-hotplug")]
     pub pci_hotplug_slots: Option<u8>,
     #[cfg(target_arch = "x86_64")]
-    pub pci_low_start: Option<u64>,
-    #[cfg(target_arch = "x86_64")]
     pub pcie_ecam: Option<AddressRange>,
     pub per_vm_core_scheduling: bool,
     pub pflash_parameters: Option<PflashParameters>,
@@ -1081,8 +1079,6 @@ impl Default for Config {
             pci_config: Default::default(),
             #[cfg(feature = "pci-hotplug")]
             pci_hotplug_slots: None,
-            #[cfg(target_arch = "x86_64")]
-            pci_low_start: None,
             #[cfg(target_arch = "x86_64")]
             pcie_ecam: None,
             per_vm_core_scheduling: false,
@@ -1436,7 +1432,6 @@ mod tests {
 
     use super::*;
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     fn config_from_args(args: &[&str]) -> Config {
         crate::crosvm::cmdline::RunCommand::from_args(&[], args)
             .unwrap()
@@ -2521,6 +2516,7 @@ mod tests {
                     start: 0x123,
                     size: None,
                 }),
+                ..PciConfig::default()
             }
         );
         assert_eq!(
@@ -2530,6 +2526,31 @@ mod tests {
                     start: 0x123,
                     size: Some(0x456),
                 }),
+                ..PciConfig::default()
+            },
+        );
+    }
+
+    #[test]
+    fn parse_pci_mem() {
+        assert_eq!(
+            config_from_args(&["--pci", "mem=[start=0x123]", "/dev/null"]).pci_config,
+            PciConfig {
+                mem: Some(arch::MemoryRegionConfig {
+                    start: 0x123,
+                    size: None,
+                }),
+                ..PciConfig::default()
+            }
+        );
+        assert_eq!(
+            config_from_args(&["--pci", "mem=[start=0x123,size=0x456]", "/dev/null"]).pci_config,
+            PciConfig {
+                mem: Some(arch::MemoryRegionConfig {
+                    start: 0x123,
+                    size: Some(0x456),
+                }),
+                ..PciConfig::default()
             },
         );
     }

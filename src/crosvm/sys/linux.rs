@@ -1501,8 +1501,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         pci_config: cfg.pci_config,
         #[cfg(target_arch = "x86_64")]
         pcie_ecam: cfg.pcie_ecam,
-        #[cfg(target_arch = "x86_64")]
-        pci_low_start: cfg.pci_low_start,
         dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
         boot_cpu: cfg.boot_cpu,
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]

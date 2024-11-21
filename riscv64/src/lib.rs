@@ -134,7 +134,9 @@ pub enum Error {
     InitrdLoadFailure(arch::LoadImageError),
     #[error("kernel could not be loaded: {0}")]
     KernelLoadFailure(arch::LoadImageError),
-    #[error("protected vms not supported on riscv(yet)")]
+    #[error("PCI mem region not configurable on riscv (yet)")]
+    PciMemNotConfigurable,
+    #[error("protected vms not supported on riscv (yet)")]
     ProtectedVmUnsupported,
     #[error("ramoops address is different from high_mmio_base: {0} vs {1}")]
     RamoopsAddress(u64, u64),
@@ -167,8 +169,11 @@ impl arch::LinuxArch for Riscv64 {
     type ArchMemoryLayout = ArchMemoryLayout;
 
     fn arch_memory_layout(
-        _components: &VmComponents,
+        components: &VmComponents,
     ) -> std::result::Result<Self::ArchMemoryLayout, Self::Error> {
+        if components.pci_config.mem.is_some() {
+            return Err(Error::PciMemNotConfigurable);
+        }
         Ok(ArchMemoryLayout {})
     }
 

@@ -60,6 +60,8 @@ use arch::CpuSet;
 use arch::DtbOverlay;
 use arch::FdtPosition;
 use arch::GetSerialCmdlineError;
+use arch::MemoryRegionConfig;
+use arch::PciConfig;
 use arch::RunnableLinuxVm;
 use arch::VmComponents;
 use arch::VmImage;
@@ -172,6 +174,8 @@ pub enum Error {
     CommandLineOverflow,
     #[error("failed to configure hotplugged pci device: {0}")]
     ConfigurePciDevice(arch::DeviceRegistrationError),
+    #[error("bad PCI mem configuration: {0}")]
+    ConfigurePciMem(String),
     #[error("failed to configure segment registers: {0}")]
     ConfigureSegments(regs::Error),
     #[error("error configuring the system")]
@@ -355,7 +359,7 @@ const MEM_32BIT_GAP_SIZE: u64 = 768 * MB;
 const END_ADDR_BEFORE_32BITS: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
 // Reserved memory for nand_bios/LAPIC/IOAPIC/HPET/.....
 const RESERVED_MEM_SIZE: u64 = 0x800_0000;
-const PCI_MMIO_END: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - 1;
+const DEFAULT_PCI_MEM_END: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - 1;
 // Reserve 64MB for pcie enhanced configuration
 const DEFAULT_PCIE_CFG_MMIO_SIZE: u64 = 0x400_0000;
 const DEFAULT_PCIE_CFG_MMIO_END: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - 1;
@@ -413,8 +417,8 @@ pub struct ArchMemoryLayout {
 }
 
 pub fn create_arch_memory_layout(
+    pci_config: &PciConfig,
     pcie_ecam: Option<AddressRange>,
-    pci_low_start: Option<u64>,
     has_protected_vm_firmware: bool,
 ) -> Result<ArchMemoryLayout> {
     const DEFAULT_PCIE_CFG_MMIO: AddressRange = AddressRange {
@@ -424,18 +428,21 @@ pub fn create_arch_memory_layout(
 
     let pcie_cfg_mmio = pcie_ecam.unwrap_or(DEFAULT_PCIE_CFG_MMIO);
 
-    let pci_mmio_before_32bit = if let Some(pci_low) = pci_low_start {
-        AddressRange {
-            start: pci_low,
-            end: PCI_MMIO_END,
+    let pci_mmio_before_32bit = match pci_config.mem {
+        Some(MemoryRegionConfig {
+            start,
+            size: Some(size),
+        }) => AddressRange::from_start_and_size(start, size)
+            .ok_or(Error::ConfigurePciMem("region overflowed".to_string()))?,
+        Some(MemoryRegionConfig { start, size: None }) => {
+            AddressRange::from_start_and_end(start, DEFAULT_PCI_MEM_END)
         }
-    } else {
-        AddressRange {
-            start: pcie_cfg_mmio
+        None => AddressRange::from_start_and_end(
+            pcie_cfg_mmio
                 .start
                 .min(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE),
-            end: PCI_MMIO_END,
-        }
+            DEFAULT_PCI_MEM_END,
+        ),
     };
 
     let pvmfw_mem = if has_protected_vm_firmware {
@@ -753,8 +760,8 @@ impl arch::LinuxArch for X8664arch {
         components: &VmComponents,
     ) -> std::result::Result<Self::ArchMemoryLayout, Self::Error> {
         create_arch_memory_layout(
+            &components.pci_config,
             components.pcie_ecam,
-            components.pci_low_start,
             components.hv_cfg.protection_type.runs_firmware(),
         )
     }
@@ -2363,9 +2370,14 @@ mod tests {
     const TEST_MEMORY_SIZE: u64 = 2 * GB;
 
     fn setup() -> ArchMemoryLayout {
+        let pci_config = PciConfig {
+            mem: Some(MemoryRegionConfig {
+                start: 2 * GB,
+                size: None,
+            }),
+        };
         let pcie_ecam = Some(AddressRange::from_start_and_size(3 * GB, 256 * MB).unwrap());
-        let pci_start = Some(2 * GB);
-        create_arch_memory_layout(pcie_ecam, pci_start, false).unwrap()
+        create_arch_memory_layout(&pci_config, pcie_ecam, false).unwrap()
     }
 
     #[test]
@@ -2487,7 +2499,7 @@ mod tests {
     #[test]
     fn check_32bit_gap_size_alignment() {
         let arch_memory_layout = setup();
-        // pci_low_start is 256 MB aligned to be friendly for MTRR mappings.
+        // pci_mmio_before_32bit is 256 MB aligned to be friendly for MTRR mappings.
         assert_eq!(
             arch_memory_layout.pci_mmio_before_32bit.start % (256 * MB),
             0
