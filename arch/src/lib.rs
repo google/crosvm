@@ -68,8 +68,6 @@ use jail::FakeMinijailStub as Minijail;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use minijail::Minijail;
 use remain::sorted;
-#[cfg(target_arch = "x86_64")]
-use resources::AddressRange;
 use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
 use serde::de::Visitor;
@@ -356,6 +354,9 @@ pub struct PciConfig {
     /// region for PCI Configuration Access Mechanism
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     pub cam: Option<MemoryRegionConfig>,
+    /// region for PCIe Enhanced Configuration Access Mechanism
+    #[cfg(target_arch = "x86_64")]
+    pub ecam: Option<MemoryRegionConfig>,
     /// region for non-prefetchable PCI device memory below 4G
     pub mem: Option<MemoryRegionConfig>,
 }
@@ -401,8 +402,6 @@ pub struct VmComponents {
     ))]
     pub normalized_cpu_capacities: BTreeMap<usize, u32>,
     pub pci_config: PciConfig,
-    #[cfg(target_arch = "x86_64")]
-    pub pcie_ecam: Option<AddressRange>,
     pub pflash_block_size: u32,
     pub pflash_image: Option<File>,
     pub pstore: Option<Pstore>,

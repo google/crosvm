@@ -89,8 +89,6 @@ use crate::crosvm::config::parse_cpu_capacity;
 ))]
 use crate::crosvm::config::parse_cpu_frequencies;
 use crate::crosvm::config::parse_dynamic_power_coefficient;
-#[cfg(target_arch = "x86_64")]
-use crate::crosvm::config::parse_memory_region;
 use crate::crosvm::config::parse_mmio_address_range;
 use crate::crosvm::config::parse_pflash_parameters;
 use crate::crosvm::config::parse_serial_options;
@@ -1798,6 +1796,9 @@ pub struct RunCommand {
     ///
     /// Possible key values (aarch64 only):
     ///     cam=[start=INT,size=INT] - region for PCI Configuration Access Mechanism
+    ///
+    /// Possible key values (x86_64 only):
+    ///     ecam=[start=INT,size=INT] - region for PCIe Enhanced Configuration Access Mechanism
     pub pci: Option<PciConfig>,
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -1813,17 +1814,6 @@ pub struct RunCommand {
     #[merge(strategy = overwrite_option)]
     /// the pci mmio start address below 4G
     pub pci_start: Option<u64>,
-
-    #[cfg(target_arch = "x86_64")]
-    #[argh(
-        option,
-        arg_name = "mmio_base,mmio_length",
-        from_str_fn(parse_memory_region)
-    )]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite_option)]
-    /// region for PCIe Enhanced Configuration Access Mechanism
-    pub pcie_ecam: Option<AddressRange>,
 
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
@@ -3621,7 +3611,6 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.break_linux_pci_config_io = cmd.break_linux_pci_config_io.unwrap_or_default();
             cfg.enable_hwp = cmd.enable_hwp.unwrap_or_default();
             cfg.force_s2idle = cmd.s2idle.unwrap_or_default();
-            cfg.pcie_ecam = cmd.pcie_ecam;
             cfg.no_i8042 = cmd.no_i8042.unwrap_or_default();
             cfg.no_rtc = cmd.no_rtc.unwrap_or_default();
             cfg.smbios = cmd.smbios.unwrap_or_default();

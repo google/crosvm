@@ -1499,8 +1499,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         force_s2idle: cfg.force_s2idle,
         pvm_fw: pvm_fw_image,
         pci_config: cfg.pci_config,
-        #[cfg(target_arch = "x86_64")]
-        pcie_ecam: cfg.pcie_ecam,
         dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
         boot_cpu: cfg.boot_cpu,
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]

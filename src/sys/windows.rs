@@ -2112,8 +2112,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         pvm_fw: None,
         pci_config: cfg.pci_config,
         #[cfg(target_arch = "x86_64")]
-        pcie_ecam: cfg.pcie_ecam,
-        #[cfg(target_arch = "x86_64")]
         smbios: cfg.smbios.clone(),
         dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
         #[cfg(target_arch = "x86_64")]

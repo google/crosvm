@@ -174,6 +174,8 @@ pub enum Error {
     CommandLineOverflow,
     #[error("failed to configure hotplugged pci device: {0}")]
     ConfigurePciDevice(arch::DeviceRegistrationError),
+    #[error("bad PCI ECAM configuration: {0}")]
+    ConfigurePciEcam(String),
     #[error("bad PCI mem configuration: {0}")]
     ConfigurePciMem(String),
     #[error("failed to configure segment registers: {0}")]
@@ -418,15 +420,35 @@ pub struct ArchMemoryLayout {
 
 pub fn create_arch_memory_layout(
     pci_config: &PciConfig,
-    pcie_ecam: Option<AddressRange>,
     has_protected_vm_firmware: bool,
 ) -> Result<ArchMemoryLayout> {
-    const DEFAULT_PCIE_CFG_MMIO: AddressRange = AddressRange {
-        start: DEFAULT_PCIE_CFG_MMIO_START,
-        end: DEFAULT_PCIE_CFG_MMIO_END,
+    // the max bus number is 256 and each bus occupy 1MB, so the max pcie cfg mmio size = 256M
+    const MAX_PCIE_ECAM_SIZE: u64 = 256 * MB;
+    let pcie_cfg_mmio = match pci_config.ecam {
+        Some(MemoryRegionConfig {
+            start,
+            size: Some(size),
+        }) => AddressRange::from_start_and_size(start, size.min(MAX_PCIE_ECAM_SIZE)).unwrap(),
+        Some(MemoryRegionConfig { start, size: None }) => {
+            AddressRange::from_start_and_end(start, DEFAULT_PCIE_CFG_MMIO_END)
+        }
+        None => {
+            AddressRange::from_start_and_end(DEFAULT_PCIE_CFG_MMIO_START, DEFAULT_PCIE_CFG_MMIO_END)
+        }
     };
-
-    let pcie_cfg_mmio = pcie_ecam.unwrap_or(DEFAULT_PCIE_CFG_MMIO);
+    if pcie_cfg_mmio.start % pcie_cfg_mmio.len().unwrap() != 0
+        || pcie_cfg_mmio.start % MB != 0
+        || pcie_cfg_mmio.len().unwrap() % MB != 0
+    {
+        return Err(Error::ConfigurePciEcam(
+            "base and len must be aligned to 1MB and base must be a multiple of len".to_string(),
+        ));
+    }
+    if pcie_cfg_mmio.end >= 0x1_0000_0000 {
+        return Err(Error::ConfigurePciEcam(
+            "end address can't go beyond 4G".to_string(),
+        ));
+    }
 
     let pci_mmio_before_32bit = match pci_config.mem {
         Some(MemoryRegionConfig {
@@ -761,7 +783,6 @@ impl arch::LinuxArch for X8664arch {
     ) -> std::result::Result<Self::ArchMemoryLayout, Self::Error> {
         create_arch_memory_layout(
             &components.pci_config,
-            components.pcie_ecam,
             components.hv_cfg.protection_type.runs_firmware(),
         )
     }
@@ -2371,13 +2392,16 @@ mod tests {
 
     fn setup() -> ArchMemoryLayout {
         let pci_config = PciConfig {
+            ecam: Some(MemoryRegionConfig {
+                start: 3 * GB,
+                size: Some(256 * MB),
+            }),
             mem: Some(MemoryRegionConfig {
                 start: 2 * GB,
                 size: None,
             }),
         };
-        let pcie_ecam = Some(AddressRange::from_start_and_size(3 * GB, 256 * MB).unwrap());
-        create_arch_memory_layout(&pci_config, pcie_ecam, false).unwrap()
+        create_arch_memory_layout(&pci_config, false).unwrap()
     }
 
     #[test]
