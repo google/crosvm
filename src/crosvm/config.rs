@@ -14,6 +14,7 @@ use std::time::Duration;
 use arch::set_default_serial_parameters;
 use arch::CpuSet;
 use arch::FdtPosition;
+use arch::PciConfig;
 use arch::Pstore;
 #[cfg(target_arch = "x86_64")]
 use arch::SmbiosOptions;
@@ -838,6 +839,7 @@ pub struct Config {
     pub no_rtc: bool,
     pub no_smt: bool,
     pub params: Vec<String>,
+    pub pci_config: PciConfig,
     #[cfg(feature = "pci-hotplug")]
     pub pci_hotplug_slots: Option<u8>,
     #[cfg(target_arch = "x86_64")]
@@ -1076,6 +1078,7 @@ impl Default for Config {
             no_rtc: false,
             no_smt: false,
             params: Vec::new(),
+            pci_config: Default::default(),
             #[cfg(feature = "pci-hotplug")]
             pci_hotplug_slots: None,
             #[cfg(target_arch = "x86_64")]
@@ -1432,6 +1435,14 @@ mod tests {
     use uuid::uuid;
 
     use super::*;
+
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    fn config_from_args(args: &[&str]) -> Config {
+        crate::crosvm::cmdline::RunCommand::from_args(&[], args)
+            .unwrap()
+            .try_into()
+            .unwrap()
+    }
 
     #[test]
     fn parse_cpu_opts() {
@@ -2497,6 +2508,29 @@ mod tests {
             InputDeviceOption::Rotary {
                 path: PathBuf::from("/dev/rotary-test")
             }
+        );
+    }
+
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[test]
+    fn parse_pci_cam() {
+        assert_eq!(
+            config_from_args(&["--pci", "cam=[start=0x123]", "/dev/null"]).pci_config,
+            PciConfig {
+                cam: Some(arch::MemoryRegionConfig {
+                    start: 0x123,
+                    size: None,
+                }),
+            }
+        );
+        assert_eq!(
+            config_from_args(&["--pci", "cam=[start=0x123,size=0x456]", "/dev/null"]).pci_config,
+            PciConfig {
+                cam: Some(arch::MemoryRegionConfig {
+                    start: 0x123,
+                    size: Some(0x456),
+                }),
+            },
         );
     }
 

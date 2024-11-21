@@ -62,7 +62,7 @@ These apply for all boot modes.
 | [`SERIAL_ADDR[0]`][serial_addr]   | `3f8`           | `400`           | 8 bytes        | Serial port MMIO                                              |
 | [`AARCH64_RTC_ADDR`]              | `2000`          | `3000`          | 4 KiB          | Real-time clock                                               |
 | [`AARCH64_VMWDT_ADDR`]            | `3000`          | `4000`          | 4 KiB          | Watchdog device                                               |
-| [`AARCH64_PCI_CFG_BASE`]          | `1_0000`        | `101_0000`      | 16 MiB         | PCI configuration (CAM)                                       |
+| [`AARCH64_PCI_CAM_BASE_DEFAULT`]  | `1_0000`        | `101_0000`      | 16 MiB         | PCI configuration (CAM)                                       |
 | [`AARCH64_VIRTFREQ_BASE`]         | `104_0000`      | `105_0000`      | 64 KiB         | Virtual cpufreq device                                        |
 | [`AARCH64_PVTIME_IPA_START`]      | `1f0_0000`      | `200_0000`      | 64 KiB         | Paravirtualized time                                          |
 | [`AARCH64_MMIO_BASE`]             | `200_0000`      | `400_0000`      | 32 MiB         | Low MMIO allocation area                                      |
@@ -105,7 +105,7 @@ with a 16 MiB alignment.
 [serial_addr]: https://crsrc.org/o/src/platform/crosvm/arch/src/serial.rs;l=78?q=SERIAL_ADDR
 [`aarch64_rtc_addr`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=177?q=AARCH64_RTC_ADDR
 [`aarch64_vmwdt_addr`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=187?q=AARCH64_VMWDT_ADDR
-[`aarch64_pci_cfg_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=192?q=AARCH64_PCI_CFG_BASE
+[`aarch64_pci_cfg_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=192?q=AARCH64_PCI_CAM_BASE_DEFAULT
 [`aarch64_virtfreq_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=207?q=AARCH64_VIRTFREQ_BASE
 [`aarch64_mmio_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=196?q=AARCH64_MMIO_BASE
 [`aarch64_gic_cpui_base`]: https://crsrc.org/o/src/platform/crosvm/devices/src/irqchip/kvm/aarch64.rs;l=106?q=AARCH64_GIC_CPUI_BASE

@@ -343,6 +343,22 @@ pub enum VcpuAffinity {
     PerVcpu(BTreeMap<usize, CpuSet>),
 }
 
+/// Memory region with optional size.
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, FromKeyValues)]
+pub struct MemoryRegionConfig {
+    pub start: u64,
+    pub size: Option<u64>,
+}
+
+/// General PCI config.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, FromKeyValues)]
+pub struct PciConfig {
+    /// region for PCI Configuration Access Mechanism
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    pub cam: Option<MemoryRegionConfig>,
+}
+
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
 /// create a `RunnableLinuxVm`.
 #[sorted]
@@ -383,6 +399,7 @@ pub struct VmComponents {
         any(target_os = "android", target_os = "linux")
     ))]
     pub normalized_cpu_capacities: BTreeMap<usize, u32>,
+    pub pci_config: PciConfig,
     #[cfg(target_arch = "x86_64")]
     pub pci_low_start: Option<u64>,
     #[cfg(target_arch = "x86_64")]

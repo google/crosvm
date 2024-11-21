@@ -24,6 +24,7 @@ use std::sync::atomic::Ordering;
 
 use arch::CpuSet;
 use arch::FdtPosition;
+use arch::PciConfig;
 use arch::Pstore;
 #[cfg(target_arch = "x86_64")]
 use arch::SmbiosOptions;
@@ -1784,6 +1785,15 @@ pub struct RunCommand {
     #[merge(strategy = append)]
     /// extra kernel or plugin command line arguments. Can be given more than once
     pub params: Vec<String>,
+
+    #[argh(option)]
+    #[serde(default)]
+    #[merge(strategy = overwrite_option)]
+    /// PCI parameters.
+    ///
+    /// Possible key values (aarch64 only):
+    ///     cam=[start=INT,size=INT] - region for PCI Configuration Access Mechanism
+    pub pci: Option<PciConfig>,
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(option, arg_name = "pci_hotplug_slots")]
@@ -3598,6 +3608,8 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.host_cpu_topology = cmd.host_cpu_topology.unwrap_or_default();
+
+        cfg.pci_config = cmd.pci.unwrap_or_default();
 
         #[cfg(target_arch = "x86_64")]
         {
