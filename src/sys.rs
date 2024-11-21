@@ -12,6 +12,8 @@ cfg_if::cfg_if! {
         use windows as platform;
         pub(crate) use windows::ExitState;
         pub(crate) use windows::run_config;
+        #[cfg(feature = "sandbox")]
+        pub(crate) use windows::main::sandbox_lower_token;
     } else {
         compile_error!("Unsupported platform");
     }
@@ -22,8 +24,6 @@ pub(crate) use platform::main::error_to_exit_code;
 pub(crate) use platform::main::get_library_watcher;
 pub(crate) use platform::main::init_log;
 pub(crate) use platform::main::run_command;
-#[cfg(feature = "sandbox")]
-pub(crate) use platform::main::sandbox_lower_token;
 pub(crate) use platform::main::start_device;
 #[cfg(not(feature = "crash-report"))]
 pub(crate) use platform::set_panic_hook;
