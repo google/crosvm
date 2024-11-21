@@ -1,4 +1,4 @@
-# Pmem
+# VirtIO Pmem
 
 crosvm supports `virtio-pmem` to provide a virtual device emulating a byte-addressable persistent
 memory device. The disk image is provided to the guest using a memory-mapped view of the image file,
@@ -32,5 +32,5 @@ the guest page cache. This can result in lower memory overhead versus `virtio-bl
 
 The file backing a persistent memory device is mapped directly into the guest's address space, which
 means that only the raw disk image format is supported; disk images in qcow2 or other formats may
-not be used as a pmem device. See the [`block`](block.md) device for an alternative that supports
+not be used as a pmem device. See the [`block`](../block.md) device for an alternative that supports
 more file formats.

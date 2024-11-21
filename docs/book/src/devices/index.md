@@ -77,7 +77,7 @@ Currently, only network devices are supported.
 [`iommu`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/iommu.rs
 [`net`]: net.md
 [`p9`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/p9.rs
-[`pmem`]: pmem.md
+[`pmem`]: pmem/README.md
 [`rng`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/rng.rs
 [`scsi`]: scsi.md
 [`serial`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/serial.rs
