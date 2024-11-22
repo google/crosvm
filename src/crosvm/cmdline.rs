@@ -1792,13 +1792,16 @@ pub struct RunCommand {
     /// PCI parameters.
     ///
     /// Possible key values:
-    ///     mem=[start=INT,size=INT] - region for non-prefetchable PCI device memory below 4G
+    ///     mem=[start=INT,size=INT] - region for non-prefetchable
+    ///         PCI device memory below 4G
     ///
     /// Possible key values (aarch64 only):
-    ///     cam=[start=INT,size=INT] - region for PCI Configuration Access Mechanism
+    ///     cam=[start=INT,size=INT] - region for PCI Configuration
+    ///         Access Mechanism
     ///
     /// Possible key values (x86_64 only):
-    ///     ecam=[start=INT,size=INT] - region for PCIe Enhanced Configuration Access Mechanism
+    ///     ecam=[start=INT,size=INT] - region for PCIe Enhanced
+    ///         Configuration Access Mechanism
     pub pci: Option<PciConfig>,
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
