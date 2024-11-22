@@ -9,6 +9,8 @@ use std::fs::OpenOptions;
 use std::io;
 use std::io::stdin;
 use std::io::stdout;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
 use base::error;
@@ -37,12 +39,16 @@ use crate::PciAddress;
 pub enum Error {
     #[error("Unable to clone an Event: {0}")]
     CloneEvent(base::Error),
+    #[error("Unable to clone a Unix Stream: {0}")]
+    CloneUnixStream(std::io::Error),
     #[error("Unable to clone file: {0}")]
     FileClone(std::io::Error),
     #[error("Unable to create file '{1}': {0}")]
     FileCreate(std::io::Error, PathBuf),
     #[error("Unable to open file '{1}': {0}")]
     FileOpen(std::io::Error, PathBuf),
+    #[error("Invalid serial config specified: {0}")]
+    InvalidConfig(String),
     #[error("Serial device path '{0} is invalid")]
     InvalidPath(PathBuf),
     #[error("Invalid serial hardware: {0}")]
@@ -64,6 +70,8 @@ pub enum Error {
 /// Trait for types that can be used as input for a serial device.
 pub trait SerialInput: io::Read + ReadNotifier + Send {}
 impl SerialInput for File {}
+#[cfg(unix)]
+impl SerialInput for UnixStream {}
 #[cfg(windows)]
 impl SerialInput for WinConsole {}
 
@@ -78,6 +86,9 @@ pub enum SerialType {
     #[cfg_attr(unix, serde(rename = "unix"))]
     #[cfg_attr(windows, serde(rename = "namedpipe"))]
     SystemSerialType,
+    // Use the same Unix domain socket for input and output.
+    #[cfg(unix)]
+    UnixStream,
 }
 
 impl Default for SerialType {
@@ -94,6 +105,8 @@ impl Display for SerialType {
             SerialType::Sink => "Sink".to_string(),
             SerialType::Syslog => "Syslog".to_string(),
             SerialType::SystemSerialType => SYSTEM_SERIAL_TYPE_NAME.to_string(),
+            #[cfg(unix)]
+            SerialType::UnixStream => "UnixStream".to_string(),
         };
 
         write!(f, "{}", s)
@@ -151,6 +164,10 @@ pub struct SerialParameters {
     pub name: Option<String>,
     pub path: Option<PathBuf>,
     pub input: Option<PathBuf>,
+    /// Use the given `UnixStream` as input as well as output.
+    /// This flag can be used only when `type_` is `UnixStream`.
+    #[cfg(unix)]
+    pub input_unix_stream: bool,
     #[serde(default = "serial_parameters_default_num")]
     pub num: u8,
     pub console: bool,
@@ -193,6 +210,24 @@ impl SerialParameters {
         keep_rds.push(evt.as_raw_descriptor());
         cros_tracing::push_descriptors!(keep_rds);
         metrics::push_descriptors(keep_rds);
+
+        // When `self.input_unix_stream` is specified, use `self.path` for both output and input.
+        #[cfg(unix)]
+        if self.input_unix_stream {
+            if self.input.is_some() {
+                return Err(Error::InvalidConfig(
+                    "input-unix-stream can't be passed when input is specified".to_string(),
+                ));
+            }
+            if self.type_ != SerialType::UnixStream {
+                return Err(Error::InvalidConfig(
+                    "input-unix-stream must be used with type=unix-stream".to_string(),
+                ));
+            }
+
+            return create_unix_stream_serial_device(self, protection_type, evt, keep_rds);
+        }
+
         let input: Option<Box<dyn SerialInput>> = if let Some(input_path) = &self.input {
             let input_path = input_path.as_path();
 
@@ -246,6 +281,13 @@ impl SerialParameters {
                     keep_rds,
                 );
             }
+            #[cfg(unix)]
+            SerialType::UnixStream => {
+                let path = self.path.as_ref().ok_or(Error::PathRequired)?;
+                let output = UnixStream::connect(path).map_err(Error::SocketConnect)?;
+                keep_rds.push(output.as_raw_descriptor());
+                (Some(Box::new(output)), None)
+            }
         };
         Ok(T::new(
             protection_type,
@@ -286,6 +328,8 @@ mod tests {
                 name: None,
                 path: None,
                 input: None,
+                #[cfg(unix)]
+                input_unix_stream: false,
                 num: 1,
                 console: false,
                 earlycon: false,
@@ -311,6 +355,11 @@ mod tests {
         let opt = "type=namedpipe";
         let params = from_serial_arg(opt).unwrap();
         assert_eq!(params.type_, SerialType::SystemSerialType);
+        #[cfg(unix)]
+        {
+            let params = from_serial_arg("type=unix-stream").unwrap();
+            assert_eq!(params.type_, SerialType::UnixStream);
+        }
         let params = from_serial_arg("type=foobar");
         assert!(params.is_err());
 
@@ -335,6 +384,19 @@ mod tests {
         assert_eq!(params.input, Some("/path/to/input".into()));
         let params = from_serial_arg("input");
         assert!(params.is_err());
+
+        #[cfg(unix)]
+        {
+            // input-unix-stream parameter
+            let params = from_serial_arg("input-unix-stream").unwrap();
+            assert!(params.input_unix_stream);
+            let params = from_serial_arg("input-unix-stream=true").unwrap();
+            assert!(params.input_unix_stream);
+            let params = from_serial_arg("input-unix-stream=false").unwrap();
+            assert!(!params.input_unix_stream);
+            let params = from_serial_arg("input-unix-stream=foobar");
+            assert!(params.is_err());
+        }
 
         // console parameter
         let params = from_serial_arg("console").unwrap();
@@ -396,6 +458,8 @@ mod tests {
                 name: None,
                 path: Some("/some/path".into()),
                 input: Some("/some/input".into()),
+                #[cfg(unix)]
+                input_unix_stream: false,
                 num: 5,
                 console: true,
                 earlycon: true,

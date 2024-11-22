@@ -8,6 +8,7 @@ use std::io;
 use std::io::ErrorKind;
 use std::io::Write;
 use std::os::unix::net::UnixDatagram;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::path::PathBuf;
 use std::thread;
@@ -230,4 +231,33 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
         }
         None => Err(Error::PathRequired),
     }
+}
+
+/// Creates a serial device that use the given UnixStream path for both input and output.
+pub(crate) fn create_unix_stream_serial_device<T: SerialDevice>(
+    param: &SerialParameters,
+    protection_type: ProtectionType,
+    evt: Event,
+    keep_rds: &mut Vec<RawDescriptor>,
+) -> std::result::Result<T, Error> {
+    let path = param.path.as_ref().ok_or(Error::PathRequired)?;
+    let input = UnixStream::connect(path).map_err(Error::SocketConnect)?;
+    let output = input.try_clone().map_err(Error::CloneUnixStream)?;
+    keep_rds.push(input.as_raw_descriptor());
+    keep_rds.push(output.as_raw_descriptor());
+
+    Ok(T::new(
+        protection_type,
+        evt,
+        Some(Box::new(input)),
+        Some(Box::new(output)),
+        None,
+        SerialOptions {
+            name: param.name.clone(),
+            out_timestamp: param.out_timestamp,
+            console: param.console,
+            pci_address: param.pci_address,
+        },
+        keep_rds.to_vec(),
+    ))
 }

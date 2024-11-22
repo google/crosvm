@@ -2145,7 +2145,10 @@ pub struct RunCommand {
     /// devices. Can be given more than once.
     /// Possible key values:
     ///     type=(stdout,syslog,sink,file) - Where to route the
-    ///        serial device
+    ///        serial device.
+    ///        Platform-specific options:
+    ///        On Unix: 'unix' (datagram) and 'unix-stream' (stream)
+    ///        On Windows: 'namedpipe'
     ///     hardware=(serial,virtio-console,debugcon,
     ///               legacy-virtio-console) - Which type of
     ///        serial hardware to emulate. Defaults to 8250 UART
@@ -2161,6 +2164,11 @@ pub struct RunCommand {
     ///        type=file
     ///     input=PATH - The path to the file to read from when not
     ///        stdin
+    ///     input-unix-stream - (Unix-only) Whether to use the given
+    ///        Unix stream socket for input as well as output.
+    ///        This flag is only valid when type=unix-stream and
+    ///        the socket path is specified with path=.
+    ///        Can't be passed when input is specified.
     ///     console - Use this serial device as the guest console.
     ///        Will default to first serial port if not provided.
     ///     earlycon - Use this serial device as the early console.
