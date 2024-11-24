@@ -62,6 +62,7 @@ tgkill: arg2 == SIGABRT
 write: 1
 writev: 1
 uname: 1
+unlinkat: 1
 
 # Rules specific to gpu
 connect: 1

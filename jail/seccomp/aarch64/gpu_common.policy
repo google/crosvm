@@ -57,6 +57,7 @@ sigaltstack: 1
 write: 1
 writev: 1
 uname: 1
+unlinkat: 1
 
 # Required for perfetto tracing
 getsockopt: 1
