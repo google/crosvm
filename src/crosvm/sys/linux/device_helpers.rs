@@ -1011,6 +1011,7 @@ pub fn create_wayland_device(
             &jail_config.pivot_root,
             &config,
             /* render_node_only= */ false,
+            /* snapshot_scratch_path= */ None,
         )?;
         // Bind mount the wayland socket's directory into jail's root. This is necessary since
         // each new wayland context must open() the socket. If the wayland socket is ever

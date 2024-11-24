@@ -94,6 +94,10 @@ pub fn create_gpu_device(
     let is_sandboxed = cfg.jail_config.is_some();
     let mut gpu_params = cfg.gpu_parameters.clone().unwrap();
 
+    if is_sandboxed {
+        gpu_params.snapshot_scratch_path = Some(Path::new("/tmpfs-gpu-snapshot").to_path_buf());
+    }
+
     if gpu_params.fixed_blob_mapping {
         if has_vfio_gfx_device {
             // TODO(b/323368701): make fixed_blob_mapping compatible with vfio dma_buf mapping for
@@ -163,6 +167,7 @@ pub fn create_gpu_device(
             &jail_config.pivot_root,
             &config,
             /* render_node_only= */ false,
+            gpu_params.snapshot_scratch_path.as_deref(),
         )?;
 
         // Prepare GPU shader disk cache directory.
@@ -299,6 +304,7 @@ pub fn start_gpu_render_server(
             &jail_config.pivot_root,
             &config,
             /* render_node_only= */ true,
+            /* snapshot_scratch_path= */ None,
         )?;
 
         let cache_info = get_gpu_cache_info(
