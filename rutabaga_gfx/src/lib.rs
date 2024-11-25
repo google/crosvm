@@ -20,6 +20,7 @@ mod rutabaga_core;
 mod rutabaga_gralloc;
 mod rutabaga_os;
 mod rutabaga_utils;
+mod snapshot;
 mod virgl_renderer;
 
 pub use crate::rutabaga_core::calculate_capset_mask;

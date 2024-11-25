@@ -312,6 +312,9 @@ pub enum RutabagaError {
     NixError(NixError),
     #[error("Nul Error occured {0}")]
     NulError(NulError),
+    /// An error with a snapshot.
+    #[error("a snapshot error occured: {0}")]
+    SnapshotError(String),
     /// Violation of the Rutabaga spec occured.
     #[error("violation of the rutabaga spec: {0}")]
     SpecViolation(&'static str),
