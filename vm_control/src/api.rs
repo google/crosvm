@@ -155,40 +155,6 @@ impl VmMemoryClient {
         self.request_unit(&VmMemoryRequest::UnregisterMemory(region))
     }
 
-    /// Register an ioeventfd by looking up using Alloc info.
-    pub fn register_io_event_with_alloc(
-        &self,
-        evt: Event,
-        allocation: Alloc,
-        offset: u64,
-        datamatch: Datamatch,
-    ) -> Result<()> {
-        self.request_unit(&VmMemoryRequest::IoEventWithAlloc {
-            evt,
-            allocation,
-            offset,
-            datamatch,
-            register: true,
-        })
-    }
-
-    /// Unregister an eventfd by looking up using Alloc info.
-    pub fn unregister_io_event_with_alloc(
-        &self,
-        evt: Event,
-        allocation: Alloc,
-        offset: u64,
-        datamatch: Datamatch,
-    ) -> Result<()> {
-        self.request_unit(&VmMemoryRequest::IoEventWithAlloc {
-            evt,
-            allocation,
-            offset,
-            datamatch,
-            register: false,
-        })
-    }
-
     /// Register an eventfd with raw guest memory address.
     pub fn register_io_event(&self, event: Event, addr: u64, datamatch: Datamatch) -> Result<()> {
         self.request_unit(&VmMemoryRequest::IoEventRaw(IoEventUpdateRequest {
