@@ -153,7 +153,6 @@ mod tests {
     #[cfg(windows)]
     use base::windows::named_pipes;
     use tempfile::tempfile;
-    use vm_memory::GuestAddress;
 
     use super::*;
     use crate::suspendable_virtio_tests;

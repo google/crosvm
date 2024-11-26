@@ -26,6 +26,7 @@ use hypervisor::MemCacheType;
 use libc::ERANGE;
 #[cfg(target_arch = "x86_64")]
 use metrics::MetricEventType;
+use resources::AddressRange;
 use resources::Alloc;
 use resources::AllocOptions;
 use resources::SystemAllocator;
@@ -43,7 +44,6 @@ use vm_control::api::VmMemoryClient;
 use vm_control::VmMemoryDestination;
 use vm_control::VmMemoryRegionId;
 use vm_control::VmMemorySource;
-use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
@@ -1135,9 +1135,11 @@ where
         .get_shared_memory_region()
         .is_some()
     {
+        let shmem_region = AddressRange::from_start_and_size(ranges[0].addr, ranges[0].size)
+            .expect("invalid shmem region");
         virtio_pci_device
             .device
-            .set_shared_memory_region_base(GuestAddress(ranges[0].addr));
+            .set_shared_memory_region(shmem_region);
     }
 
     Ok(ranges)

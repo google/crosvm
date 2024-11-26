@@ -126,7 +126,6 @@ use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_MASK;
 use thiserror::Error as ThisError;
 use vm_control::VmMemorySource;
-use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 use zerocopy::AsBytes;
@@ -2096,8 +2095,8 @@ impl VirtioDevice for Wl {
         })
     }
 
-    fn set_shared_memory_region_base(&mut self, shmem_base: GuestAddress) {
-        self.address_offset = Some(shmem_base.0);
+    fn set_shared_memory_region(&mut self, shmem_region: AddressRange) {
+        self.address_offset = Some(shmem_region.start);
     }
 
     fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) {
