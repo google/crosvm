@@ -725,28 +725,12 @@ impl PciDevice for VirtioPciDevice {
     ) -> std::result::Result<PciAddress, PciDeviceError> {
         if self.pci_address.is_none() {
             if let Some(address) = self.preferred_address {
-                if !resources.reserve_pci(
-                    Alloc::PciBar {
-                        bus: address.bus,
-                        dev: address.dev,
-                        func: address.func,
-                        bar: 0,
-                    },
-                    self.debug_label(),
-                ) {
+                if !resources.reserve_pci(address, self.debug_label()) {
                     return Err(PciDeviceError::PciAllocationFailed);
                 }
                 self.pci_address = Some(address);
             } else {
-                self.pci_address = match resources.allocate_pci(0, self.debug_label()) {
-                    Some(Alloc::PciBar {
-                        bus,
-                        dev,
-                        func,
-                        bar: _,
-                    }) => Some(PciAddress { bus, dev, func }),
-                    _ => None,
-                }
+                self.pci_address = resources.allocate_pci(0, self.debug_label());
             }
         }
         self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)

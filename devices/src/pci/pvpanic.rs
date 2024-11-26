@@ -117,15 +117,7 @@ impl PciDevice for PvPanicPciDevice {
 
     fn allocate_address(&mut self, resources: &mut SystemAllocator) -> Result<PciAddress> {
         if self.pci_address.is_none() {
-            self.pci_address = match resources.allocate_pci(0, self.debug_label()) {
-                Some(Alloc::PciBar {
-                    bus,
-                    dev,
-                    func,
-                    bar: _,
-                }) => Some(PciAddress { bus, dev, func }),
-                _ => None,
-            }
+            self.pci_address = resources.allocate_pci(0, self.debug_label());
         }
         self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)
     }

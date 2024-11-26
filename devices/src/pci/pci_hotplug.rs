@@ -10,7 +10,6 @@ use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::RawDescriptor;
 use base::Tube;
-use resources::Alloc;
 use serde::Deserialize;
 use serde::Serialize;
 use vm_control::api::VmMemoryClient;
@@ -155,15 +154,7 @@ impl NetResourceCarrier {
     ) -> Result<()> {
         match self.pci_address {
             None => {
-                if resources.reserve_pci(
-                    Alloc::PciBar {
-                        bus: preferred_address.bus,
-                        dev: preferred_address.dev,
-                        func: preferred_address.func,
-                        bar: 0,
-                    },
-                    self.debug_label(),
-                ) {
+                if resources.reserve_pci(preferred_address, self.debug_label()) {
                     self.pci_address = Some(preferred_address);
                 } else {
                     return Err(PciDeviceError::PciAllocationFailed);

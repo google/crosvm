@@ -8,7 +8,6 @@ use std::sync::Arc;
 use base::error;
 use base::warn;
 use base::Event;
-use resources::Alloc;
 use resources::SystemAllocator;
 use sync::Mutex;
 use zerocopy::FromBytes;
@@ -231,29 +230,14 @@ impl PciePort {
     ) -> std::result::Result<PciAddress, PciDeviceError> {
         if self.pci_address.is_none() {
             if let Some(address) = self.preferred_address {
-                if resources.reserve_pci(
-                    Alloc::PciBar {
-                        bus: address.bus,
-                        dev: address.dev,
-                        func: address.func,
-                        bar: 0,
-                    },
-                    self.debug_label(),
-                ) {
+                if resources.reserve_pci(address, self.debug_label()) {
                     self.pci_address = Some(address);
                 } else {
                     self.pci_address = None;
                 }
             } else {
-                match resources.allocate_pci(self.bus_range.primary, self.debug_label()) {
-                    Some(Alloc::PciBar {
-                        bus,
-                        dev,
-                        func,
-                        bar: _,
-                    }) => self.pci_address = Some(PciAddress { bus, dev, func }),
-                    _ => self.pci_address = None,
-                }
+                self.pci_address =
+                    resources.allocate_pci(self.bus_range.primary, self.debug_label());
             }
         }
         self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)

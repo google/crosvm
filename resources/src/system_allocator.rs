@@ -12,6 +12,7 @@ use crate::address_allocator::AddressAllocatorSet;
 use crate::AddressRange;
 use crate::Alloc;
 use crate::Error;
+use crate::PciAddress;
 use crate::Result;
 
 /// Manages allocating system resources such as address space and interrupt numbers.
@@ -302,7 +303,7 @@ impl SystemAllocator {
     }
 
     /// Allocate PCI slot location.
-    pub fn allocate_pci(&mut self, bus: u8, tag: String) -> Option<Alloc> {
+    pub fn allocate_pci(&mut self, bus: u8, tag: String) -> Option<PciAddress> {
         let id = self.get_anon_alloc();
         let allocator = match self.get_pci_allocator_mut(bus) {
             Some(v) => v,
@@ -310,45 +311,35 @@ impl SystemAllocator {
         };
         allocator
             .allocate(1, id, tag)
-            .map(|v| Alloc::PciBar {
+            .map(|v| PciAddress {
                 bus,
                 dev: (v >> 3) as u8,
                 func: (v & 7) as u8,
-                bar: 0,
             })
             .ok()
     }
 
     /// Reserve PCI slot location.
-    pub fn reserve_pci(&mut self, alloc: Alloc, tag: String) -> bool {
+    pub fn reserve_pci(&mut self, pci_addr: PciAddress, tag: String) -> bool {
         let id = self.get_anon_alloc();
-        match alloc {
-            Alloc::PciBar {
-                bus,
-                dev,
-                func,
-                bar: _,
-            } => {
-                let allocator = match self.get_pci_allocator_mut(bus) {
-                    Some(v) => v,
-                    None => return false,
-                };
-                let df = ((dev as u64) << 3) | (func as u64);
-                allocator
-                    .allocate_at(AddressRange { start: df, end: df }, id, tag)
-                    .is_ok()
-            }
-            _ => false,
-        }
-    }
 
-    /// release PCI slot location.
-    pub fn release_pci(&mut self, bus: u8, dev: u8, func: u8) -> bool {
-        let allocator = match self.get_pci_allocator_mut(bus) {
+        let allocator = match self.get_pci_allocator_mut(pci_addr.bus) {
             Some(v) => v,
             None => return false,
         };
-        let df = ((dev as u64) << 3) | (func as u64);
+        let df = ((pci_addr.dev as u64) << 3) | (pci_addr.func as u64);
+        allocator
+            .allocate_at(AddressRange { start: df, end: df }, id, tag)
+            .is_ok()
+    }
+
+    /// release PCI slot location.
+    pub fn release_pci(&mut self, pci_addr: PciAddress) -> bool {
+        let allocator = match self.get_pci_allocator_mut(pci_addr.bus) {
+            Some(v) => v,
+            None => return false,
+        };
+        let df = ((pci_addr.dev as u64) << 3) | (pci_addr.func as u64);
         allocator.release_containing(df).is_ok()
     }
 

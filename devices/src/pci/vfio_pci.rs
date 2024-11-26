@@ -1629,15 +1629,7 @@ impl PciDevice for VfioPciDevice {
         if self.pci_address.is_none() {
             let mut address = self.preferred_address;
             while address.func < 8 {
-                if resources.reserve_pci(
-                    Alloc::PciBar {
-                        bus: address.bus,
-                        dev: address.dev,
-                        func: address.func,
-                        bar: 0,
-                    },
-                    self.debug_label(),
-                ) {
+                if resources.reserve_pci(address, self.debug_label()) {
                     self.pci_address = Some(address);
                     break;
                 } else if self.hotplug_bus_number.is_none() {

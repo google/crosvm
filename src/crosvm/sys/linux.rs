@@ -2675,7 +2675,7 @@ fn remove_hotplug_bridge<V: VmArch, Vcpu: VcpuArch>(
     for (bus_num, hp_bus) in linux.hotplug_bus.iter() {
         let mut hp_bus_lock = hp_bus.lock();
         if let Some(pci_addr) = hp_bus_lock.get_hotplug_device(hotplug_key) {
-            sys_allocator.release_pci(pci_addr.bus, pci_addr.dev, pci_addr.func);
+            sys_allocator.release_pci(pci_addr);
             hp_bus_lock.hot_unplug(pci_addr)?;
             buses_to_remove.push(child_bus);
             if hp_bus_lock.is_empty() {
@@ -2765,7 +2765,7 @@ fn remove_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                 hp_bus_lock.hot_unplug(pci_addr)?;
             }
 
-            sys_allocator.release_pci(pci_addr.bus, pci_addr.dev, pci_addr.func);
+            sys_allocator.release_pci(pci_addr);
             if empty_simbling || hp_bus_lock.is_empty() {
                 if let Some(hotplug_key) = hp_bus_lock.get_hotplug_key() {
                     removed_key = Some(hotplug_key);
