@@ -10,6 +10,8 @@ use serde::Serialize;
 use thiserror::Error;
 
 pub use crate::address_range::AddressRange;
+pub use crate::pci_address::Error as PciAddressError;
+pub use crate::pci_address::PciAddress;
 pub use crate::system_allocator::AllocOptions;
 pub use crate::system_allocator::MmioType;
 pub use crate::system_allocator::SystemAllocator;
@@ -17,6 +19,7 @@ pub use crate::system_allocator::SystemAllocatorConfig;
 
 pub mod address_allocator;
 mod address_range;
+mod pci_address;
 mod system_allocator;
 
 /// Used to tag SystemAllocator allocations.

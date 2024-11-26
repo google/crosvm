@@ -2573,6 +2573,7 @@ dependencies = [
  "libc",
  "remain",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

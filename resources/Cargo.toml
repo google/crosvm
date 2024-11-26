@@ -10,3 +10,6 @@ base = { path = "../base" }
 serde = { version = "1", features = ["derive"] }
 remain = "0.2"
 thiserror = "1"
+
+[dev-dependencies]
+serde_json = "1"

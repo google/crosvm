@@ -83,11 +83,11 @@ impl<'de> Deserialize<'de> for PciAddress {
 /// # Example
 ///
 /// ```
-/// use devices::PciAddress;
+/// use resources::PciAddress;
 ///
 /// let pci_address = PciAddress::new(0x0000, 0x03, 0x14, 0x1)?;
 /// assert_eq!(pci_address.to_string(), "0000:03:14.1");
-/// # Ok::<(), devices::PciAddressError>(())
+/// # Ok::<(), resources::PciAddressError>(())
 /// ```
 impl Display for PciAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -107,13 +107,13 @@ impl Display for PciAddress {
 ///
 /// ```
 /// use std::str::FromStr;
-/// use devices::PciAddress;
+/// use resources::PciAddress;
 ///
 /// let pci_address = PciAddress::from_str("d7:15.4")?;
 /// assert_eq!(pci_address.bus, 0xd7);
 /// assert_eq!(pci_address.dev, 0x15);
 /// assert_eq!(pci_address.func, 0x4);
-/// # Ok::<(), devices::PciAddressError>(())
+/// # Ok::<(), resources::PciAddressError>(())
 /// ```
 impl FromStr for PciAddress {
     type Err = Error;
@@ -222,7 +222,7 @@ impl PciAddress {
     /// # Example
     ///
     /// ```
-    /// use devices::PciAddress;
+    /// use resources::PciAddress;
     ///
     /// let (pci_address, register_index) = PciAddress::from_config_address(0x32a354, 8);
     /// assert_eq!(pci_address.bus, 0x32);
@@ -270,12 +270,12 @@ impl PciAddress {
     /// # Example
     ///
     /// ```
-    /// use devices::PciAddress;
+    /// use resources::PciAddress;
     ///
     /// let pci_address = PciAddress::new(0x0000, 0x32, 0x14, 0x3)?;
     /// let config_address = pci_address.to_config_address(0x15, 8);
     /// assert_eq!(config_address, 0x32a354);
-    /// # Ok::<(), devices::PciAddressError>(())
+    /// # Ok::<(), resources::PciAddressError>(())
     /// ```
     pub fn to_config_address(&self, register: usize, register_bits_num: usize) -> u32 {
         let bus_offset = register_bits_num + Self::FUNCTION_BITS_NUM + Self::DEVICE_BITS_NUM;

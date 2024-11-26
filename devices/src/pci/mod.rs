@@ -9,7 +9,6 @@ mod acpi;
 mod coiommu;
 mod msi;
 mod msix;
-mod pci_address;
 mod pci_configuration;
 mod pci_device;
 #[cfg(feature = "pci-hotplug")]
@@ -24,6 +23,8 @@ mod stub;
 mod vfio_pci;
 
 use libc::EINVAL;
+pub use resources::PciAddress;
+pub use resources::PciAddressError;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -38,8 +39,6 @@ pub use self::msi::MsiConfig;
 pub use self::msix::MsixCap;
 pub use self::msix::MsixConfig;
 pub use self::msix::MsixStatus;
-pub use self::pci_address::Error as PciAddressError;
-pub use self::pci_address::PciAddress;
 pub use self::pci_configuration::PciBarConfiguration;
 pub use self::pci_configuration::PciBarIndex;
 pub use self::pci_configuration::PciBarPrefetchable;
