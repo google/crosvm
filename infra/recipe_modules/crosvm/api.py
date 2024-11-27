@@ -230,7 +230,7 @@ class CrosvmApi(recipe_api.RecipeApi):
             if self.m.platform.is_win:
                 self.m.step(
                     "Set rustup default host",
-                    ["rustup", "set", "default-host", "x86_64-pc-windows-gnu"],
+                    ["rustup", "set", "default-host", "x86_64-pc-windows-gnullvm"],
                 )
 
             # Rustup installs a rustc wrapper that will download and use the version specified by
