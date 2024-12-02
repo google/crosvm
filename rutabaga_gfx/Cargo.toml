@@ -11,9 +11,8 @@ gfxstream = []
 gfxstream_stub = []
 virgl_renderer = []
 minigbm = []
-# To try out Vulkano, delete the following line and uncomment the line in "dependencies". Vulkano
-# features are just a prototype and not integrated yet into the ChromeOS build system.
-vulkano = []
+# Vulkano features are just a prototype and not integrated yet into the ChromeOS build system.
+vulkano = ["dep:vulkano"]
 x = []
 
 [dependencies]
@@ -28,7 +27,7 @@ zerocopy = { version = "0.7", features = ["derive"] }
 log = "0.4"
 
 # To build latest Vulkano, change version to git = "https://github.com/vulkano-rs/vulkano.git"
-# vulkano = { version = "0.33.0", optional = true }
+vulkano = { version = "0.33.0", optional = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 nix = { version = "0.28", features = ["event", "feature", "fs", "mman", "socket", "uio", "ioctl"] }
