@@ -138,6 +138,9 @@ pub enum Error {
     RecvTooManyFds,
     #[error("Received a message with a zero sized body. This should not happen.")]
     RecvUnexpectedEmptyBody,
+    #[cfg(unix)]
+    #[error("failed to construct ScmSocket: {0}")]
+    ScmSocket(io::Error),
     #[error("failed to send packet: {0}")]
     Send(io::Error),
     #[error("failed to write packet to intermediate buffer: {0}")]

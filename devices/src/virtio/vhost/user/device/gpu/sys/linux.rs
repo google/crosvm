@@ -199,7 +199,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         ex.spawn_blocking(move || match listener.accept() {
             Ok(stream) => resource_bridges
                 .lock()
-                .push(Tube::new_from_unix_seqpacket(stream).unwrap()),
+                .push(Tube::try_from(stream).unwrap()),
             Err(e) => {
                 let path = listener
                     .path()

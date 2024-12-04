@@ -18,12 +18,9 @@ use crate::tube::Error;
 use crate::tube::RecvTube;
 use crate::tube::Result;
 use crate::tube::SendTube;
-use crate::BlockingMode;
-use crate::FramingMode;
 use crate::RawDescriptor;
 use crate::ReadNotifier;
 use crate::ScmSocket;
-use crate::StreamChannel;
 use crate::UnixSeqpacket;
 use crate::SCM_SOCKET_MAX_FD_COUNT;
 
@@ -33,40 +30,17 @@ const TUBE_MAX_FDS: usize = 32;
 /// Bidirectional tube that support both send and recv.
 #[derive(Serialize, Deserialize)]
 pub struct Tube {
-    socket: ScmSocket<StreamChannel>,
+    socket: ScmSocket<UnixSeqpacket>,
 }
 
 impl Tube {
     /// Create a pair of connected tubes. Request is sent in one direction while response is in the
     /// other direction.
     pub fn pair() -> Result<(Tube, Tube)> {
-        let (socket1, socket2) = StreamChannel::pair(BlockingMode::Blocking, FramingMode::Message)
-            .map_err(|errno| Error::Pair(std::io::Error::from(errno)))?;
-        let tube1 = Tube::new(socket1)?;
-        let tube2 = Tube::new(socket2)?;
+        let (socket1, socket2) = UnixSeqpacket::pair().map_err(Error::Pair)?;
+        let tube1 = Tube::try_from(socket1)?;
+        let tube2 = Tube::try_from(socket2)?;
         Ok((tube1, tube2))
-    }
-
-    /// Create a new `Tube` from a `StreamChannel`.
-    /// The StreamChannel must use FramingMode::Message (meaning, must use a SOCK_SEQPACKET as the
-    /// underlying socket type), otherwise, this method returns an error.
-    pub fn new(socket: StreamChannel) -> Result<Tube> {
-        match socket.get_framing_mode() {
-            FramingMode::Message => Ok(Tube {
-                socket: socket.try_into().map_err(Error::DupDescriptor)?,
-            }),
-            FramingMode::Byte => Err(Error::InvalidFramingMode),
-        }
-    }
-
-    /// Create a new `Tube` from a UnixSeqpacket. The StreamChannel is implicitly constructed to
-    /// have the right FramingMode by being constructed from a UnixSeqpacket.
-    pub fn new_from_unix_seqpacket(sock: UnixSeqpacket) -> Result<Tube> {
-        Ok(Tube {
-            socket: StreamChannel::from_unix_seqpacket(sock)
-                .try_into()
-                .map_err(Error::DupDescriptor)?,
-        })
     }
 
     /// DO NOT USE this method directly as it will become private soon (b/221484449). Use a
@@ -76,8 +50,8 @@ impl Tube {
         self.socket
             .inner()
             .try_clone()
-            .map(Tube::new)
             .map_err(Error::Clone)?
+            .try_into()
     }
 
     /// Sends a message via a Tube.
@@ -123,9 +97,10 @@ impl Tube {
         // is readable, then a call to `Tube::recv` will not block (which ought to be true since we
         // use SOCK_SEQPACKET and a single recvmsg call currently).
 
-        let msg_size = handle_eintr!(self.socket.inner().peek_size()).map_err(Error::Recv)?;
-        // This buffer is the right size, as the size received in peek_size() represents the size
-        // of only the message itself and not the file descriptors. The descriptors are stored
+        let msg_size =
+            handle_eintr!(self.socket.inner().next_packet_size()).map_err(Error::Recv)?;
+        // This buffer is the right size, as the size received in next_packet_size() represents the
+        // size of only the message itself and not the file descriptors. The descriptors are stored
         // separately in msghdr::msg_control.
         let mut msg_json = vec![0u8; msg_size];
 
@@ -170,7 +145,8 @@ impl Tube {
 
     #[cfg(feature = "proto_tube")]
     fn recv_proto<M: protobuf::Message>(&self) -> Result<M> {
-        let msg_size = handle_eintr!(self.socket.inner().peek_size()).map_err(Error::Recv)?;
+        let msg_size =
+            handle_eintr!(self.socket.inner().next_packet_size()).map_err(Error::Recv)?;
         let mut msg_bytes = vec![0u8; msg_size];
 
         let (msg_bytes_size, _) =
@@ -185,6 +161,16 @@ impl Tube {
     }
 }
 
+impl TryFrom<UnixSeqpacket> for Tube {
+    type Error = Error;
+
+    fn try_from(socket: UnixSeqpacket) -> Result<Self> {
+        Ok(Tube {
+            socket: socket.try_into().map_err(Error::ScmSocket)?,
+        })
+    }
+}
+
 impl AsRawDescriptor for Tube {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.socket.as_raw_descriptor()
@@ -193,7 +179,7 @@ impl AsRawDescriptor for Tube {
 
 impl AsRawFd for Tube {
     fn as_raw_fd(&self) -> RawFd {
-        self.socket.inner().as_raw_fd()
+        self.socket.inner().as_raw_descriptor()
     }
 }
 
@@ -234,9 +220,12 @@ impl ProtoTube {
     pub fn recv_proto<M: protobuf::Message>(&self) -> Result<M> {
         self.0.recv_proto()
     }
+}
 
-    pub fn new_from_unix_seqpacket(sock: UnixSeqpacket) -> Result<ProtoTube> {
-        Ok(ProtoTube(Tube::new_from_unix_seqpacket(sock)?))
+#[cfg(feature = "proto_tube")]
+impl From<Tube> for ProtoTube {
+    fn from(tube: Tube) -> Self {
+        ProtoTube(tube)
     }
 }
 

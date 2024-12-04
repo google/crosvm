@@ -37,7 +37,6 @@ use crate::unix::net::InetVersion;
 use crate::unix::net::TcpSocket;
 use crate::SafeDescriptor;
 use crate::ScmSocket;
-use crate::StreamChannel;
 use crate::UnixSeqpacket;
 use crate::UnixSeqpacketListener;
 
@@ -177,7 +176,6 @@ macro_rules! ScmSocketTryFrom {
     };
 }
 
-ScmSocketTryFrom!(StreamChannel);
 ScmSocketTryFrom!(UnixDatagram);
 ScmSocketTryFrom!(UnixListener);
 ScmSocketTryFrom!(UnixSeqpacket);

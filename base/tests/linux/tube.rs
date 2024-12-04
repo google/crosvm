@@ -5,15 +5,12 @@
 use std::time;
 
 use base::deserialize_with_descriptors;
-use base::BlockingMode;
 use base::EventContext;
 use base::EventToken;
-use base::FramingMode;
 use base::FromRawDescriptor;
 use base::ReadNotifier;
 use base::SafeDescriptor;
 use base::SerializeDescriptors;
-use base::StreamChannel;
 use base::Tube;
 use base::UnixSeqpacket;
 
@@ -25,11 +22,8 @@ enum Token {
 const EVENT_WAIT_TIME: time::Duration = time::Duration::from_secs(10);
 
 #[test]
-fn test_serialize_tube_new() {
-    let (sock_send, sock_recv) =
-        StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Message).unwrap();
-    let tube_send = Tube::new(sock_send).unwrap();
-    let tube_recv = Tube::new(sock_recv).unwrap();
+fn test_serialize_tube_pair() {
+    let (tube_send, tube_recv) = Tube::pair().unwrap();
 
     // Serialize the Tube
     let msg_serialize = SerializeDescriptors::new(&tube_send);
@@ -62,10 +56,10 @@ fn test_serialize_tube_new() {
 }
 
 #[test]
-fn test_send_recv_new_from_seqpacket() {
+fn test_send_recv_from_seqpacket() {
     let (sock_send, sock_recv) = UnixSeqpacket::pair().unwrap();
-    let tube_send = Tube::new_from_unix_seqpacket(sock_send).unwrap();
-    let tube_recv = Tube::new_from_unix_seqpacket(sock_recv).unwrap();
+    let tube_send = Tube::try_from(sock_send).unwrap();
+    let tube_recv = Tube::try_from(sock_recv).unwrap();
 
     tube_send.send(&"hi".to_string()).unwrap();
 
@@ -81,13 +75,4 @@ fn test_send_recv_new_from_seqpacket() {
     assert_eq!(tokens, vec! {Token::ReceivedData});
 
     assert_eq!(tube_recv.recv::<String>().unwrap(), "hi");
-}
-
-#[test]
-fn test_tube_new_byte_mode_error() {
-    let (sock_byte_mode, _) =
-        StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte).unwrap();
-    let tube_error = Tube::new(sock_byte_mode);
-
-    assert!(tube_error.is_err());
 }

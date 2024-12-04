@@ -49,7 +49,7 @@ pub fn handle_request_with_timeout<T: AsRef<Path> + std::fmt::Debug>(
 ) -> HandleRequestResult {
     match UnixSeqpacket::connect(&socket_path) {
         Ok(s) => {
-            let socket = Tube::new_from_unix_seqpacket(s).map_err(|_| ())?;
+            let socket = Tube::try_from(s).map_err(|_| ())?;
             if timeout.is_some() {
                 if let Err(e) = socket.set_recv_timeout(timeout) {
                     error!(
