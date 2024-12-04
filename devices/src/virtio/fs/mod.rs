@@ -122,6 +122,7 @@ pub struct Fs {
     queue_sizes: Box<[u16]>,
     avail_features: u64,
     acked_features: u64,
+    use_dax: bool,
     pci_bar: Option<Alloc>,
     tube: Option<Tube>,
     workers: Vec<WorkerThread<Result<()>>>,
@@ -152,6 +153,9 @@ impl Fs {
         // There is always a high priority queue in addition to the request queues.
         let num_queues = num_workers + 1;
 
+        // TODO(b/176129399): Remove cfg! once DAX is supported on ARM.
+        let use_dax = cfg!(target_arch = "x86_64") && fs.cfg().use_dax;
+
         Ok(Fs {
             cfg,
             tag: tag.to_string(),
@@ -159,6 +163,7 @@ impl Fs {
             queue_sizes: vec![QUEUE_SIZE; num_queues].into_boxed_slice(),
             avail_features: base_features,
             acked_features: 0,
+            use_dax,
             pci_bar: None,
             tube: Some(tube),
             workers: Vec::with_capacity(num_workers + 1),
@@ -223,19 +228,15 @@ impl VirtioDevice for Fs {
         }
 
         let fs = self.fs.take().expect("missing file system implementation");
-        let use_dax = fs.cfg().use_dax;
 
         let server = Arc::new(Server::new(fs));
         let socket = self.tube.take().expect("missing mapping socket");
         let mut slot = 0;
 
         // Set up shared memory for DAX.
-        // TODO(b/176129399): Remove cfg! once DAX is supported on ARM.
-        if cfg!(target_arch = "x86_64") && use_dax {
+        if let Some(pci_bar) = self.pci_bar {
             // Create the shared memory region now before we start processing requests.
-            let request = FsMappingRequest::AllocateSharedMemoryRegion(
-                self.pci_bar.as_ref().cloned().expect("No pci_bar"),
-            );
+            let request = FsMappingRequest::AllocateSharedMemoryRegion(pci_bar);
             socket
                 .send(&request)
                 .expect("failed to send allocation message");
@@ -276,7 +277,7 @@ impl VirtioDevice for Fs {
     }
 
     fn get_device_bars(&mut self, address: PciAddress) -> Vec<PciBarConfiguration> {
-        if self.fs.as_ref().map_or(false, |fs| !fs.cfg().use_dax) {
+        if !self.use_dax {
             return vec![];
         }
 
@@ -296,7 +297,7 @@ impl VirtioDevice for Fs {
     }
 
     fn get_device_caps(&self) -> Vec<Box<dyn PciCapability>> {
-        if self.fs.as_ref().map_or(false, |fs| !fs.cfg().use_dax) {
+        if !self.use_dax {
             return vec![];
         }
 
