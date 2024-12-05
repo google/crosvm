@@ -19,7 +19,6 @@ use super::*;
 use crate::pci::MsixStatus;
 use crate::pci::PciAddress;
 use crate::pci::PciBarConfiguration;
-use crate::pci::PciBarIndex;
 use crate::pci::PciCapability;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -174,16 +173,6 @@ pub trait VirtioDevice: Send {
     ) -> Option<Vec<SDT>> {
         Some(sdts)
     }
-
-    /// Reads from a BAR region mapped in to the device.
-    /// * `addr` - The guest address inside the BAR.
-    /// * `data` - Filled with the data from `addr`.
-    fn read_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &mut [u8]) {}
-
-    /// Writes to a BAR region mapped in to the device.
-    /// * `addr` - The guest address inside the BAR.
-    /// * `data` - The data to write.
-    fn write_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &[u8]) {}
 
     /// Returns the PCI address where the device will be allocated.
     /// Returns `None` if any address is good for the device.

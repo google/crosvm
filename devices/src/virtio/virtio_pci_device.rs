@@ -898,8 +898,6 @@ impl PciDevice for VirtioPciDevice {
                 }
                 _ => (),
             }
-        } else {
-            self.device.read_bar(bar_index, offset, data);
         }
     }
 
@@ -953,8 +951,6 @@ impl PciDevice for VirtioPciDevice {
                 }
                 _ => (),
             }
-        } else {
-            self.device.write_bar(bar_index, offset, data);
         }
 
         if !self.device_activated && self.is_driver_ready() {
