@@ -186,8 +186,6 @@ const EFER_LMA: u64 = 0x400;
 const BOOT_GDT_OFFSET: u64 = 0x1500;
 const BOOT_IDT_OFFSET: u64 = 0x1528;
 
-const BOOT_GDT_MAX: usize = 5;
-
 fn write_gdt_table(table: &[u64], guest_mem: &GuestMemory) -> Result<()> {
     let boot_gdt_addr = GuestAddress(BOOT_GDT_OFFSET);
     for (index, entry) in table.iter().enumerate() {
@@ -215,12 +213,13 @@ fn write_idt_value(val: u64, guest_mem: &GuestMemory) -> Result<()> {
 /// Configures the GDT, IDT, and segment registers for long mode.
 pub fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
     // reference: https://docs.kernel.org/arch/x86/boot.html?highlight=__BOOT_CS#id1
-    let gdt_table: [u64; BOOT_GDT_MAX] = [
+    let gdt_table: [u64; 6] = [
         gdt::gdt_entry(0, 0, 0),            // NULL
         gdt::gdt_entry(0, 0, 0),            // NULL
         gdt::gdt_entry(0xa09b, 0, 0xfffff), // CODE
         gdt::gdt_entry(0xc093, 0, 0xfffff), // DATA
         gdt::gdt_entry(0x808b, 0, 0xfffff), // TSS
+        0,                                  // TSS (upper 32 bits of base)
     ];
 
     let code_seg = gdt::segment_from_gdt(gdt_table[2], 2);
@@ -254,7 +253,7 @@ pub fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut Sregs) -> Res
 /// Configures the GDT, IDT, and segment registers for 32-bit protected mode with paging disabled.
 pub fn configure_segments_and_sregs_flat32(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
     // reference: https://docs.kernel.org/arch/x86/boot.html?highlight=__BOOT_CS#id1
-    let gdt_table: [u64; BOOT_GDT_MAX] = [
+    let gdt_table: [u64; 5] = [
         gdt::gdt_entry(0, 0, 0),            // NULL
         gdt::gdt_entry(0, 0, 0),            // NULL
         gdt::gdt_entry(0xc09b, 0, 0xfffff), // CODE
