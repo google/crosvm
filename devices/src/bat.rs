@@ -25,7 +25,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::BatConfig;
 use vm_control::BatControlCommand;
 use vm_control::BatControlResult;
 
@@ -49,6 +48,21 @@ type Result<T> = std::result::Result<T, BatteryError>;
 /// the GoldFish Battery MMIO length.
 pub const GOLDFISHBAT_MMIO_LEN: u64 = 0x1000;
 
+/// Configuration of fake battery status information.
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Eq, Copy)]
+pub enum BatConfig {
+    /// Propagates host's battery status
+    #[default]
+    Real,
+    /// Fake on battery status. Simulates a disconnected AC adapter.
+    /// This forces ac_online to false and sets the battery status
+    /// to DISCHARGING
+    Fake {
+        // Sets the maximum battery capacity reported to the guest
+        max_capacity: u32,
+    },
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct GoldfishBatteryState {
     // interrupt state
@@ -66,13 +80,16 @@ struct GoldfishBatteryState {
     charge_counter: u32,
     charge_full: u32,
     initialized: bool,
+    // bat_config is used for goldfish battery to report fake battery to the guest.
+    bat_config: BatConfig,
 }
 
 macro_rules! create_battery_func {
     // $property: the battery property which is going to be modified.
+    // $ty: the type annotation of value argument
     // $int: the interrupt status which is going to be set to notify the guest.
-    ($fn:ident, $property:ident, $int:ident) => {
-        pub(crate) fn $fn(&mut self, value: u32) -> bool {
+    ($fn:ident, $property:ident, $ty:ty, $int:ident) => {
+        pub(crate) fn $fn(&mut self, value: $ty) -> bool {
             let old = std::mem::replace(&mut self.$property, value);
             old != self.$property && self.set_int_status($int)
         }
@@ -81,34 +98,39 @@ macro_rules! create_battery_func {
 
 impl GoldfishBatteryState {
     fn set_int_status(&mut self, mask: u32) -> bool {
-        if ((self.int_enable & mask) != 0) && ((self.int_status & mask) == 0) {
-            self.int_status |= mask;
-            return true;
-        }
-        false
+        let old = self.int_status;
+        self.int_status |= self.int_enable & mask;
+        old != self.int_status
     }
 
     fn int_status(&self) -> u32 {
         self.int_status
     }
 
-    create_battery_func!(set_ac_online, ac_online, AC_STATUS_CHANGED);
+    create_battery_func!(set_ac_online, ac_online, u32, AC_STATUS_CHANGED);
 
-    create_battery_func!(set_status, status, BATTERY_STATUS_CHANGED);
+    create_battery_func!(set_status, status, u32, BATTERY_STATUS_CHANGED);
 
-    create_battery_func!(set_health, health, BATTERY_STATUS_CHANGED);
+    create_battery_func!(set_health, health, u32, BATTERY_STATUS_CHANGED);
 
-    create_battery_func!(set_present, present, BATTERY_STATUS_CHANGED);
+    create_battery_func!(set_present, present, u32, BATTERY_STATUS_CHANGED);
 
-    create_battery_func!(set_capacity, capacity, BATTERY_STATUS_CHANGED);
+    create_battery_func!(set_capacity, capacity, u32, BATTERY_STATUS_CHANGED);
 
-    create_battery_func!(set_voltage, voltage, BATTERY_STATUS_CHANGED);
+    create_battery_func!(set_voltage, voltage, u32, BATTERY_STATUS_CHANGED);
 
-    create_battery_func!(set_current, current, BATTERY_STATUS_CHANGED);
+    create_battery_func!(set_current, current, u32, BATTERY_STATUS_CHANGED);
 
-    create_battery_func!(set_charge_counter, charge_counter, BATTERY_STATUS_CHANGED);
+    create_battery_func!(
+        set_charge_counter,
+        charge_counter,
+        u32,
+        BATTERY_STATUS_CHANGED
+    );
 
-    create_battery_func!(set_charge_full, charge_full, BATTERY_STATUS_CHANGED);
+    create_battery_func!(set_charge_full, charge_full, u32, BATTERY_STATUS_CHANGED);
+
+    create_battery_func!(set_bat_config, bat_config, BatConfig, BATTERY_INT_MASK);
 }
 
 /// GoldFish Battery state
@@ -122,8 +144,6 @@ pub struct GoldfishBattery {
     tube: Option<Tube>,
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
     create_powerd_client: Option<Box<dyn CreatePowerClientFn>>,
-    // battery_config is used for goldfish battery to report fake battery to the guest.
-    battery_config: Arc<Mutex<BatConfig>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -183,7 +203,6 @@ fn command_monitor(
     kill_evt: Event,
     state: Arc<Mutex<GoldfishBatteryState>>,
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
-    battery_config: Arc<Mutex<BatConfig>>,
 ) {
     let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
         (&tube, Token::Commands),
@@ -234,7 +253,6 @@ fn command_monitor(
                         }
                     };
 
-                    let mut bat_config = battery_config.lock();
                     let mut bat_state = state.lock();
                     let inject_irq = match req {
                         BatControlCommand::SetStatus(status) => bat_state.set_status(status.into()),
@@ -253,12 +271,10 @@ fn command_monitor(
                         }
                         BatControlCommand::SetFakeBatConfig(max_capacity) => {
                             let max_capacity = std::cmp::min(max_capacity, 100);
-                            *bat_config = BatConfig::Fake { max_capacity };
-                            true
+                            bat_state.set_bat_config(BatConfig::Fake { max_capacity })
                         }
                         BatControlCommand::CancelFakeConfig => {
-                            *bat_config = BatConfig::Real;
-                            true
+                            bat_state.set_bat_config(BatConfig::Real)
                         }
                     };
 
@@ -362,9 +378,8 @@ impl GoldfishBattery {
             charge_counter: 0,
             charge_full: 0,
             initialized: false,
+            bat_config: BatConfig::Real,
         }));
-
-        let battery_config = Arc::new(Mutex::new(BatConfig::default()));
 
         Ok(GoldfishBattery {
             state,
@@ -376,7 +391,6 @@ impl GoldfishBattery {
             tube: Some(tube),
             create_power_monitor,
             create_powerd_client,
-            battery_config,
         })
     }
 
@@ -404,16 +418,8 @@ impl GoldfishBattery {
             let irq_evt = self.irq_evt.try_clone().unwrap();
             let bat_state = self.state.clone();
             let create_monitor_fn = self.create_power_monitor.take();
-            let battery_config = self.battery_config.clone();
             self.monitor_thread = Some(WorkerThread::start(self.debug_label(), move |kill_evt| {
-                command_monitor(
-                    tube,
-                    irq_evt,
-                    kill_evt,
-                    bat_state,
-                    create_monitor_fn,
-                    battery_config,
-                )
+                command_monitor(tube, irq_evt, kill_evt, bat_state, create_monitor_fn)
             }));
             self.activated = true;
         }
@@ -507,18 +513,24 @@ impl BusDevice for GoldfishBattery {
                 std::mem::replace(&mut self.state.lock().int_status, 0)
             }
             BATTERY_INT_ENABLE => self.state.lock().int_enable,
-            BATTERY_AC_ONLINE => match *self.battery_config.lock() {
-                BatConfig::Real => self.state.lock().ac_online,
-                BatConfig::Fake { max_capacity: _ } => AC_ONLINE_VAL_OFFLINE,
-            },
-            BATTERY_STATUS => match *self.battery_config.lock() {
-                BatConfig::Real => self.state.lock().status,
-                BatConfig::Fake { max_capacity: _ } => BATTERY_STATUS_VAL_DISCHARGING,
-            },
+            BATTERY_AC_ONLINE => {
+                let bat_config = self.state.lock().bat_config;
+                match bat_config {
+                    BatConfig::Real => self.state.lock().ac_online,
+                    BatConfig::Fake { max_capacity: _ } => AC_ONLINE_VAL_OFFLINE,
+                }
+            }
+            BATTERY_STATUS => {
+                let bat_config = self.state.lock().bat_config;
+                match bat_config {
+                    BatConfig::Real => self.state.lock().status,
+                    BatConfig::Fake { max_capacity: _ } => BATTERY_STATUS_VAL_DISCHARGING,
+                }
+            }
             BATTERY_HEALTH => self.state.lock().health,
             BATTERY_PRESENT => self.state.lock().present,
             BATTERY_CAPACITY => {
-                let max_capacity = match *self.battery_config.lock() {
+                let max_capacity = match self.state.lock().bat_config {
                     BatConfig::Real => 100,
                     BatConfig::Fake { max_capacity } => max_capacity,
                 };

@@ -1333,21 +1333,6 @@ impl From<BatHealth> for u32 {
     }
 }
 
-/// Configuration of fake battery status information.
-#[derive(Serialize, Deserialize, Debug, Default)]
-pub enum BatConfig {
-    // Propagates host's battery status
-    #[default]
-    Real,
-    // Fake on battery status. Simulates a disconnected AC adapter.
-    // This forces ac_online to false and sets the battery status
-    // to DISCHARGING
-    Fake {
-        // Sets the maximum battery capacity reported to the guest
-        max_capacity: u32,
-    },
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 pub enum BatControlCommand {
     SetStatus(BatStatus),
