@@ -186,7 +186,7 @@ crosvm run \
 Add a custom virtio-input device.
 
 - `path` (required): path to event source socket
-- `config_path` (required): path to file configuring device
+- `config-path` (required): path to file configuring device
 
 ```sh
 crosvm run \
