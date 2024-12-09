@@ -361,7 +361,6 @@ pub const BOOT_STACK_POINTER: u64 = 0x8000;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 // Make sure it align to 256MB for MTRR convenient
 const MEM_32BIT_GAP_SIZE: u64 = 768 * MB;
-const END_ADDR_BEFORE_32BITS: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
 // Reserved memory for nand_bios/LAPIC/IOAPIC/HPET/.....
 const RESERVED_MEM_SIZE: u64 = 0x800_0000;
 const DEFAULT_PCI_MEM_END: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - 1;
@@ -399,7 +398,8 @@ const ACPI_HI_RSDP_WINDOW_BASE: u64 = 0x000E_0000;
 // by setup_page_tables() when a protected VM boots in long mode, since the pVM firmware is
 // the VM entry point.
 const PROTECTED_VM_FW_MAX_SIZE: u64 = 0x40_0000;
-const PROTECTED_VM_FW_START: u64 = END_ADDR_BEFORE_32BITS - PROTECTED_VM_FW_MAX_SIZE;
+// Load the pVM firmware just below 2 GB to allow use of `-mcmodel=small`.
+const PROTECTED_VM_FW_START: u64 = 0x8000_0000 - PROTECTED_VM_FW_MAX_SIZE;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CpuManufacturer {

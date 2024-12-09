@@ -16,10 +16,10 @@ see the source. All addresses are in hexadecimal.
 | [`CMDLINE_OFFSET`]           | `2_0000`      | `2_0800`        | 2 KiB     | Linux kernel command line                                                                |
 | [`SETUP_DATA_START`]         | `2_0800`      | `E_0000`        | 766 KiB   | Linux kernel `setup_data` linked list                                                    |
 | [`ACPI_HI_RSDP_WINDOW_BASE`] | `E_0000`      |                 |           | ACPI tables                                                                              |
-| [`END_ADDR_BEFORE_32BITS`]   | `10_0000`     | `D000_0000`     | ~3.24 GiB | RAM (\<4G)                                                                               |
+| [`mem_1m_to_4g`]             | `10_0000`     | `D000_0000`     | ~3.24 GiB | RAM (\<4G)                                                                               |
 | [`KERNEL_START_OFFSET`]      | `20_0000`     |                 |           | Linux kernel image load address                                                          |
 | [`initrd_start`]             | after kernel  |                 |           | Initial RAM disk for Linux kernel (optional)                                             |
-| [`PROTECTED_VM_FW_START`]    | `CFC0_0000`   | `D000_0000`     | 4 MiB     | pVM firmware (if running a protected VM)                                                 |
+| [`PROTECTED_VM_FW_START`]    | `7FC0_0000`   | `8000_0000`     | 4 MiB     | pVM firmware (if running a protected VM)                                                 |
 | [`pci_mmio_before_32bit`]    | `D000_0000`   | `F400_0000`     | 576 MiB   | Low (\<4G) MMIO allocation area                                                          |
 | [`PCIE_CFG_MMIO_START`]      | `F400_0000`   | `F800_0000`     | 64 MiB    | PCIe enhanced config (ECAM)                                                              |
 | [`RESERVED_MEM_SIZE`]        | `F800_0000`   | `1_0000_0000`   | 128 MiB   | LAPIC/IOAPIC/HPET/…                                                                      |
@@ -39,7 +39,7 @@ see the source. All addresses are in hexadecimal.
 [`kernel_start_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=372?q=KERNEL_START_OFFSET
 [`initrd_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=1692?q=initrd_start
 [`protected_vm_fw_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=394?q=PROTECTED_VM_FW_START
-[`end_addr_before_32bits`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=356?q=END_ADDR_BEFORE_32BITS
+[`mem_1m_to_4g`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=737?q=mem_1m_to_4g
 [`pci_mmio_before_32bit`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=456?q=pci_mmio_before_32bit
 [`pcie_cfg_mmio_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=363?q=PCIE_CFG_MMIO_START
 [`reserved_mem_size`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=358?q=RESERVED_MEM_SIZE
