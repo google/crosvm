@@ -491,15 +491,6 @@ pub fn create_arch_memory_layout(
     })
 }
 
-fn max_ram_end_before_32bit(arch_memory_layout: &ArchMemoryLayout) -> u64 {
-    let pci_start = arch_memory_layout.pci_mmio_before_32bit.start;
-    if let Some(pvmfw_mem) = arch_memory_layout.pvmfw_mem {
-        pci_start.min(pvmfw_mem.start)
-    } else {
-        pci_start
-    }
-}
-
 /// The x86 reset vector for i386+ and x86_64 puts the processor into an "unreal mode" where it
 /// can access the last 1 MB of the 32-bit address space in 16-bit mode, and starts the instruction
 /// pointer at the effective physical address 0xFFFF_FFF0.
@@ -716,26 +707,10 @@ fn generate_e820_memory_map(
 /// carve out at the end of 32bit address space.
 pub fn arch_memory_regions(
     arch_memory_layout: &ArchMemoryLayout,
-    size: u64,
+    mem_size: u64,
     bios_size: Option<u64>,
 ) -> Vec<(GuestAddress, u64, MemoryRegionOptions)> {
-    let mut mem_size = size;
     let mut regions = Vec::new();
-
-    if let Some(pvmfw_mem) = arch_memory_layout.pvmfw_mem {
-        regions.push((
-            GuestAddress(pvmfw_mem.start),
-            pvmfw_mem.len().expect("invalid pvmfw_mem region"),
-            MemoryRegionOptions::new().purpose(MemoryRegionPurpose::ProtectedFirmwareRegion),
-        ));
-
-        // pVM firmware memory is a part of normal guest memory, since it is reusable
-        // by the guest OS once the pVM firmware jumped to the guest. So count its size
-        // as a part of the total guest memory size.
-        if mem_size > PROTECTED_VM_FW_MAX_SIZE {
-            mem_size -= PROTECTED_VM_FW_MAX_SIZE;
-        }
-    }
 
     // Some guest kernels expect a typical PC memory layout where the region between 640 KB and
     // 1 MB is reserved for device memory/ROMs and get confused if there is a RAM region
@@ -759,7 +734,7 @@ pub fn arch_memory_regions(
     ));
 
     // RAM between 1 MB and 4 GB
-    let mem_1m_to_4g = max_ram_end_before_32bit(arch_memory_layout).min(mem_size) - 1 * MB;
+    let mem_1m_to_4g = arch_memory_layout.pci_mmio_before_32bit.start.min(mem_size) - 1 * MB;
     regions.push((
         GuestAddress(1 * MB),
         mem_1m_to_4g,
@@ -781,6 +756,44 @@ pub fn arch_memory_regions(
             bios_start(bios_size),
             bios_size,
             MemoryRegionOptions::new().purpose(MemoryRegionPurpose::Bios),
+        ));
+    }
+
+    if let Some(pvmfw_mem) = arch_memory_layout.pvmfw_mem {
+        // Remove any areas of guest memory regions that overlap the pVM firmware range.
+        while let Some(overlapping_region_index) = regions.iter().position(|(addr, size, _opts)| {
+            let region_addr_range = AddressRange::from_start_and_size(addr.offset(), *size)
+                .expect("invalid GuestMemory range");
+            region_addr_range.overlaps(pvmfw_mem)
+        }) {
+            let overlapping_region = regions.swap_remove(overlapping_region_index);
+            let overlapping_region_range = AddressRange::from_start_and_size(
+                overlapping_region.0.offset(),
+                overlapping_region.1,
+            )
+            .unwrap();
+            let (first, second) = overlapping_region_range.non_overlapping_ranges(pvmfw_mem);
+            if !first.is_empty() {
+                regions.push((
+                    GuestAddress(first.start),
+                    first.len().unwrap(),
+                    overlapping_region.2,
+                ));
+            }
+            if !second.is_empty() {
+                regions.push((
+                    GuestAddress(second.start),
+                    second.len().unwrap(),
+                    overlapping_region.2,
+                ));
+            }
+        }
+
+        // Insert a region for the pVM firmware area.
+        regions.push((
+            GuestAddress(pvmfw_mem.start),
+            pvmfw_mem.len().expect("invalid pvmfw region"),
+            MemoryRegionOptions::new().purpose(MemoryRegionPurpose::ProtectedFirmwareRegion),
         ));
     }
 
