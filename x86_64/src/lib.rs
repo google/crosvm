@@ -355,7 +355,6 @@ const MB: u64 = 1 << 20;
 const GB: u64 = 1 << 30;
 
 pub const BOOT_STACK_POINTER: u64 = 0x8000;
-const START_OF_RAM_32BITS: u64 = 0;
 const FIRST_ADDR_PAST_20BITS: u64 = 1 << 20;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 // Make sure it align to 256MB for MTRR convenient
@@ -737,22 +736,21 @@ pub fn arch_memory_regions(
         }
     }
 
-    let mem_start = START_OF_RAM_32BITS;
-    let mem_end = GuestAddress(mem_size + mem_start);
+    let mem_end = GuestAddress(mem_size);
 
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
     let max_end_32bits = GuestAddress(max_ram_end_before_32bit(arch_memory_layout));
 
     if mem_end <= max_end_32bits {
         regions.push((
-            GuestAddress(mem_start),
+            GuestAddress(0),
             mem_size,
             MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
         ));
     } else {
         regions.push((
-            GuestAddress(mem_start),
-            max_end_32bits.offset() - mem_start,
+            GuestAddress(0),
+            max_end_32bits.offset(),
             MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
         ));
         regions.push((
@@ -1653,7 +1651,7 @@ impl X8664arch {
         // high memory regions.
         let ram_below_1m_end = 640 * 1024;
         let ram_below_1m = AddressRange {
-            start: START_OF_RAM_32BITS,
+            start: 0,
             end: ram_below_1m_end - 1,
         };
 
