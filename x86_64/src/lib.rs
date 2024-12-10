@@ -2387,8 +2387,6 @@ mod tests {
 
     use super::*;
 
-    const TEST_MEMORY_SIZE: u64 = 2 * GB;
-
     fn setup() -> ArchMemoryLayout {
         let pci_config = PciConfig {
             ecam: Some(MemoryRegionConfig {
@@ -2407,9 +2405,17 @@ mod tests {
     fn regions_lt_4gb_nobios() {
         let arch_memory_layout = setup();
         let regions = arch_memory_regions(&arch_memory_layout, 512 * MB, /* bios_size */ None);
-        assert_eq!(1, regions.len());
-        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
-        assert_eq!(1u64 << 29, regions[0].1);
+        assert_eq!(
+            regions,
+            [(
+                GuestAddress(0),
+                1u64 << 29,
+                MemoryRegionOptions {
+                    align: 0,
+                    purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                },
+            )]
+        );
     }
 
     #[test]
@@ -2417,10 +2423,27 @@ mod tests {
         let arch_memory_layout = setup();
         let size = 4 * GB + 0x8000;
         let regions = arch_memory_regions(&arch_memory_layout, size, /* bios_size */ None);
-        assert_eq!(2, regions.len());
-        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
-        assert_eq!(GuestAddress(4 * GB), regions[1].0);
-        assert_eq!(4 * GB + 0x8000, regions[0].1 + regions[1].1);
+        assert_eq!(
+            regions,
+            [
+                (
+                    GuestAddress(0),
+                    2 * GB,
+                    MemoryRegionOptions {
+                        align: 0,
+                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                    },
+                ),
+                (
+                    GuestAddress(4 * GB),
+                    2 * GB + 0x8000,
+                    MemoryRegionOptions {
+                        align: 0,
+                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                    },
+                ),
+            ]
+        );
     }
 
     #[test]
@@ -2428,14 +2451,27 @@ mod tests {
         let arch_memory_layout = setup();
         let bios_len = 1 * MB;
         let regions = arch_memory_regions(&arch_memory_layout, 512 * MB, Some(bios_len));
-        assert_eq!(2, regions.len());
-        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
-        assert_eq!(512 * MB, regions[0].1);
         assert_eq!(
-            GuestAddress(FIRST_ADDR_PAST_32BITS - bios_len),
-            regions[1].0
+            regions,
+            [
+                (
+                    GuestAddress(0),
+                    512 * MB,
+                    MemoryRegionOptions {
+                        align: 0,
+                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                    },
+                ),
+                (
+                    GuestAddress(4 * GB - bios_len),
+                    bios_len,
+                    MemoryRegionOptions {
+                        align: 0,
+                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                    },
+                ),
+            ]
         );
-        assert_eq!(bios_len, regions[1].1);
     }
 
     #[test]
@@ -2443,29 +2479,53 @@ mod tests {
         let arch_memory_layout = setup();
         let bios_len = 1 * MB;
         let regions = arch_memory_regions(&arch_memory_layout, 4 * GB + 0x8000, Some(bios_len));
-        assert_eq!(3, regions.len());
-        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
         assert_eq!(
-            GuestAddress(FIRST_ADDR_PAST_32BITS - bios_len),
-            regions[1].0
+            regions,
+            [
+                (
+                    GuestAddress(0),
+                    2 * GB,
+                    MemoryRegionOptions {
+                        align: 0,
+                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                    },
+                ),
+                (
+                    GuestAddress(4 * GB - bios_len),
+                    bios_len,
+                    MemoryRegionOptions {
+                        align: 0,
+                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                    },
+                ),
+                (
+                    GuestAddress(4 * GB),
+                    2 * GB + 0x8000,
+                    MemoryRegionOptions {
+                        align: 0,
+                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                    },
+                ),
+            ]
         );
-        assert_eq!(bios_len, regions[1].1);
-        assert_eq!(GuestAddress(4 * GB), regions[2].0);
     }
 
     #[test]
     fn regions_eq_4gb_nobios() {
         let arch_memory_layout = setup();
         // Test with exact size of 4GB - the overhead.
-        let regions = arch_memory_regions(
-            &arch_memory_layout,
-            TEST_MEMORY_SIZE - START_OF_RAM_32BITS,
-            /* bios_size */ None,
+        let regions = arch_memory_regions(&arch_memory_layout, 2 * GB, /* bios_size */ None);
+        assert_eq!(
+            regions,
+            [(
+                GuestAddress(0),
+                2 * GB,
+                MemoryRegionOptions {
+                    align: 0,
+                    purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                },
+            )]
         );
-        dbg!(&regions);
-        assert_eq!(1, regions.len());
-        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
-        assert_eq!(TEST_MEMORY_SIZE - START_OF_RAM_32BITS, regions[0].1);
     }
 
     #[test]
@@ -2473,19 +2533,28 @@ mod tests {
         let arch_memory_layout = setup();
         // Test with exact size of 4GB - the overhead.
         let bios_len = 1 * MB;
-        let regions = arch_memory_regions(
-            &arch_memory_layout,
-            TEST_MEMORY_SIZE - START_OF_RAM_32BITS,
-            Some(bios_len),
-        );
-        assert_eq!(2, regions.len());
-        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
-        assert_eq!(TEST_MEMORY_SIZE - START_OF_RAM_32BITS, regions[0].1);
+        let regions = arch_memory_regions(&arch_memory_layout, 2 * GB, Some(bios_len));
         assert_eq!(
-            GuestAddress(FIRST_ADDR_PAST_32BITS - bios_len),
-            regions[1].0
+            regions,
+            [
+                (
+                    GuestAddress(0),
+                    2 * GB,
+                    MemoryRegionOptions {
+                        align: 0,
+                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                    },
+                ),
+                (
+                    GuestAddress(4 * GB - bios_len),
+                    bios_len,
+                    MemoryRegionOptions {
+                        align: 0,
+                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                    },
+                ),
+            ]
         );
-        assert_eq!(bios_len, regions[1].1);
     }
 
     #[test]
