@@ -744,23 +744,35 @@ pub fn arch_memory_regions(
     let max_end_32bits = GuestAddress(max_ram_end_before_32bit(arch_memory_layout));
 
     if mem_end <= max_end_32bits {
-        regions.push((GuestAddress(mem_start), mem_size, Default::default()));
+        regions.push((
+            GuestAddress(mem_start),
+            mem_size,
+            MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
+        ));
         if let Some(bios_size) = bios_size {
-            regions.push((bios_start(bios_size), bios_size, Default::default()));
+            regions.push((
+                bios_start(bios_size),
+                bios_size,
+                MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
+            ));
         }
     } else {
         regions.push((
             GuestAddress(mem_start),
             max_end_32bits.offset() - mem_start,
-            Default::default(),
+            MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
         ));
         if let Some(bios_size) = bios_size {
-            regions.push((bios_start(bios_size), bios_size, Default::default()));
+            regions.push((
+                bios_start(bios_size),
+                bios_size,
+                MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
+            ));
         }
         regions.push((
             first_addr_past_32bits,
             mem_end.offset_from(max_end_32bits),
-            Default::default(),
+            MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
         ));
     }
 
