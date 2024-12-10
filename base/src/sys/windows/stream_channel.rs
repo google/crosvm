@@ -57,6 +57,9 @@ pub const DEFAULT_BUFFER_SIZE: usize = 50 * 1024;
 
 /// An abstraction over named pipes and unix socketpairs.
 ///
+/// WARNING: partial reads of messages behave differently depending on the platform.
+/// See sys::unix::StreamChannel::inner_read for details.
+///
 /// The ReadNotifier will return an event handle that is set when data is in the channel.
 ///
 /// In message mode, single writes larger than

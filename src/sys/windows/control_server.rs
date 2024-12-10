@@ -35,7 +35,6 @@ use log::warn;
 use sync::Mutex;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
-use winapi::shared::winerror::ERROR_MORE_DATA;
 
 /// Windows named pipes don't fit in well with the control loop (`run_control`) the way sockets do
 /// on unix, so this struct provides a compatibility layer (named pipe server) that functions very
@@ -356,8 +355,11 @@ mod tests {
                 {
                     println!("server: starting client 1");
                     control_server.client_waiting().wait().unwrap();
+                    println!("server: woke on client 1");
                     let client1 = control_server.accept();
+                    println!("server: accepted client 1");
                     let req: VmRequest = client1.0.recv().unwrap();
+                    println!("server: got req from client 1");
                     assert!(matches!(req, VmRequest::Powerbtn));
                     client1.0.send(&VmResponse::Ok).unwrap();
                 }
@@ -367,8 +369,11 @@ mod tests {
                 {
                     println!("server: starting client 2");
                     control_server.client_waiting().wait().unwrap();
+                    println!("server: woke on client 2");
                     let client2 = control_server.accept();
+                    println!("server: accepted client 2");
                     let req: VmRequest = client2.0.recv().unwrap();
+                    println!("server: got req from client 2");
                     assert!(matches!(req, VmRequest::Exit));
                     client2
                         .0
@@ -383,6 +388,7 @@ mod tests {
                 println!("client: starting client 1");
                 let client1 = create_client(&pipe_name);
                 client1.send(&VmRequest::Powerbtn).unwrap();
+                println!("client: sent client 1 request");
                 assert!(matches!(client1.recv().unwrap(), VmResponse::Ok));
                 println!("client: finished client 1");
             }
@@ -391,6 +397,7 @@ mod tests {
                 println!("client: starting client 2");
                 let client2 = create_client(&pipe_name);
                 client2.send(&VmRequest::Exit).unwrap();
+                println!("client: sent client 2 request");
                 let resp = VmResponse::ErrString("err".to_owned());
                 assert!(matches!(client2.recv::<VmResponse>().unwrap(), resp,));
                 println!("client: finished client 2");

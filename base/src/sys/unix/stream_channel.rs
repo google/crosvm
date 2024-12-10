@@ -59,6 +59,9 @@ enum SocketType {
 
 /// An abstraction over named pipes and unix socketpairs. This abstraction can be used in a blocking
 /// and non blocking mode.
+///
+/// WARNING: partial reads of messages behave differently depending on the platform.
+/// See sys::unix::StreamChannel::inner_read for details.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct StreamChannel {
     stream: SocketType,
@@ -84,12 +87,18 @@ impl StreamChannel {
             SocketType::Byte(sock) => (&mut &*sock).read(buf),
 
             // On Windows, reading from SOCK_SEQPACKET with a buffer that is too small is an error,
-            // but on Linux will silently truncate unless MSG_TRUNC is passed. Here, we emulate
-            // Windows behavior on POSIX.
+            // and the extra data will be preserved inside the named pipe.
             //
-            // Note that Rust translates ERROR_MORE_DATA into io::ErrorKind::Other
-            // (see sys::decode_error_kind) on Windows, so we preserve this behavior on POSIX even
-            // though one could argue ErrorKind::UnexpectedEof is a closer match to the true error.
+            // Linux though, will silently truncate unless MSG_TRUNC is passed. So we pass it, but
+            // even in that case, Linux will still throw away the extra data. This means there is a
+            // slight behavior difference between platforms from the consumer's perspective.
+            // In practice on Linux, intentional partial reads of messages are usually accomplished
+            // by also passing MSG_PEEK. While we could do this, and hide this rough edge from
+            // consumers, it would add complexity & turn every read into two read syscalls.
+            //
+            // So the compromise is this:
+            // * On Linux: a partial read of a message is an Err and loses data.
+            // * On Windows: a partial read of a message is Ok and does not lose data.
             SocketType::Message(sock) => {
                 // SAFETY:
                 // Safe because buf is valid, we pass buf's size to recv to bound the return

@@ -16,7 +16,6 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
-use winapi::shared::winerror::ERROR_MORE_DATA;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
@@ -281,25 +280,13 @@ fn duplicate_handle(desc: RawHandle, target_pid: Option<u32>) -> Result<RawHandl
     }
 }
 
-/// Reads a part of a Tube packet asserting that it was correctly read. This means:
-/// * Treats partial "message" (transport framing) reads are Ok, as long as we filled our buffer. We
-///   use this to ignore errors when reading the message header, which has the lengths we need to
-///   allocate our buffers for the remainder of the message.
-/// * We filled the supplied buffer.
+/// Reads a part of a Tube packet asserting that it was correctly read. In other words, we've
+/// filled the supplied buffer.
 fn perform_read<F: FnMut(&mut [u8]) -> io::Result<usize>>(
     read_fn: &mut F,
     buf: &mut [u8],
 ) -> io::Result<usize> {
-    let bytes_read = match read_fn(buf) {
-        Ok(s) => Ok(s),
-        Err(e)
-            if e.raw_os_error()
-                .map_or(false, |errno| errno == ERROR_MORE_DATA as i32) =>
-        {
-            Ok(buf.len())
-        }
-        Err(e) => Err(e),
-    }?;
+    let bytes_read = read_fn(buf)?;
 
     if bytes_read != buf.len() {
         Err(io::Error::new(

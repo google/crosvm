@@ -632,6 +632,12 @@ impl PipeConnection {
         );
         match res {
             Ok(bytes_read) => Ok(bytes_read),
+            // For message mode pipes, if the buffer is too small for the entire message, the kernel
+            // will return ERROR_MORE_DATA. This isn't strictly an "error" because the operation
+            // succeeds. Making it an error also means it's hard to handle this cleanly from the
+            // perspective of an io::Read consumer. So we discard the non-error, and return the
+            // successful result of filling the entire buffer.
+            Err(e) if e.raw_os_error() == Some(ERROR_MORE_DATA as i32) => Ok(buf.len()),
             Err(e)
                 if blocking_mode == BlockingMode::NoWait
                     && e.raw_os_error() == Some(ERROR_NO_DATA as i32) =>
@@ -659,9 +665,6 @@ impl PipeConnection {
         // Safe because we are providing a valid buffer slice and also providing a valid
         // overlapped struct.
         match unsafe { self.read_overlapped(buf, overlapped_wrapper) } {
-            // More data isn't necessarily an error as long as we've filled the provided buffer,
-            // as is checked later in this function.
-            Err(e) if e.raw_os_error() == Some(ERROR_MORE_DATA as i32) => Ok(()),
             Err(e) => Err(e),
             Ok(()) => Ok(()),
         }?;
@@ -970,20 +973,30 @@ impl PipeConnection {
                 "Overlapped struct is not in use",
             ));
         }
+
         let mut size_transferred = 0;
         // SAFETY:
         // Safe as long as `overlapped_struct` isn't copied and also contains a valid event.
         // Also the named pipe handle must created with `FILE_FLAG_OVERLAPPED`.
-        fail_if_zero!(unsafe {
+        if (unsafe {
             GetOverlappedResult(
                 self.handle.as_raw_descriptor(),
                 &mut *overlapped_wrapper.overlapped.0,
                 &mut size_transferred,
                 if wait { TRUE } else { FALSE },
             )
-        });
-
-        Ok(size_transferred)
+        }) != 0
+        {
+            Ok(size_transferred)
+        } else {
+            let e = io::Error::last_os_error();
+            match e.raw_os_error() {
+                // More data => partial read of a message on a message pipe. This isn't really an
+                // error (see PipeConnection::read_internal) since we filled the provided buffer.
+                Some(error_code) if error_code as u32 == ERROR_MORE_DATA => Ok(size_transferred),
+                _ => Err(e),
+            }
+        }
     }
 
     /// Cancels I/O Operations in the current process. Since `lpOverlapped` is null, this will
