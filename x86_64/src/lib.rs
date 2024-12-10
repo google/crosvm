@@ -749,32 +749,28 @@ pub fn arch_memory_regions(
             mem_size,
             MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
         ));
-        if let Some(bios_size) = bios_size {
-            regions.push((
-                bios_start(bios_size),
-                bios_size,
-                MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
-            ));
-        }
     } else {
         regions.push((
             GuestAddress(mem_start),
             max_end_32bits.offset() - mem_start,
             MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
         ));
-        if let Some(bios_size) = bios_size {
-            regions.push((
-                bios_start(bios_size),
-                bios_size,
-                MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
-            ));
-        }
         regions.push((
             first_addr_past_32bits,
             mem_end.offset_from(max_end_32bits),
             MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
         ));
     }
+
+    if let Some(bios_size) = bios_size {
+        regions.push((
+            bios_start(bios_size),
+            bios_size,
+            MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
+        ));
+    }
+
+    regions.sort_unstable();
 
     for (addr, size, options) in &regions {
         debug!(
