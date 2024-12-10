@@ -736,26 +736,18 @@ pub fn arch_memory_regions(
         }
     }
 
-    let mem_end = GuestAddress(mem_size);
+    let mem_below_4g = max_ram_end_before_32bit(arch_memory_layout).min(mem_size);
+    regions.push((
+        GuestAddress(0),
+        mem_below_4g,
+        MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
+    ));
 
-    let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
-    let max_end_32bits = GuestAddress(max_ram_end_before_32bit(arch_memory_layout));
-
-    if mem_end <= max_end_32bits {
+    let mem_above_4g = mem_size.saturating_sub(mem_below_4g);
+    if mem_above_4g > 0 {
         regions.push((
-            GuestAddress(0),
-            mem_size,
-            MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
-        ));
-    } else {
-        regions.push((
-            GuestAddress(0),
-            max_end_32bits.offset(),
-            MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
-        ));
-        regions.push((
-            first_addr_past_32bits,
-            mem_end.offset_from(max_end_32bits),
+            GuestAddress(FIRST_ADDR_PAST_32BITS),
+            mem_above_4g,
             MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
         ));
     }
