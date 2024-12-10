@@ -604,6 +604,7 @@ impl GeniezoneVm {
                 MemoryRegionPurpose::Bios => GZVM_USER_MEM_REGION_GUEST_MEM,
                 MemoryRegionPurpose::GuestMemoryRegion => GZVM_USER_MEM_REGION_GUEST_MEM,
                 MemoryRegionPurpose::ProtectedFirmwareRegion => GZVM_USER_MEM_REGION_PROTECT_FW,
+                MemoryRegionPurpose::ReservedMemory => GZVM_USER_MEM_REGION_GUEST_MEM,
                 MemoryRegionPurpose::StaticSwiotlbRegion => GZVM_USER_MEM_REGION_STATIC_SWIOTLB,
             };
             // SAFETY:

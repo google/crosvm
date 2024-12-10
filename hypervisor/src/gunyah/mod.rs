@@ -213,6 +213,7 @@ impl GunyahVm {
                     MemoryRegionPurpose::GuestMemoryRegion => true,
                     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
                     MemoryRegionPurpose::ProtectedFirmwareRegion => true,
+                    MemoryRegionPurpose::ReservedMemory => true,
                     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
                     MemoryRegionPurpose::StaticSwiotlbRegion => false,
                 }

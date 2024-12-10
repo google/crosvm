@@ -126,6 +126,10 @@ pub enum MemoryRegionPurpose {
     /// PVMFW
     ProtectedFirmwareRegion,
 
+    /// An area that should be backed by a GuestMemory region but reported as reserved to the
+    /// guest.
+    ReservedMemory,
+
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     StaticSwiotlbRegion,
 }

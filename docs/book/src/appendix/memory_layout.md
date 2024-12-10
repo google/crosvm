@@ -7,7 +7,7 @@ see the source. All addresses are in hexadecimal.
 
 | Name/source link             | Address       | End (exclusive) | Size      | Notes                                                                                    |
 | ---------------------------- | ------------- | --------------- | --------- | ---------------------------------------------------------------------------------------- |
-| [`START_OF_RAM_32BITS`]      | `0000`        |                 |           | RAM                                                                                      |
+|                              | `0000`        | `A_0000`        | 640 KiB   | RAM (\<1M)                                                                               |
 | [`ZERO_PAGE_OFFSET`]         | `7000`        |                 |           | Linux boot_params structure                                                              |
 | [`BOOT_STACK_POINTER`]       | `8000`        |                 |           | Boot SP value                                                                            |
 | [`boot_pml4_addr`]           | `9000`        | `A000`          | 4 KiB     | Boot page table                                                                          |
@@ -16,11 +16,11 @@ see the source. All addresses are in hexadecimal.
 | [`CMDLINE_OFFSET`]           | `2_0000`      | `2_0800`        | 2 KiB     | Linux kernel command line                                                                |
 | [`SETUP_DATA_START`]         | `2_0800`      | `E_0000`        | 766 KiB   | Linux kernel `setup_data` linked list                                                    |
 | [`ACPI_HI_RSDP_WINDOW_BASE`] | `E_0000`      |                 |           | ACPI tables                                                                              |
+| [`END_ADDR_BEFORE_32BITS`]   | `10_0000`     | `D000_0000`     | ~3.24 GiB | RAM (\<4G)                                                                               |
 | [`KERNEL_START_OFFSET`]      | `20_0000`     |                 |           | Linux kernel image load address                                                          |
 | [`initrd_start`]             | after kernel  |                 |           | Initial RAM disk for Linux kernel (optional)                                             |
-| [`END_ADDR_BEFORE_32BITS`]   | after initrd  | `D000_0000`     | ~3.24 GiB | RAM (\<4G)                                                                               |
 | [`PROTECTED_VM_FW_START`]    | `CFC0_0000`   | `D000_0000`     | 4 MiB     | pVM firmware (if running a protected VM)                                                 |
-| [`END_ADDR_BEFORE_32BITS`]   | `D000_0000`   | `F400_0000`     | 576 MiB   | Low (\<4G) MMIO allocation area                                                          |
+| [`pci_mmio_before_32bit`]    | `D000_0000`   | `F400_0000`     | 576 MiB   | Low (\<4G) MMIO allocation area                                                          |
 | [`PCIE_CFG_MMIO_START`]      | `F400_0000`   | `F800_0000`     | 64 MiB    | PCIe enhanced config (ECAM)                                                              |
 | [`RESERVED_MEM_SIZE`]        | `F800_0000`   | `1_0000_0000`   | 128 MiB   | LAPIC/IOAPIC/HPET/…                                                                      |
 | [`IDENTITY_MAP_ADDR`]        | `FEFF_C000`   |                 |           | Identity map segment                                                                     |
@@ -28,7 +28,6 @@ see the source. All addresses are in hexadecimal.
 |                              | `1_0000_0000` |                 |           | RAM (>4G)                                                                                |
 |                              | (end of RAM)  |                 |           | High (>4G) MMIO allocation area                                                          |
 
-[`start_of_ram_32bits`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=351?q=START_OF_RAM_32BITS
 [`zero_page_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=368?q=ZERO_PAGE_OFFSET
 [`boot_stack_pointer`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=350?q=BOOT_STACK_POINTER
 [`boot_pml4_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/regs.rs;l=297?q=boot_pml4_addr
@@ -41,6 +40,7 @@ see the source. All addresses are in hexadecimal.
 [`initrd_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=1692?q=initrd_start
 [`protected_vm_fw_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=394?q=PROTECTED_VM_FW_START
 [`end_addr_before_32bits`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=356?q=END_ADDR_BEFORE_32BITS
+[`pci_mmio_before_32bit`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=456?q=pci_mmio_before_32bit
 [`pcie_cfg_mmio_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=363?q=PCIE_CFG_MMIO_START
 [`reserved_mem_size`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=358?q=RESERVED_MEM_SIZE
 [`identity_map_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=500?q=identity_map_addr_start
