@@ -53,20 +53,18 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
     match &param.path {
         None => Err(Error::PathRequired),
         Some(path) => {
-            // We must create this pipe in non-blocking mode because a blocking
-            // read in one thread will block a write in another thread having a
-            // handle to the same end of the pipe, which will hang the
-            // emulator. This does mean that the event loop writing to the
-            // pipe's output will need to swallow errors caused by writing to
-            // the pipe when it's not ready; but in practice this does not seem
-            // to cause a problem.
+            // Note that when this pipe is not connected, the serial device will
+            // discard output. If the pipe's buffer is allowed to fill, writes
+            // will block, which will stall the output queue. This generally
+            // points to a bug in the named pipe consumer, and if desired we
+            // could address it in CrosVM by adding a write timeout.
             let pipe_in = named_pipes::create_server_pipe(
                 path.to_str().unwrap(),
                 &FramingMode::Byte,
-                &BlockingMode::NoWait,
-                0, // default timeout
+                &BlockingMode::Wait,
+                /* timeout= */ 0,
                 named_pipes::DEFAULT_BUFFER_SIZE,
-                false,
+                /* overlapped= */ true,
             )
             .map_err(Error::SystemTypeError)?;
 
