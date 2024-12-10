@@ -764,6 +764,15 @@ pub fn arch_memory_regions(
         ));
     }
 
+    for (addr, size, options) in &regions {
+        debug!(
+            "{:#018x}-{:#018x} {:?}",
+            addr.offset(),
+            addr.offset() + size - 1,
+            options.purpose,
+        );
+    }
+
     regions
 }
 
