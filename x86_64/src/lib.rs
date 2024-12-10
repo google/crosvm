@@ -490,13 +490,10 @@ pub fn create_arch_memory_layout(
     })
 }
 
-fn max_ram_end_before_32bit(
-    arch_memory_layout: &ArchMemoryLayout,
-    has_protected_vm_firmware: bool,
-) -> u64 {
+fn max_ram_end_before_32bit(arch_memory_layout: &ArchMemoryLayout) -> u64 {
     let pci_start = arch_memory_layout.pci_mmio_before_32bit.start;
-    if has_protected_vm_firmware {
-        pci_start.min(PROTECTED_VM_FW_START)
+    if let Some(pvmfw_mem) = arch_memory_layout.pvmfw_mem {
+        pci_start.min(pvmfw_mem.start)
     } else {
         pci_start
     }
@@ -675,7 +672,6 @@ fn generate_e820_memory_map(
     ram_below_1m: AddressRange,
     ram_below_4g: AddressRange,
     ram_above_4g: AddressRange,
-    has_protected_vm_firmware: bool,
 ) -> Result<Vec<E820Entry>> {
     let mut e820_entries = Vec::new();
 
@@ -685,12 +681,11 @@ fn generate_e820_memory_map(
         add_e820_entry(&mut e820_entries, ram_above_4g, E820Type::Ram)?
     }
 
-    if has_protected_vm_firmware {
+    if let Some(pvmfw_mem) = arch_memory_layout.pvmfw_mem {
         // After the pVM firmware jumped to the guest, the pVM firmware itself
         // is no longer running, so its memory is reusable by the guest OS.
         // So add this memory as RAM rather than Reserved.
-        let pvmfw_range = arch_memory_layout.pvmfw_mem.unwrap();
-        add_e820_entry(&mut e820_entries, pvmfw_range, E820Type::Ram)?;
+        add_e820_entry(&mut e820_entries, pvmfw_mem, E820Type::Ram)?;
     }
 
     let pcie_cfg_mmio_range = arch_memory_layout.pcie_cfg_mmio;
@@ -723,15 +718,14 @@ pub fn arch_memory_regions(
     arch_memory_layout: &ArchMemoryLayout,
     size: u64,
     bios_size: Option<u64>,
-    has_protected_vm_firmware: bool,
 ) -> Vec<(GuestAddress, u64, MemoryRegionOptions)> {
     let mut mem_size = size;
     let mut regions = Vec::new();
 
-    if has_protected_vm_firmware {
+    if let Some(pvmfw_mem) = arch_memory_layout.pvmfw_mem {
         regions.push((
-            GuestAddress(PROTECTED_VM_FW_START),
-            PROTECTED_VM_FW_MAX_SIZE,
+            GuestAddress(pvmfw_mem.start),
+            pvmfw_mem.len().expect("invalid pvmfw_mem region"),
             MemoryRegionOptions::new().purpose(MemoryRegionPurpose::ProtectedFirmwareRegion),
         ));
 
@@ -747,10 +741,7 @@ pub fn arch_memory_regions(
     let mem_end = GuestAddress(mem_size + mem_start);
 
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
-    let max_end_32bits = GuestAddress(max_ram_end_before_32bit(
-        arch_memory_layout,
-        has_protected_vm_firmware,
-    ));
+    let max_end_32bits = GuestAddress(max_ram_end_before_32bit(arch_memory_layout));
 
     if mem_end <= max_end_32bits {
         regions.push((GuestAddress(mem_start), mem_size, Default::default()));
@@ -794,8 +785,6 @@ impl arch::LinuxArch for X8664arch {
         arch_memory_layout: &Self::ArchMemoryLayout,
         _hypervisor: &impl Hypervisor,
     ) -> std::result::Result<Vec<(GuestAddress, u64, MemoryRegionOptions)>, Self::Error> {
-        let has_protected_vm_firmware = components.hv_cfg.protection_type.runs_firmware();
-
         let bios_size = match &components.vm_image {
             VmImage::Bios(bios_file) => Some(bios_file.metadata().map_err(Error::LoadBios)?.len()),
             VmImage::Kernel(_) => None,
@@ -805,7 +794,6 @@ impl arch::LinuxArch for X8664arch {
             arch_memory_layout,
             components.memory_size,
             bios_size,
-            has_protected_vm_firmware,
         ))
     }
 
@@ -994,7 +982,6 @@ impl arch::LinuxArch for X8664arch {
                 irq_chip,
                 device_tube,
                 components.memory_size,
-                components.hv_cfg.protection_type.runs_firmware(),
             )
             .map_err(Error::SetupCmos)?;
             Some(host_tube)
@@ -1169,7 +1156,6 @@ impl arch::LinuxArch for X8664arch {
                     params,
                     dump_device_tree_blob,
                     device_tree_overlays,
-                    protection_type.runs_firmware(),
                 )?;
 
                 if protection_type.needs_firmware_loaded() {
@@ -1643,7 +1629,6 @@ impl X8664arch {
         params: boot_params,
         dump_device_tree_blob: Option<PathBuf>,
         device_tree_overlays: Vec<DtbOverlay>,
-        has_protected_vm_firmware: bool,
     ) -> Result<()> {
         // Some guest kernels expect a typical PC memory layout where the region between 640 KB and
         // 1 MB is reserved for device memory/ROMs and get confused if there is a RAM region
@@ -1661,8 +1646,7 @@ impl X8664arch {
 
         // Find the end of the part of guest memory below 4G that is not pVM firmware memory.
         // This part of guest memory includes just one region, so just find the end of this region.
-        let max_ram_end_below_4g =
-            max_ram_end_before_32bit(arch_memory_layout, has_protected_vm_firmware) - 1;
+        let max_ram_end_below_4g = max_ram_end_before_32bit(arch_memory_layout) - 1;
         let guest_mem_end_below_4g = mem
             .regions()
             .map(|r| r.guest_addr.offset() + r.size as u64 - 1)
@@ -1684,7 +1668,6 @@ impl X8664arch {
             ram_below_1m,
             ram_below_4g,
             ram_above_4g,
-            has_protected_vm_firmware,
         )?;
 
         let kernel_max_cmdline_len = if params.hdr.cmdline_size == 0 {
@@ -1896,14 +1879,8 @@ impl X8664arch {
         irq_chip: &mut dyn IrqChipX86_64,
         vm_control: Tube,
         mem_size: u64,
-        has_protected_vm_firmware: bool,
     ) -> anyhow::Result<()> {
-        let mem_regions = arch_memory_regions(
-            arch_memory_layout,
-            mem_size,
-            None,
-            has_protected_vm_firmware,
-        );
+        let mem_regions = arch_memory_regions(arch_memory_layout, mem_size, None);
 
         let mem_below_4g = mem_regions
             .iter()
@@ -2420,12 +2397,7 @@ mod tests {
     #[test]
     fn regions_lt_4gb_nobios() {
         let arch_memory_layout = setup();
-        let regions = arch_memory_regions(
-            &arch_memory_layout,
-            512 * MB,
-            /* bios_size */ None,
-            /* has_protected_vm_firmware */ false,
-        );
+        let regions = arch_memory_regions(&arch_memory_layout, 512 * MB, /* bios_size */ None);
         assert_eq!(1, regions.len());
         assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
         assert_eq!(1u64 << 29, regions[0].1);
@@ -2435,12 +2407,7 @@ mod tests {
     fn regions_gt_4gb_nobios() {
         let arch_memory_layout = setup();
         let size = 4 * GB + 0x8000;
-        let regions = arch_memory_regions(
-            &arch_memory_layout,
-            size,
-            /* bios_size */ None,
-            /* has_protected_vm_firmware */ false,
-        );
+        let regions = arch_memory_regions(&arch_memory_layout, size, /* bios_size */ None);
         assert_eq!(2, regions.len());
         assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
         assert_eq!(GuestAddress(4 * GB), regions[1].0);
@@ -2451,12 +2418,7 @@ mod tests {
     fn regions_lt_4gb_bios() {
         let arch_memory_layout = setup();
         let bios_len = 1 * MB;
-        let regions = arch_memory_regions(
-            &arch_memory_layout,
-            512 * MB,
-            Some(bios_len),
-            /* has_protected_vm_firmware */ false,
-        );
+        let regions = arch_memory_regions(&arch_memory_layout, 512 * MB, Some(bios_len));
         assert_eq!(2, regions.len());
         assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
         assert_eq!(512 * MB, regions[0].1);
@@ -2471,12 +2433,7 @@ mod tests {
     fn regions_gt_4gb_bios() {
         let arch_memory_layout = setup();
         let bios_len = 1 * MB;
-        let regions = arch_memory_regions(
-            &arch_memory_layout,
-            4 * GB + 0x8000,
-            Some(bios_len),
-            /* has_protected_vm_firmware */ false,
-        );
+        let regions = arch_memory_regions(&arch_memory_layout, 4 * GB + 0x8000, Some(bios_len));
         assert_eq!(3, regions.len());
         assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
         assert_eq!(
@@ -2495,7 +2452,6 @@ mod tests {
             &arch_memory_layout,
             TEST_MEMORY_SIZE - START_OF_RAM_32BITS,
             /* bios_size */ None,
-            /* has_protected_vm_firmware */ false,
         );
         dbg!(&regions);
         assert_eq!(1, regions.len());
@@ -2512,7 +2468,6 @@ mod tests {
             &arch_memory_layout,
             TEST_MEMORY_SIZE - START_OF_RAM_32BITS,
             Some(bios_len),
-            /* has_protected_vm_firmware */ false,
         );
         assert_eq!(2, regions.len());
         assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
