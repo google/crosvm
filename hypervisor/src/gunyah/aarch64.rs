@@ -131,6 +131,7 @@ impl VmAArch64 for GunyahVm {
         let mut base_set = false;
         for region in self.guest_mem.regions() {
             let create_shm_node = match region.options.purpose {
+                MemoryRegionPurpose::Bios => false,
                 MemoryRegionPurpose::GuestMemoryRegion => {
                     // Assume first GuestMemoryRegion contains the payload
                     // This memory region is described by the "base-address" property

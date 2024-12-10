@@ -764,7 +764,7 @@ pub fn arch_memory_regions(
         regions.push((
             bios_start(bios_size),
             bios_size,
-            MemoryRegionOptions::new().purpose(MemoryRegionPurpose::GuestMemoryRegion),
+            MemoryRegionOptions::new().purpose(MemoryRegionPurpose::Bios),
         ));
     }
 
@@ -2473,7 +2473,7 @@ mod tests {
                     bios_len,
                     MemoryRegionOptions {
                         align: 0,
-                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                        purpose: MemoryRegionPurpose::Bios,
                     },
                 ),
             ]
@@ -2501,7 +2501,7 @@ mod tests {
                     bios_len,
                     MemoryRegionOptions {
                         align: 0,
-                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                        purpose: MemoryRegionPurpose::Bios,
                     },
                 ),
                 (
@@ -2556,7 +2556,7 @@ mod tests {
                     bios_len,
                     MemoryRegionOptions {
                         align: 0,
-                        purpose: MemoryRegionPurpose::GuestMemoryRegion,
+                        purpose: MemoryRegionPurpose::Bios,
                     },
                 ),
             ]

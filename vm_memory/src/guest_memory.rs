@@ -115,10 +115,16 @@ pub struct MemoryRegionInformation<'a> {
 #[sorted]
 #[derive(Clone, Copy, Debug, Default, PartialOrd, PartialEq, Eq, Ord)]
 pub enum MemoryRegionPurpose {
-    // General purpose guest memory
+    /// BIOS/firmware ROM
+    Bios,
+
+    /// General purpose guest memory
     #[default]
     GuestMemoryRegion,
+
+    /// PVMFW
     ProtectedFirmwareRegion,
+
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     StaticSwiotlbRegion,
 }
