@@ -11,7 +11,6 @@ enumn = "0.1"
 libc = "0.2"
 uuid = { version = "1", features = ["v4"] }
 zerocopy = "0.7.29" # >=0.7.29 is required for our 'AsBytes'
-zerocopy-derive = "0.7"
 
 [[example]]
 name = "mkfs"

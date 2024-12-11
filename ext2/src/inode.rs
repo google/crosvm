@@ -11,8 +11,8 @@ use anyhow::bail;
 use anyhow::Result;
 use enumn::N;
 use zerocopy::AsBytes;
-use zerocopy_derive::FromBytes;
-use zerocopy_derive::FromZeroes;
+use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 use crate::arena::Arena;
 use crate::arena::BlockId;
