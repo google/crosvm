@@ -20,3 +20,4 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "testing.html" = "testing/index.html"
 
 [output.linkcheck]
+warning-policy = "error"
