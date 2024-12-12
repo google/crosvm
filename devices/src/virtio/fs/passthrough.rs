@@ -1506,9 +1506,12 @@ impl PassthroughFs {
         #[cfg(feature = "arc_quota")]
         let st = stat(&*data)?;
 
+        #[cfg(feature = "arc_quota")]
+        let ctx_uid = self.lookup_host_uid(&ctx, inode);
+
         // Only privleged uid can perform FS_IOC_SETFLAGS through cryptohome.
         #[cfg(feature = "arc_quota")]
-        if ctx.uid == st.st_uid || self.cfg.privileged_quota_uids.contains(&ctx.uid) {
+        if ctx_uid == st.st_uid || self.cfg.privileged_quota_uids.contains(&ctx_uid) {
             // Get the current flag.
             let mut buf = MaybeUninit::<c_int>::zeroed();
             // SAFETY: the kernel will only write to `buf` and we check the return value.
@@ -2041,6 +2044,24 @@ impl PassthroughFs {
             None => self.do_getxattr(&data, &name, &mut buf[..])?,
         };
         Ok(res)
+    }
+
+    /// Looks up the host uid according to the path of file that inode is referring to.
+    fn lookup_host_uid(&self, ctx: &Context, inode: Inode) -> u32 {
+        if let Ok(inode_data) = self.find_inode(inode) {
+            let path = &inode_data.path;
+            for perm_data in self
+                .permission_paths
+                .read()
+                .expect("acquire permission_paths read lock")
+                .iter()
+            {
+                if perm_data.need_set_permission(path) {
+                    return perm_data.host_uid;
+                }
+            }
+        }
+        ctx.uid
     }
 }
 
