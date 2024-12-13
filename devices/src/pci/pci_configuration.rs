@@ -457,9 +457,9 @@ pub enum Error {
     BarInUse(PciBarIndex),
     #[error("64bit bar {0} already used (requires two regs)")]
     BarInUse64(PciBarIndex),
-    #[error("bar {0} invalid, max {}", NUM_BAR_REGS - 1)]
+    #[error("bar {0} invalid, max {max}", max = NUM_BAR_REGS - 1)]
     BarInvalid(PciBarIndex),
-    #[error("64bitbar {0} invalid, requires two regs, max {}", ROM_BAR_IDX - 1)]
+    #[error("64bitbar {0} invalid, requires two regs, max {max}", max = ROM_BAR_IDX - 1)]
     BarInvalid64(PciBarIndex),
     #[error("expansion rom bar must be a memory region")]
     BarInvalidRomType,

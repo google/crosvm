@@ -97,7 +97,7 @@ pub enum Error {
     #[error("failed to signal used queue: {0}")]
     SignalUsedQueue(SysError),
     /// The tag for the Fs device was too long to fit in the config space.
-    #[error("Fs device tag is too long: len = {0}, max = {}", FS_MAX_TAG_LEN)]
+    #[error("Fs device tag is too long: len = {0}, max = {FS_MAX_TAG_LEN}")]
     TagTooLong(usize),
     /// Calling unshare to disassociate FS attributes from parent failed.
     #[error("failed to unshare fs from parent: {0}")]

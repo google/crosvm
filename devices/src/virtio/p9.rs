@@ -60,7 +60,7 @@ pub enum P9Error {
     #[error("failed to signal used queue: {0}")]
     SignalUsedQueue(SysError),
     /// The tag for the 9P device was too large to fit in the config space.
-    #[error("P9 device tag is too long: len = {0}, max = {}", u16::MAX)]
+    #[error("P9 device tag is too long: len = {0}, max = {max}", max = u16::MAX)]
     TagTooLong(usize),
     /// Error while polling for events.
     #[error("failed to wait for events: {0}")]

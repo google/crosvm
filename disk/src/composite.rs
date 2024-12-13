@@ -97,7 +97,7 @@ pub enum Error {
     OpenFile(io::Error, String),
     #[error("failed to read specification: \"{0}\"")]
     ReadSpecificationError(io::Error),
-    #[error("Read-write partition {0:?} size is not a multiple of {}.", 1 << PARTITION_SIZE_SHIFT)]
+    #[error("Read-write partition {0:?} size is not a multiple of {multiple}.", multiple = 1 << PARTITION_SIZE_SHIFT)]
     UnalignedReadWrite(PartitionInfo),
     #[error("unknown version {0} in specification")]
     UnknownVersion(u64),
