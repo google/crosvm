@@ -293,6 +293,8 @@ pub enum Error {
     SetupSmbios(smbios::Error),
     #[error("failed to set up sregs: {0}")]
     SetupSregs(base::Error),
+    #[error("too many vCPUs")]
+    TooManyVcpus,
     #[error("failed to translate virtual address")]
     TranslatingVirtAddr,
     #[error("protected VMs not supported on x86_64")]
@@ -1078,6 +1080,12 @@ impl arch::LinuxArch for X8664arch {
         // tables and the guest OS picks them up.
         // If another guest does need a way to pass these tables down to it's BIOS, this approach
         // should be rethought.
+
+        // Make sure the `vcpu_count` casts below and the arithmetic in `setup_mptable` are well
+        // defined.
+        if vcpu_count >= u8::max_value().into() {
+            return Err(Error::TooManyVcpus);
+        }
 
         if mptable {
             // Note that this puts the mptable at 0x9FC00 in guest physical memory.
