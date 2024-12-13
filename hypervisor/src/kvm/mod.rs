@@ -95,7 +95,7 @@ use crate::VmCap;
 // SAFETY:
 // Safe when the guest regions are guaranteed not to overlap.
 unsafe fn set_user_memory_region(
-    descriptor: &SafeDescriptor,
+    kvm: &KvmVm,
     slot: MemSlot,
     read_only: bool,
     log_dirty_pages: bool,
@@ -104,22 +104,42 @@ unsafe fn set_user_memory_region(
     memory_size: u64,
     userspace_addr: *mut u8,
 ) -> Result<()> {
-    let mut flags = if read_only { KVM_MEM_READONLY } else { 0 };
+    let mut use_2_variant = false;
+    let mut flags = 0;
+    if read_only {
+        flags |= KVM_MEM_READONLY;
+    }
     if log_dirty_pages {
         flags |= KVM_MEM_LOG_DIRTY_PAGES;
     }
-    if cache == MemCacheType::CacheNonCoherent {
+    if kvm.caps.user_noncoherent_dma && cache == MemCacheType::CacheNonCoherent {
         flags |= KVM_MEM_NON_COHERENT_DMA;
+        use_2_variant = kvm.caps.user_memory_region2;
     }
-    let region = kvm_userspace_memory_region {
-        slot,
-        flags,
-        guest_phys_addr: guest_addr,
-        memory_size,
-        userspace_addr: userspace_addr as u64,
+
+    let ret = if use_2_variant {
+        let region2 = kvm_userspace_memory_region2 {
+            slot,
+            flags,
+            guest_phys_addr: guest_addr,
+            memory_size,
+            userspace_addr: userspace_addr as u64,
+            guest_memfd_offset: 0,
+            guest_memfd: 0,
+            ..Default::default()
+        };
+        ioctl_with_ref(&kvm.vm, KVM_SET_USER_MEMORY_REGION2, &region2)
+    } else {
+        let region = kvm_userspace_memory_region {
+            slot,
+            flags,
+            guest_phys_addr: guest_addr,
+            memory_size,
+            userspace_addr: userspace_addr as u64,
+        };
+        ioctl_with_ref(&kvm.vm, KVM_SET_USER_MEMORY_REGION, &region)
     };
 
-    let ret = ioctl_with_ref(descriptor, KVM_SET_USER_MEMORY_REGION, &region);
     if ret == 0 {
         Ok(())
     } else {
@@ -220,6 +240,14 @@ impl Hypervisor for Kvm {
     }
 }
 
+/// Storage for constant KVM driver caps
+#[derive(Clone, Copy, Default)]
+struct KvmVmCaps {
+    kvmclock_ctrl: bool,
+    user_noncoherent_dma: bool,
+    user_memory_region2: bool,
+}
+
 /// A wrapper around creating and using a KVM VM.
 pub struct KvmVm {
     kvm: Kvm,
@@ -228,7 +256,7 @@ pub struct KvmVm {
     mem_regions: Arc<Mutex<BTreeMap<MemSlot, Box<dyn MappedRegion>>>>,
     /// A min heap of MemSlot numbers that were used and then removed and can now be re-used
     mem_slot_gaps: Arc<Mutex<BinaryHeap<Reverse<MemSlot>>>>,
-    cap_kvmclock_ctrl: bool,
+    caps: KvmVmCaps,
 }
 
 impl KvmVm {
@@ -250,12 +278,26 @@ impl KvmVm {
         // SAFETY:
         // Safe because we verify that ret is valid and we own the fd.
         let vm_descriptor = unsafe { SafeDescriptor::from_raw_descriptor(ret) };
-        for region in guest_mem.regions() {
+        let mut vm = KvmVm {
+            kvm: kvm.try_clone()?,
+            vm: vm_descriptor,
+            guest_mem,
+            mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
+            mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
+            caps: Default::default(),
+        };
+        vm.caps.kvmclock_ctrl = vm.check_raw_capability(KvmCap::KvmclockCtrl);
+        vm.caps.user_noncoherent_dma = vm.check_raw_capability(KvmCap::MemNoncoherentDma);
+        vm.caps.user_memory_region2 = vm.check_raw_capability(KvmCap::UserMemory2);
+
+        vm.init_arch(&cfg)?;
+
+        for region in vm.guest_mem.regions() {
             // SAFETY:
             // Safe because the guest regions are guaranteed not to overlap.
             unsafe {
                 set_user_memory_region(
-                    &vm_descriptor,
+                    &vm,
                     region.index as MemSlot,
                     false,
                     false,
@@ -267,16 +309,6 @@ impl KvmVm {
             }?;
         }
 
-        let mut vm = KvmVm {
-            kvm: kvm.try_clone()?,
-            vm: vm_descriptor,
-            guest_mem,
-            mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
-            mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
-            cap_kvmclock_ctrl: false,
-        };
-        vm.cap_kvmclock_ctrl = vm.check_raw_capability(KvmCap::KvmclockCtrl);
-        vm.init_arch(&cfg)?;
         Ok(vm)
     }
 
@@ -307,7 +339,7 @@ impl KvmVm {
             vm: self.vm.try_clone()?,
             vcpu,
             id,
-            cap_kvmclock_ctrl: self.cap_kvmclock_ctrl,
+            cap_kvmclock_ctrl: self.caps.kvmclock_ctrl,
             run_mmap: Arc::new(run_mmap),
         })
     }
@@ -551,7 +583,7 @@ impl Vm for KvmVm {
             guest_mem: self.guest_mem.clone(),
             mem_regions: self.mem_regions.clone(),
             mem_slot_gaps: self.mem_slot_gaps.clone(),
-            cap_kvmclock_ctrl: self.cap_kvmclock_ctrl,
+            caps: self.caps,
         })
     }
 
@@ -627,12 +659,6 @@ impl Vm for KvmVm {
             None => (regions.len() + self.guest_mem.num_regions() as usize) as MemSlot,
         };
 
-        let cache_type = if self.check_capability(VmCap::MemNoncoherentDma) {
-            cache
-        } else {
-            MemCacheType::CacheCoherent
-        };
-
         // SAFETY:
         // Safe because we check that the given guest address is valid and has no overlaps. We also
         // know that the pointer and size are correct because the MemoryMapping interface ensures
@@ -640,11 +666,11 @@ impl Vm for KvmVm {
         // is removed.
         let res = unsafe {
             set_user_memory_region(
-                &self.vm,
+                self,
                 slot,
                 read_only,
                 log_dirty_pages,
-                cache_type,
+                cache,
                 guest_addr.offset(),
                 size,
                 mem.as_ptr(),
@@ -716,7 +742,7 @@ impl Vm for KvmVm {
         // Safe because the slot is checked against the list of memory slots.
         unsafe {
             set_user_memory_region(
-                &self.vm,
+                self,
                 slot,
                 false,
                 false,
