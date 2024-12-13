@@ -13,9 +13,21 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
-// TODO(b/316337317): Update if new memslot flag is accepted in upstream
-pub const KVM_MEM_NON_COHERENT_DMA: u32 = 8;
-pub const KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA: u32 = 236;
+// TODO(b/369492345): Remove once bindgen generates from newer kernel headers (e.g. 6.12)
+pub const KVM_CAP_USER_MEMORY2: u32 = 231;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_userspace_memory_region2 {
+    pub slot: u32,
+    pub flags: u32,
+    pub guest_phys_addr: u64,
+    pub memory_size: u64,
+    pub userspace_addr: u64,
+    pub guest_memfd_offset: u64,
+    pub guest_memfd: u32,
+    pub pad1: u32,
+    pub pad2: [u64; 14usize],
+}
 
 // TODO(qwandor): Update this once the pKVM patches are merged upstream with a stable capability ID.
 pub const KVM_CAP_ARM_PROTECTED_VM: u32 = 0xffbadab1;
@@ -424,6 +436,7 @@ pub const KVM_TRC_STLB_INVAL: u32 = 131096;
 pub const KVM_TRC_PPC_INSTR: u32 = 131097;
 pub const KVM_MEM_LOG_DIRTY_PAGES: u32 = 1;
 pub const KVM_MEM_READONLY: u32 = 2;
+pub const KVM_MEM_NON_COHERENT_DMA: u32 = 8;
 pub const KVM_PIT_SPEAKER_DUMMY: u32 = 1;
 pub const KVM_S390_CMMA_PEEK: u32 = 1;
 pub const KVM_EXIT_HYPERV_SYNIC: u32 = 1;
@@ -776,9 +789,11 @@ pub const KVM_CAP_PMU_EVENT_MASKED_EVENTS: u32 = 226;
 pub const KVM_CAP_COUNTER_OFFSET: u32 = 227;
 pub const KVM_CAP_ARM_EAGER_SPLIT_CHUNK_SIZE: u32 = 228;
 pub const KVM_CAP_ARM_SUPPORTED_BLOCK_SIZES: u32 = 229;
+pub const KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA: u32 = 236;
 pub const KVM_CAP_GET_CUR_CPUFREQ: u32 = 512;
 pub const KVM_CAP_UTIL_HINT: u32 = 513;
 pub const KVM_CAP_GET_CPUFREQ_TBL: u32 = 514;
+pub const KVM_CAP_PV_SCHED: u32 = 600;
 pub const KVM_IRQ_ROUTING_IRQCHIP: u32 = 1;
 pub const KVM_IRQ_ROUTING_MSI: u32 = 2;
 pub const KVM_IRQ_ROUTING_S390_ADAPTER: u32 = 3;

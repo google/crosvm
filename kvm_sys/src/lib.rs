@@ -115,6 +115,12 @@ ioctl_iow_nr!(
 );
 ioctl_io_nr!(KVM_SET_TSS_ADDR, KVMIO, 0x47);
 ioctl_iow_nr!(KVM_SET_IDENTITY_MAP_ADDR, KVMIO, 0x48, u64);
+ioctl_iow_nr!(
+    KVM_SET_USER_MEMORY_REGION2,
+    KVMIO,
+    0x49,
+    kvm_userspace_memory_region2
+);
 ioctl_io_nr!(KVM_CREATE_IRQCHIP, KVMIO, 0x60);
 ioctl_iow_nr!(KVM_IRQ_LINE, KVMIO, 0x61, kvm_irq_level);
 ioctl_iowr_nr!(KVM_GET_IRQCHIP, KVMIO, 0x62, kvm_irqchip);
