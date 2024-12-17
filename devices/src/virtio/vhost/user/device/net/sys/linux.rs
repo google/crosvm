@@ -163,10 +163,17 @@ async fn run_rx_queue<T: TapT>(
         match process_rx(&mut queue, tap.as_source_mut()) {
             Ok(()) => {}
             Err(NetError::RxDescriptorsExhausted) => {
-                if let Err(e) = kick_evt.next_val().await {
-                    error!("Failed to read kick event for rx queue: {}", e);
-                    break;
-                }
+                select_biased! {
+                    kick_evt = kick_evt.next_val().fuse() => {
+                        if let Err(e) = kick_evt {
+                            error!("Failed to read kick event for rx queue: {}", e);
+                            break;
+                        }
+                    },
+                    _ = stop_rx => {
+                        break;
+                    }
+                };
             }
             Err(e) => {
                 error!("Failed to process rx queue: {}", e);
