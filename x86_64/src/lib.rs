@@ -1216,9 +1216,11 @@ impl arch::LinuxArch for X8664arch {
 
                 if protection_type.runs_firmware() {
                     // Pass pVM payload entry address to pVM firmware.
-                    // NOTE: this ABI is subject to change. Possibly we will pass
-                    // all the needed info (payload entry, start and size) in in-memory
-                    // structures (e.g. DTB) instead.
+                    // NOTE: this is only for development purposes. An actual pvmfw
+                    // implementation should not use this value and should instead receive
+                    // the pVM payload start and size info from crosvm as the DTB properties
+                    // /config/kernel-address and /config/kernel-size and determine the offset
+                    // of the entry point on its own, not trust crosvm to provide it.
                     vcpu_init[0].regs.rdi = kernel_entry.offset();
                 }
 
