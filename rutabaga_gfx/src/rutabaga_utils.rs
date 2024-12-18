@@ -98,6 +98,7 @@ pub struct RutabagaMapping {
 }
 
 /// Metadata associated with a swapchain, video or camera image.
+#[repr(C)]
 #[derive(Default, Copy, Clone, Debug)]
 pub struct Resource3DInfo {
     pub width: u32,
@@ -181,6 +182,14 @@ pub const RUTABAGA_DEBUG_INFO: u32 = 0x03;
 pub struct RutabagaDebug {
     pub debug_type: u32,
     pub message: *const c_char,
+}
+
+/// Import Data for resource_import
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct RutabagaImportData {
+    pub flags: u32,
+    pub info_3d: Resource3DInfo,
 }
 
 // SAFETY:

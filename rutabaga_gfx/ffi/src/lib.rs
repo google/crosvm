@@ -169,6 +169,9 @@ pub struct rutabaga_command {
 }
 
 #[allow(non_camel_case_types)]
+type rutabaga_import_data = RutabagaImportData;
+
+#[allow(non_camel_case_types)]
 pub type rutabaga_fence_callback = extern "C" fn(user_data: u64, fence: &rutabaga_fence);
 
 #[allow(non_camel_case_types)]
@@ -425,6 +428,27 @@ pub extern "C" fn rutabaga_resource_create_3d(
 ) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
         let result = ptr.resource_create_3d(resource_id, *create_3d);
+        return_result(result)
+    }))
+    .unwrap_or(-ESRCH)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rutabaga_resource_import(
+    ptr: &mut rutabaga,
+    resource_id: u32,
+    import_handle: &rutabaga_handle,
+    import_data: &rutabaga_import_data,
+) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        let internal_handle = RutabagaHandle {
+            os_handle: RutabagaDescriptor::from_raw_descriptor(
+                (*import_handle).os_handle.try_into().unwrap(),
+            ),
+            handle_type: (*import_handle).handle_type,
+        };
+
+        let result = ptr.resource_import(resource_id, internal_handle, *import_data);
         return_result(result)
     }))
     .unwrap_or(-ESRCH)

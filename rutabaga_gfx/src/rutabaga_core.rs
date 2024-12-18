@@ -173,6 +173,29 @@ pub trait RutabagaComponent {
         })
     }
 
+    fn import(
+        &self,
+        resource_id: u32,
+        _import_handle: RutabagaHandle,
+        _import_data: RutabagaImportData,
+    ) -> RutabagaResult<RutabagaResource> {
+        Ok(RutabagaResource {
+            resource_id,
+            handle: None,
+            blob: false,
+            blob_mem: 0,
+            blob_flags: 0,
+            map_info: None,
+            info_2d: None,
+            info_3d: None,
+            vulkan_info: None,
+            backing_iovecs: None,
+            component_mask: 0,
+            size: 0,
+            mapping: None,
+        })
+    }
+
     /// Implementations must attach `vecs` to the resource.
     fn attach_backing(
         &self,
@@ -652,6 +675,28 @@ impl Rutabaga {
         }
 
         let resource = component.create_3d(resource_id, resource_create_3d)?;
+        self.resources.insert(resource_id, resource);
+        Ok(())
+    }
+
+    /// Creates and imports to a resource with the external `import_handle` and the `import_data`
+    /// metadata.
+    pub fn resource_import(
+        &mut self,
+        resource_id: u32,
+        import_handle: RutabagaHandle,
+        import_data: RutabagaImportData,
+    ) -> RutabagaResult<()> {
+        let component = self
+            .components
+            .get_mut(&self.default_component)
+            .ok_or(RutabagaError::InvalidComponent)?;
+
+        if self.resources.contains_key(&resource_id) {
+            return Err(RutabagaError::InvalidResourceId);
+        }
+
+        let resource = component.import(resource_id, import_handle, import_data)?;
         self.resources.insert(resource_id, resource);
         Ok(())
     }

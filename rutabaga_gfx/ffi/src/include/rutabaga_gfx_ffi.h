@@ -107,6 +107,11 @@ extern "C" {
 #define RUTABAGA_DEBUG_WARN 0x2
 #define RUTABAGA_DEBUG_INFO 0x3
 
+/**
+ * Rutabaga resource import flags
+ */
+#define RUTABAGA_IMPORT_FLAG_3D_INFO (1 << 0)
+
 struct rutabaga;
 
 struct rutabaga_create_blob {
@@ -127,6 +132,19 @@ struct rutabaga_create_3d {
     uint32_t last_level;
     uint32_t nr_samples;
     uint32_t flags;
+};
+
+struct rutabaga_import_data {
+    uint32_t flags;
+    struct {
+        uint32_t width;
+        uint32_t height;
+        uint32_t drm_fourcc;
+        uint32_t strides[4];
+        uint32_t offsets[4];
+        uint64_t modifier;
+        bool guest_cpu_mappable;
+    } info_3d;
 };
 
 struct rutabaga_transfer {
@@ -365,6 +383,10 @@ int32_t rutabaga_snapshot(struct rutabaga *ptr, const char *dir);
 int32_t rutabaga_restore(struct rutabaga *ptr, const char *dir);
 
 int32_t rutabaga_resource_wait_sync(struct rutabaga *ptr, uint32_t resource_id);
+
+int32_t rutabaga_resource_import(struct rutabaga *ptr, uint32_t resource_id,
+                                 const struct rutabaga_handle *import_handle,
+                                 const struct rutabaga_import_data *import_data);
 
 #ifdef __cplusplus
 }
