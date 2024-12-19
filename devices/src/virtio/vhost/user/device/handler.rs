@@ -501,7 +501,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
     }
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> VhostResult<()> {
-        if index as usize >= self.vrings.len() || base >= Queue::MAX_SIZE.into() {
+        if index as usize >= self.vrings.len() {
             return Err(VhostError::InvalidParam);
         }
 
