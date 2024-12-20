@@ -129,7 +129,14 @@ impl SplitQueue {
             features: config.acked_features(),
             next_avail: config.next_avail(),
             next_used: config.next_used(),
-            last_used: config.next_used(),
+
+            // WARNING: last_used controls interrupt suppression
+            // (VIRTIO_RING_F_EVENT_IDX). The only safe value initial value is
+            // zero (unless restoring a snapshot and the value that was stored
+            // on the device is known; however we do not bother with that in our
+            // snapshot system since it is much simpler to just use the zero
+            // value and send a potentially spurious interrupt on restore).
+            last_used: Wrapping(0),
         })
     }
 
@@ -147,9 +154,30 @@ impl SplitQueue {
             .mem
             .read_obj_from_addr_volatile(used_index_addr)
             .unwrap();
-        // We assume the vhost-user backend sent interrupts for any descriptors it marked used
-        // before it stopped processing the queue, so `last_used == next_used`.
-        self.last_used = self.next_used;
+
+        // Since the backend has not told us what its actual last_used value
+        // was, we have to assume that an interrupt must be sent when next
+        // available descriptor is used, so we set this to zero.
+        //
+        // But wait, one might ask, why can't we just assume the vhost-user
+        // backend has already sent interrupts for any descriptors it marked
+        // used before it stopped processing the queue? Then we could just
+        // initialize last_used as `last_used == next_used`, which would skip
+        // spurious interrupts and be more efficient. Right?
+        //
+        // If VIRTIO_RING_F_EVENT_IDX is enabled, then no. The reason is the
+        // device could be in an interrupt suppressed state and so it may indeed
+        // have marked some descriptors used, but not yet sent an interrupt for
+        // them. Once we set last_used = next_used, no interrupts will be sent
+        // to the driver until the driver updates next_used (see
+        // queue_wants_interrupt for details), but the driver will
+        // never wake up the device isn't sending any interrupts. Thus, the
+        // device stalls.
+        //
+        // NOTE: this value is not used by the snapshot/restore process, but we
+        // still want to pick a reasonable value here in case it is used in the
+        // future.
+        self.last_used = Wrapping(0);
     }
 
     pub fn next_avail_to_process(&self) -> u16 {
