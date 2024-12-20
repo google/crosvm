@@ -64,7 +64,7 @@ impl Backend for TestBackend {
         if !self.owned || self.features_acked {
             return Err(Error::InvalidOperation);
         } else if (features & !VIRTIO_FEATURES) != 0 {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(""));
         }
 
         self.acked_features = features;
@@ -91,7 +91,7 @@ impl Backend for TestBackend {
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> Result<()> {
         if index as usize >= self.queue_num || num == 0 || num as usize > MAX_VRING_NUM {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(""));
         }
         self.vring_num[index as usize] = num;
         Ok(())
@@ -107,14 +107,14 @@ impl Backend for TestBackend {
         _log: u64,
     ) -> Result<()> {
         if index as usize >= self.queue_num {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(""));
         }
         Ok(())
     }
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> Result<()> {
         if index as usize >= self.queue_num || base as usize >= MAX_VRING_NUM {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(""));
         }
         self.vring_base[index as usize] = base;
         Ok(())
@@ -122,7 +122,7 @@ impl Backend for TestBackend {
 
     fn get_vring_base(&mut self, index: u32) -> Result<VhostUserVringState> {
         if index as usize >= self.queue_num {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(""));
         }
         // Quotation from vhost-user spec:
         // Client must start ring upon receiving a kick (that is, detecting
@@ -138,7 +138,7 @@ impl Backend for TestBackend {
 
     fn set_vring_kick(&mut self, index: u8, fd: Option<File>) -> Result<()> {
         if index as usize >= self.queue_num || index as usize > self.queue_num {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(""));
         }
         self.kick_fd[index as usize] = fd;
 
@@ -155,7 +155,7 @@ impl Backend for TestBackend {
 
     fn set_vring_call(&mut self, index: u8, fd: Option<File>) -> Result<()> {
         if index as usize >= self.queue_num || index as usize > self.queue_num {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(""));
         }
         self.call_fd[index as usize] = fd;
         Ok(())
@@ -163,7 +163,7 @@ impl Backend for TestBackend {
 
     fn set_vring_err(&mut self, index: u8, fd: Option<File>) -> Result<()> {
         if index as usize >= self.queue_num || index as usize > self.queue_num {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(""));
         }
         self.err_fd[index as usize] = fd;
         Ok(())
@@ -194,7 +194,7 @@ impl Backend for TestBackend {
         if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
             return Err(Error::InvalidOperation);
         } else if index as usize >= self.queue_num || index as usize > self.queue_num {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(""));
         }
         self.vring_enabled[index as usize] = enable;
         Ok(())
@@ -212,7 +212,7 @@ impl Backend for TestBackend {
             || size > VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET
             || size + offset > VHOST_USER_CONFIG_SIZE
         {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(""));
         }
         Ok(vec![0xa5; size as usize])
     }
@@ -225,7 +225,7 @@ impl Backend for TestBackend {
             || size > VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET
             || size + offset > VHOST_USER_CONFIG_SIZE
         {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(""));
         }
         Ok(())
     }

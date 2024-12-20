@@ -151,7 +151,7 @@ impl vmm_vhost::Backend for VsockBackend {
     fn set_protocol_features(&mut self, features: u64) -> Result<()> {
         let unrequested_features = features & !self.protocol_features.bits();
         if unrequested_features != 0 {
-            Err(Error::InvalidParam)
+            Err(Error::InvalidParam("unsupported protocol feature"))
         } else {
             Ok(())
         }
@@ -180,7 +180,9 @@ impl vmm_vhost::Backend for VsockBackend {
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> Result<()> {
         if index >= NUM_QUEUES as u32 || num == 0 || num > Queue::MAX_SIZE.into() {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(
+                "set_vring_num: vring index or size out of range",
+            ));
         }
 
         // We checked these values already.
@@ -208,13 +210,18 @@ impl vmm_vhost::Backend for VsockBackend {
         log: u64,
     ) -> Result<()> {
         if index >= NUM_QUEUES as u32 {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam("set_vring_addr: index out of range"));
         }
 
         let index = index as usize;
 
-        let mem = self.mem.as_ref().ok_or(Error::InvalidParam)?;
-        let maps = self.vmm_maps.as_ref().ok_or(Error::InvalidParam)?;
+        let mem = self
+            .mem
+            .as_ref()
+            .ok_or(Error::InvalidParam("set_vring_addr: could not get mem"))?;
+        let maps = self.vmm_maps.as_ref().ok_or(Error::InvalidParam(
+            "set_vring_addr: could not get vmm_maps",
+        ))?;
 
         let queue = &mut self.queues[index];
         queue.set_desc_table(vmm_va_to_gpa(maps, descriptor)?);
@@ -247,7 +254,7 @@ impl vmm_vhost::Backend for VsockBackend {
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> Result<()> {
         if index >= NUM_QUEUES as u32 {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam("set_vring_base: index out of range"));
         }
 
         let index = index as usize;
@@ -268,7 +275,7 @@ impl vmm_vhost::Backend for VsockBackend {
 
     fn get_vring_base(&mut self, index: u32) -> Result<VhostUserVringState> {
         if index >= NUM_QUEUES as u32 {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam("get_vring_base: index out of range"));
         }
 
         let index = index as usize;
@@ -285,7 +292,7 @@ impl vmm_vhost::Backend for VsockBackend {
 
     fn set_vring_kick(&mut self, index: u8, fd: Option<File>) -> Result<()> {
         if index >= NUM_QUEUES as u8 {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam("set_vring_kick: index out of range"));
         }
 
         let event = VhostUserRegularOps::set_vring_kick(index, fd)?;
@@ -301,7 +308,7 @@ impl vmm_vhost::Backend for VsockBackend {
 
     fn set_vring_call(&mut self, index: u8, fd: Option<File>) -> Result<()> {
         if index >= NUM_QUEUES as u8 {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam("set_vring_call: index out of range"));
         }
 
         let doorbell = VhostUserRegularOps::set_vring_call(
@@ -326,11 +333,11 @@ impl vmm_vhost::Backend for VsockBackend {
 
     fn set_vring_err(&mut self, index: u8, fd: Option<File>) -> Result<()> {
         if index >= NUM_QUEUES as u8 {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam("set_vring_err: index out of range"));
         }
 
         let index = usize::from(index);
-        let file = fd.ok_or(Error::InvalidParam)?;
+        let file = fd.ok_or(Error::InvalidParam("set_vring_err: missing fd"))?;
 
         let event = Event::from(SafeDescriptor::from(file));
 
@@ -345,7 +352,7 @@ impl vmm_vhost::Backend for VsockBackend {
 
     fn set_vring_enable(&mut self, index: u32, enable: bool) -> Result<()> {
         if index >= NUM_QUEUES as u32 {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam("vring index out of range"));
         }
 
         self.queues[index as usize].set_ready(enable);
@@ -372,14 +379,18 @@ impl vmm_vhost::Backend for VsockBackend {
         size: u32,
         _flags: VhostUserConfigFlags,
     ) -> Result<Vec<u8>> {
-        let start: usize = offset.try_into().map_err(|_| Error::InvalidParam)?;
+        let start: usize = offset
+            .try_into()
+            .map_err(|_| Error::InvalidParam("offset does not fit in usize"))?;
         let end: usize = offset
             .checked_add(size)
             .and_then(|e| e.try_into().ok())
-            .ok_or(Error::InvalidParam)?;
+            .ok_or(Error::InvalidParam("offset + size does not fit in usize"))?;
 
         if start >= size_of::<Le64>() || end > size_of::<Le64>() {
-            return Err(Error::InvalidParam);
+            return Err(Error::InvalidParam(
+                "get_config: offset and/or size out of range",
+            ));
         }
 
         Ok(Le64::from(self.cid).as_bytes()[start..end].to_vec())

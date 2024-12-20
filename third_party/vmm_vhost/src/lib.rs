@@ -101,8 +101,8 @@ pub enum Error {
     #[error("invalid operation")]
     InvalidOperation,
     /// Invalid parameters.
-    #[error("invalid parameters")]
-    InvalidParam,
+    #[error("invalid parameters: {0}")]
+    InvalidParam(&'static str),
     /// Message is too large
     #[error("oversized message")]
     OversizedMsg,
@@ -515,7 +515,10 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        assert_eq!(format!("{}", Error::InvalidParam), "invalid parameters");
+        assert_eq!(
+            format!("{}", Error::InvalidParam("")),
+            "invalid parameters: "
+        );
         assert_eq!(format!("{}", Error::InvalidOperation), "invalid operation");
     }
 

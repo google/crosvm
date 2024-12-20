@@ -81,13 +81,17 @@ impl BackendClient {
     /// addresses. In the ancillary data there is an array of file descriptors
     pub fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
         if regions.is_empty() || regions.len() > MAX_ATTACHED_FD_ENTRIES {
-            return Err(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam(
+                "set_mem_table: regions empty or exceed max allowed regions per req.",
+            ));
         }
 
         let mut ctx = VhostUserMemoryContext::new();
         for region in regions.iter() {
             if region.memory_size == 0 || region.mmap_handle == INVALID_DESCRIPTOR {
-                return Err(VhostUserError::InvalidParam);
+                return Err(VhostUserError::InvalidParam(
+                    "set_mem_table: invalid memory region",
+                ));
             }
 
             let reg = VhostUserMemoryRegion {
@@ -116,7 +120,7 @@ impl BackendClient {
         let should_have_fd =
             self.acked_protocol_features & VhostUserProtocolFeatures::LOG_SHMFD.bits() != 0;
         if should_have_fd != fd.is_some() {
-            return Err(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam("set_log_base: FD is missing"));
         }
 
         let _ = self.send_request_with_body(
@@ -145,7 +149,9 @@ impl BackendClient {
     /// Set the addresses for a given vring.
     pub fn set_vring_addr(&self, queue_index: usize, config_data: &VringConfigData) -> Result<()> {
         if config_data.flags & !(VhostUserVringAddrFlags::all().bits()) != 0 {
-            return Err(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam(
+                "set_vring_addr: unsupported vring flags",
+            ));
         }
 
         let val = VhostUserVringAddr::from_config_data(queue_index as u32, config_data);
@@ -336,7 +342,9 @@ impl BackendClient {
     ) -> Result<(VhostUserConfig, VhostUserConfigPayload)> {
         let body = VhostUserConfig::new(offset, size, flags);
         if !body.is_valid() {
-            return Err(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam(
+                "get_config: VhostUserConfig is invalid",
+            ));
         }
 
         // depends on VhostUserProtocolFeatures::CONFIG
@@ -375,7 +383,9 @@ impl BackendClient {
             flags,
         );
         if !body.is_valid() {
-            return Err(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam(
+                "set_config: VhostUserConfig is invalid",
+            ));
         }
 
         // depends on VhostUserProtocolFeatures::CONFIG
@@ -426,7 +436,9 @@ impl BackendClient {
             || inflight.queue_size == 0
             || fd == INVALID_DESCRIPTOR
         {
-            return Err(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam(
+                "set_inflight_fd: invalid fd or params",
+            ));
         }
 
         let hdr =
@@ -455,7 +467,9 @@ impl BackendClient {
         }
 
         if region.memory_size == 0 || region.mmap_handle == INVALID_DESCRIPTOR {
-            return Err(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam(
+                "add_mem_region: region empty or mmap handle invalid",
+            ));
         }
 
         let body = VhostUserSingleMemoryRegion::new(
@@ -476,7 +490,9 @@ impl BackendClient {
             return Err(VhostUserError::InvalidOperation);
         }
         if region.memory_size == 0 {
-            return Err(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam(
+                "remove_mem_region: cannot remove zero sized region",
+            ));
         }
 
         let body = VhostUserSingleMemoryRegion::new(
@@ -540,7 +556,9 @@ impl BackendClient {
     ) -> VhostUserResult<VhostUserMsgHeader<FrontendReq>> {
         if let Some(fd_arr) = fds {
             if fd_arr.len() > MAX_ATTACHED_FD_ENTRIES {
-                return Err(VhostUserError::InvalidParam);
+                return Err(VhostUserError::InvalidParam(
+                    "send_request_with_payload: too many FDs supplied with message",
+                ));
             }
         }
         let len = mem::size_of::<T>()
@@ -575,7 +593,9 @@ impl BackendClient {
         hdr: &VhostUserMsgHeader<FrontendReq>,
     ) -> VhostUserResult<T> {
         if hdr.is_reply() {
-            return Err(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam(
+                "recv_reply: header is not a reply",
+            ));
         }
         let (reply, body, rfds) = self.connection.recv_message::<T>()?;
         if !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
@@ -589,7 +609,9 @@ impl BackendClient {
         hdr: &VhostUserMsgHeader<FrontendReq>,
     ) -> VhostUserResult<(T, Vec<File>)> {
         if hdr.is_reply() {
-            return Err(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam(
+                "with_files: expected a reply, but the header is not marked as a reply",
+            ));
         }
 
         let (reply, body, files) = self.connection.recv_message::<T>()?;
@@ -604,7 +626,9 @@ impl BackendClient {
         hdr: &VhostUserMsgHeader<FrontendReq>,
     ) -> VhostUserResult<(T, Vec<u8>, Vec<File>)> {
         if hdr.is_reply() {
-            return Err(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam(
+                "with_payload: expected a reply, but the header is not marked as a reply",
+            ));
         }
 
         let (reply, body, buf, files) = self.connection.recv_message_with_payload::<T>()?;

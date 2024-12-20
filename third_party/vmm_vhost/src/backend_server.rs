@@ -489,7 +489,11 @@ impl<S: Backend> BackendServer<S> {
                 let enable = match msg.num {
                     1 => true,
                     0 => false,
-                    _ => return Err(Error::InvalidParam),
+                    _ => {
+                        return Err(Error::InvalidParam(
+                            "SET_VRING_ENABLE: num out of range (must be [0, 1])",
+                        ))
+                    }
                 };
 
                 let res = self.backend.set_vring_enable(msg.index, enable);
@@ -569,7 +573,9 @@ impl<S: Backend> BackendServer<S> {
                 {
                     return Err(Error::InvalidOperation);
                 }
-                let file = into_single_file(files).ok_or(Error::InvalidParam)?;
+                let file = into_single_file(files).ok_or(Error::InvalidParam(
+                    "ADD_MEM_REG: exactly one file must be provided",
+                ))?;
                 let msg =
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
                 let res = self.backend.add_mem_region(&msg, file);
