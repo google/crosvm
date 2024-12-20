@@ -323,14 +323,12 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     // }
 
     info!("vhost-user net device ready, starting run loop...");
-    if let Err(e) = ex.run_until(run_handler(
+    ex.run_until(run_handler(
         Box::new(handler),
         vhost_user_tube,
         exit_event,
         &ex,
-    )) {
-        bail!("error occurred: {}", e);
-    }
-
-    Ok(())
+    ))
+    .context("run_until error")?
+    .context("run_handler error")
 }

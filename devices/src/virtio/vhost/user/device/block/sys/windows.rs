@@ -93,9 +93,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let handler = block.build(&ex)?;
 
     info!("vhost-user disk device ready, starting run loop...");
-    if let Err(e) = ex.run_until(run_handler(handler, vhost_user_tube, exit_event, &ex)) {
-        bail!("error occurred: {}", e);
-    }
-
-    Ok(())
+    ex.run_until(run_handler(handler, vhost_user_tube, exit_event, &ex))
+        .context("run_until error")?
+        .context("run_handler error")
 }

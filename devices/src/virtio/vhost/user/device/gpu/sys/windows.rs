@@ -332,14 +332,14 @@ pub fn run_gpu_device_worker(
     info!("vhost-user gpu device ready, starting run loop...");
 
     // Run until the backend is finished.
-    if let Err(e) = ex.run_until(run_handler(
+    ex.run_until(run_handler(
         Box::new(handler),
         vhost_user_tube,
         config.exit_event,
         &ex,
-    )) {
-        bail!("error occurred: {}", e);
-    }
+    ))
+    .context("run_until error")?
+    .context("run_handler error")?;
 
     // Process any tasks from the backend's destructor.
     Ok(ex.run_until(async {})?)

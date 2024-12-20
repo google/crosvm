@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
 use base::info;
@@ -13,6 +14,7 @@ use base::Event;
 use base::RawDescriptor;
 use base::ReadNotifier;
 use base::Tube;
+use cros_async::AsyncResult;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use futures::pin_mut;
@@ -45,6 +47,7 @@ pub fn read_from_tube_transporter(
     tube_transporter.read_tubes().map_err(anyhow::Error::msg)
 }
 
+/// Runs the generic handler over a given vhost-user device backend.
 pub async fn run_handler(
     handler: Box<dyn vmm_vhost::Backend>,
     vhost_user_tube: Tube,

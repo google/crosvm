@@ -137,14 +137,12 @@ pub fn run_snd_device_worker(config: SndBackendConfig) -> anyhow::Result<()> {
         "[Card {}] vhost-user snd device ready, starting run loop...",
         card_index
     );
-    if let Err(e) = ex.run_until(run_handler(
+    ex.run_until(run_handler(
         handler,
         vhost_user_tube,
         config.exit_event,
         &ex,
-    )) {
-        bail!("[Card {}] error occurred: {}", card_index, e);
-    }
-
-    Ok(())
+    ))
+    .context("run_until error")?
+    .context("run_handler error")
 }
