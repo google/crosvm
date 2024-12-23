@@ -111,6 +111,9 @@ extern "C" {
  * Rutabaga resource import flags
  */
 #define RUTABAGA_IMPORT_FLAG_3D_INFO (1 << 0)
+#define RUTABAGA_IMPORT_FLAG_VULKAN_INFO (1 << 1)
+#define RUTABAGA_IMPORT_FLAG_RESOURCE_EXISTS (1 << 30)
+#define RUTABAGA_IMPORT_FLAG_PRESERVE_CONTENT (1 << 31)
 
 struct rutabaga;
 

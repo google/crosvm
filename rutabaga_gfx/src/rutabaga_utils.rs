@@ -184,6 +184,12 @@ pub struct RutabagaDebug {
     pub message: *const c_char,
 }
 
+/// Rutabaga import flags
+pub const RUTABAGA_IMPORT_FLAG_3D_INFO: u32 = 1 << 0;
+pub const RUTABAGA_IMPORT_FLAG_VULKAN_INFO: u32 = 1 << 1;
+pub const RUTABAGA_IMPORT_FLAG_RESOURCE_EXISTS: u32 = 1 << 30;
+pub const RUTABAGA_IMPORT_FLAG_PRESERVE_CONTENT: u32 = 1 << 31;
+
 /// Import Data for resource_import
 #[repr(C)]
 #[derive(Copy, Clone)]

@@ -45,7 +45,9 @@ const STREAM_RENDERER_PARAM_DEBUG_CALLBACK: u64 = 6;
 const STREAM_RENDERER_PARAM_RENDERER_FEATURES: u64 = 11;
 
 #[cfg(gfxstream_unstable)]
-const STREAM_RENDERER_IMPORT_FLAG_3D_INFO: u32 = 1 << 0;
+const STREAM_RENDERER_IMPORT_FLAG_VULKAN_INFO: u32 = RUTABAGA_IMPORT_FLAG_VULKAN_INFO;
+#[cfg(gfxstream_unstable)]
+const STREAM_RENDERER_IMPORT_FLAG_RESOURCE_EXISTS: u32 = RUTABAGA_IMPORT_FLAG_RESOURCE_EXISTS;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -583,17 +585,20 @@ impl RutabagaComponent for Gfxstream {
         resource_id: u32,
         import_handle: RutabagaHandle,
         import_data: RutabagaImportData,
-    ) -> RutabagaResult<RutabagaResource> {
+    ) -> RutabagaResult<Option<RutabagaResource>> {
         let stream_handle = stream_renderer_handle {
             os_handle: import_handle.os_handle.into_raw_descriptor() as i64,
             handle_type: import_handle.handle_type,
         };
 
+        // VULKAN_INFO not currently supported in Rutabaga -> gfxstream translation
+        // for import_data
+        assert!(import_data.flags & STREAM_RENDERER_IMPORT_FLAG_VULKAN_INFO == 0);
+
         // When importing and creating a new resource, 3D_INFO flag must be set. This flag should
         // be the only flag set in the gfxstream call
-        assert!(0 != import_data.flags & STREAM_RENDERER_IMPORT_FLAG_3D_INFO);
         let stream_import_data = stream_renderer_import_data {
-            flags: STREAM_RENDERER_IMPORT_FLAG_3D_INFO,
+            flags: import_data.flags,
             info_3d: stream_renderer_3d_info {
                 width: import_data.info_3d.width,
                 height: import_data.info_3d.height,
@@ -613,21 +618,25 @@ impl RutabagaComponent for Gfxstream {
         };
         ret_to_res(ret)?;
 
-        Ok(RutabagaResource {
-            resource_id,
-            handle: None,
-            blob: false,
-            blob_mem: 0,
-            blob_flags: 0,
-            map_info: None,
-            info_2d: None,
-            info_3d: None,
-            vulkan_info: None,
-            backing_iovecs: None,
-            component_mask: 1 << (RutabagaComponentType::Gfxstream as u8),
-            size: 0,
-            mapping: None,
-        })
+        if (import_data.flags & STREAM_RENDERER_IMPORT_FLAG_RESOURCE_EXISTS) != 0 {
+            Ok(None)
+        } else {
+            Ok(Some(RutabagaResource {
+                resource_id,
+                handle: None,
+                blob: false,
+                blob_mem: 0,
+                blob_flags: 0,
+                map_info: None,
+                info_2d: None,
+                info_3d: None,
+                vulkan_info: None,
+                backing_iovecs: None,
+                component_mask: 1 << (RutabagaComponentType::Gfxstream as u8),
+                size: 0,
+                mapping: None,
+            }))
+        }
     }
 
     fn attach_backing(

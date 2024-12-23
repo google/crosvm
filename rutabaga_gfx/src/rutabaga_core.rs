@@ -175,25 +175,11 @@ pub trait RutabagaComponent {
 
     fn import(
         &self,
-        resource_id: u32,
+        _resource_id: u32,
         _import_handle: RutabagaHandle,
         _import_data: RutabagaImportData,
-    ) -> RutabagaResult<RutabagaResource> {
-        Ok(RutabagaResource {
-            resource_id,
-            handle: None,
-            blob: false,
-            blob_mem: 0,
-            blob_flags: 0,
-            map_info: None,
-            info_2d: None,
-            info_3d: None,
-            vulkan_info: None,
-            backing_iovecs: None,
-            component_mask: 0,
-            size: 0,
-            mapping: None,
-        })
+    ) -> RutabagaResult<Option<RutabagaResource>> {
+        Err(RutabagaError::Unsupported)
     }
 
     /// Implementations must attach `vecs` to the resource.
@@ -692,12 +678,17 @@ impl Rutabaga {
             .get_mut(&self.default_component)
             .ok_or(RutabagaError::InvalidComponent)?;
 
-        if self.resources.contains_key(&resource_id) {
-            return Err(RutabagaError::InvalidResourceId);
-        }
-
-        let resource = component.import(resource_id, import_handle, import_data)?;
-        self.resources.insert(resource_id, resource);
+        match component.import(resource_id, import_handle, import_data) {
+            Ok(Some(resource)) => {
+                self.resources.insert(resource_id, resource);
+            }
+            Ok(None) => {
+                if !self.resources.contains_key(&resource_id) {
+                    return Err(RutabagaError::InvalidResourceId);
+                }
+            }
+            Err(e) => return Err(e),
+        };
         Ok(())
     }
 
