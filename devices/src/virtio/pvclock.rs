@@ -805,7 +805,8 @@ fn run_main_worker(
                     let desc_chain = match set_pvclock_page_queue.pop() {
                         Some(desc_chain) => desc_chain,
                         None => {
-                            error!("set_pvclock_page queue was empty");
+                            // Spurious doorbells from the driver are permitted
+                            // by the virtio spec (v1.3; section 2.9).
                             continue;
                         }
                     };
