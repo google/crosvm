@@ -691,6 +691,7 @@ pub const RUTABAGA_HANDLE_TYPE_SIGNAL_ZIRCON: u32 = 0x0040;
 pub const RUTABAGA_HANDLE_TYPE_SIGNAL_EVENT_FD: u32 = 0x0050;
 
 pub const RUTABAGA_HANDLE_TYPE_PLATFORM_SCREEN_BUFFER_QNX: u32 = 0x01000000;
+pub const RUTABAGA_HANDLE_TYPE_PLATFORM_EGL_NATIVE_PIXMAP: u32 = 0x02000000;
 
 /// Handle to OS-specific memory or synchronization objects.
 pub struct RutabagaHandle {
