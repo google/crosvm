@@ -862,7 +862,7 @@ impl Rutabaga {
             let handle_opt = resource.handle.take();
             match handle_opt {
                 Some(handle) => {
-                    if handle.handle_type != RUTABAGA_MEM_HANDLE_TYPE_SHM {
+                    if handle.handle_type != RUTABAGA_HANDLE_TYPE_MEM_SHM {
                         return Err(RutabagaError::SpecViolation(
                             "expected a shared memory handle",
                         ));

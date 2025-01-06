@@ -17,7 +17,7 @@ use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaHandle;
 use crate::rutabaga_utils::RutabagaResult;
-use crate::rutabaga_utils::RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD;
+use crate::rutabaga_utils::RUTABAGA_HANDLE_TYPE_SIGNAL_EVENT_FD;
 
 pub struct Event {
     descriptor: OwnedDescriptor,
@@ -50,7 +50,7 @@ impl Event {
 impl TryFrom<RutabagaHandle> for Event {
     type Error = RutabagaError;
     fn try_from(handle: RutabagaHandle) -> Result<Self, Self::Error> {
-        if handle.handle_type != RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD {
+        if handle.handle_type != RUTABAGA_HANDLE_TYPE_SIGNAL_EVENT_FD {
             return Err(RutabagaError::InvalidRutabagaHandle);
         }
 
@@ -64,7 +64,7 @@ impl From<Event> for RutabagaHandle {
     fn from(evt: Event) -> Self {
         RutabagaHandle {
             os_handle: evt.descriptor,
-            handle_type: RUTABAGA_FENCE_HANDLE_TYPE_EVENT_FD,
+            handle_type: RUTABAGA_HANDLE_TYPE_SIGNAL_EVENT_FD,
         }
     }
 }

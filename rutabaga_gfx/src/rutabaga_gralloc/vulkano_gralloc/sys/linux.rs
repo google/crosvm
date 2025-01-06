@@ -15,8 +15,8 @@ use vulkano::memory::MemoryImportInfo;
 use crate::rutabaga_gralloc::vulkano_gralloc::VulkanoGralloc;
 use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::IntoRawDescriptor;
-use crate::rutabaga_utils::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
-use crate::rutabaga_utils::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD;
+use crate::rutabaga_utils::RUTABAGA_HANDLE_TYPE_MEM_DMABUF;
+use crate::rutabaga_utils::RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD;
 use crate::RutabagaError;
 use crate::RutabagaHandle;
 use crate::RutabagaResult;
@@ -46,8 +46,8 @@ impl VulkanoGralloc {
     ) -> RutabagaResult<DeviceMemory> {
         let import_info = MemoryImportInfo::Fd {
             handle_type: match handle.handle_type {
-                RUTABAGA_MEM_HANDLE_TYPE_DMABUF => ExternalMemoryHandleType::DmaBuf,
-                RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD => ExternalMemoryHandleType::OpaqueFd,
+                RUTABAGA_HANDLE_TYPE_MEM_DMABUF => ExternalMemoryHandleType::DmaBuf,
+                RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD => ExternalMemoryHandleType::OpaqueFd,
                 _ => return Err(RutabagaError::InvalidRutabagaHandle),
             },
             // Safe because we own the handle.

@@ -13,7 +13,7 @@ use vulkano::memory::MemoryImportInfo;
 
 use crate::rutabaga_gralloc::vulkano_gralloc::VulkanoGralloc;
 use crate::rutabaga_os::AsRawDescriptor;
-use crate::rutabaga_utils::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_WIN32;
+use crate::rutabaga_utils::RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_WIN32;
 use crate::RutabagaError;
 use crate::RutabagaHandle;
 use crate::RutabagaResult;
@@ -42,7 +42,7 @@ impl VulkanoGralloc {
     ) -> RutabagaResult<DeviceMemory> {
         let import_info = MemoryImportInfo::Win32 {
             handle_type: match handle.handle_type {
-                RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_WIN32 => ExternalMemoryHandleType::OpaqueWin32,
+                RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_WIN32 => ExternalMemoryHandleType::OpaqueWin32,
                 _ => return Err(RutabagaError::InvalidRutabagaHandle),
             },
             handle: handle.os_handle.as_raw_descriptor(),

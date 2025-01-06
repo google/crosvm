@@ -847,7 +847,7 @@ impl RutabagaContext for CrossDomainContext {
                 CrossDomainItem::WaylandKeymap(descriptor) => {
                     let hnd = RutabagaHandle {
                         os_handle: descriptor,
-                        handle_type: RUTABAGA_MEM_HANDLE_TYPE_SHM,
+                        handle_type: RUTABAGA_HANDLE_TYPE_MEM_SHM,
                     };
 
                     Ok(RutabagaResource {

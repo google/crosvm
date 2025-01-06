@@ -35,14 +35,14 @@ use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::RutabagaIntoRawDescriptor;
 use rutabaga_gfx::RutabagaIovec;
 use rutabaga_gfx::Transfer3D;
+use rutabaga_gfx::RUTABAGA_HANDLE_TYPE_MEM_DMABUF;
+use rutabaga_gfx::RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_MASK;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_READ;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_RW;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_WRITE;
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_MASK;
-use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
-use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -1031,7 +1031,7 @@ impl VirtioGpu {
             rutabaga_iovecs,
             descriptor.map(|descriptor| RutabagaHandle {
                 os_handle: to_rutabaga_descriptor(descriptor),
-                handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
+                handle_type: RUTABAGA_HANDLE_TYPE_MEM_DMABUF,
             }),
         )?;
 
@@ -1067,7 +1067,7 @@ impl VirtioGpu {
                     driver_uuid: vulkan_info.device_id.driver_uuid,
                     size: resource.size,
                 });
-            } else if export.handle_type != RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD {
+            } else if export.handle_type != RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD {
                 source = Some(VmMemorySource::Descriptor {
                     descriptor: to_safe_descriptor(export.os_handle),
                     offset: 0,

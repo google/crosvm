@@ -454,12 +454,12 @@ impl Gralloc for VulkanoGralloc {
                 true => (
                     ExternalMemoryHandleType::DmaBuf,
                     ExternalMemoryHandleTypes::DMA_BUF,
-                    RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
+                    RUTABAGA_HANDLE_TYPE_MEM_DMABUF,
                 ),
                 false => (
                     ExternalMemoryHandleType::OpaqueFd,
                     ExternalMemoryHandleTypes::OPAQUE_FD,
-                    RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD,
+                    RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD,
                 ),
             };
 

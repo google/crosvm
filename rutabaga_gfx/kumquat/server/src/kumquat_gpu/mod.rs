@@ -36,9 +36,9 @@ use rutabaga_gfx::Transfer3D;
 use rutabaga_gfx::VulkanInfo;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE_HOST_SHAREABLE;
+use rutabaga_gfx::RUTABAGA_HANDLE_TYPE_MEM_SHM;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_RW;
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
-use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_SHM;
 
 const SNAPSHOT_DIR: &str = "/tmp/";
 
@@ -282,7 +282,7 @@ impl KumquatGpuConnection {
                         resp,
                         RutabagaHandle {
                             os_handle: descriptor,
-                            handle_type: RUTABAGA_MEM_HANDLE_TYPE_SHM,
+                            handle_type: RUTABAGA_HANDLE_TYPE_MEM_SHM,
                         },
                     ))?;
                 }

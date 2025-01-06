@@ -48,7 +48,7 @@ impl Gralloc for SystemGralloc {
         let shm = SharedMemory::new("rutabaga_gralloc", reqs.size)?;
         Ok(RutabagaHandle {
             os_handle: shm.into(),
-            handle_type: RUTABAGA_MEM_HANDLE_TYPE_SHM,
+            handle_type: RUTABAGA_HANDLE_TYPE_MEM_SHM,
         })
     }
 }

@@ -33,9 +33,9 @@ use rutabaga_gfx::VulkanInfo;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE_HOST_SHAREABLE;
 use rutabaga_gfx::RUTABAGA_FLAG_INFO_RING_IDX;
+use rutabaga_gfx::RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_RW;
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
-use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD;
 
 use crate::virtgpu::defines::*;
 
@@ -371,7 +371,7 @@ impl VirtGpuKumquat {
         } else {
             let clone = resource.handle.try_clone()?;
 
-            if clone.handle_type == RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD {
+            if clone.handle_type == RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD {
                 let region = gralloc().lock().unwrap().import_and_map(
                     clone,
                     resource.vulkan_info,
@@ -624,7 +624,7 @@ impl VirtGpuKumquat {
             // Opaque to users of this API, shared memory internally
             Ok(RutabagaHandle {
                 os_handle: descriptor,
-                handle_type: RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD,
+                handle_type: RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD,
             })
         } else {
             let clone = resource.handle.try_clone()?;
