@@ -15,21 +15,10 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
-// TODO(b/369492345): Remove once bindgen generates from newer kernel headers (e.g. 6.12)
-pub const KVM_CAP_USER_MEMORY2: u32 = 231;
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct kvm_userspace_memory_region2 {
-    pub slot: u32,
-    pub flags: u32,
-    pub guest_phys_addr: u64,
-    pub memory_size: u64,
-    pub userspace_addr: u64,
-    pub guest_memfd_offset: u64,
-    pub guest_memfd: u32,
-    pub pad1: u32,
-    pub pad2: [u64; 14usize],
-}
+// TODO(b/388092267): Replace this with an upstream equivalent when available.
+// The original index (236) used in the ChromeOS v6.6 kernel was reused upstream for another
+// capability, so this may return incorrect information on some kernels.
+pub const KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA_CROS: u32 = 236;
 
 // TODO(qwandor): Update this once the pKVM patches are merged upstream with a stable capability ID.
 pub const KVM_CAP_ARM_PROTECTED_VM: u32 = 0xffbadab1;
@@ -85,7 +74,7 @@ bindgen_generate \
     --raw-line "${KVM_EXTRAS}" \
     --raw-line "${X86_64_EXTRAS}" \
     --blocklist-item='__kernel.*' \
-    --blocklist-item='__BITS_PER_LONG' \
+    --blocklist-item='__BITS_PER_.*' \
     --blocklist-item='__FD_SETSIZE' \
     --blocklist-item='_?IOC.*' \
     --with-derive-custom "kvm_regs=FromZeroes,FromBytes,AsBytes" \
@@ -120,7 +109,7 @@ bindgen_generate \
 bindgen_generate \
     --raw-line "${KVM_EXTRAS}" \
     --blocklist-item='__kernel.*' \
-    --blocklist-item='__BITS_PER_LONG' \
+    --blocklist-item='__BITS_PER_.*' \
     --blocklist-item='__FD_SETSIZE' \
     --blocklist-item='_?IOC.*' \
     --with-derive-custom "kvm_regs=FromZeroes,FromBytes,AsBytes" \
@@ -140,7 +129,7 @@ bindgen_generate \
 bindgen_generate \
     --raw-line "${KVM_EXTRAS}" \
     --blocklist-item='__kernel.*' \
-    --blocklist-item='__BITS_PER_LONG' \
+    --blocklist-item='__BITS_PER_.*' \
     --blocklist-item='__FD_SETSIZE' \
     --blocklist-item='_?IOC.*' \
     "${BINDGEN_LINUX_RISCV_HEADERS}/include/linux/kvm.h" \

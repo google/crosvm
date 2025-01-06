@@ -185,6 +185,9 @@ pub const VFIO_DEVICE_FEATURE_DMA_LOGGING_START: u32 = 6;
 pub const VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP: u32 = 7;
 pub const VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT: u32 = 8;
 pub const VFIO_DEVICE_FEATURE_MIG_DATA_SIZE: u32 = 9;
+pub const VFIO_DEVICE_FEATURE_CLEAR_MASTER: u32 = 0;
+pub const VFIO_DEVICE_FEATURE_SET_MASTER: u32 = 1;
+pub const VFIO_DEVICE_FEATURE_BUS_MASTER: u32 = 10;
 pub const VFIO_IOMMU_INFO_PGSIZES: u32 = 1;
 pub const VFIO_IOMMU_INFO_CAPS: u32 = 2;
 pub const VFIO_IOMMU_TYPE1_INFO_CAP_IOVA_RANGE: u32 = 1;
@@ -428,6 +431,7 @@ pub struct vfio_device_gfx_plane_info {
     pub x_hot: u32,
     pub y_hot: u32,
     pub __bindgen_anon_1: vfio_device_gfx_plane_info__bindgen_ty_1,
+    pub reserved: u32,
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -461,6 +465,7 @@ pub struct vfio_device_ioeventfd {
     pub offset: u64,
     pub data: u64,
     pub fd: i32,
+    pub reserved: u32,
 }
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -509,6 +514,7 @@ pub const vfio_device_mig_state_VFIO_DEVICE_STATE_RESUMING: vfio_device_mig_stat
 pub const vfio_device_mig_state_VFIO_DEVICE_STATE_RUNNING_P2P: vfio_device_mig_state = 5;
 pub const vfio_device_mig_state_VFIO_DEVICE_STATE_PRE_COPY: vfio_device_mig_state = 6;
 pub const vfio_device_mig_state_VFIO_DEVICE_STATE_PRE_COPY_P2P: vfio_device_mig_state = 7;
+pub const vfio_device_mig_state_VFIO_DEVICE_STATE_NR: vfio_device_mig_state = 8;
 pub type vfio_device_mig_state = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -550,6 +556,11 @@ pub struct vfio_device_feature_dma_logging_report {
 #[derive(Debug, Default, Copy, Clone)]
 pub struct vfio_device_feature_mig_data_size {
     pub stop_copy_length: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_feature_bus_master {
+    pub op: u32,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]

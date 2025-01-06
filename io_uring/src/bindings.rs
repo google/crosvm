@@ -100,7 +100,7 @@ pub const IORING_SETUP_NO_MMAP: u32 = 16384;
 pub const IORING_SETUP_REGISTERED_FD_ONLY: u32 = 32768;
 pub const IORING_SETUP_NO_SQARRAY: u32 = 65536;
 pub const IORING_URING_CMD_FIXED: u32 = 1;
-pub const IORING_URING_CMD_POLLED: u32 = 2147483648;
+pub const IORING_URING_CMD_MASK: u32 = 1;
 pub const IORING_FSYNC_DATASYNC: u32 = 1;
 pub const IORING_TIMEOUT_ABS: u32 = 1;
 pub const IORING_TIMEOUT_UPDATE: u32 = 2;
@@ -125,14 +125,21 @@ pub const IORING_RECVSEND_POLL_FIRST: u32 = 1;
 pub const IORING_RECV_MULTISHOT: u32 = 2;
 pub const IORING_RECVSEND_FIXED_BUF: u32 = 4;
 pub const IORING_SEND_ZC_REPORT_USAGE: u32 = 8;
+pub const IORING_RECVSEND_BUNDLE: u32 = 16;
 pub const IORING_NOTIF_USAGE_ZC_COPIED: u32 = 2147483648;
 pub const IORING_ACCEPT_MULTISHOT: u32 = 1;
+pub const IORING_ACCEPT_DONTWAIT: u32 = 2;
+pub const IORING_ACCEPT_POLL_FIRST: u32 = 4;
 pub const IORING_MSG_RING_CQE_SKIP: u32 = 1;
 pub const IORING_MSG_RING_FLAGS_PASS: u32 = 2;
+pub const IORING_FIXED_FD_NO_CLOEXEC: u32 = 1;
+pub const IORING_NOP_INJECT_RESULT: u32 = 1;
 pub const IORING_CQE_F_BUFFER: u32 = 1;
 pub const IORING_CQE_F_MORE: u32 = 2;
 pub const IORING_CQE_F_SOCK_NONEMPTY: u32 = 4;
 pub const IORING_CQE_F_NOTIF: u32 = 8;
+pub const IORING_CQE_F_BUF_MORE: u32 = 16;
+pub const IORING_CQE_BUFFER_SHIFT: u32 = 16;
 pub const IORING_OFF_SQ_RING: u32 = 0;
 pub const IORING_OFF_CQ_RING: u32 = 134217728;
 pub const IORING_OFF_SQES: u32 = 268435456;
@@ -148,6 +155,7 @@ pub const IORING_ENTER_SQ_WAKEUP: u32 = 2;
 pub const IORING_ENTER_SQ_WAIT: u32 = 4;
 pub const IORING_ENTER_EXT_ARG: u32 = 8;
 pub const IORING_ENTER_REGISTERED_RING: u32 = 16;
+pub const IORING_ENTER_ABS_TIMER: u32 = 32;
 pub const IORING_FEAT_SINGLE_MMAP: u32 = 1;
 pub const IORING_FEAT_NODROP: u32 = 2;
 pub const IORING_FEAT_SUBMIT_STABLE: u32 = 4;
@@ -162,6 +170,8 @@ pub const IORING_FEAT_RSRC_TAGS: u32 = 1024;
 pub const IORING_FEAT_CQE_SKIP: u32 = 2048;
 pub const IORING_FEAT_LINKED_FILE: u32 = 4096;
 pub const IORING_FEAT_REG_REG_RING: u32 = 8192;
+pub const IORING_FEAT_RECVSEND_BUNDLE: u32 = 16384;
+pub const IORING_FEAT_MIN_TIMEOUT: u32 = 32768;
 pub const IORING_RSRC_REGISTER_SPARSE: u32 = 1;
 pub const IORING_REGISTER_FILES_SKIP: i32 = -2;
 pub const IO_URING_OP_SUPPORTED: u32 = 1;
@@ -216,6 +226,13 @@ impl Default for io_uring_sqe__bindgen_ty_1 {
 pub union io_uring_sqe__bindgen_ty_2 {
     pub addr: u64,
     pub splice_off_in: u64,
+    pub __bindgen_anon_1: io_uring_sqe__bindgen_ty_2__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct io_uring_sqe__bindgen_ty_2__bindgen_ty_1 {
+    pub level: u32,
+    pub optname: u32,
 }
 impl Default for io_uring_sqe__bindgen_ty_2 {
     fn default() -> Self {
@@ -248,6 +265,10 @@ pub union io_uring_sqe__bindgen_ty_3 {
     pub xattr_flags: u32,
     pub msg_ring_flags: u32,
     pub uring_cmd_flags: u32,
+    pub waitid_flags: u32,
+    pub futex_flags: u32,
+    pub install_fd_flags: u32,
+    pub nop_flags: u32,
 }
 impl Default for io_uring_sqe__bindgen_ty_3 {
     fn default() -> Self {
@@ -278,6 +299,7 @@ impl Default for io_uring_sqe__bindgen_ty_4 {
 pub union io_uring_sqe__bindgen_ty_5 {
     pub splice_fd_in: i32,
     pub file_index: u32,
+    pub optlen: u32,
     pub __bindgen_anon_1: io_uring_sqe__bindgen_ty_5__bindgen_ty_1,
 }
 #[repr(C)]
@@ -298,6 +320,7 @@ impl Default for io_uring_sqe__bindgen_ty_5 {
 #[repr(C)]
 pub struct io_uring_sqe__bindgen_ty_6 {
     pub __bindgen_anon_1: __BindgenUnionField<io_uring_sqe__bindgen_ty_6__bindgen_ty_1>,
+    pub optval: __BindgenUnionField<u64>,
     pub cmd: __BindgenUnionField<[u8; 0usize]>,
     pub bindgen_union_field: [u64; 2usize],
 }
@@ -325,6 +348,14 @@ impl Default for io_uring_sqe {
         }
     }
 }
+pub const io_uring_sqe_flags_bit_IOSQE_FIXED_FILE_BIT: io_uring_sqe_flags_bit = 0;
+pub const io_uring_sqe_flags_bit_IOSQE_IO_DRAIN_BIT: io_uring_sqe_flags_bit = 1;
+pub const io_uring_sqe_flags_bit_IOSQE_IO_LINK_BIT: io_uring_sqe_flags_bit = 2;
+pub const io_uring_sqe_flags_bit_IOSQE_IO_HARDLINK_BIT: io_uring_sqe_flags_bit = 3;
+pub const io_uring_sqe_flags_bit_IOSQE_ASYNC_BIT: io_uring_sqe_flags_bit = 4;
+pub const io_uring_sqe_flags_bit_IOSQE_BUFFER_SELECT_BIT: io_uring_sqe_flags_bit = 5;
+pub const io_uring_sqe_flags_bit_IOSQE_CQE_SKIP_SUCCESS_BIT: io_uring_sqe_flags_bit = 6;
+pub type io_uring_sqe_flags_bit = ::std::os::raw::c_uint;
 pub const io_uring_op_IORING_OP_NOP: io_uring_op = 0;
 pub const io_uring_op_IORING_OP_READV: io_uring_op = 1;
 pub const io_uring_op_IORING_OP_WRITEV: io_uring_op = 2;
@@ -374,11 +405,20 @@ pub const io_uring_op_IORING_OP_SOCKET: io_uring_op = 45;
 pub const io_uring_op_IORING_OP_URING_CMD: io_uring_op = 46;
 pub const io_uring_op_IORING_OP_SEND_ZC: io_uring_op = 47;
 pub const io_uring_op_IORING_OP_SENDMSG_ZC: io_uring_op = 48;
-pub const io_uring_op_IORING_OP_LAST: io_uring_op = 49;
+pub const io_uring_op_IORING_OP_READ_MULTISHOT: io_uring_op = 49;
+pub const io_uring_op_IORING_OP_WAITID: io_uring_op = 50;
+pub const io_uring_op_IORING_OP_FUTEX_WAIT: io_uring_op = 51;
+pub const io_uring_op_IORING_OP_FUTEX_WAKE: io_uring_op = 52;
+pub const io_uring_op_IORING_OP_FUTEX_WAITV: io_uring_op = 53;
+pub const io_uring_op_IORING_OP_FIXED_FD_INSTALL: io_uring_op = 54;
+pub const io_uring_op_IORING_OP_FTRUNCATE: io_uring_op = 55;
+pub const io_uring_op_IORING_OP_BIND: io_uring_op = 56;
+pub const io_uring_op_IORING_OP_LISTEN: io_uring_op = 57;
+pub const io_uring_op_IORING_OP_LAST: io_uring_op = 58;
 pub type io_uring_op = ::std::os::raw::c_uint;
-pub const IORING_MSG_DATA: _bindgen_ty_2 = 0;
-pub const IORING_MSG_SEND_FD: _bindgen_ty_2 = 1;
-pub type _bindgen_ty_2 = ::std::os::raw::c_uint;
+pub const io_uring_msg_ring_flags_IORING_MSG_DATA: io_uring_msg_ring_flags = 0;
+pub const io_uring_msg_ring_flags_IORING_MSG_SEND_FD: io_uring_msg_ring_flags = 1;
+pub type io_uring_msg_ring_flags = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct io_uring_cqe {
@@ -387,8 +427,6 @@ pub struct io_uring_cqe {
     pub flags: u32,
     pub big_cqe: __IncompleteArrayField<u64>,
 }
-pub const IORING_CQE_BUFFER_SHIFT: _bindgen_ty_3 = 16;
-pub type _bindgen_ty_3 = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct io_sqring_offsets {
@@ -429,35 +467,41 @@ pub struct io_uring_params {
     pub sq_off: io_sqring_offsets,
     pub cq_off: io_cqring_offsets,
 }
-pub const IORING_REGISTER_BUFFERS: _bindgen_ty_4 = 0;
-pub const IORING_UNREGISTER_BUFFERS: _bindgen_ty_4 = 1;
-pub const IORING_REGISTER_FILES: _bindgen_ty_4 = 2;
-pub const IORING_UNREGISTER_FILES: _bindgen_ty_4 = 3;
-pub const IORING_REGISTER_EVENTFD: _bindgen_ty_4 = 4;
-pub const IORING_UNREGISTER_EVENTFD: _bindgen_ty_4 = 5;
-pub const IORING_REGISTER_FILES_UPDATE: _bindgen_ty_4 = 6;
-pub const IORING_REGISTER_EVENTFD_ASYNC: _bindgen_ty_4 = 7;
-pub const IORING_REGISTER_PROBE: _bindgen_ty_4 = 8;
-pub const IORING_REGISTER_PERSONALITY: _bindgen_ty_4 = 9;
-pub const IORING_UNREGISTER_PERSONALITY: _bindgen_ty_4 = 10;
-pub const IORING_REGISTER_RESTRICTIONS: _bindgen_ty_4 = 11;
-pub const IORING_REGISTER_ENABLE_RINGS: _bindgen_ty_4 = 12;
-pub const IORING_REGISTER_FILES2: _bindgen_ty_4 = 13;
-pub const IORING_REGISTER_FILES_UPDATE2: _bindgen_ty_4 = 14;
-pub const IORING_REGISTER_BUFFERS2: _bindgen_ty_4 = 15;
-pub const IORING_REGISTER_BUFFERS_UPDATE: _bindgen_ty_4 = 16;
-pub const IORING_REGISTER_IOWQ_AFF: _bindgen_ty_4 = 17;
-pub const IORING_UNREGISTER_IOWQ_AFF: _bindgen_ty_4 = 18;
-pub const IORING_REGISTER_IOWQ_MAX_WORKERS: _bindgen_ty_4 = 19;
-pub const IORING_REGISTER_RING_FDS: _bindgen_ty_4 = 20;
-pub const IORING_UNREGISTER_RING_FDS: _bindgen_ty_4 = 21;
-pub const IORING_REGISTER_PBUF_RING: _bindgen_ty_4 = 22;
-pub const IORING_UNREGISTER_PBUF_RING: _bindgen_ty_4 = 23;
-pub const IORING_REGISTER_SYNC_CANCEL: _bindgen_ty_4 = 24;
-pub const IORING_REGISTER_FILE_ALLOC_RANGE: _bindgen_ty_4 = 25;
-pub const IORING_REGISTER_LAST: _bindgen_ty_4 = 26;
-pub const IORING_REGISTER_USE_REGISTERED_RING: _bindgen_ty_4 = 2147483648;
-pub type _bindgen_ty_4 = ::std::os::raw::c_uint;
+pub const io_uring_register_op_IORING_REGISTER_BUFFERS: io_uring_register_op = 0;
+pub const io_uring_register_op_IORING_UNREGISTER_BUFFERS: io_uring_register_op = 1;
+pub const io_uring_register_op_IORING_REGISTER_FILES: io_uring_register_op = 2;
+pub const io_uring_register_op_IORING_UNREGISTER_FILES: io_uring_register_op = 3;
+pub const io_uring_register_op_IORING_REGISTER_EVENTFD: io_uring_register_op = 4;
+pub const io_uring_register_op_IORING_UNREGISTER_EVENTFD: io_uring_register_op = 5;
+pub const io_uring_register_op_IORING_REGISTER_FILES_UPDATE: io_uring_register_op = 6;
+pub const io_uring_register_op_IORING_REGISTER_EVENTFD_ASYNC: io_uring_register_op = 7;
+pub const io_uring_register_op_IORING_REGISTER_PROBE: io_uring_register_op = 8;
+pub const io_uring_register_op_IORING_REGISTER_PERSONALITY: io_uring_register_op = 9;
+pub const io_uring_register_op_IORING_UNREGISTER_PERSONALITY: io_uring_register_op = 10;
+pub const io_uring_register_op_IORING_REGISTER_RESTRICTIONS: io_uring_register_op = 11;
+pub const io_uring_register_op_IORING_REGISTER_ENABLE_RINGS: io_uring_register_op = 12;
+pub const io_uring_register_op_IORING_REGISTER_FILES2: io_uring_register_op = 13;
+pub const io_uring_register_op_IORING_REGISTER_FILES_UPDATE2: io_uring_register_op = 14;
+pub const io_uring_register_op_IORING_REGISTER_BUFFERS2: io_uring_register_op = 15;
+pub const io_uring_register_op_IORING_REGISTER_BUFFERS_UPDATE: io_uring_register_op = 16;
+pub const io_uring_register_op_IORING_REGISTER_IOWQ_AFF: io_uring_register_op = 17;
+pub const io_uring_register_op_IORING_UNREGISTER_IOWQ_AFF: io_uring_register_op = 18;
+pub const io_uring_register_op_IORING_REGISTER_IOWQ_MAX_WORKERS: io_uring_register_op = 19;
+pub const io_uring_register_op_IORING_REGISTER_RING_FDS: io_uring_register_op = 20;
+pub const io_uring_register_op_IORING_UNREGISTER_RING_FDS: io_uring_register_op = 21;
+pub const io_uring_register_op_IORING_REGISTER_PBUF_RING: io_uring_register_op = 22;
+pub const io_uring_register_op_IORING_UNREGISTER_PBUF_RING: io_uring_register_op = 23;
+pub const io_uring_register_op_IORING_REGISTER_SYNC_CANCEL: io_uring_register_op = 24;
+pub const io_uring_register_op_IORING_REGISTER_FILE_ALLOC_RANGE: io_uring_register_op = 25;
+pub const io_uring_register_op_IORING_REGISTER_PBUF_STATUS: io_uring_register_op = 26;
+pub const io_uring_register_op_IORING_REGISTER_NAPI: io_uring_register_op = 27;
+pub const io_uring_register_op_IORING_UNREGISTER_NAPI: io_uring_register_op = 28;
+pub const io_uring_register_op_IORING_REGISTER_CLOCK: io_uring_register_op = 29;
+pub const io_uring_register_op_IORING_REGISTER_CLONE_BUFFERS: io_uring_register_op = 30;
+pub const io_uring_register_op_IORING_REGISTER_LAST: io_uring_register_op = 31;
+pub const io_uring_register_op_IORING_REGISTER_USE_REGISTERED_RING: io_uring_register_op =
+    2147483648;
+pub type io_uring_register_op = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct io_uring_files_update {
@@ -543,6 +587,21 @@ impl Default for io_uring_restriction {
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
+pub struct io_uring_clock_register {
+    pub clockid: u32,
+    pub __resv: [u32; 3usize],
+}
+pub const IORING_REGISTER_SRC_REGISTERED: _bindgen_ty_1 = 1;
+pub type _bindgen_ty_1 = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct io_uring_clone_buffers {
+    pub src_fd: u32,
+    pub flags: u32,
+    pub pad: [u32; 6usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct io_uring_buf {
     pub addr: u64,
     pub len: u32,
@@ -594,6 +653,11 @@ impl Default for io_uring_buf_ring {
         }
     }
 }
+pub const io_uring_register_pbuf_ring_flags_IOU_PBUF_RING_MMAP: io_uring_register_pbuf_ring_flags =
+    1;
+pub const io_uring_register_pbuf_ring_flags_IOU_PBUF_RING_INC: io_uring_register_pbuf_ring_flags =
+    2;
+pub type io_uring_register_pbuf_ring_flags = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct io_uring_buf_reg {
@@ -603,18 +667,38 @@ pub struct io_uring_buf_reg {
     pub flags: u16,
     pub resv: [u64; 3usize],
 }
-pub const IORING_RESTRICTION_REGISTER_OP: _bindgen_ty_7 = 0;
-pub const IORING_RESTRICTION_SQE_OP: _bindgen_ty_7 = 1;
-pub const IORING_RESTRICTION_SQE_FLAGS_ALLOWED: _bindgen_ty_7 = 2;
-pub const IORING_RESTRICTION_SQE_FLAGS_REQUIRED: _bindgen_ty_7 = 3;
-pub const IORING_RESTRICTION_LAST: _bindgen_ty_7 = 4;
-pub type _bindgen_ty_7 = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct io_uring_buf_status {
+    pub buf_group: u32,
+    pub head: u32,
+    pub resv: [u32; 8usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct io_uring_napi {
+    pub busy_poll_to: u32,
+    pub prefer_busy_poll: u8,
+    pub pad: [u8; 3usize],
+    pub resv: u64,
+}
+pub const io_uring_register_restriction_op_IORING_RESTRICTION_REGISTER_OP:
+    io_uring_register_restriction_op = 0;
+pub const io_uring_register_restriction_op_IORING_RESTRICTION_SQE_OP:
+    io_uring_register_restriction_op = 1;
+pub const io_uring_register_restriction_op_IORING_RESTRICTION_SQE_FLAGS_ALLOWED:
+    io_uring_register_restriction_op = 2;
+pub const io_uring_register_restriction_op_IORING_RESTRICTION_SQE_FLAGS_REQUIRED:
+    io_uring_register_restriction_op = 3;
+pub const io_uring_register_restriction_op_IORING_RESTRICTION_LAST:
+    io_uring_register_restriction_op = 4;
+pub type io_uring_register_restriction_op = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct io_uring_getevents_arg {
     pub sigmask: u64,
     pub sigmask_sz: u32,
-    pub pad: u32,
+    pub min_wait_usec: u32,
     pub ts: u64,
 }
 #[repr(C)]
@@ -643,3 +727,8 @@ pub struct io_uring_recvmsg_out {
     pub payloadlen: u32,
     pub flags: u32,
 }
+pub const io_uring_socket_op_SOCKET_URING_OP_SIOCINQ: io_uring_socket_op = 0;
+pub const io_uring_socket_op_SOCKET_URING_OP_SIOCOUTQ: io_uring_socket_op = 1;
+pub const io_uring_socket_op_SOCKET_URING_OP_GETSOCKOPT: io_uring_socket_op = 2;
+pub const io_uring_socket_op_SOCKET_URING_OP_SETSOCKOPT: io_uring_socket_op = 3;
+pub type io_uring_socket_op = ::std::os::raw::c_uint;

@@ -242,7 +242,7 @@ impl URingAllowlist {
     /// Allow `operation` to be submitted to the submit queue of the io_uring.
     pub fn allow_submit_operation(&mut self, operation: URingOperation) -> &mut Self {
         self.0.push(io_uring_restriction {
-            opcode: IORING_RESTRICTION_SQE_OP as u16,
+            opcode: io_uring_register_restriction_op_IORING_RESTRICTION_SQE_OP as u16,
             __bindgen_anon_1: io_uring_restriction__bindgen_ty_1 {
                 sqe_op: operation as u8,
             },
@@ -309,7 +309,7 @@ impl URingContext {
                 // `restrictions` contains a valid pointer and length.
                 io_uring_register(
                     fd,
-                    IORING_REGISTER_RESTRICTIONS,
+                    io_uring_register_op_IORING_REGISTER_RESTRICTIONS,
                     restrictions.0.as_ptr() as *const c_void,
                     restrictions.0.len() as u32,
                 )
@@ -317,8 +317,13 @@ impl URingContext {
 
                 // enables the URingContext since it was started in a disabled state.
                 // safe because IORING_REGISTER_RESTRICTIONS does not modify the memory
-                io_uring_register(fd, IORING_REGISTER_ENABLE_RINGS, null::<c_void>(), 0)
-                    .map_err(Error::RingRegister)?;
+                io_uring_register(
+                    fd,
+                    io_uring_register_op_IORING_REGISTER_ENABLE_RINGS,
+                    null::<c_void>(),
+                    0,
+                )
+                .map_err(Error::RingRegister)?;
             }
 
             // Mmap the submit and completion queues.

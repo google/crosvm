@@ -17,6 +17,9 @@ use zerocopy::FromZeroes;"
 
 bindgen_generate \
     --raw-line "${KERNEL_LOADER_EXTRA}" \
+    --blocklist-item='ASM_INPUT_.*' \
+    --blocklist-item='.*BITS_PER_.*' \
+    --blocklist-item='__FD_SETSIZE' \
     --allowlist-type='Elf32_Ehdr' \
     --allowlist-type='Elf32_Phdr' \
     --allowlist-type='Elf64_Ehdr' \

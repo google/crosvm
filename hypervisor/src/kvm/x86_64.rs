@@ -163,7 +163,7 @@ impl Kvm {
         if protection_type.isolates_memory() {
             Ok(KVM_X86_PKVM_PROTECTED_VM)
         } else {
-            Ok(0)
+            Ok(KVM_X86_DEFAULT_VM)
         }
     }
 

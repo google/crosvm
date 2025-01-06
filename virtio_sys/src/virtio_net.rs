@@ -65,6 +65,7 @@ pub const VIRTIO_NET_F_CTRL_RX_EXTRA: u32 = 20;
 pub const VIRTIO_NET_F_GUEST_ANNOUNCE: u32 = 21;
 pub const VIRTIO_NET_F_MQ: u32 = 22;
 pub const VIRTIO_NET_F_CTRL_MAC_ADDR: u32 = 23;
+pub const VIRTIO_NET_F_DEVICE_STATS: u32 = 50;
 pub const VIRTIO_NET_F_VQ_NOTF_COAL: u32 = 52;
 pub const VIRTIO_NET_F_NOTF_COAL: u32 = 53;
 pub const VIRTIO_NET_F_GUEST_USO4: u32 = 54;
@@ -137,8 +138,30 @@ pub const VIRTIO_NET_CTRL_NOTF_COAL_TX_SET: u32 = 0;
 pub const VIRTIO_NET_CTRL_NOTF_COAL_RX_SET: u32 = 1;
 pub const VIRTIO_NET_CTRL_NOTF_COAL_VQ_SET: u32 = 2;
 pub const VIRTIO_NET_CTRL_NOTF_COAL_VQ_GET: u32 = 3;
+pub const VIRTIO_NET_CTRL_STATS: u32 = 8;
+pub const VIRTIO_NET_CTRL_STATS_QUERY: u32 = 0;
+pub const VIRTIO_NET_CTRL_STATS_GET: u32 = 1;
+pub const VIRTIO_NET_STATS_TYPE_CVQ: u64 = 4294967296;
+pub const VIRTIO_NET_STATS_TYPE_RX_BASIC: u32 = 1;
+pub const VIRTIO_NET_STATS_TYPE_RX_CSUM: u32 = 2;
+pub const VIRTIO_NET_STATS_TYPE_RX_GSO: u32 = 4;
+pub const VIRTIO_NET_STATS_TYPE_RX_SPEED: u32 = 8;
+pub const VIRTIO_NET_STATS_TYPE_TX_BASIC: u32 = 65536;
+pub const VIRTIO_NET_STATS_TYPE_TX_CSUM: u32 = 131072;
+pub const VIRTIO_NET_STATS_TYPE_TX_GSO: u32 = 262144;
+pub const VIRTIO_NET_STATS_TYPE_TX_SPEED: u32 = 524288;
+pub const VIRTIO_NET_STATS_TYPE_REPLY_CVQ: u32 = 32;
+pub const VIRTIO_NET_STATS_TYPE_REPLY_RX_BASIC: u32 = 0;
+pub const VIRTIO_NET_STATS_TYPE_REPLY_RX_CSUM: u32 = 1;
+pub const VIRTIO_NET_STATS_TYPE_REPLY_RX_GSO: u32 = 2;
+pub const VIRTIO_NET_STATS_TYPE_REPLY_RX_SPEED: u32 = 3;
+pub const VIRTIO_NET_STATS_TYPE_REPLY_TX_BASIC: u32 = 16;
+pub const VIRTIO_NET_STATS_TYPE_REPLY_TX_CSUM: u32 = 17;
+pub const VIRTIO_NET_STATS_TYPE_REPLY_TX_GSO: u32 = 18;
+pub const VIRTIO_NET_STATS_TYPE_REPLY_TX_SPEED: u32 = 19;
 pub type __le16 = u16;
 pub type __le32 = u32;
+pub type __le64 = u64;
 pub type __virtio16 = u16;
 pub type __virtio32 = u32;
 #[repr(C, packed)]
@@ -295,4 +318,109 @@ pub struct virtio_net_ctrl_coal_vq {
     pub vqn: __le16,
     pub reserved: __le16,
     pub coal: virtio_net_ctrl_coal,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_stats_capabilities {
+    pub supported_stats_types: [__le64; 1usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_ctrl_queue_stats {
+    pub stats: [virtio_net_ctrl_queue_stats__bindgen_ty_1; 1usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_ctrl_queue_stats__bindgen_ty_1 {
+    pub vq_index: __le16,
+    pub reserved: [__le16; 3usize],
+    pub types_bitmap: [__le64; 1usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_stats_reply_hdr {
+    pub type_: u8,
+    pub reserved: u8,
+    pub vq_index: __le16,
+    pub reserved1: __le16,
+    pub size: __le16,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_stats_cvq {
+    pub hdr: virtio_net_stats_reply_hdr,
+    pub command_num: __le64,
+    pub ok_num: __le64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_stats_rx_basic {
+    pub hdr: virtio_net_stats_reply_hdr,
+    pub rx_notifications: __le64,
+    pub rx_packets: __le64,
+    pub rx_bytes: __le64,
+    pub rx_interrupts: __le64,
+    pub rx_drops: __le64,
+    pub rx_drop_overruns: __le64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_stats_tx_basic {
+    pub hdr: virtio_net_stats_reply_hdr,
+    pub tx_notifications: __le64,
+    pub tx_packets: __le64,
+    pub tx_bytes: __le64,
+    pub tx_interrupts: __le64,
+    pub tx_drops: __le64,
+    pub tx_drop_malformed: __le64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_stats_rx_csum {
+    pub hdr: virtio_net_stats_reply_hdr,
+    pub rx_csum_valid: __le64,
+    pub rx_needs_csum: __le64,
+    pub rx_csum_none: __le64,
+    pub rx_csum_bad: __le64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_stats_tx_csum {
+    pub hdr: virtio_net_stats_reply_hdr,
+    pub tx_csum_none: __le64,
+    pub tx_needs_csum: __le64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_stats_rx_gso {
+    pub hdr: virtio_net_stats_reply_hdr,
+    pub rx_gso_packets: __le64,
+    pub rx_gso_bytes: __le64,
+    pub rx_gso_packets_coalesced: __le64,
+    pub rx_gso_bytes_coalesced: __le64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_stats_tx_gso {
+    pub hdr: virtio_net_stats_reply_hdr,
+    pub tx_gso_packets: __le64,
+    pub tx_gso_bytes: __le64,
+    pub tx_gso_segments: __le64,
+    pub tx_gso_segments_bytes: __le64,
+    pub tx_gso_packets_noseg: __le64,
+    pub tx_gso_bytes_noseg: __le64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_stats_rx_speed {
+    pub hdr: virtio_net_stats_reply_hdr,
+    pub rx_ratelimit_packets: __le64,
+    pub rx_ratelimit_bytes: __le64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_stats_tx_speed {
+    pub hdr: virtio_net_stats_reply_hdr,
+    pub tx_ratelimit_packets: __le64,
+    pub tx_ratelimit_bytes: __le64,
 }
