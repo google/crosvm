@@ -12,6 +12,3 @@ sudo apt-get install --yes --no-install-recommends \
   libcap-dev:riscv64 \
   libwayland-dev:riscv64 \
   qemu-user-static
-
-# Add riscv64gc target to Rust
-rustup target add riscv64gc-unknown-linux-gnu

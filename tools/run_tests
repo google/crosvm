@@ -223,7 +223,7 @@ def main(
     chdir(CROSVM_ROOT)
 
     if os.name == "posix" and not cmd("which cargo-nextest").success():
-        raise Exception("Cannot find cargo-nextest. Please re-run `./tools/install-deps`")
+        raise Exception("Cannot find cargo-nextest. Please re-run `./tools/setup`")
     elif os.name == "nt" and not cmd("where.exe cargo-nextest.exe").success():
         raise Exception("Cannot find cargo-nextest. Please re-run `./tools/install-deps.ps1`")
 

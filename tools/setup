@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Copyright 2025 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+set -ex
+
+$(dirname $0)/deps/install-x86_64-debs
+$(dirname $0)/deps/install-x86_64-other
+
+Red='\033[0;31m'
+Reset='\033[0m'
+# Check if submodules were initialized. If a submodule is not initialized, git
+# submodule status will be prefixed with `-`
+if git submodule status | grep '^-'; then
+    echo >&2 -e "${Red}ERROR${Reset}: Git modules were not initialized. Run 'git submodule update --init' to initialize them."
+fi

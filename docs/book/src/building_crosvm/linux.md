@@ -31,7 +31,7 @@ Crosvm development best works on Debian derivatives. We provide a script to inst
 packages on Debian, Ubuntu or gLinux:
 
 ```sh
-./tools/install-deps
+./tools/setup
 ```
 
 For other systems, please see below for instructions on
@@ -157,9 +157,9 @@ of APT sources.
 With that enabled, the following scripts will install the needed packages:
 
 ```sh
-./tools/install-aarch64-deps
-./tools/install-armhf-deps
-./tools/install-riscv64-deps
+./tools/setup-aarch64
+./tools/setup-armhf
+./tools/setup-riscv64
 ```
 
 ### Configuring wine and mingw64
@@ -168,7 +168,7 @@ Crosvm is also compiled and tested on windows. Some limited testing can be done 
 wine on linux machines. Use the provided setup script to install the needed dependencies.
 
 ```sh
-./tools/install-mingw64-deps
+./tools/setup-mingw64
 ```
 
 ### Configure cargo for cross-compilation

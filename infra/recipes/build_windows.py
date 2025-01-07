@@ -15,7 +15,7 @@ DEPS = [
 
 def RunSteps(api):
     # Note: The recipe does work on linux as well, if the required dependencies have been installed
-    # on the host via ./tools/install-deps.
+    # on the host via ./tools/setup.
     # This allows the build to be tested via `./recipe.py run build_windows`
     with api.crosvm.host_build_context():
         api.step(

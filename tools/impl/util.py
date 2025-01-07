@@ -337,7 +337,7 @@ def ensure_packages_exist(*packages: str):
     if missing_packages:
         debian_packages = [f"python3-{p}" for p in missing_packages]
         package_list = " ".join(debian_packages)
-        print("Missing python dependencies. Please re-run ./tools/install-deps")
+        print("Missing python dependencies. Please re-run ./tools/setup")
         print(f"Or `sudo apt install {package_list}`")
         sys.exit(1)
 

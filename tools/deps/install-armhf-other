@@ -4,17 +4,6 @@
 # found in the LICENSE file.
 set -ex
 
-sudo apt-get install --yes --no-install-recommends \
-    gcc-arm-linux-gnueabihf \
-    libc-dev:armhf \
-    libcap-dev:armhf \
-    libdbus-1-dev:armhf \
-    libdrm-dev:armhf \
-    libepoxy-dev:armhf \
-    libssl-dev:armhf \
-    libwayland-dev:armhf \
-    libxext-dev:armhf
-
 rustup target add armv7-unknown-linux-gnueabihf
 
 # Generate a cross file for meson to compile for armhf

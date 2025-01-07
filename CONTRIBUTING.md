@@ -180,7 +180,7 @@ When all tests pass, your change is merged into `origin/main`.
 [Google Markdown style guide].
 
 To render the book locally, you need to install mdbook, which should be installed when you run
-`./tools/install-deps` script. Or you can use the `tools/dev_container` environment.
+`./tools/setup` script. Or you can use the `tools/dev_container` environment.
 
 ```sh
 cd docs/book/

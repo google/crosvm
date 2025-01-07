@@ -4,8 +4,12 @@
 
 # Development container for crosvm.
 #
-# Provides all dependencies specified in install-deps with some additonal
+# Provides all dependencies specified in tools/deps/* with some additonal
 # logic to cache cargo data in CI runs.
+#
+# Uses the crosvm_dev_base image built by Dockerfile.base
+#
+# See Makefile for build instructions
 
 # Build catapult dashboard upload tool in a builder container
 FROM docker.io/golang:bullseye AS gobuilder
@@ -14,7 +18,8 @@ RUN git clone https://fuchsia.googlesource.com/infra/infra
 WORKDIR /root/infra/cmd/catapult
 RUN go build
 
-FROM docker.io/debian:testing-slim
+ARG BASE_VERSION
+FROM crosvm_dev_base:${BASE_VERSION}
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
@@ -39,32 +44,25 @@ RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloa
 RUN dpkg --add-architecture arm64 \
     && dpkg --add-architecture armhf
 
-# Install dependencies (APT and cargo packages are cached between image builds for faster iterative builds).
-COPY --chmod=555 tools/install-deps tools/install-aarch64-deps tools/install-armhf-deps tools/install-mingw64-deps tools/setup-wine64 rust-toolchain /tools/
-RUN cd /tools \
-    && apt-get update \
-    && apt-get install --yes sudo curl \
-    && ./install-deps \
-    # We only use the nightly toolchain for rustfmt, remove other parts to save space.
-    && rustup component remove --toolchain nightly rust-std \
-    && rustup component remove --toolchain nightly cargo
-
-# HACK ALERT!
-# libc6:arm64 postinstall will attempt to call telinit to restart services. This will block
-# indefinitely in the container with no init running. Replace telinit with true to make it
-# a no-op. See b/322015733
-RUN rm /usr/sbin/telinit && cp /bin/true /usr/sbin/telinit
-
-RUN cd /tools \
-    && ./install-aarch64-deps \
-    && ./install-armhf-deps \
-    && ./install-mingw64-deps
-
 # Add wine64 to PATH, as debian removed alternative entry to wine64
 ENV PATH=/usr/lib/wine:$PATH
 
-# Setup wine for root user
-RUN /tools/setup-wine64
+# Install non-debian dependencies. Debian packages are installed in the base image in Dockefile.base
+COPY --chmod=555 \
+    tools/deps/install-x86_64-other \
+    tools/deps/install-aarch64-other \
+    tools/deps/install-armhf-other \
+    tools/deps/install-mingw64-other \
+    rust-toolchain \
+    /tools/deps/
+RUN cd /tools/deps \
+    && ./install-x86_64-other \
+    && ./install-aarch64-other \
+    && ./install-armhf-other \
+    && ./install-mingw64-other \
+    # We only use the nightly toolchain for rustfmt, remove other parts to save space.
+    && rustup component remove --toolchain nightly rust-std \
+    && rustup component remove --toolchain nightly cargo
 
 # Install global config.toml for cross-compilation
 COPY --chmod=555 .cargo/config.debian.toml /.cargo/config.toml
