@@ -14,6 +14,10 @@ use anyhow::Context;
 use anyhow::Result;
 use crypto::CryptKey;
 
+mod any_snapshot;
+
+pub use any_snapshot::AnySnapshot;
+
 // Use 4kB encrypted chunks by default (if encryption is used).
 const DEFAULT_ENCRYPTED_CHUNK_SIZE_BYTES: usize = 1024 * 4;
 

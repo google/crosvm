@@ -29,6 +29,7 @@ use metrics::log_metric;
 use metrics::MetricEventType;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use vm_control::VmResponse;
 
@@ -403,11 +404,11 @@ impl BusDevice for Cmos {
 }
 
 impl Suspendable for Cmos {
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(self).context("failed to serialize Cmos")
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(self).context("failed to serialize Cmos")
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         #[derive(Deserialize)]
         struct CmosIndex {
             index: u8,
@@ -415,8 +416,7 @@ impl Suspendable for Cmos {
             data: [u8; DATA_LEN],
         }
 
-        let deser: CmosIndex =
-            serde_json::from_value(data).context("failed to deserialize Cmos")?;
+        let deser: CmosIndex = AnySnapshot::from_any(data).context("failed to deserialize Cmos")?;
         self.index = deser.index;
         self.data = deser.data;
         self.set_alarm();

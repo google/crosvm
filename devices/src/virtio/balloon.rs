@@ -46,6 +46,7 @@ use futures::StreamExt;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use thiserror::Error as ThisError;
 use vm_control::api::VmMemoryClient;
 #[cfg(feature = "registered_events")]
@@ -1483,13 +1484,13 @@ impl VirtioDevice for Balloon {
         Ok(())
     }
 
-    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         let state = self
             .state
             .lock()
             .now_or_never()
             .context("failed to acquire balloon lock")?;
-        serde_json::to_value(BalloonSnapshot {
+        AnySnapshot::to_any(BalloonSnapshot {
             features: self.features,
             acked_features: self.acked_features,
             state: state.clone(),
@@ -1498,8 +1499,8 @@ impl VirtioDevice for Balloon {
         .context("failed to serialize balloon state")
     }
 
-    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        let snap: BalloonSnapshot = serde_json::from_value(data).context("error deserializing")?;
+    fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+        let snap: BalloonSnapshot = AnySnapshot::from_any(data).context("error deserializing")?;
         if snap.features != self.features {
             anyhow::bail!(
                 "balloon: expected features to match, but they did not. Live: {:?}, snapshot {:?}",

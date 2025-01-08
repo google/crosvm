@@ -54,7 +54,7 @@ pub enum Error {
     Restore(VhostError),
     /// Failed to convert serde Value to a slice.
     #[error("failed to convert a serde Value to slice {0}")]
-    SerdeValueToSlice(serde_json::Error),
+    SerdeValueToSlice(anyhow::Error),
     /// Failed to set config.
     #[error("failed to set config: {0}")]
     SetConfig(VhostError),
@@ -99,7 +99,7 @@ pub enum Error {
     Sleep(VhostError),
     /// Failed to convert a slice to a serde Value.
     #[error("Failed to convert a slice to a serde Value: {0}")]
-    SliceToSerdeValue(serde_json::Error),
+    SliceToSerdeValue(anyhow::Error),
     /// Failed to snapshot.
     #[error("failed to snapshot: {0}")]
     Snapshot(VhostError),

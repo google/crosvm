@@ -37,6 +37,7 @@ cfg_if::cfg_if! {
 }
 use base::TimerTrait;
 use base::WorkerThread;
+use snapshot::AnySnapshot;
 
 use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;
@@ -382,13 +383,13 @@ impl Suspendable for Pit {
 
     /// The PIT is only used in very early boot on x86_64, and snapshots are not
     /// generally taken during that time, so we can safely skip the PIT for now.
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::Value::Null)
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(())
     }
 
     /// The PIT is only used in very early boot on x86_64, and snapshots are not
     /// generally taken during that time, so we can safely skip the PIT for now.
-    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, _data: AnySnapshot) -> anyhow::Result<()> {
         Ok(())
     }
 }

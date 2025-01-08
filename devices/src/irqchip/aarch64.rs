@@ -5,6 +5,7 @@
 use anyhow::anyhow;
 use base::Result;
 use hypervisor::DeviceKind;
+use snapshot::AnySnapshot;
 
 use crate::IrqChip;
 
@@ -26,11 +27,11 @@ pub trait IrqChipAArch64: IrqChip {
     fn finalize(&self) -> Result<()>;
 
     // Snapshot irqchip.
-    fn snapshot(&self, _cpus_num: usize) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&self, _cpus_num: usize) -> anyhow::Result<AnySnapshot> {
         Err(anyhow!("Snapshot not yet implemented for AArch64"))
     }
 
-    fn restore(&mut self, _data: serde_json::Value, _vcpus_num: usize) -> anyhow::Result<()> {
+    fn restore(&mut self, _data: AnySnapshot, _vcpus_num: usize) -> anyhow::Result<()> {
         Err(anyhow!("Restore not yet implemented for AArch64"))
     }
 }

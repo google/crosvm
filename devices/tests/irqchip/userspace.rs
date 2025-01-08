@@ -57,6 +57,7 @@ use hypervisor::Xsave;
 use resources::AddressRange;
 use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 
@@ -730,10 +731,10 @@ impl VcpuX86_64 for FakeVcpu {
     fn set_xsave(&self, _xsave: &Xsave) -> Result<()> {
         unimplemented!()
     }
-    fn get_interrupt_state(&self) -> Result<serde_json::Value> {
+    fn get_interrupt_state(&self) -> Result<AnySnapshot> {
         unimplemented!()
     }
-    fn set_interrupt_state(&self, _data: serde_json::Value) -> Result<()> {
+    fn set_interrupt_state(&self, _data: AnySnapshot) -> Result<()> {
         unimplemented!()
     }
     fn get_debugregs(&self) -> Result<DebugRegs> {

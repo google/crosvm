@@ -29,6 +29,7 @@ use data_model::Le32;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use streams::StreamMsg;
 use streams::StreamSnapshot;
 use sync::Mutex;
@@ -240,8 +241,8 @@ impl VirtioDevice for Sound {
         }
     }
 
-    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(SoundSnapshot {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(SoundSnapshot {
             config: self.config,
             virtio_features: self.virtio_features,
             vios_client: self.vios_client.lock().snapshot(),
@@ -250,9 +251,9 @@ impl VirtioDevice for Sound {
         .context("failed to serialize VioS Client")
     }
 
-    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let data: SoundSnapshot =
-            serde_json::from_value(data).context("failed to deserialize VioS Client")?;
+            AnySnapshot::from_any(data).context("failed to deserialize VioS Client")?;
         anyhow::ensure!(
             data.config == self.config,
             "config doesn't match on restore: expected: {:?}, got: {:?}",

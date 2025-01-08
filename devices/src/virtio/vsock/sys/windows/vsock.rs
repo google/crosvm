@@ -52,6 +52,7 @@ use futures::StreamExt;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
@@ -323,8 +324,8 @@ impl VirtioDevice for Vsock {
         Ok(())
     }
 
-    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(VsockSnapshot {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(VsockSnapshot {
             guest_cid: self.guest_cid,
             features: self.features,
             acked_features: self.acked_features,
@@ -332,9 +333,9 @@ impl VirtioDevice for Vsock {
         .context("failed to serialize vsock snapshot")
     }
 
-    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let vsock_snapshot: VsockSnapshot =
-            serde_json::from_value(data).context("error deserializing vsock snapshot")?;
+            AnySnapshot::from_any(data).context("error deserializing vsock snapshot")?;
         anyhow::ensure!(
             self.guest_cid == vsock_snapshot.guest_cid,
             "expected guest_cid to match, but they did not. Live: {}, snapshot: {}",

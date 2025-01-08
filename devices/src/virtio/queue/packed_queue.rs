@@ -15,6 +15,7 @@ use base::warn;
 use base::Event;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -423,14 +424,14 @@ impl PackedQueue {
 
     /// TODO: b/290307056 - Implement snapshot for packed virtqueue,
     /// add tests to validate.
-    pub fn snapshot(&self) -> Result<serde_json::Value> {
+    pub fn snapshot(&self) -> Result<AnySnapshot> {
         bail!("Snapshot for packed virtqueue not implemented.");
     }
 
     /// TODO: b/290307056 - Implement restore for packed virtqueue,
     /// add tests to validate.
     pub fn restore(
-        _queue_value: serde_json::Value,
+        _queue_value: AnySnapshot,
         _mem: &GuestMemory,
         _event: Event,
         _interrupt: Interrupt,

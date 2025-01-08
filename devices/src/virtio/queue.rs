@@ -29,6 +29,7 @@ use futures::FutureExt;
 use packed_queue::PackedQueue;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use split_queue::SplitQueue;
 use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use vm_memory::GuestAddress;
@@ -304,8 +305,8 @@ impl QueueConfig {
     }
 
     /// Take snapshot of queue configuration
-    pub fn snapshot(&self) -> Result<serde_json::Value> {
-        serde_json::to_value(QueueConfigSnapshot {
+    pub fn snapshot(&self) -> Result<AnySnapshot> {
+        AnySnapshot::to_any(QueueConfigSnapshot {
             activated: self.activated,
             max_size: self.max_size,
             size: self.size,
@@ -323,9 +324,9 @@ impl QueueConfig {
     }
 
     /// Restore queue configuration from snapshot
-    pub fn restore(&mut self, data: serde_json::Value) -> Result<()> {
+    pub fn restore(&mut self, data: AnySnapshot) -> Result<()> {
         let snap: QueueConfigSnapshot =
-            serde_json::from_value(data).context("error deserializing")?;
+            AnySnapshot::from_any(data).context("error deserializing")?;
         self.activated = snap.activated;
         self.max_size = snap.max_size;
         self.size = snap.size;
@@ -451,7 +452,7 @@ impl Queue {
     /// Restore queue from snapshot
     pub fn restore(
         queue_config: &QueueConfig,
-        queue_value: serde_json::Value,
+        queue_value: AnySnapshot,
         mem: &GuestMemory,
         event: Event,
         interrupt: Interrupt,
@@ -541,7 +542,7 @@ impl Queue {
     define_queue_method!(
         /// Take snapshot of queue's current status
         snapshot,
-        Result<serde_json::Value>,
+        Result<AnySnapshot>,
     );
 }
 

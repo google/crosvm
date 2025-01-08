@@ -20,6 +20,7 @@ use net_util::TapT;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 pub use sys::start_device as run_net_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
@@ -204,16 +205,16 @@ where
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(NetBackendSnapshot {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(NetBackendSnapshot {
             acked_feature: self.acked_features,
         })
         .context("Failed to serialize NetBackendSnapshot")
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let net_backend_snapshot: NetBackendSnapshot =
-            serde_json::from_value(data).context("Failed to deserialize NetBackendSnapshot")?;
+            AnySnapshot::from_any(data).context("Failed to deserialize NetBackendSnapshot")?;
         self.acked_features = net_backend_snapshot.acked_feature;
         Ok(())
     }

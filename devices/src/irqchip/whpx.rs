@@ -39,6 +39,7 @@ use hypervisor::Vcpu;
 use hypervisor::VcpuX86_64;
 use hypervisor::Vm;
 use resources::SystemAllocator;
+use snapshot::AnySnapshot;
 
 use crate::irqchip::DelayedIoApicIrqEvents;
 use crate::irqchip::InterruptData;
@@ -618,16 +619,16 @@ impl IrqChipX86_64 for WhpxSplitIrqChip {
         true
     }
 
-    fn snapshot_chip_specific(&self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(&WhpxSplitIrqChipSnapshot {
+    fn snapshot_chip_specific(&self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(&WhpxSplitIrqChipSnapshot {
             routes: self.routes.lock().get_routes(),
         })
         .context("failed to snapshot WhpxSplitIrqChip")
     }
 
-    fn restore_chip_specific(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore_chip_specific(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let mut deser: WhpxSplitIrqChipSnapshot =
-            serde_json::from_value(data).context("failed to deserialize WhpxSplitIrqChip")?;
+            AnySnapshot::from_any(data).context("failed to deserialize WhpxSplitIrqChip")?;
         self.set_irq_routes(deser.routes.as_slice())?;
         Ok(())
     }

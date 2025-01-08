@@ -25,6 +25,7 @@ use base::WaitContext;
 use base::WorkerThread;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 
 use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;
@@ -542,7 +543,7 @@ struct SerialSnapshot {
 }
 
 impl Suspendable for Serial {
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         self.spawn_input_thread();
         if let Some(worker) = self.worker.take() {
             self.input = Some(worker.stop());
@@ -563,13 +564,13 @@ impl Suspendable for Serial {
             last_write_was_newline: self.last_write_was_newline,
         };
 
-        let serialized = serde_json::to_value(snap).context("error serializing")?;
+        let serialized = AnySnapshot::to_any(snap).context("error serializing")?;
         Ok(serialized)
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let serial_snapshot: SerialSnapshot =
-            serde_json::from_value(data).context("error deserializing")?;
+            AnySnapshot::from_any(data).context("error deserializing")?;
         self.interrupt_enable = Arc::new(AtomicU8::new(serial_snapshot.interrupt_enable));
         self.interrupt_identification = serial_snapshot.interrupt_identification;
         self.line_control = serial_snapshot.line_control;

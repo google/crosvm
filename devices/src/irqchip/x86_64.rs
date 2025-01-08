@@ -21,6 +21,7 @@ use hypervisor::PicState;
 use hypervisor::PitState;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 
 use crate::IrqChip;
 use crate::IrqChipCap;
@@ -66,13 +67,13 @@ pub trait IrqChipX86_64: IrqChip {
     fn pit_uses_speaker_port(&self) -> bool;
 
     /// Snapshot state specific to different IrqChips.
-    fn snapshot_chip_specific(&self) -> anyhow::Result<serde_json::Value>;
+    fn snapshot_chip_specific(&self) -> anyhow::Result<AnySnapshot>;
 
     /// Restore state specific to different IrqChips.
-    fn restore_chip_specific(&mut self, data: serde_json::Value) -> anyhow::Result<()>;
+    fn restore_chip_specific(&mut self, data: AnySnapshot) -> anyhow::Result<()>;
 
     /// Snapshot state common to IrqChips.
-    fn snapshot(&self, cpus_num: usize) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&self, cpus_num: usize) -> anyhow::Result<AnySnapshot> {
         let mut lapics: Vec<LapicState> = Vec::new();
         let mut mp_states: Vec<MPState> = Vec::new();
         let has_mp_states = self.check_capability(IrqChipCap::MpStateGetSet);
@@ -82,7 +83,7 @@ pub trait IrqChipX86_64: IrqChip {
                 mp_states.push(self.get_mp_state(i)?);
             }
         }
-        serde_json::to_value(IrqChipSnapshot {
+        AnySnapshot::to_any(IrqChipSnapshot {
             ioapic_state: self.get_ioapic_state()?,
             lapic_state: lapics,
             pic_state_1: self.get_pic_state(PicSelect::Primary)?,
@@ -95,9 +96,9 @@ pub trait IrqChipX86_64: IrqChip {
     }
 
     /// Restore state common to IrqChips.
-    fn restore(&mut self, data: serde_json::Value, vcpus_num: usize) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot, vcpus_num: usize) -> anyhow::Result<()> {
         let deser: IrqChipSnapshot =
-            serde_json::from_value(data).context("failed to deserialize data")?;
+            AnySnapshot::from_any(data).context("failed to deserialize data")?;
 
         if deser.lapic_state.len() != vcpus_num {
             return Err(anyhow!(
@@ -153,7 +154,7 @@ struct IrqChipSnapshot {
     pic_state_1: PicState,
     pic_state_2: PicState,
     pit_state: PitState,
-    chip_specific_state: serde_json::Value,
+    chip_specific_state: AnySnapshot,
     mp_state: Vec<MPState>,
 }
 

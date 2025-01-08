@@ -21,6 +21,7 @@ use downcast_rs::Downcast;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use thiserror::Error;
 
@@ -905,8 +906,8 @@ impl PciConfiguration {
         }
     }
 
-    pub fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(PciConfigurationSerialized {
+    pub fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(PciConfigurationSerialized {
             registers: self.registers,
             writable_bits: self.writable_bits,
             bar_used: self.bar_used,
@@ -916,9 +917,9 @@ impl PciConfiguration {
         .context("failed to serialize PciConfiguration")
     }
 
-    pub fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    pub fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let deser: PciConfigurationSerialized =
-            serde_json::from_value(data).context("failed to deserialize PciConfiguration")?;
+            AnySnapshot::from_any(data).context("failed to deserialize PciConfiguration")?;
         self.registers = deser.registers;
         self.writable_bits = deser.writable_bits;
         self.bar_used = deser.bar_used;

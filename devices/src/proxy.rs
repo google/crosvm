@@ -29,6 +29,7 @@ use minijail::Minijail;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use tempfile::tempfile;
 use thiserror::Error;
 
@@ -74,14 +75,14 @@ impl SnapshotFile {
         })
     }
 
-    fn from_data(data: serde_json::Value) -> anyhow::Result<SnapshotFile> {
+    fn from_data(data: AnySnapshot) -> anyhow::Result<SnapshotFile> {
         let mut snapshot = SnapshotFile::new()?;
         snapshot.write(data)?;
         Ok(snapshot)
     }
 
-    fn read(&mut self) -> anyhow::Result<serde_json::Value> {
-        let data: serde_json::Value = {
+    fn read(&mut self) -> anyhow::Result<AnySnapshot> {
+        let data: AnySnapshot = {
             let mut reader = BufReader::new(&self.file);
 
             serde_json::from_reader(&mut reader)
@@ -95,7 +96,7 @@ impl SnapshotFile {
         Ok(data)
     }
 
-    fn write(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn write(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         {
             let mut writer = BufWriter::new(&self.file);
 
@@ -604,7 +605,7 @@ impl BusDevice for ProxyDevice {
 }
 
 impl Suspendable for ProxyDevice {
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         let res = self.sync_send(&Command::Snapshot {
             snapshot: SnapshotFile::new()?,
         });
@@ -619,7 +620,7 @@ impl Suspendable for ProxyDevice {
         }
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let res = self.sync_send(&Command::Restore {
             snapshot: SnapshotFile::from_data(data)?,
         });

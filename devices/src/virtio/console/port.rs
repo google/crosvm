@@ -53,7 +53,7 @@ pub struct ConsolePort {
 
 #[derive(Serialize, Deserialize)]
 pub struct ConsolePortSnapshot {
-    input_buffer: Vec<u8>,
+    pub(super) input_buffer: Vec<u8>,
 }
 
 impl ConsolePort {

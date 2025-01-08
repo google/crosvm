@@ -18,6 +18,7 @@ use base::Event;
 use hypervisor::PicInitState;
 use hypervisor::PicSelect;
 use hypervisor::PicState;
+use snapshot::AnySnapshot;
 
 use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;
@@ -556,11 +557,11 @@ impl Suspendable for Pic {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::Value::Null)
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(())
     }
 
-    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, _data: AnySnapshot) -> anyhow::Result<()> {
         Ok(())
     }
 }

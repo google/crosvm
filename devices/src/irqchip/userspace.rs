@@ -44,6 +44,7 @@ use hypervisor::PitState;
 use hypervisor::Vcpu;
 use hypervisor::VcpuX86_64;
 use resources::SystemAllocator;
+use snapshot::AnySnapshot;
 use sync::Condvar;
 use sync::Mutex;
 
@@ -940,10 +941,10 @@ impl<V: VcpuX86_64 + 'static> IrqChipX86_64 for UserspaceIrqChip<V> {
         true
     }
 
-    fn snapshot_chip_specific(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot_chip_specific(&self) -> anyhow::Result<AnySnapshot> {
         Err(anyhow::anyhow!("Not supported yet in userspace"))
     }
-    fn restore_chip_specific(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore_chip_specific(&mut self, _data: AnySnapshot) -> anyhow::Result<()> {
         Err(anyhow::anyhow!("Not supported yet in userspace"))
     }
 }

@@ -32,6 +32,7 @@ use resources::AllocOptions;
 use resources::SystemAllocator;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_ACKNOWLEDGE;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER;
@@ -331,17 +332,17 @@ enum SleepState {
 
 #[derive(Serialize, Deserialize)]
 struct VirtioPciDeviceSnapshot {
-    config_regs: serde_json::Value,
+    config_regs: AnySnapshot,
 
-    inner_device: serde_json::Value,
+    inner_device: AnySnapshot,
     device_activated: bool,
 
     interrupt: Option<InterruptSnapshot>,
-    msix_config: serde_json::Value,
+    msix_config: AnySnapshot,
     common_config: VirtioPciCommonConfig,
 
-    queues: Vec<serde_json::Value>,
-    activated_queues: Option<Vec<(usize, serde_json::Value)>>,
+    queues: Vec<AnySnapshot>,
+    activated_queues: Option<Vec<(usize, AnySnapshot)>>,
 }
 
 impl VirtioPciDevice {
@@ -1258,12 +1259,12 @@ impl Suspendable for VirtioPciDevice {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         if self.iommu.is_some() {
             return Err(anyhow!("Cannot snapshot if iommu is present."));
         }
 
-        serde_json::to_value(VirtioPciDeviceSnapshot {
+        AnySnapshot::to_any(VirtioPciDeviceSnapshot {
             config_regs: self.config_regs.snapshot()?,
             inner_device: self.device.virtio_snapshot()?,
             device_activated: self.device_activated,
@@ -1292,7 +1293,7 @@ impl Suspendable for VirtioPciDevice {
         .context("failed to serialize VirtioPciDeviceSnapshot")
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         // Restoring from an activated state is more complex and low priority, so just fail for
         // now. We'll need to reset the device before restoring, e.g. must call
         // self.unregister_ioevents().
@@ -1301,7 +1302,7 @@ impl Suspendable for VirtioPciDevice {
             "tried to restore after virtio device activated. not supported yet"
         );
 
-        let deser: VirtioPciDeviceSnapshot = serde_json::from_value(data)?;
+        let deser: VirtioPciDeviceSnapshot = AnySnapshot::from_any(data)?;
 
         self.config_regs.restore(deser.config_regs)?;
         self.device_activated = deser.device_activated;

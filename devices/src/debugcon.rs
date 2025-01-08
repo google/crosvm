@@ -13,6 +13,7 @@ use base::FileSync;
 use base::RawDescriptor;
 use base::Result;
 use hypervisor::ProtectionType;
+use snapshot::AnySnapshot;
 
 use crate::pci::CrosvmDeviceId;
 use crate::serial_device::SerialInput;
@@ -100,16 +101,12 @@ impl Suspendable for Debugcon {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::Value::Null)
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(())
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            data == serde_json::Value::Null,
-            "unexpected snapshot data: should be null, got {}",
-            data,
-        );
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+        let () = AnySnapshot::from_any(data)?;
         Ok(())
     }
 }

@@ -8,6 +8,7 @@ use anyhow::Context;
 use cros_async::Executor;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 pub use sys::start_device as run_block_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
@@ -94,17 +95,17 @@ impl VhostUserDevice for BlockBackend {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         // The queue states are being snapshotted in the device handler.
-        serde_json::to_value(BlockBackendSnapshot {
+        AnySnapshot::to_any(BlockBackendSnapshot {
             avail_features: self.avail_features,
         })
         .context("Failed to serialize BlockBackendSnapshot")
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let block_backend_snapshot: BlockBackendSnapshot =
-            serde_json::from_value(data).context("Failed to deserialize BlockBackendSnapshot")?;
+            AnySnapshot::from_any(data).context("Failed to deserialize BlockBackendSnapshot")?;
         anyhow::ensure!(
             self.avail_features == block_backend_snapshot.avail_features,
             "Vhost user block restored avail_features do not match. Live: {:?}, snapshot: {:?}",

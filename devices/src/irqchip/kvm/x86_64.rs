@@ -35,6 +35,7 @@ use kvm_sys::*;
 use resources::SystemAllocator;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 
 use crate::irqchip::Ioapic;
@@ -190,7 +191,7 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
         false
     }
 
-    fn snapshot_chip_specific(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot_chip_specific(&self) -> anyhow::Result<AnySnapshot> {
         let mut apics: Vec<u64> = Vec::new();
         let mut interrupt_bitmaps: Vec<[u64; 4usize]> = Vec::new();
         {
@@ -200,7 +201,7 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
                 interrupt_bitmaps.push(vcpu.get_interrupt_bitmap()?);
             }
         }
-        serde_json::to_value(KvmKernelIrqChipSnapshot {
+        AnySnapshot::to_any(KvmKernelIrqChipSnapshot {
             routes: self.routes.lock().clone(),
             apic_base: apics,
             interrupt_bitmap: interrupt_bitmaps,
@@ -208,9 +209,9 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
         .context("failed to serialize KvmKernelIrqChip")
     }
 
-    fn restore_chip_specific(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore_chip_specific(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let deser: KvmKernelIrqChipSnapshot =
-            serde_json::from_value(data).context("failed to deserialize data")?;
+            AnySnapshot::from_any(data).context("failed to deserialize data")?;
         self.set_irq_routes(&deser.routes)?;
         let vcpus_lock = self.vcpus.lock();
         assert_eq!(deser.interrupt_bitmap.len(), vcpus_lock.len());
@@ -855,16 +856,16 @@ impl IrqChipX86_64 for KvmSplitIrqChip {
         true
     }
 
-    fn snapshot_chip_specific(&self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(KvmSplitIrqChipSnapshot {
+    fn snapshot_chip_specific(&self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(KvmSplitIrqChipSnapshot {
             routes: self.routes.lock().clone(),
         })
         .context("failed to serialize KvmSplitIrqChip")
     }
 
-    fn restore_chip_specific(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore_chip_specific(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let deser: KvmSplitIrqChipSnapshot =
-            serde_json::from_value(data).context("failed to deserialize KvmSplitIrqChip")?;
+            AnySnapshot::from_any(data).context("failed to deserialize KvmSplitIrqChip")?;
         self.set_irq_routes(&deser.routes)?;
         Ok(())
     }

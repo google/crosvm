@@ -30,6 +30,7 @@ use data_model::Le32;
 use data_model::Le64;
 use futures::pin_mut;
 use remain::sorted;
+use snapshot::AnySnapshot;
 use thiserror::Error;
 use vm_control::MemSlot;
 use vm_control::VmMemoryMappingRequest;
@@ -536,17 +537,17 @@ impl VirtioDevice for Pmem {
         Ok(())
     }
 
-    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(PmemSnapshot {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(PmemSnapshot {
             mapping_address: self.mapping_address,
             mapping_size: self.mapping_size,
         })
         .context("failed to serialize pmem snapshot")
     }
 
-    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let snapshot: PmemSnapshot =
-            serde_json::from_value(data).context("failed to deserialize pmem snapshot")?;
+            AnySnapshot::from_any(data).context("failed to deserialize pmem snapshot")?;
         anyhow::ensure!(
             snapshot.mapping_address == self.mapping_address
                 && snapshot.mapping_size == self.mapping_size,

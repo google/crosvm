@@ -7,6 +7,7 @@
 use anyhow::anyhow;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum DeviceState {
@@ -18,14 +19,14 @@ pub enum DeviceState {
 /// suspend/resume in crosvm.
 pub trait Suspendable {
     /// Save the device state in an image that can be restored.
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         Err(anyhow!(
             "Suspendable::snapshot not implemented for {}",
             std::any::type_name::<Self>()
         ))
     }
     /// Load a saved snapshot of an image.
-    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, _data: AnySnapshot) -> anyhow::Result<()> {
         Err(anyhow!(
             "Suspendable::restore not implemented for {}",
             std::any::type_name::<Self>()

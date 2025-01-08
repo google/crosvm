@@ -30,6 +30,7 @@ use hypervisor::ProtectionType;
 use rutabaga_gfx::RutabagaGralloc;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaGrallocBackendFlags;
+use snapshot::AnySnapshot;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
@@ -286,11 +287,11 @@ impl VhostUserDevice for WlBackend {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         bail!("snapshot not implemented for vhost-user wl");
     }
 
-    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, _data: AnySnapshot) -> anyhow::Result<()> {
         bail!("snapshot not implemented for vhost-user wl");
     }
 }

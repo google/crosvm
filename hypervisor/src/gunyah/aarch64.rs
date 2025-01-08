@@ -11,6 +11,7 @@ use cros_fdt::Fdt;
 use cros_fdt::FdtNode;
 use libc::ENOENT;
 use libc::ENOTSUP;
+use snapshot::AnySnapshot;
 use vm_memory::GuestAddress;
 use vm_memory::MemoryRegionPurpose;
 
@@ -251,11 +252,11 @@ impl VcpuAArch64 for GunyahVcpu {
         Err(Error::new(ENOTSUP))
     }
 
-    fn hypervisor_specific_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn hypervisor_specific_snapshot(&self) -> anyhow::Result<AnySnapshot> {
         unimplemented!()
     }
 
-    fn hypervisor_specific_restore(&self, _data: serde_json::Value) -> anyhow::Result<()> {
+    fn hypervisor_specific_restore(&self, _data: AnySnapshot) -> anyhow::Result<()> {
         unimplemented!()
     }
 }

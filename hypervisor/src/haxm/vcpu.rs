@@ -23,6 +23,7 @@ use libc::EINVAL;
 use libc::ENOENT;
 use libc::ENXIO;
 use libc::EOPNOTSUPP;
+use snapshot::AnySnapshot;
 use vm_memory::GuestAddress;
 
 use super::*;
@@ -431,11 +432,11 @@ impl VcpuX86_64 for HaxmVcpu {
         Err(Error::new(EOPNOTSUPP))
     }
 
-    fn get_interrupt_state(&self) -> Result<serde_json::Value> {
+    fn get_interrupt_state(&self) -> Result<AnySnapshot> {
         Err(Error::new(EOPNOTSUPP))
     }
 
-    fn set_interrupt_state(&self, _data: serde_json::Value) -> Result<()> {
+    fn set_interrupt_state(&self, _data: AnySnapshot) -> Result<()> {
         Err(Error::new(EOPNOTSUPP))
     }
 

@@ -24,6 +24,7 @@ use hypervisor::Vm;
 use resources::SystemAllocator;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 
@@ -108,13 +109,13 @@ impl Suspendable for PciRootConfiguration {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         self.config
             .snapshot()
             .with_context(|| format!("failed to serialize {}", PciDevice::debug_label(self)))
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         self.config
             .restore(data)
             .context("failed to deserialize PciRootConfiguration")
@@ -167,7 +168,7 @@ const PCIE_XBAR_BASE_ADDR: usize = 24;
 /// Used to serialize relevant information to PciRoot
 #[derive(Serialize, Deserialize)]
 struct PciRootSerializable {
-    root_configuration: serde_json::Value,
+    root_configuration: AnySnapshot,
     pcie_cfg_mmio: Option<u64>,
 }
 
@@ -443,8 +444,8 @@ impl PciRoot {
         }
     }
 
-    pub fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(PciRootSerializable {
+    pub fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(PciRootSerializable {
             root_configuration: self
                 .root_configuration
                 .snapshot()
@@ -454,9 +455,9 @@ impl PciRoot {
         .context("failed to serialize PciRoot")
     }
 
-    pub fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    pub fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let deser: PciRootSerializable =
-            serde_json::from_value(data).context("failed to deserialize PciRoot")?;
+            AnySnapshot::from_any(data).context("failed to deserialize PciRoot")?;
         self.root_configuration.restore(deser.root_configuration)?;
         self.pcie_cfg_mmio = deser.pcie_cfg_mmio;
         Ok(())
@@ -619,7 +620,7 @@ pub struct PciConfigIo {
 
 #[derive(Serialize, Deserialize)]
 struct PciConfigIoSerializable {
-    pci_root: serde_json::Value,
+    pci_root: AnySnapshot,
     config_address: u32,
 }
 
@@ -750,8 +751,8 @@ impl Suspendable for PciConfigIo {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(PciConfigIoSerializable {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(PciConfigIoSerializable {
             pci_root: self
                 .pci_root
                 .lock()
@@ -762,9 +763,9 @@ impl Suspendable for PciConfigIo {
         .with_context(|| format!("failed to serialize {}", self.debug_label()))
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let mut root = self.pci_root.lock();
-        let deser: PciConfigIoSerializable = serde_json::from_value(data)
+        let deser: PciConfigIoSerializable = AnySnapshot::from_any(data)
             .context(format!("failed to deserialize {}", self.debug_label()))?;
         root.restore(deser.pci_root)?;
         self.config_address = deser.config_address;
@@ -782,7 +783,7 @@ pub struct PciConfigMmio {
 
 #[derive(Serialize, Deserialize)]
 struct PciConfigMmioSerializable {
-    pci_root: serde_json::Value,
+    pci_root: AnySnapshot,
     register_bit_num: usize,
 }
 
@@ -853,8 +854,8 @@ impl Suspendable for PciConfigMmio {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(PciConfigMmioSerializable {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(PciConfigMmioSerializable {
             pci_root: self
                 .pci_root
                 .lock()
@@ -865,9 +866,9 @@ impl Suspendable for PciConfigMmio {
         .with_context(|| format!("failed to serialize {}", self.debug_label()))
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let mut root = self.pci_root.lock();
-        let deser: PciConfigMmioSerializable = serde_json::from_value(data)
+        let deser: PciConfigMmioSerializable = AnySnapshot::from_any(data)
             .context(format!("failed to deserialize {}", self.debug_label()))?;
         root.restore(deser.pci_root)?;
         self.register_bit_num = deser.register_bit_num;
@@ -895,7 +896,7 @@ pub struct PciVirtualConfigMmio {
 
 #[derive(Serialize, Deserialize)]
 struct PciVirtualConfigMmioSerializable {
-    pci_root: serde_json::Value,
+    pci_root: AnySnapshot,
     register_bit_num: usize,
 }
 
@@ -966,8 +967,8 @@ impl Suspendable for PciVirtualConfigMmio {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(PciVirtualConfigMmioSerializable {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(PciVirtualConfigMmioSerializable {
             pci_root: self
                 .pci_root
                 .lock()
@@ -978,9 +979,9 @@ impl Suspendable for PciVirtualConfigMmio {
         .with_context(|| format!("failed to serialize {}", self.debug_label()))
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let mut root = self.pci_root.lock();
-        let deser: PciVirtualConfigMmioSerializable = serde_json::from_value(data)
+        let deser: PciVirtualConfigMmioSerializable = AnySnapshot::from_any(data)
             .context(format!("failed to deserialize {}", self.debug_label()))?;
         root.restore(deser.pci_root)?;
         self.register_bit_num = deser.register_bit_num;

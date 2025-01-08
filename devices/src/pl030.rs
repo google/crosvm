@@ -10,6 +10,7 @@ use anyhow::Context;
 use base::warn;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 
 use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
@@ -167,8 +168,8 @@ impl BusDevice for Pl030 {
 }
 
 impl Suspendable for Pl030 {
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(Pl030Snapshot {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(Pl030Snapshot {
             counter_delta_time: self.counter_delta_time,
             match_value: self.match_value,
             interrupt_active: self.interrupt_active,
@@ -176,8 +177,8 @@ impl Suspendable for Pl030 {
         .with_context(|| format!("error serializing {}", self.debug_label()))
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        let deser: Pl030Snapshot = serde_json::from_value(data)
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+        let deser: Pl030Snapshot = AnySnapshot::from_any(data)
             .with_context(|| format!("failed to deserialize {}", self.debug_label()))?;
         self.counter_delta_time = deser.counter_delta_time;
         self.match_value = deser.match_value;

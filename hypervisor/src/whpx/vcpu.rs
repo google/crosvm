@@ -16,6 +16,7 @@ use libc::EINVAL;
 use libc::EIO;
 use libc::ENOENT;
 use libc::ENXIO;
+use snapshot::AnySnapshot;
 use vm_memory::GuestAddress;
 use winapi::shared::winerror::E_UNEXPECTED;
 use windows::Win32::Foundation::WHV_E_INSUFFICIENT_BUFFER;
@@ -972,7 +973,7 @@ impl VcpuX86_64 for WhpxVcpu {
         })
     }
 
-    fn get_interrupt_state(&self) -> Result<serde_json::Value> {
+    fn get_interrupt_state(&self) -> Result<AnySnapshot> {
         let mut whpx_interrupt_regs: WhpxInterruptRegs = Default::default();
         let reg_names = WhpxInterruptRegs::get_register_names();
         // SAFETY: we have enough space for all the registers & the memory lives for the duration
@@ -987,15 +988,15 @@ impl VcpuX86_64 for WhpxVcpu {
             )
         })?;
 
-        serde_json::to_value(whpx_interrupt_regs.into_serializable()).map_err(|e| {
+        AnySnapshot::to_any(whpx_interrupt_regs.into_serializable()).map_err(|e| {
             error!("failed to serialize interrupt state: {:?}", e);
             Error::new(EIO)
         })
     }
 
-    fn set_interrupt_state(&self, data: serde_json::Value) -> Result<()> {
+    fn set_interrupt_state(&self, data: AnySnapshot) -> Result<()> {
         let whpx_interrupt_regs =
-            WhpxInterruptRegs::from_serializable(serde_json::from_value(data).map_err(|e| {
+            WhpxInterruptRegs::from_serializable(AnySnapshot::from_any(data).map_err(|e| {
                 error!("failed to serialize interrupt state: {:?}", e);
                 Error::new(EIO)
             })?);

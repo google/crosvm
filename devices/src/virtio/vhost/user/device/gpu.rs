@@ -19,6 +19,7 @@ use cros_async::Executor;
 use cros_async::TaskHandle;
 use futures::FutureExt;
 use futures::StreamExt;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 pub use sys::run_gpu_device;
 pub use sys::Options;
@@ -277,18 +278,14 @@ impl VhostUserDevice for GpuBackend {
         }
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         // TODO(b/289431114): Snapshot more fields if needed. Right now we just need a bare bones
         // snapshot of the GPU to create a POC.
-        Ok(serde_json::Value::Null)
+        AnySnapshot::to_any(())
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            data.is_null(),
-            "unexpected snapshot data: should be null, got {}",
-            data
-        );
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+        let () = AnySnapshot::from_any(data)?;
         Ok(())
     }
 }

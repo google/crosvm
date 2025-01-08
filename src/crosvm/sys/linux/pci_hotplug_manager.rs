@@ -928,6 +928,7 @@ mod tests {
     use devices::Suspendable;
     use serde::Deserialize;
     use serde::Serialize;
+    use snapshot::AnySnapshot;
 
     use super::*;
 
@@ -965,12 +966,12 @@ mod tests {
     struct MockDevice;
 
     impl Suspendable for MockDevice {
-        fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-            serde_json::to_value(self).context("error serializing")
+        fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+            AnySnapshot::to_any(self).context("error serializing")
         }
 
-        fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-            *self = serde_json::from_value(data).context("error deserializing")?;
+        fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+            *self = AnySnapshot::from_any(data).context("error deserializing")?;
             Ok(())
         }
 

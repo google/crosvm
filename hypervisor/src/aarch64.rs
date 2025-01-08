@@ -13,6 +13,7 @@ use downcast_rs::impl_downcast;
 use libc::EINVAL;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use vm_memory::GuestAddress;
 
 use crate::Hypervisor;
@@ -228,10 +229,10 @@ pub trait VcpuAArch64: Vcpu {
     fn get_system_regs(&self) -> Result<BTreeMap<AArch64SysRegId, u64>>;
 
     /// Gets the hypervisor specific data for snapshot
-    fn hypervisor_specific_snapshot(&self) -> anyhow::Result<serde_json::Value>;
+    fn hypervisor_specific_snapshot(&self) -> anyhow::Result<AnySnapshot>;
 
     /// Restores the hypervisor specific data
-    fn hypervisor_specific_restore(&self, _data: serde_json::Value) -> anyhow::Result<()>;
+    fn hypervisor_specific_restore(&self, _data: AnySnapshot) -> anyhow::Result<()>;
 
     /// Gets the value of MPIDR_EL1 on this VCPU.
     fn get_mpidr(&self) -> Result<u64> {
@@ -269,10 +270,11 @@ pub trait VcpuAArch64: Vcpu {
             sp: self.get_one_reg(VcpuRegAArch64::Sp)?,
             pc: self.get_one_reg(VcpuRegAArch64::Pc)?,
             pstate: self.get_one_reg(VcpuRegAArch64::Pstate)?,
+            x: Default::default(),
+            v: Default::default(),
             hypervisor_data: self.hypervisor_specific_snapshot()?,
             sys: self.get_system_regs()?,
             cache_arch_info: self.get_cache_info()?,
-            ..Default::default()
         };
 
         for (n, xn) in snap.x.iter_mut().enumerate() {
@@ -308,7 +310,7 @@ pub trait VcpuAArch64: Vcpu {
 }
 
 /// Aarch64 specific vCPU snapshot.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VcpuSnapshot {
     pub vcpu_id: usize,
     pub sp: u64,
@@ -318,7 +320,7 @@ pub struct VcpuSnapshot {
     pub v: [u128; 32],
     pub sys: BTreeMap<AArch64SysRegId, u64>,
     pub cache_arch_info: BTreeMap<u8, u64>,
-    pub hypervisor_data: serde_json::Value,
+    pub hypervisor_data: AnySnapshot,
 }
 
 impl_downcast!(VcpuAArch64);

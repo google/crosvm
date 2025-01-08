@@ -28,6 +28,7 @@ use libc::ENOTSUP;
 use libc::ENXIO;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use vm_memory::GuestAddress;
 
 use super::Config;
@@ -820,7 +821,7 @@ impl VcpuAArch64 for KvmVcpu {
         Ok(())
     }
 
-    fn hypervisor_specific_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+    fn hypervisor_specific_snapshot(&self) -> anyhow::Result<AnySnapshot> {
         let reg_list = self.get_reg_list()?;
         let mut firmware_regs = BTreeMap::new();
         for reg in reg_list {
@@ -832,13 +833,13 @@ impl VcpuAArch64 for KvmVcpu {
             }
         }
 
-        serde_json::to_value(KvmSnapshot { firmware_regs })
+        AnySnapshot::to_any(KvmSnapshot { firmware_regs })
             .context("Failed to serialize KVM specific data")
     }
 
-    fn hypervisor_specific_restore(&self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn hypervisor_specific_restore(&self, data: AnySnapshot) -> anyhow::Result<()> {
         let deser: KvmSnapshot =
-            serde_json::from_value(data).context("Failed to deserialize KVM specific data")?;
+            AnySnapshot::from_any(data).context("Failed to deserialize KVM specific data")?;
         // TODO: need to set firmware registers before "create_fdt" is called, earlier in the
         // stack.
         for (id, val) in &deser.firmware_regs {

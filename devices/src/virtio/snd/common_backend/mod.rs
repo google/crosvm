@@ -37,6 +37,7 @@ use futures::select;
 use futures::FutureExt;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
@@ -513,7 +514,7 @@ impl VirtioDevice for VirtioSnd {
         }
     }
 
-    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         let streams_state = if let Some(states) = &self.streams_state {
             let mut state_vec = Vec::new();
             for state in states {
@@ -523,7 +524,7 @@ impl VirtioDevice for VirtioSnd {
         } else {
             None
         };
-        serde_json::to_value(VirtioSndSnapshot {
+        AnySnapshot::to_any(VirtioSndSnapshot {
             avail_features: self.avail_features,
             acked_features: self.acked_features,
             queue_sizes: self.queue_sizes.to_vec(),
@@ -533,9 +534,9 @@ impl VirtioDevice for VirtioSnd {
         .context("failed to Serialize Sound device")
     }
 
-    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let mut deser: VirtioSndSnapshot =
-            serde_json::from_value(data).context("failed to Deserialize Sound device")?;
+            AnySnapshot::from_any(data).context("failed to Deserialize Sound device")?;
         anyhow::ensure!(
             deser.avail_features == self.avail_features,
             "avail features doesn't match on restore: expected: {}, got: {}",

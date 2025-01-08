@@ -34,6 +34,7 @@ use net_util::TapT;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use thiserror::Error as ThisError;
 use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use virtio_sys::virtio_net;
@@ -787,17 +788,17 @@ where
         }
     }
 
-    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(NetSnapshot {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(NetSnapshot {
             acked_features: self.acked_features,
             avail_features: self.avail_features,
         })
         .context("failed to snapshot virtio Net device")
     }
 
-    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let deser: NetSnapshot =
-            serde_json::from_value(data).context("failed to deserialize Net device")?;
+            AnySnapshot::from_any(data).context("failed to deserialize Net device")?;
         anyhow::ensure!(
             self.avail_features == deser.avail_features,
             "Available features for net device do not match. expected: {},  got: {}",

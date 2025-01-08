@@ -24,7 +24,7 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
 use base::WorkerThread;
-use serde_json::Value;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserConfigFlags;
@@ -614,7 +614,7 @@ impl VirtioDevice for VhostUserFrontend {
         Ok(())
     }
 
-    fn virtio_snapshot(&mut self) -> anyhow::Result<Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         if !self
             .protocol_features
             .contains(VhostUserProtocolFeatures::DEVICE_STATE)
@@ -647,10 +647,10 @@ impl VirtioDevice for VhostUserFrontend {
         backend_client
             .check_device_state()
             .context("failed to transfer device state")?;
-        Ok(serde_json::to_value(snapshot_bytes).map_err(Error::SliceToSerdeValue)?)
+        Ok(AnySnapshot::to_any(snapshot_bytes).map_err(Error::SliceToSerdeValue)?)
     }
 
-    fn virtio_restore(&mut self, data: Value) -> anyhow::Result<()> {
+    fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         if !self
             .protocol_features
             .contains(VhostUserProtocolFeatures::DEVICE_STATE)
@@ -659,7 +659,7 @@ impl VirtioDevice for VhostUserFrontend {
         }
 
         let backend_client = self.backend_client.lock();
-        let data_bytes: Vec<u8> = serde_json::from_value(data).map_err(Error::SerdeValueToSlice)?;
+        let data_bytes: Vec<u8> = AnySnapshot::from_any(data).map_err(Error::SerdeValueToSlice)?;
         // Send the backend an FD to read the device state from. If it gives us an FD back,
         // then we need to write to that instead.
         let (r, w) = new_pipe_pair()?;

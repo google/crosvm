@@ -25,6 +25,7 @@ use base::WaitContext;
 use base::WorkerThread;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::GpeNotify;
@@ -196,16 +197,16 @@ impl ACPIPMResource {
 }
 
 impl Suspendable for ACPIPMResource {
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         if !self.gpe0.lock().pending_clear_evts.is_empty() {
             bail!("ACPIPMResource is busy");
         }
-        serde_json::to_value(&self)
+        AnySnapshot::to_any(&self)
             .with_context(|| format!("error serializing {}", self.debug_label()))
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        let acpi_snapshot: ACPIPMResrourceSerializable = serde_json::from_value(data)
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+        let acpi_snapshot: ACPIPMResrourceSerializable = AnySnapshot::from_any(data)
             .with_context(|| format!("error deserializing {}", self.debug_label()))?;
         {
             let mut pm1 = self.pm1.lock();

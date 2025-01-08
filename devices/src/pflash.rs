@@ -29,6 +29,7 @@ use base::VolatileSlice;
 use disk::DiskFile;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 
 use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
@@ -232,12 +233,12 @@ impl BusDevice for Pflash {
 }
 
 impl Suspendable for Pflash {
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::to_value((self.status, self.state))?)
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any((self.status, self.state))
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        let (status, state) = serde_json::from_value(data)?;
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+        let (status, state) = AnySnapshot::from_any(data)?;
         self.status = status;
         self.state = state;
         Ok(())

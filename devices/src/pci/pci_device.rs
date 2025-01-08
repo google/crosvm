@@ -18,6 +18,7 @@ use base::SharedMemory;
 use remain::sorted;
 use resources::Error as SystemAllocatorFaliure;
 use resources::SystemAllocator;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::api::VmMemoryClient;
@@ -833,11 +834,11 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
 }
 
 impl<T: PciDevice + ?Sized> Suspendable for Box<T> {
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         (**self).snapshot()
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         (**self).restore(data)
     }
 

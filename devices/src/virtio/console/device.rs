@@ -31,7 +31,7 @@ pub struct ConsoleDevice {
 #[derive(Serialize, Deserialize)]
 pub struct ConsoleSnapshot {
     avail_features: u64,
-    ports: Vec<ConsolePortSnapshot>,
+    pub(super) ports: Vec<ConsolePortSnapshot>,
 }
 
 impl ConsoleDevice {

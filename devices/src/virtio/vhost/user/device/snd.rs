@@ -20,6 +20,7 @@ use futures::FutureExt;
 use hypervisor::ProtectionType;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 pub use sys::run_snd_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
@@ -303,7 +304,7 @@ impl VhostUserDevice for SndBackend {
         }
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         // now_or_never will succeed here because no workers are running.
         let stream_info_snaps = if let Some(stream_infos) = &self.streams.lock().now_or_never() {
             let mut snaps = Vec::new();
@@ -326,7 +327,7 @@ impl VhostUserDevice for SndBackend {
             None
         };
         let snd_data_ref: &SndData = self.snd_data.borrow();
-        serde_json::to_value(SndBackendSnapshot {
+        AnySnapshot::to_any(SndBackendSnapshot {
             avail_features: self.avail_features,
             stream_infos: stream_info_snaps,
             snd_data: snd_data_ref.clone(),
@@ -337,8 +338,8 @@ impl VhostUserDevice for SndBackend {
         ))
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        let deser: SndBackendSnapshot = serde_json::from_value(data).context(format!(
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+        let deser: SndBackendSnapshot = AnySnapshot::from_any(data).context(format!(
             "[Card {}] Failed to deserialize SndBackendSnapshot",
             self.card_index
         ))?;

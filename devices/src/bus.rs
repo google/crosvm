@@ -23,6 +23,7 @@ use base::SharedMemory;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use thiserror::Error;
 
@@ -160,14 +161,14 @@ pub trait BusDevice: Send + Suspendable {
 pub trait BusDeviceSync: BusDevice + Sync {
     fn read(&self, offset: BusAccessInfo, data: &mut [u8]);
     fn write(&self, offset: BusAccessInfo, data: &[u8]);
-    fn snapshot_sync(&self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot_sync(&self) -> anyhow::Result<AnySnapshot> {
         Err(anyhow!(
             "snapshot_sync not implemented for {}",
             std::any::type_name::<Self>()
         ))
     }
     /// Load a saved snapshot of an image.
-    fn restore_sync(&self, _data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore_sync(&self, _data: AnySnapshot) -> anyhow::Result<()> {
         Err(anyhow!(
             "restore_sync not implemented for {}",
             std::any::type_name::<Self>()
@@ -806,12 +807,12 @@ mod tests {
     }
 
     impl Suspendable for DummyDevice {
-        fn snapshot(&mut self) -> AnyhowResult<serde_json::Value> {
-            serde_json::to_value(self).context("error serializing")
+        fn snapshot(&mut self) -> AnyhowResult<AnySnapshot> {
+            AnySnapshot::to_any(self).context("error serializing")
         }
 
-        fn restore(&mut self, data: serde_json::Value) -> AnyhowResult<()> {
-            *self = serde_json::from_value(data).context("error deserializing")?;
+        fn restore(&mut self, data: AnySnapshot) -> AnyhowResult<()> {
+            *self = AnySnapshot::from_any(data).context("error deserializing")?;
             Ok(())
         }
 
@@ -862,12 +863,12 @@ mod tests {
     }
 
     impl Suspendable for ConstantDevice {
-        fn snapshot(&mut self) -> AnyhowResult<serde_json::Value> {
-            serde_json::to_value(self).context("error serializing")
+        fn snapshot(&mut self) -> AnyhowResult<AnySnapshot> {
+            AnySnapshot::to_any(self).context("error serializing")
         }
 
-        fn restore(&mut self, data: serde_json::Value) -> AnyhowResult<()> {
-            *self = serde_json::from_value(data).context("error deserializing")?;
+        fn restore(&mut self, data: AnySnapshot) -> AnyhowResult<()> {
+            *self = AnySnapshot::from_any(data).context("error deserializing")?;
             Ok(())
         }
 

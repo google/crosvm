@@ -23,6 +23,7 @@ use hypervisor::NUM_IOAPIC_PINS;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use thiserror::Error;
 use vm_control::VmIrqRequest;
 use vm_control::VmIrqResponse;
@@ -652,8 +653,8 @@ impl Ioapic {
 }
 
 impl Suspendable for Ioapic {
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(IoapicSnapshot {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(IoapicSnapshot {
             num_pins: self.num_pins,
             ioregsel: self.ioregsel,
             ioapicid: self.ioapicid,
@@ -675,9 +676,9 @@ impl Suspendable for Ioapic {
         .context("failed serializing Ioapic")
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let snap: IoapicSnapshot =
-            serde_json::from_value(data).context("failed to deserialize Ioapic snapshot")?;
+            AnySnapshot::from_any(data).context("failed to deserialize Ioapic snapshot")?;
 
         self.num_pins = snap.num_pins;
         self.ioregsel = snap.ioregsel;

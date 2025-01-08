@@ -31,6 +31,7 @@ use base::WaitContext;
 use base::WorkerThread;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use vm_control::VmResponse;
 
@@ -462,17 +463,17 @@ impl Suspendable for Vmwdt {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(&VmwdtSnapshot {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(&VmwdtSnapshot {
             vm_wdts: self.vm_wdts.clone(),
             activated: self.activated,
         })
         .context("failed to snapshot Vmwdt")
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let deser: VmwdtRestore =
-            serde_json::from_value(data).context("failed to deserialize Vmwdt")?;
+            AnySnapshot::from_any(data).context("failed to deserialize Vmwdt")?;
         let mut vm_wdts = self.vm_wdts.lock();
         for (vmwdt_restore, vmwdt) in deser.vm_wdts.iter().zip(vm_wdts.iter_mut()) {
             vmwdt.is_enabled = vmwdt_restore.is_enabled;

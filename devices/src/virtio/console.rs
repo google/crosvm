@@ -18,6 +18,7 @@ use std::collections::BTreeMap;
 use anyhow::Context;
 use base::RawDescriptor;
 use hypervisor::ProtectionType;
+use snapshot::AnySnapshot;
 use vm_memory::GuestMemory;
 
 use crate::serial::sys::InStreamType;
@@ -136,14 +137,14 @@ impl VirtioDevice for Console {
         Ok(())
     }
 
-    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         let snap = self.console.snapshot()?;
-        serde_json::to_value(snap).context("failed to snapshot virtio console")
+        AnySnapshot::to_any(snap).context("failed to snapshot virtio console")
     }
 
-    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let snap: ConsoleSnapshot =
-            serde_json::from_value(data).context("failed to deserialize virtio console")?;
+            AnySnapshot::from_any(data).context("failed to deserialize virtio console")?;
         self.console.restore(&snap)
     }
 }
@@ -229,23 +230,10 @@ mod tests {
 
         // Ensure snapshot does not fail and contains the buffered input data.
         let snapshot = device.virtio_snapshot().expect("failed to snapshot");
+        let snapshot: ConsoleSnapshot =
+            AnySnapshot::from_any(snapshot).expect("failed to deserialize snapshot");
 
-        let snapshot_input_buffer = snapshot
-            .get("ports")
-            .unwrap()
-            .get(0)
-            .unwrap()
-            .get("input_buffer")
-            .unwrap()
-            .as_array()
-            .unwrap();
-
-        assert_eq!(snapshot_input_buffer.len(), b"Hello".len());
-        assert_eq!(snapshot_input_buffer[0].as_i64(), Some(b'H' as i64));
-        assert_eq!(snapshot_input_buffer[1].as_i64(), Some(b'e' as i64));
-        assert_eq!(snapshot_input_buffer[2].as_i64(), Some(b'l' as i64));
-        assert_eq!(snapshot_input_buffer[3].as_i64(), Some(b'l' as i64));
-        assert_eq!(snapshot_input_buffer[4].as_i64(), Some(b'o' as i64));
+        assert_eq!(snapshot.ports[0].input_buffer, b"Hello");
 
         // Wake up the device, which should start the input thread again.
         device.virtio_wake(None).expect("failed to wake");

@@ -5,6 +5,7 @@
 use base::error;
 use base::SendTube;
 use base::VmEventType;
+use snapshot::AnySnapshot;
 
 use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
@@ -58,11 +59,11 @@ impl BusDevice for I8042Device {
 }
 
 impl Suspendable for I8042Device {
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::Value::Object(serde_json::Map::new()))
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(())
     }
 
-    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, _data: AnySnapshot) -> anyhow::Result<()> {
         Ok(())
     }
 

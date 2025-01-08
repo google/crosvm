@@ -15,6 +15,7 @@ use hypervisor::DeviceKind;
 use hypervisor::IrqRoute;
 use hypervisor::Vm;
 use kvm_sys::*;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 
 use crate::IrqChip;
@@ -172,7 +173,7 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
         self.device_kind
     }
 
-    fn snapshot(&self, _cpus_num: usize) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&self, _cpus_num: usize) -> anyhow::Result<AnySnapshot> {
         if self.device_kind == DeviceKind::ArmVgicV3 {
             let save_gic_attr = kvm_device_attr {
                 group: KVM_DEV_ARM_VGIC_GRP_CTRL,
@@ -189,10 +190,10 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
                     .context("ioctl KVM_SET_DEVICE_ATTR for save_gic_attr failed.")?;
             }
         }
-        Ok(serde_json::Value::Null)
+        AnySnapshot::to_any(())
     }
 
-    fn restore(&mut self, _data: serde_json::Value, _vcpus_num: usize) -> anyhow::Result<()> {
+    fn restore(&mut self, _data: AnySnapshot, _vcpus_num: usize) -> anyhow::Result<()> {
         // SAVE_PENDING_TABLES operation wrote the pending tables into guest memory.
         // Assumption is that no work is necessary on restore of IrqChip.
         Ok(())

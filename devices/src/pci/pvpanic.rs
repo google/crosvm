@@ -23,6 +23,7 @@ use base::VmEventType;
 use resources::Alloc;
 use resources::AllocOptions;
 use resources::SystemAllocator;
+use snapshot::AnySnapshot;
 
 use crate::pci::pci_configuration::PciBarConfiguration;
 use crate::pci::pci_configuration::PciBarPrefetchable;
@@ -212,13 +213,13 @@ impl PciDevice for PvPanicPciDevice {
 }
 
 impl Suspendable for PvPanicPciDevice {
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         self.config_regs
             .snapshot()
             .context("failed to serialize PvPanicPciDevice")
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         self.config_regs
             .restore(data)
             .context("failed to deserialize PvPanicPciDevice")

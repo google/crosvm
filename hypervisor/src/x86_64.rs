@@ -20,6 +20,7 @@ use downcast_rs::impl_downcast;
 use libc::c_void;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use vm_memory::GuestAddress;
 
 use crate::Hypervisor;
@@ -136,11 +137,11 @@ pub trait VcpuX86_64: Vcpu {
 
     /// Gets interrupt state (hypervisor specific) for this VCPU that must be
     /// saved/restored for snapshotting.
-    fn get_interrupt_state(&self) -> Result<serde_json::Value>;
+    fn get_interrupt_state(&self) -> Result<AnySnapshot>;
 
     /// Sets interrupt state (hypervisor specific) for this VCPU. Only used for
     /// snapshotting.
-    fn set_interrupt_state(&self, data: serde_json::Value) -> Result<()>;
+    fn set_interrupt_state(&self, data: AnySnapshot) -> Result<()>;
 
     /// Gets a single model-specific register's value.
     fn get_msr(&self, msr_index: u32) -> Result<u64>;
@@ -307,7 +308,7 @@ pub struct VcpuSnapshot {
     xcrs: BTreeMap<u32, u64>,
     msrs: BTreeMap<u32, u64>,
     xsave: Xsave,
-    hypervisor_data: serde_json::Value,
+    hypervisor_data: AnySnapshot,
     tsc_offset: u64,
 }
 

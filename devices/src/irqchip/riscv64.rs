@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use base::Result;
+use snapshot::AnySnapshot;
 
 use crate::IrqChip;
 
@@ -23,11 +24,11 @@ pub trait IrqChipRiscv64: IrqChip {
     fn get_num_ids_sources(&self) -> (usize, usize);
 
     // Snapshot irqchip.
-    fn snapshot(&self, _cpus_num: usize) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&self, _cpus_num: usize) -> anyhow::Result<AnySnapshot> {
         anyhow::bail!("snapshot not yet implemented for riscv64")
     }
 
-    fn restore(&mut self, _data: serde_json::Value, _vcpus_num: usize) -> anyhow::Result<()> {
+    fn restore(&mut self, _data: AnySnapshot, _vcpus_num: usize) -> anyhow::Result<()> {
         anyhow::bail!("restore not yet implemented for riscv64")
     }
 }

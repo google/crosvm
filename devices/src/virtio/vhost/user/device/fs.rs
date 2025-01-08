@@ -17,6 +17,7 @@ use base::WorkerThread;
 use data_model::Le32;
 use fuse::Server;
 use hypervisor::ProtectionType;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 pub use sys::start_device as run_fs_device;
 use virtio_sys::virtio_fs::virtio_fs_config;
@@ -164,11 +165,11 @@ impl VhostUserDevice for FsBackend {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         bail!("snapshot not implemented for vhost-user fs");
     }
 
-    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, _data: AnySnapshot) -> anyhow::Result<()> {
         bail!("snapshot not implemented for vhost-user fs");
     }
 }

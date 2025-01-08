@@ -14,6 +14,7 @@ use base::Event;
 use data_model::Le32;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -523,8 +524,8 @@ impl SplitQueue {
         }
     }
 
-    pub fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(SplitQueueSnapshot {
+    pub fn snapshot(&self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(SplitQueueSnapshot {
             size: self.size,
             vector: self.vector,
             desc_table: self.desc_table,
@@ -539,12 +540,12 @@ impl SplitQueue {
     }
 
     pub fn restore(
-        queue_value: serde_json::Value,
+        queue_value: AnySnapshot,
         mem: &GuestMemory,
         event: Event,
         interrupt: Interrupt,
     ) -> anyhow::Result<SplitQueue> {
-        let s: SplitQueueSnapshot = serde_json::from_value(queue_value)?;
+        let s: SplitQueueSnapshot = AnySnapshot::from_any(queue_value)?;
         let queue = SplitQueue {
             mem: mem.clone(),
             event,

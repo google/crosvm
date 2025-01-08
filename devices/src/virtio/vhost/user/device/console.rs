@@ -14,6 +14,7 @@ use base::RawDescriptor;
 use base::Terminal;
 use cros_async::Executor;
 use hypervisor::ProtectionType;
+use snapshot::AnySnapshot;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
@@ -113,14 +114,14 @@ impl VhostUserDevice for ConsoleBackend {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         let snap = self.device.console.snapshot()?;
-        serde_json::to_value(snap).context("failed to snapshot vhost-user console")
+        AnySnapshot::to_any(snap).context("failed to snapshot vhost-user console")
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let snap: ConsoleSnapshot =
-            serde_json::from_value(data).context("failed to deserialize vhost-user console")?;
+            AnySnapshot::from_any(data).context("failed to deserialize vhost-user console")?;
         self.device.console.restore(&snap)
     }
 }

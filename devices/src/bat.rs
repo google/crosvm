@@ -23,6 +23,7 @@ use power_monitor::CreatePowerMonitorFn;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::BatControlCommand;
@@ -619,8 +620,8 @@ impl Suspendable for GoldfishBattery {
         Ok(())
     }
 
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(GoldfishBatterySnapshot {
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(GoldfishBatterySnapshot {
             state: self.state.lock().clone(),
             mmio_base: self.mmio_base,
             irq_num: self.irq_num,
@@ -629,9 +630,9 @@ impl Suspendable for GoldfishBattery {
         .context("failed to snapshot GoldfishBattery")
     }
 
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let deser: GoldfishBatterySnapshot =
-            serde_json::from_value(data).context("failed to deserialize GoldfishBattery")?;
+            AnySnapshot::from_any(data).context("failed to deserialize GoldfishBattery")?;
         {
             let mut locked_state = self.state.lock();
             *locked_state = deser.state;

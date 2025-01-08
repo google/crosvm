@@ -18,6 +18,7 @@ use base::WorkerThread;
 use data_model::Le64;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use vhost::Vhost;
 use vhost::Vsock as VhostVsockHandle;
 use vm_memory::GuestMemory;
@@ -327,9 +328,9 @@ impl VirtioDevice for Vsock {
         }
     }
 
-    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         let vrings_base = self.vrings_base.clone().unwrap_or_default();
-        serde_json::to_value(VsockSnapshot {
+        AnySnapshot::to_any(VsockSnapshot {
             // `cid` and `avail_features` are snapshot as a safeguard. Upon restore, validate
             // cid and avail_features in the current vsock match the previously snapshot vsock.
             cid: self.cid,
@@ -340,9 +341,9 @@ impl VirtioDevice for Vsock {
         .context("failed to snapshot virtio console")
     }
 
-    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let deser: VsockSnapshot =
-            serde_json::from_value(data).context("failed to deserialize virtio vsock")?;
+            AnySnapshot::from_any(data).context("failed to deserialize virtio vsock")?;
         anyhow::ensure!(
             self.cid == deser.cid,
             "Virtio vsock incorrect cid for restore:\n Expected: {}, Actual: {}",

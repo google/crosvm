@@ -35,6 +35,7 @@ use linux_input_sys::InputEventDecoder;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
@@ -656,16 +657,16 @@ where
         Ok(())
     }
 
-    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(InputSnapshot {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(InputSnapshot {
             virtio_features: self.virtio_features,
             config: self.config.clone(),
         })
         .context("failed to serialize InputSnapshot")
     }
 
-    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        let snap: InputSnapshot = serde_json::from_value(data).context("error deserializing")?;
+    fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+        let snap: InputSnapshot = AnySnapshot::from_any(data).context("error deserializing")?;
         if snap.virtio_features != self.virtio_features {
             bail!(
                 "expected virtio_features to match, but they did not. Live: {:?}, snapshot {:?}",

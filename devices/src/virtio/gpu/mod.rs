@@ -50,6 +50,7 @@ pub use parameters::GpuParameters;
 use rutabaga_gfx::*;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 pub use vm_control::gpu::DisplayMode as GpuDisplayMode;
 pub use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
@@ -2019,7 +2020,7 @@ impl VirtioDevice for Gpu {
         }
     }
 
-    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         match self.worker_state {
             WorkerState::Error => {
                 return Err(anyhow!(
@@ -2051,7 +2052,7 @@ impl VirtioDevice for Gpu {
                 .inspect_err(|_| self.worker_state = WorkerState::Error)
                 .context("failed to receive response for virtio gpu worker suspend request")??
             {
-                WorkerResponse::Snapshot(snapshot) => Ok(serde_json::to_value(snapshot)?),
+                WorkerResponse::Snapshot(snapshot) => Ok(AnySnapshot::to_any(snapshot)?),
                 _ => {
                     panic!("unexpected response from virtio gpu worker sleep request");
                 }
@@ -2061,7 +2062,7 @@ impl VirtioDevice for Gpu {
         }
     }
 
-    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+    fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         match self.worker_state {
             WorkerState::Error => {
                 return Err(anyhow!(
@@ -2076,7 +2077,7 @@ impl VirtioDevice for Gpu {
             _ => (),
         };
 
-        let snapshot: WorkerSnapshot = serde_json::from_value(data)?;
+        let snapshot: WorkerSnapshot = AnySnapshot::from_any(data)?;
 
         if let (Some(worker_request_sender), Some(worker_response_receiver)) =
             (&self.worker_request_sender, &self.worker_response_receiver)

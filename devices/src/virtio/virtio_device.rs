@@ -12,6 +12,7 @@ use base::Protection;
 use base::RawDescriptor;
 use hypervisor::MemCacheType;
 use resources::AddressRange;
+use snapshot::AnySnapshot;
 use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
 
@@ -247,13 +248,13 @@ pub trait VirtioDevice: Send {
     }
 
     /// Snapshot current state. Device must be asleep.
-    fn virtio_snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         anyhow::bail!("virtio_snapshot not implemented for {}", self.debug_label());
     }
 
     /// Restore device state from a snapshot.
     /// TODO(b/280607404): Vhost user will need fds passed to the device process.
-    fn virtio_restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+    fn virtio_restore(&mut self, _data: AnySnapshot) -> anyhow::Result<()> {
         anyhow::bail!("virtio_restore not implemented for {}", self.debug_label());
     }
 

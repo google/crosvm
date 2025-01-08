@@ -29,6 +29,7 @@ use libc::ENOMEM;
 use libc::ENXIO;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use vm_memory::GuestAddress;
 
 use super::Config;
@@ -805,7 +806,7 @@ impl VcpuX86_64 for KvmVcpu {
         }
     }
 
-    fn get_interrupt_state(&self) -> Result<serde_json::Value> {
+    fn get_interrupt_state(&self) -> Result<AnySnapshot> {
         let mut vcpu_evts: kvm_vcpu_events = Default::default();
         let ret = {
             // SAFETY:
@@ -816,7 +817,7 @@ impl VcpuX86_64 for KvmVcpu {
         };
         if ret == 0 {
             Ok(
-                serde_json::to_value(VcpuEvents::from(&vcpu_evts)).map_err(|e| {
+                AnySnapshot::to_any(VcpuEvents::from(&vcpu_evts)).map_err(|e| {
                     error!("failed to serialize vcpu_events: {:?}", e);
                     Error::new(EIO)
                 })?,
@@ -826,9 +827,9 @@ impl VcpuX86_64 for KvmVcpu {
         }
     }
 
-    fn set_interrupt_state(&self, data: serde_json::Value) -> Result<()> {
+    fn set_interrupt_state(&self, data: AnySnapshot) -> Result<()> {
         let vcpu_events =
-            kvm_vcpu_events::from(&serde_json::from_value::<VcpuEvents>(data).map_err(|e| {
+            kvm_vcpu_events::from(&AnySnapshot::from_any::<VcpuEvents>(data).map_err(|e| {
                 error!("failed to deserialize vcpu_events: {:?}", e);
                 Error::new(EIO)
             })?);

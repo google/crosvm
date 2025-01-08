@@ -17,6 +17,7 @@ use bit_field::*;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use thiserror::Error;
 use vm_control::VmIrqRequest;
 use vm_control::VmIrqResponse;
@@ -98,7 +99,7 @@ pub enum MsixError {
     #[error("failed to send AllocateOneMsi request: {0}")]
     AllocateOneMsiSend(TubeError),
     #[error("failed to deserialize snapshot: {0}")]
-    DeserializationFailed(serde_json::Error),
+    DeserializationFailed(anyhow::Error),
     #[error("invalid vector length in snapshot: {0}")]
     InvalidVectorLength(std::num::TryFromIntError),
     #[error("ReleaseOneIrq failed: {0}")]
@@ -240,8 +241,8 @@ impl MsixConfig {
 
     /// Create a snapshot of the current MsixConfig struct for use in
     /// snapshotting.
-    pub fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(MsixConfigSnapshot {
+    pub fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        AnySnapshot::to_any(MsixConfigSnapshot {
             table_entries: self.table_entries.clone(),
             pba_entries: self.pba_entries.clone(),
             masked: self.masked,
@@ -261,9 +262,9 @@ impl MsixConfig {
     /// Restore a MsixConfig struct based on a snapshot. In short, this will
     /// restore all data exposed via MMIO, and recreate all MSI-X vectors (they
     /// will be re-wired to the irq chip).
-    pub fn restore(&mut self, snapshot: serde_json::Value) -> MsixResult<()> {
+    pub fn restore(&mut self, snapshot: AnySnapshot) -> MsixResult<()> {
         let snapshot: MsixConfigSnapshot =
-            serde_json::from_value(snapshot).map_err(MsixError::DeserializationFailed)?;
+            AnySnapshot::from_any(snapshot).map_err(MsixError::DeserializationFailed)?;
 
         self.table_entries = snapshot.table_entries;
         self.pba_entries = snapshot.pba_entries;

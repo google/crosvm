@@ -70,6 +70,7 @@ use cros_async::TaskHandle;
 use hypervisor::MemCacheType;
 use serde::Deserialize;
 use serde::Serialize;
+use snapshot::AnySnapshot;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_control::VmMemorySource;
@@ -197,10 +198,10 @@ pub trait VhostUserDevice {
     fn enter_suspended_state(&mut self) -> anyhow::Result<()>;
 
     /// Snapshot device and return serialized state.
-    fn snapshot(&mut self) -> anyhow::Result<serde_json::Value>;
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot>;
 
     /// Restore device state from a snapshot.
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()>;
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()>;
 }
 
 /// A virtio ring entry.
@@ -328,7 +329,7 @@ enum DeviceStateThread {
 pub struct DeviceRequestHandlerSnapshot {
     acked_features: u64,
     acked_protocol_features: u64,
-    backend: serde_json::Value,
+    backend: AnySnapshot,
 }
 
 impl<T: VhostUserDevice> DeviceRequestHandler<T> {
@@ -1098,16 +1099,16 @@ mod tests {
             Ok(())
         }
 
-        fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
-            serde_json::to_value(FakeBackendSnapshot {
+        fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+            AnySnapshot::to_any(FakeBackendSnapshot {
                 data: vec![1, 2, 3],
             })
             .context("failed to serialize snapshot")
         }
 
-        fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
             let snapshot: FakeBackendSnapshot =
-                serde_json::from_value(data).context("failed to deserialize snapshot")?;
+                AnySnapshot::from_any(data).context("failed to deserialize snapshot")?;
             assert_eq!(snapshot.data, vec![1, 2, 3], "bad snapshot data");
             Ok(())
         }
