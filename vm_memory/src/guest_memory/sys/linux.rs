@@ -50,7 +50,7 @@ impl GuestMemory {
     }
 
     /// Handles guest memory policy hints/advices.
-    pub fn set_memory_policy(&self, mem_policy: MemoryPolicy) {
+    pub fn set_memory_policy(&mut self, mem_policy: MemoryPolicy) {
         if mem_policy.is_empty() {
             return;
         }
@@ -65,6 +65,8 @@ impl GuestMemory {
             }
 
             if mem_policy.contains(MemoryPolicy::LOCK_GUEST_MEMORY) {
+                self.locked = true;
+
                 // This is done in coordination with remove_range() calls, which are
                 // performed by the virtio-balloon process (they must be performed by
                 // a different process from the one that issues the locks).

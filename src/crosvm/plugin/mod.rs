@@ -614,7 +614,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         _ => panic!("Executable was not a plugin"),
     };
     let vcpu_count = cfg.vcpu_count.unwrap_or(1) as u32;
-    let mem = GuestMemory::new(&[]).unwrap();
+    let mut mem = GuestMemory::new(&[]).unwrap();
     let mut mem_policy = MemoryPolicy::empty();
     if cfg.hugepages {
         mem_policy |= MemoryPolicy::USE_HUGEPAGES;

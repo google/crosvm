@@ -1598,7 +1598,7 @@ fn create_guest_memory(
     let guest_mem_layout =
         punch_holes_in_guest_mem_layout_for_mappings(guest_mem_layout, &cfg.file_backed_mappings);
 
-    let guest_mem = GuestMemory::new_with_options(&guest_mem_layout)
+    let mut guest_mem = GuestMemory::new_with_options(&guest_mem_layout)
         .context("failed to create guest memory")?;
     let mut mem_policy = MemoryPolicy::empty();
     if components.hugepages {

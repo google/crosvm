@@ -235,6 +235,7 @@ impl MemoryRegion {
 #[derive(Clone, Debug)]
 pub struct GuestMemory {
     regions: Arc<[MemoryRegion]>,
+    locked: bool,
 }
 
 impl AsRawDescriptors for GuestMemory {
@@ -317,6 +318,7 @@ impl GuestMemory {
 
         Ok(GuestMemory {
             regions: Arc::from(regions),
+            locked: false,
         })
     }
 
@@ -357,7 +359,13 @@ impl GuestMemory {
 
         Ok(GuestMemory {
             regions: Arc::from(regions),
+            locked: false,
         })
+    }
+
+    // Whether `MemoryPolicy::LOCK_GUEST_MEMORY` was set.
+    pub fn locked(&self) -> bool {
+        self.locked
     }
 
     /// Returns the end address of memory.

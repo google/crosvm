@@ -848,7 +848,22 @@ impl From<Box<PausedQueues>> for BTreeMap<usize, Queue> {
     }
 }
 
-fn free_memory(vm_memory_client: &VmMemoryClient, ranges: Vec<(GuestAddress, u64)>) {
+fn free_memory(
+    vm_memory_client: &VmMemoryClient,
+    mem: &GuestMemory,
+    ranges: Vec<(GuestAddress, u64)>,
+) {
+    // When `--lock-guest-memory` is used, it is not possible to free the memory from the main
+    // process, so we free it from the sandboxed balloon process directly.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    if mem.locked() {
+        for (guest_address, len) in ranges {
+            if let Err(e) = mem.remove_range(guest_address, len) {
+                warn!("Marking pages unused failed: {}, addr={}", e, guest_address);
+            }
+        }
+        return;
+    }
     if let Err(e) = vm_memory_client.dynamically_free_memory_ranges(ranges) {
         warn!("Failed to dynamically free memory ranges: {e:#}");
     }
@@ -882,6 +897,7 @@ fn run_worker(
     ws_op_queue: Option<Queue>,
     command_tube: Tube,
     vm_memory_client: VmMemoryClient,
+    mem: GuestMemory,
     release_memory_tube: Option<Tube>,
     interrupt: Interrupt,
     kill_evt: Event,
@@ -911,7 +927,7 @@ fn run_worker(
             inflate_queue,
             EventAsync::new(inflate_queue_evt, &ex).expect("failed to create async event"),
             release_memory_tube.as_ref(),
-            |ranges| free_memory(&vm_memory_client, ranges),
+            |ranges| free_memory(&vm_memory_client, &mem, ranges),
             stop_rx,
         );
         let inflate = inflate.fuse();
@@ -971,7 +987,7 @@ fn run_worker(
                 reporting_queue,
                 EventAsync::new(reporting_queue_evt, &ex).expect("failed to create async event"),
                 release_memory_tube.as_ref(),
-                |ranges| free_memory(&vm_memory_client, ranges),
+                |ranges| free_memory(&vm_memory_client, &mem, ranges),
                 stop_rx,
             )
             .left_future()
@@ -1308,7 +1324,12 @@ impl Balloon {
         Ok(queue_struct)
     }
 
-    fn start_worker(&mut self, interrupt: Interrupt, queues: BalloonQueues) -> anyhow::Result<()> {
+    fn start_worker(
+        &mut self,
+        mem: GuestMemory,
+        interrupt: Interrupt,
+        queues: BalloonQueues,
+    ) -> anyhow::Result<()> {
         let (self_target_reached_evt, target_reached_evt) = Event::new()
             .and_then(|e| Ok((e.try_clone()?, e)))
             .context("failed to create target_reached Event pair: {}")?;
@@ -1337,6 +1358,7 @@ impl Balloon {
                 queues.ws_op,
                 command_tube,
                 vm_memory_client,
+                mem,
                 release_memory_tube,
                 interrupt,
                 kill_evt,
@@ -1420,12 +1442,12 @@ impl VirtioDevice for Balloon {
 
     fn activate(
         &mut self,
-        _mem: GuestMemory,
+        mem: GuestMemory,
         interrupt: Interrupt,
         queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         let queues = self.get_queues_from_map(queues)?;
-        self.start_worker(interrupt, queues)
+        self.start_worker(mem, interrupt, queues)
     }
 
     fn reset(&mut self) -> anyhow::Result<()> {
@@ -1450,13 +1472,13 @@ impl VirtioDevice for Balloon {
         &mut self,
         queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
-        if let Some((_mem, interrupt, queues)) = queues_state {
+        if let Some((mem, interrupt, queues)) = queues_state {
             if queues.len() < 2 {
                 anyhow::bail!("{} queues were found, but an activated balloon must have at least 2 active queues.", queues.len());
             }
 
             let balloon_queues = self.get_queues_from_map(queues)?;
-            self.start_worker(interrupt, balloon_queues)?;
+            self.start_worker(mem, interrupt, balloon_queues)?;
         }
         Ok(())
     }
