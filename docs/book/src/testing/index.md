@@ -24,20 +24,12 @@ wine64.
 
 #### File Access in Unit Tests
 
-Some unit tests may need to access extra data files. Instead of relying on relative paths, which can
-be fragile and break when tests are executed from different $PWD than the root of the tests' crate,
-always utilize the `CARGO_MANIFEST_DIR` environment variable. Cargo sets this variable to the
-absolute path of the directory containing manifest of your package.
-
-The `CARGO_MANIFEST_DIR` should be accessed at build time using `env!()` macro, rather than at run
-time with functions like `std::env::var()`. This approach is crucial because certain test
-environment may require to run the test binaries directly instead of using `cargo test`.
-Additionally, it ensures the test binary can be run manually within a debugger like GDB.
-
-To enhance test portability, embed extra data files directly into your Rust binary using the
-`include_str!` macro. At runtime, write this data to a temporary file instead of accessing it via
-CARGO_MANIFEST_DIR. This avoids hardcoding paths in the binary, ensuring tests function correctly
-regardless of the binary or source tree location.
+Some unit tests may need to access extra data files. The files should be accessed at build time
+using `include_str!()` macro, rather than at run time. The file is located relative to the current
+file (similarly to how modules are found). The contents of the file can be used directly in the test
+or at runtime the test can write this data to a temporary file. This approach is crucial because
+certain test environment may require to run the test binaries directly without access to the source
+code. Additionally, it ensures the test binary can be run manually within a debugger like GDB.
 
 These approaches ensure that units tests be able to find the correct paths in various build &
 execution environment.
@@ -49,10 +41,7 @@ execution environment.
 fn test_my_config() {
     let temp_file = TempDir::new().unwrap();
     let path = temp_file.path().join("my_config.cfg");
-    let test_config = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/config/my_config.cfg",
-    ));
+    let test_config = include_str!("../../../data/config/my_config.cfg");
     fs::write(&path, test_config).expect("Unable to write test file");
     let config_file = File::open(path).expect("Failed to open config file");
     // ... rest of your test ...
