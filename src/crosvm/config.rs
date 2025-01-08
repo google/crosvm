@@ -499,53 +499,27 @@ pub struct BatteryConfig {
     pub type_: BatteryType,
 }
 
-pub fn parse_cpu_capacity(s: &str) -> Result<BTreeMap<usize, u32>, String> {
-    let mut cpu_capacity: BTreeMap<usize, u32> = BTreeMap::default();
-    for cpu_pair in s.split(',') {
-        let assignment: Vec<&str> = cpu_pair.split('=').collect();
-        if assignment.len() != 2 {
-            return Err(invalid_value_err(cpu_pair, "invalid CPU capacity syntax"));
-        }
-        let cpu = assignment[0].parse().map_err(|_| {
-            invalid_value_err(assignment[0], "CPU index must be a non-negative integer")
-        })?;
-        let capacity = assignment[1].parse().map_err(|_| {
-            invalid_value_err(assignment[1], "CPU capacity must be a non-negative integer")
-        })?;
-        if cpu_capacity.insert(cpu, capacity).is_some() {
-            return Err(invalid_value_err(cpu_pair, "CPU index must be unique"));
-        }
-    }
-    Ok(cpu_capacity)
-}
-
-pub fn parse_dynamic_power_coefficient(s: &str) -> Result<BTreeMap<usize, u32>, String> {
-    let mut dyn_power_coefficient: BTreeMap<usize, u32> = BTreeMap::default();
+pub fn parse_cpu_btreemap_u32(s: &str) -> Result<BTreeMap<usize, u32>, String> {
+    let mut parsed_btreemap: BTreeMap<usize, u32> = BTreeMap::default();
     for cpu_pair in s.split(',') {
         let assignment: Vec<&str> = cpu_pair.split('=').collect();
         if assignment.len() != 2 {
             return Err(invalid_value_err(
                 cpu_pair,
-                "invalid CPU dynamic power pair syntax",
+                "Invalid CPU pair syntax, missing '='",
             ));
         }
         let cpu = assignment[0].parse().map_err(|_| {
             invalid_value_err(assignment[0], "CPU index must be a non-negative integer")
         })?;
-        let power_coefficient = assignment[1].parse().map_err(|_| {
-            invalid_value_err(
-                assignment[1],
-                "Power coefficient must be a non-negative integer",
-            )
+        let val = assignment[1].parse().map_err(|_| {
+            invalid_value_err(assignment[1], "CPU property must be a non-negative integer")
         })?;
-        if dyn_power_coefficient
-            .insert(cpu, power_coefficient)
-            .is_some()
-        {
+        if parsed_btreemap.insert(cpu, val).is_some() {
             return Err(invalid_value_err(cpu_pair, "CPU index must be unique"));
         }
     }
-    Ok(dyn_power_coefficient)
+    Ok(parsed_btreemap)
 }
 
 #[cfg(all(
