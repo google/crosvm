@@ -1036,10 +1036,7 @@ mod tests {
     fn example_custom_config_file_events_eq_default_keyboard_events() {
         let temp_file = TempDir::new().unwrap();
         let path = temp_file.path().join("test.json");
-        let test_json = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/data/input/example_custom_input_config.json"
-        ));
+        let test_json = include_str!("../../../tests/data/input/example_custom_input_config.json");
         fs::write(&path, test_json).expect("Unable to write test file");
 
         let keyboard_supported_events = new_keyboard_config(0).supported_events;
