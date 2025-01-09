@@ -17,7 +17,6 @@ anyhow = "1"
 balloon_control = { path = "../common/balloon_control" }
 base = { path = "../base" }
 cfg-if = "1"
-crypto = { path = "../vendor/generic/crypto", package = "crypto_generic" }
 gdbstub = { version = "0.7.0", optional = true }
 gdbstub_arch = { version = "0.3.0", optional = true }
 hypervisor = { path = "../hypervisor" }
@@ -32,6 +31,7 @@ rutabaga_gfx = { path = "../rutabaga_gfx" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
+snapshot = { workspace = true }
 swap = { path = "../swap" }
 sync = { path = "../common/sync" }
 thiserror = "1"

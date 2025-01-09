@@ -31,7 +31,6 @@ use hypervisor::MemRegion;
 #[cfg(feature = "balloon")]
 mod balloon_tube;
 pub mod client;
-mod snapshot_format;
 pub mod sys;
 
 #[cfg(target_arch = "x86_64")]
@@ -97,7 +96,8 @@ use rutabaga_gfx::RutabagaMappedRegion;
 use rutabaga_gfx::VulkanInfo;
 use serde::Deserialize;
 use serde::Serialize;
-pub use snapshot_format::*;
+use snapshot::SnapshotReader;
+use snapshot::SnapshotWriter;
 use swap::SwapStatus;
 use sync::Mutex;
 #[cfg(any(target_os = "android", target_os = "linux"))]

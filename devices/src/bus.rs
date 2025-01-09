@@ -497,7 +497,7 @@ impl Bus {
 
     pub fn snapshot_devices(
         &self,
-        snapshot_writer: &vm_control::SnapshotWriter,
+        snapshot_writer: &snapshot::SnapshotWriter,
     ) -> anyhow::Result<()> {
         for (snapshot_key, device_entry) in self.unique_devices_with_snapshot_key() {
             match device_entry {
@@ -526,7 +526,7 @@ impl Bus {
 
     pub fn restore_devices(
         &self,
-        snapshot_reader: &vm_control::SnapshotReader,
+        snapshot_reader: &snapshot::SnapshotReader,
     ) -> anyhow::Result<()> {
         let mut unused_keys: BTreeSet<String> =
             snapshot_reader.list_fragments()?.into_iter().collect();

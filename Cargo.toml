@@ -86,6 +86,7 @@ members = [
     "resources",
     "rutabaga_gfx",
     "serde_keyvalue",
+    "snapshot",
     "swap",
     "system_api",
     "third_party/vmm_vhost",
@@ -117,6 +118,7 @@ exclude = [
 
 [workspace.dependencies]
 tokio = { version = "1.29.1", features = ["net", "rt-multi-thread", "time", "sync", "macros"] }
+snapshot = { path = "snapshot" }
 
 [features]
 ## Default features of crosvm. This selection is somewhat arbitrary for historical reasons.

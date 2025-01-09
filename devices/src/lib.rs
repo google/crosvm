@@ -260,7 +260,7 @@ fn wake_buses(buses: &[&Bus]) {
 const MEMORY_SNAP_ENCRYPTED_CHUNK_SIZE_BYTES: usize = 1024 * 1024 * 64;
 
 async fn snapshot_handler(
-    snapshot_writer: vm_control::SnapshotWriter,
+    snapshot_writer: snapshot::SnapshotWriter,
     guest_memory: &GuestMemory,
     buses: &[&Bus],
     compress_memory: bool,
@@ -303,7 +303,7 @@ async fn snapshot_handler(
 }
 
 async fn restore_handler(
-    snapshot_reader: vm_control::SnapshotReader,
+    snapshot_reader: snapshot::SnapshotReader,
     guest_memory: &GuestMemory,
     buses: &[&Bus],
 ) -> anyhow::Result<()> {
