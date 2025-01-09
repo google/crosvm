@@ -30,6 +30,7 @@ use hypervisor::PSCI_0_2;
 use hypervisor::PSCI_1_0;
 use rand::rngs::OsRng;
 use rand::RngCore;
+use resources::AddressRange;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
@@ -360,12 +361,16 @@ fn create_chosen_node(
     Ok(())
 }
 
-fn create_config_node(fdt: &mut Fdt, (addr, size): (GuestAddress, usize)) -> Result<()> {
-    let addr: u32 = addr
-        .offset()
+fn create_config_node(fdt: &mut Fdt, kernel_region: AddressRange) -> Result<()> {
+    let addr: u32 = kernel_region
+        .start
         .try_into()
         .map_err(|_| Error::PropertyValueTooLarge)?;
-    let size: u32 = size.try_into().map_err(|_| Error::PropertyValueTooLarge)?;
+    let size: u32 = kernel_region
+        .len()
+        .expect("invalid kernel_region")
+        .try_into()
+        .map_err(|_| Error::PropertyValueTooLarge)?;
 
     let config_node = fdt.root_mut().subnode_mut("config")?;
     config_node.set_prop("kernel-address", addr)?;
@@ -660,7 +665,7 @@ pub fn create_fdt(
     cpu_frequencies: BTreeMap<usize, Vec<u32>>,
     fdt_address: GuestAddress,
     cmdline: &str,
-    image: (GuestAddress, usize),
+    kernel_region: AddressRange,
     initrd: Option<(GuestAddress, usize)>,
     android_fstab: Option<File>,
     is_gicv3: bool,
@@ -694,7 +699,7 @@ pub fn create_fdt(
         .first()
         .map(|first_serial| format!("/U6_16550A@{:x}", first_serial.address));
     create_chosen_node(&mut fdt, cmdline, initrd, stdout_path.as_deref())?;
-    create_config_node(&mut fdt, image)?;
+    create_config_node(&mut fdt, kernel_region)?;
     create_memory_node(&mut fdt, guest_mem)?;
     let dma_pool_phandle = match swiotlb {
         Some(x) => {

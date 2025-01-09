@@ -14,6 +14,7 @@ use base::FileGetLen;
 use base::FileReadWriteAtVolatile;
 use base::VolatileSlice;
 use remain::sorted;
+use resources::AddressRange;
 use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -37,6 +38,8 @@ pub enum Error {
     GetFileLen(io::Error),
     #[error("guest memory error {0}")]
     GuestMemoryError(GuestMemoryError),
+    #[error("invalid address range")]
+    InvalidAddressRange,
     #[error("invalid setup_header_end value {0}")]
     InvalidSetupHeaderEnd(usize),
     #[error("invalid setup_sects value {0}")]
@@ -64,7 +67,7 @@ pub fn load_bzimage<F>(
     guest_mem: &GuestMemory,
     kernel_start: GuestAddress,
     kernel_image: &mut F,
-) -> Result<(boot_params, u64, GuestAddress, CpuMode)>
+) -> Result<(boot_params, AddressRange, GuestAddress, CpuMode)>
 where
     F: FileReadWriteAtVolatile + FileGetLen,
 {
@@ -162,10 +165,8 @@ where
         .checked_offset(kernel_start, entry_offset)
         .ok_or(Error::EntryPointOutOfRange)?;
 
-    Ok((
-        params,
-        kernel_start.offset() + load_size as u64,
-        bzimage_entry,
-        cpu_mode,
-    ))
+    let kernel_region = AddressRange::from_start_and_size(kernel_start.offset(), load_size as u64)
+        .ok_or(Error::InvalidAddressRange)?;
+
+    Ok((params, kernel_region, bzimage_entry, cpu_mode))
 }

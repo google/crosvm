@@ -201,6 +201,16 @@ impl PayloadType {
             Self::Kernel(k) => k.size,
         }
     }
+
+    fn address_range(&self) -> AddressRange {
+        match self {
+            Self::Bios { entry, image_size } => {
+                AddressRange::from_start_and_size(entry.offset(), *image_size)
+                    .expect("invalid BIOS address range")
+            }
+            Self::Kernel(k) => k.address_range,
+        }
+    }
 }
 
 // When static swiotlb allocation is required, returns the address it should be allocated at.
@@ -949,7 +959,7 @@ impl arch::LinuxArch for AArch64 {
             cmdline
                 .as_str_with_max_len(AARCH64_CMDLINE_MAX_SIZE - 1)
                 .map_err(Error::Cmdline)?,
-            (payload.entry(), payload.size() as usize),
+            payload.address_range(),
             initrd,
             components.android_fstab,
             irq_chip.get_vgic_version() == DeviceKind::ArmVgicV3,
@@ -1445,6 +1455,13 @@ mod tests {
             size: 0x1000,
             entry: GuestAddress(0x8080_0000),
         });
+        assert_eq!(
+            payload.address_range(),
+            AddressRange {
+                start: 0x8080_0000,
+                end: 0x8080_0fff
+            }
+        );
         let fdt_address = GuestAddress(0x1234);
         let prot = ProtectionType::Unprotected;
 
@@ -1463,6 +1480,13 @@ mod tests {
             entry: GuestAddress(0x8020_0000),
             image_size: 0x1000,
         };
+        assert_eq!(
+            payload.address_range(),
+            AddressRange {
+                start: 0x8020_0000,
+                end: 0x8020_0fff
+            }
+        );
         let fdt_address = GuestAddress(0x1234);
         let prot = ProtectionType::Unprotected;
 
@@ -1482,6 +1506,13 @@ mod tests {
             size: 0x1000,
             entry: GuestAddress(0x8080_0000),
         });
+        assert_eq!(
+            payload.address_range(),
+            AddressRange {
+                start: 0x8080_0000,
+                end: 0x8080_0fff
+            }
+        );
         let fdt_address = GuestAddress(0x1234);
         let prot = ProtectionType::Protected;
 

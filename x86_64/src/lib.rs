@@ -1156,7 +1156,7 @@ impl arch::LinuxArch for X8664arch {
                 // The default values for `Regs` and `Sregs` already set up the reset vector.
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let (params, kernel_end, kernel_entry, cpu_mode, kernel_type) =
+                let (params, kernel_region, kernel_entry, cpu_mode, kernel_type) =
                     Self::load_kernel(&mem, kernel_image)?;
 
                 info!("Loaded {} kernel", kernel_type);
@@ -1167,7 +1167,7 @@ impl arch::LinuxArch for X8664arch {
                     cmdline,
                     components.initrd_image,
                     components.android_fstab,
-                    kernel_end,
+                    kernel_region,
                     params,
                     dump_device_tree_blob,
                     device_tree_overlays,
@@ -1586,13 +1586,13 @@ impl X8664arch {
     ///
     /// # Returns
     ///
-    /// On success, returns the Linux x86_64 boot protocol parameters, the first address past the
-    /// end of the kernel, the entry point (initial `RIP` value), the initial CPU mode, and the type
-    /// of kernel.
+    /// On success, returns the Linux x86_64 boot protocol parameters, the address range containing
+    /// the kernel, the entry point (initial `RIP` value), the initial CPU mode, and the type of
+    /// kernel.
     fn load_kernel(
         mem: &GuestMemory,
         kernel_image: &mut File,
-    ) -> Result<(boot_params, u64, GuestAddress, CpuMode, KernelType)> {
+    ) -> Result<(boot_params, AddressRange, GuestAddress, CpuMode, KernelType)> {
         let kernel_start = GuestAddress(KERNEL_START_OFFSET);
         match kernel_loader::load_elf64(mem, kernel_start, kernel_image, 0) {
             Ok(loaded_kernel) => {
@@ -1606,7 +1606,7 @@ impl X8664arch {
                 };
                 Ok((
                     boot_params,
-                    loaded_kernel.address_range.end,
+                    loaded_kernel.address_range,
                     loaded_kernel.entry,
                     CpuMode::LongMode,
                     KernelType::Elf,
@@ -1614,12 +1614,12 @@ impl X8664arch {
             }
             Err(kernel_loader::Error::InvalidMagicNumber) => {
                 // The image failed to parse as ELF, so try to load it as a bzImage.
-                let (boot_params, bzimage_end, bzimage_entry, cpu_mode) =
+                let (boot_params, bzimage_region, bzimage_entry, cpu_mode) =
                     bzimage::load_bzimage(mem, kernel_start, kernel_image)
                         .map_err(Error::LoadBzImage)?;
                 Ok((
                     boot_params,
-                    bzimage_end,
+                    bzimage_region,
                     bzimage_entry,
                     cpu_mode,
                     KernelType::BzImage,
@@ -1643,7 +1643,7 @@ impl X8664arch {
         cmdline: kernel_cmdline::Cmdline,
         initrd_file: Option<File>,
         android_fstab: Option<File>,
-        kernel_end: u64,
+        kernel_region: AddressRange,
         params: boot_params,
         dump_device_tree_blob: Option<PathBuf>,
         device_tree_overlays: Vec<DtbOverlay>,
@@ -1708,14 +1708,11 @@ impl X8664arch {
             || !device_tree_overlays.is_empty()
             || protection_type.runs_firmware()
         {
-            let kernel_start = GuestAddress(KERNEL_START_OFFSET);
-            let kernel_size = (kernel_end - KERNEL_START_OFFSET) as usize;
-
             let device_tree_blob = fdt::create_fdt(
                 android_fstab,
                 dump_device_tree_blob,
                 device_tree_overlays,
-                (kernel_start, kernel_size),
+                kernel_region,
             )
             .map_err(Error::CreateFdt)?;
             setup_data.push(SetupData {
@@ -1747,7 +1744,7 @@ impl X8664arch {
                 let (initrd_start, initrd_size) = arch::load_image_high(
                     mem,
                     &mut initrd_file,
-                    GuestAddress(kernel_end),
+                    GuestAddress(kernel_region.end + 1),
                     GuestAddress(initrd_addr_max),
                     Some(|region| {
                         region.options.purpose != MemoryRegionPurpose::ProtectedFirmwareRegion
