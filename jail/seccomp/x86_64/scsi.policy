@@ -4,12 +4,19 @@
 
 fallocate: 1
 fdatasync: 1
+fstat: 1
+fsync: 1
 # 0x1277 == BLKDISCARD.
 ioctl: arg1 == 0x1277
 newfstatat: 1
+open: return ENOENT
 openat: 1
-prctl: arg0 == PR_SET_NAME
+prctl: arg0 == PR_SET_NAME || arg0 == PR_SET_PDEATHSIG
 pread64: 1
 preadv: 1
 pwrite64: 1
 pwritev: 1
+statx: 1
+timerfd_create: 1
+timerfd_gettime: 1
+timerfd_settime: 1
