@@ -67,6 +67,7 @@ impl<T> CreatePowerClientFn for T where
 #[cfg(feature = "powerd")]
 pub mod powerd;
 
+#[cfg(feature = "powerd")]
 mod protos {
     include!(concat!(env!("OUT_DIR"), "/protos/generated.rs"));
 }
