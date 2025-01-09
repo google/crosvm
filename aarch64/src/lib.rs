@@ -824,7 +824,7 @@ impl arch::LinuxArch for AArch64 {
                         components.cpu_frequencies.get(&vcpu).unwrap().clone(),
                         components.vcpu_domain_paths.get(&vcpu).cloned(),
                         domain,
-                        *components.normalized_cpu_capacities.get(&vcpu).unwrap(),
+                        *components.normalized_cpu_ipc_ratios.get(&vcpu).unwrap(),
                         largest_vcpu_affinity_idx,
                         vcpufreq_shared_tube.clone(),
                         freq_domain_vcpus.get(&domain).unwrap().clone(),
@@ -840,7 +840,7 @@ impl arch::LinuxArch for AArch64 {
                 } else {
                     let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreq::new(
                         *vcpu_affinity,
-                        *components.normalized_cpu_capacities.get(&vcpu).unwrap(),
+                        *components.cpu_capacity.get(&vcpu).unwrap(),
                         *components
                             .cpu_frequencies
                             .get(&vcpu)

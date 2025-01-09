@@ -1315,7 +1315,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     let mut cpu_frequencies = BTreeMap::new();
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    let mut normalized_cpu_capacities = BTreeMap::new();
+    let mut normalized_cpu_ipc_ratios = BTreeMap::new();
 
     // if --enable-fw-cfg or --fw-cfg was given, we want to enable fw_cfg
     let fw_cfg_enable = cfg.enable_fw_cfg || !cfg.fw_cfg_parameters.is_empty();
@@ -1387,13 +1387,15 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
                 .ok_or(Error::new(libc::EINVAL))?;
 
             for (cpu_id, max_freq) in max_freqs.iter().enumerate() {
-                let normalized_cpu_capacity = (u64::from(*cpu_capacity.get(&cpu_id).unwrap())
-                    * u64::from(*max_freq))
-                .checked_div(u64::from(*largest_host_max_freq))
-                .ok_or(Error::new(libc::EINVAL))?;
-                normalized_cpu_capacities.insert(
+                let normalized_cpu_ipc_ratio =
+                    u64::from(*cfg.cpu_ipc_ratio.get(&cpu_id).unwrap_or(&1024))
+                        * u64::from(*max_freq)
+                            .checked_div(u64::from(*largest_host_max_freq))
+                            .ok_or(Error::new(libc::EINVAL))?;
+                normalized_cpu_ipc_ratios.insert(
                     cpu_id,
-                    u32::try_from(normalized_cpu_capacity).map_err(|_| Error::new(libc::EINVAL))?,
+                    u32::try_from(normalized_cpu_ipc_ratio)
+                        .map_err(|_| Error::new(libc::EINVAL))?,
                 );
             }
 
@@ -1469,7 +1471,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         cpu_clusters,
         cpu_capacity,
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-        normalized_cpu_capacities,
+        normalized_cpu_ipc_ratios,
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
         hv_cfg: hypervisor::Config {

@@ -679,6 +679,11 @@ pub struct Config {
         any(target_os = "android", target_os = "linux")
     ))]
     pub cpu_frequencies_khz: BTreeMap<usize, Vec<u32>>, // CPU index -> frequencies
+    #[cfg(all(
+        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_os = "android", target_os = "linux")
+    ))]
+    pub cpu_ipc_ratio: BTreeMap<usize, u32>, // CPU index -> IPC Ratio
     #[cfg(feature = "crash-report")]
     pub crash_pipe_name: Option<String>,
     #[cfg(feature = "crash-report")]
@@ -908,6 +913,11 @@ impl Default for Config {
             ))]
             cpu_frequencies_khz: BTreeMap::new(),
             cpu_freq_domains: Vec::new(),
+            #[cfg(all(
+                any(target_arch = "arm", target_arch = "aarch64"),
+                any(target_os = "android", target_os = "linux")
+            ))]
+            cpu_ipc_ratio: BTreeMap::new(),
             delay_rt: false,
             device_tree_overlay: Vec::new(),
             disks: Vec::new(),

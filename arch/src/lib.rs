@@ -400,7 +400,7 @@ pub struct VmComponents {
         any(target_arch = "arm", target_arch = "aarch64"),
         any(target_os = "android", target_os = "linux")
     ))]
-    pub normalized_cpu_capacities: BTreeMap<usize, u32>,
+    pub normalized_cpu_ipc_ratios: BTreeMap<usize, u32>,
     pub pci_config: PciConfig,
     pub pflash_block_size: u32,
     pub pflash_image: Option<File>,
