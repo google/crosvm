@@ -117,6 +117,7 @@ exclude = [
 ]
 
 [workspace.dependencies]
+ciborium = "0.2.2"
 tokio = { version = "1.29.1", features = ["net", "rt-multi-thread", "time", "sync", "macros"] }
 snapshot = { path = "snapshot" }
 

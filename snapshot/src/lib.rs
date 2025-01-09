@@ -117,7 +117,7 @@ impl SnapshotWriter {
     /// Creates a snapshot fragment from a serialized representation of `v`.
     pub fn write_fragment<T: serde::Serialize>(&self, name: &str, v: &T) -> Result<()> {
         let mut w = std::io::BufWriter::new(self.raw_fragment(name)?);
-        serde_json::to_writer(&mut w, v)?;
+        ciborium::into_writer(v, &mut w)?;
         w.flush()?;
         Ok(())
     }
@@ -199,8 +199,8 @@ impl SnapshotReader {
 
     /// Reads a fragment.
     pub fn read_fragment<T: serde::de::DeserializeOwned>(&self, name: &str) -> Result<T> {
-        serde_json::from_reader(std::io::BufReader::new(self.raw_fragment(name)?))
-            .with_context(|| format!("failed to parse json from snapshot fragment named {}", name))
+        // NOTE: No BufReader because ciborium::from_reader has an internal buffer.
+        Ok(ciborium::from_reader(self.raw_fragment(name)?)?)
     }
 
     /// Reads the names of all fragments in this namespace.

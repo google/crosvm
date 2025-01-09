@@ -12,6 +12,28 @@ there is no way to fetch this state atomically, we have to freeze the guest (VCP
 backends. Similarly, on restore we must freeze in the same way to prevent partially restored state
 from being modified.
 
+## Snapshot format
+
+The snapshot format is not stable. Currently, the output is a directory, where most VM components
+are snapshotted to separate files using CBOR encoding.
+
+When debugging snapshots, you may want to inspect the CBOR files. One tool available is
+[cbor-cli](https://docs.rs/crate/cbor-cli/latest). You can run `cargo install cbor-cli`, then use it
+to view a file as JSON, e.g.
+
+```
+$ cbor export --format=json /tmp/crosvm-snapshot/irqchip | jq
+{
+  "mp_state": [
+    "Halted",
+    "Halted",
+    "Halted",
+    "Halted"
+  ],
+  "pit_state": {
+...
+```
+
 ## Snapshotting a running VM
 
 In code, this is implemented by

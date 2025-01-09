@@ -14,15 +14,15 @@
 /// it will technically work, but the result might not match what you'd get if you directly
 /// serialized the original value. That should be OK as long as the serialization and
 /// deserialization paths make symmetric use of `AnySnapshot`.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct AnySnapshot(serde_json::Value);
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AnySnapshot(ciborium::Value);
 
 impl AnySnapshot {
     pub fn to_any(x: impl serde::Serialize) -> anyhow::Result<Self> {
-        Ok(AnySnapshot(serde_json::to_value(x)?))
+        Ok(AnySnapshot(ciborium::Value::serialized(&x)?))
     }
 
     pub fn from_any<T: serde::de::DeserializeOwned>(x: Self) -> anyhow::Result<T> {
-        Ok(serde_json::from_value(x.0)?)
+        Ok(x.0.deserialized()?)
     }
 }
