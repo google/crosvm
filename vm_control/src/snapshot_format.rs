@@ -204,10 +204,8 @@ impl SnapshotReader {
         let mut result = Vec::new();
         for entry in std::fs::read_dir(&self.dir)? {
             let entry = entry?;
-            if entry.path().is_file() {
-                if let Some(file_name) = entry.path().file_name() {
-                    result.push(file_name.to_string_lossy().into_owned());
-                }
+            if entry.file_type()?.is_file() {
+                result.push(entry.file_name().to_string_lossy().into_owned());
             }
         }
         Ok(result)
