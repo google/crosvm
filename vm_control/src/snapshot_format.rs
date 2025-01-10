@@ -195,9 +195,8 @@ impl SnapshotReader {
 
     /// Reads a fragment.
     pub fn read_fragment<T: serde::de::DeserializeOwned>(&self, name: &str) -> Result<T> {
-        Ok(serde_json::from_reader(std::io::BufReader::new(
-            self.raw_fragment(name)?,
-        ))?)
+        serde_json::from_reader(std::io::BufReader::new(self.raw_fragment(name)?))
+            .with_context(|| format!("failed to parse json from snapshot fragment named {}", name))
     }
 
     /// Reads the names of all fragments in this namespace.
