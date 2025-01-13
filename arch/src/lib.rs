@@ -628,6 +628,8 @@ pub trait GdbOps<T: VcpuArch> {
     ) -> Result<(), Self::Error>;
 
     /// Reads bytes from the guest register.
+    ///
+    /// Returns an empty vector if `reg_id` is valid but the register is not available.
     fn read_register(vcpu: &T, reg_id: <GdbArch as Arch>::RegId) -> Result<Vec<u8>, Self::Error>;
 
     /// Writes bytes to the specified guest register.
