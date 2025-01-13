@@ -417,7 +417,7 @@ impl SingleRegisterAccess<()> for GdbStub {
     ) -> TargetResult<usize, Self> {
         match self.vcpu_request(VcpuControl::Debug(VcpuDebug::ReadReg(reg_id))) {
             Ok(VcpuDebugStatus::RegValue(r)) => {
-                if buf.len() != r.len() {
+                if !r.is_empty() && buf.len() != r.len() {
                     error!(
                         "Register size mismatch in RegValue: {} != {}",
                         buf.len(),
