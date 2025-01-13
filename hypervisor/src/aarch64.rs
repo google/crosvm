@@ -151,7 +151,7 @@ impl AArch64SysRegId {
     pub const CNTV_CVAL_EL0: Self       = Self::new_unchecked(0b11, 0b011, 0b1110, 0b0011, 0b010);
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum VcpuRegAArch64 {
     X(u8),
     Sp,
