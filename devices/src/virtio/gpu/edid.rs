@@ -226,7 +226,24 @@ fn populate_displayid_detailed_timings(block: &mut [u8], start_index: usize, inf
 
     let htotal = info.width() + (info.horizontal_blanking as u32);
     let vtotal = info.height() + (info.vertical_blanking as u32);
-    let clock = (info.refresh_rate * htotal * vtotal) / 10000;
+    let clock = info
+        .refresh_rate
+        .checked_mul(htotal)
+        .and_then(|x| x.checked_mul(vtotal))
+        .map(|x| x / 10000)
+        .unwrap_or_else(|| {
+            panic!(
+                concat!(
+                    "attempt to multiply with overflow: info.refresh_rate = {}, info.width = {}, ",
+                    "info.horizontal_blanking = {}, info.height() = {}, info.vertical_blanking = {}"
+                ),
+                info.refresh_rate,
+                info.width(),
+                info.horizontal_blanking,
+                info.height(),
+                info.vertical_blanking
+            )
+        });
 
     // 3 bytes for clock.
     block[7] = (clock & 0xff) as u8;
