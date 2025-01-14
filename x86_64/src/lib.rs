@@ -1740,6 +1740,7 @@ impl X8664arch {
                 dump_device_tree_blob,
                 device_tree_overlays,
                 kernel_region,
+                initrd,
             )
             .map_err(Error::CreateFdt)?;
             setup_data.push(SetupData {
