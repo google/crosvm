@@ -1703,33 +1703,6 @@ impl X8664arch {
             kernel_max_cmdline_len,
         )?;
 
-        let mut setup_data = Vec::<SetupData>::new();
-        if android_fstab.is_some()
-            || !device_tree_overlays.is_empty()
-            || protection_type.runs_firmware()
-        {
-            let device_tree_blob = fdt::create_fdt(
-                android_fstab,
-                dump_device_tree_blob,
-                device_tree_overlays,
-                kernel_region,
-            )
-            .map_err(Error::CreateFdt)?;
-            setup_data.push(SetupData {
-                data: device_tree_blob,
-                type_: SetupDataType::Dtb,
-            });
-        }
-
-        setup_data.push(setup_data_rng_seed());
-
-        let setup_data = write_setup_data(
-            mem,
-            GuestAddress(SETUP_DATA_START),
-            GuestAddress(SETUP_DATA_END),
-            &setup_data,
-        )?;
-
         let initrd = match initrd_file {
             Some(mut initrd_file) => {
                 let initrd_addr_max = if params.hdr.xloadflags & XLF_CAN_BE_LOADED_ABOVE_4G != 0 {
@@ -1756,6 +1729,33 @@ impl X8664arch {
             }
             None => None,
         };
+
+        let mut setup_data = Vec::<SetupData>::new();
+        if android_fstab.is_some()
+            || !device_tree_overlays.is_empty()
+            || protection_type.runs_firmware()
+        {
+            let device_tree_blob = fdt::create_fdt(
+                android_fstab,
+                dump_device_tree_blob,
+                device_tree_overlays,
+                kernel_region,
+            )
+            .map_err(Error::CreateFdt)?;
+            setup_data.push(SetupData {
+                data: device_tree_blob,
+                type_: SetupDataType::Dtb,
+            });
+        }
+
+        setup_data.push(setup_data_rng_seed());
+
+        let setup_data = write_setup_data(
+            mem,
+            GuestAddress(SETUP_DATA_START),
+            GuestAddress(SETUP_DATA_END),
+            &setup_data,
+        )?;
 
         configure_system(
             mem,
