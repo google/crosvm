@@ -1,0 +1,165 @@
+[
+  {
+    "cmd": [
+      "vpython3",
+      "-u",
+      "RECIPE_MODULE[depot_tools::bot_update]/resources/bot_update.py",
+      "--spec-path",
+      "cache_dir = '[CACHE]/git'\nsolutions = [{'deps_file': '.DEPS.git', 'managed': True, 'name': 'platform2', 'url': 'https://chromium.googlesource.com/chromiumos/platform2/'}]",
+      "--revision_mapping_file",
+      "{}",
+      "--git-cache-dir",
+      "[CACHE]/git",
+      "--cleanup-dir",
+      "[CLEANUP]/bot_update",
+      "--output_json",
+      "/path/to/tmp/json",
+      "--revision",
+      "platform2@HEAD"
+    ],
+    "cwd": "[CACHE]",
+    "env": {
+      "DEPOT_TOOLS_COLLECT_METRICS": "0",
+      "GIT_BACKENDINFO": "1",
+      "GIT_DAPPER_TRACE": "1",
+      "GIT_HTTP_LOW_SPEED_LIMIT": "102400",
+      "GIT_HTTP_LOW_SPEED_TIME": "1800",
+      "GIT_SSH_COMMAND": "ssh -o SendEnv=GIT_DAPPER_TRACE -o SendEnv=GIT_BACKENDINFO",
+      "GIT_TRACE2_EVENT": "[CLEANUP]/trace2-event",
+      "GIT_TRACE_CURL": "[CLEANUP]/trace-curl",
+      "GIT_TRACE_CURL_NO_DATA": "1",
+      "GIT_TRACE_PACKET": "[CLEANUP]/trace-packet"
+    },
+    "env_suffixes": {
+      "DEPOT_TOOLS_UPDATE": [
+        "0"
+      ],
+      "PATH": [
+        "RECIPE_REPO[depot_tools]"
+      ]
+    },
+    "infra_step": true,
+    "name": "bot_update",
+    "~followup_annotations": [
+      "@@@STEP_TEXT@Some step text@@@",
+      "@@@STEP_LOG_LINE@json.output@{@@@",
+      "@@@STEP_LOG_LINE@json.output@  \"did_run\": true,@@@",
+      "@@@STEP_LOG_LINE@json.output@  \"fixed_revisions\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"platform2\": \"HEAD\"@@@",
+      "@@@STEP_LOG_LINE@json.output@  },@@@",
+      "@@@STEP_LOG_LINE@json.output@  \"manifest\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"platform2\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@      \"repository\": \"https://fake.org/platform2.git\",@@@",
+      "@@@STEP_LOG_LINE@json.output@      \"revision\": \"2a35890fbbc35729fd9e1c6b98fc9968654d8902\"@@@",
+      "@@@STEP_LOG_LINE@json.output@    }@@@",
+      "@@@STEP_LOG_LINE@json.output@  },@@@",
+      "@@@STEP_LOG_LINE@json.output@  \"patch_root\": null,@@@",
+      "@@@STEP_LOG_LINE@json.output@  \"properties\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"got_revision\": \"2a35890fbbc35729fd9e1c6b98fc9968654d8902\"@@@",
+      "@@@STEP_LOG_LINE@json.output@  },@@@",
+      "@@@STEP_LOG_LINE@json.output@  \"root\": \"platform2\",@@@",
+      "@@@STEP_LOG_LINE@json.output@  \"source_manifest\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"directories\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@      \"platform2\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@        \"git_checkout\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@          \"repo_url\": \"https://fake.org/platform2.git\",@@@",
+      "@@@STEP_LOG_LINE@json.output@          \"revision\": \"2a35890fbbc35729fd9e1c6b98fc9968654d8902\"@@@",
+      "@@@STEP_LOG_LINE@json.output@        }@@@",
+      "@@@STEP_LOG_LINE@json.output@      }@@@",
+      "@@@STEP_LOG_LINE@json.output@    },@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"version\": 0@@@",
+      "@@@STEP_LOG_LINE@json.output@  },@@@",
+      "@@@STEP_LOG_LINE@json.output@  \"step_text\": \"Some step text\"@@@",
+      "@@@STEP_LOG_LINE@json.output@}@@@",
+      "@@@STEP_LOG_END@json.output@@@",
+      "@@@SET_BUILD_PROPERTY@got_revision@\"2a35890fbbc35729fd9e1c6b98fc9968654d8902\"@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "docker",
+      "buildx"
+    ],
+    "cwd": "[CACHE]/platform2/vm_tools/baguette_image",
+    "name": "check docker buildx install"
+  },
+  {
+    "cmd": [
+      "git",
+      "rev-parse",
+      "HEAD"
+    ],
+    "cwd": "[CACHE]/platform2/vm_tools/baguette_image",
+    "name": "Get git hash"
+  },
+  {
+    "cmd": [
+      "./src/docker-build.sh"
+    ],
+    "cwd": "[CACHE]/platform2/vm_tools/baguette_image",
+    "name": "build baguette images"
+  },
+  {
+    "cmd": [],
+    "name": "upload VM images"
+  },
+  {
+    "cmd": [],
+    "name": "upload VM images.upload amd64 image",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@",
+      "@@@STEP_LINK@image@https://storage.googleapis.com/cros-containers-staging/baguette/images/baguette_rootfs_amd64_2012-05-14-125321_.img.zstd@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "python3",
+      "-u",
+      "RECIPE_MODULE[depot_tools::gsutil]/resources/gsutil_smart_retry.py",
+      "--",
+      "RECIPE_REPO[depot_tools]/gsutil.py",
+      "----",
+      "cp",
+      "docker_export/baguette_rootfs_amd64.img.zstd",
+      "gs://cros-containers-staging/baguette/images/baguette_rootfs_amd64_2012-05-14-125321_.img.zstd"
+    ],
+    "cwd": "[CACHE]/platform2/vm_tools/baguette_image",
+    "infra_step": true,
+    "name": "upload VM images.upload amd64 image.gsutil upload",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@",
+      "@@@STEP_LINK@gsutil.upload@https://storage.cloud.google.com/cros-containers-staging/baguette/images/baguette_rootfs_amd64_2012-05-14-125321_.img.zstd@@@"
+    ]
+  },
+  {
+    "cmd": [],
+    "name": "upload VM images.upload arm64 image",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@",
+      "@@@STEP_LINK@image@https://storage.googleapis.com/cros-containers-staging/baguette/images/baguette_rootfs_arm64_2012-05-14-125321_.img.zstd@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "python3",
+      "-u",
+      "RECIPE_MODULE[depot_tools::gsutil]/resources/gsutil_smart_retry.py",
+      "--",
+      "RECIPE_REPO[depot_tools]/gsutil.py",
+      "----",
+      "cp",
+      "docker_export/baguette_rootfs_arm64.img.zstd",
+      "gs://cros-containers-staging/baguette/images/baguette_rootfs_arm64_2012-05-14-125321_.img.zstd"
+    ],
+    "cwd": "[CACHE]/platform2/vm_tools/baguette_image",
+    "infra_step": true,
+    "name": "upload VM images.upload arm64 image.gsutil upload",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@",
+      "@@@STEP_LINK@gsutil.upload@https://storage.cloud.google.com/cros-containers-staging/baguette/images/baguette_rootfs_arm64_2012-05-14-125321_.img.zstd@@@"
+    ]
+  },
+  {
+    "name": "$result"
+  }
+]

@@ -1,0 +1,17 @@
+// Copyright 2021 The ChromiumOS Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+syntax = "proto3";
+
+package recipes.crosvm.build_baguette_image;
+
+message BuildBaguetteImageProperties {
+  // Destination gs bucket where the VM image will be copied.
+  // Optional, maybe ignored
+  string destination_gs_bucket = 1;
+
+  // Destination gs path where the VM image will be copied.
+  // Optional, maybe ignored
+  string destination_gs_path = 2;
+}

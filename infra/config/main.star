@@ -398,3 +398,12 @@ infra_builder(
     schedule = "0,30 * * * *",  # Run every 30 minutes
     postsubmit = False,
 )
+
+infra_builder(
+    name = "baguette_builder",
+    executable = luci.recipe(
+        name = "build_baguette_image",
+    ),
+    schedule = "0,0 0 * * 3",  # Run every Wednesday
+    postsubmit = False
+)

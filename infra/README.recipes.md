@@ -6,6 +6,7 @@
   * [crosvm](#recipe_modules-crosvm)
 
 **[Recipes](#Recipes)**
+  * [build_baguette_image](#recipes-build_baguette_image) &mdash; Recipe for building a Baguette rootfs image.
   * [build_chromeos_hatch](#recipes-build_chromeos_hatch)
   * [build_docs](#recipes-build_docs)
   * [build_linux](#recipes-build_linux)
@@ -101,6 +102,14 @@ Runs a luci step inside the crosvm dev container.
 &mdash; **def [upload\_coverage](/infra/recipe_modules/crosvm/api.py#194)(self, filename):**
 ## Recipes
 
+### *recipes* / [build\_baguette\_image](/infra/recipes/build_baguette_image.py)
+
+[DEPS](/infra/recipes/build_baguette_image.py#19): [depot\_tools/bot\_update][depot_tools/recipe_modules/bot_update], [depot\_tools/depot\_tools][depot_tools/recipe_modules/depot_tools], [depot\_tools/gclient][depot_tools/recipe_modules/gclient], [depot\_tools/git][depot_tools/recipe_modules/git], [depot\_tools/gsutil][depot_tools/recipe_modules/gsutil], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/path][recipe_engine/recipe_modules/path], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/raw\_io][recipe_engine/recipe_modules/raw_io], [recipe\_engine/step][recipe_engine/recipe_modules/step], [recipe\_engine/time][recipe_engine/recipe_modules/time]
+
+
+Recipe for building a Baguette rootfs image.
+
+&mdash; **def [RunSteps](/infra/recipes/build_baguette_image.py#49)(api: RecipeApi, properties: BuildBaguetteImageProperties):**
 ### *recipes* / [build\_chromeos\_hatch](/infra/recipes/build_chromeos_hatch.py)
 
 [DEPS](/infra/recipes/build_chromeos_hatch.py#7): [crosvm](#recipe_modules-crosvm), [depot\_tools/depot\_tools][depot_tools/recipe_modules/depot_tools], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
@@ -196,4 +205,5 @@ This recipe requires ambient luci authentication. To test locally run:
 [recipe_engine/recipe_modules/properties]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/e1eaa6f138b3543be53feaf58d26edb3447c720b/README.recipes.md#recipe_modules-properties
 [recipe_engine/recipe_modules/raw_io]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/e1eaa6f138b3543be53feaf58d26edb3447c720b/README.recipes.md#recipe_modules-raw_io
 [recipe_engine/recipe_modules/step]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/e1eaa6f138b3543be53feaf58d26edb3447c720b/README.recipes.md#recipe_modules-step
+[recipe_engine/recipe_modules/time]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/e1eaa6f138b3543be53feaf58d26edb3447c720b/README.recipes.md#recipe_modules-time
 [recipe_engine/wkt/RecipeApi]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/e1eaa6f138b3543be53feaf58d26edb3447c720b/recipe_engine/recipe_api.py#433
