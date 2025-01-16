@@ -648,6 +648,10 @@ impl arch::LinuxArch for AArch64 {
             vcpu_init.push(per_vcpu_init);
         }
 
+        if components.sve_config.auto {
+            components.sve_config.enable = vm.get_hypervisor().check_capability(HypervisorCap::Sve);
+        }
+
         // Initialize Vcpus after all Vcpu objects have been created.
         for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
             let features =

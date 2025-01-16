@@ -177,7 +177,11 @@ impl FromIterator<usize> for CpuSet {
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct SveConfig {
     /// Use SVE
+    #[serde(default)]
     pub enable: bool,
+    /// Detect if SVE is available and enable accordingly. `enable` is ignored if auto is true
+    #[serde(default)]
+    pub auto: bool,
 }
 
 fn parse_cpu_range(s: &str, cpuset: &mut Vec<usize>) -> Result<(), String> {

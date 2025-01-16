@@ -99,6 +99,8 @@ impl Hypervisor for Gunyah {
             HypervisorCap::S390UserSigp | HypervisorCap::TscDeadlineTimer => false,
             #[cfg(target_arch = "x86_64")]
             HypervisorCap::Xcrs | HypervisorCap::CalibratedTscLeafRequired => false,
+            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            HypervisorCap::Sve => false,
         }
     }
 }

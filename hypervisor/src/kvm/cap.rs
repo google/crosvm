@@ -129,4 +129,6 @@ pub enum KvmCap {
     // TODO(b/388092267): use upstream cap when available
     MemNoncoherentDma = KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA_CROS,
     UserMemory2 = KVM_CAP_USER_MEMORY2,
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    Sve = KVM_CAP_ARM_SVE,
 }
