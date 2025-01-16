@@ -71,7 +71,9 @@ if [[ -z "${BINDGEN_LINUX_X86_HEADERS+x}" || ! -d "${BINDGEN_LINUX_X86_HEADERS}"
         make -s headers_install ARCH=x86 INSTALL_HDR_PATH="${BINDGEN_LINUX_X86_HEADERS}" -j "${nproc}"
         make -s headers_install ARCH=arm64 INSTALL_HDR_PATH="${BINDGEN_LINUX_ARM64_HEADERS}" -j "${nproc}"
         make -s headers_install ARCH=riscv INSTALL_HDR_PATH="${BINDGEN_LINUX_RISCV_HEADERS}" -j "${nproc}"
-        make -s mrproper
+        make -s mrproper ARCH=x86
+        make -s mrproper ARCH=arm64
+        make -s mrproper ARCH=riscv
     )
     echo " done."
 fi
