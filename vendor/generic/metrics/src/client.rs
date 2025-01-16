@@ -39,6 +39,10 @@ pub fn log_event(_event_type: MetricEventType) {}
 /// with the supplied value.
 pub fn log_metric(_event_type: MetricEventType, _value: i64) {}
 
+/// Logs a real valued metric (e.g. a data transfer rate, a latency value, etc)
+/// with the supplied value & product specific extra details.
+pub fn log_metric_with_details(_: MetricEventType, _: i64, _: &RecordDetails) {}
+
 /// Logs a histogram metric with the supplied value. Note: step is a value to
 /// be added to the distribution.
 pub fn log_histogram_metric(_event_type: MetricEventType, _step: i64) {}

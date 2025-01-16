@@ -44,6 +44,7 @@ cfg_if::cfg_if! {
 }
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -264,6 +265,7 @@ async fn snapshot_handler(
     buses: &[&Bus],
     compress_memory: bool,
 ) -> anyhow::Result<()> {
+    let mem_snap_start = Instant::now();
     // SAFETY:
     // VM & devices are stopped.
     let guest_memory_metadata = unsafe {
@@ -276,6 +278,19 @@ async fn snapshot_handler(
             .context("failed to snapshot memory")?
     };
     snapshot_writer.write_fragment("mem_metadata", &guest_memory_metadata)?;
+
+    let mem_snap_duration_ms = mem_snap_start.elapsed().as_millis();
+    info!(
+        "snapshot: memory snapshotted {}MB in {}ms",
+        guest_memory.memory_size() / 1024 / 1024,
+        mem_snap_duration_ms
+    );
+    metrics::log_metric_with_details(
+        metrics::MetricEventType::SnapshotSaveMemoryLatency,
+        mem_snap_duration_ms as i64,
+        &metrics_events::RecordDetails {},
+    );
+
     for (i, bus) in buses.iter().enumerate() {
         bus.snapshot_devices(&snapshot_writer.add_namespace(&format!("bus{i}"))?)
             .context("failed to snapshot bus devices")?;
@@ -292,6 +307,7 @@ async fn restore_handler(
     guest_memory: &GuestMemory,
     buses: &[&Bus],
 ) -> anyhow::Result<()> {
+    let mem_restore_start = Instant::now();
     let guest_memory_metadata = snapshot_reader.read_fragment("mem_metadata")?;
     // SAFETY:
     // VM & devices are stopped.
@@ -301,6 +317,18 @@ async fn restore_handler(
             &mut snapshot_reader.raw_fragment("mem")?,
         )?
     };
+    let mem_restore_duration_ms = mem_restore_start.elapsed().as_millis();
+    info!(
+        "snapshot: memory restored {}MB in {}ms",
+        guest_memory.memory_size() / 1024 / 1024,
+        mem_restore_duration_ms
+    );
+    metrics::log_metric_with_details(
+        metrics::MetricEventType::SnapshotRestoreMemoryLatency,
+        mem_restore_duration_ms as i64,
+        &metrics_events::RecordDetails {},
+    );
+
     for (i, bus) in buses.iter().enumerate() {
         bus.restore_devices(&snapshot_reader.namespace(&format!("bus{i}"))?)
             .context("failed to restore bus devices")?;

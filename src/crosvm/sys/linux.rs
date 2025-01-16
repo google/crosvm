@@ -3902,6 +3902,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             },
             /* require_encrypted= */ false,
             &mut suspended_pvclock_state,
+            &linux.vm,
         )?;
         // Allow the vCPUs to start for real.
         vcpu::kick_all_vcpus(

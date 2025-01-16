@@ -1484,6 +1484,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             },
             /* require_encrypted= */ false,
             &mut suspended_pvclock_state,
+            &guest_os.vm,
         )?;
         // Allow the vCPUs to start for real.
         kick_all_vcpus(

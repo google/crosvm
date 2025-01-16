@@ -49,6 +49,7 @@ use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::bail;
 use anyhow::Context;
@@ -2188,6 +2189,7 @@ impl VmRequest {
                     *compress_memory,
                     *encrypt,
                     suspended_pvclock_state,
+                    vm,
                 ) {
                     Ok(()) => {
                         info!("Finished crosvm snapshot successfully");
@@ -2225,7 +2227,10 @@ fn do_snapshot(
     compress_memory: bool,
     encrypt: bool,
     suspended_pvclock_state: &mut Option<hypervisor::ClockState>,
+    vm: &impl Vm,
 ) -> anyhow::Result<()> {
+    let snapshot_start = Instant::now();
+
     let _vcpu_guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
     let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
 
@@ -2316,6 +2321,18 @@ fn do_snapshot(
         bail!("unexpected SnapshotDevices response: {resp}");
     }
     info!("Devices snapshotted.");
+
+    let snap_duration_ms = snapshot_start.elapsed().as_millis();
+    info!(
+        "snapshot: completed snapshot in {}ms; VM mem size: {}MB",
+        snap_duration_ms,
+        vm.get_memory().memory_size() / 1024 / 1024,
+    );
+    metrics::log_metric_with_details(
+        metrics::MetricEventType::SnapshotSaveOverallLatency,
+        snap_duration_ms as i64,
+        &metrics_events::RecordDetails {},
+    );
     Ok(())
 }
 
@@ -2333,7 +2350,9 @@ pub fn do_restore(
     mut restore_irqchip: impl FnMut(serde_json::Value) -> anyhow::Result<()>,
     require_encrypted: bool,
     suspended_pvclock_state: &mut Option<hypervisor::ClockState>,
+    vm: &impl Vm,
 ) -> anyhow::Result<()> {
+    let restore_start = Instant::now();
     let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size);
     let _devices_guard = DeviceSleepGuard::new(device_control_tube)?;
 
@@ -2403,6 +2422,18 @@ pub fn do_restore(
             resp
         );
     }
+
+    let restore_duration_ms = restore_start.elapsed().as_millis();
+    info!(
+        "snapshot: completed restore in {}ms; mem size: {}",
+        restore_duration_ms,
+        vm.get_memory().memory_size(),
+    );
+    metrics::log_metric_with_details(
+        metrics::MetricEventType::SnapshotRestoreOverallLatency,
+        restore_duration_ms as i64,
+        &metrics_events::RecordDetails {},
+    );
     Ok(())
 }
 

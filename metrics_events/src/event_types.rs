@@ -9,8 +9,6 @@ use serde::Serialize;
 #[cfg(windows)]
 use crate::sys::windows::WaveFormatDetails;
 
-// TODO(mikehoyle): Create a way to generate these directly from the
-// proto for a single source-of-truth.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum MetricEventType {
     CpuUsage,
@@ -50,6 +48,10 @@ pub enum MetricEventType {
         virtio_id: u32,
     },
     VcpuShutdownError,
+    SnapshotSaveMemoryLatency,
+    SnapshotSaveOverallLatency,
+    SnapshotRestoreMemoryLatency,
+    SnapshotRestoreOverallLatency,
     Other(i64),
     Vendor(VendorMetricEventType),
 }
