@@ -1410,30 +1410,21 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         }
 
         if !cpu_frequencies.is_empty() {
-            let mut max_freqs = Vec::new();
-
-            for (_cpu, frequencies) in cpu_frequencies.iter() {
-                max_freqs.push(*frequencies.iter().max().ok_or(Error::new(libc::EINVAL))?)
-            }
-
             let host_max_freqs = Arch::get_host_cpu_max_freq_khz()?;
-            let largest_host_max_freq = host_max_freqs
-                .values()
-                .max()
-                .ok_or(Error::new(libc::EINVAL))?;
+            // Find the highest maximum frequency over all host CPUs. The guest CPU IPC ratios will
+            // be normalized by dividing by this value.
+            let host_max_freq = host_max_freqs.values().copied().max().unwrap_or_default();
 
-            for (cpu_id, max_freq) in max_freqs.iter().enumerate() {
-                let normalized_cpu_ipc_ratio =
-                    (u64::from(*cfg.cpu_ipc_ratio.get(&cpu_id).unwrap_or(&1024))
-                        * u64::from(*max_freq))
-                    .checked_div(u64::from(*largest_host_max_freq))
-                    .ok_or(Error::new(libc::EINVAL))?;
-                normalized_cpu_ipc_ratios.insert(
-                    cpu_id,
-                    u32::try_from(normalized_cpu_ipc_ratio)
-                        .map_err(|_| Error::new(libc::EINVAL))?,
-                );
-            }
+            normalized_cpu_ipc_ratios = normalize_cpu_ipc_ratios(
+                cpu_frequencies.iter().map(|(cpu_id, frequencies)| {
+                    (
+                        *cpu_id,
+                        frequencies.iter().copied().max().unwrap_or_default(),
+                    )
+                }),
+                host_max_freq,
+                |cpu_id| cfg.cpu_ipc_ratio.get(&cpu_id).copied().unwrap_or(1024),
+            )?;
 
             if !cfg.cpu_freq_domains.is_empty() {
                 let cgroup_path = cfg
@@ -1556,6 +1547,34 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         sve_config: cfg.sve.unwrap_or_default(),
     })
+}
+
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+fn normalize_cpu_ipc_ratios(
+    max_frequency_per_cpu: impl Iterator<Item = (usize, u32)>,
+    host_max_freq: u32,
+    cpu_ipc_ratio: impl Fn(usize) -> u32,
+) -> Result<BTreeMap<usize, u32>> {
+    if host_max_freq == 0 {
+        return Err(anyhow!("invalid host_max_freq 0"));
+    }
+
+    let host_max_freq = u64::from(host_max_freq);
+    let mut normalized_cpu_ipc_ratios = BTreeMap::new();
+    for (cpu_id, max_freq) in max_frequency_per_cpu {
+        let ipc_ratio = u64::from(cpu_ipc_ratio(cpu_id));
+        let max_freq = u64::from(max_freq);
+
+        let normalized_cpu_ipc_ratio = (ipc_ratio * max_freq) / host_max_freq;
+
+        normalized_cpu_ipc_ratios.insert(
+            cpu_id,
+            u32::try_from(normalized_cpu_ipc_ratio)
+                .context("normalized CPU IPC ratio out of u32 range")?,
+        );
+    }
+
+    Ok(normalized_cpu_ipc_ratios)
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -5212,5 +5231,33 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[test]
+    fn normalized_cpu_ipc_ratios_simple() {
+        let host_max_freq = 5000000;
+        let mut cpu_frequencies = BTreeMap::new();
+        cpu_frequencies.insert(0, vec![100000, 200000, 500000]);
+        cpu_frequencies.insert(1, vec![50000, 75000, 200000]);
+
+        let mut cpu_ipc_ratio = BTreeMap::new();
+        cpu_ipc_ratio.insert(0, 1024);
+        cpu_ipc_ratio.insert(1, 512);
+
+        let normalized_cpu_ipc_ratios = normalize_cpu_ipc_ratios(
+            cpu_frequencies.iter().map(|(cpu_id, frequencies)| {
+                (
+                    *cpu_id,
+                    frequencies.iter().copied().max().unwrap_or_default(),
+                )
+            }),
+            host_max_freq,
+            |cpu_id| cpu_ipc_ratio.get(&cpu_id).copied().unwrap_or(1024),
+        )
+        .expect("normalize_cpu_ipc_ratios failed");
+
+        let ratios: Vec<(usize, u32)> = normalized_cpu_ipc_ratios.into_iter().collect();
+        assert_eq!(ratios, vec![(0, 102), (1, 20)]);
     }
 }
