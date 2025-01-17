@@ -1424,10 +1424,10 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
 
             for (cpu_id, max_freq) in max_freqs.iter().enumerate() {
                 let normalized_cpu_ipc_ratio =
-                    u64::from(*cfg.cpu_ipc_ratio.get(&cpu_id).unwrap_or(&1024))
-                        * u64::from(*max_freq)
-                            .checked_div(u64::from(*largest_host_max_freq))
-                            .ok_or(Error::new(libc::EINVAL))?;
+                    (u64::from(*cfg.cpu_ipc_ratio.get(&cpu_id).unwrap_or(&1024))
+                        * u64::from(*max_freq))
+                    .checked_div(u64::from(*largest_host_max_freq))
+                    .ok_or(Error::new(libc::EINVAL))?;
                 normalized_cpu_ipc_ratios.insert(
                     cpu_id,
                     u32::try_from(normalized_cpu_ipc_ratio)
