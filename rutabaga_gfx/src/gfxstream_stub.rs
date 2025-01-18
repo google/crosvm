@@ -51,10 +51,12 @@ extern "C" fn stream_renderer_resource_create(
 extern "C" fn stream_renderer_resource_unref(_res_handle: u32) {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_context_destroy(_handle: u32) {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_transfer_read_iov(
     _handle: u32,
@@ -69,6 +71,7 @@ extern "C" fn stream_renderer_transfer_read_iov(
 ) -> c_int {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_transfer_write_iov(
     _handle: u32,
@@ -83,10 +86,12 @@ extern "C" fn stream_renderer_transfer_write_iov(
 ) -> c_int {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_submit_cmd(_cmd: *const stream_renderer_command) -> c_int {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_resource_attach_iov(
     _res_handle: c_int,
@@ -95,6 +100,7 @@ extern "C" fn stream_renderer_resource_attach_iov(
 ) -> c_int {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_resource_detach_iov(
     _res_handle: c_int,
@@ -103,18 +109,22 @@ extern "C" fn stream_renderer_resource_detach_iov(
 ) {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_ctx_attach_resource(_ctx_id: c_int, _res_handle: c_int) {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_ctx_detach_resource(_ctx_id: c_int, _res_handle: c_int) {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_get_cap_set(_set: u32, _max_ver: *mut u32, _max_size: *mut u32) {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_fill_caps(_set: u32, _version: u32, _caps: *mut c_void) {
     unimplemented!();
@@ -124,6 +134,7 @@ extern "C" fn stream_renderer_fill_caps(_set: u32, _version: u32, _caps: *mut c_
 extern "C" fn stream_renderer_flush(_res_handle: u32) {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_create_blob(
     _ctx_id: u32,
@@ -143,6 +154,7 @@ extern "C" fn stream_renderer_export_blob(
 ) -> c_int {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_resource_map(
     _res_handle: u32,
@@ -151,14 +163,17 @@ extern "C" fn stream_renderer_resource_map(
 ) -> c_int {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_resource_unmap(_res_handle: u32) -> c_int {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_resource_map_info(_res_handle: u32, _map_info: *mut u32) -> c_int {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_vulkan_info(
     _res_handle: u32,
@@ -166,6 +181,7 @@ extern "C" fn stream_renderer_vulkan_info(
 ) -> c_int {
     unimplemented!();
 }
+
 #[no_mangle]
 extern "C" fn stream_renderer_context_create(
     _handle: u32,
@@ -175,8 +191,8 @@ extern "C" fn stream_renderer_context_create(
 ) -> c_int {
     unimplemented!();
 }
-#[no_mangle]
 
+#[no_mangle]
 extern "C" fn stream_renderer_create_fence(_fence: *const stream_renderer_fence) -> c_int {
     unimplemented!();
 }
