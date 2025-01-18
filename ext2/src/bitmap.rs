@@ -55,7 +55,7 @@ impl<'a> BitMap<'a> {
 
 // Implements test utility methods.
 #[cfg(test)]
-impl<'a> BitMap<'a> {
+impl BitMap<'_> {
     // Returns the number of bits in the bitmap that are set.
     pub fn count_zeros(&self) -> usize {
         self.inner.iter().map(|b| b.count_zeros() as usize).sum()

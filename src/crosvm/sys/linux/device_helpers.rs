@@ -208,7 +208,7 @@ pub trait IntoUnixStream {
     fn into_unix_stream(self) -> Result<UnixStream>;
 }
 
-impl<'a> IntoUnixStream for &'a Path {
+impl IntoUnixStream for &Path {
     fn into_unix_stream(self) -> Result<UnixStream> {
         if let Some(fd) = safe_descriptor_from_path(self)
             .with_context(|| format!("failed to open event device '{}'", self.display()))?
@@ -221,7 +221,7 @@ impl<'a> IntoUnixStream for &'a Path {
     }
 }
 
-impl<'a> IntoUnixStream for &'a PathBuf {
+impl IntoUnixStream for &PathBuf {
     fn into_unix_stream(self) -> Result<UnixStream> {
         self.as_path().into_unix_stream()
     }
@@ -306,7 +306,7 @@ impl<'a> DiskConfig<'a> {
     }
 }
 
-impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
+impl VirtioDeviceBuilder for DiskConfig<'_> {
     const NAME: &'static str = "block";
 
     fn create_virtio_device(

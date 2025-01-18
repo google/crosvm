@@ -150,7 +150,7 @@ impl ToSocketAddr for (VsockCid, c_uint) {
     }
 }
 
-impl<'a, T: ToSocketAddr + ?Sized> ToSocketAddr for &'a T {
+impl<T: ToSocketAddr + ?Sized> ToSocketAddr for &T {
     fn to_socket_addr(&self) -> result::Result<SocketAddr, AddrParseError> {
         (**self).to_socket_addr()
     }

@@ -362,7 +362,7 @@ unsafe fn is_all_zero_naive(head_addr: usize, tail_addr: usize) -> bool {
     (head_addr..tail_addr).all(|addr| *(addr as *const u8) == 0)
 }
 
-impl<'a> VolatileMemory for VolatileSlice<'a> {
+impl VolatileMemory for VolatileSlice<'_> {
     fn get_slice(&self, offset: usize, count: usize) -> Result<VolatileSlice> {
         self.sub_slice(offset, count)
     }

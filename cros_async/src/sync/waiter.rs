@@ -233,7 +233,7 @@ pub struct WaitFuture<'w> {
     waiter: &'w Waiter,
 }
 
-impl<'w> Future for WaitFuture<'w> {
+impl Future for WaitFuture<'_> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -266,7 +266,7 @@ impl<'w> Future for WaitFuture<'w> {
     }
 }
 
-impl<'w> Drop for WaitFuture<'w> {
+impl Drop for WaitFuture<'_> {
     fn drop(&mut self) {
         let state = self.waiter.state.lock();
 

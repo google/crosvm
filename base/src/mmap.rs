@@ -457,7 +457,7 @@ impl<'a> MemoryMappingBuilder<'a> {
     /// Note: this is a forward looking interface to accomodate platforms that
     /// require special handling for file backed mappings.
     #[allow(clippy::wrong_self_convention, unused_mut)]
-    pub fn from_file(mut self, file: &'a File) -> MemoryMappingBuilder {
+    pub fn from_file(mut self, file: &'a File) -> MemoryMappingBuilder<'a> {
         // On Windows, files require special handling (next day shipping if possible).
         self.is_file_descriptor = true;
 
@@ -468,7 +468,7 @@ impl<'a> MemoryMappingBuilder<'a> {
     /// Build the memory mapping given the specified SharedMemory to mapped memory
     ///
     /// Default: Create a new memory mapping.
-    pub fn from_shared_memory(mut self, shm: &'a SharedMemory) -> MemoryMappingBuilder {
+    pub fn from_shared_memory(mut self, shm: &'a SharedMemory) -> MemoryMappingBuilder<'a> {
         self.descriptor = Some(shm as &dyn AsRawDescriptor);
         self
     }

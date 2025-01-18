@@ -418,7 +418,7 @@ struct AudioBuffer<'a> {
     frame_size: usize, // Size of a frame in bytes.
 }
 
-impl<'a> AudioBuffer<'a> {
+impl AudioBuffer<'_> {
     /// Returns the number of audio frames that fit in the buffer.
     pub fn frame_capacity(&self) -> usize {
         self.buffer.len() / self.frame_size
@@ -463,7 +463,7 @@ impl<'a> AudioBuffer<'a> {
     }
 }
 
-impl<'a> Write for AudioBuffer<'a> {
+impl Write for AudioBuffer<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let written = (&mut self.buffer[self.offset..]).write(&buf[..buf.len()])?;
         self.offset += written;
@@ -475,7 +475,7 @@ impl<'a> Write for AudioBuffer<'a> {
     }
 }
 
-impl<'a> Read for AudioBuffer<'a> {
+impl Read for AudioBuffer<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let len = buf.len() / self.frame_size * self.frame_size;
         let written = (&mut buf[..len]).write(&self.buffer[self.offset..])?;
@@ -540,7 +540,7 @@ impl<'a> PlaybackBuffer<'a> {
     }
 }
 
-impl<'a> Write for PlaybackBuffer<'a> {
+impl Write for PlaybackBuffer<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.buffer.write(buf)
     }
@@ -610,7 +610,7 @@ impl<'a> AsyncPlaybackBuffer<'a> {
     }
 }
 
-impl<'a> Write for AsyncPlaybackBuffer<'a> {
+impl Write for AsyncPlaybackBuffer<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.buffer.write(buf)
     }

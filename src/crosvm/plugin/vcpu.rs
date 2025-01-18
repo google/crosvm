@@ -335,7 +335,7 @@ enum VcpuRunData<'a> {
     Write(&'a [u8]),
 }
 
-impl<'a> VcpuRunData<'a> {
+impl VcpuRunData<'_> {
     fn is_write(&self) -> bool {
         matches!(self, VcpuRunData::Write(_))
     }

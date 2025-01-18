@@ -908,7 +908,7 @@ mod tests {
         ex: &'a Arc<RawExecutor<UringReactor>>,
     }
 
-    impl<'a> Future for UringQueueEmpty<'a> {
+    impl Future for UringQueueEmpty<'_> {
         type Output = ();
 
         fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {

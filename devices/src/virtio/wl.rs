@@ -776,7 +776,7 @@ enum WlResp<'a> {
     InvalidCommand,
 }
 
-impl<'a> WlResp<'a> {
+impl WlResp<'_> {
     fn get_code(&self) -> u32 {
         match *self {
             WlResp::Ok => VIRTIO_WL_RESP_OK,

@@ -161,7 +161,7 @@ impl<'a> CaptureBuffer<'a> {
     }
 }
 
-impl<'a> Read for CaptureBuffer<'a> {
+impl Read for CaptureBuffer<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.buffer.read(buf)
     }
@@ -220,7 +220,7 @@ impl<'a> AsyncCaptureBuffer<'a> {
     }
 }
 
-impl<'a> Read for AsyncCaptureBuffer<'a> {
+impl Read for AsyncCaptureBuffer<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.buffer.read(buf)
     }

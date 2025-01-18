@@ -50,7 +50,7 @@ struct DirEntryWithName<'a> {
     name: OsString,
 }
 
-impl<'a> std::fmt::Debug for DirEntryWithName<'a> {
+impl std::fmt::Debug for DirEntryWithName<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DirEntry")
             .field("de", &self.de)

@@ -182,7 +182,7 @@ pub struct ReaderIterator<'a, T: FromBytes> {
     phantom: PhantomData<T>,
 }
 
-impl<'a, T: FromBytes> Iterator for ReaderIterator<'a, T> {
+impl<T: FromBytes> Iterator for ReaderIterator<'_, T> {
     type Item = io::Result<T>;
 
     fn next(&mut self) -> Option<io::Result<T>> {

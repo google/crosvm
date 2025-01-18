@@ -467,7 +467,7 @@ impl<'a, T: AsBufferHandle> BufferMapping<'a, T> {
     }
 }
 
-impl<'a, T: AsBufferHandle> AsRef<[u8]> for BufferMapping<'a, T> {
+impl<T: AsBufferHandle> AsRef<[u8]> for BufferMapping<'_, T> {
     fn as_ref(&self) -> &[u8] {
         let mapping = &self.mapping;
         // SAFETY:
@@ -477,7 +477,7 @@ impl<'a, T: AsBufferHandle> AsRef<[u8]> for BufferMapping<'a, T> {
     }
 }
 
-impl<'a, T: AsBufferHandle> AsMut<[u8]> for BufferMapping<'a, T> {
+impl<T: AsBufferHandle> AsMut<[u8]> for BufferMapping<'_, T> {
     fn as_mut(&mut self) -> &mut [u8] {
         let mapping = &self.mapping;
         // SAFETY:

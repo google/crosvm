@@ -864,7 +864,7 @@ impl CompleteQueueState {
 }
 
 // Return the completed ops with their result.
-impl<'c> Iterator for &'c CompleteQueueState {
+impl Iterator for &CompleteQueueState {
     type Item = (UserData, std::io::Result<u32>);
 
     fn next(&mut self) -> Option<Self::Item> {

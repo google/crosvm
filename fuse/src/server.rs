@@ -126,7 +126,7 @@ pub trait Mapper {
     fn unmap(&self, offset: u64, size: u64) -> io::Result<()>;
 }
 
-impl<'a, M: Mapper> Mapper for &'a M {
+impl<M: Mapper> Mapper for &M {
     fn map(
         &self,
         mem_offset: u64,

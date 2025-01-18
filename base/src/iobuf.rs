@@ -130,13 +130,13 @@ impl<'a> IoBufMut<'a> {
     }
 }
 
-impl<'a> AsRef<IoBuf> for IoBufMut<'a> {
+impl AsRef<IoBuf> for IoBufMut<'_> {
     fn as_ref(&self) -> &IoBuf {
         &self.iobuf
     }
 }
 
-impl<'a> AsMut<IoBuf> for IoBufMut<'a> {
+impl AsMut<IoBuf> for IoBufMut<'_> {
     fn as_mut(&mut self) -> &mut IoBuf {
         &mut self.iobuf
     }
@@ -147,11 +147,11 @@ impl<'a> AsMut<IoBuf> for IoBufMut<'a> {
 // is Send + Sync. Internally, it contains a pointer and a length. The integer length is safely Send
 // + Sync.  There's nothing wrong with sending a pointer between threads and de-referencing the
 // pointer requires an unsafe block anyway. See also https://github.com/rust-lang/rust/pull/70342.
-unsafe impl<'a> Send for IoBufMut<'a> {}
+unsafe impl Send for IoBufMut<'_> {}
 // SAFETY: See comments for impl Send
-unsafe impl<'a> Sync for IoBufMut<'a> {}
+unsafe impl Sync for IoBufMut<'_> {}
 
-impl<'a> Debug for IoBufMut<'a> {
+impl Debug for IoBufMut<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("IoBufMut")
             .field("ptr", &self.iobuf.ptr())

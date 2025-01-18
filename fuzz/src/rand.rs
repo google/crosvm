@@ -32,7 +32,7 @@ impl<'a> FuzzRng<'a> {
     }
 }
 
-impl<'a> RngCore for FuzzRng<'a> {
+impl RngCore for FuzzRng<'_> {
     fn next_u32(&mut self) -> u32 {
         let mut buf = [0u8; size_of::<u32>()];
         self.fill_bytes(&mut buf);
@@ -72,7 +72,7 @@ impl<'a> RngCore for FuzzRng<'a> {
     }
 }
 
-impl<'a> fmt::Debug for FuzzRng<'a> {
+impl fmt::Debug for FuzzRng<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "FuzzRng {{ {} bytes }}", self.buf.len())
     }

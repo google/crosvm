@@ -58,7 +58,7 @@ pub struct RunnableQueueIter<'q> {
     queue: &'q RunnableQueue,
 }
 
-impl<'q> Iterator for RunnableQueueIter<'q> {
+impl Iterator for RunnableQueueIter<'_> {
     type Item = Runnable;
     fn next(&mut self) -> Option<Self::Item> {
         self.queue.pop_front()

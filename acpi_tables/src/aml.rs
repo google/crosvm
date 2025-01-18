@@ -288,7 +288,7 @@ pub struct VarPackageTerm<'a> {
     data: &'a dyn Aml,
 }
 
-impl<'a> Aml for VarPackageTerm<'a> {
+impl Aml for VarPackageTerm<'_> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml.push(VARPACKAGEOP);
 
@@ -458,7 +458,7 @@ pub struct ResourceTemplate<'a> {
     children: Vec<&'a dyn Aml>,
 }
 
-impl<'a> Aml for ResourceTemplate<'a> {
+impl Aml for ResourceTemplate<'_> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml.push(BUFFEROP);
 
@@ -719,7 +719,7 @@ pub struct Device<'a> {
     children: Vec<&'a dyn Aml>,
 }
 
-impl<'a> Aml for Device<'a> {
+impl Aml for Device<'_> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml.push(EXTOPPREFIX); /* ExtOpPrefix */
         aml.push(DEVICEOP); /* DeviceOp */
@@ -748,7 +748,7 @@ pub struct Scope<'a> {
     children: Vec<&'a dyn Aml>,
 }
 
-impl<'a> Aml for Scope<'a> {
+impl Aml for Scope<'_> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml.push(SCOPEOP);
 
@@ -805,7 +805,7 @@ impl<'a> Method<'a> {
     }
 }
 
-impl<'a> Aml for Method<'a> {
+impl Aml for Method<'_> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml.push(METHODOP);
 
@@ -948,7 +948,7 @@ impl<'a> OpRegion<'a> {
     }
 }
 
-impl<'a> Aml for OpRegion<'a> {
+impl Aml for OpRegion<'_> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml.push(EXTOPPREFIX);
         aml.push(OPREGIONOP);
@@ -976,7 +976,7 @@ impl<'a> If<'a> {
     }
 }
 
-impl<'a> Aml for If<'a> {
+impl Aml for If<'_> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml.push(IFOP);
 
@@ -1003,7 +1003,7 @@ impl<'a> Else<'a> {
     }
 }
 
-impl<'a> Aml for Else<'a> {
+impl Aml for Else<'_> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml.push(ELSEOP);
 
@@ -1090,7 +1090,7 @@ impl<'a> Store<'a> {
     }
 }
 
-impl<'a> Aml for Store<'a> {
+impl Aml for Store<'_> {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
         bytes.push(STOREOP);
         self.value.to_aml_bytes(bytes);
@@ -1175,7 +1175,7 @@ impl<'a> Notify<'a> {
     }
 }
 
-impl<'a> Aml for Notify<'a> {
+impl Aml for Notify<'_> {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
         bytes.push(NOTIFYOP);
         self.object.to_aml_bytes(bytes);
@@ -1200,7 +1200,7 @@ impl<'a> While<'a> {
     }
 }
 
-impl<'a> Aml for While<'a> {
+impl Aml for While<'_> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml.push(WHILEOP);
 
@@ -1340,7 +1340,7 @@ impl<'a> CreateField<'a> {
     }
 }
 
-impl<'a> Aml for CreateField<'a> {
+impl Aml for CreateField<'_> {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
         bytes.push(EXTOPPREFIX);
         bytes.push(CREATEFIELDOP);
@@ -1375,7 +1375,7 @@ impl<'a> Mid<'a> {
     }
 }
 
-impl<'a> Aml for Mid<'a> {
+impl Aml for Mid<'_> {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
         bytes.push(MIDOP);
         self.source.to_aml_bytes(bytes);
@@ -1398,7 +1398,7 @@ impl<'a> MethodCall<'a> {
     }
 }
 
-impl<'a> Aml for MethodCall<'a> {
+impl Aml for MethodCall<'_> {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
         self.name.to_aml_bytes(bytes);
         for arg in self.args.iter() {
@@ -1419,7 +1419,7 @@ impl<'a> BufferTerm<'a> {
     }
 }
 
-impl<'a> Aml for BufferTerm<'a> {
+impl Aml for BufferTerm<'_> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml.push(BUFFEROP);
 
@@ -1551,7 +1551,7 @@ impl<'a> PowerResource<'a> {
     }
 }
 
-impl<'a> Aml for PowerResource<'a> {
+impl Aml for PowerResource<'_> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml.push(EXTOPPREFIX);
         aml.push(POWERRESOURCEOP);

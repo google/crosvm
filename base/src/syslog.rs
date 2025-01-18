@@ -468,7 +468,7 @@ impl<'a> Syslogger<'a> {
     }
 }
 
-impl<'a> io::Write for Syslogger<'a> {
+impl io::Write for Syslogger<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let state = (self.get_state_fn)();
         self.buf.extend_from_slice(buf);

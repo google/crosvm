@@ -165,7 +165,7 @@ impl<'a> GpuDisplayFramebuffer<'a> {
         framebuffer: VolatileSlice<'a>,
         stride: u32,
         bytes_per_pixel: u32,
-    ) -> GpuDisplayFramebuffer {
+    ) -> GpuDisplayFramebuffer<'a> {
         GpuDisplayFramebuffer {
             framebuffer,
             slice: framebuffer,

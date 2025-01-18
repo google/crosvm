@@ -408,7 +408,7 @@ pub unsafe trait AsIobuf: Sized {
 // SAFETY:
 // Safe because there are no other mutable references to the memory described by `IoSlice` and it is
 // guaranteed to be ABI-compatible with `iovec`.
-unsafe impl<'a> AsIobuf for IoSlice<'a> {
+unsafe impl AsIobuf for IoSlice<'_> {
     fn as_iobuf(&self) -> iovec {
         iovec {
             iov_base: self.as_ptr() as *mut c_void,
@@ -432,7 +432,7 @@ unsafe impl<'a> AsIobuf for IoSlice<'a> {
 // SAFETY:
 // Safe because there are no other references to the memory described by `IoSliceMut` and it is
 // guaranteed to be ABI-compatible with `iovec`.
-unsafe impl<'a> AsIobuf for IoSliceMut<'a> {
+unsafe impl AsIobuf for IoSliceMut<'_> {
     fn as_iobuf(&self) -> iovec {
         iovec {
             iov_base: self.as_ptr() as *mut c_void,
@@ -456,7 +456,7 @@ unsafe impl<'a> AsIobuf for IoSliceMut<'a> {
 // SAFETY:
 // Safe because volatile slices are only ever accessed with other volatile interfaces and the
 // pointer and size are guaranteed to be accurate.
-unsafe impl<'a> AsIobuf for VolatileSlice<'a> {
+unsafe impl AsIobuf for VolatileSlice<'_> {
     fn as_iobuf(&self) -> iovec {
         *self.as_iobuf().as_ref()
     }

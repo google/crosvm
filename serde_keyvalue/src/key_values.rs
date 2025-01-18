@@ -496,7 +496,7 @@ impl<'de> de::MapAccess<'de> for EmptyMapAccess {
     }
 }
 
-impl<'a, 'de> de::EnumAccess<'de> for &'a mut KeyValueDeserializer<'de> {
+impl<'de> de::EnumAccess<'de> for &mut KeyValueDeserializer<'de> {
     type Error = ParseError;
     type Variant = Self;
 
@@ -509,7 +509,7 @@ impl<'a, 'de> de::EnumAccess<'de> for &'a mut KeyValueDeserializer<'de> {
     }
 }
 
-impl<'a, 'de> de::VariantAccess<'de> for &'a mut KeyValueDeserializer<'de> {
+impl<'de> de::VariantAccess<'de> for &mut KeyValueDeserializer<'de> {
     type Error = ParseError;
 
     fn unit_variant(self) -> Result<()> {
@@ -573,7 +573,7 @@ impl<'de> de::SeqAccess<'de> for KeyValueDeserializer<'de> {
     }
 }
 
-impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
+impl<'de> de::Deserializer<'de> for &mut KeyValueDeserializer<'de> {
     type Error = ParseError;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>

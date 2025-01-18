@@ -856,7 +856,7 @@ impl<'a, T: ?Sized> RwLockWriteGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> Deref for RwLockWriteGuard<'a, T> {
+impl<T: ?Sized> Deref for RwLockWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -864,13 +864,13 @@ impl<'a, T: ?Sized> Deref for RwLockWriteGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> DerefMut for RwLockWriteGuard<'a, T> {
+impl<T: ?Sized> DerefMut for RwLockWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.value
     }
 }
 
-impl<'a, T: ?Sized> Drop for RwLockWriteGuard<'a, T> {
+impl<T: ?Sized> Drop for RwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
         self.mu.unlock()
     }
@@ -894,7 +894,7 @@ impl<'a, T: ?Sized> RwLockReadGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> Deref for RwLockReadGuard<'a, T> {
+impl<T: ?Sized> Deref for RwLockReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -902,7 +902,7 @@ impl<'a, T: ?Sized> Deref for RwLockReadGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> Drop for RwLockReadGuard<'a, T> {
+impl<T: ?Sized> Drop for RwLockReadGuard<'_, T> {
     fn drop(&mut self) {
         self.mu.read_unlock()
     }

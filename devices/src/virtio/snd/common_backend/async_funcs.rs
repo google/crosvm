@@ -236,8 +236,8 @@ async fn write_data(
     }
 }
 
-async fn read_data<'a>(
-    mut src_buf: AsyncCaptureBuffer<'a>,
+async fn read_data(
+    mut src_buf: AsyncCaptureBuffer<'_>,
     writer: Option<&mut Writer>,
     period_bytes: usize,
 ) -> Result<u32, Error> {

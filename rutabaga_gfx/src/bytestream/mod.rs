@@ -16,7 +16,7 @@ pub struct Reader<'slice> {
     data: &'slice [u8],
 }
 
-impl<'slice> Reader<'slice> {
+impl Reader<'_> {
     /// Construct a new Reader wrapper over `data`.
     pub fn new(data: &[u8]) -> Reader {
         Reader { data }
@@ -62,7 +62,7 @@ pub struct Writer<'slice> {
     index: usize,
 }
 
-impl<'slice> Writer<'slice> {
+impl Writer<'_> {
     pub fn new(data: &mut [u8]) -> Writer {
         Writer { data, index: 0 }
     }

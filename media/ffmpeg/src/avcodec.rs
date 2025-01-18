@@ -702,7 +702,7 @@ pub struct AvPacket<'a> {
     _buffer_data: PhantomData<&'a ()>,
 }
 
-impl<'a> Drop for AvPacket<'a> {
+impl Drop for AvPacket<'_> {
     fn drop(&mut self) {
         // SAFETY:
         // Safe because `self.packet` is a valid `AVPacket` instance.
@@ -712,7 +712,7 @@ impl<'a> Drop for AvPacket<'a> {
     }
 }
 
-impl<'a> AsRef<ffi::AVPacket> for AvPacket<'a> {
+impl AsRef<ffi::AVPacket> for AvPacket<'_> {
     fn as_ref(&self) -> &ffi::AVPacket {
         &self.packet
     }

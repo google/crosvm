@@ -90,7 +90,7 @@ impl<'a> FileDataIterator<'a> {
     }
 }
 
-impl<'a> Iterator for FileDataIterator<'a> {
+impl Iterator for FileDataIterator<'_> {
     type Item = Result<Range<u64>>;
 
     fn next(&mut self) -> Option<Self::Item> {

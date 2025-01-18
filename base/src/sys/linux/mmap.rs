@@ -898,7 +898,7 @@ impl MemoryMappingUnix for CrateMemoryMapping {
 
 pub trait MemoryMappingBuilderUnix<'a> {
     #[allow(clippy::wrong_self_convention)]
-    fn from_descriptor(self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder;
+    fn from_descriptor(self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder<'a>;
 }
 
 impl<'a> MemoryMappingBuilderUnix<'a> for MemoryMappingBuilder<'a> {
@@ -906,7 +906,7 @@ impl<'a> MemoryMappingBuilderUnix<'a> for MemoryMappingBuilder<'a> {
     ///
     /// Default: Create a new memory mapping.
     #[allow(clippy::wrong_self_convention)]
-    fn from_descriptor(mut self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder {
+    fn from_descriptor(mut self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder<'a> {
         self.descriptor = Some(descriptor);
         self
     }

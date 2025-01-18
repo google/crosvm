@@ -431,7 +431,7 @@ pub struct PciBarIter<'a> {
     bar_num: PciBarIndex,
 }
 
-impl<'a> Iterator for PciBarIter<'a> {
+impl Iterator for PciBarIter<'_> {
     type Item = PciBarConfiguration;
 
     fn next(&mut self) -> Option<Self::Item> {

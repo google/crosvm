@@ -27,7 +27,7 @@ pub enum MountOption<'a> {
 }
 
 // Implement Display for ToString to convert to actual mount options.
-impl<'a> fmt::Display for MountOption<'a> {
+impl fmt::Display for MountOption<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             MountOption::FD(fd) => write!(f, "fd={}", fd),

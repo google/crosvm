@@ -167,7 +167,7 @@ impl<'a, T: Serialize> SerializeDescriptors<'a, T> {
     }
 }
 
-impl<'a, T: Serialize> Serialize for SerializeDescriptors<'a, T> {
+impl<T: Serialize> Serialize for SerializeDescriptors<'_, T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -243,7 +243,7 @@ where
 {
     struct DescriptorVisitor;
 
-    impl<'de> Visitor<'de> for DescriptorVisitor {
+    impl Visitor<'_> for DescriptorVisitor {
         type Value = u32;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
