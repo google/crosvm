@@ -2025,9 +2025,8 @@ fn parse_selinux_xattr(buf: &[u8]) -> Result<Option<&CStr>> {
     // 8-byte alignment. If adding 7 causes an overflow, then the `size` field of our header
     // is invalid, so we should return an error.
     let padded_secctx_size = cur_secctx_pos
-        .checked_add(7)
-        .map(|l| l & !7)
-        .ok_or_else(|| Error::InvalidHeaderLength)?;
+        .checked_next_multiple_of(8)
+        .ok_or(Error::InvalidHeaderLength)?;
     if padded_secctx_size != secctx_header.size as usize {
         return Err(Error::InvalidHeaderLength);
     }

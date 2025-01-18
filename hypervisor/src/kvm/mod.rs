@@ -155,7 +155,7 @@ unsafe fn set_user_memory_region(
 /// * `size` - Number of bytes in the memory region being queried.
 pub fn dirty_log_bitmap_size(size: usize) -> usize {
     let page_size = pagesize();
-    (((size + page_size - 1) / page_size) + 7) / 8
+    size.div_ceil(page_size).div_ceil(8)
 }
 
 pub struct Kvm {
@@ -647,7 +647,7 @@ impl Vm for KvmVm {
         // KVM require to set the user memory region with page size aligned size. Safe to extend
         // the mem.size() to be page size aligned because the mmap will round up the size to be
         // page size aligned if it is not.
-        let size = (mem.size() as u64 + pgsz - 1) / pgsz * pgsz;
+        let size = (mem.size() as u64).next_multiple_of(pgsz);
         let end_addr = guest_addr
             .checked_add(size)
             .ok_or_else(|| Error::new(EOVERFLOW))?;

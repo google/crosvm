@@ -131,8 +131,7 @@ impl MsixConfig {
             .iter_mut()
             .for_each(|entry| entry.vector_ctl |= MSIX_TABLE_ENTRY_MASK_BIT);
         let mut pba_entries: Vec<u64> = Vec::new();
-        let num_pba_entries: usize =
-            ((msix_vectors as usize) + BITS_PER_PBA_ENTRY - 1) / BITS_PER_PBA_ENTRY;
+        let num_pba_entries: usize = (msix_vectors as usize).div_ceil(BITS_PER_PBA_ENTRY);
         pba_entries.resize_with(num_pba_entries, Default::default);
 
         let mut irq_vec = Vec::new();

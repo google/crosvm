@@ -128,7 +128,7 @@ unsafe fn set_user_memory_region<F: AsRawDescriptor>(
 /// * `size` - Number of bytes in the memory region being queried.
 pub fn dirty_log_bitmap_size(size: usize) -> usize {
     let page_size = pagesize();
-    (((size + page_size - 1) / page_size) + 7) / 8
+    size.div_ceil(page_size).div_ceil(8)
 }
 
 /// A wrapper around opening and using `/dev/kvm`.

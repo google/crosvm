@@ -1187,7 +1187,7 @@ impl SimpleAllocator {
     fn alloc(&mut self, size: u64, align: u64) -> std::result::Result<u64, PciDeviceError> {
         if align > 0 {
             // aligns current_address upward to align.
-            self.current_address = (self.current_address + align - 1) / align * align;
+            self.current_address = self.current_address.next_multiple_of(align);
         }
         let start_address = self.current_address;
         self.current_address += size;

@@ -1680,8 +1680,7 @@ impl PassthroughFs {
         // This digest size is what the fsverity command line utility uses.
         const DIGEST_SIZE: u16 = FS_VERITY_MAX_DIGEST_SIZE * 2 + 1;
         const BUFLEN: usize = size_of::<fsverity_digest>() + DIGEST_SIZE as usize;
-        const ROUNDED_LEN: usize =
-            (BUFLEN + size_of::<fsverity_digest>() - 1) / size_of::<fsverity_digest>();
+        const ROUNDED_LEN: usize = BUFLEN.div_ceil(size_of::<fsverity_digest>());
 
         // Make sure we get a properly aligned allocation.
         let mut buf = [MaybeUninit::<fsverity_digest>::uninit(); ROUNDED_LEN];

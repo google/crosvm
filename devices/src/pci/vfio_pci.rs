@@ -255,9 +255,8 @@ impl VfioMsixCap {
         }
 
         let table_size_bytes = table_size * MSIX_TABLE_ENTRIES_MODULO;
-        let pba_size_bytes = ((table_size + BITS_PER_PBA_ENTRY as u64 - 1)
-            / BITS_PER_PBA_ENTRY as u64)
-            * MSIX_PBA_ENTRIES_MODULO;
+        let pba_size_bytes =
+            table_size.div_ceil(BITS_PER_PBA_ENTRY as u64) * MSIX_PBA_ENTRIES_MODULO;
         let mut msix_interrupt_evt = Vec::new();
         for _ in 0..table_size {
             msix_interrupt_evt.push(Event::new().expect("failed to create msix interrupt"));

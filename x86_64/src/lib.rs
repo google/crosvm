@@ -1769,7 +1769,7 @@ impl X8664arch {
     fn get_pcie_vcfg_mmio_range(mem: &GuestMemory, pcie_cfg_mmio: &AddressRange) -> AddressRange {
         // Put PCIe VCFG region at a 2MB boundary after physical memory or 4gb, whichever is
         // greater.
-        let ram_end_round_2mb = (mem.end_addr().offset() + 2 * MB - 1) / (2 * MB) * (2 * MB);
+        let ram_end_round_2mb = mem.end_addr().offset().next_multiple_of(2 * MB);
         let start = std::cmp::max(ram_end_round_2mb, 4 * GB);
         // Each pci device's ECAM size is 4kb and its vcfg size is 8kb
         let end = start + pcie_cfg_mmio.len().unwrap() * 2 - 1;

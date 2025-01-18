@@ -565,15 +565,9 @@ pub struct PartitionInfo {
     pub part_guid: Option<Uuid>,
 }
 
-/// Round `val` up to the next multiple of 2**`align_log`.
-const fn align_to_power_of_2(val: u64, align_log: u8) -> u64 {
-    let align = 1 << align_log;
-    ((val + (align - 1)) / align) * align
-}
-
 impl PartitionInfo {
     fn aligned_size(&self) -> u64 {
-        align_to_power_of_2(self.size, PARTITION_SIZE_SHIFT)
+        self.size.next_multiple_of(1 << PARTITION_SIZE_SHIFT)
     }
 }
 
@@ -766,7 +760,7 @@ pub fn create_composite_disk(
     // aligned to the chosen partition size (0x1000). We compensate for that by writing some
     // padding to the start of the footer file.
     const FOOTER_PADDING: u64 =
-        align_to_power_of_2(GPT_END_SIZE, PARTITION_SIZE_SHIFT) - GPT_END_SIZE;
+        GPT_END_SIZE.next_multiple_of(1 << PARTITION_SIZE_SHIFT) - GPT_END_SIZE;
     let footer_file_offset = next_disk_offset;
     let secondary_table_offset = footer_file_offset + FOOTER_PADDING;
     let disk_size = secondary_table_offset + GPT_END_SIZE;
