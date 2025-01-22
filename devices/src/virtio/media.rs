@@ -49,7 +49,6 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
 use crate::virtio::copy_config;
-#[cfg(feature = "video-decoder")]
 use crate::virtio::device_constants::media::QUEUE_SIZES;
 #[cfg(feature = "video-decoder")]
 use crate::virtio::device_constants::video::VideoBackendType;
