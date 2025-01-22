@@ -208,7 +208,12 @@ impl PayloadType {
                 AddressRange::from_start_and_size(entry.offset(), *image_size)
                     .expect("invalid BIOS address range")
             }
-            Self::Kernel(k) => k.address_range,
+            Self::Kernel(k) => {
+                // TODO: b/389759119: use `k.address_range` to include regions that are present in
+                // memory but not in the original image file (e.g. `.bss` section).
+                AddressRange::from_start_and_size(k.entry.offset(), k.size)
+                    .expect("invalid kernel address range")
+            }
         }
     }
 }
