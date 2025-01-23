@@ -1083,7 +1083,7 @@ impl arch::LinuxArch for X8664arch {
 
         // Make sure the `vcpu_count` casts below and the arithmetic in `setup_mptable` are well
         // defined.
-        if vcpu_count >= u8::max_value().into() {
+        if vcpu_count >= u8::MAX.into() {
             return Err(Error::TooManyVcpus);
         }
 
