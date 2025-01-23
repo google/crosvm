@@ -305,10 +305,7 @@ impl SystemAllocator {
     /// Allocate PCI slot location.
     pub fn allocate_pci(&mut self, bus: u8, tag: String) -> Option<PciAddress> {
         let id = self.get_anon_alloc();
-        let allocator = match self.get_pci_allocator_mut(bus) {
-            Some(v) => v,
-            None => return None,
-        };
+        let allocator = self.get_pci_allocator_mut(bus)?;
         allocator
             .allocate(1, id, tag)
             .map(|v| PciAddress {
