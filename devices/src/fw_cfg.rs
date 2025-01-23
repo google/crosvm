@@ -273,7 +273,7 @@ impl FwCfgDevice {
             raw_file_dir.extend_from_slice(&[0, 0]);
             raw_file_dir.extend_from_slice(file.name.as_bytes());
             // Padding for c-style char[]
-            raw_file_dir.extend(repeat(0).take(FW_CFG_FILENAME_SIZE - file.name.as_bytes().len()));
+            raw_file_dir.extend(repeat(0).take(FW_CFG_FILENAME_SIZE - file.name.len()));
         }
 
         self.add_bytes(raw_file_dir, FwCfgItemType::FileDir);

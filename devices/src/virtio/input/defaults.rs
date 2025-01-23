@@ -166,10 +166,10 @@ pub fn new_custom_config(
 ) -> VirtioInputConfig {
     let name: String = format!("{name} {idx}");
     let serial_name = format!("{serial_name}-{idx}");
-    if name.as_bytes().len() > 128 {
+    if name.len() > 128 {
         warn!("name: {name} exceeds 128 bytes, will be truncated.");
     }
-    if serial_name.as_bytes().len() > 128 {
+    if serial_name.len() > 128 {
         warn!("serial_name: {serial_name} exceeds 128 bytes, will be truncated.");
     }
 
