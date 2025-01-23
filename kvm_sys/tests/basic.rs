@@ -4,13 +4,15 @@
 
 #![cfg(not(any(target_os = "windows", target_arch = "arm")))]
 
+use std::ffi::CStr;
+
 use kvm_sys::*;
 use libc::c_char;
 use libc::ioctl;
 use libc::open64;
 use libc::O_RDWR;
 
-const KVM_PATH: &str = "/dev/kvm\0";
+const KVM_PATH: &CStr = c"/dev/kvm";
 
 #[test]
 fn get_version() {

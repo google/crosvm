@@ -132,7 +132,7 @@ static MFD_NOEXEC_SEAL_SUPPORTED: Lazy<bool> = Lazy::new(|| {
         // The memfd name used here does not need to be unique, since duplicates are allowed and
         // will not cause failures.
         memfd_create(
-            b"MFD_NOEXEC_SEAL_test\0".as_ptr() as *const c_char,
+            c"MFD_NOEXEC_SEAL_test".as_ptr() as *const c_char,
             MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_NOEXEC_SEAL,
         )
     };

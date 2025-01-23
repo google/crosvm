@@ -2091,7 +2091,7 @@ mod tests {
 
     #[test]
     fn parse_selinux_xattr_basic() {
-        let sec_value = CStr::from_bytes_with_nul(b"user_u:object_r:security_type:s0\0").unwrap();
+        let sec_value = c"user_u:object_r:security_type:s0";
         let v = create_secctx(&[(SELINUX_XATTR_CSTR, sec_value.to_bytes_with_nul())], 0);
 
         let res = parse_selinux_xattr(&v);
@@ -2100,10 +2100,8 @@ mod tests {
 
     #[test]
     fn parse_selinux_xattr_find_attr() {
-        let foo_value: &CStr =
-            CStr::from_bytes_with_nul(b"user_foo:object_foo:foo_type:s0\0").unwrap();
-        let sec_value: &CStr =
-            CStr::from_bytes_with_nul(b"user_u:object_r:security_type:s0\0").unwrap();
+        let foo_value = c"user_foo:object_foo:foo_type:s0";
+        let sec_value = c"user_u:object_r:security_type:s0";
         let v = create_secctx(
             &[
                 (b"foo\0", foo_value.to_bytes_with_nul()),
@@ -2121,8 +2119,7 @@ mod tests {
         // Test with an xattr name that looks similar to security.selinux, but has extra
         // characters to ensure that `parse_selinux_xattr` will not return the associated
         // context value to the caller.
-        let invalid_selinux_value: &CStr =
-            CStr::from_bytes_with_nul(b"user_invalid:object_invalid:invalid_type:s0\0").unwrap();
+        let invalid_selinux_value = c"user_invalid:object_invalid:invalid_type:s0";
         let v = create_secctx(
             &[(
                 b"invalid.security.selinux\0",
@@ -2140,10 +2137,8 @@ mod tests {
         // Test that parse_selinux_xattr will return an `Error::InvalidHeaderLength` when
         // the total size in the `SecctxHeader` does not encompass the entirety of the
         // associated data.
-        let foo_value: &CStr =
-            CStr::from_bytes_with_nul(b"user_foo:object_foo:foo_type:s0\0").unwrap();
-        let sec_value: &CStr =
-            CStr::from_bytes_with_nul(b"user_u:object_r:security_type:s0\0").unwrap();
+        let foo_value = c"user_foo:object_foo:foo_type:s0";
+        let sec_value = c"user_u:object_r:security_type:s0";
         let v = create_secctx(
             &[
                 (b"foo\0", foo_value.to_bytes_with_nul()),

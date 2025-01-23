@@ -81,7 +81,7 @@ impl Tap {
         // string and verify the result.
         let rd = unsafe {
             libc::open64(
-                b"/dev/net/tun\0".as_ptr() as *const c_char,
+                c"/dev/net/tun".as_ptr() as *const c_char,
                 libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC,
             )
         };

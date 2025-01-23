@@ -727,11 +727,7 @@ impl DisplayT for DisplayX {
                 black_pixel,
             );
 
-            xlib::XStoreName(
-                self.display.as_ptr(),
-                window,
-                CStr::from_bytes_with_nul(b"crosvm\0").unwrap().as_ptr(),
-            );
+            xlib::XStoreName(self.display.as_ptr(), window, c"crosvm".as_ptr());
 
             let gc = xlib::XCreateGC(self.display.as_ptr(), window, 0, null_mut());
 
@@ -740,13 +736,8 @@ impl DisplayT for DisplayX {
                 xlib::XShmGetEventBase(self.display.as_ptr()) as u32 + xlib::ShmCompletion;
 
             // Mark this window as responding to close requests.
-            let mut delete_window_atom = xlib::XInternAtom(
-                self.display.as_ptr(),
-                CStr::from_bytes_with_nul(b"WM_DELETE_WINDOW\0")
-                    .unwrap()
-                    .as_ptr(),
-                0,
-            );
+            let mut delete_window_atom =
+                xlib::XInternAtom(self.display.as_ptr(), c"WM_DELETE_WINDOW".as_ptr(), 0);
             xlib::XSetWMProtocols(self.display.as_ptr(), window, &mut delete_window_atom, 1);
 
             let size_hints = xlib::XAllocSizeHints();
