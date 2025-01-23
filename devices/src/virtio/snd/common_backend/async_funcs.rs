@@ -767,7 +767,7 @@ pub async fn handle_ctrl_queue(
             .into();
 
         let handle_ctrl_msg = async {
-            return match code {
+            match code {
                 VIRTIO_SND_R_JACK_INFO => {
                     let query_info: virtio_snd_query_info =
                         reader.read_obj().map_err(Error::ReadMessage)?;
@@ -978,11 +978,11 @@ pub async fn handle_ctrl_queue(
                 }
                 c => {
                     error!("[Card {}] Unrecognized code: {}", card_index, c);
-                    return writer
+                    writer
                         .write_obj(VIRTIO_SND_S_BAD_MSG)
-                        .map_err(Error::WriteResponse);
+                        .map_err(Error::WriteResponse)
                 }
-            };
+            }
         };
 
         handle_ctrl_msg.await?;
