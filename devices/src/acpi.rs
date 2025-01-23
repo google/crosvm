@@ -359,7 +359,7 @@ pub const ACPIPM_RESOURCE_LEN: u8 = ACPIPM_RESOURCE_EVENTBLK_LEN + 4 + ACPIPM_RE
 // Should be in sync with gpe_allocator range
 pub const ACPIPM_GPE_MAX: u16 = ACPIPM_RESOURCE_GPE0_BLK_LEN as u16 / 2 * 8 - 1;
 
-/// ACPI PM register value definitions
+// ACPI PM register value definitions
 
 /// Section 4.8.4.1.1 PM1 Status Registers, ACPI Spec Version 6.4
 /// Register Location: <PM1a_EVT_BLK / PM1b_EVT_BLK> System I/O or Memory Space (defined in FADT)

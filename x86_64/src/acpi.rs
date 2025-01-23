@@ -533,7 +533,6 @@ fn sync_acpi_id_from_cpuid(
 ///   (device address, IRQ number, and PCI interrupt pin assignment).
 /// * `pcie_cfg_mmio` - Base address for the pcie enhanced configuration access mechanism
 /// * `max_bus` - Max bus number in MCFG table
-
 pub fn create_acpi_tables(
     guest_mem: &GuestMemory,
     num_cpus: u8,

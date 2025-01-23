@@ -3,6 +3,27 @@
 // found in the LICENSE file.
 
 //! A wrapper for structures that contain flexible arrays.
+//!
+//! The following code provides generic helpers for creating and accessing flexible array structs.
+//! A complete definition of flexible array structs is found in the ISO 9899 specification
+//! <http://www.iso-9899.info/n1570.html>. A flexible array struct is of the form:
+//!
+//! ```ignore
+//! #[repr(C)]
+//! struct T {
+//!    some_data: u32,
+//!    nents: u32,
+//!    entries: __IncompleteArrayField<S>,
+//! }
+//! ```
+//! where:
+//!
+//! - `T` is the flexible array struct type
+//! - `S` is the flexible array type
+//! - `nents` is the flexible array length
+//! - `entries` is the flexible array member
+//!
+//! These structures are used by the kernel API.
 
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -36,27 +57,6 @@ pub fn vec_with_array_field<T: Default, F>(count: usize) -> Vec<T> {
     let vec_size_bytes = size_of::<T>() + element_space;
     vec_with_size_in_bytes(vec_size_bytes)
 }
-
-/// The following code provides generic helpers for creating and accessing flexible array structs.
-/// A complete definition of flexible array structs is found in the ISO 9899 specification
-/// <http://www.iso-9899.info/n1570.html>. A flexible array struct is of the form:
-///
-/// ```ignore
-/// #[repr(C)]
-/// struct T {
-///    some_data: u32,
-///    nents: u32,
-///    entries: __IncompleteArrayField<S>,
-/// }
-/// ```
-/// where:
-///
-/// - `T` is the flexible array struct type
-/// - `S` is the flexible array type
-/// - `nents` is the flexible array length
-/// - `entries` is the flexible array member
-///
-/// These structures are used by the kernel API.
 
 /// A collection of methods that are required by the FlexibleArrayWrapper type.
 ///

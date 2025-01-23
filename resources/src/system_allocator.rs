@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! Manages allocating system resources such as address space and interrupt numbers.
+
 use std::collections::btree_map;
 use std::collections::BTreeMap;
 
@@ -14,8 +16,6 @@ use crate::Alloc;
 use crate::Error;
 use crate::PciAddress;
 use crate::Result;
-
-/// Manages allocating system resources such as address space and interrupt numbers.
 
 /// MMIO address Type
 ///    Low: address allocated from low_address_space

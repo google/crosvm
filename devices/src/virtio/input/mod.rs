@@ -550,7 +550,6 @@ impl<T: EventSource> Worker<T> {
 }
 
 /// Virtio input device
-
 pub struct Input<T: EventSource + Send + 'static> {
     worker_thread: Option<WorkerThread<Worker<T>>>,
     config: VirtioInputConfig,

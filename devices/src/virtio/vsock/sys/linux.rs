@@ -17,7 +17,6 @@ fn default_vsock_path() -> PathBuf {
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, FromKeyValues)]
 #[serde(deny_unknown_fields)]
-
 /// Configuration for a Vsock device.
 pub struct VsockConfig {
     /// CID to be used for this vsock device.

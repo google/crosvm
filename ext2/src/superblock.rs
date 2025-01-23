@@ -15,8 +15,6 @@ use crate::blockgroup::BLOCK_SIZE;
 use crate::builder::Builder;
 use crate::inode::Inode;
 
-/// A struct to represent the configuration of an ext2 filesystem.
-
 /// The ext2 superblock.
 ///
 /// The field names are based on [the specification](https://www.nongnu.org/ext2-doc/ext2.html#superblock).

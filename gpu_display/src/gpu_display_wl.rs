@@ -198,7 +198,6 @@ impl GpuDisplaySurface for WaylandSurface {
 ///
 /// The user of `GpuDisplay` can use `AsRawDescriptor` to poll on the compositor connection's file
 /// descriptor. When the connection is readable, `dispatch_events` can be called to process it.
-
 pub struct DisplayWl {
     dmabufs: HashMap<u32, DwlDmabuf>,
     ctx: DwlContext,
