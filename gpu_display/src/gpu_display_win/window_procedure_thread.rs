@@ -494,9 +494,9 @@ impl WindowProcedureThread {
     }
 
     fn is_message_loop_running(&self) -> bool {
-        self.message_loop_state.as_ref().map_or(false, |state| {
-            state.load(Ordering::SeqCst) == MessageLoopState::Running as i32
-        })
+        self.message_loop_state
+            .as_ref()
+            .is_some_and(|state| state.load(Ordering::SeqCst) == MessageLoopState::Running as i32)
     }
 
     /// Normally the WndProc thread should still be running when the `WindowProcedureThread` struct

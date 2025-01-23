@@ -295,7 +295,7 @@ impl Ioapic {
                 if self
                     .resample_events
                     .get(i)
-                    .map_or(false, |events| !events.is_empty())
+                    .is_some_and(|events| !events.is_empty())
                 {
                     self.service_irq(i, false);
                 }

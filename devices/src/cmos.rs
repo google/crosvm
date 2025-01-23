@@ -379,10 +379,7 @@ impl BusDevice for Cmos {
                     RTC_REG_YEAR => to_bcd((year % 100) as u8),
                     RTC_REG_CENTURY => to_bcd((year / 100) as u8),
                     RTC_REG_C => {
-                        if self
-                            .alarm_time
-                            .map_or(false, |alarm_time| alarm_time <= now)
-                        {
+                        if self.alarm_time.is_some_and(|alarm_time| alarm_time <= now) {
                             // Reading from RTC_REG_C resets interrupts, so clear the
                             // status bits. The IrqEdgeEvent is reset automatically.
                             self.alarm_time.take();

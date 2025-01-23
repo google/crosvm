@@ -39,7 +39,7 @@ impl evdev_buffer {
         let inner_bit = bit % 8;
         self.buffer
             .get(idx)
-            .map_or(false, |val| val & (1u8 << inner_bit) != 0)
+            .is_some_and(|val| val & (1u8 << inner_bit) != 0)
     }
 }
 

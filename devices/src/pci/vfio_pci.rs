@@ -460,7 +460,7 @@ impl VfioResourceAllocator {
                 0 => range.start.checked_add(size - 1),
                 r => range.start.checked_add(size - 1 + alignment - r),
             }
-            .map_or(false, |end| end <= range.end)
+            .is_some_and(|end| end <= range.end)
         });
 
         match region {
@@ -1608,7 +1608,7 @@ impl VfioPciDevice {
         }
 
         self.get_ext_cap_by_reg(reg)
-            .map_or(false, |cap| cap.is_skipped)
+            .is_some_and(|cap| cap.is_skipped)
     }
 }
 

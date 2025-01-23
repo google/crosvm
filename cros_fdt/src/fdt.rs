@@ -265,7 +265,7 @@ struct FdtStrings {
 impl FdtStrings {
     // Load the strings block from a byte slice.
     fn from_blob(input: Blob) -> Result<Self> {
-        if input.last().map_or(false, |i| *i != 0) {
+        if input.last().is_some_and(|i| *i != 0) {
             return Err(Error::FdtParseError(
                 "strings block missing null terminator".into(),
             ));

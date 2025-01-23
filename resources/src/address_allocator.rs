@@ -148,7 +148,7 @@ impl AddressAllocator {
                         0 => range.start.checked_add(size - 1),
                         r => range.start.checked_add(size - 1 + alignment - r),
                     }
-                    .map_or(false, |end| end <= range.end)
+                    .is_some_and(|end| end <= range.end)
                 })
                 .cloned()
         } else {
@@ -160,7 +160,7 @@ impl AddressAllocator {
                     range
                         .end
                         .checked_sub(size - 1)
-                        .map_or(false, |start| start & !(alignment - 1) >= range.start)
+                        .is_some_and(|start| start & !(alignment - 1) >= range.start)
                 })
                 .cloned()
         };
