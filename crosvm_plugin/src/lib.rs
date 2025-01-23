@@ -720,7 +720,7 @@ macro_rules! impl_ctor_dtor {
                     0
                 }
                 Err(e) =>  {
-                    Box::into_raw(obj);
+                    let _ = Box::into_raw(obj);
                     -e
                 }
             }
