@@ -11,6 +11,7 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Seek;
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use anyhow::bail;
 use anyhow::Context;
@@ -111,6 +112,13 @@ impl ZstdSeekTable {
 pub struct ZstdDisk {
     file: File,
     seek_table: ZstdSeekTable,
+    cache: RwLock<Option<ZstdFrameCache>>,
+}
+
+#[derive(Debug)]
+struct ZstdFrameCache {
+    frame_index: usize,
+    data: Vec<u8>,
 }
 
 impl ZstdDisk {
@@ -155,7 +163,11 @@ impl ZstdDisk {
         let seek_table =
             ZstdSeekTable::from_footer(&seek_table_entries, num_frames, checksum_flag)?;
 
-        Ok(ZstdDisk { file, seek_table })
+        Ok(ZstdDisk {
+            file,
+            seek_table,
+            cache: RwLock::new(None),
+        })
     }
 }
 
@@ -186,7 +198,9 @@ impl AsRawDescriptor for ZstdDisk {
 
 struct CompressedReadInstruction {
     frame_index: usize,
+    // byte offset of the entire compressed file to start read from
     read_offset: u64,
+    // number of bytes to read from the compressed file
     read_size: u64,
 }
 
@@ -210,10 +224,32 @@ fn compresed_frame_read_instruction(
     })
 }
 
+fn copy_to_volatile_slice(src: &[u8], dst: VolatileSlice) -> io::Result<usize> {
+    let read_len = min(dst.size(), src.len());
+    let data_to_copy = &src[..read_len];
+    dst.sub_slice(0, read_len)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+        .copy_from(data_to_copy);
+    Ok(data_to_copy.len())
+}
+
 impl FileReadWriteAtVolatile for ZstdDisk {
     fn read_at_volatile(&self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
         let read_instruction = compresed_frame_read_instruction(&self.seek_table, offset)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        // Try obtain read lock of cache
+        if let Some(cache) = self.cache.try_read().ok().as_ref().and_then(|g| g.as_ref()) {
+            if cache.frame_index == read_instruction.frame_index {
+                // Cache hit
+                let decompressed_offset_in_frame = offset
+                    - self.seek_table.cumulative_decompressed_sizes[read_instruction.frame_index];
+                return copy_to_volatile_slice(
+                    &cache.data[decompressed_offset_in_frame as usize..],
+                    slice,
+                );
+            }
+        }
 
         let mut compressed_data = vec![0u8; read_instruction.read_size as usize];
 
@@ -238,16 +274,20 @@ impl FileReadWriteAtVolatile for ZstdDisk {
             ));
         }
 
-        let read_len = min(
-            slice.size() as u64,
-            (decoded_size as u64) - decompressed_offset_in_frame,
-        ) as usize;
-        let data_to_copy = &decompressed_data[decompressed_offset_in_frame as usize..][..read_len];
-        slice
-            .sub_slice(0, read_len)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
-            .copy_from(data_to_copy);
-        Ok(data_to_copy.len())
+        let updated_cache = ZstdFrameCache {
+            frame_index: read_instruction.frame_index,
+            data: decompressed_data,
+        };
+
+        let result = copy_to_volatile_slice(
+            &updated_cache.data[decompressed_offset_in_frame as usize..],
+            slice,
+        );
+
+        if let Ok(mut cache) = self.cache.try_write() {
+            *cache = Some(updated_cache);
+        };
+        result
     }
 
     fn write_at_volatile(&self, _slice: VolatileSlice, _offset: u64) -> io::Result<usize> {
@@ -261,6 +301,7 @@ impl FileReadWriteAtVolatile for ZstdDisk {
 pub struct AsyncZstdDisk {
     inner: IoSource<File>,
     seek_table: ZstdSeekTable,
+    cache: RwLock<Option<ZstdFrameCache>>,
 }
 
 impl ToAsyncDisk for ZstdDisk {
@@ -268,6 +309,7 @@ impl ToAsyncDisk for ZstdDisk {
         Ok(Box::new(AsyncZstdDisk {
             inner: ex.async_from(self.file).map_err(DiskError::ToAsync)?,
             seek_table: self.seek_table,
+            cache: RwLock::new(None),
         }))
     }
 }
@@ -300,6 +342,39 @@ impl FileAllocate for AsyncZstdDisk {
     }
 }
 
+fn copy_to_mem(
+    decompressed_data: &[u8],
+    mem: Arc<dyn BackingMemory + Send + Sync>,
+    mem_offsets: cros_async::MemRegionIter,
+) -> DiskResult<usize> {
+    // Copy the decompressed data to the provided memory regions.
+    let mut total_copied = 0;
+    for mem_region in mem_offsets {
+        let src_slice = &decompressed_data[total_copied..];
+        let dst_slice = mem
+            .get_volatile_slice(mem_region)
+            .map_err(DiskError::GuestMemory)?;
+
+        let to_copy = min(src_slice.len(), dst_slice.size());
+
+        if to_copy > 0 {
+            dst_slice
+                .sub_slice(0, to_copy)
+                .map_err(|e| DiskError::ReadingData(io::Error::new(ErrorKind::Other, e)))?
+                .copy_from(&src_slice[..to_copy]);
+
+            total_copied += to_copy;
+
+            // if fully copied destination buffers, break the loop.
+            if total_copied == dst_slice.size() {
+                break;
+            }
+        }
+    }
+
+    Ok(total_copied)
+}
+
 #[async_trait(?Send)]
 impl AsyncDisk for AsyncZstdDisk {
     async fn flush(&self) -> DiskResult<()> {
@@ -329,6 +404,20 @@ impl AsyncDisk for AsyncZstdDisk {
     ) -> DiskResult<usize> {
         let read_instruction = compresed_frame_read_instruction(&self.seek_table, file_offset)
             .map_err(|e| DiskError::ReadingData(io::Error::new(io::ErrorKind::InvalidData, e)))?;
+
+        // Try obtain read lock of cache
+        if let Some(cache) = self.cache.try_read().ok().as_ref().and_then(|g| g.as_ref()) {
+            if cache.frame_index == read_instruction.frame_index {
+                // Cache hit
+                let decompressed_offset_in_frame = file_offset
+                    - self.seek_table.cumulative_decompressed_sizes[read_instruction.frame_index];
+                return copy_to_mem(
+                    &cache.data[decompressed_offset_in_frame as usize..],
+                    mem,
+                    mem_offsets,
+                );
+            }
+        }
 
         let compressed_data = vec![0u8; read_instruction.read_size as usize];
 
@@ -363,32 +452,21 @@ impl AsyncDisk for AsyncZstdDisk {
         }
 
         // Copy the decompressed data to the provided memory regions.
-        let mut total_copied = 0;
-        for mem_region in mem_offsets {
-            let src_slice =
-                &decompressed_data[decompressed_offset_in_frame as usize + total_copied..];
-            let dst_slice = mem
-                .get_volatile_slice(mem_region)
-                .map_err(DiskError::GuestMemory)?;
+        let result = copy_to_mem(
+            &decompressed_data[decompressed_offset_in_frame as usize..],
+            mem,
+            mem_offsets,
+        );
 
-            let to_copy = min(src_slice.len(), dst_slice.size());
+        let updated_cache = ZstdFrameCache {
+            frame_index: read_instruction.frame_index,
+            data: decompressed_data,
+        };
 
-            if to_copy > 0 {
-                dst_slice
-                    .sub_slice(0, to_copy)
-                    .map_err(|e| DiskError::ReadingData(io::Error::new(ErrorKind::Other, e)))?
-                    .copy_from(&src_slice[..to_copy]);
-
-                total_copied += to_copy;
-
-                // if fully copied destination buffers, break the loop.
-                if total_copied == dst_slice.size() {
-                    break;
-                }
-            }
-        }
-
-        Ok(total_copied)
+        if let Ok(mut cache) = self.cache.try_write() {
+            *cache = Some(updated_cache);
+        };
+        result
     }
 
     async fn write_from_mem<'a>(
