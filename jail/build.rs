@@ -27,11 +27,12 @@ fn rewrite_policies(seccomp_policy_path: &Path, rewrote_policy_folder: &Path) {
 
 fn compile_policy(
     compile_script: &Path,
-    compile_policy_folder: &Path,
+    out_dir: &Path,
+    compile_policy_folder_relative: &Path,
     output_folder: &Path,
     policy_file: &fs::DirEntry,
 ) -> String {
-    let output_file_path = compile_policy_folder.join(
+    let output_file_path_relative = compile_policy_folder_relative.join(
         policy_file
             .path()
             .with_extension("bpf")
@@ -44,7 +45,7 @@ fn compile_policy(
         .arg("--default-action")
         .arg("trap")
         .arg(policy_file.path())
-        .arg(&output_file_path)
+        .arg(out_dir.join(&output_file_path_relative))
         .spawn()
         .unwrap()
         .wait()
@@ -55,13 +56,13 @@ fn compile_policy(
     format!(
         r#"("{}", include_bytes!("{}").to_vec()),"#,
         policy_file.path().file_stem().unwrap().to_str().unwrap(),
-        output_file_path.to_str().unwrap()
+        output_file_path_relative.to_str().unwrap()
     )
 }
 
 fn compile_policies(out_dir: &Path, rewrote_policy_folder: &Path, compile_seccomp_policy: &Path) {
-    let compiled_policy_folder = out_dir.join("policy_output");
-    fs::create_dir_all(&compiled_policy_folder).unwrap();
+    let compiled_policy_folder_relative = Path::new("policy_output");
+    fs::create_dir_all(out_dir.join(compiled_policy_folder_relative)).unwrap();
     let mut include_all_bytes = String::from("std::collections::HashMap::from([\n");
 
     let entries = fs::read_dir(rewrote_policy_folder)
@@ -75,7 +76,8 @@ fn compile_policies(out_dir: &Path, rewrote_policy_folder: &Path, compile_seccom
         .map(|policy_file| {
             compile_policy(
                 compile_seccomp_policy,
-                &compiled_policy_folder,
+                out_dir,
+                compiled_policy_folder_relative,
                 rewrote_policy_folder,
                 policy_file,
             )
