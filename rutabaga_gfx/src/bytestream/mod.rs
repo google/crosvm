@@ -7,10 +7,10 @@ use std::io::Error as IoError;
 use std::io::ErrorKind as IoErrorKind;
 use std::io::Read;
 use std::io::Result as IoResult;
-use std::mem::size_of;
 
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 pub struct Reader<'slice> {
     data: &'slice [u8],
@@ -24,9 +24,9 @@ impl<'slice> Reader<'slice> {
 
     /// Reads and consumes an object from the buffer.
     pub fn read_obj<T: FromBytes>(&mut self) -> IoResult<T> {
-        let obj = <T>::read_from_prefix(self.data.as_bytes())
-            .ok_or(IoError::from(IoErrorKind::UnexpectedEof))?;
-        self.consume(size_of::<T>());
+        let (obj, rest) = <T>::read_from_prefix(self.data)
+            .map_err(|_e| IoError::from(IoErrorKind::UnexpectedEof))?;
+        self.data = rest;
         Ok(obj)
     }
 
@@ -41,8 +41,8 @@ impl<'slice> Reader<'slice> {
 
     /// Reads an object from the buffer without consuming it.
     pub fn peek_obj<T: FromBytes>(&self) -> IoResult<T> {
-        let obj = <T>::read_from_prefix(self.data.as_bytes())
-            .ok_or(IoError::from(IoErrorKind::UnexpectedEof))?;
+        let (obj, _) = <T>::read_from_prefix(self.data)
+            .map_err(|_e| IoError::from(IoErrorKind::UnexpectedEof))?;
         Ok(obj)
     }
 
@@ -68,7 +68,7 @@ impl<'slice> Writer<'slice> {
     }
 
     /// Writes an object to the buffer.
-    pub fn write_obj<T: FromBytes + AsBytes>(&mut self, val: T) -> IoResult<()> {
+    pub fn write_obj<T: FromBytes + IntoBytes + Immutable>(&mut self, val: T) -> IoResult<()> {
         self.write_all(val.as_bytes())
     }
 

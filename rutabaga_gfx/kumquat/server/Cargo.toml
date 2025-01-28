@@ -16,7 +16,7 @@ gfxstream = ["rutabaga_gfx/gfxstream"]
 [dependencies]
 rutabaga_gfx = { path = "../../", version = "0.1.3"}
 nix = { version = "0.28", features = ["event", "feature", "fs", "mman", "socket", "uio", "ioctl"] }
-zerocopy = { version = "0.7", features = ["derive"] }
+zerocopy = { version = "0.8.13", features = ["derive"] }
 log = "0.4"
 clap = { version = "4.1.8", features = ["derive"] }
 

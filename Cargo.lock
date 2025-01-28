@@ -2666,7 +2666,7 @@ dependencies = [
  "thiserror",
  "vulkano 0.33.0",
  "winapi",
- "zerocopy 0.7.32",
+ "zerocopy 0.8.14",
 ]
 
 [[package]]

@@ -5,8 +5,9 @@
 use std::collections::VecDeque;
 use std::mem::size_of;
 
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 use crate::bytestream::Reader;
 use crate::bytestream::Writer;
@@ -42,7 +43,7 @@ impl RutabagaStream {
         }
     }
 
-    pub fn write<T: FromBytes + AsBytes>(
+    pub fn write<T: FromBytes + IntoBytes + Immutable>(
         &mut self,
         encode: KumquatGpuProtocolWrite<T>,
     ) -> RutabagaResult<()> {

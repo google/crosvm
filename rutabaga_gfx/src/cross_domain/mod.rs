@@ -16,9 +16,9 @@ use std::sync::Mutex;
 use std::thread;
 
 use log::error;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 use crate::cross_domain::cross_domain_protocol::*;
 use crate::rutabaga_core::RutabagaComponent;
@@ -216,7 +216,7 @@ impl CrossDomainState {
 
     fn write_to_ring<T>(&self, mut ring_write: RingWrite<T>, ring_id: u32) -> RutabagaResult<usize>
     where
-        T: FromBytes + AsBytes,
+        T: FromBytes + IntoBytes + Immutable,
     {
         let mut context_resources = self.context_resources.lock().unwrap();
         let mut bytes_read: usize = 0;
@@ -762,7 +762,7 @@ impl Drop for CrossDomainContext {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, IntoBytes, Immutable)]
 struct CrossDomainInitLegacy {
     hdr: CrossDomainHeader,
     query_ring_id: u32,
@@ -878,16 +878,16 @@ impl RutabagaContext for CrossDomainContext {
         _shareable_fences: Vec<RutabagaHandle>,
     ) -> RutabagaResult<()> {
         while !commands.is_empty() {
-            let hdr = CrossDomainHeader::read_from_prefix(commands.as_bytes())
-                .ok_or(RutabagaError::InvalidCommandBuffer)?;
+            let (hdr, _) = CrossDomainHeader::read_from_prefix(commands)
+                .map_err(|_e| RutabagaError::InvalidCommandBuffer)?;
 
             match hdr.cmd {
                 CROSS_DOMAIN_CMD_INIT => {
-                    let cmd_init = match CrossDomainInit::read_from_prefix(commands.as_bytes()) {
-                        Some(cmd_init) => cmd_init,
-                        None => {
-                            if let Some(cmd_init) =
-                                CrossDomainInitLegacy::read_from_prefix(commands.as_bytes())
+                    let cmd_init = match CrossDomainInit::read_from_prefix(commands) {
+                        Ok((cmd_init, _)) => cmd_init,
+                        _ => {
+                            if let Ok((cmd_init, _)) =
+                                CrossDomainInitLegacy::read_from_prefix(commands)
                             {
                                 CrossDomainInit {
                                     hdr: cmd_init.hdr,
@@ -904,16 +904,16 @@ impl RutabagaContext for CrossDomainContext {
                     self.initialize(&cmd_init)?;
                 }
                 CROSS_DOMAIN_CMD_GET_IMAGE_REQUIREMENTS => {
-                    let cmd_get_reqs =
-                        CrossDomainGetImageRequirements::read_from_prefix(commands.as_bytes())
-                            .ok_or(RutabagaError::InvalidCommandBuffer)?;
+                    let (cmd_get_reqs, _) =
+                        CrossDomainGetImageRequirements::read_from_prefix(commands)
+                            .map_err(|_e| RutabagaError::InvalidCommandBuffer)?;
 
                     self.get_image_requirements(&cmd_get_reqs)?;
                 }
                 CROSS_DOMAIN_CMD_SEND => {
                     let opaque_data_offset = size_of::<CrossDomainSendReceive>();
-                    let cmd_send = CrossDomainSendReceive::read_from_prefix(commands.as_bytes())
-                        .ok_or(RutabagaError::InvalidCommandBuffer)?;
+                    let (cmd_send, _) = CrossDomainSendReceive::read_from_prefix(commands)
+                        .map_err(|_e| RutabagaError::InvalidCommandBuffer)?;
 
                     let opaque_data = commands
                         .get_mut(
@@ -931,8 +931,8 @@ impl RutabagaContext for CrossDomainContext {
                 }
                 CROSS_DOMAIN_CMD_WRITE => {
                     let opaque_data_offset = size_of::<CrossDomainReadWrite>();
-                    let cmd_write = CrossDomainReadWrite::read_from_prefix(commands.as_bytes())
-                        .ok_or(RutabagaError::InvalidCommandBuffer)?;
+                    let (cmd_write, _) = CrossDomainReadWrite::read_from_prefix(commands)
+                        .map_err(|_e| RutabagaError::InvalidCommandBuffer)?;
 
                     let opaque_data = commands
                         .get_mut(

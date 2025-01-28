@@ -32,9 +32,9 @@ use vulkano::memory::MemoryMapError;
 use vulkano::LoadingError;
 #[cfg(feature = "vulkano")]
 use vulkano::VulkanError;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 use crate::rutabaga_os::OwnedDescriptor;
 
@@ -122,9 +122,9 @@ pub struct Resource3DInfo {
     PartialOrd,
     Ord,
     Hash,
-    FromZeroes,
     FromBytes,
-    AsBytes,
+    IntoBytes,
+    Immutable,
 )]
 #[repr(C)]
 pub struct DeviceId {
@@ -143,9 +143,9 @@ pub struct DeviceId {
     PartialOrd,
     Ord,
     Hash,
-    FromZeroes,
     FromBytes,
-    AsBytes,
+    IntoBytes,
+    Immutable,
 )]
 #[repr(C)]
 pub struct VulkanInfo {
