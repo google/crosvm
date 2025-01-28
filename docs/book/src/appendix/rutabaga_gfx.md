@@ -129,7 +129,6 @@ In another terminal, run:
 export MESA_LOADER_DRIVER_OVERRIDE=zink
 export VIRTGPU_KUMQUAT=1
 export VK_ICD_FILENAMES=$(mesa_dir)/guest-build/src/gfxstream/guest/vulkan/gfxstream_vk_devenv_icd.x86_64.json
-
 vkcube
 ```
 
@@ -163,3 +162,18 @@ git push origin HEAD:refs/for/main
 
 The AOSP Gerrit instance will ask for an identity. Follow the instructions, a Google account is
 needed.
+
+# Magma
+
+Magma is an effort to standardize GPU system call interfaces, in a way that is optimized for
+remoting and microkernels. This takes direct inspiration from the
+[Fuchsia Magma interface](https://fuchsia.dev/fuchsia-src/development/graphics/magma): in that
+design, the library interface and protocol are OS-agnostic. An OS-specific virtgpu implementation
+handles paravirtualization.
+
+Follow along with [Mesa MR](https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/33190) to see
+if it works or we fall flat on our face.
+
+<!-- Image from Mesa MR -->
+
+![magma diagram](images/magma.png)
