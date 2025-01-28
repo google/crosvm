@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::stderr;
 use std::io::Read;
 use std::panic;
-use std::panic::PanicInfo;
+use std::panic::PanicHookInfo;
 use std::process::abort;
 use std::string::String;
 
@@ -66,7 +66,10 @@ fn restore_stderr(stderr: File) -> bool {
 }
 
 // Sends as much information about the panic as possible to syslog.
-fn log_panic_info(default_panic: &(dyn Fn(&PanicInfo) + Sync + Send + 'static), info: &PanicInfo) {
+fn log_panic_info(
+    default_panic: &(dyn Fn(&PanicHookInfo) + Sync + Send + 'static),
+    info: &PanicHookInfo,
+) {
     // Grab a lock of stderr to prevent concurrent threads from trampling on our stderr capturing
     // procedure. The default_panic procedure likely uses stderr.lock as well, but the mutex inside
     // stderr is reentrant, so it will not dead-lock on this thread.
