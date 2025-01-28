@@ -23,6 +23,7 @@ pub const GH_VCPU_EXIT_UNKNOWN: u32 = 0;
 pub const GH_VCPU_EXIT_MMIO: u32 = 1;
 pub const GH_VCPU_EXIT_STATUS: u32 = 2;
 pub const GH_ANDROID_IOCTL_TYPE: u8 = 65u8;
+pub const GH_VM_BOOT_CONTEXT_REG_SHIFT: u32 = 8;
 pub type __le16 = u16;
 pub type __be16 = u16;
 pub type __le32 = u32;
@@ -46,6 +47,19 @@ pub struct gh_userspace_memory_region {
 pub struct gh_vm_dtb_config {
     pub guest_phys_addr: u64,
     pub size: u64,
+}
+pub mod gh_vm_boot_context_reg {
+    pub type Type = ::std::os::raw::c_uint;
+    pub const REG_SET_X: Type = 0;
+    pub const REG_SET_PC: Type = 1;
+    pub const REG_SET_SP: Type = 2;
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct gh_vm_boot_context {
+    pub reg: u32,
+    pub reserved: u32,
+    pub value: u64,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]

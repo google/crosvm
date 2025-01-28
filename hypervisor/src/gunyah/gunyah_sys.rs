@@ -29,7 +29,16 @@ ioctl_iow_nr!(GH_VM_ADD_FUNCTION, GH_IOCTL_TYPE, 0x4, gh_fn_desc);
 ioctl_io_nr!(GH_VCPU_RUN, GH_IOCTL_TYPE, 0x5);
 ioctl_io_nr!(GH_VCPU_MMAP_SIZE, GH_IOCTL_TYPE, 0x6);
 ioctl_iow_nr!(GH_VM_REMOVE_FUNCTION, GH_IOCTL_TYPE, 0x7, gh_fn_desc);
+ioctl_iow_nr!(
+    GH_VM_SET_BOOT_CONTEXT,
+    GH_IOCTL_TYPE,
+    0xa,
+    gh_vm_boot_context
+);
 
+pub const fn boot_context_reg_id(reg_type: gh_vm_boot_context_reg::Type, reg_idx: u8) -> u32 {
+    ((reg_type & 0xff) << GH_VM_BOOT_CONTEXT_REG_SHIFT) | (reg_idx as u32)
+}
 // Special bindings for Android Common Kernel
 pub const GH_ANDROID_IOCTL_TYPE: u8 = 65u8;
 ioctl_iow_nr!(

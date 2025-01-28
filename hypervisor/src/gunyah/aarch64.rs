@@ -11,6 +11,7 @@ use cros_fdt::Fdt;
 use cros_fdt::FdtNode;
 use libc::ENOENT;
 use libc::ENOTSUP;
+use libc::ENOTTY;
 use snapshot::AnySnapshot;
 use vm_memory::GuestAddress;
 use vm_memory::MemoryRegionPurpose;
@@ -165,11 +166,10 @@ impl VmAArch64 for GunyahVm {
         fdt_address: GuestAddress,
         fdt_size: usize,
     ) -> Result<()> {
-        // Gunyah initializes the PC to be the payload entry (except for protected VMs)
-        // and assumes that the image is loaded at the beginning of the "primary"
-        // memory parcel (region). This parcel contains both DTB and kernel Image, so
-        // make sure that DTB and payload are in the same memory region and that
-        // payload is at the start of that region.
+        // Gunyah sets the PC to the payload entry point, except for protected VMs.
+        // The payload entry is the memory address where the kernel starts.
+        // This memory region contains both the DTB and the kernel image,
+        // so ensure they are located together.
 
         let (dtb_mapping, _, dtb_obj_offset) = self
             .guest_mem
@@ -184,11 +184,19 @@ impl VmAArch64 for GunyahVm {
             panic!("DTB and payload are not part of same memory region.");
         }
 
-        if payload_offset != 0 {
-            panic!("Payload offset must be zero");
-        }
-
         self.set_dtb_config(fdt_address, fdt_size)?;
+
+        if let Err(e) = self.set_boot_pc(payload_entry_address.offset()) {
+            if e.errno() == ENOTTY {
+                // GH_VM_SET_BOOT_CONTEXT ioctl is not supported, but returning success
+                // for backward compatibility when the offset is zero.
+                if payload_offset != 0 {
+                    panic!("Payload offset must be zero");
+                }
+            } else {
+                return Err(e);
+            }
+        }
 
         self.start()?;
 

@@ -402,6 +402,34 @@ impl GunyahVm {
         }
     }
 
+    fn set_boot_pc(&self, value: u64) -> Result<()> {
+        self.set_boot_context(gh_vm_boot_context_reg::REG_SET_PC, 0, value)
+    }
+
+    // Sets the boot context for the Gunyah VM by specifying the register type, index, and value.
+    fn set_boot_context(
+        &self,
+        reg_type: gh_vm_boot_context_reg::Type,
+        reg_idx: u8,
+        value: u64,
+    ) -> Result<()> {
+        let reg_id = boot_context_reg_id(reg_type, reg_idx);
+        let boot_context = gh_vm_boot_context {
+            reg: reg_id,
+            value,
+            ..Default::default()
+        };
+
+        // SAFETY: Safe because we ensure the boot_context is correctly initialized
+        // and the ioctl call is checked.
+        let ret = unsafe { ioctl_with_ref(self, GH_VM_SET_BOOT_CONTEXT, &boot_context) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
     fn start(&self) -> Result<()> {
         // SAFETY: safe because memory is not modified and the return value is checked.
         let ret = unsafe { ioctl(self, GH_VM_START) };
