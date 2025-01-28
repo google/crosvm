@@ -94,9 +94,8 @@ cargo binstall --no-confirm bindgen-cli --version "0.68.1"
 # binutils are wrappers to call the rustup bundled versions of llvm tools.
 cargo binstall --no-confirm cargo-binutils
 
-# The mdbook and mdbook-mermaid tools are used to build the crosvm book.
+# The mdbook tools are used to build the crosvm book.
 cargo binstall --no-confirm mdbook --version "0.4.25"
-cargo binstall --no-confirm mdbook-mermaid --version "0.12.6"
 cargo binstall --no-confirm mdbook-linkcheck --version "0.7.7"
 
 # Nextest is an improved test runner for cargo

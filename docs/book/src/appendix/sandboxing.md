@@ -1,35 +1,8 @@
 # Sandboxing
 
-```mermaid
-%%{init: {'theme':'base'}}%%
-graph BT
-    subgraph guest
-        subgraph guest_kernel
-            virtio_blk_driver
-            virtio_net_driver
-        end
-    end
-    subgraph crosvm Process
-        vcpu0:::vcpu
-        vcpu1:::vcpu
-        subgraph device_proc0[Device Process]
-            virtio_blk --- virtio_blk_driver
-            disk_fd[(Disk FD)]
-        end
-        subgraph device_proc1[Device Process]
-            virtio_net --- virtio_net_driver
-            tapfd{{TAP FD}}
-        end
-    end
-    subgraph kernel[Host Kernel]
-        KVM --- vcpu1 & vcpu0
-    end
-    style KVM fill:#4285f4
-    classDef vcpu fill:#7890cd
-    classDef system fill:#fff,stroke:#777;
-    class crosvm,guest,kernel system;
-    style guest_kernel fill:#d23369,stroke:#777
-```
+<!-- Image from https://docs.google.com/presentation/d/1s6wH5L_F8NNiXls5UgWbD34jtBmijoZuiyLu76Fc2NM/edit#slide=id.g2d8628a5aae_0_0 -->
+
+![crosvm sandboxing diagram](images/sandboxing.png)
 
 Generally speaking, sandboxing is achieved in crosvm by isolating each virtualized devices into its
 own process. A process is always somewhat isolated from another by virtue of being in a different

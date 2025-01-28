@@ -179,9 +179,8 @@ When all tests pass, your change is merged into `origin/main`.
 [The book of crosvm] is built with [mdBook]. Each markdown file must follow
 [Google Markdown style guide].
 
-To render the book locally, you need to install mdbook and [mdbook-mermaid], which should be
-installed when you run `./tools/install-deps` script. Or you can use the `tools/dev_container`
-environment.
+To render the book locally, you need to install mdbook, which should be installed when you run
+`./tools/install-deps` script. Or you can use the `tools/dev_container` environment.
 
 ```sh
 cd docs/book/
@@ -196,6 +195,5 @@ To format markdown files, run `./tools/fmt` in the `dev_container`.
 [github mirror]: https://github.com/google/crosvm
 [google markdown style guide]: https://github.com/google/styleguide/blob/gh-pages/docguide/style.md
 [mdbook]: https://rust-lang.github.io/mdBook/
-[mdbook-mermaid]: https://github.com/badboy/mdbook-mermaid
 [related changes]: https://gerrit-review.googlesource.com/Documentation/user-review-ui.html#related-changes
 [the book of crosvm]: https://crosvm.dev/book/
