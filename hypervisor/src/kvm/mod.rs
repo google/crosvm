@@ -605,6 +605,8 @@ impl Vm for KvmVm {
                 cfg!(feature = "noncoherent-dma")
                     && self.check_raw_capability(KvmCap::MemNoncoherentDma)
             }
+            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            VmCap::Sve => self.check_raw_capability(KvmCap::Sve),
         }
     }
 
@@ -1205,8 +1207,6 @@ impl TryFrom<HypervisorCap> for KvmCap {
             HypervisorCap::CalibratedTscLeafRequired => Err(Error::new(libc::EINVAL)),
             HypervisorCap::StaticSwiotlbAllocationRequired => Err(Error::new(libc::EINVAL)),
             HypervisorCap::HypervisorInitializedBootContext => Err(Error::new(libc::EINVAL)),
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-            HypervisorCap::Sve => Ok(KvmCap::Sve),
         }
     }
 }

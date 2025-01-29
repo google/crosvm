@@ -68,6 +68,7 @@ use hypervisor::VcpuInitAArch64;
 use hypervisor::VcpuRegAArch64;
 use hypervisor::Vm;
 use hypervisor::VmAArch64;
+use hypervisor::VmCap;
 #[cfg(windows)]
 use jail::FakeMinijailStub as Minijail;
 use kernel_loader::LoadedKernel;
@@ -654,7 +655,7 @@ impl arch::LinuxArch for AArch64 {
         }
 
         if components.sve_config.auto {
-            components.sve_config.enable = vm.get_hypervisor().check_capability(HypervisorCap::Sve);
+            components.sve_config.enable = vm.check_capability(VmCap::Sve);
         }
 
         // Initialize Vcpus after all Vcpu objects have been created.

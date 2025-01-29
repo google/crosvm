@@ -36,10 +36,6 @@ pub enum HypervisorCap {
     /// If this capability is declared, then crosvm will not try to initialize vcpu
     /// registers when creating the VM.
     HypervisorInitializedBootContext,
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    /// If supported, this hypervisor supports enabling ARM SVE (Scalable Vector Extension)
-    /// by requesting `VcpuFeature::Sve` when calling `VcpuAarch64::init()`.
-    Sve,
 }
 
 /// A capability the `Vm` can possibly expose.
@@ -60,4 +56,8 @@ pub enum VmCap {
     ReadOnlyMemoryRegion,
     /// VM can set guest memory cache noncoherent DMA flag
     MemNoncoherentDma,
+    /// If supported, this VM supports enabling ARM SVE (Scalable Vector Extension)
+    /// by requesting `VcpuFeature::Sve` when calling `VcpuAarch64::init()`.
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    Sve,
 }
