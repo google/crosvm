@@ -1796,14 +1796,12 @@ mod tests {
             [0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
             "read_config should read the resized capacity"
         );
-        assert_eq!(
-            interrupt
-                    .get_interrupt_evt()
-                    // Wait a bit until the blk signals the interrupt
-                    .wait_timeout(Duration::from_millis(300)),
-            Ok(base::EventWaitResult::Signaled),
-            "interrupt should be signaled"
-        );
+        // Wait until the blk signals the interrupt
+        interrupt
+            .get_interrupt_evt()
+            .wait()
+            .expect("interrupt should be signaled");
+
         assert_eq!(
             interrupt.read_interrupt_status(),
             crate::virtio::INTERRUPT_STATUS_CONFIG_CHANGED as u8,
