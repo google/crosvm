@@ -459,8 +459,8 @@ pub struct Rutabaga {
 /// The serialized and deserialized parts of `Rutabaga` that are preserved across
 /// snapshot() and restore().
 #[derive(Deserialize, Serialize)]
-pub struct RutabagaSnapshot {
-    pub resources: Map<u32, RutabagaResourceSnapshot>,
+struct RutabagaSnapshot {
+    resources: Map<u32, RutabagaResourceSnapshot>,
     contexts: Map<u32, Vec<u8>>,
 }
 
