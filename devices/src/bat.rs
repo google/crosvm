@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::SystemTime;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
@@ -346,7 +348,16 @@ fn command_monitor(
     }
 }
 
+enum InitResult {
+    Done,
+    RetryNeeded,
+}
+
 impl GoldfishBattery {
+    /// The interval in milli seconds between DBus requests to powerd.  This is used to rate-limit
+    /// requests to avoid overwhelming the power daemon.
+    pub(crate) const POWERD_REQ_INTERVAL_MS: u64 = 1000;
+
     /// Create GoldfishBattery device model
     ///
     /// * `mmio_base` - The 32-bit mmio base address.
@@ -426,14 +437,29 @@ impl GoldfishBattery {
         }
     }
 
-    fn initialize_battery_state(&mut self) -> anyhow::Result<()> {
+    fn initialize_battery_state(&mut self) -> anyhow::Result<InitResult> {
         let mut power_client = match &self.create_powerd_client {
             Some(f) => match f() {
                 Ok(c) => c,
                 Err(e) => bail!("failed to connect to the powerd: {:#}", e),
             },
-            None => return Ok(()),
+            None => {
+                // No need to initialize the state via DBus.
+                return Ok(InitResult::Done);
+            }
         };
+
+        if let Some(prev_call) = power_client.last_request_timestamp() {
+            // Fail if the last request was sent within 1 second.
+            let now = SystemTime::now();
+            let duration = now
+                .duration_since(prev_call)
+                .context("failed to calculate time for dbus request")?;
+            if duration < Duration::from_millis(Self::POWERD_REQ_INTERVAL_MS) {
+                return Ok(InitResult::RetryNeeded);
+            }
+        }
+
         match power_client.get_power_data() {
             Ok(data) => {
                 let mut bat_state = self.state.lock();
@@ -458,12 +484,12 @@ impl GoldfishBattery {
                         bat_state.set_present(0);
                     }
                 }
-                Ok(())
             }
             Err(e) => {
                 bail!("failed to get response from powerd: {:#}", e);
             }
-        }
+        };
+        Ok(InitResult::Done)
     }
 }
 
@@ -497,11 +523,15 @@ impl BusDevice for GoldfishBattery {
         // Before first read, we try to ask powerd the actual power data to initialize `self.state`.
         if !self.state.lock().initialized {
             match self.initialize_battery_state() {
-                Ok(()) => self.state.lock().initialized = true,
+                Ok(InitResult::Done) => self.state.lock().initialized = true,
+                Ok(InitResult::RetryNeeded) => {
+                    // Do nothing. Will be tried next time.
+                }
                 Err(e) => {
                     error!(
-                        "{}: failed to get power data and update: {:#}",
+                        "{}: failed to initialize bettery state (info={:?}): {:#}",
                         self.debug_label(),
+                        info,
                         e
                     );
                 }
@@ -646,6 +676,8 @@ impl Suspendable for GoldfishBattery {
 
 #[cfg(test)]
 mod tests {
+    use std::time::SystemTime;
+
     use super::*;
     use crate::suspendable_tests;
 
@@ -664,5 +696,108 @@ mod tests {
             None,
         ).unwrap(),
         modify_device
+    }
+
+    // Mock power client for testing rate limiting.
+    struct MockPowerClient {
+        last_request_time: Option<SystemTime>,
+    }
+
+    impl MockPowerClient {
+        fn new(last_request_time: Option<SystemTime>) -> Self {
+            Self { last_request_time }
+        }
+    }
+
+    impl power_monitor::PowerClient for MockPowerClient {
+        fn last_request_timestamp(&self) -> Option<SystemTime> {
+            self.last_request_time
+        }
+
+        fn get_power_data(
+            &mut self,
+        ) -> std::result::Result<power_monitor::PowerData, Box<dyn std::error::Error>> {
+            self.last_request_time = Some(SystemTime::now());
+            Ok(power_monitor::PowerData {
+                ac_online: true,
+                battery: Some(power_monitor::BatteryData {
+                    percent: 50,
+                    status: power_monitor::BatteryStatus::Unknown,
+                    voltage: 0,
+                    current: 0,
+                    charge_counter: 0,
+                    charge_full: 0,
+                }),
+            })
+        }
+    }
+
+    fn create_mock_power_client(last_request_time: Option<SystemTime>) -> MockPowerClient {
+        MockPowerClient::new(last_request_time)
+    }
+
+    #[test]
+    fn test_initialize_battery_state_rate_limiting() {
+        let mmio_base = 0;
+        let irq_num = 0;
+        let irq_evt = IrqLevelEvent::new().unwrap();
+        let tube = Tube::pair().unwrap().1;
+
+        let now = SystemTime::now();
+        let recent_time =
+            now - Duration::from_millis(GoldfishBattery::POWERD_REQ_INTERVAL_MS - 500);
+
+        let mut battery = GoldfishBattery::new(
+            mmio_base,
+            irq_num,
+            irq_evt,
+            tube,
+            None,
+            Some(Box::new(move || {
+                Ok(Box::new(create_mock_power_client(Some(recent_time))))
+            })),
+        )
+        .unwrap();
+
+        // First call should return RetryNeeded due to rate limiting.
+        assert!(matches!(
+            battery.initialize_battery_state(),
+            Ok(InitResult::RetryNeeded)
+        ));
+        // initialized should still be false
+        assert!(!battery.state.lock().initialized);
+
+        let old_time = now - Duration::from_millis(GoldfishBattery::POWERD_REQ_INTERVAL_MS + 500);
+        // Replace the factory function to simulate an older last_request_time
+        battery.create_powerd_client = Some(Box::new(move || {
+            Ok(Box::new(create_mock_power_client(Some(old_time))))
+        }));
+
+        // Second call with old time should succeed.
+        assert!(matches!(
+            battery.initialize_battery_state(),
+            Ok(InitResult::Done)
+        ));
+
+        // Check if values are correctly updated.
+        let state = battery.state.lock();
+        assert_eq!(state.ac_online, 1);
+        assert_eq!(state.capacity, 50);
+    }
+
+    #[test]
+    fn test_initialize_battery_state_no_powerd_client() {
+        let mmio_base = 0;
+        let irq_num = 0;
+        let irq_evt = IrqLevelEvent::new().unwrap();
+        let tube = Tube::pair().unwrap().1;
+
+        let mut battery =
+            GoldfishBattery::new(mmio_base, irq_num, irq_evt, tube, None, None).unwrap();
+
+        assert!(matches!(
+            battery.initialize_battery_state(),
+            Ok(InitResult::Done)
+        ));
     }
 }

@@ -6,6 +6,7 @@
 
 use std::error::Error;
 use std::time::Duration;
+use std::time::SystemTime;
 
 use dbus::blocking::Connection;
 use protobuf::Message;
@@ -23,6 +24,7 @@ use crate::PowerData;
 const DEFAULT_DBUS_TIMEOUT: Duration = Duration::from_secs(25);
 
 pub struct DBusClient {
+    last_request_timestamp: Option<SystemTime>,
     connection: Connection,
 }
 
@@ -45,14 +47,23 @@ impl DBusClient {
 
         let connection = dbus::blocking::Connection::from(channel);
 
-        Ok(Box::new(Self { connection }))
+        Ok(Box::new(Self {
+            connection,
+            last_request_timestamp: None,
+        }))
     }
 }
 
 // Send GetPowerSupplyProperties dbus request to power_manager(powerd), blocks until it gets
 // response, and converts the response into PowerData.
 impl PowerClient for DBusClient {
+    fn last_request_timestamp(&self) -> Option<SystemTime> {
+        self.last_request_timestamp
+    }
+
     fn get_power_data(&mut self) -> std::result::Result<PowerData, Box<dyn Error>> {
+        self.last_request_timestamp = Some(SystemTime::now());
+
         let proxy = self.connection.with_proxy(
             POWER_INTERFACE_NAME,
             POWER_OBJECT_PATH,

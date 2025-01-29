@@ -5,6 +5,7 @@
 //! Power monitoring abstraction layer.
 
 use std::error::Error;
+use std::time::SystemTime;
 
 use base::ReadNotifier;
 
@@ -14,6 +15,9 @@ pub trait PowerMonitor: ReadNotifier {
 
 pub trait PowerClient {
     fn get_power_data(&mut self) -> std::result::Result<PowerData, Box<dyn Error>>;
+
+    /// Returns timestamp that this client sends a DBus request.
+    fn last_request_timestamp(&self) -> Option<SystemTime>;
 }
 
 #[derive(Debug)]
