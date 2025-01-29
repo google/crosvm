@@ -125,7 +125,9 @@ impl virtio_input_device_ids {
     }
 }
 
-#[derive(Copy, Clone, Default, Debug, AsBytes, FromZeroes, FromBytes, Serialize, Deserialize)]
+#[derive(
+    Copy, Clone, Default, Debug, AsBytes, FromZeroes, FromBytes, PartialEq, Serialize, Deserialize,
+)]
 #[repr(C)]
 pub struct virtio_input_absinfo {
     min: Le32,
@@ -860,7 +862,9 @@ where
             idx,
             &config.name,
             &config.serial_name,
+            config.properties,
             config.supported_events,
+            config.axis_info,
         ),
         source: Some(SocketEventSource::new(source)),
         virtio_features,
@@ -871,7 +875,11 @@ where
 struct InputConfigFile {
     name: Option<String>,
     serial_name: Option<String>,
+    #[serde(default)]
+    properties: BTreeMap<String, u16>,
     events: Vec<InputConfigFileEvent>,
+    #[serde(default)]
+    axis_info: Vec<InputConfigFileAbsInfo>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -881,10 +889,25 @@ struct InputConfigFileEvent {
     supported_events: BTreeMap<String, u16>,
 }
 
+#[derive(Debug, Deserialize)]
+struct InputConfigFileAbsInfo {
+    #[allow(dead_code)]
+    axis: String,
+    axis_code: u16,
+    min: u32,
+    max: u32,
+    #[serde(default)]
+    fuzz: u32,
+    #[serde(default)]
+    flat: u32,
+}
+
 struct CustomInputConfig {
     name: String,
     serial_name: String,
+    properties: virtio_input_bitmap,
     supported_events: BTreeMap<u16, virtio_input_bitmap>,
+    axis_info: BTreeMap<u16, virtio_input_absinfo>,
 }
 
 // Read and parse input event config file to input device bitmaps. If parsing is successful, this
@@ -908,18 +931,13 @@ fn parse_input_config_file(config_path: &PathBuf, device_idx: u32) -> Result<Cus
     })?;
     // Parse the supported events
     for event in config_file.events {
-        let mut bit_map_idx: Vec<u16> = Vec::new();
-        for (event_name, event_code) in event.supported_events {
-            if event_code >= 1024 {
-                return Err(InputError::ParseEventConfigError(format!(
-                    "The {} config file's {} event has event_code exceeds bounds(>=1024)",
-                    config_path.display(),
-                    event_name
-                )));
-            }
-            bit_map_idx.push(event_code);
-        }
-        let bitmap = virtio_input_bitmap::from_bits(&bit_map_idx);
+        let bitmap = bitmap_from_map(&event.supported_events).map_err(|e| {
+            InputError::ParseEventConfigError(format!(
+                "The config file's {} event can't be parsed: {:?}",
+                config_path.display(),
+                e
+            ))
+        })?;
         if supported_events
             .insert(event.event_type_code, bitmap)
             .is_some()
@@ -938,6 +956,21 @@ fn parse_input_config_file(config_path: &PathBuf, device_idx: u32) -> Result<Cus
         );
     }
 
+    let properties = bitmap_from_map(&config_file.properties).map_err(|e| {
+        InputError::ParseEventConfigError(format!("Unable to parse device properties: {:?}", e))
+    })?;
+
+    let axis_info: BTreeMap<u16, virtio_input_absinfo> = config_file
+        .axis_info
+        .iter()
+        .map(|a| {
+            (
+                a.axis_code,
+                virtio_input_absinfo::new(a.min, a.max, a.fuzz, a.flat),
+            )
+        })
+        .collect();
+
     let name = config_file
         .name
         .unwrap_or_else(|| "Crosvm Virtio Custom".to_string());
@@ -948,21 +981,47 @@ fn parse_input_config_file(config_path: &PathBuf, device_idx: u32) -> Result<Cus
     Ok(CustomInputConfig {
         name,
         serial_name,
+        properties,
         supported_events,
+        axis_info,
     })
+}
+
+fn bitmap_from_map(map: &BTreeMap<String, u16>) -> Result<virtio_input_bitmap> {
+    let mut bitmap_idx: Vec<u16> = Vec::new();
+    for (key, &value) in map {
+        if value >= 1024 {
+            return Err(InputError::ParseEventConfigError(format!(
+                "Value exceeds bitmap bounds: {} ({})",
+                value, key
+            )));
+        }
+        bitmap_idx.push(value);
+    }
+    Ok(virtio_input_bitmap::from_bits(&bitmap_idx))
 }
 
 #[cfg(test)]
 mod tests {
     use defaults::new_keyboard_config;
+    use defaults::new_multi_touch_config;
+    use linux_input_sys::constants::ABS_MT_POSITION_X;
+    use linux_input_sys::constants::ABS_MT_POSITION_Y;
+    use linux_input_sys::constants::ABS_MT_SLOT;
+    use linux_input_sys::constants::ABS_MT_TRACKING_ID;
+    use linux_input_sys::constants::ABS_X;
+    use linux_input_sys::constants::ABS_Y;
+    use linux_input_sys::constants::BTN_TOUCH;
+    use linux_input_sys::constants::EV_ABS;
+    use linux_input_sys::constants::EV_KEY;
+    use linux_input_sys::constants::EV_LED;
+    use linux_input_sys::constants::EV_REP;
+    use linux_input_sys::constants::INPUT_PROP_DIRECT;
     use tempfile::TempDir;
 
     use super::*;
     #[test]
     fn parse_keyboard_like_input_config_file_success() {
-        pub const EV_KEY: u16 = 0x01;
-        pub const EV_LED: u16 = 0x11;
-        pub const EV_REP: u16 = 0x14;
         // Create a sample JSON file for testing
         let temp_file = TempDir::new().unwrap();
         let path = temp_file.path().join("test.json");
@@ -1029,19 +1088,194 @@ mod tests {
         assert_eq!(ev_led_bitmap, expected_ev_led_bitmap);
     }
 
-    // Test the example custom device config file
-    // (tests/data/input/example_custom_input_config.json) provides the same supported events as
+    // Test the example custom keyboard config file
+    // (tests/data/input/example_custom_keyboard_config.json) provides the same supported events as
     // default keyboard's supported events.
     #[test]
-    fn example_custom_config_file_events_eq_default_keyboard_events() {
+    fn example_custom_keyboard_config_file_events_eq_default_keyboard_events() {
         let temp_file = TempDir::new().unwrap();
         let path = temp_file.path().join("test.json");
-        let test_json = include_str!("../../../tests/data/input/example_custom_input_config.json");
+        let test_json =
+            include_str!("../../../tests/data/input/example_custom_keyboard_config.json");
         fs::write(&path, test_json).expect("Unable to write test file");
 
         let keyboard_supported_events = new_keyboard_config(0).supported_events;
         let custom_supported_events = parse_input_config_file(&path, 0).unwrap().supported_events;
 
         assert_eq!(keyboard_supported_events, custom_supported_events);
+    }
+
+    #[test]
+    fn parse_touchscreen_like_input_config_file_success() {
+        // Create a sample JSON file for testing
+        let temp_file = TempDir::new().unwrap();
+        let path = temp_file.path().join("touchscreen.json");
+        let test_json = r#"
+        {
+          "name": "Virtio Custom Test",
+          "serial_name": "virtio-custom-test",
+          "properties": {"INPUT_PROP_DIRECT": 1},
+          "events": [
+            {
+              "event_type": "EV_KEY",
+              "event_type_code": 1,
+              "supported_events": {
+                "BTN_TOUCH": 330
+              }
+            }, {
+              "event_type": "EV_ABS",
+              "event_type_code": 3,
+              "supported_events": {
+                "ABS_MT_SLOT": 47,
+                "ABS_MT_TRACKING_ID": 57,
+                "ABS_MT_POSITION_X": 53,
+                "ABS_MT_POSITION_Y": 54,
+                "ABS_X": 0,
+                "ABS_Y": 1
+              }
+            }
+          ],
+          "axis_info": [
+            {
+              "axis": "ABS_MT_SLOT",
+              "axis_code": 47,
+              "min": 0,
+              "max": 10,
+              "fuzz": 0,
+              "flat": 0
+            }, {
+              "axis": "ABS_MT_TRACKING_ID",
+              "axis_code": 57,
+              "min": 0,
+              "max": 10,
+              "fuzz": 0,
+              "flat": 0
+            }, {
+              "axis": "ABS_MT_POSITION_X",
+              "axis_code": 53,
+              "min": 0,
+              "max": 720,
+              "fuzz": 0,
+              "flat": 0
+            }, {
+              "axis": "ABS_MT_POSITION_Y",
+              "axis_code": 54,
+              "min": 0,
+              "max": 1280,
+              "fuzz": 0,
+              "flat": 0
+            }, {
+              "axis": "ABS_X",
+              "axis_code": 0,
+              "min": 0,
+              "max": 720,
+              "fuzz": 0,
+              "flat": 0
+            }, {
+              "axis": "ABS_Y",
+              "axis_code": 1,
+              "min": 0,
+              "max": 1280,
+              "fuzz": 0,
+              "flat": 0
+            }
+          ]
+        }"#;
+
+        fs::write(&path, test_json).expect("Unable to write test file");
+
+        // Call the function and assert the result
+        let config = parse_input_config_file(&path, 0).expect("failed to parse config");
+
+        let properties = &config.properties;
+        let expected_properties = virtio_input_bitmap::from_bits(&[INPUT_PROP_DIRECT]);
+        assert_eq!(properties, &expected_properties);
+
+        let supported_events = &config.supported_events;
+
+        // EV_KEY type
+        let ev_key_events = supported_events.get(&EV_KEY);
+        assert!(ev_key_events.is_some());
+        let ev_key_bitmap = ev_key_events.unwrap();
+        let expected_ev_key_bitmap = virtio_input_bitmap::from_bits(&[BTN_TOUCH]);
+        assert_eq!(ev_key_bitmap, &expected_ev_key_bitmap);
+
+        // EV_ABS type
+        let ev_abs_events = supported_events.get(&EV_ABS);
+        assert!(ev_abs_events.is_some());
+        let ev_abs_bitmap = ev_abs_events.unwrap();
+        let expected_ev_abs_bitmap = virtio_input_bitmap::from_bits(&[
+            ABS_MT_SLOT,
+            ABS_MT_TRACKING_ID,
+            ABS_MT_POSITION_X,
+            ABS_MT_POSITION_Y,
+            ABS_X,
+            ABS_Y,
+        ]);
+        assert_eq!(ev_abs_bitmap, &expected_ev_abs_bitmap);
+
+        let axis_info = &config.axis_info;
+        let slot_opt = axis_info.get(&ABS_MT_SLOT);
+        assert!(slot_opt.is_some());
+        let slot_info = slot_opt.unwrap();
+        let expected_slot_info = virtio_input_absinfo::new(0, 10, 0, 0);
+        assert_eq!(slot_info, &expected_slot_info);
+
+        let axis_info = &config.axis_info;
+        let tracking_id_opt = axis_info.get(&ABS_MT_TRACKING_ID);
+        assert!(tracking_id_opt.is_some());
+        let tracking_id_info = tracking_id_opt.unwrap();
+        let expected_tracking_id_info = virtio_input_absinfo::new(0, 10, 0, 0);
+        assert_eq!(tracking_id_info, &expected_tracking_id_info);
+
+        let axis_info = &config.axis_info;
+        let position_x_opt = axis_info.get(&ABS_MT_POSITION_X);
+        assert!(position_x_opt.is_some());
+        let position_x_info = position_x_opt.unwrap();
+        let expected_position_x_info = virtio_input_absinfo::new(0, 720, 0, 0);
+        assert_eq!(position_x_info, &expected_position_x_info);
+
+        let axis_info = &config.axis_info;
+        let position_y_opt = axis_info.get(&ABS_MT_POSITION_Y);
+        assert!(position_y_opt.is_some());
+        let position_y_info = position_y_opt.unwrap();
+        let expected_position_y_info = virtio_input_absinfo::new(0, 1280, 0, 0);
+        assert_eq!(position_y_info, &expected_position_y_info);
+
+        let axis_info = &config.axis_info;
+        let x_opt = axis_info.get(&ABS_X);
+        assert!(x_opt.is_some());
+        let x_info = x_opt.unwrap();
+        let expected_x_info = virtio_input_absinfo::new(0, 720, 0, 0);
+        assert_eq!(x_info, &expected_x_info);
+
+        let axis_info = &config.axis_info;
+        let y_opt = axis_info.get(&ABS_Y);
+        assert!(y_opt.is_some());
+        let y_info = y_opt.unwrap();
+        let expected_y_info = virtio_input_absinfo::new(0, 1280, 0, 0);
+        assert_eq!(y_info, &expected_y_info);
+    }
+
+    // Test the example custom touchscreen config file
+    // (tests/data/input/example_custom_multitouchscreen_config.json) provides the same
+    // configuration as the default multi touch screen.
+    #[test]
+    fn example_custom_touchscreen_config_file_events_eq_default_multitouchscreen_events() {
+        let temp_file = TempDir::new().unwrap();
+        let path = temp_file.path().join("test.json");
+        let test_json =
+            include_str!("../../../tests/data/input/example_custom_multitouchscreen_config.json");
+        fs::write(&path, test_json).expect("Unable to write test file");
+
+        let default_config = new_multi_touch_config(0, 720, 1280, None);
+        let custom_config = parse_input_config_file(&path, 0).expect("Failed to parse JSON file");
+
+        assert_eq!(
+            default_config.supported_events,
+            custom_config.supported_events
+        );
+        assert_eq!(default_config.properties, custom_config.properties);
+        assert_eq!(default_config.axis_info, custom_config.axis_info);
     }
 }

@@ -195,17 +195,22 @@ crosvm run \
 ```
 
 This config_path requires a JSON-formatted configuration file. "events" configures the supported
-events. "name" defines the customized device name, "serial" defines customized serial name. The
-properties and axis info are yet to be supported.
+events. "name" defines the customized device name, "serial" defines customized serial name,
+"properties" defines the device properties and "axis_info" defines the axis information.
 
-You can find an example config JSON from
-[`/devices/tests/data/input/example_custom_input_config.json`](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/tests/data/input/example_custom_input_config.json).
-It configs the same supported events as keyboard's supported events(`default_keyboard_events` in
-[`devices/src/virtio/input/defaults.rs`](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/input/defaults.rs#320)).
+An example configuration file covering all property types can be found in
+[`/devices/tests/data/input/example_custom_multitouchscreen_config.json`](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/tests/data/input/example_custom_multitouchscreen_config.json).
+It configures a device equivalent to the default multitouch screen device
+(`crosvm run --input=multi-touch,...`). Another example can be found in
+[`/devices/tests/data/input/example_custom_keyboard_config.json`](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/tests/data/input/example_custom_keyboard_config.json),
+which configures a device equivalent to the default keyboard (`crosvm run --input=keyboard,...`).
+
 Here is a portion of the example config file:
 
 ```
-{{#include ../../../../devices/tests/data/input/example_custom_input_config.json::11}}
+{{#include ../../../../devices/tests/data/input/example_custom_multitouchscreen_config.json::12}}
           ...
-{{#include ../../../../devices/tests/data/input/example_custom_input_config.json:115:}}
+{{#include ../../../../devices/tests/data/input/example_custom_multitouchscreen_config.json:23:33}}
+          ...
+{{#include ../../../../devices/tests/data/input/example_custom_multitouchscreen_config.json:68:}}
 ```

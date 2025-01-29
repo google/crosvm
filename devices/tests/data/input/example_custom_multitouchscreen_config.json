@@ -1,0 +1,70 @@
+{
+          "name": "Crosvm Virtio Multitouch Touchscreen 0",
+          "serial_name": "virtio-touchscreen-0",
+          "properties": {"INPUT_PROP_DIRECT": 1},
+          "events": [
+            {
+              "event_type": "EV_KEY",
+              "event_type_code": 1,
+              "supported_events": {
+                "BTN_TOUCH": 330
+              }
+            }, {
+              "event_type": "EV_ABS",
+              "event_type_code": 3,
+              "supported_events": {
+                "ABS_MT_SLOT": 47,
+                "ABS_MT_TRACKING_ID": 57,
+                "ABS_MT_POSITION_X": 53,
+                "ABS_MT_POSITION_Y": 54,
+                "ABS_X": 0,
+                "ABS_Y": 1
+              }
+            }
+          ],
+          "axis_info": [
+            {
+              "axis": "ABS_MT_SLOT",
+              "axis_code": 47,
+              "min": 0,
+              "max": 10,
+              "fuzz": 0,
+              "flat": 0
+            }, {
+              "axis": "ABS_MT_TRACKING_ID",
+              "axis_code": 57,
+              "min": 0,
+              "max": 10,
+              "fuzz": 0,
+              "flat": 0
+            }, {
+              "axis": "ABS_MT_POSITION_X",
+              "axis_code": 53,
+              "min": 0,
+              "max": 720,
+              "fuzz": 0,
+              "flat": 0
+            }, {
+              "axis": "ABS_MT_POSITION_Y",
+              "axis_code": 54,
+              "min": 0,
+              "max": 1280,
+              "fuzz": 0,
+              "flat": 0
+            }, {
+              "axis": "ABS_X",
+              "axis_code": 0,
+              "min": 0,
+              "max": 720,
+              "fuzz": 0,
+              "flat": 0
+            }, {
+              "axis": "ABS_Y",
+              "axis_code": 1,
+              "min": 0,
+              "max": 1280,
+              "fuzz": 0,
+              "flat": 0
+            }
+          ]
+        }

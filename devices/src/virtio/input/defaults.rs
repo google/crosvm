@@ -153,12 +153,16 @@ pub fn new_multi_touch_config(
 /// * `idx` - input device index
 /// * `name` - input device name
 /// * `serial_name` - input device serial name
+/// * `properties` - input device properties
 /// * `supported_events` - Event configuration provided by a configuration file
+/// * `axis_info` - Device axis configuration
 pub fn new_custom_config(
     idx: u32,
     name: &str,
     serial_name: &str,
+    properties: virtio_input_bitmap,
     supported_events: BTreeMap<u16, virtio_input_bitmap>,
+    axis_info: BTreeMap<u16, virtio_input_absinfo>,
 ) -> VirtioInputConfig {
     let name: String = format!("{name} {idx}");
     let serial_name = format!("{serial_name}-{idx}");
@@ -173,9 +177,9 @@ pub fn new_custom_config(
         virtio_input_device_ids::new(0, 0, 0, 0),
         name,
         serial_name,
-        virtio_input_bitmap::new([0u8; 128]),
+        properties,
         supported_events,
-        BTreeMap::new(),
+        axis_info,
     )
 }
 
