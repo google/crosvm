@@ -1354,16 +1354,26 @@ mod tests {
 
     /// Creates a composite disk image with two partitions.
     #[test]
+    #[allow(clippy::unnecessary_to_owned)] // false positives
     fn create_composite_disk_success() {
-        let mut header_image = tempfile().unwrap();
-        let mut footer_image = tempfile().unwrap();
-        let mut composite_image = tempfile().unwrap();
+        fn tmpfile(prefix: &str) -> tempfile::NamedTempFile {
+            tempfile::Builder::new().prefix(prefix).tempfile().unwrap()
+        }
+
+        let mut header_image = tmpfile("header");
+        let mut footer_image = tmpfile("footer");
+        let mut composite_image = tmpfile("composite");
+
+        // The test doesn't read these, just needs to be able to open them.
+        let partition1 = tmpfile("partition1");
+        let partition2 = tmpfile("partition1");
+        let zero_filler = tmpfile("zero");
 
         create_composite_disk(
             &[
                 PartitionInfo {
                     label: "partition1".to_string(),
-                    path: "/partition1.img".to_string().into(),
+                    path: partition1.path().to_path_buf(),
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: false,
                     // Needs small amount of padding.
@@ -1372,7 +1382,7 @@ mod tests {
                 },
                 PartitionInfo {
                     label: "partition2".to_string(),
-                    path: "/partition2.img".to_string().into(),
+                    path: partition2.path().to_path_buf(),
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: true,
                     // Needs no padding.
@@ -1380,12 +1390,12 @@ mod tests {
                     part_guid: Some(Uuid::from_u128(0x4049C8DC_6C2B_C740_A95A_BDAA629D4378)),
                 },
             ],
-            Path::new("/zero_filler.img"),
-            Path::new("/header_path.img"),
-            &mut header_image,
-            Path::new("/footer_path.img"),
-            &mut footer_image,
-            &mut composite_image,
+            zero_filler.path(),
+            &header_image.path().to_path_buf(),
+            header_image.as_file_mut(),
+            &footer_image.path().to_path_buf(),
+            footer_image.as_file_mut(),
+            composite_image.as_file_mut(),
         )
         .unwrap();
 
@@ -1402,31 +1412,31 @@ mod tests {
                 version: 2,
                 component_disks: vec![
                     ComponentDisk {
-                        file_path: "/header_path.img".to_string(),
+                        file_path: header_image.path().to_str().unwrap().to_string(),
                         offset: 0,
                         read_write_capability: ReadWriteCapability::READ_ONLY.into(),
                         ..ComponentDisk::new()
                     },
                     ComponentDisk {
-                        file_path: "/partition1.img".to_string(),
+                        file_path: partition1.path().to_str().unwrap().to_string(),
                         offset: 0x5000, // GPT_BEGINNING_SIZE,
                         read_write_capability: ReadWriteCapability::READ_ONLY.into(),
                         ..ComponentDisk::new()
                     },
                     ComponentDisk {
-                        file_path: "/zero_filler.img".to_string(),
+                        file_path: zero_filler.path().to_str().unwrap().to_string(),
                         offset: 0x5fa0, // GPT_BEGINNING_SIZE + 4000,
                         read_write_capability: ReadWriteCapability::READ_ONLY.into(),
                         ..ComponentDisk::new()
                     },
                     ComponentDisk {
-                        file_path: "/partition2.img".to_string(),
+                        file_path: partition2.path().to_str().unwrap().to_string(),
                         offset: 0x6000, // GPT_BEGINNING_SIZE + 4096,
                         read_write_capability: ReadWriteCapability::READ_WRITE.into(),
                         ..ComponentDisk::new()
                     },
                     ComponentDisk {
-                        file_path: "/footer_path.img".to_string(),
+                        file_path: footer_image.path().to_str().unwrap().to_string(),
                         offset: 0x7000, // GPT_BEGINNING_SIZE + 4096 + 4096,
                         read_write_capability: ReadWriteCapability::READ_ONLY.into(),
                         ..ComponentDisk::new()
@@ -1436,6 +1446,66 @@ mod tests {
                 ..CompositeDisk::new()
             }
         );
+
+        // Open the file as a composite disk and do some basic GPT header/footer validation.
+        let ex = Executor::new().unwrap();
+        ex.run_until(async {
+            let disk = Box::new(
+                CompositeDiskFile::from_file(
+                    composite_image.into_file(),
+                    DiskFileParams {
+                        path: "/foo".into(),
+                        is_read_only: true,
+                        is_sparse_file: false,
+                        is_overlapped: false,
+                        is_direct: false,
+                        lock: false,
+                        depth: 0,
+                    },
+                )
+                .unwrap(),
+            )
+            .to_async_disk(&ex)
+            .unwrap();
+
+            let header_offset = SECTOR_SIZE;
+            let footer_offset = disk.get_len().unwrap() - SECTOR_SIZE;
+
+            let mut header_bytes = [0u8; SECTOR_SIZE as usize];
+            assert_eq!(
+                disk.read_double_buffered(header_offset, &mut header_bytes[..])
+                    .await
+                    .unwrap(),
+                SECTOR_SIZE as usize
+            );
+
+            let mut footer_bytes = [0u8; SECTOR_SIZE as usize];
+            assert_eq!(
+                disk.read_double_buffered(footer_offset, &mut footer_bytes[..])
+                    .await
+                    .unwrap(),
+                SECTOR_SIZE as usize
+            );
+
+            // Check the header and footer fields point to each other correctly.
+            let header_current_lba = u64::from_le_bytes(header_bytes[24..32].try_into().unwrap());
+            assert_eq!(header_current_lba * SECTOR_SIZE, header_offset);
+            let header_backup_lba = u64::from_le_bytes(header_bytes[32..40].try_into().unwrap());
+            assert_eq!(header_backup_lba * SECTOR_SIZE, footer_offset);
+
+            let footer_current_lba = u64::from_le_bytes(footer_bytes[24..32].try_into().unwrap());
+            assert_eq!(footer_current_lba * SECTOR_SIZE, footer_offset);
+            let footer_backup_lba = u64::from_le_bytes(footer_bytes[32..40].try_into().unwrap());
+            assert_eq!(footer_backup_lba * SECTOR_SIZE, header_offset);
+
+            // Header and footer should be equal if we zero the pointers and CRCs.
+            header_bytes[16..20].fill(0);
+            header_bytes[24..40].fill(0);
+            footer_bytes[16..20].fill(0);
+            footer_bytes[24..40].fill(0);
+            assert_eq!(header_bytes, footer_bytes);
+        })
+        .unwrap();
     }
 
     /// Attempts to create a composite disk image with two partitions with the same label.
