@@ -11,6 +11,7 @@ use base::SharedMemory;
 use bitflags::bitflags;
 
 use crate::Error;
+use crate::FileBackedMappingParameters;
 use crate::GuestAddress;
 use crate::GuestMemory;
 use crate::MemoryRegion;
@@ -86,6 +87,19 @@ impl GuestMemory {
             region.mapping.use_dontfork()?;
         }
         Ok(())
+    }
+}
+
+impl FileBackedMappingParameters {
+    pub fn open(&self) -> std::io::Result<std::fs::File> {
+        use std::os::unix::fs::OpenOptionsExt;
+        Ok(base::open_file_or_duplicate(
+            &self.path,
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(self.writable)
+                .custom_flags(if self.sync { libc::O_SYNC } else { 0 }),
+        )?)
     }
 }
 

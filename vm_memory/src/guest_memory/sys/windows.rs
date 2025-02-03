@@ -7,6 +7,7 @@ use base::SharedMemory;
 use base::VolatileMemory;
 use bitflags::bitflags;
 
+use crate::FileBackedMappingParameters;
 use crate::GuestMemory;
 use crate::MemoryRegion;
 use crate::Result;
@@ -28,6 +29,14 @@ impl GuestMemory {
     /// Handles guest memory policy hints/advices.
     pub fn set_memory_policy(&self, _mem_policy: MemoryPolicy) {
         // Hints aren't supported on Windows.
+    }
+}
+
+impl FileBackedMappingParameters {
+    pub fn open(&self) -> std::io::Result<std::fs::File> {
+        // Windows is missing an equivalent to `punch_holes_in_guest_mem_layout_for_mappings`, so
+        // in practice this should be unreachable.
+        unimplemented!()
     }
 }
 

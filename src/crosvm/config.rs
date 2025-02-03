@@ -62,6 +62,7 @@ use serde::Deserializer;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 use vm_control::BatteryType;
+use vm_memory::FileBackedMappingParameters;
 #[cfg(target_arch = "x86_64")]
 use x86_64::check_host_hybrid_support;
 #[cfg(target_arch = "x86_64")]
@@ -386,23 +387,6 @@ pub enum InputDeviceOption {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize, FromKeyValues)]
-#[serde(deny_unknown_fields)]
-pub struct FileBackedMappingParameters {
-    pub path: PathBuf,
-    #[serde(rename = "addr")]
-    pub address: u64,
-    pub size: u64,
-    #[serde(default)]
-    pub offset: u64,
-    #[serde(rename = "rw", default)]
-    pub writable: bool,
-    #[serde(default)]
-    pub sync: bool,
-    #[serde(default)]
-    pub align: bool,
-}
-
 fn parse_hex_or_decimal(maybe_hex_string: &str) -> Result<u64, String> {
     // Parse string starting with 0x as hex and others as numbers.
     if let Some(hex_string) = maybe_hex_string.strip_prefix("0x") {
@@ -704,7 +688,8 @@ pub struct Config {
     #[cfg(windows)]
     pub exit_stats: bool,
     pub fdt_position: Option<FdtPosition>,
-    pub file_backed_mappings: Vec<FileBackedMappingParameters>,
+    pub file_backed_mappings_mmio: Vec<FileBackedMappingParameters>,
+    pub file_backed_mappings_ram: Vec<FileBackedMappingParameters>,
     pub force_calibrated_tsc_leaf: bool,
     pub force_s2idle: bool,
     pub fw_cfg_parameters: Vec<FwCfgParameters>,
@@ -936,7 +921,8 @@ impl Default for Config {
             #[cfg(windows)]
             exit_stats: false,
             fdt_position: None,
-            file_backed_mappings: Vec::new(),
+            file_backed_mappings_mmio: Vec::new(),
+            file_backed_mappings_ram: Vec::new(),
             force_calibrated_tsc_leaf: false,
             force_s2idle: false,
             fw_cfg_parameters: Vec::new(),
@@ -1297,7 +1283,11 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
             .any(|opt| opt.type_ == DeviceType::Console),
     );
 
-    for mapping in cfg.file_backed_mappings.iter_mut() {
+    for mapping in cfg
+        .file_backed_mappings_mmio
+        .iter_mut()
+        .chain(cfg.file_backed_mappings_ram.iter_mut())
+    {
         validate_file_backed_mapping(mapping)?;
     }
 

@@ -71,6 +71,7 @@ use serde::Deserializer;
 use serde::Serialize;
 #[cfg(feature = "gpu")]
 use serde_keyvalue::FromKeyValues;
+use vm_memory::FileBackedMappingParameters;
 
 use super::config::PmemOption;
 #[cfg(feature = "gpu")]
@@ -97,7 +98,6 @@ use crate::crosvm::config::BatteryConfig;
 use crate::crosvm::config::CpuOptions;
 use crate::crosvm::config::DtboOption;
 use crate::crosvm::config::Executable;
-use crate::crosvm::config::FileBackedMappingParameters;
 use crate::crosvm::config::HypervisorKind;
 use crate::crosvm::config::InputDeviceOption;
 use crate::crosvm::config::IrqChipKind;
@@ -1362,6 +1362,7 @@ pub struct RunCommand {
     ///     sync - open backing file with O_SYNC
     ///     align - whether to adjust addr and size to page
     ///        boundaries implicitly
+    ///     ram - whether mapping to a RAM or MMIO region. defaults to MMIO
     pub file_backed_mapping: Vec<FileBackedMappingParameters>,
 
     #[cfg(target_arch = "x86_64")]
@@ -3743,7 +3744,8 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.media_decoder = cmd.media_decoder;
         }
 
-        cfg.file_backed_mappings = cmd.file_backed_mapping;
+        (cfg.file_backed_mappings_ram, cfg.file_backed_mappings_mmio) =
+            cmd.file_backed_mapping.into_iter().partition(|x| x.ram);
 
         #[cfg(target_os = "android")]
         {
