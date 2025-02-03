@@ -8,6 +8,7 @@ edition = "2021"
 enable_haxm_tests = []
 haxm = []
 whpx = []
+halla = []
 geniezone = []
 gvm = []
 gunyah = []

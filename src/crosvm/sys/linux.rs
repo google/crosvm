@@ -215,6 +215,9 @@ const KVM_PATH: &str = "/dev/kvm";
 const GENIEZONE_PATH: &str = "/dev/gzvm";
 #[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
 static GUNYAH_PATH: &str = "/dev/gunyah";
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(feature = "halla")]
+const HALLA_PATH: &str = "/dev/hvm";
 
 fn create_virtio_devices(
     cfg: &Config,
@@ -1759,6 +1762,66 @@ fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> 
     )
 }
 
+#[cfg(all(target_arch = "aarch64", feature = "halla"))]
+fn run_halla(
+    device_path: Option<&Path>,
+    cfg: Config,
+    components: VmComponents,
+) -> Result<ExitState> {
+    use devices::HallaKernelIrqChip;
+    use hypervisor::halla::Halla;
+    use hypervisor::halla::HallaVcpu;
+    use hypervisor::halla::HallaVm;
+
+    let device_path = device_path.unwrap_or(Path::new(HALLA_PATH));
+    let hvm = Halla::new_with_path(device_path)
+        .with_context(|| format!("failed to open Halla device {}", device_path.display()))?;
+
+    let arch_memory_layout =
+        Arch::arch_memory_layout(&components).context("failed to create arch memory layout")?;
+    let guest_mem = create_guest_memory(&cfg, &components, &arch_memory_layout, &hvm)?;
+
+    #[cfg(feature = "swap")]
+    let swap_controller = if let Some(swap_dir) = cfg.swap_dir.as_ref() {
+        Some(
+            SwapController::launch(guest_mem.clone(), swap_dir, cfg.jail_config.as_ref())
+                .context("launch vmm-swap monitor process")?,
+        )
+    } else {
+        None
+    };
+
+    let vm = HallaVm::new(&hvm, guest_mem, components.hv_cfg).context("failed to create vm")?;
+
+    // Check that the VM was actually created in protected mode as expected.
+    if cfg.protection_type.isolates_memory() && !vm.check_capability(VmCap::Protected) {
+        bail!("Failed to create protected VM");
+    }
+    let vm_clone = vm.try_clone().context("failed to clone vm")?;
+
+    let ioapic_host_tube;
+    let mut irq_chip = match cfg.irq_chip.unwrap_or(IrqChipKind::Kernel) {
+        IrqChipKind::Split => bail!("Halla does not support split irqchip mode"),
+        IrqChipKind::Userspace => bail!("Halla does not support userspace irqchip mode"),
+        IrqChipKind::Kernel => {
+            ioapic_host_tube = None;
+            HallaKernelIrqChip::new(vm_clone, components.vcpu_count)
+                .context("failed to create IRQ chip")?
+        }
+    };
+
+    run_vm::<HallaVcpu, HallaVm>(
+        cfg,
+        components,
+        &arch_memory_layout,
+        vm,
+        &mut irq_chip,
+        ioapic_host_tube,
+        #[cfg(feature = "swap")]
+        swap_controller,
+    )
+}
+
 fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> Result<ExitState> {
     use devices::KvmKernelIrqChip;
     #[cfg(target_arch = "x86_64")]
@@ -1942,6 +2005,17 @@ fn get_default_hypervisor() -> Option<HypervisorKind> {
         }
     }
 
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(feature = "halla")]
+    {
+        let halla_path = Path::new(HALLA_PATH);
+        if halla_path.exists() {
+            return Some(HypervisorKind::Halla {
+                device: Some(halla_path.to_path_buf()),
+            });
+        }
+    }
+
     #[cfg(all(
         unix,
         any(target_arch = "arm", target_arch = "aarch64"),
@@ -1977,6 +2051,9 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         #[cfg(feature = "geniezone")]
         HypervisorKind::Geniezone { device } => run_gz(device.as_deref(), cfg, components),
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(feature = "halla")]
+        HypervisorKind::Halla { device } => run_halla(device.as_deref(), cfg, components),
         #[cfg(all(
             unix,
             any(target_arch = "arm", target_arch = "aarch64"),

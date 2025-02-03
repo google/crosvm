@@ -49,3 +49,9 @@ The hypervisors in this section are used as backends of the
 - Tested upstream: no
 - Contacts: quic_eberman@quicinc.com, quic_mnalajal@quicinc.com, fmayle@google.com,
   smoreland@google.com
+
+### Halla
+
+- Platforms: Linux, aarch64 only
+- Tested upstream: no
+- Contacts: soc.security@samsung.com

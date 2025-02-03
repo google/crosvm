@@ -27,6 +27,11 @@ pub enum HypervisorKind {
         device: Option<PathBuf>,
     },
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(feature = "halla")]
+    Halla {
+        device: Option<PathBuf>,
+    },
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     #[cfg(feature = "geniezone")]
     Geniezone {
         device: Option<PathBuf>,
@@ -559,6 +564,44 @@ mod tests {
         assert_eq!(
             config.hypervisor,
             Some(HypervisorKind::Kvm {
+                device: Some(PathBuf::from("/not/default"))
+            })
+        );
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(feature = "halla")]
+    fn hypervisor_halla() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--hypervisor", "halla", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(
+            config.hypervisor,
+            Some(HypervisorKind::Halla { device: None })
+        );
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(feature = "halla")]
+    fn hypervisor_halla_device() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--hypervisor", "halla[device=/not/default]", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(
+            config.hypervisor,
+            Some(HypervisorKind::Halla {
                 device: Some(PathBuf::from("/not/default"))
             })
         );

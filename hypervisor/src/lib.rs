@@ -28,6 +28,10 @@ pub mod x86_64;
 #[cfg(all(unix, feature = "geniezone"))]
 pub mod geniezone;
 
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(all(unix, feature = "halla"))]
+pub mod halla;
+
 use base::AsRawDescriptor;
 use base::Event;
 use base::MappedRegion;
@@ -102,6 +106,7 @@ pub enum BalloonEvent {
 pub enum HypervisorKind {
     Geniezone,
     Gunyah,
+    Halla,
     Kvm,
     Haxm,
     Whpx,
