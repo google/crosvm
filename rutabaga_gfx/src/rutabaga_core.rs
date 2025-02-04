@@ -1445,17 +1445,27 @@ mod tests {
 
     #[test]
     fn snapshot_restore_2d_no_resources() {
+        let snapshot_dir = tempfile::tempdir().unwrap();
+        let snapshot_dir_path_str = snapshot_dir.path().to_string_lossy();
+
         let mut buffer = std::io::Cursor::new(Vec::new());
 
         let rutabaga1 = new_2d();
-        rutabaga1.snapshot(&mut buffer, "").unwrap();
+        rutabaga1
+            .snapshot(&mut buffer, &snapshot_dir_path_str)
+            .unwrap();
 
         let mut rutabaga1 = new_2d();
-        rutabaga1.restore(&mut &buffer.get_ref()[..], "").unwrap();
+        rutabaga1
+            .restore(&mut &buffer.get_ref()[..], &snapshot_dir_path_str)
+            .unwrap();
     }
 
     #[test]
     fn snapshot_restore_2d_one_resource() {
+        let snapshot_dir = tempfile::tempdir().unwrap();
+        let snapshot_dir_path_str = snapshot_dir.path().to_string_lossy();
+
         let resource_id = 123;
         let resource_create_3d = ResourceCreate3D {
             target: RUTABAGA_PIPE_TEXTURE_2D,
@@ -1485,10 +1495,14 @@ mod tests {
                 }],
             )
             .unwrap();
-        rutabaga1.snapshot(&mut buffer, "").unwrap();
+        rutabaga1
+            .snapshot(&mut buffer, &snapshot_dir_path_str)
+            .unwrap();
 
         let mut rutabaga2 = new_2d();
-        rutabaga2.restore(&mut &buffer.get_ref()[..], "").unwrap();
+        rutabaga2
+            .restore(&mut &buffer.get_ref()[..], &snapshot_dir_path_str)
+            .unwrap();
 
         assert_eq!(rutabaga2.resources.len(), 1);
         let rutabaga_resource = rutabaga2.resources.get(&resource_id).unwrap();

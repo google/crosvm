@@ -38,3 +38,6 @@ winapi = {version = "0.3", features = ["winnt", "handleapi", "processthreadsapi"
 [build-dependencies]
 pkg-config = "0.3"
 anyhow = "1.0.57"
+
+[dev-dependencies]
+tempfile = "3"
