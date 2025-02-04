@@ -258,6 +258,7 @@ fn build(
     #[cfg(windows)] wndproc_thread: &mut Option<WindowProcedureThread>,
     udmabuf: bool,
     #[cfg(windows)] gpu_display_wait_descriptor_ctrl_wr: SendTube,
+    snapshot_scratch_directory: Option<PathBuf>,
 ) -> Option<VirtioGpu> {
     let mut display_opt = None;
     for display_backend in display_backends {
@@ -294,6 +295,7 @@ fn build(
         external_blob,
         fixed_blob_mapping,
         udmabuf,
+        snapshot_scratch_directory,
     )
 }
 
@@ -949,6 +951,7 @@ impl Worker {
         #[cfg(windows)] mut wndproc_thread: Option<WindowProcedureThread>,
         #[cfg(windows)] gpu_display_wait_descriptor_ctrl_rd: RecvTube,
         #[cfg(windows)] gpu_display_wait_descriptor_ctrl_wr: SendTube,
+        snapshot_scratch_directory: Option<PathBuf>,
     ) -> anyhow::Result<Worker> {
         let fence_state = Arc::new(Mutex::new(Default::default()));
         let fence_handler_resources = Arc::new(Mutex::new(None));
@@ -968,6 +971,7 @@ impl Worker {
             udmabuf,
             #[cfg(windows)]
             gpu_display_wait_descriptor_ctrl_wr,
+            snapshot_scratch_directory,
         )
         .ok_or_else(|| anyhow!("failed to build virtio gpu"))?;
 
@@ -1416,6 +1420,7 @@ pub struct Gpu {
     capset_mask: u64,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     gpu_cgroup_path: Option<PathBuf>,
+    snapshot_scratch_directory: Option<PathBuf>,
 }
 
 impl Gpu {
@@ -1524,6 +1529,7 @@ impl Gpu {
             capset_mask: gpu_parameters.capset_mask,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             gpu_cgroup_path: gpu_cgroup_path.cloned(),
+            snapshot_scratch_directory: gpu_parameters.snapshot_scratch_path.clone(),
         }
     }
 
@@ -1561,6 +1567,7 @@ impl Gpu {
             self.gpu_display_wait_descriptor_ctrl_wr
                 .try_clone()
                 .expect("failed to clone wait context control channel"),
+            self.snapshot_scratch_directory.clone(),
         )?;
 
         for event_device in self.event_devices.take().expect("missing event_devices") {
@@ -1606,6 +1613,7 @@ impl Gpu {
         let external_blob = self.external_blob;
         let fixed_blob_mapping = self.fixed_blob_mapping;
         let udmabuf = self.udmabuf;
+        let snapshot_scratch_directory = self.snapshot_scratch_directory.clone();
 
         #[cfg(windows)]
         let mut wndproc_thread = self.wndproc_thread.take();
@@ -1668,6 +1676,7 @@ impl Gpu {
                 gpu_display_wait_descriptor_ctrl_rd,
                 #[cfg(windows)]
                 gpu_display_wait_descriptor_ctrl_wr,
+                snapshot_scratch_directory,
             )
             .expect("Failed to create virtio gpu worker thread");
 

@@ -7,6 +7,7 @@ use std::collections::BTreeMap as Map;
 use std::collections::BTreeSet as Set;
 use std::io::IoSliceMut;
 use std::num::NonZeroU32;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::result::Result;
 use std::sync::atomic::AtomicBool;
@@ -46,6 +47,7 @@ use rutabaga_gfx::RUTABAGA_MAP_CACHE_MASK;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
+use tempfile::TempDir;
 use vm_control::gpu::DisplayMode;
 use vm_control::gpu::DisplayParameters;
 use vm_control::gpu::GpuControlCommand;
@@ -458,6 +460,7 @@ pub struct VirtioGpu {
     external_blob: bool,
     fixed_blob_mapping: bool,
     udmabuf_driver: Option<UdmabufDriver>,
+    snapshot_scratch_directory: Option<PathBuf>,
     deferred_snapshot_load: Option<VirtioGpuSnapshot>,
 }
 
@@ -533,6 +536,7 @@ impl VirtioGpu {
         external_blob: bool,
         fixed_blob_mapping: bool,
         udmabuf: bool,
+        snapshot_scratch_directory: Option<PathBuf>,
     ) -> Option<VirtioGpu> {
         let mut udmabuf_driver = None;
         if udmabuf {
@@ -567,6 +571,7 @@ impl VirtioGpu {
             fixed_blob_mapping,
             udmabuf_driver,
             deferred_snapshot_load: None,
+            snapshot_scratch_directory,
         })
     }
 
@@ -1298,6 +1303,16 @@ impl VirtioGpu {
     }
 
     pub fn snapshot(&self) -> anyhow::Result<VirtioGpuSnapshot> {
+        let snapshot_directory_tempdir: TempDir;
+        let snapshot_directory = if let Some(dir) = &self.snapshot_scratch_directory {
+            dir.to_string_lossy()
+        } else {
+            snapshot_directory_tempdir = tempfile::tempdir()
+                .context("failed to create tempdir for gpu rutabaga snapshot")?;
+
+            snapshot_directory_tempdir.path().to_string_lossy()
+        };
+
         Ok(VirtioGpuSnapshot {
             scanouts: self
                 .scanouts
@@ -1309,7 +1324,7 @@ impl VirtioGpu {
             rutabaga: {
                 let mut buffer = std::io::Cursor::new(Vec::new());
                 self.rutabaga
-                    .snapshot(&mut buffer, "")
+                    .snapshot(&mut buffer, &snapshot_directory)
                     .context("failed to snapshot rutabaga")?;
                 buffer.into_inner()
             },
