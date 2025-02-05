@@ -5,6 +5,7 @@
 mod edid;
 mod parameters;
 mod protocol;
+mod snapshot;
 mod virtio_gpu;
 
 use std::cell::RefCell;
@@ -17,6 +18,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::sync::Arc;
 
+use ::snapshot::AnySnapshot;
 use anyhow::anyhow;
 use anyhow::Context;
 use base::custom_serde::deserialize_map_from_kv_vec;
@@ -50,7 +52,6 @@ pub use parameters::GpuParameters;
 use rutabaga_gfx::*;
 use serde::Deserialize;
 use serde::Serialize;
-use snapshot::AnySnapshot;
 use sync::Mutex;
 pub use vm_control::gpu::DisplayMode as GpuDisplayMode;
 pub use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
