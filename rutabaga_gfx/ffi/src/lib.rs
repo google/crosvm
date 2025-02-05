@@ -699,8 +699,7 @@ pub unsafe extern "C" fn rutabaga_snapshot(ptr: &mut rutabaga, dir: *const c_cha
         let result = c_str_slice.to_str();
         let directory = return_on_error!(result);
 
-        let file = return_on_io_error!(File::create(Path::new(directory).join("snapshot")));
-        let result = ptr.snapshot(&mut std::io::BufWriter::new(file), directory);
+        let result = ptr.snapshot(directory);
         return_result(result)
     }))
     .unwrap_or(-ESRCH)
@@ -716,8 +715,7 @@ pub unsafe extern "C" fn rutabaga_restore(ptr: &mut rutabaga, dir: *const c_char
         let result = c_str_slice.to_str();
         let directory = return_on_error!(result);
 
-        let file = return_on_io_error!(File::open(Path::new(directory).join("snapshot")));
-        let result = ptr.restore(&mut std::io::BufReader::new(file), directory);
+        let result = ptr.restore(directory);
         return_result(result)
     }))
     .unwrap_or(-ESRCH)

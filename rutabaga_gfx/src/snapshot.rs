@@ -60,7 +60,7 @@ pub struct RutabagaSnapshotReader {
 }
 
 impl RutabagaSnapshotReader {
-    pub fn new(directory: PathBuf) -> RutabagaResult<Self> {
+    pub fn from_existing(directory: PathBuf) -> RutabagaResult<Self> {
         if !directory.as_path().exists() {
             return Err(RutabagaError::SnapshotError(format!(
                 "{} does not exist",
@@ -77,7 +77,7 @@ impl RutabagaSnapshotReader {
 
     pub fn get_namespace(&self, name: &str) -> RutabagaResult<Self> {
         let directory = self.dir.join(name);
-        Self::new(directory)
+        Self::from_existing(directory)
     }
 
     pub fn get_fragment<T: serde::de::DeserializeOwned>(&self, name: &str) -> RutabagaResult<T> {

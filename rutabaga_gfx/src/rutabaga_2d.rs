@@ -13,6 +13,8 @@ use crate::rutabaga_core::Rutabaga2DInfo;
 use crate::rutabaga_core::RutabagaComponent;
 use crate::rutabaga_core::RutabagaResource;
 use crate::rutabaga_utils::*;
+use crate::snapshot::RutabagaSnapshotReader;
+use crate::snapshot::RutabagaSnapshotWriter;
 
 /// Transfers a resource from potentially many chunked src slices to a dst slice.
 fn transfer_2d(
@@ -285,11 +287,14 @@ impl RutabagaComponent for Rutabaga2D {
         Ok(())
     }
 
-    fn snapshot(&self, _directory: &str) -> RutabagaResult<()> {
+    fn snapshot(&self, writer: RutabagaSnapshotWriter) -> RutabagaResult<()> {
+        let v = serde_json::Value::String("rutabaga2d".to_string());
+        writer.add_fragment("rutabaga2d_snapshot", &v)?;
         Ok(())
     }
 
-    fn restore(&self, _directory: &str) -> RutabagaResult<()> {
+    fn restore(&self, reader: RutabagaSnapshotReader) -> RutabagaResult<()> {
+        let _: serde_json::Value = reader.get_fragment("rutabaga2d_snapshot")?;
         Ok(())
     }
 }

@@ -37,6 +37,10 @@ use crate::rutabaga_os::IntoRawDescriptor;
 use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
 use crate::rutabaga_utils::*;
+#[cfg(gfxstream_unstable)]
+use crate::snapshot::RutabagaSnapshotReader;
+#[cfg(gfxstream_unstable)]
+use crate::snapshot::RutabagaSnapshotWriter;
 
 // See `virtgpu-gfxstream-renderer.h` for definitions
 const STREAM_RENDERER_PARAM_USER_DATA: u64 = 1;
@@ -912,24 +916,26 @@ impl RutabagaComponent for Gfxstream {
     }
 
     #[cfg(gfxstream_unstable)]
-    fn snapshot(&self, directory: &str) -> RutabagaResult<()> {
-        let cstring = CString::new(directory)?;
+    fn snapshot(&self, writer: RutabagaSnapshotWriter) -> RutabagaResult<()> {
+        let directory = String::from(writer.get_path().to_string_lossy());
+        let directory_cstring = CString::new(directory)?;
 
         // SAFETY:
         // Safe because directory string is valid
-        let ret = unsafe { stream_renderer_snapshot(cstring.as_ptr() as *const c_char) };
+        let ret = unsafe { stream_renderer_snapshot(directory_cstring.as_ptr() as *const c_char) };
         ret_to_res(ret)?;
 
         Ok(())
     }
 
     #[cfg(gfxstream_unstable)]
-    fn restore(&self, directory: &str) -> RutabagaResult<()> {
-        let cstring = CString::new(directory)?;
+    fn restore(&self, reader: RutabagaSnapshotReader) -> RutabagaResult<()> {
+        let directory = String::from(reader.get_path().to_string_lossy());
+        let directory_cstring = CString::new(directory)?;
 
         // SAFETY:
         // Safe because directory string is valid
-        let ret = unsafe { stream_renderer_restore(cstring.as_ptr() as *const c_char) };
+        let ret = unsafe { stream_renderer_restore(directory_cstring.as_ptr() as *const c_char) };
         ret_to_res(ret)?;
         Ok(())
     }

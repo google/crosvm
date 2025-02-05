@@ -681,6 +681,17 @@ pub enum RutabagaComponentType {
     CrossDomain,
 }
 
+impl RutabagaComponentType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RutabagaComponentType::CrossDomain => "crossdomain",
+            RutabagaComponentType::Gfxstream => "gfxstream",
+            RutabagaComponentType::Rutabaga2D => "rutabaga2d",
+            RutabagaComponentType::VirglRenderer => "virglrenderer",
+        }
+    }
+}
+
 /// Rutabaga handle types (memory and sync in same namespace)
 pub const RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD: u32 = 0x0001;
 pub const RUTABAGA_HANDLE_TYPE_MEM_DMABUF: u32 = 0x0002;
