@@ -573,6 +573,7 @@ impl arch::LinuxArch for AArch64 {
                     },
                     payload_address
                         .checked_add(image_size.try_into().unwrap())
+                        .and_then(|end| end.checked_sub(1))
                         .unwrap(),
                 )
             }
@@ -583,8 +584,8 @@ impl arch::LinuxArch for AArch64 {
                 initrd = match components.initrd_image {
                     Some(initrd_file) => {
                         let mut initrd_file = initrd_file;
-                        let initrd_addr =
-                            (kernel_end + (AARCH64_INITRD_ALIGN - 1)) & !(AARCH64_INITRD_ALIGN - 1);
+                        let initrd_addr = (kernel_end + 1 + (AARCH64_INITRD_ALIGN - 1))
+                            & !(AARCH64_INITRD_ALIGN - 1);
                         let initrd_max_size =
                             main_memory_size - (initrd_addr - AARCH64_PHYS_MEM_START);
                         let initrd_addr = GuestAddress(initrd_addr);
@@ -593,6 +594,7 @@ impl arch::LinuxArch for AArch64 {
                                 .map_err(Error::InitrdLoadFailure)?;
                         payload_end = initrd_addr
                             .checked_add(initrd_size.try_into().unwrap())
+                            .and_then(|end| end.checked_sub(1))
                             .unwrap();
                         Some((initrd_addr, initrd_size))
                     }
@@ -611,11 +613,12 @@ impl arch::LinuxArch for AArch64 {
                     .checked_sub(AARCH64_FDT_MAX_SIZE)
                     .expect("Not enough memory for FDT")
                     .align_down(AARCH64_FDT_ALIGN);
-                assert!(addr >= payload_end_address, "Not enough memory for FDT");
+                assert!(addr > payload_end_address, "Not enough memory for FDT");
                 addr
             }
             FdtPosition::AfterPayload => payload_end_address
-                .align(AARCH64_FDT_ALIGN)
+                .checked_add(1)
+                .and_then(|addr| addr.align(AARCH64_FDT_ALIGN))
                 .expect("Not enough memory for FDT"),
         };
 
