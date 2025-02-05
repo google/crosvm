@@ -230,7 +230,8 @@ where
         .checked_sub(start)
         .ok_or(Error::InvalidProgramHeaderSize)?;
 
-    let address_range = AddressRange { start, end };
+    let address_range =
+        AddressRange::from_start_and_size(start, size).ok_or(Error::InvalidProgramHeaderSize)?;
 
     // The entry point address must fall within one of the loaded sections.
     // We approximate this by checking whether it within the bounds of the first and last sections.
@@ -418,7 +419,7 @@ mod test {
         let mut image = make_elf32_bin();
         let kernel = load_elf(&gm, kernel_addr, &mut image, 0).unwrap();
         assert_eq!(kernel.address_range.start, 0);
-        assert_eq!(kernel.address_range.end, 0xa_2038);
+        assert_eq!(kernel.address_range.end, 0xa_2037);
         assert_eq!(kernel.size, 0xa_2038);
         assert_eq!(kernel.entry, GuestAddress(0x3dc0));
     }
@@ -430,7 +431,7 @@ mod test {
         let mut image = make_elf64_bin();
         let kernel = load_elf(&gm, kernel_addr, &mut image, 0).expect("failed to load ELF");
         assert_eq!(kernel.address_range.start, 0x20_0000);
-        assert_eq!(kernel.address_range.end, 0x20_0035);
+        assert_eq!(kernel.address_range.end, 0x20_0034);
         assert_eq!(kernel.size, 0x35);
         assert_eq!(kernel.entry, GuestAddress(0x20_000e));
     }
