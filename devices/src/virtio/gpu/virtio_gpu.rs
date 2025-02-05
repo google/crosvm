@@ -47,7 +47,6 @@ use rutabaga_gfx::RUTABAGA_MAP_CACHE_MASK;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
-use tempfile::TempDir;
 use vm_control::gpu::DisplayMode;
 use vm_control::gpu::DisplayParameters;
 use vm_control::gpu::GpuControlCommand;
@@ -1303,15 +1302,17 @@ impl VirtioGpu {
     }
 
     pub fn snapshot(&self) -> anyhow::Result<VirtioGpuSnapshot> {
-        let snapshot_directory_tempdir: TempDir;
-        let snapshot_directory = if let Some(dir) = &self.snapshot_scratch_directory {
-            dir.to_string_lossy()
+        let snapshot_directory_tempdir = if let Some(dir) = &self.snapshot_scratch_directory {
+            tempfile::tempdir_in(dir).with_context(|| {
+                format!(
+                    "failed to create tempdir in {} for gpu rutabaga snapshot",
+                    dir.display()
+                )
+            })?
         } else {
-            snapshot_directory_tempdir = tempfile::tempdir()
-                .context("failed to create tempdir for gpu rutabaga snapshot")?;
-
-            snapshot_directory_tempdir.path().to_string_lossy()
+            tempfile::tempdir().context("failed to create tempdir for gpu rutabaga snapshot")?
         };
+        let snapshot_directory = snapshot_directory_tempdir.path().to_string_lossy();
 
         Ok(VirtioGpuSnapshot {
             scanouts: self
