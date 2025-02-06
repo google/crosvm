@@ -8,6 +8,7 @@ use std::convert::TryInto;
 use std::fmt;
 
 use base::linux::MemoryMappingBuilderUnix;
+use base::AsRawDescriptor;
 use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
 use base::MemoryMappingArena;
@@ -198,6 +199,8 @@ pub enum GuestMemResourceCreationError {
     CantGetShmOffset(GuestMemoryError),
     #[error("error while cloning shm region descriptor: {0}")]
     DescriptorCloneError(base::Error),
+    #[error("guest memory with multiple shm objects not supported")]
+    MultipleShmObjects,
 }
 
 #[derive(Debug, ThisError)]
@@ -242,17 +245,20 @@ impl GuestResource {
             .map(|entry| {
                 let addr: u64 = entry.addr.into();
                 let length: u32 = entry.length.into();
-                let region_offset = mem
+                let (backing_obj, region_offset) = mem
                     .offset_from_base(GuestAddress(addr))
                     .map_err(GuestMemResourceCreationError::CantGetShmOffset)
                     .unwrap();
+                if region_desc.as_raw_descriptor() != backing_obj.as_raw_descriptor() {
+                    return Err(GuestMemResourceCreationError::MultipleShmObjects);
+                }
 
-                GuestMemArea {
+                Ok(GuestMemArea {
                     offset: region_offset,
                     length: length as usize,
-                }
+                })
             })
-            .collect();
+            .collect::<Result<_, _>>()?;
 
         let handle = GuestResourceHandle::GuestPages(GuestMemHandle {
             desc: region_desc,

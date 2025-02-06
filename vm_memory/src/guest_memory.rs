@@ -891,7 +891,7 @@ impl GuestMemory {
     ///
     /// (i) the memory mapping associated with the target region.
     /// (ii) the relative offset from the start of the target region to `guest_addr`.
-    /// (iii) the absolute offset from the start of the memory mapping to the target region.
+    /// (iii) the absolute offset from the start of the backing object to the target region.
     ///
     /// If no target region is found, an error is returned.
     pub fn find_region(&self, guest_addr: GuestAddress) -> Result<(&MemoryMapping, usize, u64)> {
@@ -910,6 +910,10 @@ impl GuestMemory {
 
     /// Convert a GuestAddress into an offset within the associated shm region.
     ///
+    /// A `GuestMemory` may have multiple backing objects and the offset is
+    /// only meaningful in relation to the associated backing object, so a
+    /// reference to it is included in the return value.
+    ///
     /// Due to potential gaps within GuestMemory, it is helpful to know the
     /// offset within the shm where a given address is found. This offset
     /// can then be passed to another process mapping the shm to read data
@@ -927,16 +931,24 @@ impl GuestMemory {
     /// let mut gm = GuestMemory::new(&vec![
     ///     (addr_a, 0x20000),
     ///     (addr_b, 0x30000)]).expect("failed to create GuestMemory");
-    /// let offset = gm.offset_from_base(GuestAddress(0x95000))
+    /// let (_backing_object, offset) = gm.offset_from_base(GuestAddress(0x95000))
     ///                .expect("failed to get offset");
     /// assert_eq!(offset, 0x35000);
     /// ```
-    pub fn offset_from_base(&self, guest_addr: GuestAddress) -> Result<u64> {
+    pub fn offset_from_base(
+        &self,
+        guest_addr: GuestAddress,
+    ) -> Result<(&(dyn AsRawDescriptor + Send + Sync), u64)> {
         self.regions
             .iter()
             .find(|region| region.contains(guest_addr))
             .ok_or(Error::InvalidGuestAddress(guest_addr))
-            .map(|region| region.obj_offset + guest_addr.offset_from(region.start()))
+            .map(|region| {
+                (
+                    region.shared_obj.as_ref(),
+                    region.obj_offset + guest_addr.offset_from(region.start()),
+                )
+            })
     }
 
     /// Copy all guest memory into `w`.
