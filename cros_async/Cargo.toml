@@ -22,7 +22,7 @@ sync = { path = "../common/sync" } # provided by ebuild
 base = { path = "../base" } # provided by ebuild
 thiserror = "1.0.20"
 audio_streams = { path = "../common/audio_streams" } # provided by ebuild
-anyhow = "1.0"
+anyhow = "1"
 serde = "1"
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] } # provided by ebuild
 static_assertions = "1.1"

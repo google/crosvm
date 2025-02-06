@@ -7,7 +7,7 @@ edition = "2021"
 [features]
 
 [dependencies]
-anyhow = "1.0.32"
+anyhow = "1"
 cfg-if = "1.0.0"
 
 [target.'cfg(windows)'.dependencies]

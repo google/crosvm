@@ -14,7 +14,7 @@ qcow = []
 zstd-disk = ["zstd"]
 
 [dependencies]
-anyhow = "*"
+anyhow = "1"
 async-trait = "0.1.36"
 base = { path = "../base" }
 cfg-if = "1.0.0"

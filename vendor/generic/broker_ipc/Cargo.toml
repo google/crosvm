@@ -9,6 +9,6 @@ process-invariants = []
 crash-report = ["crash_report"]
 
 [dependencies]
-anyhow = "1.0.32"
+anyhow = "1"
 crash_report = { path = "../crash_report", optional = true }
 serde = { version = "1", features = ["derive"] }

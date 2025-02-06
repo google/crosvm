@@ -5,7 +5,7 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "*"
+anyhow = "1"
 cfg-if = "1.0.0"
 futures = { version = "0.3" }
 libc = "*"

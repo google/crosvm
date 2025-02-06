@@ -9,7 +9,7 @@ crash-report = ["crash_report", "broker_ipc_product/crash-report"]
 process-invariants = ["broker_ipc_product/process-invariants"]
 
 [dependencies]
-anyhow = "1.0.32"
+anyhow = "1"
 base = { path = "../base" }
 crash_report = { path = "../vendor/generic/crash_report", optional = true }
 serde = { version = "1", features = ["derive"] }

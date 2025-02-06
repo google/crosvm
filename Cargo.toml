@@ -489,7 +489,7 @@ all-android = [
 ]
 
 [dependencies]
-anyhow = "1.0.32"
+anyhow = "1"
 arch = { path = "arch" }
 argh = "0.1.10"
 argh_helpers = { path = "argh_helpers" }
