@@ -216,6 +216,7 @@ impl IntoRawDescriptor for FakeTimer {
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+    #[cfg(not(windows))]
     use std::time::Instant;
 
     use super::*;
@@ -223,6 +224,7 @@ mod tests {
     use crate::WaitContext;
 
     #[test]
+    #[cfg(not(windows))] // TODO: Flaky b/363125486
     fn one_shot() {
         let mut tfd = Timer::new().expect("failed to create Timer");
 
@@ -236,6 +238,7 @@ mod tests {
 
     /// Similar to one_shot, except this one waits for a clone of the timer.
     #[test]
+    #[cfg(not(windows))] // TODO: Flaky b/363125486
     fn one_shot_cloned() {
         let mut tfd = Timer::new().expect("failed to create Timer");
         let mut cloned_tfd = tfd.try_clone().expect("failed to clone timer");
@@ -249,6 +252,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))] // TODO: Flaky b/363125486
     fn repeating() {
         let mut tfd = Timer::new().expect("failed to create Timer");
 
