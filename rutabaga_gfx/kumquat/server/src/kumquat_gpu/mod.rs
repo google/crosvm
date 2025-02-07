@@ -7,6 +7,7 @@ use std::collections::BTreeMap as Map;
 use std::collections::BTreeSet as Set;
 use std::io::Cursor;
 use std::os::raw::c_void;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -435,7 +436,7 @@ impl KumquatGpuConnection {
                         .context_attach_resource(cmd.ctx_id, resource_id)?;
                 }
                 KumquatGpuProtocol::SnapshotSave => {
-                    kumquat_gpu.rutabaga.snapshot(SNAPSHOT_DIR)?;
+                    kumquat_gpu.rutabaga.snapshot(&Path::new(SNAPSHOT_DIR))?;
 
                     let resp = kumquat_gpu_protocol_ctrl_hdr {
                         type_: KUMQUAT_GPU_PROTOCOL_RESP_OK_SNAPSHOT,
@@ -445,7 +446,7 @@ impl KumquatGpuConnection {
                     self.stream.write(KumquatGpuProtocolWrite::Cmd(resp))?;
                 }
                 KumquatGpuProtocol::SnapshotRestore => {
-                    kumquat_gpu.rutabaga.restore(SNAPSHOT_DIR)?;
+                    kumquat_gpu.rutabaga.restore(&Path::new(SNAPSHOT_DIR))?;
 
                     let resp = kumquat_gpu_protocol_ctrl_hdr {
                         type_: KUMQUAT_GPU_PROTOCOL_RESP_OK_SNAPSHOT,

@@ -6,7 +6,7 @@
 use std::collections::BTreeMap as Map;
 use std::convert::TryInto;
 use std::io::IoSliceMut;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 use serde::Deserialize;
@@ -504,8 +504,8 @@ impl Rutabaga {
 
     /// Take a snapshot of Rutabaga's current state. The snapshot is serialized into an opaque byte
     /// stream and written to `w`.
-    pub fn snapshot(&self, directory: &str) -> RutabagaResult<()> {
-        let snapshot_writer = RutabagaSnapshotWriter::from_existing(PathBuf::from(directory));
+    pub fn snapshot(&self, directory: &Path) -> RutabagaResult<()> {
+        let snapshot_writer = RutabagaSnapshotWriter::from_existing(directory);
 
         let component = self
             .components
@@ -563,10 +563,10 @@ impl Rutabaga {
     /// to translate to/from stable guest physical addresses, but it is unclear how well that
     /// approach would scale to support 3D modes, which have others problems that require VMM help,
     /// like resource handles.
-    pub fn restore(&mut self, directory: &str) -> RutabagaResult<()> {
+    pub fn restore(&mut self, directory: &Path) -> RutabagaResult<()> {
         self.destroy_objects()?;
 
-        let snapshot_reader = RutabagaSnapshotReader::from_existing(PathBuf::from(directory))?;
+        let snapshot_reader = RutabagaSnapshotReader::from_existing(directory)?;
 
         let component = self
             .components
@@ -1480,19 +1480,17 @@ mod tests {
     #[test]
     fn snapshot_restore_2d_no_resources() {
         let snapshot_dir = tempfile::tempdir().unwrap();
-        let snapshot_dir_path_str = snapshot_dir.path().to_string_lossy();
 
         let rutabaga1 = new_2d();
-        rutabaga1.snapshot(&snapshot_dir_path_str).unwrap();
+        rutabaga1.snapshot(snapshot_dir.path()).unwrap();
 
         let mut rutabaga1 = new_2d();
-        rutabaga1.restore(&snapshot_dir_path_str).unwrap();
+        rutabaga1.restore(snapshot_dir.path()).unwrap();
     }
 
     #[test]
     fn snapshot_restore_2d_one_resource() {
         let snapshot_dir = tempfile::tempdir().unwrap();
-        let snapshot_dir_path_str = snapshot_dir.path().to_string_lossy();
 
         let resource_id = 123;
         let resource_create_3d = ResourceCreate3D {
@@ -1521,10 +1519,10 @@ mod tests {
                 }],
             )
             .unwrap();
-        rutabaga1.snapshot(&snapshot_dir_path_str).unwrap();
+        rutabaga1.snapshot(snapshot_dir.path()).unwrap();
 
         let mut rutabaga2 = new_2d();
-        rutabaga2.restore(&snapshot_dir_path_str).unwrap();
+        rutabaga2.restore(snapshot_dir.path()).unwrap();
 
         assert_eq!(rutabaga2.resources.len(), 1);
         let rutabaga_resource = rutabaga2.resources.get(&resource_id).unwrap();

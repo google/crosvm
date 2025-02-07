@@ -1327,7 +1327,7 @@ impl VirtioGpu {
             cursor_scanout: self.cursor_scanout.snapshot(),
             rutabaga: {
                 self.rutabaga
-                    .snapshot(&snapshot_directory.to_string_lossy())
+                    .snapshot(snapshot_directory)
                     .context("failed to snapshot rutabaga")?;
 
                 pack_directory_to_snapshot(snapshot_directory).with_context(|| {
@@ -1401,7 +1401,7 @@ impl VirtioGpu {
                 },
             )?;
             self.rutabaga
-                .restore(&snapshot_directory.to_string_lossy())
+                .restore(snapshot_directory)
                 .context("failed to restore rutabaga")?;
 
             for (id, s) in snapshot.resources.into_iter() {

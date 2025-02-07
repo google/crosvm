@@ -19,8 +19,10 @@ pub struct RutabagaSnapshotWriter {
 }
 
 impl RutabagaSnapshotWriter {
-    pub fn from_existing(directory: PathBuf) -> Self {
-        Self { dir: directory }
+    pub fn from_existing(directory: impl Into<PathBuf>) -> Self {
+        Self {
+            dir: directory.into(),
+        }
     }
 
     pub fn get_path(&self) -> PathBuf {
@@ -60,7 +62,9 @@ pub struct RutabagaSnapshotReader {
 }
 
 impl RutabagaSnapshotReader {
-    pub fn from_existing(directory: PathBuf) -> RutabagaResult<Self> {
+    pub fn from_existing(directory: impl Into<PathBuf>) -> RutabagaResult<Self> {
+        let directory = directory.into();
+
         if !directory.as_path().exists() {
             return Err(RutabagaError::SnapshotError(format!(
                 "{} does not exist",
