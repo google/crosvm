@@ -157,7 +157,7 @@ pub fn create_gpu_device(
         cfg.gpu_cgroup_path.as_ref(),
     );
 
-    let jail = if let Some(jail_config) = &cfg.jail_config {
+    let jail = if let Some(jail_config) = cfg.jail_config.as_ref() {
         let mut config = SandboxConfig::new(jail_config, "gpu_device");
         config.bind_mounts = true;
         // Allow changes made externally take effect immediately to allow shaders to be dynamically
@@ -291,7 +291,7 @@ pub fn start_gpu_render_server(
     let (server_socket, client_socket) =
         UnixSeqpacket::pair().context("failed to create render server socket")?;
 
-    let (jail, cache_info) = if let Some(jail_config) = &cfg.jail_config {
+    let (jail, cache_info) = if let Some(jail_config) = cfg.jail_config.as_ref() {
         let mut config = SandboxConfig::new(jail_config, "gpu_render_server");
         // Allow changes made externally take effect immediately to allow shaders to be dynamically
         // added by external processes.

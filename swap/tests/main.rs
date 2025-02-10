@@ -137,7 +137,7 @@ mod test {
         let dir = tempfile::tempdir().unwrap();
         let guest_memory = create_guest_memory();
 
-        let controller = SwapController::launch(guest_memory.clone(), dir.path(), &None).unwrap();
+        let controller = SwapController::launch(guest_memory.clone(), dir.path(), None).unwrap();
 
         guest_memory
             .write_all_at_addr(&[1u8; 4096], GuestAddress(0x0000000000000000))
@@ -326,7 +326,7 @@ mod test {
         let dir = tempfile::tempdir().unwrap();
         let guest_memory = create_guest_memory();
 
-        let controller = SwapController::launch(guest_memory.clone(), dir.path(), &None).unwrap();
+        let controller = SwapController::launch(guest_memory.clone(), dir.path(), None).unwrap();
 
         guest_memory
             .write_all_at_addr(&[1u8; 4096], GuestAddress(0x0000000000000000))
@@ -520,7 +520,7 @@ mod test {
         let dir = tempfile::tempdir().unwrap();
         let guest_memory = create_guest_memory();
 
-        let controller = SwapController::launch(guest_memory.clone(), dir.path(), &None).unwrap();
+        let controller = SwapController::launch(guest_memory.clone(), dir.path(), None).unwrap();
 
         guest_memory
             .write_all_at_addr(&[1u8; 4096], GuestAddress(0x0000000000000000))
@@ -687,7 +687,7 @@ mod test {
         let dir = tempfile::tempdir().unwrap();
         let guest_memory = create_guest_memory();
 
-        let controller = SwapController::launch(guest_memory.clone(), dir.path(), &None).unwrap();
+        let controller = SwapController::launch(guest_memory.clone(), dir.path(), None).unwrap();
 
         guest_memory
             .write_all_at_addr(&[1u8; 4096], GuestAddress(0x0000000000000000))

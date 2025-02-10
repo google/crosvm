@@ -190,7 +190,7 @@ fn jail_worker_process(
                     ResourceCarrier::VirtioNet(net_resource_carrier) => {
                         let net_param = &net_resource_carrier.net_param;
                         let jail = net_param
-                            .create_jail(&config.jail_config, VirtioDeviceType::Regular)?
+                            .create_jail(config.jail_config.as_ref(), VirtioDeviceType::Regular)?
                             .ok_or(anyhow!("no jail created"))?;
                         let net_local_parameters =
                             NetLocalParameters::new(guest_memory.clone(), config.protection_type);

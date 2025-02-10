@@ -50,7 +50,7 @@ pub fn launch(
     ugid: &(Option<u32>, Option<u32>),
     ugid_map: (&str, &str),
     mut builder: ext2::Builder,
-    jail_config: &Option<JailConfig>,
+    jail_config: Option<&JailConfig>,
 ) -> Result<Pid> {
     let max_open_files = base::linux::max_open_files()
         .context("failed to get max number of open files")?

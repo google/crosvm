@@ -337,7 +337,7 @@ pub fn create_sandbox_minijail(
 /// Creates a basic [Minijail] if `jail_config` is present.
 ///
 /// Returns `None` if `jail_config` is none.
-pub fn simple_jail(jail_config: &Option<JailConfig>, policy: &str) -> Result<Option<Minijail>> {
+pub fn simple_jail(jail_config: Option<&JailConfig>, policy: &str) -> Result<Option<Minijail>> {
     if let Some(jail_config) = jail_config {
         let config = SandboxConfig::new(jail_config, policy);
         Ok(Some(create_sandbox_minijail(

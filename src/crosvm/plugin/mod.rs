@@ -491,7 +491,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     add_fd_flags(stderr_rd.as_raw_descriptor(), O_NONBLOCK)
         .context("error marking stderr nonblocking")?;
 
-    let jail = if let Some(jail_config) = &cfg.jail_config {
+    let jail = if let Some(jail_config) = cfg.jail_config.as_ref() {
         if jail_config.seccomp_policy_dir.is_none() {
             bail!("plugin requires seccomp policy file specified.");
         }

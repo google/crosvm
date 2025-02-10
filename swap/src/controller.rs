@@ -155,7 +155,7 @@ impl SwapController {
     pub fn launch(
         guest_memory: GuestMemory,
         swap_dir: &Path,
-        jail_config: &Option<JailConfig>,
+        jail_config: Option<&JailConfig>,
     ) -> anyhow::Result<Self> {
         info!("vmm-swap is enabled. launch monitor process.");
 
