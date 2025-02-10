@@ -129,7 +129,7 @@ default = ["audio", "balloon", "config-file", "document-features", "gpu", "qcow"
 android-sparse = ["disk/android-sparse"]
 
 ## Enables cross-platform audio devices
-audio = ["devices/audio"]
+audio = ["devices/audio", "vm_control/audio"]
 
 ## Enables the virtio-balloon device which allows dynamic scaling of memory via `vm_control`
 ## commands. See [Balloon Device](https://crosvm.dev/book/devices/balloon.html) for more

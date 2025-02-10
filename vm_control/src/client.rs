@@ -28,6 +28,8 @@ pub use crate::sys::handle_request_with_timeout;
 use crate::BatControlCommand;
 use crate::BatControlResult;
 use crate::BatteryType;
+#[cfg(feature = "audio")]
+use crate::SndControlCommand;
 use crate::SwapCommand;
 use crate::UsbControlCommand;
 use crate::UsbControlResult;
@@ -210,6 +212,33 @@ pub fn do_modify_battery<T: AsRef<Path> + std::fmt::Debug>(
             Err(())
         }
     }
+}
+
+#[cfg(feature = "audio")]
+/// Send a `VmRequest` for muting/unmuting snd all snd devices`
+pub fn do_snd_mute_all<T: AsRef<Path> + std::fmt::Debug>(
+    socket_path: T,
+    muted: bool,
+) -> std::result::Result<(), ()> {
+    let request = VmRequest::SndCommand(SndControlCommand::MuteAll(muted));
+    let response = handle_request(&request, socket_path)?;
+    match response {
+        VmResponse::Ok => Ok(()),
+        e => {
+            println!("Unexpected response: {:#}", e);
+            Err(())
+        }
+    }
+}
+
+#[cfg(not(feature = "audio"))]
+/// Send a `VmRequest` for muting/unmuting snd all snd devices`
+pub fn do_snd_mute_all<T: AsRef<Path> + std::fmt::Debug>(
+    _socket_path: T,
+    _muted: bool,
+) -> std::result::Result<(), ()> {
+    println!("Unsupported: audio feature disabled");
+    Err(())
 }
 
 pub fn do_swap_status<T: AsRef<Path> + std::fmt::Debug>(socket_path: T) -> VmsRequestResult {

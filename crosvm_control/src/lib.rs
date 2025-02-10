@@ -37,6 +37,7 @@ use vm_control::client::do_modify_battery;
 use vm_control::client::do_net_add;
 use vm_control::client::do_net_remove;
 use vm_control::client::do_security_key_attach;
+use vm_control::client::do_snd_mute_all;
 use vm_control::client::do_usb_attach;
 use vm_control::client::do_usb_detach;
 use vm_control::client::do_usb_list;
@@ -239,6 +240,30 @@ pub unsafe extern "C" fn crosvm_client_balloon_vms_wait_with_timeout(
             println!("adjust failure: {:?}", resp);
         }
         false
+    })
+    .unwrap_or(false)
+}
+
+/// Mute or unmute all snd devices of the crosvm instance whose control socket is
+/// listening on `socket_path`.
+///
+/// The function returns true on success or false if an error occurred.
+///
+/// # Safety
+///
+/// The caller will ensure the raw pointers in arguments passed in can be safely used by
+/// `CStr::from_ptr()`
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_snd_mute_all(
+    socket_path: *const c_char,
+    muted: bool,
+) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            do_snd_mute_all(socket_path, muted).is_ok()
+        } else {
+            false
+        }
     })
     .unwrap_or(false)
 }

@@ -71,6 +71,8 @@ use vm_control::client::do_net_add;
 #[cfg(feature = "pci-hotplug")]
 use vm_control::client::do_net_remove;
 use vm_control::client::do_security_key_attach;
+#[cfg(feature = "audio")]
+use vm_control::client::do_snd_mute_all;
 use vm_control::client::do_swap_status;
 use vm_control::client::do_usb_attach;
 use vm_control::client::do_usb_detach;
@@ -626,6 +628,13 @@ fn modify_gpu(cmd: cmdline::GpuCommand) -> std::result::Result<(), ()> {
     }
 }
 
+#[cfg(feature = "audio")]
+fn modify_snd(cmd: cmdline::SndCommand) -> std::result::Result<(), ()> {
+    match cmd.command {
+        cmdline::SndSubCommand::MuteAll(cmd) => do_snd_mute_all(cmd.socket_path, cmd.muted),
+    }
+}
+
 fn usb_attach(cmd: cmdline::UsbAttachCommand) -> ModifyUsbResult<UsbControlResult> {
     let dev_path = Path::new(&cmd.dev_path);
 
@@ -843,6 +852,10 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
                     #[cfg(feature = "gpu")]
                     CrossPlatformCommands::Gpu(cmd) => {
                         modify_gpu(cmd).map_err(|_| anyhow!("gpu subcommand failed"))
+                    }
+                    #[cfg(feature = "audio")]
+                    CrossPlatformCommands::Snd(cmd) => {
+                        modify_snd(cmd).map_err(|_| anyhow!("snd command failed"))
                     }
                     CrossPlatformCommands::MakeRT(cmd) => {
                         make_rt(cmd).map_err(|_| anyhow!("make_rt subcommand failed"))

@@ -1389,6 +1389,12 @@ pub struct BatControl {
     pub control_tube: Tube,
 }
 
+/// Used for VM to control for virtio-snd
+#[derive(Serialize, Deserialize, Debug)]
+pub enum SndControlCommand {
+    MuteAll(bool),
+}
+
 // Used to mark hotplug pci device's device type
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum HotPlugDeviceType {
@@ -1476,6 +1482,9 @@ pub enum VmRequest {
     GpuCommand(GpuControlCommand),
     /// Command to set battery.
     BatCommand(BatteryType, BatControlCommand),
+    /// Command to control snd devices
+    #[cfg(feature = "audio")]
+    SndCommand(SndControlCommand),
     /// Command to add/remove multiple vfio-pci devices
     HotPlugVfioCommand {
         device: HotPlugDeviceInfo,
@@ -2167,6 +2176,15 @@ impl VmRequest {
                         }
                     }
                     None => VmResponse::BatResponse(BatControlResult::NoBatDevice),
+                }
+            }
+            #[cfg(feature = "audio")]
+            VmRequest::SndCommand(ref cmd) => {
+                match cmd {
+                    SndControlCommand::MuteAll(_muted) => {
+                        // TODO: Implement
+                        VmResponse::Ok
+                    }
                 }
             }
             VmRequest::HotPlugVfioCommand { device: _, add: _ } => VmResponse::Ok,

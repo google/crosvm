@@ -5,6 +5,7 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [features]
+audio = []
 balloon = []
 gdb = ["gdbstub", "gdbstub_arch"]
 gpu = []
