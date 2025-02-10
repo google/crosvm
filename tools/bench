@@ -42,7 +42,7 @@ def parse_crosvm_log(crosvm_log: str) -> List[Dict[str, str]]:
 
 
 def parse_seccomp_trace_events_to_pid_table(
-    seccomp_trace_events: List[Dict[str, str]]
+    seccomp_trace_events: List[Dict[str, str]],
 ) -> List[Tuple[int, str]]:
     # There are 3 types of minijail events: create, clone, form
     # Create is when a jail is created and a policy file is loaded into the new jail. "name" field in this type of event will contain the policy file name used in this jail.

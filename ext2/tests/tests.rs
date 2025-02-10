@@ -21,6 +21,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
+use base::test_utils::call_test_with_sudo;
 use base::MappedRegion;
 use ext2::Builder;
 use tempfile::tempdir;
@@ -728,7 +729,8 @@ fn test_multiple_bg_big_files() {
 }
 
 #[test]
-fn test_mkfs_xattr() {
+#[ignore = "Called by test_mkfs_xattr"]
+fn test_mkfs_xattr_impl() {
     // Since tmpfs doesn't support xattr, use the current directory.
     let td = tempdir_in(".").unwrap();
     let dir = td.path().join("testdata");
@@ -781,4 +783,9 @@ fn test_mkfs_xattr() {
     let disk = mkfs(&td, builder);
 
     assert_eq_dirs(&td, &dir, &disk, Some(xattr_map));
+}
+
+#[test]
+fn test_mkfs_xattr() {
+    call_test_with_sudo("test_mkfs_xattr_impl")
 }

@@ -109,12 +109,9 @@ def collect_files(metadata: Any, output_directory: Path, strip_binaries: bool):
     for folder in set((output_directory / d).parent.resolve() for _, d in manifest):
         folder.mkdir(exist_ok=True, parents=True)
 
-    # Use multiple processes of rsync copy the files fast (and only if needed)
+    # Use multiple processes to copy the files (and only if they are newer than existing ones)
     parallel(
-        *(
-            cmd("rsync -a", source, output_directory / destination)
-            for source, destination in manifest
-        )
+        *(cmd("cp -u", source, output_directory / destination) for source, destination in manifest)
     ).fg()
 
 

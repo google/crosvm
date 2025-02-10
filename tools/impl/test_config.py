@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import os
 from typing import Dict
 
 BUILD_FEATURES: Dict[str, str] = {
@@ -39,6 +38,7 @@ ROOT_TESTS = [
     "package(cros_tracing) & binary(trace_marker)",
     "package(swap) & binary(page_handler)",
     "package(swap) & binary(main)",
+    "package(ext2) & binary(tests)",
 ]
 
 # Do not run these tests on any platform.

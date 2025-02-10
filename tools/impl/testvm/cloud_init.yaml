@@ -25,14 +25,14 @@ preserve_hostname: true
 packages:
     - e2fsprogs
     - gcc
-    - libavcodec60
+    - libavcodec61
     - libavutil58
     - libcap2
     - libdbus-1-3
     - libdrm2
     - libepoxy0
     - libssl3
-    - libswscale7
+    - libswscale8
     - libva2
     - libwayland-client0
     - libx11-6
@@ -63,7 +63,7 @@ runcmd:
 
     # Trim some fat
 {% if v1.machine == 'aarch64' %}
-    - [apt-get, remove, --yes, --allow-remove-essential, vim-runtime, grub-common]
+    - [apt-get, remove, --yes, --allow-remove-essential, vim-runtime, grub-common, grub-efi-arm64-signed]
 {% else %}
     - [apt-get, remove, --yes, --allow-remove-essential, vim-runtime, grub-common, grub-efi-amd64-signed]
 {% endif %}

@@ -331,7 +331,10 @@ pub fn start_gpu_render_server(
 
         (jail, Some(cache_info))
     } else {
-        (Minijail::new().context("failed to create jail")?, None)
+        (
+            create_default_minijail().context("failed to create jail")?,
+            None,
+        )
     };
 
     let inheritable_fds = [

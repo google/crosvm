@@ -20,9 +20,10 @@
 #   make -C tools/impl/testvm ARCH=x86_64
 #   ./tools/x86vm run
 
-CARGO_TARGET=$(shell cargo metadata --no-deps --format-version 1 | \
-	jq -r ".target_directory")
-TARGET=/tmp/crosvm_tools/$(ARCH)
+# Follow same logic to store artifacts as tools/impl/testvm.py
+TMPDIR?=/tmp
+CROSVM_CACHE_DIR?=$(TMPDIR)
+TARGET=$(CROSVM_CACHE_DIR)/crosvm_tools/$(ARCH)
 $(shell mkdir -p $(TARGET))
 
 ifeq ($(ARCH), x86_64)

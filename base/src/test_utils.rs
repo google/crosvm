@@ -8,6 +8,9 @@ use std::process::Command;
 /// The tests below require root privileges.
 /// Re-invoke the test binary to execute the specified test with sudo. The test will fail if
 /// passwordless sudo is not available.
+///
+/// Warning: If you use this, add your test to ROOT_TESTS in tools/impl/test_config.py
+/// This will ensure they are not run when passwordless root is unavailable.
 pub fn call_test_with_sudo(name: &str) {
     check_can_sudo();
 

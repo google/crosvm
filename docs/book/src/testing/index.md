@@ -115,13 +115,13 @@ processes.
 The platforms below can all be tested using `tools/run_tests -p $platform`. The table indicates how
 these tests are executed:
 
-| Platform                    | Build |        Unit Tests         | Integration Tests | E2E Tests |
-| :-------------------------- | :---: | :-----------------------: | :---------------: | :-------: |
-| x86_64 (linux)              |   ✅   |             ✅             |         ✅         |     ✅     |
-| aarch64 (linux)             |   ✅   | ✅ (qemu-user[^qemu-user]) |  ✅ (qemu[^qemu])  |     ❌     |
-| armhf (linux)               |   ✅   | ✅ (qemu-user[^qemu-user]) |         ❌         |     ❌     |
-| mingw64[^windows] (linux)   |   🚧   |        🚧 (wine64)         |         ❌         |     ❌     |
-| mingw64[^windows] (windows) |   🚧   |             🚧             |         🚧         |     ❌     |
+| Platform                    | Build |         Unit Tests         | Integration Tests | E2E Tests |
+| :-------------------------- | :---: | :------------------------: | :---------------: | :-------: |
+| x86_64 (linux)              |  ✅   |             ✅             |        ✅         |    ✅     |
+| aarch64 (linux)             |  ✅   | ✅ (qemu-user[^qemu-user]) | ✅ (qemu[^qemu])  |    ❌     |
+| armhf (linux)               |  ✅   | ✅ (qemu-user[^qemu-user]) |        ❌         |    ❌     |
+| mingw64[^windows] (linux)   |  🚧   |        🚧 (wine64)         |        ❌         |    ❌     |
+| mingw64[^windows] (windows) |  🚧   |             🚧             |        🚧         |    ❌     |
 
 Crosvm CI will use the same configuration as `tools/run_tests`.
 

@@ -14,6 +14,7 @@ use base::RawDescriptor;
 use cros_async::Executor;
 use jail::create_base_minijail;
 use jail::create_base_minijail_without_pivot_root;
+use jail::create_default_minijail;
 use minijail::Minijail;
 
 use crate::virtio::vhost::user::device::fs::FsBackend;
@@ -54,7 +55,8 @@ fn jail_and_fork(
             create_base_minijail_without_pivot_root(dir_path.as_path(), limit)
         }?
     } else {
-        let mut j: Minijail = Minijail::new()?;
+        let mut j: Minijail = create_default_minijail()?;
+
         j.namespace_pids();
         j.namespace_user();
         j.namespace_user_disable_setgroups();
