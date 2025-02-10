@@ -896,6 +896,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         let resp = request.execute(
             &guest_os.vm,
             disk_host_tubes,
+            &[],
             &mut guest_os.pm,
             #[cfg(feature = "gpu")]
             gpu_control_tube,

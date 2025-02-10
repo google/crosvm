@@ -143,6 +143,8 @@ pub enum DeviceControlTube {
     // Sends `PvClockCommand`.
     #[cfg(feature = "pvclock")]
     PvClock(Tube),
+    #[cfg(feature = "audio")]
+    Snd(Tube),
 }
 
 /// Tubes that service requests from devices.
@@ -520,11 +522,13 @@ pub fn create_virtio_snd_device(
     protection_type: ProtectionType,
     jail_config: Option<&JailConfig>,
     snd_params: SndParameters,
+    snd_device_tube: Tube,
 ) -> DeviceResult {
     let backend = snd_params.backend;
     let dev = virtio::snd::common_backend::VirtioSnd::new(
         virtio::base_features(protection_type),
         snd_params,
+        snd_device_tube,
     )
     .context("failed to create cras sound device")?;
 

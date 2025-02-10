@@ -20,11 +20,13 @@ use base::Descriptor;
 use base::Error as SysError;
 use base::Event;
 use base::RawDescriptor;
+use base::Tube;
 use base::WorkerThread;
 use cros_async::block_on;
 use cros_async::sync::Condvar;
 use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncError;
+use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use futures::channel::mpsc;
@@ -111,6 +113,9 @@ pub enum Error {
     // Oneshot send error.
     #[error("Error in oneshot send")]
     OneshotSend(()),
+    /// Failure in communicating with the host
+    #[error("Failed to send/receive to/from control tube")]
+    ControlTubeError(base::TubeError),
     /// Stream not found.
     #[error("stream id ({0}) < num_streams ({1})")]
     StreamNotFound(usize, usize),
@@ -196,6 +201,7 @@ pub struct PcmResponse {
 }
 
 pub struct VirtioSnd {
+    control_tube: Option<Tube>,
     cfg: virtio_snd_config,
     snd_data: SndData,
     stream_info_builders: Vec<StreamInfoBuilder>,
@@ -218,17 +224,23 @@ struct VirtioSndSnapshot {
 }
 
 impl VirtioSnd {
-    pub fn new(base_features: u64, params: Parameters) -> Result<VirtioSnd, Error> {
+    pub fn new(
+        base_features: u64,
+        params: Parameters,
+        control_tube: Tube,
+    ) -> Result<VirtioSnd, Error> {
         let params = resize_parameters_pcm_device_config(params);
         let cfg = hardcoded_virtio_snd_config(&params);
         let snd_data = hardcoded_snd_data(&params);
         let avail_features = base_features;
         let mut keep_rds: Vec<RawDescriptor> = Vec::new();
+        keep_rds.push(control_tube.as_raw_descriptor());
 
         let stream_info_builders =
             create_stream_info_builders(&params, &snd_data, &mut keep_rds, params.card_index)?;
 
         Ok(VirtioSnd {
+            control_tube: Some(control_tube),
             cfg,
             snd_data,
             stream_info_builders,
@@ -459,6 +471,7 @@ impl VirtioDevice for VirtioSnd {
         let stream_info_builders = self.stream_info_builders.to_vec();
         let streams_state = self.streams_state.take();
         let card_index = self.card_index;
+        let control_tube = self.control_tube.take().unwrap();
         self.worker_thread = Some(WorkerThread::start("v_snd_common", move |kill_evt| {
             let _thread_priority_handle = set_audio_thread_priority();
             if let Err(e) = _thread_priority_handle {
@@ -472,6 +485,7 @@ impl VirtioDevice for VirtioSnd {
                 stream_info_builders,
                 streams_state,
                 card_index,
+                control_tube,
             )
         }));
 
@@ -480,7 +494,8 @@ impl VirtioDevice for VirtioSnd {
 
     fn reset(&mut self) -> anyhow::Result<()> {
         if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.stop();
+            let worker = worker_thread.stop().unwrap();
+            self.control_tube = Some(worker.control_tube);
         }
 
         Ok(())
@@ -489,6 +504,7 @@ impl VirtioDevice for VirtioSnd {
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
             let worker = worker_thread.stop().unwrap();
+            self.control_tube = Some(worker.control_tube);
             self.snd_data = worker.snd_data;
             self.streams_state = Some(worker.streams_state);
             return Ok(Some(BTreeMap::from_iter(
@@ -576,8 +592,10 @@ fn run_worker(
     stream_info_builders: Vec<StreamInfoBuilder>,
     streams_state: Option<Vec<StreamInfoSnapshot>>,
     card_index: usize,
+    control_tube: Tube,
 ) -> Result<WorkerReturn, String> {
     let ex = Executor::new().expect("Failed to create an executor");
+    let control_tube = AsyncTube::new(&ex, control_tube).expect("failed to create async snd tube");
 
     if snd_data.pcm_info_len() != stream_info_builders.len() {
         error!(
@@ -672,6 +690,7 @@ fn run_worker(
             rx_send.clone(),
             &mut rx_recv,
             card_index,
+            &control_tube,
         ) == LoopState::Break
         {
             break;
@@ -714,6 +733,7 @@ fn run_worker(
     let queues = vec![ctrl_queue, _event_queue, tx_queue, rx_queue];
 
     Ok(WorkerReturn {
+        control_tube: control_tube.into(),
         queues,
         snd_data,
         streams_state,
@@ -721,6 +741,7 @@ fn run_worker(
 }
 
 struct WorkerReturn {
+    control_tube: Tube,
     queues: Vec<Queue>,
     snd_data: SndData,
     streams_state: Vec<StreamInfoSnapshot>,
@@ -757,11 +778,14 @@ fn run_worker_once(
     rx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
     card_index: usize,
+    control_tube: &AsyncTube,
 ) -> LoopState {
     let tx_send2 = tx_send.clone();
     let rx_send2 = rx_send.clone();
 
     let reset_signal = (AsyncRwLock::new(false), Condvar::new());
+
+    let f_host_ctrl = handle_ctrl_tube(streams, control_tube, Some(&reset_signal)).fuse();
 
     let f_ctrl = handle_ctrl_queue(
         ex,
@@ -804,10 +828,18 @@ fn run_worker_once(
     .fuse();
     let f_rx_response = send_pcm_response_worker(rx_queue, rx_recv, Some(&reset_signal)).fuse();
 
-    pin_mut!(f_ctrl, f_tx, f_tx_response, f_rx, f_rx_response);
+    pin_mut!(
+        f_host_ctrl,
+        f_ctrl,
+        f_tx,
+        f_tx_response,
+        f_rx,
+        f_rx_response
+    );
 
     let done = async {
         select! {
+            res = f_host_ctrl => (res.context("error in handling host control command"), LoopState::Continue),
             res = f_ctrl => (res.context("error in handling ctrl queue"), LoopState::Continue),
             res = f_tx => (res.context("error in handling tx queue"), LoopState::Continue),
             res = f_tx_response => (res.context("error in handling tx response"), LoopState::Continue),
@@ -942,7 +974,8 @@ mod tests {
             ..Default::default()
         };
 
-        let res = VirtioSnd::new(123, params).unwrap();
+        let (t0, _t1) = Tube::pair().expect("failed to create tube");
+        let res = VirtioSnd::new(123, params, t0).unwrap();
 
         // Default values
         assert_eq!(res.snd_data.jack_info.len(), 0);

@@ -759,12 +759,16 @@ fn create_virtio_devices(
     #[cfg(feature = "audio")]
     {
         for (card_index, virtio_snd) in cfg.virtio_snds.iter().enumerate() {
+            let (snd_host_tube, snd_device_tube) =
+                Tube::pair().context("failed to create tube for snd")?;
+            add_control_tube(DeviceControlTube::Snd(snd_host_tube).into());
             let mut snd_params = virtio_snd.clone();
             snd_params.card_index = card_index;
             devs.push(create_virtio_snd_device(
                 cfg.protection_type,
                 cfg.jail_config.as_ref(),
                 snd_params,
+                snd_device_tube,
             )?);
         }
     }
@@ -3047,6 +3051,8 @@ struct ControlLoopState<'a, V: VmArch, Vcpu: VcpuArch> {
     sys_allocator: &'a Arc<Mutex<SystemAllocator>>,
     control_tubes: &'a BTreeMap<usize, TaggedControlTube>,
     disk_host_tubes: &'a [Tube],
+    #[cfg(feature = "audio")]
+    snd_host_tubes: &'a [Tube],
     #[cfg(feature = "gpu")]
     gpu_control_tube: Option<&'a Tube>,
     #[cfg(feature = "usb")]
@@ -3261,6 +3267,10 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             let response = request.execute(
                 &state.linux.vm,
                 state.disk_host_tubes,
+                #[cfg(feature = "audio")]
+                state.snd_host_tubes,
+                #[cfg(not(feature = "audio"))]
+                &[],
                 &mut state.linux.pm,
                 #[cfg(feature = "gpu")]
                 state.gpu_control_tube,
@@ -3541,6 +3551,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let mut gpu_control_tube = None;
     #[cfg(feature = "pvclock")]
     let mut pvclock_host_tube = None;
+    #[cfg(feature = "audio")]
+    let mut snd_host_tubes = Vec::new();
     let mut irq_control_tubes = Vec::new();
     let mut vm_memory_control_tubes = Vec::new();
     let mut control_tubes = Vec::new();
@@ -3563,6 +3575,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             AnyControlTube::DeviceControlTube(DeviceControlTube::PvClock(t)) => {
                 assert!(pvclock_host_tube.is_none());
                 pvclock_host_tube = Some(Arc::new(t))
+            }
+            #[cfg(feature = "audio")]
+            AnyControlTube::DeviceControlTube(DeviceControlTube::Snd(t)) => {
+                snd_host_tubes.push(t);
             }
             AnyControlTube::IrqTube(t) => irq_control_tubes.push(t),
             AnyControlTube::TaggedControlTube(t) => control_tubes.push(t),
@@ -4179,6 +4195,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             sys_allocator: &sys_allocator_mutex,
                             control_tubes: &control_tubes,
                             disk_host_tubes: &disk_host_tubes[..],
+                            #[cfg(feature = "audio")]
+                            snd_host_tubes: &snd_host_tubes[..],
                             #[cfg(feature = "gpu")]
                             gpu_control_tube: gpu_control_tube.as_ref(),
                             #[cfg(feature = "usb")]

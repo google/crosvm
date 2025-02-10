@@ -15,8 +15,10 @@ use audio_streams::AsyncPlaybackBuffer;
 use audio_streams::BoxError;
 use base::debug;
 use base::error;
+use base::info;
 use cros_async::sync::Condvar;
 use cros_async::sync::RwLock as AsyncRwLock;
+use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::TimerAsync;
@@ -28,6 +30,8 @@ use futures::FutureExt;
 use futures::SinkExt;
 use futures::StreamExt;
 use thiserror::Error as ThisError;
+use vm_control::SndControlCommand;
+use vm_control::VmResponse;
 use zerocopy::AsBytes;
 
 use super::Error;
@@ -584,6 +588,48 @@ pub async fn send_pcm_response_worker(
     Ok(())
 }
 
+/// Handle messages from the control tube. This one is not related to virtio spec.
+pub async fn handle_ctrl_tube(
+    _streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
+    control_tube: &AsyncTube,
+    reset_signal: Option<&(AsyncRwLock<bool>, Condvar)>,
+) -> Result<(), Error> {
+    let on_reset = await_reset_signal(reset_signal).fuse();
+    pin_mut!(on_reset);
+
+    loop {
+        let next_async = control_tube.next().fuse();
+        pin_mut!(next_async);
+
+        let cmd = select! {
+            _ = on_reset => break,
+            res = next_async => res,
+        };
+
+        match cmd {
+            Ok(cmd) => {
+                let resp = match cmd {
+                    SndControlCommand::MuteAll(_muted) => {
+                        // TODO: Implement
+                        info!("Command successfully received");
+                        VmResponse::Ok
+                    }
+                };
+                control_tube
+                    .send(resp)
+                    .await
+                    .map_err(Error::ControlTubeError)?;
+            }
+            Err(e) => {
+                error!("Failed to read the command: {}", e);
+                return Err(Error::ControlTubeError(e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Handle messages from the tx or the rx queue. One invocation is needed for
 /// each queue.
 pub async fn handle_pcm_queue(
@@ -947,5 +993,69 @@ pub async fn handle_event_queue(
         // TODO(woodychow): Poll and forward events from cras asynchronously (API to be added)
         queue.add_used(desc_chain, 0);
         queue.trigger_interrupt();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use base::Tube;
+
+    use super::*;
+    use crate::virtio::snd::common_backend::notify_reset_signal;
+
+    #[test]
+    fn test_handle_ctrl_tube_reset_signal() {
+        let ex = Executor::new().expect("Failed to create an executor");
+        let result = ex.run_until(async {
+            let streams: Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>> = Default::default();
+            let (t0, _t1) = Tube::pair().expect("Failed to create tube pairs");
+            let t0 = AsyncTube::new(&ex, t0).expect("Failed to create async tube");
+            let reset_signal = (AsyncRwLock::new(false), Condvar::new());
+
+            let handle_future = handle_ctrl_tube(&streams, &t0, Some(&reset_signal));
+            let notify_future = notify_reset_signal(&reset_signal);
+            let (result, _) = futures::join!(handle_future, notify_future);
+
+            assert!(
+                result.is_ok(),
+                "handle_ctrl_tube returns an error after reset signal"
+            );
+        });
+
+        assert!(result.is_ok(), "ex.run_until returns an error");
+    }
+
+    #[test]
+    fn test_handle_ctrl_tube_receive_mute_cmd() {
+        let ex = Executor::new().expect("Failed to create an executor");
+        let result = ex.run_until(async {
+            let streams: Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>> = Default::default();
+
+            let (t0, t1) = Tube::pair().expect("Failed to create tube pairs");
+            let t0 = AsyncTube::new(&ex, t0).expect("Failed to create an async tube");
+            let t1 = AsyncTube::new(&ex, t1).expect("Failed to create an async tube");
+            let reset_signal = (AsyncRwLock::new(false), Condvar::new());
+
+            let handle_future = handle_ctrl_tube(&streams, &t0, Some(&reset_signal));
+            let tube_future = async {
+                let _ = t1.send(&SndControlCommand::MuteAll(true)).await;
+                let recv_result = t1.next::<VmResponse>().await;
+                notify_reset_signal(&reset_signal).await;
+                recv_result
+            };
+            let (handle_result, tube_result) = futures::join!(handle_future, tube_future);
+
+            assert!(
+                handle_result.is_ok(),
+                "handle_ctrl_tube returns an error after reset signal"
+            );
+            assert!(tube_result.is_ok(), "Failed to receive data from the tube");
+            assert!(
+                matches!(tube_result.unwrap(), VmResponse::Ok),
+                "tube_result is not Ok",
+            );
+        });
+
+        assert!(result.is_ok(), "ex.run_until returns an error");
     }
 }
