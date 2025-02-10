@@ -13,6 +13,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use fixture::utils::retry;
+use fixture::utils::retry_with_delay;
 use fixture::utils::ChildExt;
 use fixture::utils::CommandExt;
 use fixture::vhost_user::CmdType;
@@ -29,6 +30,7 @@ const HOST_CID: u64 = 2;
 
 const SERVER_TIMEOUT: Duration = Duration::from_secs(3);
 const NCAT_RETRIES: usize = 10;
+const NCAT_RETRY_DELAY: Duration = Duration::from_millis(300);
 
 const MESSAGE_TO_HOST: &str = "Connection from the host is successfully established";
 const MESSAGE_TO_GUEST: &str = "Connection from the guest is successfully established";
@@ -44,7 +46,6 @@ fn generate_vhost_port() -> u32 {
 }
 
 #[test]
-#[ignore = "Test failing in latest version of debian. b/346365355"]
 fn host_to_guest() {
     let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
@@ -54,7 +55,6 @@ fn host_to_guest() {
 }
 
 #[test]
-#[ignore = "Test failing in latest version of debian. b/346365355"]
 fn host_to_guest_disable_sandbox() {
     let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
@@ -66,7 +66,6 @@ fn host_to_guest_disable_sandbox() {
 }
 
 #[test]
-#[ignore = "Test failing in latest version of debian. b/346365355"]
 fn host_to_guest_snapshot_restore() {
     let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
@@ -97,7 +96,6 @@ fn host_to_guest_snapshot_restore() {
 }
 
 #[test]
-#[ignore = "Test failing in latest version of debian. b/346365355"]
 fn host_to_guest_disable_sandbox_snapshot_restore() {
     let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
@@ -134,8 +132,10 @@ fn host_to_guest_connection(vm: &mut TestVm, guest_cid: u32, guest_port: u32) {
         ))
         .unwrap();
 
-    let output = retry(
+    let output = retry_with_delay(
         || {
+            // This will instantly fail if the guest isn't listening on the port yet, so we need to
+            // retry with a delay.
             Command::new("ncat")
                 .args([
                     "--recv-only",
@@ -148,6 +148,7 @@ fn host_to_guest_connection(vm: &mut TestVm, guest_cid: u32, guest_port: u32) {
                 .output_checked()
         },
         NCAT_RETRIES,
+        NCAT_RETRY_DELAY,
     )
     .unwrap();
 
@@ -281,7 +282,6 @@ fn create_vu_config(cmd_type: CmdType, socket: &Path, cid: u32) -> VuConfig {
 }
 
 #[test]
-#[ignore = "b/333090069 test is flaky"]
 fn vhost_user_host_to_guest() {
     let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
@@ -300,7 +300,6 @@ fn vhost_user_host_to_guest() {
 }
 
 #[test]
-#[ignore = "b/333090069 test is flaky"]
 fn vhost_user_host_to_guest_with_devices() {
     let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();

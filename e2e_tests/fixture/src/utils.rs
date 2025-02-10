@@ -166,7 +166,18 @@ impl ChildExt for std::process::Child {
 
 /// Calls the `closure` until it returns a non-error Result.
 /// If it has been re-tried `retries` times, the last result is returned.
-pub fn retry<F, T, E>(mut closure: F, retries: usize) -> Result<T, E>
+pub fn retry<F, T, E>(closure: F, retries: usize) -> Result<T, E>
+where
+    F: FnMut() -> Result<T, E>,
+    E: std::fmt::Debug,
+{
+    retry_with_delay(closure, retries, Duration::ZERO)
+}
+
+/// Calls the `closure` until it returns a non-error Result.
+/// If it has been re-tried `retries` times, the last result is returned.
+/// Waits `delay` between attempts.
+pub fn retry_with_delay<F, T, E>(mut closure: F, retries: usize, delay: Duration) -> Result<T, E>
 where
     F: FnMut() -> Result<T, E>,
     E: std::fmt::Debug,
@@ -179,6 +190,7 @@ where
             break result;
         } else {
             println!("Attempt failed: {:?}", result.err());
+            std::thread::sleep(delay);
         }
     }
 }
