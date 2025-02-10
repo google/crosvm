@@ -7,6 +7,8 @@ use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -324,6 +326,7 @@ pub async fn start_pcm_worker(
     mut sender: mpsc::UnboundedSender<PcmResponse>,
     period_dur: Duration,
     card_index: usize,
+    muted: Rc<AtomicBool>,
     release_signal: Rc<(AsyncRwLock<bool>, Condvar)>,
 ) -> Result<(), Error> {
     let res = pcm_worker_loop(
@@ -334,6 +337,7 @@ pub async fn start_pcm_worker(
         &mut sender,
         period_dur,
         card_index,
+        muted,
         release_signal,
     )
     .await;
@@ -359,6 +363,7 @@ async fn pcm_worker_loop(
     sender: &mut mpsc::UnboundedSender<PcmResponse>,
     period_dur: Duration,
     card_index: usize,
+    muted: Rc<AtomicBool>,
     release_signal: Rc<(AsyncRwLock<bool>, Condvar)>,
 ) -> Result<(), Error> {
     let on_release = async {
@@ -432,11 +437,13 @@ async fn pcm_worker_loop(
                         return Err(Error::InvalidPCMWorkerState);
                     }
                     Ok(Some(mut desc_chain)) => {
-                        // stream_id was already read in handle_pcm_queue
-                        let status =
-                            write_data(dst_buf, Some(&mut desc_chain.reader), buffer_writer)
-                                .await
-                                .into();
+                        let reader = if muted.load(Ordering::Relaxed) {
+                            None
+                        } else {
+                            // stream_id was already read in handle_pcm_queue
+                            Some(&mut desc_chain.reader)
+                        };
+                        let status = write_data(dst_buf, reader, buffer_writer).await.into();
                         sender
                             .send(PcmResponse {
                                 desc_chain,
@@ -490,9 +497,12 @@ async fn pcm_worker_loop(
                         return Err(Error::InvalidPCMWorkerState);
                     }
                     Ok(Some(mut desc_chain)) => {
-                        let status = read_data(src_buf, Some(&mut desc_chain.writer), period_bytes)
-                            .await
-                            .into();
+                        let writer = if muted.load(Ordering::Relaxed) {
+                            None
+                        } else {
+                            Some(&mut desc_chain.writer)
+                        };
+                        let status = read_data(src_buf, writer, period_bytes).await.into();
                         sender
                             .send(PcmResponse {
                                 desc_chain,
@@ -590,7 +600,7 @@ pub async fn send_pcm_response_worker(
 
 /// Handle messages from the control tube. This one is not related to virtio spec.
 pub async fn handle_ctrl_tube(
-    _streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
+    streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     control_tube: &AsyncTube,
     reset_signal: Option<&(AsyncRwLock<bool>, Condvar)>,
 ) -> Result<(), Error> {
@@ -609,9 +619,13 @@ pub async fn handle_ctrl_tube(
         match cmd {
             Ok(cmd) => {
                 let resp = match cmd {
-                    SndControlCommand::MuteAll(_muted) => {
-                        // TODO: Implement
-                        info!("Command successfully received");
+                    SndControlCommand::MuteAll(muted) => {
+                        let streams = streams.read_lock().await;
+                        for stream in streams.iter() {
+                            let stream_info = stream.lock().await;
+                            stream_info.muted.store(muted, Ordering::Relaxed);
+                            info!("Stream muted = {:?}", muted);
+                        }
                         VmResponse::Ok
                     }
                 };
@@ -998,6 +1012,9 @@ pub async fn handle_event_queue(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use audio_streams::NoopStreamSourceGenerator;
     use base::Tube;
 
     use super::*;
@@ -1025,11 +1042,21 @@ mod tests {
         assert!(result.is_ok(), "ex.run_until returns an error");
     }
 
+    fn new_stream() -> StreamInfo {
+        let card_index = 0;
+        StreamInfo::builder(
+            Arc::new(Box::new(NoopStreamSourceGenerator::new())),
+            card_index,
+        )
+        .build()
+    }
+
     #[test]
     fn test_handle_ctrl_tube_receive_mute_cmd() {
         let ex = Executor::new().expect("Failed to create an executor");
         let result = ex.run_until(async {
-            let streams: Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>> = Default::default();
+            let streams: Vec<AsyncRwLock<StreamInfo>> = vec![AsyncRwLock::new(new_stream())];
+            let streams = Rc::new(AsyncRwLock::new(streams));
 
             let (t0, t1) = Tube::pair().expect("Failed to create tube pairs");
             let t0 = AsyncTube::new(&ex, t0).expect("Failed to create an async tube");
@@ -1054,6 +1081,10 @@ mod tests {
                 matches!(tube_result.unwrap(), VmResponse::Ok),
                 "tube_result is not Ok",
             );
+
+            let streams = streams.read_lock().await;
+            let stream = streams.first().unwrap().lock().await;
+            assert!(stream.muted.load(Ordering::Relaxed), "Stream is not muted");
         });
 
         assert!(result.is_ok(), "ex.run_until returns an error");

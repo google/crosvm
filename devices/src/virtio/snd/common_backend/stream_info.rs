@@ -4,6 +4,8 @@
 
 use std::fmt;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -100,6 +102,7 @@ impl StreamInfoBuilder {
 pub struct StreamInfo {
     pub(crate) stream_source: Option<SysAudioStreamSource>,
     stream_source_generator: Arc<SysAudioStreamSourceGenerator>,
+    pub(crate) muted: Rc<AtomicBool>,
     pub(crate) channels: u8,
     pub(crate) format: SampleFormat,
     pub(crate) frame_rate: u32,
@@ -146,6 +149,7 @@ pub struct StreamInfoSnapshot {
 impl fmt::Debug for StreamInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("StreamInfo")
+            .field("muted", &self.muted.load(Ordering::Relaxed))
             .field("channels", &self.channels)
             .field("format", &self.format)
             .field("frame_rate", &self.frame_rate)
@@ -182,6 +186,7 @@ impl Drop for StreamInfo {
 impl From<StreamInfoBuilder> for StreamInfo {
     fn from(builder: StreamInfoBuilder) -> Self {
         StreamInfo {
+            muted: Rc::new(AtomicBool::new(false)),
             stream_source: None,
             stream_source_generator: builder.stream_source_generator,
             channels: 0,
@@ -332,6 +337,7 @@ impl StreamInfo {
             stream_objects.pcm_sender,
             period_dur,
             self.card_index,
+            self.muted.clone(),
             release_signal,
         );
         self.worker_future = Some(Box::new(ex.spawn_local(f).into_future()));
