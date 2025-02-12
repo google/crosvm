@@ -18,6 +18,7 @@ upload: crosvm_dev
 	$(DOCKER) push $(TAG_BASE)/crosvm_dev_base:latest
 
 crosvm_dev:
+	$(DOCKER) pull $(TAG_BASE)/crosvm_dev_base:$(BASE_VERSION)
 	$(DOCKER) build \
 		-t $(TAG_BASE)/$@:$(VERSION) \
 		-f Dockerfile \
