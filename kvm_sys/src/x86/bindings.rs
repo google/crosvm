@@ -44,29 +44,6 @@ pub struct kvm_vfio_iommu_config {
     pub vsid: u32,
 }
 
-// This is how zerocopy's author deal with bindings for __BindgenBitfieldUnit<Storage>, see:
-// https://fuchsia-review.googlesource.com/c/859278/8/src/starnix/lib/linux_uapi/generate.py
-unsafe impl<Storage> AsBytes for __BindgenBitfieldUnit<Storage>
-where
-    Storage: AsBytes,
-{
-    fn only_derive_is_allowed_to_implement_this_trait() {}
-}
-
-unsafe impl<Storage> FromBytes for __BindgenBitfieldUnit<Storage>
-where
-    Storage: FromBytes,
-{
-    fn only_derive_is_allowed_to_implement_this_trait() {}
-}
-
-unsafe impl<Storage> FromZeroes for __BindgenBitfieldUnit<Storage>
-where
-    Storage: FromZeroes,
-{
-    fn only_derive_is_allowed_to_implement_this_trait() {}
-}
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct __BindgenBitfieldUnit<Storage> {
@@ -801,7 +778,7 @@ pub struct kvm_pic_state {
     pub elcr_mask: u8,
 }
 #[repr(C)]
-#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Copy, Clone)]
 pub struct kvm_ioapic_state {
     pub base_address: u64,
     pub ioregsel: u32,
@@ -811,13 +788,13 @@ pub struct kvm_ioapic_state {
     pub redirtbl: [kvm_ioapic_state__bindgen_ty_1; 24usize],
 }
 #[repr(C)]
-#[derive(Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Copy, Clone)]
 pub union kvm_ioapic_state__bindgen_ty_1 {
     pub bits: u64,
     pub fields: kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromZeroes, FromBytes, AsBytes)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1 {
     pub vector: u8,
     pub _bitfield_align_1: [u8; 0],

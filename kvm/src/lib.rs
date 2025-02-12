@@ -17,6 +17,8 @@ use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
 use std::ffi::CString;
 use std::fs::File;
+#[cfg(target_arch = "x86_64")]
+use std::mem::align_of;
 use std::mem::size_of;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -81,11 +83,37 @@ use libc::ENOSPC;
 use libc::EOVERFLOW;
 use libc::O_CLOEXEC;
 use libc::O_RDWR;
+#[cfg(target_arch = "x86_64")]
+use static_assertions::const_assert_eq;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+#[cfg(target_arch = "x86_64")]
+use zerocopy::AsBytes;
+#[cfg(target_arch = "x86_64")]
+use zerocopy::FromBytes;
+#[cfg(target_arch = "x86_64")]
+use zerocopy::FromZeroes;
 
 pub use crate::cap::*;
+
+/// A structure with the same layout as `kvm_ioapic_state` but without the union, making it
+/// zerocopy-able.
+#[cfg(target_arch = "x86_64")]
+#[derive(Copy, Clone, Default, Debug, AsBytes, FromBytes, FromZeroes)]
+#[repr(C)]
+pub struct IoapicState {
+    pub base_address: u64,
+    pub ioregsel: u32,
+    pub id: u32,
+    pub irr: u32,
+    pub pad: u32,
+    pub redirtbl: [u64; 24],
+}
+#[cfg(target_arch = "x86_64")]
+const_assert_eq!(size_of::<IoapicState>(), size_of::<kvm_ioapic_state>());
+#[cfg(target_arch = "x86_64")]
+const_assert_eq!(align_of::<IoapicState>(), align_of::<kvm_ioapic_state>());
 
 fn errno_result<T>() -> Result<T> {
     Err(Error::last())
@@ -626,7 +654,7 @@ impl Vm {
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
     #[cfg(target_arch = "x86_64")]
-    pub fn get_ioapic_state(&self) -> Result<kvm_ioapic_state> {
+    pub fn get_ioapic_state(&self) -> Result<IoapicState> {
         let mut irqchip_state = kvm_irqchip {
             chip_id: 2,
             ..Default::default()
@@ -643,7 +671,7 @@ impl Vm {
                 // SAFETY:
                 // Safe as we know that we are retrieving data related to the
                 // IOAPIC and not PIC.
-                unsafe { irqchip_state.chip.ioapic },
+                unsafe { std::mem::transmute(irqchip_state.chip.ioapic) },
             )
         } else {
             errno_result()
@@ -654,12 +682,13 @@ impl Vm {
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
     #[cfg(target_arch = "x86_64")]
-    pub fn set_ioapic_state(&self, state: &kvm_ioapic_state) -> Result<()> {
+    pub fn set_ioapic_state(&self, state: &IoapicState) -> Result<()> {
         let mut irqchip_state = kvm_irqchip {
             chip_id: 2,
             ..Default::default()
         };
-        irqchip_state.chip.ioapic = *state;
+        // SAFETY: kvm_ioapic_state has the same representation as IoapicState.
+        irqchip_state.chip.ioapic = unsafe { std::mem::transmute(*state) };
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read
         // correct amount of memory from our pointer, and we verify the return result.

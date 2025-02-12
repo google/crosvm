@@ -31,13 +31,13 @@ use base::SharedMemory;
 use base::SIGRTMIN;
 use kvm::dirty_log_bitmap_size;
 use kvm::Datamatch;
+use kvm::IoapicState;
 use kvm::IoeventAddress;
 use kvm::IrqRoute;
 use kvm::IrqSource;
 use kvm::PicId;
 use kvm::Vm;
 use kvm_sys::kvm_clock_data;
-use kvm_sys::kvm_ioapic_state;
 use kvm_sys::kvm_pic_state;
 use kvm_sys::kvm_pit_state2;
 use libc::pid_t;
@@ -92,7 +92,7 @@ fn set_vm_state(
             vm.set_pic_state(PicId::Secondary, &pic_state)
         }
         main_request::StateSet::IOAPIC => {
-            let ioapic_state = kvm_ioapic_state::read_from(state).ok_or(SysError::new(EINVAL))?;
+            let ioapic_state = IoapicState::read_from(state).ok_or(SysError::new(EINVAL))?;
             vm.set_ioapic_state(&ioapic_state)
         }
         main_request::StateSet::PIT => {

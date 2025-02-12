@@ -1738,8 +1738,10 @@ dependencies = [
  "data_model",
  "kvm_sys",
  "libc",
+ "static_assertions",
  "sync",
  "vm_memory",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
