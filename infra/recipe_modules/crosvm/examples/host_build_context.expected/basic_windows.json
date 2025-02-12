@@ -341,6 +341,31 @@
   },
   {
     "cmd": [
+      "rustup",
+      "component",
+      "add",
+      "rust-mingw"
+    ],
+    "cwd": "[CACHE]\\builder\\crosvm",
+    "env": {
+      "CARGO_HOME": "[CACHE]\\builder\\cargo_home",
+      "CARGO_TARGET_DIR": "[CLEANUP]\\cargo_target",
+      "RUSTUP_HOME": "[CACHE]\\builder\\rustup"
+    },
+    "env_prefixes": {
+      "PATH": [
+        "[CACHE]\\builder\\cargo_home\\bin",
+        "[CACHE]\\builder\\local_bin"
+      ]
+    },
+    "infra_step": true,
+    "name": "Prepare Host Build.Prepare rust.Add rust-mingw component",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
+    "cmd": [
       "rustc",
       "--version"
     ],

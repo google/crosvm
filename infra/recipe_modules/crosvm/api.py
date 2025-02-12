@@ -232,6 +232,10 @@ class CrosvmApi(recipe_api.RecipeApi):
                     "Set rustup default host",
                     ["rustup", "set", "default-host", "x86_64-pc-windows-gnu"],
                 )
+                self.m.step(
+                    "Add rust-mingw component",
+                    ["rustup", "component", "add", "rust-mingw"],
+                )
 
             # Rustup installs a rustc wrapper that will download and use the version specified by
             # crosvm in the rust-toolchain file.
