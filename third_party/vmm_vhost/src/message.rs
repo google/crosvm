@@ -259,7 +259,7 @@ bitflags! {
 /// A vhost-user message consists of 3 header fields and an optional payload. All numbers are in the
 /// machine native byte order.
 #[repr(C, packed)]
-#[derive(Copy, FromZeroes, FromBytes, AsBytes)]
+#[derive(Copy)]
 pub struct VhostUserMsgHeader<R: Req> {
     request: u32,
     flags: u32,
@@ -298,6 +298,19 @@ impl<R: Req> VhostUserMsgHeader<R> {
             request: request.into(),
             flags: fl,
             size,
+            _r: PhantomData,
+        }
+    }
+
+    pub fn into_raw(self) -> [u32; 3] {
+        [self.request, self.flags, self.size]
+    }
+
+    pub fn from_raw(raw: [u32; 3]) -> Self {
+        Self {
+            request: raw[0],
+            flags: raw[1],
+            size: raw[2],
             _r: PhantomData,
         }
     }
