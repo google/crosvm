@@ -29,7 +29,7 @@ const ANY_CID: &str = "4294967295"; // -1U
 const HOST_CID: u64 = 2;
 
 const SERVER_TIMEOUT: Duration = Duration::from_secs(3);
-const NCAT_RETRIES: usize = 10;
+const NCAT_RETRIES: usize = 15;
 const NCAT_RETRY_DELAY: Duration = Duration::from_millis(300);
 
 const MESSAGE_TO_HOST: &str = "Connection from the host is successfully established";
@@ -128,7 +128,7 @@ fn host_to_guest_disable_sandbox_snapshot_restore() {
 fn host_to_guest_connection(vm: &mut TestVm, guest_cid: u32, guest_port: u32) {
     let guest_cmd = vm
         .exec_in_guest_async(&format!(
-            "echo {MESSAGE_TO_HOST} | ncat -l --vsock --send-only {ANY_CID} {guest_port}"
+            "echo {MESSAGE_TO_HOST} | ncat -v -l --vsock --send-only {ANY_CID} {guest_port}"
         ))
         .unwrap();
 
@@ -138,6 +138,7 @@ fn host_to_guest_connection(vm: &mut TestVm, guest_cid: u32, guest_port: u32) {
             // retry with a delay.
             Command::new("ncat")
                 .args([
+                    "-v",
                     "--recv-only",
                     "--vsock",
                     &guest_cid.to_string(),
