@@ -647,6 +647,7 @@ struct CtrlVfdNewCtxNamed {
     pfn: Le64,   // Ignored.
     size: Le32,  // Ignored.
     name: [u8; 32],
+    _pad: u32,
 }
 const_assert_eq!(size_of::<CtrlVfdNewCtxNamed>(), 64);
 
