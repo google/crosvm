@@ -62,7 +62,6 @@ fn suspend_resume_system(disabled_sandbox: bool) -> anyhow::Result<()> {
 
     let new_config = || {
         let mut config = Config::new();
-        config = config.with_stdout_hardware("legacy-virtio-console");
         config = config.extra_args(vec![
             "--pmem".to_string(),
             format!("{},ro=true", pmem_file.path().display().to_string()),
@@ -192,7 +191,6 @@ fn snapshot_vhost_user() {
             spin_up_vhost_user_devices();
 
         let mut config = Config::new();
-        config = config.with_stdout_hardware("legacy-virtio-console");
         config = config.with_vhost_user("block", block_socket.path());
         config = config.with_vhost_user("net", net_socket.path());
         config = config.extra_args(vec!["--no-usb".to_string()]);
@@ -208,7 +206,6 @@ fn snapshot_vhost_user() {
 
     let mut config = Config::new();
     // Start up VM with cold restore.
-    config = config.with_stdout_hardware("legacy-virtio-console");
     config = config.with_vhost_user("block", block_socket.path());
     config = config.with_vhost_user("net", net_socket.path());
     config = config.extra_args(vec![

@@ -69,27 +69,23 @@ fn host_to_guest_disable_sandbox() {
 fn host_to_guest_snapshot_restore() {
     let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
-    let config = Config::new()
-        .extra_args(vec![
-            "--cid".to_string(),
-            guest_cid.to_string(),
-            "--no-usb".to_string(),
-        ])
-        .with_stdout_hardware("legacy-virtio-console");
+    let config = Config::new().extra_args(vec![
+        "--cid".to_string(),
+        guest_cid.to_string(),
+        "--no-usb".to_string(),
+    ]);
     let mut vm = TestVm::new(config).unwrap();
     host_to_guest_connection(&mut vm, guest_cid, guest_port);
     let dir = tempdir().unwrap();
     let snap = dir.path().join("snapshot.bkp");
     vm.snapshot(&snap).unwrap();
-    let config = Config::new()
-        .extra_args(vec![
-            "--cid".to_string(),
-            guest_cid.to_string(),
-            "--restore".to_string(),
-            snap.to_str().unwrap().to_string(),
-            "--no-usb".to_string(),
-        ])
-        .with_stdout_hardware("legacy-virtio-console");
+    let config = Config::new().extra_args(vec![
+        "--cid".to_string(),
+        guest_cid.to_string(),
+        "--restore".to_string(),
+        snap.to_str().unwrap().to_string(),
+        "--no-usb".to_string(),
+    ]);
     drop(vm);
     vm = TestVm::new_restore(config).unwrap();
     host_to_guest_connection(&mut vm, guest_cid, guest_port);
@@ -99,27 +95,23 @@ fn host_to_guest_snapshot_restore() {
 fn host_to_guest_disable_sandbox_snapshot_restore() {
     let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
-    let config = Config::new()
-        .extra_args(vec![
-            "--cid".to_string(),
-            guest_cid.to_string(),
-            "--no-usb".to_string(),
-        ])
-        .with_stdout_hardware("legacy-virtio-console");
+    let config = Config::new().extra_args(vec![
+        "--cid".to_string(),
+        guest_cid.to_string(),
+        "--no-usb".to_string(),
+    ]);
     let mut vm = TestVm::new(config.disable_sandbox()).unwrap();
     host_to_guest_connection(&mut vm, guest_cid, guest_port);
     let dir = tempdir().unwrap();
     let snap = dir.path().join("snapshot.bkp");
     vm.snapshot(&snap).unwrap();
-    let config = Config::new()
-        .extra_args(vec![
-            "--cid".to_string(),
-            guest_cid.to_string(),
-            "--restore".to_string(),
-            snap.to_str().unwrap().to_string(),
-            "--no-usb".to_string(),
-        ])
-        .with_stdout_hardware("legacy-virtio-console");
+    let config = Config::new().extra_args(vec![
+        "--cid".to_string(),
+        guest_cid.to_string(),
+        "--restore".to_string(),
+        snap.to_str().unwrap().to_string(),
+        "--no-usb".to_string(),
+    ]);
     drop(vm);
     vm = TestVm::new_restore(config.disable_sandbox()).unwrap();
     host_to_guest_connection(&mut vm, guest_cid, guest_port);
@@ -183,27 +175,23 @@ fn guest_to_host_disable_sandbox() {
 fn guest_to_host_snapshot_restore() {
     let host_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
-    let config = Config::new()
-        .extra_args(vec![
-            "--cid".to_string(),
-            guest_cid.to_string(),
-            "--no-usb".to_string(),
-        ])
-        .with_stdout_hardware("legacy-virtio-console");
+    let config = Config::new().extra_args(vec![
+        "--cid".to_string(),
+        guest_cid.to_string(),
+        "--no-usb".to_string(),
+    ]);
     let mut vm = TestVm::new(config).unwrap();
     guest_to_host_connection(&mut vm, host_port);
     let dir = tempdir().unwrap();
     let snap = dir.path().join("snapshot.bkp");
     vm.snapshot(&snap).unwrap();
-    let config = Config::new()
-        .extra_args(vec![
-            "--cid".to_string(),
-            guest_cid.to_string(),
-            "--no-usb".to_string(),
-            "--restore".to_string(),
-            snap.to_str().unwrap().to_string(),
-        ])
-        .with_stdout_hardware("legacy-virtio-console");
+    let config = Config::new().extra_args(vec![
+        "--cid".to_string(),
+        guest_cid.to_string(),
+        "--no-usb".to_string(),
+        "--restore".to_string(),
+        snap.to_str().unwrap().to_string(),
+    ]);
     drop(vm);
     vm = TestVm::new_restore(config).unwrap();
     guest_to_host_connection(&mut vm, host_port);
@@ -219,22 +207,19 @@ fn guest_to_host_disable_sandbox_snapshot_restore() {
             guest_cid.to_string(),
             "--no-usb".to_string(),
         ])
-        .with_stdout_hardware("legacy-virtio-console")
         .disable_sandbox();
     let mut vm = TestVm::new(config).unwrap();
     guest_to_host_connection(&mut vm, host_port);
     let dir = tempdir().unwrap();
     let snap = dir.path().join("snapshot.bkp");
     vm.snapshot(&snap).unwrap();
-    let config = Config::new()
-        .extra_args(vec![
-            "--cid".to_string(),
-            guest_cid.to_string(),
-            "--no-usb".to_string(),
-            "--restore".to_string(),
-            snap.to_str().unwrap().to_string(),
-        ])
-        .with_stdout_hardware("legacy-virtio-console");
+    let config = Config::new().extra_args(vec![
+        "--cid".to_string(),
+        guest_cid.to_string(),
+        "--no-usb".to_string(),
+        "--restore".to_string(),
+        snap.to_str().unwrap().to_string(),
+    ]);
     drop(vm);
     vm = TestVm::new_restore(config.disable_sandbox()).unwrap();
     guest_to_host_connection(&mut vm, host_port);

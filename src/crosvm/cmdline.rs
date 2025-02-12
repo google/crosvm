@@ -2174,8 +2174,7 @@ pub struct RunCommand {
     ///        Platform-specific options:
     ///        On Unix: 'unix' (datagram) and 'unix-stream' (stream)
     ///        On Windows: 'namedpipe'
-    ///     hardware=(serial,virtio-console,debugcon,
-    ///               legacy-virtio-console) - Which type of
+    ///     hardware=(serial,virtio-console,debugcon) - Which type of
     ///        serial hardware to emulate. Defaults to 8250 UART
     ///        (serial).
     ///     name=NAME - Console Port Name, used for virtio-console

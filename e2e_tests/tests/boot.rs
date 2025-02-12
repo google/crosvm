@@ -96,7 +96,6 @@ fn full_suspend_resume_test_suspend_resume_full() {
     // There is no easy way for us to check if the VM is actually suspended. But at
     // least exercise the code-path.
     let mut config = Config::new();
-    config = config.with_stdout_hardware("legacy-virtio-console");
     // Why this test is called "full"? Can anyone explain...?
     config = config.extra_args(vec![
         "--no-usb".to_string(),
@@ -115,7 +114,6 @@ fn full_suspend_resume_with_pvclock() {
     // There is no easy way for us to check if the VM is actually suspended. But at
     // least exercise the code-path.
     let mut config = Config::new();
-    config = config.with_stdout_hardware("legacy-virtio-console");
     config = config.extra_args(vec![
         "--no-usb".to_string(),
         "--no-balloon".to_string(),
@@ -139,7 +137,6 @@ fn vcpu_suspend_resume_with_pvclock_adjusts_guest_clocks() {
 
     // Launch a VM with pvclock option
     let mut config = Config::new();
-    config = config.with_stdout_hardware("legacy-virtio-console");
     config = config.extra_args(vec![
         "--no-usb".to_string(),
         "--no-balloon".to_string(),
