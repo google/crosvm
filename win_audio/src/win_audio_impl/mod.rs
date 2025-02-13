@@ -276,11 +276,9 @@ impl PlaybackBufferStream for WinAudioRenderer {
         match &mut self.device.renderer_stream {
             RendererStream::Device((device_renderer, _)) => {
                 match device_renderer.next_win_buffer() {
-                    Ok(_) => {
-                        return device_renderer
-                            .playback_buffer()
-                            .map_err(|e| Box::new(e) as _)
-                    }
+                    Ok(_) => device_renderer
+                        .playback_buffer()
+                        .map_err(|e| Box::new(e) as _),
                     Err(e) => Err(Box::new(e)),
                 }
             }
@@ -1080,12 +1078,12 @@ impl DeviceCapturerWrapper {
                 let next_slice = unsafe {
                     std::slice::from_raw_parts_mut(next_period.as_mut_ptr(), next_period.len())
                 };
-                return AsyncCaptureBuffer::new(
+                AsyncCaptureBuffer::new(
                     ANDROID_CAPTURE_FRAME_SIZE_BYTES,
                     next_slice,
                     noop_buffer_commit,
                 )
-                .map_err(CaptureError::CaptureBuffer);
+                .map_err(CaptureError::CaptureBuffer)
             }
             None => Err(CaptureError::ResamplerNoSamplesAvailable),
         }
