@@ -88,7 +88,7 @@ where
     }
 }
 
-impl<'a, T> Future for WaitForHandle<'a, T>
+impl<T> Future for WaitForHandle<'_, T>
 where
     T: AsRawDescriptor,
 {
@@ -158,7 +158,7 @@ where
     }
 }
 
-impl<'a, T> Drop for WaitForHandle<'a, T>
+impl<T> Drop for WaitForHandle<'_, T>
 where
     T: AsRawDescriptor,
 {

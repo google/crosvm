@@ -192,7 +192,7 @@ impl CallbackHandler for Handler {
         // The actual Timer is freed implicitly by the Box drop.
     }
 
-    fn get_timers<'a>(&'a self) -> Box<dyn Iterator<Item = &RawDescriptor> + 'a> {
+    fn get_timers(&self) -> Box<dyn Iterator<Item = &RawDescriptor> + '_> {
         Box::new(self.timer_callbacks.keys())
     }
 
@@ -377,7 +377,7 @@ struct EventSelectedSocket<'a> {
 }
 
 impl<'a> EventSelectedSocket<'a> {
-    fn new(socket: WSAPOLLFD, event: &'a Event) -> Result<EventSelectedSocket> {
+    fn new(socket: WSAPOLLFD, event: &'a Event) -> Result<EventSelectedSocket<'a>> {
         // SAFETY:
         // Safe because socket.fd exists, the event handle is guaranteed to exist, and we check the
         // return code below.
@@ -397,7 +397,7 @@ impl<'a> EventSelectedSocket<'a> {
     }
 }
 
-impl<'a> Drop for EventSelectedSocket<'a> {
+impl Drop for EventSelectedSocket<'_> {
     fn drop(&mut self) {
         // SAFETY:
         // Safe because socket.fd exists, the event handle is guaranteed to exist, and we check the

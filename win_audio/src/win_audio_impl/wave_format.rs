@@ -539,7 +539,7 @@ fn upload_metrics(details: WaveFormatDetailsMetric, event_type: AudioFormatEvent
 
 struct GuidWrapper<'a>(&'a GUID);
 
-impl<'a> From<GuidWrapper<'a>> for WaveFormatSubFormatMetric {
+impl From<GuidWrapper<'_>> for WaveFormatSubFormatMetric {
     fn from(guid: GuidWrapper) -> WaveFormatSubFormatMetric {
         let guid = guid.0;
         if IsEqualGUID(guid, &KSDATAFORMAT_SUBTYPE_ANALOG) {

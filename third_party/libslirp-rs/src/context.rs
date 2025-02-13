@@ -126,7 +126,7 @@ pub trait CallbackHandler {
 
     /// Gets an iterator of timers (as raw descriptors) so they can be awaited with a suitable
     /// polling function as part of libslirp's main consumer loop.
-    fn get_timers<'a>(&'a self) -> Box<dyn Iterator<Item = &RawDescriptor> + 'a>;
+    fn get_timers(&self) -> Box<dyn Iterator<Item = &RawDescriptor> + '_>;
 
     /// Runs the handler function for a specific timer.
     fn execute_timer(&mut self, timer: RawDescriptor);
@@ -694,7 +694,7 @@ impl<H: CallbackHandler> Context<H> {
         }
     }
 
-    pub fn get_timers<'a>(&'a self) -> Box<dyn Iterator<Item = &RawDescriptor> + 'a> {
+    pub fn get_timers(&self) -> Box<dyn Iterator<Item = &RawDescriptor> + '_> {
         self.callback_handler.get_timers()
     }
 

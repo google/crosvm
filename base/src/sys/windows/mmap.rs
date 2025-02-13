@@ -156,12 +156,12 @@ pub trait MemoryMappingBuilderWindows<'a> {
     /// descriptor MUST be a mapping handle. Files MUST use `MemoryMappingBuilder::from_file`
     /// instead.
     #[allow(clippy::wrong_self_convention)]
-    fn from_descriptor(self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder;
+    fn from_descriptor(self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder<'a>;
 }
 
 impl<'a> MemoryMappingBuilderWindows<'a> for MemoryMappingBuilder<'a> {
     /// See MemoryMappingBuilderWindows.
-    fn from_descriptor(mut self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder {
+    fn from_descriptor(mut self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder<'a> {
         self.descriptor = Some(descriptor);
         self
     }

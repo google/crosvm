@@ -93,7 +93,7 @@ pub struct MultiProcessMutexGuard<'a> {
     lock: &'a SafeDescriptor,
 }
 
-impl<'a> Drop for MultiProcessMutexGuard<'a> {
+impl Drop for MultiProcessMutexGuard<'_> {
     fn drop(&mut self) {
         // SAFETY: We own the descriptor and is expected to be valid.
         if unsafe { ReleaseMutex(self.lock.as_raw_descriptor()) } == 0 {
