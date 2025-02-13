@@ -399,7 +399,7 @@ extern "C" fn timer_mod_handler<H: CallbackHandler>(
         (*(opaque as *mut Context<H>))
             .callback_handler
             .timer_mod(&mut timer, expire_time);
-        Box::into_raw(timer);
+        let _ = Box::into_raw(timer);
     }
 }
 
