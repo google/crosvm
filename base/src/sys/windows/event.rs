@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::ffi::CString;
-use std::mem::MaybeUninit;
 use std::os::windows::io::AsRawHandle;
 use std::os::windows::io::RawHandle;
 use std::ptr::null;
@@ -18,6 +17,7 @@ use winapi::shared::minwindef::FALSE;
 use winapi::shared::minwindef::TRUE;
 use winapi::shared::winerror::WAIT_TIMEOUT;
 use winapi::um::handleapi::DuplicateHandle;
+use winapi::um::handleapi::INVALID_HANDLE_VALUE;
 use winapi::um::processthreadsapi::GetCurrentProcess;
 use winapi::um::synchapi::CreateEventA;
 use winapi::um::synchapi::OpenEventA;
@@ -29,7 +29,6 @@ use winapi::um::winbase::WAIT_FAILED;
 use winapi::um::winbase::WAIT_OBJECT_0;
 use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
 use winapi::um::winnt::EVENT_MODIFY_STATE;
-use winapi::um::winnt::HANDLE;
 
 use super::errno_result;
 use super::Error;
@@ -200,7 +199,7 @@ impl PlatformEvent {
     }
 
     pub fn try_clone(&self) -> Result<PlatformEvent> {
-        let mut event_clone: HANDLE = MaybeUninit::uninit().as_mut_ptr();
+        let mut event_clone = INVALID_HANDLE_VALUE;
         // SAFETY: Safe because return value is checked.
         let duplicate_result = unsafe {
             DuplicateHandle(
