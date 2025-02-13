@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
@@ -359,7 +358,7 @@ impl DeviceRenderer {
     /// Unlike `next_win_buffer`, there is no timeout if `async_ready_to_read_event` doesn't fire.
     /// This should be fine, since the end result with or without the timeout will be no audio.
     async fn async_next_win_buffer(&mut self) -> Result<(), RenderError> {
-        self.win_buffer = MaybeUninit::uninit().as_mut_ptr();
+        self.win_buffer = std::ptr::null_mut();
 
         // We will wait for windows to tell us when it is ready to take in the next set of
         // audio samples from the guest
