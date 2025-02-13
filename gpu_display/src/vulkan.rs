@@ -69,14 +69,14 @@ use self::sys::WindowEventLoop;
 use crate::SemaphoreTimepoint;
 use crate::VulkanDisplayImageImportMetadata;
 
-/// Vulkan Safety Notes:
-/// Most vulkan APIs are unsafe, but even the wrapper APIs like ash and vulkano will mark their
-/// APIs as unsafe when they cannot ensure that they are 100% obeying the vulkan spec. For the
-/// purposes of VulkanDisplay, however, we do not consider disobeying the vulkan spec to be unsafe
-/// in terms of memory safety. Safety comments in these cases will say:
-/// "Safe irrespective of vulkan spec conformance"
-///
-/// If the function is unsafe for any other reason we will still note why it's safe.
+// Vulkan Safety Notes:
+// Most vulkan APIs are unsafe, but even the wrapper APIs like ash and vulkano will mark their
+// APIs as unsafe when they cannot ensure that they are 100% obeying the vulkan spec. For the
+// purposes of VulkanDisplay, however, we do not consider disobeying the vulkan spec to be unsafe
+// in terms of memory safety. Safety comments in these cases will say:
+// "Safe irrespective of vulkan spec conformance"
+//
+// If the function is unsafe for any other reason we will still note why it's safe.
 
 pub type SemaphoreId = u32;
 pub type ImageId = u32;
