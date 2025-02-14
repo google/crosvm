@@ -83,19 +83,15 @@ impl Command {
     }
 
     fn parse_command<T: FromBytes>(cdb: &[u8]) -> Result<T, ExecuteError> {
-        let size = std::mem::size_of::<T>();
-        T::read_from(&cdb[..size]).ok_or(ExecuteError::ReadCommand)
+        T::read_from_prefix(cdb).ok_or(ExecuteError::ReadCommand)
     }
 
     fn parse_maintenance_in(cdb: &[u8]) -> Result<Self, ExecuteError> {
-        const MAINTENANCE_IN_SIZE: usize = 12;
         // Top three bits are reserved.
         let service_action = cdb[1] & 0x1f;
         match service_action {
             REPORT_SUPPORTED_TASK_MANAGEMENT_FUNCTIONS => {
-                let r = ReportSupportedTMFs::read_from(&cdb[..MAINTENANCE_IN_SIZE])
-                    .ok_or(ExecuteError::ReadCommand)?;
-                Ok(Self::ReportSupportedTMFs(r))
+                Ok(Self::ReportSupportedTMFs(Self::parse_command(cdb)?))
             }
             _ => {
                 warn!(
@@ -108,15 +104,10 @@ impl Command {
     }
 
     fn parse_service_action_in_16(cdb: &[u8]) -> Result<Self, ExecuteError> {
-        const SERVICE_ACTION_IN_16_SIZE: usize = 16;
         // Top three bits are reserved.
         let service_action = cdb[1] & 0x1f;
         match service_action {
-            READ_CAPACITY_16 => {
-                let r = ReadCapacity16::read_from(&cdb[..SERVICE_ACTION_IN_16_SIZE])
-                    .ok_or(ExecuteError::ReadCommand)?;
-                Ok(Self::ReadCapacity16(r))
-            }
+            READ_CAPACITY_16 => Ok(Self::ReadCapacity16(Self::parse_command(cdb)?)),
             _ => {
                 warn!(
                     "service action {:#x?} for SERVICE_ACTION_IN_16 is not implemented",
