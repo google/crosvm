@@ -1898,14 +1898,14 @@ impl VfioPciConfig {
         VfioPciConfig { device }
     }
 
-    pub fn read_config<T: FromBytes>(&self, offset: u32) -> T {
-        let mut buf = vec![0u8; std::mem::size_of::<T>()];
+    pub fn read_config<T: AsBytes + FromBytes>(&self, offset: u32) -> T {
+        let mut config = T::new_zeroed();
         self.device.region_read(
             VFIO_PCI_CONFIG_REGION_INDEX as usize,
-            &mut buf,
+            config.as_bytes_mut(),
             offset.into(),
         );
-        T::read_from(&buf[..]).expect("failed to convert config data from slice")
+        config
     }
 
     pub fn write_config<T: AsBytes>(&self, config: T, offset: u32) {
