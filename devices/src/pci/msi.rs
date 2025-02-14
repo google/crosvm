@@ -278,57 +278,6 @@ pub struct MsiCtrl {
 }
 
 #[allow(dead_code)]
-#[repr(C, align(4))]
-#[derive(Clone, Copy, Default, AsBytes, FromZeroes, FromBytes)]
-struct Msi32BitWithoutMask {
-    msg_data: u16,
-    msg_extended_data: u16,
-    _padding: [u8; 12],
-}
-
-#[allow(dead_code)]
-#[repr(C, align(4))]
-#[derive(Clone, Copy, Default, AsBytes, FromZeroes, FromBytes)]
-struct Msi32BitWithMask {
-    msg_data: u16,
-    msg_extended_data: u16,
-    mask_bits: u32,
-    pending_bits: u32,
-    _padding: [u8; 4],
-}
-
-#[allow(dead_code)]
-#[repr(C, align(4))]
-#[derive(Clone, Copy, Default, AsBytes, FromZeroes, FromBytes)]
-struct Msi64BitWithoutMask {
-    msg_upper: u32,
-    msg_data: u16,
-    msg_extended_data: u16,
-    _padding: [u8; 8],
-}
-
-#[allow(dead_code)]
-#[repr(C)]
-#[derive(Clone, Copy, Default, AsBytes, FromZeroes, FromBytes)]
-struct Msi64BitWithMask {
-    msg_upper: u32,
-    msg_data: u16,
-    msg_extended_data: u16,
-    mask_bits: u32,
-    pending_bits: u32,
-}
-
-#[allow(dead_code)]
-#[repr(C)]
-#[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
-union MsiVary {
-    msi_32bit_without_mask: Msi32BitWithoutMask,
-    msi_32bit_with_mask: Msi32BitWithMask,
-    msi_64bit_without_mask: Msi64BitWithoutMask,
-    msi_64bit_with_mask: Msi64BitWithMask,
-}
-
-#[allow(dead_code)]
 #[repr(C)]
 #[derive(Clone, Copy, AsBytes, FromZeroes, FromBytes)]
 /// MSI Capability Structure
@@ -341,7 +290,7 @@ pub struct MsiCap {
     // Message Address
     msg_addr: u32,
     // Msi Vary structure
-    msi_vary: MsiVary,
+    msi_vary: [u8; 16],
 }
 
 impl PciCapability for MsiCap {
@@ -390,26 +339,12 @@ impl MsiCap {
         if mask_cap {
             msg_ctl.set_per_vector_masking(1);
         }
-        let msi_vary = match (is_64bit, mask_cap) {
-            (false, false) => MsiVary {
-                msi_32bit_without_mask: Msi32BitWithoutMask::default(),
-            },
-            (false, true) => MsiVary {
-                msi_32bit_with_mask: Msi32BitWithMask::default(),
-            },
-            (true, false) => MsiVary {
-                msi_64bit_without_mask: Msi64BitWithoutMask::default(),
-            },
-            (true, true) => MsiVary {
-                msi_64bit_with_mask: Msi64BitWithMask::default(),
-            },
-        };
         MsiCap {
             _cap_vndr: 0,
             _cap_next: 0,
             msg_ctl,
             msg_addr: 0,
-            msi_vary,
+            msi_vary: [0; 16],
         }
     }
 }
