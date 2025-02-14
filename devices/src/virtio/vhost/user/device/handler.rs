@@ -277,33 +277,6 @@ impl VhostUserRegularOps {
             .collect();
         Ok((guest_mem, vmm_maps))
     }
-
-    pub fn set_vring_kick(_index: u8, file: Option<File>) -> VhostResult<Event> {
-        let file = file.ok_or(VhostError::InvalidParam("missing file for set_vring_kick"))?;
-        // Remove O_NONBLOCK from kick_fd. Otherwise, uring_executor will fails when we read
-        // values via `next_val()` later.
-        // This is only required (and can only be done) on Unix platforms.
-        #[cfg(any(target_os = "android", target_os = "linux"))]
-        if let Err(e) = clear_fd_flags(file.as_raw_fd(), libc::O_NONBLOCK) {
-            error!("failed to remove O_NONBLOCK for kick fd: {}", e);
-            return Err(VhostError::InvalidParam(
-                "could not remove O_NONBLOCK from vring_kick",
-            ));
-        }
-        Ok(Event::from(SafeDescriptor::from(file)))
-    }
-
-    pub fn set_vring_call(
-        _index: u8,
-        file: Option<File>,
-        signal_config_change_fn: Box<dyn Fn() + Send + Sync>,
-    ) -> VhostResult<Interrupt> {
-        let file = file.ok_or(VhostError::InvalidParam("missing file for set_vring_call"))?;
-        Ok(Interrupt::new_vhost_user(
-            Event::from(SafeDescriptor::from(file)),
-            signal_config_change_fn,
-        ))
-    }
 }
 
 /// An adapter that implements `vmm_vhost::Backend` for any type implementing `VhostUserDevice`.
@@ -578,7 +551,20 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
             return Err(VhostError::InvalidOperation);
         }
 
-        let kick_evt = VhostUserRegularOps::set_vring_kick(index, file)?;
+        let file = file.ok_or(VhostError::InvalidParam("missing file for set_vring_kick"))?;
+
+        // Remove O_NONBLOCK from kick_fd. Otherwise, uring_executor will fails when we read
+        // values via `next_val()` later.
+        // This is only required (and can only be done) on Unix platforms.
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        if let Err(e) = clear_fd_flags(file.as_raw_fd(), libc::O_NONBLOCK) {
+            error!("failed to remove O_NONBLOCK for kick fd: {}", e);
+            return Err(VhostError::InvalidParam(
+                "could not remove O_NONBLOCK from vring_kick",
+            ));
+        }
+
+        let kick_evt = Event::from(SafeDescriptor::from(file));
 
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
         vring.queue.ack_features(self.acked_features);
@@ -628,8 +614,11 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
             }
         });
 
-        let doorbell = VhostUserRegularOps::set_vring_call(index, file, signal_config_change_fn)?;
-        self.vrings[index as usize].doorbell = Some(doorbell);
+        let file = file.ok_or(VhostError::InvalidParam("missing file for set_vring_call"))?;
+        self.vrings[index as usize].doorbell = Some(Interrupt::new_vhost_user(
+            Event::from(SafeDescriptor::from(file)),
+            signal_config_change_fn,
+        ));
         Ok(())
     }
 

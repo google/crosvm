@@ -295,7 +295,8 @@ impl vmm_vhost::Backend for VsockBackend {
             return Err(Error::InvalidParam("set_vring_kick: index out of range"));
         }
 
-        let event = VhostUserRegularOps::set_vring_kick(index, fd)?;
+        let file = fd.ok_or(Error::InvalidParam("set_vring_kick: missing fd"))?;
+        let event = Event::from(SafeDescriptor::from(file));
         let index = usize::from(index);
         if index != EVENT_QUEUE {
             self.handle
@@ -311,20 +312,12 @@ impl vmm_vhost::Backend for VsockBackend {
             return Err(Error::InvalidParam("set_vring_call: index out of range"));
         }
 
-        let doorbell = VhostUserRegularOps::set_vring_call(
-            index,
-            fd,
-            Box::new(|| {
-                // `doorbell.signal_config_changed()` is never called, so this shouldn't be
-                // reachable.
-                unreachable!()
-            }),
-        )?;
+        let file = fd.ok_or(Error::InvalidParam("set_vring_call: missing fd"))?;
+        let event = Event::from(SafeDescriptor::from(file));
         let index = usize::from(index);
-        let event = doorbell.get_interrupt_evt();
         if index != EVENT_QUEUE {
             self.handle
-                .set_vring_call(index, event)
+                .set_vring_call(index, &event)
                 .map_err(convert_vhost_error)?;
         }
 
