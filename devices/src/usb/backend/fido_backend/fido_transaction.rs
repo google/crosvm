@@ -24,7 +24,7 @@ use crate::usb::backend::fido_backend::poll_thread::PollTimer;
 #[derive(Clone, Copy, Debug)]
 pub struct FidoTransaction {
     /// Client ID of the transaction
-    pub cid: u32,
+    pub cid: [u8; constants::CID_SIZE],
     /// BCNT of the response.
     pub resp_bcnt: u16,
     /// Total size of the response.
@@ -73,7 +73,7 @@ impl TransactionManager {
     /// Attempts to close a transaction if it exists. Otherwise it silently drops it.
     /// It returns true to signal that there's no more transactions active and the device can
     /// return to an idle state.
-    pub fn close_transaction(&mut self, cid: u32) -> bool {
+    pub fn close_transaction(&mut self, cid: [u8; constants::CID_SIZE]) -> bool {
         match self.transactions.iter().position(|t| t.cid == cid) {
             Some(index) => {
                 self.transactions.remove(index);
@@ -93,7 +93,11 @@ impl TransactionManager {
 
     /// Starts a new transaction in the queue. Returns true if it is the first transaction,
     /// signaling that the device would have to transition from idle to active state.
-    pub fn start_transaction(&mut self, cid: u32, nonce: [u8; constants::NONCE_SIZE]) -> bool {
+    pub fn start_transaction(
+        &mut self,
+        cid: [u8; constants::CID_SIZE],
+        nonce: [u8; constants::NONCE_SIZE],
+    ) -> bool {
         let transaction = FidoTransaction {
             cid,
             resp_bcnt: 0,
@@ -151,7 +155,12 @@ impl TransactionManager {
     }
 
     /// Updates the bcnt and size of the first transaction that matches the given CID.
-    pub fn update_transaction(&mut self, cid: u32, resp_bcnt: u16, resp_size: u16) {
+    pub fn update_transaction(
+        &mut self,
+        cid: [u8; constants::CID_SIZE],
+        resp_bcnt: u16,
+        resp_size: u16,
+    ) {
         let index = match self
             .transactions
             .iter()
@@ -160,7 +169,7 @@ impl TransactionManager {
             Some(index) => index,
             None => {
                 warn!(
-                    "No u2f transaction found with (cid {}) in the list. Skipping.",
+                    "No u2f transaction found with (cid {:?}) in the list. Skipping.",
                     cid
                 );
                 return;
@@ -181,7 +190,7 @@ impl TransactionManager {
     }
 
     /// Returns the first transaction that matches the given CID.
-    pub fn get_transaction(&mut self, cid: u32) -> Option<FidoTransaction> {
+    pub fn get_transaction(&mut self, cid: [u8; constants::CID_SIZE]) -> Option<FidoTransaction> {
         let index = match self
             .transactions
             .iter()
@@ -242,7 +251,7 @@ mod tests {
     #[test]
     fn test_start_transaction() {
         let mut manager = TransactionManager::new().unwrap();
-        let cid = 1234;
+        let cid = [0x01, 0x02, 0x03, 0x04];
 
         assert!(manager.start_transaction(cid, EMPTY_NONCE));
         assert_eq!(manager.transactions.len(), 1);
@@ -268,8 +277,8 @@ mod tests {
     #[test]
     fn test_pop_transaction() {
         let mut manager = TransactionManager::new().unwrap();
-        let cid1 = 1234;
-        let cid2 = 5678;
+        let cid1 = [0x01, 0x02, 0x03, 0x04];
+        let cid2 = [0x05, 0x06, 0x07, 0x08];
 
         manager.start_transaction(cid1, EMPTY_NONCE);
         manager.start_transaction(cid2, EMPTY_NONCE);
@@ -282,8 +291,8 @@ mod tests {
     #[test]
     fn test_close_transaction() {
         let mut manager = TransactionManager::new().unwrap();
-        let cid1 = 1234;
-        let cid2 = 5678;
+        let cid1 = [0x01, 0x02, 0x03, 0x04];
+        let cid2 = [0x05, 0x06, 0x07, 0x08];
 
         manager.start_transaction(cid1, EMPTY_NONCE);
         manager.start_transaction(cid2, EMPTY_NONCE);
@@ -299,7 +308,7 @@ mod tests {
     #[test]
     fn test_update_transaction() {
         let mut manager = TransactionManager::new().unwrap();
-        let cid = 1234;
+        let cid = [0x01, 0x02, 0x03, 0x04];
         let bcnt = 17;
         let size = 56;
 
@@ -315,7 +324,7 @@ mod tests {
     #[test]
     fn test_expire_transactions() {
         let mut manager = TransactionManager::new().unwrap();
-        let cid = 1234;
+        let cid = [0x01, 0x02, 0x03, 0x04];
 
         // No transactions, so it defaults to true
         assert!(manager.expire_transactions());

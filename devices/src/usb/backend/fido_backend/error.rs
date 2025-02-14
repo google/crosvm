@@ -20,8 +20,6 @@ pub enum Error {
     CannotConvertInitPacketFromBytes,
     #[error("Cannot create the poll timer")]
     CannotCreatePollTimer(base::Error),
-    #[error("Cannot extract cid value from packet bytes")]
-    CannotExtractCidFromBytes,
     #[error("Pending fido transfer reference has been lost.")]
     FidoTransferLost,
     #[error("The fido device is in an inconsistent state")]

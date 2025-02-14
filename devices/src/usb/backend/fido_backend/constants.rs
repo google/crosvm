@@ -31,7 +31,9 @@ pub const PACKET_INIT_HEADER_SIZE: usize = 7;
 pub const PACKET_CONT_HEADER_SIZE: usize = 5;
 pub const PACKET_INIT_DATA_SIZE: usize = U2FHID_PACKET_SIZE - PACKET_INIT_HEADER_SIZE;
 pub const PACKET_CONT_DATA_SIZE: usize = U2FHID_PACKET_SIZE - PACKET_CONT_HEADER_SIZE;
-pub const BROADCAST_CID: u32 = 0xFFFFFFFF;
+
+pub const CID_SIZE: usize = 4;
+pub const BROADCAST_CID: [u8; CID_SIZE] = [0xFF, 0xFF, 0xFF, 0xFF];
 
 pub const NONCE_SIZE: usize = 8;
 pub const EMPTY_NONCE: [u8; NONCE_SIZE] = [0u8; NONCE_SIZE];

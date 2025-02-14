@@ -30,7 +30,7 @@ use crate::utils::EventLoop;
 #[derive(FromZeroes, FromBytes, Debug)]
 #[repr(C)]
 pub struct InitPacket {
-    cid: u32,
+    cid: [u8; constants::CID_SIZE],
     cmd: u8,
     bcnth: u8,
     bcntl: u8,
@@ -38,10 +38,9 @@ pub struct InitPacket {
 }
 
 impl InitPacket {
-    pub fn extract_cid(bytes: &[u8; constants::U2FHID_PACKET_SIZE]) -> Result<u32> {
-        // cid is the first 4 bytes so we don't need to worry about anything else in the bytes
-        // buffer, we can just read from prefix.
-        FromBytes::read_from_prefix(&bytes[..]).ok_or_else(|| Error::CannotExtractCidFromBytes)
+    pub fn extract_cid(bytes: &[u8; constants::U2FHID_PACKET_SIZE]) -> [u8; constants::CID_SIZE] {
+        // cid is the first 4 bytes. `U2FHID_PACKET_SIZE` > 4, so this cannot fail.
+        bytes[0..constants::CID_SIZE].try_into().unwrap()
     }
 
     fn is_valid(bytes: &[u8; constants::U2FHID_PACKET_SIZE]) -> bool {
@@ -156,7 +155,7 @@ impl FidoDevice {
     /// Receives a low-level request from the host device. It means we read data from the actual
     /// key on the host.
     pub fn recv_from_host(&mut self, packet: &[u8; constants::U2FHID_PACKET_SIZE]) -> Result<()> {
-        let cid = InitPacket::extract_cid(packet)?;
+        let cid = InitPacket::extract_cid(packet);
         let transaction_opt = if cid == constants::BROADCAST_CID {
             match InitPacket::from_bytes(packet) {
                 Ok(packet) => {
@@ -236,7 +235,7 @@ impl FidoDevice {
             Some(t) => t,
             None => {
                 error!(
-                    "We lost a transaction on the way. This is a bug. (cid: {})",
+                    "We lost a transaction on the way. This is a bug. (cid: {:?})",
                     cid
                 );
                 return Ok(());
