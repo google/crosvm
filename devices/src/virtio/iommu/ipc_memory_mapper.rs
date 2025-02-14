@@ -277,17 +277,18 @@ impl ExportedRegion {
 
     /// Reads an object from the given iova. Fails if the specified iova range does
     /// not lie within this region, or if part of the region isn't readable.
-    pub fn read_obj_from_addr<T: FromBytes>(
+    pub fn read_obj_from_addr<T: AsBytes + FromBytes>(
         &self,
         mem: &GuestMemory,
         iova: u64,
     ) -> anyhow::Result<T> {
-        let mut buf = vec![0u8; std::mem::size_of::<T>()];
+        let mut val = T::new_zeroed();
+        let buf = val.as_bytes_mut();
         self.do_copy(iova, buf.len(), Protection::read(), |offset, gpa, len| {
             mem.read_at_addr(&mut buf[offset..(offset + len)], gpa)
                 .context("failed to read from gpa")
         })?;
-        T::read_from(buf.as_bytes()).context("failed to construct obj")
+        Ok(val)
     }
 
     /// Writes an object at a given iova. Fails if the specified iova range does
