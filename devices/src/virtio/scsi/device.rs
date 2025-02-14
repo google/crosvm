@@ -611,32 +611,11 @@ impl VirtioDevice for Controller {
     }
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
-        let mut config = [0; std::mem::size_of::<virtio_scsi_config>()];
-        copy_config(&mut config, offset, data, 0);
-        let config = match virtio_scsi_config::read_from(&config) {
-            Some(cfg) => cfg,
-            None => {
-                warn!("failed to parse virtio_scsi_config");
-                return;
-            }
-        };
-
-        let mut updated = [0; std::mem::size_of::<virtio_scsi_config>()];
-        updated[offset as usize..offset as usize + data.len()].fill(1);
-        let updated = match virtio_scsi_config::read_from(&updated) {
-            Some(cfg) => cfg,
-            None => {
-                warn!("failed to parse virtio_scsi_config");
-                return;
-            }
-        };
-
-        if updated.sense_size != 0 {
-            self.sense_size = config.sense_size;
-        }
-        if updated.cdb_size != 0 {
-            self.cdb_size = config.cdb_size;
-        }
+        let mut config = self.build_config_space();
+        copy_config(config.as_bytes_mut(), offset, data, 0);
+        // Only `sense_size` and `cdb_size` are modifiable by the driver.
+        self.sense_size = config.sense_size;
+        self.cdb_size = config.cdb_size;
     }
 
     fn activate(
