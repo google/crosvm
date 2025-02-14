@@ -128,7 +128,7 @@ impl FidoPassthroughDevice {
                 }
                 // This is safe because we just checked the size of n is exactly U2FHID_PACKET_SIZE
                 device
-                    .recv_from_host(packet[..constants::U2FHID_PACKET_SIZE].try_into().unwrap())?;
+                    .recv_from_host(&packet[..constants::U2FHID_PACKET_SIZE].try_into().unwrap())?;
             }
             Err(e) => {
                 error!("U2F hidraw read error: {e:#}, resetting and detaching device",);
@@ -230,7 +230,7 @@ impl FidoPassthroughDevice {
             return Err(Error::InvalidDataBufferSize);
         }
         packet.copy_from_slice(buffer);
-        let written = device.lock().recv_from_guest(packet)?;
+        let written = device.lock().recv_from_guest(&packet)?;
         transfer.actual_length = written;
         Ok(())
     }
