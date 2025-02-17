@@ -6,7 +6,6 @@ crosvm-reviews@google.com
 # they won't be suggested by gerrit.
 
 # ChromeOS Team
-acourbot@chromium.org #{LAST_RESORT_SUGGESTION}
 denniskempin@google.com #{LAST_RESORT_SUGGESTION}
 dtor@chromium.org #{LAST_RESORT_SUGGESTION}
 dverkamp@chromium.org #{LAST_RESORT_SUGGESTION}
