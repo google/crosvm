@@ -58,6 +58,7 @@ use vm_memory::udmabuf::UdmabufDriverTrait;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
+use super::protocol::virtio_gpu_rect;
 use super::protocol::GpuResponse;
 use super::protocol::GpuResponse::*;
 use super::protocol::GpuResponsePlaneInfo;
@@ -256,7 +257,7 @@ impl VirtioGpuScanout {
 
         self.resource_id = snapshot.resource_id;
         if snapshot.has_surface {
-            self.create_surface(display, parent_surface_id)?;
+            self.create_surface(display, parent_surface_id, None)?;
         } else {
             self.release_surface(display);
         }
@@ -271,6 +272,7 @@ impl VirtioGpuScanout {
         &mut self,
         display: &Rc<RefCell<GpuDisplay>>,
         new_parent_surface_id: Option<u32>,
+        new_scanout_rect: Option<virtio_gpu_rect>,
     ) -> VirtioGpuResult {
         let mut need_to_create = false;
 
@@ -283,6 +285,24 @@ impl VirtioGpuScanout {
             need_to_create = true;
         }
 
+        if let Some(new_scanout_rect) = new_scanout_rect {
+            // The guest may request a new scanout size when modesetting happens (i.e. display
+            // resolution change). Detect when that happens and re-allocate a surface with the new
+            // size.
+            //
+            // Note that we do NOT update |self.display_params|, which is sourced from user input
+            // (initial display parameters), and (as of the time of writing) only matters to EDID
+            // information. EDID info shall remain the same for a given display even if the active
+            // resolution has changed.
+            let new_width = new_scanout_rect.width.to_native();
+            let new_height = new_scanout_rect.height.to_native();
+            if !(self.width == new_width && self.height == new_height) {
+                self.width = new_width;
+                self.height = new_height;
+                need_to_create = true;
+            }
+        }
+
         if !need_to_create {
             return Ok(OkNoData);
         }
@@ -291,13 +311,18 @@ impl VirtioGpuScanout {
 
         let mut display = display.borrow_mut();
 
-        let display_params =
-            self.display_params
-                .clone()
-                .unwrap_or(DisplayParameters::default_with_mode(DisplayMode::Windowed(
-                    self.width,
-                    self.height,
-                )));
+        let display_params = match self.display_params.clone() {
+            Some(mut params) => {
+                // The sizes in |self.display_params| doesn't necessarily match the requested
+                // surface size (see above note about when guest modesetting happens). Always
+                // override display mode to match the requested size.
+                params.mode = DisplayMode::Windowed(self.width, self.height);
+                params
+            }
+            None => {
+                DisplayParameters::default_with_mode(DisplayMode::Windowed(self.width, self.height))
+            }
+        };
         let surface_id = display.create_surface(
             self.parent_surface_id,
             self.scanout_id,
@@ -724,11 +749,18 @@ impl VirtioGpu {
     /// Sets the given resource id as the source of scanout to the display.
     pub fn set_scanout(
         &mut self,
+        scanout_rect: virtio_gpu_rect,
         scanout_id: u32,
         resource_id: u32,
         scanout_data: Option<VirtioScanoutBlobData>,
     ) -> VirtioGpuResult {
-        self.update_scanout_resource(SurfaceType::Scanout, scanout_id, scanout_data, resource_id)
+        self.update_scanout_resource(
+            SurfaceType::Scanout,
+            Some(scanout_rect),
+            scanout_id,
+            scanout_data,
+            resource_id,
+        )
     }
 
     /// If the resource is the scanout resource, flush it to the display.
@@ -777,7 +809,7 @@ impl VirtioGpu {
         x: u32,
         y: u32,
     ) -> VirtioGpuResult {
-        self.update_scanout_resource(SurfaceType::Cursor, scanout_id, None, resource_id)?;
+        self.update_scanout_resource(SurfaceType::Cursor, None, scanout_id, None, resource_id)?;
 
         self.cursor_scanout.set_position(&self.display, x, y)?;
 
@@ -1231,6 +1263,7 @@ impl VirtioGpu {
     fn update_scanout_resource(
         &mut self,
         scanout_type: SurfaceType,
+        scanout_rect: Option<virtio_gpu_rect>,
         scanout_id: u32,
         scanout_data: Option<VirtioScanoutBlobData>,
         resource_id: u32,
@@ -1278,11 +1311,15 @@ impl VirtioGpu {
         match scanout_type {
             SurfaceType::Cursor => {
                 if let Some(scanout_parent_surface_id) = scanout_parent_surface_id {
-                    scanout.create_surface(&self.display, Some(scanout_parent_surface_id))?;
+                    scanout.create_surface(
+                        &self.display,
+                        Some(scanout_parent_surface_id),
+                        scanout_rect,
+                    )?;
                 }
             }
             SurfaceType::Scanout => {
-                scanout.create_surface(&self.display, None)?;
+                scanout.create_surface(&self.display, None, scanout_rect)?;
             }
         }
 

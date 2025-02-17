@@ -445,6 +445,7 @@ impl Frontend {
                 self.virtio_gpu.unref_resource(info.resource_id.to_native())
             }
             GpuCommand::SetScanout(info) => self.virtio_gpu.set_scanout(
+                info.r,
                 info.scanout_id.to_native(),
                 info.resource_id.to_native(),
                 None,
@@ -683,7 +684,7 @@ impl Frontend {
                 };
 
                 self.virtio_gpu
-                    .set_scanout(scanout_id, resource_id, Some(scanout))
+                    .set_scanout(info.r, scanout_id, resource_id, Some(scanout))
             }
             GpuCommand::ResourceMapBlob(info) => {
                 let resource_id = info.resource_id.to_native();
