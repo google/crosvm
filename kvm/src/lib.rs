@@ -671,7 +671,9 @@ impl Vm {
                 // SAFETY:
                 // Safe as we know that we are retrieving data related to the
                 // IOAPIC and not PIC.
-                unsafe { std::mem::transmute(irqchip_state.chip.ioapic) },
+                unsafe {
+                    std::mem::transmute::<kvm_ioapic_state, IoapicState>(irqchip_state.chip.ioapic)
+                },
             )
         } else {
             errno_result()
@@ -687,8 +689,9 @@ impl Vm {
             chip_id: 2,
             ..Default::default()
         };
-        // SAFETY: kvm_ioapic_state has the same representation as IoapicState.
-        irqchip_state.chip.ioapic = unsafe { std::mem::transmute(*state) };
+        irqchip_state.chip.ioapic =
+            // SAFETY: kvm_ioapic_state has the same representation as IoapicState.
+            unsafe { std::mem::transmute::<IoapicState, kvm_ioapic_state>(*state) };
         // SAFETY:
         // Safe because we know that our file is a VM fd, we know the kernel will only read
         // correct amount of memory from our pointer, and we verify the return result.
