@@ -93,4 +93,4 @@ pub fn set_package_name(_package_name: &str) {}
 /// Update (insert when key is not present) a key-value pair annotation in a crash report.
 pub extern "C" fn update_annotation(_key: *const c_char, _value: *const c_char) {}
 
-pub struct GfxstreamAbort;
+pub struct GraphicsAbort;
