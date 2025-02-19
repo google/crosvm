@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::sync::Arc;
-
 use anyhow::bail;
 use anyhow::Context;
 use base::info;
@@ -14,9 +12,8 @@ use base::Event;
 use base::EventToken;
 use base::EventType;
 use base::ReadNotifier;
+use base::SafeDescriptor;
 use base::WaitContext;
-use sync::Mutex;
-use vmm_vhost::BackendClient;
 use vmm_vhost::Error as VhostError;
 
 use crate::virtio::vhost_user_frontend::handler::BackendReqHandler;
@@ -27,7 +24,9 @@ pub struct Worker {
     pub kill_evt: Event,
     pub non_msix_evt: Event,
     pub backend_req_handler: Option<BackendReqHandler>,
-    pub backend_client: Arc<Mutex<BackendClient>>,
+    pub backend_client_read_notifier: SafeDescriptor,
+    #[cfg(target_os = "windows")]
+    pub backend_client_close_notifier: SafeDescriptor,
 }
 
 impl Worker {
@@ -68,7 +67,7 @@ impl Worker {
         #[cfg(any(target_os = "android", target_os = "linux"))]
         wait_ctx
             .add_for_event(
-                self.backend_client.lock().get_read_notifier(),
+                &self.backend_client_read_notifier,
                 EventType::None,
                 Token::BackendCloseNotify,
             )
@@ -76,7 +75,7 @@ impl Worker {
         #[cfg(target_os = "windows")]
         wait_ctx
             .add(
-                self.backend_client.lock().get_close_notifier(),
+                &self.backend_client_close_notifier,
                 Token::BackendCloseNotify,
             )
             .context("failed to add backend client close notifier to WaitContext")?;
