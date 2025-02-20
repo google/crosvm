@@ -124,6 +124,7 @@ use rutabaga_gfx::RutabagaIntoRawDescriptor;
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_MASK;
+use static_assertions::const_assert_eq;
 use thiserror::Error as ThisError;
 use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
@@ -647,6 +648,7 @@ struct CtrlVfdNewCtxNamed {
     size: Le32,  // Ignored.
     name: [u8; 32],
 }
+const_assert_eq!(size_of::<CtrlVfdNewCtxNamed>(), 64);
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, AsBytes, FromZeroes, FromBytes)]

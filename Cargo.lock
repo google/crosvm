@@ -1083,6 +1083,7 @@ dependencies = [
  "serde_keyvalue",
  "smallvec",
  "snapshot",
+ "static_assertions",
  "swap",
  "sync",
  "system_api",
