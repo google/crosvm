@@ -125,6 +125,7 @@ use jail::read_jail_addr;
 use jail::FakeMinijailStub as Minijail;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use minijail::Minijail;
+use mptable::MPTABLE_START;
 use multiboot_spec::MultibootInfo;
 use multiboot_spec::MultibootMmapEntry;
 use multiboot_spec::MULTIBOOT_BOOTLOADER_MAGIC;
@@ -389,7 +390,7 @@ pub const KERNEL_START_OFFSET: u64 = 0x20_0000;
 const CMDLINE_OFFSET: u64 = 0x2_0000;
 const CMDLINE_MAX_SIZE: u64 = 0x800; // including terminating zero
 const SETUP_DATA_START: u64 = CMDLINE_OFFSET + CMDLINE_MAX_SIZE;
-const SETUP_DATA_END: u64 = ACPI_HI_RSDP_WINDOW_BASE;
+const SETUP_DATA_END: u64 = MPTABLE_START;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
 const X86_64_SERIAL_2_4_IRQ: u32 = 3;
 // X86_64_SCI_IRQ is used to fill the ACPI FACP table.

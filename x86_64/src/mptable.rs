@@ -69,7 +69,7 @@ const APIC_VERSION: u8 = 0x14;
 const CPU_STEPPING: u32 = 0x600;
 const CPU_FEATURE_APIC: u32 = 0x200;
 const CPU_FEATURE_FPU: u32 = 0x001;
-const MPTABLE_START: u64 = 0x400 * 639; // Last 1k of Linux's 640k base RAM.
+pub const MPTABLE_START: u64 = 0x400 * 639; // Last 1k of Linux's 640k base RAM.
 
 fn compute_checksum<T: AsBytes>(v: &T) -> u8 {
     let mut checksum: u8 = 0;
