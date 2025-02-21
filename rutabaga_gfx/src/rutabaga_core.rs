@@ -324,11 +324,6 @@ pub trait RutabagaComponent {
     fn resume(&self) -> RutabagaResult<()> {
         Ok(())
     }
-
-    /// Implementations must perform a blocking wait-sync on the resource identified by resource_id
-    fn wait_sync(&self, _resource: &RutabagaResource) -> RutabagaResult<()> {
-        Err(RutabagaError::Unsupported)
-    }
 }
 
 pub trait RutabagaContext {
@@ -1175,23 +1170,6 @@ impl Rutabaga {
                 .ok_or(RutabagaError::InvalidRutabagaHandle)?;
         }
 
-        Ok(())
-    }
-
-    /// Performs a blocking wait-sync for all pending operations on the resource identified by
-    /// resource_id
-    pub fn wait_sync(&mut self, resource_id: u32) -> RutabagaResult<()> {
-        let component = self
-            .components
-            .get_mut(&self.default_component)
-            .ok_or(RutabagaError::InvalidComponent)?;
-
-        let resource = self
-            .resources
-            .get(&resource_id)
-            .ok_or(RutabagaError::InvalidResourceId)?;
-
-        component.wait_sync(resource)?;
         Ok(())
     }
 }
