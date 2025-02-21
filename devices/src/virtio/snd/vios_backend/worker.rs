@@ -206,7 +206,7 @@ impl Worker {
         while let Some(mut avail_desc) = lock_pop_unlock(&self.control_queue) {
             let reader = &mut avail_desc.reader;
             let available_bytes = reader.available_bytes();
-            if available_bytes < std::mem::size_of::<virtio_snd_hdr>() {
+            let Ok(hdr) = reader.peek_obj::<virtio_snd_hdr>() else {
                 error!(
                     "virtio-snd: Message received on control queue is too small: {}",
                     available_bytes
@@ -216,16 +216,12 @@ impl Worker {
                     avail_desc,
                     &self.control_queue,
                 );
-            }
+            };
             let mut read_buf = vec![0u8; available_bytes];
             reader
                 .read_exact(&mut read_buf)
                 .map_err(SoundError::QueueIO)?;
-            let mut code: Le32 = Default::default();
-            // need to copy because the buffer may not be properly aligned
-            code.as_bytes_mut()
-                .copy_from_slice(&read_buf[..std::mem::size_of::<Le32>()]);
-            let request_type = code.to_native();
+            let request_type = hdr.code.to_native();
             match request_type {
                 VIRTIO_SND_R_JACK_INFO => {
                     let (code, info_vec) = {
