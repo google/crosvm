@@ -587,7 +587,7 @@ impl arch::LinuxArch for AArch64 {
                         let initrd_addr = (kernel_end + 1 + (AARCH64_INITRD_ALIGN - 1))
                             & !(AARCH64_INITRD_ALIGN - 1);
                         let initrd_max_size =
-                            main_memory_size - (initrd_addr - AARCH64_PHYS_MEM_START);
+                            main_memory_size.saturating_sub(initrd_addr - AARCH64_PHYS_MEM_START);
                         let initrd_addr = GuestAddress(initrd_addr);
                         let initrd_size =
                             arch::load_image(&mem, &mut initrd_file, initrd_addr, initrd_max_size)
