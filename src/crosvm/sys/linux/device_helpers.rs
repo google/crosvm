@@ -463,10 +463,17 @@ pub fn create_vhost_user_frontend(
     opt: &VhostUserFrontendOption,
     connect_timeout_ms: Option<u64>,
 ) -> DeviceResult {
+    let connection = if let Some(socket_fd) = safe_descriptor_from_path(&opt.socket)? {
+        socket_fd
+            .try_into()
+            .context("failed to create vhost-user connection from fd")?
+    } else {
+        vhost_user_connection(&opt.socket, connect_timeout_ms)?
+    };
     let dev = VhostUserFrontend::new(
         opt.type_,
         virtio::base_features(protection_type),
-        vhost_user_connection(&opt.socket, connect_timeout_ms)?,
+        connection,
         opt.max_queue_size,
         opt.pci_address,
     )
