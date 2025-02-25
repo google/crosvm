@@ -224,6 +224,15 @@ impl virtio_input_config {
     }
 }
 
+// virtio_input_config_select is the prefix of virtio_input_config consisting of only the writable
+// fields (select and subsel), which multiplex the rest of the (read-only) config data.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, FromBytes, Immutable, IntoBytes, KnownLayout)]
+struct virtio_input_config_select {
+    select: u8,
+    subsel: u8,
+}
+
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[repr(C)]
 pub struct virtio_input_bitmap {
@@ -271,10 +280,8 @@ impl virtio_input_bitmap {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug)]
 pub struct VirtioInputConfig {
-    select: u8,
-    subsel: u8,
     device_ids: virtio_input_device_ids,
     name: String,
     serial_name: String,
@@ -293,8 +300,6 @@ impl VirtioInputConfig {
         axis_info: BTreeMap<u16, virtio_input_absinfo>,
     ) -> VirtioInputConfig {
         VirtioInputConfig {
-            select: 0,
-            subsel: 0,
             device_ids,
             name,
             serial_name,
@@ -315,11 +320,11 @@ impl VirtioInputConfig {
         ))
     }
 
-    fn build_config_memory(&self) -> virtio_input_config {
+    fn build_config_memory(&self, select: u8, subsel: u8) -> virtio_input_config {
         let mut cfg = virtio_input_config::new();
-        cfg.select = self.select;
-        cfg.subsel = self.subsel;
-        match self.select {
+        cfg.select = select;
+        cfg.subsel = subsel;
+        match select {
             VIRTIO_INPUT_CFG_ID_NAME => {
                 cfg.set_payload_str(&self.name);
             }
@@ -330,7 +335,7 @@ impl VirtioInputConfig {
                 cfg.set_payload_bitmap(&self.properties);
             }
             VIRTIO_INPUT_CFG_EV_BITS => {
-                let ev_type = self.subsel as u16;
+                let ev_type = subsel as u16;
                 // zero is a special case: return all supported event types (just like EVIOCGBIT)
                 if ev_type == 0 {
                     let events_bm = virtio_input_bitmap::from_bits(
@@ -342,7 +347,7 @@ impl VirtioInputConfig {
                 }
             }
             VIRTIO_INPUT_CFG_ABS_INFO => {
-                let abs_axis = self.subsel as u16;
+                let abs_axis = subsel as u16;
                 if let Some(absinfo) = self.axis_info.get(&abs_axis) {
                     cfg.set_absinfo(absinfo);
                 } // else all zeroes in the payload
@@ -357,26 +362,10 @@ impl VirtioInputConfig {
                 // existing behavior of doing nothing works with the Linux virtio-input frontend.
             }
             _ => {
-                warn!("Unsuported virtio input config selection: {}", self.select);
+                warn!("Unsuported virtio input config selection: {}", select);
             }
         }
         cfg
-    }
-
-    fn read(&self, offset: usize, data: &mut [u8]) {
-        copy_config(
-            data,
-            0,
-            self.build_config_memory().as_bytes(),
-            offset as u64,
-        );
-    }
-
-    fn write(&mut self, offset: usize, data: &[u8]) {
-        let mut config = self.build_config_memory();
-        copy_config(config.as_mut_bytes(), offset as u64, data, 0);
-        self.select = config.select;
-        self.subsel = config.subsel;
     }
 }
 
@@ -564,6 +553,9 @@ impl<T: EventSource> Worker<T> {
 pub struct Input<T: EventSource + Send + 'static> {
     worker_thread: Option<WorkerThread<Worker<T>>>,
     config: VirtioInputConfig,
+    config_select: u8,
+    config_subsel: u8,
+    config_data: virtio_input_config,
     source: Option<T>,
     virtio_features: u64,
 }
@@ -571,7 +563,8 @@ pub struct Input<T: EventSource + Send + 'static> {
 /// Snapshot of [Input]'s state.
 #[derive(Serialize, Deserialize)]
 struct InputSnapshot {
-    config: VirtioInputConfig,
+    config_select: u8,
+    config_subsel: u8,
     virtio_features: u64,
 }
 
@@ -595,11 +588,23 @@ where
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        self.config.read(offset as usize, data);
+        copy_config(data, 0, self.config_data.as_bytes(), offset);
     }
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
-        self.config.write(offset as usize, data);
+        let mut config = virtio_input_config_select {
+            select: self.config_select,
+            subsel: self.config_subsel,
+        };
+        copy_config(config.as_mut_bytes(), offset, data, 0);
+
+        if config.select != self.config_select || config.subsel != self.config_subsel {
+            self.config_select = config.select;
+            self.config_subsel = config.subsel;
+            self.config_data = self
+                .config
+                .build_config_memory(config.select, config.subsel);
+        }
     }
 
     fn features(&self) -> u64 {
@@ -669,7 +674,8 @@ where
     fn virtio_snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
         AnySnapshot::to_any(InputSnapshot {
             virtio_features: self.virtio_features,
-            config: self.config.clone(),
+            config_select: self.config_select,
+            config_subsel: self.config_subsel,
         })
         .context("failed to serialize InputSnapshot")
     }
@@ -683,8 +689,29 @@ where
                 snap.virtio_features,
             );
         }
-        self.config = snap.config;
+        self.config_select = snap.config_select;
+        self.config_subsel = snap.config_subsel;
         Ok(())
+    }
+}
+
+impl<T> Input<T>
+where
+    T: EventSource + Send + 'static,
+{
+    fn new(config: VirtioInputConfig, source: Option<T>, virtio_features: u64) -> Self {
+        let config_select = 0;
+        let config_subsel = 0;
+        let config_data = config.build_config_memory(config_select, config_subsel);
+        Input {
+            worker_thread: None,
+            config,
+            config_select,
+            config_subsel,
+            config_data,
+            source,
+            virtio_features,
+        }
     }
 }
 
@@ -693,12 +720,11 @@ pub fn new_evdev<T>(source: T, virtio_features: u64) -> Result<Input<EvdevEventS
 where
     T: Read + Write + AsRawDescriptor + Send + 'static,
 {
-    Ok(Input {
-        worker_thread: None,
-        config: VirtioInputConfig::from_evdev(&source)?,
-        source: Some(EvdevEventSource::new(source)),
+    Ok(Input::new(
+        VirtioInputConfig::from_evdev(&source)?,
+        Some(EvdevEventSource::new(source)),
         virtio_features,
-    })
+    ))
 }
 
 /// Creates a new virtio touch device which supports single touch only.
@@ -713,12 +739,11 @@ pub fn new_single_touch<T>(
 where
     T: Read + Write + AsRawDescriptor + Send + 'static,
 {
-    Ok(Input {
-        worker_thread: None,
-        config: defaults::new_single_touch_config(idx, width, height, name),
-        source: Some(SocketEventSource::new(source)),
+    Ok(Input::new(
+        defaults::new_single_touch_config(idx, width, height, name),
+        Some(SocketEventSource::new(source)),
         virtio_features,
-    })
+    ))
 }
 
 /// Creates a new virtio touch device which supports multi touch.
@@ -733,12 +758,11 @@ pub fn new_multi_touch<T>(
 where
     T: Read + Write + AsRawDescriptor + Send + 'static,
 {
-    Ok(Input {
-        worker_thread: None,
-        config: defaults::new_multi_touch_config(idx, width, height, name),
-        source: Some(SocketEventSource::new(source)),
+    Ok(Input::new(
+        defaults::new_multi_touch_config(idx, width, height, name),
+        Some(SocketEventSource::new(source)),
         virtio_features,
-    })
+    ))
 }
 
 /// Creates a new virtio trackpad device which supports (single) touch, primary and secondary
@@ -754,12 +778,11 @@ pub fn new_trackpad<T>(
 where
     T: Read + Write + AsRawDescriptor + Send + 'static,
 {
-    Ok(Input {
-        worker_thread: None,
-        config: defaults::new_trackpad_config(idx, width, height, name),
-        source: Some(SocketEventSource::new(source)),
+    Ok(Input::new(
+        defaults::new_trackpad_config(idx, width, height, name),
+        Some(SocketEventSource::new(source)),
         virtio_features,
-    })
+    ))
 }
 
 /// Creates a new virtio trackpad device which supports multi touch, primary and secondary
@@ -775,12 +798,11 @@ pub fn new_multitouch_trackpad<T>(
 where
     T: Read + Write + AsRawDescriptor + Send + 'static,
 {
-    Ok(Input {
-        worker_thread: None,
-        config: defaults::new_multitouch_trackpad_config(idx, width, height, name),
-        source: Some(SocketEventSource::new(source)),
+    Ok(Input::new(
+        defaults::new_multitouch_trackpad_config(idx, width, height, name),
+        Some(SocketEventSource::new(source)),
         virtio_features,
-    })
+    ))
 }
 
 /// Creates a new virtio mouse which supports primary, secondary, wheel and REL events.
@@ -792,12 +814,11 @@ pub fn new_mouse<T>(
 where
     T: Read + Write + AsRawDescriptor + Send + 'static,
 {
-    Ok(Input {
-        worker_thread: None,
-        config: defaults::new_mouse_config(idx),
-        source: Some(SocketEventSource::new(source)),
+    Ok(Input::new(
+        defaults::new_mouse_config(idx),
+        Some(SocketEventSource::new(source)),
         virtio_features,
-    })
+    ))
 }
 
 /// Creates a new virtio keyboard, which supports the same events as an en-us physical keyboard.
@@ -809,12 +830,11 @@ pub fn new_keyboard<T>(
 where
     T: Read + Write + AsRawDescriptor + Send + 'static,
 {
-    Ok(Input {
-        worker_thread: None,
-        config: defaults::new_keyboard_config(idx),
-        source: Some(SocketEventSource::new(source)),
+    Ok(Input::new(
+        defaults::new_keyboard_config(idx),
+        Some(SocketEventSource::new(source)),
         virtio_features,
-    })
+    ))
 }
 
 /// Creates a new virtio device for switches.
@@ -826,12 +846,11 @@ pub fn new_switches<T>(
 where
     T: Read + Write + AsRawDescriptor + Send + 'static,
 {
-    Ok(Input {
-        worker_thread: None,
-        config: defaults::new_switches_config(idx),
-        source: Some(SocketEventSource::new(source)),
+    Ok(Input::new(
+        defaults::new_switches_config(idx),
+        Some(SocketEventSource::new(source)),
         virtio_features,
-    })
+    ))
 }
 
 /// Creates a new virtio device for rotary.
@@ -843,12 +862,11 @@ pub fn new_rotary<T>(
 where
     T: Read + Write + AsRawDescriptor + Send + 'static,
 {
-    Ok(Input {
-        worker_thread: None,
-        config: defaults::new_rotary_config(idx),
-        source: Some(SocketEventSource::new(source)),
+    Ok(Input::new(
+        defaults::new_rotary_config(idx),
+        Some(SocketEventSource::new(source)),
         virtio_features,
-    })
+    ))
 }
 
 /// Creates a new custom virtio input device
@@ -863,9 +881,8 @@ where
 {
     let config = parse_input_config_file(&input_config_path, idx)?;
 
-    Ok(Input {
-        worker_thread: None,
-        config: defaults::new_custom_config(
+    Ok(Input::new(
+        defaults::new_custom_config(
             idx,
             &config.name,
             &config.serial_name,
@@ -873,9 +890,9 @@ where
             config.supported_events,
             config.axis_info,
         ),
-        source: Some(SocketEventSource::new(source)),
+        Some(SocketEventSource::new(source)),
         virtio_features,
-    })
+    ))
 }
 
 #[derive(Debug, Deserialize)]
