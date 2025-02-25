@@ -324,17 +324,18 @@ verify_builder(
     presubmit = False,
 )
 
-verify_builder(
-    name = "windows",
-    dimensions = {
-        "os": "Windows",
-        "cpu": "x86-64",
-    },
-    executable = luci.recipe(
-        name = "build_windows",
-    ),
-    category = "windows",
-)
+# Disabled due to b/396467061
+#verify_builder(
+#    name = "windows",
+#    dimensions = {
+#        "os": "Windows",
+#        "cpu": "x86-64",
+#    },
+#    executable = luci.recipe(
+#        name = "build_windows",
+#    ),
+#    category = "windows",
+#)
 
 verify_builder(
     name = "health_check",
@@ -405,5 +406,5 @@ infra_builder(
         name = "build_baguette_image",
     ),
     schedule = "0,0 0 * * 3",  # Run every Wednesday
-    postsubmit = False
+    postsubmit = False,
 )
