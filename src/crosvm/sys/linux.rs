@@ -2265,14 +2265,7 @@ where
         .iter_mut()
         .filter_map(|(dev, _)| dev.as_pci_device_mut())
     {
-        let sdts = device
-            .generate_acpi(components.acpi_sdts)
-            .or_else(|| {
-                error!("ACPI table generation error");
-                None
-            })
-            .ok_or_else(|| anyhow!("failed to generate ACPI table"))?;
-        components.acpi_sdts = sdts;
+        device.generate_acpi(&mut components.acpi_sdts);
     }
 
     // KVM_CREATE_VCPU uses apic id for x86 and uses cpu id for others.

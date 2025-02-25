@@ -868,11 +868,7 @@ impl VirtioDevice for Iommu {
     }
 
     #[cfg(target_arch = "x86_64")]
-    fn generate_acpi(
-        &mut self,
-        pci_address: &Option<PciAddress>,
-        mut sdts: Vec<SDT>,
-    ) -> Option<Vec<SDT>> {
+    fn generate_acpi(&mut self, pci_address: PciAddress, sdts: &mut Vec<SDT>) {
         const OEM_REVISION: u32 = 1;
         const VIOT_REVISION: u8 = 0;
 
@@ -880,7 +876,7 @@ impl VirtioDevice for Iommu {
             // there should only be one VIOT table
             if sdt.is_signature(b"VIOT") {
                 warn!("vIOMMU: duplicate VIOT table detected");
-                return None;
+                return;
             }
         }
 
@@ -899,12 +895,7 @@ impl VirtioDevice for Iommu {
             ..Default::default()
         });
 
-        let bdf = pci_address
-            .or_else(|| {
-                error!("vIOMMU device has no PCI address");
-                None
-            })?
-            .to_u32() as u16;
+        let bdf = pci_address.to_u32() as u16;
         let iommu_offset = viot.len();
 
         viot.append(VirtioIommuViotVirtioPciNode {
@@ -940,6 +931,5 @@ impl VirtioDevice for Iommu {
         }
 
         sdts.push(viot);
-        Some(sdts)
     }
 }
