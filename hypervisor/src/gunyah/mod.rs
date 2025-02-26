@@ -440,6 +440,26 @@ impl GunyahVm {
             errno_result()
         }
     }
+
+    fn handle_inflate(&self, guest_addr: GuestAddress, size: u64) -> Result<()> {
+        let range = gunyah_address_range {
+            guest_phys_addr: guest_addr.0,
+            size,
+        };
+
+        // SAFETY: Safe because we know this is a Gunyah VM
+        let ret = unsafe { ioctl_with_ref(self, GH_VM_RECLAIM_REGION, &range) };
+        if ret != 0 {
+            warn!("Gunyah failed to reclaim {:?}", range);
+            return errno_result();
+        }
+
+        match self.guest_mem.remove_range(guest_addr, size) {
+            Ok(_) => Ok(()),
+            Err(vm_memory::Error::MemoryAccess(_, MmapError::SystemCallFailed(e))) => Err(e),
+            Err(_) => Err(Error::new(EIO)),
+        }
+    }
 }
 
 impl Vm for GunyahVm {
@@ -715,8 +735,12 @@ impl Vm for GunyahVm {
         }
     }
 
-    fn handle_balloon_event(&mut self, _event: BalloonEvent) -> Result<()> {
-        unimplemented!()
+    fn handle_balloon_event(&mut self, event: BalloonEvent) -> Result<()> {
+        match event {
+            BalloonEvent::Inflate(m) => self.handle_inflate(m.guest_address, m.size),
+            BalloonEvent::Deflate(_) => Ok(()),
+            BalloonEvent::BalloonTargetReached(_) => Ok(()),
+        }
     }
 }
 

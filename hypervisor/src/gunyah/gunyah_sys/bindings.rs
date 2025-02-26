@@ -164,3 +164,9 @@ pub struct gh_vm_firmware_config {
     pub guest_phys_addr: u64,
     pub size: u64,
 }
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct gunyah_address_range {
+    pub guest_phys_addr: u64,
+    pub size: u64,
+}

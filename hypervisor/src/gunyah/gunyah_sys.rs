@@ -53,3 +53,9 @@ ioctl_iow_nr!(
     0x12,
     gh_vm_firmware_config
 );
+ioctl_iow_nr!(
+    GH_VM_RECLAIM_REGION,
+    GH_ANDROID_IOCTL_TYPE,
+    0x13,
+    gunyah_address_range
+);
