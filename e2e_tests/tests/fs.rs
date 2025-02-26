@@ -190,7 +190,7 @@ fn vhost_user_fs_copy_file() {
     let vu_config = create_vu_fs_config(socket.path(), temp_dir.path(), tag);
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
-    let config = config.with_vhost_user_fs(socket.path(), tag);
+    let config = config.with_vhost_user("fs", socket.path());
     let vm = TestVm::new(config).unwrap();
 
     copy_file(vm, tag, temp_dir);
@@ -208,7 +208,7 @@ fn vhost_user_fs_mount_rw() {
     let vu_config = create_vu_fs_config(socket.path(), temp_dir.path(), tag);
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
-    let config = config.with_vhost_user_fs(socket.path(), tag);
+    let config = config.with_vhost_user("fs", socket.path());
     let vm = TestVm::new(config).unwrap();
 
     mount_rw(vm, tag, temp_dir);
@@ -317,7 +317,7 @@ fn vhost_user_fs_without_sandbox_and_pivot_root() {
 
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
-    let config = config.with_vhost_user_fs(socket.path(), tag);
+    let config = config.with_vhost_user("fs", socket.path());
     let vm = TestVm::new(config).unwrap();
 
     copy_file_validate_ugid_mapping(vm, tag, temp_dir, mapped_uid, mapped_gid);
