@@ -198,10 +198,10 @@ impl ExecuteError {
 #[sorted]
 #[derive(ThisError, Debug)]
 enum ControlError {
+    #[error("failed to fdatasync the disk: {0}")]
+    FdatasyncDisk(disk::Error),
     #[error("couldn't get a value from a timer for flushing: {0}")]
     FlushTimer(AsyncError),
-    #[error("failed to fsync the disk: {0}")]
-    FsyncDisk(disk::Error),
 }
 
 /// Maximum length of the virtio-block ID string field.
@@ -427,17 +427,17 @@ async fn flush_disk(
             continue;
         }
 
-        // Reset armed before calling fsync to guarantee that IO requests that started after we call
-        // fsync will be committed eventually.
+        // Reset armed before calling fdatasync to guarantee that IO requests that started after we
+        // call fdatasync will be committed eventually.
         *armed.borrow_mut() = false;
 
         disk_state
             .read_lock()
             .await
             .disk_image
-            .fsync()
+            .fdatasync()
             .await
-            .map_err(ControlError::FsyncDisk)?;
+            .map_err(ControlError::FdatasyncDisk)?;
     }
 }
 
