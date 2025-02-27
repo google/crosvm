@@ -122,7 +122,8 @@ struct ComponentDiskPart {
     file: Box<dyn DiskFile>,
     offset: u64,
     length: u64,
-    needs_fsync: AtomicBool,
+    // Whether there have been any writes since the last fsync or fdatasync.
+    needs_flush: AtomicBool,
 }
 
 impl ComponentDiskPart {
@@ -235,7 +236,7 @@ impl CompositeDiskFile {
                     .map_err(|e| Error::DiskError(Box::new(e)))?,
                     offset: disk.offset,
                     length: 0, // Assigned later
-                    needs_fsync: AtomicBool::new(false),
+                    needs_flush: AtomicBool::new(false),
                 })
             })
             .collect::<Result<Vec<ComponentDiskPart>>>()?;
@@ -340,7 +341,7 @@ impl FileReadWriteAtVolatile for CompositeDiskFile {
         let bytes = disk
             .file
             .write_at_volatile(subslice, cursor_location - disk.offset)?;
-        disk.needs_fsync.store(true, Ordering::SeqCst);
+        disk.needs_flush.store(true, Ordering::SeqCst);
         Ok(bytes)
     }
 }
@@ -358,7 +359,7 @@ struct AsyncComponentDiskPart {
     file: Box<dyn AsyncDisk>,
     offset: u64,
     length: u64,
-    needs_fsync: AtomicBool,
+    needs_flush: AtomicBool,
 }
 
 pub struct AsyncCompositeDiskFile {
@@ -390,7 +391,7 @@ impl FileAllocate for AsyncCompositeDiskFile {
                     intersection.start - disk.offset,
                     intersection.end - intersection.start,
                 )?;
-                disk.needs_fsync.store(true, Ordering::SeqCst);
+                disk.needs_flush.store(true, Ordering::SeqCst);
             }
         }
         Ok(())
@@ -408,7 +409,7 @@ impl ToAsyncDisk for CompositeDiskFile {
                         file: disk.file.to_async_disk(ex)?,
                         offset: disk.offset,
                         length: disk.length,
-                        needs_fsync: disk.needs_fsync,
+                        needs_flush: disk.needs_flush,
                     })
                 })
                 .collect::<crate::Result<Vec<_>>>()?,
@@ -421,8 +422,8 @@ impl AsyncComponentDiskPart {
         self.offset..(self.offset + self.length)
     }
 
-    fn set_needs_fsync(&self) {
-        self.needs_fsync.store(true, Ordering::SeqCst);
+    fn set_needs_flush(&self) {
+        self.needs_flush.store(true, Ordering::SeqCst);
     }
 }
 
@@ -461,11 +462,12 @@ impl AsyncDisk for AsyncCompositeDiskFile {
     }
 
     async fn fsync(&self) -> crate::Result<()> {
-        // TODO: handle the disks concurrently
+        // NOTE: The fsync implementation isn't really async, so no point in adding concurrency
+        // here unless we introduce a blocking threadpool.
         for disk in self.component_disks.iter() {
-            if disk.needs_fsync.fetch_and(false, Ordering::SeqCst) {
+            if disk.needs_flush.fetch_and(false, Ordering::SeqCst) {
                 if let Err(e) = disk.file.fsync().await {
-                    disk.set_needs_fsync();
+                    disk.set_needs_flush();
                     return Err(e);
                 }
             }
@@ -474,8 +476,17 @@ impl AsyncDisk for AsyncCompositeDiskFile {
     }
 
     async fn fdatasync(&self) -> crate::Result<()> {
-        // AsyncCompositeDiskFile does not implement fdatasync for now. Fallback to fsync.
-        self.fsync().await
+        // NOTE: The fdatasync implementation isn't really async, so no point in adding concurrency
+        // here unless we introduce a blocking threadpool.
+        for disk in self.component_disks.iter() {
+            if disk.needs_flush.fetch_and(false, Ordering::SeqCst) {
+                if let Err(e) = disk.file.fdatasync().await {
+                    disk.set_needs_flush();
+                    return Err(e);
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn read_to_mem<'a>(
@@ -515,7 +526,7 @@ impl AsyncDisk for AsyncCompositeDiskFile {
                 mem_offsets.take_bytes(remaining_disk.try_into().unwrap()),
             )
             .await?;
-        disk.set_needs_fsync();
+        disk.set_needs_flush();
         Ok(n)
     }
 
@@ -530,7 +541,7 @@ impl AsyncDisk for AsyncCompositeDiskFile {
                         intersection.end - intersection.start,
                     )
                     .await?;
-                disk.set_needs_fsync();
+                disk.set_needs_flush();
             }
         }
         Ok(())
@@ -547,7 +558,7 @@ impl AsyncDisk for AsyncCompositeDiskFile {
                         intersection.end - intersection.start,
                     )
                     .await?;
-                disk.set_needs_fsync();
+                disk.set_needs_flush();
             }
         }
         Ok(())
@@ -845,13 +856,13 @@ mod tests {
             file: Box::new(file1),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         assert!(new_from_components(vec![disk_part1, disk_part2]).is_err());
     }
@@ -864,13 +875,13 @@ mod tests {
             file: Box::new(file1),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2]).unwrap();
         let len = composite.get_len().unwrap();
@@ -885,13 +896,13 @@ mod tests {
             file: Box::new(file1),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2]).unwrap();
 
@@ -908,7 +919,7 @@ mod tests {
             file: Box::new(file),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let composite = new_from_components(vec![disk_part]).unwrap();
         let mut input_memory = [55u8; 5];
@@ -931,7 +942,7 @@ mod tests {
             file: Box::new(file),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let composite = new_from_components(vec![disk_part]).unwrap();
         let ex = Executor::new().unwrap();
@@ -970,19 +981,19 @@ mod tests {
             file: Box::new(file1),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part3 = ComponentDiskPart {
             file: Box::new(file3),
             offset: 200,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let mut out_descriptors = composite.as_raw_descriptors();
@@ -999,19 +1010,19 @@ mod tests {
             file: Box::new(file1),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part3 = ComponentDiskPart {
             file: Box::new(file3),
             offset: 200,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let mut input_memory = [55u8; 200];
@@ -1036,19 +1047,19 @@ mod tests {
             file: Box::new(file1),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part3 = ComponentDiskPart {
             file: Box::new(file3),
             offset: 200,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let ex = Executor::new().unwrap();
@@ -1097,19 +1108,19 @@ mod tests {
             file: Box::new(file1),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part3 = ComponentDiskPart {
             file: Box::new(file3),
             offset: 200,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let ex = Executor::new().unwrap();
@@ -1177,19 +1188,19 @@ mod tests {
             file: Box::new(file1),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let disk_part3 = ComponentDiskPart {
             file: Box::new(file3),
             offset: 200,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let ex = Executor::new().unwrap();
@@ -1266,13 +1277,13 @@ mod tests {
             file: Box::new(rw_file),
             offset: 0,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let ro_part = ComponentDiskPart {
             file: Box::new(ro_file),
             offset: 100,
             length: 100,
-            needs_fsync: AtomicBool::new(false),
+            needs_flush: AtomicBool::new(false),
         };
         let composite = new_from_components(vec![rw_part, ro_part]).unwrap();
         let ex = Executor::new().unwrap();
