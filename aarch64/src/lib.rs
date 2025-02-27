@@ -48,6 +48,7 @@ use devices::Serial;
 use devices::VirtCpufreq;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use devices::VirtCpufreqV2;
+use fdt::PciAddressSpace;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
 #[cfg(feature = "gdb")]
@@ -908,18 +909,27 @@ impl arch::LinuxArch for AArch64 {
 
         let mut pci_ranges: Vec<fdt::PciRange> = Vec::new();
 
-        let mut add_pci_ranges = |alloc: &AddressAllocator, prefetchable: bool| {
-            pci_ranges.extend(alloc.pools().iter().map(|range| fdt::PciRange {
-                space: fdt::PciAddressSpace::Memory64,
-                bus_address: range.start,
-                cpu_physical_address: range.start,
-                size: range.len().unwrap(),
-                prefetchable,
-            }));
-        };
+        let mut add_pci_ranges =
+            |alloc: &AddressAllocator, space: PciAddressSpace, prefetchable: bool| {
+                pci_ranges.extend(alloc.pools().iter().map(|range| fdt::PciRange {
+                    space,
+                    bus_address: range.start,
+                    cpu_physical_address: range.start,
+                    size: range.len().unwrap(),
+                    prefetchable,
+                }));
+            };
 
-        add_pci_ranges(system_allocator.mmio_allocator(MmioType::Low), false);
-        add_pci_ranges(system_allocator.mmio_allocator(MmioType::High), true);
+        add_pci_ranges(
+            system_allocator.mmio_allocator(MmioType::Low),
+            PciAddressSpace::Memory,
+            false, // prefetchable
+        );
+        add_pci_ranges(
+            system_allocator.mmio_allocator(MmioType::High),
+            PciAddressSpace::Memory64,
+            true, // prefetchable
+        );
 
         let (bat_control, bat_mmio_base_and_irq) = match bat_type {
             Some(BatteryType::Goldfish) => {
