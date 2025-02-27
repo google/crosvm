@@ -445,6 +445,11 @@ impl MsixConfig {
         let index: usize = (offset / MSIX_TABLE_ENTRIES_MODULO) as usize;
         let modulo_offset = offset % MSIX_TABLE_ENTRIES_MODULO;
 
+        if index >= self.table_entries.len() {
+            error!("invalid MSI-X table index {}", index);
+            return;
+        }
+
         match data.len() {
             4 => {
                 let value = match modulo_offset {
@@ -495,6 +500,11 @@ impl MsixConfig {
     pub fn write_msix_table(&mut self, offset: u64, data: &[u8]) -> MsixStatus {
         let index: usize = (offset / MSIX_TABLE_ENTRIES_MODULO) as usize;
         let modulo_offset = offset % MSIX_TABLE_ENTRIES_MODULO;
+
+        if index >= self.table_entries.len() {
+            error!("invalid MSI-X table index {}", index);
+            return MsixStatus::NothingToDo;
+        }
 
         // Store the value of the entry before modification
         let old_entry = self.table_entries[index].clone();
@@ -588,6 +598,11 @@ impl MsixConfig {
     pub fn read_pba_entries(&self, offset: u64, data: &mut [u8]) {
         let index: usize = (offset / MSIX_PBA_ENTRIES_MODULO) as usize;
         let modulo_offset = offset % MSIX_PBA_ENTRIES_MODULO;
+
+        if index >= self.pba_entries.len() {
+            error!("invalid PBA index {}", index);
+            return;
+        }
 
         match data.len() {
             4 => {
