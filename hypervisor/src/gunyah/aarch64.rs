@@ -130,21 +130,13 @@ impl VmAArch64 for GunyahVm {
             bell_node.set_prop("interrupts", &interrupts)?;
         }
 
-        let mut base_set = false;
         for region in self.guest_mem.regions() {
             let create_shm_node = match region.options.purpose {
                 MemoryRegionPurpose::Bios => false,
-                MemoryRegionPurpose::GuestMemoryRegion => {
-                    // Assume first GuestMemoryRegion contains the payload
-                    // This memory region is described by the "base-address" property
-                    // and doesn't get re-described as a separate shm node.
-                    let ret = base_set;
-                    base_set = true;
-                    ret
-                }
+                MemoryRegionPurpose::GuestMemoryRegion => false,
                 // Described by the "firmware-address" property
                 MemoryRegionPurpose::ProtectedFirmwareRegion => false,
-                MemoryRegionPurpose::ReservedMemory => true,
+                MemoryRegionPurpose::ReservedMemory => false,
                 MemoryRegionPurpose::StaticSwiotlbRegion => true,
             };
 
@@ -166,7 +158,6 @@ impl VmAArch64 for GunyahVm {
         fdt_address: GuestAddress,
         fdt_size: usize,
     ) -> Result<()> {
-        // Gunyah sets the PC to the payload entry point, except for protected VMs.
         // The payload entry is the memory address where the kernel starts.
         // This memory region contains both the DTB and the kernel image,
         // so ensure they are located together.
@@ -184,7 +175,39 @@ impl VmAArch64 for GunyahVm {
             panic!("DTB and payload are not part of same memory region.");
         }
 
+        if self.vm_id.is_some() && self.pas_id.is_some() {
+            // Gunyah will find the metadata about the Qualcomm Trusted VM in the
+            // first few pages (decided at build time) of the primary payload region.
+            // This metadata consists of the elf header which tells Gunyah where
+            // the different elf segments (kernel/DTB/ramdisk) are. As we send the entire
+            // primary payload as a single memory parcel to Gunyah, with the offsets from
+            // the elf header, Gunyah can find the VM DTBOs.
+            // Pass on the primary payload region start address and its size for Qualcomm
+            // Trusted VMs.
+            for region in self.guest_mem.regions() {
+                if region.guest_addr.offset() == payload_entry_address.offset() {
+                    self.set_vm_auth_type_to_qcom_trusted_vm(
+                        payload_entry_address,
+                        region.size.try_into().unwrap(),
+                    )
+                    .unwrap_or_else(|e| {
+                        panic!("Failed to set VM authentication type: {:?}", e);
+                    });
+                    break;
+                }
+            }
+        }
+
         self.set_dtb_config(fdt_address, fdt_size)?;
+
+        // Gunyah sets the PC to the payload entry point for protected VMs without firmware.
+        // It needs to be 0 as Gunyah assumes it to be kernel start.
+        if self.hv_cfg.protection_type.isolates_memory()
+            && !self.hv_cfg.protection_type.runs_firmware()
+            && payload_offset != 0
+        {
+            panic!("Payload offset must be zero");
+        }
 
         if let Err(e) = self.set_boot_pc(payload_entry_address.offset()) {
             if e.errno() == ENOTTY {

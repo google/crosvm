@@ -1859,6 +1859,8 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
 #[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
 fn run_gunyah(
     device_path: Option<&Path>,
+    qcom_trusted_vm_id: Option<u16>,
+    qcom_trusted_vm_pas_id: Option<u32>,
     cfg: Config,
     components: VmComponents,
 ) -> Result<ExitState> {
@@ -1885,7 +1887,14 @@ fn run_gunyah(
         None
     };
 
-    let vm = GunyahVm::new(&gunyah, guest_mem, components.hv_cfg).context("failed to create vm")?;
+    let vm = GunyahVm::new(
+        &gunyah,
+        qcom_trusted_vm_id,
+        qcom_trusted_vm_pas_id,
+        guest_mem,
+        components.hv_cfg,
+    )
+    .context("failed to create vm")?;
 
     // Check that the VM was actually created in protected mode as expected.
     if cfg.protection_type.isolates_memory() && !vm.check_capability(VmCap::Protected) {
@@ -1936,6 +1945,8 @@ fn get_default_hypervisor() -> Option<HypervisorKind> {
         if gunyah_path.exists() {
             return Some(HypervisorKind::Gunyah {
                 device: Some(gunyah_path.to_path_buf()),
+                qcom_trusted_vm_id: None,
+                qcom_trusted_vm_pas_id: None,
             });
         }
     }
@@ -1964,7 +1975,17 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
             any(target_arch = "arm", target_arch = "aarch64"),
             feature = "gunyah"
         ))]
-        HypervisorKind::Gunyah { device } => run_gunyah(device.as_deref(), cfg, components),
+        HypervisorKind::Gunyah {
+            device,
+            qcom_trusted_vm_id,
+            qcom_trusted_vm_pas_id,
+        } => run_gunyah(
+            device.as_deref(),
+            qcom_trusted_vm_id,
+            qcom_trusted_vm_pas_id,
+            cfg,
+            components,
+        ),
     }
 }
 

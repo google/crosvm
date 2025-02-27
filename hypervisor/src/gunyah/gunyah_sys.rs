@@ -59,3 +59,15 @@ ioctl_iow_nr!(
     0x13,
     gunyah_address_range
 );
+ioctl_iow_nr!(
+    GH_VM_ANDROID_MAP_CMA_MEM,
+    GH_ANDROID_IOCTL_TYPE,
+    0x15,
+    gunyah_map_cma_mem_args
+);
+ioctl_iow_nr!(
+    GH_VM_ANDROID_SET_AUTH_TYPE,
+    GH_ANDROID_IOCTL_TYPE,
+    0x16,
+    gunyah_auth_desc
+);

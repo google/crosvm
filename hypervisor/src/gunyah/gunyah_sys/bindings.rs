@@ -24,6 +24,16 @@ pub const GH_VCPU_EXIT_MMIO: u32 = 1;
 pub const GH_VCPU_EXIT_STATUS: u32 = 2;
 pub const GH_ANDROID_IOCTL_TYPE: u8 = 65u8;
 pub const GH_VM_BOOT_CONTEXT_REG_SHIFT: u32 = 8;
+pub type i8 = ::std::os::raw::c_schar;
+pub type u8 = ::std::os::raw::c_uchar;
+pub type i16 = ::std::os::raw::c_short;
+pub type u16 = ::std::os::raw::c_ushort;
+pub type i32 = ::std::os::raw::c_int;
+pub type u32 = ::std::os::raw::c_uint;
+pub type i64 = ::std::os::raw::c_longlong;
+pub type u64 = ::std::os::raw::c_ulonglong;
+pub type __s128 = i128;
+pub type __u128 = u128;
 pub type __le16 = u16;
 pub type __be16 = u16;
 pub type __le32 = u32;
@@ -33,6 +43,24 @@ pub type __be64 = u64;
 pub type __sum16 = u16;
 pub type __wsum = u32;
 pub type __poll_t = ::std::os::raw::c_uint;
+pub const gunyah_auth_type_GUNYAH_ANDROID_PVM_TYPE: gunyah_auth_type = 0;
+pub const gunyah_auth_type_GUNYAH_QCOM_TRUSTED_VM_TYPE: gunyah_auth_type = 1;
+pub type gunyah_auth_type = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct gunyah_qtvm_auth_arg {
+    pub vm_id: u16,
+    pub pas_id: u32,
+    pub guest_phys_addr: u64,
+    pub size: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct gunyah_auth_desc {
+    pub type_: u32,
+    pub arg_size: u32,
+    pub arg: u64,
+}
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct gh_userspace_memory_region {
@@ -168,5 +196,24 @@ pub struct gh_vm_firmware_config {
 #[derive(Debug, Default, Copy, Clone)]
 pub struct gunyah_address_range {
     pub guest_phys_addr: u64,
+    pub size: u64,
+}
+pub const GUNYAH_MEM_ALLOW_READ: gunyah_map_flags = 1;
+pub const GUNYAH_MEM_ALLOW_WRITE: gunyah_map_flags = 2;
+pub const GUNYAH_MEM_ALLOW_EXEC: gunyah_map_flags = 4;
+pub const GUNYAH_MEM_ALLOW_RWX: gunyah_map_flags = 7;
+pub const GUNYAH_MEM_DEFAULT_ACCESS: gunyah_map_flags = 0;
+pub const GUNYAH_MEM_FORCE_LEND: gunyah_map_flags = 16;
+pub const GUNYAH_MEM_FORCE_SHARE: gunyah_map_flags = 32;
+pub const GUNYAH_MEM_UNMAP: gunyah_map_flags = 256;
+pub type gunyah_map_flags = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct gunyah_map_cma_mem_args {
+    pub label: u32,
+    pub guest_addr: u64,
+    pub flags: u32,
+    pub guest_mem_fd: u32,
+    pub offset: u64,
     pub size: u64,
 }
