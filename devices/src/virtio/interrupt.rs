@@ -51,7 +51,7 @@ struct InterruptInner {
     interrupt_status: AtomicUsize,
     transport: Transport,
     async_intr_status: bool,
-    pm_state: Arc<Mutex<PmState>>,
+    pm_state: Mutex<PmState>,
 }
 
 impl InterruptInner {
@@ -383,13 +383,13 @@ struct PmState {
 impl PmState {
     fn new(
         #[cfg(target_arch = "x86_64")] wakeup_event: Option<(PmWakeupEvent, MetricEventType)>,
-    ) -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Self {
+    ) -> Mutex<Self> {
+        Mutex::new(Self {
             suspended: false,
             pending_signals: Vec::new(),
             #[cfg(target_arch = "x86_64")]
             wakeup_state: WakeupState::new(wakeup_event),
-        }))
+        })
     }
 
     fn handle_interrupt(&mut self, vector: u16, mask: u32) -> bool {
