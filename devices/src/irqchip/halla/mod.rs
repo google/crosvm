@@ -143,6 +143,10 @@ impl IrqChipAArch64 for HallaKernelIrqChip {
         self.device_kind
     }
 
+    fn has_vgic_its(&self) -> bool {
+        false
+    }
+
     fn finalize(&self) -> Result<()> {
         Ok(())
     }

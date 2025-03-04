@@ -38,6 +38,9 @@ pub trait IrqChipAArch64: IrqChip {
     /// VGIC version 2 or 3.
     fn get_vgic_version(&self) -> DeviceKind;
 
+    /// Whether an ITS (Interrupt Translation Service) is provided to the guest.
+    fn has_vgic_its(&self) -> bool;
+
     /// Once all the VCPUs have been enabled, finalize the irq chip.
     fn finalize(&self) -> Result<()>;
 

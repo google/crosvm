@@ -122,6 +122,8 @@ const AARCH64_PVTIME_SIZE: u64 = 64;
 const AARCH64_GIC_DIST_BASE: u64 = 0x40000000 - AARCH64_GIC_DIST_SIZE;
 const AARCH64_GIC_CPUI_BASE: u64 = AARCH64_GIC_DIST_BASE - AARCH64_GIC_CPUI_SIZE;
 const AARCH64_GIC_REDIST_SIZE: u64 = 0x20000;
+const AARCH64_GIC_ITS_BASE: u64 = 0x40000000;
+const AARCH64_GIC_ITS_SIZE: u64 = 0x20000;
 
 // PSR (Processor State Register) bits
 const PSR_MODE_EL1H: u64 = 0x00000005;
@@ -986,6 +988,7 @@ impl arch::LinuxArch for AArch64 {
             initrd,
             components.android_fstab,
             irq_chip.get_vgic_version() == DeviceKind::ArmVgicV3,
+            irq_chip.has_vgic_its(),
             use_pmu,
             psci_version,
             components.swiotlb.map(|size| {

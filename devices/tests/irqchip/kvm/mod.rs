@@ -26,8 +26,33 @@ fn create_kvm_kernel_irqchip() {
     let mem = GuestMemory::new(&[]).unwrap();
     let vm = KvmVm::new(&kvm, mem, Default::default()).expect("failed to instantiate vm");
 
-    let mut chip = KvmKernelIrqChip::new(vm.try_clone().expect("failed to clone vm"), 1)
-        .expect("failed to instantiate KvmKernelIrqChip");
+    let mut chip = KvmKernelIrqChip::new(
+        vm.try_clone().expect("failed to clone vm"),
+        1,
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        /* allow_vgic_its= */
+        false,
+    )
+    .expect("failed to instantiate KvmKernelIrqChip");
+
+    let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
+    chip.add_vcpu(0, vcpu.as_vcpu())
+        .expect("failed to add vcpu");
+}
+
+#[test]
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+fn create_kvm_kernel_irqchip_with_its() {
+    let kvm = Kvm::new().expect("failed to instantiate Kvm");
+    let mem = GuestMemory::new(&[]).unwrap();
+    let vm = KvmVm::new(&kvm, mem, Default::default()).expect("failed to instantiate vm");
+
+    let mut chip = KvmKernelIrqChip::new(
+        vm.try_clone().expect("failed to clone vm"),
+        1,
+        /* allow_vgic_its= */ true,
+    )
+    .expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
     chip.add_vcpu(0, vcpu.as_vcpu())
@@ -40,8 +65,14 @@ fn mp_state() {
     let mem = GuestMemory::new(&[]).unwrap();
     let vm = KvmVm::new(&kvm, mem, Default::default()).expect("failed to instantiate vm");
 
-    let mut chip = KvmKernelIrqChip::new(vm.try_clone().expect("failed to clone vm"), 1)
-        .expect("failed to instantiate KvmKernelIrqChip");
+    let mut chip = KvmKernelIrqChip::new(
+        vm.try_clone().expect("failed to clone vm"),
+        1,
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        /* allow_vgic_its= */
+        false,
+    )
+    .expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
     chip.add_vcpu(0, vcpu.as_vcpu())

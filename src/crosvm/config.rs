@@ -106,11 +106,27 @@ pub enum Executable {
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub enum IrqChipKind {
     /// All interrupt controllers are emulated in the kernel.
-    Kernel,
+    #[serde(rename_all = "kebab-case")]
+    Kernel {
+        /// Whether to setup a virtual ITS controller (for MSI interrupt support) if the hypervisor
+        /// supports it. Will eventually be enabled by default.
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[serde(default)]
+        allow_vgic_its: bool,
+    },
     /// APIC is emulated in the kernel.  All other interrupt controllers are in userspace.
     Split,
     /// All interrupt controllers are emulated in userspace.
     Userspace,
+}
+
+impl Default for IrqChipKind {
+    fn default() -> Self {
+        IrqChipKind::Kernel {
+            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            allow_vgic_its: false,
+        }
+    }
 }
 
 /// The core types in hybrid architecture.
@@ -1663,7 +1679,33 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(cfg.irq_chip, Some(IrqChipKind::Kernel));
+        assert_eq!(
+            cfg.irq_chip,
+            Some(IrqChipKind::Kernel {
+                #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                allow_vgic_its: false
+            })
+        );
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    fn parse_irqchip_kernel_with_its() {
+        let cfg = TryInto::<Config>::try_into(
+            crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--irqchip", "kernel[allow-vgic-its]", "/dev/null"],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            cfg.irq_chip,
+            Some(IrqChipKind::Kernel {
+                allow_vgic_its: true
+            })
+        );
     }
 
     #[test]

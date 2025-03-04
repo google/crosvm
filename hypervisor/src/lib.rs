@@ -527,6 +527,9 @@ pub enum DeviceKind {
     /// ARM virtual general interrupt controller v3
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     ArmVgicV3,
+    /// ARM virtual interrupt translation service
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    ArmVgicIts,
     /// RiscV AIA in-kernel emulation
     #[cfg(target_arch = "riscv64")]
     RiscvAia,

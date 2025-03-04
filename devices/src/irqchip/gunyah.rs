@@ -184,6 +184,10 @@ impl IrqChipAArch64 for GunyahIrqChip {
         DeviceKind::ArmVgicV3
     }
 
+    fn has_vgic_its(&self) -> bool {
+        false
+    }
+
     fn finalize(&self) -> Result<()> {
         Ok(())
     }

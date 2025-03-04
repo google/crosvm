@@ -139,6 +139,10 @@ impl IrqChipAArch64 for GeniezoneKernelIrqChip {
         self.device_kind
     }
 
+    fn has_vgic_its(&self) -> bool {
+        false
+    }
+
     fn finalize(&self) -> Result<()> {
         Ok(())
     }

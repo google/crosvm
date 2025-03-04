@@ -1740,10 +1740,10 @@ fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> 
     let vm_clone = vm.try_clone().context("failed to clone vm")?;
 
     let ioapic_host_tube;
-    let mut irq_chip = match cfg.irq_chip.unwrap_or(IrqChipKind::Kernel) {
+    let mut irq_chip = match cfg.irq_chip.unwrap_or_default() {
         IrqChipKind::Split => bail!("Geniezone does not support split irqchip mode"),
         IrqChipKind::Userspace => bail!("Geniezone does not support userspace irqchip mode"),
-        IrqChipKind::Kernel => {
+        IrqChipKind::Kernel { allow_vgic_its: _ } => {
             ioapic_host_tube = None;
             GeniezoneKernelIrqChip::new(vm_clone, components.vcpu_count)
                 .context("failed to create IRQ chip")?
@@ -1800,10 +1800,10 @@ fn run_halla(
     let vm_clone = vm.try_clone().context("failed to clone vm")?;
 
     let ioapic_host_tube;
-    let mut irq_chip = match cfg.irq_chip.unwrap_or(IrqChipKind::Kernel) {
+    let mut irq_chip = match cfg.irq_chip.unwrap_or_default() {
         IrqChipKind::Split => bail!("Halla does not support split irqchip mode"),
         IrqChipKind::Userspace => bail!("Halla does not support userspace irqchip mode"),
-        IrqChipKind::Kernel => {
+        IrqChipKind::Kernel { allow_vgic_its: _ } => {
             ioapic_host_tube = None;
             HallaKernelIrqChip::new(vm_clone, components.vcpu_count)
                 .context("failed to create IRQ chip")?
@@ -1882,7 +1882,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
     }
 
     let ioapic_host_tube;
-    let mut irq_chip = match cfg.irq_chip.unwrap_or(IrqChipKind::Kernel) {
+    let mut irq_chip = match cfg.irq_chip.unwrap_or_default() {
         IrqChipKind::Userspace => {
             bail!("KVM userspace irqchip mode not implemented");
         }
@@ -1905,11 +1905,19 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
                 )
             }
         }
-        IrqChipKind::Kernel => {
+        IrqChipKind::Kernel {
+            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            allow_vgic_its,
+        } => {
             ioapic_host_tube = None;
             KvmIrqChip::Kernel(
-                KvmKernelIrqChip::new(vm_clone, components.vcpu_count)
-                    .context("failed to create IRQ chip")?,
+                KvmKernelIrqChip::new(
+                    vm_clone,
+                    components.vcpu_count,
+                    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                    allow_vgic_its,
+                )
+                .context("failed to create IRQ chip")?,
             )
         }
     };

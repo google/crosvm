@@ -47,6 +47,7 @@ pub struct KvmKernelIrqChip {
     pub(super) vm: KvmVm,
     pub(super) vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
     vgic: SafeDescriptor,
+    vgic_its: Option<SafeDescriptor>,
     device_kind: DeviceKind,
     pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
 }
@@ -60,6 +61,7 @@ const AARCH64_GIC_CPUI_SIZE: u64 = 0x20000;
 const AARCH64_GIC_DIST_BASE: u64 = 0x40000000 - AARCH64_GIC_DIST_SIZE;
 const AARCH64_GIC_CPUI_BASE: u64 = AARCH64_GIC_DIST_BASE - AARCH64_GIC_CPUI_SIZE;
 const AARCH64_GIC_REDIST_SIZE: u64 = 0x20000;
+const AARCH64_GIC_ITS_BASE: u64 = 0x40000000;
 
 // This is the minimum number of SPI interrupts aligned to 32 + 32 for the
 // PPI (16) and GSI (16).
@@ -69,7 +71,7 @@ pub const AARCH64_GIC_NR_SPIS: u32 = 32;
 
 impl KvmKernelIrqChip {
     /// Construct a new KvmKernelIrqchip.
-    pub fn new(vm: KvmVm, num_vcpus: usize) -> Result<KvmKernelIrqChip> {
+    pub fn new(vm: KvmVm, num_vcpus: usize, allow_vgic_its: bool) -> Result<KvmKernelIrqChip> {
         let cpu_if_addr: u64 = AARCH64_GIC_CPUI_BASE;
         let dist_if_addr: u64 = AARCH64_GIC_DIST_BASE;
         let redist_addr: u64 = dist_if_addr - (AARCH64_GIC_REDIST_SIZE * num_vcpus as u64);
@@ -143,10 +145,37 @@ impl KvmKernelIrqChip {
             return errno_result();
         }
 
+        // Create an ITS if allowed and supported.
+        let vgic_its = 'its: {
+            if !allow_vgic_its || device_kind != DeviceKind::ArmVgicV3 {
+                break 'its None;
+            }
+            let vgic_its = match vm.create_device(DeviceKind::ArmVgicIts) {
+                Ok(x) => x,
+                Err(e) if e.errno() == libc::ENODEV => break 'its None, // unsupported
+                Err(e) => return Err(e),
+            };
+            // Set ITS base address.
+            let its_addr = AARCH64_GIC_ITS_BASE;
+            let its_addr_attr = kvm_device_attr {
+                group: KVM_DEV_ARM_VGIC_GRP_ADDR,
+                attr: KVM_VGIC_ITS_ADDR_TYPE.into(),
+                addr: &its_addr as *const u64 as u64,
+                flags: 0,
+            };
+            // SAFETY: Safe because we allocated the struct that's being passed in.
+            let ret = unsafe { ioctl_with_ref(&vgic_its, KVM_SET_DEVICE_ATTR, &its_addr_attr) };
+            if ret != 0 {
+                return errno_result();
+            }
+            Some(vgic_its)
+        };
+
         Ok(KvmKernelIrqChip {
             vm,
             vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
             vgic,
+            vgic_its,
             device_kind,
             routes: Arc::new(Mutex::new(kvm_default_irq_routing_table())),
         })
@@ -158,6 +187,11 @@ impl KvmKernelIrqChip {
             vm: self.vm.try_clone()?,
             vcpus: self.vcpus.clone(),
             vgic: self.vgic.try_clone()?,
+            vgic_its: self
+                .vgic_its
+                .as_ref()
+                .map(|fd| fd.try_clone())
+                .transpose()?,
             device_kind: self.device_kind,
             routes: self.routes.clone(),
         })
@@ -181,7 +215,14 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
         self.device_kind
     }
 
+    fn has_vgic_its(&self) -> bool {
+        self.vgic_its.is_some()
+    }
+
     fn snapshot(&self, _cpus_num: usize) -> anyhow::Result<AnySnapshot> {
+        if self.vgic_its.is_some() {
+            return Err(anyhow!("snapshot of vGIC ITS not supported yet"));
+        }
         if self.device_kind == DeviceKind::ArmVgicV3 {
             let save_gic_attr = kvm_device_attr {
                 group: KVM_DEV_ARM_VGIC_GRP_CTRL,
@@ -273,6 +314,14 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
         let ret = unsafe { ioctl_with_ref(&self.vgic, KVM_SET_DEVICE_ATTR, &init_gic_attr) };
         if ret != 0 {
             return errno_result();
+        }
+        if let Some(vgic_its) = &self.vgic_its {
+            // SAFETY:
+            // Safe because we allocated the struct that's being passed in
+            let ret = unsafe { ioctl_with_ref(vgic_its, KVM_SET_DEVICE_ATTR, &init_gic_attr) };
+            if ret != 0 {
+                return errno_result();
+            }
         }
         Ok(())
     }

@@ -130,6 +130,11 @@ impl KvmVm {
                 fd: 0,
                 flags: 0,
             }),
+            DeviceKind::ArmVgicIts => Some(kvm_create_device {
+                type_: kvm_device_type_KVM_DEV_TYPE_ARM_VGIC_ITS,
+                fd: 0,
+                flags: 0,
+            }),
             _ => None,
         }
     }
