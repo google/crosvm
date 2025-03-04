@@ -30,7 +30,9 @@ use std::time::Duration;
 use balloon_control::BalloonStats;
 use balloon_control::BalloonWS;
 use balloon_control::WSBucket;
+use base::descriptor::IntoRawDescriptor;
 use libc::c_char;
+use libc::c_int;
 use libc::ssize_t;
 pub use swap::SwapStatus;
 use vm_control::client::do_modify_battery;
@@ -47,6 +49,7 @@ use vm_control::client::vms_request;
 use vm_control::BalloonControlCommand;
 use vm_control::BatProperty;
 use vm_control::DiskControlCommand;
+use vm_control::HypervisorKind;
 use vm_control::RegisteredEvent;
 use vm_control::SwapCommand;
 use vm_control::UsbControlAttachedDevice;
@@ -1299,6 +1302,81 @@ pub unsafe extern "C" fn crosvm_client_balloon_wsr_config(
             } else {
                 false
             }
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// Publicly exposed version enumeration of hypervisors, implemented as an
+/// integral newtype for FFI safety.
+#[repr(C)]
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct HypervisorFfi(u32);
+
+pub const HYPERVISOR_KVM: HypervisorFfi = HypervisorFfi(0);
+
+impl TryFrom<&HypervisorKind> for HypervisorFfi {
+    type Error = &'static str;
+
+    fn try_from(hypervisor: &HypervisorKind) -> Result<Self, Self::Error> {
+        match hypervisor {
+            HypervisorKind::Kvm => Ok(HYPERVISOR_KVM),
+            _ => Err("unsupported hypervisor"),
+        }
+    }
+}
+
+/// Hypervisor specific unique identifier of a VM.
+#[repr(C)]
+pub union HypervisorSpecificVmDescriptorFfi {
+    // We use c_int instead of RawFd here because the std::os::fd crate is only available on unix
+    // platforms.
+    vm_fd: c_int,
+    _reserved: u64,
+}
+
+/// A unique identifier of a VM.
+#[repr(C)]
+pub struct VmDescriptorFfi {
+    hypervisor: HypervisorFfi,
+    descriptor: HypervisorSpecificVmDescriptorFfi,
+}
+
+/// Get a descriptor representing a running VM.
+///
+/// The function returns true on success or false if an error occurred.
+///
+/// # Safety
+/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
+/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
+/// null pointers are passed.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_get_vm_descriptor(
+    socket_path: *const c_char,
+    vm_desc_out: *mut VmDescriptorFfi,
+) -> bool {
+    catch_unwind(|| {
+        let Some(socket_path) = validate_socket_path(socket_path) else {
+            return false;
+        };
+
+        if vm_desc_out.is_null() {
+            return false;
+        }
+
+        let resp = handle_request(&VmRequest::GetVmDescriptor, socket_path);
+        if let Ok(VmResponse::VmDescriptor { hypervisor, vm_fd }) = resp {
+            let Ok(hypervisor) = HypervisorFfi::try_from(&hypervisor) else {
+                return false;
+            };
+            // SAFETY: just checked that `vm_desc_out` is not null.
+            (*vm_desc_out).hypervisor = hypervisor;
+            // On windows platforms RawDescriptor is actually a *mut c_void, hence cast to c_int
+            // here.
+            (*vm_desc_out).descriptor.vm_fd = vm_fd.into_raw_descriptor() as c_int;
+            true
         } else {
             false
         }

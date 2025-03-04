@@ -20,6 +20,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use base::errno_result;
+use base::error;
 use base::info;
 use base::ioctl;
 use base::ioctl_with_ref;
@@ -455,6 +456,15 @@ impl Vm for GunyahVm {
             routes: self.routes.clone(),
             hv_cfg: self.hv_cfg,
         })
+    }
+
+    fn try_clone_descriptor(&self) -> Result<SafeDescriptor> {
+        error!("try_clone_descriptor hasn't been tested on gunyah, returning -ENOTSUP");
+        Err(Error::new(ENOTSUP))
+    }
+
+    fn hypervisor_kind(&self) -> HypervisorKind {
+        HypervisorKind::Gunyah
     }
 
     fn check_capability(&self, c: VmCap) -> bool {

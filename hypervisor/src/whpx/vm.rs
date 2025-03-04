@@ -52,6 +52,7 @@ use crate::Datamatch;
 use crate::DeliveryMode;
 use crate::DestinationMode;
 use crate::DeviceKind;
+use crate::HypervisorKind;
 use crate::IoEventAddress;
 use crate::LapicState;
 use crate::MemCacheType;
@@ -496,6 +497,14 @@ impl Vm for WhpxVm {
                 .as_ref()
                 .map(|t| t.try_clone().expect("could not clone vm_evt_wrtube")),
         })
+    }
+
+    fn try_clone_descriptor(&self) -> Result<SafeDescriptor> {
+        Err(Error::new(ENOTSUP))
+    }
+
+    fn hypervisor_kind(&self) -> HypervisorKind {
+        HypervisorKind::Whpx
     }
 
     fn check_capability(&self, c: VmCap) -> bool {

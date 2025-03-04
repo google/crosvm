@@ -74,6 +74,7 @@ use crate::Datamatch;
 use crate::DeviceKind;
 use crate::Hypervisor;
 use crate::HypervisorCap;
+use crate::HypervisorKind;
 use crate::IoEventAddress;
 use crate::IoOperation;
 use crate::IoParams;
@@ -585,6 +586,14 @@ impl Vm for KvmVm {
             mem_slot_gaps: self.mem_slot_gaps.clone(),
             caps: self.caps,
         })
+    }
+
+    fn try_clone_descriptor(&self) -> Result<SafeDescriptor> {
+        self.vm.try_clone()
+    }
+
+    fn hypervisor_kind(&self) -> HypervisorKind {
+        HypervisorKind::Kvm
     }
 
     fn check_capability(&self, c: VmCap) -> bool {

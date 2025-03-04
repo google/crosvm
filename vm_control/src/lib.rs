@@ -1516,6 +1516,8 @@ pub enum VmRequest {
     VcpuPidTid,
     /// Throttles the requested vCPU for microseconds
     Throttle(usize, u32),
+    /// Returns unique descriptor of this VM.
+    GetVmDescriptor,
 }
 
 /// NOTE: when making any changes to this enum please also update
@@ -2248,6 +2250,19 @@ impl VmRequest {
             VmRequest::Unregister { socket_addr: _ } => VmResponse::Ok,
             VmRequest::VcpuPidTid => unreachable!(),
             VmRequest::Throttle(_, _) => unreachable!(),
+            VmRequest::GetVmDescriptor => {
+                let vm_fd = match vm.try_clone_descriptor() {
+                    Ok(vm_fd) => vm_fd,
+                    Err(e) => {
+                        error!("failed to get vm_fd: {:?}", e);
+                        return VmResponse::Err(e);
+                    }
+                };
+                VmResponse::VmDescriptor {
+                    hypervisor: vm.hypervisor_kind(),
+                    vm_fd,
+                }
+            }
         }
     }
 }
@@ -2473,6 +2488,8 @@ pub fn do_restore(
     Ok(())
 }
 
+pub type HypervisorKind = hypervisor::HypervisorKind;
+
 /// Indication of success or failure of a `VmRequest`.
 ///
 /// Success is usually indicated `VmResponse::Ok` unless there is data associated with the response.
@@ -2516,6 +2533,10 @@ pub enum VmResponse {
     /// Map of the Vcpu PID/TIDs
     VcpuPidTidResponse {
         pid_tid_map: BTreeMap<usize, (u32, u32)>,
+    },
+    VmDescriptor {
+        hypervisor: HypervisorKind,
+        vm_fd: SafeDescriptor,
     },
 }
 
@@ -2567,6 +2588,9 @@ impl Display for VmResponse {
             }
             DevicesState(status) => write!(f, "devices status: {:?}", status),
             VcpuPidTidResponse { pid_tid_map } => write!(f, "vcpu pid tid map: {:?}", pid_tid_map),
+            VmDescriptor { hypervisor, vm_fd } => {
+                write!(f, "hypervisor: {:?}, vm_fd: {:?}", hypervisor, vm_fd)
+            }
         }
     }
 }

@@ -95,6 +95,18 @@ pub enum BalloonEvent {
     BalloonTargetReached(u64),
 }
 
+/// Supported hypervisors.
+///
+/// When adding a new one, also update the HypervisorFfi in crosvm_control/src/lib.rs
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum HypervisorKind {
+    Geniezone,
+    Gunyah,
+    Kvm,
+    Haxm,
+    Whpx,
+}
+
 /// A trait for checking hypervisor capabilities.
 pub trait Hypervisor: Send {
     /// Makes a shallow clone of this `Hypervisor`.
@@ -112,6 +124,12 @@ pub trait Vm: Send {
     fn try_clone(&self) -> Result<Self>
     where
         Self: Sized;
+
+    /// Makes a shallow clone of the fd of this `Vm`.
+    fn try_clone_descriptor(&self) -> Result<SafeDescriptor>;
+
+    /// Returns hypervisor managing this `Vm`.
+    fn hypervisor_kind(&self) -> HypervisorKind;
 
     /// Checks if a particular `VmCap` is available.
     ///

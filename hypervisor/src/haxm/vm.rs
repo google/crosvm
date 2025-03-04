@@ -44,6 +44,7 @@ use crate::ClockState;
 use crate::Datamatch;
 use crate::DeviceKind;
 use crate::Hypervisor;
+use crate::HypervisorKind;
 use crate::IoEventAddress;
 use crate::MemCacheType;
 use crate::MemSlot;
@@ -223,6 +224,14 @@ impl Vm for HaxmVm {
             mem_slot_gaps: self.mem_slot_gaps.clone(),
             ioevents,
         })
+    }
+
+    fn try_clone_descriptor(&self) -> Result<SafeDescriptor> {
+        Err(Error::new(ENOTSUP))
+    }
+
+    fn hypervisor_kind(&self) -> HypervisorKind {
+        HypervisorKind::Haxm
     }
 
     fn check_capability(&self, c: VmCap) -> bool {

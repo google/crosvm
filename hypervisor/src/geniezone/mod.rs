@@ -62,6 +62,7 @@ use crate::Datamatch;
 use crate::DeviceKind;
 use crate::Hypervisor;
 use crate::HypervisorCap;
+use crate::HypervisorKind;
 use crate::IoEventAddress;
 use crate::IoOperation;
 use crate::IoParams;
@@ -881,6 +882,15 @@ impl Vm for GeniezoneVm {
             mem_regions: self.mem_regions.clone(),
             mem_slot_gaps: self.mem_slot_gaps.clone(),
         })
+    }
+
+    fn try_clone_descriptor(&self) -> Result<SafeDescriptor> {
+        error!("try_clone_descriptor hasn't been tested on geniezone, returning -ENOTSUP");
+        Err(Error::new(ENOTSUP))
+    }
+
+    fn hypervisor_kind(&self) -> HypervisorKind {
+        HypervisorKind::Geniezone
     }
 
     fn check_capability(&self, c: VmCap) -> bool {
