@@ -161,9 +161,14 @@ pub trait VirtioDevice: Send {
     fn control_notify(&self, _behavior: MsixStatus) {}
 
     #[cfg(target_arch = "x86_64")]
-    fn generate_acpi(&mut self, pci_address: PciAddress, sdts: &mut Vec<SDT>) {
+    fn generate_acpi(
+        &mut self,
+        pci_address: PciAddress,
+        sdts: &mut Vec<SDT>,
+    ) -> anyhow::Result<()> {
         let _ = pci_address;
         let _ = sdts;
+        Ok(())
     }
 
     /// Returns the PCI address where the device will be allocated.

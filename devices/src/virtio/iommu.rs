@@ -25,8 +25,6 @@ use anyhow::Context;
 use base::debug;
 use base::error;
 use base::pagesize;
-#[cfg(target_arch = "x86_64")]
-use base::warn;
 use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::Event;
@@ -868,16 +866,17 @@ impl VirtioDevice for Iommu {
     }
 
     #[cfg(target_arch = "x86_64")]
-    fn generate_acpi(&mut self, pci_address: PciAddress, sdts: &mut Vec<SDT>) {
+    fn generate_acpi(
+        &mut self,
+        pci_address: PciAddress,
+        sdts: &mut Vec<SDT>,
+    ) -> anyhow::Result<()> {
         const OEM_REVISION: u32 = 1;
         const VIOT_REVISION: u8 = 0;
 
-        for sdt in sdts.iter() {
-            // there should only be one VIOT table
-            if sdt.is_signature(b"VIOT") {
-                warn!("vIOMMU: duplicate VIOT table detected");
-                return;
-            }
+        // there should only be one VIOT table
+        if sdts.iter().any(|sdt| sdt.is_signature(b"VIOT")) {
+            return Err(anyhow!("duplicate VIOT table"));
         }
 
         let mut viot = SDT::new(
@@ -931,5 +930,6 @@ impl VirtioDevice for Iommu {
         }
 
         sdts.push(viot);
+        Ok(())
     }
 }

@@ -998,7 +998,7 @@ impl PciDevice for VirtioPciDevice {
     }
 
     #[cfg(target_arch = "x86_64")]
-    fn generate_acpi(&mut self, sdts: &mut Vec<SDT>) {
+    fn generate_acpi(&mut self, sdts: &mut Vec<SDT>) -> anyhow::Result<()> {
         self.device.generate_acpi(
             self.pci_address.expect("pci_address must be assigned"),
             sdts,

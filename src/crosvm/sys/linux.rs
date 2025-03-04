@@ -2286,7 +2286,9 @@ where
         .iter_mut()
         .filter_map(|(dev, _)| dev.as_pci_device_mut())
     {
-        device.generate_acpi(&mut components.acpi_sdts);
+        device
+            .generate_acpi(&mut components.acpi_sdts)
+            .with_context(|| format!("generate_acpi failed for {}", device.debug_label()))?;
     }
 
     // KVM_CREATE_VCPU uses apic id for x86 and uses cpu id for others.

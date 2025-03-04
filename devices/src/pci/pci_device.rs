@@ -440,8 +440,9 @@ pub trait PciDevice: Send + Suspendable {
     fn on_device_sandboxed(&mut self) {}
 
     #[cfg(target_arch = "x86_64")]
-    fn generate_acpi(&mut self, sdts: &mut Vec<SDT>) {
+    fn generate_acpi(&mut self, sdts: &mut Vec<SDT>) -> anyhow::Result<()> {
         let _ = sdts;
+        Ok(())
     }
 
     /// Construct customized acpi method, and return the AML code and
@@ -802,7 +803,7 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     }
 
     #[cfg(target_arch = "x86_64")]
-    fn generate_acpi(&mut self, sdts: &mut Vec<SDT>) {
+    fn generate_acpi(&mut self, sdts: &mut Vec<SDT>) -> anyhow::Result<()> {
         (**self).generate_acpi(sdts)
     }
 
