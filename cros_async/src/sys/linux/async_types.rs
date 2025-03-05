@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::io;
-use std::ops::Deref;
 
 use base::Tube;
 use base::TubeResult;
@@ -31,14 +30,6 @@ impl AsyncTube {
 
     pub async fn send<T: 'static + Serialize + Send + Sync>(&self, msg: T) -> TubeResult<()> {
         self.inner.as_source().send(&msg)
-    }
-}
-
-impl Deref for AsyncTube {
-    type Target = Tube;
-
-    fn deref(&self) -> &Self::Target {
-        self.inner.as_source()
     }
 }
 
