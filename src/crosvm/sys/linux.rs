@@ -3285,7 +3285,6 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     let send_tube = tube.try_clone_send_tube().unwrap();
                     let suspend_tube = state.linux.suspend_tube.0.clone();
                     let guest_suspended_cvar = state.guest_suspended_cvar.clone();
-                    let delayed_response = response.clone();
                     let pm = state.linux.pm.clone();
 
                     std::thread::Builder::new()
@@ -3294,7 +3293,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             trigger_vm_suspend_and_wait_for_entry(
                                 guest_suspended_cvar.unwrap(),
                                 &send_tube,
-                                delayed_response,
+                                response,
                                 suspend_tube,
                                 pm,
                             )

@@ -2476,7 +2476,7 @@ pub fn do_restore(
 /// Indication of success or failure of a `VmRequest`.
 ///
 /// Success is usually indicated `VmResponse::Ok` unless there is data associated with the response.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug)]
 #[must_use]
 pub enum VmResponse {
     /// Indicates the request was executed successfully.
