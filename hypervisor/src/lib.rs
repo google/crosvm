@@ -547,8 +547,16 @@ pub enum IrqSourceChip {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IrqSource {
-    Irqchip { chip: IrqSourceChip, pin: u32 },
-    Msi { address: u64, data: u32 },
+    Irqchip {
+        chip: IrqSourceChip,
+        pin: u32,
+    },
+    Msi {
+        address: u64,
+        data: u32,
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        pci_address: resources::PciAddress,
+    },
 }
 
 /// A single route for an IRQ.

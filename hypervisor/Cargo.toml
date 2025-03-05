@@ -24,6 +24,7 @@ downcast-rs = "1.2.0"
 enumn = { workspace = true }
 fnv = "1"
 libc = { workspace = true }
+resources = { workspace = true }
 serde = { workspace = true, features = [ "derive" ] }
 serde_json = { workspace = true }
 snapshot = { workspace = true }

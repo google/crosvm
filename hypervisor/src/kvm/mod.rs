@@ -27,6 +27,7 @@ use std::os::raw::c_void;
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use base::errno_result;
 use base::error;
@@ -256,11 +257,14 @@ impl Hypervisor for Kvm {
 }
 
 /// Storage for constant KVM driver caps
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
 struct KvmVmCaps {
     kvmclock_ctrl: bool,
     user_noncoherent_dma: bool,
     user_memory_region2: bool,
+    // This capability can't be detected until after the irqchip is configured, so we lazy
+    // initialize it when the first MSI is configured.
+    msi_devid: Arc<OnceLock<bool>>,
 }
 
 /// A wrapper around creating and using a KVM VM.
@@ -450,12 +454,17 @@ impl KvmVm {
             vec_with_array_field::<kvm_irq_routing, kvm_irq_routing_entry>(routes.len());
         irq_routing[0].nr = routes.len() as u32;
 
+        let cap_msi_devid = *self
+            .caps
+            .msi_devid
+            .get_or_init(|| self.check_raw_capability(KvmCap::MsiDevid));
+
         // SAFETY:
         // Safe because we ensured there is enough space in irq_routing to hold the number of
         // route entries.
         let irq_routes = unsafe { irq_routing[0].entries.as_mut_slice(routes.len()) };
         for (route, irq_route) in routes.iter().zip(irq_routes.iter_mut()) {
-            *irq_route = kvm_irq_routing_entry::from(route);
+            *irq_route = to_kvm_ireq_routing_entry(route, cap_msi_devid);
         }
 
         // TODO(b/315998194): Add safety comment
@@ -602,7 +611,7 @@ impl Vm for KvmVm {
             guest_mem: self.guest_mem.clone(),
             mem_regions: self.mem_regions.clone(),
             mem_slot_gaps: self.mem_slot_gaps.clone(),
-            caps: self.caps,
+            caps: self.caps.clone(),
         })
     }
 
@@ -1235,33 +1244,56 @@ impl TryFrom<HypervisorCap> for KvmCap {
     }
 }
 
-impl From<&IrqRoute> for kvm_irq_routing_entry {
-    fn from(item: &IrqRoute) -> Self {
-        match &item.source {
-            IrqSource::Irqchip { chip, pin } => kvm_irq_routing_entry {
-                gsi: item.gsi,
-                type_: KVM_IRQ_ROUTING_IRQCHIP,
-                u: kvm_irq_routing_entry__bindgen_ty_1 {
-                    irqchip: kvm_irq_routing_irqchip {
-                        irqchip: chip_to_kvm_chip(*chip),
-                        pin: *pin,
-                    },
+fn to_kvm_ireq_routing_entry(item: &IrqRoute, cap_msi_devid: bool) -> kvm_irq_routing_entry {
+    match &item.source {
+        IrqSource::Irqchip { chip, pin } => kvm_irq_routing_entry {
+            gsi: item.gsi,
+            type_: KVM_IRQ_ROUTING_IRQCHIP,
+            u: kvm_irq_routing_entry__bindgen_ty_1 {
+                irqchip: kvm_irq_routing_irqchip {
+                    irqchip: chip_to_kvm_chip(*chip),
+                    pin: *pin,
                 },
-                ..Default::default()
             },
-            IrqSource::Msi { address, data } => kvm_irq_routing_entry {
+            ..Default::default()
+        },
+        IrqSource::Msi {
+            address,
+            data,
+            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            pci_address,
+        } => {
+            // Even though we always pass the device ID along to this point, KVM docs say: "If this
+            // capability is not available, userspace should never set the KVM_MSI_VALID_DEVID flag
+            // as the ioctl might fail"
+            let devid = if cap_msi_devid {
+                #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+                panic!("unexpected KVM_CAP_MSI_DEVID");
+                #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                Some(pci_address.to_u32())
+            } else {
+                None
+            };
+            kvm_irq_routing_entry {
                 gsi: item.gsi,
                 type_: KVM_IRQ_ROUTING_MSI,
+                flags: if devid.is_some() {
+                    KVM_MSI_VALID_DEVID
+                } else {
+                    0
+                },
                 u: kvm_irq_routing_entry__bindgen_ty_1 {
                     msi: kvm_irq_routing_msi {
                         address_lo: *address as u32,
                         address_hi: (*address >> 32) as u32,
                         data: *data,
-                        ..Default::default()
+                        __bindgen_anon_1: kvm_irq_routing_msi__bindgen_ty_1 {
+                            devid: devid.unwrap_or_default(),
+                        },
                     },
                 },
                 ..Default::default()
-            },
+            }
         }
     }
 }

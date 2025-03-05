@@ -1581,6 +1581,7 @@ dependencies = [
  "hypervisor_test_macro",
  "kvm_sys",
  "libc",
+ "resources",
  "serde",
  "serde_json",
  "snapshot",

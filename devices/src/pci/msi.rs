@@ -57,6 +57,7 @@ pub struct MsiConfig {
     gsi: Option<u32>,
     device_id: u32,
     device_name: String,
+    pci_address: Option<resources::PciAddress>,
 }
 
 impl MsiConfig {
@@ -85,7 +86,13 @@ impl MsiConfig {
             gsi: None,
             device_id,
             device_name,
+            pci_address: None,
         }
+    }
+
+    /// PCI address of the associated device.
+    pub fn set_pci_address(&mut self, pci_address: resources::PciAddress) {
+        self.pci_address = Some(pci_address);
     }
 
     fn len(&self) -> u32 {
@@ -178,10 +185,18 @@ impl MsiConfig {
                 return;
             }
         };
+        // Only used on aarch64, but make sure it is initialized correctly on all archs for better
+        // test coverage.
+        #[allow(unused_variables)]
+        let pci_address = self
+            .pci_address
+            .expect("MsixConfig: must call set_pci_address before config writes");
         if let Err(e) = self.vm_socket_irq.send(&VmIrqRequest::AddMsiRoute {
             gsi,
             msi_address: self.address,
             msi_data: self.data.into(),
+            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            pci_address,
         }) {
             error!("failed to send AddMsiRoute request at {:?}", e);
             return;

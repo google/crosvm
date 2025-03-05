@@ -739,6 +739,9 @@ impl PciDevice for VirtioPciDevice {
             } else {
                 self.pci_address = resources.allocate_pci(0, self.debug_label());
             }
+            self.msix_config
+                .lock()
+                .set_pci_address(self.pci_address.unwrap());
         }
         self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)
     }
@@ -1159,6 +1162,9 @@ impl HotPluggable for VirtioPciDevice {
     /// Sets PciAddress to pci_addr
     fn set_pci_address(&mut self, pci_addr: PciAddress) -> std::result::Result<(), PciDeviceError> {
         self.pci_address = Some(pci_addr);
+        self.msix_config
+            .lock()
+            .set_pci_address(self.pci_address.unwrap());
         Ok(())
     }
 

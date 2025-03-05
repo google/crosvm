@@ -243,6 +243,7 @@ impl PciDevice for PciBridge {
     ) -> std::result::Result<PciAddress, PciDeviceError> {
         let address = self.device.lock().allocate_address(resources)?;
         self.pci_address = Some(address);
+        self.msi_config.lock().set_pci_address(address);
         Ok(address)
     }
 

@@ -255,7 +255,7 @@ fn add_routes() {
             gsi: ioapic_pins as u32 - 1,
             source: IrqSource::Msi {
                 address: 0,
-                data: 0
+                data: 0,
             },
         })
         .is_err(),);

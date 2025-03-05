@@ -462,7 +462,9 @@ impl<V: VcpuX86_64 + 'static> IrqChip for UserspaceIrqChip<V> {
                     self.ioapic.lock().service_irq(pin as usize, level);
                 }
                 // service_irq's level parameter is ignored for MSIs.  MSI data specifies the level.
-                IrqSource::Msi { address, data } => self.send_msi(address as u32, data),
+                IrqSource::Msi { address, data } => {
+                    self.send_msi(address as u32, data);
+                }
                 _ => {
                     error!("Unexpected route source {:?}", route);
                     return Err(Error::new(libc::EINVAL));

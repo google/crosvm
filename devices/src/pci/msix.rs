@@ -68,6 +68,7 @@ pub struct MsixConfig {
     msi_device_socket: Tube,
     msix_num: u16,
     pci_id: u32,
+    pci_address: Option<resources::PciAddress>,
     device_name: String,
 }
 
@@ -81,6 +82,7 @@ struct MsixConfigSnapshot {
     enabled: bool,
     msix_num: u16,
     pci_id: u32,
+    pci_address: Option<resources::PciAddress>,
     device_name: String,
 }
 
@@ -147,8 +149,14 @@ impl MsixConfig {
             msi_device_socket: vm_socket,
             msix_num: msix_vectors,
             pci_id,
+            pci_address: None,
             device_name,
         }
+    }
+
+    /// PCI address of the associated device.
+    pub fn set_pci_address(&mut self, pci_address: resources::PciAddress) {
+        self.pci_address = Some(pci_address);
     }
 
     /// Get the number of MSI-X vectors in this configuration.
@@ -249,6 +257,7 @@ impl MsixConfig {
             enabled: self.enabled,
             msix_num: self.msix_num,
             pci_id: self.pci_id,
+            pci_address: self.pci_address,
             device_name: self.device_name.clone(),
             irq_gsi_vec: self
                 .irq_vec
@@ -272,6 +281,7 @@ impl MsixConfig {
         self.enabled = snapshot.enabled;
         self.msix_num = snapshot.msix_num;
         self.pci_id = snapshot.pci_id;
+        self.pci_address = snapshot.pci_address;
         self.device_name = snapshot.device_name;
 
         self.msix_release_all()?;
@@ -362,11 +372,20 @@ impl MsixConfig {
             return Ok(());
         }
 
+        // Only used on aarch64, but make sure it is initialized correctly on all archs for better
+        // test coverage.
+        #[allow(unused_variables)]
+        let pci_address = self
+            .pci_address
+            .expect("MsixConfig: must call set_pci_address before config writes");
+
         self.msi_device_socket
             .send(&VmIrqRequest::AddMsiRoute {
                 gsi,
                 msi_address,
                 msi_data,
+                #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                pci_address,
             })
             .map_err(MsixError::AddMsiRouteSend)?;
         if let VmIrqResponse::Err(e) = self
@@ -855,11 +874,20 @@ mod tests {
         }
     }
 
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     struct MsiRouteDetails {
         gsi: u32,
         msi_address: u64,
         msi_data: u32,
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        pci_address: resources::PciAddress,
     }
+
+    const TEST_PCI_ADDRESS: resources::PciAddress = resources::PciAddress {
+        bus: 1,
+        dev: 2,
+        func: 3,
+    };
 
     #[track_caller]
     fn recv_add_msi_route(t: &Tube) -> MsiRouteDetails {
@@ -868,10 +896,14 @@ mod tests {
                 gsi,
                 msi_address,
                 msi_data,
+                #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                pci_address,
             } => MsiRouteDetails {
                 gsi,
                 msi_address,
                 msi_data,
+                #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                pci_address,
             },
             msg => panic!("unexpected irqchip message: {:?}", msg),
         }
@@ -898,6 +930,7 @@ mod tests {
         let (_unused, unused_config_tube) = Tube::pair().unwrap();
 
         let mut cfg = MsixConfig::new(2, unused_config_tube, 0, "test_device".to_owned());
+        cfg.set_pci_address(TEST_PCI_ADDRESS);
 
         // Set up two MSI-X vectors (0 and 1).
         // Data is 0xdVEC_NUM. Address is 0xaVEC_NUM.
@@ -928,18 +961,30 @@ mod tests {
         let irqchip_fake = thread::spawn(move || {
             assert_eq!(recv_allocate_msi(&irqchip_tube), 10);
             send_ok(&irqchip_tube);
-            let route_one = recv_add_msi_route(&irqchip_tube);
-            assert_eq!(route_one.gsi, 10);
-            assert_eq!(route_one.msi_address, 0xa0);
-            assert_eq!(route_one.msi_data, 0xd0);
+            assert_eq!(
+                recv_add_msi_route(&irqchip_tube),
+                MsiRouteDetails {
+                    gsi: 10,
+                    msi_address: 0xa0,
+                    msi_data: 0xd0,
+                    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                    pci_address: TEST_PCI_ADDRESS,
+                }
+            );
             send_ok(&irqchip_tube);
 
             assert_eq!(recv_allocate_msi(&irqchip_tube), 20);
             send_ok(&irqchip_tube);
-            let route_two = recv_add_msi_route(&irqchip_tube);
-            assert_eq!(route_two.gsi, 20);
-            assert_eq!(route_two.msi_address, 0xa1);
-            assert_eq!(route_two.msi_data, 0xd1);
+            assert_eq!(
+                recv_add_msi_route(&irqchip_tube),
+                MsiRouteDetails {
+                    gsi: 20,
+                    msi_address: 0xa1,
+                    msi_data: 0xd1,
+                    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                    pci_address: TEST_PCI_ADDRESS,
+                }
+            );
             send_ok(&irqchip_tube);
             irqchip_tube
         });
@@ -959,6 +1004,7 @@ mod tests {
         let (irqchip_tube, msix_config_tube) = Tube::pair().unwrap();
 
         let mut cfg = MsixConfig::new(2, msix_config_tube, 0, "test_device".to_owned());
+        cfg.set_pci_address(TEST_PCI_ADDRESS);
 
         // Set up two MSI-X vectors (0 and 1).
         // Data is 0xdVEC_NUM. Address is 0xaVEC_NUM.
@@ -996,18 +1042,30 @@ mod tests {
             // Now we re-allocate them.
             assert_eq!(recv_allocate_msi(&irqchip_tube), 10);
             send_ok(&irqchip_tube);
-            let route_one = recv_add_msi_route(&irqchip_tube);
-            assert_eq!(route_one.gsi, 10);
-            assert_eq!(route_one.msi_address, 0xa0);
-            assert_eq!(route_one.msi_data, 0xd0);
+            assert_eq!(
+                recv_add_msi_route(&irqchip_tube),
+                MsiRouteDetails {
+                    gsi: 10,
+                    msi_address: 0xa0,
+                    msi_data: 0xd0,
+                    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                    pci_address: TEST_PCI_ADDRESS,
+                }
+            );
             send_ok(&irqchip_tube);
 
             assert_eq!(recv_allocate_msi(&irqchip_tube), 20);
             send_ok(&irqchip_tube);
-            let route_two = recv_add_msi_route(&irqchip_tube);
-            assert_eq!(route_two.gsi, 20);
-            assert_eq!(route_two.msi_address, 0xa1);
-            assert_eq!(route_two.msi_data, 0xd1);
+            assert_eq!(
+                recv_add_msi_route(&irqchip_tube),
+                MsiRouteDetails {
+                    gsi: 20,
+                    msi_address: 0xa1,
+                    msi_data: 0xd1,
+                    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                    pci_address: TEST_PCI_ADDRESS,
+                }
+            );
             send_ok(&irqchip_tube);
             irqchip_tube
         });

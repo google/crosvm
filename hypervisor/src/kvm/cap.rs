@@ -130,4 +130,5 @@ pub enum KvmCap {
     UserMemory2 = KVM_CAP_USER_MEMORY2,
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     Sve = KVM_CAP_ARM_SVE,
+    MsiDevid = KVM_CAP_MSI_DEVID,
 }

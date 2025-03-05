@@ -1175,6 +1175,8 @@ pub enum VmIrqRequest {
         gsi: u32,
         msi_address: u64,
         msi_data: u32,
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        pci_address: resources::PciAddress,
     },
     // unregister_irqfs() and release gsi
     ReleaseOneIrq {
@@ -1250,12 +1252,16 @@ impl VmIrqRequest {
                 gsi,
                 msi_address,
                 msi_data,
+                #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                pci_address,
             } => {
                 let route = IrqRoute {
                     gsi,
                     source: IrqSource::Msi {
                         address: msi_address,
                         data: msi_data,
+                        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                        pci_address,
                     },
                 };
                 match set_up_irq(IrqSetup::Route(route)) {
