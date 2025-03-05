@@ -290,13 +290,7 @@ impl AsRawDescriptor for TcpSocket {
 
 // Offset of sun_path in structure sockaddr_un.
 pub(in crate::sys) fn sun_path_offset() -> usize {
-    // Prefer 0 to null() so that we do not need to subtract from the `sub_path` pointer.
-    #[allow(clippy::zero_ptr)]
-    let addr = 0 as *const libc::sockaddr_un;
-    // SAFETY:
-    // Safe because we only use the dereference to create a pointer to the desired field in
-    // calculating the offset.
-    unsafe { &(*addr).sun_path as *const _ as usize }
+    std::mem::offset_of!(libc::sockaddr_un, sun_path)
 }
 
 /// A Unix `SOCK_SEQPACKET` socket point to given `path`
