@@ -1415,10 +1415,13 @@ impl PassthroughFs {
         #[cfg(feature = "arc_quota")]
         let st = stat(&*data)?;
 
+        #[cfg(feature = "arc_quota")]
+        let ctx_uid = self.lookup_host_uid(&ctx, inode);
+
         // Changing quota project ID requires CAP_FOWNER or being file owner.
         // Here we use privileged_quota_uids because we cannot perform a CAP_FOWNER check.
         #[cfg(feature = "arc_quota")]
-        if ctx.uid == st.st_uid || self.cfg.privileged_quota_uids.contains(&ctx.uid) {
+        if ctx_uid == st.st_uid || self.cfg.privileged_quota_uids.contains(&ctx_uid) {
             // Get the current fsxattr.
             let mut buf = MaybeUninit::<fsxattr>::zeroed();
             // SAFETY: the kernel will only write to `buf` and we check the return value.
