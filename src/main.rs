@@ -362,7 +362,7 @@ fn modify_virtio_net(cmd: cmdline::VirtioNetCommand) -> std::result::Result<(), 
 fn parse_composite_partition_arg(
     partition_arg: &str,
 ) -> std::result::Result<(String, String, bool, Option<Uuid>), ()> {
-    let mut partition_fields = partition_arg.split(":");
+    let mut partition_fields = partition_arg.split(':');
 
     let label = partition_fields.next();
     let path = partition_fields.next();
@@ -725,7 +725,7 @@ fn prepare_argh_args<I: IntoIterator<Item = String>>(args_iter: I) -> Vec<String
             "-h" => args.push("--help".to_string()),
             arg if is_flag(arg) => {
                 // Split `--arg=val` into `--arg val`, since argh doesn't support the former.
-                if let Some((key, value)) = arg.split_once("=") {
+                if let Some((key, value)) = arg.split_once('=') {
                     args.push(key.to_string());
                     args.push(value.to_string());
                 } else {

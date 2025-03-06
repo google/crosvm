@@ -154,7 +154,7 @@ fn start_with_ugid_map(
     let out = result.stdout.trim();
     println!("guest ugid: {out}");
     let ids = out
-        .split(" ")
+        .split(' ')
         .map(|s| s.parse::<u32>())
         .collect::<Result<Vec<u32>, _>>()
         .unwrap();

@@ -400,9 +400,9 @@ fn parse_hex_or_decimal(maybe_hex_string: &str) -> Result<u64, String> {
 }
 
 pub fn parse_mmio_address_range(s: &str) -> Result<Vec<AddressRange>, String> {
-    s.split(",")
+    s.split(',')
         .map(|s| {
-            let r: Vec<&str> = s.split("-").collect();
+            let r: Vec<&str> = s.split('-').collect();
             if r.len() != 2 {
                 return Err(invalid_value_err(s, "invalid range"));
             }

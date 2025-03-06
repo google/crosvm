@@ -36,7 +36,7 @@ fn backcompat_test_simple_lspci(vm: &mut TestVm) {
         .unwrap()
         .stdout
         .trim()
-        .replace("\r", "");
+        .replace('\r', "");
     assert_eq!(
         expected,
         result,

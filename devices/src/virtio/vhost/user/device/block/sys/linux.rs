@@ -39,7 +39,7 @@ pub struct Options {
 pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let ex = Executor::new().context("failed to create executor")?;
 
-    let mut fileopts = opts.file.split(":").collect::<Vec<_>>();
+    let mut fileopts = opts.file.split(':').collect::<Vec<_>>();
     let filename = fileopts.remove(0);
 
     let disk = DiskOption {

@@ -339,7 +339,7 @@ fn main() {
         }
 
         output.push(HistogramSetElement::Histogram(Histogram::new(
-            name.replace(" ", "_").as_str(),
+            name.replace(' ', "_").as_str(),
             test_result.unit,
             diag_map,
             test_result.values,

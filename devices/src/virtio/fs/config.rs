@@ -68,7 +68,7 @@ fn deserialize_privileged_quota_uids<'de, D: Deserializer<'de>>(
 ) -> Result<Vec<libc::uid_t>, D::Error> {
     // space-separated list
     let s: &str = serde::Deserialize::deserialize(deserializer)?;
-    s.split(" ")
+    s.split(' ')
         .map(|s| {
             s.parse::<libc::uid_t>().map_err(|e| {
                 <D as Deserializer>::Error::custom(format!(

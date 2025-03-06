@@ -102,7 +102,7 @@ fn load_descendants(current_pid: Pid, monitor_pid: Pid) -> Result<Vec<Pid>> {
         return Ok(Vec::new());
     }
     let pids: std::result::Result<Vec<i32>, ParseIntError> = children
-        .split(" ")
+        .split(' ')
         .map(i32::from_str)
         // except this monitor process
         .filter(|pid| match pid {
