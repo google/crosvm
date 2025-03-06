@@ -95,7 +95,7 @@ impl Tube {
         )?;
 
         let len = r.bytes;
-        let descriptors = match r.cmsgs().next() {
+        let descriptors = match r.cmsgs()?.next() {
             Some(ControlMessageOwned::ScmRights(fds)) => {
                 fds.into_iter()
                     .map(|fd| {
