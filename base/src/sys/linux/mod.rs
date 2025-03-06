@@ -721,8 +721,8 @@ pub struct sched_attr {
     pub sched_util_max: u32,
 }
 
-impl sched_attr {
-    pub fn default() -> Self {
+impl Default for sched_attr {
+    fn default() -> Self {
         Self {
             size: std::mem::size_of::<sched_attr>() as u32,
             sched_policy: 0,

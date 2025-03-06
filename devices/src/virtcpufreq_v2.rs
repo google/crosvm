@@ -289,12 +289,14 @@ impl BusDevice for VirtCpufreqV2 {
                         warn!("Error setting uclamp_min: {:#}", e);
                     }
                 } else {
-                    let mut sched_attr = sched_attr::default();
-                    sched_attr.sched_flags = SCHED_FLAG_KEEP_ALL
-                        | SCHED_FLAG_UTIL_CLAMP_MIN
-                        | SCHED_FLAG_UTIL_CLAMP_MAX
-                        | SCHED_FLAG_RESET_ON_FORK;
-                    sched_attr.sched_util_min = util;
+                    let mut sched_attr = sched_attr {
+                        sched_flags: SCHED_FLAG_KEEP_ALL
+                            | SCHED_FLAG_UTIL_CLAMP_MIN
+                            | SCHED_FLAG_UTIL_CLAMP_MAX
+                            | SCHED_FLAG_RESET_ON_FORK,
+                        sched_util_min: util,
+                        ..Default::default()
+                    };
 
                     if self.vcpu_fmax != self.pcpu_fmax {
                         sched_attr.sched_util_max = util;
@@ -381,13 +383,15 @@ pub fn vcpufreq_worker_thread(
     let cpu_set: Vec<usize> = vec![cpu_affinity];
     set_cpu_affinity(cpu_set)?;
 
-    let mut sched_attr = sched_attr::default();
-    sched_attr.sched_flags = SCHED_FLAG_KEEP_ALL
-        | SCHED_FLAG_UTIL_CLAMP_MIN
-        | SCHED_FLAG_UTIL_CLAMP_MAX
-        | SCHED_FLAG_RESET_ON_FORK;
-    sched_attr.sched_util_min = SCHED_CAPACITY_SCALE;
-    sched_attr.sched_util_max = SCHED_CAPACITY_SCALE;
+    let mut sched_attr = sched_attr {
+        sched_flags: SCHED_FLAG_KEEP_ALL
+            | SCHED_FLAG_UTIL_CLAMP_MIN
+            | SCHED_FLAG_UTIL_CLAMP_MAX
+            | SCHED_FLAG_RESET_ON_FORK,
+        sched_util_min: SCHED_CAPACITY_SCALE,
+        sched_util_max: SCHED_CAPACITY_SCALE,
+        ..Default::default()
+    };
     if let Err(e) = sched_setattr(0, &mut sched_attr, 0) {
         warn!("Error setting util value: {}", e);
     }

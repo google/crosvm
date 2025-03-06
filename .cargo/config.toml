@@ -18,7 +18,6 @@ rustflags = [
     "-Aclippy::or_fun_call",
     "-Aclippy::result_large_err",
     "-Aclippy::result-unit-err",
-    "-Aclippy::should_implement_trait",
     "-Aclippy::single-range-in-vec-init",
     "-Aclippy::too_many_arguments",
     "-Aclippy::trivially_copy_pass_by_ref",

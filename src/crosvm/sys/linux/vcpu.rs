@@ -76,11 +76,13 @@ pub fn set_vcpu_thread_scheduling(
     boost_uclamp: bool,
 ) -> anyhow::Result<()> {
     if boost_uclamp {
-        let mut sched_attr = sched_attr::default();
-        sched_attr.sched_flags = SCHED_FLAG_KEEP_ALL as u64
-            | SCHED_FLAG_UTIL_CLAMP_MIN
-            | SCHED_FLAG_RESET_ON_FORK as u64;
-        sched_attr.sched_util_min = SCHED_SCALE_CAPACITY;
+        let mut sched_attr = sched_attr {
+            sched_flags: SCHED_FLAG_KEEP_ALL as u64
+                | SCHED_FLAG_UTIL_CLAMP_MIN
+                | SCHED_FLAG_RESET_ON_FORK as u64,
+            sched_util_min: SCHED_SCALE_CAPACITY,
+            ..Default::default()
+        };
 
         if let Err(e) = sched_setattr(0, &mut sched_attr, 0) {
             warn!("Failed to boost vcpu util: {}", e);
