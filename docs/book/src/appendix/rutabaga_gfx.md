@@ -110,7 +110,7 @@ Mesa provides gfxstream vulkan guest libraries.
 ```sh
 git clone https://gitlab.freedesktop.org/mesa/mesa.git
 cd mesa
-meson setup guest-build/ -Dvulkan-drivers="gfxstream-experimental" -Dgallium-drivers="" -Dopengl=false
+meson setup guest-build/ -Dvulkan-drivers="gfxstream" -Dgallium-drivers="" -Dopengl=false
 ninja -C guest-build/
 ```
 
