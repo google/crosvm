@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use anyhow::Context;
 use base::errno_result;
 use base::ioctl_with_ref;
@@ -13,13 +15,18 @@ use hypervisor::kvm::KvmVcpu;
 use hypervisor::kvm::KvmVm;
 use hypervisor::DeviceKind;
 use hypervisor::IrqRoute;
+use hypervisor::VcpuAArch64;
 use hypervisor::Vm;
 use kvm_sys::*;
+use serde::Deserialize;
+use serde::Serialize;
 use snapshot::AnySnapshot;
 use sync::Mutex;
 
+use crate::icc_regs;
 use crate::IrqChip;
 use crate::IrqChipAArch64;
+use crate::ICC_CTLR_EL1;
 
 /// Default ARM routing table.  AARCH64_GIC_NR_SPIS pins go to VGIC.
 fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {
@@ -189,14 +196,70 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
                 return errno_result()
                     .context("ioctl KVM_SET_DEVICE_ATTR for save_gic_attr failed.")?;
             }
+            let mut cpu_sys_regs: BTreeMap<u64, BTreeMap<u16, u64>> = BTreeMap::new();
+            let mut redist_regs: BTreeMap<u64, Vec<u32>> = BTreeMap::new();
+            let vcpus = self.vcpus.lock();
+            for vcpu in vcpus.iter().flatten() {
+                let mpidr = mpidr_concat_aff(vcpu.get_mpidr()?);
+                // SAFETY:
+                // Safe because we are specifying CPU SYSREGS, which is 64 bits.
+                // https://docs.kernel.org/virt/kvm/devices/arm-vgic-v3.html
+                let ctlr = unsafe {
+                    get_kvm_device_attr_u64(
+                        &self.vgic,
+                        KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS,
+                        mpidr | ICC_CTLR_EL1.encoded() as u64,
+                    )?
+                };
+                // The reported number of priority bits is missing 1, as per ARM documentation.
+                // See register ICC_CTLR_EL1 for more information. Add the missing 1.
+                let prio_bits = (((ctlr & 0x700) >> 8) + 1) as u8;
+                let mut cpu_sys_regs_map = BTreeMap::new();
+                cpu_sys_regs_map.insert(ICC_CTLR_EL1.encoded(), ctlr);
+                get_cpu_vgic_regs(&self.vgic, &mut cpu_sys_regs_map, mpidr, prio_bits)?;
+                cpu_sys_regs.insert(mpidr, cpu_sys_regs_map);
+                redist_regs.insert(mpidr, get_redist_regs(&self.vgic, mpidr)?);
+            }
+            AnySnapshot::to_any(VgicSnapshot {
+                redist_regs,
+                dist_regs: get_dist_regs(&self.vgic)?,
+                cpu_sys_regs,
+            })
+        } else {
+            Err(anyhow!("Unsupported VGIC version for snapshot"))
         }
-        AnySnapshot::to_any(())
     }
 
-    fn restore(&mut self, _data: AnySnapshot, _vcpus_num: usize) -> anyhow::Result<()> {
-        // SAVE_PENDING_TABLES operation wrote the pending tables into guest memory.
-        // Assumption is that no work is necessary on restore of IrqChip.
-        Ok(())
+    fn restore(&mut self, data: AnySnapshot, _vcpus_num: usize) -> anyhow::Result<()> {
+        if self.device_kind == DeviceKind::ArmVgicV3 {
+            // SAVE_PENDING_TABLES operation wrote the pending tables into guest memory.
+            let deser: VgicSnapshot =
+                AnySnapshot::from_any(data).context("Failed to deserialize vgic data")?;
+            let vcpus = self.vcpus.lock();
+            for vcpu in vcpus.iter().flatten() {
+                let mpidr = mpidr_concat_aff(vcpu.get_mpidr()?);
+                set_cpu_vgic_regs(
+                    &self.vgic,
+                    mpidr,
+                    deser
+                        .cpu_sys_regs
+                        .get(&mpidr)
+                        .with_context(|| format!("CPU with MPIDR {} does not exist", mpidr))?,
+                )?;
+                set_redist_regs(
+                    &self.vgic,
+                    mpidr,
+                    deser
+                        .redist_regs
+                        .get(&mpidr)
+                        .with_context(|| format!("CPU with MPIDR {} does not exist", mpidr))?,
+                )?;
+            }
+            set_dist_regs(&self.vgic, &deser.dist_regs)?;
+            Ok(())
+        } else {
+            Err(anyhow!("Unsupported VGIC version for restore"))
+        }
     }
 
     fn finalize(&self) -> Result<()> {
@@ -215,4 +278,245 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
         }
         Ok(())
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct VgicSnapshot {
+    // Tree with MPIDR as key, and Tree<Reg-RegValue> as value, where all registers for
+    // that MPIDR are saved.
+    cpu_sys_regs: BTreeMap<u64, BTreeMap<u16, u64>>,
+    // Tree with MPIDR as key. We only save values since we are saving the whole range.
+    redist_regs: BTreeMap<u64, Vec<u32>>,
+    dist_regs: Vec<u32>,
+}
+
+// # Safety
+// Unsafe if incorrect group or attr (offset) provided.
+// The caller must ensure the group is 32 bits and attr is for a 32 bit value
+unsafe fn get_kvm_device_attr_u32(
+    vgic: &SafeDescriptor,
+    group: u32,
+    attr: u64,
+) -> anyhow::Result<u32> {
+    let mut val: u32 = 0;
+    let device_attr = kvm_device_attr {
+        group,
+        attr,
+        addr: (&mut val as *mut u32) as u64,
+        flags: 0,
+    };
+    // SAFETY:
+    // Unsafe if wrong group is provided, which could lead to trying to read from a 64 bit register
+    // to a 32 bit register.
+    // Unsafe if wrong attr (offset) is provided
+    let ret = unsafe { ioctl_with_ref(vgic, KVM_GET_DEVICE_ATTR, &device_attr) };
+    if ret != 0 {
+        errno_result().with_context(|| {
+            format!(
+                "ioctl KVM_GET_DEVICE_ATTR_u32 for attr:{} failed.",
+                device_attr.attr
+            )
+        })
+    } else {
+        Ok(val)
+    }
+}
+
+// # Safety
+// Unsafe if incorrect group or attr (offset) provided.
+// The caller must ensure the group is 32 bits and attr is for a 64 bit value
+unsafe fn get_kvm_device_attr_u64(
+    vgic: &SafeDescriptor,
+    group: u32,
+    attr: u64,
+) -> anyhow::Result<u64> {
+    let mut val: u64 = 0;
+    let device_attr = kvm_device_attr {
+        group,
+        attr,
+        addr: (&mut val as *mut u64) as u64,
+        flags: 0,
+    };
+    // SAFETY:
+    // Unsafe  if wrong group is passed, which could lead to trying to read from a 32 bit register
+    // to a 64 bit register. The read will succeed but the attr (offset) would need to be correct,
+    // otherwise data could be skipped.
+    // Unsafe if wrong attr (offset) is provided
+    let ret = unsafe { ioctl_with_ref(vgic, KVM_GET_DEVICE_ATTR, &device_attr) };
+    if ret != 0 {
+        errno_result().with_context(|| {
+            format!(
+                "ioctl KVM_GET_DEVICE_ATTR_u64 for attr:{} failed.",
+                device_attr.attr
+            )
+        })
+    } else {
+        Ok(val)
+    }
+}
+
+// # Safety
+// Unsafe if incorrect group or attr (offset) provided.
+// The caller must ensure the group is 32 bits and attr is for a 32 bit value
+unsafe fn set_kvm_device_attr_u32(
+    vgic: &SafeDescriptor,
+    group: u32,
+    attr: u64,
+    val: &u32,
+) -> anyhow::Result<()> {
+    let device_attr = kvm_device_attr {
+        group,
+        attr,
+        addr: (val as *const u32) as u64,
+        flags: 0,
+    };
+    // SAFETY:
+    // Unsafe if the group provided is incorrect, 64 bits may be written to a 32 bit range
+    // Unsafe if the wrong offset is provided
+    let ret = unsafe { ioctl_with_ref(vgic, KVM_SET_DEVICE_ATTR, &device_attr) };
+    if ret != 0 {
+        errno_result().with_context(|| {
+            format!(
+                "ioctl KVM_SET_DEVICE_ATTR_u32 for attr:{} failed.",
+                device_attr.attr
+            )
+        })
+    } else {
+        Ok(())
+    }
+}
+
+// # Safety
+// Unsafe if incorrect group or attr (offset) provided.
+// The caller must ensure the group is 32 bits and attr is for a 64 bit value
+unsafe fn set_kvm_device_attr_u64(
+    vgic: &SafeDescriptor,
+    group: u32,
+    attr: u64,
+    val: &u64,
+) -> anyhow::Result<()> {
+    let device_attr = kvm_device_attr {
+        group,
+        attr,
+        addr: (val as *const u64) as u64,
+        flags: 0,
+    };
+    // SAFETY:
+    // Unsafe if the wrong group, 32 bits may be written to a 64 bit range,
+    // potentially overwriting other the higher 32 bits of a 64 bit register
+    // Unsafe if the wrong offset is provided
+    let ret = unsafe { ioctl_with_ref(vgic, KVM_SET_DEVICE_ATTR, &device_attr) };
+    if ret != 0 {
+        errno_result().with_context(|| {
+            format!(
+                "ioctl KVM_SET_DEVICE_ATTR_u64 for attr:{} failed.",
+                device_attr.attr
+            )
+        })
+    } else {
+        Ok(())
+    }
+}
+
+fn get_cpu_vgic_regs(
+    vgic: &SafeDescriptor,
+    vgic_data: &mut BTreeMap<u16, u64>,
+    mpidr: u64,
+    prio_bits: u8,
+) -> anyhow::Result<()> {
+    for offset in icc_regs(prio_bits)? {
+        // SAFETY:
+        // Safe because we are specifying CPU SYSREGS, which is 64 bits.
+        let val = unsafe {
+            get_kvm_device_attr_u64(
+                vgic,
+                KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS,
+                mpidr | offset as u64,
+            )?
+        };
+        vgic_data.insert(offset, val);
+    }
+    Ok(())
+}
+
+fn get_redist_regs(vgic: &SafeDescriptor, mpidr: u64) -> anyhow::Result<Vec<u32>> {
+    let mut vgic_data: Vec<u32> = Vec::new();
+    for offset in (0..AARCH64_GIC_REDIST_SIZE).step_by(4) {
+        // SAFETY:
+        // Safe because we are specifying REDIST REGS, which is 32 bits.
+        let val = unsafe {
+            get_kvm_device_attr_u32(vgic, KVM_DEV_ARM_VGIC_GRP_REDIST_REGS, mpidr | offset)?
+        };
+        vgic_data.push(val);
+    }
+    Ok(vgic_data)
+}
+
+fn get_dist_regs(vgic: &SafeDescriptor) -> anyhow::Result<Vec<u32>> {
+    let mut vgic_data: Vec<u32> = Vec::new();
+    for offset in (0..AARCH64_GIC_DIST_SIZE).step_by(4) {
+        // SAFETY:
+        // Safe because we are specifying DIST REGS, which is 32 bits.
+        let val = unsafe { get_kvm_device_attr_u32(vgic, KVM_DEV_ARM_VGIC_GRP_DIST_REGS, offset)? };
+        vgic_data.push(val);
+    }
+    Ok(vgic_data)
+}
+
+fn set_cpu_vgic_regs(
+    vgic: &SafeDescriptor,
+    mpidr: u64,
+    data: &BTreeMap<u16, u64>,
+) -> anyhow::Result<()> {
+    for (offset, val) in data.iter() {
+        // SAFETY:
+        // Safe because we are specifying CPU SYSREGS, which is 64 bits.
+        unsafe {
+            set_kvm_device_attr_u64(
+                vgic,
+                KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS,
+                mpidr | *offset as u64,
+                val,
+            )?
+        };
+    }
+    Ok(())
+}
+
+fn set_redist_regs(vgic: &SafeDescriptor, mpidr: u64, data: &[u32]) -> anyhow::Result<()> {
+    let mut offset = 0;
+    for val in data.iter() {
+        // SAFETY:
+        // Safe because we are specifying REDIST REGS, which is 32 bits.
+        unsafe {
+            set_kvm_device_attr_u32(vgic, KVM_DEV_ARM_VGIC_GRP_REDIST_REGS, mpidr | offset, val)?
+        };
+        // Step by 4 for offset
+        offset += 4;
+    }
+    Ok(())
+}
+
+fn set_dist_regs(vgic: &SafeDescriptor, data: &[u32]) -> anyhow::Result<()> {
+    let mut offset = 0;
+    for val in data.iter() {
+        // SAFETY:
+        // Safe because we are specifying DIST REGS, which is 32 bits.
+        unsafe { set_kvm_device_attr_u32(vgic, KVM_DEV_ARM_VGIC_GRP_DIST_REGS, offset, val)? };
+        // Step by 4 for offset
+        offset += 4;
+    }
+    Ok(())
+}
+
+fn mpidr_concat_aff(mpidr: u64) -> u64 {
+    // https://docs.kernel.org/virt/kvm/devices/arm-vgic-v3.html
+    // MPIDR described as Aff3 | Aff2 | Aff1 | Aff0. (32 bits).
+    // The structure of the returned value of MPIDR in Arm is a bit different:
+    // https://developer.arm.com/documentation/ddi0601/2024-12/AArch64-Registers/MPIDR-EL1--Multiprocessor-Affinity-Register
+    // RES0 | Aff3 | RES1 | U | RES0 | MT | Aff2 | Aff1 | Aff0
+    // 63-40| 39-32|  31  | 30|  29  | 24 | 23-16| 15-8 | 7-0
+    let mpidr_aff_concat: u32 = ((mpidr & 0xFF << 32) >> 8) as u32 | mpidr as u32 & 0x00FFFFFF;
+    ((mpidr_aff_concat as u64) << KVM_DEV_ARM_VGIC_V3_MPIDR_SHIFT)
+        & KVM_DEV_ARM_VGIC_V3_MPIDR_MASK as u64
 }
