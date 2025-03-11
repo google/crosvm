@@ -20,6 +20,8 @@ use zerocopy::KnownLayout;
 // The original index (236) used in the ChromeOS v6.6 kernel was reused upstream for another
 // capability, so this may return incorrect information on some kernels.
 pub const KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA_CROS: u32 = 236;
+pub const KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA: u32 = 239;
+pub const KVM_MEM_NON_COHERENT_DMA: u32 = 8;
 
 // TODO(qwandor): Update this once the pKVM patches are merged upstream with a stable capability ID.
 pub const KVM_CAP_ARM_PROTECTED_VM: u32 = 0xffbadab1;

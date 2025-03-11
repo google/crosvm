@@ -18,6 +18,8 @@ use zerocopy::KnownLayout;
 // The original index (236) used in the ChromeOS v6.6 kernel was reused upstream for another
 // capability, so this may return incorrect information on some kernels.
 pub const KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA_CROS: u32 = 236;
+pub const KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA: u32 = 239;
+pub const KVM_MEM_NON_COHERENT_DMA: u32 = 8;
 
 // TODO(qwandor): Update this once the pKVM patches are merged upstream with a stable capability ID.
 pub const KVM_CAP_ARM_PROTECTED_VM: u32 = 0xffbadab1;
@@ -148,7 +150,6 @@ pub const KVM_API_VERSION: u32 = 12;
 pub const KVM_MEM_LOG_DIRTY_PAGES: u32 = 1;
 pub const KVM_MEM_READONLY: u32 = 2;
 pub const KVM_MEM_GUEST_MEMFD: u32 = 4;
-pub const KVM_MEM_NON_COHERENT_DMA: u32 = 8;
 pub const KVM_PIT_SPEAKER_DUMMY: u32 = 1;
 pub const KVM_EXIT_HYPERV_SYNIC: u32 = 1;
 pub const KVM_EXIT_HYPERV_HCALL: u32 = 2;
@@ -467,10 +468,6 @@ pub const KVM_CAP_VM_TYPES: u32 = 235;
 pub const KVM_CAP_PRE_FAULT_MEMORY: u32 = 236;
 pub const KVM_CAP_X86_APIC_BUS_CYCLES_NS: u32 = 237;
 pub const KVM_CAP_X86_GUEST_MODE: u32 = 238;
-pub const KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA: u32 = 239;
-pub const KVM_CAP_GET_CUR_CPUFREQ: u32 = 512;
-pub const KVM_CAP_UTIL_HINT: u32 = 513;
-pub const KVM_CAP_GET_CPUFREQ_TBL: u32 = 514;
 pub const KVM_IRQ_ROUTING_IRQCHIP: u32 = 1;
 pub const KVM_IRQ_ROUTING_MSI: u32 = 2;
 pub const KVM_IRQ_ROUTING_S390_ADAPTER: u32 = 3;

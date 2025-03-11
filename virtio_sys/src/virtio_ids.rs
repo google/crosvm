@@ -12,6 +12,8 @@
 //! from 63) are nonstandard and not defined by the virtio specification.
 
 // Added by virtio_sys/bindgen.sh - do not edit the generated file.
+pub const VIRTIO_ID_WL: u32 = 63;
+pub const VIRTIO_ID_TPM: u32 = 62;
 // TODO(b/236144983): Fix this id when an official virtio-id is assigned to this device.
 pub const VIRTIO_ID_PVCLOCK: u32 = 61;
 // TODO: Remove this once the ID is included in the Linux headers.
@@ -56,5 +58,3 @@ pub const VIRTIO_ID_PARAM_SERV: u32 = 38;
 pub const VIRTIO_ID_AUDIO_POLICY: u32 = 39;
 pub const VIRTIO_ID_BT: u32 = 40;
 pub const VIRTIO_ID_GPIO: u32 = 41;
-pub const VIRTIO_ID_WL: u32 = 63;
-pub const VIRTIO_ID_TPM: u32 = 62;

@@ -4,7 +4,7 @@
 
 # Helper functions for bindgen scripts sourced by tools/bindgen-all-the-things.
 
-BINDGEN_LINUX="${PWD}/../../third_party/kernel/v6.12"
+LINUX_VERSION="6.12.18"
 
 export BINDGEN_OPTS=(
     '--disable-header-comment'
@@ -48,6 +48,7 @@ bindgen_generate() {
 }
 
 bindgen_cleanup() {
+    rm -rf "${BINDGEN_TEMP}"
     rm -rf "${BINDGEN_LINUX_X86_HEADERS}" "${BINDGEN_LINUX_ARM64_HEADERS}" "${BINDGEN_LINUX_RISCV_HEADERS}"
 }
 
@@ -64,14 +65,18 @@ if [[ -z "${BINDGEN_LINUX_X86_HEADERS+x}" || ! -d "${BINDGEN_LINUX_X86_HEADERS}"
 
     echo -n "Installing Linux headers for x86, arm64, and riscv..."
     (
-        cd "${BINDGEN_LINUX}"
+        BINDGEN_LINUX_TARBALL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${LINUX_VERSION}.tar.xz"
+        export BINDGEN_TEMP=$(mktemp -d)
+        cd "${BINDGEN_TEMP}"
+
+        # TODO: consider caching the downloaded file
+        curl "${BINDGEN_LINUX_TARBALL}" | tar xfJ -
+        cd "linux-${LINUX_VERSION}"
+
         nproc=$(nproc)
         make -s headers_install ARCH=x86 INSTALL_HDR_PATH="${BINDGEN_LINUX_X86_HEADERS}" -j "${nproc}"
         make -s headers_install ARCH=arm64 INSTALL_HDR_PATH="${BINDGEN_LINUX_ARM64_HEADERS}" -j "${nproc}"
         make -s headers_install ARCH=riscv INSTALL_HDR_PATH="${BINDGEN_LINUX_RISCV_HEADERS}" -j "${nproc}"
-        make -s mrproper ARCH=x86
-        make -s mrproper ARCH=arm64
-        make -s mrproper ARCH=riscv
     )
     echo " done."
 fi
