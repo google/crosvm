@@ -49,6 +49,7 @@ pub(super) mod sys;
 use std::collections::BTreeMap;
 use std::convert::From;
 use std::fs::File;
+use std::io::Write;
 use std::num::Wrapping;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use std::os::unix::io::AsRawFd;
@@ -747,8 +748,12 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
                 // Spawn thread to write the serialized bytes.
                 self.device_state_thread = Some(DeviceStateThread::Save(WorkerThread::start(
                     "device_state_save",
-                    // TODO: should probably use BufWriter
-                    move |_kill_event| ciborium::into_writer(&snapshot, &mut fd),
+                    move |_kill_event| -> Result<(), ciborium::ser::Error<std::io::Error>> {
+                        let mut w = std::io::BufWriter::new(fd);
+                        ciborium::into_writer(&snapshot, &mut w)?;
+                        w.flush()?;
+                        Ok(())
+                    },
                 )));
                 Ok(None)
             }
@@ -757,6 +762,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
                 // `check_device_state`.
                 self.device_state_thread = Some(DeviceStateThread::Load(WorkerThread::start(
                     "device_state_load",
+                    // NOTE: No BufReader because ciborium::from_reader has an internal buffer.
                     move |_kill_event| ciborium::from_reader(&mut fd),
                 )));
                 Ok(None)
