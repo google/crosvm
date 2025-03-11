@@ -57,8 +57,7 @@ pub struct vfio_iommu_type1_info_cap_iova_range_header {
     pub reserved: u32,
 }
 
-// Experimental Android uABI
-pub const VFIO_PKVM_PVIOMMU: u32 = 11;"
+pub const VFIO_PKVM_PVIOMMU: u32 = 30;"
 
 bindgen_generate \
     --raw-line "${VFIO_EXTRA}" \

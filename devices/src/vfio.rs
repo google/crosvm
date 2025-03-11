@@ -249,9 +249,11 @@ impl KvmVfioPviommu {
         vsid: u32,
     ) -> Result<()> {
         let config = kvm_sys::kvm_vfio_iommu_config {
+            size: mem::size_of::<kvm_sys::kvm_vfio_iommu_config>() as u32,
             device_fd: device.as_raw_descriptor(),
             sid_idx,
             vsid,
+            __reserved: 0,
         };
 
         // SAFETY:
@@ -274,8 +276,10 @@ impl KvmVfioPviommu {
         let kvm_vfio_file = create_kvm_vfio_file(vm).ok_or(VfioError::CreateVfioKvmDevice)?;
 
         let mut info = kvm_sys::kvm_vfio_iommu_info {
+            size: mem::size_of::<kvm_sys::kvm_vfio_iommu_info>() as u32,
             device_fd: device.as_raw_descriptor(),
             nr_sids: 0,
+            __reserved: 0,
         };
 
         let vfio_dev_attr = kvm_sys::kvm_device_attr {

@@ -31,21 +31,25 @@ pub const KVM_X86_PKVM_PROTECTED_VM: u32 = 28;
 pub const KVM_CAP_X86_PROTECTED_VM: u32 = 0xffbadab2;
 pub const KVM_CAP_X86_PROTECTED_VM_FLAGS_SET_FW_GPA: u32 = 0;
 pub const KVM_CAP_X86_PROTECTED_VM_FLAGS_INFO: u32 = 1;
-pub const KVM_DEV_VFIO_PVIOMMU: u32 = 2;
+pub const KVM_DEV_VFIO_PVIOMMU: u32 = 5;
 pub const KVM_DEV_VFIO_PVIOMMU_ATTACH: u32 = 1;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct kvm_vfio_iommu_info {
+    pub size: u32,
     pub device_fd: i32,
     pub nr_sids: u32,
+    pub __reserved: u32,
 }
 pub const KVM_DEV_VFIO_PVIOMMU_GET_INFO: u32 = 2;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct kvm_vfio_iommu_config {
+    pub size: u32,
     pub device_fd: i32,
     pub sid_idx: u32,
     pub vsid: u32,
+    pub __reserved: u32,
 }
 
 #[repr(C)]
