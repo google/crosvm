@@ -13,7 +13,7 @@ pub trait PowerMonitor: ReadNotifier {
     fn read_message(&mut self) -> std::result::Result<Option<PowerData>, Box<dyn Error>>;
 }
 
-pub trait PowerClient {
+pub trait PowerClient: Send {
     fn get_power_data(&mut self) -> std::result::Result<PowerData, Box<dyn Error>>;
 
     /// Returns timestamp that this client sends a DBus request.

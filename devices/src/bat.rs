@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::ops::DerefMut;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -22,6 +23,7 @@ use base::WorkerThread;
 use power_monitor::BatteryStatus;
 use power_monitor::CreatePowerClientFn;
 use power_monitor::CreatePowerMonitorFn;
+use power_monitor::PowerClient;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
@@ -82,7 +84,6 @@ struct GoldfishBatteryState {
     current: u32,
     charge_counter: u32,
     charge_full: u32,
-    initialized: bool,
     // bat_config is used for goldfish battery to report fake battery to the guest.
     bat_config: BatConfig,
 }
@@ -136,6 +137,12 @@ impl GoldfishBatteryState {
     create_battery_func!(set_bat_config, bat_config, BatConfig, BATTERY_INT_MASK);
 }
 
+enum BatInitializationState {
+    NotYet,
+    Pending(Box<dyn PowerClient>),
+    Done,
+}
+
 /// GoldFish Battery state
 pub struct GoldfishBattery {
     state: Arc<Mutex<GoldfishBatteryState>>,
@@ -147,6 +154,7 @@ pub struct GoldfishBattery {
     tube: Option<Tube>,
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
     create_powerd_client: Option<Box<dyn CreatePowerClientFn>>,
+    init_state: Arc<Mutex<BatInitializationState>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -206,6 +214,7 @@ fn command_monitor(
     kill_evt: Event,
     state: Arc<Mutex<GoldfishBatteryState>>,
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
+    init_state: Arc<Mutex<BatInitializationState>>,
 ) {
     let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
         (&tube, Token::Commands),
@@ -329,6 +338,7 @@ fn command_monitor(
                             inject_irq |= bat_state.set_present(0);
                         }
                     }
+                    *init_state.lock() = BatInitializationState::Done;
 
                     if inject_irq {
                         let _ = irq_evt.trigger();
@@ -346,11 +356,6 @@ fn command_monitor(
             }
         }
     }
-}
-
-enum InitResult {
-    Done,
-    RetryNeeded,
 }
 
 impl GoldfishBattery {
@@ -389,7 +394,6 @@ impl GoldfishBattery {
             current: 0,
             charge_counter: 0,
             charge_full: 0,
-            initialized: false,
             bat_config: BatConfig::Real,
         }));
 
@@ -403,6 +407,7 @@ impl GoldfishBattery {
             tube: Some(tube),
             create_power_monitor,
             create_powerd_client,
+            init_state: Arc::new(Mutex::new(BatInitializationState::NotYet)),
         })
     }
 
@@ -430,23 +435,45 @@ impl GoldfishBattery {
             let irq_evt = self.irq_evt.try_clone().unwrap();
             let bat_state = self.state.clone();
             let create_monitor_fn = self.create_power_monitor.take();
+            let init_state = self.init_state.clone();
             self.monitor_thread = Some(WorkerThread::start(self.debug_label(), move |kill_evt| {
-                command_monitor(tube, irq_evt, kill_evt, bat_state, create_monitor_fn)
+                command_monitor(
+                    tube,
+                    irq_evt,
+                    kill_evt,
+                    bat_state,
+                    create_monitor_fn,
+                    init_state,
+                )
             }));
             self.activated = true;
         }
     }
 
-    fn initialize_battery_state(&mut self) -> anyhow::Result<InitResult> {
-        let mut power_client = match &self.create_powerd_client {
-            Some(f) => match f() {
-                Ok(c) => c,
-                Err(e) => bail!("failed to connect to the powerd: {:#}", e),
-            },
-            None => {
+    fn initialize_battery_state(&mut self) -> anyhow::Result<()> {
+        let mut init_state = self.init_state.lock();
+        let power_client = match (init_state.deref_mut(), &self.create_powerd_client) {
+            (BatInitializationState::NotYet, None) => {
                 // No need to initialize the state via DBus.
-                return Ok(InitResult::Done);
+                return Ok(());
             }
+            (BatInitializationState::NotYet, Some(f)) => {
+                // Initialize power_client
+                let client = match f() {
+                    Ok(c) => c,
+                    Err(e) => bail!("failed to connect to the powerd: {:#}", e),
+                };
+                // Save power_client to init_state
+                *init_state = BatInitializationState::Pending(client);
+
+                let power_client = match init_state.deref_mut() {
+                    BatInitializationState::Pending(ref mut power_client) => power_client.as_mut(),
+                    _ => unreachable!("init_state should be Pending"),
+                };
+                power_client
+            }
+            (BatInitializationState::Pending(ref mut power_client), _) => power_client.as_mut(),
+            (BatInitializationState::Done, _) => bail!("battery status already intialized"),
         };
 
         if let Some(prev_call) = power_client.last_request_timestamp() {
@@ -456,7 +483,7 @@ impl GoldfishBattery {
                 .duration_since(prev_call)
                 .context("failed to calculate time for dbus request")?;
             if duration < Duration::from_millis(Self::POWERD_REQ_INTERVAL_MS) {
-                return Ok(InitResult::RetryNeeded);
+                return Ok(());
             }
         }
 
@@ -489,7 +516,13 @@ impl GoldfishBattery {
                 bail!("failed to get response from powerd: {:#}", e);
             }
         };
-        Ok(InitResult::Done)
+        // Release powerd_client if the initialization data is obtained.
+        *init_state = BatInitializationState::Done;
+        Ok(())
+    }
+
+    fn battery_init_done(&self) -> bool {
+        matches!(*self.init_state.lock(), BatInitializationState::Done)
     }
 }
 
@@ -521,20 +554,14 @@ impl BusDevice for GoldfishBattery {
         }
 
         // Before first read, we try to ask powerd the actual power data to initialize `self.state`.
-        if !self.state.lock().initialized {
-            match self.initialize_battery_state() {
-                Ok(InitResult::Done) => self.state.lock().initialized = true,
-                Ok(InitResult::RetryNeeded) => {
-                    // Do nothing. Will be tried next time.
-                }
-                Err(e) => {
-                    error!(
-                        "{}: failed to initialize bettery state (info={:?}): {:#}",
-                        self.debug_label(),
-                        info,
-                        e
-                    );
-                }
+        if !self.battery_init_done() {
+            if let Err(e) = self.initialize_battery_state() {
+                error!(
+                    "{}: failed to initialize bettery state (info={:?}): {:#}",
+                    self.debug_label(),
+                    info,
+                    e
+                );
             }
         }
 
@@ -759,14 +786,15 @@ mod tests {
         )
         .unwrap();
 
-        // First call should return RetryNeeded due to rate limiting.
-        assert!(matches!(
-            battery.initialize_battery_state(),
-            Ok(InitResult::RetryNeeded)
-        ));
-        // initialized should still be false
-        assert!(!battery.state.lock().initialized);
+        assert!(matches!(battery.initialize_battery_state(), Ok(())));
 
+        // First initialization status should be pending due to rate limiting
+        assert!(matches!(
+            *battery.init_state.lock(),
+            BatInitializationState::Pending(_)
+        ));
+
+        *battery.init_state.lock() = BatInitializationState::NotYet;
         let old_time = now - Duration::from_millis(GoldfishBattery::POWERD_REQ_INTERVAL_MS + 500);
         // Replace the factory function to simulate an older last_request_time
         battery.create_powerd_client = Some(Box::new(move || {
@@ -774,9 +802,11 @@ mod tests {
         }));
 
         // Second call with old time should succeed.
+        assert!(matches!(battery.initialize_battery_state(), Ok(())));
+
         assert!(matches!(
-            battery.initialize_battery_state(),
-            Ok(InitResult::Done)
+            *battery.init_state.lock(),
+            BatInitializationState::Done,
         ));
 
         // Check if values are correctly updated.
@@ -795,9 +825,10 @@ mod tests {
         let mut battery =
             GoldfishBattery::new(mmio_base, irq_num, irq_evt, tube, None, None).unwrap();
 
+        assert!(matches!(battery.initialize_battery_state(), Ok(())));
         assert!(matches!(
-            battery.initialize_battery_state(),
-            Ok(InitResult::Done)
+            *battery.init_state.lock(),
+            BatInitializationState::NotYet,
         ));
     }
 }
