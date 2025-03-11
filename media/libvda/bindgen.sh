@@ -10,6 +10,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 source tools/impl/bindgen-common.sh
 
+BINDGEN_PLATFORM2="${PWD}/../../platform2"
+
 bindgen_generate \
     --allowlist-type='video_.*' \
     "${BINDGEN_PLATFORM2}/arc/vm/libvda/libvda_common.h" \

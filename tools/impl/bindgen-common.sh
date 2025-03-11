@@ -6,8 +6,6 @@
 
 export BINDGEN_LINUX="${PWD}/../../third_party/kernel/v6.12"
 
-export BINDGEN_PLATFORM2="${PWD}/../../platform2"
-
 export BINDGEN_OPTS=(
     '--disable-header-comment'
     '--no-layout-tests'
