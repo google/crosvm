@@ -13,6 +13,6 @@ source tools/impl/bindgen-common.sh
 bindgen_generate \
     --allowlist-type='udmabuf_.*' \
     --allowlist-var="UDMABUF_.*" \
-    "${BINDGEN_LINUX}/include/uapi/linux/udmabuf.h" \
+    "${BINDGEN_LINUX_X86_HEADERS}/include/linux/udmabuf.h" \
     | replace_linux_int_types | rustfmt \
     > vm_memory/src/udmabuf_bindings.rs

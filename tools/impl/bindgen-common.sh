@@ -4,7 +4,7 @@
 
 # Helper functions for bindgen scripts sourced by tools/bindgen-all-the-things.
 
-export BINDGEN_LINUX="${PWD}/../../third_party/kernel/v6.12"
+BINDGEN_LINUX="${PWD}/../../third_party/kernel/v6.12"
 
 export BINDGEN_OPTS=(
     '--disable-header-comment'

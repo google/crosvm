@@ -14,6 +14,6 @@ bindgen_generate \
     --allowlist-type='io_uring_.*' \
     --allowlist-var='IO_URING_.*' \
     --allowlist-var='IORING_.*' \
-    "${BINDGEN_LINUX}/include/uapi/linux/io_uring.h" \
+    "${BINDGEN_LINUX_X86_HEADERS}/include/linux/io_uring.h" \
     | replace_linux_int_types | rustfmt \
     > io_uring/src/bindings.rs

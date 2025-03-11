@@ -67,8 +67,6 @@ bindgen_generate \
     --allowlist-type='vfio_.*' \
     --with-derive-custom "vfio_info_cap_header=FromBytes,Immutable,IntoBytes,KnownLayout" \
     --with-derive-custom "vfio_iova_range=FromBytes,Immutable,IntoBytes,KnownLayout" \
-    "${BINDGEN_LINUX}/include/uapi/linux/vfio.h" \
-    -- \
-    -D__user= \
+    "${BINDGEN_LINUX_X86_HEADERS}/include/linux/vfio.h" \
     | replace_linux_int_types | fix_vfio_type \
     > vfio_sys/src/vfio.rs

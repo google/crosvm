@@ -48,12 +48,12 @@ bindgen_generate \
     --allowlist-var='IFF_MULTI_QUEUE' \
     --allowlist-var='IFF_TAP' \
     --allowlist-var='IFF_VNET_HDR' \
-    "${BINDGEN_LINUX}/include/uapi/linux/if_tun.h" \
+    "${BINDGEN_LINUX_X86_HEADERS}/include/linux/if_tun.h" \
     | replace_linux_int_types \
     > net_sys/src/if_tun.rs
 
 bindgen_generate \
     --allowlist-var='SIOC.*' \
-    "${BINDGEN_LINUX}/include/uapi/linux/sockios.h" \
+    "${BINDGEN_LINUX_X86_HEADERS}/include/linux/sockios.h" \
     | replace_linux_int_types \
     > net_sys/src/sockios.rs
