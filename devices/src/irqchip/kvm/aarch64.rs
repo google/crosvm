@@ -424,7 +424,8 @@ fn get_cpu_vgic_regs(
     mpidr: u64,
     prio_bits: u8,
 ) -> anyhow::Result<()> {
-    for offset in icc_regs(prio_bits)? {
+    for reg in icc_regs(prio_bits)? {
+        let offset = reg.encoded();
         // SAFETY:
         // Safe because we are specifying CPU SYSREGS, which is 64 bits.
         let val = unsafe {
