@@ -6,6 +6,7 @@ version = 3
 name = "aarch64"
 version = "0.1.0"
 dependencies = [
+ "aarch64_sys_reg",
  "anyhow",
  "arch",
  "base",
@@ -27,6 +28,14 @@ dependencies = [
  "thiserror",
  "vm_control",
  "vm_memory",
+]
+
+[[package]]
+name = "aarch64_sys_reg"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -856,6 +865,7 @@ name = "crosvm"
 version = "0.1.0"
 dependencies = [
  "aarch64",
+ "aarch64_sys_reg",
  "acpi_tables",
  "android_audio",
  "anti_tamper",
@@ -1058,6 +1068,7 @@ dependencies = [
 name = "devices"
 version = "0.1.0"
 dependencies = [
+ "aarch64_sys_reg",
  "acpi_tables",
  "android_audio",
  "anyhow",
@@ -1579,6 +1590,7 @@ checksum = "fed44880c466736ef9a5c5b5facefb5ed0785676d0c02d612db14e54f0d84286"
 name = "hypervisor"
 version = "0.1.0"
 dependencies = [
+ "aarch64_sys_reg",
  "anyhow",
  "base",
  "bit_field",

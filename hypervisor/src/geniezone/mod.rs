@@ -16,6 +16,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use aarch64_sys_reg::AArch64SysRegId;
 use base::errno_result;
 use base::error;
 use base::ioctl;
@@ -54,7 +55,6 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::MemoryRegionPurpose;
 
-use crate::AArch64SysRegId;
 use crate::BalloonEvent;
 use crate::ClockState;
 use crate::Config;
@@ -346,21 +346,21 @@ impl From<GeniezoneVcpuRegister> for u64 {
             GeniezoneVcpuRegister::V(n) => {
                 unreachable!("invalid GeniezoneVcpuRegister Vn index: {n}")
             }
-            GeniezoneVcpuRegister::System(AArch64SysRegId::FPSR) => {
+            GeniezoneVcpuRegister::System(aarch64_sys_reg::FPSR) => {
                 user_fpsimd_state_reg(GZVM_REG_SIZE_U32, offset_of!(user_fpsimd_state, fpsr))
             }
-            GeniezoneVcpuRegister::System(AArch64SysRegId::FPCR) => {
+            GeniezoneVcpuRegister::System(aarch64_sys_reg::FPCR) => {
                 user_fpsimd_state_reg(GZVM_REG_SIZE_U32, offset_of!(user_fpsimd_state, fpcr))
             }
-            GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_EL1) => spsr_reg(0),
-            GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_abt) => spsr_reg(1),
-            GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_und) => spsr_reg(2),
-            GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_irq) => spsr_reg(3),
-            GeniezoneVcpuRegister::System(AArch64SysRegId::SPSR_fiq) => spsr_reg(4),
-            GeniezoneVcpuRegister::System(AArch64SysRegId::SP_EL1) => {
+            GeniezoneVcpuRegister::System(aarch64_sys_reg::SPSR_EL1) => spsr_reg(0),
+            GeniezoneVcpuRegister::System(aarch64_sys_reg::SPSR_abt) => spsr_reg(1),
+            GeniezoneVcpuRegister::System(aarch64_sys_reg::SPSR_und) => spsr_reg(2),
+            GeniezoneVcpuRegister::System(aarch64_sys_reg::SPSR_irq) => spsr_reg(3),
+            GeniezoneVcpuRegister::System(aarch64_sys_reg::SPSR_fiq) => spsr_reg(4),
+            GeniezoneVcpuRegister::System(aarch64_sys_reg::SP_EL1) => {
                 gzvm_reg(offset_of!(gzvm_regs, sp_el1))
             }
-            GeniezoneVcpuRegister::System(AArch64SysRegId::ELR_EL1) => {
+            GeniezoneVcpuRegister::System(aarch64_sys_reg::ELR_EL1) => {
                 gzvm_reg(offset_of!(gzvm_regs, elr_el1))
             }
             GeniezoneVcpuRegister::System(sysreg) => {

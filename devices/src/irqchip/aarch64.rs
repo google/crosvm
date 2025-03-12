@@ -2,9 +2,23 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use aarch64_sys_reg::AArch64SysRegId;
+use aarch64_sys_reg::ICC_AP0R0_EL1;
+use aarch64_sys_reg::ICC_AP0R1_EL1;
+use aarch64_sys_reg::ICC_AP0R2_EL1;
+use aarch64_sys_reg::ICC_AP0R3_EL1;
+use aarch64_sys_reg::ICC_AP1R0_EL1;
+use aarch64_sys_reg::ICC_AP1R1_EL1;
+use aarch64_sys_reg::ICC_AP1R2_EL1;
+use aarch64_sys_reg::ICC_AP1R3_EL1;
+use aarch64_sys_reg::ICC_BPR0_EL1;
+use aarch64_sys_reg::ICC_BPR1_EL1;
+use aarch64_sys_reg::ICC_IGRPEN0_EL1;
+use aarch64_sys_reg::ICC_IGRPEN1_EL1;
+use aarch64_sys_reg::ICC_PMR_EL1;
+use aarch64_sys_reg::ICC_SRE_EL1;
 use anyhow::anyhow;
 use base::Result;
-use hypervisor::aarch64::AArch64SysRegId;
 use hypervisor::DeviceKind;
 use snapshot::AnySnapshot;
 
@@ -38,38 +52,6 @@ pub trait IrqChipAArch64: IrqChip {
 }
 
 // List of registers taken from https://web.git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/arch/arm64/kvm/vgic-sys-reg-v3.c?h=v6.13.5#n300
-pub const ICC_PMR_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b0100, 0b0110, 0b000);
-pub const ICC_BPR0_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1000, 0b011);
-pub const ICC_BPR1_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1100, 0b011);
-pub const ICC_CTLR_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1100, 0b100);
-pub const ICC_SRE_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1100, 0b101);
-pub const ICC_IGRPEN0_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1100, 0b110);
-pub const ICC_IGRPEN1_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1100, 0b111);
-
-pub const ICC_AP0R0_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1000, 0b100);
-pub const ICC_AP0R1_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1000, 0b101);
-pub const ICC_AP0R2_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1000, 0b110);
-pub const ICC_AP0R3_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1000, 0b111);
-pub const ICC_AP1R0_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1001, 0b000);
-pub const ICC_AP1R1_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1001, 0b001);
-pub const ICC_AP1R2_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1001, 0b010);
-pub const ICC_AP1R3_EL1: AArch64SysRegId =
-    AArch64SysRegId::new_unchecked(0b11, 0b000, 0b1100, 0b1001, 0b011);
-
 pub fn icc_regs(prio_bits: u8) -> anyhow::Result<Vec<AArch64SysRegId>> {
     let mut regs = vec![
         ICC_PMR_EL1,

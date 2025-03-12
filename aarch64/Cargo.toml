@@ -9,6 +9,7 @@ gdb = ["gdbstub", "gdbstub_arch", "arch/gdb"]
 swap = ["swap/enable"]
 
 [dependencies]
+aarch64_sys_reg = { path = "../aarch64_sys_reg" }
 anyhow = "1"
 arch = { path = "../arch" }
 cros_fdt = { path = "../cros_fdt" }

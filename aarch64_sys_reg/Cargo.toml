@@ -1,0 +1,13 @@
+[package]
+name = "aarch64_sys_reg"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+
+[lib]
+
+[features]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "1.0.20"

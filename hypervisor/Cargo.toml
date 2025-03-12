@@ -34,6 +34,9 @@ vm_memory = { path = "../vm_memory" }
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 kvm_sys = { path = "../kvm_sys" }
 
+[target.'cfg(any(target_arch = "arm", target_arch = "aarch64"))'.dependencies]
+aarch64_sys_reg = { path = "../aarch64_sys_reg" }
+
 [target.'cfg(target_arch = "x86_64")'.dev-dependencies]
 hypervisor_test_macro = { path = "hypervisor_test_macro" }
 zerocopy = { version = "0.8.13", features = ["derive"] }

@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use aarch64_sys_reg::ICC_CTLR_EL1;
 use anyhow::anyhow;
 use anyhow::Context;
 use base::errno_result;
@@ -26,7 +27,6 @@ use sync::Mutex;
 use crate::icc_regs;
 use crate::IrqChip;
 use crate::IrqChipAArch64;
-use crate::ICC_CTLR_EL1;
 
 /// Default ARM routing table.  AARCH64_GIC_NR_SPIS pins go to VGIC.
 fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {

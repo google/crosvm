@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 
+use aarch64_sys_reg::AArch64SysRegId;
 use base::error;
 use base::Error;
 use base::Result;
@@ -18,7 +19,6 @@ use vm_memory::MemoryRegionPurpose;
 
 use super::GunyahVcpu;
 use super::GunyahVm;
-use crate::AArch64SysRegId;
 use crate::Hypervisor;
 use crate::PsciVersion;
 use crate::VcpuAArch64;

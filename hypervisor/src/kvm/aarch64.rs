@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::mem::offset_of;
 
+use aarch64_sys_reg::AArch64SysRegId;
 use anyhow::Context;
 use base::errno_result;
 use base::error;
@@ -36,7 +37,6 @@ use super::Kvm;
 use super::KvmCap;
 use super::KvmVcpu;
 use super::KvmVm;
-use crate::AArch64SysRegId;
 use crate::ClockState;
 use crate::DeviceKind;
 use crate::Hypervisor;
@@ -268,9 +268,9 @@ impl KvmVcpu {
             VcpuRegAArch64::Pc => Ok(KvmVcpuRegister::Pc),
             VcpuRegAArch64::Pstate => Ok(KvmVcpuRegister::Pstate),
             // Special case for multiplexed KVM registers
-            VcpuRegAArch64::System(AArch64SysRegId::CCSIDR_EL1) => {
+            VcpuRegAArch64::System(aarch64_sys_reg::CCSIDR_EL1) => {
                 let csselr =
-                    self.get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::CSSELR_EL1))?;
+                    self.get_one_reg(VcpuRegAArch64::System(aarch64_sys_reg::CSSELR_EL1))?;
                 Ok(KvmVcpuRegister::Ccsidr(csselr as u8))
             }
             VcpuRegAArch64::System(sysreg) => Ok(KvmVcpuRegister::System(sysreg)),
@@ -549,31 +549,31 @@ impl From<KvmVcpuRegister> for u64 {
                 user_fpsimd_state_reg(KVM_REG_SIZE_U128, offset_of!(user_fpsimd_state, vregs) + n)
             }
             KvmVcpuRegister::V(n) => unreachable!("invalid KvmVcpuRegister Vn index: {n}"),
-            KvmVcpuRegister::System(AArch64SysRegId::FPSR) => {
+            KvmVcpuRegister::System(aarch64_sys_reg::FPSR) => {
                 user_fpsimd_state_reg(KVM_REG_SIZE_U32, offset_of!(user_fpsimd_state, fpsr))
             }
-            KvmVcpuRegister::System(AArch64SysRegId::FPCR) => {
+            KvmVcpuRegister::System(aarch64_sys_reg::FPCR) => {
                 user_fpsimd_state_reg(KVM_REG_SIZE_U32, offset_of!(user_fpsimd_state, fpcr))
             }
-            KvmVcpuRegister::System(AArch64SysRegId::SPSR_EL1) => spsr_reg(KVM_SPSR_EL1),
-            KvmVcpuRegister::System(AArch64SysRegId::SPSR_abt) => spsr_reg(KVM_SPSR_ABT),
-            KvmVcpuRegister::System(AArch64SysRegId::SPSR_und) => spsr_reg(KVM_SPSR_UND),
-            KvmVcpuRegister::System(AArch64SysRegId::SPSR_irq) => spsr_reg(KVM_SPSR_IRQ),
-            KvmVcpuRegister::System(AArch64SysRegId::SPSR_fiq) => spsr_reg(KVM_SPSR_FIQ),
-            KvmVcpuRegister::System(AArch64SysRegId::SP_EL1) => {
+            KvmVcpuRegister::System(aarch64_sys_reg::SPSR_EL1) => spsr_reg(KVM_SPSR_EL1),
+            KvmVcpuRegister::System(aarch64_sys_reg::SPSR_abt) => spsr_reg(KVM_SPSR_ABT),
+            KvmVcpuRegister::System(aarch64_sys_reg::SPSR_und) => spsr_reg(KVM_SPSR_UND),
+            KvmVcpuRegister::System(aarch64_sys_reg::SPSR_irq) => spsr_reg(KVM_SPSR_IRQ),
+            KvmVcpuRegister::System(aarch64_sys_reg::SPSR_fiq) => spsr_reg(KVM_SPSR_FIQ),
+            KvmVcpuRegister::System(aarch64_sys_reg::SP_EL1) => {
                 kvm_reg(offset_of!(kvm_regs, sp_el1))
             }
-            KvmVcpuRegister::System(AArch64SysRegId::ELR_EL1) => {
+            KvmVcpuRegister::System(aarch64_sys_reg::ELR_EL1) => {
                 kvm_reg(offset_of!(kvm_regs, elr_el1))
             }
             // The KVM API accidentally swapped CNTV_CVAL_EL0 and CNTVCT_EL0.
-            KvmVcpuRegister::System(AArch64SysRegId::CNTV_CVAL_EL0) => reg_u64(
+            KvmVcpuRegister::System(aarch64_sys_reg::CNTV_CVAL_EL0) => reg_u64(
                 KVM_REG_ARM64_SYSREG.into(),
-                AArch64SysRegId::CNTVCT_EL0.encoded().into(),
+                aarch64_sys_reg::CNTVCT_EL0.encoded().into(),
             ),
-            KvmVcpuRegister::System(AArch64SysRegId::CNTVCT_EL0) => reg_u64(
+            KvmVcpuRegister::System(aarch64_sys_reg::CNTVCT_EL0) => reg_u64(
                 KVM_REG_ARM64_SYSREG.into(),
-                AArch64SysRegId::CNTV_CVAL_EL0.encoded().into(),
+                aarch64_sys_reg::CNTV_CVAL_EL0.encoded().into(),
             ),
             KvmVcpuRegister::System(sysreg) => {
                 reg_u64(KVM_REG_ARM64_SYSREG.into(), sysreg.encoded().into())
@@ -728,7 +728,7 @@ impl VcpuAArch64 for KvmVcpu {
     }
 
     fn get_mpidr(&self) -> Result<u64> {
-        self.get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::MPIDR_EL1))
+        self.get_one_reg(VcpuRegAArch64::System(aarch64_sys_reg::MPIDR_EL1))
     }
 
     fn get_psci_version(&self) -> Result<PsciVersion> {
@@ -769,15 +769,15 @@ impl VcpuAArch64 for KvmVcpu {
 
     fn get_system_regs(&self) -> Result<BTreeMap<AArch64SysRegId, u64>> {
         let reg_list = self.get_reg_list()?;
-        let cntvct_el0: u16 = AArch64SysRegId::CNTVCT_EL0.encoded();
-        let cntv_cval_el0: u16 = AArch64SysRegId::CNTV_CVAL_EL0.encoded();
+        let cntvct_el0: u16 = aarch64_sys_reg::CNTVCT_EL0.encoded();
+        let cntv_cval_el0: u16 = aarch64_sys_reg::CNTV_CVAL_EL0.encoded();
         let mut sys_regs = BTreeMap::new();
         for reg in reg_list {
             if (reg as u32) & KVM_REG_ARM_COPROC_MASK == KVM_REG_ARM64_SYSREG {
                 let r = if reg as u16 == cntvct_el0 {
-                    AArch64SysRegId::CNTV_CVAL_EL0
+                    aarch64_sys_reg::CNTV_CVAL_EL0
                 } else if reg as u16 == cntv_cval_el0 {
-                    AArch64SysRegId::CNTVCT_EL0
+                    aarch64_sys_reg::CNTVCT_EL0
                 } else {
                     AArch64SysRegId::from_encoded((reg & 0xFFFF) as u16)
                 };
@@ -927,11 +927,11 @@ mod tests {
         // values.
 
         const KVM_REG_ARM_TIMER_CVAL: u64 = 0x6030_0000_0013_DF02;
-        let cntv_cval_el0_kvm = KvmVcpuRegister::System(AArch64SysRegId::CNTV_CVAL_EL0);
+        let cntv_cval_el0_kvm = KvmVcpuRegister::System(aarch64_sys_reg::CNTV_CVAL_EL0);
         assert_eq!(u64::from(cntv_cval_el0_kvm), KVM_REG_ARM_TIMER_CVAL);
 
         const KVM_REG_ARM_TIMER_CNT: u64 = 0x6030_0000_0013_DF1A;
-        let cntvct_el0_kvm = KvmVcpuRegister::System(AArch64SysRegId::CNTVCT_EL0);
+        let cntvct_el0_kvm = KvmVcpuRegister::System(aarch64_sys_reg::CNTVCT_EL0);
         assert_eq!(u64::from(cntvct_el0_kvm), KVM_REG_ARM_TIMER_CNT);
     }
 }

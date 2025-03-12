@@ -14,6 +14,8 @@ use std::sync::atomic::AtomicU32;
 use std::sync::mpsc;
 use std::sync::Arc;
 
+#[cfg(feature = "gdb")]
+use aarch64_sys_reg::AArch64SysRegId;
 use arch::get_serial_cmdline;
 use arch::CpuSet;
 use arch::DtbOverlay;
@@ -55,8 +57,6 @@ use gdbstub::arch::Arch;
 use gdbstub_arch::aarch64::reg::id::AArch64RegId;
 #[cfg(feature = "gdb")]
 use gdbstub_arch::aarch64::AArch64 as GdbArch;
-#[cfg(feature = "gdb")]
-use hypervisor::AArch64SysRegId;
 use hypervisor::CpuConfigAArch64;
 use hypervisor::DeviceKind;
 use hypervisor::Hypervisor;
@@ -1174,10 +1174,10 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
             *reg = vcpu.get_vector_reg(n).map_err(Error::ReadReg)?;
         }
         regs.fpcr = vcpu
-            .get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::FPCR))
+            .get_one_reg(VcpuRegAArch64::System(aarch64_sys_reg::FPCR))
             .map_err(Error::ReadReg)? as u32;
         regs.fpsr = vcpu
-            .get_one_reg(VcpuRegAArch64::System(AArch64SysRegId::FPSR))
+            .get_one_reg(VcpuRegAArch64::System(aarch64_sys_reg::FPSR))
             .map_err(Error::ReadReg)? as u32;
 
         Ok(regs)
@@ -1209,12 +1209,12 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
             vcpu.set_vector_reg(n, *reg).map_err(Error::WriteReg)?;
         }
         vcpu.set_one_reg(
-            VcpuRegAArch64::System(AArch64SysRegId::FPCR),
+            VcpuRegAArch64::System(aarch64_sys_reg::FPCR),
             u64::from(regs.fpcr),
         )
         .map_err(Error::WriteReg)?;
         vcpu.set_one_reg(
-            VcpuRegAArch64::System(AArch64SysRegId::FPSR),
+            VcpuRegAArch64::System(aarch64_sys_reg::FPSR),
             u64::from(regs.fpsr),
         )
         .map_err(Error::WriteReg)?;
