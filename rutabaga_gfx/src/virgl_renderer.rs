@@ -7,7 +7,7 @@
 
 #![cfg(feature = "virgl_renderer")]
 
-use std::cmp::min;
+use std::ffi::CStr;
 use std::io::Error as SysError;
 use std::io::IoSlice;
 use std::io::IoSliceMut;
@@ -24,11 +24,11 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use log::debug;
 use log::error;
+use log::log;
 use log::warn;
+use log::Level;
 
-use crate::generated::virgl_debug_callback_bindings::*;
 use crate::generated::virgl_renderer_bindings::*;
 use crate::renderer_utils::*;
 use crate::rutabaga_core::RutabagaComponent;
@@ -204,37 +204,24 @@ impl Drop for VirglRendererContext {
     }
 }
 
-extern "C" fn debug_callback(fmt: *const ::std::os::raw::c_char, ap: stdio::va_list) {
-    const BUF_LEN: usize = 256;
-    let mut v = [b' '; BUF_LEN];
-
-    // TODO(b/315870313): Add safety comment
-    #[allow(clippy::undocumented_unsafe_blocks)]
-    let printed_len = unsafe {
-        let ptr = v.as_mut_ptr() as *mut ::std::os::raw::c_char;
-        #[cfg(any(
-            target_arch = "x86",
-            target_arch = "x86_64",
-            target_arch = "aarch64",
-            target_arch = "riscv64"
-        ))]
-        let size = BUF_LEN as ::std::os::raw::c_ulong;
-        #[cfg(target_arch = "arm")]
-        let size = BUF_LEN as ::std::os::raw::c_uint;
-
-        stdio::vsnprintf(ptr, size, fmt, ap)
+extern "C" fn log_callback(
+    log_level: virgl_log_level_flags,
+    message: *const ::std::os::raw::c_char,
+    _user_data: *mut ::std::os::raw::c_void,
+) {
+    let level = match log_level {
+        VIRGL_LOG_LEVEL_DEBUG => Level::Debug,
+        VIRGL_LOG_LEVEL_WARNING => Level::Warn,
+        VIRGL_LOG_LEVEL_ERROR => Level::Error,
+        VIRGL_LOG_LEVEL_INFO => Level::Info,
+        _ => Level::Trace,
     };
 
-    if printed_len < 0 {
-        debug!(
-            "rutabaga_gfx::virgl_renderer::debug_callback: vsnprintf returned {}",
-            printed_len
-        );
-    } else {
-        // vsnprintf returns the number of chars that *would* have been printed
-        let len = min(printed_len as usize, BUF_LEN - 1);
-        debug!("{}", String::from_utf8_lossy(&v[..len]));
-    }
+    // SAFETY:
+    // The caller ensures that `message` is always a valid pointer to a NULL-terminated string
+    // (even if zero-length).
+    let message_str = unsafe { CStr::from_ptr(message) };
+    log!(level, "{}", message_str.to_string_lossy());
 }
 
 extern "C" fn write_context_fence(cookie: *mut c_void, ctx_id: u32, ring_idx: u32, fence_id: u64) {
@@ -361,7 +348,7 @@ impl VirglRenderer {
         // TODO(b/315870313): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
-            virgl_set_debug_callback(Some(debug_callback))
+            virgl_set_log_callback(Some(log_callback), null_mut(), None);
         };
 
         // Cookie is intentionally never freed because virglrenderer never gets uninitialized.
