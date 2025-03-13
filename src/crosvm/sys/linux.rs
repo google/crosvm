@@ -3051,6 +3051,7 @@ struct ControlLoopState<'a, V: VmArch, Vcpu: VcpuArch> {
     #[cfg(feature = "balloon")]
     balloon_tube: Option<&'a mut BalloonTube>,
     device_ctrl_tube: &'a Tube,
+    #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
     irq_handler_control: &'a Tube,
     #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
     vm_memory_handler_control: &'a Tube,
@@ -3275,6 +3276,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 state.swap_controller.as_ref(),
                 state.device_ctrl_tube,
                 state.vcpu_handles.len(),
+                #[cfg(target_arch = "x86_64")]
                 state.irq_handler_control,
                 || state.linux.irq_chip.snapshot(state.linux.vcpu_count),
                 state.suspended_pvclock_state,
@@ -3944,6 +3946,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             |msg, index| {
                 vcpu::kick_vcpu(&vcpu_handles.get(index), linux.irq_chip.as_irq_chip(), msg)
             },
+            #[cfg(target_arch = "x86_64")]
             &irq_handler_control,
             &device_ctrl_tube,
             linux.vcpu_count,
@@ -4194,6 +4197,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             #[cfg(feature = "balloon")]
                             balloon_tube: balloon_tube.as_mut(),
                             device_ctrl_tube: &device_ctrl_tube,
+                            #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
                             irq_handler_control: &irq_handler_control,
                             #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
                             vm_memory_handler_control: &vm_memory_handler_control,

@@ -32,9 +32,12 @@ fn compare_snapshots(a: &Path, b: &Path) -> (bool, String) {
         .arg("vcpu*")
         .arg("--exclude")
         .arg("irqchip")
-        // KVM's pvclock seems to advance some even if the vCPUs haven't started yet.
+        // KVM's pvclock seems to advance some even if the vCPUs haven't started yet. This modifies
+        // memory
         .arg("--exclude")
         .arg("pvclock")
+        .arg("--exclude")
+        .arg("mem")
         .arg(a)
         .arg(b)
         .output()
