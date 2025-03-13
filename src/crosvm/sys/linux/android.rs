@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![cfg(target_os = "android")]
-
 use std::ffi::CString;
 
 use anyhow::anyhow;
