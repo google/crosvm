@@ -33,13 +33,6 @@ def RunSteps(api):
             ["./tools/cargo-doc", "--target-dir", "docs/target"],
         )
 
-        # Container generated files are root-owned, we need to make sure they will be readable by
-        # gsutil (which has to run outside the container to run with proper authentication).
-        api.crosvm.step_in_container(
-            "Make docs readable by gsutil",
-            ["chmod", "-R", "o+r", "docs/target"],
-        )
-
         api.gsutil(
             ["rsync", "-r", "-d", "./docs/target/html", BOOK_URL],
             name="Upload book",
