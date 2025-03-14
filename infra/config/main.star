@@ -405,6 +405,6 @@ infra_builder(
     executable = luci.recipe(
         name = "build_baguette_image",
     ),
-    schedule = "0,0 0 * * 3",  # Run every Wednesday
+    schedule = "0 0 * * *",  # Run everyday during active devlopment
     postsubmit = False,
 )
