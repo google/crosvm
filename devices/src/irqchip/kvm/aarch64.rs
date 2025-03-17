@@ -16,6 +16,7 @@ use hypervisor::kvm::KvmVcpu;
 use hypervisor::kvm::KvmVm;
 use hypervisor::DeviceKind;
 use hypervisor::IrqRoute;
+use hypervisor::MPState;
 use hypervisor::VcpuAArch64;
 use hypervisor::Vm;
 use kvm_sys::*;
@@ -223,6 +224,7 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
                     CpuSpecificState {
                         cpu_sys_regs,
                         redist_regs,
+                        mp_state: MPState::from(&vcpu.get_mp_state()?),
                     },
                 );
             }
@@ -249,6 +251,7 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
                     .with_context(|| format!("CPU with MPIDR {} does not exist", mpidr))?;
                 set_cpu_vgic_regs(&self.vgic, mpidr, &mpidr_data.cpu_sys_regs)?;
                 set_redist_regs(&self.vgic, mpidr, &mpidr_data.redist_regs)?;
+                vcpu.set_mp_state(&kvm_mp_state::from(&mpidr_data.mp_state))?;
             }
             set_dist_regs(&self.vgic, &deser.dist_regs)?;
             Ok(())
@@ -286,6 +289,7 @@ struct CpuSpecificState {
     // Key: Register ID.
     cpu_sys_regs: BTreeMap<u16, u64>,
     redist_regs: Vec<u32>,
+    mp_state: MPState,
 }
 
 // # Safety
