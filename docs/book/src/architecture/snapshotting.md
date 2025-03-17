@@ -1,8 +1,8 @@
 # Architecture: Snapshotting
 
-Snapshotting is a **highly experimental** `x86_64` only feature currently under development. It is
-100% **not supported** and only supports a very limited set of devices. This page roughly summarizes
-how the system works, and how device authors should think about it when writing new devices.
+Snapshotting is a **highly experimental** feature currently under development. It is 100% **not
+supported** and only supports a very limited set of devices. This page roughly summarizes how the
+system works, and how device authors should think about it when writing new devices.
 
 ## The snapshot & restore sequence
 
