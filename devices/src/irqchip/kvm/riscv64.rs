@@ -79,8 +79,8 @@ impl AiaDescriptor {
             flags: 0,
         };
 
-        // Safe because we allocated the struct that's being passed in, and raw_aia_mode is pointing
-        // to a uniquely owned local, mutable variable.
+        // SAFETY: Safe because we allocated the struct that's being passed in, and raw_aia_mode is
+        // pointing to a uniquely owned local, mutable variable.
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR, &init_attr) };
         if ret != 0 {
             return errno_result();
@@ -99,8 +99,8 @@ impl AiaDescriptor {
             flags: 0,
         };
 
-        // Safe because we allocated the struct that's being passed in, and raw_num_ids is pointing
-        // to a uniquely owned local, mutable variable.
+        // SAFETY: Safe because we allocated the struct that's being passed in, and raw_num_ids is
+        // pointing to a uniquely owned local, mutable variable.
         let ret = unsafe { ioctl_with_ref(self, KVM_GET_DEVICE_ATTR, &aia_num_ids_attr) };
         if ret != 0 {
             return errno_result();
@@ -117,8 +117,8 @@ impl AiaDescriptor {
             addr: raw_aia_mode as u64,
             flags: 0,
         };
-        // Safe because we allocated the struct that's being passed in, and raw_aia_mode is pointing
-        // to a uniquely owned local, mutable variable.
+        // SAFETY: Safe because we allocated the struct that's being passed in, and raw_aia_mode is
+        // pointing to a uniquely owned local, mutable variable.
         let ret = unsafe { ioctl_with_ref(self, KVM_GET_DEVICE_ATTR, &aia_mode_attr) };
         if ret != 0 {
             return errno_result();
@@ -134,8 +134,8 @@ impl AiaDescriptor {
             addr: raw_num_sources as u64,
             flags: 0,
         };
-        // Safe because we allocated the struct that's being passed in, and raw_aia_mode is pointing
-        // to a uniquely owned local, mutable variable.
+        // SAFETY: Safe because we allocated the struct that's being passed in, and raw_aia_mode is
+        // pointing to a uniquely owned local, mutable variable.
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR, &kvm_attr) };
         if ret != 0 {
             return errno_result();
@@ -151,8 +151,8 @@ impl AiaDescriptor {
             addr: raw_hart_bits as u64,
             flags: 0,
         };
-        // Safe because we allocated the struct that's being passed in, and raw_aia_mode is pointing
-        // to a uniquely owned local, mutable variable.
+        // SAFETY: Safe because we allocated the struct that's being passed in, and raw_aia_mode is
+        // pointing to a uniquely owned local, mutable variable.
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR, &kvm_attr) };
         if ret != 0 {
             return errno_result();
@@ -170,8 +170,8 @@ impl AiaDescriptor {
             addr: raw_aplic_addr as u64,
             flags: 0,
         };
-        // Safe because we allocated the struct that's being passed in, and raw_aplic_addr is
-        // pointing to a uniquely owned local, mutable variable.
+        // SAFETY: Safe because we allocated the struct that's being passed in, and raw_aplic_addr
+        // is pointing to a uniquely owned local, mutable variable.
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR, &kvm_attr) };
         if ret != 0 {
             return errno_result();
@@ -185,8 +185,8 @@ impl AiaDescriptor {
                 addr: raw_imsic_addr as u64,
                 flags: 0,
             };
-            // Safe because we allocated the struct that's being passed in, and raw_imsic_addr is
-            // pointing to a uniquely owned local, mutable variable.
+            // SAFETY: Safe because we allocated the struct that's being passed in, and
+            // raw_imsic_addr is pointing to a uniquely owned local, mutable variable.
             let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR, &kvm_attr) };
             if ret != 0 {
                 return errno_result();

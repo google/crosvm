@@ -2668,6 +2668,7 @@ dependencies = [
  "rand",
  "remain",
  "resources",
+ "swap",
  "sync",
  "thiserror",
  "vm_control",

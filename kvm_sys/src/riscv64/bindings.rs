@@ -690,7 +690,7 @@ pub struct __riscv_v_regset_state {
     pub vreg: __IncompleteArrayField<::std::os::raw::c_char>,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct kvm_regs {}
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]

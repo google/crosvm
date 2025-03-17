@@ -4,7 +4,6 @@
 
 use base::errno_result;
 use base::error;
-use base::ioctl_with_mut_ref;
 use base::ioctl_with_ref;
 use base::Error;
 use base::Result;
@@ -113,7 +112,9 @@ impl KvmVcpu {
             KVM_EXIT_RISCV_SBI => {
                 // SAFETY: Safe because we trust the kernel to correctly fill in the union
                 let extension_id = unsafe { run.__bindgen_anon_1.riscv_sbi.extension_id };
+                // SAFETY: Safe because we trust the kernel to correctly fill in the union
                 let function_id = unsafe { run.__bindgen_anon_1.riscv_sbi.function_id };
+                // SAFETY: Safe because we trust the kernel to correctly fill in the union
                 let args = unsafe { run.__bindgen_anon_1.riscv_sbi.args };
                 Some(VcpuExit::Sbi {
                     extension_id,
@@ -124,8 +125,11 @@ impl KvmVcpu {
             KVM_EXIT_RISCV_CSR => {
                 // SAFETY: Safe because we trust the kernel to correctly fill in the union
                 let csr_num = unsafe { run.__bindgen_anon_1.riscv_csr.csr_num };
+                // SAFETY: Safe because we trust the kernel to correctly fill in the union
                 let new_value = unsafe { run.__bindgen_anon_1.riscv_csr.new_value };
+                // SAFETY: Safe because we trust the kernel to correctly fill in the union
                 let write_mask = unsafe { run.__bindgen_anon_1.riscv_csr.write_mask };
+                // SAFETY: Safe because we trust the kernel to correctly fill in the union
                 let ret_value = unsafe { run.__bindgen_anon_1.riscv_csr.ret_value };
                 Some(VcpuExit::RiscvCsr {
                     csr_num,
@@ -146,8 +150,8 @@ impl VcpuRiscv64 for KvmVcpu {
             id: vcpu_reg_id(reg),
             addr: data_ref as u64,
         };
-        // Safe because we allocated the struct and we know the kernel will read exactly the size of
-        // the struct.
+        // SAFETY: Safe because we allocated the struct and we know the kernel will read exactly the
+        // size of the struct.
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_ONE_REG, &onereg) };
         if ret == 0 {
             Ok(())
@@ -163,8 +167,8 @@ impl VcpuRiscv64 for KvmVcpu {
             addr: (&mut val as *mut u64) as u64,
         };
 
-        // Safe because we allocated the struct and we know the kernel will read exactly the size of
-        // the struct.
+        // SAFETY: Safe because we allocated the struct and we know the kernel will read exactly the
+        // size of the struct.
         let ret = unsafe { ioctl_with_ref(self, KVM_GET_ONE_REG, &onereg) };
         if ret == 0 {
             Ok(val)

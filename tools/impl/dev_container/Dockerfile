@@ -40,10 +40,6 @@ ENV CARGO_TARGET_DIR=/scratch/cargo_target
 # Allow APT to cache packages between docker image builds
 RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 
-# Add foreign architectures for cross-compilation.
-RUN dpkg --add-architecture arm64 \
-    && dpkg --add-architecture armhf
-
 # Add wine64 to PATH, as debian removed alternative entry to wine64
 ENV PATH=/usr/lib/wine:$PATH
 
@@ -53,6 +49,7 @@ COPY --chmod=555 \
     tools/deps/install-aarch64-other \
     tools/deps/install-armhf-other \
     tools/deps/install-mingw64-other \
+    tools/deps/install-riscv64-other \
     rust-toolchain \
     /tools/deps/
 RUN cd /tools/deps \
@@ -60,6 +57,7 @@ RUN cd /tools/deps \
     && ./install-aarch64-other \
     && ./install-armhf-other \
     && ./install-mingw64-other \
+    && ./install-riscv64-other \
     # We only use the nightly toolchain for rustfmt, remove other parts to save space.
     && rustup component remove --toolchain nightly rust-std \
     && rustup component remove --toolchain nightly cargo

@@ -307,9 +307,8 @@ verify_linux_builder("x86_64")
 verify_linux_builder("aarch64")
 verify_linux_builder("armhf")
 verify_linux_builder("mingw64")
-
-# Disabled due to b/304875018
-# verify_linux_builder("riscv64")
+# TODO(b/304875018): enable presubmit once confirmed to be stable
+verify_linux_builder("riscv64", presubmit = False)
 
 verify_builder(
     name = "chromeos_hatch",

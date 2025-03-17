@@ -12,14 +12,22 @@ FROM docker.io/debian:testing-slim
 
 # Add foreign architectures for cross-compilation.
 RUN dpkg --add-architecture arm64 \
-    && dpkg --add-architecture armhf
+    && dpkg --add-architecture armhf \
+    && dpkg --add-architecture riscv64
 
 # Use ./tools/deps/install-*-debs scripts to install debian packages
-COPY --chmod=555 tools/deps/install-x86_64-debs tools/deps/install-aarch64-debs tools/deps/install-armhf-debs tools/deps/install-mingw64-debs /tools/deps/
+COPY --chmod=555 \
+    tools/deps/install-x86_64-debs \
+    tools/deps/install-aarch64-debs \
+    tools/deps/install-armhf-debs \
+    tools/deps/install-mingw64-debs \
+    tools/deps/install-riscv64-debs \
+    /tools/deps/
 RUN cd /tools/deps \
     && apt-get update \
     && apt-get install --yes sudo curl \
     && ./install-x86_64-debs \
     && ./install-aarch64-debs \
     && ./install-armhf-debs \
-    && ./install-mingw64-debs
+    && ./install-mingw64-debs \
+    && ./install-riscv64-debs

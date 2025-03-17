@@ -25,7 +25,7 @@ mdformat = cmd("mdformat")
 lucicfg = cmd("third_party/depot_tools/lucicfg")
 
 # All supported platforms as a type and a list.
-Platform = Literal["x86_64", "aarch64", "mingw64", "armhf"]
+Platform = Literal["x86_64", "aarch64", "mingw64", "armhf", "riscv64"]
 PLATFORMS: Tuple[Platform, ...] = typing.get_args(Platform)
 
 ClippyOnlyPlatform = Literal["android"]

@@ -426,6 +426,7 @@ all-aarch64 = [
 ## All features that are compiled and tested for riscv64
 all-riscv64 = [
     "gdb",
+    "default",
 ]
 
 ## All features that are compiled and tested for x86_64

@@ -49,7 +49,7 @@ fn listxattr(path: &CString) -> Result<Vec<Vec<u8>>> {
 
     // While `c_char` is `i8` on x86_64, it's `u8` on ARM. So, disable the clippy for the cast.
     #[cfg_attr(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        any(target_arch = "arm", target_arch = "aarch64", target_arch = "riscv64"),
         allow(clippy::unnecessary_cast)
     )]
     let keys = buf

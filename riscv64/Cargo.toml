@@ -6,6 +6,7 @@ edition = "2021"
 
 [features]
 gdb = ["gdbstub", "gdbstub_arch", "arch/gdb"]
+swap = ["swap/enable"]
 
 [dependencies]
 arch = { path = "../arch" }
@@ -19,6 +20,7 @@ libc = "0.2"
 rand = "0.8"
 remain = "0.2"
 resources = { path = "../resources" }
+swap = { path = "../swap" }
 sync = { path = "../common/sync" }
 thiserror = "1"
 base = { path = "../base" }

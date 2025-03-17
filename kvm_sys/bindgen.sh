@@ -107,6 +107,7 @@ bindgen_generate \
     --blocklist-item='__BITS_PER_.*' \
     --blocklist-item='__FD_SETSIZE' \
     --blocklist-item='_?IOC.*' \
+    --with-derive-custom "kvm_regs=FromBytes,Immutable,IntoBytes,KnownLayout" \
     "${BINDGEN_LINUX_RISCV_HEADERS}/include/linux/kvm.h" \
     -- \
     -isystem "${BINDGEN_LINUX_RISCV_HEADERS}/include" \
