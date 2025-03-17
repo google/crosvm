@@ -196,10 +196,11 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
                 return errno_result()
                     .context("ioctl KVM_SET_DEVICE_ATTR for save_gic_attr failed.")?;
             }
-            let mut cpu_sys_regs: BTreeMap<u64, BTreeMap<u16, u64>> = BTreeMap::new();
-            let mut redist_regs: BTreeMap<u64, Vec<u32>> = BTreeMap::new();
+            let mut cpu_specific: BTreeMap<u64, CpuSpecificState> = BTreeMap::new();
             let vcpus = self.vcpus.lock();
             for vcpu in vcpus.iter().flatten() {
+                let mut cpu_sys_regs: BTreeMap<u16, u64> = BTreeMap::new();
+                let mut redist_regs: Vec<u32> = Vec::new();
                 let mpidr = mpidr_concat_aff(vcpu.get_mpidr()?);
                 // SAFETY:
                 // Safe because we are specifying CPU SYSREGS, which is 64 bits.
@@ -214,16 +215,20 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
                 // The reported number of priority bits is missing 1, as per ARM documentation.
                 // See register ICC_CTLR_EL1 for more information. Add the missing 1.
                 let prio_bits = (((ctlr & 0x700) >> 8) + 1) as u8;
-                let mut cpu_sys_regs_map = BTreeMap::new();
-                cpu_sys_regs_map.insert(ICC_CTLR_EL1.encoded(), ctlr);
-                get_cpu_vgic_regs(&self.vgic, &mut cpu_sys_regs_map, mpidr, prio_bits)?;
-                cpu_sys_regs.insert(mpidr, cpu_sys_regs_map);
-                redist_regs.insert(mpidr, get_redist_regs(&self.vgic, mpidr)?);
+                cpu_sys_regs.insert(ICC_CTLR_EL1.encoded(), ctlr);
+                get_cpu_vgic_regs(&self.vgic, &mut cpu_sys_regs, mpidr, prio_bits)?;
+                redist_regs.append(&mut get_redist_regs(&self.vgic, mpidr)?);
+                cpu_specific.insert(
+                    mpidr,
+                    CpuSpecificState {
+                        cpu_sys_regs,
+                        redist_regs,
+                    },
+                );
             }
             AnySnapshot::to_any(VgicSnapshot {
-                redist_regs,
+                cpu_specific,
                 dist_regs: get_dist_regs(&self.vgic)?,
-                cpu_sys_regs,
             })
         } else {
             Err(anyhow!("Unsupported VGIC version for snapshot"))
@@ -238,22 +243,12 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
             let vcpus = self.vcpus.lock();
             for vcpu in vcpus.iter().flatten() {
                 let mpidr = mpidr_concat_aff(vcpu.get_mpidr()?);
-                set_cpu_vgic_regs(
-                    &self.vgic,
-                    mpidr,
-                    deser
-                        .cpu_sys_regs
-                        .get(&mpidr)
-                        .with_context(|| format!("CPU with MPIDR {} does not exist", mpidr))?,
-                )?;
-                set_redist_regs(
-                    &self.vgic,
-                    mpidr,
-                    deser
-                        .redist_regs
-                        .get(&mpidr)
-                        .with_context(|| format!("CPU with MPIDR {} does not exist", mpidr))?,
-                )?;
+                let mpidr_data = deser
+                    .cpu_specific
+                    .get(&mpidr)
+                    .with_context(|| format!("CPU with MPIDR {} does not exist", mpidr))?;
+                set_cpu_vgic_regs(&self.vgic, mpidr, &mpidr_data.cpu_sys_regs)?;
+                set_redist_regs(&self.vgic, mpidr, &mpidr_data.redist_regs)?;
             }
             set_dist_regs(&self.vgic, &deser.dist_regs)?;
             Ok(())
@@ -282,12 +277,15 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
 
 #[derive(Serialize, Deserialize)]
 struct VgicSnapshot {
-    // Tree with MPIDR as key, and Tree<Reg-RegValue> as value, where all registers for
-    // that MPIDR are saved.
-    cpu_sys_regs: BTreeMap<u64, BTreeMap<u16, u64>>,
-    // Tree with MPIDR as key. We only save values since we are saving the whole range.
-    redist_regs: BTreeMap<u64, Vec<u32>>,
+    cpu_specific: BTreeMap<u64, CpuSpecificState>,
     dist_regs: Vec<u32>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct CpuSpecificState {
+    // Key: Register ID.
+    cpu_sys_regs: BTreeMap<u16, u64>,
+    redist_regs: Vec<u32>,
 }
 
 // # Safety
