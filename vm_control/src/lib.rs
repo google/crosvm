@@ -56,7 +56,6 @@ use anyhow::bail;
 use anyhow::Context;
 use base::error;
 use base::info;
-#[cfg(target_arch = "x86_64")]
 use base::warn;
 use base::with_as_descriptor;
 use base::AsRawDescriptor;
@@ -369,7 +368,6 @@ pub enum IrqHandlerRequest {
     Exit,
 }
 
-#[cfg(target_arch = "x86_64")]
 const EXPECTED_MAX_IRQ_FLUSH_ITERATIONS: usize = 100;
 
 /// Response for [IrqHandlerRequest].
@@ -1799,7 +1797,7 @@ impl VmRequest {
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
         device_control_tube: &Tube,
         vcpu_size: usize,
-        #[cfg(target_arch = "x86_64")] irq_handler_control: &Tube,
+        irq_handler_control: &Tube,
         snapshot_irqchip: impl Fn() -> anyhow::Result<AnySnapshot>,
         suspended_pvclock_state: &mut Option<hypervisor::ClockState>,
     ) -> VmResponse {
@@ -2217,7 +2215,6 @@ impl VmRequest {
                 match do_snapshot(
                     snapshot_path.to_path_buf(),
                     kick_vcpus,
-                    #[cfg(target_arch = "x86_64")]
                     irq_handler_control,
                     device_control_tube,
                     vcpu_size,
@@ -2269,7 +2266,7 @@ impl VmRequest {
 fn do_snapshot(
     snapshot_path: PathBuf,
     kick_vcpus: impl Fn(VcpuControl),
-    #[cfg(target_arch = "x86_64")] irq_handler_control: &Tube,
+    irq_handler_control: &Tube,
     device_control_tube: &Tube,
     vcpu_size: usize,
     snapshot_irqchip: impl Fn() -> anyhow::Result<AnySnapshot>,
@@ -2283,18 +2280,18 @@ fn do_snapshot(
     let _vcpu_guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
     let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
 
-    // On x86, We want to flush all pending IRQs to the LAPICs. There are two cases:
+    // We want to flush all pending IRQs to the interrupt controller. There are two cases:
     //
-    // MSIs: these are directly delivered to the LAPIC. We must verify the handler
-    // thread cycles once to deliver these interrupts.
+    // MSIs: these are directly delivered to the interrupt controller.
+    // We must verify the handler thread cycles once to deliver these interrupts.
     //
     // Legacy interrupts: in the case of a split IRQ chip, these interrupts may
     // flow through the userspace IOAPIC. If the hypervisor does not support
     // irqfds (e.g. WHPX), a single iteration will only flush the IRQ to the
     // IOAPIC. The underlying MSI will be asserted at this point, but if the
     // IRQ handler doesn't run another iteration, it won't be delivered to the
-    // LAPIC. This is why we cycle the handler thread twice (doing so ensures we
-    // process the underlying MSI).
+    // interrupt controller. This is why we cycle the handler thread twice (doing so
+    // ensures we process the underlying MSI).
     //
     // We can handle both of these cases by iterating until there are no tokens
     // serviced on the requested iteration. Note that in the legacy case, this
@@ -2303,7 +2300,6 @@ fn do_snapshot(
     // Note: within CrosVM, *all* interrupts are eventually converted into the
     // same mechanicism that MSIs use. This is why we say "underlying" MSI for
     // a legacy IRQ.
-    #[cfg(target_arch = "x86_64")]
     {
         let mut flush_attempts = 0;
         loop {
@@ -2428,7 +2424,7 @@ pub fn do_restore(
     restore_path: &Path,
     kick_vcpus: impl Fn(VcpuControl),
     kick_vcpu: impl Fn(VcpuControl, usize),
-    #[cfg(target_arch = "x86_64")] irq_handler_control: &Tube,
+    irq_handler_control: &Tube,
     device_control_tube: &Tube,
     vcpu_size: usize,
     mut restore_irqchip: impl FnMut(AnySnapshot) -> anyhow::Result<()>,
@@ -2517,8 +2513,7 @@ pub fn do_restore(
             .context("Failed to restore vcpu")?;
     }
 
-    // On x86, refresh the IRQ tokens. On Arm64, they are saved and restored as part of the VGIC.
-    #[cfg(target_arch = "x86_64")]
+    // refresh the IRQ tokens.
     {
         irq_handler_control
             .send(&IrqHandlerRequest::RefreshIrqEventTokens)
