@@ -406,3 +406,12 @@ infra_builder(
     schedule = "0 0 * * *",  # Run everyday during active devlopment
     postsubmit = False,
 )
+
+infra_builder(
+    name = "baguette_uprev",
+    executable = luci.recipe(
+        name = "uprev_baguette_image",
+    ),
+    schedule = "0 12 * * *",  # Check for uprevs daily
+    postsubmit = False,
+)
