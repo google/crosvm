@@ -1,0 +1,14 @@
+// Copyright 2021 The ChromiumOS Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+syntax = "proto3";
+
+package recipes.crosvm.uprev_baguette_image;
+
+message UprevBaguetteImageProperties {
+  // Set to true to enable pushing to gerrit
+  bool push = 1;
+  // Set to true if the recipe is allowed to set Bot-Commit+1
+  bool bot = 2;
+}

@@ -19,6 +19,7 @@
   * [presubmit](#recipes-presubmit)
   * [push_to_github](#recipes-push_to_github)
   * [update_chromeos_merges](#recipes-update_chromeos_merges)
+  * [uprev_baguette_image](#recipes-uprev_baguette_image) &mdash; Recipe for uploading uprevs of the baguette image.
 ## Recipe Modules
 
 ### *recipe_modules* / [crosvm](/infra/recipe_modules/crosvm)
@@ -189,6 +190,14 @@ This recipe requires ambient luci authentication. To test locally run:
 
 
 &mdash; **def [RunSteps](/infra/recipes/update_chromeos_merges.py#14)(api):**
+### *recipes* / [uprev\_baguette\_image](/infra/recipes/uprev_baguette_image.py)
+
+[DEPS](/infra/recipes/uprev_baguette_image.py#21): [depot\_tools/git][depot_tools/recipe_modules/git], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/path][recipe_engine/recipe_modules/path], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+
+
+Recipe for uploading uprevs of the baguette image.
+
+&mdash; **def [RunSteps](/infra/recipes/uprev_baguette_image.py#37)(api: RecipeApi, properties: UprevBaguetteImageProperties):**
 
 [depot_tools/recipe_modules/bot_update]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/097e20723774957f21ac6d1808fcd0a91e8c7630/recipes/README.recipes.md#recipe_modules-bot_update
 [depot_tools/recipe_modules/depot_tools]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/097e20723774957f21ac6d1808fcd0a91e8c7630/recipes/README.recipes.md#recipe_modules-depot_tools
