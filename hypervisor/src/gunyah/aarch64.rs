@@ -9,6 +9,7 @@ use anyhow::bail;
 use anyhow::Context;
 use base::error;
 use base::Error;
+use base::MappedRegion;
 use base::Result;
 use cros_fdt::Fdt;
 use cros_fdt::FdtNode;
@@ -195,14 +196,12 @@ impl VmAArch64 for GunyahVm {
             // the elf header, Gunyah can find the VM DTBOs.
             // Pass on the primary payload region start address and its size for Qualcomm
             // Trusted VMs.
-            let payload_region = self
-                .guest_mem
-                .regions()
-                .find(|region| region.guest_addr == payload_entry_address)
-                .context("Failed to find payload region")?;
+            if payload_offset != 0 {
+                bail!("QCOM Trusted VM: payload offset {payload_offset} != 0");
+            }
             self.set_vm_auth_type_to_qcom_trusted_vm(
                 payload_entry_address,
-                payload_region.size.try_into().unwrap(),
+                payload_mapping.size().try_into().unwrap(),
             )
             .context("Failed to set VM authentication type")?;
         }
