@@ -266,12 +266,12 @@ impl GunyahVm {
             } else {
                 false
             };
-            if region.options.file_backed.is_some() {
+            if let Some(file_backed) = &region.options.file_backed {
                 map_cma_region(
                     &vm_descriptor,
                     region.index as MemSlot,
                     lend,
-                    !region.options.file_backed.unwrap().writable,
+                    !file_backed.writable,
                     region.guest_addr.offset(),
                     region.shm.as_raw_descriptor().try_into().unwrap(),
                     region.size.try_into().unwrap(),

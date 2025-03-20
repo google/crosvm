@@ -184,18 +184,18 @@ impl VmAArch64 for GunyahVm {
             // the elf header, Gunyah can find the VM DTBOs.
             // Pass on the primary payload region start address and its size for Qualcomm
             // Trusted VMs.
-            for region in self.guest_mem.regions() {
-                if region.guest_addr.offset() == payload_entry_address.offset() {
-                    self.set_vm_auth_type_to_qcom_trusted_vm(
-                        payload_entry_address,
-                        region.size.try_into().unwrap(),
-                    )
-                    .unwrap_or_else(|e| {
-                        panic!("Failed to set VM authentication type: {:?}", e);
-                    });
-                    break;
-                }
-            }
+            let payload_region = self
+                .guest_mem
+                .regions()
+                .find(|region| region.guest_addr == payload_entry_address)
+                .ok_or(Error::new(ENOENT))?;
+            self.set_vm_auth_type_to_qcom_trusted_vm(
+                payload_entry_address,
+                payload_region.size.try_into().unwrap(),
+            )
+            .unwrap_or_else(|e| {
+                panic!("Failed to set VM authentication type: {:?}", e);
+            });
         }
 
         self.set_dtb_config(fdt_address, fdt_size)?;
