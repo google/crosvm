@@ -5,12 +5,13 @@
 use std::collections::BTreeMap;
 
 use aarch64_sys_reg::AArch64SysRegId;
+use anyhow::bail;
+use anyhow::Context;
 use base::error;
 use base::Error;
 use base::Result;
 use cros_fdt::Fdt;
 use cros_fdt::FdtNode;
-use libc::ENOENT;
 use libc::ENOTSUP;
 use libc::ENOTTY;
 use snapshot::AnySnapshot;
@@ -157,7 +158,7 @@ impl VmAArch64 for GunyahVm {
         payload_entry_address: GuestAddress,
         fdt_address: GuestAddress,
         fdt_size: usize,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         // The payload entry is the memory address where the kernel starts.
         // This memory region contains both the DTB and the kernel image,
         // so ensure they are located together.
@@ -165,14 +166,14 @@ impl VmAArch64 for GunyahVm {
         let (dtb_mapping, _, dtb_obj_offset) = self
             .guest_mem
             .find_region(fdt_address)
-            .map_err(|_| Error::new(ENOENT))?;
+            .context("Failed to find FDT region")?;
         let (payload_mapping, payload_offset, payload_obj_offset) = self
             .guest_mem
             .find_region(payload_entry_address)
-            .map_err(|_| Error::new(ENOENT))?;
+            .context("Failed to find payload region")?;
 
         if !std::ptr::eq(dtb_mapping, payload_mapping) || dtb_obj_offset != payload_obj_offset {
-            panic!("DTB and payload are not part of same memory region.");
+            bail!("DTB and payload are not part of same memory region.");
         }
 
         if self.vm_id.is_some() && self.pas_id.is_some() {
@@ -188,14 +189,12 @@ impl VmAArch64 for GunyahVm {
                 .guest_mem
                 .regions()
                 .find(|region| region.guest_addr == payload_entry_address)
-                .ok_or(Error::new(ENOENT))?;
+                .context("Failed to find payload region")?;
             self.set_vm_auth_type_to_qcom_trusted_vm(
                 payload_entry_address,
                 payload_region.size.try_into().unwrap(),
             )
-            .unwrap_or_else(|e| {
-                panic!("Failed to set VM authentication type: {:?}", e);
-            });
+            .context("Failed to set VM authentication type")?;
         }
 
         self.set_dtb_config(fdt_address, fdt_size)?;
@@ -206,7 +205,7 @@ impl VmAArch64 for GunyahVm {
             && !self.hv_cfg.protection_type.runs_firmware()
             && payload_offset != 0
         {
-            panic!("Payload offset must be zero");
+            bail!("Payload offset must be zero");
         }
 
         if let Err(e) = self.set_boot_pc(payload_entry_address.offset()) {
@@ -214,10 +213,10 @@ impl VmAArch64 for GunyahVm {
                 // GH_VM_SET_BOOT_CONTEXT ioctl is not supported, but returning success
                 // for backward compatibility when the offset is zero.
                 if payload_offset != 0 {
-                    panic!("Payload offset must be zero");
+                    bail!("Payload offset must be zero");
                 }
             } else {
-                return Err(e);
+                return Err(e).context("set_boot_pc failed");
             }
         }
 

@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use aarch64_sys_reg::AArch64SysRegId;
+use anyhow::Context;
 use base::errno_result;
 use base::error;
 use base::ioctl;
@@ -189,7 +190,7 @@ impl VmAArch64 for GeniezoneVm {
         _payload_entry_address: GuestAddress,
         fdt_address: GuestAddress,
         fdt_size: usize,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         let dtb_config = gzvm_dtb_config {
             dtb_addr: fdt_address.offset(),
             dtb_size: fdt_size.try_into().unwrap(),
@@ -201,7 +202,7 @@ impl VmAArch64 for GeniezoneVm {
         if ret == 0 {
             Ok(())
         } else {
-            errno_result()
+            errno_result().context("GZVM_SET_DTB_CONFIG failed")
         }
     }
 }

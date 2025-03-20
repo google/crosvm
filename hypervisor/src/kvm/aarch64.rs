@@ -224,7 +224,7 @@ impl VmAArch64 for KvmVm {
         _payload_entry_address: GuestAddress,
         _fdt_address: GuestAddress,
         _fdt_size: usize,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         Ok(())
     }
 

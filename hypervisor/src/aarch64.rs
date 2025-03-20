@@ -91,7 +91,7 @@ pub trait VmAArch64: Vm {
         payload_entry_address: GuestAddress,
         fdt_address: GuestAddress,
         fdt_size: usize,
-    ) -> Result<()>;
+    ) -> anyhow::Result<()>;
 
     /// Set an offset that describes a number of counter cycles that are subtracted from both
     /// virtual and physical counter views.

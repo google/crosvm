@@ -300,7 +300,7 @@ pub enum Error {
     #[error("initrd could not be loaded: {0}")]
     InitrdLoadFailure(arch::LoadImageError),
     #[error("failed to initialize virtual machine {0}")]
-    InitVmError(base::Error),
+    InitVmError(anyhow::Error),
     #[error("kernel could not be loaded: {0}")]
     KernelLoadFailure(kernel_loader::Error),
     #[error("error loading Kernel from Elf image: {0}")]
