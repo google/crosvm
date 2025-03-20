@@ -345,16 +345,8 @@ pub enum SnapshotCommand {
 pub enum DeviceControlCommand {
     SleepDevices,
     WakeDevices,
-    SnapshotDevices {
-        snapshot_writer: SnapshotWriter,
-        compress_memory: bool,
-    },
-    RestoreDevices {
-        snapshot_reader: SnapshotReader,
-    },
-    RestoreMemory {
-        snapshot_reader: SnapshotReader,
-    },
+    SnapshotDevices { snapshot_writer: SnapshotWriter },
+    RestoreDevices { snapshot_reader: SnapshotReader },
     GetDevicesState,
     Exit,
 }
@@ -2369,13 +2361,42 @@ fn do_snapshot(
         .context("Failed to write irqchip state")?;
     info!("Snapshotted irqchip.");
 
+    // Snapshot memory
+    {
+        let mem_snap_start = Instant::now();
+        // Use 64MB chunks when writing the memory snapshot (if encryption is used).
+        const MEMORY_SNAP_ENCRYPTED_CHUNK_SIZE_BYTES: usize = 1024 * 1024 * 64;
+        // SAFETY:
+        // VM & devices are stopped.
+        let guest_memory_metadata = unsafe {
+            vm.get_memory()
+                .snapshot(
+                    &mut snapshot_writer.raw_fragment_with_chunk_size(
+                        "mem",
+                        MEMORY_SNAP_ENCRYPTED_CHUNK_SIZE_BYTES,
+                    )?,
+                    compress_memory,
+                )
+                .context("failed to snapshot memory")?
+        };
+        snapshot_writer.write_fragment("mem_metadata", &guest_memory_metadata)?;
+
+        let mem_snap_duration_ms = mem_snap_start.elapsed().as_millis();
+        info!(
+            "snapshot: memory snapshotted {}MB in {}ms",
+            vm.get_memory().memory_size() / 1024 / 1024,
+            mem_snap_duration_ms
+        );
+        metrics::log_metric_with_details(
+            metrics::MetricEventType::SnapshotSaveMemoryLatency,
+            mem_snap_duration_ms as i64,
+            &metrics_events::RecordDetails {},
+        );
+    }
     // Snapshot devices
     info!("Devices snapshotting...");
     device_control_tube
-        .send(&DeviceControlCommand::SnapshotDevices {
-            snapshot_writer,
-            compress_memory,
-        })
+        .send(&DeviceControlCommand::SnapshotDevices { snapshot_writer })
         .context("send command to devices control socket")?;
     let resp: VmResponse = device_control_tube
         .recv()
@@ -2422,16 +2443,28 @@ pub fn do_restore(
     let snapshot_reader = SnapshotReader::new(restore_path, require_encrypted)?;
 
     // Restore Memory
-    device_control_tube
-        .send(&DeviceControlCommand::RestoreMemory {
-            snapshot_reader: snapshot_reader.clone(),
-        })
-        .context("send restore memory command to devices control socket")?;
-    let resp_mem: VmResponse = device_control_tube
-        .recv()
-        .context("receive from devices control socket")?;
-    if !matches!(resp_mem, VmResponse::Ok) {
-        bail!("unexpected RestoreMemory response from Mem: {resp_mem}");
+    {
+        let mem_restore_start = Instant::now();
+        let guest_memory_metadata = snapshot_reader.read_fragment("mem_metadata")?;
+        // SAFETY:
+        // VM & devices are stopped.
+        unsafe {
+            vm.get_memory().restore(
+                guest_memory_metadata,
+                &mut snapshot_reader.raw_fragment("mem")?,
+            )?
+        };
+        let mem_restore_duration_ms = mem_restore_start.elapsed().as_millis();
+        info!(
+            "snapshot: memory restored {}MB in {}ms",
+            vm.get_memory().memory_size() / 1024 / 1024,
+            mem_restore_duration_ms
+        );
+        metrics::log_metric_with_details(
+            metrics::MetricEventType::SnapshotRestoreMemoryLatency,
+            mem_restore_duration_ms as i64,
+            &metrics_events::RecordDetails {},
+        );
     }
     // Restore devices
     device_control_tube
