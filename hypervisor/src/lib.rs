@@ -629,6 +629,8 @@ pub struct Config {
     /// enable the Memory Tagging Extension in the guest
     pub mte: bool,
     pub protection_type: ProtectionType,
+    #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+    pub ffa: bool,
 }
 
 impl Default for Config {
@@ -637,6 +639,8 @@ impl Default for Config {
             #[cfg(target_arch = "aarch64")]
             mte: false,
             protection_type: ProtectionType::Unprotected,
+            #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+            ffa: false,
         }
     }
 }

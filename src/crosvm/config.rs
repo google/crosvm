@@ -14,6 +14,8 @@ use std::time::Duration;
 use arch::set_default_serial_parameters;
 use arch::CpuSet;
 use arch::FdtPosition;
+#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+use arch::FfaConfig;
 use arch::PciConfig;
 use arch::Pstore;
 #[cfg(target_arch = "x86_64")]
@@ -628,6 +630,8 @@ pub struct Config {
     #[cfg(windows)]
     pub exit_stats: bool,
     pub fdt_position: Option<FdtPosition>,
+    #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+    pub ffa: Option<FfaConfig>,
     pub file_backed_mappings_mmio: Vec<FileBackedMappingParameters>,
     pub file_backed_mappings_ram: Vec<FileBackedMappingParameters>,
     pub force_calibrated_tsc_leaf: bool,
@@ -862,6 +866,8 @@ impl Default for Config {
             #[cfg(windows)]
             exit_stats: false,
             fdt_position: None,
+            #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+            ffa: None,
             file_backed_mappings_mmio: Vec::new(),
             file_backed_mappings_ram: Vec::new(),
             force_calibrated_tsc_leaf: false,

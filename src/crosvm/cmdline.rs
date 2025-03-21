@@ -24,6 +24,8 @@ use std::sync::atomic::Ordering;
 
 use arch::CpuSet;
 use arch::FdtPosition;
+#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+use arch::FfaConfig;
 #[cfg(target_arch = "x86_64")]
 use arch::MemoryRegionConfig;
 use arch::PciConfig;
@@ -1371,6 +1373,13 @@ pub struct RunCommand {
     ///
     /// On riscv64, defaults to `after-payload`.
     pub fdt_position: Option<FdtPosition>,
+
+    #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+    #[argh(option)]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// allow FF-A protocol for this vm. Currently only supported option is --guest-ffa=auto
+    pub ffa: Option<FfaConfig>,
 
     #[argh(
         option,
@@ -2891,6 +2900,11 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.mte = cmd.mte.unwrap_or_default();
             cfg.no_pmu = cmd.no_pmu.unwrap_or_default();
             cfg.swiotlb = cmd.swiotlb;
+        }
+
+        #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+        {
+            cfg.ffa = cmd.ffa;
         }
 
         cfg.hugepages = cmd.hugepages.unwrap_or_default();

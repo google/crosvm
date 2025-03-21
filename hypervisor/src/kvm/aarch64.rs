@@ -97,6 +97,10 @@ impl KvmVm {
             // Safe because it does not take pointer arguments.
             unsafe { self.enable_raw_capability(KvmCap::ArmMte, 0, &[0, 0, 0, 0])? }
         }
+        #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+        if cfg.ffa {
+            self.set_enable_ffa(true)?;
+        }
         #[cfg(not(target_arch = "aarch64"))]
         {
             // Suppress warning.
@@ -177,6 +181,19 @@ impl KvmVm {
                 KvmCap::ArmProtectedVm,
                 KVM_CAP_ARM_PROTECTED_VM_FLAGS_SET_FW_IPA,
                 &[fw_addr.0, 0, 0, 0],
+            )
+        }
+    }
+
+    #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+    fn set_enable_ffa(&self, ffa_support: bool) -> Result<()> {
+        // SAFETY:
+        // Safe because none of the args are pointers.
+        unsafe {
+            self.enable_raw_capability(
+                KvmCap::ArmProtectedVm,
+                KVM_CAP_ARM_PROTECTED_VM_FLAGS_SET_FFA,
+                &[ffa_support.into(), 0, 0, 0],
             )
         }
     }

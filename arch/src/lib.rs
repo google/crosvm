@@ -181,6 +181,18 @@ pub struct SveConfig {
     pub auto: bool,
 }
 
+/// FFA config
+// For now this is limited to android, will be opened to other aarch64 based pVMs after
+// corresponding kernel APIs are upstreamed.
+#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct FfaConfig {
+    /// Just enable FFA, don't care about the negotiated version.
+    #[serde(default)]
+    pub auto: bool,
+}
+
 fn parse_cpu_range(s: &str, cpuset: &mut Vec<usize>) -> Result<(), String> {
     fn parse_cpu(s: &str) -> Result<usize, String> {
         s.parse().map_err(|_| {

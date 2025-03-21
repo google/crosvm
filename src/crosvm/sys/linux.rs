@@ -1505,6 +1505,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             #[cfg(target_arch = "aarch64")]
             mte: cfg.mte,
             protection_type: cfg.protection_type,
+            #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+            ffa: cfg.ffa.map(|g| g.auto).unwrap_or(false),
         },
         vm_image,
         android_fstab: cfg
