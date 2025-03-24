@@ -38,6 +38,7 @@ codegen-units = 1
 # by dependencies.
 members = [
     "aarch64",
+    "aarch64_sys_reg",
     "acpi_tables",
     "android_audio",
     "arch",
