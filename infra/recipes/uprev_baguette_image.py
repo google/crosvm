@@ -29,7 +29,7 @@ DEPS = [
 
 PROPERTIES = UprevBaguetteImageProperties
 
-_PLATFORM2_REPO_URL = "sso://chromium/chromiumos/platform2/"
+_PLATFORM2_REPO_URL = "https://chromium.googlesource.com/chromiumos/platform2/"
 _UPREV_SCRIPT_PATH = "vm_tools/baguette_image/src/uprev-version-pin.sh"
 _VERSION_FILE_PATH = "vm_tools/concierge/baguette_version.h"
 

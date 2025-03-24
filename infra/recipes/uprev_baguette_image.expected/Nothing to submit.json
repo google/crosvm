@@ -7,7 +7,7 @@
       "--path",
       "[CLEANUP]/tmp_tmp_1",
       "--url",
-      "sso://chromium/chromiumos/platform2/"
+      "https://chromium.googlesource.com/chromiumos/platform2/"
     ],
     "name": "git setup"
   },
