@@ -412,6 +412,10 @@ infra_builder(
     executable = luci.recipe(
         name = "uprev_baguette_image",
     ),
+    properties = {
+        "push": True,
+        "bot": True,
+    },
     schedule = "0 12 * * *",  # Check for uprevs daily
     postsubmit = False,
 )
