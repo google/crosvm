@@ -149,14 +149,14 @@ luci.notifier(
     notify_emails = [
         "crosvm-uprev@grotations.appspotmail.com",
         "crosvm-uprev-apac@grotations.appspotmail.com",
-        "denniskempin@google.com",
     ],
 )
 luci.notifier(
     name = "infra-failures",
     on_status_change = True,
     notify_emails = [
-        "denniskempin@google.com",
+        "crosvm-uprev@grotations.appspotmail.com",
+        "crosvm-uprev-apac@grotations.appspotmail.com",
         "keiichiw@google.com",
     ],
 )
