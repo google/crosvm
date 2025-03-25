@@ -2438,42 +2438,8 @@ pub fn do_restore(
 
     let snapshot_reader = SnapshotReader::new(restore_path, require_encrypted)?;
 
-    // Restore Memory
-    {
-        let mem_restore_start = Instant::now();
-        let guest_memory_metadata = snapshot_reader.read_fragment("mem_metadata")?;
-        // SAFETY:
-        // VM & devices are stopped.
-        unsafe {
-            vm.get_memory().restore(
-                guest_memory_metadata,
-                &mut snapshot_reader.raw_fragment("mem")?,
-            )?
-        };
-        let mem_restore_duration_ms = mem_restore_start.elapsed().as_millis();
-        info!(
-            "snapshot: memory restored {}MB in {}ms",
-            vm.get_memory().memory_size() / 1024 / 1024,
-            mem_restore_duration_ms
-        );
-        metrics::log_metric_with_details(
-            metrics::MetricEventType::SnapshotRestoreMemoryLatency,
-            mem_restore_duration_ms as i64,
-            &metrics_events::RecordDetails {},
-        );
-    }
-    // Restore devices
-    device_control_tube
-        .send(&DeviceControlCommand::RestoreDevices {
-            snapshot_reader: snapshot_reader.clone(),
-        })
-        .context("send restore devices command to devices control socket")?;
-    let resp: VmResponse = device_control_tube
-        .recv()
-        .context("receive from devices control socket")?;
-    if !matches!(resp, VmResponse::Ok) {
-        bail!("unexpected RestoreDevices response: {resp}");
-    }
+    // Restore hypervisor's paravirtualized clock.
+    *suspended_pvclock_state = snapshot_reader.read_fragment("pvclock")?;
 
     // Restore IrqChip
     let irq_snapshot: AnySnapshot = snapshot_reader.read_fragment("irqchip")?;
@@ -2513,6 +2479,43 @@ pub fn do_restore(
             .context("Failed to restore vcpu")?;
     }
 
+    // Restore Memory
+    {
+        let mem_restore_start = Instant::now();
+        let guest_memory_metadata = snapshot_reader.read_fragment("mem_metadata")?;
+        // SAFETY:
+        // VM & devices are stopped.
+        unsafe {
+            vm.get_memory().restore(
+                guest_memory_metadata,
+                &mut snapshot_reader.raw_fragment("mem")?,
+            )?
+        };
+        let mem_restore_duration_ms = mem_restore_start.elapsed().as_millis();
+        info!(
+            "snapshot: memory restored {}MB in {}ms",
+            vm.get_memory().memory_size() / 1024 / 1024,
+            mem_restore_duration_ms
+        );
+        metrics::log_metric_with_details(
+            metrics::MetricEventType::SnapshotRestoreMemoryLatency,
+            mem_restore_duration_ms as i64,
+            &metrics_events::RecordDetails {},
+        );
+    }
+    // Restore devices
+    device_control_tube
+        .send(&DeviceControlCommand::RestoreDevices {
+            snapshot_reader: snapshot_reader.clone(),
+        })
+        .context("send restore devices command to devices control socket")?;
+    let resp: VmResponse = device_control_tube
+        .recv()
+        .context("receive from devices control socket")?;
+    if !matches!(resp, VmResponse::Ok) {
+        bail!("unexpected RestoreDevices response: {resp}");
+    }
+
     // refresh the IRQ tokens.
     {
         irq_handler_control
@@ -2528,9 +2531,6 @@ pub fn do_restore(
             );
         }
     }
-
-    // Restore hypervisor's paravirtualized clock.
-    *suspended_pvclock_state = snapshot_reader.read_fragment("pvclock")?;
 
     let restore_duration_ms = restore_start.elapsed().as_millis();
     info!(

@@ -36,8 +36,6 @@ fn compare_snapshots(a: &Path, b: &Path) -> (bool, String) {
         // memory
         .arg("--exclude")
         .arg("pvclock")
-        .arg("--exclude")
-        .arg("mem")
         .arg(a)
         .arg(b)
         .output()
