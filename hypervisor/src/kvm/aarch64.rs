@@ -789,6 +789,25 @@ impl VcpuAArch64 for KvmVcpu {
                 );
             }
         }
+
+        // The list of system registers below do not follow the convention of system registers
+        // for bits 31-16.
+        // System registers bits 31-16 == 0x0013, but not for those registers. Add them
+        // explicitly
+        let extra_sys_regs = [
+            aarch64_sys_reg::ELR_EL1,
+            aarch64_sys_reg::FPCR,
+            aarch64_sys_reg::FPSR,
+            aarch64_sys_reg::SP_EL1,
+            aarch64_sys_reg::SPSR_EL1,
+            aarch64_sys_reg::SPSR_abt,
+            aarch64_sys_reg::SPSR_und,
+            aarch64_sys_reg::SPSR_irq,
+            aarch64_sys_reg::SPSR_fiq,
+        ];
+        for reg in extra_sys_regs {
+            sys_regs.insert(reg, self.get_one_reg(VcpuRegAArch64::System(reg))?);
+        }
         Ok(sys_regs)
     }
 
