@@ -1241,9 +1241,9 @@ pub struct RunCommand {
     ///       freq_domains=[[0,2],[1,3],[4-7,12]] - creates one freq_domain
     ///         for cores 0 and 2, another one for cores 1 and 3,
     ///         and one last for cores 4, 5, 6, 7 and 12.
-    ///     sve=[enabled=bool] - SVE Config. (aarch64 only)
+    ///     sve=[enable=bool] - SVE Config. (aarch64 only)
     ///         Examples:
-    ///         sve=[enabled=true] - Enables SVE on device. Will fail is SVE unsupported.
+    ///         sve=[enable=true] - Enables SVE on device. Will fail is SVE unsupported.
     ///         default value = false.
     pub cpus: Option<CpuOptions>,
 
