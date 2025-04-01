@@ -47,7 +47,7 @@ pub mod product_type {
 }
 
 /// Attributes about a process that are required to set up annotations for crash reports.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct CrashReportAttributes {
     pub product_type: String,
     pub pipe_name: Option<String>,
