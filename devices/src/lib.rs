@@ -135,6 +135,7 @@ pub use self::suspendable::Suspendable;
 pub use self::virtcpufreq::VirtCpufreq;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use self::virtcpufreq_v2::VirtCpufreqV2;
+pub use self::virtio::VirtioMmioDevice;
 pub use self::virtio::VirtioPciDevice;
 #[cfg(feature = "vtpm")]
 pub use self::vtpm_proxy::VtpmProxy;

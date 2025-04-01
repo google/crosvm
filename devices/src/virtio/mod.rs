@@ -24,6 +24,7 @@ mod tpm;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 mod video;
 mod virtio_device;
+mod virtio_mmio_device;
 mod virtio_pci_common_config;
 mod virtio_pci_device;
 
@@ -102,6 +103,7 @@ pub use self::virtio_device::SharedMemoryMapper;
 pub use self::virtio_device::SharedMemoryPrepareType;
 pub use self::virtio_device::SharedMemoryRegion;
 pub use self::virtio_device::VirtioDevice;
+pub use self::virtio_mmio_device::VirtioMmioDevice;
 pub use self::virtio_pci_device::PciCapabilityType;
 pub use self::virtio_pci_device::VirtioPciCap;
 pub use self::virtio_pci_device::VirtioPciDevice;
