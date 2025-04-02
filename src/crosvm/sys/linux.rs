@@ -841,12 +841,6 @@ fn create_virtio_devices(
             )?);
         }
     }
-    for vhost_user_fs in &cfg.vhost_user_fs {
-        devs.push(create_vhost_user_fs_device(
-            cfg.protection_type,
-            vhost_user_fs,
-        )?);
-    }
 
     for shared_dir in &cfg.shared_dirs {
         let SharedDir {

@@ -5,12 +5,10 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
-use std::fs;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::ErrorKind;
 use std::ops::RangeInclusive;
-use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::path::PathBuf;
@@ -94,7 +92,6 @@ use vm_memory::GuestAddress;
 
 use crate::crosvm::config::PmemOption;
 use crate::crosvm::config::VhostUserFrontendOption;
-use crate::crosvm::config::VhostUserFsOption;
 use crate::crosvm::sys::config::PmemExt2Option;
 
 /// All the tube types collected and passed to `run_control`.
@@ -436,28 +433,6 @@ fn vhost_user_connection(
     }
 }
 
-fn is_socket(path: &PathBuf) -> bool {
-    match fs::metadata(path) {
-        Ok(metadata) => metadata.file_type().is_socket(),
-        Err(_) => false, // Assume not a socket if we can't get metadata
-    }
-}
-
-fn vhost_user_connection_from_socket_fd(
-    fd: u32,
-) -> Result<vmm_vhost::Connection<vmm_vhost::FrontendReq>> {
-    let path = PathBuf::from(format!("/proc/self/fd/{}", fd));
-    if !is_socket(&path) {
-        anyhow::bail!("path {} is not socket", path.display());
-    }
-
-    let safe_fd = safe_descriptor_from_cmdline_fd(&(fd as i32))?;
-
-    safe_fd
-        .try_into()
-        .context("failed to create vhost-user connection from fd")
-}
-
 pub fn create_vhost_user_frontend(
     protection_type: ProtectionType,
     opt: &VhostUserFrontendOption,
@@ -478,31 +453,6 @@ pub fn create_vhost_user_frontend(
         opt.pci_address,
     )
     .context("failed to set up vhost-user frontend")?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        // no sandbox here because virtqueue handling is exported to a different process.
-        jail: None,
-    })
-}
-
-pub fn create_vhost_user_fs_device(
-    protection_type: ProtectionType,
-    option: &VhostUserFsOption,
-) -> DeviceResult {
-    let connection = match (&option.socket_path, option.socket_fd) {
-        (Some(socket), None) => vhost_user_connection(socket, None)?,
-        (None, Some(fd)) => vhost_user_connection_from_socket_fd(fd)?,
-        (Some(_), Some(_)) => bail!("Cannot specify both a UDS path and a file descriptor"),
-        (None, None) => bail!("Must specify either a socket or a file descriptor"),
-    };
-    let dev = VhostUserFrontend::new_fs(
-        virtio::base_features(protection_type),
-        connection,
-        option.max_queue_size,
-        option.tag.as_deref(),
-    )
-    .context("failed to set up vhost-user fs device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),

@@ -93,7 +93,6 @@ use crate::crosvm::config::parse_mmio_address_range;
 use crate::crosvm::config::parse_pflash_parameters;
 use crate::crosvm::config::parse_serial_options;
 use crate::crosvm::config::parse_touch_device_option;
-use crate::crosvm::config::parse_vhost_user_fs_option;
 use crate::crosvm::config::BatteryConfig;
 use crate::crosvm::config::CpuOptions;
 use crate::crosvm::config::DtboOption;
@@ -104,7 +103,6 @@ use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::config::MemOptions;
 use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::config::VhostUserFrontendOption;
-use crate::crosvm::config::VhostUserFsOption;
 use crate::crosvm::config::VhostUserOption;
 #[cfg(feature = "plugin")]
 use crate::crosvm::plugin::parse_plugin_mount_option;
@@ -2603,16 +2601,6 @@ pub struct RunCommand {
     /// path to a socket for vhost-user console
     pub vhost_user_console: Vec<VhostUserOption>,
 
-    #[argh(
-        option,
-        arg_name = "[socket=]SOCKET_PATH,tag=TAG[,max-queue-size=NUM]",
-        from_str_fn(parse_vhost_user_fs_option)
-    )]
-    #[serde(skip)] // Deprecated - use `vhost-user` instead.
-    #[merge(strategy = append)]
-    /// path to a socket path for vhost-user fs, and tag for the shared dir
-    pub vhost_user_fs: Vec<VhostUserFsOption>,
-
     #[argh(option, arg_name = "SOCKET_PATH")]
     #[serde(skip)] // Deprecated - use `vhost-user` instead.
     #[merge(strategy = append)]
@@ -3744,8 +3732,6 @@ impl TryFrom<RunCommand> for super::config::Config {
                 .chain(vu(cmd.vhost_user_vsock, DeviceType::Vsock))
                 .chain(vu(cmd.vhost_user_wl, DeviceType::Wl)),
         );
-
-        cfg.vhost_user_fs = cmd.vhost_user_fs;
 
         cfg.disable_virtio_intx = cmd.disable_virtio_intx.unwrap_or_default();
 
