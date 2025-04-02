@@ -36,12 +36,9 @@ fn run_vhost_user_console_multiport_test_portname(config: VmConfig) -> anyhow::R
     let vu_config = create_vu_console_multiport_config(socket.path(), file_path.clone());
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
-    let config = config.extra_args(vec![
-        "--mem".to_owned(),
-        "512".to_owned(),
-        "--vhost-user-console".to_string(),
-        socket.path().to_str().unwrap().to_string(),
-    ]);
+    let config = config
+        .extra_args(vec!["--mem".to_owned(), "512".to_owned()])
+        .with_vhost_user("console", socket.path());
     let mut vm = TestVm::new(config).unwrap();
 
     // mount sysfs to check details
@@ -84,12 +81,9 @@ fn run_vhost_user_console_multiport_test_output(config: VmConfig) -> anyhow::Res
     let vu_config = create_vu_console_multiport_config(socket.path(), file_path.clone());
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
-    let config = config.extra_args(vec![
-        "--mem".to_owned(),
-        "512".to_owned(),
-        "--vhost-user-console".to_string(),
-        socket.path().to_str().unwrap().to_string(),
-    ]);
+    let config = config
+        .extra_args(vec!["--mem".to_owned(), "512".to_owned()])
+        .with_vhost_user("console", socket.path());
     let mut vm = TestVm::new(config).unwrap();
 
     // mount sysfs to check details
@@ -217,12 +211,9 @@ fn run_vhost_user_console_multiport_test_input(config: VmConfig) -> anyhow::Resu
     let vu_config = create_vu_console_multiport_config(socket.path(), file_path.clone());
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
-    let config = config.extra_args(vec![
-        "--mem".to_owned(),
-        "512".to_owned(),
-        "--vhost-user-console".to_string(),
-        socket.path().to_str().unwrap().to_string(),
-    ]);
+    let config = config
+        .extra_args(vec!["--mem".to_owned(), "512".to_owned()])
+        .with_vhost_user("console", socket.path());
     let mut vm = TestVm::new(config).unwrap();
 
     // mount sysfs to check details
