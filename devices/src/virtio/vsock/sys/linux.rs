@@ -16,7 +16,7 @@ fn default_vsock_path() -> PathBuf {
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, FromKeyValues)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 /// Configuration for a Vsock device.
 pub struct VsockConfig {
     /// CID to be used for this vsock device.
@@ -24,6 +24,8 @@ pub struct VsockConfig {
     /// Path to the vhost-vsock device.
     #[serde(default = "default_vsock_path", rename = "device")]
     pub vhost_device: PathBuf,
+    #[serde(default)]
+    pub max_queue_sizes: Option<[u16; 3]>,
 }
 
 impl VsockConfig {
@@ -36,6 +38,7 @@ impl VsockConfig {
             vhost_device: vhost_device
                 .map(|p| PathBuf::from(p.as_ref()))
                 .unwrap_or_else(|| PathBuf::from(VHOST_VSOCK_DEFAULT_PATH)),
+            max_queue_sizes: None,
         }
     }
 }
@@ -60,6 +63,7 @@ mod tests {
             VsockConfig {
                 vhost_device: VHOST_VSOCK_DEFAULT_PATH.into(),
                 cid: 56,
+                max_queue_sizes: None,
             }
         );
 
@@ -79,6 +83,7 @@ mod tests {
                 #[cfg(any(target_os = "android", target_os = "linux"))]
                 vhost_device: VHOST_VSOCK_DEFAULT_PATH.into(),
                 cid: 78,
+                max_queue_sizes: None,
             }
         );
 
@@ -96,7 +101,8 @@ mod tests {
             from_vsock_arg("invalid=foo").unwrap_err(),
             ParseError {
                 kind: ErrorKind::SerdeError(
-                    "unknown field `invalid`, expected `cid` or `device`".into()
+                    "unknown field `invalid`, expected one of `cid`, `device`, `max-queue-sizes`"
+                        .into()
                 ),
                 pos: 0,
             }
@@ -108,6 +114,7 @@ mod tests {
             VsockConfig {
                 vhost_device: "/some/path".into(),
                 cid: 56,
+                max_queue_sizes: None,
             }
         );
 
@@ -117,6 +124,7 @@ mod tests {
             VsockConfig {
                 vhost_device: "/some/path".into(),
                 cid: 56,
+                max_queue_sizes: None,
             }
         );
 
@@ -135,6 +143,16 @@ mod tests {
             ParseError {
                 kind: ErrorKind::SerdeError("duplicate field `device`".into()),
                 pos: 0,
+            }
+        );
+
+        // Queue sizes
+        assert_eq!(
+            from_vsock_arg("cid=56,max-queue-sizes=[1,2,4]").unwrap(),
+            VsockConfig {
+                vhost_device: VHOST_VSOCK_DEFAULT_PATH.into(),
+                cid: 56,
+                max_queue_sizes: Some([1, 2, 4]),
             }
         );
     }

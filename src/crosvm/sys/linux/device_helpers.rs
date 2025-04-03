@@ -1163,6 +1163,10 @@ impl VirtioDeviceBuilder for &VsockConfig {
         self,
         keep_rds: &mut Vec<RawDescriptor>,
     ) -> anyhow::Result<Box<dyn VhostUserDeviceBuilder>> {
+        if self.max_queue_sizes.is_some() {
+            bail!("vhost-user vsock doesn't support max-queue-sizes option");
+        }
+
         let vsock_device = VhostUserVsockDevice::new(self.cid, &self.vhost_device)?;
 
         keep_rds.push(vsock_device.as_raw_descriptor());

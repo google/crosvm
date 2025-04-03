@@ -36,8 +36,7 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 
-const MAX_QUEUE_SIZE: u16 = 256;
-const MAX_QUEUE_SIZES: &[u16] = &[MAX_QUEUE_SIZE; NUM_QUEUES];
+const DEFAULT_MAX_QUEUE_SIZE: u16 = 256;
 
 pub struct Vsock {
     worker_thread: Option<WorkerThread<Worker<VhostVsockHandle>>>,
@@ -54,6 +53,7 @@ pub struct Vsock {
     event_queue: Option<Queue>,
     // If true, we should send a TRANSPORT_RESET event to the guest at the next opportunity.
     needs_transport_reset: bool,
+    max_queue_sizes: [u16; NUM_QUEUES],
 }
 
 #[derive(Serialize, Deserialize)]
@@ -100,6 +100,9 @@ impl Vsock {
             vrings_base: None,
             event_queue: None,
             needs_transport_reset: false,
+            max_queue_sizes: vsock_config
+                .max_queue_sizes
+                .unwrap_or([DEFAULT_MAX_QUEUE_SIZE; NUM_QUEUES]),
         })
     }
 
@@ -114,6 +117,7 @@ impl Vsock {
             vrings_base: None,
             event_queue: None,
             needs_transport_reset: false,
+            max_queue_sizes: [DEFAULT_MAX_QUEUE_SIZE; NUM_QUEUES],
         }
     }
 
@@ -144,7 +148,7 @@ impl VirtioDevice for Vsock {
     }
 
     fn queue_max_sizes(&self) -> &[u16] {
-        MAX_QUEUE_SIZES
+        &self.max_queue_sizes[..]
     }
 
     fn features(&self) -> u64 {
