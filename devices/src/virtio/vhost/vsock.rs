@@ -36,8 +36,8 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 
-const QUEUE_SIZE: u16 = 256;
-const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
+const MAX_QUEUE_SIZE: u16 = 256;
+const MAX_QUEUE_SIZES: &[u16] = &[MAX_QUEUE_SIZE; NUM_QUEUES];
 
 pub struct Vsock {
     worker_thread: Option<WorkerThread<Worker<VhostVsockHandle>>>,
@@ -144,7 +144,7 @@ impl VirtioDevice for Vsock {
     }
 
     fn queue_max_sizes(&self) -> &[u16] {
-        QUEUE_SIZES
+        MAX_QUEUE_SIZES
     }
 
     fn features(&self) -> u64 {
@@ -178,11 +178,13 @@ impl VirtioDevice for Vsock {
     ) -> anyhow::Result<()> {
         if queues.len() != NUM_QUEUES {
             return Err(anyhow!(
-                "net: expected {} queues, got {}",
+                "vsock: expected {} queues, got {}",
                 NUM_QUEUES,
                 queues.len()
             ));
         }
+
+        let queue_sizes: Vec<u16> = queues.values().map(|q| q.size()).collect();
 
         let vhost_handle = self.vhost_handle.take().context("missing vhost_handle")?;
         let interrupts = self.interrupts.take().context("missing interrupts")?;
@@ -232,7 +234,7 @@ impl VirtioDevice for Vsock {
             Ok(())
         };
         worker
-            .init(mem, QUEUE_SIZES, activate_vqs, self.vrings_base.take())
+            .init(mem, &queue_sizes, activate_vqs, self.vrings_base.take())
             .context("vsock worker init exited with error")?;
 
         self.worker_thread = Some(WorkerThread::start("vhost_vsock", move |kill_evt| {
