@@ -1777,6 +1777,9 @@ pub struct RunCommand {
     ///                       Default: false.  [Optional]
     ///   pci-address     - preferred PCI address, e.g. "00:01.0"
     ///                       Default: automatic PCI address assignment. [Optional]
+    ///   mrg_rxbuf       - enable VIRTIO_NET_F_MRG_RXBUF feature.
+    ///                       If not set or set to false, it will disable this feature.
+    ///                       Default: false.  [Optional]
     ///
     /// Either one tap_name, one tap_fd or a triplet of host_ip,
     /// netmask and mac must be specified.
@@ -3479,6 +3482,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     vq_pairs: cmd.net_vq_pairs,
                     packed_queue: false,
                     pci_address: None,
+                    mrg_rxbuf: false,
                 });
             }
 
@@ -3493,6 +3497,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     vq_pairs: cmd.net_vq_pairs,
                     packed_queue: false,
                     pci_address: None,
+                    mrg_rxbuf: false,
                 });
             }
 
@@ -3525,6 +3530,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     vq_pairs: cmd.net_vq_pairs,
                     packed_queue: false,
                     pci_address: None,
+                    mrg_rxbuf: false,
                 });
             }
 
@@ -3536,6 +3542,9 @@ impl TryFrom<RunCommand> for super::config::Config {
                         log::warn!("the number of net vq pairs must not exceed the vcpu count, falling back to single queue mode");
                         net.vq_pairs = None;
                     }
+                }
+                if net.mrg_rxbuf && net.packed_queue {
+                    return Err("mrg_rxbuf and packed_queue together is unsupported".to_string());
                 }
             }
         }

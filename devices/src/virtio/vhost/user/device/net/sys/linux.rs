@@ -80,7 +80,7 @@ impl<T: 'static> NetBackend<T>
 where
     T: TapT + IntoAsync,
 {
-    fn new_from_config(config: &TapConfig) -> anyhow::Result<Self> {
+    fn new_from_config(config: &TapConfig, mrg_rxbuf: bool) -> anyhow::Result<Self> {
         // Create a tap device.
         let tap = T::new(true /* vnet_hdr */, false /* multi_queue */)
             .context("failed to create tap device")?;
@@ -91,29 +91,29 @@ where
         tap.set_mac_address(config.mac)
             .context("failed to set MAC address")?;
 
-        Self::new(tap)
+        Self::new(tap, mrg_rxbuf)
     }
 
-    fn new_from_name(name: &str) -> anyhow::Result<Self> {
+    fn new_from_name(name: &str, mrg_rxbuf: bool) -> anyhow::Result<Self> {
         let tap = T::new_with_name(name.as_bytes(), true, false).map_err(NetError::TapOpen)?;
-        Self::new(tap)
+        Self::new(tap, mrg_rxbuf)
     }
 
-    pub fn new_from_tap_fd(tap_fd: RawDescriptor) -> anyhow::Result<Self> {
+    pub fn new_from_tap_fd(tap_fd: RawDescriptor, mrg_rxbuf: bool) -> anyhow::Result<Self> {
         let tap_fd = validate_raw_descriptor(tap_fd).context("failed to validate tap fd")?;
         // SAFETY:
         // Safe because we ensure that we get a unique handle to the fd.
         let tap = unsafe { T::from_raw_descriptor(tap_fd).context("failed to create tap device")? };
 
-        Self::new(tap)
+        Self::new(tap, mrg_rxbuf)
     }
 
-    pub fn new(tap: T) -> anyhow::Result<Self> {
+    pub fn new(tap: T, mrg_rxbuf: bool) -> anyhow::Result<Self> {
         let vq_pairs = Self::max_vq_pairs();
         validate_and_configure_tap(&tap, vq_pairs as u16)
             .context("failed to validate and configure tap")?;
 
-        let avail_features = virtio::base_features(ProtectionType::Unprotected)
+        let mut avail_features = virtio::base_features(ProtectionType::Unprotected)
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ
@@ -124,6 +124,10 @@ where
             | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
             | 1 << virtio_net::VIRTIO_NET_F_MTU
             | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
+
+        if mrg_rxbuf {
+            avail_features |= 1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF;
+        }
 
         let mtu = tap.mtu()?;
 
@@ -264,13 +268,19 @@ pub struct Options {
     #[argh(option, arg_name = "SOCKET_PATH,TAP_NAME")]
     /// TAP NAME with a socket path
     tap_name: Vec<String>,
+    #[argh(switch, arg_name = "MRG_RXBUF")]
+    /// whether enable MRG_RXBUF feature.
+    mrg_rxbuf: bool,
 }
 
 enum Connection {
     Socket(String),
 }
 
-fn new_backend_from_device_arg(arg: &str) -> anyhow::Result<(String, NetBackend<Tap>)> {
+fn new_backend_from_device_arg(
+    arg: &str,
+    mrg_rxbuf: bool,
+) -> anyhow::Result<(String, NetBackend<Tap>)> {
     let pos = match arg.find(',') {
         Some(p) => p,
         None => {
@@ -281,11 +291,15 @@ fn new_backend_from_device_arg(arg: &str) -> anyhow::Result<(String, NetBackend<
     let cfg = &arg[pos + 1..]
         .parse::<TapConfig>()
         .context("failed to parse tap config")?;
-    let backend = NetBackend::<Tap>::new_from_config(cfg).context("failed to create NetBackend")?;
+    let backend = NetBackend::<Tap>::new_from_config(cfg, mrg_rxbuf)
+        .context("failed to create NetBackend")?;
     Ok((conn.to_string(), backend))
 }
 
-fn new_backend_from_tap_name(arg: &str) -> anyhow::Result<(String, NetBackend<Tap>)> {
+fn new_backend_from_tap_name(
+    arg: &str,
+    mrg_rxbuf: bool,
+) -> anyhow::Result<(String, NetBackend<Tap>)> {
     let pos = match arg.find(',') {
         Some(p) => p,
         None => {
@@ -295,12 +309,15 @@ fn new_backend_from_tap_name(arg: &str) -> anyhow::Result<(String, NetBackend<Ta
     let conn = &arg[0..pos];
     let tap_name = &arg[pos + 1..];
 
-    let backend =
-        NetBackend::<Tap>::new_from_name(tap_name).context("failed to create NetBackend")?;
+    let backend = NetBackend::<Tap>::new_from_name(tap_name, mrg_rxbuf)
+        .context("failed to create NetBackend")?;
     Ok((conn.to_string(), backend))
 }
 
-fn new_backend_from_tapfd_arg(arg: &str) -> anyhow::Result<(String, NetBackend<Tap>)> {
+fn new_backend_from_tapfd_arg(
+    arg: &str,
+    mrg_rxbuf: bool,
+) -> anyhow::Result<(String, NetBackend<Tap>)> {
     let pos = match arg.find(',') {
         Some(p) => p,
         None => {
@@ -311,9 +328,8 @@ fn new_backend_from_tapfd_arg(arg: &str) -> anyhow::Result<(String, NetBackend<T
     let tap_fd = &arg[pos + 1..]
         .parse::<i32>()
         .context("failed to parse tap-fd")?;
-    let backend =
-        NetBackend::<Tap>::new_from_tap_fd(*tap_fd).context("failed to create NetBackend")?;
-
+    let backend = NetBackend::<Tap>::new_from_tap_fd(*tap_fd, mrg_rxbuf)
+        .context("failed to create NetBackend")?;
     Ok((conn.to_string(), backend))
 }
 
@@ -331,19 +347,21 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     // vhost-user
     for arg in opts.device.iter() {
         devices.push(
-            new_backend_from_device_arg(arg)
+            new_backend_from_device_arg(arg, opts.mrg_rxbuf)
                 .map(|(s, backend)| (Connection::Socket(s), backend))?,
         );
     }
 
     for arg in opts.tap_name.iter() {
         devices.push(
-            new_backend_from_tap_name(arg).map(|(s, backend)| (Connection::Socket(s), backend))?,
+            new_backend_from_tap_name(arg, opts.mrg_rxbuf)
+                .map(|(s, backend)| (Connection::Socket(s), backend))?,
         );
     }
     for arg in opts.tap_fd.iter() {
         devices.push(
-            new_backend_from_tapfd_arg(arg).map(|(s, backend)| (Connection::Socket(s), backend))?,
+            new_backend_from_tapfd_arg(arg, opts.mrg_rxbuf)
+                .map(|(s, backend)| (Connection::Socket(s), backend))?,
         );
     }
 

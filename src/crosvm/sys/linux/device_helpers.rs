@@ -863,6 +863,7 @@ impl VirtioDeviceBuilder for &NetParameters {
                     mac,
                     self.packed_queue,
                     self.pci_address,
+                    self.mrg_rxbuf,
                 )
                 .context("failed to set up virtio-vhost networking")?,
             ) as Box<dyn VirtioDevice>
@@ -875,6 +876,7 @@ impl VirtioDeviceBuilder for &NetParameters {
                     mac,
                     self.packed_queue,
                     self.pci_address,
+                    self.mrg_rxbuf,
                 )
                 .context("failed to set up virtio networking")?,
             ) as Box<dyn VirtioDevice>
@@ -903,7 +905,7 @@ impl VirtioDeviceBuilder for &NetParameters {
         let multi_vq = vq_pairs > 1 && self.vhost_net.is_none();
         let (tap, _mac) = create_tap_for_net_device(&self.mode, multi_vq)?;
 
-        let backend = NetBackend::new(tap)?;
+        let backend = NetBackend::new(tap, self.mrg_rxbuf)?;
 
         keep_rds.extend(backend.as_raw_descriptors());
 

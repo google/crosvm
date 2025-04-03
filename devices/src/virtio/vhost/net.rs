@@ -67,6 +67,7 @@ where
         mac_addr: Option<MacAddress>,
         use_packed_queue: bool,
         pci_address: Option<PciAddress>,
+        mrg_rxbuf: bool,
     ) -> Result<Net<T, U>> {
         // Set offload flags to match the virtio features below.
         tap.set_offload(
@@ -96,6 +97,10 @@ where
 
         if mac_addr.is_some() {
             avail_features |= 1 << virtio_net::VIRTIO_NET_F_MAC;
+        }
+
+        if mrg_rxbuf {
+            avail_features |= 1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF;
         }
 
         let mut vhost_interrupt = Vec::new();
@@ -375,6 +380,7 @@ pub mod tests {
             Some(mac),
             false,
             None,
+            false,
         )
         .unwrap()
     }
