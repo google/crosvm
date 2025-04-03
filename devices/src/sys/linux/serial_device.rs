@@ -257,6 +257,7 @@ pub(crate) fn create_unix_stream_serial_device<T: SerialDevice>(
             out_timestamp: param.out_timestamp,
             console: param.console,
             pci_address: param.pci_address,
+            max_queue_sizes: param.max_queue_sizes.clone(),
         },
         keep_rds.to_vec(),
     ))

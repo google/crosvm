@@ -36,7 +36,7 @@ const QUEUE_SIZE: u16 = 256;
 /// Virtio console device.
 pub struct Console {
     console: ConsoleDevice,
-    queue_sizes: Vec<u16>,
+    max_queue_sizes: Vec<u16>,
     pci_address: Option<PciAddress>,
 }
 
@@ -47,14 +47,23 @@ impl Console {
         output: Option<Box<dyn std::io::Write + Send>>,
         keep_rds: Vec<RawDescriptor>,
         pci_address: Option<PciAddress>,
+        max_queue_sizes: Option<Vec<u16>>,
     ) -> Console {
         let port = ConsolePort::new(input, output, None, keep_rds);
         let console = ConsoleDevice::new_single_port(protection_type, port);
-        let queue_sizes = vec![QUEUE_SIZE; console.max_queues()];
+        let max_queue_sizes =
+            max_queue_sizes.unwrap_or_else(|| vec![QUEUE_SIZE; console.max_queues()]);
+
+        // TODO: Move these checks into cmdline validation or something so it is more user
+        // friendly when it fails.
+        assert_eq!(max_queue_sizes.len(), console.max_queues());
+        for qs in &max_queue_sizes {
+            assert!(qs.is_power_of_two());
+        }
 
         Console {
             console,
-            queue_sizes,
+            max_queue_sizes,
             pci_address,
         }
     }
@@ -74,7 +83,7 @@ impl VirtioDevice for Console {
     }
 
     fn queue_max_sizes(&self) -> &[u16] {
-        &self.queue_sizes
+        &self.max_queue_sizes
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
@@ -179,6 +188,7 @@ mod tests {
             Some(output),
             Vec::new(),
             None,
+            None,
         );
 
         let context = ConsoleContext {};
@@ -202,6 +212,7 @@ mod tests {
             Some(input),
             Some(output),
             Vec::new(),
+            None,
             None,
         );
 

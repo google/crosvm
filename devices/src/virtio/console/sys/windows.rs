@@ -33,7 +33,14 @@ impl SerialDevice for Console {
         options: SerialOptions,
         keep_rds: Vec<RawDescriptor>,
     ) -> Console {
-        Console::new(protection_type, None, out, keep_rds, options.pci_address)
+        Console::new(
+            protection_type,
+            None,
+            out,
+            keep_rds,
+            options.pci_address,
+            options.max_queue_sizes,
+        )
     }
 
     /// Constructs a console with named pipe as input/output connections.
@@ -51,6 +58,7 @@ impl SerialDevice for Console {
             Some(Box::new(pipe_out)),
             keep_rds,
             options.pci_address,
+            options.max_queue_sizes,
         )
     }
 }

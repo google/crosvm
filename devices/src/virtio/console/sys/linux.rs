@@ -45,6 +45,7 @@ impl SerialDevice for Console {
             output,
             keep_rds,
             options.pci_address,
+            options.max_queue_sizes,
         )
     }
 }

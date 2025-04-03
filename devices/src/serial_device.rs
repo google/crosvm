@@ -181,6 +181,7 @@ pub struct SerialParameters {
     )]
     pub debugcon_port: u16,
     pub pci_address: Option<PciAddress>,
+    pub max_queue_sizes: Option<Vec<u16>>,
 }
 
 /// Temporary structure containing the parameters of a serial port for easy passing to
@@ -191,6 +192,7 @@ pub struct SerialOptions {
     pub out_timestamp: bool,
     pub console: bool,
     pub pci_address: Option<PciAddress>,
+    pub max_queue_sizes: Option<Vec<u16>>,
 }
 
 impl SerialParameters {
@@ -300,6 +302,7 @@ impl SerialParameters {
                 out_timestamp: self.out_timestamp,
                 console: self.console,
                 pci_address: self.pci_address,
+                max_queue_sizes: self.max_queue_sizes.clone(),
             },
             keep_rds.to_vec(),
         ))
@@ -337,6 +340,7 @@ mod tests {
                 out_timestamp: false,
                 debugcon_port: 0x402,
                 pci_address: None,
+                max_queue_sizes: None,
             }
         );
 
@@ -449,7 +453,7 @@ mod tests {
         assert_eq!(params.debugcon_port, 1026);
 
         // all together
-        let params = from_serial_arg("type=stdout,path=/some/path,hardware=virtio-console,num=5,earlycon,console,stdin,input=/some/input,out_timestamp,debugcon_port=12,pci-address=00:0e.0").unwrap();
+        let params = from_serial_arg("type=stdout,path=/some/path,hardware=virtio-console,num=5,earlycon,console,stdin,input=/some/input,out_timestamp,debugcon_port=12,pci-address=00:0e.0,max-queue-sizes=[1,2]").unwrap();
         assert_eq!(
             params,
             SerialParameters {
@@ -471,6 +475,7 @@ mod tests {
                     dev: 14,
                     func: 0
                 }),
+                max_queue_sizes: Some(vec![1, 2]),
             }
         );
 
