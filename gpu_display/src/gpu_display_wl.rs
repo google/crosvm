@@ -443,7 +443,7 @@ impl DisplayT for DisplayWl {
         _surface_id: u32,
         external_display_resource: DisplayExternalResourceImport,
     ) -> anyhow::Result<()> {
-        // This let pattern is always true if the vulkan_display feature is disabled.
+        // This let pattern is always true if the host_display feature is disabled.
         #[allow(irrefutable_let_patterns)]
         if let DisplayExternalResourceImport::Dmabuf {
             descriptor,

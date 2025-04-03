@@ -50,9 +50,9 @@ use super::window_message_processor::SurfaceResources;
 use super::window_message_processor::WindowMessage;
 use super::window_message_processor::WindowPosMessage;
 use super::window_message_processor::HANDLE_WINDOW_MESSAGE_TIMEOUT;
+use super::HostDisplayWrapper;
 use super::HostWindowSpace;
 use super::MouseMode;
-use super::VulkanDisplayWrapper;
 use crate::EventDeviceKind;
 
 #[cfg(feature = "gfxstream")]
@@ -71,13 +71,13 @@ extern "C" {
 
 // Updates the rectangle in the window's client area to which gfxstream renders.
 fn update_virtual_display_projection(
-    #[allow(unused)] vulkan_display: impl Deref<Target = VulkanDisplayWrapper>,
+    #[allow(unused)] host_display: impl Deref<Target = HostDisplayWrapper>,
     #[allow(unused)] window: &GuiWindow,
     #[allow(unused)] projection_box: &Box2D<i32, HostWindowSpace>,
 ) {
     #[cfg(feature = "vulkan_display")]
-    if let VulkanDisplayWrapper::Initialized(ref vulkan_display) = *vulkan_display {
-        if let Err(err) = vulkan_display
+    if let HostDisplayWrapper::Initialized(ref host_display) = *host_display {
+        if let Err(err) = host_display
             .move_window(&projection_box.cast_unit())
             .with_context(|| "move the subwindow")
         {
@@ -132,7 +132,7 @@ pub struct Surface {
     virtual_display_manager: VirtualDisplayManager,
     #[allow(dead_code)]
     gpu_main_display_tube: Option<Rc<Tube>>,
-    vulkan_display: Arc<Mutex<VulkanDisplayWrapper>>,
+    host_display: Arc<Mutex<HostDisplayWrapper>>,
 }
 
 impl Surface {
@@ -142,7 +142,7 @@ impl Surface {
         _metrics: Option<Weak<Metrics>>,
         display_params: &DisplayParameters,
         resources: SurfaceResources,
-        vulkan_display: Arc<Mutex<VulkanDisplayWrapper>>,
+        host_display: Arc<Mutex<HostDisplayWrapper>>,
     ) -> Result<Self> {
         static CONTEXT_MESSAGE: &str = "When creating Surface";
         info!(
@@ -160,7 +160,7 @@ impl Surface {
             VirtualDisplayManager::new(&initial_host_viewport_size, &virtual_display_size);
         // This will make gfxstream initialize the child window to which it will render.
         update_virtual_display_projection(
-            vulkan_display.lock(),
+            host_display.lock(),
             window,
             &virtual_display_manager.get_virtual_display_projection_box(),
         );
@@ -189,7 +189,7 @@ impl Surface {
             .context(CONTEXT_MESSAGE)?,
             virtual_display_manager,
             gpu_main_display_tube,
-            vulkan_display,
+            host_display,
         })
     }
 
@@ -236,7 +236,7 @@ impl Surface {
             .virtual_display_manager
             .get_virtual_display_projection_box();
         update_virtual_display_projection(
-            self.vulkan_display.lock(),
+            self.host_display.lock(),
             window,
             &virtual_display_projection_box,
         );

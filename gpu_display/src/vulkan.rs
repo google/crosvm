@@ -36,8 +36,8 @@ pub use external_image::AcquireImageMemoryBarrier;
 pub use external_image::ExternalImage;
 pub use external_image::ExternalImageAccess;
 pub use external_image::ReleaseImageMemoryBarrier;
-use post_worker::PostWorker;
 use post_worker::Timepoint;
+use post_worker::VulkanPostWorker;
 use sync::create_promise_and_waitable;
 use sync::Promise;
 use sync::Waitable;
@@ -72,7 +72,7 @@ use crate::VulkanDisplayImageImportMetadata;
 // Vulkan Safety Notes:
 // Most vulkan APIs are unsafe, but even the wrapper APIs like ash and vulkano will mark their
 // APIs as unsafe when they cannot ensure that they are 100% obeying the vulkan spec. For the
-// purposes of VulkanDisplay, however, we do not consider disobeying the vulkan spec to be unsafe
+// purposes of HostDisplay, however, we do not consider disobeying the vulkan spec to be unsafe
 // in terms of memory safety. Safety comments in these cases will say:
 // "Safe irrespective of vulkan spec conformance"
 //
@@ -93,13 +93,13 @@ pub enum UserEvent {
     },
 }
 
-pub struct VulkanState {
+pub struct HostState {
     // Post worker submits renders and posts to vulkan. It needs to be in a RefCell because
     // process_event cannot take a mutable reference to ApplicationState.
-    post_worker: RefCell<PostWorker>,
+    post_worker: RefCell<VulkanPostWorker>,
 }
 
-impl ApplicationState for VulkanState {
+impl ApplicationState for HostState {
     type UserEvent = UserEvent;
 
     /// Process events coming from the Window.
@@ -149,30 +149,30 @@ impl ApplicationState for VulkanState {
     }
 }
 
-struct VulkanStateBuilder {
+struct HostStateBuilder {
     vulkan_library: Arc<VulkanLibrary>,
     device_uuid: [u8; vk::UUID_SIZE],
     driver_uuid: [u8; vk::UUID_SIZE],
 }
 
-impl ApplicationStateBuilder for VulkanStateBuilder {
-    type Target = VulkanState;
+impl ApplicationStateBuilder for HostStateBuilder {
+    type Target = HostState;
 
-    fn build<T: Window>(self, window: Arc<T>) -> Result<VulkanState> {
-        let post_worker = PostWorker::new(
+    fn build<T: Window>(self, window: Arc<T>) -> Result<HostState> {
+        let post_worker = VulkanPostWorker::new(
             self.vulkan_library,
             &self.device_uuid,
             &self.driver_uuid,
             Arc::clone(&window) as _,
         )
         .context("creating the post worker")?;
-        Ok(VulkanState {
+        Ok(HostState {
             post_worker: RefCell::new(post_worker),
         })
     }
 }
 
-pub struct VulkanDisplayImpl<T: WindowEventLoop<VulkanState>> {
+pub struct HostDisplayImpl<T: WindowEventLoop<HostState>> {
     ash_device: ash::Device,
     device: Arc<Device>,
     window_event_loop: T,
@@ -181,7 +181,7 @@ pub struct VulkanDisplayImpl<T: WindowEventLoop<VulkanState>> {
     used_image_receivers: HashMap<ImageId, Receiver<ExternalImage>>,
 }
 
-impl<T: WindowEventLoop<VulkanState>> VulkanDisplayImpl<T> {
+impl<T: WindowEventLoop<HostState>> HostDisplayImpl<T> {
     /// # Safety
     /// The parent window must outlive the lifetime of this object.
     #[deny(unsafe_op_in_unsafe_fn)]
@@ -192,7 +192,7 @@ impl<T: WindowEventLoop<VulkanState>> VulkanDisplayImpl<T> {
         device_uuid: [u8; UUID_SIZE],
         driver_uuid: [u8; UUID_SIZE],
     ) -> Result<Self> {
-        let vulkan_state_builder = VulkanStateBuilder {
+        let vulkan_state_builder = HostStateBuilder {
             vulkan_library,
             device_uuid,
             driver_uuid,
@@ -512,4 +512,4 @@ impl<T: WindowEventLoop<VulkanState>> VulkanDisplayImpl<T> {
     }
 }
 
-pub(crate) type VulkanDisplay = VulkanDisplayImpl<PlatformWindowEventLoop<VulkanState>>;
+pub(crate) type HostDisplay = HostDisplayImpl<PlatformWindowEventLoop<HostState>>;

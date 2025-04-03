@@ -527,8 +527,8 @@ impl PostResource {
     }
 }
 
-/// PostWorker owns the vulkan surface and swapchain, and can post images to it.
-pub struct PostWorker {
+/// VulkanPostWorker owns the vulkan surface and swapchain, and can post images to it.
+pub struct VulkanPostWorker {
     physical_device: Arc<PhysicalDevice>,
     ash_device: Arc<ash::Device>,
     device: Arc<Device>,
@@ -544,7 +544,7 @@ pub struct PostWorker {
     _marker: PhantomData<Rc<()>>,
 }
 
-impl PostWorker {
+impl VulkanPostWorker {
     /// Initialize the post worker which does the following:
     ///   - Create the VkInstance
     ///   - Create the VkDevice and VkQueue
@@ -939,7 +939,7 @@ impl PostWorker {
     }
 }
 
-impl Drop for PostWorker {
+impl Drop for VulkanPostWorker {
     fn drop(&mut self) {
         if let Err(err) = self.drain_queues() {
             error!(

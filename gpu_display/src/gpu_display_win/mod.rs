@@ -49,7 +49,7 @@ pub use window_procedure_thread::WindowProcedureThreadBuilder;
 #[cfg(feature = "vulkan_display")]
 use crate::gpu_display_win::window::BasicWindow;
 #[cfg(feature = "vulkan_display")]
-use crate::vulkan::VulkanDisplay;
+use crate::vulkan::HostDisplay;
 use crate::DisplayExternalResourceImport;
 use crate::DisplayT;
 use crate::EventDevice;
@@ -68,10 +68,10 @@ pub(crate) type ObjectId = NonZeroU32;
 pub struct VirtualDisplaySpace;
 pub struct HostWindowSpace;
 
-pub enum VulkanDisplayWrapper {
+pub enum HostDisplayWrapper {
     Uninitialized,
     #[cfg(feature = "vulkan_display")]
-    Initialized(VulkanDisplay),
+    Initialized(HostDisplay),
 }
 
 pub struct DisplayWin {
@@ -82,7 +82,7 @@ pub struct DisplayWin {
     #[allow(dead_code)]
     gpu_display_wait_descriptor_ctrl: SendTube,
     event_device_wait_descriptor_requests: Vec<ModifyWaitContext>,
-    vulkan_displays: HashMap<u32, Arc<Mutex<VulkanDisplayWrapper>>>,
+    host_displays: HashMap<u32, Arc<Mutex<HostDisplayWrapper>>>,
     #[allow(dead_code)]
     vulkan_display_create_params: Option<VulkanCreateParams>,
 }
@@ -108,7 +108,7 @@ impl DisplayWin {
             is_surface_created: false,
             gpu_display_wait_descriptor_ctrl,
             event_device_wait_descriptor_requests: Vec::new(),
-            vulkan_displays: HashMap::new(),
+            host_displays: HashMap::new(),
             vulkan_display_create_params,
         })
     }
@@ -120,7 +120,7 @@ impl DisplayWin {
         surface_id: u32,
         scanout_id: u32,
         display_params: &DisplayParameters,
-    ) -> Result<Arc<Mutex<VulkanDisplayWrapper>>> {
+    ) -> Result<Arc<Mutex<HostDisplayWrapper>>> {
         let display_params_clone = display_params.clone();
         let metrics = self.win_metrics.clone();
         #[cfg(feature = "vulkan_display")]
@@ -129,7 +129,7 @@ impl DisplayWin {
         // to know if the creation succeeds. Hence, we use channels to wait to see the result.
         let (result_sender, result_receiver) = channel();
         #[allow(unused_variables)]
-        let (vulkan_display_sender, vulkan_display_receiver) = channel();
+        let (host_display_sender, host_display_receiver) = channel();
 
         // Post a message to the WndProc thread to create the surface.
         self.wndproc_thread
@@ -137,7 +137,7 @@ impl DisplayWin {
                 scanout_id,
                 function: Box::new(move |window, display_event_dispatcher| {
                     #[cfg(feature = "vulkan_display")]
-                    let vulkan_display = {
+                    let host_display = {
                         let create_display_closure =
                             |VulkanCreateParams {
                                  vulkan_library,
@@ -153,7 +153,7 @@ impl DisplayWin {
                                         .get_client_rect()
                                         .with_context(|| "retrieve window client area size")?
                                         .size;
-                                    VulkanDisplay::new(
+                                    HostDisplay::new(
                                         vulkan_library,
                                         window.handle() as _,
                                         &initial_host_viewport_size.cast_unit(),
@@ -163,26 +163,24 @@ impl DisplayWin {
                                     .with_context(|| "create vulkan display")
                                 }
                             };
-                        let vulkan_display = vulkan_create_params
+                        let host_display = vulkan_create_params
                             .map(create_display_closure)
                             .transpose()?;
-                        let vulkan_display = match vulkan_display {
-                            Some(vulkan_display) => {
-                                VulkanDisplayWrapper::Initialized(vulkan_display)
-                            }
-                            None => VulkanDisplayWrapper::Uninitialized,
+                        let host_display = match host_display {
+                            Some(host_display) => HostDisplayWrapper::Initialized(host_display),
+                            None => HostDisplayWrapper::Uninitialized,
                         };
-                        let vulkan_display = Arc::new(Mutex::new(vulkan_display));
-                        vulkan_display_sender
-                            .send(Arc::clone(&vulkan_display))
+                        let host_display = Arc::new(Mutex::new(host_display));
+                        host_display_sender
+                            .send(Arc::clone(&host_display))
                             .map_err(|_| {
                                 format_err!("Failed to send vulkan display back to caller.")
                             })?;
-                        vulkan_display
+                        host_display
                     };
 
                     #[cfg(not(feature = "vulkan_display"))]
-                    let vulkan_display = Arc::new(Mutex::new(VulkanDisplayWrapper::Uninitialized));
+                    let host_display = Arc::new(Mutex::new(HostDisplayWrapper::Uninitialized));
 
                     Surface::new(
                         surface_id,
@@ -190,7 +188,7 @@ impl DisplayWin {
                         metrics,
                         &display_params_clone,
                         display_event_dispatcher,
-                        vulkan_display,
+                        host_display,
                     )
                 }),
                 callback: Box::new(move |success| {
@@ -202,7 +200,7 @@ impl DisplayWin {
 
         // Block until the surface creation finishes and check the result.
         match result_receiver.recv() {
-            Ok(true) => vulkan_display_receiver.recv().map_err(|_| {
+            Ok(true) => host_display_receiver.recv().map_err(|_| {
                 format_err!(
                     "Failed to receive the vulkan display from the surface creation routine."
                 )
@@ -282,7 +280,7 @@ impl DisplayT for DisplayWin {
 
         // Gfxstream allows for attaching a window only once along the initialization, so we only
         // create the surface once. See details in b/179319775.
-        let vulkan_display = match self.create_surface_internal(
+        let host_display = match self.create_surface_internal(
             surface_id,
             scanout_id.expect("scanout id is required"),
             display_params,
@@ -294,8 +292,8 @@ impl DisplayT for DisplayWin {
             Ok(display) => display,
         };
         self.is_surface_created = true;
-        self.vulkan_displays
-            .insert(surface_id, Arc::clone(&vulkan_display));
+        self.host_displays
+            .insert(surface_id, Arc::clone(&host_display));
 
         // Now that the window is ready, we can start listening for inbound (guest -> host) events
         // on our event devices.
@@ -316,7 +314,7 @@ impl DisplayT for DisplayWin {
                 error!("Failed to clone close_requested_event: {}", e);
                 GpuDisplayError::Allocate
             })?,
-            vulkan_display,
+            host_display,
         }))
     }
 
@@ -326,19 +324,19 @@ impl DisplayT for DisplayWin {
         surface_id: u32,
         #[allow(unused_variables)] external_display_resource: DisplayExternalResourceImport,
     ) -> Result<()> {
-        match self.vulkan_displays.get(&surface_id) {
-            Some(vulkan_display) => match *vulkan_display.lock() {
+        match self.host_displays.get(&surface_id) {
+            Some(host_display) => match *host_display.lock() {
                 #[cfg(feature = "vulkan_display")]
-                VulkanDisplayWrapper::Initialized(ref mut vulkan_display) => {
+                HostDisplayWrapper::Initialized(ref mut host_display) => {
                     match external_display_resource {
                         DisplayExternalResourceImport::VulkanImage {
                             descriptor,
                             metadata,
                         } => {
-                            vulkan_display.import_image(import_id, descriptor, metadata)?;
+                            host_display.import_image(import_id, descriptor, metadata)?;
                         }
                         DisplayExternalResourceImport::VulkanTimelineSemaphore { descriptor } => {
-                            vulkan_display.import_semaphore(import_id, descriptor)?;
+                            host_display.import_semaphore(import_id, descriptor)?;
                         }
                         DisplayExternalResourceImport::Dmabuf { .. } => {
                             bail!("gpu_display_win does not support importing dmabufs")
@@ -346,12 +344,12 @@ impl DisplayT for DisplayWin {
                     }
                     Ok(())
                 }
-                VulkanDisplayWrapper::Uninitialized => {
-                    bail!("VulkanDisplay is not initialized for this surface")
+                HostDisplayWrapper::Uninitialized => {
+                    bail!("HostDisplay is not initialized for this surface")
                 }
             },
             None => {
-                bail!("No VulkanDisplay for surface id {}", surface_id)
+                bail!("No HostDisplay for surface id {}", surface_id)
             }
         }
     }
@@ -359,11 +357,9 @@ impl DisplayT for DisplayWin {
     #[allow(unused_variables)]
     fn release_import(&mut self, surface_id: u32, import_id: u32) {
         #[cfg(feature = "vulkan_display")]
-        if let Some(vulkan_display) = self.vulkan_displays.get(&surface_id) {
-            if let VulkanDisplayWrapper::Initialized(ref mut vulkan_display) =
-                *vulkan_display.lock()
-            {
-                vulkan_display.delete_imported_image_or_semaphore(import_id);
+        if let Some(host_display) = self.host_displays.get(&surface_id) {
+            if let HostDisplayWrapper::Initialized(ref mut host_display) = *host_display.lock() {
+                host_display.delete_imported_image_or_semaphore(import_id);
             }
         }
     }
@@ -413,7 +409,7 @@ pub(crate) struct SurfaceWin {
     wndproc_thread: std::rc::Weak<WindowProcedureThread>,
     close_requested_event: Event,
     #[allow(dead_code)]
-    vulkan_display: Arc<Mutex<VulkanDisplayWrapper>>,
+    host_display: Arc<Mutex<HostDisplayWrapper>>,
 }
 
 impl GpuDisplaySurface for SurfaceWin {
@@ -454,7 +450,7 @@ impl GpuDisplaySurface for SurfaceWin {
         _release_timepoint: Option<SemaphoreTimepoint>,
         _extra_info: Option<FlipToExtraInfo>,
     ) -> Result<Waitable> {
-        bail!("vulkan_display feature is not enabled")
+        bail!("host_display feature is not enabled")
     }
 
     #[cfg(feature = "vulkan_display")]
@@ -478,15 +474,15 @@ impl GpuDisplaySurface for SurfaceWin {
         let release_timepoint =
             release_timepoint.ok_or(anyhow::anyhow!("release timepoint must be non-None"))?;
 
-        match *self.vulkan_display.lock() {
-            VulkanDisplayWrapper::Initialized(ref mut vulkan_display) => vulkan_display.post(
+        match *self.host_display.lock() {
+            HostDisplayWrapper::Initialized(ref mut host_display) => host_display.post(
                 import_id,
                 last_layout_transition,
                 acquire_timepoint,
                 release_timepoint,
             ),
-            VulkanDisplayWrapper::Uninitialized => {
-                bail!("VulkanDisplay is not initialized for this surface")
+            HostDisplayWrapper::Uninitialized => {
+                bail!("HostDisplay is not initialized for this surface")
             }
         }
     }
