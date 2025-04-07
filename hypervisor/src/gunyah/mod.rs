@@ -97,9 +97,7 @@ impl Hypervisor for Gunyah {
             HypervisorCap::ImmediateExit => true,
             HypervisorCap::StaticSwiotlbAllocationRequired => true,
             HypervisorCap::HypervisorInitializedBootContext => true,
-            HypervisorCap::S390UserSigp | HypervisorCap::TscDeadlineTimer => false,
-            #[cfg(target_arch = "x86_64")]
-            HypervisorCap::Xcrs | HypervisorCap::CalibratedTscLeafRequired => false,
+            HypervisorCap::S390UserSigp => false,
         }
     }
 }

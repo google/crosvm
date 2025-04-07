@@ -573,7 +573,7 @@ impl Hypervisor for Geniezone {
             HypervisorCap::ImmediateExit => true,
             HypervisorCap::StaticSwiotlbAllocationRequired => true,
             HypervisorCap::HypervisorInitializedBootContext => false,
-            HypervisorCap::S390UserSigp | HypervisorCap::TscDeadlineTimer => false,
+            HypervisorCap::S390UserSigp => false,
         }
     }
 }

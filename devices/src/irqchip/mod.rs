@@ -262,8 +262,10 @@ pub trait IrqChip: Send {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IrqChipCap {
     /// APIC TSC-deadline timer mode.
+    #[cfg(target_arch = "x86_64")]
     TscDeadlineTimer,
     /// Extended xAPIC (x2APIC) standard.
+    #[cfg(target_arch = "x86_64")]
     X2Apic,
     /// Irqchip exposes mp_state_get/set methods. Calling these methods on chips
     /// without this capability will result in undefined behavior.

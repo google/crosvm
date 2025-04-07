@@ -17,7 +17,6 @@ use base::Result;
 use base::Tube;
 use hypervisor::kvm::KvmVcpu;
 use hypervisor::kvm::KvmVm;
-use hypervisor::HypervisorCap;
 use hypervisor::IoapicState;
 use hypervisor::IrqRoute;
 use hypervisor::IrqSource;
@@ -30,7 +29,7 @@ use hypervisor::PitState;
 use hypervisor::Vcpu;
 use hypervisor::VcpuX86_64;
 use hypervisor::Vm;
-use hypervisor::VmX86_64;
+use hypervisor::VmCap;
 use kvm_sys::*;
 use resources::SystemAllocator;
 use serde::Deserialize;
@@ -767,10 +766,7 @@ impl IrqChip for KvmSplitIrqChip {
 
     fn check_capability(&self, c: IrqChipCap) -> bool {
         match c {
-            IrqChipCap::TscDeadlineTimer => self
-                .vm
-                .get_hypervisor()
-                .check_capability(HypervisorCap::TscDeadlineTimer),
+            IrqChipCap::TscDeadlineTimer => self.vm.check_capability(VmCap::TscDeadlineTimer),
             IrqChipCap::X2Apic => true,
             IrqChipCap::MpStateGetSet => true,
         }

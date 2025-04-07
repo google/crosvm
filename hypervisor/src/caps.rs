@@ -8,7 +8,6 @@ pub enum HypervisorCap {
     ArmPmuV3,
     ImmediateExit,
     S390UserSigp,
-    TscDeadlineTimer,
     UserMemory,
     #[cfg(target_arch = "x86_64")]
     Xcrs,
@@ -52,6 +51,8 @@ pub enum VmCap {
     /// VM can detect the bus lock
     #[cfg(target_arch = "x86_64")]
     BusLockDetect,
+    #[cfg(target_arch = "x86_64")]
+    TscDeadlineTimer,
     /// Supports read-only memory regions.
     ReadOnlyMemoryRegion,
     /// VM can set guest memory cache noncoherent DMA flag

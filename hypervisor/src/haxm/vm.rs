@@ -243,6 +243,7 @@ impl Vm for HaxmVm {
             VmCap::BusLockDetect => false,
             VmCap::ReadOnlyMemoryRegion => false,
             VmCap::MemNoncoherentDma => false,
+            VmCap::TscDeadlineTimer => false,
         }
     }
 
