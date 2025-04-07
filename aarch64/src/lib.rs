@@ -644,9 +644,7 @@ impl arch::LinuxArch for AArch64 {
                 .expect("Not enough memory for FDT"),
         };
 
-        let mut use_pmu = vm
-            .get_hypervisor()
-            .check_capability(HypervisorCap::ArmPmuV3);
+        let mut use_pmu = vm.check_capability(VmCap::ArmPmuV3);
         use_pmu &= !no_pmu;
         let vcpu_count = components.vcpu_count;
         let mut has_pvtime = true;

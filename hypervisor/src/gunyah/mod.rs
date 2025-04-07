@@ -93,11 +93,9 @@ impl Hypervisor for Gunyah {
     fn check_capability(&self, cap: HypervisorCap) -> bool {
         match cap {
             HypervisorCap::UserMemory => true,
-            HypervisorCap::ArmPmuV3 => false,
             HypervisorCap::ImmediateExit => true,
             HypervisorCap::StaticSwiotlbAllocationRequired => true,
             HypervisorCap::HypervisorInitializedBootContext => true,
-            HypervisorCap::S390UserSigp => false,
         }
     }
 }
@@ -576,6 +574,7 @@ impl Vm for GunyahVm {
 
     fn check_capability(&self, c: VmCap) -> bool {
         match c {
+            VmCap::ArmPmuV3 => false,
             VmCap::DirtyLog => false,
             // Strictly speaking, Gunyah supports pvclock, but Gunyah takes care
             // of it and crosvm doesn't need to do anything for it

@@ -569,11 +569,9 @@ impl Hypervisor for Geniezone {
     fn check_capability(&self, cap: HypervisorCap) -> bool {
         match cap {
             HypervisorCap::UserMemory => true,
-            HypervisorCap::ArmPmuV3 => false,
             HypervisorCap::ImmediateExit => true,
             HypervisorCap::StaticSwiotlbAllocationRequired => true,
             HypervisorCap::HypervisorInitializedBootContext => false,
-            HypervisorCap::S390UserSigp => false,
         }
     }
 }
@@ -899,6 +897,7 @@ impl Vm for GeniezoneVm {
             return val;
         }
         match c {
+            VmCap::ArmPmuV3 => false,
             VmCap::DirtyLog => true,
             VmCap::PvClock => false,
             VmCap::Protected => self.check_raw_capability(GeniezoneCap::ArmProtectedVm),

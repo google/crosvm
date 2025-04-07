@@ -5,9 +5,7 @@
 /// An enumeration of different hypervisor capabilities.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HypervisorCap {
-    ArmPmuV3,
     ImmediateExit,
-    S390UserSigp,
     UserMemory,
     #[cfg(target_arch = "x86_64")]
     Xcrs,
@@ -40,6 +38,8 @@ pub enum HypervisorCap {
 /// A capability the `Vm` can possibly expose.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VmCap {
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    ArmPmuV3,
     /// Track dirty pages
     DirtyLog,
     /// Paravirtualized clock device

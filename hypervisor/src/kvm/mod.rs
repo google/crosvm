@@ -601,6 +601,8 @@ impl Vm for KvmVm {
             return val;
         }
         match c {
+            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            VmCap::ArmPmuV3 => self.check_raw_capability(KvmCap::ArmPmuV3),
             VmCap::DirtyLog => true,
             VmCap::PvClock => false,
             VmCap::Protected => self.check_raw_capability(KvmCap::ArmProtectedVm),
@@ -1207,9 +1209,7 @@ impl TryFrom<HypervisorCap> for KvmCap {
 
     fn try_from(cap: HypervisorCap) -> Result<KvmCap> {
         match cap {
-            HypervisorCap::ArmPmuV3 => Ok(KvmCap::ArmPmuV3),
             HypervisorCap::ImmediateExit => Ok(KvmCap::ImmediateExit),
-            HypervisorCap::S390UserSigp => Ok(KvmCap::S390UserSigp),
             HypervisorCap::UserMemory => Ok(KvmCap::UserMemory),
             #[cfg(target_arch = "x86_64")]
             HypervisorCap::Xcrs => Ok(KvmCap::Xcrs),

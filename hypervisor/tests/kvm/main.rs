@@ -57,7 +57,7 @@ fn new() {
 fn check_capability() {
     let kvm = Kvm::new().unwrap();
     assert!(kvm.check_capability(HypervisorCap::UserMemory));
-    assert!(!kvm.check_capability(HypervisorCap::S390UserSigp));
+    assert!(!kvm.check_capability(HypervisorCap::HypervisorInitializedBootContext));
 }
 
 #[test]
@@ -93,8 +93,7 @@ fn check_vm_capability() {
     let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     assert!(vm.check_raw_capability(KvmCap::UserMemory));
-    // I assume nobody is testing this on s390
-    assert!(!vm.check_raw_capability(KvmCap::S390UserSigp));
+    assert!(!vm.check_raw_capability(KvmCap::S390Psw))
 }
 
 #[test]

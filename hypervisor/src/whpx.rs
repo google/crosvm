@@ -256,6 +256,5 @@ mod tests {
         assert!(whpx.check_capability(HypervisorCap::UserMemory));
         assert!(whpx.check_capability(HypervisorCap::Xcrs));
         assert!(whpx.check_capability(HypervisorCap::ImmediateExit));
-        assert!(!whpx.check_capability(HypervisorCap::S390UserSigp));
     }
 }
