@@ -3,8 +3,14 @@
 # found in the LICENSE file.
 
 # Build instructions:
-#  x86_64-linux-gnu-as test_elf.S -o test_elf.o
-#  x86_64-linux-gnu-ld test_elf.o -o test_elf.bin -T test_elf.ld
+#
+# For a 64-bit kernel:
+#  x86_64-linux-gnu-as test_elf.S -o test_elf64.o
+#  x86_64-linux-gnu-ld test_elf64.o -o test_elf64.bin -T test_elf.ld
+#
+# For a 32-bit kernel:
+#  i686-linux-gnu-as test_elf.S -o test_elf32.o
+#  i686-linux-gnu-ld test_elf32.o -o test_elf32.bin -T test_elf.ld
 
     .intel_syntax noprefix
 
@@ -16,8 +22,8 @@ hello_world:
     .text
     .globl _start
 _start:
-    lea rsi, [rip + hello_world]    # rsi -> message string
-    mov rcx, hello_size             # rcx = length of message
+    lea esi, [hello_world]          # esi -> message string
+    mov ecx, hello_size             # ecx = length of message
     mov dx, 0x3F8                   # dx = COM1 port
 
 .print_loop:
@@ -34,8 +40,7 @@ _start:
     # Load a byte of the message and send it to the serial port.
     lodsb                           # load message byte from RSI to AL
     out dx, al                      # send byte to serial port
-    dec rcx                         # rcx--
-    jnz .print_loop                 # repeat if rcx != 0
+    loop .print_loop                # repeat hello_size times
 
 .done:
     int3                            # cause vcpu to exit

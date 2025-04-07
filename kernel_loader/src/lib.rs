@@ -359,10 +359,10 @@ mod test {
         let kernel_addr = GuestAddress(0x0);
         let mut image = make_elf32_bin();
         let kernel = load_elf(&gm, kernel_addr, &mut image, 0).unwrap();
-        assert_eq!(kernel.address_range.start, 0);
-        assert_eq!(kernel.address_range.end, 0xa_2037);
-        assert_eq!(kernel.size, 0xa_2038);
-        assert_eq!(kernel.entry, GuestAddress(0x3dc0));
+        assert_eq!(kernel.address_range.start, 0x20_0000);
+        assert_eq!(kernel.address_range.end, 0x20_002e);
+        assert_eq!(kernel.size, 0x2f);
+        assert_eq!(kernel.entry, GuestAddress(0x20_000e));
         assert_eq!(kernel.class, ElfClass::ElfClass32);
     }
 
@@ -373,8 +373,8 @@ mod test {
         let mut image = make_elf64_bin();
         let kernel = load_elf(&gm, kernel_addr, &mut image, 0).expect("failed to load ELF");
         assert_eq!(kernel.address_range.start, 0x20_0000);
-        assert_eq!(kernel.address_range.end, 0x20_0034);
-        assert_eq!(kernel.size, 0x35);
+        assert_eq!(kernel.address_range.end, 0x20_002f);
+        assert_eq!(kernel.size, 0x30);
         assert_eq!(kernel.entry, GuestAddress(0x20_000e));
         assert_eq!(kernel.class, ElfClass::ElfClass64);
     }
