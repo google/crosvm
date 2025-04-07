@@ -414,7 +414,7 @@ infra_builder(
     ),
     properties = {
         "push": True,
-        "bot": False,
+        "bot": True,
     },
     schedule = "0 12 * * *",  # Check for uprevs daily
     postsubmit = False,
