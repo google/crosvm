@@ -25,6 +25,5 @@ fn make_elf_bin(elf_bytes: &[u8]) -> File {
 fuzz_target!(|bytes| {
     let mut kimage = make_elf_bin(bytes);
     let mem = GuestMemory::new(&[(GuestAddress(0), MEM_SIZE)]).unwrap();
-    let _ = kernel_loader::load_elf32(&mem, GuestAddress(0), &mut kimage, 0);
-    let _ = kernel_loader::load_elf64(&mem, GuestAddress(0), &mut kimage, 0);
+    let _ = kernel_loader::load_elf(&mem, GuestAddress(0), &mut kimage, 0);
 });

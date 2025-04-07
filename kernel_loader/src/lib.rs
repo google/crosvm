@@ -91,64 +91,16 @@ pub struct LoadedKernel {
 
     /// Entry point address of the kernel.
     pub entry: GuestAddress,
+
+    /// ELF class or equivalent for other image formats.
+    pub class: ElfClass,
 }
 
-/// Loads a kernel from a 32-bit ELF image into memory.
-///
-/// The ELF file will be loaded at the physical address specified by the `p_paddr` fields of its
-/// program headers.
-///
-/// # Arguments
-///
-/// * `guest_mem` - The guest memory region the kernel is written to.
-/// * `kernel_start` - The minimum guest address to allow when loading program headers.
-/// * `kernel_image` - Input vmlinux image.
-/// * `phys_offset` - An offset in bytes to add to each physical address (`p_paddr`).
-pub fn load_elf32<F>(
-    guest_mem: &GuestMemory,
-    kernel_start: GuestAddress,
-    kernel_image: &mut F,
-    phys_offset: u64,
-) -> Result<LoadedKernel>
-where
-    F: FileReadWriteAtVolatile,
-{
-    load_elf_for_class(
-        guest_mem,
-        kernel_start,
-        kernel_image,
-        phys_offset,
-        Some(elf::ELFCLASS32),
-    )
-}
-
-/// Loads a kernel from a 64-bit ELF image into memory.
-///
-/// The ELF file will be loaded at the physical address specified by the `p_paddr` fields of its
-/// program headers.
-///
-/// # Arguments
-///
-/// * `guest_mem` - The guest memory region the kernel is written to.
-/// * `kernel_start` - The minimum guest address to allow when loading program headers.
-/// * `kernel_image` - Input vmlinux image.
-/// * `phys_offset` - An offset in bytes to add to each physical address (`p_paddr`).
-pub fn load_elf64<F>(
-    guest_mem: &GuestMemory,
-    kernel_start: GuestAddress,
-    kernel_image: &mut F,
-    phys_offset: u64,
-) -> Result<LoadedKernel>
-where
-    F: FileReadWriteAtVolatile,
-{
-    load_elf_for_class(
-        guest_mem,
-        kernel_start,
-        kernel_image,
-        phys_offset,
-        Some(elf::ELFCLASS64),
-    )
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+/// ELF image class (32- or 64-bit ELF)
+pub enum ElfClass {
+    ElfClass32,
+    ElfClass64,
 }
 
 /// Loads a kernel from a 32-bit or 64-bit ELF image into memory.
@@ -171,20 +123,7 @@ pub fn load_elf<F>(
 where
     F: FileReadWriteAtVolatile,
 {
-    load_elf_for_class(guest_mem, kernel_start, kernel_image, phys_offset, None)
-}
-
-fn load_elf_for_class<F>(
-    guest_mem: &GuestMemory,
-    kernel_start: GuestAddress,
-    kernel_image: &mut F,
-    phys_offset: u64,
-    ei_class: Option<u32>,
-) -> Result<LoadedKernel>
-where
-    F: FileReadWriteAtVolatile,
-{
-    let elf = read_elf(kernel_image, ei_class)?;
+    let (elf, class) = read_elf(kernel_image)?;
     let mut start = None;
     let mut end = 0;
 
@@ -248,6 +187,7 @@ where
         address_range,
         size,
         entry: GuestAddress(entry),
+        class,
     })
 }
 
@@ -257,9 +197,9 @@ struct Elf64 {
 }
 
 /// Reads the headers of an ELF32 or ELF64 object file.  Returns ELF file and program headers,
-/// converted to ELF64 format.  If `required_ei_class` is Some and the file's ELF ei_class doesn't
-/// match, an Err is returned.
-fn read_elf<F>(file: &mut F, required_ei_class: Option<u32>) -> Result<Elf64>
+/// converted to ELF64 format as a single internal representation that can handle either 32- or
+/// 64-bit images, and the ELF class of the original image.
+fn read_elf<F>(file: &mut F) -> Result<(Elf64, ElfClass)>
 where
     F: FileReadWriteAtVolatile,
 {
@@ -284,14 +224,15 @@ where
     }
 
     let ei_class = ident[elf::EI_CLASS as usize] as u32;
-    if let Some(required_ei_class) = required_ei_class {
-        if ei_class != required_ei_class {
-            return Err(Error::InvalidElfClass);
-        }
-    }
     match ei_class {
-        elf::ELFCLASS32 => read_elf_by_type::<_, elf::Elf32_Ehdr, elf::Elf32_Phdr>(file),
-        elf::ELFCLASS64 => read_elf_by_type::<_, elf::Elf64_Ehdr, elf::Elf64_Phdr>(file),
+        elf::ELFCLASS32 => Ok((
+            read_elf_by_type::<_, elf::Elf32_Ehdr, elf::Elf32_Phdr>(file)?,
+            ElfClass::ElfClass32,
+        )),
+        elf::ELFCLASS64 => Ok((
+            read_elf_by_type::<_, elf::Elf64_Ehdr, elf::Elf64_Phdr>(file)?,
+            ElfClass::ElfClass64,
+        )),
         _ => Err(Error::InvalidElfClass),
     }
 }
@@ -422,6 +363,7 @@ mod test {
         assert_eq!(kernel.address_range.end, 0xa_2037);
         assert_eq!(kernel.size, 0xa_2038);
         assert_eq!(kernel.entry, GuestAddress(0x3dc0));
+        assert_eq!(kernel.class, ElfClass::ElfClass32);
     }
 
     #[test]
@@ -434,6 +376,7 @@ mod test {
         assert_eq!(kernel.address_range.end, 0x20_0034);
         assert_eq!(kernel.size, 0x35);
         assert_eq!(kernel.entry, GuestAddress(0x20_000e));
+        assert_eq!(kernel.class, ElfClass::ElfClass64);
     }
 
     #[test]

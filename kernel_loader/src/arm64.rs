@@ -29,6 +29,7 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
+use crate::ElfClass;
 use crate::Error;
 use crate::LoadedKernel;
 use crate::Result;
@@ -114,6 +115,7 @@ where
         address_range: AddressRange::from_start_and_size(load_addr.offset(), range_size)
             .ok_or(Error::InvalidKernelSize)?,
         entry: load_addr,
+        class: ElfClass::ElfClass64,
     })
 }
 
@@ -168,6 +170,7 @@ fn load_arm64_kernel_from_reader<F: BufRead>(
         address_range: AddressRange::from_start_and_size(load_addr.offset(), range_size)
             .ok_or(Error::InvalidKernelSize)?,
         entry: load_addr,
+        class: ElfClass::ElfClass64,
     })
 }
 

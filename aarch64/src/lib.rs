@@ -1477,6 +1477,7 @@ mod tests {
             address_range: AddressRange::from_start_and_size(0x8080_0000, 0x1000).unwrap(),
             size: 0x1000,
             entry: GuestAddress(0x8080_0000),
+            class: kernel_loader::ElfClass::ElfClass64,
         });
         assert_eq!(
             payload.address_range(),
@@ -1528,6 +1529,7 @@ mod tests {
             address_range: AddressRange::from_start_and_size(0x8080_0000, 0x1000).unwrap(),
             size: 0x1000,
             entry: GuestAddress(0x8080_0000),
+            class: kernel_loader::ElfClass::ElfClass64,
         });
         assert_eq!(
             payload.address_range(),

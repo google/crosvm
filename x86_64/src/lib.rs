@@ -1749,7 +1749,7 @@ impl X8664arch {
             ));
         }
 
-        match kernel_loader::load_elf64(mem, kernel_start, kernel_image, 0) {
+        match kernel_loader::load_elf(mem, kernel_start, kernel_image, 0) {
             Ok(loaded_kernel) => {
                 // ELF kernels don't contain a `boot_params` structure, so synthesize a default one.
                 let boot_params = boot_params {
@@ -1763,7 +1763,10 @@ impl X8664arch {
                     boot_params,
                     loaded_kernel.address_range,
                     loaded_kernel.entry,
-                    CpuMode::LongMode,
+                    match loaded_kernel.class {
+                        kernel_loader::ElfClass::ElfClass32 => CpuMode::FlatProtectedMode,
+                        kernel_loader::ElfClass::ElfClass64 => CpuMode::LongMode,
+                    },
                     KernelType::Elf,
                 ))
             }

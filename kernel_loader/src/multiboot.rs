@@ -18,6 +18,7 @@ use resources::AddressRange;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
+use crate::ElfClass;
 use crate::Error;
 use crate::LoadedKernel;
 use crate::Result;
@@ -352,5 +353,6 @@ where
         address_range,
         size,
         entry: multiboot_load.entry_addr,
+        class: ElfClass::ElfClass32,
     })
 }
