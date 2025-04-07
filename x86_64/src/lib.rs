@@ -1280,7 +1280,7 @@ impl arch::LinuxArch for X8664arch {
                 // The default values for `Regs` and `Sregs` already set up the reset vector.
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let (params, kernel_region, kernel_entry, cpu_mode, kernel_type) =
+                let (params, kernel_region, kernel_entry, mut cpu_mode, kernel_type) =
                     Self::load_kernel(&mem, kernel_image)?;
 
                 info!("Loaded {} kernel", kernel_type);
@@ -1351,6 +1351,10 @@ impl arch::LinuxArch for X8664arch {
                     // /config/kernel-address and /config/kernel-size and determine the offset
                     // of the entry point on its own, not trust crosvm to provide it.
                     vcpu_init[0].regs.rdi = kernel_entry.offset();
+
+                    // The pVM firmware itself always starts in 64-bit long mode, regardless of
+                    // the type of payload.
+                    cpu_mode = CpuMode::LongMode;
                 }
 
                 match cpu_mode {
