@@ -1358,6 +1358,13 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     };
 
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    let cpu_ipc_ratio = if cfg.host_cpu_topology {
+        &cpu_capacity
+    } else {
+        &cfg.cpu_ipc_ratio
+    };
+
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     let mut vcpu_domain_paths = BTreeMap::new();
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     let mut vcpu_domains = BTreeMap::new();
@@ -1416,7 +1423,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
                     )
                 }),
                 host_max_freq,
-                |cpu_id| cfg.cpu_ipc_ratio.get(&cpu_id).copied().unwrap_or(1024),
+                |cpu_id| cpu_ipc_ratio.get(&cpu_id).copied().unwrap_or(1024),
             )?;
 
             if !cfg.cpu_freq_domains.is_empty() {

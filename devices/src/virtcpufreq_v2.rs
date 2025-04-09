@@ -309,6 +309,12 @@ impl BusDevice for VirtCpufreqV2 {
                     }
                 }
 
+                // Return early if vcpu_fmax matches pcpu_fmax as that denotes no vCPU throttling
+                // is required.
+                if self.vcpu_fmax == self.pcpu_fmax {
+                    return;
+                }
+
                 self.shared_domain_perf.store(util_raw, Ordering::SeqCst);
                 let timer = self.timer.clone();
                 if self.worker.is_none() {
