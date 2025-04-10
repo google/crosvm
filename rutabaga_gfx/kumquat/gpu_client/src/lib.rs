@@ -149,7 +149,11 @@ pub unsafe extern "C" fn virtgpu_kumquat_get_caps(
     cmd: &drm_kumquat_get_caps,
 ) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        let caps_slice = from_raw_parts_mut(cmd.addr as *mut u8, cmd.size as usize);
+        let caps_slice = if cmd.size != 0 {
+            from_raw_parts_mut(cmd.addr as *mut u8, cmd.size as usize)
+        } else {
+            &mut []
+        };
         let result = ptr.lock().unwrap().get_caps(cmd.cap_set_id, caps_slice);
         return_result(result)
     }))
@@ -162,10 +166,14 @@ pub unsafe extern "C" fn virtgpu_kumquat_context_init(
     cmd: &drm_kumquat_context_init,
 ) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        let context_params: &[VirtGpuParam] = from_raw_parts(
-            cmd.ctx_set_params as *const VirtGpuParam,
-            cmd.num_params as usize,
-        );
+        let context_params: &[VirtGpuParam] = if cmd.num_params != 0 {
+            from_raw_parts(
+                cmd.ctx_set_params as *const VirtGpuParam,
+                cmd.num_params as usize,
+            )
+        } else {
+            &[]
+        };
 
         let mut capset_id: u64 = 0;
 
@@ -202,7 +210,11 @@ pub unsafe extern "C" fn virtgpu_kumquat_resource_create_blob(
     cmd: &mut drm_kumquat_resource_create_blob,
 ) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        let blob_cmd = from_raw_parts(cmd.cmd as *const u8, cmd.cmd_size as usize);
+        let blob_cmd = if cmd.cmd_size != 0 {
+            from_raw_parts(cmd.cmd as *const u8, cmd.cmd_size as usize)
+        } else {
+            &[]
+        };
         let result = ptr.lock().unwrap().resource_create_blob(cmd, blob_cmd);
         return_result(result)
     }))
@@ -278,8 +290,17 @@ pub unsafe extern "C" fn virtgpu_kumquat_execbuffer(
     cmd: &mut drm_kumquat_execbuffer,
 ) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        let bo_handles = from_raw_parts(cmd.bo_handles as *const u32, cmd.num_bo_handles as usize);
-        let cmd_buf = from_raw_parts(cmd.command as *const u8, cmd.size as usize);
+        let bo_handles = if cmd.num_bo_handles != 0 {
+            from_raw_parts(cmd.bo_handles as *const u32, cmd.num_bo_handles as usize)
+        } else {
+            &[]
+        };
+
+        let cmd_buf = if cmd.size != 0 {
+            from_raw_parts(cmd.command as *const u8, cmd.size as usize)
+        } else {
+            &[]
+        };
 
         // TODO
         let in_fences: &[u64] = &[0; 0];
