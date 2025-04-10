@@ -618,8 +618,6 @@ impl Vm for KvmVm {
             }
             #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
             VmCap::Sve => self.check_raw_capability(KvmCap::Sve),
-            #[cfg(target_arch = "x86_64")]
-            VmCap::TscDeadlineTimer => self.check_raw_capability(KvmCap::TscDeadlineTimer),
         }
     }
 

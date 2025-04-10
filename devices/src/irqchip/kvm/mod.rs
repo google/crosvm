@@ -6,14 +6,12 @@ use base::error;
 use base::Error;
 use base::Event;
 use base::Result;
+#[cfg(target_arch = "x86_64")]
+use hypervisor::kvm::KvmCap;
 use hypervisor::kvm::KvmVcpu;
 use hypervisor::IrqRoute;
 use hypervisor::MPState;
 use hypervisor::Vcpu;
-#[cfg(target_arch = "x86_64")]
-use hypervisor::Vm;
-#[cfg(target_arch = "x86_64")]
-use hypervisor::VmCap;
 use kvm_sys::kvm_mp_state;
 use resources::SystemAllocator;
 
@@ -210,7 +208,7 @@ impl IrqChip for KvmKernelIrqChip {
     fn check_capability(&self, c: IrqChipCap) -> bool {
         match c {
             #[cfg(target_arch = "x86_64")]
-            IrqChipCap::TscDeadlineTimer => self.vm.check_capability(VmCap::TscDeadlineTimer),
+            IrqChipCap::TscDeadlineTimer => self.vm.check_raw_capability(KvmCap::TscDeadlineTimer),
             #[cfg(target_arch = "x86_64")]
             IrqChipCap::X2Apic => true,
             IrqChipCap::MpStateGetSet => true,

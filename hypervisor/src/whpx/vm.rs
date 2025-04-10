@@ -527,7 +527,6 @@ impl Vm for WhpxVm {
             VmCap::BusLockDetect => false,
             VmCap::ReadOnlyMemoryRegion => true,
             VmCap::MemNoncoherentDma => false,
-            VmCap::TscDeadlineTimer => false,
         }
     }
 
