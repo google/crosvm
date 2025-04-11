@@ -1637,8 +1637,16 @@ pub struct RunCommand {
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// disable host swap on guest VM pages.
+    /// disable host swap on guest VM pages. use MADV_REMOVE to handle balloon. requires sandboxing
     pub lock_guest_memory: Option<bool>,
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// disable host swap on guest VM pages. use MADV_DONTNEED_LOCKED to handle balloon. requires
+    /// 5.18+ kernel
+    pub lock_guest_memory_dontneed: Option<bool>,
 
     #[cfg(windows)]
     #[argh(option, arg_name = "PATH")]
@@ -2896,6 +2904,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(any(target_os = "android", target_os = "linux"))]
         {
             cfg.lock_guest_memory = cmd.lock_guest_memory.unwrap_or_default();
+            cfg.lock_guest_memory_dontneed = cmd.lock_guest_memory_dontneed.unwrap_or_default();
             cfg.boost_uclamp = cmd.boost_uclamp.unwrap_or_default();
         }
 

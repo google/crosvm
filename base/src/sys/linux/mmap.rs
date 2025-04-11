@@ -478,6 +478,28 @@ impl MemoryMapping {
         }
     }
 
+    /// Uses madvise to tell the kernel to remove the specified range. Works even on locked ranges.
+    pub fn dontneed_locked_range(&self, mem_offset: usize, count: usize) -> Result<()> {
+        self.range_end(mem_offset, count)
+            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
+        // SAFETY: Safe because all the args to madvise are valid and the return
+        // value is checked.
+        let ret = unsafe {
+            // madvising away the region is the same as the guest changing it.
+            // Next time it is read, it may return zero pages.
+            libc::madvise(
+                (self.addr as usize + mem_offset) as *mut _,
+                count,
+                libc::MADV_DONTNEED_LOCKED,
+            )
+        };
+        if ret < 0 {
+            Err(Error::SystemCallFailed(super::Error::last()))
+        } else {
+            Ok(())
+        }
+    }
+
     /// Tell the kernel to readahead the range.
     ///
     /// This does not block the thread by I/O wait from reading the backed file. This does not
@@ -863,6 +885,8 @@ impl CrateMemoryMapping {
 pub trait MemoryMappingUnix {
     /// Remove the specified range from the mapping.
     fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()>;
+    /// Remove the specified range from the mapping. Works even on locked ranges.
+    fn dontneed_locked_range(&self, mem_offset: usize, count: usize) -> Result<()>;
     /// Tell the kernel to readahead the range.
     fn async_prefetch(&self, mem_offset: usize, count: usize) -> Result<()>;
     /// Tell the kernel to drop the page cache.
@@ -878,6 +902,9 @@ pub trait MemoryMappingUnix {
 impl MemoryMappingUnix for CrateMemoryMapping {
     fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()> {
         self.mapping.remove_range(mem_offset, count)
+    }
+    fn dontneed_locked_range(&self, mem_offset: usize, count: usize) -> Result<()> {
+        self.mapping.dontneed_locked_range(mem_offset, count)
     }
     fn async_prefetch(&self, mem_offset: usize, count: usize) -> Result<()> {
         self.mapping.async_prefetch(mem_offset, count)

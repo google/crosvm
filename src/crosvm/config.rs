@@ -664,6 +664,8 @@ pub struct Config {
     pub kernel_log_file: Option<String>,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub lock_guest_memory: bool,
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    pub lock_guest_memory_dontneed: bool,
     #[cfg(windows)]
     pub log_file: Option<String>,
     #[cfg(windows)]
@@ -904,6 +906,8 @@ impl Default for Config {
             kernel_log_file: None,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             lock_guest_memory: false,
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            lock_guest_memory_dontneed: false,
             #[cfg(windows)]
             log_file: None,
             #[cfg(windows)]
@@ -1205,6 +1209,14 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     if cfg.lock_guest_memory && cfg.jail_config.is_none() {
         return Err("'lock-guest-memory' and 'disable-sandbox' are mutually exclusive".to_string());
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    if cfg.lock_guest_memory && cfg.lock_guest_memory_dontneed {
+        return Err(
+            "'lock-guest-memory' and 'lock-guest-memory-dontneed' are mutually exclusive"
+                .to_string(),
+        );
     }
 
     // TODO(b/253386409): Vmm-swap only support sandboxed devices until vmm-swap use

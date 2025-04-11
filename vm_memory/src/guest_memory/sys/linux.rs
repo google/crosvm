@@ -23,6 +23,7 @@ bitflags! {
     pub struct MemoryPolicy: u32 {
         const USE_HUGEPAGES = 1;
         const LOCK_GUEST_MEMORY = (1 << 1);
+        const USE_DONTNEED_LOCKED = (1 << 2);
     }
 }
 
@@ -47,6 +48,18 @@ impl GuestMemory {
         let (mapping, offset, _) = self.find_region(addr)?;
         mapping
             .remove_range(offset, count as usize)
+            .map_err(|e| Error::MemoryAccess(addr, e))
+    }
+
+    /// Madvise away the address range in the host that is associated with the given guest range.
+    ///
+    /// This feature is only available on Unix, where a MemoryMapping can remove a mapped range.
+    ///
+    /// Requires a 5.18+ kernel.
+    pub fn dontneed_locked_range(&self, addr: GuestAddress, count: u64) -> Result<()> {
+        let (mapping, offset, _) = self.find_region(addr)?;
+        mapping
+            .dontneed_locked_range(offset, count as usize)
             .map_err(|e| Error::MemoryAccess(addr, e))
     }
 
@@ -78,6 +91,10 @@ impl GuestMemory {
                 if let Err(err) = ret {
                     println!("Failed to lock memory for mapping {}", err);
                 }
+            }
+
+            if mem_policy.contains(MemoryPolicy::USE_DONTNEED_LOCKED) {
+                self.use_dontneed_locked = true;
             }
         }
     }
