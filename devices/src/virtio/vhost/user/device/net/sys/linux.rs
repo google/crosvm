@@ -31,9 +31,11 @@ use vm_memory::GuestMemory;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio;
+use crate::virtio::net::process_mrg_rx;
 use crate::virtio::net::process_rx;
 use crate::virtio::net::validate_and_configure_tap;
 use crate::virtio::net::NetError;
+use crate::virtio::net::PendingBuffer;
 use crate::virtio::vhost::user::device::connection::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
 use crate::virtio::vhost::user::device::handler::VhostUserDevice;
@@ -146,25 +148,40 @@ async fn run_rx_queue<T: TapT>(
     mut tap: IoSource<T>,
     kick_evt: EventAsync,
     mut stop_rx: oneshot::Receiver<()>,
+    mrg_rxbuf: bool,
 ) -> Queue {
+    let mut pending_buffer = if mrg_rxbuf {
+        Some(PendingBuffer::new())
+    } else {
+        None
+    };
     loop {
-        select_biased! {
-            // `tap.wait_readable()` requires an immutable reference to `tap`, but `process_rx`
-            // requires a mutable reference to `tap`, so this future needs to be recreated on
-            // every iteration. If more arms are added that doesn't break out of the loop, then
-            // this future could be recreated too many times.
-            rx = tap.wait_readable().fuse() => {
-                if let Err(e) = rx {
-                    error!("Failed to wait for tap device to become readable: {}", e);
+        let pending_length = pending_buffer
+            .as_ref()
+            .map_or(0, |pending_buffer| pending_buffer.length);
+        if pending_length == 0 {
+            select_biased! {
+                // `tap.wait_readable()` requires an immutable reference to `tap`, but `process_rx`
+                // requires a mutable reference to `tap`, so this future needs to be recreated on
+                // every iteration. If more arms are added that doesn't break out of the loop, then
+                // this future could be recreated too many times.
+                rx = tap.wait_readable().fuse() => {
+                    if let Err(e) = rx {
+                        error!("Failed to wait for tap device to become readable: {}", e);
+                        break;
+                    }
+                }
+                _ = stop_rx => {
                     break;
                 }
             }
-            _ = stop_rx => {
-                break;
-            }
         }
+        let res = match pending_buffer.as_mut() {
+            Some(pending_buffer) => process_mrg_rx(&mut queue, tap.as_source_mut(), pending_buffer),
+            None => process_rx(&mut queue, tap.as_source_mut()),
+        };
 
-        match process_rx(&mut queue, tap.as_source_mut()) {
+        match res {
             Ok(()) => {}
             Err(NetError::RxDescriptorsExhausted) => {
                 select_biased! {
@@ -220,9 +237,11 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                     .async_from(tap)
                     .context("failed to create async tap device")?;
 
+                let mrg_rxbuf =
+                    (backend.acked_features & 1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF) != 0;
                 let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
                 (
-                    ex.spawn_local(run_rx_queue(queue, tap, kick_evt, stop_rx)),
+                    ex.spawn_local(run_rx_queue(queue, tap, kick_evt, stop_rx, mrg_rxbuf)),
                     stop_tx,
                 )
             }

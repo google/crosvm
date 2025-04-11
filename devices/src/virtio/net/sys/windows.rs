@@ -31,6 +31,7 @@ use super::super::super::Interrupt;
 use super::super::super::ProtectionType;
 use super::super::super::Queue;
 use super::super::super::Reader;
+use super::PendingBuffer;
 
 // This file should not be included at virtio mod level if slirp is not include. In case it is,
 // throw a user friendly message.
@@ -72,6 +73,14 @@ fn rx_single_frame(rx_queue: &mut Queue, rx_buf: &mut [u8], rx_count: usize) -> 
     rx_queue.add_used(desc_chain);
 
     true
+}
+
+pub fn process_mrg_rx<T: TapT>(
+    rx_queue: &mut Queue,
+    tap: &mut T,
+    pending_buffer: &mut Option<PendingBuffer>,
+) -> result::Result<(), NetError> {
+    unimplemented!("Unimplemented on Windows")
 }
 
 pub fn process_rx<T: TapT>(
@@ -205,6 +214,7 @@ where
     pub(in crate::virtio) fn handle_rx_token(
         &mut self,
         wait_ctx: &WaitContext<Token>,
+        _pending_buffer: &mut PendingBuffer,
     ) -> result::Result<(), NetError> {
         let mut needs_interrupt = false;
         // Process a deferred frame first if available. Don't read from tap again

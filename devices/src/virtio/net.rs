@@ -68,10 +68,12 @@ const QUEUE_SIZE: u16 = 256;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub static VHOST_NET_DEFAULT_PATH: &str = "/dev/vhost-net";
 
+pub(crate) use sys::process_mrg_rx;
 pub(crate) use sys::process_rx;
 pub(crate) use sys::process_tx;
 pub(crate) use sys::validate_and_configure_tap;
 pub(crate) use sys::virtio_features_to_tap_offload;
+pub(crate) use sys::PendingBuffer;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -394,13 +396,14 @@ where
         }
 
         let mut tap_polling_enabled = true;
+        let mut pending_buffer_for_mrg_rx = PendingBuffer::new();
         'wait: loop {
             let events = wait_ctx.wait().map_err(NetError::WaitError)?;
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::RxTap => {
                         let _trace = cros_tracing::trace_event!(VirtioNet, "handle RxTap event");
-                        self.handle_rx_token(&wait_ctx)?;
+                        self.handle_rx_token(&wait_ctx, &mut pending_buffer_for_mrg_rx)?;
                         tap_polling_enabled = false;
                     }
                     Token::RxQueue => {

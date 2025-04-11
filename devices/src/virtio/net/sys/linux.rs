@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 use std::io;
+use std::io::Write;
+use std::mem;
 use std::result;
 
 use base::error;
@@ -12,12 +14,15 @@ use base::ReadNotifier;
 use base::WaitContext;
 use net_util::TapT;
 use virtio_sys::virtio_net;
+use virtio_sys::virtio_net::virtio_net_hdr;
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
+use zerocopy::IntoBytes;
 
 use super::super::super::net::NetError;
 use super::super::super::net::Token;
 use super::super::super::net::Worker;
 use super::super::super::Queue;
+use super::PendingBuffer;
 
 // Ensure that the tap interface has the correct flags and sets the offload and VNET header size
 // to the appropriate values.
@@ -78,6 +83,81 @@ pub fn virtio_features_to_tap_offload(features: u64) -> u32 {
     }
 
     tap_offloads
+}
+
+/// If avail_feature has mrg_rxbuf, use this function to process rx flow.
+pub fn process_mrg_rx<T: TapT>(
+    rx_queue: &mut Queue,
+    tap: &mut T,
+    pending: &mut PendingBuffer,
+) -> result::Result<(), NetError> {
+    let mut needs_interrupt = false;
+    let mut exhausted_queue = false;
+
+    loop {
+        // Refill `pending` if it is empty.
+        if pending.length == 0 {
+            match tap.read(&mut *pending.buffer) {
+                Ok(length) => {
+                    pending.length = length as u32;
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    // No more to read from the tap.
+                    break;
+                }
+                Err(e) => {
+                    warn!("net: rx: failed to write slice: {}", e);
+                    return Err(NetError::WriteBuffer(e));
+                }
+            }
+        }
+        if pending.length == 0 {
+            break;
+        }
+        let packet_len = pending.length;
+        let Some(mut desc_list) = rx_queue.try_pop_length(packet_len as usize) else {
+            // If vq is exhausted, pending buffer should be used firstly
+            // instead of reading from tap in next loop.
+            exhausted_queue = true;
+            break;
+        };
+        let num_buffers = desc_list.len() as u16;
+
+        // Copy the num_buffers value to specified address
+        let num_buffers_offset = mem::size_of::<virtio_net_hdr>();
+        pending.buffer[num_buffers_offset..num_buffers_offset + 2]
+            .copy_from_slice(num_buffers.as_bytes());
+        let mut offset = 0;
+        let end = packet_len as usize;
+        for desc in desc_list.iter_mut() {
+            let writer = &mut desc.writer;
+            let bytes_written = match writer.write(&pending.buffer[offset..end]) {
+                Ok(n) => n,
+                Err(e) => {
+                    warn!(
+                        "net: mrg_rx: failed to write slice from pending buffer: {}",
+                        e
+                    );
+                    return Err(NetError::WriteBuffer(e));
+                }
+            };
+            offset += bytes_written;
+        }
+        rx_queue.add_used_batch(desc_list);
+
+        needs_interrupt = true;
+        pending.length = 0;
+    }
+
+    if needs_interrupt {
+        rx_queue.trigger_interrupt();
+    }
+
+    if exhausted_queue {
+        Err(NetError::RxDescriptorsExhausted)
+    } else {
+        Ok(())
+    }
 }
 
 pub fn process_rx<T: TapT>(rx_queue: &mut Queue, mut tap: &mut T) -> result::Result<(), NetError> {
@@ -165,8 +245,9 @@ where
     pub(in crate::virtio) fn handle_rx_token(
         &mut self,
         wait_ctx: &WaitContext<Token>,
+        pending_buffer: &mut PendingBuffer,
     ) -> result::Result<(), NetError> {
-        match self.process_rx() {
+        match self.process_rx(pending_buffer) {
             Ok(()) => Ok(()),
             Err(NetError::RxDescriptorsExhausted) => {
                 wait_ctx
@@ -189,7 +270,14 @@ where
         }
         Ok(())
     }
-    pub(super) fn process_rx(&mut self) -> result::Result<(), NetError> {
-        process_rx(&mut self.rx_queue, &mut self.tap)
+    pub(super) fn process_rx(
+        &mut self,
+        pending_buffer: &mut PendingBuffer,
+    ) -> result::Result<(), NetError> {
+        if self.acked_features & 1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF == 0 {
+            process_rx(&mut self.rx_queue, &mut self.tap)
+        } else {
+            process_mrg_rx(&mut self.rx_queue, &mut self.tap, pending_buffer)
+        }
     }
 }
