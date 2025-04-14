@@ -10,6 +10,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use arch::apply_device_tree_overlays;
+use arch::fdt::create_memory_node;
 use arch::serial::SerialDeviceInfo;
 use arch::CpuSet;
 use arch::DtbOverlay;
@@ -33,8 +34,6 @@ use rand::RngCore;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use vm_memory::MemoryRegionInformation;
-use vm_memory::MemoryRegionPurpose;
 
 // These are GIC address-space location constants.
 use crate::AARCH64_GIC_CPUI_BASE;
@@ -77,44 +76,6 @@ const GIC_FDT_IRQ_PPI_CPU_MASK: u32 = 0xff << GIC_FDT_IRQ_PPI_CPU_SHIFT;
 const IRQ_TYPE_EDGE_RISING: u32 = 0x00000001;
 const IRQ_TYPE_LEVEL_HIGH: u32 = 0x00000004;
 const IRQ_TYPE_LEVEL_LOW: u32 = 0x00000008;
-
-fn create_memory_node(fdt: &mut Fdt, guest_mem: &GuestMemory) -> Result<()> {
-    let mut mem_reg_prop = Vec::new();
-    let mut previous_memory_region_end = None;
-    let mut regions: Vec<MemoryRegionInformation> = guest_mem
-        .regions()
-        .filter(|region| match region.options.purpose {
-            MemoryRegionPurpose::Bios => false,
-            MemoryRegionPurpose::GuestMemoryRegion => true,
-            MemoryRegionPurpose::ProtectedFirmwareRegion => false,
-            MemoryRegionPurpose::ReservedMemory => false,
-            MemoryRegionPurpose::StaticSwiotlbRegion => true,
-        })
-        .collect();
-    regions.sort_by(|a, b| a.guest_addr.cmp(&b.guest_addr));
-    for region in regions {
-        // Merge with the previous region if possible.
-        if let Some(previous_end) = previous_memory_region_end {
-            if region.guest_addr == previous_end {
-                *mem_reg_prop.last_mut().unwrap() += region.size as u64;
-                previous_memory_region_end =
-                    Some(previous_end.checked_add(region.size as u64).unwrap());
-                continue;
-            }
-            assert!(region.guest_addr > previous_end, "Memory regions overlap");
-        }
-
-        mem_reg_prop.push(region.guest_addr.offset());
-        mem_reg_prop.push(region.size as u64);
-        previous_memory_region_end =
-            Some(region.guest_addr.checked_add(region.size as u64).unwrap());
-    }
-
-    let memory_node = fdt.root_mut().subnode_mut("memory")?;
-    memory_node.set_prop("device_type", "memory")?;
-    memory_node.set_prop("reg", mem_reg_prop)?;
-    Ok(())
-}
 
 fn create_resv_memory_node(
     fdt: &mut Fdt,

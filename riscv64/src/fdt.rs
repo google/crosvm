@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 
 use arch::apply_device_tree_overlays;
+use arch::fdt::create_memory_node;
 use arch::DtbOverlay;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use arch::PlatformBusResources;
@@ -22,8 +23,6 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use vm_memory::MemoryRegionInformation;
-use vm_memory::MemoryRegionPurpose;
 
 // This is the start of DRAM in the physical address space.
 use crate::RISCV64_PHYS_MEM_START;
@@ -34,43 +33,6 @@ const PHANDLE_CPU0: u32 = 0x100;
 const PHANDLE_AIA_APLIC: u32 = 2;
 const PHANDLE_AIA_IMSIC: u32 = 3;
 const PHANDLE_CPU_INTC_BASE: u32 = 4;
-
-fn create_memory_node(fdt: &mut Fdt, guest_mem: &GuestMemory) -> Result<()> {
-    let mut mem_reg_prop = Vec::new();
-    let mut previous_memory_region_end = None;
-    let mut regions: Vec<MemoryRegionInformation> = guest_mem
-        .regions()
-        .filter(|region| match region.options.purpose {
-            MemoryRegionPurpose::Bios => false,
-            MemoryRegionPurpose::GuestMemoryRegion => true,
-            MemoryRegionPurpose::ProtectedFirmwareRegion => false,
-            MemoryRegionPurpose::ReservedMemory => false,
-        })
-        .collect();
-    regions.sort_by(|a, b| a.guest_addr.cmp(&b.guest_addr));
-    for region in regions {
-        // Merge with the previous region if possible.
-        if let Some(previous_end) = previous_memory_region_end {
-            if region.guest_addr == previous_end {
-                *mem_reg_prop.last_mut().unwrap() += region.size as u64;
-                previous_memory_region_end =
-                    Some(previous_end.checked_add(region.size as u64).unwrap());
-                continue;
-            }
-            assert!(region.guest_addr > previous_end, "Memory regions overlap");
-        }
-
-        mem_reg_prop.push(region.guest_addr.offset());
-        mem_reg_prop.push(region.size as u64);
-        previous_memory_region_end =
-            Some(region.guest_addr.checked_add(region.size as u64).unwrap());
-    }
-
-    let memory_node = fdt.root_mut().subnode_mut("memory")?;
-    memory_node.set_prop("device_type", "memory")?;
-    memory_node.set_prop("reg", mem_reg_prop)?;
-    Ok(())
-}
 
 fn create_cpu_nodes(fdt: &mut Fdt, num_cpus: u32, timebase_frequency: u32) -> Result<()> {
     let cpus_node = fdt.root_mut().subnode_mut("cpus")?;

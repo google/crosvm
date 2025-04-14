@@ -15,6 +15,9 @@ use cros_fdt::Path;
 use cros_fdt::Result;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use devices::IommuDevType;
+use vm_memory::GuestMemory;
+use vm_memory::MemoryRegionInformation;
+use vm_memory::MemoryRegionPurpose;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use crate::sys::linux::PlatformBusResources;
@@ -162,4 +165,44 @@ pub fn apply_device_tree_overlays(
             devices.iter().map(|r| &r.dt_symbol).collect::<Vec<_>>()
         )))
     }
+}
+
+/// Create a "/memory" node describing all guest memory regions.
+pub fn create_memory_node(fdt: &mut Fdt, guest_mem: &GuestMemory) -> Result<()> {
+    let mut mem_reg_prop = Vec::new();
+    let mut previous_memory_region_end = None;
+    let mut regions: Vec<MemoryRegionInformation> = guest_mem
+        .regions()
+        .filter(|region| match region.options.purpose {
+            MemoryRegionPurpose::Bios => false,
+            MemoryRegionPurpose::GuestMemoryRegion => true,
+            MemoryRegionPurpose::ProtectedFirmwareRegion => false,
+            MemoryRegionPurpose::ReservedMemory => false,
+            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            MemoryRegionPurpose::StaticSwiotlbRegion => true,
+        })
+        .collect();
+    regions.sort_by(|a, b| a.guest_addr.cmp(&b.guest_addr));
+    for region in regions {
+        // Merge with the previous region if possible.
+        if let Some(previous_end) = previous_memory_region_end {
+            if region.guest_addr == previous_end {
+                *mem_reg_prop.last_mut().unwrap() += region.size as u64;
+                previous_memory_region_end =
+                    Some(previous_end.checked_add(region.size as u64).unwrap());
+                continue;
+            }
+            assert!(region.guest_addr > previous_end, "Memory regions overlap");
+        }
+
+        mem_reg_prop.push(region.guest_addr.offset());
+        mem_reg_prop.push(region.size as u64);
+        previous_memory_region_end =
+            Some(region.guest_addr.checked_add(region.size as u64).unwrap());
+    }
+
+    let memory_node = fdt.root_mut().subnode_mut("memory")?;
+    memory_node.set_prop("device_type", "memory")?;
+    memory_node.set_prop("reg", mem_reg_prop)?;
+    Ok(())
 }
