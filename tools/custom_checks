@@ -44,7 +44,6 @@ def check_platform_independent(*files: str):
 CRLF_LINE_ENDING_FILES: List[str] = [
     "**.bat",
     "**.ps1",
-    "e2e_tests/tests/goldens/backcompat_test_simple_lspci_win.txt",
     "tools/windows/build_test",
 ]
 
