@@ -244,7 +244,22 @@ fn virglrenderer() -> Result<()> {
 }
 
 fn gfxstream() -> Result<()> {
-    if let Ok(gfxstream_path) = env::var("GFXSTREAM_PATH") {
+    let mut gfxstream_path_env_override =
+        // We use the unrecommended PROFILE environment variable here, because the Windows
+        // downstream can set debug = true for the release profile to keep the symbol files.
+        if env::var("PROFILE").as_deref() == Ok("debug") {
+            env::var("GFXSTREAM_PATH_DEBUG")
+        } else {
+            env::var("GFXSTREAM_PATH_RELEASE")
+        }
+        .ok();
+    gfxstream_path_env_override = gfxstream_path_env_override.filter(|s| !s.is_empty());
+    if gfxstream_path_env_override.is_none() {
+        gfxstream_path_env_override = env::var("GFXSTREAM_PATH").ok();
+    }
+    gfxstream_path_env_override = gfxstream_path_env_override.filter(|s| !s.is_empty());
+
+    if let Some(gfxstream_path) = gfxstream_path_env_override {
         println!("cargo:rustc-link-lib=gfxstream_backend");
         println!("cargo:rustc-link-search={}", gfxstream_path);
         Ok(())

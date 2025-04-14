@@ -22,3 +22,9 @@ rustflags = [
     "-Aclippy::useless_transmute",
     "-Dclippy::undocumented_unsafe_blocks",
 ]
+
+[env]
+
+# The downstream can use these environment variables to set the gfxstream libraries search path.
+GFXSTREAM_PATH_DEBUG = ""
+GFXSTREAM_PATH_RELEASE = ""
