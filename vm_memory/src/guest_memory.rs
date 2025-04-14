@@ -462,14 +462,6 @@ impl GuestMemory {
             .map_or(GuestAddress(0), MemoryRegion::end)
     }
 
-    /// Returns the guest addresses and sizes of the memory regions.
-    pub fn guest_memory_regions(&self) -> Vec<(GuestAddress, usize)> {
-        self.regions
-            .iter()
-            .map(|region| (region.guest_base, region.mapping.size()))
-            .collect()
-    }
-
     /// Returns the total size of memory in bytes.
     pub fn memory_size(&self) -> u64 {
         self.regions

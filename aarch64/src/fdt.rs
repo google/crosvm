@@ -33,6 +33,8 @@ use rand::RngCore;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use vm_memory::MemoryRegionInformation;
+use vm_memory::MemoryRegionPurpose;
 
 // These are GIC address-space location constants.
 use crate::AARCH64_GIC_CPUI_BASE;
@@ -41,7 +43,6 @@ use crate::AARCH64_GIC_DIST_BASE;
 use crate::AARCH64_GIC_DIST_SIZE;
 use crate::AARCH64_GIC_REDIST_SIZE;
 use crate::AARCH64_PMU_IRQ;
-use crate::AARCH64_PROTECTED_VM_FW_START;
 // These are RTC related constants
 use crate::AARCH64_RTC_ADDR;
 use crate::AARCH64_RTC_IRQ;
@@ -80,26 +81,33 @@ const IRQ_TYPE_LEVEL_LOW: u32 = 0x00000008;
 fn create_memory_node(fdt: &mut Fdt, guest_mem: &GuestMemory) -> Result<()> {
     let mut mem_reg_prop = Vec::new();
     let mut previous_memory_region_end = None;
-    let mut regions = guest_mem.guest_memory_regions();
-    regions.sort();
+    let mut regions: Vec<MemoryRegionInformation> = guest_mem
+        .regions()
+        .filter(|region| match region.options.purpose {
+            MemoryRegionPurpose::Bios => false,
+            MemoryRegionPurpose::GuestMemoryRegion => true,
+            MemoryRegionPurpose::ProtectedFirmwareRegion => false,
+            MemoryRegionPurpose::ReservedMemory => false,
+            MemoryRegionPurpose::StaticSwiotlbRegion => true,
+        })
+        .collect();
+    regions.sort_by(|a, b| a.guest_addr.cmp(&b.guest_addr));
     for region in regions {
-        if region.0.offset() == AARCH64_PROTECTED_VM_FW_START {
-            continue;
-        }
         // Merge with the previous region if possible.
         if let Some(previous_end) = previous_memory_region_end {
-            if region.0 == previous_end {
-                *mem_reg_prop.last_mut().unwrap() += region.1 as u64;
+            if region.guest_addr == previous_end {
+                *mem_reg_prop.last_mut().unwrap() += region.size as u64;
                 previous_memory_region_end =
-                    Some(previous_end.checked_add(region.1 as u64).unwrap());
+                    Some(previous_end.checked_add(region.size as u64).unwrap());
                 continue;
             }
-            assert!(region.0 > previous_end, "Memory regions overlap");
+            assert!(region.guest_addr > previous_end, "Memory regions overlap");
         }
 
-        mem_reg_prop.push(region.0.offset());
-        mem_reg_prop.push(region.1 as u64);
-        previous_memory_region_end = Some(region.0.checked_add(region.1 as u64).unwrap());
+        mem_reg_prop.push(region.guest_addr.offset());
+        mem_reg_prop.push(region.size as u64);
+        previous_memory_region_end =
+            Some(region.guest_addr.checked_add(region.size as u64).unwrap());
     }
 
     let memory_node = fdt.root_mut().subnode_mut("memory")?;
