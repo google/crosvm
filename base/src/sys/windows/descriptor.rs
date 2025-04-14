@@ -3,29 +3,27 @@
 // found in the LICENSE file.
 
 use std::convert::TryFrom;
-use std::ffi::CString;
 use std::fs::File;
 use std::io::Stderr;
 use std::io::Stdin;
 use std::io::Stdout;
 use std::marker::Send;
 use std::marker::Sync;
-use std::mem::MaybeUninit;
 use std::ops::Drop;
 use std::os::windows::io::AsRawHandle;
 use std::os::windows::io::FromRawHandle;
 use std::os::windows::io::IntoRawHandle;
 use std::os::windows::io::RawHandle;
-use std::sync::Once;
+use std::sync::OnceLock;
 
 use win_util::duplicate_handle;
 use win_util::win32_wide_string;
 use winapi::shared::minwindef::BOOL;
-use winapi::shared::minwindef::HMODULE;
 use winapi::shared::minwindef::TRUE;
 use winapi::um::handleapi::CloseHandle;
 use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-use winapi::um::libloaderapi;
+use winapi::um::libloaderapi::GetProcAddress;
+use winapi::um::libloaderapi::LoadLibraryW;
 
 use super::Result;
 use crate::descriptor::AsRawDescriptor;
@@ -57,38 +55,38 @@ impl AsRawHandle for SafeDescriptor {
     }
 }
 
-static KERNELBASE_INIT: Once = Once::new();
-static mut KERNELBASE_LIBRARY: MaybeUninit<HMODULE> = MaybeUninit::uninit();
+type CompareObjectHandlesFn = extern "system" fn(RawHandle, RawHandle) -> BOOL;
 
-fn compare_object_handles(first: RawHandle, second: RawHandle) -> bool {
-    KERNELBASE_INIT.call_once(|| {
-        // SAFETY: trivially safe
-        unsafe {
-            *KERNELBASE_LIBRARY.as_mut_ptr() =
-                libloaderapi::LoadLibraryW(win32_wide_string("Kernelbase").as_ptr());
-        };
-    });
+static COMPARE_OBJECT_HANDLES: OnceLock<CompareObjectHandlesFn> = OnceLock::new();
+
+fn init_compare_object_handles() -> CompareObjectHandlesFn {
     // SAFETY: the return value is checked.
-    let handle = unsafe { KERNELBASE_LIBRARY.assume_init() };
+    let handle = unsafe { LoadLibraryW(win32_wide_string("Kernelbase").as_ptr()) };
     if handle.is_null() {
-        return first == second;
+        return compare_object_handles_fallback;
     }
 
-    let addr = CString::new("CompareObjectHandles").unwrap();
-    let addr_ptr = addr.as_ptr();
     // SAFETY: the return value is checked.
-    let symbol = unsafe { libloaderapi::GetProcAddress(handle, addr_ptr) };
+    let symbol = unsafe { GetProcAddress(handle, c"CompareObjectHandles".as_ptr()) };
     if symbol.is_null() {
-        return first == second;
+        return compare_object_handles_fallback;
     }
 
     // SAFETY: trivially safe
-    let func = unsafe {
-        std::mem::transmute::<
-            *mut winapi::shared::minwindef::__some_function,
-            extern "system" fn(RawHandle, RawHandle) -> BOOL,
-        >(symbol)
-    };
+    unsafe {
+        std::mem::transmute::<*mut winapi::shared::minwindef::__some_function, CompareObjectHandlesFn>(
+            symbol,
+        )
+    }
+}
+
+// This function is only used if CompareObjectHandles() is not available.
+extern "system" fn compare_object_handles_fallback(first: RawHandle, second: RawHandle) -> BOOL {
+    (first == second).into()
+}
+
+fn compare_object_handles(first: RawHandle, second: RawHandle) -> bool {
+    let func = COMPARE_OBJECT_HANDLES.get_or_init(init_compare_object_handles);
     let ret = func(first, second);
     ret == TRUE
 }
