@@ -24,8 +24,10 @@ pub enum HypervisorCap {
     // By default, when swiotlb is enabled, crosvm will only specify its size in the device tree
     // and allow the guest to decide where to allocate the buffer in guest phsyical memory.
     //
-    // If this capability is declared, then instead crosvm will allocate space for the swiotlb
-    // outside of guest physical memory and specify both the address and size in the device tree.
+    // If this capability is declared, then instead crosvm will carve out space at the end of
+    // physical memory and register it as a distinct memory region. Then, both the address and
+    // size will be specified in the device tree. This region will still be reported as part
+    // of the main memory region in the device tree.
     StaticSwiotlbAllocationRequired,
     /// Some hypervisors (presently: Gunyah) will configure initial boot-time registers
     /// for vCPUs without need for CrosVM to specify.
