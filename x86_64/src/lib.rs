@@ -1896,6 +1896,7 @@ impl X8664arch {
             || protection_type.runs_firmware()
         {
             let device_tree_blob = fdt::create_fdt(
+                mem,
                 android_fstab,
                 dump_device_tree_blob,
                 device_tree_overlays,

@@ -11,12 +11,14 @@ use std::path::PathBuf;
 
 use arch::android::create_android_fdt;
 use arch::apply_device_tree_overlays;
+use arch::fdt::create_memory_node;
 use arch::DtbOverlay;
 use base::open_file_or_duplicate;
 use cros_fdt::Error;
 use cros_fdt::Fdt;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 fn create_config_node(fdt: &mut Fdt, kernel_region: AddressRange) -> cros_fdt::Result<()> {
     let addr: u32 = kernel_region
@@ -58,6 +60,7 @@ fn create_chosen_node(
 ///
 /// * `android_fstab` - the File object for the android fstab
 pub fn create_fdt(
+    guest_mem: &GuestMemory,
     android_fstab: Option<File>,
     dump_device_tree_blob: Option<PathBuf>,
     device_tree_overlays: Vec<DtbOverlay>,
@@ -76,6 +79,7 @@ pub fn create_fdt(
 
     create_config_node(&mut fdt, kernel_region)?;
     create_chosen_node(&mut fdt, initrd)?;
+    create_memory_node(&mut fdt, guest_mem)?;
 
     // Done writing base FDT, now apply DT overlays
     apply_device_tree_overlays(
