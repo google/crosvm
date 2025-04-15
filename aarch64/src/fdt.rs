@@ -11,6 +11,8 @@ use std::path::PathBuf;
 
 use arch::apply_device_tree_overlays;
 use arch::fdt::create_memory_node;
+use arch::fdt::create_reserved_memory_node;
+use arch::fdt::ReservedMemoryRegion;
 use arch::serial::SerialDeviceInfo;
 use arch::CpuSet;
 use arch::DtbOverlay;
@@ -76,50 +78,6 @@ const GIC_FDT_IRQ_PPI_CPU_MASK: u32 = 0xff << GIC_FDT_IRQ_PPI_CPU_SHIFT;
 const IRQ_TYPE_EDGE_RISING: u32 = 0x00000001;
 const IRQ_TYPE_LEVEL_HIGH: u32 = 0x00000004;
 const IRQ_TYPE_LEVEL_LOW: u32 = 0x00000008;
-
-struct ReservedMemoryRegion<'a> {
-    pub name: &'a str,
-    pub address: Option<GuestAddress>,
-    pub size: u64,
-    pub phandle: Option<u32>,
-    pub compatible: Option<&'a str>,
-    pub alignment: Option<u64>,
-}
-
-fn create_reserved_memory_node(
-    fdt: &mut Fdt,
-    reserved_regions: &[ReservedMemoryRegion],
-) -> Result<()> {
-    let resv_memory_node = fdt.root_mut().subnode_mut("reserved-memory")?;
-    resv_memory_node.set_prop("#address-cells", 0x2u32)?;
-    resv_memory_node.set_prop("#size-cells", 0x2u32)?;
-    resv_memory_node.set_prop("ranges", ())?;
-
-    for region in reserved_regions {
-        let child_node = if let Some(resv_addr) = region.address {
-            let node =
-                resv_memory_node.subnode_mut(&format!("{}@{:x}", region.name, resv_addr.0))?;
-            node.set_prop("reg", &[resv_addr.0, region.size])?;
-            node
-        } else {
-            let node = resv_memory_node.subnode_mut(region.name)?;
-            node.set_prop("size", region.size)?;
-            node
-        };
-
-        if let Some(phandle) = region.phandle {
-            child_node.set_prop("phandle", phandle)?;
-        }
-        if let Some(compatible) = region.compatible {
-            child_node.set_prop("compatible", compatible)?;
-        }
-        if let Some(alignment) = region.alignment {
-            child_node.set_prop("alignment", alignment)?;
-        }
-    }
-
-    Ok(())
-}
 
 fn create_cpu_nodes(
     fdt: &mut Fdt,

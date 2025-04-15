@@ -15,6 +15,7 @@ use cros_fdt::Path;
 use cros_fdt::Result;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use devices::IommuDevType;
+use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::MemoryRegionInformation;
 use vm_memory::MemoryRegionPurpose;
@@ -204,5 +205,50 @@ pub fn create_memory_node(fdt: &mut Fdt, guest_mem: &GuestMemory) -> Result<()> 
     let memory_node = fdt.root_mut().subnode_mut("memory")?;
     memory_node.set_prop("device_type", "memory")?;
     memory_node.set_prop("reg", mem_reg_prop)?;
+    Ok(())
+}
+
+pub struct ReservedMemoryRegion<'a> {
+    pub name: &'a str,
+    pub address: Option<GuestAddress>,
+    pub size: u64,
+    pub phandle: Option<u32>,
+    pub compatible: Option<&'a str>,
+    pub alignment: Option<u64>,
+}
+
+/// Create a "/reserved-memory" node with child nodes for `reserved_regions`.
+pub fn create_reserved_memory_node(
+    fdt: &mut Fdt,
+    reserved_regions: &[ReservedMemoryRegion],
+) -> Result<()> {
+    let resv_memory_node = fdt.root_mut().subnode_mut("reserved-memory")?;
+    resv_memory_node.set_prop("#address-cells", 0x2u32)?;
+    resv_memory_node.set_prop("#size-cells", 0x2u32)?;
+    resv_memory_node.set_prop("ranges", ())?;
+
+    for region in reserved_regions {
+        let child_node = if let Some(resv_addr) = region.address {
+            let node =
+                resv_memory_node.subnode_mut(&format!("{}@{:x}", region.name, resv_addr.0))?;
+            node.set_prop("reg", &[resv_addr.0, region.size])?;
+            node
+        } else {
+            let node = resv_memory_node.subnode_mut(region.name)?;
+            node.set_prop("size", region.size)?;
+            node
+        };
+
+        if let Some(phandle) = region.phandle {
+            child_node.set_prop("phandle", phandle)?;
+        }
+        if let Some(compatible) = region.compatible {
+            child_node.set_prop("compatible", compatible)?;
+        }
+        if let Some(alignment) = region.alignment {
+            child_node.set_prop("alignment", alignment)?;
+        }
+    }
+
     Ok(())
 }
