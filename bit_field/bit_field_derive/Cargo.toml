@@ -11,4 +11,4 @@ syn = { version = "2", features = ["full"] }
 
 [lib]
 proc-macro = true
-path = "bit_field_derive.rs"
+path = "src/bit_field_derive.rs"
