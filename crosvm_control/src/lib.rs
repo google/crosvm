@@ -318,9 +318,9 @@ pub unsafe extern "C" fn crosvm_client_swap_swapout_vm(socket_path: *const c_cha
 #[repr(C)]
 pub struct SwapDisableArgs {
     /// The path of the control socket to target.
-    socket_path: *const c_char,
+    pub socket_path: *const c_char,
     /// Whether or not the swap file should be cleaned up in the background.
-    slow_file_cleanup: bool,
+    pub slow_file_cleanup: bool,
 }
 
 /// Disable vmm swap according to `args`.
@@ -416,11 +416,11 @@ pub unsafe extern "C" fn crosvm_client_swap_status(
 #[repr(C)]
 pub struct UsbDeviceEntry {
     /// Internal port index used for identifying this individual device.
-    port: u8,
+    pub port: u8,
     /// USB vendor ID
-    vendor_id: u16,
+    pub vendor_id: u16,
     /// USB product ID
-    product_id: u16,
+    pub product_id: u16,
 }
 
 impl From<&UsbControlAttachedDevice> for UsbDeviceEntry {
@@ -872,18 +872,18 @@ pub unsafe extern "C" fn crosvm_client_resize_disk(
 /// `Option<u64>`. `None` (or values bigger than `i64::max`) will be encoded as -1.
 #[repr(C)]
 pub struct BalloonStatsFfi {
-    swap_in: i64,
-    swap_out: i64,
-    major_faults: i64,
-    minor_faults: i64,
-    free_memory: i64,
-    total_memory: i64,
-    available_memory: i64,
-    disk_caches: i64,
-    hugetlb_allocations: i64,
-    hugetlb_failures: i64,
-    shared_memory: i64,
-    unevictable_memory: i64,
+    pub swap_in: i64,
+    pub swap_out: i64,
+    pub major_faults: i64,
+    pub minor_faults: i64,
+    pub free_memory: i64,
+    pub total_memory: i64,
+    pub available_memory: i64,
+    pub disk_caches: i64,
+    pub hugetlb_allocations: i64,
+    pub hugetlb_failures: i64,
+    pub shared_memory: i64,
+    pub unevictable_memory: i64,
 }
 
 impl From<&BalloonStats> for BalloonStatsFfi {
@@ -1000,8 +1000,8 @@ unsafe fn crosvm_client_balloon_stats_impl(
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct WorkingSetBucketFfi {
-    age: u64,
-    bytes: [u64; 2],
+    pub age: u64,
+    pub bytes: [u64; 2],
 }
 
 impl WorkingSetBucketFfi {
@@ -1025,9 +1025,9 @@ impl From<WSBucket> for WorkingSetBucketFfi {
 #[repr(C)]
 #[derive(Debug)]
 pub struct BalloonWSFfi {
-    ws: [WorkingSetBucketFfi; VIRTIO_BALLOON_WS_MAX_NUM_BINS],
-    num_bins: u8,
-    _reserved: [u8; 7],
+    pub ws: [WorkingSetBucketFfi; VIRTIO_BALLOON_WS_MAX_NUM_BINS],
+    pub num_bins: u8,
+    pub _reserved: [u8; 7],
 }
 
 impl TryFrom<&BalloonWS> for BalloonWSFfi {
@@ -1068,11 +1068,11 @@ impl Default for BalloonWSFfi {
 
 #[repr(C)]
 pub struct BalloonWSRConfigFfi {
-    intervals: [u64; VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS],
-    num_intervals: u8,
-    _reserved: [u8; 7],
-    refresh_threshold: u64,
-    report_threshold: u64,
+    pub intervals: [u64; VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS],
+    pub num_intervals: u8,
+    pub _reserved: [u8; 7],
+    pub refresh_threshold: u64,
+    pub report_threshold: u64,
 }
 
 /// Returns balloon working set of the crosvm instance whose control socket is listening on
@@ -1340,8 +1340,8 @@ pub union HypervisorSpecificVmDescriptorFfi {
 /// A unique identifier of a VM.
 #[repr(C)]
 pub struct VmDescriptorFfi {
-    hypervisor: HypervisorFfi,
-    descriptor: HypervisorSpecificVmDescriptorFfi,
+    pub hypervisor: HypervisorFfi,
+    pub descriptor: HypervisorSpecificVmDescriptorFfi,
 }
 
 /// Get a descriptor representing a running VM.
