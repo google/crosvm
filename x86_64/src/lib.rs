@@ -744,6 +744,29 @@ fn write_setup_data(
     Ok(setup_data_list_head)
 }
 
+/// Find the first `setup_data_hdr` with the given type in guest memory and return its address.
+fn find_setup_data(
+    mem: &GuestMemory,
+    setup_data_start: GuestAddress,
+    setup_data_end: GuestAddress,
+    type_: SetupDataType,
+) -> Option<GuestAddress> {
+    let mut setup_data_addr = setup_data_start.align(8)?;
+    while setup_data_addr < setup_data_end {
+        let hdr: setup_data_hdr = mem.read_obj_from_addr(setup_data_addr).ok()?;
+        if hdr.type_ == type_ as u32 {
+            return Some(setup_data_addr);
+        }
+
+        if hdr.next == 0 {
+            return None;
+        }
+
+        setup_data_addr = GuestAddress(hdr.next);
+    }
+    None
+}
+
 /// Generate a SETUP_RNG_SEED SetupData with random seed data.
 fn setup_data_rng_seed() -> SetupData {
     let mut data = vec![0u8; 256];
@@ -1344,6 +1367,19 @@ impl arch::LinuxArch for X8664arch {
                 }
 
                 if protection_type.runs_firmware() {
+                    // Pass DTB address to pVM firmware. This is redundant with the DTB entry in the
+                    // `setup_data` list, but it allows the pVM firmware to know the location of the
+                    // DTB without having the `setup_data` region mapped yet.
+                    if let Some(fdt_setup_data_addr) = find_setup_data(
+                        &mem,
+                        GuestAddress(SETUP_DATA_START),
+                        GuestAddress(SETUP_DATA_END),
+                        SetupDataType::Dtb,
+                    ) {
+                        vcpu_init[0].regs.rdx =
+                            fdt_setup_data_addr.offset() + size_of::<setup_data_hdr>() as u64;
+                    }
+
                     // Pass pVM payload entry address to pVM firmware.
                     // NOTE: this is only for development purposes. An actual pvmfw
                     // implementation should not use this value and should instead receive
