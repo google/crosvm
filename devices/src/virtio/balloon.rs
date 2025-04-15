@@ -101,18 +101,11 @@ pub enum BalloonError {
 }
 pub type Result<T> = std::result::Result<T, BalloonError>;
 
-// Balloon implements five virt IO queues: Inflate, Deflate, Stats, WsData, WsCmd.
 const QUEUE_SIZE: u16 = 128;
-const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE];
 
-// Virtqueue indexes
+// Virtqueue indexes that do not depend on advertised features
 const INFLATEQ: usize = 0;
 const DEFLATEQ: usize = 1;
-const STATSQ: usize = 2;
-const _FREE_PAGE_VQ: usize = 3;
-const REPORTING_VQ: usize = 4;
-const WS_DATA_VQ: usize = 5;
-const WS_OP_VQ: usize = 6;
 
 const VIRTIO_BALLOON_PFN_SHIFT: u32 = 12;
 const VIRTIO_BALLOON_PF_SIZE: u64 = 1 << VIRTIO_BALLOON_PFN_SHIFT;
@@ -1179,6 +1172,7 @@ pub struct Balloon {
     registered_evt_q: Option<SendTube>,
     ws_num_bins: u8,
     target_reached_evt: Option<Event>,
+    queue_sizes: Vec<u16>,
 }
 
 /// Snapshot of the [Balloon] state.
@@ -1212,6 +1206,20 @@ impl Balloon {
             | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM
             | enabled_features;
 
+        let mut queue_sizes = Vec::new();
+        queue_sizes.push(QUEUE_SIZE); // inflateq
+        queue_sizes.push(QUEUE_SIZE); // deflateq
+        if features & (1 << VIRTIO_BALLOON_F_STATS_VQ) != 0 {
+            queue_sizes.push(QUEUE_SIZE); // statsq
+        }
+        if features & (1 << VIRTIO_BALLOON_F_PAGE_REPORTING) != 0 {
+            queue_sizes.push(QUEUE_SIZE); // reporting_vq
+        }
+        if features & (1 << VIRTIO_BALLOON_F_WS_REPORTING) != 0 {
+            queue_sizes.push(QUEUE_SIZE); // ws_data
+            queue_sizes.push(QUEUE_SIZE); // ws_cmd
+        }
+
         Ok(Balloon {
             command_tube: Some(command_tube),
             vm_memory_client: Some(vm_memory_client),
@@ -1231,6 +1239,7 @@ impl Balloon {
             registered_evt_q,
             ws_num_bins,
             target_reached_evt: None,
+            queue_sizes,
         })
     }
 
@@ -1278,40 +1287,44 @@ impl Balloon {
         &self,
         mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<BalloonQueues> {
-        fn pop_queue(
-            queues: &mut BTreeMap<usize, Queue>,
-            expected_index: usize,
-            name: &str,
-        ) -> anyhow::Result<Queue> {
-            let (queue_index, queue) = queues
-                .pop_first()
-                .with_context(|| format!("missing {}", name))?;
-
-            if queue_index == expected_index {
-                debug!("{name} index {queue_index}");
-            } else {
-                warn!("expected {name} index {expected_index}, got {queue_index}");
-            }
-
-            Ok(queue)
-        }
-
-        // WARNING: We use `pop_first` instead of explicitly using the indices from the virtio spec
-        // because the Linux virtio drivers only "allocates" queue indices that are used, so queues
-        // need to be removed in order of ascending virtqueue index.
-        let inflate_queue = pop_queue(&mut queues, INFLATEQ, "inflateq")?;
-        let deflate_queue = pop_queue(&mut queues, DEFLATEQ, "deflateq")?;
+        let inflate_queue = queues.remove(&INFLATEQ).context("missing inflateq")?;
+        let deflate_queue = queues.remove(&DEFLATEQ).context("missing deflateq")?;
         let mut queue_struct = BalloonQueues::new(inflate_queue, deflate_queue);
 
-        if self.acked_features & (1 << VIRTIO_BALLOON_F_STATS_VQ) != 0 {
-            queue_struct.stats = Some(pop_queue(&mut queues, STATSQ, "statsq")?);
+        // Queues whose existence depends on advertised features start at queue index 2.
+        let mut next_queue_index = 2;
+        let mut next_queue = || {
+            let idx = next_queue_index;
+            next_queue_index += 1;
+            idx
+        };
+
+        if self.features & (1 << VIRTIO_BALLOON_F_STATS_VQ) != 0 {
+            let statsq = next_queue();
+            if self.acked_features & (1 << VIRTIO_BALLOON_F_STATS_VQ) != 0 {
+                queue_struct.stats = Some(queues.remove(&statsq).context("missing statsq")?);
+            }
         }
-        if self.acked_features & (1 << VIRTIO_BALLOON_F_PAGE_REPORTING) != 0 {
-            queue_struct.reporting = Some(pop_queue(&mut queues, REPORTING_VQ, "reporting_vq")?);
+
+        if self.features & (1 << VIRTIO_BALLOON_F_PAGE_REPORTING) != 0 {
+            let reporting_vq = next_queue();
+            if self.acked_features & (1 << VIRTIO_BALLOON_F_PAGE_REPORTING) != 0 {
+                queue_struct.reporting = Some(
+                    queues
+                        .remove(&reporting_vq)
+                        .context("missing reporting_vq")?,
+                );
+            }
         }
-        if self.acked_features & (1 << VIRTIO_BALLOON_F_WS_REPORTING) != 0 {
-            queue_struct.ws_data = Some(pop_queue(&mut queues, WS_DATA_VQ, "ws_data_vq")?);
-            queue_struct.ws_op = Some(pop_queue(&mut queues, WS_OP_VQ, "ws_op_vq")?);
+
+        if self.features & (1 << VIRTIO_BALLOON_F_WS_REPORTING) != 0 {
+            let ws_data_vq = next_queue();
+            let ws_op_vq = next_queue();
+            if self.acked_features & (1 << VIRTIO_BALLOON_F_WS_REPORTING) != 0 {
+                queue_struct.ws_data =
+                    Some(queues.remove(&ws_data_vq).context("missing ws_data_vq")?);
+                queue_struct.ws_op = Some(queues.remove(&ws_op_vq).context("missing ws_op_vq")?);
+            }
         }
 
         if !queues.is_empty() {
@@ -1396,7 +1409,7 @@ impl VirtioDevice for Balloon {
     }
 
     fn queue_max_sizes(&self) -> &[u16] {
-        QUEUE_SIZES
+        &self.queue_sizes
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
