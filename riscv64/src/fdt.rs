@@ -213,7 +213,6 @@ fn create_pci_nodes(
 
     const IRQ_TYPE_LEVEL_HIGH: u32 = 0x00000004;
     let mut interrupts: Vec<u32> = Vec::new();
-    let mut masks: Vec<u32> = Vec::new();
 
     for (address, irq_num, irq_pin) in pci_irqs.iter() {
         // PCI_DEVICE(3)
@@ -228,15 +227,15 @@ fn create_pci_nodes(
         interrupts.push(PHANDLE_AIA_APLIC);
         interrupts.push(*irq_num);
         interrupts.push(IRQ_TYPE_LEVEL_HIGH);
-
-        // PCI_DEVICE(3)
-        masks.push(0xf800); // bits 11..15 (device)
-        masks.push(0);
-        masks.push(0);
-
-        // INT#(1)
-        masks.push(0x7); // allow INTA#-INTD# (1 | 2 | 3 | 4)
     }
+
+    let mask: &[u32] = &[
+        // PCI_DEVICE(3)
+        0xf800, // bits 11..15 (device)
+        0, 0, // mask off other unit address cells
+        // INT#(1)
+        0x7, // allow INTA#-INTD# (1 | 2 | 3 | 4)
+    ];
 
     let pci_node = fdt.root_mut().subnode_mut("pci")?;
     pci_node.set_prop("compatible", "pci-host-cam-generic")?;
@@ -248,7 +247,7 @@ fn create_pci_nodes(
     pci_node.set_prop("reg", &reg)?;
     pci_node.set_prop("#interrupt-cells", 1u32)?;
     pci_node.set_prop("interrupt-map", interrupts)?;
-    pci_node.set_prop("interrupt-map-mask", masks)?;
+    pci_node.set_prop("interrupt-map-mask", mask)?;
     pci_node.set_prop("msi-parent", PHANDLE_AIA_IMSIC)?;
     pci_node.set_prop("dma-coherent", ())?;
     Ok(())
