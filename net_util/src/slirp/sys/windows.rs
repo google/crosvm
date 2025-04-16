@@ -139,9 +139,9 @@ impl Slirp {
             slirp_capture_file.take(),
         ) {
             Err(Error::Slirp(SlirpError::BrokenPipe(e))) => {
-                warn!("exited slirp listening loop: {}", e)
+                warn!("exited slirp listening loop: {:?}", e)
             }
-            Err(e) => panic!("error while running slirp listening loop: {}", e),
+            Err(e) => panic!("error while running slirp listening loop: {:?}", e),
             _ => {}
         }
     }
