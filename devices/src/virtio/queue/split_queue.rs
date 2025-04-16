@@ -4,6 +4,7 @@
 
 use std::num::Wrapping;
 use std::sync::atomic::fence;
+use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 
 use anyhow::bail;
@@ -244,23 +245,6 @@ impl SplitQueue {
         ]
     }
 
-    // Get the index of the first available descriptor chain in the available ring
-    // (the next one that the driver will fill).
-    //
-    // All available ring entries between `self.next_avail` and `get_avail_index()` are available
-    // to be processed by the device.
-    fn get_avail_index(&self) -> Wrapping<u16> {
-        fence(Ordering::SeqCst);
-
-        let avail_index_addr = self.avail_ring.unchecked_add(2);
-        let avail_index: u16 = self
-            .mem
-            .read_obj_from_addr_volatile(avail_index_addr)
-            .unwrap();
-
-        Wrapping(avail_index)
-    }
-
     // Set the `avail_event` field in the used ring.
     //
     // This allows the device to inform the driver that driver-to-device notification
@@ -325,21 +309,44 @@ impl SplitQueue {
     /// Get the first available descriptor chain without removing it from the queue.
     /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
     pub fn peek(&mut self) -> Option<DescriptorChain> {
-        let avail_index = self.get_avail_index();
-        if self.next_avail == avail_index {
+        // Get a `VolatileSlice` covering the `struct virtq_avail` fixed header (`flags` and `idx`)
+        // and variable-length `ring`. This ensures that the raw pointers generated below point into
+        // valid `GuestMemory` regions.
+        let avail_ring_size = 2 * size_of::<u16>() + (size_of::<u16>() * usize::from(self.size));
+        let avail_ring_vslice = self
+            .mem
+            .get_slice_at_addr(self.avail_ring, avail_ring_size)
+            .unwrap();
+
+        // SAFETY: offset of `virtq_avail.idx` (2) is always within the `VolatileSlice` bounds.
+        let avail_index_ptr = unsafe { avail_ring_vslice.as_mut_ptr().add(2) } as *mut u16;
+        // SAFETY: `GuestMemory::get_slice_at_addr()` returns a valid `VolatileSlice`, and
+        // `avail_index_ptr` is a valid `*mut u16` contained within that slice.
+        let avail_index_atomic = unsafe { AtomicU16::from_ptr(avail_index_ptr) };
+
+        // Check if the driver has published any new descriptors beyond `self.next_avail`. This uses
+        // a `Relaxed` load because we do not need a memory barrier if there are no new descriptors.
+        // If the ring is not empty, the `fence()` below will provide the necessary ordering,
+        // pairing with the write memory barrier in the driver.
+        let avail_index: u16 = avail_index_atomic.load(Ordering::Relaxed);
+        let next_avail = self.next_avail;
+        if next_avail.0 == avail_index {
             return None;
         }
 
         // This fence ensures that subsequent reads from the descriptor do not
         // get reordered and happen only after fetching the available_index and
         // checking that there is a slot available.
-        fence(Ordering::SeqCst);
+        fence(Ordering::Acquire);
 
-        let desc_idx_addr_offset = 4 + (u64::from(self.wrap_queue_index(self.next_avail)) * 2);
-        let desc_idx_addr = self.avail_ring.checked_add(desc_idx_addr_offset)?;
-
-        // This index is checked below in checked_new.
-        let descriptor_index: u16 = self.mem.read_obj_from_addr_volatile(desc_idx_addr).unwrap();
+        // Calculate the offset of `ring[next_avail % size]` within `struct virtq_avail`.
+        let ring_offset = 4 + (usize::from(self.wrap_queue_index(next_avail)) * 2);
+        debug_assert!(ring_offset + size_of::<u16>() <= avail_ring_size);
+        // SAFETY: The available ring index was wrapped to fall within the queue size above, so
+        // `ring_offset` is always in bounds.
+        let ring_ptr = unsafe { avail_ring_vslice.as_ptr().add(ring_offset) } as *const u16;
+        // SAFETY: `ring_ptr` is a valid `*const u16` within `avail_ring_vslice`.
+        let descriptor_index: u16 = unsafe { std::ptr::read_volatile(ring_ptr) };
 
         let chain =
             SplitDescriptorChain::new(&self.mem, self.desc_table, self.size, descriptor_index);
