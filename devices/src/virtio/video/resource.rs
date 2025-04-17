@@ -8,7 +8,6 @@ use std::convert::TryInto;
 use std::fmt;
 
 use base::linux::MemoryMappingBuilderUnix;
-use base::AsRawDescriptor;
 use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
 use base::MemoryMappingArena;
@@ -225,11 +224,8 @@ impl GuestResource {
             Some(entry) => {
                 let addr: u64 = entry.addr.into();
 
-                let guest_region = mem
-                    .shm_region(GuestAddress(addr))
-                    .map_err(GuestMemResourceCreationError::CantGetShmRegion)?;
-                base::clone_descriptor(guest_region)
-                    .map_err(GuestMemResourceCreationError::DescriptorCloneError)?
+                mem.shm_region(GuestAddress(addr))
+                    .map_err(GuestMemResourceCreationError::CantGetShmRegion)?
             }
         };
 
@@ -254,7 +250,8 @@ impl GuestResource {
             .collect::<Result<_, _>>()?;
 
         let handle = GuestResourceHandle::GuestPages(GuestMemHandle {
-            desc: region_desc,
+            desc: base::clone_descriptor(region_desc)
+                .map_err(GuestMemResourceCreationError::DescriptorCloneError)?,
             mem_areas,
         });
 
