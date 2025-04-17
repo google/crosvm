@@ -84,7 +84,7 @@ impl Frontend for BackendReqHandlerImpl {
             Ok(()) => Ok(0),
             Err(e) => {
                 error!("failed to create mapping {:?}", e);
-                Err(std::io::Error::from_raw_os_error(libc::EINVAL))
+                Err(std::io::Error::other(e.context("add descriptor mapping")))
             }
         }
     }
@@ -105,7 +105,9 @@ impl Frontend for BackendReqHandlerImpl {
             Ok(()) => Ok(0),
             Err(e) => {
                 error!("failed to remove mapping {:?}", e);
-                Err(std::io::Error::from_raw_os_error(libc::EINVAL))
+                Err(std::io::Error::other(
+                    e.context("remove memory mapping based on shm offset"),
+                ))
             }
         }
     }
@@ -143,7 +145,9 @@ impl Frontend for BackendReqHandlerImpl {
             Ok(()) => Ok(0),
             Err(e) => {
                 error!("failed to create mapping {:?}", e);
-                Err(std::io::Error::from_raw_os_error(libc::EINVAL))
+                Err(std::io::Error::other(
+                    e.context("add Vulkan source mapping"),
+                ))
             }
         }
     }
@@ -172,7 +176,7 @@ impl Frontend for BackendReqHandlerImpl {
             Ok(()) => Ok(0),
             Err(e) => {
                 error!("failed to create mapping {:?}", e);
-                Err(std::io::Error::from_raw_os_error(libc::EINVAL))
+                Err(std::io::Error::other(e.context("add external mapping")))
             }
         }
     }

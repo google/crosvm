@@ -905,7 +905,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
                 self.conn
                     .lock()
                     .gpu_map(&msg, &descriptor)
-                    .context("failed to map memory")?;
+                    .context("map GPU memory")?;
                 size
             }
             VmMemorySource::ExternalMapping { ptr, size } => {
@@ -913,7 +913,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
                 self.conn
                     .lock()
                     .external_map(&msg)
-                    .context("failed to map memory")?;
+                    .context("create external mapping")?;
                 size
             }
             source => {
@@ -943,7 +943,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
                 self.conn
                     .lock()
                     .shmem_map(&msg, &descriptor)
-                    .context("failed to map memory")?;
+                    .context("map shmem")?;
                 size
             }
         };
@@ -962,7 +962,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
         self.conn
             .lock()
             .shmem_unmap(&msg)
-            .context("failed to map memory")
+            .context("unmap shmem")
             .map(|_| ())
     }
 }
