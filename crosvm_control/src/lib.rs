@@ -80,9 +80,8 @@ unsafe fn validate_socket_path(socket_path: *const c_char) -> Option<PathBuf> {
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_stop_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
@@ -101,9 +100,8 @@ pub unsafe extern "C" fn crosvm_client_stop_vm(socket_path: *const c_char) -> bo
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_suspend_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
@@ -125,9 +123,8 @@ pub unsafe extern "C" fn crosvm_client_suspend_vm(socket_path: *const c_char) ->
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_resume_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
@@ -148,9 +145,8 @@ pub unsafe extern "C" fn crosvm_client_resume_vm(socket_path: *const c_char) -> 
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_resume_vm_full(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
@@ -169,9 +165,8 @@ pub unsafe extern "C" fn crosvm_client_resume_vm_full(socket_path: *const c_char
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_make_rt_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
@@ -191,9 +186,8 @@ pub unsafe extern "C" fn crosvm_client_make_rt_vm(socket_path: *const c_char) ->
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_balloon_vms(
     socket_path: *const c_char,
@@ -217,9 +211,8 @@ pub unsafe extern "C" fn crosvm_client_balloon_vms(
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_balloon_vms_wait_with_timeout(
     socket_path: *const c_char,
@@ -277,9 +270,8 @@ pub unsafe extern "C" fn crosvm_client_snd_mute_all(
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_swap_enable_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
@@ -299,9 +291,8 @@ pub unsafe extern "C" fn crosvm_client_swap_enable_vm(socket_path: *const c_char
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_swap_swapout_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
@@ -329,9 +320,9 @@ pub struct SwapDisableArgs {
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// `SwapDisableArgs` instance valid for writes that is not externally modified for the duration of
+/// this call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_swap_disable_vm(args: *mut SwapDisableArgs) -> bool {
     catch_unwind(|| {
@@ -359,9 +350,8 @@ pub unsafe extern "C" fn crosvm_client_swap_disable_vm(args: *mut SwapDisableArg
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_swap_trim(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
@@ -383,9 +373,10 @@ pub unsafe extern "C" fn crosvm_client_swap_trim(socket_path: *const c_char) -> 
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a C
+/// string that is valid for reads and not modified for the duration of the call, and that `status`
+/// is a non-null pointer to a `SwapStatus` valid for writes that is not externally modified for
+/// the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_swap_status(
     socket_path: *const c_char,
@@ -455,9 +446,10 @@ pub extern "C" fn crosvm_client_max_usb_devices() -> usize {
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a C
+/// string that is valid and for reads and not modified for the duration of the call. `entries`
+/// should be a valid pointer to an array of `UsbDeviceEntry` valid for writes that contains at
+/// least `entries_length` elements and is not externally modified for the duration of this call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_usb_list(
     socket_path: *const c_char,
@@ -614,9 +606,8 @@ pub unsafe extern "C" fn crosvm_client_security_key_attach(
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_usb_detach(socket_path: *const c_char, port: u8) -> bool {
     catch_unwind(|| {
@@ -841,9 +832,8 @@ pub unsafe extern "C" fn crosvm_client_cancel_fake_power(
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_resize_disk(
     socket_path: *const c_char,
@@ -919,9 +909,11 @@ impl From<&BalloonStats> for BalloonStatsFfi {
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a C
+/// string that is valid for reads and not modified for the duration of the call. `stats` should be
+/// a pointer to a `BalloonStatsFfi` valid for writes that is not modified for the duration of this
+/// call, and `actual` should be a pointer to a `u64` valid for writes that is not modified for the
+/// duration of this call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_balloon_stats(
     socket_path: *const c_char,
@@ -935,9 +927,11 @@ pub unsafe extern "C" fn crosvm_client_balloon_stats(
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a C
+/// string that is valid for reads and not modified for the duration of the call. `stats` should be
+/// a pointer to a `BalloonStatsFfi` valid for writes is not modified for the duration of this
+/// call, and `actual` should be a pointer to a `u64` valid for writes that is not modified for the
+/// duration of this call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_balloon_stats_with_timeout(
     socket_path: *const c_char,
@@ -956,7 +950,9 @@ pub unsafe extern "C" fn crosvm_client_balloon_stats_with_timeout(
 /// # Safety
 ///
 /// This function is safe when the caller ensures the socket_path raw pointer can be safely passed
-/// to `CStr::from_ptr()`.
+/// to `CStr::from_ptr()`. `stats` should be a pointer to a `BalloonStatsFfi` valid for writes that
+/// is not modified for the duration of this call, and `actual` should be a pointer to a `u64`
+/// valid for writes that is not modified for the duration of this call.
 unsafe fn crosvm_client_balloon_stats_impl(
     socket_path: *const c_char,
     timeout_ms: Option<Duration>,
@@ -1082,9 +1078,10 @@ pub struct BalloonWSRConfigFfi {
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a C
+/// string that is valid for reads and not modified for the duration of the call. `ws` and `actual`
+/// should be pointers to a `BalloonStatsFfi` and `u64` respectively that are valid for writes and
+/// not modified for the duration of this call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_balloon_working_set(
     socket_path: *const c_char,
@@ -1155,9 +1152,9 @@ impl TryFrom<RegisteredEventFfi> for RegisteredEvent {
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` and `listening_socket_path` should
+/// be a non-null pointers to C strings that are valid for reads and not modified for the duration
+/// of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_register_events_listener(
     socket_path: *const c_char,
@@ -1192,9 +1189,9 @@ pub unsafe extern "C" fn crosvm_client_register_events_listener(
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` and `listening_socket_path` should
+/// be a non-null pointers to C strings that are valid for reads and not modified for the duration
+/// of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_unregister_events_listener(
     socket_path: *const c_char,
@@ -1229,9 +1226,9 @@ pub unsafe extern "C" fn crosvm_client_unregister_events_listener(
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` and `listening_socket_path` should
+/// be a non-null pointers to C strings that are valid for reads and not modified for the duration
+/// of the call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_unregister_listener(
     socket_path: *const c_char,
@@ -1260,9 +1257,10 @@ pub unsafe extern "C" fn crosvm_client_unregister_listener(
 ///
 /// # Safety
 ///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a C
+/// string that is valid for reads and not modified for the duration of the call. `config` should
+/// be a pointer to a `BalloonWSRConfigFfi` valid for reads that is not modified for the duration
+/// of this call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_balloon_wsr_config(
     socket_path: *const c_char,
@@ -1349,9 +1347,11 @@ pub struct VmDescriptorFfi {
 /// The function returns true on success or false if an error occurred.
 ///
 /// # Safety
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
+///
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a C
+/// string that is valid for reads and not modified for the duration of the call. `vm_desc_out`
+/// should be a pointer to a `VmDescriptorFfi` valid for writes that is not externally modified for
+/// the duration of this call.
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_get_vm_descriptor(
     socket_path: *const c_char,
