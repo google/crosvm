@@ -96,6 +96,7 @@ use rutabaga_gfx::RutabagaGralloc;
 use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::RutabagaMappedRegion;
 use rutabaga_gfx::VulkanInfo;
+use serde::de::Error;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::SnapshotReader;
@@ -454,11 +455,11 @@ impl Display for VmMemorySource {
 
 impl VmMemorySource {
     /// Map the resource and return its mapping and size in bytes.
-    pub fn map(
+    fn map(
         self,
         gralloc: &mut RutabagaGralloc,
         prot: Protection,
-    ) -> Result<(Box<dyn MappedRegion>, u64, Option<SafeDescriptor>)> {
+    ) -> anyhow::Result<(Box<dyn MappedRegion>, u64, Option<SafeDescriptor>)> {
         let (mem_region, size, descriptor) = match self {
             VmMemorySource::Descriptor {
                 descriptor,
@@ -485,27 +486,27 @@ impl VmMemorySource {
                     device_uuid,
                     driver_uuid,
                 };
-                let mapped_region = match gralloc.import_and_map(
-                    RutabagaHandle {
-                        os_handle: to_rutabaga_desciptor(descriptor),
-                        handle_type,
-                    },
-                    VulkanInfo {
-                        memory_idx,
-                        device_id,
-                    },
-                    size,
-                ) {
-                    Ok(mapped_region) => {
-                        let mapped_region: Box<dyn MappedRegion> =
-                            Box::new(RutabagaMemoryRegion::new(mapped_region));
-                        mapped_region
-                    }
-                    Err(e) => {
-                        error!("gralloc failed to import and map: {}", e);
-                        return Err(SysError::new(EINVAL));
-                    }
-                };
+                let mapped_region = gralloc
+                    .import_and_map(
+                        RutabagaHandle {
+                            os_handle: to_rutabaga_desciptor(descriptor),
+                            handle_type,
+                        },
+                        VulkanInfo {
+                            memory_idx,
+                            device_id,
+                        },
+                        size,
+                    )
+                    .with_context(|| {
+                        format!(
+                            "gralloc failed to import and map, handle type: {}, memory index {}, \
+                             size: {}",
+                            handle_type, memory_idx, size
+                        )
+                    })?;
+                let mapped_region: Box<dyn MappedRegion> =
+                    Box::new(RutabagaMemoryRegion::new(mapped_region));
                 (mapped_region, size, None)
             }
             VmMemorySource::ExternalMapping { ptr, size } => {
@@ -678,22 +679,25 @@ fn try_map_to_prepared_region(
             (Descriptor(shm.as_raw_descriptor()), 0, size)
         }
         _ => {
-            error!(
+            let error = anyhow::anyhow!(
                 "source {} is not compatible with fixed mapping into prepared memory region",
                 source
             );
-            return Some(VmMemoryResponse::Err(SysError::new(EINVAL)));
+            return Some(VmMemoryResponse::Err(error.into()));
         }
     };
-    if let Err(err) = vm.add_fd_mapping(
-        *slot,
-        *dest_offset as usize,
-        size,
-        &descriptor,
-        file_offset,
-        *prot,
-    ) {
-        return Some(VmMemoryResponse::Err(err));
+    if let Err(err) = vm
+        .add_fd_mapping(
+            *slot,
+            *dest_offset as usize,
+            size,
+            &descriptor,
+            file_offset,
+            *prot,
+        )
+        .context("failed to add fd mapping when trying to map to prepared region")
+    {
+        return Some(VmMemoryResponse::Err(err.into()));
     }
 
     let guest_address = GuestAddress(guest_address.0 + dest_offset);
@@ -748,12 +752,14 @@ impl VmMemoryRequest {
                     return VmMemoryResponse::Ok;
                 }
 
-                match sys::prepare_shared_memory_region(vm, sys_allocator, alloc, cache) {
+                match sys::prepare_shared_memory_region(vm, sys_allocator, alloc, cache)
+                    .context("failed to prepare shared memory region")
+                {
                     Ok(region) => {
                         region_state.mapped_regions.insert(alloc, region);
                         VmMemoryResponse::Ok
                     }
-                    Err(e) => VmMemoryResponse::Err(e),
+                    Err(e) => VmMemoryResponse::Err(e.into()),
                 }
             }
             RegisterMemory {
@@ -770,25 +776,32 @@ impl VmMemoryRequest {
 
                 // Correct on Windows because callers of this IPC guarantee descriptor is a mapping
                 // handle.
-                let (mapped_region, size, descriptor) = match source.map(gralloc, prot) {
-                    Ok((region, size, descriptor)) => (region, size, descriptor),
-                    Err(e) => return VmMemoryResponse::Err(e),
-                };
+                let (mapped_region, size, descriptor) =
+                    match source.map(gralloc, prot).context("gralloc mapping") {
+                        Ok((region, size, descriptor)) => (region, size, descriptor),
+                        Err(e) => return VmMemoryResponse::Err(e.into()),
+                    };
 
-                let guest_addr = match dest.allocate(sys_allocator, size) {
+                let guest_addr = match dest
+                    .allocate(sys_allocator, size)
+                    .context("VM memory destination allocation fails")
+                {
                     Ok(addr) => addr,
-                    Err(e) => return VmMemoryResponse::Err(e),
+                    Err(e) => return VmMemoryResponse::Err(e.into()),
                 };
 
-                let slot = match vm.add_memory_region(
-                    guest_addr,
-                    mapped_region,
-                    prot == Protection::read(),
-                    false,
-                    cache,
-                ) {
+                let slot = match vm
+                    .add_memory_region(
+                        guest_addr,
+                        mapped_region,
+                        prot == Protection::read(),
+                        false,
+                        cache,
+                    )
+                    .context("failed to add memory region when registering memory")
+                {
                     Ok(slot) => slot,
-                    Err(e) => return VmMemoryResponse::Err(e),
+                    Err(e) => return VmMemoryResponse::Err(e.into()),
                 };
 
                 let region_id = VmMemoryRegionId(guest_addr);
@@ -804,10 +817,15 @@ impl VmMemoryRequest {
                     match virtio_iommu_request(&iommu_client.tube.lock(), &request) {
                         Ok(VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok)) => (),
                         resp => {
-                            error!("Unexpected message response: {:?}", resp);
-                            // Ignore the result because there is nothing we can do with a failure.
-                            let _ = vm.remove_memory_region(slot);
-                            return VmMemoryResponse::Err(SysError::new(EINVAL));
+                            let error = anyhow::anyhow!(
+                                "Unexpected virtio-iommu message response when registering memory: \
+                                 {:?}", resp);
+                            if let Err(e) = vm.remove_memory_region(slot) {
+                                // There is nothing we can do here, so we just log a warning
+                                // message.
+                                warn!("failed to remove memory region: {:?}", e);
+                            }
+                            return VmMemoryResponse::Err(error.into());
                         }
                     };
 
@@ -831,12 +849,10 @@ impl VmMemoryRequest {
                     let mem = match MemoryMappingBuilder::new(shm.size() as usize)
                         .from_shared_memory(&shm)
                         .build()
+                        .context("failed to build MemoryMapping from shared memory")
                     {
                         Ok(mem) => mem,
-                        Err(e) => {
-                            error!("Failed to build MemoryMapping from shared memory: {:#}", e);
-                            return Err(VmMemoryResponse::Err(SysError::new(EINVAL)));
-                        }
+                        Err(e) => return Err(VmMemoryResponse::Err(e.into())),
                     };
                     let mut mmap_arena = MemoryMappingArena::from(mem);
 
@@ -846,15 +862,12 @@ impl VmMemoryRequest {
                     let mut read = 0;
                     while read < num_file_mappings {
                         let len = std::cmp::min(num_file_mappings - read, base::unix::SCM_MAX_FD);
-                        let mps: Vec<VmMemoryFileMapping> = match tube.recv_with_max_fds(len) {
+                        let mps: Vec<VmMemoryFileMapping> = match tube
+                            .recv_with_max_fds(len)
+                            .with_context(|| format!("get {num_file_mappings} FDs to be mapped"))
+                        {
                             Ok(m) => m,
-                            Err(e) => {
-                                error!(
-                                    "Failed to get {num_file_mappings} FDs to be mapped: {:#}",
-                                    e
-                                );
-                                return Err(VmMemoryResponse::Err(SysError::new(EINVAL)));
-                            }
+                            Err(e) => return Err(VmMemoryResponse::Err(e.into())),
                         };
                         file_mappings.extend(mps.into_iter());
                         read += len;
@@ -867,45 +880,56 @@ impl VmMemoryRequest {
                         file_offset,
                     } in file_mappings
                     {
-                        if let Err(e) = mmap_arena.add_fd_mapping(
-                            mem_offset,
-                            length,
-                            &file,
-                            file_offset,
-                            Protection::read(),
-                        ) {
-                            error!("Failed to add fd mapping: {:#}", e);
-                            return Err(VmMemoryResponse::Err(SysError::new(EINVAL)));
+                        if let Err(e) = mmap_arena
+                            .add_fd_mapping(
+                                mem_offset,
+                                length,
+                                &file,
+                                file_offset,
+                                Protection::read(),
+                            )
+                            .context(
+                                "failed to add fd mapping when handling mmap and register memory",
+                            )
+                        {
+                            return Err(VmMemoryResponse::Err(e.into()));
                         }
                     }
                     Ok(mmap_arena)
                 };
-                let mmap_arena = match call_with_extended_max_files(callback) {
+                let mmap_arena = match call_with_extended_max_files(callback)
+                    .context("failed to set max count of file descriptors")
+                {
                     Ok(Ok(m)) => m,
                     Ok(Err(e)) => {
                         return e;
                     }
                     Err(e) => {
-                        error!("Failed to set max count of file descriptors: {e}");
-                        return VmMemoryResponse::Err(e);
+                        error!("{e:?}");
+                        return VmMemoryResponse::Err(e.into());
                     }
                 };
 
                 let size = shm.size();
-                let guest_addr = match dest.allocate(sys_allocator, size) {
+                let guest_addr = match dest.allocate(sys_allocator, size).context(
+                    "VM memory destination allocation fails when handling mmap and register memory",
+                ) {
                     Ok(addr) => addr,
-                    Err(e) => return VmMemoryResponse::Err(e),
+                    Err(e) => return VmMemoryResponse::Err(e.into()),
                 };
 
-                let slot = match vm.add_memory_region(
-                    guest_addr,
-                    Box::new(mmap_arena),
-                    true,
-                    false,
-                    MemCacheType::CacheCoherent,
-                ) {
+                let slot = match vm
+                    .add_memory_region(
+                        guest_addr,
+                        Box::new(mmap_arena),
+                        true,
+                        false,
+                        MemCacheType::CacheCoherent,
+                    )
+                    .context("failed to add memory region when handling mmap and register memory")
+                {
                     Ok(slot) => slot,
-                    Err(e) => return VmMemoryResponse::Err(e),
+                    Err(e) => return VmMemoryResponse::Err(e.into()),
                 };
 
                 let region_id = VmMemoryRegionId(guest_addr);
@@ -919,7 +943,9 @@ impl VmMemoryRequest {
             UnregisterMemory(id) => match region_state.registered_memory.remove(&id) {
                 Some(RegisteredMemory::DynamicMapping { slot }) => match vm
                     .remove_memory_region(slot)
-                {
+                    .context(
+                        "failed to remove memory region when unregistering dynamic mapping memory",
+                    ) {
                     Ok(_) => {
                         if let Some(iommu_client) = iommu_client {
                             if iommu_client.registered_memory.remove(&id) {
@@ -932,8 +958,12 @@ impl VmMemoryRequest {
                                         VirtioIOMMUVfioResult::Ok,
                                     )) => VmMemoryResponse::Ok,
                                     resp => {
-                                        error!("Unexpected message response: {:?}", resp);
-                                        VmMemoryResponse::Err(SysError::new(EINVAL))
+                                        let error = anyhow::anyhow!(
+                                            "Unexpected virtio-iommu message response when \
+                                             unregistering memory: {:?}",
+                                            resp
+                                        );
+                                        VmMemoryResponse::Err(error.into())
                                     }
                                 }
                             } else {
@@ -943,26 +973,38 @@ impl VmMemoryRequest {
                             VmMemoryResponse::Ok
                         }
                     }
-                    Err(e) => VmMemoryResponse::Err(e),
+                    Err(e) => VmMemoryResponse::Err(e.into()),
                 },
                 Some(RegisteredMemory::FixedMapping { slot, offset, size }) => {
-                    match vm.remove_mapping(slot, offset, size) {
+                    match vm.remove_mapping(slot, offset, size).context(
+                        "failed to remove memory mapping when unregistering fixed mapping memory",
+                    ) {
                         Ok(()) => VmMemoryResponse::Ok,
-                        Err(e) => VmMemoryResponse::Err(e),
+                        Err(e) => VmMemoryResponse::Err(e.into()),
                     }
                 }
-                None => VmMemoryResponse::Err(SysError::new(EINVAL)),
+                None => {
+                    let error =
+                        anyhow::anyhow!("can't find the memory region when unregistering memory");
+                    VmMemoryResponse::Err(error.into())
+                }
             },
             DynamicallyFreeMemoryRanges { ranges } => {
                 let mut r = VmMemoryResponse::Ok;
                 for (guest_address, size) in ranges {
-                    match vm.handle_balloon_event(BalloonEvent::Inflate(MemRegion {
-                        guest_address,
-                        size,
-                    })) {
+                    match vm
+                        .handle_balloon_event(BalloonEvent::Inflate(MemRegion {
+                            guest_address,
+                            size,
+                        }))
+                        .context(
+                            "failed to handle the inflate balloon event when freeing memory ranges \
+                             dynamically",
+                        ) {
                         Ok(_) => {}
                         Err(e) => {
-                            r = VmMemoryResponse::Err(e);
+                            error!("{:?}", e);
+                            r = VmMemoryResponse::Err(e.into());
                             break;
                         }
                     }
@@ -972,13 +1014,19 @@ impl VmMemoryRequest {
             DynamicallyReclaimMemoryRanges { ranges } => {
                 let mut r = VmMemoryResponse::Ok;
                 for (guest_address, size) in ranges {
-                    match vm.handle_balloon_event(BalloonEvent::Deflate(MemRegion {
-                        guest_address,
-                        size,
-                    })) {
+                    match vm
+                        .handle_balloon_event(BalloonEvent::Deflate(MemRegion {
+                            guest_address,
+                            size,
+                        }))
+                        .context(
+                            "failed to handle the deflate balloon event when reclaiming memory \
+                             ranges dynamically",
+                        ) {
                         Ok(_) => {}
                         Err(e) => {
-                            r = VmMemoryResponse::Err(e);
+                            error!("{:?}", e);
+                            r = VmMemoryResponse::Err(e.into());
                             break;
                         }
                     }
@@ -986,9 +1034,12 @@ impl VmMemoryRequest {
                 r
             }
             BalloonTargetReached { size } => {
-                match vm.handle_balloon_event(BalloonEvent::BalloonTargetReached(size)) {
+                match vm
+                    .handle_balloon_event(BalloonEvent::BalloonTargetReached(size))
+                    .context("failed to handle the target reached balloon event")
+                {
                     Ok(_) => VmMemoryResponse::Ok,
-                    Err(e) => VmMemoryResponse::Err(e),
+                    Err(e) => VmMemoryResponse::Err(e.into()),
                 }
             }
             IoEventRaw(request) => {
@@ -998,16 +1049,18 @@ impl VmMemoryRequest {
                         IoEventAddress::Mmio(request.addr),
                         request.datamatch,
                     )
+                    .context("failed to register IO event")
                 } else {
                     vm.unregister_ioevent(
                         &request.event,
                         IoEventAddress::Mmio(request.addr),
                         request.datamatch,
                     )
+                    .context("failed to unregister IO event")
                 };
                 match res {
                     Ok(_) => VmMemoryResponse::Ok,
-                    Err(e) => VmMemoryResponse::Err(e),
+                    Err(e) => VmMemoryResponse::Err(e.into()),
                 }
             }
         }
@@ -1027,7 +1080,74 @@ pub enum VmMemoryResponse {
         slot: u32,
     },
     Ok,
-    Err(SysError),
+    Err(VmMemoryResponseError),
+}
+
+impl<T> From<Result<T>> for VmMemoryResponse {
+    fn from(r: Result<T>) -> Self {
+        match r {
+            Ok(_) => VmMemoryResponse::Ok,
+            Err(e) => VmMemoryResponse::Err(anyhow::Error::new(e).into()),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Vm memory response error: {0}")]
+pub struct VmMemoryResponseError(#[from] pub anyhow::Error);
+
+impl TryFrom<FlatVmMemoryResponseError> for VmMemoryResponseError {
+    type Error = anyhow::Error;
+    fn try_from(value: FlatVmMemoryResponseError) -> StdResult<Self, Self::Error> {
+        let inner = value
+            .0
+            .into_iter()
+            .fold(
+                None,
+                |error: Option<anyhow::Error>, current_context| match error {
+                    Some(error) => Some(error.context(current_context)),
+                    None => Some(anyhow::Error::msg(current_context)),
+                },
+            )
+            .context("should carry at least one error")?;
+        Ok(Self(inner))
+    }
+}
+
+impl Serialize for VmMemoryResponseError {
+    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let flat: FlatVmMemoryResponseError = self.into();
+        flat.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for VmMemoryResponseError {
+    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let flat = FlatVmMemoryResponseError::deserialize(deserializer)?;
+        flat.try_into()
+            .map_err(|e: anyhow::Error| D::Error::custom(e.to_string()))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FlatVmMemoryResponseError(Vec<String>);
+
+impl From<&VmMemoryResponseError> for FlatVmMemoryResponseError {
+    fn from(value: &VmMemoryResponseError) -> Self {
+        let contexts = value
+            .0
+            .chain()
+            .map(ToString::to_string)
+            .rev()
+            .collect::<Vec<_>>();
+        Self(contexts)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -2794,4 +2914,36 @@ pub fn virtio_iommu_request(
         resp => resp,
     };
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::anyhow;
+
+    use super::*;
+
+    #[test]
+    fn vm_memory_response_error_should_serialize_and_deserialize_correctly() {
+        let source_error: VmMemoryResponseError = anyhow!("root cause")
+            .context("context 1")
+            .context("context 2")
+            .into();
+        let serialized_bytes =
+            serde_json::to_vec(&source_error).expect("should serialize to json successfully");
+        let target_error = serde_json::from_slice::<VmMemoryResponseError>(&serialized_bytes)
+            .expect("should deserialize from json successfully");
+        assert_eq!(
+            format!("{:?}", source_error.0),
+            format!("{:?}", target_error.0)
+        );
+    }
+
+    #[test]
+    fn vm_memory_response_error_deserialization_should_handle_malformat_correctly() {
+        let flat_source = FlatVmMemoryResponseError(vec![]);
+        let serialized_bytes =
+            serde_json::to_vec(&flat_source).expect("should serialize to json successfully");
+        serde_json::from_slice::<VmMemoryResponseError>(&serialized_bytes)
+            .expect_err("deserialize with 0 error messages should fail");
+    }
 }

@@ -24,6 +24,7 @@ use crate::VmMemoryDestination;
 use crate::VmMemoryRegionId;
 use crate::VmMemoryRequest;
 use crate::VmMemoryResponse;
+use crate::VmMemoryResponseError;
 use crate::VmMemorySource;
 
 #[derive(Error, Debug)]
@@ -32,7 +33,7 @@ pub enum ApiClientError {
     #[error("API client tube recv failed: {0}")]
     Recv(TubeError),
     #[error("Request failed: {0}")]
-    RequestFailed(#[from] base::Error),
+    RequestFailed(#[source] anyhow::Error),
     #[error("API client tube send failed: {0}")]
     Send(TubeError),
     #[error("API client tube sending FDs failed: {0}")]
@@ -63,7 +64,9 @@ impl VmMemoryClient {
     fn request_unit(&self, request: &VmMemoryRequest) -> Result<()> {
         match self.request(request)? {
             VmMemoryResponse::Ok => Ok(()),
-            VmMemoryResponse::Err(e) => Err(ApiClientError::RequestFailed(e)),
+            VmMemoryResponse::Err(VmMemoryResponseError(e)) => {
+                Err(ApiClientError::RequestFailed(e))
+            }
             _other => Err(ApiClientError::UnexpectedResponse),
         }
     }
@@ -88,7 +91,9 @@ impl VmMemoryClient {
             cache,
         };
         match self.request(&request)? {
-            VmMemoryResponse::Err(e) => Err(ApiClientError::RequestFailed(e)),
+            VmMemoryResponse::Err(VmMemoryResponseError(e)) => {
+                Err(ApiClientError::RequestFailed(e))
+            }
             VmMemoryResponse::RegisterMemory { region_id, .. } => Ok(region_id),
             _other => Err(ApiClientError::UnexpectedResponse),
         }
@@ -121,7 +126,9 @@ impl VmMemoryClient {
 
         match self.tube.recv().map_err(ApiClientError::Recv)? {
             VmMemoryResponse::RegisterMemory { slot, .. } => Ok(slot),
-            VmMemoryResponse::Err(e) => Err(ApiClientError::RequestFailed(e)),
+            VmMemoryResponse::Err(VmMemoryResponseError(e)) => {
+                Err(ApiClientError::RequestFailed(e))
+            }
             _ => Err(ApiClientError::UnexpectedResponse),
         }
     }
