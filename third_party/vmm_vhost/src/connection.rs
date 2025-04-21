@@ -76,7 +76,7 @@ impl<R: Req> Connection<R> {
 
     /// Send a message with header and body. Optional file descriptors may be attached to
     /// the message.
-    pub fn send_message<T: IntoBytes + Immutable>(
+    pub fn send_message<T: IntoBytes + Immutable + ?Sized>(
         &self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,

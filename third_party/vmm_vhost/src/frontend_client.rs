@@ -4,8 +4,10 @@
 use std::mem;
 use std::string::ToString;
 
+use anyhow::Context;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
+use zerocopy::FromBytes;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 
@@ -15,7 +17,38 @@ use crate::Connection;
 use crate::Error;
 use crate::Frontend;
 use crate::HandlerResult;
-use crate::Result;
+
+trait VhostUserReply: Sized {
+    fn deserialize(raw_body: &[u8]) -> anyhow::Result<Self>;
+    fn ok(self) -> HandlerResult<u64>;
+}
+
+impl VhostUserReply for VhostUserU64 {
+    fn deserialize(raw_body: &[u8]) -> anyhow::Result<Self> {
+        VhostUserU64::read_from_bytes(raw_body).map_err(|e| anyhow::anyhow!("{}", e))
+    }
+
+    fn ok(self) -> HandlerResult<u64> {
+        let value = self.value;
+        if value != 0 {
+            return Err(std::io::Error::other(anyhow::anyhow!(
+                "operation failed with non-zero payload {}",
+                value
+            )));
+        }
+        Ok(0)
+    }
+}
+
+impl VhostUserReply for VhostUserRequestResponse {
+    fn deserialize(raw_body: &[u8]) -> anyhow::Result<Self> {
+        serde_json::from_slice(raw_body).context("failed to deserialize the response")
+    }
+
+    fn ok(self) -> HandlerResult<u64> {
+        self.map_err(std::io::Error::other)
+    }
+}
 
 /// Client for a vhost-user frontend. Allows a backend to send requests to the frontend.
 pub struct FrontendClient {
@@ -43,7 +76,7 @@ impl FrontendClient {
         request: BackendReq,
         msg: &T,
         fds: Option<&[RawDescriptor]>,
-    ) -> HandlerResult<u64>
+    ) -> HandlerResult<VhostUserMsgHeader<BackendReq>>
     where
         T: IntoBytes + Immutable,
     {
@@ -55,31 +88,30 @@ impl FrontendClient {
         self.sock
             .send_message(&hdr, msg, fds)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-
-        self.wait_for_reply(&hdr)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        Ok(hdr)
     }
 
-    fn wait_for_reply(&mut self, hdr: &VhostUserMsgHeader<BackendReq>) -> Result<u64> {
-        let code = hdr.get_code().map_err(|_| Error::InvalidMessage)?;
-        if code != BackendReq::SHMEM_MAP
-            && code != BackendReq::SHMEM_UNMAP
-            && code != BackendReq::GPU_MAP
-            && code != BackendReq::EXTERNAL_MAP
-            && !self.reply_ack_negotiated
-        {
-            return Ok(0);
+    fn wait_for_reply<T: VhostUserReply>(
+        &mut self,
+        hdr: &VhostUserMsgHeader<BackendReq>,
+    ) -> HandlerResult<u64> {
+        let (reply, rfds) = self
+            .sock
+            .recv_header()
+            .context("failed to receive the header")
+            .map_err(std::io::Error::other)?;
+        let raw_body = self
+            .sock
+            .recv_body_bytes(&reply)
+            .context("failed to receive the body")
+            .map_err(std::io::Error::other)?;
+        if !reply.is_reply_for(hdr) || !rfds.is_empty() {
+            return Err(std::io::Error::other(Error::InvalidMessage));
         }
-
-        let (reply, body, rfds) = self.sock.recv_message::<VhostUserU64>()?;
-        if !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
-            return Err(Error::InvalidMessage);
-        }
-        if body.value != 0 {
-            return Err(Error::FrontendInternalError);
-        }
-
-        Ok(body.value)
+        let body = T::deserialize(&raw_body)
+            .context("failed to deserilize the message body")
+            .map_err(std::io::Error::other)?;
+        body.ok()
     }
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.
@@ -104,17 +136,24 @@ impl Frontend for FrontendClient {
         req: &VhostUserShmemMapMsg,
         fd: &dyn AsRawDescriptor,
     ) -> HandlerResult<u64> {
-        self.send_message(BackendReq::SHMEM_MAP, req, Some(&[fd.as_raw_descriptor()]))
+        let hdr = self.send_message(BackendReq::SHMEM_MAP, req, Some(&[fd.as_raw_descriptor()]))?;
+        self.wait_for_reply::<VhostUserRequestResponse>(&hdr)
     }
 
     /// Handle shared memory region unmapping requests.
     fn shmem_unmap(&mut self, req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
-        self.send_message(BackendReq::SHMEM_UNMAP, req, None)
+        let hdr = self.send_message(BackendReq::SHMEM_UNMAP, req, None)?;
+        self.wait_for_reply::<VhostUserRequestResponse>(&hdr)
     }
 
     /// Handle config change requests.
     fn handle_config_change(&mut self) -> HandlerResult<u64> {
-        self.send_message(BackendReq::CONFIG_CHANGE_MSG, &VhostUserEmptyMessage, None)
+        let hdr = self.send_message(BackendReq::CONFIG_CHANGE_MSG, &VhostUserEmptyMessage, None)?;
+        if self.reply_ack_negotiated {
+            self.wait_for_reply::<VhostUserU64>(&hdr)
+        } else {
+            Ok(0)
+        }
     }
 
     /// Handle GPU shared memory region mapping requests.
@@ -123,16 +162,18 @@ impl Frontend for FrontendClient {
         req: &VhostUserGpuMapMsg,
         descriptor: &dyn AsRawDescriptor,
     ) -> HandlerResult<u64> {
-        self.send_message(
+        let hdr = self.send_message(
             BackendReq::GPU_MAP,
             req,
             Some(&[descriptor.as_raw_descriptor()]),
-        )
+        )?;
+        self.wait_for_reply::<VhostUserRequestResponse>(&hdr)
     }
 
     /// Handle external memory region mapping requests.
     fn external_map(&mut self, req: &VhostUserExternalMapMsg) -> HandlerResult<u64> {
-        self.send_message(BackendReq::EXTERNAL_MAP, req, None)
+        let hdr = self.send_message(BackendReq::EXTERNAL_MAP, req, None)?;
+        self.wait_for_reply::<VhostUserRequestResponse>(&hdr)
     }
 }
 

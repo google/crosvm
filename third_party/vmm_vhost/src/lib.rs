@@ -119,7 +119,7 @@ pub enum Error {
     },
     /// Error from request handler
     #[error("handler failed to handle request: {0}")]
-    ReqHandlerError(#[source] IOError),
+    ReqHandlerError(#[source] anyhow::Error),
     /// Failure to restore.
     #[error("Failed to restore")]
     RestoreError(anyhow::Error),

@@ -12,8 +12,10 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+use anyhow::Context;
 use base::Protection;
 use bitflags::bitflags;
+use serde::de::Error as _;
 use zerocopy::FromBytes;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
@@ -1226,8 +1228,93 @@ pub enum VhostUserMigrationPhase {
     Stopped,
 }
 
+pub(crate) type VhostUserRequestResponse = std::result::Result<u64, VhostUserRequestError>;
+
+#[derive(thiserror::Error, Debug, serde::Serialize, serde::Deserialize)]
+#[error("handler failed to handle request: {0}")]
+pub(crate) struct VhostUserRequestError(#[source] ErrorContext);
+
+impl VhostUserRequestError {
+    pub fn handler_error(e: anyhow::Error) -> Self {
+        Self(e.into())
+    }
+}
+
+impl From<VhostUserRequestError> for crate::Error {
+    fn from(value: VhostUserRequestError) -> Self {
+        let VhostUserRequestError(ErrorContext(e)) = value;
+        Self::ReqHandlerError(e)
+    }
+}
+
+#[derive(thiserror::Error)]
+#[error(transparent)]
+pub(crate) struct ErrorContext(#[from] anyhow::Error);
+
+impl Debug for ErrorContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl TryFrom<FlatErrorContext> for ErrorContext {
+    type Error = anyhow::Error;
+    fn try_from(value: FlatErrorContext) -> std::result::Result<Self, Self::Error> {
+        let inner = value
+            .0
+            .into_iter()
+            .fold(
+                None,
+                |error: Option<anyhow::Error>, current_context| match error {
+                    Some(error) => Some(error.context(current_context)),
+                    None => Some(anyhow::Error::msg(current_context)),
+                },
+            )
+            .context("should carry at least one error")?;
+        Ok(Self(inner))
+    }
+}
+
+impl serde::Serialize for ErrorContext {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let flat: FlatErrorContext = self.into();
+        flat.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ErrorContext {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let flat = FlatErrorContext::deserialize(deserializer)?;
+        flat.try_into()
+            .map_err(|e: anyhow::Error| D::Error::custom(e.to_string()))
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct FlatErrorContext(Vec<String>);
+
+impl From<&ErrorContext> for FlatErrorContext {
+    fn from(value: &ErrorContext) -> Self {
+        let contexts = value
+            .0
+            .chain()
+            .map(ToString::to_string)
+            .rev()
+            .collect::<Vec<_>>();
+        Self(contexts)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use anyhow::anyhow;
+
     use super::*;
 
     #[test]
@@ -1480,5 +1567,30 @@ mod tests {
         assert!(msg.is_valid());
         msg.flags |= 0x4;
         assert!(!msg.is_valid());
+    }
+
+    #[test]
+    fn error_context_should_serialize_and_deserialize_correctly() {
+        let source_error: ErrorContext = anyhow!("root cause")
+            .context("context 1")
+            .context("context 2")
+            .into();
+        let serialized_bytes =
+            serde_json::to_vec(&source_error).expect("should serialize to json successfully");
+        let target_error = serde_json::from_slice::<ErrorContext>(&serialized_bytes)
+            .expect("should deserialize from json successfully");
+        assert_eq!(
+            format!("{:?}", source_error.0),
+            format!("{:?}", target_error.0)
+        );
+    }
+
+    #[test]
+    fn error_context_deserialization_should_handle_malformat_correctly() {
+        let flat_source = FlatErrorContext(vec![]);
+        let serialized_bytes =
+            serde_json::to_vec(&flat_source).expect("should serialize to json successfully");
+        serde_json::from_slice::<ErrorContext>(&serialized_bytes)
+            .expect_err("deserialize with 0 error messages should fail");
     }
 }
