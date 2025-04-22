@@ -85,9 +85,9 @@ pub enum Error {
     /// Virtio/protocol features mismatch.
     #[error("virtio features mismatch")]
     FeatureMismatch,
-    /// Failure from the frontend side.
-    #[error("frontend Internal error")]
-    FrontendInternalError,
+    /// Failure from the frontend server side.
+    #[error("frontend server internal error")]
+    FrontendServerInternalError,
     /// Fd array in question is too big or too small
     #[error("wrong number of attached fds")]
     IncorrectFds,
