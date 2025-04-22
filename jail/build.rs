@@ -104,14 +104,13 @@ fn main() {
     let compile_seccomp_policy = if let Ok(path) = which::which("compile_seccomp_policy") {
         // If `compile_seccomp_policy` exists in the path (e.g. ChromeOS builds), use it.
         path
-    } else {
         // Otherwise, use compile_seccomp_policy.py from the minijail submodule.
-        let minijail_dir = if let Ok(minijail_dir_env) = env::var("MINIJAIL_DIR") {
-            PathBuf::from(minijail_dir_env)
-        } else {
-            src_dir.join("../third_party/minijail")
-        };
-        minijail_dir.join("tools/compile_seccomp_policy.py")
+    } else if let Ok(minijail_dir_env) = env::var("MINIJAIL_DIR") {
+        PathBuf::from(minijail_dir_env).join("tools/compile_seccomp_policy.py")
+    } else if let Ok(compile_seccomp_policy_env) = env::var("COMPILE_SECCOMP_POLICY") {
+        PathBuf::from(compile_seccomp_policy_env)
+    } else {
+        src_dir.join("../third_party/minijail/tools/compile_seccomp_policy.py")
     };
 
     // check policies exist for target architecture
