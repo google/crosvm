@@ -1087,13 +1087,22 @@ impl VirtioGpu {
     /// rutabaga as ExternalMapping.
     /// When sandboxing is enabled, external_blob is set and opaque fds must be mapped in the
     /// hypervisor process by Vulkano using metadata provided by Rutabaga::vulkan_info().
-    pub fn resource_map_blob(&mut self, resource_id: u32, offset: u64) -> VirtioGpuResult {
+    pub fn resource_map_blob(
+        &mut self,
+        resource_id: u32,
+        offset: u64,
+    ) -> anyhow::Result<GpuResponse> {
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .ok_or(ErrInvalidResourceId)?;
+            .with_context(|| format!("can't find the resource with id {}", resource_id))
+            .context(ErrInvalidResourceId)?;
 
-        let map_info = self.rutabaga.map_info(resource_id).map_err(|_| ErrUnspec)?;
+        let map_info = self
+            .rutabaga
+            .map_info(resource_id)
+            .context("failed to retrieve the map info for the resource")
+            .context(ErrUnspec)?;
 
         let mut source: Option<VmMemorySource> = None;
         if let Ok(export) = self.rutabaga.export_blob(resource_id) {
@@ -1118,11 +1127,18 @@ impl VirtioGpu {
         // fallback to ExternalMapping via rutabaga if sandboxing (hence external_blob) and fixed
         // mapping are both disabled as neither is currently compatible.
         if source.is_none() {
-            if self.external_blob || self.fixed_blob_mapping {
-                return Err(ErrUnspec);
-            }
+            anyhow::ensure!(
+                !self.external_blob,
+                "can't fallback to external mapping with external blob enabled"
+            );
+            anyhow::ensure!(
+                !self.fixed_blob_mapping,
+                "can't fallback to external mapping with fixed blob mapping enabled"
+            );
 
-            let mapping = self.rutabaga.map(resource_id)?;
+            let mapping = self.rutabaga.map(resource_id).map_err(|e| {
+                anyhow::anyhow!("failed to map via rutabaga").context(GpuResponse::ErrRutabaga(e))
+            })?;
             // resources mapped via rutabaga must also be marked for unmap via rutabaga.
             resource.rutabaga_external_mapping = true;
             source = Some(VmMemorySource::ExternalMapping {
@@ -1135,7 +1151,13 @@ impl VirtioGpu {
             RUTABAGA_MAP_ACCESS_READ => Protection::read(),
             RUTABAGA_MAP_ACCESS_WRITE => Protection::write(),
             RUTABAGA_MAP_ACCESS_RW => Protection::read_write(),
-            _ => return Err(ErrUnspec),
+            access_flags => {
+                return Err(anyhow::anyhow!(
+                    "unrecognized access flags {:#x}",
+                    access_flags
+                ))
+                .context(ErrUnspec)
+            }
         };
 
         let cache = if cfg!(feature = "noncoherent-dma")
@@ -1151,7 +1173,8 @@ impl VirtioGpu {
             .as_mut()
             .expect("No backend request connection found")
             .add_mapping(source.unwrap(), offset, prot, cache)
-            .map_err(|_| ErrUnspec)?;
+            .context("failed to add the memory mapping")
+            .context(ErrUnspec)?;
 
         resource.shmem_offset = Some(offset);
         // Access flags not a part of the virtio-gpu spec.
