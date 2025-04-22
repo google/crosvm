@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::error;
+use anyhow::bail;
+use anyhow::Context;
 use base::info;
 use base::AsRawDescriptor;
 use base::Protection;
@@ -15,7 +16,6 @@ use vmm_vhost::message::VhostUserShmemMapMsg;
 use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::Frontend;
 use vmm_vhost::FrontendServer;
-use vmm_vhost::HandlerResult;
 
 use crate::virtio::Interrupt;
 use crate::virtio::SharedMemoryMapper;
@@ -58,140 +58,121 @@ impl Frontend for BackendReqHandlerImpl {
         &mut self,
         req: &VhostUserShmemMapMsg,
         fd: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
+    ) -> anyhow::Result<()> {
         let shared_mapper_state = self
             .shared_mapper_state
             .as_mut()
-            .ok_or_else(|| std::io::Error::from_raw_os_error(libc::EINVAL))?;
+            .context("shared mapper state not set")?;
         if req.shmid != shared_mapper_state.shmid {
-            error!(
+            bail!(
                 "bad shmid {}, expected {}",
-                req.shmid, shared_mapper_state.shmid
+                req.shmid,
+                shared_mapper_state.shmid
             );
-            return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
         }
-        match shared_mapper_state.mapper.add_mapping(
-            VmMemorySource::Descriptor {
-                descriptor: SafeDescriptor::try_from(fd)
-                    .map_err(|_| std::io::Error::from_raw_os_error(libc::EIO))?,
-                offset: req.fd_offset,
-                size: req.len,
-            },
-            req.shm_offset,
-            Protection::from(req.flags),
-            MemCacheType::CacheCoherent,
-        ) {
-            Ok(()) => Ok(0),
-            Err(e) => {
-                error!("failed to create mapping {:?}", e);
-                Err(std::io::Error::other(e.context("add descriptor mapping")))
-            }
-        }
+        shared_mapper_state
+            .mapper
+            .add_mapping(
+                VmMemorySource::Descriptor {
+                    descriptor: SafeDescriptor::try_from(fd)
+                        .map_err(|_| std::io::Error::from_raw_os_error(libc::EIO))?,
+                    offset: req.fd_offset,
+                    size: req.len,
+                },
+                req.shm_offset,
+                Protection::from(req.flags),
+                MemCacheType::CacheCoherent,
+            )
+            .context("failed to add descriptor mapping")
     }
 
-    fn shmem_unmap(&mut self, req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
+    fn shmem_unmap(&mut self, req: &VhostUserShmemUnmapMsg) -> anyhow::Result<()> {
         let shared_mapper_state = self
             .shared_mapper_state
             .as_mut()
-            .ok_or_else(|| std::io::Error::from_raw_os_error(libc::EINVAL))?;
+            .context("shared mapper state not set")?;
         if req.shmid != shared_mapper_state.shmid {
-            error!(
+            bail!(
                 "bad shmid {}, expected {}",
-                req.shmid, shared_mapper_state.shmid
+                req.shmid,
+                shared_mapper_state.shmid
             );
-            return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
         }
-        match shared_mapper_state.mapper.remove_mapping(req.shm_offset) {
-            Ok(()) => Ok(0),
-            Err(e) => {
-                error!("failed to remove mapping {:?}", e);
-                Err(std::io::Error::other(
-                    e.context("remove memory mapping based on shm offset"),
-                ))
-            }
-        }
+        shared_mapper_state
+            .mapper
+            .remove_mapping(req.shm_offset)
+            .context("failed to remove mapping based on shm offset")
     }
 
     fn gpu_map(
         &mut self,
         req: &VhostUserGpuMapMsg,
         descriptor: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
+    ) -> anyhow::Result<()> {
         let shared_mapper_state = self
             .shared_mapper_state
             .as_mut()
-            .ok_or_else(|| std::io::Error::from_raw_os_error(libc::EINVAL))?;
+            .context("shared mapper state not set")?;
         if req.shmid != shared_mapper_state.shmid {
-            error!(
+            bail!(
                 "bad shmid {}, expected {}",
-                req.shmid, shared_mapper_state.shmid
+                req.shmid,
+                shared_mapper_state.shmid
             );
-            return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
         }
-        match shared_mapper_state.mapper.add_mapping(
-            VmMemorySource::Vulkan {
-                descriptor: SafeDescriptor::try_from(descriptor)
-                    .map_err(|_| std::io::Error::from_raw_os_error(libc::EIO))?,
-                handle_type: req.handle_type,
-                memory_idx: req.memory_idx,
-                device_uuid: req.device_uuid,
-                driver_uuid: req.driver_uuid,
-                size: req.len,
-            },
-            req.shm_offset,
-            Protection::read_write(),
-            MemCacheType::CacheCoherent,
-        ) {
-            Ok(()) => Ok(0),
-            Err(e) => {
-                error!("failed to create mapping {:?}", e);
-                Err(std::io::Error::other(
-                    e.context("add Vulkan source mapping"),
-                ))
-            }
-        }
+        shared_mapper_state
+            .mapper
+            .add_mapping(
+                VmMemorySource::Vulkan {
+                    descriptor: SafeDescriptor::try_from(descriptor)
+                        .context("failed to clone descriptor")?,
+                    handle_type: req.handle_type,
+                    memory_idx: req.memory_idx,
+                    device_uuid: req.device_uuid,
+                    driver_uuid: req.driver_uuid,
+                    size: req.len,
+                },
+                req.shm_offset,
+                Protection::read_write(),
+                MemCacheType::CacheCoherent,
+            )
+            .context("failed to add Vulkan source mapping")
     }
 
-    fn external_map(&mut self, req: &VhostUserExternalMapMsg) -> HandlerResult<u64> {
+    fn external_map(&mut self, req: &VhostUserExternalMapMsg) -> anyhow::Result<()> {
         let shared_mapper_state = self
             .shared_mapper_state
             .as_mut()
-            .ok_or_else(|| std::io::Error::from_raw_os_error(libc::EINVAL))?;
+            .context("shared mapper state not set")?;
         if req.shmid != shared_mapper_state.shmid {
-            error!(
+            bail!(
                 "bad shmid {}, expected {}",
-                req.shmid, shared_mapper_state.shmid
+                req.shmid,
+                shared_mapper_state.shmid
             );
-            return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
         }
-        match shared_mapper_state.mapper.add_mapping(
-            VmMemorySource::ExternalMapping {
-                ptr: req.ptr,
-                size: req.len,
-            },
-            req.shm_offset,
-            Protection::read_write(),
-            MemCacheType::CacheCoherent,
-        ) {
-            Ok(()) => Ok(0),
-            Err(e) => {
-                error!("failed to create mapping {:?}", e);
-                Err(std::io::Error::other(e.context("add external mapping")))
-            }
-        }
+        shared_mapper_state
+            .mapper
+            .add_mapping(
+                VmMemorySource::ExternalMapping {
+                    ptr: req.ptr,
+                    size: req.len,
+                },
+                req.shm_offset,
+                Protection::read_write(),
+                MemCacheType::CacheCoherent,
+            )
+            .context("failed to add external mapping")
     }
 
-    fn handle_config_change(&mut self) -> HandlerResult<u64> {
+    fn handle_config_change(&mut self) -> anyhow::Result<()> {
         info!("Handle Config Change called");
         match &self.interrupt {
             Some(interrupt) => {
                 interrupt.signal_config_changed();
-                Ok(0)
+                Ok(())
             }
-            None => {
-                error!("cannot send interrupt");
-                Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-            }
+            None => bail!("cannot send interrupt"),
         }
     }
 }

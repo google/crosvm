@@ -1228,7 +1228,7 @@ pub enum VhostUserMigrationPhase {
     Stopped,
 }
 
-pub(crate) type VhostUserRequestResponse = std::result::Result<u64, VhostUserRequestError>;
+pub(crate) type VhostUserRequestResponse = std::result::Result<(), VhostUserRequestError>;
 
 #[derive(thiserror::Error, Debug, serde::Serialize, serde::Deserialize)]
 #[error("handler failed to handle request: {0}")]

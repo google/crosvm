@@ -221,9 +221,6 @@ impl From<base::Error> for Error {
 /// Result of vhost-user operations
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Result of request handler.
-pub type HandlerResult<T> = std::result::Result<T, IOError>;
-
 /// Utility function to convert a vector of files into a single file.
 /// Returns `None` if the vector contains no files or more than one file.
 pub(crate) fn into_single_file(mut files: Vec<File>) -> Option<File> {
