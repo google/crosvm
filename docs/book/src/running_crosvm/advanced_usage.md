@@ -173,4 +173,4 @@ The available backends are:
 See the ["Hypervisors" chapter](../hypervisors.md) for more information.
 
 [gdb remote serial protocol]: https://sourceware.org/gdb/onlinedocs/gdb/Remote-Protocol.html
-[kernel documentation]: https://www.kernel.org/doc/html/latest/dev-tools/gdb-kernel-debugging.html
+[kernel documentation]: https://docs.kernel.org/process/debugging/gdb-kernel-debugging.html
