@@ -16,6 +16,7 @@ vulkano = ["dep:vulkano"]
 x = []
 
 [dependencies]
+anyhow = "1"
 cfg-if = "1.0.0"
 libc = "0.2.116"
 remain = "0.2"

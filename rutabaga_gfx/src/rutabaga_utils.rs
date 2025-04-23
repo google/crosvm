@@ -376,6 +376,57 @@ pub enum RutabagaError {
     VkMemoryMapError(MemoryMapError),
 }
 
+/// An error generated while using this crate.
+#[sorted]
+#[derive(Error, Debug, Clone)]
+pub enum RutabagaErrorKind {
+    /// Internal error. The caller is not supposed to handle this error.
+    #[error("internal error")]
+    Internal,
+    /// Invalid RutabagaComponent
+    #[error("invalid rutabaga component")]
+    InvalidComponent,
+    /// The indicated region of guest memory is invalid.
+    #[error("an iovec is outside of guest memory's range")]
+    InvalidIovec,
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("{kind}")]
+pub struct RutabagaErrorNext {
+    kind: RutabagaErrorKind,
+    #[source]
+    context: Option<anyhow::Error>,
+}
+
+impl RutabagaErrorNext {
+    pub fn kind(&self) -> &RutabagaErrorKind {
+        &self.kind
+    }
+}
+
+impl From<RutabagaErrorKind> for RutabagaErrorNext {
+    fn from(kind: RutabagaErrorKind) -> Self {
+        Self {
+            kind,
+            context: None,
+        }
+    }
+}
+
+impl From<anyhow::Error> for RutabagaErrorNext {
+    fn from(value: anyhow::Error) -> Self {
+        let kind = value
+            .downcast_ref::<RutabagaErrorKind>()
+            .unwrap_or(&RutabagaErrorKind::Internal)
+            .clone();
+        Self {
+            kind,
+            context: Some(value),
+        }
+    }
+}
+
 #[cfg(any(target_os = "android", target_os = "linux"))]
 impl From<NixError> for RutabagaError {
     fn from(e: NixError) -> RutabagaError {
@@ -763,3 +814,77 @@ impl<S> fmt::Debug for RutabagaHandler<S> {
 pub type RutabagaFenceHandler = RutabagaHandler<RutabagaFence>;
 
 pub type RutabagaDebugHandler = RutabagaHandler<RutabagaDebug>;
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Context;
+
+    use super::*;
+
+    #[test]
+    fn error_from_anyhow_should_keep_root_kind() {
+        let from_res = Err::<(), _>(RutabagaErrorKind::InvalidComponent)
+            .context("context 1")
+            .context("context 2");
+        let to_res: std::result::Result<_, RutabagaErrorNext> = from_res.map_err(|e| e.into());
+        let to_kind = to_res.err().map(|e| e.kind().clone());
+        assert!(
+            matches!(to_kind, Some(RutabagaErrorKind::InvalidComponent)),
+            "Expect the error kind to be RutabagaErrorKind::InvalidComponent, but is {:?}",
+            to_kind
+        );
+    }
+
+    #[test]
+    fn error_from_anyhow_should_keep_kind_added_in_context() {
+        let from_res = Err::<(), _>(anyhow::anyhow!("test error"))
+            .context("context 1")
+            .context(RutabagaErrorKind::InvalidComponent)
+            .context("context 2");
+        let to_res: std::result::Result<_, RutabagaErrorNext> = from_res.map_err(|e| e.into());
+        let to_kind = to_res.err().map(|e| e.kind().clone());
+        assert!(
+            matches!(to_kind, Some(RutabagaErrorKind::InvalidComponent)),
+            "Expect the error kind to be RutabagaErrorKind::InvalidComponent, but is {:?}",
+            to_kind
+        );
+    }
+
+    #[test]
+    fn error_from_anyhow_should_keep_top_most_kind() {
+        let from_res = Err::<(), _>(anyhow::anyhow!("test error"))
+            .context(RutabagaErrorKind::InvalidIovec)
+            .context(RutabagaErrorKind::InvalidComponent);
+        let to_res: std::result::Result<_, RutabagaErrorNext> = from_res.map_err(|e| e.into());
+        let to_kind = to_res.err().map(|e| e.kind().clone());
+        assert!(
+            matches!(to_kind, Some(RutabagaErrorKind::InvalidComponent)),
+            "Expect the error kind to be RutabagaErrorKind::InvalidComponent, but is {:?}",
+            to_kind
+        );
+    }
+
+    #[test]
+    fn error_from_kind_should_keep_kind() {
+        let from_res = Err::<(), _>(RutabagaErrorKind::InvalidComponent);
+        let to_res: std::result::Result<_, RutabagaErrorNext> = from_res.map_err(|e| e.into());
+        let to_kind = to_res.err().map(|e| e.kind().clone());
+        assert!(
+            matches!(to_kind, Some(RutabagaErrorKind::InvalidComponent)),
+            "Expect the error kind to be RutabagaErrorKind::InvalidComponent, but is {:?}",
+            to_kind
+        );
+    }
+
+    #[test]
+    fn error_from_arbitrary_anyhow_error_should_be_internal() {
+        let from_res = Err::<(), _>(anyhow::anyhow!("test error"));
+        let to_res: std::result::Result<_, RutabagaErrorNext> = from_res.map_err(|e| e.into());
+        let to_kind = to_res.err().map(|e| e.kind().clone());
+        assert!(
+            matches!(to_kind, Some(RutabagaErrorKind::Internal)),
+            "Expect the error kind to be RutabagaErrorKind::Internal, but is {:?}",
+            to_kind
+        );
+    }
+}
