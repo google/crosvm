@@ -109,10 +109,10 @@ impl RutabagaContext for VirglRendererContext {
     ) -> RutabagaResult<()> {
         #[cfg(not(virgl_renderer_unstable))]
         if !fence_ids.is_empty() {
-            return Err(RutabagaError::Unsupported);
+            return Err(RutabagaErrorKind::Unsupported.into());
         }
         if commands.len() % size_of::<u32>() != 0 {
-            return Err(RutabagaError::InvalidCommandSize(commands.len()));
+            return Err(RutabagaErrorKind::InvalidCommandSize(commands.len()).into());
         }
         let dword_count = (commands.len() / size_of::<u32>()) as i32;
         #[cfg(not(virgl_renderer_unstable))]
@@ -354,7 +354,7 @@ impl VirglRenderer {
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
             .is_err()
         {
-            return Err(RutabagaError::AlreadyInUse);
+            return Err(RutabagaErrorKind::AlreadyInUse.into());
         }
 
         // TODO(b/315870313): Add safety comment
@@ -401,7 +401,7 @@ impl VirglRenderer {
     fn query(&self, resource_id: u32) -> RutabagaResult<Resource3DInfo> {
         let query = export_query(resource_id)?;
         if query.out_num_fds == 0 {
-            return Err(RutabagaError::Unsupported);
+            return Err(RutabagaErrorKind::Unsupported.into());
         }
 
         // virglrenderer unfortunately doesn't return the width or height, so map to zero.
@@ -435,7 +435,7 @@ impl VirglRenderer {
             VIRGL_RENDERER_BLOB_FD_TYPE_SHM => RUTABAGA_HANDLE_TYPE_MEM_SHM,
             VIRGL_RENDERER_BLOB_FD_TYPE_OPAQUE => RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD,
             _ => {
-                return Err(RutabagaError::Unsupported);
+                return Err(RutabagaErrorKind::Unsupported.into());
             }
         };
 
@@ -745,7 +745,7 @@ impl RutabagaComponent for VirglRenderer {
         // Safe because virglrenderer wraps and validates use of GL/VK.
         let ret = unsafe { virgl_renderer_resource_map(resource_id, &mut map, &mut size) };
         if ret != 0 {
-            return Err(RutabagaError::MappingFailed(ret));
+            return Err(RutabagaErrorKind::MappingFailed(ret).into());
         }
 
         Ok(RutabagaMapping {
@@ -781,7 +781,7 @@ impl RutabagaComponent for VirglRenderer {
             })
         }
         #[cfg(not(virgl_renderer_unstable))]
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 
     #[allow(unused_variables)]

@@ -18,7 +18,7 @@ use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
 use crate::rutabaga_os::Tube;
 use crate::rutabaga_os::DEFAULT_RAW_DESCRIPTOR;
-use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaErrorKind;
 use crate::rutabaga_utils::RutabagaHandle;
 use crate::rutabaga_utils::RutabagaResult;
 use crate::rutabaga_utils::RUTABAGA_HANDLE_TYPE_SIGNAL_EVENT_FD;
@@ -120,7 +120,7 @@ impl RutabagaStream {
                 KUMQUAT_GPU_PROTOCOL_TRANSFER_TO_HOST_3D => {
                     let os_handle = descriptors
                         .pop_front()
-                        .ok_or(RutabagaError::InvalidResourceId)?;
+                        .ok_or(RutabagaErrorKind::InvalidResourceId)?;
                     let resp: kumquat_gpu_protocol_transfer_host_3d = reader.read_obj()?;
 
                     let handle = RutabagaHandle {
@@ -133,7 +133,7 @@ impl RutabagaStream {
                 KUMQUAT_GPU_PROTOCOL_TRANSFER_FROM_HOST_3D => {
                     let os_handle = descriptors
                         .pop_front()
-                        .ok_or(RutabagaError::InvalidResourceId)?;
+                        .ok_or(RutabagaErrorKind::InvalidResourceId)?;
                     let resp: kumquat_gpu_protocol_transfer_host_3d = reader.read_obj()?;
 
                     let handle = RutabagaHandle {
@@ -147,7 +147,7 @@ impl RutabagaStream {
                     let cmd: kumquat_gpu_protocol_cmd_submit = reader.read_obj()?;
                     if reader.available_bytes() < cmd.size.try_into()? {
                         // Large command buffers should handled via shared memory.
-                        return Err(RutabagaError::InvalidCommandBuffer);
+                        return Err(RutabagaErrorKind::InvalidCommandBuffer.into());
                     } else if reader.available_bytes() != 0 {
                         let num_in_fences = cmd.num_in_fences as usize;
                         let cmd_size = cmd.size as usize;
@@ -158,7 +158,7 @@ impl RutabagaStream {
                                 Ok(fence_id) => {
                                     fence_ids.push(fence_id);
                                 }
-                                Err(_) => return Err(RutabagaError::InvalidIovec),
+                                Err(_) => return Err(RutabagaErrorKind::InvalidIovec.into()),
                             }
                         }
                         reader.read_exact(&mut cmd_buf[..])?;
@@ -199,7 +199,7 @@ impl RutabagaStream {
                 KUMQUAT_GPU_PROTOCOL_RESP_RESOURCE_CREATE => {
                     let os_handle = descriptors
                         .pop_front()
-                        .ok_or(RutabagaError::InvalidResourceId)?;
+                        .ok_or(RutabagaErrorKind::InvalidResourceId)?;
                     let resp: kumquat_gpu_protocol_resp_resource_create = reader.read_obj()?;
 
                     let handle = RutabagaHandle {
@@ -212,7 +212,7 @@ impl RutabagaStream {
                 KUMQUAT_GPU_PROTOCOL_RESP_CMD_SUBMIT_3D => {
                     let os_handle = descriptors
                         .pop_front()
-                        .ok_or(RutabagaError::InvalidResourceId)?;
+                        .ok_or(RutabagaErrorKind::InvalidResourceId)?;
                     let resp: kumquat_gpu_protocol_resp_cmd_submit_3d = reader.read_obj()?;
 
                     let handle = RutabagaHandle {
@@ -227,7 +227,7 @@ impl RutabagaStream {
                     KumquatGpuProtocol::RespOkSnapshot
                 }
                 _ => {
-                    return Err(RutabagaError::Unsupported);
+                    return Err(RutabagaErrorKind::Unsupported.into());
                 }
             };
 

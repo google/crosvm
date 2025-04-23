@@ -202,9 +202,9 @@ impl VulkanoGralloc {
         }
 
         if devices.is_empty() {
-            return Err(RutabagaError::SpecViolation(
-                "no matching VK devices available",
-            ));
+            return Err(
+                RutabagaErrorKind::SpecViolation("no matching VK devices available").into(),
+            );
         }
 
         Ok(Box::new(VulkanoGralloc {
@@ -229,11 +229,11 @@ impl VulkanoGralloc {
         let device = if self.has_integrated_gpu {
             self.devices
                 .get(&PhysicalDeviceType::IntegratedGpu)
-                .ok_or(RutabagaError::InvalidGrallocGpuType)?
+                .ok_or(RutabagaErrorKind::InvalidGrallocGpuType)?
         } else {
             self.devices
                 .get(&PhysicalDeviceType::DiscreteGpu)
-                .ok_or(RutabagaError::InvalidGrallocGpuType)?
+                .ok_or(RutabagaErrorKind::InvalidGrallocGpuType)?
         };
 
         let usage = match info.flags.uses_rendering() {
@@ -243,12 +243,12 @@ impl VulkanoGralloc {
 
         // Reasonable bounds on image width.
         if info.width == 0 || info.width > 4096 {
-            return Err(RutabagaError::InvalidGrallocDimensions);
+            return Err(RutabagaErrorKind::InvalidGrallocDimensions.into());
         }
 
         // Reasonable bounds on image height.
         if info.height == 0 || info.height > 4096 {
-            return Err(RutabagaError::InvalidGrallocDimensions);
+            return Err(RutabagaErrorKind::InvalidGrallocDimensions.into());
         }
 
         let vulkan_format = info.drm_format.vulkan_format()?;
@@ -313,7 +313,7 @@ impl Gralloc for VulkanoGralloc {
         let device = self
             .devices
             .get(device_type)
-            .ok_or(RutabagaError::InvalidGrallocGpuType)?;
+            .ok_or(RutabagaErrorKind::InvalidGrallocGpuType)?;
 
         let planar_layout = info.drm_format.planar_layout()?;
 
@@ -390,9 +390,9 @@ impl Gralloc for VulkanoGralloc {
                 .chain(second_loop)
                 .filter(|&(i, _, _)| (memory_requirements.memory_type_bits & (1 << i)) != 0)
                 .find(|&(_, t, rq)| filter(t) == rq)
-                .ok_or(RutabagaError::SpecViolation(
-                    "unable to find required memory type",
-                ))?;
+                .ok_or::<RutabagaError>(
+                    RutabagaErrorKind::SpecViolation("unable to find required memory type").into(),
+                )?;
             (found_type.0, found_type.1)
         };
 
@@ -427,16 +427,18 @@ impl Gralloc for VulkanoGralloc {
     fn allocate_memory(&mut self, reqs: ImageMemoryRequirements) -> RutabagaResult<RutabagaHandle> {
         let (raw_image, memory_requirements) = unsafe { self.create_image(reqs.info)? };
 
-        let vulkan_info = reqs.vulkan_info.ok_or(RutabagaError::InvalidVulkanInfo)?;
+        let vulkan_info = reqs
+            .vulkan_info
+            .ok_or(RutabagaErrorKind::InvalidVulkanInfo)?;
 
         let device = if self.has_integrated_gpu {
             self.devices
                 .get(&PhysicalDeviceType::IntegratedGpu)
-                .ok_or(RutabagaError::InvalidGrallocGpuType)?
+                .ok_or(RutabagaErrorKind::InvalidGrallocGpuType)?
         } else {
             self.devices
                 .get(&PhysicalDeviceType::DiscreteGpu)
-                .ok_or(RutabagaError::InvalidGrallocGpuType)?
+                .ok_or(RutabagaErrorKind::InvalidGrallocGpuType)?
         };
 
         if vulkan_info.memory_idx as usize
@@ -446,7 +448,7 @@ impl Gralloc for VulkanoGralloc {
                 .memory_types
                 .len()
         {
-            return Err(RutabagaError::InvalidVulkanInfo);
+            return Err(RutabagaErrorKind::InvalidVulkanInfo.into());
         }
 
         let (export_handle_type, export_handle_types, rutabaga_type) =
@@ -503,7 +505,7 @@ impl Gralloc for VulkanoGralloc {
         let device = self
             .device_by_id
             .get(&vulkan_info.device_id)
-            .ok_or(RutabagaError::InvalidVulkanInfo)?;
+            .ok_or(RutabagaErrorKind::InvalidVulkanInfo)?;
 
         let device_memory = unsafe {
             VulkanoGralloc::import_memory(
@@ -530,42 +532,44 @@ impl Gralloc for VulkanoGralloc {
 // "VulkanoError(e)".
 impl From<InstanceCreationError> for RutabagaError {
     fn from(e: InstanceCreationError) -> RutabagaError {
-        RutabagaError::VkInstanceCreationError(e)
+        RutabagaErrorKind::VkInstanceCreationError(e).into()
     }
 }
 
 impl From<ImageError> for RutabagaError {
     fn from(e: ImageError) -> RutabagaError {
-        RutabagaError::VkImageCreationError(e)
+        RutabagaErrorKind::VkImageCreationError(e).into()
     }
 }
 
 impl From<DeviceCreationError> for RutabagaError {
     fn from(e: DeviceCreationError) -> RutabagaError {
-        RutabagaError::VkDeviceCreationError(e)
+        RutabagaErrorKind::VkDeviceCreationError(e).into()
     }
 }
 
 impl From<DeviceMemoryError> for RutabagaError {
     fn from(e: DeviceMemoryError) -> RutabagaError {
-        RutabagaError::VkDeviceMemoryError(e)
+        RutabagaErrorKind::VkDeviceMemoryError(e).into()
     }
 }
 
 impl From<MemoryMapError> for RutabagaError {
     fn from(e: MemoryMapError) -> RutabagaError {
-        RutabagaError::VkMemoryMapError(e)
+        RutabagaErrorKind::VkMemoryMapError(e).into()
     }
 }
 
 impl From<LoadingError> for RutabagaError {
     fn from(e: LoadingError) -> RutabagaError {
-        RutabagaError::VkLoadingError(e)
+        anyhow::Error::new(e)
+            .context(RutabagaErrorKind::VkLoadingError)
+            .into()
     }
 }
 
 impl From<VulkanError> for RutabagaError {
     fn from(e: VulkanError) -> RutabagaError {
-        RutabagaError::VkError(e)
+        RutabagaErrorKind::VkError(e).into()
     }
 }

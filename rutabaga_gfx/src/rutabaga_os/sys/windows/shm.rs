@@ -8,7 +8,7 @@ use crate::rutabaga_os::descriptor::AsRawDescriptor;
 use crate::rutabaga_os::descriptor::IntoRawDescriptor;
 use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
-use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaErrorKind;
 use crate::rutabaga_utils::RutabagaResult;
 
 /// A shared memory file descriptor and its size.
@@ -20,7 +20,7 @@ pub struct SharedMemory {
 impl SharedMemory {
     /// Creates a new shared memory file mapping with zero size.
     pub fn new(_debug_name: &CStr, _size: u64) -> RutabagaResult<Self> {
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 
     /// Gets the size in bytes of the shared memory.
@@ -48,5 +48,5 @@ impl IntoRawDescriptor for SharedMemory {
 }
 
 pub fn round_up_to_page_size(_v: u64) -> RutabagaResult<u64> {
-    Err(RutabagaError::Unsupported)
+    Err(RutabagaErrorKind::Unsupported.into())
 }

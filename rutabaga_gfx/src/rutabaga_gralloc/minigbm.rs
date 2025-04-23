@@ -67,7 +67,7 @@ impl MinigbmDevice {
 
             gbm = minigbm_create_default_device(&mut fd);
             if gbm.is_null() {
-                return Err(RutabagaError::IoError(Error::last_os_error()));
+                return Err(Error::last_os_error().into());
             }
             descriptor = File::from_raw_fd(fd);
         }
@@ -107,7 +107,7 @@ impl Gralloc for MinigbmDevice {
             )
         };
         if bo.is_null() {
-            return Err(RutabagaError::IoError(Error::last_os_error()));
+            return Err(Error::last_os_error().into());
         }
 
         let mut reqs: ImageMemoryRequirements = Default::default();
@@ -135,7 +135,7 @@ impl Gralloc for MinigbmDevice {
         // via the TEST_ALLOC flag.  However, support has only been added in i915.  Until this
         // flag is supported everywhere, do the actual allocation here and stash it away.
         if self.last_buffer.is_some() {
-            return Err(RutabagaError::AlreadyInUse);
+            return Err(RutabagaErrorKind::AlreadyInUse.into());
         }
 
         self.last_buffer = Some(Arc::new(gbm_buffer));
@@ -151,7 +151,7 @@ impl Gralloc for MinigbmDevice {
                 || gbm_buffer.height() != reqs.info.height
                 || gbm_buffer.format() != reqs.info.drm_format
             {
-                return Err(RutabagaError::InvalidGrallocDimensions);
+                return Err(RutabagaErrorKind::InvalidGrallocDimensions.into());
             }
 
             let dmabuf = gbm_buffer.export()?.into();
@@ -174,7 +174,7 @@ impl Gralloc for MinigbmDevice {
         };
 
         if bo.is_null() {
-            return Err(RutabagaError::IoError(Error::last_os_error()));
+            return Err(Error::last_os_error().into());
         }
 
         let gbm_buffer = MinigbmBuffer {
@@ -270,7 +270,7 @@ impl MinigbmBuffer {
                 let dmabuf = unsafe { File::from_raw_descriptor(fd) };
                 Ok(dmabuf)
             }
-            ret => Err(RutabagaError::ComponentError(ret)),
+            ret => Err(RutabagaErrorKind::ComponentError(ret).into()),
         }
     }
 }

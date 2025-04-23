@@ -15,6 +15,7 @@ use crate::rutabaga_os::AsBorrowedDescriptor;
 use crate::rutabaga_os::AsRawDescriptor;
 use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaErrorKind;
 use crate::rutabaga_utils::RutabagaHandle;
 use crate::rutabaga_utils::RutabagaResult;
 use crate::rutabaga_utils::RUTABAGA_HANDLE_TYPE_SIGNAL_EVENT_FD;
@@ -51,7 +52,7 @@ impl TryFrom<RutabagaHandle> for Event {
     type Error = RutabagaError;
     fn try_from(handle: RutabagaHandle) -> Result<Self, Self::Error> {
         if handle.handle_type != RUTABAGA_HANDLE_TYPE_SIGNAL_EVENT_FD {
-            return Err(RutabagaError::InvalidRutabagaHandle);
+            return Err(RutabagaErrorKind::InvalidRutabagaHandle.into());
         }
 
         Ok(Event {

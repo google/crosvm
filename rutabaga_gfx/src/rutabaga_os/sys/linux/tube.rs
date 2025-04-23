@@ -35,7 +35,7 @@ use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
 use crate::rutabaga_os::TubeType;
-use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaErrorKind;
 use crate::rutabaga_utils::RutabagaResult;
 
 const MAX_IDENTIFIERS: usize = 28;
@@ -106,7 +106,7 @@ impl Tube {
                     })
                     .collect()
             }
-            Some(_) => return Err(RutabagaError::Unsupported),
+            Some(_) => return Err(RutabagaErrorKind::Unsupported.into()),
             None => Vec::new(),
         };
 

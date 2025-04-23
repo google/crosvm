@@ -7,7 +7,7 @@ use std::ffi::CStr;
 use crate::rutabaga_os::descriptor::AsRawDescriptor;
 use crate::rutabaga_os::descriptor::IntoRawDescriptor;
 use crate::rutabaga_os::RawDescriptor;
-use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaErrorKind;
 use crate::rutabaga_utils::RutabagaResult;
 
 pub struct SharedMemory {
@@ -17,7 +17,7 @@ pub struct SharedMemory {
 impl SharedMemory {
     /// Creates a new shared memory file descriptor with zero size.
     pub fn new(_debug_name: &CStr, _size: u64) -> RutabagaResult<SharedMemory> {
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 
     /// Gets the size in bytes of the shared memory.
@@ -43,5 +43,5 @@ impl IntoRawDescriptor for SharedMemory {
 
 /// Uses the system's page size in bytes to round the given value up to the nearest page boundary.
 pub fn round_up_to_page_size(_v: u64) -> RutabagaResult<u64> {
-    Err(RutabagaError::Unsupported)
+    Err(RutabagaErrorKind::Unsupported.into())
 }

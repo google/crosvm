@@ -7,7 +7,7 @@ use std::ptr::NonNull;
 use libc::c_void;
 
 use crate::rutabaga_os::OwnedDescriptor;
-use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaErrorKind;
 use crate::rutabaga_utils::RutabagaResult;
 
 /// Wraps an anonymous shared memory mapping in the current process. Provides
@@ -24,6 +24,6 @@ impl MemoryMapping {
         _size: usize,
         _map_info: u32,
     ) -> RutabagaResult<MemoryMapping> {
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 }

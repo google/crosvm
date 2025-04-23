@@ -21,6 +21,7 @@ use rutabaga_gfx::kumquat_support::RutabagaTubeType;
 use rutabaga_gfx::kumquat_support::RutabagaWriter;
 use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaError;
+use rutabaga_gfx::RutabagaErrorKind;
 use rutabaga_gfx::RutabagaGralloc;
 use rutabaga_gfx::RutabagaGrallocBackendFlags;
 use rutabaga_gfx::RutabagaHandle;
@@ -130,7 +131,7 @@ impl VirtGpuKumquat {
         let mut protocols = stream.read()?;
         let num_capsets = match protocols.remove(0) {
             KumquatGpuProtocol::RespNumCapsets(num) => num,
-            _ => return Err(RutabagaError::Unsupported),
+            _ => return Err(RutabagaErrorKind::Unsupported.into()),
         };
 
         let mut capset_mask = 0;
@@ -145,7 +146,7 @@ impl VirtGpuKumquat {
             protocols = stream.read()?;
             let resp_capset_info = match protocols.remove(0) {
                 KumquatGpuProtocol::RespCapsetInfo(info) => info,
-                _ => return Err(RutabagaError::Unsupported),
+                _ => return Err(RutabagaErrorKind::Unsupported.into()),
             };
 
             let get_capset = kumquat_gpu_protocol_get_capset {
@@ -161,7 +162,7 @@ impl VirtGpuKumquat {
             protocols = stream.read()?;
             let capset = match protocols.remove(0) {
                 KumquatGpuProtocol::RespCapset(capset) => capset,
-                _ => return Err(RutabagaError::Unsupported),
+                _ => return Err(RutabagaErrorKind::Unsupported.into()),
             };
 
             capset_mask = 1u64 << resp_capset_info.capset_id | capset_mask;
@@ -190,7 +191,7 @@ impl VirtGpuKumquat {
             VIRTGPU_KUMQUAT_PARAM_SUPPORTED_CAPSET_IDS => self.capset_mask,
             VIRTGPU_KUMQUAT_PARAM_EXPLICIT_DEBUG_NAME => 0,
             VIRTGPU_KUMQUAT_PARAM_FENCE_PASSING => 1,
-            _ => return Err(RutabagaError::Unsupported),
+            _ => return Err(RutabagaErrorKind::Unsupported.into()),
         };
 
         Ok(())
@@ -200,7 +201,7 @@ impl VirtGpuKumquat {
         let caps = self
             .capsets
             .get(&capset_id)
-            .ok_or(RutabagaError::InvalidCapset)?;
+            .ok_or(RutabagaErrorKind::InvalidCapset)?;
         let length = min(slice.len(), caps.len());
         slice.copy_from_slice(&caps[0..length]);
         Ok(())
@@ -228,7 +229,7 @@ impl VirtGpuKumquat {
         let mut protocols = self.stream.read()?;
         self.context_id = match protocols.remove(0) {
             KumquatGpuProtocol::RespContextCreate(ctx_id) => ctx_id,
-            _ => return Err(RutabagaError::Unsupported),
+            _ => return Err(RutabagaErrorKind::Unsupported.into()),
         };
 
         Ok(self.context_id)
@@ -266,7 +267,7 @@ impl VirtGpuKumquat {
                 let size: usize = create_3d.size.try_into()?;
                 VirtGpuResource::new(resp.resource_id, size, handle, resp.vulkan_info)
             }
-            _ => return Err(RutabagaError::Unsupported),
+            _ => return Err(RutabagaErrorKind::Unsupported.into()),
         };
 
         create_3d.res_handle = resource.resource_id;
@@ -325,7 +326,7 @@ impl VirtGpuKumquat {
                 VirtGpuResource::new(resp.resource_id, size, handle, resp.vulkan_info)
             }
             _ => {
-                return Err(RutabagaError::Unsupported);
+                return Err(RutabagaErrorKind::Unsupported.into());
             }
         };
 
@@ -339,7 +340,7 @@ impl VirtGpuKumquat {
         let resource = self
             .resources
             .remove(&bo_handle)
-            .ok_or(RutabagaError::InvalidResourceId)?;
+            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
 
         let detach_resource = kumquat_gpu_protocol_ctx_resource {
             hdr: kumquat_gpu_protocol_ctrl_hdr {
@@ -360,7 +361,7 @@ impl VirtGpuKumquat {
         let resource = self
             .resources
             .get_mut(&bo_handle)
-            .ok_or(RutabagaError::InvalidResourceId)?;
+            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
 
         if let Some(ref system_mapping) = resource.system_mapping {
             let rutabaga_mapping = system_mapping.as_rutabaga_mapping();
@@ -399,7 +400,7 @@ impl VirtGpuKumquat {
         let resource = self
             .resources
             .get_mut(&bo_handle)
-            .ok_or(RutabagaError::InvalidResourceId)?;
+            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
 
         resource.system_mapping = None;
         resource.gpu_mapping = None;
@@ -410,7 +411,7 @@ impl VirtGpuKumquat {
         let resource = self
             .resources
             .get_mut(&transfer.bo_handle)
-            .ok_or(RutabagaError::InvalidResourceId)?;
+            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
 
         let event = RutabagaEvent::new()?;
         let emulated_fence: RutabagaHandle = event.into();
@@ -450,7 +451,7 @@ impl VirtGpuKumquat {
         let resource = self
             .resources
             .get_mut(&transfer.bo_handle)
-            .ok_or(RutabagaError::InvalidResourceId)?;
+            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
 
         let event = RutabagaEvent::new()?;
         let emulated_fence: RutabagaHandle = event.into();
@@ -541,20 +542,20 @@ impl VirtGpuKumquat {
             let fence = match protocols.remove(0) {
                 KumquatGpuProtocol::RespCmdSubmit3d(_fence_id, handle) => handle,
                 _ => {
-                    return Err(RutabagaError::Unsupported);
+                    return Err(RutabagaErrorKind::Unsupported.into());
                 }
             };
 
             for handle in bo_handles {
                 // We could support implicit sync with real fences, but the need does not exist.
                 if actual_fence {
-                    return Err(RutabagaError::Unsupported);
+                    return Err(RutabagaErrorKind::Unsupported.into());
                 }
 
                 let resource = self
                     .resources
                     .get_mut(handle)
-                    .ok_or(RutabagaError::InvalidResourceId)?;
+                    .ok_or(RutabagaErrorKind::InvalidResourceId)?;
 
                 resource.attached_fences.push(fence.try_clone()?);
             }
@@ -567,7 +568,7 @@ impl VirtGpuKumquat {
 
         if flags & VIRTGPU_KUMQUAT_EXECBUF_FENCE_FD_OUT != 0 {
             *raw_descriptor = fence_opt
-                .ok_or(RutabagaError::SpecViolation("no fence found"))?
+                .ok_or(RutabagaErrorKind::SpecViolation("no fence found"))?
                 .os_handle
                 .into_raw_descriptor();
         }
@@ -579,7 +580,7 @@ impl VirtGpuKumquat {
         let resource = self
             .resources
             .get_mut(&bo_handle)
-            .ok_or(RutabagaError::InvalidResourceId)?;
+            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
 
         let new_fences: Vec<RutabagaHandle> = std::mem::take(&mut resource.attached_fences);
         for fence in new_fences {
@@ -598,7 +599,7 @@ impl VirtGpuKumquat {
         let resource = self
             .resources
             .get_mut(&bo_handle)
-            .ok_or(RutabagaError::InvalidResourceId)?;
+            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
 
         if flags & VIRTGPU_KUMQUAT_EMULATED_EXPORT != 0 {
             let descriptor: RutabagaDescriptor =
@@ -693,7 +694,7 @@ impl VirtGpuKumquat {
         let mut protocols = self.stream.read()?;
         match protocols.remove(0) {
             KumquatGpuProtocol::RespOkSnapshot => Ok(()),
-            _ => Err(RutabagaError::Unsupported),
+            _ => Err(RutabagaErrorKind::Unsupported.into()),
         }
     }
 
@@ -709,7 +710,7 @@ impl VirtGpuKumquat {
         let mut protocols = self.stream.read()?;
         match protocols.remove(0) {
             KumquatGpuProtocol::RespOkSnapshot => Ok(()),
-            _ => Err(RutabagaError::Unsupported),
+            _ => Err(RutabagaErrorKind::Unsupported.into()),
         }
     }
 }

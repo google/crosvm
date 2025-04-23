@@ -5,7 +5,7 @@
 use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::WaitEvent;
 use crate::rutabaga_os::WaitTimeout;
-use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaErrorKind;
 use crate::rutabaga_utils::RutabagaResult;
 
 pub struct Stub(());
@@ -13,7 +13,7 @@ pub type WaitContext = Stub;
 
 impl WaitContext {
     pub fn new() -> RutabagaResult<WaitContext> {
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 
     pub fn add(
@@ -21,14 +21,14 @@ impl WaitContext {
         _connection_id: u64,
         _descriptor: &OwnedDescriptor,
     ) -> RutabagaResult<()> {
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 
     pub fn wait(&mut self, _timeout: WaitTimeout) -> RutabagaResult<Vec<WaitEvent>> {
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 
     pub fn delete(&mut self, _descriptor: &OwnedDescriptor) -> RutabagaResult<()> {
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 }

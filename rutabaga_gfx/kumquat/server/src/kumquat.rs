@@ -10,7 +10,7 @@ use rutabaga_gfx::kumquat_support::RutabagaListener;
 use rutabaga_gfx::kumquat_support::RutabagaWaitContext;
 use rutabaga_gfx::kumquat_support::RutabagaWaitTimeout;
 use rutabaga_gfx::RutabagaAsBorrowedDescriptor as AsBorrowedDescriptor;
-use rutabaga_gfx::RutabagaError;
+use rutabaga_gfx::RutabagaErrorKind;
 use rutabaga_gfx::RutabagaResult;
 
 use crate::kumquat_gpu::KumquatGpu;
@@ -69,7 +69,7 @@ impl Kumquat {
                     }
                 }
                 Entry::Vacant(_) => {
-                    return Err(RutabagaError::SpecViolation("no connection found"))
+                    return Err(RutabagaErrorKind::SpecViolation("no connection found").into())
                 }
             }
         }

@@ -18,7 +18,7 @@ use nix::unistd::SysconfVar;
 use crate::rutabaga_os::descriptor::AsRawDescriptor;
 use crate::rutabaga_os::descriptor::IntoRawDescriptor;
 use crate::rutabaga_os::RawDescriptor;
-use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaErrorKind;
 use crate::rutabaga_utils::RutabagaResult;
 
 pub struct SharedMemory {
@@ -74,6 +74,6 @@ pub fn round_up_to_page_size(v: u64) -> RutabagaResult<u64> {
         let aligned_size = (v + page_mask) & !page_mask;
         Ok(aligned_size)
     } else {
-        Err(RutabagaError::SpecViolation("no page size"))
+        Err(RutabagaErrorKind::SpecViolation("no page size").into())
     }
 }

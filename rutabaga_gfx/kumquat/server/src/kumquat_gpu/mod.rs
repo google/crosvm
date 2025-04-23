@@ -27,6 +27,7 @@ use rutabaga_gfx::RutabagaBuilder;
 use rutabaga_gfx::RutabagaComponentType;
 use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaError;
+use rutabaga_gfx::RutabagaErrorKind;
 use rutabaga_gfx::RutabagaFence;
 use rutabaga_gfx::RutabagaFenceHandler;
 use rutabaga_gfx::RutabagaHandle;
@@ -202,7 +203,7 @@ impl KumquatGpuConnection {
                     let mut resource = kumquat_gpu
                         .resources
                         .remove(&cmd.resource_id)
-                        .ok_or(RutabagaError::InvalidResourceId)?;
+                        .ok_or(RutabagaErrorKind::InvalidResourceId)?;
 
                     resource.attached_contexts.remove(&cmd.ctx_id);
                     if resource.attached_contexts.len() == 0 {
@@ -368,7 +369,7 @@ impl KumquatGpuConnection {
                         }
 
                         let fence_descriptor = fence_descriptor_opt
-                            .ok_or(RutabagaError::SpecViolation("No fence descriptor"))?;
+                            .ok_or(RutabagaErrorKind::SpecViolation("No fence descriptor"))?;
 
                         let resp = kumquat_gpu_protocol_resp_cmd_submit_3d {
                             hdr: kumquat_gpu_protocol_ctrl_hdr {
@@ -460,7 +461,7 @@ impl KumquatGpuConnection {
                 }
                 _ => {
                     error!("Unsupported protocol {:?}", protocol);
-                    return Err(RutabagaError::Unsupported);
+                    return Err(RutabagaErrorKind::Unsupported.into());
                 }
             };
         }

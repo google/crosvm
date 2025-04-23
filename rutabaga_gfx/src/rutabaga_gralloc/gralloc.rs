@@ -234,7 +234,7 @@ pub trait Gralloc: Send {
         _vulkan_info: VulkanInfo,
         _size: u64,
     ) -> RutabagaResult<Box<dyn MappedRegion>> {
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 }
 
@@ -350,7 +350,7 @@ impl RutabagaGralloc {
         let gralloc = self
             .grallocs
             .get_mut(&backend)
-            .ok_or(RutabagaError::InvalidGrallocBackend)?;
+            .ok_or(RutabagaErrorKind::InvalidGrallocBackend)?;
 
         let mut reqs = gralloc.get_image_memory_requirements(info)?;
         reqs.size = round_up_to_page_size(reqs.size)?;
@@ -367,7 +367,7 @@ impl RutabagaGralloc {
         let gralloc = self
             .grallocs
             .get_mut(&backend)
-            .ok_or(RutabagaError::InvalidGrallocBackend)?;
+            .ok_or(RutabagaErrorKind::InvalidGrallocBackend)?;
 
         gralloc.allocate_memory(reqs)
     }
@@ -383,7 +383,7 @@ impl RutabagaGralloc {
         let gralloc = self
             .grallocs
             .get_mut(&GrallocBackend::Vulkano)
-            .ok_or(RutabagaError::InvalidGrallocBackend)?;
+            .ok_or(RutabagaErrorKind::InvalidGrallocBackend)?;
 
         gralloc.import_and_map(handle, vulkan_info, size)
     }

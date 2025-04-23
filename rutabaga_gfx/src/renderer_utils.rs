@@ -6,7 +6,7 @@
 
 use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_utils::RutabagaDebugHandler;
-use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaErrorKind;
 use crate::rutabaga_utils::RutabagaFenceHandler;
 use crate::rutabaga_utils::RutabagaResult;
 
@@ -24,7 +24,7 @@ pub struct VirglBox {
 pub fn ret_to_res(ret: i32) -> RutabagaResult<()> {
     match ret {
         0 => Ok(()),
-        _ => Err(RutabagaError::ComponentError(ret)),
+        _ => Err(RutabagaErrorKind::ComponentError(ret).into()),
     }
 }
 

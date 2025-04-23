@@ -29,7 +29,7 @@ use rutabaga_gfx::ResourceCreateBlob;
 use rutabaga_gfx::Rutabaga;
 use rutabaga_gfx::RutabagaDescriptor;
 #[cfg(windows)]
-use rutabaga_gfx::RutabagaError;
+use rutabaga_gfx::RutabagaErrorKind;
 use rutabaga_gfx::RutabagaFence;
 use rutabaga_gfx::RutabagaFromRawDescriptor;
 use rutabaga_gfx::RutabagaHandle;
@@ -772,7 +772,7 @@ impl VirtioGpu {
         #[cfg(windows)]
         match self.rutabaga.resource_flush(resource_id) {
             Ok(_) => return Ok(OkNoData),
-            Err(RutabagaError::Unsupported) => {}
+            Err(e) if matches!(e.kind(), &RutabagaErrorKind::Unsupported) => {}
             Err(e) => return Err(ErrRutabaga(e)),
         }
 

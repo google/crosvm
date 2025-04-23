@@ -136,7 +136,7 @@ impl DrmFormat {
             DRM_FORMAT_ABGR16161616F => Ok(PACKED_8BPP),
             DRM_FORMAT_NV12 => Ok(BIPLANAR_YUV420),
             DRM_FORMAT_YVU420 => Ok(TRIPLANAR_YUV420),
-            _ => Err(RutabagaError::InvalidGrallocDrmFormat),
+            _ => Err(RutabagaErrorKind::InvalidGrallocDrmFormat.into()),
         }
     }
 
@@ -158,7 +158,7 @@ impl DrmFormat {
             DRM_FORMAT_ABGR16161616F => Ok(VulkanFormat::R16G16B16A16_SFLOAT),
             DRM_FORMAT_NV12 => Ok(VulkanFormat::G8_B8R8_2PLANE_420_UNORM),
             DRM_FORMAT_YVU420 => Ok(VulkanFormat::G8_B8_R8_3PLANE_420_UNORM),
-            _ => Err(RutabagaError::InvalidGrallocDrmFormat),
+            _ => Err(RutabagaErrorKind::InvalidGrallocDrmFormat.into()),
         }
     }
 
@@ -180,15 +180,15 @@ impl DrmFormat {
             DRM_FORMAT_NV12 => match plane {
                 0 => Ok(VulkanImageAspect::Plane0),
                 1 => Ok(VulkanImageAspect::Plane1),
-                _ => Err(RutabagaError::InvalidGrallocNumberOfPlanes),
+                _ => Err(RutabagaErrorKind::InvalidGrallocNumberOfPlanes.into()),
             },
             DRM_FORMAT_YVU420 => match plane {
                 0 => Ok(VulkanImageAspect::Plane0),
                 1 => Ok(VulkanImageAspect::Plane1),
                 2 => Ok(VulkanImageAspect::Plane2),
-                _ => Err(RutabagaError::InvalidGrallocNumberOfPlanes),
+                _ => Err(RutabagaErrorKind::InvalidGrallocNumberOfPlanes.into()),
             },
-            _ => Err(RutabagaError::InvalidGrallocDrmFormat),
+            _ => Err(RutabagaErrorKind::InvalidGrallocDrmFormat.into()),
         }
     }
 }

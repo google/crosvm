@@ -6,7 +6,7 @@ use crate::rutabaga_os::AsBorrowedDescriptor;
 use crate::rutabaga_os::AsRawDescriptor;
 use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_os::RawDescriptor;
-use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaErrorKind;
 use crate::rutabaga_utils::RutabagaResult;
 
 pub struct ReadPipeStub(());
@@ -16,12 +16,12 @@ pub type ReadPipe = ReadPipeStub;
 pub type WritePipe = WritePipeStub;
 
 pub fn create_pipe() -> RutabagaResult<(ReadPipe, WritePipe)> {
-    Err(RutabagaError::Unsupported)
+    Err(RutabagaErrorKind::Unsupported.into())
 }
 
 impl ReadPipe {
     pub fn read(&self, _data: &mut [u8]) -> RutabagaResult<usize> {
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 }
 
@@ -37,7 +37,7 @@ impl WritePipe {
     }
 
     pub fn write(&self, _data: &[u8]) -> RutabagaResult<usize> {
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 }
 

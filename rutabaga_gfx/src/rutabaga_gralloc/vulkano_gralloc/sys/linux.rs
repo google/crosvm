@@ -17,7 +17,7 @@ use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::IntoRawDescriptor;
 use crate::rutabaga_utils::RUTABAGA_HANDLE_TYPE_MEM_DMABUF;
 use crate::rutabaga_utils::RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD;
-use crate::RutabagaError;
+use crate::RutabagaErrorKind;
 use crate::RutabagaHandle;
 use crate::RutabagaResult;
 
@@ -48,7 +48,7 @@ impl VulkanoGralloc {
             handle_type: match handle.handle_type {
                 RUTABAGA_HANDLE_TYPE_MEM_DMABUF => ExternalMemoryHandleType::DmaBuf,
                 RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD => ExternalMemoryHandleType::OpaqueFd,
-                _ => return Err(RutabagaError::InvalidRutabagaHandle),
+                _ => return Err(RutabagaErrorKind::InvalidRutabagaHandle.into()),
             },
             // Safe because we own the handle.
             file: File::from_raw_descriptor(handle.os_handle.into_raw_descriptor()),

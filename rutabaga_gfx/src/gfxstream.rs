@@ -22,6 +22,7 @@ use std::ptr::null;
 use std::ptr::null_mut;
 use std::sync::Arc;
 
+use anyhow::Context;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -274,7 +275,7 @@ impl GfxstreamContext {
 
     #[cfg(not(gfxstream_unstable))]
     fn export_fence(&self, _fence_id: u64) -> RutabagaResult<RutabagaHandle> {
-        Err(RutabagaError::Unsupported)
+        Err(RutabagaErrorKind::Unsupported.into())
     }
 }
 
@@ -286,7 +287,7 @@ impl RutabagaContext for GfxstreamContext {
         _shareable_fences: Vec<RutabagaHandle>,
     ) -> RutabagaResult<()> {
         if commands.len() % size_of::<u32>() != 0 {
-            return Err(RutabagaError::InvalidCommandSize(commands.len()));
+            return Err(RutabagaErrorKind::InvalidCommandSize(commands.len()).into());
         }
 
         // TODO(b/315870313): Add safety comment
@@ -356,7 +357,8 @@ impl RutabagaContext for GfxstreamContext {
 
         let mut buffer = std::io::Cursor::new(Vec::new());
         serde_json::to_writer(&mut buffer, &snapshot)
-            .map_err(|e| RutabagaError::IoError(e.into()))?;
+            .context(RutabagaErrorKind::IoError)
+            .map_err(RutabagaError::from)?;
         Ok(buffer.into_inner())
     }
 }
@@ -858,7 +860,7 @@ impl RutabagaComponent for Gfxstream {
         // Safe because the Stream renderer wraps and validates use of vkMapMemory.
         let ret = unsafe { stream_renderer_resource_map(resource_id, &mut map, &mut size) };
         if ret != 0 {
-            return Err(RutabagaError::MappingFailed(ret));
+            return Err(RutabagaErrorKind::MappingFailed(ret).into());
         }
         Ok(RutabagaMapping {
             ptr: map as u64,
@@ -943,8 +945,9 @@ impl RutabagaComponent for Gfxstream {
         snapshot: Vec<u8>,
         fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
-        let context_snapshot: GfxstreamContextSnapshot =
-            serde_json::from_reader(&snapshot[..]).map_err(|e| RutabagaError::IoError(e.into()))?;
+        let context_snapshot: GfxstreamContextSnapshot = serde_json::from_reader(&snapshot[..])
+            .context(RutabagaErrorKind::IoError)
+            .map_err(|e| RutabagaError::from)?;
 
         Ok(Box::new(GfxstreamContext {
             ctx_id: context_snapshot.ctx_id,
