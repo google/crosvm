@@ -10,7 +10,6 @@ use std::cell::RefCell;
 use std::convert::TryInto;
 use std::ffi::CStr;
 use std::ffi::CString;
-use std::fs::File;
 use std::io::IoSliceMut;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
@@ -93,18 +92,6 @@ macro_rules! return_on_error {
             Err(e) => {
                 log_error(e.to_string());
                 return -EINVAL;
-            }
-        }
-    };
-}
-
-macro_rules! return_on_io_error {
-    ($result:expr) => {
-        match $result {
-            Ok(t) => t,
-            Err(e) => {
-                log_error(e.to_string());
-                return -e.raw_os_error().unwrap_or(EINVAL);
             }
         }
     };
