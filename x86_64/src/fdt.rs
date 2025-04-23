@@ -12,6 +12,8 @@ use std::path::PathBuf;
 use arch::android::create_android_fdt;
 use arch::apply_device_tree_overlays;
 use arch::fdt::create_memory_node;
+use arch::fdt::create_reserved_memory_node;
+use arch::fdt::reserved_memory_regions_from_guest_mem;
 use arch::DtbOverlay;
 use base::open_file_or_duplicate;
 use cros_fdt::Error;
@@ -68,6 +70,8 @@ pub fn create_fdt(
     initrd: Option<(GuestAddress, usize)>,
 ) -> Result<Vec<u8>, Error> {
     let mut fdt = Fdt::new(&[]);
+    let reserved_memory_regions = reserved_memory_regions_from_guest_mem(guest_mem);
+
     // The whole thing is put into one giant node with some top level properties
     let root_node = fdt.root_mut();
     root_node.set_prop("#address-cells", 0x2u32)?;
@@ -80,6 +84,7 @@ pub fn create_fdt(
     create_config_node(&mut fdt, kernel_region)?;
     create_chosen_node(&mut fdt, initrd)?;
     create_memory_node(&mut fdt, guest_mem)?;
+    create_reserved_memory_node(&mut fdt, &reserved_memory_regions)?;
 
     // Done writing base FDT, now apply DT overlays
     apply_device_tree_overlays(
