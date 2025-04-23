@@ -613,9 +613,7 @@ impl Vm for KvmVm {
             VmCap::EarlyInitCpuid => false,
             #[cfg(target_arch = "x86_64")]
             VmCap::BusLockDetect => self.check_raw_capability(KvmCap::BusLockDetect),
-            // When pKVM is the hypervisor, read-only memslots aren't supported, even for
-            // non-protected VMs.
-            VmCap::ReadOnlyMemoryRegion => !self.is_pkvm(),
+            VmCap::ReadOnlyMemoryRegion => true,
             VmCap::MemNoncoherentDma => {
                 cfg!(feature = "noncoherent-dma")
                     && self.check_raw_capability(KvmCap::MemNoncoherentDma)
