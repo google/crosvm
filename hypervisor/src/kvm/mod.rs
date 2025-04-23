@@ -613,7 +613,7 @@ impl Vm for KvmVm {
             VmCap::EarlyInitCpuid => false,
             #[cfg(target_arch = "x86_64")]
             VmCap::BusLockDetect => self.check_raw_capability(KvmCap::BusLockDetect),
-            VmCap::ReadOnlyMemoryRegion => true,
+            VmCap::ReadOnlyMemoryRegion => self.check_raw_capability(KvmCap::ReadonlyMem),
             VmCap::MemNoncoherentDma => {
                 cfg!(feature = "noncoherent-dma")
                     && self.check_raw_capability(KvmCap::MemNoncoherentDma)
