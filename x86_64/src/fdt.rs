@@ -66,6 +66,10 @@ pub fn create_fdt(
 ) -> Result<Vec<u8>, Error> {
     let mut fdt = Fdt::new(&[]);
     // The whole thing is put into one giant node with some top level properties
+    let root_node = fdt.root_mut();
+    root_node.set_prop("#address-cells", 0x2u32)?;
+    root_node.set_prop("#size-cells", 0x2u32)?;
+
     if let Some(android_fstab) = android_fstab {
         create_android_fdt(&mut fdt, android_fstab)?;
     }
