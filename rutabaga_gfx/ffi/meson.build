@@ -3,7 +3,7 @@
 # found in the LICENSE file.
 
 project('rutabaga_gfx_ffi', ['rust', 'c'],
-         version: '0.1.3')
+         version: '0.1.6')
 
 target_os = host_machine.system()
 

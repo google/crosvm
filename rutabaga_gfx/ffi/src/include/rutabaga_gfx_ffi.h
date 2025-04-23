@@ -27,7 +27,7 @@ extern "C" {
  */
 #define RUTABAGA_VERSION_MAJOR 0
 #define RUTABAGA_VERSION_MINOR 1
-#define RUTABAGA_VERSION_PATCH 3
+#define RUTABAGA_VERSION_PATCH 6
 
 /**
  * Rutabaga capsets.
@@ -111,6 +111,8 @@ extern "C" {
 #define RUTABAGA_DEBUG_WARN 0x2
 #define RUTABAGA_DEBUG_INFO 0x3
 
+#ifdef RUTABAGA_GFX_FFI_UNSTABLE
+
 /**
  * Rutabaga resource import flags
  */
@@ -118,6 +120,8 @@ extern "C" {
 #define RUTABAGA_IMPORT_FLAG_VULKAN_INFO (1 << 1)
 #define RUTABAGA_IMPORT_FLAG_RESOURCE_EXISTS (1 << 30)
 #define RUTABAGA_IMPORT_FLAG_PRESERVE_CONTENT (1 << 31)
+
+#endif
 
 struct rutabaga;
 
@@ -141,6 +145,8 @@ struct rutabaga_create_3d {
     uint32_t flags;
 };
 
+#ifdef RUTABAGA_GFX_FFI_UNSTABLE
+
 struct rutabaga_import_data {
     uint32_t flags;
     struct {
@@ -153,6 +159,8 @@ struct rutabaga_import_data {
         bool guest_cpu_mappable;
     } info_3d;
 };
+
+#endif
 
 struct rutabaga_transfer {
     uint32_t x;
@@ -187,11 +195,10 @@ struct rutabaga_command {
     uint32_t cmd_size;
     uint8_t *cmd;
 
-    /**
-     * Unstable, don't use until version > 0.1.3
-     */
+#ifdef RUTABAGA_GFX_FFI_UNSTABLE
     uint32_t num_in_fences;
     uint64_t *fence_ids;
+#endif
 };
 
 /**
@@ -371,12 +378,13 @@ int32_t rutabaga_submit_command(struct rutabaga *ptr, struct rutabaga_command *c
 
 int32_t rutabaga_create_fence(struct rutabaga *ptr, const struct rutabaga_fence *fence);
 
+#ifdef RUTABAGA_GFX_FFI_UNSTABLE
+
 /**
  * Write a snapshot to `dir`. The directory is expected to already exist and to be empty.
  *
  * # Safety
  * - `dir` must be a null-terminated C-string.
- * - Unstable, don't use until version > 0.1.3
  */
 int32_t rutabaga_snapshot(struct rutabaga *ptr, const char *dir);
 
@@ -385,13 +393,14 @@ int32_t rutabaga_snapshot(struct rutabaga *ptr, const char *dir);
  *
  * # Safety
  * - `dir` must be a null-terminated C-string.
- * - Unstable, don't use until version > 0.1.3
  */
 int32_t rutabaga_restore(struct rutabaga *ptr, const char *dir);
 
 int32_t rutabaga_resource_import(struct rutabaga *ptr, uint32_t resource_id,
                                  const struct rutabaga_handle *import_handle,
                                  const struct rutabaga_import_data *import_data);
+
+#endif
 
 #ifdef __cplusplus
 }
