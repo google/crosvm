@@ -567,7 +567,6 @@ android_audio = { path = "android_audio"}
 
 [target.'cfg(windows)'.dependencies]
 anti_tamper = { path = "vendor/generic/anti_tamper" }
-cros_async = { path = "cros_async" }
 ctrlc = "3"
 futures = "0.3"
 gpu_display = { path = "gpu_display", optional = true }
@@ -585,8 +584,5 @@ tempfile = "3"
 
 [patch.crates-io]
 audio_streams = { path = "common/audio_streams" }
-cros_async = { path = "cros_async" }
-data_model = { path = "common/data_model" }
 libcras = { path = "libcras_stub" } # ignored by ebuild
-sync = { path = "common/sync" }
 minijail = { path = "third_party/minijail/rust/minijail" } # ignored by ebuild
