@@ -10,7 +10,7 @@ perfetto-system-backend = []
 
 [dependencies]
 anyhow = "1"
-base = { path = "../../../base" }                # provided by ebuild
+base = { path = "../../../base" }
 serde = { version = "1", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]

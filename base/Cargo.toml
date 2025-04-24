@@ -9,9 +9,9 @@ proto_tube = ["protobuf"]
 seccomp_trace = []
 
 [dependencies]
-audio_streams = { path = "../common/audio_streams" } # provided by ebuild
+audio_streams = { path = "../common/audio_streams" }
 base_event_token_derive = { path = "base_event_token_derive" }
-sync = { path = "../common/sync" } # provided by ebuild
+sync = { path = "../common/sync" }
 
 cfg-if = "1"
 chrono = { version = "0.4.34", features = ["now"], default-features = false }

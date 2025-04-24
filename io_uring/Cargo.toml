@@ -7,8 +7,8 @@ edition = "2021"
 [dependencies]
 libc = "0.2.93"
 remain = "0.2"
-sync = { path = "../common/sync" } # provided by ebuild
-base = { path = "../base" } # provided by ebuild
+sync = { path = "../common/sync" }
+base = { path = "../base" }
 thiserror = "1"
 
 [dev-dependencies]
