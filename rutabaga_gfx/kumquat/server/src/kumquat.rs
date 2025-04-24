@@ -69,7 +69,9 @@ impl Kumquat {
                     }
                 }
                 Entry::Vacant(_) => {
-                    return Err(RutabagaErrorKind::SpecViolation("no connection found").into())
+                    return Err(anyhow::anyhow!("no connection found")
+                        .context(RutabagaErrorKind::SpecViolation)
+                        .into())
                 }
             }
         }

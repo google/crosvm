@@ -10,6 +10,7 @@ use std::slice::from_raw_parts_mut;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
+use anyhow::Context;
 use rutabaga_gfx::kumquat_support::kumquat_gpu_protocol::*;
 use rutabaga_gfx::kumquat_support::RutabagaEvent;
 use rutabaga_gfx::kumquat_support::RutabagaMemoryMapping;
@@ -568,7 +569,8 @@ impl VirtGpuKumquat {
 
         if flags & VIRTGPU_KUMQUAT_EXECBUF_FENCE_FD_OUT != 0 {
             *raw_descriptor = fence_opt
-                .ok_or(RutabagaErrorKind::SpecViolation("no fence found"))?
+                .context("no fence found")
+                .context(RutabagaErrorKind::SpecViolation)?
                 .os_handle
                 .into_raw_descriptor();
         }

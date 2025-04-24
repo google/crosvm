@@ -48,16 +48,16 @@ impl RutabagaSnapshotWriter {
             .write(true)
             .create_new(true)
             .open(fragment_path)
-            .map_err(|e| {
-                RutabagaErrorKind::SnapshotError(format!("failed to add fragment {}: {}", name, e))
-            })?;
+            .with_context(|| format!("failed to add fragment {}", name))
+            .context(RutabagaErrorKind::SnapshotError)?;
         let mut fragment_writer = BufWriter::new(fragment_file);
-        serde_json::to_writer(&mut fragment_writer, t).map_err(|e| {
-            RutabagaErrorKind::SnapshotError(format!("failed to write fragment {}: {}", name, e))
-        })?;
-        fragment_writer.flush().map_err(|e| {
-            RutabagaErrorKind::SnapshotError(format!("failed to flush fragment {}: {}", name, e))
-        })?;
+        serde_json::to_writer(&mut fragment_writer, t)
+            .with_context(|| format!("failed to write fragment {}", name))
+            .context(RutabagaErrorKind::SnapshotError)?;
+        fragment_writer
+            .flush()
+            .with_context(|| format!("failed to flush fragment {}", name))
+            .context(RutabagaErrorKind::SnapshotError)?;
         Ok(())
     }
 }
@@ -71,11 +71,9 @@ impl RutabagaSnapshotReader {
         let directory = directory.into();
 
         if !directory.as_path().exists() {
-            return Err(RutabagaErrorKind::SnapshotError(format!(
-                "{} does not exist",
-                directory.display()
-            ))
-            .into());
+            return Err(anyhow::anyhow!("{} does not exist", directory.display())
+                .context(RutabagaErrorKind::SnapshotError)
+                .into());
         }
 
         Ok(Self { dir: directory })
@@ -92,13 +90,13 @@ impl RutabagaSnapshotReader {
 
     pub fn get_fragment<T: serde::de::DeserializeOwned>(&self, name: &str) -> RutabagaResult<T> {
         let fragment_path = self.dir.join(name);
-        let fragment_file = File::open(fragment_path).map_err(|e| {
-            RutabagaErrorKind::SnapshotError(format!("failed to get fragment {}: {}", name, e))
-        })?;
+        let fragment_file = File::open(fragment_path)
+            .with_context(|| format!("failed to get fragment {}", name))
+            .context(RutabagaErrorKind::SnapshotError)?;
         let mut fragment_reader = BufReader::new(fragment_file);
-        serde_json::from_reader(&mut fragment_reader).map_err(|e| {
-            RutabagaErrorKind::SnapshotError(format!("failed to read fragment {}: {}", name, e))
-                .into()
-        })
+        serde_json::from_reader(&mut fragment_reader)
+            .with_context(|| format!("failed to read fragment {}", name))
+            .context(RutabagaErrorKind::SnapshotError)
+            .map_err(|e| e.into())
     }
 }

@@ -20,18 +20,6 @@ use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
-#[cfg(feature = "vulkano")]
-use vulkano::device::DeviceCreationError;
-#[cfg(feature = "vulkano")]
-use vulkano::image::ImageError;
-#[cfg(feature = "vulkano")]
-use vulkano::instance::InstanceCreationError;
-#[cfg(feature = "vulkano")]
-use vulkano::memory::DeviceMemoryError;
-#[cfg(feature = "vulkano")]
-use vulkano::memory::MemoryMapError;
-#[cfg(feature = "vulkano")]
-use vulkano::VulkanError;
 use zerocopy::FromBytes;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
@@ -318,8 +306,8 @@ pub enum RutabagaErrorKind {
     #[error("invalid resource id")]
     InvalidResourceId,
     /// Indicates an error in the RutabagaBuilder.
-    #[error("invalid rutabaga build parameters: {0}")]
-    InvalidRutabagaBuild(&'static str),
+    #[error("invalid rutabaga build parameters")]
+    InvalidRutabagaBuild,
     /// An error with the RutabagaHandle
     #[error("invalid rutabaga handle")]
     InvalidRutabagaHandle,
@@ -336,51 +324,51 @@ pub enum RutabagaErrorKind {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[error("The errno is {0}")]
     NixError(NixError),
-    #[error("Nul Error occured {0}")]
-    NulError(NulError),
+    #[error("Nul Error occured")]
+    NulError,
     /// An error with a snapshot.
-    #[error("a snapshot error occured: {0}")]
-    SnapshotError(String),
+    #[error("a snapshot error occured")]
+    SnapshotError,
     /// Violation of the Rutabaga spec occured.
-    #[error("violation of the rutabaga spec: {0}")]
-    SpecViolation(&'static str),
+    #[error("violation of the rutabaga spec")]
+    SpecViolation,
     /// An attempted integer conversion failed.
-    #[error("int conversion failed: {0}")]
-    TryFromIntError(TryFromIntError),
+    #[error("int conversion failed")]
+    TryFromIntError,
     /// The command is unsupported.
     #[error("the requested function is not implemented")]
     Unsupported,
     /// Utf8 error.
-    #[error("an utf8 error occured: {0}")]
-    Utf8Error(Utf8Error),
+    #[error("an utf8 error occured")]
+    Utf8Error,
     /// Device creation error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano device creation failure {0}")]
-    VkDeviceCreationError(DeviceCreationError),
+    #[error("vulkano device creation failure")]
+    VkDeviceCreationError,
     /// Device memory error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano device memory failure {0}")]
-    VkDeviceMemoryError(DeviceMemoryError),
+    #[error("vulkano device memory failure")]
+    VkDeviceMemoryError,
     /// General Vulkan error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano failure {0}")]
-    VkError(VulkanError),
+    #[error("vulkano failure")]
+    VkError,
     /// Image creation error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano image creation failure {0}")]
-    VkImageCreationError(ImageError),
+    #[error("vulkano image creation failure")]
+    VkImageCreationError,
     /// Instance creation error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano instance creation failure {0}")]
-    VkInstanceCreationError(InstanceCreationError),
+    #[error("vulkano instance creation failure")]
+    VkInstanceCreationError,
     /// Loading error
     #[cfg(feature = "vulkano")]
     #[error("vulkano loading failure")]
     VkLoadingError,
     /// Memory map error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano memory map failure {0}")]
-    VkMemoryMapError(MemoryMapError),
+    #[error("vulkano memory map failure")]
+    VkMemoryMapError,
 }
 
 /// An error generated while using this crate.
@@ -479,7 +467,10 @@ impl From<NixError> for RutabagaError {
 
 impl From<NulError> for RutabagaError {
     fn from(e: NulError) -> RutabagaError {
-        RutabagaErrorKind::NulError(e).into()
+        Self {
+            kind: RutabagaErrorKind::NulError,
+            context: Some(anyhow::Error::msg(e)),
+        }
     }
 }
 
@@ -494,13 +485,19 @@ impl From<IoError> for RutabagaError {
 
 impl From<TryFromIntError> for RutabagaError {
     fn from(e: TryFromIntError) -> RutabagaError {
-        RutabagaErrorKind::TryFromIntError(e).into()
+        Self {
+            kind: RutabagaErrorKind::TryFromIntError,
+            context: Some(anyhow::Error::new(e)),
+        }
     }
 }
 
 impl From<Utf8Error> for RutabagaError {
     fn from(e: Utf8Error) -> RutabagaError {
-        RutabagaErrorKind::Utf8Error(e).into()
+        Self {
+            kind: RutabagaErrorKind::Utf8Error,
+            context: Some(anyhow::Error::new(e)),
+        }
     }
 }
 

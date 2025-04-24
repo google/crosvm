@@ -9,6 +9,8 @@ use std::cmp::min;
 use std::cmp::Ordering;
 use std::io::IoSliceMut;
 
+use anyhow::Context;
+
 use crate::rutabaga_core::Rutabaga2DInfo;
 use crate::rutabaga_core::RutabagaComponent;
 use crate::rutabaga_core::RutabagaResource;
@@ -264,9 +266,9 @@ impl RutabagaComponent for Rutabaga2D {
         let src_offset = 0;
         let dst_offset = 0;
 
-        let dst_slice = buf.ok_or::<RutabagaError>(
-            RutabagaErrorKind::SpecViolation("need a destination slice for transfer read").into(),
-        )?;
+        let dst_slice = buf
+            .context("need a destination slice for transfer read")
+            .context(RutabagaErrorKind::SpecViolation)?;
 
         transfer_2d(
             info_2d.width,

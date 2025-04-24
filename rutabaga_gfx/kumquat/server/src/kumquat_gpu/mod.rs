@@ -11,6 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use anyhow::Context;
 use log::error;
 use rutabaga_gfx::calculate_capset_mask;
 use rutabaga_gfx::kumquat_support::kumquat_gpu_protocol::*;
@@ -369,7 +370,8 @@ impl KumquatGpuConnection {
                         }
 
                         let fence_descriptor = fence_descriptor_opt
-                            .ok_or(RutabagaErrorKind::SpecViolation("No fence descriptor"))?;
+                            .context("No fence descriptor")
+                            .context(RutabagaErrorKind::SpecViolation)?;
 
                         let resp = kumquat_gpu_protocol_resp_cmd_submit_3d {
                             hdr: kumquat_gpu_protocol_ctrl_hdr {

@@ -9,6 +9,7 @@ use std::io::IoSliceMut;
 use std::path::Path;
 use std::sync::Arc;
 
+use anyhow::Context;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -448,7 +449,9 @@ pub fn calculate_capset_names(capset_mask: u64) -> Vec<String> {
 
 fn calculate_component(component_mask: u8) -> RutabagaResult<RutabagaComponentType> {
     if component_mask.count_ones() != 1 {
-        return Err(RutabagaErrorKind::SpecViolation("can't infer single component").into());
+        return Err(anyhow::anyhow!("can't infer single component")
+            .context(RutabagaErrorKind::SpecViolation)
+            .into());
     }
 
     match component_mask.trailing_zeros() {
@@ -922,17 +925,17 @@ impl Rutabaga {
             match handle_opt {
                 Some(handle) => {
                     if handle.handle_type != RUTABAGA_HANDLE_TYPE_MEM_SHM {
-                        return Err(RutabagaErrorKind::SpecViolation(
-                            "expected a shared memory handle",
-                        )
-                        .into());
+                        return Err(anyhow::anyhow!("expected a shared memory handle")
+                            .context(RutabagaErrorKind::SpecViolation)
+                            .into());
                     }
 
                     let clone = handle.try_clone()?;
                     let resource_size: usize = resource.size.try_into()?;
                     let map_info = resource
                         .map_info
-                        .ok_or(RutabagaErrorKind::SpecViolation("no map info available"))?;
+                        .context("no map info available")
+                        .context(RutabagaErrorKind::SpecViolation)?;
 
                     // Creating the mapping closes the cloned descriptor.
                     let mapping = MemoryMapping::from_safe_descriptor(
@@ -947,7 +950,9 @@ impl Rutabaga {
                     return Ok(rutabaga_mapping);
                 }
                 None => {
-                    return Err(RutabagaErrorKind::SpecViolation("expected a handle to map").into())
+                    return Err(anyhow::anyhow!("expected a handle to map")
+                        .context(RutabagaErrorKind::SpecViolation)
+                        .into())
                 }
             }
         }
@@ -991,7 +996,9 @@ impl Rutabaga {
 
         resource
             .map_info
-            .ok_or(RutabagaErrorKind::SpecViolation("no map info available").into())
+            .context("no map info available")
+            .context(RutabagaErrorKind::SpecViolation)
+            .map_err(|e| e.into())
     }
 
     /// Returns the `vulkan_info` of the blob resource, which consists of the physical device
@@ -1016,7 +1023,9 @@ impl Rutabaga {
 
         resource
             .info_3d
-            .ok_or(RutabagaErrorKind::SpecViolation("no 3d info available").into())
+            .context("no 3d info available")
+            .context(RutabagaErrorKind::SpecViolation)
+            .map_err(|e| e.into())
     }
 
     /// Exports a blob resource.  See virtio-gpu spec for blob flag use flags.
@@ -1377,16 +1386,15 @@ impl RutabagaBuilder {
         // Make sure that disabled components are not used as default.
         #[cfg(not(feature = "virgl_renderer"))]
         if self.default_component == RutabagaComponentType::VirglRenderer {
-            return Err(RutabagaErrorKind::InvalidRutabagaBuild(
-                "virgl renderer feature not enabled",
-            )
-            .into());
+            return Err(anyhow::anyhow!("virgl renderer feature not enabled")
+                .context(RutabagaErrorKind::InvalidRutabagaBuild)
+                .into());
         }
         #[cfg(not(feature = "gfxstream"))]
         if self.default_component == RutabagaComponentType::Gfxstream {
-            return Err(
-                RutabagaErrorKind::InvalidRutabagaBuild("gfxstream feature not enabled").into(),
-            );
+            return Err(anyhow::anyhow!("gfxstream feature not enabled")
+                .context(RutabagaErrorKind::InvalidRutabagaBuild)
+                .into());
         }
 
         if self.default_component != RutabagaComponentType::Rutabaga2D {

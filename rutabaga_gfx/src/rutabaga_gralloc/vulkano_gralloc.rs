@@ -15,6 +15,7 @@ use std::collections::HashMap as Map;
 use std::convert::TryInto;
 use std::sync::Arc;
 
+use anyhow::Context;
 use log::warn;
 use vulkano::device::physical::PhysicalDeviceType;
 use vulkano::device::Device;
@@ -202,9 +203,9 @@ impl VulkanoGralloc {
         }
 
         if devices.is_empty() {
-            return Err(
-                RutabagaErrorKind::SpecViolation("no matching VK devices available").into(),
-            );
+            return Err(anyhow::anyhow!("no matching VK devices available")
+                .context(RutabagaErrorKind::SpecViolation)
+                .into());
         }
 
         Ok(Box::new(VulkanoGralloc {
@@ -390,9 +391,8 @@ impl Gralloc for VulkanoGralloc {
                 .chain(second_loop)
                 .filter(|&(i, _, _)| (memory_requirements.memory_type_bits & (1 << i)) != 0)
                 .find(|&(_, t, rq)| filter(t) == rq)
-                .ok_or::<RutabagaError>(
-                    RutabagaErrorKind::SpecViolation("unable to find required memory type").into(),
-                )?;
+                .context("unable to find required memory type")
+                .context(RutabagaErrorKind::SpecViolation)?;
             (found_type.0, found_type.1)
         };
 
@@ -528,35 +528,45 @@ impl Gralloc for VulkanoGralloc {
     }
 }
 
-// Vulkano should really define an universal type that wraps all these errors, say
-// "VulkanoError(e)".
+// We should really use a universal error kind for all these errors, say
+// "VulkanoError".
 impl From<InstanceCreationError> for RutabagaError {
     fn from(e: InstanceCreationError) -> RutabagaError {
-        RutabagaErrorKind::VkInstanceCreationError(e).into()
+        anyhow::Error::new(e)
+            .context(RutabagaErrorKind::VkInstanceCreationError)
+            .into()
     }
 }
 
 impl From<ImageError> for RutabagaError {
     fn from(e: ImageError) -> RutabagaError {
-        RutabagaErrorKind::VkImageCreationError(e).into()
+        anyhow::Error::new(e)
+            .context(RutabagaErrorKind::VkImageCreationError)
+            .into()
     }
 }
 
 impl From<DeviceCreationError> for RutabagaError {
     fn from(e: DeviceCreationError) -> RutabagaError {
-        RutabagaErrorKind::VkDeviceCreationError(e).into()
+        anyhow::Error::new(e)
+            .context(RutabagaErrorKind::VkDeviceCreationError)
+            .into()
     }
 }
 
 impl From<DeviceMemoryError> for RutabagaError {
     fn from(e: DeviceMemoryError) -> RutabagaError {
-        RutabagaErrorKind::VkDeviceMemoryError(e).into()
+        anyhow::Error::new(e)
+            .context(RutabagaErrorKind::VkDeviceMemoryError)
+            .into()
     }
 }
 
 impl From<MemoryMapError> for RutabagaError {
     fn from(e: MemoryMapError) -> RutabagaError {
-        RutabagaErrorKind::VkMemoryMapError(e).into()
+        anyhow::Error::new(e)
+            .context(RutabagaErrorKind::VkMemoryMapError)
+            .into()
     }
 }
 
@@ -570,6 +580,8 @@ impl From<LoadingError> for RutabagaError {
 
 impl From<VulkanError> for RutabagaError {
     fn from(e: VulkanError) -> RutabagaError {
-        RutabagaErrorKind::VkError(e).into()
+        anyhow::Error::new(e)
+            .context(RutabagaErrorKind::VkError)
+            .into()
     }
 }

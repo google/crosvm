@@ -636,9 +636,9 @@ impl CrossDomainContext {
         let num_identifiers = cmd_send.num_identifiers.try_into()?;
 
         if num_identifiers > CROSS_DOMAIN_MAX_IDENTIFIERS {
-            return Err(
-                RutabagaErrorKind::SpecViolation("max cross domain identifiers exceeded").into(),
-            );
+            return Err(anyhow::anyhow!("max cross domain identifiers exceeded")
+                .context(RutabagaErrorKind::SpecViolation)
+                .into());
         }
 
         let iter = cmd_send
@@ -665,9 +665,9 @@ impl CrossDomainContext {
                 // In practice, just 1 pipe pair per send is observed.  If we encounter
                 // more, this can be changed later.
                 if write_pipe_opt.is_some() {
-                    return Err(
-                        RutabagaErrorKind::SpecViolation("expected just one pipe pair").into(),
-                    );
+                    return Err(anyhow::anyhow!("expected just one pipe pair")
+                        .context(RutabagaErrorKind::SpecViolation)
+                        .into());
                 }
 
                 let (read_pipe, write_pipe) = create_pipe()?;
@@ -795,7 +795,9 @@ impl RutabagaContext for CrossDomainContext {
             match item {
                 CrossDomainItem::ImageRequirements(reqs) => {
                     if reqs.size != resource_create_blob.size {
-                        return Err(RutabagaErrorKind::SpecViolation("blob size mismatch").into());
+                        return Err(anyhow::anyhow!("blob size mismatch")
+                            .context(RutabagaErrorKind::SpecViolation)
+                            .into());
                     }
 
                     // Strictly speaking, it's against the virtio-gpu spec to allocate memory in the
@@ -953,9 +955,9 @@ impl RutabagaContext for CrossDomainContext {
                     self.write(&cmd_write, opaque_data)?;
                 }
                 _ => {
-                    return Err(
-                        RutabagaErrorKind::SpecViolation("invalid cross domain command").into(),
-                    )
+                    return Err(anyhow::anyhow!("invalid cross domain command")
+                        .context(RutabagaErrorKind::SpecViolation)
+                        .into())
                 }
             }
 
@@ -1005,7 +1007,11 @@ impl RutabagaContext for CrossDomainContext {
                     state.add_job(CrossDomainJob::HandleFence(fence));
                 }
             }
-            _ => return Err(RutabagaErrorKind::SpecViolation("unexpected ring type").into()),
+            _ => {
+                return Err(anyhow::anyhow!("unexpected ring type")
+                    .context(RutabagaErrorKind::SpecViolation)
+                    .into())
+            }
         }
 
         Ok(None)
@@ -1053,9 +1059,9 @@ impl RutabagaComponent for CrossDomain {
         if resource_create_blob.blob_mem != RUTABAGA_BLOB_MEM_GUEST
             && resource_create_blob.blob_flags != RUTABAGA_BLOB_FLAG_USE_MAPPABLE
         {
-            return Err(
-                RutabagaErrorKind::SpecViolation("expected only guest memory blobs").into(),
-            );
+            return Err(anyhow::anyhow!("expected only guest memory blobs")
+                .context(RutabagaErrorKind::SpecViolation)
+                .into());
         }
 
         Ok(RutabagaResource {

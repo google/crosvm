@@ -74,6 +74,8 @@ pub fn round_up_to_page_size(v: u64) -> RutabagaResult<u64> {
         let aligned_size = (v + page_mask) & !page_mask;
         Ok(aligned_size)
     } else {
-        Err(RutabagaErrorKind::SpecViolation("no page size").into())
+        Err(anyhow::anyhow!("no page size")
+            .context(RutabagaErrorKind::SpecViolation)
+            .into())
     }
 }
