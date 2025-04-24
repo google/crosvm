@@ -3606,6 +3606,9 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(feature = "gdb")]
         {
+            if cfg.suspended && cmd.gdb.is_some() {
+                return Err("suspended mode not supported with GDB".to_string());
+            }
             cfg.gdb = cmd.gdb;
         }
 
