@@ -871,7 +871,6 @@ dependencies = [
  "arch",
  "argh",
  "argh_helpers",
- "audio_streams",
  "base",
  "bit_field",
  "broker_ipc",

@@ -497,7 +497,6 @@ arch = { path = "arch" }
 argh = "0.1.10"
 argh_helpers = { path = "argh_helpers" }
 aarch64_sys_reg = { path = "aarch64_sys_reg" }
-audio_streams = "*"
 base = { path = "base" }
 bit_field = { path = "bit_field" }
 broker_ipc = { path = "broker_ipc" }

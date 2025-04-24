@@ -8,5 +8,5 @@ edition = "2021"
 path = "src/libcras.rs"
 
 [dependencies]
-audio_streams = "*"
+audio_streams = { path = "../common/audio_streams" }
 serde = "1"
