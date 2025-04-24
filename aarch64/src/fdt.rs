@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use arch::apply_device_tree_overlays;
 use arch::fdt::create_memory_node;
 use arch::fdt::create_reserved_memory_node;
+use arch::fdt::reserved_memory_regions_from_guest_mem;
 use arch::fdt::ReservedMemoryRegion;
 use arch::serial::SerialDeviceInfo;
 use arch::CpuSet;
@@ -627,7 +628,7 @@ pub fn create_fdt(
     let mut fdt = Fdt::new(&[]);
     let mut phandles_key_cache = Vec::new();
     let mut phandles = BTreeMap::new();
-    let mut reserved_memory_regions = Vec::new();
+    let mut reserved_memory_regions = reserved_memory_regions_from_guest_mem(guest_mem);
 
     // The whole thing is put into one giant node with some top level properties
     let root_node = fdt.root_mut();
@@ -655,6 +656,7 @@ pub fn create_fdt(
             name: "restricted_dma_reserved",
             compatible: Some("restricted-dma-pool"),
             alignment: Some(base::pagesize() as u64),
+            no_map: false,
         });
         phandles.insert("restricted_dma_reserved", phandle);
         Some(phandle)
