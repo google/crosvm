@@ -128,7 +128,6 @@ impl VhostUserFrontend {
         let avail_features =
             allow_features & backend_client.get_features().map_err(Error::GetFeatures)?;
         let mut acked_features = 0;
-        let mut sent_set_features = false;
 
         let mut allow_protocol_features = VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::MQ
@@ -147,12 +146,14 @@ impl VhostUserFrontend {
 
         let mut protocol_features = VhostUserProtocolFeatures::empty();
         if avail_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
-            // The vhost-user backend supports VHOST_USER_F_PROTOCOL_FEATURES; enable it.
-            backend_client
-                .set_features(1 << VHOST_USER_F_PROTOCOL_FEATURES)
-                .map_err(Error::SetFeatures)?;
+            // The vhost-user backend supports VHOST_USER_F_PROTOCOL_FEATURES.
+            // Per the vhost-user protocol, the backend must support
+            // `VHOST_USER_GET_PROTOCOL_FEATURES` and `VHOST_USER_SET_PROTOCOL_FEATURES` even
+            // before acknowledging the feature, so we don't need to call `set_features()` yet
+            // (and doing so before driver feature negotiation may confuse some backends),
+            // but add it to `acked_features` so it will be included in any future
+            // `set_features()` calls.
             acked_features |= 1 << VHOST_USER_F_PROTOCOL_FEATURES;
-            sent_set_features = true;
 
             let avail_protocol_features = backend_client
                 .get_protocol_features()
@@ -215,7 +216,7 @@ impl VhostUserFrontend {
             backend_client: Arc::new(Mutex::new(backend_client)),
             avail_features,
             acked_features,
-            sent_set_features,
+            sent_set_features: false,
             protocol_features,
             backend_req_handler,
             shmem_region: RefCell::new(None),

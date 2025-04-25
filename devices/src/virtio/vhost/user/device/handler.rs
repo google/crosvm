@@ -1223,7 +1223,6 @@ mod tests {
         // VhostUserFrontend::new()
         handle_request(&mut req_handler, FrontendReq::SET_OWNER).unwrap();
         handle_request(&mut req_handler, FrontendReq::GET_FEATURES).unwrap();
-        handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
         handle_request(&mut req_handler, FrontendReq::GET_PROTOCOL_FEATURES).unwrap();
         handle_request(&mut req_handler, FrontendReq::SET_PROTOCOL_FEATURES).unwrap();
         if allow_backend_req {
@@ -1234,6 +1233,7 @@ mod tests {
         handle_request(&mut req_handler, FrontendReq::GET_CONFIG).unwrap();
 
         // VhostUserFrontend::activate()
+        handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
         handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
         for _ in 0..QUEUES_NUM {
             handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
