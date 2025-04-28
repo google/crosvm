@@ -664,9 +664,7 @@ pub fn create_fdt(
         None
     };
 
-    if !reserved_memory_regions.is_empty() {
-        create_reserved_memory_node(&mut fdt, &reserved_memory_regions)?;
-    }
+    create_reserved_memory_node(&mut fdt, &reserved_memory_regions)?;
 
     create_cpu_nodes(
         &mut fdt,

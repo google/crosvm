@@ -223,6 +223,10 @@ pub fn create_reserved_memory_node(
     fdt: &mut Fdt,
     reserved_regions: &[ReservedMemoryRegion],
 ) -> Result<()> {
+    if reserved_regions.is_empty() {
+        return Ok(());
+    }
+
     let resv_memory_node = fdt.root_mut().subnode_mut("reserved-memory")?;
     resv_memory_node.set_prop("#address-cells", 0x2u32)?;
     resv_memory_node.set_prop("#size-cells", 0x2u32)?;
