@@ -133,7 +133,7 @@ pub fn process_control_transmit_queue(
             error!("failed to handle control msg: {:#}", e);
         }
 
-        queue.add_used(avail_desc, 0);
+        queue.add_used(avail_desc);
         needs_interrupt = true;
     }
 
@@ -167,7 +167,7 @@ pub fn process_control_receive_queue(
             }
         };
 
-        queue.add_used(avail_desc, len);
+        queue.add_used_with_bytes_written(avail_desc, len);
         needs_interrupt = true;
     }
 

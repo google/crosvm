@@ -72,8 +72,7 @@ impl Worker {
                     response, e
                 );
             }
-            let len = desc.writer.bytes_written() as u32;
-            self.cmd_queue.add_used(desc, len);
+            self.cmd_queue.add_used(desc);
         }
         self.cmd_queue.trigger_interrupt();
         Ok(())
@@ -89,8 +88,7 @@ impl Worker {
         event
             .write(&mut desc.writer)
             .map_err(|error| Error::WriteEventFailure { event, error })?;
-        let len = desc.writer.bytes_written() as u32;
-        self.event_queue.add_used(desc, len);
+        self.event_queue.add_used(desc);
         self.event_queue.trigger_interrupt();
         Ok(())
     }

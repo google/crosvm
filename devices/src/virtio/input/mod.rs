@@ -416,7 +416,8 @@ impl<T: EventSource> Worker<T> {
                             }
                         };
 
-                    self.event_queue.add_used(avail_desc, bytes_written as u32);
+                    self.event_queue
+                        .add_used_with_bytes_written(avail_desc, bytes_written as u32);
                     needs_interrupt = true;
                 }
             }
@@ -442,7 +443,7 @@ impl<T: EventSource> Worker<T> {
             Worker::read_event_virtqueue(&mut avail_desc, &mut self.event_source)
                 .inspect_err(|e| error!("Input: failed to read events from virtqueue: {}", e))?;
 
-            self.status_queue.add_used(avail_desc, 0);
+            self.status_queue.add_used(avail_desc);
             needs_interrupt = true;
         }
 

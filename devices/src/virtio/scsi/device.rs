@@ -787,7 +787,7 @@ async fn process_one_chain(
     let _trace = cros_tracing::trace_event!(VirtioScsi, "process_one_chain");
     let len = process_one_request(&mut avail_desc, queue_type, sense_size, cdb_size).await;
     let mut queue = queue.borrow_mut();
-    queue.add_used(avail_desc, len as u32);
+    queue.add_used_with_bytes_written(avail_desc, len as u32);
     queue.trigger_interrupt();
 }
 

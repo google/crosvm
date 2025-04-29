@@ -271,10 +271,9 @@ impl Worker {
                             code: Le32::from(code),
                         })
                         .map_err(SoundError::QueueIO)?;
-                    let len = writer.bytes_written() as u32;
                     {
                         let mut queue_lock = self.control_queue.lock();
-                        queue_lock.add_used(avail_desc, len);
+                        queue_lock.add_used(avail_desc);
                         queue_lock.trigger_interrupt();
                     }
                 }
@@ -373,8 +372,7 @@ impl Worker {
             if let Some(mut desc) = event_queue.pop() {
                 let writer = &mut desc.writer;
                 writer.write_obj(evt).map_err(SoundError::QueueIO)?;
-                let len = writer.bytes_written() as u32;
-                event_queue.add_used(desc, len);
+                event_queue.add_used(desc);
                 event_queue.trigger_interrupt();
             } else {
                 warn!("virtio-snd: Dropping event because there are no buffers in virtqueue");
@@ -479,10 +477,9 @@ impl Worker {
         for info in info_vec {
             writer.write_obj(info).map_err(SoundError::QueueIO)?;
         }
-        let len = writer.bytes_written() as u32;
         {
             let mut queue_lock = self.control_queue.lock();
-            queue_lock.add_used(desc, len);
+            queue_lock.add_used(desc);
             queue_lock.trigger_interrupt();
         }
         Ok(())

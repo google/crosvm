@@ -34,11 +34,9 @@ pub fn process_receive_queue(buffer: &mut VecDeque<u8>, receive_queue: &mut Queu
             drop(buffer.drain(..written));
         }
 
-        let bytes_written = writer.bytes_written() as u32;
-
-        if bytes_written > 0 {
+        if writer.bytes_written() > 0 {
             let desc = desc.pop();
-            receive_queue.add_used(desc, bytes_written);
+            receive_queue.add_used(desc);
             receive_queue.trigger_interrupt();
         }
     }

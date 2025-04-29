@@ -715,7 +715,7 @@ impl Worker {
                 };
             }
 
-            queue.add_used(avail_desc, 0);
+            queue.add_used(avail_desc);
             queue.trigger_interrupt();
         }
 
@@ -1371,9 +1371,8 @@ impl Worker {
             return Err(VsockError::WriteQueue(e));
         }
 
-        let bytes_written = writer.bytes_written() as u32;
-        if bytes_written > 0 {
-            queue.add_used(desc_chain, bytes_written);
+        if writer.bytes_written() > 0 {
+            queue.add_used(desc_chain);
             queue.trigger_interrupt();
             Ok(())
         } else {

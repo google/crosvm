@@ -369,7 +369,7 @@ impl SplitQueue {
     }
 
     /// Puts an available descriptor head into the used ring for use by the guest.
-    pub fn add_used(&mut self, desc_chain: DescriptorChain, len: u32) {
+    pub fn add_used_with_bytes_written(&mut self, desc_chain: DescriptorChain, len: u32) {
         let desc_index = desc_chain.index();
         debug_assert!(desc_index < self.size);
 
@@ -702,7 +702,7 @@ mod tests {
         // device has handled them, so increase self.next_used to 0x100
         let mut device_generate: Wrapping<u16> = Wrapping(0x100);
         for _ in 0..device_generate.0 {
-            queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
+            queue.add_used_with_bytes_written(fake_desc_chain(&mem), BUFFER_LEN);
         }
 
         // At this moment driver hasn't handled any interrupts yet, so it
@@ -720,7 +720,7 @@ mod tests {
         // Assume driver submit another u16::MAX - 0x100 req to device,
         // Device has handled all of them, so increase self.next_used to u16::MAX
         for _ in device_generate.0..u16::MAX {
-            queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
+            queue.add_used_with_bytes_written(fake_desc_chain(&mem), BUFFER_LEN);
         }
         device_generate = Wrapping(u16::MAX);
 
@@ -738,7 +738,7 @@ mod tests {
 
         // Assume driver submit another 1 request,
         // device has handled it, so wrap self.next_used to 0
-        queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
+        queue.add_used_with_bytes_written(fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver has handled all the previous interrupts, so it
@@ -770,7 +770,7 @@ mod tests {
         // device have handled 0x100 req, so increase self.next_used to 0x100
         let mut device_generate: Wrapping<u16> = Wrapping(0x100);
         for _ in 0..device_generate.0 {
-            queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
+            queue.add_used_with_bytes_written(fake_desc_chain(&mem), BUFFER_LEN);
         }
 
         // At this moment driver hasn't handled any interrupts yet, so it
@@ -787,7 +787,7 @@ mod tests {
 
         // Assume driver submit another 1 request,
         // device has handled it, so increment self.next_used.
-        queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
+        queue.add_used_with_bytes_written(fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver hasn't finished last interrupt yet,
@@ -797,7 +797,7 @@ mod tests {
         // Assume driver submit another u16::MAX - 0x101 req to device,
         // Device has handled all of them, so increase self.next_used to u16::MAX
         for _ in device_generate.0..u16::MAX {
-            queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
+            queue.add_used_with_bytes_written(fake_desc_chain(&mem), BUFFER_LEN);
         }
         device_generate = Wrapping(u16::MAX);
 
@@ -811,7 +811,7 @@ mod tests {
 
         // Assume driver submit another 1 request,
         // device has handled it, so wrap self.next_used to 0
-        queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
+        queue.add_used_with_bytes_written(fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver has already finished the last interrupt(0x100),
@@ -820,7 +820,7 @@ mod tests {
 
         // Assume driver submit another 1 request,
         // device has handled it, so increment self.next_used to 1
-        queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
+        queue.add_used_with_bytes_written(fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver hasn't finished last interrupt((Wrapping(0)) yet,
@@ -837,7 +837,7 @@ mod tests {
 
         // Assume driver submit another 1 request,
         // device has handled it, so increase self.next_used.
-        queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
+        queue.add_used_with_bytes_written(fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver has finished all the previous interrupts, so it

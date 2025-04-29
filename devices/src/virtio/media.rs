@@ -95,8 +95,7 @@ impl VirtioMediaEventQueue for EventQueue {
             error!("failed to write event: {}", e);
         }
 
-        let written = desc.writer.bytes_written() as u32;
-        self.0.add_used(desc, written);
+        self.0.add_used(desc);
         self.0.trigger_interrupt();
     }
 }
@@ -459,8 +458,7 @@ where
                             self.runner
                                 .handle_command(&mut desc.reader, &mut desc.writer);
                             // Return the descriptor to the guest.
-                            let written = desc.writer.bytes_written() as u32;
-                            self.cmd_queue.add_used(desc, written);
+                            self.cmd_queue.add_used(desc);
                             self.cmd_queue.trigger_interrupt();
                         }
                     }

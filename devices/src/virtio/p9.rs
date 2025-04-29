@@ -81,9 +81,7 @@ impl Worker {
                 .handle_message(&mut avail_desc.reader, &mut avail_desc.writer)
                 .map_err(P9Error::Internal)?;
 
-            let len = avail_desc.writer.bytes_written() as u32;
-
-            self.queue.add_used(avail_desc, len);
+            self.queue.add_used(avail_desc);
         }
         self.queue.trigger_interrupt();
 

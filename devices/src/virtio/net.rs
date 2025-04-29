@@ -304,8 +304,7 @@ pub fn process_ctrl<T: TapT>(
                 .write_all(&[VIRTIO_NET_OK as u8])
                 .map_err(NetError::WriteAck)?;
         }
-        let len = desc_chain.writer.bytes_written() as u32;
-        ctrl_queue.add_used(desc_chain, len);
+        ctrl_queue.add_used(desc_chain);
     }
 
     ctrl_queue.trigger_interrupt();

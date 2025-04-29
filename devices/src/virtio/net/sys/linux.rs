@@ -117,7 +117,7 @@ pub fn process_rx<T: TapT>(rx_queue: &mut Queue, mut tap: &mut T) -> result::Res
 
         if bytes_written > 0 {
             let desc_chain = desc_chain.pop();
-            rx_queue.add_used(desc_chain, bytes_written);
+            rx_queue.add_used(desc_chain);
             needs_interrupt = true;
         }
     }
@@ -152,7 +152,7 @@ pub fn process_tx<T: TapT>(tx_queue: &mut Queue, mut tap: &mut T) {
             Err(e) => error!("net: tx: failed to write frame to tap: {}", e),
         }
 
-        tx_queue.add_used(desc_chain, 0);
+        tx_queue.add_used(desc_chain);
     }
 
     tx_queue.trigger_interrupt();

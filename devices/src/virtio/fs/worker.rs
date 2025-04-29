@@ -155,7 +155,7 @@ fn process_fs_queue<F: FileSystem + Sync>(
         let total =
             server.handle_message(&mut avail_desc.reader, &mut avail_desc.writer, &mapper)?;
 
-        queue.add_used(avail_desc, total as u32);
+        queue.add_used_with_bytes_written(avail_desc, total as u32);
         queue.trigger_interrupt();
     }
 

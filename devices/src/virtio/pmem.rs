@@ -291,7 +291,7 @@ async fn handle_queue(
                 0
             }
         };
-        queue.add_used(avail_desc, written as u32);
+        queue.add_used_with_bytes_written(avail_desc, written as u32);
         queue.trigger_interrupt();
     }
 }

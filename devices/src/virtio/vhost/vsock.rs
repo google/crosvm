@@ -218,8 +218,7 @@ impl VirtioDevice for Vsock {
                 .writer
                 .write_obj(transport_reset)
                 .expect("failed to write transport reset event");
-            let len = avail_desc.writer.bytes_written() as u32;
-            event_queue.add_used(avail_desc, len);
+            event_queue.add_used(avail_desc);
             event_queue.trigger_interrupt();
         }
         self.event_queue = Some(event_queue);

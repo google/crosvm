@@ -212,7 +212,9 @@ impl QueueReader for LocalQueueReader {
     }
 
     fn add_used(&self, desc_chain: DescriptorChain, len: u32) {
-        self.queue.borrow_mut().add_used(desc_chain, len)
+        self.queue
+            .borrow_mut()
+            .add_used_with_bytes_written(desc_chain, len);
     }
 
     fn signal_used(&self) {
@@ -239,7 +241,9 @@ impl QueueReader for SharedQueueReader {
     }
 
     fn add_used(&self, desc_chain: DescriptorChain, len: u32) {
-        self.queue.lock().add_used(desc_chain, len)
+        self.queue
+            .lock()
+            .add_used_with_bytes_written(desc_chain, len);
     }
 
     fn signal_used(&self) {

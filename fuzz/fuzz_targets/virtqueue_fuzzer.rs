@@ -127,8 +127,7 @@ fuzz_target!(|data: &[u8]| {
             let write_buf = vec![0u8; avail_desc.writer.available_bytes()];
             avail_desc.writer.write_all(&write_buf).unwrap();
 
-            let bytes_written = avail_desc.writer.bytes_written() as u32;
-            q.add_used(avail_desc, bytes_written);
+            q.add_used(avail_desc);
         }
     });
 });

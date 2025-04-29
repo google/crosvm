@@ -631,7 +631,7 @@ async fn request_queue(
             debug!("iommu fault resolved");
         }
 
-        queue.add_used(avail_desc, len as u32);
+        queue.add_used_with_bytes_written(avail_desc, len as u32);
         queue.trigger_interrupt();
     }
 }

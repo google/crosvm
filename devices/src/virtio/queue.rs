@@ -530,14 +530,21 @@ impl Queue {
         &Interrupt,
     );
 
-    define_queue_method!(
-        /// Puts an available descriptor head into the used ring for use by the guest.
-        add_used,
-        (),
-        mut,
-        desc_chain: DescriptorChain,
-        len: u32
-    );
+    /// Puts an available descriptor head into the used ring for use by the guest, using the number
+    /// of bytes written to `DescriptorChain`.
+    pub fn add_used(&mut self, desc_chain: DescriptorChain) {
+        let len: u32 = desc_chain.writer.bytes_written().try_into().unwrap();
+        self.add_used_with_bytes_written(desc_chain, len);
+    }
+
+    /// Puts an available descriptor head into the used ring for use by the guest, explicitly
+    /// specifying the number of bytes written.
+    pub fn add_used_with_bytes_written(&mut self, desc_chain: DescriptorChain, len: u32) {
+        match self {
+            Queue::SplitVirtQueue(q) => q.add_used_with_bytes_written(desc_chain, len),
+            Queue::PackedVirtQueue(q) => q.add_used_with_bytes_written(desc_chain, len),
+        }
+    }
 
     define_queue_method!(
         /// Take snapshot of queue's current status

@@ -310,7 +310,7 @@ impl PackedQueue {
     }
 
     /// Write to first descriptor in descriptor chain to mark descriptor chain as used
-    pub fn add_used(&mut self, desc_chain: DescriptorChain, len: u32) {
+    pub fn add_used_with_bytes_written(&mut self, desc_chain: DescriptorChain, len: u32) {
         let desc_index = desc_chain.index();
         if desc_index >= self.size {
             error!(

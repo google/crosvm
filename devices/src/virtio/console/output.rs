@@ -41,7 +41,7 @@ pub fn process_transmit_queue(transmit_queue: &mut Queue, output: &mut dyn io::W
             error!("console: process_transmit_request failed: {}", e);
         }
 
-        transmit_queue.add_used(avail_desc, 0);
+        transmit_queue.add_used(avail_desc);
         needs_interrupt = true;
     }
 

@@ -302,10 +302,9 @@ impl Stream {
                         // release the buffer if the sound server client returned too soon.
                         std::thread::sleep(self.next_buffer - elapsed);
                     }
-                    let len = writer.bytes_written() as u32;
                     {
                         let mut io_queue_lock = self.io_queue.lock();
-                        io_queue_lock.add_used(desc, len);
+                        io_queue_lock.add_used(desc);
                         io_queue_lock.trigger_interrupt();
                     }
                 }
@@ -434,10 +433,9 @@ pub fn reply_control_op_status(
             code: Le32::from(code),
         })
         .map_err(SoundError::QueueIO)?;
-    let len = writer.bytes_written() as u32;
     {
         let mut queue_lock = queue.lock();
-        queue_lock.add_used(desc, len);
+        queue_lock.add_used(desc);
         queue_lock.trigger_interrupt();
     }
     Ok(())
@@ -461,10 +459,9 @@ pub fn reply_pcm_buffer_status(
             latency_bytes: Le32::from(latency_bytes),
         })
         .map_err(SoundError::QueueIO)?;
-    let len = writer.bytes_written() as u32;
     {
         let mut queue_lock = queue.lock();
-        queue_lock.add_used(desc, len);
+        queue_lock.add_used(desc);
         queue_lock.trigger_interrupt();
     }
     Ok(())

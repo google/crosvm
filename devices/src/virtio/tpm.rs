@@ -90,7 +90,7 @@ impl Worker {
                 }
             };
 
-            self.queue.add_used(avail_desc, len);
+            self.queue.add_used_with_bytes_written(avail_desc, len);
             needs_interrupt = NeedsInterrupt::Yes;
         }
 

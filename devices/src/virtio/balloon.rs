@@ -365,7 +365,7 @@ where
         {
             error!("balloon: failed to process inflate addresses: {}", e);
         }
-        queue.add_used(avail_desc, 0);
+        queue.add_used(avail_desc);
         queue.trigger_interrupt();
     }
 }
@@ -416,7 +416,7 @@ where
         {
             error!("balloon: failed to process reported buffer: {}", e);
         }
-        queue.add_used(avail_desc, 0);
+        queue.add_used(avail_desc);
         queue.trigger_interrupt();
     }
 }
@@ -478,7 +478,7 @@ async fn handle_stats_queue(
         };
 
         // Request a new stats_desc to the guest.
-        queue.add_used(avail_desc, 0);
+        queue.add_used(avail_desc);
         queue.trigger_interrupt();
 
         avail_desc = match queue.next_async(&mut queue_event).await {
@@ -593,8 +593,7 @@ async fn handle_ws_op_queue(
             }
         }
 
-        let len = writer.bytes_written() as u32;
-        queue.add_used(avail_desc, len);
+        queue.add_used(avail_desc);
         queue.trigger_interrupt();
     }
 
@@ -671,7 +670,7 @@ async fn handle_ws_data_queue(
             }
         }
 
-        queue.add_used(avail_desc, 0);
+        queue.add_used(avail_desc);
         queue.trigger_interrupt();
     }
 }

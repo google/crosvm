@@ -69,9 +69,7 @@ fn rx_single_frame(rx_queue: &mut Queue, rx_buf: &mut [u8], rx_count: usize) -> 
         }
     };
 
-    let bytes_written = desc_chain.writer.bytes_written() as u32;
-
-    rx_queue.add_used(desc_chain, bytes_written);
+    rx_queue.add_used(desc_chain);
 
     true
 }
@@ -183,7 +181,7 @@ pub fn process_tx<T: TapT>(tx_queue: &mut Queue, tap: &mut T) {
             Err(e) => error!("net: tx: failed to read frame into buffer: {}", e),
         }
 
-        tx_queue.add_used(desc_chain, 0);
+        tx_queue.add_used(desc_chain);
     }
 
     tx_queue.trigger_interrupt();

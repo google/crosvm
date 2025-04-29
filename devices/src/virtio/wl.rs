@@ -1793,10 +1793,9 @@ pub fn process_in_queue(
                     error!("failed to encode response to descriptor chain: {}", e);
                 }
             }
-            let bytes_written = desc.writer.bytes_written() as u32;
             needs_interrupt = true;
             let desc = desc.pop();
-            in_queue.add_used(desc, bytes_written);
+            in_queue.add_used(desc);
         } else {
             break;
         }
@@ -1832,8 +1831,7 @@ pub fn process_out_queue(out_queue: &mut Queue, state: &mut WlState) {
             }
         }
 
-        let len = desc.writer.bytes_written() as u32;
-        out_queue.add_used(desc, len);
+        out_queue.add_used(desc);
         needs_interrupt = true;
     }
 

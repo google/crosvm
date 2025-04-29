@@ -51,8 +51,7 @@ impl Worker {
                 }
             }
 
-            let written_size = writer.bytes_written();
-            self.queue.add_used(avail_desc, written_size as u32);
+            self.queue.add_used(avail_desc);
             needs_interrupt = true;
         }
 

@@ -842,7 +842,7 @@ fn run_main_worker(
                         desc.len as u32
                     };
 
-                    set_pvclock_page_queue.add_used(desc_chain, len);
+                    set_pvclock_page_queue.add_used_with_bytes_written(desc_chain, len);
                     set_pvclock_page_queue.trigger_interrupt();
                 }
                 Token::SuspendResume => {

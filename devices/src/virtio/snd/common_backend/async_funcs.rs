@@ -547,8 +547,7 @@ fn send_pcm_response(
             .consume_bytes(writer.available_bytes() - std::mem::size_of::<virtio_snd_pcm_status>());
     }
     writer.write_obj(status).map_err(Error::WriteResponse)?;
-    let len = writer.bytes_written() as u32;
-    queue.add_used(desc_chain, len);
+    queue.add_used(desc_chain);
     queue.trigger_interrupt();
     Ok(())
 }
@@ -986,8 +985,7 @@ pub async fn handle_ctrl_queue(
         };
 
         handle_ctrl_msg.await?;
-        let len = writer.bytes_written() as u32;
-        queue.add_used(desc_chain, len);
+        queue.add_used(desc_chain);
         queue.trigger_interrupt();
     }
     Ok(())
@@ -1005,7 +1003,7 @@ pub async fn handle_event_queue(
             .map_err(Error::Async)?;
 
         // TODO(woodychow): Poll and forward events from cras asynchronously (API to be added)
-        queue.add_used(desc_chain, 0);
+        queue.add_used(desc_chain);
         queue.trigger_interrupt();
     }
 }
