@@ -293,19 +293,6 @@ impl SplitQueue {
         Wrapping(used_event)
     }
 
-    // Set the `idx` field in the used ring.
-    //
-    // This indicates to the driver that all entries up to (but not including) `used_index` have
-    // been used by the device and may be processed by the driver.
-    fn set_used_index(&mut self, used_index: Wrapping<u16>) {
-        fence(Ordering::SeqCst);
-
-        let used_index_addr = self.used_ring.unchecked_add(2);
-        self.mem
-            .write_obj_at_addr_volatile(used_index.0, used_index_addr)
-            .unwrap();
-    }
-
     /// Get the first available descriptor chain without removing it from the queue.
     /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
     pub fn peek(&mut self) -> Option<DescriptorChain> {
@@ -368,27 +355,86 @@ impl SplitQueue {
         }
     }
 
-    /// Puts an available descriptor head into the used ring for use by the guest.
-    pub fn add_used_with_bytes_written(&mut self, desc_chain: DescriptorChain, len: u32) {
-        let desc_index = desc_chain.index();
-        debug_assert!(desc_index < self.size);
+    pub(super) fn try_pop_length(&mut self, length: usize) -> Option<Vec<DescriptorChain>> {
+        let mut remain_len = length;
+        let mut descriptors = vec![];
+        while remain_len > 0 {
+            match self.peek() {
+                Some(desc) => {
+                    let available_bytes = desc.writer.available_bytes();
+                    descriptors.push(desc);
+                    self.next_avail += Wrapping(1);
+                    if available_bytes >= remain_len {
+                        if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
+                            self.set_avail_event(self.next_avail);
+                        }
+                        return Some(descriptors);
+                    } else {
+                        remain_len -= available_bytes;
+                    }
+                }
+                None => {
+                    if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
+                        self.set_avail_event(self.next_avail);
+                    }
+                    // Reverse the effect of pop
+                    self.next_avail -= Wrapping(descriptors.len() as u16);
+                    return None;
+                }
+            }
+        }
+        None
+    }
 
-        let used_ring = self.used_ring;
-        let next_used = self.wrap_queue_index(self.next_used) as usize;
-        let used_elem = used_ring.unchecked_add((4 + next_used * 8) as u64);
-
-        let elem = virtq_used_elem {
-            id: Le32::from(u32::from(desc_index)),
-            len: Le32::from(len),
-        };
-
-        // This write can't fail as we are guaranteed to be within the descriptor ring.
-        self.mem
-            .write_obj_at_addr_volatile(elem, used_elem)
+    /// Puts multiple available descriptor heads into the used ring for use by the guest.
+    pub fn add_used_with_bytes_written_batch(
+        &mut self,
+        desc_chains: impl IntoIterator<Item = (DescriptorChain, u32)>,
+    ) {
+        // Get a `VolatileSlice` covering the `struct virtq_used` fixed header (`flags` and `idx`)
+        // and variable-length `ring`. This ensures that the raw pointers generated below point into
+        // valid `GuestMemory` regions.
+        let used_ring_size =
+            2 * size_of::<u16>() + (size_of::<virtq_used_elem>() * usize::from(self.size));
+        let used_ring_vslice = self
+            .mem
+            .get_slice_at_addr(self.used_ring, used_ring_size)
             .unwrap();
 
-        self.next_used += Wrapping(1);
-        self.set_used_index(self.next_used);
+        // SAFETY: `elems_ptr` is always a valid pointer due to `used_ring_vslice()`.
+        let elems_ptr = unsafe { used_ring_vslice.as_mut_ptr().add(4) } as *mut virtq_used_elem;
+
+        // SAFETY: `used_index_ptr` is always a valid pointer due to `used_ring_vslice()`.
+        let used_index_ptr = unsafe { used_ring_vslice.as_mut_ptr().add(2) } as *mut u16;
+
+        // SAFETY: `used_index_ptr` is always a valid pointer
+        let used_index_atomic = unsafe { AtomicU16::from_ptr(used_index_ptr) };
+
+        let mut next_used = self.next_used;
+        for (desc_chain, len) in desc_chains {
+            let desc_index = desc_chain.index();
+            debug_assert!(desc_index < self.size);
+            let id = Le32::from(u32::from(desc_index));
+            let len = Le32::from(len);
+
+            let wrapped_index = usize::from(self.wrap_queue_index(next_used));
+            // SAFETY: `wrapped_index` is always in bounds due to `wrap_queue_index()`.
+            let elem_ptr = unsafe { elems_ptr.add(wrapped_index) };
+
+            // SAFETY: `elem_ptr` is always a valid pointer
+            unsafe {
+                std::ptr::write_volatile(std::ptr::addr_of_mut!((*elem_ptr).id), id);
+                std::ptr::write_volatile(std::ptr::addr_of_mut!((*elem_ptr).len), len);
+            };
+
+            next_used += Wrapping(1);
+        }
+
+        if next_used != self.next_used {
+            fence(Ordering::Release);
+            used_index_atomic.store(next_used.0, Ordering::Relaxed);
+            self.next_used = next_used;
+        }
     }
 
     /// Returns if the queue should have an interrupt sent based on its state.

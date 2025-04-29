@@ -424,6 +424,17 @@ impl Queue {
         self.peek().map(PeekedDescriptorChain::pop)
     }
 
+    /// try to pop DescriptorChain and collect until writable descriptors' total length
+    /// bigger than request_length. If no enough descriptors, return None.
+    pub fn try_pop_length(&mut self, request_length: usize) -> Option<Vec<DescriptorChain>> {
+        match self {
+            Queue::SplitVirtQueue(q) => q.try_pop_length(request_length),
+            Queue::PackedVirtQueue(_q) => {
+                unimplemented!()
+            }
+        }
+    }
+
     /// Returns `None` if stop_rx receives a value; otherwise returns the result
     /// of waiting for the next descriptor.
     pub async fn next_async_interruptable(
@@ -540,9 +551,23 @@ impl Queue {
     /// Puts an available descriptor head into the used ring for use by the guest, explicitly
     /// specifying the number of bytes written.
     pub fn add_used_with_bytes_written(&mut self, desc_chain: DescriptorChain, len: u32) {
+        let iter = std::iter::once((desc_chain, len));
         match self {
-            Queue::SplitVirtQueue(q) => q.add_used_with_bytes_written(desc_chain, len),
-            Queue::PackedVirtQueue(q) => q.add_used_with_bytes_written(desc_chain, len),
+            Queue::SplitVirtQueue(q) => q.add_used_with_bytes_written_batch(iter),
+            Queue::PackedVirtQueue(q) => q.add_used_with_bytes_written_batch(iter),
+        }
+    }
+
+    /// add a batch of descriptor chain into used in one time with each descriptor chain
+    /// specifying the number of bytes written with `desc_chain.writer.bytes_written()`
+    pub fn add_used_batch(&mut self, desc_chains: impl IntoIterator<Item = DescriptorChain>) {
+        let iter = desc_chains.into_iter().map(|desc_chain| {
+            let len: u32 = desc_chain.writer.bytes_written().try_into().unwrap();
+            (desc_chain, len)
+        });
+        match self {
+            Queue::SplitVirtQueue(q) => q.add_used_with_bytes_written_batch(iter),
+            Queue::PackedVirtQueue(q) => q.add_used_with_bytes_written_batch(iter),
         }
     }
 

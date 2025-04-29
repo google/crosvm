@@ -6,6 +6,7 @@
 
 use std::num::Wrapping;
 use std::sync::atomic::fence;
+use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 
 use anyhow::bail;
@@ -309,65 +310,59 @@ impl PackedQueue {
         }
     }
 
-    /// Write to first descriptor in descriptor chain to mark descriptor chain as used
-    pub fn add_used_with_bytes_written(&mut self, desc_chain: DescriptorChain, len: u32) {
-        let desc_index = desc_chain.index();
-        if desc_index >= self.size {
-            error!(
-                "attempted to add out of bounds descriptor to used ring: {}",
-                desc_index
-            );
-            return;
-        }
-
-        let chain_id = desc_chain
-            .id
-            .expect("Packed descriptor chain should have id");
-
-        let desc_addr = self
-            .desc_table
-            .checked_add(self.use_index.index.0 as u64 * 16)
-            .expect("Descriptor address should not overflow.");
-
-        // Write to len field
-        self.mem
-            .write_obj_at_addr(
-                len,
-                desc_addr
-                    .checked_add(8)
-                    .expect("Descriptor address should not overflow."),
-            )
+    /// Puts multiple available descriptor heads into the used ring for use by the guest.
+    pub fn add_used_with_bytes_written_batch(
+        &mut self,
+        desc_chains: impl IntoIterator<Item = (DescriptorChain, u32)>,
+    ) {
+        // Get a `VolatileSlice` covering the descriptor table. This ensures that the raw pointers
+        // generated below point into valid `GuestMemory` regions.
+        let desc_table_size = size_of::<PackedDesc>() * usize::from(self.size);
+        let desc_table_vslice = self
+            .mem
+            .get_slice_at_addr(self.desc_table, desc_table_size)
             .unwrap();
 
-        // Write to id field
-        self.mem
-            .write_obj_at_addr(
-                chain_id,
-                desc_addr
-                    .checked_add(12)
-                    .expect("Descriptor address should not overflow."),
-            )
-            .unwrap();
+        let desc_table_ptr = desc_table_vslice.as_mut_ptr() as *mut PackedDesc;
 
-        let wrap_counter = self.use_index.wrap_counter;
+        for (desc_chain, len) in desc_chains {
+            debug_assert!(desc_chain.index() < self.size);
 
-        let mut flags: u16 = 0;
-        if wrap_counter {
-            flags = flags | VIRTQ_DESC_F_USED | VIRTQ_DESC_F_AVAIL;
+            let chain_id = desc_chain
+                .id
+                .expect("Packed descriptor chain should have id");
+
+            let wrap_counter = self.use_index.wrap_counter;
+
+            let mut flags: u16 = 0;
+            if wrap_counter {
+                flags = flags | VIRTQ_DESC_F_USED | VIRTQ_DESC_F_AVAIL;
+            }
+            if len > 0 {
+                flags |= VIRTQ_DESC_F_WRITE;
+            }
+
+            // SAFETY: `desc_ptr` is always a valid pointer
+            let desc_ptr = unsafe { desc_table_ptr.add(usize::from(self.use_index.index.0)) };
+
+            // SAFETY: `desc_ptr` is always a valid pointer
+            unsafe {
+                std::ptr::write_volatile(std::ptr::addr_of_mut!((*desc_ptr).len), len.into());
+                std::ptr::write_volatile(std::ptr::addr_of_mut!((*desc_ptr).id), chain_id.into());
+            }
+
+            // Writing to flags should come at the very end to avoid showing the
+            // driver fragmented descriptor data
+            fence(Ordering::Release);
+
+            // SAFETY: `desc_ptr` is always a valid pointer
+            let desc_flags_atomic = unsafe {
+                AtomicU16::from_ptr(std::ptr::addr_of_mut!((*desc_ptr).flags) as *mut u16)
+            };
+            desc_flags_atomic.store(u16::to_le(flags), Ordering::Relaxed);
+
+            self.use_index.add_index(desc_chain.count, self.size());
         }
-        if len > 0 {
-            flags |= VIRTQ_DESC_F_WRITE;
-        }
-
-        // Writing to flags should come at the very end to avoid showing the
-        // driver fragmented descriptor data
-        fence(Ordering::SeqCst);
-
-        self.mem
-            .write_obj_at_addr_volatile(flags, desc_addr.unchecked_add(14))
-            .unwrap();
-
-        self.use_index.add_index(desc_chain.count, self.size());
     }
 
     /// Returns if the queue should have an interrupt sent based on its state.
