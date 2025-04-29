@@ -425,33 +425,24 @@ impl<T: EventSource> Worker<T> {
         needs_interrupt
     }
 
-    // Sends events from the guest to the source.  Returns the number of bytes read.
-    fn read_event_virtqueue(
-        avail_desc: &mut DescriptorChain,
-        event_source: &mut T,
-    ) -> Result<usize> {
+    // Sends events from the guest to the source.
+    fn read_event_virtqueue(avail_desc: &mut DescriptorChain, event_source: &mut T) -> Result<()> {
         let reader = &mut avail_desc.reader;
         while reader.available_bytes() >= virtio_input_event::SIZE {
             let evt: virtio_input_event = reader.read_obj().map_err(InputError::ReadQueue)?;
             event_source.send_event(&evt)?;
         }
 
-        Ok(reader.bytes_read())
+        Ok(())
     }
 
     fn process_status_queue(&mut self) -> Result<bool> {
         let mut needs_interrupt = false;
         while let Some(mut avail_desc) = self.status_queue.pop() {
-            let bytes_read =
-                match Worker::read_event_virtqueue(&mut avail_desc, &mut self.event_source) {
-                    Ok(count) => count,
-                    Err(e) => {
-                        error!("Input: failed to read events from virtqueue: {}", e);
-                        return Err(e);
-                    }
-                };
+            Worker::read_event_virtqueue(&mut avail_desc, &mut self.event_source)
+                .inspect_err(|e| error!("Input: failed to read events from virtqueue: {}", e))?;
 
-            self.status_queue.add_used(avail_desc, bytes_read as u32);
+            self.status_queue.add_used(avail_desc, 0);
             needs_interrupt = true;
         }
 
