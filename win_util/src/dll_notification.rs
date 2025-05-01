@@ -402,12 +402,7 @@ impl Drop for DllWatcher {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
-    use std::ffi::CString;
-    use std::io;
     use std::sync::Mutex;
-
-    use winapi::um::libloaderapi::FreeLibrary;
-    use winapi::um::libloaderapi::LoadLibraryA;
 
     use super::*;
 
@@ -424,37 +419,30 @@ mod tests {
 
     #[test]
     fn load_dll() {
-        let test_dll_name = CString::new(TEST_DLL_NAME_1).expect("failed to create CString");
         let (tx, rx) = std::sync::mpsc::channel::<()>();
         let loaded_dlls: Arc<Mutex<HashSet<OsString>>> = Arc::default();
-        let h_module = {
-            let watcher = DllWatcher::new(
-                {
-                    let loaded_dlls = Arc::clone(&loaded_dlls);
-                    move |data| {
-                        loaded_dlls
-                            .lock()
-                            .expect("the mutex should not be poisoned")
-                            .insert(data.base_dll_name);
-                        tx.send(()).expect("channel send should succeed");
-                    }
-                },
-                |_data| (),
-            )
-            .expect("failed to create DllWatcher");
-            watcher.wait_for_initialization(std::time::Duration::from_secs(5));
-            // SAFETY: We pass a valid C string in to the function.
-            let h_module = unsafe { LoadLibraryA(test_dll_name.as_ptr()) };
-            rx.recv_timeout(std::time::Duration::from_secs(5))
-                .expect("we should receive the DLL unload event");
-            h_module
-        };
-        assert!(
-            !h_module.is_null(),
-            "failed to load {}: {}",
-            TEST_DLL_NAME_1,
-            io::Error::last_os_error()
-        );
+        let watcher = DllWatcher::new(
+            {
+                let loaded_dlls = Arc::clone(&loaded_dlls);
+                move |data| {
+                    loaded_dlls
+                        .lock()
+                        .expect("the mutex should not be poisoned")
+                        .insert(data.base_dll_name);
+                    tx.send(()).expect("channel send should succeed");
+                }
+            },
+            |_data| (),
+        )
+        .expect("failed to create DllWatcher");
+        watcher.wait_for_initialization(std::time::Duration::from_secs(5));
+        let lib =
+            // SAFETY: loading and unloading dbghelp.dll shouldn't cause unsafe behavior.
+            unsafe { libloading::Library::new(TEST_DLL_NAME_1) }.expect("the DLL should load");
+        rx.recv_timeout(std::time::Duration::from_secs(5))
+            .expect("we should receive the DLL unload event");
+        drop(watcher);
+
         let loaded_dlls = loaded_dlls
             .lock()
             .expect("the mutex should not be poisoned");
@@ -467,14 +455,7 @@ mod tests {
             "{} load wasn't recorded by DLL watcher",
             TEST_DLL_NAME_1
         );
-        // SAFETY: We initialized h_module with a LoadLibraryA call.
-        let success = unsafe { FreeLibrary(h_module) } > 0;
-        assert!(
-            success,
-            "failed to free {}: {}",
-            TEST_DLL_NAME_1,
-            io::Error::last_os_error(),
-        )
+        lib.close().expect("the DLL should close");
     }
 
     #[test]
@@ -482,7 +463,6 @@ mod tests {
         let unloaded_dlls: Arc<Mutex<HashSet<OsString>>> = Arc::default();
         let (tx, rx) = std::sync::mpsc::channel::<()>();
         {
-            let test_dll_name = CString::new(TEST_DLL_NAME_2).expect("failed to create CString");
             let watcher = DllWatcher::new(|_data| (), {
                 let unloaded_dlls = unloaded_dlls.clone();
                 move |data| {
@@ -495,22 +475,10 @@ mod tests {
             })
             .expect("failed to create DllWatcher");
             watcher.wait_for_initialization(std::time::Duration::from_secs(5));
-            // SAFETY: We pass a valid C string in to the function.
-            let h_module = unsafe { LoadLibraryA(test_dll_name.as_ptr()) };
-            assert!(
-                !h_module.is_null(),
-                "failed to load {}: {}",
-                TEST_DLL_NAME_2,
-                io::Error::last_os_error()
-            );
-            // SAFETY: We initialized h_module with a LoadLibraryA call.
-            let success = unsafe { FreeLibrary(h_module) } > 0;
-            assert!(
-                success,
-                "failed to free {}: {}",
-                TEST_DLL_NAME_2,
-                io::Error::last_os_error(),
-            )
+            let lib =
+                // SAFETY: loading and unloading dbghelp.dll shouldn't cause unsafe behavior.
+                unsafe { libloading::Library::new(TEST_DLL_NAME_2) }.expect("the DLL should load");
+            lib.close().expect("the DLL should close");
         };
         rx.recv_timeout(std::time::Duration::from_secs(5))
             .expect("we should receive the DLL unload event");

@@ -3520,6 +3520,7 @@ dependencies = [
  "anyhow",
  "enumn",
  "libc",
+ "libloading",
  "log",
  "serde",
  "winapi",
