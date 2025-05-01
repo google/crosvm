@@ -75,7 +75,7 @@ pub(crate) fn cleanup() {
     }
 }
 
-pub fn get_library_watcher() -> std::io::Result<()> {
+pub fn get_library_watcher() -> anyhow::Result<()> {
     Ok(())
 }
 

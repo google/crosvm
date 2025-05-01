@@ -111,8 +111,7 @@ fn report_dll_loaded(dll_name: String) {
     metrics::log_event(MetricEventType::DllLoaded(dll_name));
 }
 
-pub fn get_library_watcher(
-) -> std::io::Result<DllWatcher<impl FnMut(DllNotificationData), impl FnMut(DllNotificationData)>> {
+pub fn get_library_watcher() -> anyhow::Result<DllWatcher> {
     let mut dlls: HashSet<OsString> = HashSet::new();
     DllWatcher::new(
         move |data| {
