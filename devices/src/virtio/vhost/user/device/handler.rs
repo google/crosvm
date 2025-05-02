@@ -1251,6 +1251,7 @@ mod tests {
         }
 
         // VhostUserFrontend::activate()
+        handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
         handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
         for _ in 0..QUEUES_NUM {
             handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
