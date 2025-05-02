@@ -10,7 +10,6 @@ use base::CloseNotifier;
 use base::Event;
 use base::RawDescriptor;
 use base::ReadNotifier;
-use base::INVALID_DESCRIPTOR;
 use zerocopy::FromBytes;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
@@ -28,31 +27,19 @@ use crate::Result;
 /// Client for a vhost-user device. The API is a thin abstraction over the vhost-user protocol.
 pub struct BackendClient {
     connection: Connection<FrontendReq>,
-    // Cached virtio features from the backend.
-    virtio_features: u64,
-    // Cached acked virtio features from the driver.
-    acked_virtio_features: u64,
-    // Cached vhost-user protocol features.
-    acked_protocol_features: u64,
 }
 
 impl BackendClient {
     /// Create a new instance.
     pub fn new(connection: Connection<FrontendReq>) -> Self {
-        BackendClient {
-            connection,
-            virtio_features: 0,
-            acked_virtio_features: 0,
-            acked_protocol_features: 0,
-        }
+        BackendClient { connection }
     }
 
     /// Get a bitmask of supported virtio/vhost features.
     pub fn get_features(&mut self) -> Result<u64> {
         let hdr = self.send_request_header(FrontendReq::GET_FEATURES, None)?;
         let val = self.recv_reply::<VhostUserU64>(&hdr)?;
-        self.virtio_features = val.value;
-        Ok(self.virtio_features)
+        Ok(val.value)
     }
 
     /// Inform the vhost subsystem which features to enable.
@@ -60,7 +47,6 @@ impl BackendClient {
     pub fn set_features(&mut self, features: u64) -> Result<()> {
         let val = VhostUserU64::new(features);
         let hdr = self.send_request_with_body(FrontendReq::SET_FEATURES, &val, None)?;
-        self.acked_virtio_features = features & self.virtio_features;
         self.wait_for_ack(&hdr)
     }
 
@@ -81,20 +67,8 @@ impl BackendClient {
     /// Set the memory map regions on the backend so it can translate the vring
     /// addresses. In the ancillary data there is an array of file descriptors
     pub fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
-        if regions.is_empty() || regions.len() > MAX_ATTACHED_FD_ENTRIES {
-            return Err(VhostUserError::InvalidParam(
-                "set_mem_table: regions empty or exceed max allowed regions per req.",
-            ));
-        }
-
         let mut ctx = VhostUserMemoryContext::new();
         for region in regions.iter() {
-            if region.memory_size == 0 || region.mmap_handle == INVALID_DESCRIPTOR {
-                return Err(VhostUserError::InvalidParam(
-                    "set_mem_table: invalid memory region",
-                ));
-            }
-
             let reg = VhostUserMemoryRegion {
                 guest_phys_addr: region.guest_phys_addr,
                 memory_size: region.memory_size,
@@ -117,13 +91,6 @@ impl BackendClient {
     /// Set base address for page modification logging.
     pub fn set_log_base(&self, base: u64, fd: Option<RawDescriptor>) -> Result<()> {
         let val = VhostUserU64::new(base);
-
-        let should_have_fd =
-            self.acked_protocol_features & VhostUserProtocolFeatures::LOG_SHMFD.bits() != 0;
-        if should_have_fd != fd.is_some() {
-            return Err(VhostUserError::InvalidParam("set_log_base: FD is missing"));
-        }
-
         let _ = self.send_request_with_body(
             FrontendReq::SET_LOG_BASE,
             &val,
@@ -149,12 +116,6 @@ impl BackendClient {
 
     /// Set the addresses for a given vring.
     pub fn set_vring_addr(&self, queue_index: usize, config_data: &VringConfigData) -> Result<()> {
-        if config_data.flags & !(VhostUserVringAddrFlags::all().bits()) != 0 {
-            return Err(VhostUserError::InvalidParam(
-                "set_vring_addr: unsupported vring flags",
-            ));
-        }
-
         let val = VhostUserVringAddr::from_config_data(queue_index as u32, config_data);
         let hdr = self.send_request_with_body(FrontendReq::SET_VRING_ADDR, &val, None)?;
         self.wait_for_ack(&hdr)
@@ -229,9 +190,6 @@ impl BackendClient {
         migration_phase: VhostUserMigrationPhase,
         fd: &impl AsRawDescriptor,
     ) -> Result<Option<File>> {
-        if self.acked_protocol_features & VhostUserProtocolFeatures::DEVICE_STATE.bits() == 0 {
-            return Err(VhostUserError::InvalidOperation);
-        }
         // Send request.
         let req = DeviceStateTransferParameters {
             transfer_direction: match transfer_direction {
@@ -264,9 +222,6 @@ impl BackendClient {
     /// After transferring the back-end’s internal state during migration, check whether the
     /// back-end was able to successfully fully process the state.
     pub fn check_device_state(&self) -> Result<()> {
-        if self.acked_protocol_features & VhostUserProtocolFeatures::DEVICE_STATE.bits() == 0 {
-            return Err(VhostUserError::InvalidOperation);
-        }
         let hdr = self.send_request_header(FrontendReq::CHECK_DEVICE_STATE, None)?;
         let reply = self.recv_reply::<VhostUserU64>(&hdr)?;
         if reply.value != 0 {
@@ -277,9 +232,6 @@ impl BackendClient {
 
     /// Get the protocol feature bitmask from the underlying vhost implementation.
     pub fn get_protocol_features(&self) -> Result<VhostUserProtocolFeatures> {
-        if self.virtio_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
-            return Err(VhostUserError::InvalidOperation);
-        }
         let hdr = self.send_request_header(FrontendReq::GET_PROTOCOL_FEATURES, None)?;
         let val = self.recv_reply::<VhostUserU64>(&hdr)?;
         Ok(VhostUserProtocolFeatures::from_bits_truncate(val.value))
@@ -287,33 +239,15 @@ impl BackendClient {
 
     /// Enable protocol features in the underlying vhost implementation.
     pub fn set_protocol_features(&mut self, features: VhostUserProtocolFeatures) -> Result<()> {
-        if self.virtio_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
-            return Err(VhostUserError::InvalidOperation);
-        }
-        if features.contains(VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS)
-            && !features.contains(VhostUserProtocolFeatures::BACKEND_REQ)
-        {
-            return Err(VhostUserError::FeatureMismatch);
-        }
         let val = VhostUserU64::new(features.bits());
         let hdr = self.send_request_with_body(FrontendReq::SET_PROTOCOL_FEATURES, &val, None)?;
-        // Don't wait for ACK here because the protocol feature negotiation process hasn't been
-        // completed yet.
-        self.acked_protocol_features = features.bits();
         self.wait_for_ack(&hdr)
     }
 
     /// Query how many queues the backend supports.
     pub fn get_queue_num(&self) -> Result<u64> {
-        if !self.is_feature_mq_available() {
-            return Err(VhostUserError::InvalidOperation);
-        }
-
         let hdr = self.send_request_header(FrontendReq::GET_QUEUE_NUM, None)?;
         let val = self.recv_reply::<VhostUserU64>(&hdr)?;
-        if val.value > VHOST_USER_MAX_VRINGS {
-            return Err(VhostUserError::InvalidMessage);
-        }
         Ok(val.value)
     }
 
@@ -323,11 +257,6 @@ impl BackendClient {
     /// VHOST_USER_SET_VRING_ENABLE with parameter 1, or after it has been
     /// disabled by VHOST_USER_SET_VRING_ENABLE with parameter 0.
     pub fn set_vring_enable(&self, queue_index: usize, enable: bool) -> Result<()> {
-        // set_vring_enable() is supported only when PROTOCOL_FEATURES has been enabled.
-        if self.acked_virtio_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
-            return Err(VhostUserError::InvalidOperation);
-        }
-
         let val = VhostUserVringState::new(queue_index as u32, enable.into());
         let hdr = self.send_request_with_body(FrontendReq::SET_VRING_ENABLE, &val, None)?;
         self.wait_for_ack(&hdr)
@@ -342,16 +271,6 @@ impl BackendClient {
         buf: &[u8],
     ) -> Result<(VhostUserConfig, VhostUserConfigPayload)> {
         let body = VhostUserConfig::new(offset, size, flags);
-        if !body.is_valid() {
-            return Err(VhostUserError::InvalidParam(
-                "get_config: VhostUserConfig is invalid",
-            ));
-        }
-
-        // depends on VhostUserProtocolFeatures::CONFIG
-        if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
-            return Err(VhostUserError::InvalidOperation);
-        }
 
         // vhost-user spec states that:
         // "Request payload: virtio device config space"
@@ -383,16 +302,6 @@ impl BackendClient {
                 .map_err(VhostUserError::InvalidCastToInt)?,
             flags,
         );
-        if !body.is_valid() {
-            return Err(VhostUserError::InvalidParam(
-                "set_config: VhostUserConfig is invalid",
-            ));
-        }
-
-        // depends on VhostUserProtocolFeatures::CONFIG
-        if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
-            return Err(VhostUserError::InvalidOperation);
-        }
 
         let hdr = self.send_request_with_payload(FrontendReq::SET_CONFIG, &body, buf, None)?;
         self.wait_for_ack(&hdr)
@@ -400,9 +309,6 @@ impl BackendClient {
 
     /// Setup backend communication channel.
     pub fn set_backend_req_fd(&self, fd: &dyn AsRawDescriptor) -> Result<()> {
-        if self.acked_protocol_features & VhostUserProtocolFeatures::BACKEND_REQ.bits() == 0 {
-            return Err(VhostUserError::InvalidOperation);
-        }
         let fds = [fd.as_raw_descriptor()];
         let hdr = self.send_request_header(FrontendReq::SET_BACKEND_REQ_FD, Some(&fds))?;
         self.wait_for_ack(&hdr)
@@ -413,10 +319,6 @@ impl BackendClient {
         &self,
         inflight: &VhostUserInflight,
     ) -> Result<(VhostUserInflight, File)> {
-        if self.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
-            return Err(VhostUserError::InvalidOperation);
-        }
-
         let hdr = self.send_request_with_body(FrontendReq::GET_INFLIGHT_FD, inflight, None)?;
         let (inflight, files) = self.recv_reply_with_files::<VhostUserInflight>(&hdr)?;
 
@@ -428,20 +330,6 @@ impl BackendClient {
 
     /// Set shared buffer for inflight I/O tracking.
     pub fn set_inflight_fd(&self, inflight: &VhostUserInflight, fd: RawDescriptor) -> Result<()> {
-        if self.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
-            return Err(VhostUserError::InvalidOperation);
-        }
-
-        if inflight.mmap_size == 0
-            || inflight.num_queues == 0
-            || inflight.queue_size == 0
-            || fd == INVALID_DESCRIPTOR
-        {
-            return Err(VhostUserError::InvalidParam(
-                "set_inflight_fd: invalid fd or params",
-            ));
-        }
-
         let hdr =
             self.send_request_with_body(FrontendReq::SET_INFLIGHT_FD, inflight, Some(&[fd]))?;
         self.wait_for_ack(&hdr)
@@ -449,11 +337,6 @@ impl BackendClient {
 
     /// Query the maximum amount of memory slots supported by the backend.
     pub fn get_max_mem_slots(&self) -> Result<u64> {
-        if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
-        {
-            return Err(VhostUserError::InvalidOperation);
-        }
-
         let hdr = self.send_request_header(FrontendReq::GET_MAX_MEM_SLOTS, None)?;
         let val = self.recv_reply::<VhostUserU64>(&hdr)?;
 
@@ -462,17 +345,6 @@ impl BackendClient {
 
     /// Add a new guest memory mapping for vhost to use.
     pub fn add_mem_region(&self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
-        if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
-        {
-            return Err(VhostUserError::InvalidOperation);
-        }
-
-        if region.memory_size == 0 || region.mmap_handle == INVALID_DESCRIPTOR {
-            return Err(VhostUserError::InvalidParam(
-                "add_mem_region: region empty or mmap handle invalid",
-            ));
-        }
-
         let body = VhostUserSingleMemoryRegion::new(
             region.guest_phys_addr,
             region.memory_size,
@@ -486,16 +358,6 @@ impl BackendClient {
 
     /// Remove a guest memory mapping from vhost.
     pub fn remove_mem_region(&self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
-        if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
-        {
-            return Err(VhostUserError::InvalidOperation);
-        }
-        if region.memory_size == 0 {
-            return Err(VhostUserError::InvalidParam(
-                "remove_mem_region: cannot remove zero sized region",
-            ));
-        }
-
         let body = VhostUserSingleMemoryRegion::new(
             region.guest_phys_addr,
             region.memory_size,
@@ -557,13 +419,6 @@ impl BackendClient {
         payload: &[u8],
         fds: Option<&[RawDescriptor]>,
     ) -> VhostUserResult<VhostUserMsgHeader<FrontendReq>> {
-        if let Some(fd_arr) = fds {
-            if fd_arr.len() > MAX_ATTACHED_FD_ENTRIES {
-                return Err(VhostUserError::InvalidParam(
-                    "send_request_with_payload: too many FDs supplied with message",
-                ));
-            }
-        }
         let len = mem::size_of::<T>()
             .checked_add(payload.len())
             .ok_or(VhostUserError::OversizedMsg)?;
@@ -645,9 +500,7 @@ impl BackendClient {
     }
 
     fn wait_for_ack(&self, hdr: &VhostUserMsgHeader<FrontendReq>) -> VhostUserResult<()> {
-        if self.acked_protocol_features & VhostUserProtocolFeatures::REPLY_ACK.bits() == 0
-            || !hdr.is_need_reply()
-        {
+        if !hdr.is_need_reply() {
             return Ok(());
         }
 
@@ -659,10 +512,6 @@ impl BackendClient {
             return Err(VhostUserError::BackendInternalError);
         }
         Ok(())
-    }
-
-    fn is_feature_mq_available(&self) -> bool {
-        self.acked_protocol_features & VhostUserProtocolFeatures::MQ.bits() != 0
     }
 
     #[inline]
@@ -714,7 +563,6 @@ impl VhostUserMemoryContext {
 #[cfg(test)]
 mod tests {
     use base::INVALID_DESCRIPTOR;
-    use tempfile::tempfile;
 
     use super::*;
 
@@ -792,10 +640,23 @@ mod tests {
         assert_eq!(hdr.get_code(), Ok(FrontendReq::SET_OWNER));
         assert!(rfds.is_empty());
 
-        assert!(backend_client.get_protocol_features().is_err());
-        assert!(backend_client
+        let pfeatures = VhostUserProtocolFeatures::all();
+        let hdr = VhostUserMsgHeader::new(FrontendReq::GET_PROTOCOL_FEATURES, 0x4, 8);
+        // Unknown feature bits should be ignored.
+        let msg = VhostUserU64::new(pfeatures.bits() | INVALID_PROTOCOL_FEATURE);
+        peer.send_message(&hdr, &msg, None).unwrap();
+        let features = backend_client.get_protocol_features().unwrap();
+        assert_eq!(features, pfeatures);
+        let (_hdr, rfds) = peer.recv_header().unwrap();
+        assert!(rfds.is_empty());
+
+        backend_client
             .set_protocol_features(VhostUserProtocolFeatures::all())
-            .is_err());
+            .unwrap();
+        let (_hdr, msg, rfds) = peer.recv_message::<VhostUserU64>().unwrap();
+        assert!(rfds.is_empty());
+        let val = msg.value;
+        assert_eq!(val, pfeatures.bits());
 
         let vfeatures = 0x15 | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
         let hdr = VhostUserMsgHeader::new(FrontendReq::GET_FEATURES, 0x4, 8);
@@ -835,59 +696,8 @@ mod tests {
     }
 
     #[test]
-    fn test_backend_client_set_config_negative() {
-        let (mut backend_client, _peer) = create_pair();
-        let buf = vec![0x0; BUFFER_SIZE];
-
-        backend_client
-            .set_config(0x100, VhostUserConfigFlags::WRITABLE, &buf[0..4])
-            .unwrap_err();
-
-        backend_client.virtio_features = 0xffff_ffff;
-        backend_client.acked_virtio_features = 0xffff_ffff;
-        backend_client.acked_protocol_features = 0xffff_ffff;
-
-        backend_client
-            .set_config(0, VhostUserConfigFlags::WRITABLE, &buf[0..4])
-            .unwrap();
-        backend_client
-            .set_config(
-                VHOST_USER_CONFIG_SIZE,
-                VhostUserConfigFlags::WRITABLE,
-                &buf[0..4],
-            )
-            .unwrap_err();
-        backend_client
-            .set_config(0x1000, VhostUserConfigFlags::WRITABLE, &buf[0..4])
-            .unwrap_err();
-        backend_client
-            .set_config(
-                0x100,
-                VhostUserConfigFlags::from_bits_retain(0xffff_ffff),
-                &buf[0..4],
-            )
-            .unwrap_err();
-        backend_client
-            .set_config(VHOST_USER_CONFIG_SIZE, VhostUserConfigFlags::WRITABLE, &buf)
-            .unwrap_err();
-        backend_client
-            .set_config(VHOST_USER_CONFIG_SIZE, VhostUserConfigFlags::WRITABLE, &[])
-            .unwrap_err();
-    }
-
-    fn create_pair2() -> (BackendClient, Connection<FrontendReq>) {
-        let (mut backend_client, peer) = create_pair();
-
-        backend_client.virtio_features = 0xffff_ffff;
-        backend_client.acked_virtio_features = 0xffff_ffff;
-        backend_client.acked_protocol_features = 0xffff_ffff;
-
-        (backend_client, peer)
-    }
-
-    #[test]
     fn test_backend_client_get_config_negative0() {
-        let (backend_client, peer) = create_pair2();
+        let (backend_client, peer) = create_pair();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let mut hdr = VhostUserMsgHeader::new(FrontendReq::GET_CONFIG, 0x4, 16);
@@ -909,7 +719,7 @@ mod tests {
 
     #[test]
     fn test_backend_client_get_config_negative1() {
-        let (backend_client, peer) = create_pair2();
+        let (backend_client, peer) = create_pair();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let mut hdr = VhostUserMsgHeader::new(FrontendReq::GET_CONFIG, 0x4, 16);
@@ -930,7 +740,7 @@ mod tests {
 
     #[test]
     fn test_backend_client_get_config_negative2() {
-        let (backend_client, peer) = create_pair2();
+        let (backend_client, peer) = create_pair();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let hdr = VhostUserMsgHeader::new(FrontendReq::GET_CONFIG, 0x4, 16);
@@ -944,7 +754,7 @@ mod tests {
 
     #[test]
     fn test_backend_client_get_config_negative3() {
-        let (backend_client, peer) = create_pair2();
+        let (backend_client, peer) = create_pair();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let hdr = VhostUserMsgHeader::new(FrontendReq::GET_CONFIG, 0x4, 16);
@@ -965,7 +775,7 @@ mod tests {
 
     #[test]
     fn test_backend_client_get_config_negative4() {
-        let (backend_client, peer) = create_pair2();
+        let (backend_client, peer) = create_pair();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let hdr = VhostUserMsgHeader::new(FrontendReq::GET_CONFIG, 0x4, 16);
@@ -986,7 +796,7 @@ mod tests {
 
     #[test]
     fn test_backend_client_get_config_negative5() {
-        let (backend_client, peer) = create_pair2();
+        let (backend_client, peer) = create_pair();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let hdr = VhostUserMsgHeader::new(FrontendReq::GET_CONFIG, 0x4, 16);
@@ -1007,7 +817,7 @@ mod tests {
 
     #[test]
     fn test_backend_client_get_config_negative6() {
-        let (backend_client, peer) = create_pair2();
+        let (backend_client, peer) = create_pair();
         let buf = vec![0x0; BUFFER_SIZE];
 
         let hdr = VhostUserMsgHeader::new(FrontendReq::GET_CONFIG, 0x4, 16);
@@ -1024,29 +834,5 @@ mod tests {
         assert!(backend_client
             .get_config(0x100, 4, VhostUserConfigFlags::WRITABLE, &buf[0..4])
             .is_err());
-    }
-
-    #[test]
-    fn test_maset_set_mem_table_failure() {
-        let (backend_client, _peer) = create_pair2();
-
-        // set_mem_table() with 0 regions is invalid
-        backend_client.set_mem_table(&[]).unwrap_err();
-
-        // set_mem_table() with more than MAX_ATTACHED_FD_ENTRIES is invalid
-        let files: Vec<File> = (0..MAX_ATTACHED_FD_ENTRIES + 1)
-            .map(|_| tempfile().unwrap())
-            .collect();
-        let tables: Vec<VhostUserMemoryRegionInfo> = files
-            .iter()
-            .map(|f| VhostUserMemoryRegionInfo {
-                guest_phys_addr: 0,
-                memory_size: 0x100000,
-                userspace_addr: 0x800000,
-                mmap_offset: 0,
-                mmap_handle: f.as_raw_descriptor(),
-            })
-            .collect();
-        backend_client.set_mem_table(&tables).unwrap_err();
     }
 }
