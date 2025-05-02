@@ -850,7 +850,7 @@ fn free_memory(
     // When `--lock-guest-memory` is used, it is not possible to free the memory from the main
     // process, so we free it from the sandboxed balloon process directly.
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    if mem.locked() && !mem.use_dontneed_locked() {
+    if mem.locked() && !mem.use_punchhole_locked() {
         for (guest_address, len) in ranges {
             if let Err(e) = mem.remove_range(guest_address, len) {
                 warn!("Marking pages unused failed: {}, addr={}", e, guest_address);

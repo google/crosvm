@@ -1685,11 +1685,11 @@ fn create_guest_memory(
         mem_policy |= MemoryPolicy::USE_HUGEPAGES;
     }
 
-    if cfg.lock_guest_memory || cfg.lock_guest_memory_dontneed {
+    if cfg.lock_guest_memory || cfg.lock_guest_memory_punchhole {
         mem_policy |= MemoryPolicy::LOCK_GUEST_MEMORY;
     }
-    if cfg.lock_guest_memory_dontneed {
-        mem_policy |= MemoryPolicy::USE_DONTNEED_LOCKED;
+    if cfg.lock_guest_memory_punchhole {
+        mem_policy |= MemoryPolicy::USE_PUNCHHOLE_LOCKED;
     }
     guest_mem.set_memory_policy(mem_policy);
 

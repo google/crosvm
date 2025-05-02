@@ -680,7 +680,7 @@ pub struct Config {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub lock_guest_memory: bool,
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    pub lock_guest_memory_dontneed: bool,
+    pub lock_guest_memory_punchhole: bool,
     #[cfg(windows)]
     pub log_file: Option<String>,
     #[cfg(windows)]
@@ -920,7 +920,7 @@ impl Default for Config {
             #[cfg(any(target_os = "android", target_os = "linux"))]
             lock_guest_memory: false,
             #[cfg(any(target_os = "android", target_os = "linux"))]
-            lock_guest_memory_dontneed: false,
+            lock_guest_memory_punchhole: false,
             #[cfg(windows)]
             log_file: None,
             #[cfg(windows)]
@@ -1216,9 +1216,9 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
     }
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    if cfg.lock_guest_memory && cfg.lock_guest_memory_dontneed {
+    if cfg.lock_guest_memory && cfg.lock_guest_memory_punchhole {
         return Err(
-            "'lock-guest-memory' and 'lock-guest-memory-dontneed' are mutually exclusive"
+            "'lock-guest-memory' and 'lock-guest-memory-punchhole' are mutually exclusive"
                 .to_string(),
         );
     }

@@ -23,7 +23,7 @@ bitflags! {
     pub struct MemoryPolicy: u32 {
         const USE_HUGEPAGES = 1;
         const LOCK_GUEST_MEMORY = (1 << 1);
-        const USE_DONTNEED_LOCKED = (1 << 2);
+        const USE_PUNCHHOLE_LOCKED = (1 << 2);
     }
 }
 
@@ -51,16 +51,20 @@ impl GuestMemory {
             .map_err(|e| Error::MemoryAccess(addr, e))
     }
 
-    /// Madvise away the address range in the host that is associated with the given guest range.
-    ///
-    /// This feature is only available on Unix, where a MemoryMapping can remove a mapped range.
-    ///
-    /// Requires a 5.18+ kernel.
-    pub fn dontneed_locked_range(&self, addr: GuestAddress, count: u64) -> Result<()> {
-        let (mapping, offset, _) = self.find_region(addr)?;
-        mapping
-            .dontneed_locked_range(offset, count as usize)
-            .map_err(|e| Error::MemoryAccess(addr, e))
+    /// Punch a hole in the backing file that is associated with the given guest range.
+    pub fn punch_hole_range(&self, addr: GuestAddress, count: u64) -> Result<()> {
+        let region = self
+            .regions
+            .iter()
+            .find(|region| region.contains_range(addr, count))
+            .ok_or(Error::InvalidGuestRange(addr, count))?;
+        base::sys::linux::fallocate(
+            &region.shared_obj,
+            base::sys::linux::FallocateMode::PunchHole,
+            region.obj_offset + addr.offset_from(region.guest_base),
+            count,
+        )
+        .map_err(Error::PunchHole)
     }
 
     /// Handles guest memory policy hints/advices.
@@ -93,8 +97,8 @@ impl GuestMemory {
                 }
             }
 
-            if mem_policy.contains(MemoryPolicy::USE_DONTNEED_LOCKED) {
-                self.use_dontneed_locked = true;
+            if mem_policy.contains(MemoryPolicy::USE_PUNCHHOLE_LOCKED) {
+                self.use_punchhole_locked = true;
             }
         }
     }

@@ -55,6 +55,8 @@ pub enum Error {
     FiledBackedOpenFailed(#[source] std::io::Error),
     #[error("invalid guest address {0}")]
     InvalidGuestAddress(GuestAddress),
+    #[error("invalid guest range at {0} of size {1}")]
+    InvalidGuestRange(GuestAddress, u64),
     #[error("invalid offset {0}")]
     InvalidOffset(u64),
     #[error("size {0} must not be zero")]
@@ -73,6 +75,8 @@ pub enum Error {
     MemoryRegionOverlap,
     #[error("memory region size {0} is too large")]
     MemoryRegionTooLarge(u128),
+    #[error("punch hole failed {0}")]
+    PunchHole(#[source] base::Error),
     #[error("incomplete read of {completed} instead of {expected} bytes")]
     ShortRead { expected: usize, completed: usize },
     #[error("incomplete write of {completed} instead of {expected} bytes")]
@@ -268,6 +272,14 @@ impl MemoryRegion {
     fn contains(&self, addr: GuestAddress) -> bool {
         addr >= self.guest_base && addr < self.end()
     }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))] // unused on windows
+    fn contains_range(&self, addr: GuestAddress, size: u64) -> bool {
+        let Some(end_addr) = addr.checked_add(size) else {
+            return false;
+        };
+        addr >= self.guest_base && end_addr <= self.end()
+    }
 }
 
 /// Tracks memory regions and where they are mapped in the guest, along with shm
@@ -276,7 +288,7 @@ impl MemoryRegion {
 pub struct GuestMemory {
     regions: Arc<[MemoryRegion]>,
     locked: bool,
-    use_dontneed_locked: bool,
+    use_punchhole_locked: bool,
 }
 
 impl AsRawDescriptors for GuestMemory {
@@ -385,7 +397,7 @@ impl GuestMemory {
         Ok(GuestMemory {
             regions: Arc::from(regions),
             locked: false,
-            use_dontneed_locked: false,
+            use_punchhole_locked: false,
         })
     }
 
@@ -427,7 +439,7 @@ impl GuestMemory {
         Ok(GuestMemory {
             regions: Arc::from(regions),
             locked: false,
-            use_dontneed_locked: false,
+            use_punchhole_locked: false,
         })
     }
 
@@ -436,9 +448,9 @@ impl GuestMemory {
         self.locked
     }
 
-    // Whether `MemoryPolicy::USE_DONTNEED_LOCKED` was set.
-    pub fn use_dontneed_locked(&self) -> bool {
-        self.use_dontneed_locked
+    // Whether `MemoryPolicy::USE_PUNCHHOLE_LOCKED` was set.
+    pub fn use_punchhole_locked(&self) -> bool {
+        self.use_punchhole_locked
     }
 
     /// Returns the end address of memory.

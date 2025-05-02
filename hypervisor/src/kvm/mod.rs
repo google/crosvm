@@ -588,8 +588,8 @@ impl KvmVm {
     }
 
     fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
-        match if self.guest_mem.use_dontneed_locked() {
-            self.guest_mem.dontneed_locked_range(guest_address, size)
+        match if self.guest_mem.use_punchhole_locked() {
+            self.guest_mem.punch_hole_range(guest_address, size)
         } else {
             self.guest_mem.remove_range(guest_address, size)
         } {
