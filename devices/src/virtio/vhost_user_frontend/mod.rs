@@ -5,7 +5,6 @@
 //! VirtioDevice implementation for the VMM side of a vhost-user connection.
 
 mod error;
-mod fs;
 mod handler;
 mod sys;
 mod worker;
@@ -36,7 +35,6 @@ use vmm_vhost::VhostUserMemoryRegionInfo;
 use vmm_vhost::VringConfigData;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
-use crate::virtio::copy_config;
 use crate::virtio::device_constants::VIRTIO_DEVICE_TYPE_SPECIFIC_FEATURES_MASK;
 use crate::virtio::vhost_user_frontend::error::Error;
 use crate::virtio::vhost_user_frontend::error::Result;
@@ -68,7 +66,6 @@ pub struct VhostUserFrontend {
     shmem_region: RefCell<Option<Option<SharedMemoryRegion>>>,
 
     queue_sizes: Vec<u16>,
-    cfg: Option<Vec<u8>>,
     expose_shmem_descriptors_with_viommu: bool,
     pci_address: Option<PciAddress>,
 
@@ -101,37 +98,9 @@ impl VhostUserFrontend {
     /// - `max_queue_size`: maximum number of entries in each queue (default: [`Queue::MAX_SIZE`])
     pub fn new(
         device_type: DeviceType,
-        base_features: u64,
-        connection: vmm_vhost::Connection<vmm_vhost::FrontendReq>,
-        max_queue_size: Option<u16>,
-        pci_address: Option<PciAddress>,
-    ) -> Result<VhostUserFrontend> {
-        VhostUserFrontend::new_internal(
-            connection,
-            device_type,
-            max_queue_size,
-            base_features,
-            None, // cfg
-            pci_address,
-        )
-    }
-
-    /// Create a new VirtioDevice for a vhost-user device frontend.
-    ///
-    /// # Arguments
-    ///
-    /// - `connection`: connection to the device backend
-    /// - `device_type`: virtio device type
-    /// - `max_queue_size`: maximum number of entries in each queue (default: [`Queue::MAX_SIZE`])
-    /// - `base_features`: base virtio device features (e.g. `VIRTIO_F_VERSION_1`)
-    /// - `cfg`: bytes to return for the virtio configuration space (queried from device if not
-    ///   specified)
-    pub(crate) fn new_internal(
-        connection: vmm_vhost::Connection<vmm_vhost::FrontendReq>,
-        device_type: DeviceType,
-        max_queue_size: Option<u16>,
         mut base_features: u64,
-        cfg: Option<&[u8]>,
+        connection: vmm_vhost::Connection<vmm_vhost::FrontendReq>,
+        max_queue_size: Option<u16>,
         pci_address: Option<PciAddress>,
     ) -> Result<VhostUserFrontend> {
         // Don't allow packed queues even if requested. We don't handle them properly yet at the
@@ -247,7 +216,6 @@ impl VhostUserFrontend {
             backend_req_handler,
             shmem_region: RefCell::new(None),
             queue_sizes,
-            cfg: cfg.map(|cfg| cfg.to_vec()),
             expose_shmem_descriptors_with_viommu,
             pci_address,
             sent_queues: None,
@@ -417,11 +385,6 @@ impl VirtioDevice for VhostUserFrontend {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        if let Some(cfg) = &self.cfg {
-            copy_config(data, 0, cfg, offset);
-            return;
-        }
-
         let Ok(offset) = offset.try_into() else {
             error!("failed to read config: invalid config offset is given: {offset}");
             return;
