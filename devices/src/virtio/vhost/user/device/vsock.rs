@@ -114,7 +114,7 @@ impl VhostUserDeviceBuilder for VhostUserVsockDevice {
 fn convert_vhost_error(err: vhost::Error) -> Error {
     use vhost::Error::*;
     match err {
-        IoctlError(e) => Error::ReqHandlerError(anyhow::Error::new(e)),
+        IoctlError(e) => Error::ReqHandlerError(e),
         _ => Error::BackendInternalError,
     }
 }

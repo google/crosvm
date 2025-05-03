@@ -4,9 +4,7 @@
 use std::fs::File;
 use std::mem;
 
-use anyhow::Context;
 use base::AsRawDescriptor;
-use zerocopy::IntoBytes;
 
 use crate::message::*;
 use crate::BackendReq;
@@ -14,22 +12,6 @@ use crate::Connection;
 use crate::Error;
 use crate::HandlerResult;
 use crate::Result;
-
-trait VhostUserReply: Sized {
-    fn serialize(&self) -> anyhow::Result<Vec<u8>>;
-}
-
-impl VhostUserReply for VhostUserU64 {
-    fn serialize(&self) -> anyhow::Result<Vec<u8>> {
-        Ok(self.as_bytes().to_owned())
-    }
-}
-
-impl VhostUserReply for VhostUserRequestResponse {
-    fn serialize(&self) -> anyhow::Result<Vec<u8>> {
-        serde_json::to_vec(self).map_err(anyhow::Error::new)
-    }
-}
 
 /// Trait for vhost-user frontends to respond to requests from the backend.
 ///
@@ -127,72 +109,45 @@ impl<S: Frontend> FrontendServer<S> {
         let buf = self.sub_sock.recv_body_bytes(&hdr)?;
         let size = buf.len();
 
-        match hdr.get_code() {
+        let res = match hdr.get_code() {
             Ok(BackendReq::CONFIG_CHANGE_MSG) => {
                 self.check_msg_size(&hdr, size, 0)?;
-                let res = self.frontend.handle_config_change();
-                if self.reply_ack_negotiated && hdr.is_need_reply() {
-                    let reply_msg = match &res {
-                        Ok(value) => *value,
-                        Err(e) => {
-                            let errno = e.raw_os_error().unwrap_or(libc::EINVAL);
-                            -errno as u64
-                        }
-                    };
-                    self.send_reply(&hdr, &VhostUserU64::new(reply_msg))?;
-                }
-                res.context("failed to handle config change")
+                self.frontend
+                    .handle_config_change()
                     .map_err(Error::ReqHandlerError)
             }
             Ok(BackendReq::SHMEM_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserShmemMapMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
-                let res = self
-                    .frontend
+                self.frontend
                     .shmem_map(&msg, &files[0])
-                    .context("handle shmem map")
-                    .map_err(VhostUserRequestError::handler_error);
-                self.send_reply(&hdr, &res)?;
-                res.map_err(|e| e.into())
+                    .map_err(Error::ReqHandlerError)
             }
             Ok(BackendReq::SHMEM_UNMAP) => {
                 let msg = self.extract_msg_body::<VhostUserShmemUnmapMsg>(&hdr, size, &buf)?;
-                let res = self
-                    .frontend
+                self.frontend
                     .shmem_unmap(&msg)
-                    .context("handle shmem unmap")
-                    .map_err(VhostUserRequestError::handler_error);
-                self.send_reply(&hdr, &res)?;
-                res.map_err(|e| e.into())
+                    .map_err(Error::ReqHandlerError)
             }
             Ok(BackendReq::GPU_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserGpuMapMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
-                let res = self
-                    .frontend
+                self.frontend
                     .gpu_map(&msg, &files[0])
-                    .context("handle gpu map")
-                    .map_err(VhostUserRequestError::handler_error);
-                self.send_reply(&hdr, &res)?;
-                res.map_err(|e| e.into())
+                    .map_err(Error::ReqHandlerError)
             }
             Ok(BackendReq::EXTERNAL_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserExternalMapMsg>(&hdr, size, &buf)?;
-                let res = self
-                    .frontend
+                self.frontend
                     .external_map(&msg)
-                    .context("handle external map")
-                    .map_err(VhostUserRequestError::handler_error);
-                self.send_reply(&hdr, &res)?;
-                res.map_err(|e| e.into())
+                    .map_err(Error::ReqHandlerError)
             }
-            _ => {
-                if self.reply_ack_negotiated && hdr.is_need_reply() {
-                    self.send_reply(&hdr, &VhostUserU64::new(-libc::EINVAL as u64))?;
-                }
-                Err(Error::InvalidMessage)
-            }
-        }
+            _ => Err(Error::InvalidMessage),
+        };
+
+        self.send_reply(&hdr, &res)?;
+
+        res
     }
 
     fn check_msg_size(
@@ -244,28 +199,44 @@ impl<S: Frontend> FrontendServer<S> {
         Ok(msg)
     }
 
-    fn new_reply_header(
+    fn new_reply_header<T: Sized>(
         &self,
         req: &VhostUserMsgHeader<BackendReq>,
-        size: usize,
     ) -> Result<VhostUserMsgHeader<BackendReq>> {
         Ok(VhostUserMsgHeader::new(
             req.get_code().map_err(|_| Error::InvalidMessage)?,
             VhostUserHeaderFlag::REPLY.bits(),
-            size.try_into()
-                .unwrap_or_else(|e| panic!("body size({}) too large: {}", size, e)),
+            mem::size_of::<T>() as u32,
         ))
     }
 
     fn send_reply(
         &mut self,
         req: &VhostUserMsgHeader<BackendReq>,
-        res: &impl VhostUserReply,
+        res: &Result<u64>,
     ) -> Result<()> {
-        let raw_response = res.serialize().map_err(|_| Error::SerializationFailed)?;
-        let raw_response: &[u8] = &raw_response;
-        let hdr = self.new_reply_header(req, raw_response.len())?;
-        self.sub_sock.send_message(&hdr, raw_response, None)?;
+        let code = req.get_code().map_err(|_| Error::InvalidMessage)?;
+        if code == BackendReq::SHMEM_MAP
+            || code == BackendReq::SHMEM_UNMAP
+            || code == BackendReq::GPU_MAP
+            || code == BackendReq::EXTERNAL_MAP
+            || (self.reply_ack_negotiated && req.is_need_reply())
+        {
+            let hdr = self.new_reply_header::<VhostUserU64>(req)?;
+            let def_err = libc::EINVAL;
+            let val = match res {
+                Ok(n) => *n,
+                Err(e) => match e {
+                    Error::ReqHandlerError(ioerr) => match ioerr.raw_os_error() {
+                        Some(rawerr) => -rawerr as u64,
+                        None => -def_err as u64,
+                    },
+                    _ => -def_err as u64,
+                },
+            };
+            let msg = VhostUserU64::new(val);
+            self.sub_sock.send_message(&hdr, &msg, None)?;
+        }
         Ok(())
     }
 }
