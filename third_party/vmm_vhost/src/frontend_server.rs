@@ -4,7 +4,6 @@
 use std::fs::File;
 use std::mem;
 
-use anyhow::bail;
 use anyhow::Context;
 use base::AsRawDescriptor;
 use zerocopy::IntoBytes;
@@ -13,6 +12,7 @@ use crate::message::*;
 use crate::BackendReq;
 use crate::Connection;
 use crate::Error;
+use crate::HandlerResult;
 use crate::Result;
 
 trait VhostUserReply: Sized {
@@ -36,8 +36,8 @@ impl VhostUserReply for VhostUserRequestResponse {
 /// Each method corresponds to a vhost-user protocol method. See the specification for details.
 pub trait Frontend {
     /// Handle device configuration change notifications.
-    fn handle_config_change(&mut self) -> anyhow::Result<()> {
-        bail!("config change not supported")
+    fn handle_config_change(&mut self) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle shared memory region mapping requests.
@@ -45,13 +45,13 @@ pub trait Frontend {
         &mut self,
         _req: &VhostUserShmemMapMsg,
         _fd: &dyn AsRawDescriptor,
-    ) -> anyhow::Result<()> {
-        bail!("shmem map not supported")
+    ) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle shared memory region unmapping requests.
-    fn shmem_unmap(&mut self, _req: &VhostUserShmemUnmapMsg) -> anyhow::Result<()> {
-        bail!("shmem unmap not supported")
+    fn shmem_unmap(&mut self, _req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     // fn handle_iotlb_msg(&mut self, iotlb: VhostUserIotlb);
@@ -62,13 +62,13 @@ pub trait Frontend {
         &mut self,
         _req: &VhostUserGpuMapMsg,
         _descriptor: &dyn AsRawDescriptor,
-    ) -> anyhow::Result<()> {
-        bail!("GPU map not supported")
+    ) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle external memory region mapping requests.
-    fn external_map(&mut self, _req: &VhostUserExternalMapMsg) -> anyhow::Result<()> {
-        bail!("external map not supported")
+    fn external_map(&mut self, _req: &VhostUserExternalMapMsg) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 }
 
@@ -112,7 +112,7 @@ impl<S: Frontend> FrontendServer<S> {
     /// - serialize calls to this function
     /// - decide what to do when errer happens
     /// - optional recover from failure
-    pub fn handle_request(&mut self) -> Result<()> {
+    pub fn handle_request(&mut self) -> Result<u64> {
         // The underlying communication channel is a Unix domain socket in
         // stream mode, and recvmsg() is a little tricky here. To successfully
         // receive attached file descriptors, we need to receive messages and
@@ -133,8 +133,11 @@ impl<S: Frontend> FrontendServer<S> {
                 let res = self.frontend.handle_config_change();
                 if self.reply_ack_negotiated && hdr.is_need_reply() {
                     let reply_msg = match &res {
-                        Ok(_) => 0,
-                        Err(_) => -libc::EINVAL as u64,
+                        Ok(value) => *value,
+                        Err(e) => {
+                            let errno = e.raw_os_error().unwrap_or(libc::EINVAL);
+                            -errno as u64
+                        }
                     };
                     self.send_reply(&hdr, &VhostUserU64::new(reply_msg))?;
                 }
