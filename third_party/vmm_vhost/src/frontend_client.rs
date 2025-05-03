@@ -109,9 +109,7 @@ impl FrontendClient {
         );
         ensure!(rfds.is_empty(), "the reply shouldn't include fds");
         let body = T::deserialize(&raw_body).context("failed to deserilize the message body")?;
-        // The downstream uses the FrontendServerInternalError context to tell if the error happens
-        // within the frontend client process or in the frontend server process.
-        body.ok().context(crate::Error::FrontendServerInternalError)
+        body.ok().context("failed on the vhost server")
     }
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.
