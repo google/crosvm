@@ -39,7 +39,6 @@ prctl: arg0 == PR_SET_NO_NEW_PRIVS || \
        arg0 == PR_SET_SECCOMP || \
        arg0 == PR_CAPBSET_DROP || \
        arg0 == PR_SET_NAME
-prlimit64: 1
 setsid: 1
 setsockopt: 1
 socket: arg0 == AF_INET || arg0 == AF_UNIX

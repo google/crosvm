@@ -35,7 +35,7 @@ io_uring_register: 1
 io_uring_enter: 1
 kill: 1
 lseek: 1
-madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE || arg2 == MADV_MERGEABLE || arg2 == MADV_FREE
+madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE || arg2 == MADV_MERGEABLE || arg2 == MADV_FREE || arg2 == MADV_NOHUGEPAGE
 membarrier: 1
 memfd_create: 1
 mmap: arg2 in ~PROT_EXEC
@@ -47,6 +47,8 @@ clock_nanosleep: 1
 pipe2: 1
 poll: 1
 ppoll: 1
+prctl: arg0 == PR_SET_VMA
+prlimit64: 1
 read: 1
 readlink: 1
 readlinkat: 1

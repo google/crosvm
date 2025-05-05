@@ -32,8 +32,12 @@ use crate::config::JailConfig;
 static EMBEDDED_BPFS: LazyLock<std::collections::HashMap<&str, Vec<u8>>> =
     LazyLock::new(|| include!(concat!(env!("OUT_DIR"), "/bpf_includes.in")));
 
-/// Most devices don't need to open many fds.
-pub const MAX_OPEN_FILES_DEFAULT: u64 = 1024;
+/// Most devices don't need to open many fds. However, an implementation detail of minijail is that
+/// after applying this limit, it opens an additional file descriptor to scan the /proc/self/fd
+/// directory to choose which file descriptors to close in the child process. The open files limit
+/// therefore has to be higher than the number file descriptors that the parent thread holds open
+/// before the jail is started.
+pub const MAX_OPEN_FILES_DEFAULT: u64 = 4096;
 /// The max open files for gpu processes.
 const MAX_OPEN_FILES_FOR_GPU: u64 = 32768;
 /// The max open files for jail warden, matching FD_RAW_FAILURE.
