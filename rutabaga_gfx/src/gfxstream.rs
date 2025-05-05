@@ -947,7 +947,7 @@ impl RutabagaComponent for Gfxstream {
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
         let context_snapshot: GfxstreamContextSnapshot = serde_json::from_reader(&snapshot[..])
             .context(RutabagaErrorKind::IoError)
-            .map_err(|e| RutabagaError::from)?;
+            .map_err(RutabagaError::from)?;
 
         Ok(Box::new(GfxstreamContext {
             ctx_id: context_snapshot.ctx_id,
