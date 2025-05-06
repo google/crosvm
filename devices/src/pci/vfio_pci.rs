@@ -1655,6 +1655,13 @@ impl PciDevice for VfioPciDevice {
         }
         if let Some(msix_cap) = &self.msix_cap {
             rds.push(msix_cap.lock().config.as_raw_descriptor());
+            rds.extend(
+                msix_cap
+                    .lock()
+                    .msix_interrupt_evt
+                    .iter()
+                    .map(|evt| evt.as_raw_descriptor()),
+            );
         }
         rds
     }
