@@ -43,6 +43,12 @@ We provide a Debian container with the required packages installed. With
 [Podman](https://podman.io/getting-started/installation) or
 [Docker](https://docs.docker.com/get-docker/) installed, it can be started with:
 
+NOTE: to use podman, you will need to install passt.
+
+```sh
+sudo apt install passt
+```
+
 ```sh
 ./tools/dev_container
 ```
