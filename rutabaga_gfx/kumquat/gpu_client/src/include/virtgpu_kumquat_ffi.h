@@ -93,11 +93,19 @@ struct drm_kumquat_resource_create_3d {
     uint32_t stride;
 };
 
+struct drm_kumquat_vk_device_id {
+    uint8_t device_uuid[16];
+    uint8_t driver_uuid[16];
+};
+
+struct drm_kumquat_vk_info {
+    uint32_t memory_idx;
+    struct drm_kumquat_vk_device_id device_id;
+};
+
 struct drm_kumquat_resource_info {
     uint32_t bo_handle;
-    uint32_t res_handle;
-    uint32_t size;
-    uint32_t blob_mem;
+    struct drm_kumquat_vk_info vulkan_info;
 };
 
 struct drm_kumquat_3d_box {
@@ -263,6 +271,9 @@ int32_t virtgpu_kumquat_resource_export(struct virtgpu_kumquat *ptr,
 
 int32_t virtgpu_kumquat_resource_import(struct virtgpu_kumquat *ptr,
                                         struct drm_kumquat_resource_import *cmd);
+
+int32_t virtgpu_kumquat_resource_info(struct virtgpu_kumquat *ptr,
+                                      struct drm_kumquat_resource_info *cmd);
 
 int32_t virtgpu_kumquat_snapshot_save(struct virtgpu_kumquat *ptr);
 

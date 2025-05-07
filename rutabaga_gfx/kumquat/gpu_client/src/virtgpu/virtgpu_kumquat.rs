@@ -684,6 +684,15 @@ impl VirtGpuKumquat {
         Ok(())
     }
 
+    pub fn resource_info(&self, bo_handle: u32) -> RutabagaResult<VulkanInfo> {
+        let resource = self
+            .resources
+            .get(&bo_handle)
+            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+
+        Ok(resource.vulkan_info)
+    }
+
     pub fn snapshot(&mut self) -> RutabagaResult<()> {
         let snapshot_save = kumquat_gpu_protocol_ctrl_hdr {
             type_: KUMQUAT_GPU_PROTOCOL_SNAPSHOT_SAVE,

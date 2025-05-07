@@ -4,6 +4,8 @@
 
 use std::os::raw::c_void;
 
+use rutabaga_gfx::VulkanInfo;
+
 pub const VIRTGPU_KUMQUAT_PARAM_3D_FEATURES: u64 = 1;
 pub const VIRTGPU_KUMQUAT_PARAM_CAPSET_QUERY_FIX: u64 = 2;
 #[allow(unused)]
@@ -173,4 +175,11 @@ pub struct VirtGpuResourceImport {
     pub bo_handle: u32,
     pub res_handle: u32,
     pub size: u64,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct VirtGpuResourceInfo {
+    pub bo_handle: u32,
+    pub vulkan_info: VulkanInfo,
 }

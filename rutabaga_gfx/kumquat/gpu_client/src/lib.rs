@@ -98,6 +98,9 @@ type drm_kumquat_resource_export = VirtGpuResourceExport;
 #[allow(non_camel_case_types)]
 type drm_kumquat_resource_import = VirtGpuResourceImport;
 
+#[allow(non_camel_case_types)]
+type drm_kumquat_resource_info = VirtGpuResourceInfo;
+
 #[no_mangle]
 pub unsafe extern "C" fn virtgpu_kumquat_init(
     ptr: &mut *mut virtgpu_kumquat,
@@ -373,6 +376,21 @@ pub unsafe extern "C" fn virtgpu_kumquat_resource_import(
         );
 
         return_result(result)
+    }))
+    .unwrap_or(-ESRCH)
+}
+
+#[no_mangle]
+pub extern "C" fn virtgpu_kumquat_resource_info(
+    ptr: &mut virtgpu_kumquat,
+    cmd: &mut drm_kumquat_resource_info,
+) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        let result = ptr.lock().unwrap().resource_info(cmd.bo_handle);
+
+        let info = return_on_error!(result);
+        (*cmd).vulkan_info = info;
+        NO_ERROR
     }))
     .unwrap_or(-ESRCH)
 }
