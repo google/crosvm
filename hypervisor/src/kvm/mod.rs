@@ -118,13 +118,14 @@ unsafe fn set_user_memory_region(
         use_2_variant = kvm.caps.user_memory_region2;
     }
 
+    let untagged_userspace_addr = untagged_addr(userspace_addr as usize);
     let ret = if use_2_variant {
         let region2 = kvm_userspace_memory_region2 {
             slot,
             flags,
             guest_phys_addr: guest_addr,
             memory_size,
-            userspace_addr: userspace_addr as u64,
+            userspace_addr: untagged_userspace_addr as u64,
             guest_memfd_offset: 0,
             guest_memfd: 0,
             ..Default::default()
@@ -136,7 +137,7 @@ unsafe fn set_user_memory_region(
             flags,
             guest_phys_addr: guest_addr,
             memory_size,
-            userspace_addr: userspace_addr as u64,
+            userspace_addr: (untagged_userspace_addr as u64),
         };
         ioctl_with_ref(&kvm.vm, KVM_SET_USER_MEMORY_REGION, &region)
     };
@@ -146,6 +147,19 @@ unsafe fn set_user_memory_region(
     } else {
         errno_result()
     }
+}
+
+// https://github.com/torvalds/linux/blob/master/Documentation/virt/kvm/api.rst
+// On architectures that support a form of address tagging, userspace_addr must be an untagged
+// address.
+#[inline]
+fn untagged_addr(addr: usize) -> usize {
+    let tag_bits_mask: u64 = if cfg!(target_arch = "aarch64") {
+        0xFF00000000000000
+    } else {
+        0
+    };
+    addr & !tag_bits_mask as usize
 }
 
 /// Helper function to determine the size in bytes of a dirty log bitmap for the given memory region
