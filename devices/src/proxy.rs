@@ -6,6 +6,7 @@
 
 use std::fs;
 use std::fs::File;
+use std::io::BufReader;
 use std::io::BufWriter;
 use std::io::Seek;
 use std::io::Write;
@@ -81,8 +82,7 @@ impl SnapshotFile {
     }
 
     fn read(&mut self) -> anyhow::Result<AnySnapshot> {
-        // NOTE: No BufReader because ciborium::from_reader has an internal buffer.
-        let data: AnySnapshot = ciborium::from_reader(&mut self.file)
+        let data: AnySnapshot = ciborium::from_reader(&mut BufReader::new(&self.file))
             .context("failed to read snapshot data from snapshot temp file")?;
 
         self.file

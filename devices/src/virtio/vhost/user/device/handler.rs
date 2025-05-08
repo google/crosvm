@@ -49,6 +49,7 @@ pub(super) mod sys;
 use std::collections::BTreeMap;
 use std::convert::From;
 use std::fs::File;
+use std::io::BufReader;
 use std::io::Write;
 use std::num::Wrapping;
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -721,7 +722,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
         &mut self,
         transfer_direction: VhostUserTransferDirection,
         migration_phase: VhostUserMigrationPhase,
-        mut fd: File,
+        fd: File,
     ) -> VhostResult<Option<File>> {
         if migration_phase != VhostUserMigrationPhase::Stopped {
             return Err(VhostError::InvalidOperation);
@@ -762,8 +763,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
                 // `check_device_state`.
                 self.device_state_thread = Some(DeviceStateThread::Load(WorkerThread::start(
                     "device_state_load",
-                    // NOTE: No BufReader because ciborium::from_reader has an internal buffer.
-                    move |_kill_event| ciborium::from_reader(&mut fd),
+                    move |_kill_event| ciborium::from_reader(&mut BufReader::new(fd)),
                 )));
                 Ok(None)
             }

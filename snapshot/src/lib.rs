@@ -5,6 +5,7 @@
 use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::fs::File;
+use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
@@ -199,8 +200,9 @@ impl SnapshotReader {
 
     /// Reads a fragment.
     pub fn read_fragment<T: serde::de::DeserializeOwned>(&self, name: &str) -> Result<T> {
-        // NOTE: No BufReader because ciborium::from_reader has an internal buffer.
-        Ok(ciborium::from_reader(self.raw_fragment(name)?)?)
+        Ok(ciborium::from_reader(BufReader::new(
+            self.raw_fragment(name)?,
+        ))?)
     }
 
     /// Reads the names of all fragments in this namespace.
