@@ -9,6 +9,8 @@
 
 #[cfg(any(feature = "composite-disk", feature = "qcow"))]
 use std::fs::OpenOptions;
+#[cfg(feature = "composite-disk")]
+use std::io::Write;
 use std::path::Path;
 
 use anyhow::anyhow;
@@ -401,6 +403,7 @@ fn parse_composite_partition_arg(
 
 #[cfg(feature = "composite-disk")]
 fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result<(), ()> {
+    use std::io::BufWriter;
     use std::path::PathBuf;
 
     let composite_image_path = &cmd.path;
@@ -426,7 +429,7 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
             &zero_filler_path, e
         );
     })?;
-    let mut header_file = OpenOptions::new()
+    let header_file = OpenOptions::new()
         .create(true)
         .read(true)
         .write(true)
@@ -438,7 +441,8 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
                 header_path, e
             );
         })?;
-    let mut footer_file = OpenOptions::new()
+    let mut header_buffer = BufWriter::new(header_file);
+    let footer_file = OpenOptions::new()
         .create(true)
         .read(true)
         .write(true)
@@ -450,6 +454,7 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
                 footer_path, e
             );
         })?;
+    let mut footer_buffer = BufWriter::new(footer_file);
 
     let partitions = cmd
         .partitions
@@ -487,9 +492,9 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
         &partitions,
         &PathBuf::from(zero_filler_path),
         &PathBuf::from(header_path),
-        &mut header_file,
+        &mut header_buffer,
         &PathBuf::from(footer_path),
-        &mut footer_file,
+        &mut footer_buffer,
         &mut composite_image_file,
     )
     .map_err(|e| {
@@ -497,6 +502,12 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
             "Failed to create composite disk image at '{}': {}",
             composite_image_path, e
         );
+    })?;
+    header_buffer.flush().map_err(|e| {
+        error!("Failed to flush header buffer: {}", e);
+    })?;
+    footer_buffer.flush().map_err(|e| {
+        error!("Failed to flush footer buffer: {}", e);
     })?;
 
     Ok(())

@@ -718,9 +718,9 @@ pub fn create_composite_disk(
     partitions: &[PartitionInfo],
     zero_filler_path: &Path,
     header_path: &Path,
-    header_file: &mut File,
+    header_file: &mut impl Write,
     footer_path: &Path,
-    footer_file: &mut File,
+    footer_file: &mut impl Write,
     output_composite: &mut File,
 ) -> Result<()> {
     let zero_filler_path = zero_filler_path
