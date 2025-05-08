@@ -23,11 +23,8 @@ use rutabaga_gfx::kumquat_support::RutabagaWriter;
 use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaError;
 use rutabaga_gfx::RutabagaErrorKind;
-use rutabaga_gfx::RutabagaGralloc;
-use rutabaga_gfx::RutabagaGrallocBackendFlags;
 use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::RutabagaIntoRawDescriptor;
-use rutabaga_gfx::RutabagaMappedRegion;
 use rutabaga_gfx::RutabagaMapping;
 use rutabaga_gfx::RutabagaRawDescriptor;
 use rutabaga_gfx::RutabagaResult;
@@ -41,44 +38,6 @@ use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
 
 use crate::virtgpu::defines::*;
 
-const VK_ICD_FILENAMES: &str = "VK_ICD_FILENAMES";
-
-// The Tesla V-100 driver seems to enter a power management mode and stops being available to the
-// Vulkan loader if more than a certain number of VK instances are created in the same process.
-//
-// This behavior is reproducible via:
-//
-// GfxstreamEnd2EndTests --gtest_filter="*MultiThreadedVkMapMemory*"
-//
-// Workaround this by having a singleton gralloc per-process.
-fn gralloc() -> &'static Mutex<RutabagaGralloc> {
-    static GRALLOC: OnceLock<Mutex<RutabagaGralloc>> = OnceLock::new();
-    GRALLOC.get_or_init(|| {
-        // The idea is to make sure the gfxstream ICD isn't loaded when gralloc starts
-        // up. The Nvidia ICD should be loaded.
-        //
-        // This is mostly useful for developers.  For AOSP hermetic gfxstream end2end
-        // testing, VK_ICD_FILENAMES shouldn't be defined.  For deqp-vk, this is
-        // useful, but not safe for multi-threaded tests.  For now, since this is only
-        // used for end2end tests, we should be good.
-        let vk_icd_name_opt = match std::env::var(VK_ICD_FILENAMES) {
-            Ok(vk_icd_name) => {
-                std::env::remove_var(VK_ICD_FILENAMES);
-                Some(vk_icd_name)
-            }
-            Err(_) => None,
-        };
-
-        let gralloc = Mutex::new(RutabagaGralloc::new(RutabagaGrallocBackendFlags::new()).unwrap());
-
-        if let Some(vk_icd_name) = vk_icd_name_opt {
-            std::env::set_var(VK_ICD_FILENAMES, vk_icd_name);
-        }
-
-        gralloc
-    })
-}
-
 pub struct VirtGpuResource {
     resource_id: u32,
     size: usize,
@@ -86,7 +45,6 @@ pub struct VirtGpuResource {
     attached_fences: Vec<RutabagaHandle>,
     vulkan_info: VulkanInfo,
     system_mapping: Option<RutabagaMemoryMapping>,
-    gpu_mapping: Option<Box<dyn RutabagaMappedRegion>>,
 }
 
 impl VirtGpuResource {
@@ -103,7 +61,6 @@ impl VirtGpuResource {
             attached_fences: Vec::new(),
             vulkan_info,
             system_mapping: None,
-            gpu_mapping: None,
         }
     }
 }
@@ -367,33 +324,16 @@ impl VirtGpuKumquat {
         if let Some(ref system_mapping) = resource.system_mapping {
             let rutabaga_mapping = system_mapping.as_rutabaga_mapping();
             Ok(rutabaga_mapping)
-        } else if let Some(ref gpu_mapping) = resource.gpu_mapping {
-            let rutabaga_mapping = gpu_mapping.as_rutabaga_mapping();
-            Ok(rutabaga_mapping)
         } else {
-            let clone = resource.handle.try_clone()?;
+            let mapping = RutabagaMemoryMapping::from_safe_descriptor(
+                clone.os_handle,
+                resource.size,
+                RUTABAGA_MAP_CACHE_CACHED | RUTABAGA_MAP_ACCESS_RW,
+            )?;
 
-            if clone.handle_type == RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD {
-                let region = gralloc().lock().unwrap().import_and_map(
-                    clone,
-                    resource.vulkan_info,
-                    resource.size as u64,
-                )?;
-
-                let rutabaga_mapping = region.as_rutabaga_mapping();
-                resource.gpu_mapping = Some(region);
-                Ok(rutabaga_mapping)
-            } else {
-                let mapping = RutabagaMemoryMapping::from_safe_descriptor(
-                    clone.os_handle,
-                    resource.size,
-                    RUTABAGA_MAP_CACHE_CACHED | RUTABAGA_MAP_ACCESS_RW,
-                )?;
-
-                let rutabaga_mapping = mapping.as_rutabaga_mapping();
-                resource.system_mapping = Some(mapping);
-                Ok(rutabaga_mapping)
-            }
+            let rutabaga_mapping = mapping.as_rutabaga_mapping();
+            resource.system_mapping = Some(mapping);
+            Ok(rutabaga_mapping)
         }
     }
 
@@ -404,7 +344,6 @@ impl VirtGpuKumquat {
             .ok_or(RutabagaErrorKind::InvalidResourceId)?;
 
         resource.system_mapping = None;
-        resource.gpu_mapping = None;
         Ok(())
     }
 
