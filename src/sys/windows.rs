@@ -1584,17 +1584,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         }
     }
 
-    // Shut down the VM memory handler thread.
-    if let Err(e) = vm_memory_handler_control.send(&VmMemoryHandlerRequest::Exit) {
-        error!(
-            "failed to request exit from VM memory handler thread: {}",
-            e
-        );
-    }
-    if let Err(e) = vm_memory_handler_thread_join_handle.join() {
-        error!("failed to exit VM Memory handler thread: {:?}", e);
-    }
-
     // Shut down the IRQ handler thread.
     if let Err(e) = irq_handler_control.send(&IrqHandlerRequest::Exit) {
         error!("failed to request exit from IRQ handler thread: {}", e);
@@ -1661,8 +1650,23 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     // Explicitly drop the VM structure here to allow the devices to clean up before the
     // control tubes are closed when this function exits.
     mem::drop(guest_os);
+    info!("guest_os dropped");
 
-    info!("guest_os dropped, run_control is done.");
+    // Shut down the VM memory handler thread. This must happen after the potential device worker
+    // threads(including the vhost device request handler threads) exit, because device worker
+    // threads can issue VM memory requests. Those device worker threads are supposed to stop after
+    // the RunnableLinuxVm is dropped.
+    if let Err(e) = vm_memory_handler_control.send(&VmMemoryHandlerRequest::Exit) {
+        error!(
+            "failed to request exit from VM memory handler thread: {}",
+            e
+        );
+    }
+    if let Err(e) = vm_memory_handler_thread_join_handle.join() {
+        error!("failed to exit VM Memory handler thread: {:?}", e);
+    }
+
+    info!("run_control is done.");
 
     res
 }
