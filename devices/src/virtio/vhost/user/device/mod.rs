@@ -22,7 +22,6 @@ use cros_async::Executor;
 pub use gpu::run_gpu_device;
 #[cfg(feature = "gpu")]
 pub use gpu::Options as GpuOptions;
-pub use handler::VhostBackendReqConnectionState;
 pub use handler::VhostUserDevice;
 #[cfg(feature = "net")]
 pub use net::run_net_device;

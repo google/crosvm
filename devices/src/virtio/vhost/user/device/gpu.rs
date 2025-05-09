@@ -269,11 +269,11 @@ impl VhostUserDevice for GpuBackend {
         self.gpu.borrow().get_shared_memory_region()
     }
 
-    fn set_backend_req_connection(&mut self, conn: Arc<VhostBackendReqConnection>) {
+    fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
         if self
             .shmem_mapper
             .lock()
-            .replace(conn.take_shmem_mapper().unwrap())
+            .replace(conn.shmem_mapper().unwrap())
             .is_some()
         {
             warn!("Connection already established. Overwriting shmem_mapper");

@@ -178,12 +178,9 @@ pub trait VhostUserDevice {
     /// Accepts `VhostBackendReqConnection` to conduct Vhost backend to frontend message
     /// handling.
     ///
-    /// The backend is given an `Arc` instead of full ownership so that the framework can also use
-    /// the connection.
-    ///
     /// This method will be called when `VhostUserProtocolFeatures::BACKEND_REQ` is
     /// negotiated.
-    fn set_backend_req_connection(&mut self, _conn: Arc<VhostBackendReqConnection>) {}
+    fn set_backend_req_connection(&mut self, _conn: VhostBackendReqConnection) {}
 
     /// Enter the "suspended device state" described in the vhost-user spec. See the spec for
     /// requirements.
@@ -290,7 +287,7 @@ pub struct DeviceRequestHandler<T: VhostUserDevice> {
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
     backend: T,
-    backend_req_connection: Arc<Mutex<VhostBackendReqConnectionState>>,
+    backend_req_connection: Option<VhostBackendReqConnection>,
     // Thread processing active device state FD.
     device_state_thread: Option<DeviceStateThread>,
 }
@@ -329,9 +326,7 @@ impl<T: VhostUserDevice> DeviceRequestHandler<T> {
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
             backend,
-            backend_req_connection: Arc::new(Mutex::new(
-                VhostBackendReqConnectionState::NoConnection,
-            )),
+            backend_req_connection: None,
             device_state_thread: None,
         }
     }
@@ -605,13 +600,12 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
         }
 
         let backend_req_conn = self.backend_req_connection.clone();
-        let signal_config_change_fn = Box::new(move || match &*backend_req_conn.lock() {
-            VhostBackendReqConnectionState::Connected(frontend) => {
+        let signal_config_change_fn = Box::new(move || {
+            if let Some(frontend) = backend_req_conn.as_ref() {
                 if let Err(e) = frontend.send_config_changed() {
                     error!("Failed to notify config change: {:#}", e);
                 }
-            }
-            VhostBackendReqConnectionState::NoConnection => {
+            } else {
                 error!("No Backend request connection found");
             }
         });
@@ -672,18 +666,15 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
     }
 
     fn set_backend_req_fd(&mut self, ep: Connection<BackendReq>) {
-        let conn = Arc::new(VhostBackendReqConnection::new(
+        let conn = VhostBackendReqConnection::new(
             FrontendClient::new(ep),
             self.backend.get_shared_memory_region().map(|r| r.id),
-        ));
+        );
 
-        {
-            let mut backend_req_conn = self.backend_req_connection.lock();
-            if let VhostBackendReqConnectionState::Connected(_) = &*backend_req_conn {
-                warn!("Backend Request Connection already established. Overwriting");
-            }
-            *backend_req_conn = VhostBackendReqConnectionState::Connected(conn.clone());
+        if self.backend_req_connection.is_some() {
+            warn!("Backend Request Connection already established. Overwriting");
         }
+        self.backend_req_connection = Some(conn.clone());
 
         self.backend.set_backend_req_connection(conn);
     }
@@ -815,65 +806,56 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
     }
 }
 
-/// Indicates the state of backend request connection
-pub enum VhostBackendReqConnectionState {
-    /// A backend request connection (`VhostBackendReqConnection`) is established
-    Connected(Arc<VhostBackendReqConnection>),
-    /// No backend request connection has been established yet
-    NoConnection,
-}
-
 /// Keeps track of Vhost user backend request connection.
+#[derive(Clone)]
 pub struct VhostBackendReqConnection {
-    conn: Arc<Mutex<FrontendClient>>,
-    shmem_info: Mutex<Option<ShmemInfo>>,
+    shared: Arc<Mutex<VhostBackendReqConnectionShared>>,
+    shmid: Option<u8>,
 }
 
-#[derive(Clone)]
-struct ShmemInfo {
-    shmid: u8,
+struct VhostBackendReqConnectionShared {
+    conn: FrontendClient,
     mapped_regions: BTreeMap<u64 /* offset */, u64 /* size */>,
 }
 
 impl VhostBackendReqConnection {
-    pub fn new(conn: FrontendClient, shmid: Option<u8>) -> Self {
-        let shmem_info = Mutex::new(shmid.map(|shmid| ShmemInfo {
-            shmid,
-            mapped_regions: BTreeMap::new(),
-        }));
+    fn new(conn: FrontendClient, shmid: Option<u8>) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
-            shmem_info,
+            shared: Arc::new(Mutex::new(VhostBackendReqConnectionShared {
+                conn,
+                mapped_regions: BTreeMap::new(),
+            })),
+            shmid,
         }
     }
 
     /// Send `VHOST_USER_CONFIG_CHANGE_MSG` to the frontend
-    pub fn send_config_changed(&self) -> anyhow::Result<()> {
-        self.conn
-            .lock()
+    fn send_config_changed(&self) -> anyhow::Result<()> {
+        let mut shared = self.shared.lock();
+        shared
+            .conn
             .handle_config_change()
             .context("Could not send config change message")?;
         Ok(())
     }
 
-    /// Create a SharedMemoryMapper trait object from the ShmemInfo.
-    pub fn take_shmem_mapper(&self) -> anyhow::Result<Box<dyn SharedMemoryMapper>> {
-        let shmem_info = self
-            .shmem_info
-            .lock()
-            .take()
-            .context("could not take shared memory mapper information")?;
-
-        Ok(Box::new(VhostShmemMapper {
-            conn: self.conn.clone(),
-            shmem_info,
-        }))
+    /// Create a SharedMemoryMapper trait object using this backend request connection.
+    pub fn shmem_mapper(&self) -> Option<Box<dyn SharedMemoryMapper>> {
+        if let Some(shmid) = self.shmid {
+            Some(Box::new(VhostShmemMapper {
+                shared: self.shared.clone(),
+                shmid,
+            }))
+        } else {
+            None
+        }
     }
 }
 
+#[derive(Clone)]
 struct VhostShmemMapper {
-    conn: Arc<Mutex<FrontendClient>>,
-    shmem_info: ShmemInfo,
+    shared: Arc<Mutex<VhostBackendReqConnectionShared>>,
+    shmid: u8,
 }
 
 impl SharedMemoryMapper for VhostShmemMapper {
@@ -884,6 +866,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
         prot: Protection,
         _cache: MemCacheType,
     ) -> anyhow::Result<()> {
+        let mut shared = self.shared.lock();
         let size = match source {
             VmMemorySource::Vulkan {
                 descriptor,
@@ -894,7 +877,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
                 size,
             } => {
                 let msg = VhostUserGpuMapMsg::new(
-                    self.shmem_info.shmid,
+                    self.shmid,
                     offset,
                     size,
                     memory_idx,
@@ -902,16 +885,16 @@ impl SharedMemoryMapper for VhostShmemMapper {
                     device_uuid,
                     driver_uuid,
                 );
-                self.conn
-                    .lock()
+                shared
+                    .conn
                     .gpu_map(&msg, &descriptor)
                     .context("map GPU memory")?;
                 size
             }
             VmMemorySource::ExternalMapping { ptr, size } => {
-                let msg = VhostUserExternalMapMsg::new(self.shmem_info.shmid, offset, size, ptr);
-                self.conn
-                    .lock()
+                let msg = VhostUserExternalMapMsg::new(self.shmid, offset, size, ptr);
+                shared
+                    .conn
                     .external_map(&msg)
                     .context("create external mapping")?;
                 size
@@ -933,34 +916,28 @@ impl SharedMemoryMapper for VhostShmemMapper {
                     _ => bail!("unsupported source"),
                 };
                 let flags = VhostUserShmemMapMsgFlags::from(prot);
-                let msg = VhostUserShmemMapMsg::new(
-                    self.shmem_info.shmid,
-                    offset,
-                    fd_offset,
-                    size,
-                    flags,
-                );
-                self.conn
-                    .lock()
+                let msg = VhostUserShmemMapMsg::new(self.shmid, offset, fd_offset, size, flags);
+                shared
+                    .conn
                     .shmem_map(&msg, &descriptor)
                     .context("map shmem")?;
                 size
             }
         };
 
-        self.shmem_info.mapped_regions.insert(offset, size);
+        shared.mapped_regions.insert(offset, size);
         Ok(())
     }
 
     fn remove_mapping(&mut self, offset: u64) -> anyhow::Result<()> {
-        let size = self
-            .shmem_info
+        let mut shared = self.shared.lock();
+        let size = shared
             .mapped_regions
             .remove(&offset)
             .context("unknown offset")?;
-        let msg = VhostUserShmemUnmapMsg::new(self.shmem_info.shmid, offset, size);
-        self.conn
-            .lock()
+        let msg = VhostUserShmemUnmapMsg::new(self.shmid, offset, size);
+        shared
+            .conn
             .shmem_unmap(&msg)
             .context("unmap shmem")
             .map(|_| ())
@@ -1013,7 +990,7 @@ mod tests {
         acked_features: u64,
         active_queues: Vec<Option<Queue>>,
         allow_backend_req: bool,
-        backend_conn: Option<Arc<VhostBackendReqConnection>>,
+        backend_conn: Option<VhostBackendReqConnection>,
     }
 
     #[derive(Deserialize, Serialize)]
@@ -1089,7 +1066,7 @@ mod tests {
                 .ok_or(Error::WorkerNotFound)?)
         }
 
-        fn set_backend_req_connection(&mut self, conn: Arc<VhostBackendReqConnection>) {
+        fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
             self.backend_conn = Some(conn);
         }
 

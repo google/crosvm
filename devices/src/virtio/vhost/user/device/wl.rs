@@ -6,7 +6,6 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -42,7 +41,6 @@ use crate::virtio::device_constants::wl::VIRTIO_WL_F_TRANS_FLAGS;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
-use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserDevice;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::BackendConnection;
@@ -102,7 +100,7 @@ struct WlBackend {
     acked_features: u64,
     wlstate: Option<Rc<RefCell<wl::WlState>>>,
     workers: [Option<WorkerState<Rc<RefCell<Queue>>, ()>>; NUM_QUEUES],
-    backend_req_conn: VhostBackendReqConnectionState,
+    backend_req_conn: Option<VhostBackendReqConnection>,
 }
 
 impl WlBackend {
@@ -127,7 +125,7 @@ impl WlBackend {
             acked_features: 0,
             wlstate: None,
             workers: Default::default(),
-            backend_req_conn: VhostBackendReqConnectionState::NoConnection,
+            backend_req_conn: None,
         }
     }
 }
@@ -195,16 +193,12 @@ impl VhostUserDevice for WlBackend {
             .context("Failed to initailize gralloc")?;
         let wlstate = match &self.wlstate {
             None => {
-                let mapper = {
-                    match &mut self.backend_req_conn {
-                        VhostBackendReqConnectionState::Connected(request) => {
-                            request.take_shmem_mapper()?
-                        }
-                        VhostBackendReqConnectionState::NoConnection => {
-                            bail!("No backend request connection found")
-                        }
-                    }
-                };
+                let mapper = self
+                    .backend_req_conn
+                    .as_ref()
+                    .context("No backend request connection found")?
+                    .shmem_mapper()
+                    .context("Shared memory mapper not available")?;
 
                 let wlstate = Rc::new(RefCell::new(wl::WlState::new(
                     wayland_paths.take().expect("WlState already initialized"),
@@ -274,12 +268,12 @@ impl VhostUserDevice for WlBackend {
         })
     }
 
-    fn set_backend_req_connection(&mut self, conn: Arc<VhostBackendReqConnection>) {
-        if let VhostBackendReqConnectionState::Connected(_) = &self.backend_req_conn {
+    fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
+        if self.backend_req_conn.is_some() {
             warn!("connection already established. Overwriting");
         }
 
-        self.backend_req_conn = VhostBackendReqConnectionState::Connected(conn);
+        self.backend_req_conn = Some(conn);
     }
 
     fn enter_suspended_state(&mut self) -> anyhow::Result<()> {
