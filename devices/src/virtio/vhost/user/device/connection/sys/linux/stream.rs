@@ -9,6 +9,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 
+use anyhow::anyhow;
 use base::safe_descriptor_from_cmdline_fd;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
@@ -17,7 +18,6 @@ use futures::Future;
 use futures::FutureExt;
 use vmm_vhost::BackendServer;
 use vmm_vhost::Connection;
-use vmm_vhost::Error::SocketFromFdError;
 
 use crate::virtio::vhost::user::device::connection::VhostUserConnectionTrait;
 use crate::virtio::vhost::user::device::handler::sys::linux::run_handler;
@@ -43,7 +43,7 @@ impl VhostUserStream {
     pub fn new_socket_from_fd(socket_fd: RawDescriptor) -> anyhow::Result<Self> {
         let path = PathBuf::from(format!("/proc/self/fd/{}", socket_fd));
         if !path_is_socket(&path) {
-            return Err(SocketFromFdError(path).into());
+            return Err(anyhow!("fd {} is not a socket", socket_fd));
         }
 
         let safe_fd = safe_descriptor_from_cmdline_fd(&socket_fd)?;
