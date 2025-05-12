@@ -4327,14 +4327,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         }
     }
 
-    // Shut down the IRQ handler thread.
-    if let Err(e) = irq_handler_control.send(&IrqHandlerRequest::Exit) {
-        error!("failed to request exit from IRQ handler thread: {}", e);
-    }
-    if let Err(e) = irq_handler_thread.join() {
-        error!("failed to exit irq handler thread: {:?}", e);
-    }
-
     // At this point, the only remaining `Arc` references to the `Bus` objects should be the ones
     // inside `linux`. If the checks below fail, then some other thread is probably still running
     // and needs to be explicitly stopped before dropping `linux` to ensure devices actually get
@@ -4370,6 +4362,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     }
     if let Err(e) = vm_memory_handler_thread.join() {
         error!("failed to exit VM Memory handler thread: {:?}", e);
+    }
+
+    // Shut down the IRQ handler thread after the devices are dropped.
+    if let Err(e) = irq_handler_control.send(&IrqHandlerRequest::Exit) {
+        error!("failed to request exit from IRQ handler thread: {}", e);
+    }
+    if let Err(e) = irq_handler_thread.join() {
+        error!("failed to exit irq handler thread: {:?}", e);
     }
 
     // Drop the hotplug manager to tell the warden process to exit before we try to join

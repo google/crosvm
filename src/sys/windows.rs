@@ -1584,11 +1584,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         }
     }
 
-    // Shut down the IRQ handler thread.
-    if let Err(e) = irq_handler_control.send(&IrqHandlerRequest::Exit) {
-        error!("failed to request exit from IRQ handler thread: {}", e);
-    }
-
     // Ensure any child threads have ended by sending the Exit vm event (possibly again) to ensure
     // their run loops are aborted.
     let _ = vm_evt_wrtube.send::<VmEventType>(&VmEventType::Exit);
@@ -1632,9 +1627,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     cros_async::unblock_disarm();
     info!("blocking async pool has shut down.");
 
-    let _ = irq_join_handle.join();
-    info!("IrqWaitWorker has shut down.");
-
     #[cfg(feature = "stats")]
     if let Some(stats) = stats {
         println!("Statistics Collected:\n{}", stats.lock());
@@ -1665,6 +1657,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     if let Err(e) = vm_memory_handler_thread_join_handle.join() {
         error!("failed to exit VM Memory handler thread: {:?}", e);
     }
+
+    // Shut down the IRQ handler thread after the devices are dropped.
+    if let Err(e) = irq_handler_control.send(&IrqHandlerRequest::Exit) {
+        error!("failed to request exit from IRQ handler thread: {}", e);
+    }
+
+    let _ = irq_join_handle.join();
+    info!("IrqWaitWorker has shut down.");
 
     info!("run_control is done.");
 
