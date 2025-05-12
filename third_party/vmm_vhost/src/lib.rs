@@ -73,18 +73,12 @@ pub enum Error {
     /// client exited properly.
     #[error("client exited properly")]
     ClientExit,
-    /// Failure to deserialize data.
-    #[error("failed to deserialize data")]
-    DeserializationFailed,
     /// client disconnected.
     /// If connection is closed properly, use `ClientExit` instead.
     #[error("client closed the connection")]
     Disconnect,
     #[error("Failed to enter suspended state")]
     EnterSuspendedState(anyhow::Error),
-    /// Virtio/protocol features mismatch.
-    #[error("virtio features mismatch")]
-    FeatureMismatch,
     /// Failure from the frontend side.
     #[error("frontend Internal error")]
     FrontendInternalError,
@@ -123,45 +117,18 @@ pub enum Error {
     /// Failure to restore.
     #[error("Failed to restore")]
     RestoreError(anyhow::Error),
-    /// Failure to serialize data.
-    #[error("failed to serialize data")]
-    SerializationFailed,
-    /// Failure to run device specific sleep.
-    #[error("Failed to run device specific sleep: {0}")]
-    SleepError(anyhow::Error),
     /// Failure to snapshot.
     #[error("Failed to snapshot")]
     SnapshotError(anyhow::Error),
-    /// The socket is broken or has been closed.
-    #[error("socket is broken: {0}")]
-    SocketBroken(std::io::Error),
-    /// Can't connect to peer.
-    #[error("can't connect to peer: {0}")]
-    SocketConnect(std::io::Error),
     /// Generic socket errors.
     #[error("socket error: {0}")]
     SocketError(std::io::Error),
-    /// Fail to get socket from the fd
-    #[error("Failed get socket from the fd: {0}")]
-    SocketFromFdError(std::path::PathBuf),
     /// Should retry the socket operation again.
     #[error("temporary socket error: {0}")]
     SocketRetry(std::io::Error),
-    /// Failure to stop a queue.
-    #[error("failed to stop queue")]
-    StopQueueError(anyhow::Error),
     /// Error from tx/rx on a Tube.
     #[error("failed to read/write on Tube: {0}")]
     TubeError(base::TubeError),
-    /// Error from VFIO device.
-    #[error("error occurred in VFIO device: {0}")]
-    VfioDeviceError(anyhow::Error),
-    /// Error from invalid vring index.
-    #[error("Vring index not found: {0}")]
-    VringIndexNotFound(usize),
-    /// Failure to run device specific wake.
-    #[error("Failed to run device specific wake: {0}")]
-    WakeError(anyhow::Error),
 }
 
 impl From<base::TubeError> for Error {
