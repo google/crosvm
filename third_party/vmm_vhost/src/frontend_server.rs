@@ -106,9 +106,15 @@ impl<S: Frontend> FrontendServer<S> {
         //   message header
         // . validate message body and optional payload
         let (hdr, files) = self.sub_sock.recv_header()?;
+        if !hdr.is_valid() {
+            return Err(Error::InvalidMessage);
+        }
         self.check_attached_files(&hdr, &files)?;
-        let buf = self.sub_sock.recv_body_bytes(&hdr)?;
+        let (buf, extra_files) = self.sub_sock.recv_body_bytes(&hdr)?;
         let size = buf.len();
+        if !extra_files.is_empty() {
+            return Err(Error::InvalidMessage);
+        }
 
         let res = match hdr.get_code() {
             Ok(BackendReq::CONFIG_CHANGE_MSG) => {
@@ -157,11 +163,7 @@ impl<S: Frontend> FrontendServer<S> {
         size: usize,
         expected: usize,
     ) -> Result<()> {
-        if hdr.get_size() as usize != expected
-            || hdr.is_reply()
-            || hdr.get_version() != 0x1
-            || size != expected
-        {
+        if hdr.get_size() as usize != expected || hdr.is_reply() || size != expected {
             return Err(Error::InvalidMessage);
         }
         Ok(())

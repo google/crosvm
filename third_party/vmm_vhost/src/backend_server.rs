@@ -318,6 +318,10 @@ impl<S: Backend> BackendServer<S> {
             }
         };
 
+        if !hdr.is_valid() {
+            return Err(Error::InvalidMessage);
+        }
+
         self.check_attached_files(&hdr, &files)?;
 
         Ok((hdr, files))
@@ -350,8 +354,11 @@ impl<S: Backend> BackendServer<S> {
         hdr: VhostUserMsgHeader<FrontendReq>,
         files: Vec<File>,
     ) -> Result<()> {
-        let buf = self.connection.recv_body_bytes(&hdr)?;
+        let (buf, extra_files) = self.connection.recv_body_bytes(&hdr)?;
         let size = buf.len();
+        if !extra_files.is_empty() {
+            return Err(Error::InvalidMessage);
+        }
 
         // TODO: The error handling here is inconsistent. Sometimes we report the error to the
         // client and keep going, sometimes we report the error and then close the connection,

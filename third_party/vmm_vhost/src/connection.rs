@@ -143,39 +143,29 @@ impl<R: Req> Connection<R> {
 
     /// Receive message header
     ///
-    /// Errors if the header is invalid.
-    ///
     /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be accepted and all
     /// other file descriptor will be discard silently.
     pub fn recv_header(&self) -> Result<(VhostUserMsgHeader<R>, Vec<File>)> {
         let mut hdr_raw = [0u32; 3];
         let files = self.recv_into_bufs_all(&mut [hdr_raw.as_mut_bytes()])?;
         let hdr = VhostUserMsgHeader::from_raw(hdr_raw);
-        if !hdr.is_valid() {
-            return Err(Error::InvalidMessage);
-        }
         Ok((hdr, files))
     }
 
     /// Receive the body following the header `hdr`.
-    pub fn recv_body_bytes(&self, hdr: &VhostUserMsgHeader<R>) -> Result<Vec<u8>> {
+    pub fn recv_body_bytes(&self, hdr: &VhostUserMsgHeader<R>) -> Result<(Vec<u8>, Vec<File>)> {
         // NOTE: `recv_into_bufs_all` is a noop when the buffer is empty, so `hdr.get_size() == 0`
         // works as expected.
         let mut body = vec![0; hdr.get_size().try_into().unwrap()];
         let files = self.recv_into_bufs_all(&mut [&mut body[..]])?;
-        if !files.is_empty() {
-            return Err(Error::InvalidMessage);
-        }
-        Ok(body)
+        Ok((body, files))
     }
 
     /// Receive a message header and body.
     ///
-    /// Errors if the header or body is invalid.
-    ///
     /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be
     /// accepted and all other file descriptor will be discard silently.
-    pub fn recv_message<T: IntoBytes + FromBytes + VhostUserMsgValidator>(
+    pub fn recv_message<T: IntoBytes + FromBytes>(
         &self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Vec<File>)> {
         let mut hdr_raw = [0u32; 3];
@@ -184,9 +174,6 @@ impl<R: Req> Connection<R> {
         let files = self.recv_into_bufs_all(&mut slices)?;
 
         let hdr = VhostUserMsgHeader::from_raw(hdr_raw);
-        if !hdr.is_valid() || !body.is_valid() {
-            return Err(Error::InvalidMessage);
-        }
 
         Ok((hdr, body, files))
     }
@@ -194,13 +181,11 @@ impl<R: Req> Connection<R> {
     /// Receive a message header and body, where the body includes a variable length payload at the
     /// end.
     ///
-    /// Errors if the header or body is invalid.
-    ///
     /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be accepted and all
     /// other file descriptor will be discard silently.
-    pub fn recv_message_with_payload<T: IntoBytes + FromBytes + VhostUserMsgValidator>(
+    pub fn recv_message_with_payload<T: IntoBytes + FromBytes>(
         &self,
-    ) -> Result<(VhostUserMsgHeader<R>, T, Vec<u8>, Vec<File>)> {
+    ) -> Result<(VhostUserMsgHeader<R>, T, Vec<u8>, Vec<File>, Vec<File>)> {
         let (hdr, files) = self.recv_header()?;
 
         let mut body = T::new_zeroed();
@@ -208,11 +193,8 @@ impl<R: Req> Connection<R> {
         let mut buf: Vec<u8> = vec![0; payload_size];
         let mut slices = [body.as_mut_bytes(), buf.as_mut_bytes()];
         let more_files = self.recv_into_bufs_all(&mut slices)?;
-        if !body.is_valid() || !more_files.is_empty() {
-            return Err(Error::InvalidMessage);
-        }
 
-        Ok((hdr, body, buf, files))
+        Ok((hdr, body, buf, files, more_files))
     }
 }
 

@@ -456,7 +456,7 @@ impl BackendClient {
             ));
         }
         let (reply, body, rfds) = self.connection.recv_message::<T>()?;
-        if !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
+        if !reply.is_valid() || !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
         Ok(body)
@@ -473,7 +473,7 @@ impl BackendClient {
         }
 
         let (reply, body, files) = self.connection.recv_message::<T>()?;
-        if !reply.is_reply_for(hdr) || !body.is_valid() {
+        if !reply.is_valid() || !reply.is_reply_for(hdr) || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
         Ok((body, files))
@@ -491,8 +491,14 @@ impl BackendClient {
             ));
         }
 
-        let (reply, body, buf, files) = self.connection.recv_message_with_payload::<T>()?;
-        if !reply.is_reply_for(hdr) || !files.is_empty() || !body.is_valid() {
+        let (reply, body, buf, files, more_files) =
+            self.connection.recv_message_with_payload::<T>()?;
+        if !reply.is_valid()
+            || !reply.is_reply_for(hdr)
+            || !files.is_empty()
+            || !more_files.is_empty()
+            || !body.is_valid()
+        {
             return Err(VhostUserError::InvalidMessage);
         }
 
@@ -505,7 +511,7 @@ impl BackendClient {
         }
 
         let (reply, body, rfds) = self.connection.recv_message::<VhostUserU64>()?;
-        if !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
+        if !reply.is_valid() || !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
         if body.value != 0 {

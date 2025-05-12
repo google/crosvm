@@ -68,7 +68,7 @@ impl FrontendClient {
         }
 
         let (reply, body, rfds) = self.sock.recv_message::<VhostUserU64>()?;
-        if !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
+        if !reply.is_valid() || !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
             return Err(Error::InvalidMessage);
         }
         if body.value != 0 {
