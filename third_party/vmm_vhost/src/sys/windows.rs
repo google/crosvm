@@ -56,6 +56,13 @@ impl From<Tube> for TubePlatformConnection {
     }
 }
 
+fn tube_err(e: base::TubeError) -> Error {
+    match e {
+        base::TubeError::Disconnected => Error::Disconnect,
+        e => Error::TubeError(e),
+    }
+}
+
 impl TubePlatformConnection {
     /// Sends a single message over the socket with optional attached file descriptors.
     ///
@@ -88,9 +95,9 @@ impl TubePlatformConnection {
 
         // We send the header and the body separately here. This is necessary on Windows. Otherwise
         // the recv side cannot read the header independently (the transport is message oriented).
-        self.tube.send(&hdr_msg)?;
+        self.tube.send(&hdr_msg).map_err(tube_err)?;
         if !body_msg.data.is_empty() {
-            self.tube.send(&body_msg)?;
+            self.tube.send(&body_msg).map_err(tube_err)?;
         }
 
         Ok(())
@@ -114,7 +121,7 @@ impl TubePlatformConnection {
     ) -> Result<(usize, Option<Vec<File>>)> {
         // TODO(b/221882601): implement "allow_rds"
 
-        let msg: Message = self.tube.recv()?;
+        let msg: Message = self.tube.recv().map_err(tube_err)?;
 
         let files = match msg.rds.len() {
             0 => None,
@@ -188,7 +195,7 @@ impl<R: Req> From<Tube> for Connection<R> {
 impl<R: Req> Connection<R> {
     /// Create a pair of unnamed vhost-user connections connected to each other.
     pub fn pair() -> Result<(Self, Self)> {
-        let (client, server) = Tube::pair()?;
+        let (client, server) = Tube::pair().map_err(Error::TubeError)?;
         Ok((Self::from(client), Self::from(server)))
     }
 
@@ -227,7 +234,7 @@ impl<S: Frontend> FrontendServer<S> {
     ///
     /// [BackendClient::set_slave_request_fd()]: struct.BackendClient.html#method.set_slave_request_fd
     pub fn with_tube(backend: S, backend_pid: u32) -> Result<(Self, SafeDescriptor)> {
-        let (tx, rx) = Tube::pair()?;
+        let (tx, rx) = Tube::pair().map_err(Error::TubeError)?;
         let rx_connection = Connection::from(rx);
         // SAFETY:
         // Safe because we expect the tube to be unpacked in the other process.

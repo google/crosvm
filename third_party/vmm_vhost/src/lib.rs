@@ -131,15 +131,6 @@ pub enum Error {
     TubeError(base::TubeError),
 }
 
-impl From<base::TubeError> for Error {
-    fn from(err: base::TubeError) -> Self {
-        match err {
-            base::TubeError::Disconnected => Error::Disconnect,
-            err => Error::TubeError(err),
-        }
-    }
-}
-
 /// Result of vhost-user operations
 pub type Result<T> = std::result::Result<T, Error>;
 
