@@ -173,51 +173,6 @@ impl From<base::TubeError> for Error {
     }
 }
 
-impl From<std::io::Error> for Error {
-    fn from(err: std::io::Error) -> Self {
-        Error::SocketError(err)
-    }
-}
-
-impl From<base::Error> for Error {
-    /// Convert raw socket errors into meaningful vhost-user errors.
-    ///
-    /// The base::Error is a simple wrapper over the raw errno, which doesn't means
-    /// much to the vhost-user connection manager. So convert it into meaningful errors to simplify
-    /// the connection manager logic.
-    ///
-    /// # Return:
-    /// * - Error::SocketRetry: temporary error caused by signals or short of resources.
-    /// * - Error::SocketBroken: the underline socket is broken.
-    /// * - Error::SocketError: other socket related errors.
-    #[allow(unreachable_patterns)] // EWOULDBLOCK equals to EGAIN on linux
-    fn from(err: base::Error) -> Self {
-        match err.errno() {
-            // Retry:
-            // * EAGAIN, EWOULDBLOCK: The socket is marked nonblocking and the requested operation
-            //   would block.
-            // * EINTR: A signal occurred before any data was transmitted
-            // * ENOBUFS: The  output  queue  for  a network interface was full.  This generally
-            //   indicates that the interface has stopped sending, but may be caused by transient
-            //   congestion.
-            // * ENOMEM: No memory available.
-            libc::EAGAIN | libc::EWOULDBLOCK | libc::EINTR | libc::ENOBUFS | libc::ENOMEM => {
-                Error::SocketRetry(err.into())
-            }
-            // Broken:
-            // * ECONNRESET: Connection reset by peer.
-            // * EPIPE: The local end has been shut down on a connection oriented socket. In this
-            //   case the process will also receive a SIGPIPE unless MSG_NOSIGNAL is set.
-            libc::ECONNRESET | libc::EPIPE => Error::SocketBroken(err.into()),
-            // Write permission is denied on the destination socket file, or search permission is
-            // denied for one of the directories the path prefix.
-            libc::EACCES => Error::SocketConnect(IOError::from_raw_os_error(libc::EACCES)),
-            // Catch all other errors
-            e => Error::SocketError(IOError::from_raw_os_error(e)),
-        }
-    }
-}
-
 /// Result of vhost-user operations
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -520,15 +475,5 @@ mod tests {
             "invalid parameters: "
         );
         assert_eq!(format!("{}", Error::InvalidOperation), "invalid operation");
-    }
-
-    #[test]
-    fn test_error_from_base_error() {
-        let e: Error = base::Error::new(libc::EAGAIN).into();
-        if let Error::SocketRetry(e1) = e {
-            assert_eq!(e1.raw_os_error().unwrap(), libc::EAGAIN);
-        } else {
-            panic!("invalid error code conversion!");
-        }
     }
 }

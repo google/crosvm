@@ -213,7 +213,6 @@ impl SocketPlatformConnection {
     /// * - (number of bytes received, [received files]) on success
     /// * - Disconnect: the connection is closed.
     /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
     pub fn recv_into_bufs(
         &self,
@@ -221,7 +220,17 @@ impl SocketPlatformConnection {
         allow_fd: bool,
     ) -> Result<(usize, Option<Vec<File>>)> {
         let max_fds = if allow_fd { MAX_ATTACHED_FD_ENTRIES } else { 0 };
-        let (bytes, fds) = self.sock.recv_vectored_with_fds(bufs, max_fds)?;
+        let (bytes, fds) = match self.sock.recv_vectored_with_fds(bufs, max_fds) {
+            Ok((bytes, fds)) => (bytes, fds),
+            Err(e) => {
+                return Err(match e.kind() {
+                    ErrorKind::WouldBlock | ErrorKind::Interrupted | ErrorKind::OutOfMemory => {
+                        Error::SocketRetry(e)
+                    }
+                    _ => Error::SocketError(e),
+                });
+            }
+        };
 
         // 0-bytes indicates that the connection is closed.
         if bytes == 0 {
@@ -264,7 +273,7 @@ impl<R: Req> TryFrom<UnixStream> for Connection<R> {
     fn try_from(sock: UnixStream) -> Result<Self> {
         Ok(Self(
             SocketPlatformConnection {
-                sock: sock.try_into()?,
+                sock: sock.try_into().map_err(Error::SocketError)?,
             },
             std::marker::PhantomData,
             std::marker::PhantomData,
@@ -275,7 +284,7 @@ impl<R: Req> TryFrom<UnixStream> for Connection<R> {
 impl<R: Req> Connection<R> {
     /// Create a pair of unnamed vhost-user connections connected to each other.
     pub fn pair() -> Result<(Self, Self)> {
-        let (client, server) = UnixStream::pair()?;
+        let (client, server) = UnixStream::pair().map_err(Error::SocketError)?;
         let client_connection = Connection::try_from(client)?;
         let server_connection = Connection::try_from(server)?;
         Ok((client_connection, server_connection))
@@ -302,7 +311,7 @@ impl<S: Frontend> FrontendServer<S> {
     ///
     /// [BackendClient::set_slave_request_fd()]: struct.BackendClient.html#method.set_slave_request_fd
     pub fn with_stream(backend: S) -> Result<(Self, SafeDescriptor)> {
-        let (tx, rx) = UnixStream::pair()?;
+        let (tx, rx) = UnixStream::pair().map_err(Error::SocketError)?;
         let rx_connection = Connection::try_from(rx)?;
         Ok((
             Self::new(backend, rx_connection)?,
