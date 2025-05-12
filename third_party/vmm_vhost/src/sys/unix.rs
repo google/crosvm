@@ -328,16 +328,10 @@ pub(crate) mod tests {
     use super::*;
     use crate::backend_client::BackendClient;
     use crate::connection::Listener;
-    use crate::message::FrontendReq;
     use crate::Connection;
 
     pub(crate) fn temp_dir() -> TempDir {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
-    }
-
-    fn connect(path: &Path) -> Result<Connection<FrontendReq>> {
-        let sock = UnixStream::connect(path).map_err(Error::SocketConnect)?;
-        Connection::try_from(sock)
     }
 
     #[test]
@@ -370,13 +364,14 @@ pub(crate) mod tests {
         path.push("sock");
         let _ = SocketListener::new(&path, true).unwrap();
         let _ = SocketListener::new(&path, false).is_err();
-        assert!(connect(&path).is_err());
+        assert!(UnixStream::connect(&path).is_err());
 
         let mut listener = SocketListener::new(&path, true).unwrap();
         assert!(SocketListener::new(&path, false).is_err());
         listener.set_nonblocking(true).unwrap();
 
-        let backend_connection = connect(&path).unwrap();
+        let sock = UnixStream::connect(&path).unwrap();
+        let backend_connection = Connection::try_from(sock).unwrap();
         let _backend_client = BackendClient::new(backend_connection);
         let _server_connection = listener.accept().unwrap().unwrap();
     }
