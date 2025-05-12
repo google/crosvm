@@ -106,7 +106,7 @@ impl<S: Frontend> FrontendServer<S> {
         //   message header
         // . validate message body and optional payload
         let (hdr, files) = self.sub_sock.recv_header()?;
-        if !hdr.is_valid() {
+        if !hdr.is_valid() || hdr.is_reply() {
             return Err(Error::InvalidMessage);
         }
         self.check_attached_files(&hdr, &files)?;
@@ -163,7 +163,7 @@ impl<S: Frontend> FrontendServer<S> {
         size: usize,
         expected: usize,
     ) -> Result<()> {
-        if hdr.get_size() as usize != expected || hdr.is_reply() || size != expected {
+        if hdr.get_size() as usize != expected || size != expected {
             return Err(Error::InvalidMessage);
         }
         Ok(())
