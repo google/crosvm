@@ -31,6 +31,7 @@ const GIC_FDT_IRQ_TYPE_SPI: u32 = 0;
 
 const IRQ_TYPE_EDGE_RISING: u32 = 0x00000001;
 const IRQ_TYPE_LEVEL_HIGH: u32 = 0x00000004;
+const MAX_VM_SIZE: u64 = 0x780000000;
 
 fn fdt_create_shm_device(
     parent: &mut FdtNode,
@@ -81,6 +82,7 @@ impl VmAArch64 for GunyahVm {
 
         let mut base_set = false;
         let mut firmware_set = false;
+        let mut size = 0;
         for region in self.guest_mem.regions() {
             match region.options.purpose {
                 MemoryRegionPurpose::GuestMemoryRegion => {
@@ -88,7 +90,9 @@ impl VmAArch64 for GunyahVm {
                     if !base_set {
                         base_set = true;
                         memory_node.set_prop("base-address", region.guest_addr.offset())?;
+                        memory_node.set_prop("size-max", MAX_VM_SIZE)?;
                     }
+                    size += region.size as u64;
                 }
                 MemoryRegionPurpose::ProtectedFirmwareRegion => {
                     if firmware_set {
@@ -99,8 +103,17 @@ impl VmAArch64 for GunyahVm {
                     firmware_set = true;
                     memory_node.set_prop("firmware-address", region.guest_addr.offset())?;
                 }
+                MemoryRegionPurpose::StaticSwiotlbRegion => {
+                    size += region.size as u64;
+                }
                 _ => {}
             }
+        }
+        if size > MAX_VM_SIZE {
+            panic!(
+                "Total memory size {} exceeds maximum allowed size {}",
+                size, MAX_VM_SIZE
+            );
         }
 
         let interrupts_node = top_node.subnode_mut("interrupts")?;
