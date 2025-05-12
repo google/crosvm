@@ -5,6 +5,7 @@ use std::fs::File;
 use std::mem;
 
 use base::AsRawDescriptor;
+use zerocopy::FromBytes;
 
 use crate::message::*;
 use crate::BackendReq;
@@ -184,15 +185,14 @@ impl<S: Frontend> FrontendServer<S> {
         }
     }
 
-    fn extract_msg_body<T: Sized + VhostUserMsgValidator>(
+    fn extract_msg_body<T: FromBytes + VhostUserMsgValidator>(
         &self,
         hdr: &VhostUserMsgHeader<BackendReq>,
         size: usize,
         buf: &[u8],
     ) -> Result<T> {
         self.check_msg_size(hdr, size, mem::size_of::<T>())?;
-        // SAFETY: above check ensures that buf is `T` sized.
-        let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const T) };
+        let msg = T::read_from_bytes(buf).map_err(|_| Error::InvalidMessage)?;
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
         }
