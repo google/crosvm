@@ -22,7 +22,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Create bindings for each platform
-for arch in "x86_64" "arm" "aarch64" "riscv64"; do
+for arch in "x86_64" "aarch64" "riscv64"; do
     BUILD_DIR="$TMP_DIR/$arch"
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
@@ -31,9 +31,6 @@ for arch in "x86_64" "arm" "aarch64" "riscv64"; do
     if [ "$arch" = "x86_64" ]; then
         export CC="gcc"
         TARGET="x86_64-unknown-linux-gnu"
-    elif [ "$arch" = "arm" ]; then
-        export CC="arm-linux-gnueabihf-gcc"
-        TARGET="armv7-unknown-linux-gnueabihf"
     elif [ "$arch" = "aarch64" ]; then
         export CC="aarch64-linux-gnu-gcc"
         TARGET="aarch64-unknown-linux-gnu"

@@ -26,17 +26,16 @@ pub enum HypervisorKind {
     Kvm {
         device: Option<PathBuf>,
     },
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     #[cfg(feature = "halla")]
     Halla {
         device: Option<PathBuf>,
     },
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    #[cfg(feature = "geniezone")]
+    #[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
     Geniezone {
         device: Option<PathBuf>,
     },
-    #[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
+    #[cfg(all(target_arch = "aarch64", feature = "gunyah"))]
     Gunyah {
         device: Option<PathBuf>,
         qcom_trusted_vm_id: Option<u16>,
@@ -570,8 +569,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    #[cfg(feature = "halla")]
+    #[cfg(all(target_arch = "aarch64", feature = "halla"))]
     fn hypervisor_halla() {
         let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
             &[],
@@ -588,8 +586,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    #[cfg(feature = "halla")]
+    #[cfg(all(target_arch = "aarch64", feature = "halla"))]
     fn hypervisor_halla_device() {
         let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
             &[],
@@ -608,8 +605,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    #[cfg(feature = "geniezone")]
+    #[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
     fn hypervisor_geniezone() {
         let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
             &[],
@@ -626,8 +622,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    #[cfg(feature = "geniezone")]
+    #[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
     fn hypervisor_geniezone_device() {
         let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
             &[],
@@ -650,7 +645,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
+    #[cfg(all(target_arch = "aarch64", feature = "gunyah"))]
     fn hypervisor_gunyah() {
         let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
             &[],
@@ -671,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
+    #[cfg(all(target_arch = "aarch64", feature = "gunyah"))]
     fn hypervisor_gunyah_device() {
         let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
             &[],
@@ -692,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
+    #[cfg(all(target_arch = "aarch64", feature = "gunyah"))]
     fn hypervisor_gunyah_device_with_qtvm_ids() {
         let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
             &[],

@@ -99,7 +99,6 @@ impl Geniezone {
 impl GeniezoneVm {
     /// Does platform specific initialization for the GeniezoneVm.
     pub fn init_arch(&self, cfg: &Config) -> Result<()> {
-        #[cfg(target_arch = "aarch64")]
         if cfg.mte {
             // SAFETY:
             // Safe because it does not take pointer arguments.

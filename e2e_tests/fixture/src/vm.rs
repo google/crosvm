@@ -36,8 +36,6 @@ const PREBUILT_URL: &str = "https://storage.googleapis.com/crosvm/integration_te
 
 #[cfg(target_arch = "x86_64")]
 const ARCH: &str = "x86_64";
-#[cfg(target_arch = "arm")]
-const ARCH: &str = "arm";
 #[cfg(target_arch = "aarch64")]
 const ARCH: &str = "aarch64";
 #[cfg(target_arch = "riscv64")]

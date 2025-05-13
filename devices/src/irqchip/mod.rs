@@ -27,18 +27,21 @@ cfg_if::cfg_if! {
         pub use self::kvm::KvmKernelIrqChip;
         #[cfg(target_arch = "x86_64")]
         pub use self::kvm::KvmSplitIrqChip;
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         pub use self::kvm::{AARCH64_GIC_NR_IRQS, AARCH64_GIC_NR_SPIS};
+
+        #[cfg(all(target_arch = "aarch64", feature = "gunyah"))]
+        mod gunyah;
+        #[cfg(all(target_arch = "aarch64", feature = "gunyah"))]
+        pub use self::gunyah::GunyahIrqChip;
+
+        #[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
+        mod geniezone;
+        #[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
+        pub use self::geniezone::GeniezoneKernelIrqChip;
     } else if #[cfg(all(windows, feature = "whpx"))] {
         mod whpx;
         pub use self::whpx::WhpxSplitIrqChip;
-    }
-}
-
-cfg_if::cfg_if! {
-    if #[cfg(all(unix, any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))] {
-        mod gunyah;
-        pub use self::gunyah::GunyahIrqChip;
     }
 }
 
@@ -54,7 +57,7 @@ cfg_if::cfg_if! {
         pub use apic::*;
         mod userspace;
         pub use userspace::*;
-    } else if #[cfg(any(target_arch = "arm", target_arch = "aarch64"))] {
+    } else if #[cfg(target_arch = "aarch64")] {
         mod aarch64;
         pub use aarch64::*;
     } else if #[cfg(target_arch = "riscv64")] {
@@ -70,11 +73,6 @@ cfg_if::cfg_if! {
     }
 
 }
-
-#[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
-mod geniezone;
-#[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
-pub use self::geniezone::GeniezoneKernelIrqChip;
 
 #[cfg(all(target_arch = "aarch64", feature = "halla"))]
 mod halla;

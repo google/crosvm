@@ -92,7 +92,7 @@ use vm_memory::MemoryRegionInformation;
 use vm_memory::MemoryRegionOptions;
 
 cfg_if::cfg_if! {
-    if #[cfg(any(target_arch = "arm", target_arch = "aarch64"))] {
+    if #[cfg(target_arch = "aarch64")] {
         pub use devices::IrqChipAArch64 as IrqChipArch;
         #[cfg(feature = "gdb")]
         pub use gdbstub_arch::aarch64::AArch64 as GdbArch;
@@ -168,13 +168,13 @@ impl FromIterator<usize> for CpuSet {
     }
 }
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 fn sve_auto_default() -> bool {
     true
 }
 
 /// The SVE config for Vcpus.
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct SveConfig {
@@ -183,7 +183,7 @@ pub struct SveConfig {
     pub auto: bool,
 }
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 impl Default for SveConfig {
     fn default() -> Self {
         SveConfig {
@@ -376,7 +376,7 @@ pub struct MemoryRegionConfig {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, FromKeyValues)]
 pub struct PciConfig {
     /// region for PCI Configuration Access Mechanism
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     pub cam: Option<MemoryRegionConfig>,
     /// region for PCIe Enhanced Configuration Access Mechanism
     #[cfg(target_arch = "x86_64")]
@@ -400,7 +400,7 @@ pub struct VmComponents {
     pub cpu_capacity: BTreeMap<usize, u32>,
     pub cpu_clusters: Vec<CpuSet>,
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     pub cpu_frequencies: BTreeMap<usize, Vec<u32>>,
@@ -421,7 +421,7 @@ pub struct VmComponents {
     pub no_rtc: bool,
     pub no_smt: bool,
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     pub normalized_cpu_ipc_ratios: BTreeMap<usize, u32>,
@@ -435,23 +435,23 @@ pub struct VmComponents {
     pub rt_cpus: CpuSet,
     #[cfg(target_arch = "x86_64")]
     pub smbios: SmbiosOptions,
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     pub sve_config: SveConfig,
     pub swiotlb: Option<u64>,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub vcpu_count: usize,
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     pub vcpu_domain_paths: BTreeMap<usize, PathBuf>,
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     pub vcpu_domains: BTreeMap<usize, u32>,
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     pub virt_cpufreq_v2: bool,

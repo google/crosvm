@@ -33,7 +33,7 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::Arc;
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use aarch64::AArch64 as Arch;
 use acpi_tables::sdt::SDT;
 use anyhow::anyhow;
@@ -121,7 +121,7 @@ use devices::BusDeviceObj;
 use devices::BusResumeDevice;
 #[cfg(feature = "gvm")]
 use devices::GvmIrqChip;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use devices::IrqChip;
 use devices::UserspaceIrqChip;
 use devices::VcpuRunState;

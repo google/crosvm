@@ -2,19 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 mod aarch64;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-pub use aarch64::*;
-
-mod cap;
-pub use cap::KvmCap;
-
 #[cfg(target_arch = "riscv64")]
 mod riscv64;
-
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
+
+mod cap;
 
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
@@ -29,6 +24,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
+#[cfg(target_arch = "aarch64")]
+pub use aarch64::*;
 use base::errno_result;
 use base::error;
 use base::ioctl;
@@ -48,6 +45,7 @@ use base::Protection;
 use base::RawDescriptor;
 use base::Result;
 use base::SafeDescriptor;
+pub use cap::KvmCap;
 use data_model::vec_with_array_field;
 use kvm_sys::*;
 use libc::open64;
@@ -631,7 +629,7 @@ impl Vm for KvmVm {
             return val;
         }
         match c {
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             VmCap::ArmPmuV3 => self.check_raw_capability(KvmCap::ArmPmuV3),
             VmCap::DirtyLog => true,
             VmCap::PvClock => false,
@@ -646,7 +644,7 @@ impl Vm for KvmVm {
                 cfg!(feature = "noncoherent-dma")
                     && self.check_raw_capability(KvmCap::MemNoncoherentDma)
             }
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             VmCap::Sve => self.check_raw_capability(KvmCap::Sve),
         }
     }
@@ -812,7 +810,7 @@ impl Vm for KvmVm {
                 },
 
                 // ARM and risc-v have additional DeviceKinds, so it needs the catch-all pattern
-                #[cfg(any(target_arch = "arm", target_arch = "aarch64", target_arch = "riscv64"))]
+                #[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))]
                 _ => return Err(Error::new(libc::ENXIO)),
             }
         };
@@ -1265,16 +1263,16 @@ fn to_kvm_irq_routing_entry(item: &IrqRoute, cap_msi_devid: bool) -> kvm_irq_rou
         IrqSource::Msi {
             address,
             data,
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             pci_address,
         } => {
             // Even though we always pass the device ID along to this point, KVM docs say: "If this
             // capability is not available, userspace should never set the KVM_MSI_VALID_DEVID flag
             // as the ioctl might fail"
             let devid = if cap_msi_devid {
-                #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+                #[cfg(not(target_arch = "aarch64"))]
                 panic!("unexpected KVM_CAP_MSI_DEVID");
-                #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                #[cfg(target_arch = "aarch64")]
                 Some(pci_address.to_u32())
             } else {
                 None

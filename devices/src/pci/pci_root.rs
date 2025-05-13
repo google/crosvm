@@ -489,10 +489,9 @@ impl PciRootMmioState {
     where
         T: PciMmioMapper,
     {
-        // The PCI spec requires that config writes are non-posted. This requires
-        // uncached mappings in the guest. 32-bit ARM does not support flushing to
-        // PoC from userspace. The cache maintance story for riscv is unclear, so
-        // that is also not implemmented.
+        // The PCI spec requires that config writes are non-posted. This requires uncached mappings
+        // in the guest. The cache maintenance story for riscv is unclear, so that is not
+        // implemented.
         if cfg!(not(any(target_arch = "x86_64", target_arch = "aarch64"))) {
             return Ok(());
         }

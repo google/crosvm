@@ -179,7 +179,7 @@ pub fn create_memory_node(fdt: &mut Fdt, guest_mem: &GuestMemory) -> Result<()> 
             MemoryRegionPurpose::GuestMemoryRegion => true,
             MemoryRegionPurpose::ProtectedFirmwareRegion => true,
             MemoryRegionPurpose::ReservedMemory => true,
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             MemoryRegionPurpose::StaticSwiotlbRegion => true,
         })
         .collect();

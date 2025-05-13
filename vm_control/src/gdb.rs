@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use gdbstub::arch::Arch;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use gdbstub_arch::aarch64::AArch64 as GdbArch;
 #[cfg(target_arch = "riscv64")]
 use gdbstub_arch::riscv::Riscv64 as GdbArch;

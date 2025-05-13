@@ -50,7 +50,6 @@ ENV PATH=/usr/lib/wine:$PATH
 COPY --chmod=555 \
     tools/deps/install-x86_64-other \
     tools/deps/install-aarch64-other \
-    tools/deps/install-armhf-other \
     tools/deps/install-mingw64-other \
     tools/deps/install-riscv64-other \
     tools/deps/install_rutabaga_gfx_deps \
@@ -59,7 +58,6 @@ COPY --chmod=555 \
 RUN cd /tools/deps \
     && ./install-x86_64-other \
     && ./install-aarch64-other \
-    && ./install-armhf-other \
     && ./install-mingw64-other \
     && ./install-riscv64-other \
     && ./install_rutabaga_gfx_deps \

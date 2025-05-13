@@ -38,7 +38,6 @@ from prepare_dlls import build_dlls, copy_dlls
 # Is Windows
 IS_WINDOWS = os.name == "nt"
 
-ARM_TRIPLE = os.getenv("ARM_TRIPLE", "armv7a-cros-linux-gnueabihf")
 AARCH64_TRIPLE = os.getenv("AARCH64_TRIPLE", "aarch64-cros-linux-gnu")
 X86_64_TRIPLE = os.getenv("X86_64_TRIPLE", "x86_64-unknown-linux-gnu")
 X86_64_WIN_MSVC_TRIPLE = os.getenv("X86_64_WIN_MSVC_TRIPLE", "x86_64-pc-windows-msvc")
@@ -477,8 +476,6 @@ def main(argv):
         if not opts.x86_64_only:
             build_test_cases = [
                 # (sysroot path, target triple, debug/release, skip_file_name, should test?)
-                (opts.arm_sysroot, ARM_TRIPLE, "debug", opts.skip_file_name, False),
-                (opts.arm_sysroot, ARM_TRIPLE, "release", opts.skip_file_name, False),
                 (
                     opts.aarch64_sysroot,
                     AARCH64_TRIPLE,

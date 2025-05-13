@@ -421,25 +421,11 @@ macro_rules! scoped_cred {
         }
     };
 }
-#[cfg(not(target_arch = "arm"))]
 scoped_cred!(ScopedUid, libc::uid_t, libc::SYS_setresuid);
-#[cfg(target_arch = "arm")]
-scoped_cred!(ScopedUid, libc::uid_t, libc::SYS_setresuid32);
-
-#[cfg(not(target_arch = "arm"))]
 scoped_cred!(ScopedGid, libc::gid_t, libc::SYS_setresgid);
-#[cfg(target_arch = "arm")]
-scoped_cred!(ScopedGid, libc::gid_t, libc::SYS_setresgid32);
 
-#[cfg(not(target_arch = "arm"))]
 const SYS_GETEUID: libc::c_long = libc::SYS_geteuid;
-#[cfg(target_arch = "arm")]
-const SYS_GETEUID: libc::c_long = libc::SYS_geteuid32;
-
-#[cfg(not(target_arch = "arm"))]
 const SYS_GETEGID: libc::c_long = libc::SYS_getegid;
-#[cfg(target_arch = "arm")]
-const SYS_GETEGID: libc::c_long = libc::SYS_getegid32;
 
 thread_local! {
     // SAFETY: both calls take no parameters and only return an integer value. The kernel also

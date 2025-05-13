@@ -20,7 +20,7 @@ use arch::PciConfig;
 use arch::Pstore;
 #[cfg(target_arch = "x86_64")]
 use arch::SmbiosOptions;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use arch::SveConfig;
 use arch::VcpuAffinity;
 use base::debug;
@@ -79,7 +79,7 @@ cfg_if::cfg_if! {
         #[cfg(feature = "gpu")]
         use crate::crosvm::sys::GpuRenderServerParameters;
 
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         static VHOST_SCMI_PATH: &str = "/dev/vhost-scmi";
     } else if #[cfg(windows)] {
         use base::{Event, Tube};
@@ -108,7 +108,7 @@ pub enum IrqChipKind {
     Kernel {
         /// Whether to setup a virtual ITS controller (for MSI interrupt support) if the hypervisor
         /// supports it. Will eventually be enabled by default.
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         #[serde(default)]
         allow_vgic_its: bool,
     },
@@ -121,7 +121,7 @@ pub enum IrqChipKind {
 impl Default for IrqChipKind {
     fn default() -> Self {
         IrqChipKind::Kernel {
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             allow_vgic_its: false,
         }
     }
@@ -157,7 +157,7 @@ pub struct CpuOptions {
     #[serde(default)]
     pub freq_domains: Vec<CpuSet>,
     /// Scalable Vector Extension.
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     pub sve: Option<SveConfig>,
 }
 
@@ -463,7 +463,7 @@ pub fn parse_cpu_btreemap_u32(s: &str) -> Result<BTreeMap<usize, u32>, String> {
 }
 
 #[cfg(all(
-    any(target_arch = "arm", target_arch = "aarch64"),
+    target_arch = "aarch64",
     any(target_os = "android", target_os = "linux")
 ))]
 pub fn parse_cpu_frequencies(s: &str) -> Result<BTreeMap<usize, Vec<u32>>, String> {
@@ -611,12 +611,12 @@ pub struct Config {
     pub cpu_clusters: Vec<CpuSet>,
     pub cpu_freq_domains: Vec<CpuSet>,
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     pub cpu_frequencies_khz: BTreeMap<usize, Vec<u32>>, // CPU index -> frequencies
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     pub cpu_ipc_ratio: BTreeMap<usize, u32>, // CPU index -> IPC Ratio
@@ -748,7 +748,7 @@ pub struct Config {
     pub sound: Option<PathBuf>,
     pub stub_pci_devices: Vec<StubPciParameters>,
     pub suspended: bool,
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     pub sve: Option<SveConfig>,
     pub swap_dir: Option<PathBuf>,
     pub swiotlb: Option<u64>,
@@ -770,10 +770,10 @@ pub struct Config {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub vfio_isolate_hotplug: bool,
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     pub vhost_scmi: bool,
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     pub vhost_scmi_device: PathBuf,
     pub vhost_user: Vec<VhostUserFrontendOption>,
     pub vhost_user_connect_timeout_ms: Option<u64>,
@@ -782,7 +782,7 @@ pub struct Config {
     #[cfg(feature = "video-encoder")]
     pub video_enc: Vec<VideoDeviceConfig>,
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     pub virt_cpufreq: bool,
@@ -844,13 +844,13 @@ impl Default for Config {
             cpu_capacity: BTreeMap::new(),
             cpu_clusters: Vec::new(),
             #[cfg(all(
-                any(target_arch = "arm", target_arch = "aarch64"),
+                target_arch = "aarch64",
                 any(target_os = "android", target_os = "linux")
             ))]
             cpu_frequencies_khz: BTreeMap::new(),
             cpu_freq_domains: Vec::new(),
             #[cfg(all(
-                any(target_arch = "arm", target_arch = "aarch64"),
+                target_arch = "aarch64",
                 any(target_os = "android", target_os = "linux")
             ))]
             cpu_ipc_ratio: BTreeMap::new(),
@@ -981,7 +981,7 @@ impl Default for Config {
             sound: None,
             stub_pci_devices: Vec::new(),
             suspended: false,
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             sve: None,
             swap_dir: None,
             swiotlb: None,
@@ -1000,10 +1000,10 @@ impl Default for Config {
             #[cfg(any(target_os = "android", target_os = "linux"))]
             vfio_isolate_hotplug: false,
             #[cfg(any(target_os = "android", target_os = "linux"))]
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             vhost_scmi: false,
             #[cfg(any(target_os = "android", target_os = "linux"))]
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             vhost_scmi_device: PathBuf::from(VHOST_SCMI_PATH),
             vhost_user: Vec::new(),
             vhost_user_connect_timeout_ms: None,
@@ -1013,7 +1013,7 @@ impl Default for Config {
             #[cfg(feature = "video-encoder")]
             video_enc: Vec::new(),
             #[cfg(all(
-                any(target_arch = "arm", target_arch = "aarch64"),
+                target_arch = "aarch64",
                 any(target_os = "android", target_os = "linux")
             ))]
             virt_cpufreq: false,
@@ -1108,7 +1108,7 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
     }
 
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     if !cfg.cpu_frequencies_khz.is_empty() {
@@ -1125,7 +1125,7 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
     }
 
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     if cfg.virt_cpufreq {
@@ -1647,14 +1647,14 @@ mod tests {
         assert_eq!(
             cfg.irq_chip,
             Some(IrqChipKind::Kernel {
-                #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                #[cfg(target_arch = "aarch64")]
                 allow_vgic_its: false
             })
         );
     }
 
     #[test]
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     fn parse_irqchip_kernel_with_its() {
         let cfg = TryInto::<Config>::try_into(
             crate::crosvm::cmdline::RunCommand::from_args(
@@ -2245,7 +2245,7 @@ mod tests {
         );
     }
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     #[test]
     fn parse_pci_cam() {
         assert_eq!(

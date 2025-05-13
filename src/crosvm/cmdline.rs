@@ -79,7 +79,7 @@ use crate::crosvm::config::parse_bus_id_addr;
 use crate::crosvm::config::parse_cpu_affinity;
 use crate::crosvm::config::parse_cpu_btreemap_u32;
 #[cfg(all(
-    any(target_arch = "arm", target_arch = "aarch64"),
+    target_arch = "aarch64",
     any(target_os = "android", target_os = "linux")
 ))]
 use crate::crosvm::config::parse_cpu_frequencies;
@@ -984,7 +984,7 @@ pub struct RunCommand {
     pub cpu_cluster: Vec<CpuSet>,
 
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     #[argh(
@@ -1000,7 +1000,7 @@ pub struct RunCommand {
     pub cpu_frequencies_khz: Option<BTreeMap<usize, Vec<u32>>>, // CPU index -> frequencies
 
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     #[argh(
@@ -2122,7 +2122,7 @@ pub struct RunCommand {
     pub vhost_net_device: Option<PathBuf>,
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     #[argh(switch)]
     /// use vhost for scmi
     pub vhost_scmi: Option<bool>,
@@ -2170,7 +2170,7 @@ pub struct RunCommand {
     pub video_encoder: Vec<VideoDeviceConfig>,
 
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     #[argh(switch)]
@@ -2178,7 +2178,7 @@ pub struct RunCommand {
     pub virt_cpufreq: Option<bool>,
 
     #[cfg(all(
-        any(target_arch = "arm", target_arch = "aarch64"),
+        target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
     ))]
     #[argh(switch)]
@@ -2322,7 +2322,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     }
                 }
             }
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             {
                 cfg.sve = cpus.sve;
             }
@@ -2339,7 +2339,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         #[cfg(all(
-            any(target_arch = "arm", target_arch = "aarch64"),
+            target_arch = "aarch64",
             any(target_os = "android", target_os = "linux")
         ))]
         {
@@ -2661,7 +2661,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         #[cfg(any(target_os = "android", target_os = "linux"))]
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         {
             cfg.vhost_scmi = cmd.vhost_scmi.unwrap_or_default();
         }

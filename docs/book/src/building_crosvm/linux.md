@@ -111,12 +111,10 @@ kernel version and permissions.
 ```
 
 Since we have some architecture-dependent code, we also have the option of running unit tests for
-aarch64, armhf, riscv64, and windows (mingw64). These will use an emulator to execute (QEMU or
-wine):
+aarch64, riscv64, and windows (mingw64). These will use an emulator to execute (QEMU or wine):
 
 ```sh
 ./tools/run_tests --platform=aarch64
-./tools/run_tests --platform=armhf
 ./tools/run_tests --platform=riscv64
 ./tools/run_tests --platform=mingw64
 ```
@@ -145,8 +143,8 @@ trade off speed and accuracy.
 
 ## Cross-compilation
 
-Crosvm is built and tested on x86, aarch64, armhf, and riscv64. Your system needs some setup work to
-be able to cross-compile for other architectures, hence it is recommended to use the
+Crosvm is built and tested on x86, aarch64, and riscv64. Your system needs some setup work to be
+able to cross-compile for other architectures, hence it is recommended to use the
 [development container](#using-the-development-container), which will have everything configured.
 
 Note: Cross-compilation is **not supported on gLinux**. Please use the development container.
@@ -159,7 +157,6 @@ On Debian this is as easy as:
 
 ```sh
 sudo dpkg --add-architecture arm64
-sudo dpkg --add-architecture armhf
 sudo dpkg --add-architecture riscv64
 sudo apt update
 ```
@@ -172,7 +169,6 @@ With that enabled, the following scripts will install the needed packages:
 
 ```sh
 ./tools/setup-aarch64
-./tools/setup-armhf
 ./tools/setup-riscv64
 ```
 

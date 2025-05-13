@@ -3,16 +3,17 @@
 // found in the LICENSE file.
 
 //! A crate for abstracting the underlying kernel hypervisor used in crosvm.
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+
+#[cfg(target_arch = "aarch64")]
 pub mod aarch64;
 pub mod caps;
-
-#[cfg(all(
-    unix,
-    any(target_arch = "arm", target_arch = "aarch64"),
-    feature = "gunyah"
-))]
+#[cfg(all(unix, target_arch = "aarch64", feature = "geniezone"))]
+pub mod geniezone;
+#[cfg(all(unix, target_arch = "aarch64", feature = "gunyah"))]
 pub mod gunyah;
+#[cfg(target_arch = "aarch64")]
+#[cfg(all(unix, target_arch = "aarch64", feature = "halla"))]
+pub mod halla;
 #[cfg(all(windows, feature = "haxm"))]
 pub mod haxm;
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -23,14 +24,6 @@ pub mod riscv64;
 pub mod whpx;
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64;
-
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-#[cfg(all(unix, feature = "geniezone"))]
-pub mod geniezone;
-
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-#[cfg(all(unix, feature = "halla"))]
-pub mod halla;
 
 use base::AsRawDescriptor;
 use base::Event;
@@ -43,7 +36,7 @@ use serde::Serialize;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 pub use crate::aarch64::*;
 pub use crate::caps::*;
 #[cfg(target_arch = "riscv64")]
@@ -522,13 +515,13 @@ pub enum DeviceKind {
     /// VFIO device for direct access to devices from userspace
     Vfio,
     /// ARM virtual general interrupt controller v2
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     ArmVgicV2,
     /// ARM virtual general interrupt controller v3
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     ArmVgicV3,
     /// ARM virtual interrupt translation service
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     ArmVgicIts,
     /// RiscV AIA in-kernel emulation
     #[cfg(target_arch = "riscv64")]
@@ -557,7 +550,7 @@ pub enum IrqSource {
     Msi {
         address: u64,
         data: u32,
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         pci_address: resources::PciAddress,
     },
 }

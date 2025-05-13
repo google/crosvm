@@ -7,7 +7,6 @@ from typing import Dict
 BUILD_FEATURES: Dict[str, str] = {
     "x86_64-unknown-linux-gnu": "linux-x86_64",
     "aarch64-unknown-linux-gnu": "linux-aarch64",
-    "armv7-unknown-linux-gnueabihf": "linux-armhf",
     "x86_64-pc-windows-gnu": "win64",
     "x86_64-pc-windows-msvc": "win64",
 }

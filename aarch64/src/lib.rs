@@ -4,7 +4,7 @@
 
 //! ARM 64-bit architecture support.
 
-#![cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#![cfg(target_arch = "aarch64")]
 
 use std::collections::BTreeMap;
 use std::fs::File;

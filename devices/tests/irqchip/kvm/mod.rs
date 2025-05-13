@@ -12,7 +12,7 @@ use hypervisor::kvm::Kvm;
 use hypervisor::kvm::KvmVm;
 use hypervisor::MPState;
 use hypervisor::Vm;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use hypervisor::VmAArch64;
 #[cfg(target_arch = "riscv64")]
 use hypervisor::VmRiscv64;
@@ -29,7 +29,7 @@ fn create_kvm_kernel_irqchip() {
     let mut chip = KvmKernelIrqChip::new(
         vm.try_clone().expect("failed to clone vm"),
         1,
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         /* allow_vgic_its= */
         false,
     )
@@ -41,7 +41,7 @@ fn create_kvm_kernel_irqchip() {
 }
 
 #[test]
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 fn create_kvm_kernel_irqchip_with_its() {
     let kvm = Kvm::new().expect("failed to instantiate Kvm");
     let mem = GuestMemory::new(&[]).unwrap();
@@ -68,7 +68,7 @@ fn mp_state() {
     let mut chip = KvmKernelIrqChip::new(
         vm.try_clone().expect("failed to clone vm"),
         1,
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         /* allow_vgic_its= */
         false,
     )
@@ -81,7 +81,7 @@ fn mp_state() {
     let state = chip.get_mp_state(0).expect("failed to get mp state");
     assert_eq!(state, MPState::Runnable);
 
-    let new_mpstate = if cfg!(any(target_arch = "arm", target_arch = "aarch64")) {
+    let new_mpstate = if cfg!(target_arch = "aarch64") {
         MPState::Stopped
     } else if cfg!(target_arch = "x86_64") {
         MPState::Halted

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 mod aarch64;
 
 mod gunyah_sys;
@@ -253,10 +253,10 @@ impl GunyahVm {
                 match region.options.purpose {
                     MemoryRegionPurpose::Bios => true,
                     MemoryRegionPurpose::GuestMemoryRegion => true,
-                    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                    #[cfg(target_arch = "aarch64")]
                     MemoryRegionPurpose::ProtectedFirmwareRegion => true,
                     MemoryRegionPurpose::ReservedMemory => true,
-                    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                    #[cfg(target_arch = "aarch64")]
                     MemoryRegionPurpose::StaticSwiotlbRegion => false,
                 }
             } else {
@@ -585,7 +585,7 @@ impl Vm for GunyahVm {
             VmCap::BusLockDetect => false,
             VmCap::ReadOnlyMemoryRegion => false,
             VmCap::MemNoncoherentDma => false,
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             VmCap::Sve => false,
         }
     }

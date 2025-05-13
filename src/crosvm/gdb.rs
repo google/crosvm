@@ -6,7 +6,7 @@ use std::net::TcpListener;
 use std::sync::mpsc;
 use std::time::Duration;
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use aarch64::AArch64 as CrosvmArch;
 use anyhow::Context;
 use arch::GdbArch;
@@ -23,7 +23,7 @@ use gdbstub::stub::run_blocking;
 use gdbstub::stub::run_blocking::BlockingEventLoop;
 use gdbstub::stub::SingleThreadStopReason;
 use gdbstub::target::ext::base::single_register_access::SingleRegisterAccess;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use gdbstub::target::ext::base::single_register_access::SingleRegisterAccessOps;
 use gdbstub::target::ext::base::singlethread::SingleThreadBase;
 use gdbstub::target::ext::base::singlethread::SingleThreadResume;
@@ -292,7 +292,7 @@ impl SingleThreadBase for GdbStub {
         Some(self)
     }
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     #[inline(always)]
     fn support_single_register_access(&mut self) -> Option<SingleRegisterAccessOps<(), Self>> {
         Some(self)

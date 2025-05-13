@@ -517,17 +517,6 @@ all-x86_64 = [
     "scudo"
 ]
 
-## All features that are compiled and tested for armhf
-## Note: This platform is deprecated and will be phased out.
-all-armhf = [
-    "android-sparse",
-    "composite-disk",
-    "default",
-    "gdb",
-    "libvda-stub",
-    "net",
-]
-
 ## All features that are compiled and tested for mingw64
 all-mingw64 = [
     "android-sparse",
@@ -628,7 +617,7 @@ riscv64 = { workspace = true }
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { workspace = true }
 
-[target.'cfg(any(target_arch = "aarch64", target_arch = "arm"))'.dependencies]
+[target.'cfg(target_arch = "aarch64")'.dependencies]
 aarch64 = { workspace = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]

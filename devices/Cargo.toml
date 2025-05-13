@@ -116,7 +116,7 @@ usb_util = { workspace = true }
 vfio_sys = { workspace = true }
 vhost = { workspace = true }
 
-[target.'cfg(any(target_arch = "arm", target_arch = "aarch64"))'.dependencies]
+[target.'cfg(target_arch = "aarch64")'.dependencies]
 aarch64_sys_reg = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]

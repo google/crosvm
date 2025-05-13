@@ -1,7 +1,4 @@
 # Configure path to linker and emulators to use when running unit tests
-[target.armv7-unknown-linux-gnueabihf]
-linker = "arm-linux-gnueabihf-gcc"
-runner = "qemu-arm-static"
 [target.aarch64-unknown-linux-gnu]
 linker = "aarch64-linux-gnu-gcc"
 runner = "qemu-aarch64-static"
@@ -15,7 +12,6 @@ runner = "wine64"
 [env]
 PKG_CONFIG_x86_64-unknown-linux-gnu = "x86_64-linux-gnu-pkg-config"
 PKG_CONFIG_aarch64-unknown-linux-gnu = "aarch64-linux-gnu-pkg-config"
-PKG_CONFIG_armv7_unknown_linux_gnueabihf = "arm-linux-gnueabihf-pkg-config"
 
 # riscv does not have a pkg-config wrapper, so we need to configure it manually.
 # See https://autotools.info/pkgconfig/cross-compiling.html for details.

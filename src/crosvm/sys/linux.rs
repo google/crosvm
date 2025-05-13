@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::TryInto;
 use std::ffi::CString;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use std::fs::create_dir_all;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -42,9 +42,9 @@ use std::mem;
 use std::ops::RangeInclusive;
 use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use std::path::PathBuf;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use std::process;
 #[cfg(feature = "registered_events")]
 use std::rc::Rc;
@@ -53,7 +53,7 @@ use std::sync::Arc;
 use std::sync::Barrier;
 use std::thread::JoinHandle;
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use aarch64::AArch64 as Arch;
 use acpi_tables::sdt::SDT;
 use anyhow::anyhow;
@@ -210,12 +210,11 @@ use crate::crosvm::sys::config::SharedDirKind;
 use crate::crosvm::sys::platform::vcpu::VcpuPidTid;
 
 const KVM_PATH: &str = "/dev/kvm";
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-#[cfg(feature = "geniezone")]
+#[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
 const GENIEZONE_PATH: &str = "/dev/gzvm";
-#[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
+#[cfg(all(target_arch = "aarch64", feature = "gunyah"))]
 static GUNYAH_PATH: &str = "/dev/gunyah";
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 #[cfg(feature = "halla")]
 const HALLA_PATH: &str = "/dev/hvm";
 
@@ -834,7 +833,7 @@ fn create_virtio_devices(
         );
     }
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     {
         if cfg.vhost_scmi {
             devs.push(create_vhost_scmi_device(
@@ -1345,9 +1344,9 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         (None, 0)
     };
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     let mut cpu_frequencies = BTreeMap::new();
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     let mut normalized_cpu_ipc_ratios = BTreeMap::new();
 
     // if --enable-fw-cfg or --fw-cfg was given, we want to enable fw_cfg
@@ -1361,19 +1360,19 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         (cfg.cpu_clusters.clone(), cfg.cpu_capacity.clone())
     };
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     let cpu_ipc_ratio = if cfg.host_cpu_topology {
         &cpu_capacity
     } else {
         &cfg.cpu_ipc_ratio
     };
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     let mut vcpu_domain_paths = BTreeMap::new();
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     let mut vcpu_domains = BTreeMap::new();
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     if cfg.virt_cpufreq || cfg.virt_cpufreq_v2 {
         if !cfg.cpu_frequencies_khz.is_empty() {
             cpu_frequencies = cfg.cpu_frequencies_khz.clone();
@@ -1492,16 +1491,16 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         bootorder_fw_cfg_blob: Vec::new(),
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         vcpu_domains,
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         vcpu_domain_paths,
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         cpu_frequencies,
         fw_cfg_parameters: cfg.fw_cfg_parameters.clone(),
         cpu_clusters,
         cpu_capacity,
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         normalized_cpu_ipc_ratios,
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
@@ -1549,14 +1548,14 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         pci_config: cfg.pci_config,
         dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
         boot_cpu: cfg.boot_cpu,
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         virt_cpufreq_v2: cfg.virt_cpufreq_v2,
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         sve_config: cfg.sve.unwrap_or_default(),
     })
 }
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 fn normalize_cpu_ipc_ratios(
     max_frequency_per_cpu: impl Iterator<Item = (usize, u32)>,
     host_max_freq: u32,
@@ -1909,7 +1908,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
             }
         }
         IrqChipKind::Kernel {
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             allow_vgic_its,
         } => {
             ioapic_host_tube = None;
@@ -1917,7 +1916,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
                 KvmKernelIrqChip::new(
                     vm_clone,
                     components.vcpu_count,
-                    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                    #[cfg(target_arch = "aarch64")]
                     allow_vgic_its,
                 )
                 .context("failed to create IRQ chip")?,
@@ -1937,7 +1936,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
     )
 }
 
-#[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
+#[cfg(all(target_arch = "aarch64", feature = "gunyah"))]
 fn run_gunyah(
     device_path: Option<&Path>,
     qcom_trusted_vm_id: Option<u16>,
@@ -2005,8 +2004,7 @@ fn get_default_hypervisor() -> Option<HypervisorKind> {
         });
     }
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    #[cfg(feature = "geniezone")]
+    #[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
     {
         let gz_path = Path::new(GENIEZONE_PATH);
         if gz_path.exists() {
@@ -2016,7 +2014,7 @@ fn get_default_hypervisor() -> Option<HypervisorKind> {
         }
     }
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     #[cfg(feature = "halla")]
     {
         let halla_path = Path::new(HALLA_PATH);
@@ -2027,11 +2025,7 @@ fn get_default_hypervisor() -> Option<HypervisorKind> {
         }
     }
 
-    #[cfg(all(
-        unix,
-        any(target_arch = "arm", target_arch = "aarch64"),
-        feature = "gunyah"
-    ))]
+    #[cfg(all(unix, target_arch = "aarch64", feature = "gunyah"))]
     {
         let gunyah_path = Path::new(GUNYAH_PATH);
         if gunyah_path.exists() {
@@ -2059,17 +2053,12 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
 
     match hypervisor {
         HypervisorKind::Kvm { device } => run_kvm(device.as_deref(), cfg, components),
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-        #[cfg(feature = "geniezone")]
+        #[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
         HypervisorKind::Geniezone { device } => run_gz(device.as_deref(), cfg, components),
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         #[cfg(feature = "halla")]
         HypervisorKind::Halla { device } => run_halla(device.as_deref(), cfg, components),
-        #[cfg(all(
-            unix,
-            any(target_arch = "arm", target_arch = "aarch64"),
-            feature = "gunyah"
-        ))]
+        #[cfg(all(unix, target_arch = "aarch64", feature = "gunyah"))]
         HypervisorKind::Gunyah {
             device,
             qcom_trusted_vm_id,
@@ -2409,7 +2398,7 @@ where
         })
         .collect::<Result<Vec<DtbOverlay>>>()?;
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     let vcpu_domain_paths = components.vcpu_domain_paths.clone();
 
     let mut linux = Arch::build_vm::<V, Vcpu>(
@@ -2527,7 +2516,7 @@ where
         metrics_recv,
         vfio_container_manager,
         worker_process_pids,
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         vcpu_domain_paths,
     )
 }
@@ -3685,10 +3674,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     mut vfio_container_manager: VfioContainerManager,
     // A set of PID of child processes whose clean exit is expected and can be ignored.
     mut worker_process_pids: BTreeSet<Pid>,
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))] vcpu_domain_paths: BTreeMap<
-        usize,
-        PathBuf,
-    >,
+    #[cfg(target_arch = "aarch64")] vcpu_domain_paths: BTreeMap<usize, PathBuf>,
 ) -> Result<ExitState> {
     // Split up `all_control_tubes`.
     #[cfg(feature = "balloon")]
@@ -3869,7 +3855,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     // vCPU freq domains are currently only supported with CgroupsV2.
     let mut vcpu_cgroup_v2_files: std::collections::BTreeMap<usize, File> = BTreeMap::new();
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     for (vcpu_id, vcpu_domain_path) in vcpu_domain_paths.iter() {
         let vcpu_cgroup_v2_file = File::create(vcpu_domain_path.join("cgroup.threads"))
             .with_context(|| {
@@ -3978,7 +3964,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         #[cfg(target_arch = "x86_64")]
         let bus_lock_ratelimit_ctrl = Arc::clone(&bus_lock_ratelimit_ctrl);
 
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(target_arch = "aarch64")]
         let cpu_config = None;
 
         #[cfg(target_arch = "riscv64")]
@@ -5533,7 +5519,7 @@ mod tests {
         );
     }
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     #[test]
     fn normalized_cpu_ipc_ratios_simple() {
         let host_max_freq = 5000000;

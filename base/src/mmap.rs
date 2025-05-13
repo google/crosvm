@@ -193,8 +193,6 @@ unsafe fn flush_one(_addr: *const u8) -> Result<()> {
             // Data cache clean by VA to PoC.
             std::arch::asm!("DC CVAC, {x}", x = in(reg) _addr);
             Ok(())
-        } else if #[cfg(target_arch = "arm")] {
-            Err(Error::NotImplemented("Userspace cannot flush to PoC"))
         } else {
             Err(Error::NotImplemented("Cache flush not implemented"))
         }

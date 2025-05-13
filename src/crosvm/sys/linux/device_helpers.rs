@@ -1179,7 +1179,7 @@ impl VirtioDeviceBuilder for &VsockConfig {
     }
 }
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 pub fn create_vhost_scmi_device(
     protected_vm: ProtectionType,
     jail_config: Option<&JailConfig>,

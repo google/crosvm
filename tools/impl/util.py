@@ -213,7 +213,6 @@ def rust_sysroot():
 SHORTHANDS = {
     "mingw64": "x86_64-pc-windows-gnu",
     "msvc64": "x86_64-pc-windows-msvc",
-    "armhf": "armv7-unknown-linux-gnueabihf",
     "aarch64": "aarch64-unknown-linux-gnu",
     "riscv64": "riscv64gc-unknown-linux-gnu",
     "x86_64": "x86_64-unknown-linux-gnu",
@@ -260,10 +259,7 @@ class Triple(NamedTuple):
     @classmethod
     def from_linux_arch(cls, arch: str):
         "Rough logic to convert the output of `arch` into a corresponding linux build triple."
-        if arch == "armhf":
-            return cls.from_str("armv7-unknown-linux-gnueabihf")
-        else:
-            return cls.from_str(f"{arch}-unknown-linux-gnu")
+        return cls.from_str(f"{arch}-unknown-linux-gnu")
 
     @classmethod
     def host_default(cls):

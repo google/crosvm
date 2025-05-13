@@ -11,7 +11,6 @@ use hypervisor::MPState;
 use hypervisor::Vcpu;
 
 use crate::IrqChip;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use crate::IrqChipAArch64;
 use crate::IrqChipCap;
 use crate::IrqEdgeEvent;
@@ -166,7 +165,6 @@ impl IrqChip for GunyahIrqChip {
     }
 }
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 impl IrqChipAArch64 for GunyahIrqChip {
     fn try_box_clone(&self) -> Result<Box<dyn IrqChipAArch64>> {
         Ok(Box::new(self.try_clone()?))

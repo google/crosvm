@@ -195,7 +195,7 @@ impl MsiConfig {
             gsi,
             msi_address: self.address,
             msi_data: self.data.into(),
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            #[cfg(target_arch = "aarch64")]
             pci_address,
         }) {
             error!("failed to send AddMsiRoute request at {:?}", e);

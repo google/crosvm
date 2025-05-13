@@ -40,7 +40,7 @@ pub enum HypervisorCap {
 /// A capability the `Vm` can possibly expose.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VmCap {
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     ArmPmuV3,
     /// Track dirty pages
     DirtyLog,
@@ -59,6 +59,6 @@ pub enum VmCap {
     MemNoncoherentDma,
     /// If supported, this VM supports enabling ARM SVE (Scalable Vector Extension)
     /// by requesting `VcpuFeature::Sve` when calling `VcpuAarch64::init()`.
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     Sve,
 }

@@ -22,10 +22,9 @@ To target local machine:
 
     $ ./tools/build_release
 
-To cross-compile for aarch64, armhf or windows you can use:
+To cross-compile for aarch64 or windows you can use:
 
     $ ./tools/build_release --platform=aarch64
-    $ ./tools/build_release --platform=armhf
     $ ./tools/build_release --platform=mingw64
 """
 
@@ -125,7 +124,7 @@ def main():
         "--platform",
         "-p",
         help=(
-            "Override the cargo triple to build. Shorthands are available: (x86_64, armhf, "
+            "Override the cargo triple to build. Shorthands are available: (x86_64, "
             + "aarch64, mingw64, msvc64)."
         ),
     )

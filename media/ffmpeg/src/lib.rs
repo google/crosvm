@@ -2,10 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![cfg(all(
-    any(target_os = "android", target_os = "linux"),
-    not(target_arch = "arm")
-))]
+#![cfg(any(target_os = "android", target_os = "linux"))]
 
 pub mod avcodec;
 mod avutil;

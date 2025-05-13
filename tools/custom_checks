@@ -129,7 +129,6 @@ def check_rust_features(*files: str):
         (
             *collect_features("all-x86_64"),
             *collect_features("all-aarch64"),
-            *collect_features("all-armhf"),
             *collect_features("all-mingw64"),
             *collect_features("all-msvc64"),
             *collect_features("all-riscv64"),

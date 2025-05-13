@@ -119,7 +119,6 @@ these tests are executed:
 | :-------------------------- | :---: | :------------------------: | :---------------: | :-------: |
 | x86_64 (linux)              |  ✅   |             ✅             |        ✅         |    ✅     |
 | aarch64 (linux)             |  ✅   | ✅ (qemu-user[^qemu-user]) | ✅ (qemu[^qemu])  |    ❌     |
-| armhf (linux)               |  ✅   | ✅ (qemu-user[^qemu-user]) |        ❌         |    ❌     |
 | mingw64[^windows] (linux)   |  🚧   |        🚧 (wine64)         |        ❌         |    ❌     |
 | mingw64[^windows] (windows) |  🚧   |             🚧             |        🚧         |    ❌     |
 

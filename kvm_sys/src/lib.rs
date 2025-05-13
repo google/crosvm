@@ -66,7 +66,7 @@ pub mod x86 {
 #[cfg(target_arch = "x86_64")]
 pub use crate::x86::*;
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 pub mod aarch64 {
     pub mod bindings;
     use base::ioctl_ior_nr;
@@ -89,7 +89,7 @@ pub mod aarch64 {
     #[cfg(target_os = "android")]
     ioctl_iowr_nr!(KVM_PVIOMMU_SET_CONFIG, KVMIO, 0x1, kvm_vfio_iommu_config);
 }
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 pub use crate::aarch64::*;
 
 #[cfg(target_arch = "riscv64")]

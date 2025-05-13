@@ -4,7 +4,7 @@
 
 #![cfg(any(target_os = "android", target_os = "linux"))]
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 mod aarch64;
 
 #[cfg(target_arch = "x86_64")]
@@ -29,7 +29,7 @@ use hypervisor::HypervisorCap;
 use hypervisor::IoEventAddress;
 use hypervisor::MemCacheType::CacheCoherent;
 use hypervisor::Vm;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use hypervisor::VmAArch64;
 #[cfg(target_arch = "riscv64")]
 use hypervisor::VmRiscv64;
