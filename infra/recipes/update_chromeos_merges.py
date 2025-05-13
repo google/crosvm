@@ -14,6 +14,15 @@ DEPS = [
 def RunSteps(api):
     with api.crosvm.source_context():
         api.step(
+            "Stop existing dev containers",
+            [
+                "vpython3",
+                "./tools/dev_container",
+                "--verbose",
+                "--stop",
+            ],
+        )
+        api.step(
             "Update Merges",
             [
                 "vpython3",
