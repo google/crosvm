@@ -22,6 +22,6 @@ lto = true
 incremental = false
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
-nix = { version = "0.28", features = ["event", "feature", "fs", "mman", "socket", "uio", "ioctl"] }
+nix = { version = "0.29", features = ["event", "feature", "fs", "mman", "socket", "uio", "ioctl"] }
 
 [workspace]

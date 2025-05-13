@@ -9,7 +9,7 @@ powerd = ["dbus", "system_api"]
 
 [dependencies]
 base = { path = "../base" }
-dbus = { version = "0.9", optional = true }
+dbus = { version = "0.9.7", optional = true }
 protobuf = "3.2"
 remain = "0.2"
 system_api = { path = "../system_api", optional = true }
