@@ -14,6 +14,7 @@ use zerocopy::FromBytes;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
+use zerocopy::Unaligned;
 
 use crate::virtio::scsi::constants::INQUIRY;
 use crate::virtio::scsi::constants::MAINTENANCE_IN;
@@ -151,7 +152,17 @@ impl Command {
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct TestUnitReady {
@@ -194,7 +205,17 @@ async fn read_from_disk(
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct Read6 {
@@ -237,7 +258,17 @@ impl Read6 {
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct Inquiry {
@@ -442,7 +473,17 @@ fn fill_mode_page(
 // According to the spec, devices that implement MODE SENSE(6) shall also implement MODE SELECT(6)
 // as well.
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct ModeSelect6 {
@@ -563,7 +604,17 @@ impl ModeSelect6 {
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct ModeSense6 {
@@ -714,7 +765,17 @@ impl ModeSense6 {
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct ReadCapacity10 {
@@ -739,7 +800,17 @@ impl ReadCapacity10 {
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct ReadCapacity16 {
@@ -766,7 +837,17 @@ impl ReadCapacity16 {
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct Read10 {
@@ -800,7 +881,17 @@ impl Read10 {
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct Write10 {
@@ -857,7 +948,17 @@ async fn write_to_disk(
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct SynchronizeCache10 {
@@ -916,7 +1017,17 @@ async fn write_same(
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct WriteSame10 {
@@ -973,7 +1084,17 @@ impl WriteSame10 {
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct Unmap {
@@ -1041,7 +1162,17 @@ impl Unmap {
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct WriteSame16 {
@@ -1095,7 +1226,17 @@ impl WriteSame16 {
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct ReportLuns {
@@ -1134,7 +1275,17 @@ impl ReportLuns {
 }
 
 #[derive(
-    Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+    PartialEq,
+    Eq,
+    Unaligned,
 )]
 #[repr(C, packed)]
 pub struct ReportSupportedTMFs {
