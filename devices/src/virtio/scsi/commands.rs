@@ -39,116 +39,78 @@ use crate::virtio::scsi::device::ExecuteError;
 use crate::virtio::Reader;
 use crate::virtio::Writer;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Command {
-    TestUnitReady(TestUnitReady),
-    Read6(Read6),
-    Inquiry(Inquiry),
-    ModeSelect6(ModeSelect6),
-    ModeSense6(ModeSense6),
-    ReadCapacity10(ReadCapacity10),
-    ReadCapacity16(ReadCapacity16),
-    Read10(Read10),
-    Write10(Write10),
-    SynchronizeCache10(SynchronizeCache10),
-    WriteSame10(WriteSame10),
-    Unmap(Unmap),
-    WriteSame16(WriteSame16),
-    ReportLuns(ReportLuns),
-    ReportSupportedTMFs(ReportSupportedTMFs),
+/// Parse and execute a SCSI command.
+pub async fn execute_cdb(
+    cdb: &[u8],
+    reader: &mut Reader,
+    writer: &mut Writer,
+    dev: &AsyncLogicalUnit,
+) -> Result<(), ExecuteError> {
+    let op = cdb[0];
+    match op {
+        INQUIRY => parse_cdb::<Inquiry>(cdb)?.emulate(writer, dev),
+        MAINTENANCE_IN => execute_maintenance_in(cdb, writer),
+        MODE_SELECT_6 => parse_cdb::<ModeSelect6>(cdb)?.emulate(reader, dev),
+        MODE_SENSE_6 => parse_cdb::<ModeSense6>(cdb)?.emulate(writer, dev),
+        READ_6 => parse_cdb::<Read6>(cdb)?.emulate(writer, dev).await,
+        READ_10 => parse_cdb::<Read10>(cdb)?.emulate(writer, dev).await,
+        READ_CAPACITY_10 => parse_cdb::<ReadCapacity10>(cdb)?.emulate(writer, dev),
+        REPORT_LUNS => parse_cdb::<ReportLuns>(cdb)?.emulate(writer),
+        SERVICE_ACTION_IN_16 => execute_service_action_in_16(cdb, writer, dev),
+        SYNCHRONIZE_CACHE_10 => parse_cdb::<SynchronizeCache10>(cdb)?.emulate(dev).await,
+        TEST_UNIT_READY => parse_cdb::<TestUnitReady>(cdb)?.emulate(),
+        UNMAP => parse_cdb::<Unmap>(cdb)?.emulate(reader, dev).await,
+        WRITE_10 => parse_cdb::<Write10>(cdb)?.emulate(reader, dev).await,
+        WRITE_SAME_10 => parse_cdb::<WriteSame10>(cdb)?.emulate(reader, dev).await,
+        WRITE_SAME_16 => parse_cdb::<WriteSame16>(cdb)?.emulate(reader, dev).await,
+        _ => {
+            warn!("SCSI command {:#x?} is not implemented", op);
+            Err(ExecuteError::Unsupported(op))
+        }
+    }
 }
 
-impl Command {
-    pub fn new(cdb: &[u8]) -> Result<Self, ExecuteError> {
-        let op = cdb[0];
-        match op {
-            TEST_UNIT_READY => Ok(Self::TestUnitReady(Self::parse_command(cdb)?)),
-            READ_6 => Ok(Self::Read6(Self::parse_command(cdb)?)),
-            INQUIRY => Ok(Self::Inquiry(Self::parse_command(cdb)?)),
-            MODE_SELECT_6 => Ok(Self::ModeSelect6(Self::parse_command(cdb)?)),
-            MODE_SENSE_6 => Ok(Self::ModeSense6(Self::parse_command(cdb)?)),
-            READ_CAPACITY_10 => Ok(Self::ReadCapacity10(Self::parse_command(cdb)?)),
-            READ_10 => Ok(Self::Read10(Self::parse_command(cdb)?)),
-            WRITE_10 => Ok(Self::Write10(Self::parse_command(cdb)?)),
-            SYNCHRONIZE_CACHE_10 => Ok(Self::SynchronizeCache10(Self::parse_command(cdb)?)),
-            WRITE_SAME_10 => Ok(Self::WriteSame10(Self::parse_command(cdb)?)),
-            UNMAP => Ok(Self::Unmap(Self::parse_command(cdb)?)),
-            WRITE_SAME_16 => Ok(Self::WriteSame16(Self::parse_command(cdb)?)),
-            SERVICE_ACTION_IN_16 => Self::parse_service_action_in_16(cdb),
-            REPORT_LUNS => Ok(Self::ReportLuns(Self::parse_command(cdb)?)),
-            MAINTENANCE_IN => Self::parse_maintenance_in(cdb),
-            _ => {
-                warn!("SCSI command {:#x?} is not implemented", op);
-                Err(ExecuteError::Unsupported(op))
-            }
+fn execute_maintenance_in(cdb: &[u8], writer: &mut Writer) -> Result<(), ExecuteError> {
+    // Top three bits are reserved.
+    let service_action = cdb[1] & 0x1f;
+    match service_action {
+        REPORT_SUPPORTED_TASK_MANAGEMENT_FUNCTIONS => {
+            parse_cdb::<ReportSupportedTMFs>(cdb)?.emulate(writer)
+        }
+        _ => {
+            warn!(
+                "service action {:#x?} for MAINTENANCE_IN is not implemented",
+                service_action
+            );
+            Err(ExecuteError::Unsupported(cdb[0]))
         }
     }
+}
 
-    fn parse_command<T: FromBytes>(cdb: &[u8]) -> Result<T, ExecuteError> {
-        let (command, _) = T::read_from_prefix(cdb).map_err(|_| ExecuteError::ReadCommand)?;
-        Ok(command)
-    }
-
-    fn parse_maintenance_in(cdb: &[u8]) -> Result<Self, ExecuteError> {
-        // Top three bits are reserved.
-        let service_action = cdb[1] & 0x1f;
-        match service_action {
-            REPORT_SUPPORTED_TASK_MANAGEMENT_FUNCTIONS => {
-                Ok(Self::ReportSupportedTMFs(Self::parse_command(cdb)?))
-            }
-            _ => {
-                warn!(
-                    "service action {:#x?} for MAINTENANCE_IN is not implemented",
-                    service_action
-                );
-                Err(ExecuteError::Unsupported(cdb[0]))
-            }
+fn execute_service_action_in_16(
+    cdb: &[u8],
+    writer: &mut Writer,
+    dev: &AsyncLogicalUnit,
+) -> Result<(), ExecuteError> {
+    // Top three bits are reserved.
+    let service_action = cdb[1] & 0x1f;
+    match service_action {
+        READ_CAPACITY_16 => parse_cdb::<ReadCapacity16>(cdb)?.emulate(writer, dev),
+        _ => {
+            warn!(
+                "service action {:#x?} for SERVICE_ACTION_IN_16 is not implemented",
+                service_action
+            );
+            Err(ExecuteError::Unsupported(cdb[0]))
         }
     }
+}
 
-    fn parse_service_action_in_16(cdb: &[u8]) -> Result<Self, ExecuteError> {
-        // Top three bits are reserved.
-        let service_action = cdb[1] & 0x1f;
-        match service_action {
-            READ_CAPACITY_16 => Ok(Self::ReadCapacity16(Self::parse_command(cdb)?)),
-            _ => {
-                warn!(
-                    "service action {:#x?} for SERVICE_ACTION_IN_16 is not implemented",
-                    service_action
-                );
-                Err(ExecuteError::Unsupported(cdb[0]))
-            }
-        }
-    }
-
-    pub async fn execute(
-        &self,
-        reader: &mut Reader,
-        writer: &mut Writer,
-        dev: &AsyncLogicalUnit,
-    ) -> Result<(), ExecuteError> {
-        match self {
-            Self::TestUnitReady(_) => Ok(()), // noop as the device is ready.
-            Self::Read6(read6) => read6.emulate(writer, dev).await,
-            Self::Inquiry(inquiry) => inquiry.emulate(writer, dev),
-            Self::ModeSelect6(mode_select_6) => mode_select_6.emulate(reader, dev),
-            Self::ModeSense6(mode_sense_6) => mode_sense_6.emulate(writer, dev),
-            Self::ReadCapacity10(read_capacity_10) => read_capacity_10.emulate(writer, dev),
-            Self::ReadCapacity16(read_capacity_16) => read_capacity_16.emulate(writer, dev),
-            Self::Read10(read_10) => read_10.emulate(writer, dev).await,
-            Self::Write10(write_10) => write_10.emulate(reader, dev).await,
-            Self::SynchronizeCache10(synchronize_cache_10) => {
-                synchronize_cache_10.emulate(dev).await
-            }
-            Self::WriteSame10(write_same_10) => write_same_10.emulate(reader, dev).await,
-            Self::Unmap(unmap) => unmap.emulate(reader, dev).await,
-            Self::WriteSame16(write_same_16) => write_same_16.emulate(reader, dev).await,
-            Self::ReportLuns(report_luns) => report_luns.emulate(writer),
-            Self::ReportSupportedTMFs(report_supported_tmfs) => {
-                report_supported_tmfs.emulate(writer)
-            }
-        }
-    }
+fn parse_cdb<T: FromBytes + Unaligned + Immutable + KnownLayout>(
+    cdb: &[u8],
+) -> Result<&T, ExecuteError> {
+    let (command, _) = T::ref_from_prefix(cdb).map_err(|_| ExecuteError::ReadCommand)?;
+    Ok(command)
 }
 
 #[derive(
@@ -169,6 +131,13 @@ pub struct TestUnitReady {
     opcode: u8,
     reserved: [u8; 4],
     control: u8,
+}
+
+impl TestUnitReady {
+    fn emulate(&self) -> Result<(), ExecuteError> {
+        // noop as the device is ready.
+        Ok(())
+    }
 }
 
 fn check_lba_range(max_lba: u64, sector_num: u64, sector_len: usize) -> Result<(), ExecuteError> {
@@ -1328,25 +1297,16 @@ mod tests {
     #[test]
     fn parse_test_unit_ready() {
         let cdb = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-        let command = Command::new(&cdb).unwrap();
-        assert_eq!(
-            command,
-            Command::TestUnitReady(TestUnitReady {
-                opcode: TEST_UNIT_READY,
-                reserved: [0; 4],
-                control: 0
-            })
-        );
+        let test_unit_ready = parse_cdb::<TestUnitReady>(&cdb).unwrap();
+        assert_eq!(test_unit_ready.opcode, TEST_UNIT_READY);
+        assert_eq!(test_unit_ready.reserved, [0; 4]);
+        assert_eq!(test_unit_ready.control, 0);
     }
 
     #[test]
     fn parse_read6() {
         let cdb = [0x08, 0xab, 0xcd, 0xef, 0x00, 0x00];
-        let command = Command::new(&cdb).unwrap();
-        let read6 = match command {
-            Command::Read6(r) => r,
-            _ => panic!("unexpected command type: {:?}", command),
-        };
+        let read6 = parse_cdb::<Read6>(&cdb).unwrap();
         assert_eq!(read6.xfer_len(), 256);
         assert_eq!(read6.lba(), 0x0bcdef);
     }
@@ -1354,11 +1314,7 @@ mod tests {
     #[test]
     fn parse_inquiry() {
         let cdb = [0x12, 0x01, 0x00, 0x00, 0x40, 0x00];
-        let command = Command::new(&cdb).unwrap();
-        let inquiry = match command {
-            Command::Inquiry(inq) => inq,
-            _ => panic!("unexpected command type: {:?}", command),
-        };
+        let inquiry = parse_cdb::<Inquiry>(&cdb).unwrap();
         assert!(inquiry.vital_product_data_enabled());
         assert_eq!(inquiry.alloc_len(), 0x0040);
         assert_eq!(inquiry.page_code(), 0x00);
@@ -1367,11 +1323,7 @@ mod tests {
     #[test]
     fn parse_mode_sense_6() {
         let cdb = [0x1a, 0x00, 0xa8, 0x00, 0x04, 0x00];
-        let command = Command::new(&cdb).unwrap();
-        let mode_sense_6 = match command {
-            Command::ModeSense6(m) => m,
-            _ => panic!("unexpected command type: {:?}", command),
-        };
+        let mode_sense_6 = parse_cdb::<ModeSense6>(&cdb).unwrap();
         assert_eq!(mode_sense_6.alloc_len(), 0x04);
         assert_eq!(mode_sense_6.page_code(), 0x28);
         assert_eq!(mode_sense_6.page_control().unwrap(), PageControl::Default);
@@ -1380,21 +1332,13 @@ mod tests {
     #[test]
     fn parse_read_capacity_10() {
         let cdb = [0x25, 0x00, 0xab, 0xcd, 0xef, 0x01, 0x00, 0x00, 0x9, 0x0];
-        let command = Command::new(&cdb).unwrap();
-        match command {
-            Command::ReadCapacity10(_) => (),
-            _ => panic!("unexpected command type: {:?}", command),
-        };
+        let _read_capacity_10 = parse_cdb::<ReadCapacity10>(&cdb).unwrap();
     }
 
     #[test]
     fn parse_read10() {
         let cdb = [0x28, 0x00, 0x00, 0x3c, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00];
-        let command = Command::new(&cdb).unwrap();
-        let read10 = match command {
-            Command::Read10(r) => r,
-            _ => panic!("unexpected command type: {:?}", command),
-        };
+        let read10 = parse_cdb::<Read10>(&cdb).unwrap();
         assert_eq!(read10.xfer_len(), 0x0008);
         assert_eq!(read10.lba(), 0x003c0000);
     }
@@ -1402,11 +1346,7 @@ mod tests {
     #[test]
     fn parse_write10() {
         let cdb = [0x2a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00];
-        let command = Command::new(&cdb).unwrap();
-        let write10 = match command {
-            Command::Write10(w) => w,
-            _ => panic!("unexpected command type: {:?}", command),
-        };
+        let write10 = parse_cdb::<Write10>(&cdb).unwrap();
         assert_eq!(write10.xfer_len(), 0x0008);
         assert_eq!(write10.lba(), 0x00000000);
     }
@@ -1414,18 +1354,13 @@ mod tests {
     #[test]
     fn parse_synchronize_cache_10() {
         let cdb = [0x35, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-        let command = Command::new(&cdb).unwrap();
-        assert_eq!(
-            command,
-            Command::SynchronizeCache10(SynchronizeCache10 {
-                opcode: SYNCHRONIZE_CACHE_10,
-                immed_byte: 0,
-                lba_bytes: [0x00, 0x00, 0x00, 0x00],
-                group_number: 0x00,
-                block_num_bytes: [0x00, 0x00],
-                control: 0x00,
-            })
-        );
+        let synchronize_cache_10 = parse_cdb::<SynchronizeCache10>(&cdb).unwrap();
+        assert_eq!(synchronize_cache_10.opcode, SYNCHRONIZE_CACHE_10);
+        assert_eq!(synchronize_cache_10.immed_byte, 0);
+        assert_eq!(synchronize_cache_10.lba_bytes, [0x00, 0x00, 0x00, 0x00]);
+        assert_eq!(synchronize_cache_10.group_number, 0x00);
+        assert_eq!(synchronize_cache_10.block_num_bytes, [0x00, 0x00]);
+        assert_eq!(synchronize_cache_10.control, 0x00);
     }
 
     #[test]
@@ -1433,11 +1368,7 @@ mod tests {
         let cdb = [
             0xa0, 0x00, 0x00, 0x00, 0x00, 0x00, 0xab, 0xcd, 0xef, 0x12, 0x00, 0x00,
         ];
-        let command = Command::new(&cdb).unwrap();
-        let report_luns = match command {
-            Command::ReportLuns(r) => r,
-            _ => panic!("unexpected command type: {:?}", command),
-        };
+        let report_luns = parse_cdb::<ReportLuns>(&cdb).unwrap();
         assert_eq!(report_luns.alloc_len(), 0xabcdef12);
     }
 
@@ -1446,11 +1377,7 @@ mod tests {
         let cdb = [
             0xa3, 0x0d, 0x00, 0x00, 0x00, 0x00, 0xab, 0xcd, 0xef, 0x12, 0x00, 0x00,
         ];
-        let command = Command::new(&cdb).unwrap();
-        let report_supported_tmfs = match command {
-            Command::ReportSupportedTMFs(r) => r,
-            _ => panic!("unexpected command type: {:?}", command),
-        };
+        let report_supported_tmfs = parse_cdb::<ReportSupportedTMFs>(&cdb).unwrap();
         assert_eq!(report_supported_tmfs.alloc_len(), 0xabcdef12);
     }
 }

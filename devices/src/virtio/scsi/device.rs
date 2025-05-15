@@ -57,7 +57,7 @@ use zerocopy::KnownLayout;
 use crate::virtio::async_utils;
 use crate::virtio::block::sys::get_seg_max;
 use crate::virtio::copy_config;
-use crate::virtio::scsi::commands::Command;
+use crate::virtio::scsi::commands::execute_cdb;
 use crate::virtio::scsi::constants::CHECK_CONDITION;
 use crate::virtio::scsi::constants::GOOD;
 use crate::virtio::scsi::constants::ILLEGAL_REQUEST;
@@ -529,8 +529,7 @@ impl Controller {
             Some(target) => {
                 let mut cdb = vec![0; cdb_size as usize];
                 reader.read_exact(&mut cdb).map_err(ExecuteError::Read)?;
-                let command = Command::new(&cdb)?;
-                match command.execute(reader, data_writer, target).await {
+                match execute_cdb(&cdb, reader, data_writer, target).await {
                     Ok(()) => {
                         let hdr = VirtioScsiCmdRespHeader {
                             sense_len: 0,
