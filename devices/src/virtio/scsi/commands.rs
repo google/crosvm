@@ -140,15 +140,14 @@ impl TestUnitReady {
     }
 }
 
-fn check_lba_range(max_lba: u64, sector_num: u64, sector_len: usize) -> Result<(), ExecuteError> {
-    // Checking `sector_num + sector_len - 1 <= max_lba`, but we are being careful about overflows
-    // and underflows.
-    match sector_num.checked_add(sector_len as u64) {
-        Some(v) if v <= max_lba + 1 => Ok(()),
+fn check_lba_range(last_lba: u64, lba: u64, xfer_blocks: usize) -> Result<(), ExecuteError> {
+    // Checking `lba + xfer_blocks - 1 <= last_lba`, but we are being careful about overflows.
+    match lba.checked_add(xfer_blocks as u64) {
+        Some(v) if v <= last_lba + 1 => Ok(()),
         _ => Err(ExecuteError::LbaOutOfRange {
-            length: sector_len,
-            sector: sector_num,
-            max_lba,
+            lba,
+            xfer_blocks,
+            last_lba,
         }),
     }
 }
@@ -159,7 +158,7 @@ async fn read_from_disk(
     xfer_blocks: usize,
     lba: u64,
 ) -> Result<(), ExecuteError> {
-    check_lba_range(dev.max_lba, lba, xfer_blocks)?;
+    check_lba_range(dev.last_lba, lba, xfer_blocks)?;
     let block_size = dev.block_size;
     let count = xfer_blocks * block_size as usize;
     let offset = lba * block_size as u64;
@@ -358,8 +357,12 @@ impl Inquiry {
                 outbuf[4] = 1;
                 // skip outbuf[5]: crosvm does not support the COMPARE AND WRITE command.
                 // Maximum transfer length
-                outbuf[8..12]
-                    .copy_from_slice(&dev.max_lba.try_into().unwrap_or(u32::MAX).to_be_bytes());
+                outbuf[8..12].copy_from_slice(
+                    &(dev.last_lba + 1)
+                        .try_into()
+                        .unwrap_or(u32::MAX)
+                        .to_be_bytes(),
+                );
                 // Maximum unmap LBA count
                 outbuf[20..24].fill(0xff);
                 // Maximum unmap block descriptor count
@@ -367,7 +370,7 @@ impl Inquiry {
                 // Optimal unmap granularity
                 outbuf[28..32].copy_from_slice(&128u32.to_be_bytes());
                 // Maximum WRITE SAME length
-                outbuf[36..44].copy_from_slice(&dev.max_lba.to_be_bytes());
+                outbuf[36..44].copy_from_slice(&(dev.last_lba + 1).to_be_bytes());
             }
             // Logical Block Provisioning
             0xb2 => {
@@ -640,11 +643,11 @@ impl ModeSense6 {
         // Device specific parameter
         // We do not support the disabled page out (DPO) and forced unit access (FUA) bit.
         outbuf[2] = if dev.read_only { 0x80 } else { 0x00 };
-        let mut idx = if !self.disable_block_desc() && dev.max_lba > 0 {
+        let mut idx = if !self.disable_block_desc() {
             // Block descriptor length.
             outbuf[3] = 8;
             // outbuf[4]: Density code is 0.
-            let sectors = dev.max_lba;
+            let sectors = dev.last_lba + 1;
             // Fill in the number of sectors if not bigger than 0xffffff, leave it with 0
             // otherwise.
             if sectors <= 0xffffff {
@@ -760,7 +763,7 @@ impl ReadCapacity10 {
     fn emulate(&self, writer: &mut Writer, dev: &AsyncLogicalUnit) -> Result<(), ExecuteError> {
         // Returned value is the block address of the last sector.
         // If the block address exceeds u32::MAX, we return u32::MAX.
-        let block_address: u32 = dev.max_lba.saturating_sub(1).try_into().unwrap_or(u32::MAX);
+        let block_address: u32 = dev.last_lba.try_into().unwrap_or(u32::MAX);
         let mut outbuf = [0u8; 8];
         outbuf[..4].copy_from_slice(&block_address.to_be_bytes());
         outbuf[4..8].copy_from_slice(&dev.block_size.to_be_bytes());
@@ -796,7 +799,7 @@ impl ReadCapacity16 {
         let _trace = cros_tracing::trace_event!(VirtioScsi, "READ_CAPACITY(16)");
         let mut outbuf = [0u8; 32];
         // Last logical block address
-        outbuf[..8].copy_from_slice(&dev.max_lba.saturating_sub(1).to_be_bytes());
+        outbuf[..8].copy_from_slice(&dev.last_lba.to_be_bytes());
         // Block size
         outbuf[8..12].copy_from_slice(&dev.block_size.to_be_bytes());
         // crosvm implements logical block provisioning management.
@@ -902,7 +905,7 @@ async fn write_to_disk(
     if dev.read_only {
         return Err(ExecuteError::ReadOnly);
     }
-    check_lba_range(dev.max_lba, lba, xfer_blocks)?;
+    check_lba_range(dev.last_lba, lba, xfer_blocks)?;
     let block_size = dev.block_size;
     let count = xfer_blocks * block_size as usize;
     let offset = lba * block_size as u64;
@@ -953,7 +956,7 @@ impl SynchronizeCache10 {
 }
 
 async fn unmap(dev: &AsyncLogicalUnit, lba: u64, nblocks: u64) -> Result<(), ExecuteError> {
-    check_lba_range(dev.max_lba, lba, nblocks as usize)?;
+    check_lba_range(dev.last_lba, lba, nblocks as usize)?;
     let offset = lba * dev.block_size as u64;
     let length = nblocks * dev.block_size as u64;
     // Ignore the errors here since the device is not strictly required to unmap the LBAs.
@@ -967,7 +970,7 @@ async fn write_same(
     nblocks: u64,
     reader: &mut Reader,
 ) -> Result<(), ExecuteError> {
-    check_lba_range(dev.max_lba, lba, nblocks as usize)?;
+    check_lba_range(dev.last_lba, lba, nblocks as usize)?;
     // The WRITE SAME command expects the device to transfer a single logical block from the
     // Data-Out buffer.
     reader.split_at(dev.block_size as usize);
