@@ -21,7 +21,7 @@ cfg-if = "1"
 gdbstub = { version = "0.7.0", optional = true }
 gdbstub_arch = { version = "0.3.0", optional = true }
 hypervisor = { path = "../hypervisor" }
-libc = "0.2"
+libc = { workspace = true }
 metrics = { path = "../metrics" }
 metrics_events = { path = "../metrics_events" }
 protos = { path = "../protos", optional = true }

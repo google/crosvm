@@ -71,7 +71,7 @@ gpu_display = { path = "../gpu_display", optional = true }
 rutabaga_gfx = { path = "../rutabaga_gfx" }
 hypervisor = { path = "../hypervisor" }
 kvm_sys = { path = "../kvm_sys" }
-libc = "0.2"
+libc = { workspace = true }
 libvda = { path = "../media/libvda", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
 metrics = { path = "../metrics" }

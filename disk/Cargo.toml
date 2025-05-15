@@ -21,7 +21,7 @@ cfg-if = "1.0.0"
 crc32fast = { version = "1.2.1", optional = true }
 cros_async = { path = "../cros_async" }
 data_model = { path = "../common/data_model" }
-libc = "0.2"
+libc = { workspace = true }
 protobuf = { version = "3.2", optional = true }
 protos = { path = "../protos", features = ["composite-disk"], optional = true }
 remain = "0.2"

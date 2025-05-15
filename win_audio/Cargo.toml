@@ -10,7 +10,7 @@ audio_streams = { path = "../common/audio_streams"}
 audio_util = { path = "../audio_util" }
 base = { workspace = true }
 cros_async = { path = "../cros_async" }
-libc = "0.2"
+libc = { workspace = true }
 win_util = { path = "../win_util" }
 winapi = "0.3"
 wio = "0.2"

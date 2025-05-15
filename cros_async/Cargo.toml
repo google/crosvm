@@ -12,7 +12,7 @@ async-trait = "0.1.36"
 async-task = "4"
 cfg-if = "1.0.0"
 intrusive-collections = "0.9"
-libc = "0.2"
+libc = { workspace = true }
 paste = "1.0"
 pin-utils = "0.1.0-alpha.4"
 remain = "0.2"

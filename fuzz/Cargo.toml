@@ -16,7 +16,7 @@ disk = { path = "../disk" }
 fuse = { path = "../fuse" }
 hypervisor = { path = "../hypervisor" }
 kernel_loader = { path = "../kernel_loader" }
-libc = "0.2"
+libc = { workspace = true }
 rand = "0.8"
 base = { workspace = true }
 tempfile = "3"

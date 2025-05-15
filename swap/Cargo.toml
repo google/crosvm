@@ -32,7 +32,7 @@ thiserror = "1"
 vm_memory = { path = "../vm_memory" }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
-libc = "0.2"
+libc = { workspace = true }
 
 [target.'cfg(target_os="linux")'.dependencies]
 userfaultfd = { version = "0.8.1", optional = true }

@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-libc = "0.2"
+libc = { workspace = true }
 thiserror = "1"
 
 [build-dependencies]

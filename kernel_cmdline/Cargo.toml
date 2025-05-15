@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-libc = "0.2"
+libc = { workspace = true }
 remain = "0.2"
 thiserror = "1"
 

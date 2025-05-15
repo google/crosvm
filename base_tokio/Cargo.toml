@@ -8,7 +8,7 @@ edition = "2021"
 anyhow = "1"
 cfg-if = "1.0.0"
 futures = { version = "0.3" }
-libc = "*"
+libc = { workspace = true }
 serde = { version = "1" }
 tokio = { workspace = true }
 

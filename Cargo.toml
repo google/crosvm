@@ -120,6 +120,7 @@ exclude = [
 [workspace.dependencies]
 base = { path = "base" }
 ciborium = "0.2.2"
+libc = "0.2.153"
 tokio = { version = "1.29.1", features = ["net", "rt-multi-thread", "time", "sync", "macros"] }
 snapshot = { path = "snapshot" }
 
@@ -521,7 +522,7 @@ kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
 kvm = { path = "kvm", optional = true }
 kvm_sys = { path = "kvm_sys", optional = true }
-libc = "0.2.153"
+libc = { workspace = true }
 libcras = "*"
 # Compile out trace statements in release builds
 log = { version = "0", features = ["release_max_level_debug"]}

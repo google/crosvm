@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 data_model = { path = "../common/data_model" }
-libc = "0.2"
+libc = { workspace = true }
 base = { workspace = true }
 lz4_flex = "0.11"
 remain = "0.2"

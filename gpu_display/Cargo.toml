@@ -18,7 +18,7 @@ gfxstream = []
 
 [dependencies]
 anyhow = "1"
-libc = "0.2"
+libc = { workspace = true }
 base = { workspace = true }
 linux_input_sys = { path = "../linux_input_sys" }
 remain = "0.2"

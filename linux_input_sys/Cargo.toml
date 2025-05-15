@@ -6,6 +6,6 @@ edition = "2021"
 
 [dependencies]
 data_model = { path = "../common/data_model" }
-libc = "0.2"
+libc = { workspace = true }
 base = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }

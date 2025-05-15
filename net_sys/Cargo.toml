@@ -6,4 +6,4 @@ edition = "2021"
 
 [dependencies]
 base = { workspace = true }
-libc = "0.2"
+libc = { workspace = true }

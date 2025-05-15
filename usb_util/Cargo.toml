@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 static_assertions = "1.1"
 data_model = { path = "../common/data_model" }
-libc = "0.2"
+libc = { workspace = true }
 remain = "0.2"
 thiserror = "1"
 base = { workspace = true }

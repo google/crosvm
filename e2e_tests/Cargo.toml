@@ -7,7 +7,7 @@ edition = "2021"
 [dev-dependencies]
 anyhow = "1"
 fixture = { path = "fixture" }
-libc = "0.2"
+libc = { workspace = true }
 net_util = {path = "../net_util"}
 rand = "0.8"
 tempfile = "3"

@@ -5,7 +5,7 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-libc = "0.2"
+libc = { workspace = true }
 base = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 remain = "0.2"

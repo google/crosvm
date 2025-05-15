@@ -12,7 +12,7 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 rutabaga_gfx = { path = "../", version = "0.1.6"}
-libc = "0.2.93"
+libc = { workspace = true }
 log = "0.4"
 
 [features]

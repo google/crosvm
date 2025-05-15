@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 static_assertions = "1.1"
-libc = "0.2"
+libc = { workspace = true }
 net_util = { path = "../net_util" }
 base = { workspace = true }
 remain = "0.2"

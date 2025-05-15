@@ -15,7 +15,7 @@ crate-type = ["cdylib", "staticlib"]
 [dependencies]
 balloon_control = { path = "../common/balloon_control" }
 base = { workspace = true }
-libc = "0.2.65"
+libc = { workspace = true }
 swap = { path = "../swap", default-features = false }
 vm_control = { path = "../vm_control", features = [ "balloon" ] }
 

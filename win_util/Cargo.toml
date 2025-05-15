@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 enumn = "0.1.0"
-libc = "0.2"
+libc = { workspace = true }
 # Note most crates in this project use re-exported log macros from base, but
 # as this crate is a base dependency, we use log directly
 log = "0.4"
