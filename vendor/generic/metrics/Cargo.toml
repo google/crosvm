@@ -11,5 +11,5 @@ collect = []
 
 [dependencies]
 anyhow = "1"
-base = { path = "../../../base" }
+base = { workspace = true }
 metrics_events = { path = "../../../metrics_events" }

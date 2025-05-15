@@ -53,7 +53,7 @@ async-trait = "0.1.36"
 audio_streams = { path = "../common/audio_streams" }
 audio_util = { path = "../audio_util" }
 balloon_control = { path = "../common/balloon_control" }
-base = { path = "../base" }
+base = { workspace = true }
 bit_field = { path = "../bit_field" }
 cfg-if = "1.0.0"
 chrono = { version = "0.4.34", features = [ "serde", "now" ], default-features = false }

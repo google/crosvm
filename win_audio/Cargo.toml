@@ -8,7 +8,7 @@ edition = "2021"
 async-trait = "0.1.36"
 audio_streams = { path = "../common/audio_streams"}
 audio_util = { path = "../audio_util" }
-base = { path = "../base" }
+base = { workspace = true }
 cros_async = { path = "../cros_async" }
 libc = "0.2"
 win_util = { path = "../win_util" }

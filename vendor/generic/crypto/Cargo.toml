@@ -9,7 +9,7 @@ rustcrypto = []
 
 [dependencies]
 anyhow = "1"
-base = { path = "../../../base" }
+base = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zeroize = "1.5.7"

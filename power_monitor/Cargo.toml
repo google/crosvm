@@ -8,7 +8,7 @@ edition = "2021"
 powerd = ["dbus", "system_api"]
 
 [dependencies]
-base = { path = "../base" }
+base = { workspace = true }
 dbus = { version = "0.9.7", optional = true }
 protobuf = "3.2"
 remain = "0.2"

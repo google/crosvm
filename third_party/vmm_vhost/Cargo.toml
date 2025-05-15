@@ -15,7 +15,7 @@ default = []
 
 [dependencies]
 anyhow = "1"
-base = { path = "../../base" }
+base = { workspace = true }
 bitflags = "2.3"
 cfg-if = "1.0.0"
 enumn = "0.1.0"

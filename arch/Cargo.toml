@@ -14,7 +14,7 @@ swap = ["swap/enable"]
 [dependencies]
 acpi_tables = { path = "../acpi_tables" }
 anyhow = "1"
-base = { path = "../base" }
+base = { workspace = true }
 cfg-if = "1.0.0"
 cros_fdt = { path = "../cros_fdt" }
 cros_tracing = { path = "../cros_tracing" }

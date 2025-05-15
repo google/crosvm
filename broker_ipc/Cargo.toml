@@ -10,7 +10,7 @@ process-invariants = ["broker_ipc_product/process-invariants"]
 
 [dependencies]
 anyhow = "1"
-base = { path = "../base" }
+base = { workspace = true }
 crash_report = { path = "../vendor/generic/crash_report", optional = true }
 serde = { version = "1", features = ["derive"] }
 metrics = { path = "../metrics" }

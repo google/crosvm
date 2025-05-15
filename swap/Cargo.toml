@@ -18,7 +18,7 @@ enable = ["userfaultfd", "userfaultfd-sys"]
 
 [dependencies]
 anyhow = "1"
-base = { path = "../base" }
+base = { workspace = true }
 cfg-if = "1"
 cros_tracing = { path = "../cros_tracing" }
 jail = { path = "../jail" }

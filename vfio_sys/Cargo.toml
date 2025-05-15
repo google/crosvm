@@ -5,5 +5,5 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-base = { path = "../base" }
+base = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }

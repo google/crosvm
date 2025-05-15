@@ -12,7 +12,7 @@ libc = "*"
 serde = { version = "1" }
 tokio = { workspace = true }
 
-base = { path = "../base" }
+base = { workspace = true }
 sync = { path = "../common/sync" }
 
 [target.'cfg(windows)'.dependencies]

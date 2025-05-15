@@ -8,7 +8,7 @@ edition = "2021"
 static_assertions = "1.1"
 libc = "0.2"
 net_util = { path = "../net_util" }
-base = { path = "../base" }
+base = { workspace = true }
 remain = "0.2"
 thiserror = "1"
 virtio_sys = { path = "../virtio_sys" }

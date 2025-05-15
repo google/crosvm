@@ -5,4 +5,4 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-base = { path = "../base" }
+base = { workspace = true }

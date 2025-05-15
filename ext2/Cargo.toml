@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-base = { path = "../base/" }
+base = { workspace = true }
 enumn = "0.1"
 libc = "0.2"
 uuid = { version = "1", features = ["v4"] }

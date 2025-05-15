@@ -18,7 +18,7 @@ pin-utils = "0.1.0-alpha.4"
 remain = "0.2"
 slab = "0.4"
 sync = { path = "../common/sync" }
-base = { path = "../base" }
+base = { workspace = true }
 thiserror = "1.0.20"
 audio_streams = { path = "../common/audio_streams" }
 anyhow = "1"

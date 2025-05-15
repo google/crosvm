@@ -10,7 +10,7 @@ data_model = { path = "../common/data_model" }
 libc = "0.2"
 remain = "0.2"
 thiserror = "1"
-base = { path = "../base" }
+base = { workspace = true }
 usb_sys = { path = "../usb_sys" }
 sync = { path = "../common/sync" }
 zerocopy = { version = "0.8.13", features = ["derive"] }

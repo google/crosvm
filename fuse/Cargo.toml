@@ -8,7 +8,7 @@ edition = "2021"
 path = "src/lib.rs"
 
 [dependencies]
-base = { path = "../base" }
+base = { workspace = true }
 bitflags = "2.2.1"
 crossbeam-utils = "0.8"
 cros_tracing = { path = "../cros_tracing" }

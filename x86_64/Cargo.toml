@@ -29,7 +29,7 @@ resources = { path = "../resources" }
 sync = { path = "../common/sync" }
 thiserror = "1"
 uuid = { version = "1", features = ["v4"] }
-base = { path = "../base" }
+base = { workspace = true }
 swap = { path = "../swap" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }

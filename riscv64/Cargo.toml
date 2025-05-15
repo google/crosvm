@@ -23,7 +23,7 @@ resources = { path = "../resources" }
 swap = { path = "../swap" }
 sync = { path = "../common/sync" }
 thiserror = "1"
-base = { path = "../base" }
+base = { workspace = true }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
 

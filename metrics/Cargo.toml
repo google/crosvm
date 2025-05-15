@@ -10,7 +10,7 @@ experimental = []
 
 [dependencies]
 anyhow = "1"
-base = { path = "../base" }
+base = { workspace = true }
 cfg-if = "1"
 serde = { version = "1", features = ["derive"] }
 sync = { path = "../common/sync" }

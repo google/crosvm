@@ -6,7 +6,7 @@ edition = "2021"
 
 
 [dependencies]
-base = { path = "../base" }
+base = { workspace = true }
 rand = "0.8"
 thiserror = "1.0.20"
 serde = { version = "1", features = [ "derive" ] }

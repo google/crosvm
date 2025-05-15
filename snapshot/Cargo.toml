@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-base = { path = "../base" }
+base = { workspace = true }
 crypto = { path = "../vendor/generic/crypto", package = "crypto_generic" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

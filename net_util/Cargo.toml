@@ -12,7 +12,7 @@ slirp-debug = ["slirp"]
 slirp-ring-capture = ["slirp"]
 
 [dependencies]
-base = { path = "../base" }
+base = { workspace = true }
 cfg-if = "1.0.0"
 cros_async = { path = "../cros_async" }
 libc = "0.2"

@@ -16,7 +16,7 @@ swap = ["swap/enable"]
 [dependencies]
 anyhow = "1"
 balloon_control = { path = "../common/balloon_control" }
-base = { path = "../base" }
+base = { workspace = true }
 cfg-if = "1"
 gdbstub = { version = "0.7.0", optional = true }
 gdbstub_arch = { version = "0.3.0", optional = true }

@@ -13,5 +13,5 @@ path = "src/lib.rs"
 [dependencies]
 audio_streams = { path = "../common/audio_streams"}
 async-trait = "0.1.36"
-base = { path = "../base" }
+base = { workspace = true }
 thiserror = "1.0.20"
