@@ -27,8 +27,10 @@ pub fn init_child_crash_reporting(_attrs: &ProductAttributes) {
     // Do nothing. Crash reporting is implemented by a specific product.
 }
 
-pub fn product_child_setup(_attrs: &ProductAttributes) -> anyhow::Result<()> {
-    Ok(())
+pub struct ProductProcessState;
+
+pub fn product_child_setup(_attrs: &ProductAttributes) -> anyhow::Result<ProductProcessState> {
+    Ok(ProductProcessState)
 }
 
 #[cfg(feature = "process-invariants")]

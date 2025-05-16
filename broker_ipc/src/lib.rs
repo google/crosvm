@@ -25,6 +25,7 @@ use broker_ipc_product::product_child_setup;
 #[cfg(feature = "process-invariants")]
 pub use broker_ipc_product::EmulatorProcessInvariants;
 use broker_ipc_product::ProductAttributes;
+use broker_ipc_product::ProductProcessState;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -57,6 +58,7 @@ impl CommonChildStartupArgs {
 
 pub struct ChildLifecycleCleanup {
     _timer_resolution: Box<dyn EnabledHighResTimer>,
+    _product_state: ProductProcessState,
 }
 
 /// Initializes crash reporting, metrics, logging, and product specific features
@@ -85,7 +87,7 @@ pub fn common_child_setup(args: CommonChildStartupArgs) -> anyhow::Result<ChildL
     init_child_crash_reporting(&args.product_attrs);
 
     // Initialize anything product specific.
-    product_child_setup(&args.product_attrs)?;
+    let product_proc_state = product_child_setup(&args.product_attrs)?;
 
     if let Some(metrics_tube) = args.metrics_tube {
         metrics::initialize(metrics_tube);
@@ -95,6 +97,7 @@ pub fn common_child_setup(args: CommonChildStartupArgs) -> anyhow::Result<ChildL
 
     Ok(ChildLifecycleCleanup {
         _timer_resolution: timer_resolution,
+        _product_state: product_proc_state,
     })
 }
 
