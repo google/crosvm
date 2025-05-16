@@ -5,13 +5,13 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "1"
-enumn = "0.1.0"
+anyhow = { workspace = true }
+enumn = { workspace = true }
 libc = { workspace = true }
 # Note most crates in this project use re-exported log macros from base, but
 # as this crate is a base dependency, we use log directly
 log = "0.4"
-serde = { version = "1", features = [ "derive" ] }
+serde = { workspace = true, features = [ "derive" ] }
 zeroize = "1.5.7"
 
 [target.'cfg(windows)'.dependencies]

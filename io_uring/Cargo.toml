@@ -6,10 +6,10 @@ edition = "2021"
 
 [dependencies]
 libc = { workspace = true }
-remain = "0.2"
+remain = { workspace = true }
 sync = { workspace = true }
 base = { workspace = true }
-thiserror = "1"
+thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

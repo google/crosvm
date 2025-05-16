@@ -12,8 +12,8 @@ base = { workspace = true }
 bitflags = "2.2.1"
 crossbeam-utils = "0.8"
 cros_tracing = { workspace = true }
-enumn = "0.1.0"
+enumn = { workspace = true }
 libc = { workspace = true, features = ["extra_traits"] }
-remain = "0.2"
-thiserror = "1.0.20"
+remain = { workspace = true }
+thiserror = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }

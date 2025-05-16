@@ -198,8 +198,19 @@ win_util = { path = "win_util" }
 x86_64 = { path = "x86_64" }
 
 # External dependencies
+anyhow = "1"
+argh = "0.1.10"
+cfg-if = "1.0.0"
 ciborium = "0.2.2"
+enumn = "0.1.0"
+gdbstub = "0.7.0"
+gdbstub_arch = "0.3.0"
 libc = "0.2.153"
+rand = "0.8.5"
+remain = "0.2"
+serde = "1.0"
+serde_json = "1"
+thiserror = "1.0.23"
 tokio = { version = "1.29.1", features = ["net", "rt-multi-thread", "time", "sync", "macros"] }
 
 [features]
@@ -572,15 +583,15 @@ all-android = [
 ]
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 arch = { workspace = true }
-argh = "0.1.10"
+argh = { workspace = true }
 argh_helpers = { workspace = true }
 aarch64_sys_reg = { workspace = true }
 base = { workspace = true }
 bit_field = { workspace = true }
 broker_ipc = { workspace = true }
-cfg-if = "1.0.0"
+cfg-if = { workspace = true }
 crash_report = { workspace = true, optional = true }
 cros_async = { workspace = true }
 cros_tracing = { workspace = true }
@@ -589,10 +600,10 @@ crosvm_plugin = { workspace = true, optional = true }
 devices = { workspace = true }
 disk = { workspace = true }
 document-features = { version = "0.2", optional = true }
-enumn = "0.1.0"
+enumn = { workspace = true }
 ext2 = { workspace = true }
-gdbstub = { version = "0.7.0", optional = true }
-gdbstub_arch = { version = "0.3.0", optional = true }
+gdbstub = { workspace = true, optional = true }
+gdbstub_arch = { workspace = true, optional = true }
 rutabaga_gfx = { workspace = true }
 hypervisor = { workspace = true }
 jail = { workspace = true }
@@ -610,18 +621,18 @@ metrics_events = { workspace = true }
 net_util = { workspace = true }
 protobuf = { version = "3.2", optional = true }
 protos = { workspace = true, optional = true }
-remain = "0.2"
+remain = { workspace = true }
 resources = { workspace = true }
 scudo = { version = "0.1", optional = true }
-serde = { version = "1", features = ["rc"] }
-serde_json = "1"
+serde = { workspace = true, features = ["rc"] }
+serde_json = { workspace = true }
 serde_keyvalue = { workspace = true, features = ["argh_derive"] }
 snapshot = { workspace = true }
 smallvec = "1.6.1"
 static_assertions = "1.1"
 swap = { workspace = true }
 sync = { workspace = true }
-thiserror = { version = "1.0.20" }
+thiserror = { workspace = true }
 vm_control = { workspace = true }
 acpi_tables = { workspace = true }
 vm_memory = { workspace = true }
@@ -649,7 +660,7 @@ anti_tamper = { workspace = true }
 ctrlc = "3"
 futures = "0.3"
 gpu_display = { workspace = true, optional = true }
-rand = "0.8"
+rand = { workspace = true }
 sandbox = { workspace = true }
 cros_tracing = { workspace = true }
 tube_transporter = { workspace = true }
@@ -658,7 +669,7 @@ win_audio = { workspace = true }
 win_util = { workspace = true }
 
 [dev-dependencies]
-rand = "0.8"
+rand = { workspace = true }
 tempfile = "3"
 
 [patch.crates-io]

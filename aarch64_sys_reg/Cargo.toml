@@ -9,5 +9,5 @@ edition = "2021"
 [features]
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-thiserror = "1.0.20"
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }

@@ -10,24 +10,24 @@ swap = ["swap/enable"]
 
 [dependencies]
 aarch64_sys_reg = { workspace = true }
-anyhow = "1"
+anyhow = { workspace = true }
 arch = { workspace = true }
 cros_fdt = { workspace = true }
 devices = { workspace = true }
-gdbstub = { version = "0.7.0", optional = true }
-gdbstub_arch = { version = "0.3.0", optional = true }
+gdbstub = { workspace = true, optional = true }
+gdbstub_arch = { workspace = true, optional = true }
 hypervisor = { workspace = true }
-jail = { path = "../jail" }
+jail = { workspace = true }
 kernel_cmdline = { workspace = true }
 kernel_loader = { workspace = true }
 libc = { workspace = true }
-rand = "0.8"
-remain = "0.2"
+rand = { workspace = true }
+remain = { workspace = true }
 resources = { workspace = true }
 swap = { workspace = true }
 sync = { workspace = true }
 base = { workspace = true }
-thiserror = "1"
+thiserror = { workspace = true }
 vm_control = { workspace = true }
 vm_memory = { workspace = true }
 

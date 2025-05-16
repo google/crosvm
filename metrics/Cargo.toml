@@ -9,10 +9,10 @@ collect = []
 experimental = []
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 base = { workspace = true }
-cfg-if = "1"
-serde = { version = "1", features = ["derive"] }
+cfg-if = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 sync = { workspace = true }
 metrics_events = { workspace = true }
 metrics_product = { path = "../vendor/generic/metrics", package = "metrics_generic" }

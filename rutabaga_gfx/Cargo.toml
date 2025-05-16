@@ -16,13 +16,13 @@ vulkano = ["dep:vulkano"]
 x = []
 
 [dependencies]
-anyhow = "1"
-cfg-if = "1.0.0"
+anyhow = { workspace = true }
+cfg-if = { workspace = true }
 libc = { workspace = true }
-remain = "0.2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-thiserror = "1.0.23"
+remain = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }
 
 log = "0.4"
@@ -38,7 +38,7 @@ winapi = {version = "0.3", features = ["winnt", "handleapi", "processthreadsapi"
 
 [build-dependencies]
 pkg-config = "0.3"
-anyhow = "1"
+anyhow = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

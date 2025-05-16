@@ -11,9 +11,9 @@ powerd = ["dbus", "system_api"]
 base = { workspace = true }
 dbus = { version = "0.9.7", optional = true }
 protobuf = "3.2"
-remain = "0.2"
+remain = { workspace = true }
 system_api = { workspace = true, optional = true }
-thiserror = "1.0.20"
+thiserror = { workspace = true }
 
 [build-dependencies]
 proto_build_tools = { workspace = true }

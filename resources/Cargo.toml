@@ -7,9 +7,9 @@ edition = "2021"
 [dependencies]
 libc = { workspace = true }
 base = { workspace = true }
-serde = { version = "1", features = ["derive"] }
-remain = "0.2"
-thiserror = "1"
+serde = { workspace = true, features = ["derive"] }
+remain = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
-serde_json = "1"
+serde_json = { workspace = true }

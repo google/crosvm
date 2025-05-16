@@ -5,11 +5,11 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "1"
-cfg-if = "1.0.0"
+anyhow = { workspace = true }
+cfg-if = { workspace = true }
 futures = { version = "0.3" }
 libc = { workspace = true }
-serde = { version = "1" }
+serde = { workspace = true }
 tokio = { workspace = true }
 
 base = { workspace = true }

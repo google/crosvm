@@ -45,17 +45,17 @@ pci-hotplug = []
 noncoherent-dma = []
 
 [dependencies]
-argh = "0.1.7"
+argh = { workspace = true }
 async-task = "4"
 acpi_tables = { workspace = true }
-anyhow = "1"
+anyhow = { workspace = true }
 async-trait = "0.1.36"
 audio_streams = { workspace = true }
 audio_util = { workspace = true }
 balloon_control = { workspace = true }
 base = { workspace = true }
 bit_field = { workspace = true }
-cfg-if = "1.0.0"
+cfg-if = { workspace = true }
 chrono = { version = "0.4.34", features = [ "serde", "now" ], default-features = false }
 crc32fast = { version = "1.2.1", optional = true }
 cros_async = { workspace = true }
@@ -65,7 +65,7 @@ data_model = { workspace = true }
 dbus = { version = "0.9.7", features = ["stdfd"], optional = true }
 disk = { workspace = true }
 downcast-rs = "1.2.0"
-enumn = "0.1.0"
+enumn = { workspace = true }
 ffmpeg = { workspace = true, optional = true }
 gpu_display = { workspace = true, optional = true }
 rutabaga_gfx = { workspace = true }
@@ -81,11 +81,11 @@ num-traits = "0.2"
 power_monitor = { workspace = true }
 protobuf = { version = "3.2", optional = true }
 protos = { workspace = true, optional = true }
-rand = "0.8"
-remain = "0.2"
+rand = { workspace = true }
+remain = { workspace = true }
 resources = { workspace = true }
-serde = { version = "1", features = [ "derive", "rc" ] }
-serde_json = "1"
+serde = { workspace = true, features = [ "derive", "rc" ] }
+serde_json = { workspace = true }
 serde_keyvalue = { workspace = true, features = ["argh_derive"] }
 smallvec = "1.6.1"
 snapshot = { workspace = true }
@@ -93,7 +93,7 @@ static_assertions = "1.1"
 sync = { workspace = true }
 system_api = { workspace = true, optional = true }
 tempfile = "3"
-thiserror = "1.0.20"
+thiserror = { workspace = true }
 cros_tracing = { workspace = true }
 swap = { workspace = true }
 vmm_vhost = { workspace = true }

@@ -14,20 +14,20 @@ qcow = []
 zstd-disk = ["zstd"]
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 async-trait = "0.1.36"
 base = { workspace = true }
-cfg-if = "1.0.0"
+cfg-if = { workspace = true }
 crc32fast = { version = "1.2.1", optional = true }
 cros_async = { workspace = true }
 data_model = { workspace = true }
 libc = { workspace = true }
 protobuf = { version = "3.2", optional = true }
 protos = { workspace = true, features = ["composite-disk"], optional = true }
-remain = "0.2"
-serde = { version = "1", features = ["derive"] }
+remain = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 sync = { workspace = true }
-thiserror = "1"
+thiserror = { workspace = true }
 uuid = { version = "1", features = ["v4"], optional = true }
 vm_memory = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }

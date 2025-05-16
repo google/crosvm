@@ -9,9 +9,9 @@ crash-report = ["crash_report", "broker_ipc_product/crash-report"]
 process-invariants = ["broker_ipc_product/process-invariants"]
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 base = { workspace = true }
 crash_report = { workspace = true, optional = true }
-serde = { version = "1", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
 metrics = { workspace = true }
 broker_ipc_product = { path = "../vendor/generic/broker_ipc/" }

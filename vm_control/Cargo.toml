@@ -14,27 +14,27 @@ registered_events = ["balloon", "protos/registered_events"]
 swap = ["swap/enable"]
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 balloon_control = { workspace = true }
 base = { workspace = true }
-cfg-if = "1"
-gdbstub = { version = "0.7.0", optional = true }
-gdbstub_arch = { version = "0.3.0", optional = true }
+cfg-if = { workspace = true }
+gdbstub = { workspace = true, optional = true }
+gdbstub_arch = { workspace = true, optional = true }
 hypervisor = { workspace = true }
 libc = { workspace = true }
 metrics = { workspace = true }
 metrics_events = { workspace = true }
 protos = { workspace = true, optional = true }
-remain = "0.2"
+remain = { workspace = true }
 resources = { workspace = true }
 rutabaga_gfx = { workspace = true }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 serde_keyvalue = { workspace = true, features = ["argh_derive"] }
 snapshot = { workspace = true }
 swap = { workspace = true }
 sync = { workspace = true }
-thiserror = "1"
+thiserror = { workspace = true }
 vm_control_product = { path = "../vendor/generic/vm_control", package = "vm_control_product" }
 vm_memory = { workspace = true }
 

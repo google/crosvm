@@ -8,9 +8,9 @@ data_model = { workspace = true }
 libc = { workspace = true }
 base = { workspace = true }
 lz4_flex = "0.11"
-remain = "0.2"
+remain = { workspace = true }
 resources = { workspace = true }
-thiserror = "1"
+thiserror = { workspace = true }
 vm_memory = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }
 

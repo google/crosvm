@@ -17,18 +17,18 @@ trace_marker = ["cros_tracing/trace_marker"]
 enable = ["userfaultfd", "userfaultfd-sys"]
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 base = { workspace = true }
-cfg-if = "1"
+cfg-if = { workspace = true }
 cros_tracing = { workspace = true }
 jail = { path = "../jail" }
 metrics = { workspace = true }
 num_cpus = "1"
-remain = "0.2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+remain = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 sync = { workspace = true }
-thiserror = "1"
+thiserror = { workspace = true }
 vm_memory = { workspace = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]

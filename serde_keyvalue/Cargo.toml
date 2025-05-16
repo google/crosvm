@@ -8,13 +8,13 @@ edition = "2021"
 argh_derive = ["argh", "serde_keyvalue_derive"]
 
 [dependencies]
-argh = { version = "0.1.7", optional = true }
+argh = { workspace = true, optional = true }
 serde_keyvalue_derive = { path = "serde_keyvalue_derive", optional = true }
-serde = "1"
-thiserror = { version = "1.0.20" }
-remain = "0.2"
+serde = { workspace = true }
+thiserror = { workspace = true }
+remain = { workspace = true }
 num-traits = "0.2"
 nom = { version = "7.1.0", features = ["alloc"] }
 
 [dev-dependencies]
-serde = { version = "1", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }

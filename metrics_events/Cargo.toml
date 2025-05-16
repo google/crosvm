@@ -5,9 +5,9 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "1"
-cfg-if = "1"
-serde = { version = "1", features = ["derive"] }
+anyhow = { workspace = true }
+cfg-if = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 metrics_events_product = { path = "../vendor/generic/metrics_events", package = "metrics_events_generic" }
 
 [target.'cfg(windows)'.dependencies]

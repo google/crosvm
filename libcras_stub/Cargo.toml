@@ -9,4 +9,4 @@ path = "src/libcras.rs"
 
 [dependencies]
 audio_streams = { workspace = true }
-serde = "1"
+serde = { workspace = true }

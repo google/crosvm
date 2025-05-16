@@ -20,7 +20,7 @@ swap = { path = "../swap", default-features = false }
 vm_control = { workspace = true, features = [ "balloon" ] }
 
 [build-dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 cbindgen = "0.24.3"
 cc = "1"
 tempfile = "3"

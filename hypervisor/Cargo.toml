@@ -14,17 +14,17 @@ gunyah = []
 noncoherent-dma = []
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 bit_field = { workspace = true }
 bitflags = "2.2.1"
 cros_fdt = { workspace = true }
 data_model = { workspace = true }
 downcast-rs = "1.2.0"
-enumn = "0.1.0"
+enumn = { workspace = true }
 fnv = "1"
 libc = { workspace = true }
-serde = { version = "1", features = [ "derive" ] }
-serde_json = { version = "1" }
+serde = { workspace = true, features = [ "derive" ] }
+serde_json = { workspace = true }
 snapshot = { workspace = true }
 sync = { workspace = true }
 base = { workspace = true }
@@ -41,7 +41,7 @@ hypervisor_test_macro = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
-thiserror = "1"
+thiserror = { workspace = true }
 winapi = "0.3"
 win_util = { path = "../win_util" }
 

@@ -12,17 +12,17 @@ swap = ["swap/enable"]
 arch = { workspace = true }
 cros_fdt = { workspace = true }
 devices = { workspace = true }
-gdbstub = { version = "0.7.0", optional = true }
-gdbstub_arch = { version = "0.3.0", optional = true }
+gdbstub = { workspace = true, optional = true }
+gdbstub_arch = { workspace = true, optional = true }
 hypervisor = { workspace = true }
 kernel_cmdline = { workspace = true }
 libc = { workspace = true }
-rand = "0.8"
-remain = "0.2"
+rand = { workspace = true }
+remain = { workspace = true }
 resources = { workspace = true }
 swap = { workspace = true }
 sync = { workspace = true }
-thiserror = "1"
+thiserror = { workspace = true }
 base = { workspace = true }
 vm_control = { workspace = true }
 vm_memory = { workspace = true }

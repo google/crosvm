@@ -5,5 +5,5 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 sync = { workspace = true }

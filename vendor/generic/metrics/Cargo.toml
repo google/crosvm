@@ -10,6 +10,6 @@ experimental = []
 collect = []
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 base = { workspace = true }
 metrics_events = { workspace = true }

@@ -15,10 +15,10 @@ win_util = { path = "../win_util" }
 winapi = "0.3"
 wio = "0.2"
 sync = { workspace = true }
-thiserror = "1"
+thiserror = { workspace = true }
 metrics = { workspace = true }
 
 [build-dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 prebuilts = { workspace = true }
 

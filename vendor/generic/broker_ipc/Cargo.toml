@@ -9,6 +9,6 @@ process-invariants = []
 crash-report = ["crash_report"]
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 crash_report = { workspace = true, optional = true }
-serde = { version = "1", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
