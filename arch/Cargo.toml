@@ -12,35 +12,35 @@ seccomp_trace = []
 swap = ["swap/enable"]
 
 [dependencies]
-acpi_tables = { path = "../acpi_tables" }
+acpi_tables = { workspace = true }
 anyhow = "1"
 base = { workspace = true }
 cfg-if = "1.0.0"
-cros_fdt = { path = "../cros_fdt" }
-cros_tracing = { path = "../cros_tracing" }
-devices = { path = "../devices" }
+cros_fdt = { workspace = true }
+cros_tracing = { workspace = true }
+devices = { workspace = true }
 gdbstub = { version = "0.7.0", optional = true }
 gdbstub_arch = { version = "0.3.0", optional = true }
-hypervisor = { path = "../hypervisor" }
+hypervisor = { workspace = true }
 jail = { path = "../jail" }
-kernel_cmdline = { path = "../kernel_cmdline" }
+kernel_cmdline = { workspace = true }
 libc = { workspace = true }
-metrics = { path = "../metrics" }
-resources = { path = "../resources" }
+metrics = { workspace = true }
+resources = { workspace = true }
 remain = "0.2"
 serde = { version = "1", features = [ "derive"] }
 serde_json = { version = "1" }
-serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
-swap = { path = "../swap" }
-sync = { path = "../common/sync" }
+serde_keyvalue = { workspace = true, features = ["argh_derive"] }
+swap = { workspace = true }
+sync = { workspace = true }
 thiserror = "1.0.20"
 uuid = { version = "1", features = ["v4", "serde"] }
-vm_control = { path = "../vm_control" }
-vm_memory = { path = "../vm_memory" }
+vm_control = { workspace = true }
+vm_memory = { workspace = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 minijail = "*"
-power_monitor = { path = "../power_monitor" }
+power_monitor = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3"

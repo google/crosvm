@@ -10,9 +10,9 @@ chromeos = ["audio_cras"]
 
 [dependencies]
 argh = "0.1"
-audio_streams = { path = "../common/audio_streams" }
+audio_streams = { workspace = true }
 cfg-if = "1.0.0"
-cros_async = { path = "../cros_async" }
+cros_async = { workspace = true }
 libcras = { version = "*", optional = true }
 remain = "0.2"
 serde = { version = "1.0", features = ["derive"] }

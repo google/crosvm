@@ -8,16 +8,16 @@ edition = "2021"
 anyhow = "1"
 fixture = { path = "fixture" }
 libc = { workspace = true }
-net_util = {path = "../net_util"}
+net_util = { workspace = true }
 rand = "0.8"
 tempfile = "3"
-prebuilts = { path = "../prebuilts" }
+prebuilts = { workspace = true }
 base = { workspace = true }
-swap = { path= "../swap" }
+swap = { workspace = true }
 serde_json = "1"
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
-net_sys = {path = "../net_sys"}
+net_sys = { workspace = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dev-dependencies]
 readclock = { path = "./guest_under_test/rootfs/readclock" }

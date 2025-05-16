@@ -9,9 +9,9 @@ proto_tube = ["protobuf"]
 seccomp_trace = []
 
 [dependencies]
-audio_streams = { path = "../common/audio_streams" }
+audio_streams = { workspace = true }
 base_event_token_derive = { path = "base_event_token_derive" }
-sync = { path = "../common/sync" }
+sync = { workspace = true }
 
 cfg-if = "1"
 chrono = { version = "0.4.34", features = ["now"], default-features = false }
@@ -28,7 +28,7 @@ uuid = { version = "1", features = ["v4"] }
 zerocopy = { version = "0.8.13", features = ["derive"] }
 
 [dev-dependencies]
-protos = { path = "../protos", features = ["composite-disk"] }
+protos = { workspace = true, features = ["composite-disk"] }
 tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]

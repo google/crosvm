@@ -69,6 +69,7 @@ members = [
     "hypervisor",
     "hypervisor/hypervisor_test_macro",
     "io_uring",
+    "jail",
     "kernel_cmdline",
     "kernel_loader",
     "kvm_sys",
@@ -85,6 +86,7 @@ members = [
     "protos",
     "proto_build_tools",
     "resources",
+    "riscv64",
     "rutabaga_gfx",
     "serde_keyvalue",
     "snapshot",
@@ -92,6 +94,7 @@ members = [
     "system_api",
     "third_party/vmm_vhost",
     "tools/impl/catapult_converter",
+    "tube_transporter",
     "usb_sys",
     "usb_util",
     "vendor/generic/anti_tamper",
@@ -102,6 +105,8 @@ members = [
     "virtio_sys",
     "vm_control",
     "vm_memory",
+    "win_audio",
+    "win_util",
     "x86_64",
 ]
 
@@ -118,11 +123,84 @@ exclude = [
 ]
 
 [workspace.dependencies]
+# Workspace members
+aarch64 = { path = "aarch64" }
+aarch64_sys_reg = { path = "aarch64_sys_reg" }
+acpi_tables = { path = "acpi_tables" }
+android_audio = { path = "android_audio" }
+anti_tamper = { path = "vendor/generic/anti_tamper" }
+arch = { path = "arch" }
+argh_helpers = { path = "argh_helpers" }
+audio_streams = { path = "common/audio_streams" }
+audio_streams_conformance_test = { path = "audio_streams_conformance_test" }
+audio_util = { path = "audio_util" }
+balloon_control = { path = "common/balloon_control" }
 base = { path = "base" }
+base_tokio = { path = "base_tokio" }
+bit_field = { path = "bit_field" }
+broker_ipc = { path = "broker_ipc" }
+catapult_converter = { path = "tools/impl/catapult_converter" }
+crash_report = { path = "vendor/generic/crash_report" }
+cros_async = { path = "cros_async" }
+cros_fdt = { path = "cros_fdt" }
+cros_tracing = { path = "cros_tracing" }
+crosvm_cli = { path = "crosvm_cli" }
+crosvm_control = { path = "crosvm_control" }
+crosvm_plugin = { path = "crosvm_plugin" }
+crypto = { path = "vendor/generic/crypto", package = "crypto_generic" }
+data_model = { path = "common/data_model" }
+devices = { path = "devices" }
+disk = { path = "disk" }
+e2e_tests = { path = "e2e_tests" }
+ext2 = { path = "ext2" }
+ffmpeg = { path = "media/ffmpeg" }
+fuse = { path = "fuse" }
+fuzz = { path = "fuzz" }
+gpu_display = { path = "gpu_display" }
+hypervisor = { path = "hypervisor" }
+hypervisor_test_macro = { path = "hypervisor/hypervisor_test_macro" }
+io_uring = { path = "io_uring" }
+jail = { path = "jail" }
+kernel_cmdline = { path = "kernel_cmdline" }
+kernel_loader = { path = "kernel_loader" }
+kvm = { path = "kvm" }
+kvm_sys = { path = "kvm_sys" }
+libcras_stub = { path = "libcras_stub" }
+linux_input_sys = { path = "linux_input_sys" }
+metrics = { path = "metrics" }
+metrics_events = { path = "metrics_events" }
+net_sys = { path = "net_sys" }
+net_util = { path = "net_util" }
+power_monitor = { path = "power_monitor" }
+prebuilts = { path = "prebuilts" }
+proto_build_tools = { path = "proto_build_tools" }
+protos = { path = "protos" }
+resources = { path = "resources" }
+riscv64 = { path = "riscv64" }
+rutabaga_gfx = { path = "rutabaga_gfx" }
+sandbox = { path = "sandbox" }
+serde_keyvalue = { path = "serde_keyvalue" }
+snapshot = { path = "snapshot" }
+swap = { path = "swap" }
+sync = { path = "common/sync" }
+system_api = { path = "system_api" }
+tube_transporter = { path = "tube_transporter" }
+usb_sys = { path = "usb_sys" }
+usb_util = { path = "usb_util" }
+vfio_sys = { path = "vfio_sys" }
+vhost = { path = "vhost" }
+virtio_sys = { path = "virtio_sys" }
+vm_control = { path = "vm_control" }
+vm_memory = { path = "vm_memory" }
+vmm_vhost = { path = "third_party/vmm_vhost" }
+win_audio = { path = "win_audio" }
+win_util = { path = "win_util" }
+x86_64 = { path = "x86_64" }
+
+# External dependencies
 ciborium = "0.2.2"
 libc = "0.2.153"
 tokio = { version = "1.29.1", features = ["net", "rt-multi-thread", "time", "sync", "macros"] }
-snapshot = { path = "snapshot" }
 
 [features]
 ## Default features of crosvm. This selection is somewhat arbitrary for historical reasons.
@@ -495,89 +573,89 @@ all-android = [
 
 [dependencies]
 anyhow = "1"
-arch = { path = "arch" }
+arch = { workspace = true }
 argh = "0.1.10"
-argh_helpers = { path = "argh_helpers" }
-aarch64_sys_reg = { path = "aarch64_sys_reg" }
+argh_helpers = { workspace = true }
+aarch64_sys_reg = { workspace = true }
 base = { workspace = true }
-bit_field = { path = "bit_field" }
-broker_ipc = { path = "broker_ipc" }
+bit_field = { workspace = true }
+broker_ipc = { workspace = true }
 cfg-if = "1.0.0"
-crash_report = { path = "vendor/generic/crash_report", optional = true }
-cros_async = { path = "cros_async" }
-cros_tracing = { path = "cros_tracing" }
-crosvm_cli = { path = "crosvm_cli" }
-crosvm_plugin = { path = "crosvm_plugin", optional = true }
-devices = { path = "devices" }
-disk = { path = "disk" }
+crash_report = { workspace = true, optional = true }
+cros_async = { workspace = true }
+cros_tracing = { workspace = true }
+crosvm_cli = { workspace = true }
+crosvm_plugin = { workspace = true, optional = true }
+devices = { workspace = true }
+disk = { workspace = true }
 document-features = { version = "0.2", optional = true }
 enumn = "0.1.0"
-ext2 = { path = "ext2" }
+ext2 = { workspace = true }
 gdbstub = { version = "0.7.0", optional = true }
 gdbstub_arch = { version = "0.3.0", optional = true }
-rutabaga_gfx = { path = "rutabaga_gfx"}
-hypervisor = { path = "hypervisor" }
-jail = { path = "jail" }
-kernel_cmdline = { path = "kernel_cmdline" }
-kernel_loader = { path = "kernel_loader" }
-kvm = { path = "kvm", optional = true }
-kvm_sys = { path = "kvm_sys", optional = true }
+rutabaga_gfx = { workspace = true }
+hypervisor = { workspace = true }
+jail = { workspace = true }
+kernel_cmdline = { workspace = true }
+kernel_loader = { workspace = true }
+kvm = { workspace = true, optional = true }
+kvm_sys = { workspace = true, optional = true }
 libc = { workspace = true }
 libcras = "*"
 # Compile out trace statements in release builds
 log = { version = "0", features = ["release_max_level_debug"]}
 merge = "0.1.0"
-metrics = { path = "metrics" }
-metrics_events = { path = "metrics_events" }
-net_util = { path = "net_util" }
+metrics = { workspace = true }
+metrics_events = { workspace = true }
+net_util = { workspace = true }
 protobuf = { version = "3.2", optional = true }
-protos = { path = "protos", optional = true }
+protos = { workspace = true, optional = true }
 remain = "0.2"
-resources = { path = "resources" }
+resources = { workspace = true }
 scudo = { version = "0.1", optional = true }
 serde = { version = "1", features = ["rc"] }
 serde_json = "1"
-serde_keyvalue = { path = "serde_keyvalue", features = ["argh_derive"] }
+serde_keyvalue = { workspace = true, features = ["argh_derive"] }
 snapshot = { workspace = true }
 smallvec = "1.6.1"
 static_assertions = "1.1"
-swap = { path = "swap" }
-sync = { path = "common/sync" }
+swap = { workspace = true }
+sync = { workspace = true }
 thiserror = { version = "1.0.20" }
-vm_control = { path = "vm_control" }
-acpi_tables = { path = "acpi_tables" }
-vm_memory = { path = "vm_memory" }
-vmm_vhost = { path = "third_party/vmm_vhost" }
+vm_control = { workspace = true }
+acpi_tables = { workspace = true }
+vm_memory = { workspace = true }
+vmm_vhost = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 zerocopy = { version = "0.8.13", features = ["derive"] }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
-riscv64 = { path = "riscv64" }
+riscv64 = { workspace = true }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-x86_64 = { path = "x86_64" }
+x86_64 = { workspace = true }
 
 [target.'cfg(any(target_arch = "aarch64", target_arch = "arm"))'.dependencies]
-aarch64 = { path = "aarch64" }
+aarch64 = { workspace = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 minijail = "*" # provided by ebuild
 p9 = "0.3.1"
-vhost = { path = "vhost" }
-android_audio = { path = "android_audio"}
+vhost = { workspace = true }
+android_audio = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-anti_tamper = { path = "vendor/generic/anti_tamper" }
+anti_tamper = { workspace = true }
 ctrlc = "3"
 futures = "0.3"
-gpu_display = { path = "gpu_display", optional = true }
+gpu_display = { workspace = true, optional = true }
 rand = "0.8"
-sandbox = { path = "sandbox" }
-cros_tracing = { path = "cros_tracing" }
-tube_transporter = { path = "tube_transporter" }
+sandbox = { workspace = true }
+cros_tracing = { workspace = true }
+tube_transporter = { workspace = true }
 winapi = "0.3"
-win_audio = { path = "win_audio" }
-win_util = { path = "win_util" }
+win_audio = { workspace = true }
+win_util = { workspace = true }
 
 [dev-dependencies]
 rand = "0.8"

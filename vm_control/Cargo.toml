@@ -15,28 +15,28 @@ swap = ["swap/enable"]
 
 [dependencies]
 anyhow = "1"
-balloon_control = { path = "../common/balloon_control" }
+balloon_control = { workspace = true }
 base = { workspace = true }
 cfg-if = "1"
 gdbstub = { version = "0.7.0", optional = true }
 gdbstub_arch = { version = "0.3.0", optional = true }
-hypervisor = { path = "../hypervisor" }
+hypervisor = { workspace = true }
 libc = { workspace = true }
-metrics = { path = "../metrics" }
-metrics_events = { path = "../metrics_events" }
-protos = { path = "../protos", optional = true }
+metrics = { workspace = true }
+metrics_events = { workspace = true }
+protos = { workspace = true, optional = true }
 remain = "0.2"
-resources = { path = "../resources" }
-rutabaga_gfx = { path = "../rutabaga_gfx" }
+resources = { workspace = true }
+rutabaga_gfx = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
+serde_keyvalue = { workspace = true, features = ["argh_derive"] }
 snapshot = { workspace = true }
-swap = { path = "../swap" }
-sync = { path = "../common/sync" }
+swap = { workspace = true }
+sync = { workspace = true }
 thiserror = "1"
 vm_control_product = { path = "../vendor/generic/vm_control", package = "vm_control_product" }
-vm_memory = { path = "../vm_memory" }
+vm_memory = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3"

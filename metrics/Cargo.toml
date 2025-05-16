@@ -13,8 +13,8 @@ anyhow = "1"
 base = { workspace = true }
 cfg-if = "1"
 serde = { version = "1", features = ["derive"] }
-sync = { path = "../common/sync" }
-metrics_events = { path = "../metrics_events" }
+sync = { workspace = true }
+metrics_events = { workspace = true }
 metrics_product = { path = "../vendor/generic/metrics", package = "metrics_generic" }
 
 [target.'cfg(windows)'.dependencies]

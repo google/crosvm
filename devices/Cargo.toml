@@ -47,80 +47,80 @@ noncoherent-dma = []
 [dependencies]
 argh = "0.1.7"
 async-task = "4"
-acpi_tables = {path = "../acpi_tables" }
+acpi_tables = { workspace = true }
 anyhow = "1"
 async-trait = "0.1.36"
-audio_streams = { path = "../common/audio_streams" }
-audio_util = { path = "../audio_util" }
-balloon_control = { path = "../common/balloon_control" }
+audio_streams = { workspace = true }
+audio_util = { workspace = true }
+balloon_control = { workspace = true }
 base = { workspace = true }
-bit_field = { path = "../bit_field" }
+bit_field = { workspace = true }
 cfg-if = "1.0.0"
 chrono = { version = "0.4.34", features = [ "serde", "now" ], default-features = false }
 crc32fast = { version = "1.2.1", optional = true }
-cros_async = { path = "../cros_async" }
+cros_async = { workspace = true }
 cros-codecs = { version = "0.0.4", optional = true }
-crosvm_cli = { path = "../crosvm_cli" }
-data_model = { path = "../common/data_model" }
+crosvm_cli = { workspace = true }
+data_model = { workspace = true }
 dbus = { version = "0.9.7", features = ["stdfd"], optional = true }
-disk = { path = "../disk" }
+disk = { workspace = true }
 downcast-rs = "1.2.0"
 enumn = "0.1.0"
-ffmpeg = { path = "../media/ffmpeg", optional = true }
-gpu_display = { path = "../gpu_display", optional = true }
-rutabaga_gfx = { path = "../rutabaga_gfx" }
-hypervisor = { path = "../hypervisor" }
-kvm_sys = { path = "../kvm_sys" }
+ffmpeg = { workspace = true, optional = true }
+gpu_display = { workspace = true, optional = true }
+rutabaga_gfx = { workspace = true }
+hypervisor = { workspace = true }
+kvm_sys = { workspace = true }
 libc = { workspace = true }
 libvda = { path = "../media/libvda", optional = true }
-linux_input_sys = { path = "../linux_input_sys" }
-metrics = { path = "../metrics" }
-metrics_events = { path = "../metrics_events" }
-net_util = { path = "../net_util" }
+linux_input_sys = { workspace = true }
+metrics = { workspace = true }
+metrics_events = { workspace = true }
+net_util = { workspace = true }
 num-traits = "0.2"
-power_monitor = { path = "../power_monitor" }
+power_monitor = { workspace = true }
 protobuf = { version = "3.2", optional = true }
-protos = { path = "../protos", optional = true }
+protos = { workspace = true, optional = true }
 rand = "0.8"
 remain = "0.2"
-resources = { path = "../resources" }
+resources = { workspace = true }
 serde = { version = "1", features = [ "derive", "rc" ] }
 serde_json = "1"
-serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
+serde_keyvalue = { workspace = true, features = ["argh_derive"] }
 smallvec = "1.6.1"
 snapshot = { workspace = true }
 static_assertions = "1.1"
-sync = { path = "../common/sync" }
-system_api = { path = "../system_api", optional = true }
+sync = { workspace = true }
+system_api = { workspace = true, optional = true }
 tempfile = "3"
 thiserror = "1.0.20"
-cros_tracing = { path = "../cros_tracing" }
-swap = { path = "../swap" }
-vmm_vhost = { path = "../third_party/vmm_vhost" }
-virtio_sys = { path = "../virtio_sys" }
+cros_tracing = { workspace = true }
+swap = { workspace = true }
+vmm_vhost = { workspace = true }
+virtio_sys = { workspace = true }
 virtio-media = { version = "0.0.7", optional = true }
-vm_control = { path = "../vm_control" }
-vm_memory = { path = "../vm_memory" }
+vm_control = { workspace = true }
+vm_memory = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }
 ciborium = { workspace = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
-android_audio = { path = "../android_audio" }
-fuse = {path = "../fuse" }
+android_audio = { workspace = true }
+fuse = { workspace = true }
 jail = { path = "../jail" }
 libcras = { version = "*", optional = true }
 minijail = "*"
-net_sys = { path = "../net_sys" }
+net_sys = { workspace = true }
 p9 = "0.3.1"
-usb_util = { path = "../usb_util" }
-vfio_sys = { path = "../vfio_sys" }
-vhost = { path = "../vhost" }
+usb_util = { workspace = true }
+vfio_sys = { workspace = true }
+vhost = { workspace = true }
 
 [target.'cfg(any(target_arch = "arm", target_arch = "aarch64"))'.dependencies]
-aarch64_sys_reg = { path = "../aarch64_sys_reg" }
+aarch64_sys_reg = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-broker_ipc = { path = "../broker_ipc" }
+broker_ipc = { workspace = true }
 tube_transporter = { path = "../tube_transporter" }
 win_audio = { path = "../win_audio"}
 win_util = { path = "../win_util"}

@@ -20,7 +20,7 @@ base = { workspace = true }
 libc = { workspace = true }
 log = "0.4"
 serde = "1"
-serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
+serde_keyvalue = { workspace = true, features = ["argh_derive"] }
 static_assertions = "1.1"
 zerocopy = { version = "0.8.13", features = ["derive"] }
 

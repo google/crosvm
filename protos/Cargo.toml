@@ -10,8 +10,8 @@ plugin = ["kvm_sys"]
 registered_events = []
 
 [dependencies]
-kvm_sys = { path = "../kvm_sys", optional = true }
+kvm_sys = { workspace = true, optional = true }
 protobuf = "3.2"
 
 [build-dependencies]
-proto_build_tools = { path = "../proto_build_tools" }
+proto_build_tools = { workspace = true }

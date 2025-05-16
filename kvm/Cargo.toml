@@ -5,11 +5,11 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-data_model = { path = "../common/data_model" }
-kvm_sys = { path = "../kvm_sys" }
+data_model = { workspace = true }
+kvm_sys = { workspace = true }
 libc = { workspace = true }
 base = { workspace = true }
 static_assertions = "1.1"
-sync = { path = "../common/sync" }
-vm_memory = { path = "../vm_memory" }
+sync = { workspace = true }
+vm_memory = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }

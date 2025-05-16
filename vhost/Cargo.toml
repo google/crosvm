@@ -7,9 +7,9 @@ edition = "2021"
 [dependencies]
 static_assertions = "1.1"
 libc = { workspace = true }
-net_util = { path = "../net_util" }
+net_util = { workspace = true }
 base = { workspace = true }
 remain = "0.2"
 thiserror = "1"
-virtio_sys = { path = "../virtio_sys" }
-vm_memory = { path = "../vm_memory" }
+virtio_sys = { workspace = true }
+vm_memory = { workspace = true }

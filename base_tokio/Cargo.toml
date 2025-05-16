@@ -13,7 +13,7 @@ serde = { version = "1" }
 tokio = { workspace = true }
 
 base = { workspace = true }
-sync = { path = "../common/sync" }
+sync = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winapi = "*"

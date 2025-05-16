@@ -11,9 +11,9 @@ stats = []
 crate-type = ["cdylib"]
 
 [dependencies]
-kvm = { path = "../kvm" }
-kvm_sys = { path = "../kvm_sys" }
+kvm = { workspace = true }
+kvm_sys = { workspace = true }
 libc = { workspace = true }
 protobuf = "3.2"
-protos = { path = "../protos", features = ["plugin"] }
+protos = { workspace = true, features = ["plugin"] }
 base = { workspace = true }

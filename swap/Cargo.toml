@@ -20,16 +20,16 @@ enable = ["userfaultfd", "userfaultfd-sys"]
 anyhow = "1"
 base = { workspace = true }
 cfg-if = "1"
-cros_tracing = { path = "../cros_tracing" }
+cros_tracing = { workspace = true }
 jail = { path = "../jail" }
-metrics = { path = "../metrics" }
+metrics = { workspace = true }
 num_cpus = "1"
 remain = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sync = { path = "../common/sync" }
+sync = { workspace = true }
 thiserror = "1"
-vm_memory = { path = "../vm_memory" }
+vm_memory = { workspace = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 libc = { workspace = true }

@@ -6,19 +6,19 @@ edition = "2021"
 
 [target.'cfg(windows)'.dependencies]
 async-trait = "0.1.36"
-audio_streams = { path = "../common/audio_streams"}
-audio_util = { path = "../audio_util" }
+audio_streams = { workspace = true }
+audio_util = { workspace = true }
 base = { workspace = true }
-cros_async = { path = "../cros_async" }
+cros_async = { workspace = true }
 libc = { workspace = true }
 win_util = { path = "../win_util" }
 winapi = "0.3"
 wio = "0.2"
-sync = { path = "../common/sync" }
+sync = { workspace = true }
 thiserror = "1"
-metrics = { path = "../metrics"}
+metrics = { workspace = true }
 
 [build-dependencies]
 anyhow = "1"
-prebuilts = { path = "../prebuilts" }
+prebuilts = { workspace = true }
 

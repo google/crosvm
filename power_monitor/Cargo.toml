@@ -12,8 +12,8 @@ base = { workspace = true }
 dbus = { version = "0.9.7", optional = true }
 protobuf = "3.2"
 remain = "0.2"
-system_api = { path = "../system_api", optional = true }
+system_api = { workspace = true, optional = true }
 thiserror = "1.0.20"
 
 [build-dependencies]
-proto_build_tools = { path = "../proto_build_tools" }
+proto_build_tools = { workspace = true }

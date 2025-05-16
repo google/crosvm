@@ -8,8 +8,8 @@ include = ["src/**/*", "Cargo.toml"]
 [dependencies]
 anyhow = "1"
 cfg-if = "1.0.0"
-cros_async = { path = "../cros_async" }
-data_model = { path = "../common/data_model" }
+cros_async = { workspace = true }
+data_model = { workspace = true }
 libc = { workspace = true }
 lz4_flex = "0.11"
 base = { workspace = true }
@@ -17,7 +17,7 @@ bitflags = "2.2.1"
 remain = "0.2"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "1"
-serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
+serde_keyvalue = { workspace = true, features = ["argh_derive"] }
 snapshot = { workspace = true }
 thiserror = "1"
 zerocopy = { version = "0.8.13", features = ["derive"] }

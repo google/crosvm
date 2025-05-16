@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 libc = { workspace = true }
 remain = "0.2"
-sync = { path = "../common/sync" }
+sync = { workspace = true }
 base = { workspace = true }
 thiserror = "1"
 
