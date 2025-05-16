@@ -14,7 +14,7 @@ crate-type = ["cdylib", "staticlib"]
 anyhow = "1"
 rutabaga_gfx = { path = "../../", version = "0.1.6"}
 zerocopy = { version = "0.8.13", features = ["derive"] }
-libc = { workspace = true }
+libc = "0.2.93"
 log = "0.4"
 
 [profile.dev]
