@@ -1438,9 +1438,9 @@ impl arch::LinuxArch for X8664arch {
                     // of the entry point on its own, not trust crosvm to provide it.
                     vcpu_init[0].regs.rdi = kernel_entry.offset();
 
-                    // The pVM firmware itself always starts in 64-bit long mode, regardless of
-                    // the type of payload.
-                    cpu_mode = CpuMode::LongMode;
+                    // The pVM firmware itself always starts in 32-bit protected mode
+                    // with paging disabled, regardless of the type of payload.
+                    cpu_mode = CpuMode::FlatProtectedMode;
                 }
 
                 match cpu_mode {
