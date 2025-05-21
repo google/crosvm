@@ -49,6 +49,14 @@ NOTE: to use podman, you will need to install passt.
 sudo apt install passt
 ```
 
+KVM access on Linux systems is typically managed via supplemental user groups. To access KVM from
+inside the development container on such systems podman has to use 'crun' runtime. This runtime
+supports preserving user's supplemental groups when starting a container.
+
+```sh
+sudo apt install crun
+```
+
 ```sh
 ./tools/dev_container
 ```
