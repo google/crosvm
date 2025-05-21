@@ -27,6 +27,7 @@
 import argparse
 from pathlib import Path
 import shutil
+import stat
 from impl.util import (
     add_common_args,
     confirm,
@@ -187,6 +188,39 @@ def ensure_container_is_alive(docker: cmd, docker_args: List[Optional[str]], cro
     return cid
 
 
+def access_needs_supplemental_group(file_path: str, write=True):
+    """
+    Checks if access to a given resource/file is granted through user's supplemental
+    group as opposed to ownership or world access.
+
+    Returns True if and only if access is permitted and is granted through membership
+    in a supplemental group. If access is permitted by other means or no access
+    granted returns False.
+
+    This function does not consider superuser case.
+    """
+    if not os.access(file_path, os.W_OK if write else os.R_OK, effective_ids=True):
+        return False
+
+    euid = os.geteuid()
+    egid = os.getegid()
+
+    stat_info = os.stat(file_path)
+
+    if euid == stat_info.st_uid:
+        return False  # Access granted to owner
+
+    desired_mode = stat.S_IWGRP if write else stat.S_IRGRP
+    if not (stat_info.st_mode & desired_mode):
+        return False  # Access is not through group ownership
+
+    if egid == stat_info.st_gid:
+        return False  # Access granted through the primary group
+
+    # Assume access is granted through supplemental group.
+    return True
+
+
 def validate_podman(podman: cmd):
     graph_driver_name = podman("info --format={{.Store.GraphDriverName}}").stdout()
     config_file_name = podman("info --format={{.Store.ConfigFile}}").stdout()
@@ -212,6 +246,13 @@ def validate_podman(podman: cmd):
             if confirm("Ok?"):
                 usermod.fg()
                 podman("system migrate").fg()
+
+        if access_needs_supplemental_group("/dev/kvm"):
+            runtime = podman("info --format={{.Host.OCIRuntime.Name}}").stdout()
+            if runtime != "crun":
+                print("On this system access to /dev/kvm relies on supplemental groups.")
+                print("This functionality ('keep-groups') is only available with 'crun'.")
+                print("Please switch podman to use 'crun' runtime.")
 
 
 def main(argv: List[str]):
