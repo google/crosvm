@@ -107,23 +107,6 @@ pub fn sandbox_lower_token() -> Result<()> {
     Ok(())
 }
 
-fn report_dll_loaded(dll_name: String) {
-    metrics::log_event(MetricEventType::DllLoaded(dll_name));
-}
-
-pub fn get_library_watcher() -> anyhow::Result<DllWatcher> {
-    let mut dlls: HashSet<OsString> = HashSet::new();
-    DllWatcher::new(
-        move |data| {
-            info!("DLL loaded: {:?}", data.base_dll_name);
-            if !dlls.insert(data.base_dll_name.clone()) && metrics::is_initialized() {
-                report_dll_loaded(data.base_dll_name.to_string_lossy().into_owned());
-            }
-        },
-        |data| info!("DLL unloaded: {:?}", data.base_dll_name),
-    )
-}
-
 pub(crate) fn start_device(command: DeviceSubcommand) -> Result<()> {
     Err(anyhow!("unknown device name: {:?}", command))
 }

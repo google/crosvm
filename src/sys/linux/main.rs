@@ -75,10 +75,6 @@ pub(crate) fn cleanup() {
     }
 }
 
-pub fn get_library_watcher() -> anyhow::Result<()> {
-    Ok(())
-}
-
 pub(crate) fn run_command(command: Commands, _log_args: LogArgs) -> anyhow::Result<()> {
     match command {
         Commands::Devices(cmd) => start_devices(cmd).context("start_devices subcommand failed"),

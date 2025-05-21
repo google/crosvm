@@ -764,8 +764,6 @@ fn shorten_usage(help: &str) -> String {
 }
 
 fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus> {
-    let _library_watcher = sys::get_library_watcher();
-
     // The following panic hook will stop our crashpad hook on windows.
     // Only initialize when the crash-pad feature is off.
     #[cfg(not(feature = "crash-report"))]

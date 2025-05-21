@@ -21,7 +21,6 @@ cfg_if::cfg_if! {
 
 pub(crate) use platform::main::cleanup;
 pub(crate) use platform::main::error_to_exit_code;
-pub(crate) use platform::main::get_library_watcher;
 pub(crate) use platform::main::init_log;
 pub(crate) use platform::main::run_command;
 pub(crate) use platform::main::start_device;
