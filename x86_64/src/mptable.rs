@@ -29,6 +29,9 @@ pub enum Error {
     /// There was too little guest memory to store the entire MP table.
     #[error("There was too little guest memory to store the MP table")]
     NotEnoughMemory,
+    /// More than the maximum number of supported CPUs.
+    #[error("{0} is more than the maximum number of supported CPUs")]
+    TooManyCpus(u8),
     /// Failure to write MP bus entry.
     #[error("Failure to write MP bus entry")]
     WriteMpcBus,
@@ -70,11 +73,12 @@ const APIC_VERSION: u8 = 0x14;
 const CPU_STEPPING: u32 = 0x600;
 const CPU_FEATURE_APIC: u32 = 0x200;
 const CPU_FEATURE_FPU: u32 = 0x001;
-pub const MPTABLE_RANGE: AddressRange = AddressRange::from_start_and_end(
-    // Last 1k of Linux's 640k base RAM.
-    0x400 * 639,
-    0x400 * 640 - 1,
-);
+/// Place the MP Floating Pointer Structure in the last kilobyte of base memory (639K-640K).
+const MP_FLOATING_POINTER_ADDR: u64 = 0x400 * 640 - size_of::<mpf_intel>() as u64;
+/// Reserve the last 6K of low memory (below 640K) just before the MP Floating Pointer Structure for
+/// the rest of the MP Table.
+pub const MPTABLE_RANGE: AddressRange =
+    AddressRange::from_start_and_end(0x400 * 634, MP_FLOATING_POINTER_ADDR - 1);
 
 fn compute_checksum(v: &[u8]) -> u8 {
     let mut checksum: u8 = 0;
@@ -90,8 +94,7 @@ fn mpf_intel_compute_checksum(v: &mpf_intel) -> u8 {
 }
 
 fn compute_mp_size(num_cpus: u8) -> usize {
-    mem::size_of::<mpf_intel>()
-        + mem::size_of::<mpc_table>()
+    mem::size_of::<mpc_table>()
         + mem::size_of::<mpc_cpu>() * (num_cpus as usize)
         + mem::size_of::<mpc_ioapic>()
         + mem::size_of::<mpc_bus>() * 2
@@ -106,6 +109,21 @@ pub fn setup_mptable(
     num_cpus: u8,
     pci_irqs: &[(PciAddress, u32, PciInterruptPin)],
 ) -> Result<()> {
+    // Write the MP Floating Pointer structure pointing at `MPTABLE_RANGE`. This structure must be
+    // in one of a few pre-defined memory areas so the OS can find it; we choose to place it in the
+    // last kilobyte of low system memory (639K-640K).
+    let mut mpf_intel = mpf_intel::default();
+    mpf_intel.signature = SMP_MAGIC_IDENT;
+    mpf_intel.length = 1;
+    mpf_intel.specification = 4;
+    mpf_intel.physptr = MPTABLE_RANGE
+        .start
+        .try_into()
+        .map_err(|_| Error::AddressOverflow)?;
+    mpf_intel.checksum = mpf_intel_compute_checksum(&mpf_intel);
+    mem.write_obj_at_addr(mpf_intel, GuestAddress(MP_FLOATING_POINTER_ADDR))
+        .map_err(|_| Error::WriteMpfIntel)?;
+
     // Used to keep track of the next base pointer into the MP table.
     let mut base_mp = GuestAddress(MPTABLE_RANGE.start);
 
@@ -130,26 +148,15 @@ pub fn setup_mptable(
         .map_err(|_| Error::Clear)?
         .write_bytes(0);
 
-    {
-        let size = mem::size_of::<mpf_intel>();
-        let mut mpf_intel = mpf_intel::default();
-        mpf_intel.signature = SMP_MAGIC_IDENT;
-        mpf_intel.length = 1;
-        mpf_intel.specification = 4;
-        mpf_intel.physptr = (base_mp.offset() + mem::size_of::<mpf_intel>() as u64) as u32;
-        mpf_intel.checksum = mpf_intel_compute_checksum(&mpf_intel);
-        mem.write_obj_at_addr(mpf_intel, base_mp)
-            .map_err(|_| Error::WriteMpfIntel)?;
-        base_mp = base_mp.unchecked_add(size as u64);
-    }
-
     // We set the location of the mpc_table here but we can't fill it out until we have the length
     // of the entire table later.
     let table_base = base_mp;
     base_mp = base_mp.unchecked_add(mem::size_of::<mpc_table>() as u64);
 
     let mut checksum: u8 = 0;
-    let ioapicid: u8 = num_cpus + 1;
+    let ioapicid: u8 = num_cpus
+        .checked_add(1)
+        .ok_or(Error::TooManyCpus(num_cpus))?;
 
     for cpu_id in 0..num_cpus {
         let size = mem::size_of::<mpc_cpu>();
@@ -361,14 +368,10 @@ pub fn setup_mptable(
 
 #[cfg(test)]
 mod tests {
-    use base::pagesize;
-
     use super::*;
 
-    fn compute_page_aligned_mp_size(num_cpus: u8) -> u64 {
-        let mp_size = compute_mp_size(num_cpus);
-        let pg_size = pagesize();
-        (mp_size + pg_size - (mp_size % pg_size)) as u64
+    fn test_guest_mem() -> GuestMemory {
+        GuestMemory::new(&[(GuestAddress(0), 640 * 1024)]).unwrap()
     }
 
     fn table_entry_size(type_: u8) -> usize {
@@ -385,11 +388,7 @@ mod tests {
     #[test]
     fn bounds_check() {
         let num_cpus = 4;
-        let mem = GuestMemory::new(&[(
-            GuestAddress(MPTABLE_RANGE.start),
-            compute_page_aligned_mp_size(num_cpus),
-        )])
-        .unwrap();
+        let mem = test_guest_mem();
 
         setup_mptable(&mem, num_cpus, &[]).unwrap();
     }
@@ -397,7 +396,7 @@ mod tests {
     #[test]
     fn bounds_check_fails() {
         let num_cpus = 255;
-        let mem = GuestMemory::new(&[(GuestAddress(MPTABLE_RANGE.start), 0x1000)]).unwrap();
+        let mem = test_guest_mem();
 
         assert!(setup_mptable(&mem, num_cpus, &[]).is_err());
     }
@@ -405,16 +404,12 @@ mod tests {
     #[test]
     fn mpf_intel_checksum() {
         let num_cpus = 1;
-        let mem = GuestMemory::new(&[(
-            GuestAddress(MPTABLE_RANGE.start),
-            compute_page_aligned_mp_size(num_cpus),
-        )])
-        .unwrap();
+        let mem = test_guest_mem();
 
         setup_mptable(&mem, num_cpus, &[]).unwrap();
 
         let mpf_intel = mem
-            .read_obj_from_addr(GuestAddress(MPTABLE_RANGE.start))
+            .read_obj_from_addr(GuestAddress(MP_FLOATING_POINTER_ADDR))
             .unwrap();
 
         assert_eq!(mpf_intel_compute_checksum(&mpf_intel), mpf_intel.checksum);
@@ -423,16 +418,12 @@ mod tests {
     #[test]
     fn mpc_table_checksum() {
         let num_cpus = 4;
-        let mem = GuestMemory::new(&[(
-            GuestAddress(MPTABLE_RANGE.start),
-            compute_page_aligned_mp_size(num_cpus),
-        )])
-        .unwrap();
+        let mem = test_guest_mem();
 
         setup_mptable(&mem, num_cpus, &[]).unwrap();
 
         let mpf_intel: mpf_intel = mem
-            .read_obj_from_addr(GuestAddress(MPTABLE_RANGE.start))
+            .read_obj_from_addr(GuestAddress(MP_FLOATING_POINTER_ADDR))
             .unwrap();
         let mpc_offset = GuestAddress(mpf_intel.physptr as u64);
         let mpc_table: mpc_table = mem.read_obj_from_addr(mpc_offset).unwrap();
@@ -449,18 +440,14 @@ mod tests {
 
     #[test]
     fn cpu_entry_count() {
-        const MAX_CPUS: u8 = 40;
-        let mem = GuestMemory::new(&[(
-            GuestAddress(MPTABLE_RANGE.start),
-            compute_page_aligned_mp_size(MAX_CPUS),
-        )])
-        .unwrap();
+        const MAX_CPUS: u8 = 0xff;
+        let mem = test_guest_mem();
 
         for i in 0..MAX_CPUS {
             setup_mptable(&mem, i, &[]).unwrap();
 
             let mpf_intel: mpf_intel = mem
-                .read_obj_from_addr(GuestAddress(MPTABLE_RANGE.start))
+                .read_obj_from_addr(GuestAddress(MP_FLOATING_POINTER_ADDR))
                 .unwrap();
             let mpc_offset = GuestAddress(mpf_intel.physptr as u64);
             let mpc_table: mpc_table = mem.read_obj_from_addr(mpc_offset).unwrap();

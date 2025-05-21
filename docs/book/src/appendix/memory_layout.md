@@ -15,8 +15,8 @@ see the source. All addresses are in hexadecimal.
 | [`boot_pdpte_addr`]          | `A000`        | `B000`          | 4 KiB     | Boot page table                                                                          |
 | [`boot_pde_addr`]            | `B000`        | `F000`          | 16 KiB    | Boot page tables                                                                         |
 | [`CMDLINE_OFFSET`]           | `2_0000`      | `2_0800`        | 2 KiB     | Linux kernel command line                                                                |
-| [`SETUP_DATA_START`]         | `2_0800`      | `9_FC00`        | 509 KiB   | Linux kernel `setup_data` linked list                                                    |
-| [`MPTABLE_RANGE`]            | `9_FC00`      | `A_0000`        | 1 KiB     | MultiProcessor Specification Configuration Table                                         |
+| [`SETUP_DATA_START`]         | `2_0800`      | `9_E800`        | 504 KiB   | Linux kernel `setup_data` linked list                                                    |
+| [`MPTABLE_RANGE`]            | `9_E800`      | `A_0000`        | 6 KiB     | MultiProcessor Specification Configuration Table                                         |
 | [`ACPI_HI_RSDP_WINDOW_BASE`] | `E_0000`      |                 |           | ACPI tables                                                                              |
 | [`mem_1m_to_4g`]             | `10_0000`     | `D000_0000`     | ~3.24 GiB | RAM (\<4G)                                                                               |
 | [`KERNEL_START_OFFSET`]      | `20_0000`     |                 |           | Linux kernel image load address                                                          |

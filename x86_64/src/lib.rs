@@ -1235,7 +1235,6 @@ impl arch::LinuxArch for X8664arch {
         }
 
         if mptable {
-            // Note that this puts the mptable at 0x9FC00 in guest physical memory.
             mptable::setup_mptable(&mem, vcpu_count as u8, &pci_irqs)
                 .map_err(Error::SetupMptable)?;
         }
