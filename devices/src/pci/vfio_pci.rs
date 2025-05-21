@@ -403,6 +403,18 @@ impl VfioMsixCap {
     }
 }
 
+impl AsRawDescriptors for VfioMsixCap {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        let mut rds = vec![self.config.as_raw_descriptor()];
+        rds.extend(
+            self.msix_interrupt_evt
+                .iter()
+                .map(|evt| evt.as_raw_descriptor()),
+        );
+        rds
+    }
+}
+
 struct VfioResourceAllocator {
     // The region that is not allocated yet.
     regions: BTreeSet<AddressRange>,
@@ -1654,14 +1666,7 @@ impl PciDevice for VfioPciDevice {
             rds.push(msi_cap.config.get_msi_socket());
         }
         if let Some(msix_cap) = &self.msix_cap {
-            rds.push(msix_cap.lock().config.as_raw_descriptor());
-            rds.extend(
-                msix_cap
-                    .lock()
-                    .msix_interrupt_evt
-                    .iter()
-                    .map(|evt| evt.as_raw_descriptor()),
-            );
+            rds.extend(msix_cap.lock().as_raw_descriptors());
         }
         rds
     }
