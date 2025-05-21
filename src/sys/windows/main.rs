@@ -27,8 +27,6 @@ use metrics::MetricEventType;
 use net_util::slirp::sys::windows::SlirpStartupConfig;
 use tube_transporter::TubeToken;
 use tube_transporter::TubeTransporterReader;
-use win_util::DllNotificationData;
-use win_util::DllWatcher;
 
 use crate::crosvm::cmdline::RunCommand;
 use crate::crosvm::sys::cmdline::Commands;

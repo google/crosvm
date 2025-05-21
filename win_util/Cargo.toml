@@ -42,6 +42,3 @@ features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Com",
 ]
-
-[dev-dependencies]
-libloading = "0.7.3"

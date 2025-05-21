@@ -17,9 +17,6 @@ mod large_integer;
 pub use crate::large_integer::*;
 
 mod security_attributes;
-pub use crate::security_attributes::*;
-
-mod dll_notification;
 use std::ffi::CString;
 use std::ffi::OsStr;
 use std::ffi::OsString;
@@ -30,6 +27,8 @@ use std::os::windows::ffi::OsStringExt;
 use std::os::windows::io::RawHandle;
 use std::ptr;
 use std::slice;
+
+pub use crate::security_attributes::*;
 
 mod keyboard;
 pub use keyboard::*;
@@ -55,8 +54,6 @@ use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
 use winapi::um::winnt::HRESULT;
 use winapi::um::winnt::PROCESS_DUP_HANDLE;
 use winapi::um::winnt::WCHAR;
-
-pub use crate::dll_notification::*;
 
 pub mod dpapi;
 
