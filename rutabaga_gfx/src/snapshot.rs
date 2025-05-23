@@ -11,10 +11,9 @@ use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
 
-use anyhow::Context;
+use mesa3d_util::MesaError;
 
 use crate::RutabagaError;
-use crate::RutabagaErrorKind;
 use crate::RutabagaResult;
 
 pub struct RutabagaSnapshotWriter {
@@ -35,9 +34,7 @@ impl RutabagaSnapshotWriter {
     pub fn add_namespace(&self, name: &str) -> RutabagaResult<Self> {
         let directory = self.dir.join(name);
 
-        std::fs::create_dir(&directory)
-            .context(RutabagaErrorKind::IoError)
-            .map_err(RutabagaError::from)?;
+        std::fs::create_dir(&directory).map_err(MesaError::IoError)?;
 
         Ok(Self::from_existing(directory))
     }
@@ -48,16 +45,12 @@ impl RutabagaSnapshotWriter {
             .write(true)
             .create_new(true)
             .open(fragment_path)
-            .with_context(|| format!("failed to add fragment {}", name))
-            .context(RutabagaErrorKind::SnapshotError)?;
+            .map_err(|_| RutabagaError::SnapshotError)?;
         let mut fragment_writer = BufWriter::new(fragment_file);
-        serde_json::to_writer(&mut fragment_writer, t)
-            .with_context(|| format!("failed to write fragment {}", name))
-            .context(RutabagaErrorKind::SnapshotError)?;
+        serde_json::to_writer(&mut fragment_writer, t).map_err(|_| RutabagaError::SnapshotError)?;
         fragment_writer
             .flush()
-            .with_context(|| format!("failed to flush fragment {}", name))
-            .context(RutabagaErrorKind::SnapshotError)?;
+            .map_err(|_| RutabagaError::SnapshotError)?;
         Ok(())
     }
 }
@@ -71,9 +64,7 @@ impl RutabagaSnapshotReader {
         let directory = directory.into();
 
         if !directory.as_path().exists() {
-            return Err(anyhow::anyhow!("{} does not exist", directory.display())
-                .context(RutabagaErrorKind::SnapshotError)
-                .into());
+            return Err(RutabagaError::SnapshotError);
         }
 
         Ok(Self { dir: directory })
@@ -90,13 +81,8 @@ impl RutabagaSnapshotReader {
 
     pub fn get_fragment<T: serde::de::DeserializeOwned>(&self, name: &str) -> RutabagaResult<T> {
         let fragment_path = self.dir.join(name);
-        let fragment_file = File::open(fragment_path)
-            .with_context(|| format!("failed to get fragment {}", name))
-            .context(RutabagaErrorKind::SnapshotError)?;
+        let fragment_file = File::open(fragment_path).map_err(|_| RutabagaError::SnapshotError)?;
         let mut fragment_reader = BufReader::new(fragment_file);
-        serde_json::from_reader(&mut fragment_reader)
-            .with_context(|| format!("failed to read fragment {}", name))
-            .context(RutabagaErrorKind::SnapshotError)
-            .map_err(|e| e.into())
+        serde_json::from_reader(&mut fragment_reader).map_err(|_| RutabagaError::SnapshotError)
     }
 }

@@ -4,27 +4,34 @@
 
 //! rutabaga_utils: Utility enums, structs, and implementations needed by the rest of the crate.
 
-use std::ffi::NulError;
 use std::fmt;
-use std::io::Error as IoError;
-use std::num::TryFromIntError;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::path::PathBuf;
-use std::str::Utf8Error;
 use std::sync::Arc;
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
-use nix::Error as NixError;
+use mesa3d_util::MesaError;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
+#[cfg(feature = "vulkano")]
+use vulkano::device::DeviceCreationError;
+#[cfg(feature = "vulkano")]
+use vulkano::image::ImageError;
+#[cfg(feature = "vulkano")]
+use vulkano::instance::InstanceCreationError;
+#[cfg(feature = "vulkano")]
+use vulkano::memory::DeviceMemoryError;
+#[cfg(feature = "vulkano")]
+use vulkano::memory::MemoryMapError;
+#[cfg(feature = "vulkano")]
+use vulkano::LoadingError;
+#[cfg(feature = "vulkano")]
+use vulkano::VulkanError;
 use zerocopy::FromBytes;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
-
-use crate::rutabaga_os::OwnedDescriptor;
 
 /// Represents a buffer.  `base` contains the address of a buffer, while `len` contains the length
 /// of the buffer.
@@ -75,13 +82,6 @@ pub struct ResourceCreateBlob {
     pub blob_mem: u32,
     pub blob_flags: u32,
     pub blob_id: u64,
-    pub size: u64,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
-pub struct RutabagaMapping {
-    pub ptr: u64,
     pub size: u64,
 }
 
@@ -229,8 +229,8 @@ pub const RUTABAGA_CAPSET_GFXSTREAM_COMPOSER: u32 = 9;
 /// It is used with the [`RutabagaError`] type.
 #[sorted]
 #[non_exhaustive]
-#[derive(Error, Debug, Clone)]
-pub enum RutabagaErrorKind {
+#[derive(Error, Debug)]
+pub enum RutabagaError {
     /// Indicates `Rutabaga` was already initialized since only one Rutabaga instance per process
     /// is allowed.
     #[error("attempted to use a rutabaga asset already in use")]
@@ -251,9 +251,6 @@ pub enum RutabagaErrorKind {
     /// An internal Rutabaga component error was returned.
     #[error("rutabaga component failed with error {0}")]
     ComponentError(i32),
-    /// Internal error. The caller is not supposed to handle this error.
-    #[error("internal error")]
-    Internal,
     /// Invalid 2D info
     #[error("invalid 2D info")]
     Invalid2DInfo,
@@ -308,196 +305,51 @@ pub enum RutabagaErrorKind {
     /// Indicates an error in the RutabagaBuilder.
     #[error("invalid rutabaga build parameters")]
     InvalidRutabagaBuild,
-    /// An error with the RutabagaHandle
-    #[error("invalid rutabaga handle")]
-    InvalidRutabagaHandle,
-    /// Invalid Vulkan info
+    /// An error with VulkanInfo
     #[error("invalid vulkan info")]
     InvalidVulkanInfo,
-    /// An input/output error occured.
-    #[error("an input/output error occur")]
-    IoError,
     /// The mapping failed.
     #[error("The mapping failed with library error: {0}")]
     MappingFailed(i32),
-    /// Nix crate error.
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    #[error("The errno is {0}")]
-    NixError(NixError),
-    #[error("Nul Error occured")]
-    NulError,
-    /// An error with a snapshot.
-    #[error("a snapshot error occured")]
+    /// A Mesa Error
+    #[error("An mesa error was returned {0}")]
+    MesaError(MesaError),
+    /// A snapshot Error
+    #[error("An snapshot error was returned")]
     SnapshotError,
-    /// Violation of the Rutabaga spec occured.
-    #[error("violation of the rutabaga spec")]
-    SpecViolation,
-    /// An attempted integer conversion failed.
-    #[error("int conversion failed")]
-    TryFromIntError,
-    /// The command is unsupported.
-    #[error("the requested function is not implemented")]
-    Unsupported,
-    /// Utf8 error.
-    #[error("an utf8 error occured")]
-    Utf8Error,
     /// Device creation error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano device creation failure")]
-    VkDeviceCreationError,
+    #[error("vulkano device creation failure {0}")]
+    VkDeviceCreationError(DeviceCreationError),
     /// Device memory error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano device memory failure")]
-    VkDeviceMemoryError,
+    #[error("vulkano device memory failure {0}")]
+    VkDeviceMemoryError(DeviceMemoryError),
     /// General Vulkan error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano failure")]
-    VkError,
+    #[error("vulkano failure {0}")]
+    VkError(VulkanError),
     /// Image creation error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano image creation failure")]
-    VkImageCreationError,
+    #[error("vulkano image creation failure {0}")]
+    VkImageCreationError(ImageError),
     /// Instance creation error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano instance creation failure")]
-    VkInstanceCreationError,
+    #[error("vulkano instance creation failure {0}")]
+    VkInstanceCreationError(InstanceCreationError),
     /// Loading error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano loading failure")]
-    VkLoadingError,
+    #[error("vulkano loading failure {0}")]
+    VkLoadingError(LoadingError),
     /// Memory map error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano memory map failure")]
-    VkMemoryMapError,
+    #[error("vulkano memory map failure {0}")]
+    VkMemoryMapError(MemoryMapError),
 }
 
-/// An error generated while using this crate.
-///
-/// Use [`RutabagaError::kind`] to distinguish between different errors.
-///
-/// # Examples
-///
-/// To create a [`RutabagaError`], create from an [`anyhow::Error`] or a
-/// [`RutabagaErrorKind`].
-///
-/// ```
-/// use rutabaga_gfx::RutabagaError;
-/// use rutabaga_gfx::RutabagaErrorKind;
-///
-/// let error: RutabagaError = anyhow::anyhow!("test error").into();
-/// assert!(matches!(error.kind(), &RutabagaErrorKind::Internal));
-///
-/// let error: RutabagaError = RutabagaErrorKind::AlreadyInUse.into();
-/// assert!(matches!(error.kind(), &RutabagaErrorKind::AlreadyInUse));
-/// ```
-///
-/// When creating from an [`anyhow::Error`], if an [`RutabagaErrorKind`] exists in the error chain,
-/// the created [`RutabagaError`] will respect that error kind, so feel free to use
-/// [`anyhow::Result`] and [`anyhow::Context::context`] in the code base, and only convert the
-/// result to [`RutabagaResult`] at the out most public interface.
-/// ```
-/// use anyhow::Context;
-/// use rutabaga_gfx::RutabagaResult;
-/// use rutabaga_gfx::RutabagaErrorKind;
-///
-/// let res = Err::<(), _>(anyhow::anyhow!("test error"))
-///     .context("context 1")
-///     .context(RutabagaErrorKind::InvalidComponent)
-///     .context("context 2");
-/// let res: RutabagaResult<()> = res.map_err(|e| e.into());
-/// let kind = res.err().map(|e| e.kind().clone());
-/// assert!(matches!(kind, Some(RutabagaErrorKind::InvalidComponent)));
-///
-/// let res = Err::<(), _>(anyhow::anyhow!("test error"))
-///     .context("context")
-///     .context(RutabagaErrorKind::InvalidComponent);
-/// let res: RutabagaResult<()> = res.map_err(|e| e.into());
-/// let kind = res.err().map(|e| e.kind().clone());
-/// assert!(matches!(kind, Some(RutabagaErrorKind::InvalidComponent)));
-///
-/// let res = Err::<(), _>(anyhow::anyhow!("test error"))
-///     .context(RutabagaErrorKind::InvalidComponent)
-///     .context("context");
-/// let res: RutabagaResult<()> = res.map_err(|e| e.into());
-/// let kind = res.err().map(|e| e.kind().clone());
-/// assert!(matches!(kind, Some(RutabagaErrorKind::InvalidComponent)));
-/// ```
-#[derive(thiserror::Error, Debug)]
-#[error("{kind}")]
-pub struct RutabagaError {
-    kind: RutabagaErrorKind,
-    #[source]
-    context: Option<anyhow::Error>,
-}
-
-impl RutabagaError {
-    pub fn kind(&self) -> &RutabagaErrorKind {
-        &self.kind
-    }
-}
-
-impl From<RutabagaErrorKind> for RutabagaError {
-    fn from(kind: RutabagaErrorKind) -> Self {
-        Self {
-            kind,
-            context: None,
-        }
-    }
-}
-
-impl From<anyhow::Error> for RutabagaError {
-    fn from(value: anyhow::Error) -> Self {
-        let kind = value
-            .downcast_ref::<RutabagaErrorKind>()
-            .unwrap_or(&RutabagaErrorKind::Internal)
-            .clone();
-        Self {
-            kind,
-            context: Some(value),
-        }
-    }
-}
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-impl From<NixError> for RutabagaError {
-    fn from(e: NixError) -> RutabagaError {
-        RutabagaErrorKind::NixError(e).into()
-    }
-}
-
-impl From<NulError> for RutabagaError {
-    fn from(e: NulError) -> RutabagaError {
-        Self {
-            kind: RutabagaErrorKind::NulError,
-            context: Some(anyhow::Error::msg(e)),
-        }
-    }
-}
-
-impl From<IoError> for RutabagaError {
-    fn from(e: IoError) -> RutabagaError {
-        RutabagaError {
-            kind: RutabagaErrorKind::IoError,
-            context: Some(anyhow::Error::new(e)),
-        }
-    }
-}
-
-impl From<TryFromIntError> for RutabagaError {
-    fn from(e: TryFromIntError) -> RutabagaError {
-        Self {
-            kind: RutabagaErrorKind::TryFromIntError,
-            context: Some(anyhow::Error::new(e)),
-        }
-    }
-}
-
-impl From<Utf8Error> for RutabagaError {
-    fn from(e: Utf8Error) -> RutabagaError {
-        Self {
-            kind: RutabagaErrorKind::Utf8Error,
-            context: Some(anyhow::Error::new(e)),
-        }
+impl From<MesaError> for RutabagaError {
+    fn from(e: MesaError) -> RutabagaError {
+        RutabagaError::MesaError(e)
     }
 }
 
@@ -786,47 +638,9 @@ impl RutabagaComponentType {
     }
 }
 
-/// Rutabaga handle types (memory and sync in same namespace)
-pub const RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD: u32 = 0x0001;
-pub const RUTABAGA_HANDLE_TYPE_MEM_DMABUF: u32 = 0x0002;
-pub const RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_WIN32: u32 = 0x0003;
-pub const RUTABAGA_HANDLE_TYPE_MEM_SHM: u32 = 0x0004;
-pub const RUTABAGA_HANDLE_TYPE_MEM_ZIRCON: u32 = 0x0005;
-
-pub const RUTABAGA_HANDLE_TYPE_SIGNAL_OPAQUE_FD: u32 = 0x0010;
-pub const RUTABAGA_HANDLE_TYPE_SIGNAL_SYNC_FD: u32 = 0x0020;
-pub const RUTABAGA_HANDLE_TYPE_SIGNAL_OPAQUE_WIN32: u32 = 0x0030;
-pub const RUTABAGA_HANDLE_TYPE_SIGNAL_ZIRCON: u32 = 0x0040;
-pub const RUTABAGA_HANDLE_TYPE_SIGNAL_EVENT_FD: u32 = 0x0050;
-
+// Handle types to support special-case consumers.
 pub const RUTABAGA_HANDLE_TYPE_PLATFORM_SCREEN_BUFFER_QNX: u32 = 0x01000000;
 pub const RUTABAGA_HANDLE_TYPE_PLATFORM_EGL_NATIVE_PIXMAP: u32 = 0x02000000;
-
-/// Handle to OS-specific memory or synchronization objects.
-pub struct RutabagaHandle {
-    pub os_handle: OwnedDescriptor,
-    pub handle_type: u32,
-}
-
-impl fmt::Debug for RutabagaHandle {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Handle debug").finish()
-    }
-}
-
-impl RutabagaHandle {
-    /// Clones an existing rutabaga handle, by using OS specific mechanisms.
-    pub fn try_clone(&self) -> RutabagaResult<RutabagaHandle> {
-        let clone = self.os_handle.try_clone().map_err(|e| RutabagaError {
-            kind: RutabagaErrorKind::InvalidRutabagaHandle,
-            context: Some(anyhow::Error::new(e)),
-        })?;
-        Ok(RutabagaHandle {
-            os_handle: clone,
-            handle_type: self.handle_type,
-        })
-    }
-}
 
 #[derive(Clone)]
 pub struct RutabagaHandler<S> {
@@ -855,79 +669,4 @@ impl<S> fmt::Debug for RutabagaHandler<S> {
 }
 
 pub type RutabagaFenceHandler = RutabagaHandler<RutabagaFence>;
-
 pub type RutabagaDebugHandler = RutabagaHandler<RutabagaDebug>;
-
-#[cfg(test)]
-mod tests {
-    use anyhow::Context;
-
-    use super::*;
-
-    #[test]
-    fn error_from_anyhow_should_keep_root_kind() {
-        let from_res = Err::<(), _>(RutabagaErrorKind::InvalidComponent)
-            .context("context 1")
-            .context("context 2");
-        let to_res: std::result::Result<_, RutabagaError> = from_res.map_err(|e| e.into());
-        let to_kind = to_res.err().map(|e| e.kind().clone());
-        assert!(
-            matches!(to_kind, Some(RutabagaErrorKind::InvalidComponent)),
-            "Expect the error kind to be RutabagaErrorKind::InvalidComponent, but is {:?}",
-            to_kind
-        );
-    }
-
-    #[test]
-    fn error_from_anyhow_should_keep_kind_added_in_context() {
-        let from_res = Err::<(), _>(anyhow::anyhow!("test error"))
-            .context("context 1")
-            .context(RutabagaErrorKind::InvalidComponent)
-            .context("context 2");
-        let to_res: std::result::Result<_, RutabagaError> = from_res.map_err(|e| e.into());
-        let to_kind = to_res.err().map(|e| e.kind().clone());
-        assert!(
-            matches!(to_kind, Some(RutabagaErrorKind::InvalidComponent)),
-            "Expect the error kind to be RutabagaErrorKind::InvalidComponent, but is {:?}",
-            to_kind
-        );
-    }
-
-    #[test]
-    fn error_from_anyhow_should_keep_top_most_kind() {
-        let from_res = Err::<(), _>(anyhow::anyhow!("test error"))
-            .context(RutabagaErrorKind::InvalidIovec)
-            .context(RutabagaErrorKind::InvalidComponent);
-        let to_res: std::result::Result<_, RutabagaError> = from_res.map_err(|e| e.into());
-        let to_kind = to_res.err().map(|e| e.kind().clone());
-        assert!(
-            matches!(to_kind, Some(RutabagaErrorKind::InvalidComponent)),
-            "Expect the error kind to be RutabagaErrorKind::InvalidComponent, but is {:?}",
-            to_kind
-        );
-    }
-
-    #[test]
-    fn error_from_kind_should_keep_kind() {
-        let from_res = Err::<(), _>(RutabagaErrorKind::InvalidComponent);
-        let to_res: std::result::Result<_, RutabagaError> = from_res.map_err(|e| e.into());
-        let to_kind = to_res.err().map(|e| e.kind().clone());
-        assert!(
-            matches!(to_kind, Some(RutabagaErrorKind::InvalidComponent)),
-            "Expect the error kind to be RutabagaErrorKind::InvalidComponent, but is {:?}",
-            to_kind
-        );
-    }
-
-    #[test]
-    fn error_from_arbitrary_anyhow_error_should_be_internal() {
-        let from_res = Err::<(), _>(anyhow::anyhow!("test error"));
-        let to_res: std::result::Result<_, RutabagaError> = from_res.map_err(|e| e.into());
-        let to_kind = to_res.err().map(|e| e.kind().clone());
-        assert!(
-            matches!(to_kind, Some(RutabagaErrorKind::Internal)),
-            "Expect the error kind to be RutabagaErrorKind::Internal, but is {:?}",
-            to_kind
-        );
-    }
-}

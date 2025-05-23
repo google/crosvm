@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 use std::io::IoSlice;
 use std::io::IoSliceMut;
 
-use anyhow::Context;
+use mesa3d_util::MesaError;
 
 use crate::rutabaga_core::Rutabaga2DInfo;
 use crate::rutabaga_core::RutabagaComponent;
@@ -109,7 +109,7 @@ fn transfer_2d(
             let src_end = offset_within_src + copyable_size;
             let src_subslice = src
                 .get(offset_within_src as usize..src_end as usize)
-                .ok_or(RutabagaErrorKind::InvalidIovec)?;
+                .ok_or(RutabagaError::InvalidIovec)?;
 
             let dst_line_vertical_offset = checked_arithmetic!(current_height * dst_stride)?;
             let dst_line_horizontal_offset =
@@ -121,7 +121,7 @@ fn transfer_2d(
             let dst_end_offset = dst_start_offset + copyable_size;
             let dst_subslice = dst
                 .get_mut(dst_start_offset as usize..dst_end_offset as usize)
-                .ok_or(RutabagaErrorKind::InvalidIovec)?;
+                .ok_or(RutabagaError::InvalidIovec)?;
 
             dst_subslice.copy_from_slice(src_subslice);
         } else if src_line_start_offset >= src_start_offset {
@@ -205,18 +205,18 @@ impl RutabagaComponent for Rutabaga2D {
         }
 
         if buf.is_some() {
-            return Err(RutabagaErrorKind::Unsupported.into());
+            return Err(MesaError::Unsupported.into());
         }
 
         let mut info_2d = resource
             .info_2d
             .take()
-            .ok_or(RutabagaErrorKind::Invalid2DInfo)?;
+            .ok_or(RutabagaError::Invalid2DInfo)?;
 
         let iovecs = resource
             .backing_iovecs
             .take()
-            .ok_or(RutabagaErrorKind::InvalidIovec)?;
+            .ok_or(RutabagaError::InvalidIovec)?;
 
         // All offical virtio_gpu formats are 4 bytes per pixel.
         let resource_bpp = 4;
@@ -264,7 +264,7 @@ impl RutabagaComponent for Rutabaga2D {
         let mut info_2d = resource
             .info_2d
             .take()
-            .ok_or(RutabagaErrorKind::Invalid2DInfo)?;
+            .ok_or(RutabagaError::Invalid2DInfo)?;
 
         // All offical virtio_gpu formats are 4 bytes per pixel.
         let resource_bpp = 4;
@@ -272,9 +272,9 @@ impl RutabagaComponent for Rutabaga2D {
         let src_offset = 0;
         let dst_offset = 0;
 
-        let dst_slice = buf
-            .context("need a destination slice for transfer read")
-            .context(RutabagaErrorKind::SpecViolation)?;
+        let dst_slice = buf.ok_or(MesaError::WithContext(
+            "need a destination slice for transfer read",
+        ))?;
 
         transfer_2d(
             info_2d.width,

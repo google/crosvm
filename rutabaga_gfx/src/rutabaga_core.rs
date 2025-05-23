@@ -10,7 +10,12 @@ use std::io::IoSliceMut;
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::Context;
+use mesa3d_util::MemoryMapping;
+use mesa3d_util::MesaError;
+use mesa3d_util::MesaHandle;
+use mesa3d_util::MesaMapping;
+use mesa3d_util::OwnedDescriptor;
+use mesa3d_util::MESA_HANDLE_TYPE_MEM_SHM;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -18,8 +23,6 @@ use crate::cross_domain::CrossDomain;
 #[cfg(feature = "gfxstream")]
 use crate::gfxstream::Gfxstream;
 use crate::rutabaga_2d::Rutabaga2D;
-use crate::rutabaga_os::MemoryMapping;
-use crate::rutabaga_os::OwnedDescriptor;
 use crate::rutabaga_utils::*;
 use crate::snapshot::RutabagaSnapshotReader;
 use crate::snapshot::RutabagaSnapshotWriter;
@@ -47,7 +50,7 @@ struct Rutabaga2DSnapshot {
 /// A Rutabaga resource, supporting 2D and 3D rutabaga features.  Assumes a single-threaded library.
 pub struct RutabagaResource {
     pub resource_id: u32,
-    pub handle: Option<Arc<RutabagaHandle>>,
+    pub handle: Option<Arc<MesaHandle>>,
     pub blob: bool,
     pub blob_mem: u32,
     pub blob_flags: u32,
@@ -206,10 +209,10 @@ pub trait RutabagaComponent {
     fn import(
         &self,
         _resource_id: u32,
-        _import_handle: RutabagaHandle,
+        _import_handle: MesaHandle,
         _import_data: RutabagaImportData,
     ) -> RutabagaResult<Option<RutabagaResource>> {
-        Err(RutabagaErrorKind::Unsupported.into())
+        Err(MesaError::Unsupported.into())
     }
 
     /// Implementations must attach `vecs` to the resource.
@@ -253,7 +256,7 @@ pub trait RutabagaComponent {
 
     /// Implementations must flush the given resource to the display.
     fn resource_flush(&self, _resource_id: &mut RutabagaResource) -> RutabagaResult<()> {
-        Err(RutabagaErrorKind::Unsupported.into())
+        Err(MesaError::Unsupported.into())
     }
 
     /// Implementations must create a blob resource on success.  The memory parameters, size, and
@@ -264,26 +267,26 @@ pub trait RutabagaComponent {
         _resource_id: u32,
         _resource_create_blob: ResourceCreateBlob,
         _iovec_opt: Option<Vec<RutabagaIovec>>,
-        _handle_opt: Option<RutabagaHandle>,
+        _handle_opt: Option<MesaHandle>,
     ) -> RutabagaResult<RutabagaResource> {
-        Err(RutabagaErrorKind::Unsupported.into())
+        Err(MesaError::Unsupported.into())
     }
 
     /// Implementations must map the blob resource on success.  This is typically done by
     /// glMapBufferRange(...) or vkMapMemory.
-    fn map(&self, _resource_id: u32) -> RutabagaResult<RutabagaMapping> {
-        Err(RutabagaErrorKind::Unsupported.into())
+    fn map(&self, _resource_id: u32) -> RutabagaResult<MesaMapping> {
+        Err(MesaError::Unsupported.into())
     }
 
     /// Implementations must unmap the blob resource on success.  This is typically done by
     /// glUnmapBuffer(...) or vkUnmapMemory.
     fn unmap(&self, _resource_id: u32) -> RutabagaResult<()> {
-        Err(RutabagaErrorKind::Unsupported.into())
+        Err(MesaError::Unsupported.into())
     }
 
-    /// Implementations must return a RutabagaHandle of the fence on success.
-    fn export_fence(&self, _fence_id: u64) -> RutabagaResult<RutabagaHandle> {
-        Err(RutabagaErrorKind::Unsupported.into())
+    /// Implementations must return a MesaHandle of the fence on success.
+    fn export_fence(&self, _fence_id: u64) -> RutabagaResult<MesaHandle> {
+        Err(MesaError::Unsupported.into())
     }
 
     /// Implementations must create a context for submitting commands.  The command stream of the
@@ -296,7 +299,7 @@ pub trait RutabagaComponent {
         _context_name: Option<&str>,
         _fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
-        Err(RutabagaErrorKind::Unsupported.into())
+        Err(MesaError::Unsupported.into())
     }
 
     /// Implementations should stop workers.
@@ -306,12 +309,12 @@ pub trait RutabagaComponent {
 
     /// Implementations must snapshot to the specified writer.
     fn snapshot(&self, _writer: RutabagaSnapshotWriter) -> RutabagaResult<()> {
-        Err(RutabagaErrorKind::Unsupported.into())
+        Err(MesaError::Unsupported.into())
     }
 
     /// Implementations must restore from the specified reader.
     fn restore(&self, _reader: RutabagaSnapshotReader) -> RutabagaResult<()> {
-        Err(RutabagaErrorKind::Unsupported.into())
+        Err(MesaError::Unsupported.into())
     }
 
     /// Implementations must restore the context from the given stream.
@@ -320,7 +323,7 @@ pub trait RutabagaComponent {
         _snapshot: Vec<u8>,
         _fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
-        Err(RutabagaErrorKind::Unsupported.into())
+        Err(MesaError::Unsupported.into())
     }
 
     /// Implementations should resume workers.
@@ -335,9 +338,9 @@ pub trait RutabagaContext {
         &mut self,
         _resource_id: u32,
         _resource_create_blob: ResourceCreateBlob,
-        _handle_opt: Option<RutabagaHandle>,
+        _handle_opt: Option<MesaHandle>,
     ) -> RutabagaResult<RutabagaResource> {
-        Err(RutabagaErrorKind::Unsupported.into())
+        Err(MesaError::Unsupported.into())
     }
 
     /// Implementations must handle the context-specific command stream.
@@ -345,7 +348,7 @@ pub trait RutabagaContext {
         &mut self,
         _commands: &mut [u8],
         _fence_ids: &[u64],
-        shareable_fences: Vec<RutabagaHandle>,
+        shareable_fences: Vec<MesaHandle>,
     ) -> RutabagaResult<()>;
 
     /// Implementations may use `resource` in this context's command stream.
@@ -362,8 +365,8 @@ pub trait RutabagaContext {
     fn context_create_fence(
         &mut self,
         _fence: RutabagaFence,
-    ) -> RutabagaResult<Option<RutabagaHandle>> {
-        Err(RutabagaErrorKind::Unsupported.into())
+    ) -> RutabagaResult<Option<MesaHandle>> {
+        Err(MesaError::Unsupported.into())
     }
 
     /// Implementations must return the component type associated with the context.
@@ -371,7 +374,7 @@ pub trait RutabagaContext {
 
     /// Implementations must serialize the context.
     fn snapshot(&self) -> RutabagaResult<Vec<u8>> {
-        Err(RutabagaErrorKind::Unsupported.into())
+        Err(MesaError::Unsupported.into())
     }
 }
 
@@ -451,9 +454,7 @@ pub fn calculate_capset_names(capset_mask: u64) -> Vec<String> {
 
 fn calculate_component(component_mask: u8) -> RutabagaResult<RutabagaComponentType> {
     if component_mask.count_ones() != 1 {
-        return Err(anyhow::anyhow!("can't infer single component")
-            .context(RutabagaErrorKind::SpecViolation)
-            .into());
+        return Err(MesaError::WithContext("can't infer single component").into());
     }
 
     match component_mask.trailing_zeros() {
@@ -461,7 +462,7 @@ fn calculate_component(component_mask: u8) -> RutabagaResult<RutabagaComponentTy
         1 => Ok(RutabagaComponentType::VirglRenderer),
         2 => Ok(RutabagaComponentType::Gfxstream),
         3 => Ok(RutabagaComponentType::CrossDomain),
-        _ => Err(RutabagaErrorKind::InvalidComponent.into()),
+        _ => Err(RutabagaError::InvalidComponent),
     }
 }
 
@@ -475,7 +476,7 @@ fn calculate_component(component_mask: u8) -> RutabagaResult<RutabagaComponentTy
 pub struct Rutabaga {
     resources: Map<u32, RutabagaResource>,
     #[cfg(fence_passing_option1)]
-    shareable_fences: Map<u64, RutabagaHandle>,
+    shareable_fences: Map<u64, MesaHandle>,
     contexts: Map<u32, Box<dyn RutabagaContext>>,
     // Declare components after resources and contexts such that it is dropped last.
     components: Map<RutabagaComponentType, Box<dyn RutabagaComponent>>,
@@ -497,7 +498,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         component.suspend()
     }
@@ -510,7 +511,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let component_snapshot_writer =
             snapshot_writer.add_namespace(self.default_component.as_str())?;
@@ -571,7 +572,7 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let component_snapshot_reader =
             snapshot_reader.get_namespace(self.default_component.as_str())?;
@@ -597,7 +598,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         component.resume()
     }
@@ -607,7 +608,7 @@ impl Rutabaga {
             .capset_info
             .iter()
             .find(|capset_info| capset_info.capset_id == capset_id)
-            .ok_or(RutabagaErrorKind::InvalidCapset)?
+            .ok_or(RutabagaError::InvalidCapset)?
             .component;
 
         Ok(component)
@@ -616,7 +617,7 @@ impl Rutabaga {
     fn capset_index_to_component_info(&self, index: u32) -> RutabagaResult<RutabagaCapsetInfo> {
         let idx = index as usize;
         if idx >= self.capset_info.len() {
-            return Err(RutabagaErrorKind::InvalidCapset.into());
+            return Err(RutabagaError::InvalidCapset);
         }
 
         Ok(self.capset_info[idx])
@@ -629,7 +630,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&capset_info.component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let (capset_version, capset_size) = component.get_capset_info(capset_info.capset_id);
         Ok((capset_info.capset_id, capset_version, capset_size))
@@ -648,7 +649,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&component_type)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         Ok(component.get_capset(capset_id, version))
     }
@@ -673,7 +674,7 @@ impl Rutabaga {
             let ctx = self
                 .contexts
                 .get_mut(&fence.ctx_id)
-                .ok_or(RutabagaErrorKind::InvalidContextId)?;
+                .ok_or(RutabagaError::InvalidContextId)?;
 
             #[allow(unused_variables)]
             let handle_opt = ctx.context_create_fence(fence)?;
@@ -687,7 +688,7 @@ impl Rutabaga {
             let component = self
                 .components
                 .get_mut(&self.default_component)
-                .ok_or(RutabagaErrorKind::InvalidComponent)?;
+                .ok_or(RutabagaError::InvalidComponent)?;
 
             component.create_fence(fence)?;
         }
@@ -718,10 +719,10 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         if self.resources.contains_key(&resource_id) {
-            return Err(RutabagaErrorKind::InvalidResourceId.into());
+            return Err(RutabagaError::InvalidResourceId);
         }
 
         let resource = component.create_3d(resource_id, resource_create_3d)?;
@@ -734,13 +735,13 @@ impl Rutabaga {
     pub fn resource_import(
         &mut self,
         resource_id: u32,
-        import_handle: RutabagaHandle,
+        import_handle: MesaHandle,
         import_data: RutabagaImportData,
     ) -> RutabagaResult<()> {
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         match component.import(resource_id, import_handle, import_data) {
             Ok(Some(resource)) => {
@@ -748,7 +749,7 @@ impl Rutabaga {
             }
             Ok(None) => {
                 if !self.resources.contains_key(&resource_id) {
-                    return Err(RutabagaErrorKind::InvalidResourceId.into());
+                    return Err(RutabagaError::InvalidResourceId);
                 }
             }
             Err(e) => return Err(e),
@@ -765,12 +766,12 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         component.attach_backing(resource_id, &mut vecs)?;
         resource.backing_iovecs = Some(vecs);
@@ -782,12 +783,12 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         component.detach_backing(resource_id);
         resource.backing_iovecs = None;
@@ -799,11 +800,11 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         self.resources
             .remove(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         component.unref_resource(resource_id);
         Ok(())
@@ -821,12 +822,12 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         component.transfer_write(ctx_id, resource, transfer, buf)
     }
@@ -845,12 +846,12 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         component.transfer_read(ctx_id, resource, transfer, buf)
     }
@@ -859,12 +860,12 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaErrorKind::Unsupported)?;
+            .ok_or(MesaError::Unsupported)?;
 
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         component.resource_flush(resource)
     }
@@ -878,16 +879,16 @@ impl Rutabaga {
         resource_id: u32,
         resource_create_blob: ResourceCreateBlob,
         iovecs: Option<Vec<RutabagaIovec>>,
-        handle: Option<RutabagaHandle>,
+        handle: Option<MesaHandle>,
     ) -> RutabagaResult<()> {
         if self.resources.contains_key(&resource_id) {
-            return Err(RutabagaErrorKind::InvalidResourceId.into());
+            return Err(RutabagaError::InvalidResourceId);
         }
 
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let mut context = None;
         // For the cross-domain context, we'll need to create the blob resource via a home-grown
@@ -897,7 +898,7 @@ impl Rutabaga {
             let ctx = self
                 .contexts
                 .get_mut(&ctx_id)
-                .ok_or(RutabagaErrorKind::InvalidContextId)?;
+                .ok_or(RutabagaError::InvalidContextId)?;
 
             if ctx.component_type() == RutabagaComponentType::CrossDomain {
                 context = Some(ctx);
@@ -916,29 +917,31 @@ impl Rutabaga {
     }
 
     /// Returns a memory mapping of the blob resource.
-    pub fn map(&mut self, resource_id: u32) -> RutabagaResult<RutabagaMapping> {
+    pub fn map(&mut self, resource_id: u32) -> RutabagaResult<MesaMapping> {
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         let component_type = calculate_component(resource.component_mask)?;
         if component_type == RutabagaComponentType::CrossDomain {
             let handle_opt = resource.handle.take();
             match handle_opt {
                 Some(handle) => {
-                    if handle.handle_type != RUTABAGA_HANDLE_TYPE_MEM_SHM {
-                        return Err(anyhow::anyhow!("expected a shared memory handle")
-                            .context(RutabagaErrorKind::SpecViolation)
-                            .into());
+                    if handle.handle_type != MESA_HANDLE_TYPE_MEM_SHM {
+                        return Err(
+                            MesaError::WithContext("expected a shared memory handle").into()
+                        );
                     }
 
                     let clone = handle.try_clone()?;
-                    let resource_size: usize = resource.size.try_into()?;
+                    let resource_size: usize = resource
+                        .size
+                        .try_into()
+                        .map_err(MesaError::TryFromIntError)?;
                     let map_info = resource
                         .map_info
-                        .context("no map info available")
-                        .context(RutabagaErrorKind::SpecViolation)?;
+                        .ok_or(MesaError::WithContext("no map info available"))?;
 
                     // Creating the mapping closes the cloned descriptor.
                     let mapping = MemoryMapping::from_safe_descriptor(
@@ -946,24 +949,20 @@ impl Rutabaga {
                         resource_size,
                         map_info,
                     )?;
-                    let rutabaga_mapping = mapping.as_rutabaga_mapping();
+                    let mesa_mapping = mapping.as_mesa_mapping();
                     resource.handle = Some(handle);
                     resource.mapping = Some(mapping);
 
-                    return Ok(rutabaga_mapping);
+                    return Ok(mesa_mapping);
                 }
-                None => {
-                    return Err(anyhow::anyhow!("expected a handle to map")
-                        .context(RutabagaErrorKind::SpecViolation)
-                        .into())
-                }
+                None => return Err(MesaError::WithContext("expected a handle to map").into()),
             }
         }
 
         let component = self
             .components
             .get(&component_type)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         component.map(resource_id)
     }
@@ -973,7 +972,7 @@ impl Rutabaga {
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         let component_type = calculate_component(resource.component_mask)?;
         if component_type == RutabagaComponentType::CrossDomain {
@@ -984,7 +983,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&component_type)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         component.unmap(resource_id)
     }
@@ -995,13 +994,11 @@ impl Rutabaga {
         let resource = self
             .resources
             .get(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         resource
             .map_info
-            .context("no map info available")
-            .context(RutabagaErrorKind::SpecViolation)
-            .map_err(|e| e.into())
+            .ok_or(MesaError::WithContext("no map info available").into())
     }
 
     /// Returns the `vulkan_info` of the blob resource, which consists of the physical device
@@ -1010,11 +1007,9 @@ impl Rutabaga {
         let resource = self
             .resources
             .get(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
-        resource
-            .vulkan_info
-            .ok_or(RutabagaErrorKind::InvalidVulkanInfo.into())
+        resource.vulkan_info.ok_or(RutabagaError::InvalidVulkanInfo)
     }
 
     /// Returns the 3D info associated with the resource, if any.
@@ -1022,21 +1017,19 @@ impl Rutabaga {
         let resource = self
             .resources
             .get(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         resource
             .info_3d
-            .context("no 3d info available")
-            .context(RutabagaErrorKind::SpecViolation)
-            .map_err(|e| e.into())
+            .ok_or(MesaError::WithContext("no 3d info available").into())
     }
 
     /// Exports a blob resource.  See virtio-gpu spec for blob flag use flags.
-    pub fn export_blob(&mut self, resource_id: u32) -> RutabagaResult<RutabagaHandle> {
+    pub fn export_blob(&mut self, resource_id: u32) -> RutabagaResult<MesaHandle> {
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         // We can inspect blob flags only once guest minigbm is fully transitioned to blob.
         let share_mask = RUTABAGA_BLOB_FLAG_USE_SHAREABLE | RUTABAGA_BLOB_FLAG_USE_CROSS_DEVICE;
@@ -1052,25 +1045,24 @@ impl Rutabaga {
             }
             (Some(handle), false) => {
                 // Exactly one strong reference in this case.
-                let hnd = Arc::try_unwrap(handle)
-                    .map_err(|_| RutabagaErrorKind::InvalidRutabagaHandle)?;
+                let hnd = Arc::try_unwrap(handle).map_err(|_| MesaError::InvalidMesaHandle)?;
                 Ok(hnd)
             }
-            _ => Err(RutabagaErrorKind::InvalidRutabagaHandle.into()),
+            _ => Err(MesaError::InvalidMesaHandle.into()),
         }
     }
 
     /// Exports the given fence for import into other processes.
-    pub fn export_fence(&mut self, fence_id: u64) -> RutabagaResult<RutabagaHandle> {
+    pub fn export_fence(&mut self, fence_id: u64) -> RutabagaResult<MesaHandle> {
         #[cfg(fence_passing_option1)]
         if let Some(handle) = self.shareable_fences.get_mut(&fence_id) {
-            return handle.try_clone();
+            return handle.try_clone().map_err(|e| e.into());
         }
 
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         component.export_fence(fence_id)
     }
@@ -1093,10 +1085,10 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&component_type)
-            .ok_or(RutabagaErrorKind::InvalidComponent)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         if self.contexts.contains_key(&ctx_id) {
-            return Err(RutabagaErrorKind::InvalidContextId.into());
+            return Err(RutabagaError::InvalidContextId);
         }
 
         let ctx = component.create_context(
@@ -1113,7 +1105,7 @@ impl Rutabaga {
     pub fn destroy_context(&mut self, ctx_id: u32) -> RutabagaResult<()> {
         self.contexts
             .remove(&ctx_id)
-            .ok_or(RutabagaErrorKind::InvalidContextId)?;
+            .ok_or(RutabagaError::InvalidContextId)?;
         Ok(())
     }
 
@@ -1122,12 +1114,12 @@ impl Rutabaga {
         let ctx = self
             .contexts
             .get_mut(&ctx_id)
-            .ok_or(RutabagaErrorKind::InvalidContextId)?;
+            .ok_or(RutabagaError::InvalidContextId)?;
 
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         ctx.attach(resource);
         Ok(())
@@ -1138,12 +1130,12 @@ impl Rutabaga {
         let ctx = self
             .contexts
             .get_mut(&ctx_id)
-            .ok_or(RutabagaErrorKind::InvalidContextId)?;
+            .ok_or(RutabagaError::InvalidContextId)?;
 
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
         ctx.detach(resource);
         Ok(())
@@ -1159,17 +1151,17 @@ impl Rutabaga {
         let ctx = self
             .contexts
             .get_mut(&ctx_id)
-            .ok_or(RutabagaErrorKind::InvalidContextId)?;
+            .ok_or(RutabagaError::InvalidContextId)?;
 
         #[allow(unused_mut)]
-        let mut shareable_fences: Vec<RutabagaHandle> = Vec::with_capacity(fence_ids.len());
+        let mut shareable_fences: Vec<MesaHandle> = Vec::with_capacity(fence_ids.len());
 
         #[cfg(fence_passing_option1)]
         for (i, fence_id) in fence_ids.iter().enumerate() {
             let handle = self
                 .shareable_fences
                 .get_mut(fence_id)
-                .ok_or(RutabagaErrorKind::InvalidRutabagaHandle)?;
+                .ok_or(MesaError::InvalidMesaHandle)?;
 
             let clone = handle.try_clone()?;
             shareable_fences.insert(i, clone);
@@ -1184,7 +1176,7 @@ impl Rutabaga {
         for fence_id in fence_ids {
             self.shareable_fences
                 .remove(fence_id)
-                .ok_or(RutabagaErrorKind::InvalidRutabagaHandle)?;
+                .ok_or(MesaError::InvalidMesaHandle)?;
         }
 
         Ok(())
@@ -1389,15 +1381,11 @@ impl RutabagaBuilder {
         // Make sure that disabled components are not used as default.
         #[cfg(not(feature = "virgl_renderer"))]
         if self.default_component == RutabagaComponentType::VirglRenderer {
-            return Err(anyhow::anyhow!("virgl renderer feature not enabled")
-                .context(RutabagaErrorKind::InvalidRutabagaBuild)
-                .into());
+            return Err(RutabagaError::InvalidRutabagaBuild);
         }
         #[cfg(not(feature = "gfxstream"))]
         if self.default_component == RutabagaComponentType::Gfxstream {
-            return Err(anyhow::anyhow!("gfxstream feature not enabled")
-                .context(RutabagaErrorKind::InvalidRutabagaBuild)
-                .into());
+            return Err(RutabagaError::InvalidRutabagaBuild);
         }
 
         if self.default_component != RutabagaComponentType::Rutabaga2D {

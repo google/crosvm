@@ -10,7 +10,7 @@ macro_rules! checked_range {
         if $x <= $y {
             Ok(())
         } else {
-            Err($crate::RutabagaError::from($crate::RutabagaErrorKind::CheckedRange {
+            Err($crate::RutabagaError::from($crate::RutabagaError::CheckedRange {
                 field1: (stringify!($x), $x as usize),
                 field2: (stringify!($y), $y as usize),
             }))
@@ -24,7 +24,7 @@ macro_rules! checked_range {
 #[macro_export]
 macro_rules! checked_arithmetic {
     ($x:ident $op:ident $y:ident $op_name:expr) => {
-        $x.$op($y).ok_or_else(|| $crate::RutabagaErrorKind::CheckedArithmetic {
+        $x.$op($y).ok_or_else(|| $crate::RutabagaError::CheckedArithmetic {
             field1: (stringify!($x), $x as usize),
             field2: (stringify!($y), $y as usize),
             op: $op_name,

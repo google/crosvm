@@ -23,7 +23,13 @@ use std::ptr::null;
 use std::ptr::null_mut;
 use std::sync::Arc;
 
-use anyhow::Context;
+use mesa3d_util::FromRawDescriptor;
+use mesa3d_util::IntoRawDescriptor;
+use mesa3d_util::MesaError;
+use mesa3d_util::MesaHandle;
+use mesa3d_util::MesaMapping;
+use mesa3d_util::OwnedDescriptor;
+use mesa3d_util::RawDescriptor;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -34,10 +40,6 @@ use crate::renderer_utils::*;
 use crate::rutabaga_core::RutabagaComponent;
 use crate::rutabaga_core::RutabagaContext;
 use crate::rutabaga_core::RutabagaResource;
-use crate::rutabaga_os::FromRawDescriptor;
-use crate::rutabaga_os::IntoRawDescriptor;
-use crate::rutabaga_os::OwnedDescriptor;
-use crate::rutabaga_os::RawDescriptor;
 use crate::rutabaga_utils::*;
 #[cfg(gfxstream_unstable)]
 use crate::snapshot::RutabagaSnapshotReader;
@@ -255,7 +257,7 @@ struct GfxstreamContext {
 
 impl GfxstreamContext {
     #[cfg(gfxstream_unstable)]
-    fn export_fence(&self, fence_id: u64) -> RutabagaResult<RutabagaHandle> {
+    fn export_fence(&self, fence_id: u64) -> RutabagaResult<MesaHandle> {
         let mut stream_handle: stream_renderer_handle = Default::default();
         // SAFETY:
         // Safe because a correctly formatted stream_handle is given to gfxstream.
@@ -268,15 +270,15 @@ impl GfxstreamContext {
         // be valid and owned by us.
         let handle = unsafe { OwnedDescriptor::from_raw_descriptor(raw_descriptor) };
 
-        Ok(RutabagaHandle {
+        Ok(MesaHandle {
             os_handle: handle,
             handle_type: stream_handle.handle_type,
         })
     }
 
     #[cfg(not(gfxstream_unstable))]
-    fn export_fence(&self, _fence_id: u64) -> RutabagaResult<RutabagaHandle> {
-        Err(RutabagaErrorKind::Unsupported.into())
+    fn export_fence(&self, _fence_id: u64) -> RutabagaResult<MesaHandle> {
+        Err(MesaError::Unsupported.into())
     }
 }
 
@@ -285,10 +287,10 @@ impl RutabagaContext for GfxstreamContext {
         &mut self,
         commands: &mut [u8],
         _fence_ids: &[u64],
-        _shareable_fences: Vec<RutabagaHandle>,
+        _shareable_fences: Vec<MesaHandle>,
     ) -> RutabagaResult<()> {
         if commands.len() % size_of::<u32>() != 0 {
-            return Err(RutabagaErrorKind::InvalidCommandSize(commands.len()).into());
+            return Err(RutabagaError::InvalidCommandSize(commands.len()));
         }
 
         // TODO(b/315870313): Add safety comment
@@ -296,7 +298,10 @@ impl RutabagaContext for GfxstreamContext {
         let ret = unsafe {
             let cmd = stream_renderer_command {
                 ctx_id: self.ctx_id,
-                cmd_size: commands.len().try_into()?,
+                cmd_size: commands
+                    .len()
+                    .try_into()
+                    .map_err(MesaError::TryFromIntError)?,
                 cmd: commands.as_mut_ptr(),
                 num_in_fences: 0,
                 in_fence_descriptors: null(),
@@ -329,10 +334,7 @@ impl RutabagaContext for GfxstreamContext {
         RutabagaComponentType::Gfxstream
     }
 
-    fn context_create_fence(
-        &mut self,
-        fence: RutabagaFence,
-    ) -> RutabagaResult<Option<RutabagaHandle>> {
+    fn context_create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<Option<MesaHandle>> {
         if fence.ring_idx as u32 == 1 {
             self.fence_handler.call(fence);
             return Ok(None);
@@ -343,7 +345,7 @@ impl RutabagaContext for GfxstreamContext {
         let ret = unsafe { stream_renderer_create_fence(&fence as *const stream_renderer_fence) };
         ret_to_res(ret)?;
 
-        let mut hnd: Option<RutabagaHandle> = None;
+        let mut hnd: Option<MesaHandle> = None;
         if fence.flags & RUTABAGA_FLAG_FENCE_HOST_SHAREABLE != 0 {
             hnd = Some(self.export_fence(fence.fence_id)?);
         }
@@ -357,9 +359,8 @@ impl RutabagaContext for GfxstreamContext {
         };
 
         let mut buffer = std::io::Cursor::new(Vec::new());
-        serde_json::to_writer(&mut buffer, &snapshot)
-            .context(RutabagaErrorKind::IoError)
-            .map_err(RutabagaError::from)?;
+        serde_json::to_writer(&mut buffer, &snapshot).map_err(|e| MesaError::IoError(e.into()))?;
+
         Ok(buffer.into_inner())
     }
 }
@@ -498,7 +499,7 @@ impl Gfxstream {
         })
     }
 
-    fn export_blob(&self, resource_id: u32) -> RutabagaResult<Arc<RutabagaHandle>> {
+    fn export_blob(&self, resource_id: u32) -> RutabagaResult<Arc<MesaHandle>> {
         let mut stream_handle: stream_renderer_handle = Default::default();
         // TODO(b/315870313): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
@@ -511,7 +512,7 @@ impl Gfxstream {
         // valid and owned by us.
         let handle = unsafe { OwnedDescriptor::from_raw_descriptor(raw_descriptor) };
 
-        Ok(Arc::new(RutabagaHandle {
+        Ok(Arc::new(MesaHandle {
             os_handle: handle,
             handle_type: stream_handle.handle_type,
         }))
@@ -606,7 +607,7 @@ impl RutabagaComponent for Gfxstream {
     fn import(
         &self,
         resource_id: u32,
-        import_handle: RutabagaHandle,
+        import_handle: MesaHandle,
         import_data: RutabagaImportData,
     ) -> RutabagaResult<Option<RutabagaResource>> {
         let stream_handle = stream_renderer_handle {
@@ -820,7 +821,7 @@ impl RutabagaComponent for Gfxstream {
         resource_id: u32,
         resource_create_blob: ResourceCreateBlob,
         mut iovec_opt: Option<Vec<RutabagaIovec>>,
-        handle_opt: Option<RutabagaHandle>,
+        handle_opt: Option<MesaHandle>,
     ) -> RutabagaResult<RutabagaResource> {
         let mut iovec_ptr = null_mut();
         let mut num_iovecs = 0;
@@ -869,7 +870,7 @@ impl RutabagaComponent for Gfxstream {
         })
     }
 
-    fn map(&self, resource_id: u32) -> RutabagaResult<RutabagaMapping> {
+    fn map(&self, resource_id: u32) -> RutabagaResult<MesaMapping> {
         let mut map: *mut c_void = null_mut();
         let mut size: u64 = 0;
 
@@ -877,9 +878,9 @@ impl RutabagaComponent for Gfxstream {
         // Safe because the Stream renderer wraps and validates use of vkMapMemory.
         let ret = unsafe { stream_renderer_resource_map(resource_id, &mut map, &mut size) };
         if ret != 0 {
-            return Err(RutabagaErrorKind::MappingFailed(ret).into());
+            return Err(RutabagaError::MappingFailed(ret));
         }
-        Ok(RutabagaMapping {
+        Ok(MesaMapping {
             ptr: map as u64,
             size,
         })
@@ -934,7 +935,7 @@ impl RutabagaComponent for Gfxstream {
     #[cfg(gfxstream_unstable)]
     fn snapshot(&self, writer: RutabagaSnapshotWriter) -> RutabagaResult<()> {
         let directory = String::from(writer.get_path().to_string_lossy());
-        let directory_cstring = CString::new(directory)?;
+        let directory_cstring = CString::new(directory).map_err(MesaError::NulError)?;
 
         // SAFETY:
         // Safe because directory string is valid
@@ -947,7 +948,7 @@ impl RutabagaComponent for Gfxstream {
     #[cfg(gfxstream_unstable)]
     fn restore(&self, reader: RutabagaSnapshotReader) -> RutabagaResult<()> {
         let directory = String::from(reader.get_path().to_string_lossy());
-        let directory_cstring = CString::new(directory)?;
+        let directory_cstring = CString::new(directory).map_err(MesaError::NulError)?;
 
         // SAFETY:
         // Safe because directory string is valid
@@ -962,9 +963,8 @@ impl RutabagaComponent for Gfxstream {
         snapshot: Vec<u8>,
         fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
-        let context_snapshot: GfxstreamContextSnapshot = serde_json::from_reader(&snapshot[..])
-            .context(RutabagaErrorKind::IoError)
-            .map_err(RutabagaError::from)?;
+        let context_snapshot: GfxstreamContextSnapshot =
+            serde_json::from_reader(&snapshot[..]).map_err(|e| MesaError::IoError(e.into()))?;
 
         Ok(Box::new(GfxstreamContext {
             ctx_id: context_snapshot.ctx_id,

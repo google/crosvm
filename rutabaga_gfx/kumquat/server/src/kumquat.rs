@@ -6,15 +6,15 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
 use std::path::PathBuf;
 
-use rutabaga_gfx::kumquat_support::RutabagaListener;
-use rutabaga_gfx::kumquat_support::RutabagaWaitContext;
-use rutabaga_gfx::kumquat_support::RutabagaWaitTimeout;
-use rutabaga_gfx::RutabagaAsBorrowedDescriptor as AsBorrowedDescriptor;
-use rutabaga_gfx::RutabagaErrorKind;
-use rutabaga_gfx::RutabagaResult;
+use mesa3d_util::AsBorrowedDescriptor;
+use mesa3d_util::Listener;
+use mesa3d_util::MesaError;
+use mesa3d_util::WaitContext;
+use mesa3d_util::WaitTimeout;
 
 use crate::kumquat_gpu::KumquatGpu;
 use crate::kumquat_gpu::KumquatGpuConnection;
+use crate::kumquat_gpu::KumquatGpuResult;
 
 enum KumquatConnection {
     GpuListener,
@@ -23,15 +23,15 @@ enum KumquatConnection {
 
 pub struct Kumquat {
     connection_id: u64,
-    wait_ctx: RutabagaWaitContext,
+    wait_ctx: WaitContext,
     kumquat_gpu_opt: Option<KumquatGpu>,
-    gpu_listener_opt: Option<RutabagaListener>,
+    gpu_listener_opt: Option<Listener>,
     connections: Map<u64, KumquatConnection>,
 }
 
 impl Kumquat {
-    pub fn run(&mut self) -> RutabagaResult<()> {
-        let events = self.wait_ctx.wait(RutabagaWaitTimeout::NoTimeout)?;
+    pub fn run(&mut self) -> KumquatGpuResult<()> {
+        let events = self.wait_ctx.wait(WaitTimeout::NoTimeout)?;
         for event in events {
             let mut hung_up = false;
             match self.connections.entry(event.connection_id) {
@@ -69,9 +69,7 @@ impl Kumquat {
                     }
                 }
                 Entry::Vacant(_) => {
-                    return Err(anyhow::anyhow!("no connection found")
-                        .context(RutabagaErrorKind::SpecViolation)
-                        .into())
+                    return Err(MesaError::WithContext("no connection found").into())
                 }
             }
         }
@@ -110,11 +108,11 @@ impl KumquatBuilder {
         self
     }
 
-    pub fn build(self) -> RutabagaResult<Kumquat> {
+    pub fn build(self) -> KumquatGpuResult<Kumquat> {
         let connection_id: u64 = 0;
-        let mut wait_ctx = RutabagaWaitContext::new()?;
+        let mut wait_ctx = WaitContext::new()?;
         let mut kumquat_gpu_opt: Option<KumquatGpu> = None;
-        let mut gpu_listener_opt: Option<RutabagaListener> = None;
+        let mut gpu_listener_opt: Option<Listener> = None;
         let mut connections: Map<u64, KumquatConnection> = Default::default();
 
         if let Some(gpu_socket) = self.gpu_socket_opt {
@@ -129,7 +127,7 @@ impl KumquatBuilder {
                 self.renderer_features_opt.unwrap(),
             )?);
 
-            let gpu_listener = RutabagaListener::bind(path)?;
+            let gpu_listener = Listener::bind(path)?;
             wait_ctx.add(connection_id, gpu_listener.as_borrowed_descriptor())?;
             connections.insert(connection_id, KumquatConnection::GpuListener);
             gpu_listener_opt = Some(gpu_listener);

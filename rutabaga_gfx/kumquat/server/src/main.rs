@@ -7,9 +7,10 @@ mod kumquat_gpu;
 
 use clap::Parser;
 use kumquat::KumquatBuilder;
-use rutabaga_gfx::kumquat_support::RutabagaWritePipe;
-use rutabaga_gfx::RutabagaIntoRawDescriptor;
-use rutabaga_gfx::RutabagaResult;
+use mesa3d_util::IntoRawDescriptor;
+use mesa3d_util::WritePipe;
+
+use crate::kumquat_gpu::KumquatGpuResult;
 
 #[derive(Parser, Debug)]
 #[command(version, about = None, long_about = None)]
@@ -32,7 +33,7 @@ struct Args {
     pipe_descriptor: i64,
 }
 
-fn main() -> RutabagaResult<()> {
+fn main() -> KumquatGpuResult<()> {
     let args = Args::parse();
 
     let mut kumquat = KumquatBuilder::new()
@@ -42,7 +43,7 @@ fn main() -> RutabagaResult<()> {
         .build()?;
 
     if args.pipe_descriptor != 0 {
-        let write_pipe = RutabagaWritePipe::new(args.pipe_descriptor.into_raw_descriptor());
+        let write_pipe = WritePipe::new(args.pipe_descriptor.into_raw_descriptor());
         write_pipe.write(&1u64.to_ne_bytes())?;
     }
 

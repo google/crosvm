@@ -28,16 +28,22 @@ use log::error;
 use log::log;
 use log::warn;
 use log::Level;
+use mesa3d_util::FromRawDescriptor;
+use mesa3d_util::IntoRawDescriptor;
+use mesa3d_util::MesaError;
+use mesa3d_util::MesaHandle;
+use mesa3d_util::MesaMapping;
+use mesa3d_util::OwnedDescriptor;
+use mesa3d_util::RawDescriptor;
+use mesa3d_util::MESA_HANDLE_TYPE_MEM_DMABUF;
+use mesa3d_util::MESA_HANDLE_TYPE_MEM_OPAQUE_FD;
+use mesa3d_util::MESA_HANDLE_TYPE_MEM_SHM;
 
 use crate::generated::virgl_renderer_bindings::*;
 use crate::renderer_utils::*;
 use crate::rutabaga_core::RutabagaComponent;
 use crate::rutabaga_core::RutabagaContext;
 use crate::rutabaga_core::RutabagaResource;
-use crate::rutabaga_os::FromRawDescriptor;
-use crate::rutabaga_os::IntoRawDescriptor;
-use crate::rutabaga_os::OwnedDescriptor;
-use crate::rutabaga_os::RawDescriptor;
 use crate::rutabaga_utils::*;
 
 type Query = virgl_renderer_export_query;
@@ -52,7 +58,7 @@ fn dup(rd: RawDescriptor) -> RutabagaResult<OwnedDescriptor> {
 
     // We have to clone rd because we have no guarantee ownership was transferred (rd is
     // borrowed).
-    Ok(rd_as_safe_desc.try_clone()?)
+    Ok(rd_as_safe_desc.try_clone().map_err(MesaError::IoError)?)
 }
 
 /// The virtio-gpu backend state tracker which supports accelerated rendering.
@@ -68,8 +74,12 @@ fn import_resource(resource: &mut RutabagaResource) -> RutabagaResult<()> {
     }
 
     if let Some(handle) = &resource.handle {
-        if handle.handle_type == RUTABAGA_HANDLE_TYPE_MEM_DMABUF {
-            let dmabuf_fd = handle.os_handle.try_clone()?.into_raw_descriptor();
+        if handle.handle_type == MESA_HANDLE_TYPE_MEM_DMABUF {
+            let dmabuf_fd = handle
+                .os_handle
+                .try_clone()
+                .map_err(MesaError::IoError)?
+                .into_raw_descriptor();
             // SAFETY:
             // Safe because we are being passed a valid fd
             unsafe {
@@ -106,14 +116,14 @@ impl RutabagaContext for VirglRendererContext {
         &mut self,
         commands: &mut [u8],
         fence_ids: &[u64],
-        _shareable_fences: Vec<RutabagaHandle>,
+        _shareable_fences: Vec<MesaHandle>,
     ) -> RutabagaResult<()> {
         #[cfg(not(virgl_renderer_unstable))]
         if !fence_ids.is_empty() {
-            return Err(RutabagaErrorKind::Unsupported.into());
+            return Err(MesaError::Unsupported.into());
         }
         if commands.len() % size_of::<u32>() != 0 {
-            return Err(RutabagaErrorKind::InvalidCommandSize(commands.len()).into());
+            return Err(RutabagaError::InvalidCommandSize(commands.len()));
         }
         let dword_count = (commands.len() / size_of::<u32>()) as i32;
         #[cfg(not(virgl_renderer_unstable))]
@@ -170,10 +180,7 @@ impl RutabagaContext for VirglRendererContext {
         RutabagaComponentType::VirglRenderer
     }
 
-    fn context_create_fence(
-        &mut self,
-        fence: RutabagaFence,
-    ) -> RutabagaResult<Option<RutabagaHandle>> {
+    fn context_create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<Option<MesaHandle>> {
         // RutabagaFence::flags are not compatible with virglrenderer's fencing API and currently
         // virglrenderer context's assume all fences on a single timeline are MERGEABLE, and enforce
         // this assumption.
@@ -342,7 +349,7 @@ impl VirglRenderer {
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
             .is_err()
         {
-            return Err(RutabagaErrorKind::AlreadyInUse.into());
+            return Err(RutabagaError::AlreadyInUse);
         }
 
         // TODO(b/315870313): Add safety comment
@@ -389,7 +396,7 @@ impl VirglRenderer {
     fn query(&self, resource_id: u32) -> RutabagaResult<Resource3DInfo> {
         let query = export_query(resource_id)?;
         if query.out_num_fds == 0 {
-            return Err(RutabagaErrorKind::Unsupported.into());
+            return Err(MesaError::Unsupported.into());
         }
 
         // virglrenderer unfortunately doesn't return the width or height, so map to zero.
@@ -404,7 +411,7 @@ impl VirglRenderer {
         })
     }
 
-    fn export_blob(&self, resource_id: u32) -> RutabagaResult<Arc<RutabagaHandle>> {
+    fn export_blob(&self, resource_id: u32) -> RutabagaResult<Arc<MesaHandle>> {
         let mut fd_type = 0;
         let mut fd = 0;
         // TODO(b/315870313): Add safety comment
@@ -419,15 +426,15 @@ impl VirglRenderer {
         let handle = unsafe { OwnedDescriptor::from_raw_descriptor(fd) };
 
         let handle_type = match fd_type {
-            VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF => RUTABAGA_HANDLE_TYPE_MEM_DMABUF,
-            VIRGL_RENDERER_BLOB_FD_TYPE_SHM => RUTABAGA_HANDLE_TYPE_MEM_SHM,
-            VIRGL_RENDERER_BLOB_FD_TYPE_OPAQUE => RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD,
+            VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF => MESA_HANDLE_TYPE_MEM_DMABUF,
+            VIRGL_RENDERER_BLOB_FD_TYPE_SHM => MESA_HANDLE_TYPE_MEM_SHM,
+            VIRGL_RENDERER_BLOB_FD_TYPE_OPAQUE => MESA_HANDLE_TYPE_MEM_OPAQUE_FD,
             _ => {
-                return Err(RutabagaErrorKind::Unsupported.into());
+                return Err(MesaError::Unsupported.into());
             }
         };
 
-        Ok(Arc::new(RutabagaHandle {
+        Ok(Arc::new(MesaHandle {
             os_handle: handle,
             handle_type,
         }))
@@ -598,7 +605,7 @@ impl RutabagaComponent for VirglRenderer {
         }
 
         if buf.is_some() {
-            return Err(RutabagaErrorKind::Unsupported.into());
+            return Err(MesaError::Unsupported.into());
         }
 
         let mut transfer_box = VirglBox {
@@ -687,7 +694,7 @@ impl RutabagaComponent for VirglRenderer {
         resource_id: u32,
         resource_create_blob: ResourceCreateBlob,
         mut iovec_opt: Option<Vec<RutabagaIovec>>,
-        _handle_opt: Option<RutabagaHandle>,
+        _handle_opt: Option<MesaHandle>,
     ) -> RutabagaResult<RutabagaResource> {
         let mut iovec_ptr = null_mut();
         let mut num_iovecs = 0;
@@ -731,17 +738,17 @@ impl RutabagaComponent for VirglRenderer {
         })
     }
 
-    fn map(&self, resource_id: u32) -> RutabagaResult<RutabagaMapping> {
+    fn map(&self, resource_id: u32) -> RutabagaResult<MesaMapping> {
         let mut map: *mut c_void = null_mut();
         let mut size: u64 = 0;
         // SAFETY:
         // Safe because virglrenderer wraps and validates use of GL/VK.
         let ret = unsafe { virgl_renderer_resource_map(resource_id, &mut map, &mut size) };
         if ret != 0 {
-            return Err(RutabagaErrorKind::MappingFailed(ret).into());
+            return Err(RutabagaError::MappingFailed(ret));
         }
 
-        Ok(RutabagaMapping {
+        Ok(MesaMapping {
             ptr: map as u64,
             size,
         })
@@ -755,7 +762,7 @@ impl RutabagaComponent for VirglRenderer {
     }
 
     #[allow(unused_variables)]
-    fn export_fence(&self, fence_id: u64) -> RutabagaResult<RutabagaHandle> {
+    fn export_fence(&self, fence_id: u64) -> RutabagaResult<MesaHandle> {
         #[cfg(virgl_renderer_unstable)]
         {
             let mut fd: i32 = 0;
@@ -768,13 +775,13 @@ impl RutabagaComponent for VirglRenderer {
             // Safe because the FD was just returned by a successful virglrenderer call so it must
             // be valid and owned by us.
             let fence = unsafe { OwnedDescriptor::from_raw_descriptor(fd) };
-            Ok(RutabagaHandle {
+            Ok(MesaHandle {
                 os_handle: fence,
-                handle_type: RUTABAGA_HANDLE_TYPE_SIGNAL_SYNC_FD,
+                handle_type: MESA_HANDLE_TYPE_SIGNAL_SYNC_FD,
             })
         }
         #[cfg(not(virgl_renderer_unstable))]
-        Err(RutabagaErrorKind::Unsupported.into())
+        Err(MesaError::Unsupported.into())
     }
 
     #[allow(unused_variables)]

@@ -4,6 +4,10 @@
 
 use std::sync::Arc;
 
+use mesa3d_util::AsRawDescriptor;
+use mesa3d_util::MesaError;
+use mesa3d_util::MesaHandle;
+use mesa3d_util::MESA_HANDLE_TYPE_MEM_OPAQUE_WIN32;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::memory::DeviceMemory;
@@ -12,10 +16,6 @@ use vulkano::memory::MemoryAllocateInfo;
 use vulkano::memory::MemoryImportInfo;
 
 use crate::rutabaga_gralloc::vulkano_gralloc::VulkanoGralloc;
-use crate::rutabaga_os::AsRawDescriptor;
-use crate::rutabaga_utils::RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_WIN32;
-use crate::RutabagaErrorKind;
-use crate::RutabagaHandle;
 use crate::RutabagaResult;
 
 impl VulkanoGralloc {
@@ -38,12 +38,12 @@ impl VulkanoGralloc {
     pub(crate) unsafe fn import_memory(
         device: Arc<Device>,
         allocate_info: MemoryAllocateInfo,
-        handle: RutabagaHandle,
+        handle: MesaHandle,
     ) -> RutabagaResult<DeviceMemory> {
         let import_info = MemoryImportInfo::Win32 {
             handle_type: match handle.handle_type {
-                RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_WIN32 => ExternalMemoryHandleType::OpaqueWin32,
-                _ => return Err(RutabagaErrorKind::InvalidRutabagaHandle.into()),
+                MESA_HANDLE_TYPE_MEM_OPAQUE_WIN32 => ExternalMemoryHandleType::OpaqueWin32,
+                _ => return Err(MesaError::InvalidMesaHandle.into()),
             },
             handle: handle.os_handle.as_raw_descriptor(),
         };

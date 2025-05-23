@@ -95,14 +95,6 @@ cd $(crosvm_dir)/rutabaga_gfx/kumquat/server/
 cargo build --features=gfxstream
 ```
 
-## Build and install client library
-
-```sh
-cd $(crosvm_dir)/rutabaga_gfx/kumquat/gpu_client/
-meson setup client-build
-ninja -C client-build/ install
-```
-
 ## Build gfxstream guest
 
 Mesa provides gfxstream vulkan guest libraries.
@@ -110,7 +102,7 @@ Mesa provides gfxstream vulkan guest libraries.
 ```sh
 git clone https://gitlab.freedesktop.org/mesa/mesa.git
 cd mesa
-meson setup guest-build/ -Dvulkan-drivers="gfxstream" -Dgallium-drivers="" -Dopengl=false
+meson setup guest-build -Dvulkan-drivers="gfxstream" -Dgallium-drivers="" -Dvirtgpu_kumquat=true -Dopengl=false -Drust_std=2021
 ninja -C guest-build/
 ```
 

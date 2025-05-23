@@ -10,51 +10,88 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use anyhow::Context;
 use log::error;
+use mesa3d_protocols::ipc::KumquatStream;
+use mesa3d_protocols::protocols::kumquat_gpu_protocol::*;
+use mesa3d_util::AsBorrowedDescriptor;
+use mesa3d_util::Event;
+use mesa3d_util::FromRawDescriptor;
+use mesa3d_util::MemoryMapping;
+use mesa3d_util::MesaError;
+use mesa3d_util::MesaHandle;
+use mesa3d_util::OwnedDescriptor;
+use mesa3d_util::SharedMemory;
+use mesa3d_util::Tube;
+use mesa3d_util::MESA_HANDLE_TYPE_MEM_SHM;
+use remain::sorted;
 use rutabaga_gfx::calculate_capset_mask;
-use rutabaga_gfx::kumquat_support::kumquat_gpu_protocol::*;
-use rutabaga_gfx::kumquat_support::RutabagaEvent;
-use rutabaga_gfx::kumquat_support::RutabagaMemoryMapping;
-use rutabaga_gfx::kumquat_support::RutabagaSharedMemory;
-use rutabaga_gfx::kumquat_support::RutabagaStream;
-use rutabaga_gfx::kumquat_support::RutabagaTube;
 use rutabaga_gfx::ResourceCreate3D;
 use rutabaga_gfx::ResourceCreateBlob;
 use rutabaga_gfx::Rutabaga;
-use rutabaga_gfx::RutabagaAsBorrowedDescriptor as AsBorrowedDescriptor;
 use rutabaga_gfx::RutabagaBuilder;
 use rutabaga_gfx::RutabagaComponentType;
-use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaError;
-use rutabaga_gfx::RutabagaErrorKind;
 use rutabaga_gfx::RutabagaFence;
 use rutabaga_gfx::RutabagaFenceHandler;
 use rutabaga_gfx::RutabagaHandle;
+use rutabaga_gfx::RutabagaIntoRawDescriptor;
 use rutabaga_gfx::RutabagaIovec;
-use rutabaga_gfx::RutabagaResult;
 use rutabaga_gfx::RutabagaWsi;
 use rutabaga_gfx::Transfer3D;
-use rutabaga_gfx::VulkanInfo;
+use rutabaga_gfx::VulkanInfo as RutabagaVulkanInfo;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE;
 use rutabaga_gfx::RUTABAGA_FLAG_FENCE_HOST_SHAREABLE;
-use rutabaga_gfx::RUTABAGA_HANDLE_TYPE_MEM_SHM;
 use rutabaga_gfx::RUTABAGA_MAP_ACCESS_RW;
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
+use thiserror::Error;
 
 const SNAPSHOT_DIR: &str = "/tmp/";
 
+#[sorted]
+#[non_exhaustive]
+#[derive(Error, Debug)]
+pub enum KumquatGpuError {
+    #[error("rutabaga component failed with error {0}")]
+    MesaError(MesaError),
+    #[error("Rutabaga error {0}")]
+    RutabagaError(RutabagaError),
+}
+
+impl From<MesaError> for KumquatGpuError {
+    fn from(e: MesaError) -> KumquatGpuError {
+        KumquatGpuError::MesaError(e)
+    }
+}
+
+impl From<RutabagaError> for KumquatGpuError {
+    fn from(e: RutabagaError) -> KumquatGpuError {
+        KumquatGpuError::RutabagaError(e)
+    }
+}
+
+pub type KumquatGpuResult<T> = std::result::Result<T, KumquatGpuError>;
+
+fn to_mesa_handle(handle: RutabagaHandle) -> MesaHandle {
+    MesaHandle {
+        // SAFETY: Safe because we own the descriptor
+        os_handle: unsafe {
+            OwnedDescriptor::from_raw_descriptor(handle.os_handle.into_raw_descriptor())
+        },
+        handle_type: handle.handle_type,
+    }
+}
+
 pub struct KumquatGpuConnection {
-    stream: RutabagaStream,
+    stream: KumquatStream,
 }
 
 pub struct KumquatGpuResource {
     attached_contexts: Set<u32>,
-    mapping: Option<RutabagaMemoryMapping>,
+    mapping: Option<MemoryMapping>,
 }
 
 pub struct FenceData {
-    pub pending_fences: Map<u64, RutabagaEvent>,
+    pub pending_fences: Map<u64, Event>,
 }
 
 pub type FenceState = Arc<Mutex<FenceData>>;
@@ -83,7 +120,7 @@ pub struct KumquatGpu {
 }
 
 impl KumquatGpu {
-    pub fn new(capset_names: String, renderer_features: String) -> RutabagaResult<KumquatGpu> {
+    pub fn new(capset_names: String, renderer_features: String) -> KumquatGpuResult<KumquatGpu> {
         let capset_mask = calculate_capset_mask(capset_names.as_str().split(":"));
         let fence_state = Arc::new(Mutex::new(FenceData {
             pending_fences: Default::default(),
@@ -119,13 +156,13 @@ impl KumquatGpu {
 }
 
 impl KumquatGpuConnection {
-    pub fn new(connection: RutabagaTube) -> KumquatGpuConnection {
+    pub fn new(connection: Tube) -> KumquatGpuConnection {
         KumquatGpuConnection {
-            stream: RutabagaStream::new(connection),
+            stream: KumquatStream::new(connection),
         }
     }
 
-    pub fn process_command(&mut self, kumquat_gpu: &mut KumquatGpu) -> RutabagaResult<bool> {
+    pub fn process_command(&mut self, kumquat_gpu: &mut KumquatGpu) -> KumquatGpuResult<bool> {
         let mut hung_up = false;
         let protocols = self.stream.read()?;
 
@@ -163,7 +200,10 @@ impl KumquatGpuConnection {
 
                     let resp = kumquat_gpu_protocol_ctrl_hdr {
                         type_: KUMQUAT_GPU_PROTOCOL_RESP_CAPSET,
-                        payload: capset.len().try_into()?,
+                        payload: capset
+                            .len()
+                            .try_into()
+                            .map_err(MesaError::TryFromIntError)?,
                     };
 
                     self.stream
@@ -203,7 +243,7 @@ impl KumquatGpuConnection {
                     let mut resource = kumquat_gpu
                         .resources
                         .remove(&cmd.resource_id)
-                        .ok_or(RutabagaErrorKind::InvalidResourceId)?;
+                        .ok_or(RutabagaError::InvalidResourceId)?;
 
                     resource.attached_contexts.remove(&cmd.ctx_id);
                     if resource.attached_contexts.len() == 0 {
@@ -231,19 +271,18 @@ impl KumquatGpuConnection {
                     };
 
                     let size = cmd.size as usize;
-                    let descriptor: RutabagaDescriptor =
-                        RutabagaSharedMemory::new("rutabaga_server", size as u64)?.into();
+                    let descriptor: OwnedDescriptor =
+                        SharedMemory::new("rutabaga_server", size as u64)?.into();
 
-                    let clone = descriptor.try_clone()?;
+                    let clone = descriptor.try_clone().map_err(MesaError::IoError)?;
                     let mut vecs: Vec<RutabagaIovec> = Vec::new();
 
-                    // Creating the mapping closes the cloned descriptor.
-                    let mapping = RutabagaMemoryMapping::from_safe_descriptor(
+                    let mapping = MemoryMapping::from_safe_descriptor(
                         clone,
                         size,
                         RUTABAGA_MAP_CACHE_CACHED | RUTABAGA_MAP_ACCESS_RW,
                     )?;
-                    let rutabaga_mapping = mapping.as_rutabaga_mapping();
+                    let rutabaga_mapping = mapping.as_mesa_mapping();
 
                     vecs.push(RutabagaIovec {
                         base: rutabaga_mapping.ptr as *mut c_void,
@@ -280,9 +319,9 @@ impl KumquatGpuConnection {
 
                     self.stream.write(KumquatGpuProtocolWrite::CmdWithHandle(
                         resp,
-                        RutabagaHandle {
+                        MesaHandle {
                             os_handle: descriptor,
-                            handle_type: RUTABAGA_HANDLE_TYPE_MEM_SHM,
+                            handle_type: MESA_HANDLE_TYPE_MEM_SHM,
                         },
                     ))?;
                 }
@@ -306,7 +345,7 @@ impl KumquatGpuConnection {
                         .rutabaga
                         .transfer_write(cmd.ctx_id, resource_id, transfer, None)?;
 
-                    let mut event: RutabagaEvent = emulated_fence.try_into()?;
+                    let mut event: Event = emulated_fence.try_into()?;
                     event.signal()?;
                 }
                 KumquatGpuProtocol::TransferFromHost3d(cmd, emulated_fence) => {
@@ -329,7 +368,7 @@ impl KumquatGpuConnection {
                         .rutabaga
                         .transfer_read(cmd.ctx_id, resource_id, transfer, None)?;
 
-                    let mut event: RutabagaEvent = emulated_fence.try_into()?;
+                    let mut event: Event = emulated_fence.try_into()?;
                     event.signal()?;
                 }
                 KumquatGpuProtocol::CmdSubmit3d(cmd, mut cmd_buf, fence_ids) => {
@@ -348,12 +387,12 @@ impl KumquatGpuConnection {
                             ring_idx: cmd.ring_idx,
                         };
 
-                        let mut fence_descriptor_opt: Option<RutabagaHandle> = None;
+                        let mut fence_descriptor_opt: Option<MesaHandle> = None;
                         let actual_fence = cmd.flags & RUTABAGA_FLAG_FENCE_HOST_SHAREABLE != 0;
                         if !actual_fence {
-                            let event: RutabagaEvent = RutabagaEvent::new()?;
+                            let event: Event = Event::new()?;
                             let clone = event.try_clone()?;
-                            let emulated_fence: RutabagaHandle = clone.into();
+                            let emulated_fence: MesaHandle = clone.into();
 
                             fence_descriptor_opt = Some(emulated_fence);
                             let mut fence_state = kumquat_gpu.fence_state.lock().unwrap();
@@ -364,13 +403,12 @@ impl KumquatGpuConnection {
 
                         if actual_fence {
                             fence_descriptor_opt =
-                                Some(kumquat_gpu.rutabaga.export_fence(fence_id)?);
+                                Some(to_mesa_handle(kumquat_gpu.rutabaga.export_fence(fence_id)?));
                             kumquat_gpu.rutabaga.destroy_fences(&[fence_id])?;
                         }
 
                         let fence_descriptor = fence_descriptor_opt
-                            .context("No fence descriptor")
-                            .context(RutabagaErrorKind::SpecViolation)?;
+                            .ok_or(MesaError::WithContext("No fence descriptor"))?;
 
                         let resp = kumquat_gpu_protocol_resp_cmd_submit_3d {
                             hdr: kumquat_gpu_protocol_ctrl_hdr {
@@ -407,7 +445,7 @@ impl KumquatGpuConnection {
                     )?;
 
                     let handle = kumquat_gpu.rutabaga.export_blob(resource_id)?;
-                    let mut vk_info: VulkanInfo = Default::default();
+                    let mut vk_info: RutabagaVulkanInfo = Default::default();
                     if let Ok(vulkan_info) = kumquat_gpu.rutabaga.vulkan_info(resource_id) {
                         vk_info = vulkan_info;
                     }
@@ -427,11 +465,19 @@ impl KumquatGpuConnection {
                         },
                         resource_id,
                         handle_type: handle.handle_type,
-                        vulkan_info: vk_info,
+                        vulkan_info: VulkanInfo {
+                            memory_idx: vk_info.memory_idx,
+                            device_id: DeviceId {
+                                device_uuid: vk_info.device_id.device_uuid,
+                                driver_uuid: vk_info.device_id.driver_uuid,
+                            },
+                        },
                     };
 
-                    self.stream
-                        .write(KumquatGpuProtocolWrite::CmdWithHandle(resp, handle))?;
+                    self.stream.write(KumquatGpuProtocolWrite::CmdWithHandle(
+                        resp,
+                        to_mesa_handle(handle),
+                    ))?;
 
                     kumquat_gpu
                         .rutabaga
@@ -462,7 +508,7 @@ impl KumquatGpuConnection {
                 }
                 _ => {
                     error!("Unsupported protocol {:?}", protocol);
-                    return Err(RutabagaErrorKind::Unsupported.into());
+                    return Err(MesaError::Unsupported.into());
                 }
             };
         }
@@ -472,7 +518,7 @@ impl KumquatGpuConnection {
 }
 
 impl AsBorrowedDescriptor for KumquatGpuConnection {
-    fn as_borrowed_descriptor(&self) -> &RutabagaDescriptor {
+    fn as_borrowed_descriptor(&self) -> &OwnedDescriptor {
         self.stream.as_borrowed_descriptor()
     }
 }
