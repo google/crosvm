@@ -3723,11 +3723,7 @@ impl Drop for PinnedMemoryRegion {
 unsafe fn pin_memory(ptr: *mut c_void, len: usize) -> base::Result<()> {
     #[cfg(windows)]
     {
-        if VirtualLock(ptr, len).into() {
-            Ok(())
-        } else {
-            Err(base::Error::last())
-        }
+        VirtualLock(ptr, len).map_err(|e| base::Error::new(e.code().0))
     }
     #[cfg(unix)]
     {
@@ -3742,11 +3738,7 @@ unsafe fn pin_memory(ptr: *mut c_void, len: usize) -> base::Result<()> {
 unsafe fn unpin_memory(ptr: *mut c_void, len: usize) -> base::Result<()> {
     #[cfg(windows)]
     {
-        if VirtualUnlock(ptr, len).into() {
-            Ok(())
-        } else {
-            Err(base::Error::last())
-        }
+        VirtualUnlock(ptr, len).map_err(|e| base::Error::new(e.code().0))
     }
     #[cfg(unix)]
     {
