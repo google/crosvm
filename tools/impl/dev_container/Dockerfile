@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.11.1
 # Copyright 2021 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -11,6 +12,9 @@
 #
 # See Makefile for build instructions
 
+# Global arg must be before any build stages
+ARG BASE_VERSION
+
 # Build catapult dashboard upload tool in a builder container
 FROM docker.io/golang:bullseye AS gobuilder
 WORKDIR /root/
@@ -18,8 +22,7 @@ RUN git clone https://fuchsia.googlesource.com/infra/infra
 WORKDIR /root/infra/cmd/catapult
 RUN go build
 
-ARG BASE_VERSION
-FROM crosvm_dev_base:${BASE_VERSION}
+FROM gcr.io/crosvm-infra/crosvm_dev_base:${BASE_VERSION}
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
