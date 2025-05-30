@@ -18,7 +18,7 @@ zeroize = "1.5.7"
 winapi = { version = "0.3", features = ["everything", "std", "impl-default"] }
 
 [dependencies.windows]
-version = "0.39.0"
+workspace = true
 features = [
     "Win32_Foundation",
     "Win32_Globalization",
@@ -31,7 +31,7 @@ features = [
 ]
 
 [build-dependencies.windows]
-version = "0.39.0"
+workspace = true
 features = [
     "Win32_Foundation",
     "Win32_Globalization",

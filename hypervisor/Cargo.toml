@@ -46,7 +46,7 @@ winapi = "0.3"
 win_util = { path = "../win_util" }
 
 [target.'cfg(windows)'.dependencies.windows]
-version = "0.39.0"
+workspace = true
 features = [
     "Win32_Foundation",
     "Win32_System_Memory",
