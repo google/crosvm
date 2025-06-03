@@ -5,6 +5,7 @@
 //! rutabaga_core: Cross-platform, Rust-based, Wayland and Vulkan centric GPU virtualization.
 use std::collections::BTreeMap as Map;
 use std::convert::TryInto;
+use std::io::IoSlice;
 use std::io::IoSliceMut;
 use std::path::Path;
 use std::sync::Arc;
@@ -233,6 +234,7 @@ pub trait RutabagaComponent {
         _ctx_id: u32,
         _resource: &mut RutabagaResource,
         _transfer: Transfer3D,
+        _buf: Option<IoSlice>,
     ) -> RutabagaResult<()> {
         Ok(())
     }
@@ -814,6 +816,7 @@ impl Rutabaga {
         ctx_id: u32,
         resource_id: u32,
         transfer: Transfer3D,
+        buf: Option<IoSlice>,
     ) -> RutabagaResult<()> {
         let component = self
             .components
@@ -825,7 +828,7 @@ impl Rutabaga {
             .get_mut(&resource_id)
             .ok_or(RutabagaErrorKind::InvalidResourceId)?;
 
-        component.transfer_write(ctx_id, resource, transfer)
+        component.transfer_write(ctx_id, resource, transfer, buf)
     }
 
     /// 1) If specified, copies to `buf` from the host resource.

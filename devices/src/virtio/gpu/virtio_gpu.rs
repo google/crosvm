@@ -1014,7 +1014,7 @@ impl VirtioGpu {
         transfer: Transfer3D,
     ) -> VirtioGpuResult {
         self.rutabaga
-            .transfer_write(ctx_id, resource_id, transfer)?;
+            .transfer_write(ctx_id, resource_id, transfer, None)?;
         Ok(OkNoData)
     }
 

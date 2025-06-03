@@ -9,7 +9,8 @@ use std::io::Write;
 fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
 
-    // Override prefix from environment variable (with a default)
+    println!("cargo::rustc-check-cfg=cfg(goldfish)"); // Silences warnings
+                                                      // Override prefix from environment variable (with a default)
     let prefix = format!(
         r##"prefix={prefix}"##,
         prefix = env::var("PREFIX").unwrap_or_else(|_| "/usr".to_string())

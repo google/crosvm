@@ -10,6 +10,7 @@
 
 use std::convert::TryInto;
 use std::ffi::CString;
+use std::io::IoSlice;
 use std::io::IoSliceMut;
 use std::mem::size_of;
 use std::os::raw::c_char;
@@ -704,6 +705,7 @@ impl RutabagaComponent for Gfxstream {
         ctx_id: u32,
         resource: &mut RutabagaResource,
         transfer: Transfer3D,
+        buf: Option<IoSlice>,
     ) -> RutabagaResult<()> {
         if transfer.is_empty() {
             return Ok(());
@@ -721,6 +723,21 @@ impl RutabagaComponent for Gfxstream {
         // SAFETY:
         // Safe because only stack variables of the appropriate type are used.
         let ret = unsafe {
+            let mut iov = RutabagaIovec {
+                base: null_mut(),
+                len: 0,
+            };
+
+            let (iovs_ptr, iovs_n) = match buf {
+                Some(slice) => {
+                    iov.base = slice.as_ptr() as *mut c_void;
+                    iov.len = slice.len();
+
+                    (&mut iov as *mut RutabagaIovec as *mut iovec, 1u32)
+                }
+                None => (null_mut(), 0u32),
+            };
+
             stream_renderer_transfer_write_iov(
                 resource.resource_id,
                 ctx_id,
@@ -729,8 +746,8 @@ impl RutabagaComponent for Gfxstream {
                 transfer.layer_stride,
                 &mut transfer_box as *mut VirglBox as *mut stream_renderer_box,
                 transfer.offset,
-                null_mut(),
-                0,
+                iovs_ptr,
+                iovs_n,
             )
         };
         ret_to_res(ret)

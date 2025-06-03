@@ -513,7 +513,31 @@ pub extern "C" fn rutabaga_resource_transfer_write(
     transfer: &rutabaga_transfer,
 ) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        let result = ptr.transfer_write(ctx_id, resource_id, *transfer);
+        let result = ptr.transfer_write(ctx_id, resource_id, *transfer, None);
+        return_result(result)
+    }))
+    .unwrap_or(-ESRCH)
+}
+
+#[cfg(goldfish)]
+#[no_mangle]
+pub unsafe extern "C" fn rutabaga_resource_transfer_write_goldfish(
+    ptr: &mut rutabaga,
+    ctx_id: u32,
+    resource_id: u32,
+    transfer: &rutabaga_transfer,
+    buf: Option<&iovec>,
+) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        let slice = match buf {
+            Some(iov) => Some(IoSlice::new(std::slice::from_raw_parts(
+                iov.iov_base as *mut u8,
+                iov.iov_len,
+            ))),
+            None => None,
+        };
+
+        let result = ptr.transfer_write(ctx_id, resource_id, *transfer, slice);
         return_result(result)
     }))
     .unwrap_or(-ESRCH)

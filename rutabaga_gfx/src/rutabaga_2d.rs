@@ -7,6 +7,7 @@
 use std::cmp::max;
 use std::cmp::min;
 use std::cmp::Ordering;
+use std::io::IoSlice;
 use std::io::IoSliceMut;
 
 use anyhow::Context;
@@ -197,9 +198,14 @@ impl RutabagaComponent for Rutabaga2D {
         _ctx_id: u32,
         resource: &mut RutabagaResource,
         transfer: Transfer3D,
+        buf: Option<IoSlice>,
     ) -> RutabagaResult<()> {
         if transfer.is_empty() {
             return Ok(());
+        }
+
+        if buf.is_some() {
+            return Err(RutabagaErrorKind::Unsupported.into());
         }
 
         let mut info_2d = resource
