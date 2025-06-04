@@ -12,7 +12,8 @@
 #   make ARCH=aarch64 upload
 #
 # You need write access to the crosvm-testvm storage bucket which is part of the
-# crosvm-packages cloud project.
+# crosvm-packages cloud project. Please browse the storage bucket to find the
+# current latest file version, it can be different than what's in the version file.
 #
 # Note: The locally built image is stored in the same place that testvm.py
 # expects. So the image can be tested directly:
