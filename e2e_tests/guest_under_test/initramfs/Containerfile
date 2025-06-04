@@ -11,13 +11,13 @@ RUN apt-get install -y bash-static git meson linux-headers-amd64 wget bison gett
 
 # Download rust static coreutils
 WORKDIR /root
-RUN wget https://github.com/uutils/coreutils/releases/download/0.0.20/coreutils-0.0.20-x86_64-unknown-linux-musl.tar.gz -O coreutils.tar.gz
+RUN wget https://github.com/uutils/coreutils/releases/download/0.1.0/coreutils-0.1.0-x86_64-unknown-linux-musl.tar.gz -O coreutils.tar.gz
 RUN tar -zxvf coreutils.tar.gz
 
 # Download source code and build util-linux
 RUN git clone https://github.com/util-linux/util-linux.git
 WORKDIR /root/util-linux
-RUN git checkout v2.39.1
+RUN git checkout v2.41
 RUN apt-get build-dep -y util-linux
 RUN meson setup build -D static-programs="losetup, mount, umount" -D build-python=disabled -D cryptsetup=disabled -D build-chfn-chsh=disabled -D build-su=disabled -D build-runuser=disabled
 RUN ninja -C build
@@ -25,12 +25,12 @@ RUN ninja -C build
 FROM scratch
 
 # Create /bin directory manually to avoid potential problems caused by implicit directory creation with COPY
-COPY --from=builder /root/coreutils-0.0.20-x86_64-unknown-linux-musl/coreutils /coreutils
+COPY --from=builder /root/coreutils-0.1.0-x86_64-unknown-linux-musl/coreutils /coreutils
 RUN ["/coreutils", "mkdir", "/bin"]
 
 # Start populating /bin directory with bash and coreutils
 COPY --from=builder /bin/bash-static /bin/bash
-COPY --from=builder /root/coreutils-0.0.20-x86_64-unknown-linux-musl/coreutils /bin/coreutils
+COPY --from=builder /root/coreutils-0.1.0-x86_64-unknown-linux-musl/coreutils /bin/coreutils
 
 # Link /bin/bash to /bin/sh so podman can accept shell style RUN statements
 RUN ["/coreutils", "ln", "-s", "/bin/bash", "/bin/sh"]

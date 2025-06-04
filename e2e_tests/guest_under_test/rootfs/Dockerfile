@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 ARG ARCH
-FROM ${ARCH}/debian:bookworm
+FROM docker.io/${ARCH}/debian:bookworm
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=private \
     --mount=type=cache,target=/var/lib/apt,sharing=private \

@@ -13,12 +13,14 @@ ifeq ($(ARCH), x86_64)
   KERNEL_ARCH=x86
   KERNEL_BINARY=bzImage
   DOCKER_ARCH=amd64
+  DOCKER_PLATFORM="linux/amd64"
   CROSS_COMPILE=
   RUSTFLAGS=
 else ifeq ($(ARCH), aarch64)
   KERNEL_ARCH=arm64
   KERNEL_BINARY=Image
   DOCKER_ARCH=arm64v8
+  DOCKER_PLATFORM="linux/arm64"
   CROSS_COMPILE=aarch64-linux-gnu-
   RUSTFLAGS="-Clinker=aarch64-linux-gnu-ld"
 else
@@ -69,8 +71,8 @@ rootfs : ${TARGET}/rootfs
 # Build rootfs from Dockerfile and export into squashfs
 $(TARGET)/rootfs: $(TARGET)/rootfs-build/delegate $(TARGET)/rootfs-build/readclock rootfs/Dockerfile
 	# Build image from Dockerfile
-	DOCKER_BUILDKIT=1 docker build -t crosvm_e2e_test_guest $(TARGET)/rootfs-build \
-		-f rootfs/Dockerfile --build-arg ARCH=$(DOCKER_ARCH)
+	docker buildx build -t crosvm_e2e_test_guest $(TARGET)/rootfs-build \
+		-f rootfs/Dockerfile --build-arg ARCH=$(DOCKER_ARCH) --platform $(DOCKER_PLATFORM)
 	# Make sure tar2sqfs is available. If not, print a help message.
 	tar2sqfs --help > /dev/null || \
 		{ \
