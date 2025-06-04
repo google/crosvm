@@ -10,6 +10,8 @@ use std::cell::RefCell;
 use std::convert::TryInto;
 use std::ffi::CStr;
 use std::ffi::CString;
+#[cfg(goldfish)]
+use std::io::IoSlice;
 use std::io::IoSliceMut;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
