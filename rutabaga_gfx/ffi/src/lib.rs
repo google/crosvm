@@ -44,6 +44,7 @@ use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::RutabagaImportData;
 use rutabaga_gfx::RutabagaIntoRawDescriptor;
 use rutabaga_gfx::RutabagaIovec;
+use rutabaga_gfx::RutabagaRawDescriptor;
 use rutabaga_gfx::RutabagaResult;
 use rutabaga_gfx::RutabagaWsi;
 use rutabaga_gfx::Transfer3D;
@@ -433,7 +434,7 @@ pub unsafe extern "C" fn rutabaga_resource_import(
     catch_unwind(AssertUnwindSafe(|| {
         let internal_handle = RutabagaHandle {
             os_handle: RutabagaDescriptor::from_raw_descriptor(
-                import_handle.os_handle.try_into().unwrap(),
+                import_handle.os_handle as RutabagaRawDescriptor,
             ),
             handle_type: import_handle.handle_type,
         };
@@ -583,11 +584,10 @@ pub unsafe extern "C" fn rutabaga_resource_create_blob(
 
         // Only needed on Unix, since there is no way to create a handle from guest memory on
         // Windows.
-        #[cfg(unix)]
         if let Some(hnd) = handle {
             handle_opt = Some(RutabagaHandle {
                 os_handle: RutabagaDescriptor::from_raw_descriptor(
-                    hnd.os_handle.try_into().unwrap(),
+                    hnd.os_handle as RutabagaRawDescriptor,
                 ),
                 handle_type: hnd.handle_type,
             });
