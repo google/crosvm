@@ -17,14 +17,14 @@ use base::syslog::LogArgs;
 use base::syslog::LogConfig;
 use base::FromRawDescriptor;
 use base::RawDescriptor;
-use broker_ipc::common_child_setup;
-use broker_ipc::CommonChildStartupArgs;
 use crosvm_cli::sys::windows::exit::Exit;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 use metrics::MetricEventType;
 #[cfg(feature = "slirp")]
 use net_util::slirp::sys::windows::SlirpStartupConfig;
+use proc_init::common_child_setup;
+use proc_init::CommonChildStartupArgs;
 use tube_transporter::TubeToken;
 use tube_transporter::TubeTransporterReader;
 

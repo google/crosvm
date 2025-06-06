@@ -120,7 +120,7 @@ vhost = { workspace = true }
 aarch64_sys_reg = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-broker_ipc = { workspace = true }
+proc_init = { workspace = true }
 tube_transporter = { path = "../tube_transporter" }
 win_audio = { path = "../win_audio"}
 win_util = { path = "../win_util"}

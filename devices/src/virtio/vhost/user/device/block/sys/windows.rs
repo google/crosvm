@@ -13,14 +13,14 @@ use base::enable_high_res_timers;
 use base::info;
 use base::Event;
 use base::RawDescriptor;
-use broker_ipc::common_child_setup;
-use broker_ipc::CommonChildStartupArgs;
 use cros_async::sys::windows::ExecutorKindSys;
 use cros_async::Executor;
 use crosvm_cli::sys::windows::exit::Exit;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 use hypervisor::ProtectionType;
+use proc_init::common_child_setup;
+use proc_init::CommonChildStartupArgs;
 use tube_transporter::TubeToken;
 
 use crate::virtio::base_features;
@@ -60,7 +60,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let disk_option: DiskOption = bootstrap_tube.recv::<DiskOption>()?;
     let exit_event = bootstrap_tube.recv::<Event>()?;
 
-    // TODO(b/213146388): Replace below with `broker_ipc::common_child_setup`
+    // TODO(b/213146388): Replace below with `proc_init::common_child_setup`
     // once `src` directory is upstreamed.
     let _raise_timer_resolution =
         enable_high_res_timers().context("failed to set timer resolution")?;

@@ -444,27 +444,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "broker_ipc"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base",
- "broker_ipc_product",
- "crash_report",
- "metrics",
- "serde",
-]
-
-[[package]]
-name = "broker_ipc_product"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crash_report",
- "serde",
-]
-
-[[package]]
 name = "bytemuck"
 version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -873,7 +852,6 @@ dependencies = [
  "argh_helpers",
  "base",
  "bit_field",
- "broker_ipc",
  "cfg-if",
  "crash_report",
  "cros_async",
@@ -905,6 +883,7 @@ dependencies = [
  "minijail",
  "net_util",
  "p9",
+ "proc_init",
  "protobuf",
  "protos",
  "rand",
@@ -1076,7 +1055,6 @@ dependencies = [
  "balloon_control",
  "base",
  "bit_field",
- "broker_ipc",
  "bytes",
  "cfg-if",
  "chrono",
@@ -1112,6 +1090,7 @@ dependencies = [
  "num-traits",
  "p9",
  "power_monitor",
+ "proc_init",
  "protobuf",
  "protos",
  "rand",
@@ -2452,6 +2431,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22244ce15aa966053a896d1accb3a6e68469b97c7f33f284b99f0d576879fc23"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "proc_init"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base",
+ "crash_report",
+ "metrics",
+ "proc_init_product",
+ "serde",
+]
+
+[[package]]
+name = "proc_init_product"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crash_report",
+ "serde",
 ]
 
 [[package]]

@@ -53,11 +53,6 @@ use base::Timer;
 use base::TimerTrait;
 use base::Tube;
 use base::WaitContext;
-#[cfg(feature = "process-invariants")]
-use broker_ipc::init_broker_process_invariants;
-use broker_ipc::CommonChildStartupArgs;
-#[cfg(feature = "process-invariants")]
-use broker_ipc::EmulatorProcessInvariants;
 #[cfg(feature = "crash-report")]
 use crash_report::product_type;
 #[cfg(feature = "crash-report")]
@@ -108,6 +103,11 @@ use metrics::MetricEventType;
 use net_util::slirp::sys::windows::SlirpStartupConfig;
 #[cfg(all(feature = "net", feature = "slirp"))]
 use net_util::slirp::sys::windows::SLIRP_BUFFER_SIZE;
+#[cfg(feature = "process-invariants")]
+use proc_init::init_broker_process_invariants;
+use proc_init::CommonChildStartupArgs;
+#[cfg(feature = "process-invariants")]
+use proc_init::EmulatorProcessInvariants;
 use serde::Deserialize;
 use serde::Serialize;
 use tube_transporter::TubeToken;

@@ -79,8 +79,6 @@ use base::Tube;
 use base::TubeError;
 use base::VmEventType;
 use base::WaitContext;
-use broker_ipc::common_child_setup;
-use broker_ipc::CommonChildStartupArgs;
 use control_server::ControlServer;
 use crosvm_cli::sys::windows::exit::Exit;
 use crosvm_cli::sys::windows::exit::ExitContext;
@@ -173,6 +171,8 @@ use irq_wait::IrqWaitWorker;
 use jail::FakeMinijailStub as Minijail;
 #[cfg(not(feature = "crash-report"))]
 pub(crate) use panic_hook::set_panic_hook;
+use proc_init::common_child_setup;
+use proc_init::CommonChildStartupArgs;
 use product::create_snd_mute_tube_pair;
 #[cfg(any(feature = "haxm", feature = "gvm", feature = "whpx"))]
 use product::create_snd_state_tube;

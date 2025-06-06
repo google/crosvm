@@ -1,5 +1,5 @@
 [package]
-name = "broker_ipc_product"
+name = "proc_init_product"
 authors = ["The ChromiumOS Authors"]
 version = "0.1.0"
 edition = "2021"

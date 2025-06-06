@@ -1,12 +1,12 @@
 [package]
-name = "broker_ipc"
+name = "proc_init"
 authors = ["The ChromiumOS Authors"]
 version = "0.1.0"
 edition = "2021"
 
 [features]
-crash-report = ["crash_report", "broker_ipc_product/crash-report"]
-process-invariants = ["broker_ipc_product/process-invariants"]
+crash-report = ["crash_report", "proc_init_product/crash-report"]
+process-invariants = ["proc_init_product/process-invariants"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -14,4 +14,4 @@ base = { workspace = true }
 crash_report = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 metrics = { workspace = true }
-broker_ipc_product = { path = "../vendor/generic/broker_ipc/" }
+proc_init_product = { path = "../vendor/generic/proc_init/" }

@@ -14,8 +14,6 @@ use base::named_pipes::PipeConnection;
 use base::warn;
 use base::Event;
 use base::RawDescriptor;
-use broker_ipc::common_child_setup;
-use broker_ipc::CommonChildStartupArgs;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
@@ -30,6 +28,8 @@ use hypervisor::ProtectionType;
 #[cfg(feature = "slirp")]
 use net_util::Slirp;
 use net_util::TapT;
+use proc_init::common_child_setup;
+use proc_init::CommonChildStartupArgs;
 #[cfg(feature = "slirp")]
 use serde::Deserialize;
 #[cfg(feature = "slirp")]

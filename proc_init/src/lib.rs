@@ -2,8 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! Contains shared code between the broker & its children, specifically any IPC messages or common
-//! bootstrapping code.
+//! This crate provides functions to call very early from the entry point to customize the process
+//! for setting up Rust processes. It was built originally for CrosVM, but can be useful in other
+//! Rust products too.
+//!
+//! For example:
+//! * Check for singleton.
+//! * Logger initialization.
+//! * Metrics initialization.
+//! * Crash reporting initialization.
+//! * Tracing initialization.
+//! * Entry for downstream to custom other possible process wise initialization.
 
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -19,13 +28,13 @@ use base::IntoRawDescriptor;
 use base::SafeDescriptor;
 use base::SendTube;
 #[cfg(feature = "process-invariants")]
-pub use broker_ipc_product::init_broker_process_invariants;
-use broker_ipc_product::init_child_crash_reporting;
-use broker_ipc_product::product_child_setup;
+pub use proc_init_product::init_broker_process_invariants;
+use proc_init_product::init_child_crash_reporting;
+use proc_init_product::product_child_setup;
 #[cfg(feature = "process-invariants")]
-pub use broker_ipc_product::EmulatorProcessInvariants;
-use broker_ipc_product::ProductAttributes;
-use broker_ipc_product::ProductProcessState;
+pub use proc_init_product::EmulatorProcessInvariants;
+use proc_init_product::ProductAttributes;
+use proc_init_product::ProductProcessState;
 use serde::Deserialize;
 use serde::Serialize;
 
