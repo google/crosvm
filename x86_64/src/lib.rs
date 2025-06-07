@@ -42,6 +42,7 @@ pub mod regs;
 pub mod smbios;
 
 use std::arch::x86_64::CpuidResult;
+use std::cmp::min;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::File;
@@ -347,6 +348,53 @@ pub struct SetupData {
     pub type_: SetupDataType,
 }
 
+impl SetupData {
+    /// Returns the length of the data
+    pub fn size(&self) -> usize {
+        self.data.len()
+    }
+}
+
+/// Collection of SetupData entries to be inserted in the
+/// bootparam `setup_data` linked list.
+pub struct SetupDataEntries {
+    entries: Vec<SetupData>,
+    setup_data_start: usize,
+    setup_data_end: usize,
+    available_size: usize,
+}
+
+impl SetupDataEntries {
+    /// Returns a new instance of SetupDataEntries
+    pub fn new(setup_data_start: usize, setup_data_end: usize) -> SetupDataEntries {
+        SetupDataEntries {
+            entries: Vec::new(),
+            setup_data_start,
+            setup_data_end,
+            available_size: setup_data_end - setup_data_start,
+        }
+    }
+
+    /// Adds a new SetupDataEntry and returns the remaining size available
+    pub fn insert(&mut self, setup_data: SetupData) -> usize {
+        self.available_size -= setup_data.size();
+        self.entries.push(setup_data);
+
+        self.available_size
+    }
+
+    /// Copy setup_data entries to guest memory and link them together with the `next` field.
+    /// Returns the guest address of the first entry in the setup_data list, if any.
+    pub fn write_setup_data(&self, guest_mem: &GuestMemory) -> Result<Option<GuestAddress>> {
+        write_setup_data(
+            guest_mem,
+            GuestAddress(self.setup_data_start as u64),
+            GuestAddress(self.setup_data_end as u64),
+            &self.entries,
+        )
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 enum E820Type {
     Ram = 0x01,
@@ -390,6 +438,7 @@ const CMDLINE_OFFSET: u64 = 0x2_0000;
 const CMDLINE_MAX_SIZE: u64 = 0x800; // including terminating zero
 const SETUP_DATA_START: u64 = CMDLINE_OFFSET + CMDLINE_MAX_SIZE;
 const SETUP_DATA_END: u64 = MPTABLE_RANGE.start;
+const X86_64_FDT_MAX_SIZE: u64 = 0x4000;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
 const X86_64_SERIAL_2_4_IRQ: u32 = 3;
 // X86_64_SCI_IRQ is used to fill the ACPI FACP table.
@@ -1889,12 +1938,20 @@ impl X8664arch {
             None => None,
         };
 
-        let mut setup_data = Vec::<SetupData>::new();
+        let mut setup_data_entries =
+            SetupDataEntries::new(SETUP_DATA_START as usize, SETUP_DATA_END as usize);
+
+        let setup_data_size = setup_data_entries.insert(setup_data_rng_seed());
+
+        // SETUP_DTB should be the last one in SETUP_DATA.
+        // This is to reserve enough space for SETUP_DTB
+        // without exceeding the size of SETUP_DATA area.
         if android_fstab.is_some()
             || !device_tree_overlays.is_empty()
             || protection_type.runs_firmware()
         {
-            let device_tree_blob = fdt::create_fdt(
+            let fdt_max_size = min(X86_64_FDT_MAX_SIZE as usize, setup_data_size);
+            let mut device_tree_blob = fdt::create_fdt(
                 mem,
                 android_fstab,
                 dump_device_tree_blob,
@@ -1903,20 +1960,21 @@ impl X8664arch {
                 initrd,
             )
             .map_err(Error::CreateFdt)?;
-            setup_data.push(SetupData {
+            if device_tree_blob.len() > fdt_max_size {
+                return Err(Error::CreateFdt(cros_fdt::Error::TotalSizeTooLarge));
+            }
+
+            // Reserve and zero fill dtb memory to maximum allowable size
+            // so that pvmfw could patch and extend the dtb in-place.
+            device_tree_blob.resize(fdt_max_size, 0);
+
+            setup_data_entries.insert(SetupData {
                 data: device_tree_blob,
                 type_: SetupDataType::Dtb,
             });
         }
 
-        setup_data.push(setup_data_rng_seed());
-
-        let setup_data = write_setup_data(
-            mem,
-            GuestAddress(SETUP_DATA_START),
-            GuestAddress(SETUP_DATA_END),
-            &setup_data,
-        )?;
+        let setup_data = setup_data_entries.write_setup_data(mem)?;
 
         configure_boot_params(
             mem,
