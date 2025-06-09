@@ -5,7 +5,6 @@
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
 use std::collections::BTreeSet as Set;
-use std::io::Cursor;
 use std::os::raw::c_void;
 use std::path::Path;
 use std::sync::Arc;
@@ -305,7 +304,7 @@ impl KumquatGpuConnection {
 
                     kumquat_gpu
                         .rutabaga
-                        .transfer_write(cmd.ctx_id, resource_id, transfer)?;
+                        .transfer_write(cmd.ctx_id, resource_id, transfer, None)?;
 
                     let mut event: RutabagaEvent = emulated_fence.try_into()?;
                     event.signal()?;
