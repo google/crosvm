@@ -37,7 +37,8 @@ pub struct Worker<T: Vhost> {
     interrupt: Interrupt,
     pub queues: BTreeMap<usize, Queue>,
     pub vhost_handle: T,
-    pub vhost_interrupt: Vec<Event>,
+    // Event signaled by vhost when we should send an interrupt for a queue.
+    vhost_interrupts: BTreeMap<usize, Event>,
     vhost_error_events: BTreeMap<usize, Event>,
     acked_features: u64,
     pub response_tube: Option<Tube>,
@@ -48,11 +49,15 @@ impl<T: Vhost> Worker<T> {
         name: &'static str,
         queues: BTreeMap<usize, Queue>,
         vhost_handle: T,
-        vhost_interrupt: Vec<Event>,
         interrupt: Interrupt,
         acked_features: u64,
         response_tube: Option<Tube>,
     ) -> anyhow::Result<Worker<T>> {
+        let vhost_interrupts = queues
+            .keys()
+            .copied()
+            .map(|i| Ok((i, Event::new().context("failed to create Event")?)))
+            .collect::<anyhow::Result<_>>()?;
         let vhost_error_events = queues
             .keys()
             .copied()
@@ -63,7 +68,7 @@ impl<T: Vhost> Worker<T> {
             interrupt,
             queues,
             vhost_handle,
-            vhost_interrupt,
+            vhost_interrupts,
             vhost_error_events,
             acked_features,
             response_tube,
@@ -166,7 +171,7 @@ impl<T: Vhost> Worker<T> {
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[(&kill_evt, Token::Kill)])
             .map_err(Error::CreateWaitContext)?;
 
-        for (index, vhost_int) in self.vhost_interrupt.iter().enumerate() {
+        for (&index, vhost_int) in self.vhost_interrupts.iter() {
             wait_ctx
                 .add(vhost_int, Token::VhostIrqi { index })
                 .map_err(Error::CreateWaitContext)?;
@@ -188,7 +193,7 @@ impl<T: Vhost> Worker<T> {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::VhostIrqi { index } => {
-                        self.vhost_interrupt[index]
+                        self.vhost_interrupts[&index]
                             .wait()
                             .map_err(Error::VhostIrqRead)?;
                         self.interrupt
@@ -276,7 +281,7 @@ impl<T: Vhost> Worker<T> {
                             .map_err(Error::VhostSetVringCall)?;
                     } else {
                         self.vhost_handle
-                            .set_vring_call(queue_index, &self.vhost_interrupt[queue_index])
+                            .set_vring_call(queue_index, &self.vhost_interrupts[&queue_index])
                             .map_err(Error::VhostSetVringCall)?;
                     }
                     return Ok(());
@@ -285,7 +290,7 @@ impl<T: Vhost> Worker<T> {
         }
 
         self.vhost_handle
-            .set_vring_call(queue_index, &self.vhost_interrupt[queue_index])
+            .set_vring_call(queue_index, &self.vhost_interrupts[&queue_index])
             .map_err(Error::VhostSetVringCall)?;
         Ok(())
     }
@@ -296,7 +301,7 @@ impl<T: Vhost> Worker<T> {
             if msix_config.masked() {
                 for (&queue_index, _) in self.queues.iter() {
                     self.vhost_handle
-                        .set_vring_call(queue_index, &self.vhost_interrupt[queue_index])
+                        .set_vring_call(queue_index, &self.vhost_interrupts[&queue_index])
                         .map_err(Error::VhostSetVringCall)?;
                 }
             } else {
@@ -309,12 +314,12 @@ impl<T: Vhost> Worker<T> {
                                 .map_err(Error::VhostSetVringCall)?;
                         } else {
                             self.vhost_handle
-                                .set_vring_call(queue_index, &self.vhost_interrupt[queue_index])
+                                .set_vring_call(queue_index, &self.vhost_interrupts[&queue_index])
                                 .map_err(Error::VhostSetVringCall)?;
                         }
                     } else {
                         self.vhost_handle
-                            .set_vring_call(queue_index, &self.vhost_interrupt[queue_index])
+                            .set_vring_call(queue_index, &self.vhost_interrupts[&queue_index])
                             .map_err(Error::VhostSetVringCall)?;
                     }
                 }

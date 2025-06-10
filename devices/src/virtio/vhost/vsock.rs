@@ -12,7 +12,6 @@ use base::error;
 use base::open_file_or_duplicate;
 use base::warn;
 use base::AsRawDescriptor;
-use base::Event;
 use base::RawDescriptor;
 use base::WorkerThread;
 use data_model::Le64;
@@ -42,7 +41,6 @@ pub struct Vsock {
     worker_thread: Option<WorkerThread<Worker<VhostVsockHandle>>>,
     vhost_handle: Option<VhostVsockHandle>,
     cid: u64,
-    interrupts: Option<Vec<Event>>,
     avail_features: u64,
     acked_features: u64,
     // vrings_base states:
@@ -85,16 +83,10 @@ impl Vsock {
 
         let avail_features = base_features;
 
-        let mut interrupts = Vec::new();
-        for _ in 0..NUM_QUEUES {
-            interrupts.push(Event::new().map_err(Error::VhostIrqCreate)?);
-        }
-
         Ok(Vsock {
             worker_thread: None,
             vhost_handle: Some(handle),
             cid: vsock_config.cid,
-            interrupts: Some(interrupts),
             avail_features,
             acked_features: 0,
             vrings_base: None,
@@ -111,7 +103,6 @@ impl Vsock {
             worker_thread: None,
             vhost_handle: None,
             cid,
-            interrupts: None,
             avail_features: features,
             acked_features: 0,
             vrings_base: None,
@@ -132,12 +123,6 @@ impl VirtioDevice for Vsock {
 
         if let Some(handle) = &self.vhost_handle {
             keep_rds.push(handle.as_raw_descriptor());
-        }
-
-        if let Some(interrupt) = &self.interrupts {
-            for vhost_int in interrupt.iter() {
-                keep_rds.push(vhost_int.as_raw_descriptor());
-            }
         }
 
         keep_rds
@@ -191,7 +176,6 @@ impl VirtioDevice for Vsock {
         let queue_sizes: Vec<u16> = queues.values().map(|q| q.size()).collect();
 
         let vhost_handle = self.vhost_handle.take().context("missing vhost_handle")?;
-        let interrupts = self.interrupts.take().context("missing interrupts")?;
         let acked_features = self.acked_features;
         let cid = self.cid;
 
@@ -227,7 +211,6 @@ impl VirtioDevice for Vsock {
             "vhost-vsock",
             queues,
             vhost_handle,
-            interrupts,
             interrupt,
             acked_features,
             None,
@@ -269,7 +252,6 @@ impl VirtioDevice for Vsock {
             }
 
             self.vhost_handle = Some(worker.vhost_handle);
-            self.interrupts = Some(worker.vhost_interrupt);
         }
         self.acked_features = 0;
         self.vrings_base = None;
@@ -293,7 +275,6 @@ impl VirtioDevice for Vsock {
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
             let worker = worker_thread.stop();
-            self.interrupts = Some(worker.vhost_interrupt);
             worker
                 .vhost_handle
                 .stop()
