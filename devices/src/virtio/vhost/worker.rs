@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 
+use anyhow::Context;
 use base::error;
 use base::Error as SysError;
 use base::Event;
@@ -32,31 +33,41 @@ pub struct VringBase {
 
 /// Worker that takes care of running the vhost device.
 pub struct Worker<T: Vhost> {
+    name: &'static str, // e.g. "vhost-vsock"
     interrupt: Interrupt,
     pub queues: BTreeMap<usize, Queue>,
     pub vhost_handle: T,
     pub vhost_interrupt: Vec<Event>,
+    vhost_error_events: BTreeMap<usize, Event>,
     acked_features: u64,
     pub response_tube: Option<Tube>,
 }
 
 impl<T: Vhost> Worker<T> {
     pub fn new(
+        name: &'static str,
         queues: BTreeMap<usize, Queue>,
         vhost_handle: T,
         vhost_interrupt: Vec<Event>,
         interrupt: Interrupt,
         acked_features: u64,
         response_tube: Option<Tube>,
-    ) -> Worker<T> {
-        Worker {
+    ) -> anyhow::Result<Worker<T>> {
+        let vhost_error_events = queues
+            .keys()
+            .copied()
+            .map(|i| Ok((i, Event::new().context("failed to create Event")?)))
+            .collect::<anyhow::Result<_>>()?;
+        Ok(Worker {
+            name,
             interrupt,
             queues,
             vhost_handle,
             vhost_interrupt,
+            vhost_error_events,
             acked_features,
             response_tube,
-        }
+        })
     }
 
     pub fn init<F1>(
@@ -95,6 +106,10 @@ impl<T: Vhost> Worker<T> {
             self.vhost_handle
                 .set_vring_num(queue_index, queue.size())
                 .map_err(Error::VhostSetVringNum)?;
+
+            self.vhost_handle
+                .set_vring_err(queue_index, &self.vhost_error_events[&queue_index])
+                .map_err(Error::VhostSetVringErr)?;
 
             self.vhost_handle
                 .set_vring_addr(
@@ -143,6 +158,7 @@ impl<T: Vhost> Worker<T> {
         #[derive(EventToken)]
         enum Token {
             VhostIrqi { index: usize },
+            VhostError { index: usize },
             Kill,
             ControlNotify,
         }
@@ -153,6 +169,11 @@ impl<T: Vhost> Worker<T> {
         for (index, vhost_int) in self.vhost_interrupt.iter().enumerate() {
             wait_ctx
                 .add(vhost_int, Token::VhostIrqi { index })
+                .map_err(Error::CreateWaitContext)?;
+        }
+        for (&index, event) in self.vhost_error_events.iter() {
+            wait_ctx
+                .add(event, Token::VhostError { index })
                 .map_err(Error::CreateWaitContext)?;
         }
         if let Some(socket) = &self.response_tube {
@@ -172,6 +193,12 @@ impl<T: Vhost> Worker<T> {
                             .map_err(Error::VhostIrqRead)?;
                         self.interrupt
                             .signal_used_queue(self.queues[&index].vector());
+                    }
+                    Token::VhostError { index } => {
+                        self.vhost_error_events[&index]
+                            .wait()
+                            .map_err(Error::VhostErrorRead)?;
+                        error!("{} reported error for virtqueue {index}", self.name);
                     }
                     Token::Kill => {
                         let _ = kill_evt.wait();

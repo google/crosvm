@@ -125,13 +125,14 @@ impl VirtioDevice for Scmi {
         let interrupts = self.interrupts.take().context("missing interrupts")?;
         let acked_features = self.acked_features;
         let mut worker = Worker::new(
+            "vhost-scmi",
             queues,
             vhost_handle,
             interrupts,
             interrupt,
             acked_features,
             None,
-        );
+        )?;
         let activate_vqs = |_handle: &VhostScmiHandle| -> Result<()> { Ok(()) };
 
         worker

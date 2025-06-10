@@ -224,13 +224,14 @@ impl VirtioDevice for Vsock {
         self.event_queue = Some(event_queue);
 
         let mut worker = Worker::new(
+            "vhost-vsock",
             queues,
             vhost_handle,
             interrupts,
             interrupt,
             acked_features,
             None,
-        );
+        )?;
         let activate_vqs = |handle: &VhostVsockHandle| -> Result<()> {
             handle.set_cid(cid).map_err(Error::VhostVsockSetCid)?;
             handle.start().map_err(Error::VhostVsockStart)?;

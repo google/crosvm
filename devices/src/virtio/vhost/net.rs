@@ -219,13 +219,14 @@ where
             None
         };
         let mut worker = Worker::new(
+            "vhost-net",
             queues,
             vhost_net_handle,
             vhost_interrupt,
             interrupt,
             acked_features,
             socket,
-        );
+        )?;
         let activate_vqs = |handle: &U| -> Result<()> {
             for idx in 0..NUM_QUEUES {
                 handle

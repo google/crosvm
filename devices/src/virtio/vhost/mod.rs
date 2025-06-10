@@ -70,6 +70,9 @@ pub enum Error {
     /// Setting vnet header size failed.
     #[error("failed to set vnet header size: {0}")]
     TapSetVnetHdrSize(TapError),
+    /// Failed to read vhost error event.
+    #[error("failed to read vhost error event: {0}")]
+    VhostErrorRead(SysError),
     /// Get features failed.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[error("failed to get features: {0}")]
@@ -80,8 +83,8 @@ pub enum Error {
     /// Failed to create vhost event.
     #[error("failed to create vhost event: {0}")]
     VhostIrqCreate(SysError),
-    /// Failed to read vhost event.
-    #[error("failed to read vhost event: {0}")]
+    /// Failed to read vhost interrupt event.
+    #[error("failed to read vhost interrupt event: {0}")]
     VhostIrqRead(SysError),
     /// Net set backend failed.
     #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -115,6 +118,10 @@ pub enum Error {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[error("failed to set vring call: {0}")]
     VhostSetVringCall(VhostError),
+    /// Set vring err failed.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[error("failed to set vring err: {0}")]
+    VhostSetVringErr(VhostError),
     /// Set vring kick failed.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[error("failed to set vring kick: {0}")]
