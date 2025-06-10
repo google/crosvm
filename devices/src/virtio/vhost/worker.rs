@@ -53,7 +53,6 @@ impl<T: Vhost> Worker<T> {
         acked_features: u64,
         response_tube: Option<Tube>,
         mem: GuestMemory,
-        activate_vqs: impl FnOnce(&T) -> Result<()>,
         queue_vrings_base: Option<Vec<VringBase>>,
     ) -> anyhow::Result<Worker<T>> {
         let vhost_interrupts = queues
@@ -151,14 +150,10 @@ impl<T: Vhost> Worker<T> {
                 .map_err(Error::VhostSetVringKick)?;
         }
 
-        activate_vqs(&worker.vhost_handle)?;
         Ok(worker)
     }
 
-    pub fn run<F1>(&mut self, cleanup_vqs: F1, kill_evt: Event) -> Result<()>
-    where
-        F1: FnOnce(&T) -> Result<()>,
-    {
+    pub fn run(&mut self, kill_evt: Event) -> Result<()> {
         #[derive(EventToken)]
         enum Token {
             VhostIrqi { index: usize },
@@ -258,7 +253,6 @@ impl<T: Vhost> Worker<T> {
                 }
             }
         }
-        cleanup_vqs(&self.vhost_handle)?;
         Ok(())
     }
 

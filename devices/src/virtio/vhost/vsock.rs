@@ -26,7 +26,6 @@ use zerocopy::IntoBytes;
 use super::worker::VringBase;
 use super::worker::Worker;
 use super::Error;
-use super::Result;
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::vsock::NUM_QUEUES;
 use crate::virtio::vsock::VsockConfig;
@@ -205,11 +204,6 @@ impl VirtioDevice for Vsock {
         }
         self.event_queue = Some(event_queue);
 
-        let activate_vqs = |handle: &VhostVsockHandle| -> Result<()> {
-            handle.set_cid(cid).map_err(Error::VhostVsockSetCid)?;
-            handle.start().map_err(Error::VhostVsockStart)?;
-            Ok(())
-        };
         let mut worker = Worker::new(
             "vhost-vsock",
             queues,
@@ -218,14 +212,20 @@ impl VirtioDevice for Vsock {
             acked_features,
             None,
             mem,
-            activate_vqs,
             self.vrings_base.take(),
         )
         .context("vsock worker init exited with error")?;
+        worker
+            .vhost_handle
+            .set_cid(cid)
+            .map_err(Error::VhostVsockSetCid)?;
+        worker
+            .vhost_handle
+            .start()
+            .map_err(Error::VhostVsockStart)?;
 
         self.worker_thread = Some(WorkerThread::start("vhost_vsock", move |kill_evt| {
-            let cleanup_vqs = |_handle: &VhostVsockHandle| -> Result<()> { Ok(()) };
-            let result = worker.run(cleanup_vqs, kill_evt);
+            let result = worker.run(kill_evt);
             if let Err(e) = result {
                 error!("vsock worker thread exited with error: {:?}", e);
             }

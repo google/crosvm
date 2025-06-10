@@ -109,7 +109,6 @@ impl VirtioDevice for Scmi {
         }
         let vhost_handle = self.vhost_handle.take().context("missing vhost_handle")?;
         let acked_features = self.acked_features;
-        let activate_vqs = |_handle: &VhostScmiHandle| -> Result<()> { Ok(()) };
         let mut worker = Worker::new(
             "vhost-scmi",
             queues,
@@ -118,14 +117,12 @@ impl VirtioDevice for Scmi {
             acked_features,
             None,
             mem,
-            activate_vqs,
             None,
         )
         .context("vhost worker init exited with error")?;
 
         self.worker_thread = Some(WorkerThread::start("vhost_scmi", move |kill_evt| {
-            let cleanup_vqs = |_handle: &VhostScmiHandle| -> Result<()> { Ok(()) };
-            let result = worker.run(cleanup_vqs, kill_evt);
+            let result = worker.run(kill_evt);
             if let Err(e) = result {
                 error!("vhost_scmi worker thread exited with error: {:?}", e);
             }

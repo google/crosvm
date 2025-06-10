@@ -200,14 +200,6 @@ where
         } else {
             None
         };
-        let activate_vqs = |handle: &U| -> Result<()> {
-            for idx in 0..NUM_QUEUES {
-                handle
-                    .set_backend(idx, Some(&tap))
-                    .map_err(Error::VhostNetSetBackend)?;
-            }
-            Ok(())
-        };
         let mut worker = Worker::new(
             "vhost-net",
             queues,
@@ -216,22 +208,24 @@ where
             acked_features,
             socket,
             mem,
-            activate_vqs,
             None,
         )
         .context("net worker init exited with error")?;
+        for idx in 0..NUM_QUEUES {
+            worker
+                .vhost_handle
+                .set_backend(idx, Some(&tap))
+                .map_err(Error::VhostNetSetBackend)?;
+        }
         self.worker_thread = Some(WorkerThread::start("vhost_net", move |kill_evt| {
-            let cleanup_vqs = |handle: &U| -> Result<()> {
-                for idx in 0..NUM_QUEUES {
-                    handle
-                        .set_backend(idx, None)
-                        .map_err(Error::VhostNetSetBackend)?;
-                }
-                Ok(())
-            };
-            let result = worker.run(cleanup_vqs, kill_evt);
+            let result = worker.run(kill_evt);
             if let Err(e) = result {
                 error!("net worker thread exited with error: {}", e);
+            }
+            for idx in 0..NUM_QUEUES {
+                if let Err(e) = worker.vhost_handle.set_backend(idx, None) {
+                    error!("net worker thread failed to clear backend: {:#}", e);
+                }
             }
             (worker, tap)
         }));
