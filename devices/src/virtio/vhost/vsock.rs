@@ -173,8 +173,6 @@ impl VirtioDevice for Vsock {
             ));
         }
 
-        let queue_sizes: Vec<u16> = queues.values().map(|q| q.size()).collect();
-
         let vhost_handle = self.vhost_handle.take().context("missing vhost_handle")?;
         let acked_features = self.acked_features;
         let cid = self.cid;
@@ -220,7 +218,6 @@ impl VirtioDevice for Vsock {
             acked_features,
             None,
             mem,
-            &queue_sizes,
             activate_vqs,
             self.vrings_base.take(),
         )

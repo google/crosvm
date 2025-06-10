@@ -53,7 +53,6 @@ impl<T: Vhost> Worker<T> {
         acked_features: u64,
         response_tube: Option<Tube>,
         mem: GuestMemory,
-        queue_sizes: &[u16],
         activate_vqs: impl FnOnce(&T) -> Result<()>,
         queue_vrings_base: Option<Vec<VringBase>>,
     ) -> anyhow::Result<Worker<T>> {
@@ -117,7 +116,6 @@ impl<T: Vhost> Worker<T> {
                 .vhost_handle
                 .set_vring_addr(
                     &mem,
-                    queue_sizes[queue_index],
                     queue.size(),
                     queue_index,
                     0,

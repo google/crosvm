@@ -240,7 +240,6 @@ impl vmm_vhost::Backend for VsockBackend {
         self.handle
             .set_vring_addr(
                 mem,
-                queue.max_size(),
                 queue.size(),
                 index,
                 flags.bits(),

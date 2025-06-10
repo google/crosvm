@@ -118,7 +118,6 @@ impl VirtioDevice for Scmi {
             acked_features,
             None,
             mem,
-            QUEUE_SIZES,
             activate_vqs,
             None,
         )

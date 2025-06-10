@@ -205,7 +205,6 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     /// Set the addresses for a given vring.
     ///
     /// # Arguments
-    /// * `queue_max_size` - Maximum queue size supported by the device.
     /// * `queue_size` - Actual queue size negotiated by the driver.
     /// * `queue_index` - Index of the queue to set addresses for.
     /// * `flags` - Bitmask of vring flags.
@@ -216,7 +215,6 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     fn set_vring_addr(
         &self,
         mem: &GuestMemory,
-        queue_max_size: u16,
         queue_size: u16,
         queue_index: usize,
         flags: u32,
@@ -225,7 +223,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         avail_addr: GuestAddress,
         log_addr: Option<GuestAddress>,
     ) -> Result<()> {
-        if queue_size > queue_max_size || queue_size == 0 || !queue_size.is_power_of_two() {
+        if queue_size == 0 || !queue_size.is_power_of_two() {
             return Err(Error::InvalidQueue);
         }
 

@@ -216,7 +216,6 @@ where
             acked_features,
             socket,
             mem,
-            QUEUE_SIZES,
             activate_vqs,
             None,
         )

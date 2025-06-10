@@ -90,7 +90,6 @@ fn set_vring_addr() {
     let res = vhost_net.set_vring_addr(
         &gm,
         1,
-        1,
         0,
         0x0,
         GuestAddress(0x0),
