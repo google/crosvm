@@ -221,6 +221,8 @@ pub enum Error {
     CreateTube(base::TubeError),
     #[error("failed to create VCPU: {0}")]
     CreateVcpu(base::Error),
+    #[error("DTB size is larger than the allowed size")]
+    DTBSizeGreaterThanAllowed,
     #[error("invalid e820 setup params")]
     E820Configuration,
     #[error("failed to enable singlestep execution: {0}")]
@@ -1961,7 +1963,7 @@ impl X8664arch {
             )
             .map_err(Error::CreateFdt)?;
             if device_tree_blob.len() > fdt_max_size {
-                return Err(Error::CreateFdt(cros_fdt::Error::TotalSizeTooLarge));
+                return Err(Error::DTBSizeGreaterThanAllowed);
             }
 
             // Reserve and zero fill dtb memory to maximum allowable size
