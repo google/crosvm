@@ -52,6 +52,10 @@ impl<T: Vhost> Worker<T> {
         interrupt: Interrupt,
         acked_features: u64,
         response_tube: Option<Tube>,
+        mem: GuestMemory,
+        queue_sizes: &[u16],
+        activate_vqs: impl FnOnce(&T) -> Result<()>,
+        queue_vrings_base: Option<Vec<VringBase>>,
     ) -> anyhow::Result<Worker<T>> {
         let vhost_interrupts = queues
             .keys()
@@ -63,7 +67,7 @@ impl<T: Vhost> Worker<T> {
             .copied()
             .map(|i| Ok((i, Event::new().context("failed to create Event")?)))
             .collect::<anyhow::Result<_>>()?;
-        Ok(Worker {
+        let worker = Worker {
             name,
             interrupt,
             queues,
@@ -72,26 +76,15 @@ impl<T: Vhost> Worker<T> {
             vhost_error_events,
             acked_features,
             response_tube,
-        })
-    }
+        };
 
-    pub fn init<F1>(
-        &mut self,
-        mem: GuestMemory,
-        queue_sizes: &[u16],
-        activate_vqs: F1,
-        queue_vrings_base: Option<Vec<VringBase>>,
-    ) -> Result<()>
-    where
-        F1: FnOnce(&T) -> Result<()>,
-    {
-        let avail_features = self
+        let avail_features = worker
             .vhost_handle
             .get_features()
             .map_err(Error::VhostGetFeatures)?;
 
-        let mut features = self.acked_features & avail_features;
-        if self.acked_features & (1u64 << VIRTIO_F_ACCESS_PLATFORM) != 0 {
+        let mut features = worker.acked_features & avail_features;
+        if worker.acked_features & (1u64 << VIRTIO_F_ACCESS_PLATFORM) != 0 {
             // The vhost API is a bit poorly named, this flag in the context of vhost
             // means that it will do address translation via its IOTLB APIs. If the
             // underlying virtio device doesn't use viommu, it doesn't need vhost
@@ -99,24 +92,29 @@ impl<T: Vhost> Worker<T> {
             features &= !(1u64 << VIRTIO_F_ACCESS_PLATFORM);
         }
 
-        self.vhost_handle
+        worker
+            .vhost_handle
             .set_features(features)
             .map_err(Error::VhostSetFeatures)?;
 
-        self.vhost_handle
+        worker
+            .vhost_handle
             .set_mem_table(&mem)
             .map_err(Error::VhostSetMemTable)?;
 
-        for (&queue_index, queue) in self.queues.iter() {
-            self.vhost_handle
+        for (&queue_index, queue) in worker.queues.iter() {
+            worker
+                .vhost_handle
                 .set_vring_num(queue_index, queue.size())
                 .map_err(Error::VhostSetVringNum)?;
 
-            self.vhost_handle
-                .set_vring_err(queue_index, &self.vhost_error_events[&queue_index])
+            worker
+                .vhost_handle
+                .set_vring_err(queue_index, &worker.vhost_error_events[&queue_index])
                 .map_err(Error::VhostSetVringErr)?;
 
-            self.vhost_handle
+            worker
+                .vhost_handle
                 .set_vring_addr(
                     &mem,
                     queue_sizes[queue_index],
@@ -136,24 +134,27 @@ impl<T: Vhost> Worker<T> {
                 {
                     vring_base.base
                 } else {
-                    return Err(Error::VringBaseMissing);
+                    anyhow::bail!(Error::VringBaseMissing);
                 };
-                self.vhost_handle
+                worker
+                    .vhost_handle
                     .set_vring_base(queue_index, base)
                     .map_err(Error::VhostSetVringBase)?;
             } else {
-                self.vhost_handle
+                worker
+                    .vhost_handle
                     .set_vring_base(queue_index, 0)
                     .map_err(Error::VhostSetVringBase)?;
             }
-            self.set_vring_call_for_entry(queue_index, queue.vector() as usize)?;
-            self.vhost_handle
+            worker.set_vring_call_for_entry(queue_index, queue.vector() as usize)?;
+            worker
+                .vhost_handle
                 .set_vring_kick(queue_index, queue.event())
                 .map_err(Error::VhostSetVringKick)?;
         }
 
-        activate_vqs(&self.vhost_handle)?;
-        Ok(())
+        activate_vqs(&worker.vhost_handle)?;
+        Ok(worker)
     }
 
     pub fn run<F1>(&mut self, cleanup_vqs: F1, kill_evt: Event) -> Result<()>

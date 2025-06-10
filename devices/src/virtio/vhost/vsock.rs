@@ -207,6 +207,11 @@ impl VirtioDevice for Vsock {
         }
         self.event_queue = Some(event_queue);
 
+        let activate_vqs = |handle: &VhostVsockHandle| -> Result<()> {
+            handle.set_cid(cid).map_err(Error::VhostVsockSetCid)?;
+            handle.start().map_err(Error::VhostVsockStart)?;
+            Ok(())
+        };
         let mut worker = Worker::new(
             "vhost-vsock",
             queues,
@@ -214,15 +219,12 @@ impl VirtioDevice for Vsock {
             interrupt,
             acked_features,
             None,
-        )?;
-        let activate_vqs = |handle: &VhostVsockHandle| -> Result<()> {
-            handle.set_cid(cid).map_err(Error::VhostVsockSetCid)?;
-            handle.start().map_err(Error::VhostVsockStart)?;
-            Ok(())
-        };
-        worker
-            .init(mem, &queue_sizes, activate_vqs, self.vrings_base.take())
-            .context("vsock worker init exited with error")?;
+            mem,
+            &queue_sizes,
+            activate_vqs,
+            self.vrings_base.take(),
+        )
+        .context("vsock worker init exited with error")?;
 
         self.worker_thread = Some(WorkerThread::start("vhost_vsock", move |kill_evt| {
             let cleanup_vqs = |_handle: &VhostVsockHandle| -> Result<()> { Ok(()) };

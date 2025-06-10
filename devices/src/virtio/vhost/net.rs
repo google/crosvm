@@ -200,14 +200,6 @@ where
         } else {
             None
         };
-        let mut worker = Worker::new(
-            "vhost-net",
-            queues,
-            vhost_net_handle,
-            interrupt,
-            acked_features,
-            socket,
-        )?;
         let activate_vqs = |handle: &U| -> Result<()> {
             for idx in 0..NUM_QUEUES {
                 handle
@@ -216,9 +208,19 @@ where
             }
             Ok(())
         };
-        worker
-            .init(mem, QUEUE_SIZES, activate_vqs, None)
-            .context("net worker init exited with error")?;
+        let mut worker = Worker::new(
+            "vhost-net",
+            queues,
+            vhost_net_handle,
+            interrupt,
+            acked_features,
+            socket,
+            mem,
+            QUEUE_SIZES,
+            activate_vqs,
+            None,
+        )
+        .context("net worker init exited with error")?;
         self.worker_thread = Some(WorkerThread::start("vhost_net", move |kill_evt| {
             let cleanup_vqs = |handle: &U| -> Result<()> {
                 for idx in 0..NUM_QUEUES {
