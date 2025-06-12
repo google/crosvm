@@ -123,6 +123,8 @@ Unfortunately, our tooling cannot tell the difference between adding an external
 dependencies within crosvm (e.g. `devices` depending on a new internal crosvm utility crate). For
 those cases, a rubberstamp is still needed from `OWNERS_COUNCIL`.
 
+Reviewers, please check the following document when there is new or updated external dependency.
+
 **For Googlers**: see [go/crosvm/3p_crates](https://goto.google.com/crosvm/3p_crates).
 
 ### Reviewing code (for OWNERS)
