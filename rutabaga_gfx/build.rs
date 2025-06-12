@@ -265,20 +265,19 @@ fn gfxstream() -> Result<()> {
         Ok(())
     } else {
         let gfxstream_lib = pkg_config::Config::new().probe("gfxstream_backend")?;
+        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
         if gfxstream_lib.defines.contains_key("GFXSTREAM_UNSTABLE") {
             println!("cargo:rustc-cfg=gfxstream_unstable");
-        }
+        } else {
+            pkg_config::Config::new().probe("aemu_base")?;
+            pkg_config::Config::new().probe("aemu_host_common")?;
+            pkg_config::Config::new().probe("aemu_logging")?;
+            pkg_config::Config::new().probe("aemu_snapshot")?;
 
-        pkg_config::Config::new().probe("aemu_base")?;
-        pkg_config::Config::new().probe("aemu_host_common")?;
-        pkg_config::Config::new().probe("aemu_logging")?;
-        pkg_config::Config::new().probe("aemu_snapshot")?;
-
-        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
-
-        if target_os.contains("linux") {
-            pkg_config::Config::new().probe("libdrm")?;
+            if target_os.contains("linux") {
+                pkg_config::Config::new().probe("libdrm")?;
+            }
         }
 
         let mut use_clang = target_os.contains("macos");
