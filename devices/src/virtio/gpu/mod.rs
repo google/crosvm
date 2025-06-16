@@ -1214,6 +1214,9 @@ impl Worker {
             // Remove event triggers that have been hung-up to prevent unnecessary worker wake-ups
             // (see b/244486346#comment62 for context).
             for event in events.iter().filter(|e| e.is_hungup) {
+                if event.token == WorkerToken::GpuControl {
+                    return Ok(WorkerStopReason::Kill);
+                }
                 error!(
                     "unhandled virtio-gpu worker event hang-up detected: {:?}",
                     event.token
