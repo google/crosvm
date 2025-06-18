@@ -1,0 +1,22 @@
+[package]
+name = "mesa3d_util"
+version = "0.1.71"
+authors = ["Mesa3D authors"]
+edition = "2021"
+description = "Utility crate part of Mesa3D project"
+license = "MIT"
+
+[lib]
+name = "mesa3d_util"
+path = "lib.rs"
+
+[dependencies]
+cfg-if = "1.0.0"
+libc = "0.2.116"
+remain = "0.2"
+thiserror = "1.0.23"
+zerocopy = { version = "0.8.13", features = ["derive"] }
+log = "0.4"
+
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+rustix = { version = "1.0.7", features = ["event", "fs", "mm", "net", "param", "pipe"] }
