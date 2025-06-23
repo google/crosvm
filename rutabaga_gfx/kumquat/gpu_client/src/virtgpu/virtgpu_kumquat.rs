@@ -325,6 +325,7 @@ impl VirtGpuKumquat {
             let rutabaga_mapping = system_mapping.as_rutabaga_mapping();
             Ok(rutabaga_mapping)
         } else {
+            let clone = resource.handle.try_clone()?;
             let mapping = RutabagaMemoryMapping::from_safe_descriptor(
                 clone.os_handle,
                 resource.size,
