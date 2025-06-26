@@ -7,10 +7,10 @@
 # each architecture.
 
 set -ex
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 MINIJAIL_DIR=$(realpath "third_party/minijail")
-SECCOMP_DIR=$(realpath seccomp)
+SECCOMP_DIR=$(realpath "jail/seccomp")
 
 export SRC="$MINIJAIL_DIR"
 
@@ -38,7 +38,7 @@ for arch in "x86_64" "arm" "aarch64" "riscv64"; do
         export CC="aarch64-linux-gnu-gcc"
         TARGET="aarch64-unknown-linux-gnu"
     elif [ "$arch" = "riscv64" ]; then
-        export CC="riscv64-unknown-linux-gnu-gcc"
+        export CC="riscv64-linux-gnu-gcc"
         TARGET="riscv64-unknown-linux-gnu"
     fi
 
