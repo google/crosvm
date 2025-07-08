@@ -40,7 +40,7 @@ impl Log for PlatformSyslog {
             Level::Error => LogPriority::ERROR,
             Level::Warn => LogPriority::WARN,
             Level::Info => LogPriority::INFO,
-            Level::Debug => LogPriority::VERBOSE,
+            Level::Debug => LogPriority::DEBUG,
             Level::Trace => LogPriority::VERBOSE,
         };
         let message = std::fmt::format(*record.args());
