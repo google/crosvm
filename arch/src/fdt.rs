@@ -177,7 +177,7 @@ pub fn create_memory_node(fdt: &mut Fdt, guest_mem: &GuestMemory) -> Result<()> 
         .filter(|region| match region.options.purpose {
             MemoryRegionPurpose::Bios => false,
             MemoryRegionPurpose::GuestMemoryRegion => true,
-            MemoryRegionPurpose::ProtectedFirmwareRegion => false,
+            MemoryRegionPurpose::ProtectedFirmwareRegion => true,
             MemoryRegionPurpose::ReservedMemory => true,
             #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
             MemoryRegionPurpose::StaticSwiotlbRegion => true,
