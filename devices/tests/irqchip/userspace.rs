@@ -731,10 +731,10 @@ impl VcpuX86_64 for FakeVcpu {
     fn set_xsave(&self, _xsave: &Xsave) -> Result<()> {
         unimplemented!()
     }
-    fn get_interrupt_state(&self) -> Result<AnySnapshot> {
+    fn get_hypervisor_specific_state(&self) -> Result<AnySnapshot> {
         unimplemented!()
     }
-    fn set_interrupt_state(&self, _data: AnySnapshot) -> Result<()> {
+    fn set_hypervisor_specific_state(&self, _data: AnySnapshot) -> Result<()> {
         unimplemented!()
     }
     fn get_debugregs(&self) -> Result<DebugRegs> {

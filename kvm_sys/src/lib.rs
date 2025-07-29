@@ -57,6 +57,8 @@ pub mod x86 {
     ioctl_iow_nr!(KVM_SET_XSAVE, KVMIO, 0xa5, kvm_xsave);
     ioctl_ior_nr!(KVM_GET_XCRS, KVMIO, 0xa6, kvm_xcrs);
     ioctl_iow_nr!(KVM_SET_XCRS, KVMIO, 0xa7, kvm_xcrs);
+    ioctl_iowr_nr!(KVM_GET_NESTED_STATE, KVMIO, 0xbe, kvm_nested_state);
+    ioctl_iow_nr!(KVM_SET_NESTED_STATE, KVMIO, 0xbf, kvm_nested_state);
     ioctl_iowr_nr!(KVM_GET_SUPPORTED_HV_CPUID, KVMIO, 0xc1, kvm_cpuid2);
     ioctl_iow_nr!(KVM_X86_SET_MSR_FILTER, KVMIO, 0xc6, kvm_msr_filter);
     ioctl_ior_nr!(KVM_GET_XSAVE2, KVMIO, 0xcf, kvm_xsave);

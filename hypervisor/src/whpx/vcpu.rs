@@ -973,7 +973,7 @@ impl VcpuX86_64 for WhpxVcpu {
         })
     }
 
-    fn get_interrupt_state(&self) -> Result<AnySnapshot> {
+    fn get_hypervisor_specific_state(&self) -> Result<AnySnapshot> {
         let mut whpx_interrupt_regs: WhpxInterruptRegs = Default::default();
         let reg_names = WhpxInterruptRegs::get_register_names();
         // SAFETY: we have enough space for all the registers & the memory lives for the duration
@@ -994,7 +994,7 @@ impl VcpuX86_64 for WhpxVcpu {
         })
     }
 
-    fn set_interrupt_state(&self, data: AnySnapshot) -> Result<()> {
+    fn set_hypervisor_specific_state(&self, data: AnySnapshot) -> Result<()> {
         let whpx_interrupt_regs =
             WhpxInterruptRegs::from_serializable(AnySnapshot::from_any(data).map_err(|e| {
                 error!("failed to serialize interrupt state: {:?}", e);
@@ -1119,7 +1119,7 @@ impl VcpuX86_64 for WhpxVcpu {
         //
         // We intentionally exclude WHvRegisterPendingInterruption and
         // WHvRegisterInterruptState because they are included in
-        // get_interrupt_state.
+        // get_hypervisor_specific_state.
         //
         // We intentionally exclude MSR_TSC because in snapshotting it is
         // handled by the generic x86_64 VCPU snapshot/restore. Non snapshot
@@ -1517,7 +1517,7 @@ mod tests {
     }
 
     #[test]
-    fn get_and_set_interrupt_state_smoke() {
+    fn get_and_set_hypervisor_specific_state_smoke() {
         if !Whpx::is_enabled() {
             return;
         }
@@ -1529,8 +1529,8 @@ mod tests {
 
         // For the sake of snapshotting, interrupt state is essentially opaque. We just want to make
         // sure our syscalls succeed.
-        let interrupt_state = vcpu.get_interrupt_state().unwrap();
-        vcpu.set_interrupt_state(interrupt_state).unwrap();
+        let interrupt_state = vcpu.get_hypervisor_specific_state().unwrap();
+        vcpu.set_hypervisor_specific_state(interrupt_state).unwrap();
     }
 
     #[test]

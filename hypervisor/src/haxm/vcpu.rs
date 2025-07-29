@@ -432,11 +432,11 @@ impl VcpuX86_64 for HaxmVcpu {
         Err(Error::new(EOPNOTSUPP))
     }
 
-    fn get_interrupt_state(&self) -> Result<AnySnapshot> {
+    fn get_hypervisor_specific_state(&self) -> Result<AnySnapshot> {
         Err(Error::new(EOPNOTSUPP))
     }
 
-    fn set_interrupt_state(&self, _data: AnySnapshot) -> Result<()> {
+    fn set_hypervisor_specific_state(&self, _data: AnySnapshot) -> Result<()> {
         Err(Error::new(EOPNOTSUPP))
     }
 

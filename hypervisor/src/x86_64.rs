@@ -135,13 +135,13 @@ pub trait VcpuX86_64: Vcpu {
     /// Sets the VCPU x87 FPU, MMX, XMM, YMM and MXCSR registers.
     fn set_xsave(&self, xsave: &Xsave) -> Result<()>;
 
-    /// Gets interrupt state (hypervisor specific) for this VCPU that must be
+    /// Gets hypervisor specific state for this VCPU that must be
     /// saved/restored for snapshotting.
-    fn get_interrupt_state(&self) -> Result<AnySnapshot>;
+    fn get_hypervisor_specific_state(&self) -> Result<AnySnapshot>;
 
-    /// Sets interrupt state (hypervisor specific) for this VCPU. Only used for
+    /// Sets hypervisor specific state for this VCPU. Only used for
     /// snapshotting.
-    fn set_interrupt_state(&self, data: AnySnapshot) -> Result<()>;
+    fn set_hypervisor_specific_state(&self, data: AnySnapshot) -> Result<()>;
 
     /// Gets a single model-specific register's value.
     fn get_msr(&self, msr_index: u32) -> Result<u64>;
@@ -236,7 +236,7 @@ pub trait VcpuX86_64: Vcpu {
             xcrs: self.get_xcrs()?,
             msrs: self.get_all_msrs()?,
             xsave: self.get_xsave()?,
-            hypervisor_data: self.get_interrupt_state()?,
+            hypervisor_data: self.get_hypervisor_specific_state()?,
             tsc_offset: self.get_tsc_offset()?,
         })
     }
@@ -292,7 +292,7 @@ pub trait VcpuX86_64: Vcpu {
             };
         }
         self.set_xsave(&snapshot.xsave)?;
-        self.set_interrupt_state(snapshot.hypervisor_data.clone())?;
+        self.set_hypervisor_specific_state(snapshot.hypervisor_data.clone())?;
         self.restore_timekeeping(host_tsc_reference_moment, snapshot.tsc_offset)?;
         Ok(())
     }

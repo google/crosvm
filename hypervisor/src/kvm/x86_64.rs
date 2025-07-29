@@ -591,6 +591,12 @@ impl KvmVcpu {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct HypervisorState {
+    interrupts: VcpuEvents,
+    nested_state: Vec<u8>,
+}
+
 impl VcpuX86_64 for KvmVcpu {
     #[allow(clippy::cast_ptr_alignment)]
     fn set_interrupt_window_requested(&self, requested: bool) {
@@ -801,39 +807,112 @@ impl VcpuX86_64 for KvmVcpu {
         }
     }
 
-    fn get_interrupt_state(&self) -> Result<AnySnapshot> {
+    fn get_hypervisor_specific_state(&self) -> Result<AnySnapshot> {
         let mut vcpu_evts: kvm_vcpu_events = Default::default();
-        let ret = {
-            // SAFETY:
-            // Safe because we know that our file is a VCPU fd, we know the kernel will only write
-            // the correct amount of memory to our pointer, and we verify the return
-            // result.
-            unsafe { ioctl_with_mut_ref(self, KVM_GET_VCPU_EVENTS, &mut vcpu_evts) }
-        };
-        if ret == 0 {
-            Ok(
-                AnySnapshot::to_any(VcpuEvents::from(&vcpu_evts)).map_err(|e| {
-                    error!("failed to serialize vcpu_events: {:?}", e);
-                    Error::new(EIO)
-                })?,
-            )
-        } else {
-            errno_result()
+        // SAFETY:
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only write
+        // the correct amount of memory to our pointer, and we verify the return
+        // result.
+        let ret = { unsafe { ioctl_with_mut_ref(self, KVM_GET_VCPU_EVENTS, &mut vcpu_evts) } };
+        if ret != 0 {
+            return errno_result();
         }
+        let interrupts = VcpuEvents::from(&vcpu_evts);
+        let ret =
+            // SAFETY:
+            // Safe because we know that our file is a valid VM fd
+            unsafe { ioctl_with_val(&self.vm, KVM_CHECK_EXTENSION, KVM_CAP_NESTED_STATE as u64) };
+        if ret < 0 {
+            return errno_result();
+        }
+        // 0 == unsupported
+        let nested_state = if ret == 0 {
+            Vec::new()
+        } else {
+            let mut nested_state: Vec<u8> = vec![0; ret as usize];
+            let nested_state_ptr = nested_state.as_ptr() as *mut kvm_nested_state;
+            assert!(nested_state_ptr.is_aligned());
+            // SAFETY:
+            // Casting this vector to kvm_nested_state meets all the requirements mentioned at
+            // https://doc.rust-lang.org/std/ptr/index.html#pointer-to-reference-conversion
+            // The pointer is validated to be aligned, the value is non-null, can be dereferenced,
+            // the pointer points to kvm_nested_state, which holds zeroes and is valid.
+            // No other references to this point exist and no other operation happens. The memory
+            // is only accessed via the reference the lifetime of the reference
+            unsafe {
+                (*nested_state_ptr).size = ret as u32;
+            }
+            assert!(nested_state.as_ptr().is_aligned());
+            // SAFETY:
+            // Safe because we know out FD is a valid VCPU fd, and  we got the size
+            // of nested state from the KVM_CAP_NESTED_STATE call.
+            let ret = unsafe {
+                ioctl_with_mut_ptr(self, KVM_GET_NESTED_STATE, nested_state.as_mut_ptr())
+            };
+            if ret < 0 {
+                return errno_result();
+            }
+            nested_state
+        };
+        AnySnapshot::to_any(HypervisorState {
+            interrupts,
+            nested_state,
+        })
+        .map_err(|e| {
+            error!("failed to serialize hypervisor state: {:?}", e);
+            Error::new(EIO)
+        })
     }
 
-    fn set_interrupt_state(&self, data: AnySnapshot) -> Result<()> {
-        let vcpu_events =
-            kvm_vcpu_events::from(&AnySnapshot::from_any::<VcpuEvents>(data).map_err(|e| {
-                error!("failed to deserialize vcpu_events: {:?}", e);
-                Error::new(EIO)
-            })?);
+    fn set_hypervisor_specific_state(&self, data: AnySnapshot) -> Result<()> {
+        let hypervisor_state = AnySnapshot::from_any::<HypervisorState>(data).map_err(|e| {
+            error!("failed to deserialize hypervisor_state: {:?}", e);
+            Error::new(EIO)
+        })?;
+        let vcpu_events = kvm_vcpu_events::from(&hypervisor_state.interrupts);
         let ret = {
             // SAFETY:
             // Safe because we know that our file is a VCPU fd, we know the kernel will only read
             // the correct amount of memory from our pointer, and we verify the return
             // result.
             unsafe { ioctl_with_ref(self, KVM_SET_VCPU_EVENTS, &vcpu_events) }
+        };
+        if ret != 0 {
+            return errno_result();
+        }
+        if hypervisor_state.nested_state.is_empty() {
+            return Ok(());
+        }
+        // SAFETY:
+        // Casting this vector to kvm_nested_state meets all the requirements mentioned at
+        // https://doc.rust-lang.org/std/ptr/index.html#pointer-to-reference-conversion
+        // The pointer is validated to be aligned, the value is non-null, can be dereferenced,
+        // the pointer points to Vec<u8>, which is initialized and a valid value.
+        // No other references to this point exist and no other operation happens. The memory
+        // is not modified by any operation. The pointer is dropped after validating that size is
+        // smaller than the vector length.
+        unsafe {
+            let vec_len = hypervisor_state.nested_state.len();
+            assert!(
+                (hypervisor_state.nested_state.as_ptr() as *const kvm_nested_state).is_aligned()
+            );
+            if (*(hypervisor_state.nested_state.as_ptr() as *const kvm_nested_state)).size
+                > vec_len as u32
+            {
+                error!("Invalued nested state data, size larger than vec allocated.");
+                return Err(Error::new(EINVAL));
+            }
+        }
+        // SAFETY:
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only read
+        // the correct amount of memory from our pointer, and we verify the return
+        // result.
+        let ret = unsafe {
+            ioctl_with_ptr(
+                self,
+                KVM_SET_NESTED_STATE,
+                hypervisor_state.nested_state.as_ptr(),
+            )
         };
         if ret == 0 {
             Ok(())
