@@ -1577,6 +1577,14 @@ impl VfioDevice {
                     return Err(VfioError::VfioDeviceGetRegionInfo(get_error()));
                 }
 
+                // Some drivers (e.g. for NVIDIA vGPUs) do not fully populate the
+                // `vfio_region_info` structure in response to the
+                // `VFIO_DEVICE_GET_REGION_INFO` call if the passed size is not enough
+                // to hold the entirety of the data.
+                // This ensures we use complete data when we construct the `VfioRegion`
+                // instance.
+                reg_info = region_with_cap[0].region_info;
+
                 if region_with_cap[0].region_info.flags & VFIO_REGION_INFO_FLAG_CAPS == 0 {
                     continue;
                 }
