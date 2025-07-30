@@ -1,2 +1,9 @@
+# Restricted OWNERS to avoid accidentally forking the library.
+# Send changes upstream!
+# https://gitlab.freedesktop.org/mesa/mesa/-/tree/main/src/util/rust
+set noparent
+
+file:../../OWNERS_COUNCIL
+
 # rutabaga specialist
 gurchetansingh@chromium.org
