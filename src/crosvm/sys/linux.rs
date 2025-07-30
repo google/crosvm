@@ -4843,7 +4843,7 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
         .create_jail(jail_config, jail_type)
         .with_context(|| format!("failed to create jail for {}", name))?
         .ok_or(())
-        .or_else(|_| create_default_minijail())
+        .or_else(|_| Minijail::new())
         .with_context(|| format!("failed to create empty jail for {}", name))?;
 
     // Create the device in the parent process, so the child does not need any privileges necessary
