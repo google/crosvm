@@ -9,9 +9,8 @@ use crate::MesaResult;
 use crate::OwnedDescriptor;
 use crate::TubeType;
 
-pub struct Stub(());
-pub type Tube = Stub;
-pub type Listener = Stub;
+pub struct Tube;
+pub struct Listener;
 
 impl Tube {
     pub fn new<P: AsRef<Path>>(_path: P, _kind: TubeType) -> MesaResult<Tube> {

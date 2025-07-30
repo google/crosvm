@@ -7,7 +7,7 @@ use crate::MesaHandle;
 use crate::MesaResult;
 use crate::OwnedDescriptor;
 
-pub struct Event(());
+pub struct Event;
 
 impl Event {
     pub fn new() -> MesaResult<Event> {

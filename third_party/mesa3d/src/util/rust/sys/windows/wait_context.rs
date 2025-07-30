@@ -7,8 +7,7 @@ use crate::OwnedDescriptor;
 use crate::WaitEvent;
 use crate::WaitTimeout;
 
-pub struct Stub(());
-pub type WaitContext = Stub;
+pub struct WaitContext;
 
 impl WaitContext {
     pub fn new() -> MesaResult<WaitContext> {

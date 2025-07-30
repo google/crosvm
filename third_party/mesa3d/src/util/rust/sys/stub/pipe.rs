@@ -8,11 +8,8 @@ use crate::MesaResult;
 use crate::OwnedDescriptor;
 use crate::RawDescriptor;
 
-pub struct ReadPipeStub(());
-pub struct WritePipeStub(());
-
-pub type ReadPipe = ReadPipeStub;
-pub type WritePipe = WritePipeStub;
+pub struct ReadPipe;
+pub struct WritePipe;
 
 pub fn create_pipe() -> MesaResult<(ReadPipe, WritePipe)> {
     Err(MesaError::Unsupported)
