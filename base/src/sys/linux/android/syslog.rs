@@ -22,7 +22,7 @@ use crate::syslog::Syslog;
 use crate::RawDescriptor;
 
 pub struct PlatformSyslog {
-    proc_name: String,
+    proc_name: CString,
 }
 
 impl Syslog for PlatformSyslog {
@@ -30,7 +30,12 @@ impl Syslog for PlatformSyslog {
         proc_name: String,
         _facility: Facility,
     ) -> Result<(Option<Box<dyn Log + Send>>, Option<RawDescriptor>), &'static Error> {
-        Ok((Some(Box::new(Self { proc_name })), None))
+        Ok((
+            Some(Box::new(Self {
+                proc_name: CString::new(proc_name).unwrap(),
+            })),
+            None,
+        ))
     }
 }
 
@@ -73,12 +78,11 @@ impl Log for PlatformSyslog {
 fn android_log(
     buffer_id: log_id_t,
     priority: LogPriority,
-    tag: &str,
+    tag: &CString,
     file: Option<&str>,
     line: Option<u32>,
     message: &str,
 ) -> Result<(), NulError> {
-    let tag = CString::new(tag)?;
     let default_pri = LogPriority::VERBOSE;
     // SAFETY: `tag` is guaranteed to be valid for duration of the call
     if unsafe { __android_log_is_loggable(priority as i32, tag.as_ptr(), default_pri as i32) } != 0
