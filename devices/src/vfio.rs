@@ -984,6 +984,9 @@ pub struct VfioRegion {
     mmaps: Vec<vfio_region_sparse_mmap_area>,
     // type and subtype for cap type
     cap_info: Option<(u32, u32)>,
+    // if true, then the caller can safely mmap the MSIX region
+    // if false, the caller should remove the MSIX part of the region before mmapping
+    msix_region_mmappable: bool,
 }
 
 /// Vfio device for exposing regions which could be read/write to kernel vfio device.
@@ -1553,6 +1556,7 @@ impl VfioDevice {
 
             let mut mmaps: Vec<vfio_region_sparse_mmap_area> = Vec::new();
             let mut cap_info: Option<(u32, u32)> = None;
+            let mut msix_region_mmappable = false;
             if reg_info.argsz > argsz {
                 let cap_len: usize = (reg_info.argsz - argsz) as usize;
                 let mut region_with_cap =
@@ -1637,6 +1641,12 @@ impl VfioDevice {
                         for area in areas.iter() {
                             mmaps.push(*area);
                         }
+
+                        // Sparse regions means the driver can decide which parts of the BAR are
+                        // safe to mmap. If that overlaps with the MSIX
+                        // data, that's the decision of the driver.
+                        // This is required for some devices (e.g. NVIDIA vGPUs).
+                        msix_region_mmappable = true;
                     } else if cap_header.id as u32 == VFIO_REGION_INFO_CAP_TYPE {
                         if offset + type_cap_sz > region_info_sz {
                             break;
@@ -1654,6 +1664,7 @@ impl VfioDevice {
                             offset: 0,
                             size: region_with_cap[0].region_info.size,
                         });
+                        msix_region_mmappable = true;
                     }
 
                     offset = cap_header.next;
@@ -1671,6 +1682,7 @@ impl VfioDevice {
                 offset: reg_info.offset,
                 mmaps,
                 cap_info,
+                msix_region_mmappable,
             };
             regions.push(region);
         }
@@ -1731,6 +1743,18 @@ impl VfioDevice {
             None => {
                 warn!("get_region_mmap with invalid index: {}", index);
                 Vec::new()
+            }
+        }
+    }
+
+    /// get if the MSIX data with a region is safe to mmap, or if it should be removed
+    /// before mmapping
+    pub fn get_region_msix_mmappable(&self, index: usize) -> bool {
+        match self.regions.get(index) {
+            Some(v) => v.msix_region_mmappable,
+            None => {
+                warn!("get_region_msix_mmappable with invalid index: {}", index);
+                false
             }
         }
     }
