@@ -180,11 +180,11 @@ mod test {
         //  l trb  -   l trb  -   l trb to 0x100
         let mut trb = NormalTrb::new();
         trb.set_trb_type(TrbType::Normal);
-        trb.set_data_buffer(1);
+        trb.set_data_buffer_pointer(1);
         trb.set_chain(true);
         gm.write_obj_at_addr(trb, GuestAddress(0x100)).unwrap();
 
-        trb.set_data_buffer(2);
+        trb.set_data_buffer_pointer(2);
         gm.write_obj_at_addr(trb, GuestAddress(0x100 + trb_size))
             .unwrap();
 
@@ -194,11 +194,11 @@ mod test {
         gm.write_obj_at_addr(ltrb, GuestAddress(0x100 + 2 * trb_size))
             .unwrap();
 
-        trb.set_data_buffer(3);
+        trb.set_data_buffer_pointer(3);
         gm.write_obj_at_addr(trb, GuestAddress(0x200)).unwrap();
 
         // Chain bit is false.
-        trb.set_data_buffer(4);
+        trb.set_data_buffer_pointer(4);
         trb.set_chain(false);
         gm.write_obj_at_addr(trb, GuestAddress(0x200 + 1 * trb_size))
             .unwrap();
@@ -207,12 +207,12 @@ mod test {
         gm.write_obj_at_addr(ltrb, GuestAddress(0x200 + 2 * trb_size))
             .unwrap();
 
-        trb.set_data_buffer(5);
+        trb.set_data_buffer_pointer(5);
         trb.set_chain(true);
         gm.write_obj_at_addr(trb, GuestAddress(0x300)).unwrap();
 
         // Chain bit is false.
-        trb.set_data_buffer(6);
+        trb.set_data_buffer_pointer(6);
         trb.set_chain(false);
         gm.write_obj_at_addr(trb, GuestAddress(0x300 + 1 * trb_size))
             .unwrap();
@@ -253,11 +253,11 @@ mod test {
 
         let mut trb = NormalTrb::new();
         trb.set_trb_type(TrbType::Normal);
-        trb.set_data_buffer(1);
+        trb.set_data_buffer_pointer(1);
         trb.set_chain(true);
         gm.write_obj_at_addr(trb, GuestAddress(0x100)).unwrap();
 
-        trb.set_data_buffer(2);
+        trb.set_data_buffer_pointer(2);
         gm.write_obj_at_addr(trb, GuestAddress(0x100 + trb_size))
             .unwrap();
 
@@ -268,7 +268,7 @@ mod test {
         gm.write_obj_at_addr(ltrb, GuestAddress(0x100 + 2 * trb_size))
             .unwrap();
 
-        trb.set_data_buffer(3);
+        trb.set_data_buffer_pointer(3);
         gm.write_obj_at_addr(trb, GuestAddress(0x200)).unwrap();
 
         transfer_ring.set_dequeue_pointer(GuestAddress(0x100));
@@ -287,7 +287,7 @@ mod test {
 
         let mut trb = NormalTrb::new();
         trb.set_trb_type(TrbType::Normal);
-        trb.set_data_buffer(1);
+        trb.set_data_buffer_pointer(1);
         trb.set_chain(false);
         trb.set_cycle(false);
         gm.write_obj_at_addr(trb, GuestAddress(0x100)).unwrap();
@@ -319,7 +319,7 @@ mod test {
         // with the new producer cycle bit state (true).
         let mut trb = NormalTrb::new();
         trb.set_trb_type(TrbType::Normal);
-        trb.set_data_buffer(2);
+        trb.set_data_buffer_pointer(2);
         trb.set_cycle(true); // Link TRB toggled the cycle.
         gm.write_obj_at_addr(trb, GuestAddress(0x100)).unwrap();
 
@@ -346,7 +346,7 @@ mod test {
         // with the new producer cycle bit state (false).
         let mut trb = NormalTrb::new();
         trb.set_trb_type(TrbType::Normal);
-        trb.set_data_buffer(3);
+        trb.set_data_buffer_pointer(3);
         trb.set_cycle(false); // Link TRB toggled the cycle.
         gm.write_obj_at_addr(trb, GuestAddress(0x100)).unwrap();
 

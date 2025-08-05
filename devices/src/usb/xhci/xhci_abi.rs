@@ -298,7 +298,7 @@ impl Trb {
 #[bitfield]
 #[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct NormalTrb {
-    data_buffer: B64,
+    data_buffer_pointer: B64,
     trb_transfer_length: B17,
     td_size: B5,
     interrupter_target: B10,
@@ -381,7 +381,7 @@ pub struct IsochTrb {
     td_size: B5,
     interrupter_target: B10,
     cycle: bool,
-    evaulate_nex_trb: B1,
+    evaulate_next_trb: B1,
     interrupt_on_short_packet: B1,
     no_snoop: B1,
     chain: bool,
