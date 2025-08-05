@@ -161,8 +161,22 @@ pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
 
     // Parent, nothing to do but wait and then exit
     if pid != 0 {
+        let mut status: i32 = 0;
         // SAFETY: trivially safe
-        unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
+        unsafe { libc::waitpid(pid, &mut status, 0) };
+
+        if libc::WIFSIGNALED(status) {
+            let signal = libc::WTERMSIG(status);
+            bail!("Child process {} was killed by signal {}", pid, signal);
+        }
+
+        if libc::WIFEXITED(status) {
+            let exit_code = libc::WEXITSTATUS(status);
+            if exit_code != 0 {
+                bail!("Child process {} exited with code {}", pid, exit_code);
+            }
+        }
+
         return Ok(());
     }
 

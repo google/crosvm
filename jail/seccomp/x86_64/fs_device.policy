@@ -52,6 +52,7 @@ setresuid: 1
 symlinkat: 1
 statx: 1
 umask: 1
+unlink: 1
 unlinkat: 1
 utimensat: 1
 prctl: arg0 == PR_SET_NAME || arg0 == PR_SET_SECUREBITS || arg0 == PR_GET_SECUREBITS
