@@ -437,6 +437,7 @@ pub fn create_vhost_user_frontend(
     protection_type: ProtectionType,
     opt: &VhostUserFrontendOption,
     connect_timeout_ms: Option<u64>,
+    vm_evt_wrtube: base::SendTube,
 ) -> DeviceResult {
     let connection = if let Some(socket_fd) = safe_descriptor_from_path(&opt.socket)? {
         socket_fd
@@ -449,6 +450,7 @@ pub fn create_vhost_user_frontend(
         opt.type_,
         virtio::base_features(protection_type),
         connection,
+        vm_evt_wrtube,
         opt.max_queue_size,
         opt.pci_address,
     )

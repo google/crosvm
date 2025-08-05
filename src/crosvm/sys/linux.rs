@@ -899,6 +899,7 @@ fn create_virtio_devices(
             cfg.protection_type,
             opt,
             cfg.vhost_user_connect_timeout_ms,
+            vm_evt_wrtube.try_clone()?,
         )?);
     }
 
@@ -4078,6 +4079,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             }
                             VmEventType::Crash => {
                                 info!("vcpu crashed");
+                                exit_state = ExitState::Crash;
+                            }
+                            VmEventType::DeviceCrashed => {
+                                info!("device crashed");
                                 exit_state = ExitState::Crash;
                             }
                             VmEventType::Panic(panic_code) => {

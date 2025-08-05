@@ -25,6 +25,7 @@ use base::Event;
 use base::RawDescriptor;
 use base::ReadNotifier;
 use base::SafeDescriptor;
+use base::SendTube;
 use base::WorkerThread;
 use snapshot::AnySnapshot;
 use vm_memory::GuestMemory;
@@ -54,7 +55,7 @@ use crate::PciAddress;
 
 pub struct VhostUserFrontend {
     device_type: DeviceType,
-    worker_thread: Option<WorkerThread<Option<BackendReqHandler>>>,
+    worker_thread: Option<WorkerThread<(Option<BackendReqHandler>, SendTube)>>,
 
     backend_client: BackendClient,
     avail_features: u64,
@@ -71,6 +72,7 @@ pub struct VhostUserFrontend {
     queue_sizes: Vec<u16>,
     expose_shmem_descriptors_with_viommu: bool,
     pci_address: Option<PciAddress>,
+    vm_evt_wrtube: SendTube,
 
     // Queues that have been sent to the backend. Always `Some` when active and not asleep. Saved
     // for use in `virtio_sleep`. Since the backend is managing them, the local state of the queue
@@ -103,6 +105,7 @@ impl VhostUserFrontend {
         device_type: DeviceType,
         mut base_features: u64,
         connection: vmm_vhost::Connection<vmm_vhost::FrontendReq>,
+        vm_evt_wrtube: SendTube,
         max_queue_size: Option<u16>,
         pci_address: Option<PciAddress>,
     ) -> Result<VhostUserFrontend> {
@@ -225,6 +228,7 @@ impl VhostUserFrontend {
             queue_sizes,
             expose_shmem_descriptors_with_viommu,
             pci_address,
+            vm_evt_wrtube,
             sent_queues: None,
         })
     }
@@ -342,6 +346,11 @@ impl VhostUserFrontend {
             SafeDescriptor::try_from(self.backend_client.get_close_notifier())
                 .expect("failed to get backend close notifier");
 
+        let vm_evt_wrtube = self
+            .vm_evt_wrtube
+            .try_clone()
+            .expect("failed to clone vm_evt_wrtube");
+
         self.worker_thread = Some(WorkerThread::start(label.clone(), move |kill_evt| {
             let mut worker = Worker {
                 kill_evt,
@@ -351,11 +360,17 @@ impl VhostUserFrontend {
                 #[cfg(windows)]
                 backend_client_close_notifier,
             };
-            worker
+            if let Err(e) = worker
                 .run(interrupt)
                 .with_context(|| format!("{label}: vhost_user_frontend worker failed"))
-                .unwrap();
-            worker.backend_req_handler
+            {
+                error!("vhost-user worker thread exited with an error: {:#}", e);
+
+                if let Err(e) = vm_evt_wrtube.send(&base::VmEventType::DeviceCrashed) {
+                    error!("failed to send crash event: {}", e);
+                }
+            }
+            (worker.backend_req_handler, vm_evt_wrtube)
         }));
     }
 }
@@ -482,7 +497,9 @@ impl VirtioDevice for VhostUserFrontend {
         }
 
         if let Some(w) = self.worker_thread.take() {
-            self.backend_req_handler = w.stop();
+            let (backend_req_handler, vm_evt_wrtube) = w.stop();
+            self.backend_req_handler = backend_req_handler;
+            self.vm_evt_wrtube = vm_evt_wrtube;
         }
 
         self.sent_set_features = false;
@@ -576,7 +593,9 @@ impl VirtioDevice for VhostUserFrontend {
         }
 
         if let Some(w) = self.worker_thread.take() {
-            self.backend_req_handler = w.stop();
+            let (backend_req_handler, vm_evt_wrtube) = w.stop();
+            self.backend_req_handler = backend_req_handler;
+            self.vm_evt_wrtube = vm_evt_wrtube;
         }
 
         Ok(Some(queues))

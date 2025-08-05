@@ -291,11 +291,13 @@ type DeviceResult<T = VirtioDeviceStub> = Result<T>;
 fn create_vhost_user_block_device(
     cfg: &Config,
     connection: Connection<FrontendReq>,
+    vm_evt_wrtube: SendTube,
 ) -> DeviceResult {
     let dev = virtio::VhostUserFrontend::new(
         virtio::DeviceType::Block,
         virtio::base_features(cfg.protection_type),
         connection,
+        vm_evt_wrtube,
         None,
         None,
     )
@@ -332,11 +334,13 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
 fn create_vhost_user_gpu_device(
     base_features: u64,
     connection: Connection<FrontendReq>,
+    vm_evt_wrtube: SendTube,
 ) -> DeviceResult {
     let dev = virtio::VhostUserFrontend::new(
         virtio::DeviceType::Gpu,
         base_features,
         connection,
+        vm_evt_wrtube,
         None,
         None,
     )
@@ -355,11 +359,13 @@ fn create_vhost_user_gpu_device(
 fn create_vhost_user_snd_device(
     base_features: u64,
     connection: Connection<FrontendReq>,
+    vm_evt_wrtube: SendTube,
 ) -> DeviceResult {
     let dev = virtio::VhostUserFrontend::new(
         virtio::DeviceType::Sound,
         base_features,
         connection,
+        vm_evt_wrtube,
         None,
         None,
     )
@@ -409,14 +415,24 @@ fn create_mouse_device(cfg: &Config, event_pipe: StreamChannel, idx: u32) -> Dev
 }
 
 #[cfg(feature = "slirp")]
-fn create_vhost_user_net_device(cfg: &Config, connection: Connection<FrontendReq>) -> DeviceResult {
+fn create_vhost_user_net_device(
+    cfg: &Config,
+    connection: Connection<FrontendReq>,
+    vm_evt_wrtube: SendTube,
+) -> DeviceResult {
     let features = virtio::base_features(cfg.protection_type);
-    let dev =
-        virtio::VhostUserFrontend::new(virtio::DeviceType::Net, features, connection, None, None)
-            .exit_context(
-            Exit::VhostUserNetDeviceNew,
-            "failed to set up vhost-user net device",
-        )?;
+    let dev = virtio::VhostUserFrontend::new(
+        virtio::DeviceType::Net,
+        features,
+        connection,
+        vm_evt_wrtube,
+        None,
+        None,
+    )
+    .exit_context(
+        Exit::VhostUserNetDeviceNew,
+        "failed to set up vhost-user net device",
+    )?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -527,7 +543,11 @@ fn create_virtio_devices(
         for _disk in &cfg.disks {
             let disk_device_tube = cfg.block_vhost_user_tube.remove(0);
             let connection = Connection::<FrontendReq>::from(disk_device_tube);
-            devs.push(create_vhost_user_block_device(cfg, connection)?);
+            devs.push(create_vhost_user_block_device(
+                cfg,
+                connection,
+                vm_evt_wrtube.try_clone()?,
+            )?);
         }
     }
 
@@ -548,6 +568,7 @@ fn create_virtio_devices(
                 cfg,
                 &mut snd_split_cfg,
                 control_tubes,
+                vm_evt_wrtube.try_clone()?,
             )?);
             if let Some(vmm_config) = snd_split_cfg.vmm_config {
                 let initial_audio_session_state = InitialAudioSessionState {
@@ -569,7 +590,11 @@ fn create_virtio_devices(
     #[cfg(feature = "slirp")]
     if let Some(net_vhost_user_tube) = cfg.net_vhost_user_tube.take() {
         let connection = Connection::<FrontendReq>::from(net_vhost_user_tube);
-        devs.push(create_vhost_user_net_device(cfg, connection)?);
+        devs.push(create_vhost_user_net_device(
+            cfg,
+            connection,
+            vm_evt_wrtube.try_clone()?,
+        )?);
     }
 
     #[cfg(feature = "balloon")]
@@ -631,6 +656,7 @@ fn create_virtio_devices(
             event_devices,
             &mut wndproc_thread,
             control_tubes,
+            vm_evt_wrtube.try_clone()?,
         )?);
     }
 
@@ -719,6 +745,7 @@ fn create_virtio_gpu_device(
     event_devices: Option<Vec<EventDevice>>,
     wndproc_thread: &mut Option<WindowProcedureThread>,
     #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
+    vm_evt_wrtube: SendTube,
 ) -> DeviceResult<VirtioDeviceStub> {
     let resource_bridges = Vec::<Tube>::new();
 
@@ -745,8 +772,12 @@ fn create_virtio_gpu_device(
         .expect("GPU VMM vhost-user tube should be set");
     let connection = Connection::<FrontendReq>::from(gpu_device_tube);
 
-    create_vhost_user_gpu_device(virtio::base_features(cfg.protection_type), connection)
-        .context("create vhost-user GPU device")
+    create_vhost_user_gpu_device(
+        virtio::base_features(cfg.protection_type),
+        connection,
+        vm_evt_wrtube,
+    )
+    .context("create vhost-user GPU device")
 }
 
 #[cfg(feature = "audio")]
@@ -754,6 +785,7 @@ fn create_virtio_snd_device(
     cfg: &mut Config,
     snd_split_config: &mut SndSplitConfig,
     #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
+    vm_evt_wrtube: SendTube,
 ) -> DeviceResult<VirtioDeviceStub> {
     let snd_vmm_config = snd_split_config
         .vmm_config
@@ -773,8 +805,12 @@ fn create_virtio_snd_device(
         .expect("Snd VMM vhost-user tube should be set");
     let connection = Connection::<FrontendReq>::from(snd_device_tube);
 
-    create_vhost_user_snd_device(virtio::base_features(cfg.protection_type), connection)
-        .context("create vhost-user SND device")
+    create_vhost_user_snd_device(
+        virtio::base_features(cfg.protection_type),
+        connection,
+        vm_evt_wrtube,
+    )
+    .context("create vhost-user SND device")
 }
 
 fn create_devices(
@@ -942,6 +978,10 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     }
                     VmEventType::Crash => {
                         info!("vcpu crashed");
+                        Some(ExitState::Crash)
+                    }
+                    VmEventType::DeviceCrashed => {
+                        info!("device crashed");
                         Some(ExitState::Crash)
                     }
                     VmEventType::Panic(_) => {

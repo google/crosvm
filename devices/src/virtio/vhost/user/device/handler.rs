@@ -1111,14 +1111,21 @@ mod tests {
 
         let (ready_tx, ready_rx) = channel();
         let (shutdown_tx, shutdown_rx) = channel();
+        let (vm_evt_wrtube, _vm_evt_rdtube) = base::Tube::directional_pair().unwrap();
 
         std::thread::spawn(move || {
             // VMM side
             ready_rx.recv().unwrap(); // Ensure the device is ready.
 
-            let mut vmm_device =
-                VhostUserFrontend::new(DeviceType::Console, 0, client_connection, None, None)
-                    .unwrap();
+            let mut vmm_device = VhostUserFrontend::new(
+                DeviceType::Console,
+                0,
+                client_connection,
+                vm_evt_wrtube,
+                None,
+                None,
+            )
+            .unwrap();
 
             println!("read_config");
             let mut config = FakeConfig::new_zeroed();
