@@ -1104,4 +1104,14 @@ impl DeviceSlot {
         self.set_device_context(device_context)?;
         Ok(())
     }
+
+    pub fn get_max_esit_payload(&self, endpoint_id: u8) -> Result<u32> {
+        let index = endpoint_id - 1;
+        let device_context = self.get_device_context()?;
+        let endpoint_context = device_context.endpoint_context[index as usize];
+
+        let lo = endpoint_context.get_max_esit_payload_lo() as u32;
+        let hi = endpoint_context.get_max_esit_payload_hi() as u32;
+        Ok(hi << 16 | lo)
+    }
 }
