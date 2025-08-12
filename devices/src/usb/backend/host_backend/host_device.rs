@@ -229,6 +229,18 @@ impl BackendDevice for HostDevice {
         ))
     }
 
+    fn build_isochronous_transfer(
+        &mut self,
+        ep_addr: u8,
+        transfer_buffer: TransferBuffer,
+        packet_size: u32,
+    ) -> Result<BackendTransferType> {
+        Ok(BackendTransferType::HostDevice(
+            Transfer::new_isochronous(ep_addr, transfer_buffer, packet_size)
+                .map_err(Error::CreateTransfer)?,
+        ))
+    }
+
     fn get_control_transfer_state(&mut self) -> Arc<RwLock<ControlTransferState>> {
         self.control_transfer_state.clone()
     }

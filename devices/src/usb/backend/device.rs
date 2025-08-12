@@ -131,6 +131,23 @@ impl BackendDevice for BackendDeviceType {
         )
     }
 
+    fn build_isochronous_transfer(
+        &mut self,
+        ep_addr: u8,
+        transfer_buffer: TransferBuffer,
+        packet_size: u32,
+    ) -> Result<BackendTransferType> {
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice FidoDevice,
+            build_isochronous_transfer,
+            ep_addr,
+            transfer_buffer,
+            packet_size
+        )
+    }
+
     fn get_control_transfer_state(&mut self) -> Arc<RwLock<ControlTransferState>> {
         multi_dispatch!(
             self,
@@ -773,18 +790,25 @@ pub trait BackendDevice: Sync + Send {
     /// by this function must be consumed by `submit_backend_transfer()`.
     fn request_transfer_buffer(&mut self, size: usize) -> TransferBuffer;
 
-    /// Requests the backend to build a backend-specific bulk transfer request
+    /// Requests the backend to build a backend-specific bulk transfer request.
     fn build_bulk_transfer(
         &mut self,
         ep_addr: u8,
         transfer_buffer: TransferBuffer,
         stream_id: Option<u16>,
     ) -> Result<BackendTransferType>;
-    /// Requests the backend to build a backend-specific interrupt transfer request
+    /// Requests the backend to build a backend-specific interrupt transfer request.
     fn build_interrupt_transfer(
         &mut self,
         ep_addr: u8,
         transfer_buffer: TransferBuffer,
+    ) -> Result<BackendTransferType>;
+    /// Requests the backend to build a backend-specific isochronous transfer request.
+    fn build_isochronous_transfer(
+        &mut self,
+        ep_addr: u8,
+        transfer_buffer: TransferBuffer,
+        packet_size: u32,
     ) -> Result<BackendTransferType>;
 
     /// Returns the `ControlTransferState` for the given backend device.
