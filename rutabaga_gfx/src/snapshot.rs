@@ -47,10 +47,8 @@ impl RutabagaSnapshotWriter {
             .open(fragment_path)
             .map_err(|_| RutabagaError::SnapshotError)?;
         let mut fragment_writer = BufWriter::new(fragment_file);
-        serde_json::to_writer(&mut fragment_writer, t).map_err(|_| RutabagaError::SnapshotError)?;
-        fragment_writer
-            .flush()
-            .map_err(|_| RutabagaError::SnapshotError)?;
+        serde_json::to_writer(&mut fragment_writer, t)?;
+        fragment_writer.flush().map_err(MesaError::IoError)?;
         Ok(())
     }
 }
@@ -81,8 +79,8 @@ impl RutabagaSnapshotReader {
 
     pub fn get_fragment<T: serde::de::DeserializeOwned>(&self, name: &str) -> RutabagaResult<T> {
         let fragment_path = self.dir.join(name);
-        let fragment_file = File::open(fragment_path).map_err(|_| RutabagaError::SnapshotError)?;
+        let fragment_file = File::open(fragment_path).map_err(MesaError::IoError)?;
         let mut fragment_reader = BufReader::new(fragment_file);
-        serde_json::from_reader(&mut fragment_reader).map_err(|_| RutabagaError::SnapshotError)
+        Ok(serde_json::from_reader(&mut fragment_reader)?)
     }
 }

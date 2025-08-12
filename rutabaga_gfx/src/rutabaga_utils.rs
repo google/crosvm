@@ -14,6 +14,7 @@ use mesa3d_util::MesaError;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Error as SerdeJsonError;
 use thiserror::Error;
 #[cfg(feature = "vulkano")]
 use vulkano::device::DeviceCreationError;
@@ -314,6 +315,9 @@ pub enum RutabagaError {
     /// A Mesa Error
     #[error("An mesa error was returned {0}")]
     MesaError(MesaError),
+    /// A snapshot JSON error was returned
+    #[error("An serde json snapshot error was returned {0}")]
+    SerdeJsonError(SerdeJsonError),
     /// A snapshot Error
     #[error("An snapshot error was returned")]
     SnapshotError,
@@ -350,6 +354,12 @@ pub enum RutabagaError {
 impl From<MesaError> for RutabagaError {
     fn from(e: MesaError) -> RutabagaError {
         RutabagaError::MesaError(e)
+    }
+}
+
+impl From<SerdeJsonError> for RutabagaError {
+    fn from(e: SerdeJsonError) -> RutabagaError {
+        RutabagaError::SerdeJsonError(e)
     }
 }
 
