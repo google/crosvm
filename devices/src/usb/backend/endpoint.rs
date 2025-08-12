@@ -89,7 +89,9 @@ impl UsbEndpoint {
             .get_transfer_type()
             .map_err(Error::GetXhciTransferType)?
         {
-            XhciTransferType::Normal => transfer.create_buffer().map_err(Error::CreateBuffer)?,
+            XhciTransferType::Normal | XhciTransferType::Isochronous => {
+                transfer.create_buffer().map_err(Error::CreateBuffer)?
+            }
             XhciTransferType::Noop => {
                 return transfer
                     .on_transfer_complete(&TransferStatus::Completed, 0)
@@ -109,6 +111,9 @@ impl UsbEndpoint {
             }
             EndpointType::Interrupt => {
                 self.handle_interrupt_transfer(device, transfer, buffer)?;
+            }
+            EndpointType::Isochronous => {
+                self.handle_isochronous_transfer(device, transfer, buffer)?;
             }
             _ => {
                 return transfer
@@ -169,6 +174,28 @@ impl UsbEndpoint {
     ) -> Result<()> {
         let transfer_buffer = self.get_transfer_buffer(&buffer, device)?;
         let usb_transfer = device.build_interrupt_transfer(self.ep_addr(), transfer_buffer)?;
+        self.do_handle_transfer(device, xhci_transfer, usb_transfer, buffer)
+    }
+
+    fn handle_isochronous_transfer(
+        &self,
+        device: &mut BackendDeviceType,
+        xhci_transfer: XhciTransfer,
+        buffer: ScatterGatherBuffer,
+    ) -> Result<()> {
+        // We do not support OUT transfer yet.
+        if self.direction == EndpointDirection::HostToDevice {
+            return xhci_transfer
+                .on_transfer_complete(&TransferStatus::Error, 0)
+                .map_err(Error::TransferComplete);
+        }
+
+        let max_payload = xhci_transfer
+            .get_max_payload()
+            .map_err(Error::TransferGetMaxPayload)?;
+        let transfer_buffer = self.get_transfer_buffer(&buffer, device)?;
+        let usb_transfer =
+            device.build_isochronous_transfer(self.ep_addr(), transfer_buffer, max_payload)?;
         self.do_handle_transfer(device, xhci_transfer, usb_transfer, buffer)
     }
 

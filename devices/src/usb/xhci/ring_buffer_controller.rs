@@ -184,30 +184,36 @@ where
     fn on_event(&self) -> anyhow::Result<()> {
         // `self.event` triggers ring buffer controller to run.
         self.event.wait().context("cannot read from event")?;
-        let mut state = self.state.lock();
 
-        match *state {
-            RingBufferState::Stopped => return Ok(()),
-            RingBufferState::Running => {}
-        }
+        // ISOC transfers post many small descriptors at once, which need to be submitted to xHCI
+        // as soon as possible to keep up with the transfer rate. Otherwise, the device will send
+        // an error in later TDs.
+        loop {
+            let mut state = self.state.lock();
 
-        let transfer_descriptor = self
-            .lock_ring_buffer()
-            .dequeue_transfer_descriptor()
-            .context("cannot dequeue transfer descriptor")?;
-
-        let transfer_descriptor = match transfer_descriptor {
-            Some(t) => t,
-            None => {
-                *state = RingBufferState::Stopped;
-                return Ok(());
+            match *state {
+                RingBufferState::Stopped => return Ok(()),
+                RingBufferState::Running => {}
             }
-        };
 
-        let event = self.event.try_clone().context("cannot clone event")?;
-        self.handler
-            .lock()
-            .handle_transfer_descriptor(transfer_descriptor, event)
+            let transfer_descriptor = self
+                .lock_ring_buffer()
+                .dequeue_transfer_descriptor()
+                .context("cannot dequeue transfer descriptor")?;
+
+            let transfer_descriptor = match transfer_descriptor {
+                Some(t) => t,
+                None => {
+                    *state = RingBufferState::Stopped;
+                    return Ok(());
+                }
+            };
+
+            let event = self.event.try_clone().context("cannot clone event")?;
+            self.handler
+                .lock()
+                .handle_transfer_descriptor(transfer_descriptor, event)?;
+        }
     }
 }
 
