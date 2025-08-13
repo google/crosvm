@@ -1,19 +1,19 @@
 # Rutabaga Virtual Graphics Interface
 
+![rutabaga diagram](images/rutabaga_gfx_logo.png)
+
 The Rutabaga Virtual Graphics Interface (VGI) is a cross-platform abstraction for GPU and display
 virtualization. The virtio-gpu
 [context type](https://www.phoronix.com/news/VirtIO-Linux-5.16-Ctx-Type) feature is used to dispatch
 commands between various Rust, C++, and C implementations. The diagram below does not exhaustively
 depict all available context types.
 
-<!-- Image from https://goto.google.com/crosvm-rutabaga-diagram -->
-
 ![rutabaga diagram](images/rutabaga_gfx.png)
 
 ## Rust API
 
-Although hosted in the crosvm repository, the Rutabaga VGI is designed to be portable across VMM
-implementations. The Rust API is available on [crates.io](https://crates.io/crates/rutabaga_gfx).
+The Rutabaga VGI is designed to be portable across VMM implementations. The Rust API is available on
+[crates.io](https://crates.io/crates/rutabaga_gfx).
 
 ## Rutabaga C API
 
@@ -26,23 +26,10 @@ common use case.
 sudo apt install libdrm libglm-dev libstb-dev
 ```
 
-### Install libaemu
-
-```sh
-git clone https://android.googlesource.com/platform/hardware/google/aemu
-cd aemu/
-git checkout v0.1.2-aemu-release
-cmake -DAEMU_COMMON_GEN_PKGCONFIG=ON \
-       -DAEMU_COMMON_BUILD_CONFIG=gfxstream \
-       -DENABLE_VKCEREAL_TESTS=OFF -B build
-cmake --build build -j
-sudo cmake --install build
-```
-
 ### Install gfxstream host
 
 ```sh
-git clone https://android.googlesource.com/platform/hardware/google/gfxstream
+git clone https://github.com/google/gfxstream
 cd gfxstream/
 meson setup host-build/
 meson install -C host-build/
@@ -51,7 +38,7 @@ meson install -C host-build/
 ### Install FFI bindings to Rutabaga
 
 ```sh
-cd $(crosvm_dir)/rutabaga_gfx/ffi/
+cd $(rutabaga_gfx_dir)/ffi/
 meson setup rutabaga-ffi-build/
 meson install -C rutabaga-ffi-build/
 ```
@@ -88,10 +75,10 @@ Only headless apps are likely to work on Nvidia, and requires
 
 ## Build GPU-enabled server
 
-First install [libaemu](#install-libaemu) and the [gfxstream-host](#install-gfxstream-host), then:
+First install the [gfxstream-host](#install-gfxstream-host), then:
 
 ```sh
-cd $(crosvm_dir)/rutabaga_gfx/kumquat/server/
+cd $(rutabaga_gfx_dir)/kumquat/server/
 cargo build --features=gfxstream
 ```
 
@@ -111,7 +98,7 @@ ninja -C guest-build/
 In one terminal:
 
 ```sh
-cd $(crosvm_dir)/rutabaga_gfx/kumquat/server/
+cd $(rutabaga_gfx_dir)/kumquat/server/
 ./target/debug/kumquat
 ```
 
@@ -140,20 +127,6 @@ export MESA_LOADER_DRIVER_OVERRIDE=zink
 export VK_ICD_FILENAMES=$(mesa_dir)/guest-build/src/gfxstream/guest/vulkan/gfxstream_vk_devenv_icd.x86_64.json
 weston --backend=drm
 ```
-
-# Contributing to gfxstream
-
-To contribute to gfxstream without an Android tree:
-
-```sh
-git clone https://android.googlesource.com/platform/hardware/google/gfxstream
-cd gfxstream/
-git commit -a -m blah
-git push origin HEAD:refs/for/main
-```
-
-The AOSP Gerrit instance will ask for an identity. Follow the instructions, a Google account is
-needed.
 
 # Magma
 
