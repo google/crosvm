@@ -18,6 +18,7 @@ use super::xhci_transfer::XhciTransferManager;
 use crate::usb::xhci::ring_buffer_controller::Error as RingBufferControllerError;
 use crate::usb::xhci::ring_buffer_controller::RingBufferController;
 use crate::usb::xhci::ring_buffer_controller::TransferDescriptorHandler;
+use crate::usb::xhci::RingBufferStopCallback;
 use crate::utils::EventLoop;
 
 /// Transfer ring controller manages transfer ring.
@@ -63,13 +64,12 @@ impl TransferDescriptorHandler for TransferRingTrbHandler {
             .context("failed to send transfer to backend")
     }
 
-    fn stop(&self) -> bool {
-        let backend = self.port.backend_device();
-        if backend.is_some() {
+    fn cancel(&self, callback: RingBufferStopCallback) {
+        if let Some(_backend) = self.port.backend_device().as_ref() {
+            // It's okay if the callback is executed before cancel_all due to completion of all
+            // transfers, because then cancel_all() would not do anything.
+            self.transfer_manager.set_stop_callback(callback);
             self.transfer_manager.cancel_all();
-            true
-        } else {
-            false
         }
     }
 }

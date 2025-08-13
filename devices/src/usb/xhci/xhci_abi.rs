@@ -74,6 +74,7 @@ pub enum TrbCompletionCode {
     SlotNotEnabledError = 11,
     ShortPacket = 13,
     ContextStateError = 19,
+    StoppedLengthInvalid = 27,
 }
 
 /// State of device slot.

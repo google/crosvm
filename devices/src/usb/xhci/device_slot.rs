@@ -18,6 +18,7 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 
+use super::interrupter::Error as InterrupterError;
 use super::interrupter::Interrupter;
 use super::transfer_ring_controller::TransferRingController;
 use super::transfer_ring_controller::TransferRingControllerError;
@@ -70,6 +71,8 @@ pub enum Error {
     CallbackFailed,
     #[error("failed to create transfer controller: {0}")]
     CreateTransferController(TransferRingControllerError),
+    #[error("failed to send Force Stopped Event: {0}")]
+    ForceStoppedEvent(InterrupterError),
     #[error("failed to free streams: {0}")]
     FreeStreams(BackendProviderError),
     #[error("failed to get endpoint state: {0}")]
@@ -677,6 +680,20 @@ impl DeviceSlot {
         }
     }
 
+    fn force_stoppped_event(&self, slot_id: u8, endpoint_id: u8, dequeue_ptr: u64) -> Result<()> {
+        self.interrupter
+            .lock()
+            .send_transfer_event_trb(
+                TrbCompletionCode::StoppedLengthInvalid,
+                dequeue_ptr,
+                0,
+                false,
+                slot_id,
+                endpoint_id,
+            )
+            .map_err(Error::ForceStoppedEvent)
+    }
+
     /// Stop an endpoint.
     pub fn stop_endpoint<
         C: FnMut(TrbCompletionCode) -> std::result::Result<(), ()> + 'static + Send,
@@ -706,6 +723,7 @@ impl DeviceSlot {
                 let dcs = trc.get_consumer_cycle_state();
                 endpoint_context.set_tr_dequeue_pointer(DequeuePtr::new(dequeue_pointer));
                 endpoint_context.set_dequeue_cycle_state(dcs);
+                self.force_stoppped_event(self.slot_id, endpoint_id, dequeue_pointer.offset())?;
             }
             Some(TransferRingControllers::Stream(trcs)) => {
                 let stream_context_array_addr = endpoint_context.get_tr_dequeue_pointer().get_gpa();
