@@ -179,7 +179,7 @@ def main(
     features: Optional[str] = None,
     no_parallel: bool = False,
     repetitions: int = 1,
-    retries: int = 2,
+    retries: Optional[int] = None,
 ):
     """
     Runs all crosvm tests
@@ -347,7 +347,9 @@ def main(
                     console.rule(f"Round {i}", style="grey")
 
                 returncode = nextest_run.with_args(
-                    f"--lib --bins --retries={retries}", *unit_test_filter.to_args()
+                    "--lib --bins",
+                    f"--retries={retries}" if retries is not None else None,
+                    *unit_test_filter.to_args(),
                 ).fg(style=Styles.live_truncated(), check=False)
                 if returncode != 0:
                     sys.exit(returncode)
@@ -400,7 +402,7 @@ def main(
                     [
                         *test_filter.to_args(),
                         *nextest_args,
-                        f"--retries={retries}",
+                        f"--retries={retries}" if retries is not None else None,
                         "--test-threads=1" if no_parallel else None,
                     ]
                 )
