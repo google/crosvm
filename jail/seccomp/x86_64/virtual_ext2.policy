@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 brk: 1
+clock_gettime: 1
 close: 1
 exit_group: 1
 # 1034 is F_GET_SEALS
