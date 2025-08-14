@@ -4174,10 +4174,24 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             continue;
                         }
 
-                        error!(
-                            "child {} exited: signo {}, status {}, code {}",
-                            pid_label, siginfo.ssi_signo, siginfo.ssi_status, siginfo.ssi_code
-                        );
+                        if siginfo.ssi_signo == libc::SIGCHLD as u32
+                            && (siginfo.ssi_code == libc::CLD_KILLED
+                                || siginfo.ssi_code == libc::CLD_DUMPED)
+                        {
+                            error!(
+                                "child {} killed by signal {} ({})",
+                                pid_label,
+                                siginfo.ssi_status,
+                                base::signal::Signal::try_from(siginfo.ssi_status)
+                                    .map(|s| s.to_string())
+                                    .unwrap_or("unknown".to_string()),
+                            );
+                        } else {
+                            error!(
+                                "child {} exited: signo {}, status {}, code {}",
+                                pid_label, siginfo.ssi_signo, siginfo.ssi_status, siginfo.ssi_code
+                            );
+                        }
                         do_exit = true;
                     }
                     if do_exit {

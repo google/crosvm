@@ -168,6 +168,28 @@ pub enum Signal {
     Rt31,
 }
 
+impl std::fmt::Display for Signal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        let n = i32::from(*self);
+        // SAFETY: Trivially safe.
+        let ptr = unsafe { libc::strsignal(n) };
+        if ptr.is_null() {
+            f.write_str("[null]")
+        } else {
+            // SAFETY: `ptr` is a valid non-null c string returned by `strsignal`. It is only valid
+            // until the next call to `strsignal`, so we immediately make a copy. Technically
+            // `strsignal` is documented not threadsafe because the string becomes invalid when the
+            // locale changes in some implementations, but there doesn't seem to be a standard
+            // alternative.
+            let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
+                .to_str()
+                .unwrap()
+                .to_string();
+            f.write_str(&s)
+        }
+    }
+}
+
 impl From<Signal> for c_int {
     fn from(signal: Signal) -> c_int {
         let num = signal as libc::c_int;
