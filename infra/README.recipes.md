@@ -199,11 +199,11 @@ Recipe for uploading uprevs of the baguette image.
 
 &mdash; **def [RunSteps](/infra/recipes/uprev_baguette_image.py#37)(api: RecipeApi, properties: UprevBaguetteImageProperties):**
 
-[depot_tools/recipe_modules/bot_update]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/d6b162a0759863fdce0e4ea724c57ef873a6df96/recipes/README.recipes.md#recipe_modules-bot_update
-[depot_tools/recipe_modules/depot_tools]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/d6b162a0759863fdce0e4ea724c57ef873a6df96/recipes/README.recipes.md#recipe_modules-depot_tools
-[depot_tools/recipe_modules/gclient]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/d6b162a0759863fdce0e4ea724c57ef873a6df96/recipes/README.recipes.md#recipe_modules-gclient
-[depot_tools/recipe_modules/git]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/d6b162a0759863fdce0e4ea724c57ef873a6df96/recipes/README.recipes.md#recipe_modules-git
-[depot_tools/recipe_modules/gsutil]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/d6b162a0759863fdce0e4ea724c57ef873a6df96/recipes/README.recipes.md#recipe_modules-gsutil
+[depot_tools/recipe_modules/bot_update]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/4b5b51c8e59e1397cb580d2fc907ac45e9c432f9/recipes/README.recipes.md#recipe_modules-bot_update
+[depot_tools/recipe_modules/depot_tools]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/4b5b51c8e59e1397cb580d2fc907ac45e9c432f9/recipes/README.recipes.md#recipe_modules-depot_tools
+[depot_tools/recipe_modules/gclient]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/4b5b51c8e59e1397cb580d2fc907ac45e9c432f9/recipes/README.recipes.md#recipe_modules-gclient
+[depot_tools/recipe_modules/git]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/4b5b51c8e59e1397cb580d2fc907ac45e9c432f9/recipes/README.recipes.md#recipe_modules-git
+[depot_tools/recipe_modules/gsutil]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/4b5b51c8e59e1397cb580d2fc907ac45e9c432f9/recipes/README.recipes.md#recipe_modules-gsutil
 [recipe_engine/recipe_modules/buildbucket]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/9eb5918fd499fc36a11574bea92d5ab06fe12831/README.recipes.md#recipe_modules-buildbucket
 [recipe_engine/recipe_modules/cipd]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/9eb5918fd499fc36a11574bea92d5ab06fe12831/README.recipes.md#recipe_modules-cipd
 [recipe_engine/recipe_modules/context]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/9eb5918fd499fc36a11574bea92d5ab06fe12831/README.recipes.md#recipe_modules-context
