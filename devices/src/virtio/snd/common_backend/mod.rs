@@ -208,7 +208,7 @@ pub struct VirtioSnd {
     avail_features: u64,
     acked_features: u64,
     queue_sizes: Box<[u16]>,
-    worker_thread: Option<WorkerThread<Result<WorkerReturn, String>>>,
+    worker_thread: Option<WorkerThread<WorkerReturn>>,
     keep_rds: Vec<Descriptor>,
     streams_state: Option<Vec<StreamInfoSnapshot>>,
     card_index: usize,
@@ -493,7 +493,7 @@ impl VirtioDevice for VirtioSnd {
 
     fn reset(&mut self) -> anyhow::Result<()> {
         if let Some(worker_thread) = self.worker_thread.take() {
-            let worker = worker_thread.stop().unwrap();
+            let worker = worker_thread.stop();
             self.control_tube = Some(worker.control_tube);
         }
 
@@ -502,7 +502,7 @@ impl VirtioDevice for VirtioSnd {
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
-            let worker = worker_thread.stop().unwrap();
+            let worker = worker_thread.stop();
             self.control_tube = Some(worker.control_tube);
             self.snd_data = worker.snd_data;
             self.streams_state = Some(worker.streams_state);
@@ -591,7 +591,7 @@ fn run_worker(
     streams_state: Option<Vec<StreamInfoSnapshot>>,
     card_index: usize,
     control_tube: Tube,
-) -> Result<WorkerReturn, String> {
+) -> WorkerReturn {
     let ex = Executor::new().expect("Failed to create an executor");
     let control_tube = AsyncTube::new(&ex, control_tube).expect("failed to create async snd tube");
 
@@ -727,12 +727,12 @@ fn run_worker(
     };
     let queues = vec![ctrl_queue, _event_queue, tx_queue, rx_queue];
 
-    Ok(WorkerReturn {
+    WorkerReturn {
         control_tube: control_tube.into(),
         queues,
         snd_data,
         streams_state,
-    })
+    }
 }
 
 struct WorkerReturn {
