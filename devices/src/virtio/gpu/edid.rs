@@ -263,13 +263,13 @@ fn populate_displayid_detailed_timings(block: &mut [u8], start_index: usize, inf
     let vertical_blanking_lsb: u8 = (vblanking & 0xFF) as u8;
     let vertical_blanking_msb: u8 = ((vblanking >> 8) & 0x0F) as u8;
 
-    let width = info.width().saturating_sub(1);
-    let width_lsb: u8 = (width & 0xFF) as u8;
-    let width_msb: u8 = ((width >> 8) & 0x0F) as u8;
+    let horizontal_active = info.width().saturating_sub(1);
+    let horizontal_active_lsb: u8 = (horizontal_active & 0xFF) as u8;
+    let horizontal_active_msb: u8 = ((horizontal_active >> 8) & 0xFF) as u8;
 
     let vertical_active: u32 = info.height().saturating_sub(1);
     let vertical_active_lsb: u8 = (vertical_active & 0xFF) as u8;
-    let vertical_active_msb: u8 = ((vertical_active >> 8) & 0x0F) as u8;
+    let vertical_active_msb: u8 = ((vertical_active >> 8) & 0xFF) as u8;
 
     let hfront = info.horizontal_front.saturating_sub(1);
     let horizontal_front_lsb: u8 = (hfront & 0xFF) as u8; // least sig 8 bits
@@ -287,8 +287,8 @@ fn populate_displayid_detailed_timings(block: &mut [u8], start_index: usize, inf
     let vertical_sync_lsb: u8 = (vsync & 0xFF) as u8; // least sig 4 bits
     let vertical_sync_msb: u8 = ((vsync >> 8) & 0x0F) as u8; // most sig 2 bits
 
-    block[11] = width_lsb;
-    block[12] = width_msb;
+    block[11] = horizontal_active_lsb;
+    block[12] = horizontal_active_msb;
     block[13] = horizontal_blanking_lsb;
     block[14] = horizontal_blanking_msb;
     block[15] = horizontal_front_lsb;
