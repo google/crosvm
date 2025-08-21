@@ -74,7 +74,7 @@ unsafe impl Send for Port {}
 /// Registered handles have their completion key set to their handle number.
 pub(crate) struct IoCompletionPort {
     port: SafeDescriptor,
-    threads: Vec<WorkerThread<Result<()>>>,
+    threads: Vec<WorkerThread<()>>,
     completed: Arc<(Mutex<VecDeque<CompletionPacket>>, Condvar)>,
     concurrency: u32,
 }
@@ -237,7 +237,6 @@ impl IoCompletionPort {
                     format!("overlapped_io_{i}"),
                     move |kill_evt| {
                         iocp_waiter_thread(port_desc, kill_evt, completed_clone).unwrap();
-                        Ok(())
                     },
                 ));
             }
