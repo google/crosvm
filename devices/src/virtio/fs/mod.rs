@@ -125,7 +125,7 @@ pub struct Fs {
     use_dax: bool,
     pci_bar: Option<Alloc>,
     tube: Option<Tube>,
-    workers: Vec<WorkerThread<Result<()>>>,
+    workers: Vec<WorkerThread<()>>,
 }
 
 impl Fs {
@@ -260,7 +260,9 @@ impl VirtioDevice for Fs {
 
                 WorkerThread::start(format!("v_fs:{}:{}", self.tag, idx), move |kill_evt| {
                     let mut worker = Worker::new(queue, server, socket, slot);
-                    worker.run(kill_evt)
+                    if let Err(e) = worker.run(kill_evt) {
+                        error!("virtio-fs worker failed: {e:#}");
+                    }
                 })
             })
             .collect();
