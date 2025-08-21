@@ -9,11 +9,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use anyhow::Context;
 use base::error;
 use base::warn;
 use base::Descriptor;
 use base::Error as SysError;
+use base::Event;
 use base::EventToken;
 use base::WaitContext;
 use bit_field::BitField1;
@@ -202,7 +202,7 @@ pub struct Pit {
     // Worker thread to update counter 0's state asynchronously. Counter 0 needs to send interrupts
     // when timers expire, so it needs asynchronous updates. All other counters need only update
     // when queried directly by the guest.
-    worker_thread: Option<WorkerThread<PitResult<()>>>,
+    worker_thread: Option<WorkerThread<()>>,
     activated: bool,
 }
 
@@ -295,19 +295,9 @@ impl Pit {
     fn start(&mut self) -> PitResult<()> {
         let pit_counter = self.counters[0].clone();
         self.worker_thread = Some(WorkerThread::start("pit counter worker", move |kill_evt| {
-            let timer_descriptor = Descriptor(pit_counter.lock().timer.as_raw_descriptor());
-            let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-                (&timer_descriptor, Token::TimerExpire),
-                (&kill_evt, Token::Kill),
-            ])
-            .map_err(PitError::CreateWaitContext)?;
-
-            let mut worker = Worker {
-                pit_counter,
-                wait_ctx,
-            };
-
-            worker.run()
+            if let Err(e) = worker_run(kill_evt, pit_counter) {
+                error!("pit worker failed: {e:#}");
+            }
         }));
         self.activated = true;
         Ok(())
@@ -365,9 +355,7 @@ impl Pit {
 impl Suspendable for Pit {
     fn sleep(&mut self) -> anyhow::Result<()> {
         if let Some(thread) = self.worker_thread.take() {
-            thread
-                .stop()
-                .context("pit worker thread exited with error")?;
+            thread.stop();
         }
         Ok(())
     }
@@ -893,23 +881,23 @@ impl PitCounter {
     }
 }
 
-struct Worker {
-    pit_counter: Arc<Mutex<PitCounter>>,
-    wait_ctx: WaitContext<Token>,
-}
+fn worker_run(kill_evt: Event, pit_counter: Arc<Mutex<PitCounter>>) -> PitResult<()> {
+    let timer_descriptor = Descriptor(pit_counter.lock().timer.as_raw_descriptor());
+    let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
+        (&timer_descriptor, Token::TimerExpire),
+        (&kill_evt, Token::Kill),
+    ])
+    .map_err(PitError::CreateWaitContext)?;
 
-impl Worker {
-    fn run(&mut self) -> PitResult<()> {
-        loop {
-            let events = self.wait_ctx.wait().map_err(PitError::WaitError)?;
-            for event in events.iter().filter(|e| e.is_readable) {
-                match event.token {
-                    Token::TimerExpire => {
-                        let mut pit = self.pit_counter.lock();
-                        pit.timer_handler();
-                    }
-                    Token::Kill => return Ok(()),
+    loop {
+        let events = wait_ctx.wait().map_err(PitError::WaitError)?;
+        for event in events.iter().filter(|e| e.is_readable) {
+            match event.token {
+                Token::TimerExpire => {
+                    let mut pit = pit_counter.lock();
+                    pit.timer_handler();
                 }
+                Token::Kill => return Ok(()),
             }
         }
     }
