@@ -68,7 +68,7 @@ struct WorkerClient {
     command_sender: mpsc::Sender<WorkerCommand>,
     /// response channel from worker
     response_receiver: mpsc::Receiver<WorkerResponse>,
-    _worker_thread: WorkerThread<Result<()>>,
+    _worker_thread: WorkerThread<()>,
 }
 
 impl WorkerClient {
@@ -79,16 +79,17 @@ impl WorkerClient {
         let control_evt = Event::new()?;
         let control_evt_cpy = control_evt.try_clone()?;
         let worker_thread = WorkerThread::start("pcihp_mgr_workr", move |kill_evt| {
-            let mut worker = PciHotPlugWorker::new(
+            if let Err(e) = PciHotPlugWorker::new(
                 rootbus_controller,
                 command_receiver,
                 response_sender,
                 control_evt_cpy,
                 &kill_evt,
-            )?;
-            worker.run(kill_evt).inspect_err(|e| {
-                error!("Worker exited with error: {:?}", e);
-            })
+            )
+            .and_then(move |mut worker| worker.run(kill_evt))
+            {
+                error!("PciHotPlugManager worker failed: {e:#}");
+            }
         });
         Ok(WorkerClient {
             control_evt,
