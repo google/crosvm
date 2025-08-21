@@ -150,7 +150,7 @@ pub struct VioSClient {
     tx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     rx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     recv_thread_state: Arc<Mutex<ThreadFlags>>,
-    recv_thread: Mutex<Option<WorkerThread<Result<()>>>>,
+    recv_thread: Mutex<Option<WorkerThread<()>>>,
     // Params are required to be stored for snapshot/restore. On restore, we don't have the params
     // locally available as the VM is started anew, so they need to be restored.
     params: HashMap<u32, virtio_snd_pcm_set_params>,
@@ -302,18 +302,29 @@ impl VioSClient {
         // The lock on recv_thread was released above to avoid holding more than one lock at a time
         // while duplicating the fds. So we have to check the condition again.
         if opt.is_none() {
-            *opt = Some(spawn_recv_thread(
-                self.tx_subscribers.clone(),
-                self.rx_subscribers.clone(),
-                self.event_notifier
-                    .try_clone()
-                    .map_err(Error::EventDupError)?,
-                self.events.clone(),
-                self.recv_thread_state.clone(),
-                tx_socket,
-                rx_socket,
-                event_socket,
-            ));
+            let tx_subscribers = self.tx_subscribers.clone();
+            let rx_subscribers = self.rx_subscribers.clone();
+            let event_notifier = self
+                .event_notifier
+                .try_clone()
+                .map_err(Error::EventDupError)?;
+            let events = self.events.clone();
+            let recv_thread_state = self.recv_thread_state.clone();
+            *opt = Some(WorkerThread::start("shm_vios", move |kill_event| {
+                if let Err(e) = run_recv_thread(
+                    kill_event,
+                    tx_subscribers,
+                    rx_subscribers,
+                    event_notifier,
+                    events,
+                    recv_thread_state,
+                    tx_socket,
+                    rx_socket,
+                    event_socket,
+                ) {
+                    error!("virtio-snd shm_vios worker failed: {e:#}");
+                }
+            }));
         }
         Ok(())
     }
@@ -321,7 +332,7 @@ impl VioSClient {
     /// Stops the background thread.
     pub fn stop_bg_thread(&self) -> Result<()> {
         if let Some(recv_thread) = self.recv_thread.lock().take() {
-            recv_thread.stop()?;
+            recv_thread.stop();
         }
         Ok(())
     }
@@ -679,7 +690,8 @@ fn recv_event(socket: &UnixSeqpacket) -> Result<virtio_snd_event> {
     Ok(msg)
 }
 
-fn spawn_recv_thread(
+fn run_recv_thread(
+    kill_event: Event,
     tx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     rx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     event_notifier: Event,
@@ -688,43 +700,41 @@ fn spawn_recv_thread(
     tx_socket: UnixSeqpacket,
     rx_socket: UnixSeqpacket,
     event_socket: UnixSeqpacket,
-) -> WorkerThread<Result<()>> {
-    WorkerThread::start("shm_vios", move |event| {
-        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-            (&tx_socket, Token::TxBufferMsg),
-            (&rx_socket, Token::RxBufferMsg),
-            (&event_socket, Token::EventMsg),
-            (&event, Token::Notification),
-        ])
-        .map_err(Error::WaitContextCreateError)?;
-        let mut running = true;
-        while running {
-            let events = wait_ctx.wait().map_err(Error::WaitError)?;
-            for evt in events {
-                match evt.token {
-                    Token::TxBufferMsg => recv_buffer_status_msg(&tx_socket, &tx_subscribers)?,
-                    Token::RxBufferMsg => recv_buffer_status_msg(&rx_socket, &rx_subscribers)?,
-                    Token::EventMsg => {
-                        let evt = recv_event(&event_socket)?;
-                        let state_cpy = *state.lock();
-                        if state_cpy.reporting_events {
-                            event_queue.lock().push_back(evt);
-                            event_notifier.signal().map_err(Error::EventWriteError)?;
-                        } // else just drop the events
+) -> Result<()> {
+    let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
+        (&tx_socket, Token::TxBufferMsg),
+        (&rx_socket, Token::RxBufferMsg),
+        (&event_socket, Token::EventMsg),
+        (&kill_event, Token::Notification),
+    ])
+    .map_err(Error::WaitContextCreateError)?;
+    let mut running = true;
+    while running {
+        let events = wait_ctx.wait().map_err(Error::WaitError)?;
+        for evt in events {
+            match evt.token {
+                Token::TxBufferMsg => recv_buffer_status_msg(&tx_socket, &tx_subscribers)?,
+                Token::RxBufferMsg => recv_buffer_status_msg(&rx_socket, &rx_subscribers)?,
+                Token::EventMsg => {
+                    let evt = recv_event(&event_socket)?;
+                    let state_cpy = *state.lock();
+                    if state_cpy.reporting_events {
+                        event_queue.lock().push_back(evt);
+                        event_notifier.signal().map_err(Error::EventWriteError)?;
+                    } // else just drop the events
+                }
+                Token::Notification => {
+                    // Just consume the notification and check for termination on the next
+                    // iteration
+                    if let Err(e) = kill_event.wait() {
+                        error!("Failed to consume notification from recv thread: {:?}", e);
                     }
-                    Token::Notification => {
-                        // Just consume the notification and check for termination on the next
-                        // iteration
-                        if let Err(e) = event.wait() {
-                            error!("Failed to consume notification from recv thread: {:?}", e);
-                        }
-                        running = false;
-                    }
+                    running = false;
                 }
             }
         }
-        Ok(())
-    })
+    }
+    Ok(())
 }
 
 fn await_status(promise: Receiver<BufferReleaseMsg>) -> Result<(usize, u32)> {
