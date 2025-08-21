@@ -1874,7 +1874,7 @@ impl Worker {
         }
     }
 
-    fn run(mut self, kill_evt: Event) -> anyhow::Result<Vec<Queue>> {
+    fn run(&mut self, kill_evt: Event) -> anyhow::Result<()> {
         #[derive(EventToken)]
         enum Token {
             InQueue,
@@ -1940,15 +1940,12 @@ impl Worker {
             }
         }
 
-        let in_queue = self.in_queue;
-        let out_queue = self.out_queue;
-
-        Ok(vec![in_queue, out_queue])
+        Ok(())
     }
 }
 
 pub struct Wl {
-    worker_thread: Option<WorkerThread<anyhow::Result<Vec<Queue>>>>,
+    worker_thread: Option<WorkerThread<BTreeMap<usize, Queue>>>,
     wayland_paths: BTreeMap<String, PathBuf>,
     mapper: Option<Box<dyn SharedMemoryMapper>>,
     resource_bridge: Option<Tube>,
@@ -2058,7 +2055,7 @@ impl VirtioDevice for Wl {
         };
 
         self.worker_thread = Some(WorkerThread::start("v_wl", move |kill_evt| {
-            Worker::new(
+            let mut worker = Worker::new(
                 queues.pop_first().unwrap().1,
                 queues.pop_first().unwrap().1,
                 wayland_paths,
@@ -2069,8 +2066,11 @@ impl VirtioDevice for Wl {
                 #[cfg(feature = "minigbm")]
                 gralloc,
                 address_offset,
-            )
-            .run(kill_evt)
+            );
+            if let Err(e) = worker.run(kill_evt) {
+                error!("wl worker failed: {e:#}");
+            }
+            BTreeMap::from_iter([worker.in_queue, worker.out_queue].into_iter().enumerate())
         }));
 
         Ok(())
@@ -2093,8 +2093,8 @@ impl VirtioDevice for Wl {
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
-            let queues = worker_thread.stop()?;
-            return Ok(Some(BTreeMap::from_iter(queues.into_iter().enumerate())));
+            let queues = worker_thread.stop();
+            return Ok(Some(queues));
         }
         Ok(None)
     }
