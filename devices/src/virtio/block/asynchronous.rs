@@ -140,6 +140,8 @@ enum ExecuteError {
     SendingResponse(TubeError),
     #[error("couldn't reset the timer: {0}")]
     TimerReset(base::Error),
+    #[error("too many segments: {0} > {0}")]
+    TooManySegments(usize, usize),
     #[error("unsupported ({0})")]
     Unsupported(u32),
     #[error("io error writing {length} bytes from sector {sector}: {desc_error}")]
@@ -171,6 +173,7 @@ impl ExecuteError {
             ExecuteError::ReceivingCommand(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::SendingResponse(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::TimerReset(_) => VIRTIO_BLK_S_IOERR,
+            ExecuteError::TooManySegments(_, _) => VIRTIO_BLK_S_IOERR,
             ExecuteError::WriteIo { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::WriteStatus(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
@@ -850,6 +853,17 @@ impl BlockAsync {
                 if req_type == VIRTIO_BLK_T_DISCARD && !disk_state.sparse {
                     // Discard is a hint; if this is a non-sparse disk, just ignore it.
                     return Ok(());
+                }
+
+                let seg_count =
+                    reader.available_bytes() / size_of::<virtio_blk_discard_write_zeroes>();
+                let seg_max = if req_type == VIRTIO_BLK_T_DISCARD {
+                    MAX_DISCARD_SEG as usize
+                } else {
+                    MAX_WRITE_ZEROES_SEG as usize
+                };
+                if seg_count > seg_max {
+                    return Err(ExecuteError::TooManySegments(seg_count, seg_max));
                 }
 
                 while reader.available_bytes() >= size_of::<virtio_blk_discard_write_zeroes>() {
