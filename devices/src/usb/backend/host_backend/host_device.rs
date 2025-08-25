@@ -57,7 +57,7 @@ impl HostDevice {
         let control_transfer_state = ControlTransferState {
             ctl_ep_state: ControlEndpointState::SetupStage,
             control_request_setup: UsbRequestSetup::new(0, 0, 0, 0, 0),
-            executed: false,
+            data_stage_transfer: None,
         };
         let mut host_device = HostDevice {
             device,

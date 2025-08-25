@@ -10,6 +10,7 @@ use usb_util::UsbRequestSetup;
 use crate::usb::backend::endpoint::ControlEndpointState;
 use crate::usb::backend::error::Result;
 use crate::usb::backend::fido_backend::transfer::FidoTransfer;
+use crate::usb::xhci::xhci_transfer::XhciTransfer;
 
 /// BackendTransferHandle is a wrapper structure around a generic transfer handle whose
 /// implementation depends on the backend type that is being used.
@@ -93,9 +94,8 @@ pub trait GenericTransferHandle: Send {
     fn cancel(&self) -> Result<()>;
 }
 
-#[derive(Copy, Clone)]
 pub struct ControlTransferState {
     pub ctl_ep_state: ControlEndpointState,
     pub control_request_setup: UsbRequestSetup,
-    pub executed: bool,
+    pub data_stage_transfer: Option<XhciTransfer>,
 }

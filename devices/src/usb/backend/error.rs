@@ -64,6 +64,8 @@ pub enum Error {
     MalformedBackendTransfer,
     #[error("request missing required data buffer")]
     MissingRequiredBuffer,
+    #[error("failed to proceed to next TD: {0}")]
+    Proceed(XhciTransferError),
     #[error("failed to queue async job: {0}")]
     QueueAsyncJob(UtilsError),
     #[error("failed to read buffer: {0}")]

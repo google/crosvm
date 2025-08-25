@@ -438,10 +438,11 @@ impl BackendDeviceType {
 
     fn execute_control_transfer(
         &mut self,
-        xhci_transfer: Arc<XhciTransfer>,
-        buffer: Option<ScatterGatherBuffer>,
+        transfer: XhciTransfer,
         control_request_setup: &UsbRequestSetup,
+        buffer: Option<ScatterGatherBuffer>,
     ) -> Result<()> {
+        let xhci_transfer = Arc::new(transfer);
         if self.intercepted_control_transfer(&xhci_transfer, &buffer, control_request_setup)? {
             return Ok(());
         }
@@ -555,15 +556,14 @@ impl BackendDeviceType {
     }
 
     fn handle_control_transfer(&mut self, transfer: XhciTransfer) -> Result<()> {
-        let xhci_transfer = Arc::new(transfer);
-        let transfer_type = xhci_transfer
+        let transfer_type = transfer
             .get_transfer_type()
             .map_err(Error::GetXhciTransferType)?;
         let control_transfer_state_binding = self.get_control_transfer_state();
         let mut control_transfer_state = control_transfer_state_binding.write().unwrap();
         match transfer_type {
             XhciTransferType::SetupStage => {
-                let setup = xhci_transfer
+                let setup = transfer
                     .create_usb_request_setup()
                     .map_err(Error::CreateUsbRequestSetup)?;
                 if control_transfer_state.ctl_ep_state != ControlEndpointState::SetupStage {
@@ -572,7 +572,7 @@ impl BackendDeviceType {
                 }
                 usb_trace!("setup stage: setup buffer: {:?}", setup);
                 control_transfer_state.control_request_setup = setup;
-                xhci_transfer
+                transfer
                     .on_transfer_complete(&TransferStatus::Completed, 0)
                     .map_err(Error::TransferComplete)?;
                 control_transfer_state.ctl_ep_state = ControlEndpointState::DataStage;
@@ -582,15 +582,9 @@ impl BackendDeviceType {
                     error!("Control endpoint is in an inconsistant state");
                     return Ok(());
                 }
-                // Requests with a DataStage will be executed here.
-                // Requests without a DataStage will be executed in StatusStage.
-                let buffer = xhci_transfer.create_buffer().map_err(Error::CreateBuffer)?;
-                self.execute_control_transfer(
-                    xhci_transfer,
-                    Some(buffer),
-                    &control_transfer_state.control_request_setup,
-                )?;
-                control_transfer_state.executed = true;
+                // Postpone the execution of this stage until the status stage.
+                transfer.proceed().map_err(Error::Proceed)?;
+                control_transfer_state.data_stage_transfer = Some(transfer);
                 control_transfer_state.ctl_ep_state = ControlEndpointState::StatusStage;
             }
             XhciTransferType::StatusStage => {
@@ -598,21 +592,29 @@ impl BackendDeviceType {
                     error!("Control endpoint is in an inconsistant state");
                     return Ok(());
                 }
-                if control_transfer_state.executed {
-                    // Request was already executed during DataStage.
-                    // Just complete the StatusStage transfer.
-                    xhci_transfer
-                        .on_transfer_complete(&TransferStatus::Completed, 0)
-                        .map_err(Error::TransferComplete)?;
-                } else {
-                    // Execute the request now since there was no DataStage.
+
+                // If there's a data stage, merge the status stage onto it, so the completion of
+                // status stage can wait for the data stage and the event TRBs are submitted in the
+                // correct order.
+                if let Some(mut data_stage_transfer) =
+                    control_transfer_state.data_stage_transfer.take()
+                {
+                    let buffer = data_stage_transfer
+                        .create_buffer()
+                        .map_err(Error::CreateBuffer)?;
+                    data_stage_transfer.append_trbs(transfer);
                     self.execute_control_transfer(
-                        xhci_transfer,
-                        None,
+                        data_stage_transfer,
                         &control_transfer_state.control_request_setup,
+                        Some(buffer),
                     )?;
-                }
-                control_transfer_state.executed = false;
+                } else {
+                    self.execute_control_transfer(
+                        transfer,
+                        &control_transfer_state.control_request_setup,
+                        None,
+                    )?;
+                };
                 control_transfer_state.ctl_ep_state = ControlEndpointState::SetupStage;
             }
             _ => {
@@ -621,7 +623,7 @@ impl BackendDeviceType {
                     "Non control {} transfer sent to control endpoint.",
                     transfer_type,
                 );
-                xhci_transfer
+                transfer
                     .on_transfer_complete(&TransferStatus::Completed, 0)
                     .map_err(Error::TransferComplete)?;
             }
