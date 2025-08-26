@@ -76,10 +76,12 @@ impl VhostUserVsockDevice {
                 .write(true)
                 .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
                 .open(vhost_device.as_ref())
-                .context(format!(
-                    "failed to open vhost-vsock device {}",
-                    vhost_device.as_ref().display()
-                ))?,
+                .with_context(|| {
+                    format!(
+                        "failed to open vhost-vsock device {}",
+                        vhost_device.as_ref().display()
+                    )
+                })?,
         );
 
         Ok(Self { cid, handle })

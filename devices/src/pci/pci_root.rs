@@ -766,7 +766,7 @@ impl Suspendable for PciConfigIo {
     fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let mut root = self.pci_root.lock();
         let deser: PciConfigIoSerializable = AnySnapshot::from_any(data)
-            .context(format!("failed to deserialize {}", self.debug_label()))?;
+            .with_context(|| format!("failed to deserialize {}", self.debug_label()))?;
         root.restore(deser.pci_root)?;
         self.config_address = deser.config_address;
         Ok(())
@@ -869,7 +869,7 @@ impl Suspendable for PciConfigMmio {
     fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let mut root = self.pci_root.lock();
         let deser: PciConfigMmioSerializable = AnySnapshot::from_any(data)
-            .context(format!("failed to deserialize {}", self.debug_label()))?;
+            .with_context(|| format!("failed to deserialize {}", self.debug_label()))?;
         root.restore(deser.pci_root)?;
         self.register_bit_num = deser.register_bit_num;
         Ok(())
@@ -982,7 +982,7 @@ impl Suspendable for PciVirtualConfigMmio {
     fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         let mut root = self.pci_root.lock();
         let deser: PciVirtualConfigMmioSerializable = AnySnapshot::from_any(data)
-            .context(format!("failed to deserialize {}", self.debug_label()))?;
+            .with_context(|| format!("failed to deserialize {}", self.debug_label()))?;
         root.restore(deser.pci_root)?;
         self.register_bit_num = deser.register_bit_num;
 

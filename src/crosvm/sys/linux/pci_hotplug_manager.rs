@@ -539,7 +539,7 @@ impl PciHotPlugWorker {
         Ok(*self
             .port_state_map
             .get(&pci_address)
-            .context(format!("Cannot find port state on {}", pci_address))?)
+            .with_context(|| format!("Cannot find port state on {}", pci_address))?)
     }
 
     fn set_port_state(&mut self, pci_address: PciAddress, port_state: PortState) -> Result<()> {
@@ -881,7 +881,7 @@ impl PciHotPlugManager {
         let pci_address = self
             .bus_address_map
             .get(&bus)
-            .context(format!("Port {} is not known", &bus))?;
+            .with_context(|| format!("Port {} is not known", &bus))?;
         match worker_client.send_worker_command(WorkerCommand::GetPortState(*pci_address))? {
             WorkerResponse::GetPortStateOk(PortState::Occupied(_)) => {}
             WorkerResponse::GetPortStateOk(PortState::Empty(_)) => {
@@ -905,7 +905,7 @@ impl PciHotPlugManager {
         let port_stub = self
             .port_stubs
             .get_mut(pci_address)
-            .context(format!("Port {} is not known", &bus))?;
+            .with_context(|| format!("Port {} is not known", &bus))?;
         for (downstream_address, recoverable_resource) in port_stub.devices.drain() {
             // port_stub.port does not have remove_hotplug_device method, as devices are removed
             // when hot_unplug is called.

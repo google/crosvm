@@ -186,14 +186,16 @@ impl VhostUserDevice for SndBackend {
             self.stop_queue(idx)?;
         }
 
-        let kick_evt = queue.event().try_clone().context(format!(
-            "[Card {}] failed to clone queue event",
-            self.card_index
-        ))?;
-        let mut kick_evt = EventAsync::new(kick_evt, &self.ex).context(format!(
-            "[Card {}] failed to create EventAsync for kick_evt",
-            self.card_index
-        ))?;
+        let kick_evt = queue
+            .event()
+            .try_clone()
+            .with_context(|| format!("[Card {}] failed to clone queue event", self.card_index))?;
+        let mut kick_evt = EventAsync::new(kick_evt, &self.ex).with_context(|| {
+            format!(
+                "[Card {}] failed to create EventAsync for kick_evt",
+                self.card_index
+            )
+        })?;
         let queue = Rc::new(AsyncRwLock::new(queue));
         let card_index = self.card_index;
         let queue_task = match idx {
@@ -332,17 +334,21 @@ impl VhostUserDevice for SndBackend {
             stream_infos: stream_info_snaps,
             snd_data: snd_data_ref.clone(),
         })
-        .context(format!(
-            "[Card {}] Failed to serialize SndBackendSnapshot",
-            self.card_index
-        ))
+        .with_context(|| {
+            format!(
+                "[Card {}] Failed to serialize SndBackendSnapshot",
+                self.card_index
+            )
+        })
     }
 
     fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
-        let deser: SndBackendSnapshot = AnySnapshot::from_any(data).context(format!(
-            "[Card {}] Failed to deserialize SndBackendSnapshot",
-            self.card_index
-        ))?;
+        let deser: SndBackendSnapshot = AnySnapshot::from_any(data).with_context(|| {
+            format!(
+                "[Card {}] Failed to deserialize SndBackendSnapshot",
+                self.card_index
+            )
+        })?;
         anyhow::ensure!(
             deser.avail_features == self.avail_features,
             "[Card {}] avail features doesn't match on restore: expected: {}, got: {}",

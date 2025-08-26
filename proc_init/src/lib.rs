@@ -117,7 +117,7 @@ pub(crate) fn log_file_from_path(path: Option<PathBuf>) -> anyhow::Result<Option
                 .append(true)
                 .create(true)
                 .open(path.as_path())
-                .context(format!("failed to open log file {}", path.display()))?,
+                .with_context(|| format!("failed to open log file {}", path.display()))?,
         )),
         None => None,
     })
