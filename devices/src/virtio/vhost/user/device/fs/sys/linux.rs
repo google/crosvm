@@ -167,13 +167,13 @@ pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
 
         if libc::WIFSIGNALED(status) {
             let signal = libc::WTERMSIG(status);
-            bail!("Child process {} was killed by signal {}", pid, signal);
+            panic!("Child process {pid} was killed by signal {signal}");
         }
 
         if libc::WIFEXITED(status) {
             let exit_code = libc::WEXITSTATUS(status);
             if exit_code != 0 {
-                bail!("Child process {} exited with code {}", pid, exit_code);
+                bail!("Child process {pid} exited with code {exit_code}");
             }
         }
 
