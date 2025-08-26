@@ -158,7 +158,7 @@
     "~followup_annotations": [
       "@@@STEP_NEST_LEVEL@2@@@",
       "@@@STEP_LINK@gsutil.upload@https://storage.cloud.google.com/cros-containers/baguette/images/baguette_rootfs_arm64_2012-05-14-125321_.img.zstd@@@",
-      "@@@SET_BUILD_PROPERTY@gsutil_urls@{\"upload VM images|upload arm64 image|gsutil upload\": \"gs://cros-containers/baguette/images/baguette_rootfs_arm64_2012-05-14-125321_.img.zstd\"}@@@"
+      "@@@SET_BUILD_PROPERTY@gsutil_urls@{\"upload VM images|upload amd64 image|gsutil upload\": \"gs://cros-containers/baguette/images/baguette_rootfs_amd64_2012-05-14-125321_.img.zstd\", \"upload VM images|upload arm64 image|gsutil upload\": \"gs://cros-containers/baguette/images/baguette_rootfs_arm64_2012-05-14-125321_.img.zstd\"}@@@"
     ]
   },
   {
