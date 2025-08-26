@@ -283,10 +283,12 @@ impl CompositeDiskFile {
         self.component_disks
             .iter()
             .find(|disk| disk.range().contains(&offset))
-            .ok_or(io::Error::new(
-                ErrorKind::InvalidData,
-                format!("no disk at offset {}", offset),
-            ))
+            .ok_or_else(|| {
+                io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!("no disk at offset {}", offset),
+                )
+            })
     }
 }
 
@@ -440,10 +442,12 @@ impl AsyncCompositeDiskFile {
         self.component_disks
             .iter()
             .find(|disk| disk.range().contains(&offset))
-            .ok_or(io::Error::new(
-                ErrorKind::InvalidData,
-                format!("no disk at offset {}", offset),
-            ))
+            .ok_or_else(|| {
+                io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!("no disk at offset {}", offset),
+                )
+            })
     }
 
     fn disks_in_range<'a>(&'a self, range: &Range<u64>) -> Vec<&'a AsyncComponentDiskPart> {
