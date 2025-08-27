@@ -53,6 +53,7 @@ COPY --chmod=555 \
     tools/deps/install-armhf-other \
     tools/deps/install-mingw64-other \
     tools/deps/install-riscv64-other \
+    tools/deps/install_rutabaga_gfx_deps \
     rust-toolchain \
     /tools/deps/
 RUN cd /tools/deps \
@@ -61,6 +62,7 @@ RUN cd /tools/deps \
     && ./install-armhf-other \
     && ./install-mingw64-other \
     && ./install-riscv64-other \
+    && ./install_rutabaga_gfx_deps \
     # We only use the nightly toolchain for rustfmt, remove other parts to save space.
     && rustup component remove --toolchain nightly rust-std \
     && rustup component remove --toolchain nightly cargo

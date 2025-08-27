@@ -4,6 +4,7 @@
 # found in the LICENSE file.
 
 import copy
+import glob
 import os
 from pathlib import Path
 import sys
@@ -94,12 +95,40 @@ class HostTarget(object):
 
 
 class SshTarget(object):
-    def __init__(self, package_archive: Path, remote: Remote):
+    def __init__(self, package_archive: Path, remote: Remote, vm_arch: str):
         console.print("Transfering integration tests package...")
         with record_time("Transfering"):
             remote.scp([package_archive], "")
         with record_time("Unpacking"):
             remote.ssh(cmd("tar xaf", package_archive.name)).fg(style=Styles.live_truncated())
+
+        # Transfer additional libraries for GPU tests.
+        lib_dir = ""
+        if vm_arch == "x86_64":
+            lib_dir = "/usr/lib/x86_64-linux-gnu"
+        elif vm_arch == "aarch64":
+            lib_dir = "/usr/lib/aarch64-linux-gnu"
+
+        if lib_dir:
+            patterns = [
+                f"{lib_dir}/libvirglrenderer.*",
+                f"{lib_dir}/libgbm.so*",
+                f"{lib_dir}/libgfxstream_backend.so*",
+            ]
+            files_to_transfer: list[Path] = []
+            for pattern in patterns:
+                files_to_transfer.extend(Path(p) for p in glob.glob(pattern) if Path(p).is_file())
+
+            if files_to_transfer:
+                console.print(f"Transfering {vm_arch} libraries for GPU tests...")
+                with record_time("Transfering libs"):
+                    remote.ssh(cmd(f"sudo mkdir -p {lib_dir}")).fg(style=Styles.live_truncated())
+                    remote.scp(files_to_transfer, "")
+                    file_names = [Path(f).name for f in files_to_transfer]
+                    remote.ssh(cmd("sudo", "mv", *file_names, lib_dir)).fg(
+                        style=Styles.live_truncated()
+                    )
+
         self.remote_run_cmd = cmd(f"{PACKAGE_NAME}/run.sh").with_color_flag()
         self.remote = remote
 
@@ -388,9 +417,10 @@ def main(
         if dut == "host":
             target = HostTarget(package_dir)
         elif dut == "vm":
-            testvm.up(get_vm_arch(triple), wait=True)
-            remote = Remote("localhost", testvm.ssh_opts(get_vm_arch(triple)))
-            target = SshTarget(package_archive, remote)
+            vm_arch = get_vm_arch(triple)
+            testvm.up(vm_arch, wait=True)
+            remote = Remote("localhost", testvm.ssh_opts(vm_arch))
+            target = SshTarget(package_archive, remote, vm_arch)
 
         console.print()
         console.rule("Running integration tests")

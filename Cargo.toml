@@ -309,12 +309,6 @@ gpu = ["devices/gpu", "gpu_display", "vm_control/gpu"]
 ## However, this means the sandbox is not enabled for the virtio-gpu device.
 gfxstream = ["devices/gfxstream"]
 
-## Adds a stub implementation of gfxstream to allow us to compile the gfxstream feature without
-## access to the gfxstream library.
-## Note that this feature only allows compilation of gfxstream and will not be functional at
-## runtime.
-gfxstream_stub = ["rutabaga_gfx/gfxstream_stub"]
-
 ## Enables 3D acceleration for the guest via the virglrenderer library over virtio-gpu.
 virgl_renderer = ["devices/virgl_renderer"]
 
@@ -486,7 +480,6 @@ all-default = [
     "gdb",
     "geniezone",
     "gfxstream",
-    "gfxstream_stub",
     "libvda-stub",
     "media",
     "net",

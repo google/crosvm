@@ -2733,7 +2733,6 @@ dependencies = [
 name = "rutabaga_gfx"
 version = "0.1.61"
 dependencies = [
- "anyhow",
  "cfg-if",
  "libc",
  "log",

@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Copyright 2025 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+set -ex
+
+# This script installs dependencies for rutabaga_gfx:
+# - minigbm
+# - gfxstream
+# - virglrenderer
+# for x86_64 and aarch64.
+
+sudo apt-get update --allow-releaseinfo-change
+sudo apt-get install --yes --no-install-recommends g++-aarch64-linux-gnu python3-yaml
+
+DEPS_DIR=$(mktemp -d)
+cd "${DEPS_DIR}"
+
+COMMON_PREFIX=/usr
+X86_64_DIR=x86_64-linux-gnu
+AARCH64_DIR=aarch64-linux-gnu
+X86_64_LIBDIR="${COMMON_PREFIX}/lib/${X86_64_DIR}"
+AARCH64_LIBDIR="${COMMON_PREFIX}/lib/${AARCH64_DIR}"
+
+# minigbm
+git clone https://chromium.googlesource.com/chromiumos/platform/minigbm
+cd minigbm
+git checkout b1fccad660ff4034f186d68b6474e3139e2dc4db
+# x86_64
+sudo make install DESTDIR="${COMMON_PREFIX}" LIBDIR=/lib/"${X86_64_DIR}" INCLUDEDIR=/include OUT=out
+# aarch64 - Install to the aarch64 sysroot prefix
+sudo make install DESTDIR="${COMMON_PREFIX}" LIBDIR=/lib/"${AARCH64_DIR}" INCLUDEDIR=/include CROSS_COMPILE=aarch64-linux-gnu- OUT=out-arm64
+cd ..
+
+# gfxstream
+git clone https://github.com/google/gfxstream
+cd gfxstream
+git checkout 2ac507720389a84485bfcdac9ff744d92cb0260a
+# x86_64
+meson setup build --prefix="${COMMON_PREFIX}" --libdir="${X86_64_LIBDIR}"
+ninja -C build
+sudo ninja -C build install
+# aarch64
+env PKG_CONFIG_PATH="${AARCH64_LIBDIR}/pkgconfig" meson setup build-arm64 --cross-file aarch64 --prefix="${COMMON_PREFIX}" --libdir="${AARCH64_LIBDIR}"
+ninja -C build-arm64
+sudo ninja -C build-arm64 install
+cd ..
+
+
+# virglrenderer
+git clone https://gitlab.freedesktop.org/virgl/virglrenderer.git
+cd virglrenderer
+git checkout 1.0.0
+# x86_64
+meson setup build --prefix="${COMMON_PREFIX}" --libdir="${X86_64_LIBDIR}"
+ninja -C build
+sudo ninja -C build install
+# aarch64
+env PKG_CONFIG_PATH="${AARCH64_LIBDIR}/pkgconfig" meson setup build-arm64 --cross-file aarch64 --prefix="${COMMON_PREFIX}" --libdir="${AARCH64_LIBDIR}"
+ninja -C build-arm64
+sudo ninja -C build-arm64 install
+cd ..
+
+# Cleanup
+sudo rm -rf "${DEPS_DIR}"
+
+# Create a wrapper for the aarch64 pkg-config to always use the correct
+# sysroot.
+sudo tee "/usr/local/bin/aarch64-linux-gnu-pkg-config" > /dev/null <<'EOF'
+#!/bin/bash
+export PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig"
+exec pkg-config "$@"
+EOF
+sudo chmod +x "/usr/local/bin/aarch64-linux-gnu-pkg-config"
