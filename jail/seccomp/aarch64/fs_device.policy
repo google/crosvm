@@ -48,6 +48,7 @@ renameat2: 1
 setresgid: 1
 setresuid: 1
 symlinkat: 1
+statx: 1
 umask: 1
 unlinkat: 1
 utimensat: 1
