@@ -3619,6 +3619,20 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.usb = false;
             // Protected VMs can't trust the RNG device, so don't provide it.
             cfg.rng = false;
+
+            // Balloon is not supported for protected VMs on x86 yet.
+            #[cfg(all(feature = "balloon", target_arch = "x86_64"))]
+            {
+                if cfg.balloon {
+                    log::warn!(
+                        "Disabling balloon, it is not supported for protected VMs on x86 yet."
+                    );
+                    cfg.balloon = false;
+                    cfg.balloon_control = None;
+                    cfg.balloon_page_reporting = false;
+                    cfg.balloon_ws_reporting = false;
+                }
+            }
         }
 
         cfg.battery_config = cmd.battery;
