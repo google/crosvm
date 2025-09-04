@@ -137,6 +137,7 @@ pub trait VcpuX86_64: Vcpu {
 
     /// Gets hypervisor specific state for this VCPU that must be
     /// saved/restored for snapshotting.
+    /// This state is fetched after VCPUs are frozen and interrupts are flushed.
     fn get_hypervisor_specific_state(&self) -> Result<AnySnapshot>;
 
     /// Sets hypervisor specific state for this VCPU. Only used for
