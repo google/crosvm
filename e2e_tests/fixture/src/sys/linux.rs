@@ -169,6 +169,8 @@ impl TestVmSys {
             }
         };
 
+        command.env("RUST_BACKTRACE", "full");
+
         if let Some(log_file_name) = &cfg.log_file {
             let log_file_stdout = File::create(log_file_name)?;
             let log_file_stderr = log_file_stdout.try_clone()?;
