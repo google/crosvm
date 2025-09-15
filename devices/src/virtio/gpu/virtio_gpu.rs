@@ -438,7 +438,7 @@ impl VirtioGpuScanout {
         }
 
         let dmabuf = to_safe_descriptor(rutabaga.export_blob(resource.resource_id).ok()?.os_handle);
-        let query = rutabaga.query(resource.resource_id).ok()?;
+        let query = rutabaga.resource3d_info(resource.resource_id).ok()?;
 
         let (width, height, format, stride, offset) = match resource.scanout_data {
             Some(data) => (
@@ -848,7 +848,12 @@ impl VirtioGpu {
             Err(_) => return ResourceResponse::Invalid,
         };
 
-        let q = match self.rutabaga.query(resource_id) {
+        let q = match self.rutabaga.resource3d_info(resource_id) {
+            Ok(query) => query,
+            Err(_) => return ResourceResponse::Invalid,
+        };
+
+        let guest_cpu_mappable = match self.rutabaga.guest_cpu_mappable(resource_id) {
             Ok(query) => query,
             Err(_) => return ResourceResponse::Invalid,
         };
@@ -874,7 +879,7 @@ impl VirtioGpu {
                 },
             ],
             modifier: q.modifier,
-            guest_cpu_mappable: q.guest_cpu_mappable,
+            guest_cpu_mappable,
         }))
     }
 
@@ -1266,7 +1271,7 @@ impl VirtioGpu {
 
     // Non-public function -- no doc comment needed!
     fn result_from_query(&mut self, resource_id: u32) -> GpuResponse {
-        match self.rutabaga.query(resource_id) {
+        match self.rutabaga.resource3d_info(resource_id) {
             Ok(query) => {
                 let mut plane_info = Vec::with_capacity(4);
                 for plane_index in 0..4 {

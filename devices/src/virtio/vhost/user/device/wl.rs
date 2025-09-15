@@ -25,9 +25,9 @@ use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IoSource;
 use hypervisor::ProtectionType;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::RutabagaGralloc;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::RutabagaGrallocBackendFlags;
 use snapshot::AnySnapshot;
 use vm_memory::GuestMemory;
@@ -188,7 +188,7 @@ impl VhostUserDevice for WlBackend {
             ..
         } = self;
 
-        #[cfg(feature = "minigbm")]
+        #[cfg(feature = "gbm")]
         let gralloc = RutabagaGralloc::new(RutabagaGrallocBackendFlags::new())
             .context("Failed to initailize gralloc")?;
         let wlstate = match &self.wlstate {
@@ -206,7 +206,7 @@ impl VhostUserDevice for WlBackend {
                     *use_transition_flags,
                     *use_send_vfd_v2,
                     resource_bridge.take(),
-                    #[cfg(feature = "minigbm")]
+                    #[cfg(feature = "gbm")]
                     gralloc,
                     None, /* address_offset */
                 )));

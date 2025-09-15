@@ -1979,7 +1979,9 @@ dependencies = [
 
 [[package]]
 name = "mesa3d_util"
-version = "0.1.71"
+version = "0.1.73"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad6e3627f79c204d829628a8fdf46ea3e5368cd22e8c9d824acdc5c885d84813"
 dependencies = [
  "cfg-if",
  "libc",
@@ -2731,7 +2733,9 @@ dependencies = [
 
 [[package]]
 name = "rutabaga_gfx"
-version = "0.1.61"
+version = "0.1.71"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "438f98a3a20d40edd01467737b2d67ddedc89dcde55de4adccf8e4688b628fb2"
 dependencies = [
  "cfg-if",
  "libc",
@@ -2741,7 +2745,6 @@ dependencies = [
  "remain",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror",
  "vulkano 0.33.0",
  "zerocopy 0.8.14",

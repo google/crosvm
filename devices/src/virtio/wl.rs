@@ -43,9 +43,9 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::mem::size_of;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use std::os::raw::c_uint;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use std::os::raw::c_ulonglong;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -57,7 +57,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use anyhow::Context;
 use base::error;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use base::ioctl_iow_nr;
 use base::ioctl_iowr_nr;
 use base::ioctl_with_ref;
@@ -74,9 +74,9 @@ use base::EventToken;
 use base::EventType;
 #[cfg(feature = "gpu")]
 use base::IntoRawDescriptor;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use base::MemoryMappingBuilder;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use base::MmapError;
 use base::Protection;
 use base::RawDescriptor;
@@ -92,37 +92,37 @@ use base::WorkerThread;
 use data_model::Le32;
 use data_model::Le64;
 use hypervisor::MemCacheType;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use libc::EBADF;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use libc::EINVAL;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use libc::ENOSYS;
 use remain::sorted;
 use resources::address_allocator::AddressAllocator;
 use resources::AddressRange;
 use resources::Alloc;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::DrmFormat;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::ImageAllocationInfo;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::ImageMemoryRequirements;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::RutabagaDescriptor;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::RutabagaError;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::RutabagaGralloc;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::RutabagaGrallocBackendFlags;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::RutabagaGrallocFlags;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::RutabagaIntoRawDescriptor;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_CACHED;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 use rutabaga_gfx::RUTABAGA_MAP_CACHE_MASK;
 use static_assertions::const_assert_eq;
 use thiserror::Error as ThisError;
@@ -167,16 +167,16 @@ const VIRTIO_WL_CMD_VFD_RECV: u32 = 259;
 const VIRTIO_WL_CMD_VFD_NEW_CTX: u32 = 260;
 const VIRTIO_WL_CMD_VFD_NEW_PIPE: u32 = 261;
 const VIRTIO_WL_CMD_VFD_HUP: u32 = 262;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 const VIRTIO_WL_CMD_VFD_NEW_DMABUF: u32 = 263;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 const VIRTIO_WL_CMD_VFD_DMABUF_SYNC: u32 = 264;
 #[cfg(feature = "gpu")]
 const VIRTIO_WL_CMD_VFD_SEND_FOREIGN_ID: u32 = 265;
 const VIRTIO_WL_CMD_VFD_NEW_CTX_NAMED: u32 = 266;
 const VIRTIO_WL_RESP_OK: u32 = 4096;
 const VIRTIO_WL_RESP_VFD_NEW: u32 = 4097;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 const VIRTIO_WL_RESP_VFD_NEW_DMABUF: u32 = 4098;
 const VIRTIO_WL_RESP_ERR: u32 = 4352;
 const VIRTIO_WL_RESP_OUT_OF_MEMORY: u32 = 4353;
@@ -197,24 +197,24 @@ const VFD_ID_HOST_MASK: u32 = NEXT_VFD_ID_BASE;
 const IN_BUFFER_LEN: usize =
     0x1000 - size_of::<CtrlVfdRecv>() - VIRTWL_SEND_MAX_ALLOCS * size_of::<Le32>();
 
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 const VIRTIO_WL_VFD_DMABUF_SYNC_VALID_FLAG_MASK: u32 = 0x7;
 
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 const DMA_BUF_IOCTL_BASE: c_uint = 0x62;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 const DMA_BUF_SYNC_WRITE: c_uint = 0x2;
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 const DMA_BUF_SYNC_END: c_uint = 0x4;
 
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct dma_buf_sync {
     flags: c_ulonglong,
 }
 
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 ioctl_iow_nr!(DMA_BUF_IOCTL_SYNC, DMA_BUF_IOCTL_BASE, 0, dma_buf_sync);
 
 #[repr(C)]
@@ -237,14 +237,14 @@ fn is_fence(f: &File) -> bool {
     unsafe { ioctl_with_ref(f, SYNC_IOC_FILE_INFO, &info) == 0 }
 }
 
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 #[derive(Debug, Default)]
 struct GpuMemoryPlaneDesc {
     stride: u32,
     offset: u32,
 }
 
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 #[derive(Debug, Default)]
 struct GpuMemoryDesc {
     planes: [GpuMemoryPlaneDesc; 3],
@@ -286,7 +286,7 @@ fn encode_vfd_new(
         .map_err(WlError::WriteResponse)
 }
 
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 fn encode_vfd_new_dmabuf(
     writer: &mut Writer,
     vfd_id: u32,
@@ -365,7 +365,7 @@ fn encode_resp(writer: &mut Writer, resp: WlResp) -> WlResult<()> {
             size,
             resp,
         } => encode_vfd_new(writer, resp, id, flags, pfn, size),
-        #[cfg(feature = "minigbm")]
+        #[cfg(feature = "gbm")]
         WlResp::VfdNewDmabuf {
             id,
             flags,
@@ -394,7 +394,7 @@ enum WlError {
     #[error("failed to get seals: {0}")]
     GetSeals(Error),
     #[error("gralloc error: {0}")]
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     GrallocError(#[from] RutabagaError),
     #[error("access violation in guest memory: {0}")]
     GuestMemory(#[from] GuestMemoryError),
@@ -441,7 +441,7 @@ pub const WL_SHMEM_SIZE: u64 = 1 << 32;
 
 struct VmRequesterState {
     mapper: Box<dyn SharedMemoryMapper>,
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     gralloc: RutabagaGralloc,
 
     // Allocator for shm address space
@@ -460,7 +460,7 @@ struct VmRequester {
 }
 
 // The following are wrappers to avoid base dependencies in the rutabaga crate
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 fn to_safe_descriptor(r: RutabagaDescriptor) -> SafeDescriptor {
     // SAFETY:
     // Safe because we own the SafeDescriptor at this point.
@@ -470,12 +470,12 @@ fn to_safe_descriptor(r: RutabagaDescriptor) -> SafeDescriptor {
 impl VmRequester {
     fn new(
         mapper: Box<dyn SharedMemoryMapper>,
-        #[cfg(feature = "minigbm")] gralloc: RutabagaGralloc,
+        #[cfg(feature = "gbm")] gralloc: RutabagaGralloc,
     ) -> VmRequester {
         VmRequester {
             state: Rc::new(RefCell::new(VmRequesterState {
                 mapper,
-                #[cfg(feature = "minigbm")]
+                #[cfg(feature = "gbm")]
                 gralloc,
                 address_allocator: AddressAllocator::new(
                     AddressRange::from_start_and_size(0, WL_SHMEM_SIZE).unwrap(),
@@ -507,7 +507,7 @@ impl VmRequester {
         Ok(())
     }
 
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     fn allocate_and_register_gpu_memory(
         &self,
         width: u32,
@@ -654,7 +654,7 @@ const_assert_eq!(size_of::<CtrlVfdNewCtxNamed>(), 64);
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 struct CtrlVfdNewDmabuf {
     hdr: CtrlHeader,
     id: Le32,
@@ -672,7 +672,7 @@ struct CtrlVfdNewDmabuf {
     offset2: Le32,
 }
 
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 #[repr(C)]
 #[derive(Copy, Clone, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct CtrlVfdDmabufSync {
@@ -756,7 +756,7 @@ enum WlResp<'a> {
         // is important for the `get_code` method.
         resp: bool,
     },
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     VfdNewDmabuf {
         id: u32,
         flags: u32,
@@ -791,7 +791,7 @@ impl WlResp<'_> {
                     VIRTIO_WL_CMD_VFD_NEW
                 }
             }
-            #[cfg(feature = "minigbm")]
+            #[cfg(feature = "gbm")]
             WlResp::VfdNewDmabuf { .. } => VIRTIO_WL_RESP_VFD_NEW_DMABUF,
             WlResp::VfdRecv { .. } => VIRTIO_WL_CMD_VFD_RECV,
             WlResp::VfdHup { .. } => VIRTIO_WL_CMD_VFD_HUP,
@@ -812,9 +812,9 @@ struct WlVfd {
     remote_pipe: Option<File>,
     local_pipe: Option<(u32 /* flags */, File)>,
     slot: Option<(u64 /* offset */, VmRequester)>,
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     is_dmabuf: bool,
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     map_info: u32,
     fence: Option<File>,
     is_fence: bool,
@@ -839,7 +839,7 @@ impl fmt::Debug for WlVfd {
     }
 }
 
-#[cfg(feature = "minigbm")]
+#[cfg(feature = "gbm")]
 fn flush_shared_memory(shared_memory: &SharedMemory) -> Result<()> {
     let mmap = match MemoryMappingBuilder::new(shared_memory.size as usize)
         .from_shared_memory(shared_memory)
@@ -879,7 +879,7 @@ impl WlVfd {
         Ok(vfd)
     }
 
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     fn dmabuf(
         vm: VmRequester,
         width: u32,
@@ -906,7 +906,7 @@ impl WlVfd {
         Ok((vfd, desc))
     }
 
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     fn dmabuf_sync(&self, flags: u32) -> WlResult<()> {
         if !self.is_dmabuf {
             return Err(WlError::DmabufSync(io::Error::from_raw_os_error(EINVAL)));
@@ -1158,14 +1158,14 @@ impl WlState {
         use_transition_flags: bool,
         use_send_vfd_v2: bool,
         resource_bridge: Option<Tube>,
-        #[cfg(feature = "minigbm")] gralloc: RutabagaGralloc,
+        #[cfg(feature = "gbm")] gralloc: RutabagaGralloc,
         address_offset: Option<u64>,
     ) -> WlState {
         WlState {
             wayland_paths,
             vm: VmRequester::new(
                 mapper,
-                #[cfg(feature = "minigbm")]
+                #[cfg(feature = "gbm")]
                 gralloc,
             ),
             resource_bridge,
@@ -1258,7 +1258,7 @@ impl WlState {
         Ok(resp)
     }
 
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     fn new_dmabuf(&mut self, id: u32, width: u32, height: u32, format: u32) -> WlResult<WlResp> {
         if id & VFD_ID_HOST_MASK != 0 {
             return Ok(WlResp::InvalidId);
@@ -1279,7 +1279,7 @@ impl WlState {
         Ok(resp)
     }
 
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     fn dmabuf_sync(&mut self, vfd_id: u32, flags: u32) -> WlResult<WlResp> {
         if flags & !(VIRTIO_WL_VFD_DMABUF_SYNC_VALID_FLAG_MASK) != 0 {
             return Ok(WlResp::InvalidFlags);
@@ -1630,7 +1630,7 @@ impl WlState {
                     .map_err(WlError::ParseDesc)?;
                 self.new_pipe(ctrl.id.into(), ctrl.flags.into())
             }
-            #[cfg(feature = "minigbm")]
+            #[cfg(feature = "gbm")]
             VIRTIO_WL_CMD_VFD_NEW_DMABUF => {
                 let ctrl = reader
                     .read_obj::<CtrlVfdNewDmabuf>()
@@ -1642,7 +1642,7 @@ impl WlState {
                     ctrl.format.into(),
                 )
             }
-            #[cfg(feature = "minigbm")]
+            #[cfg(feature = "gbm")]
             VIRTIO_WL_CMD_VFD_DMABUF_SYNC => {
                 let ctrl = reader
                     .read_obj::<CtrlVfdDmabufSync>()
@@ -1855,7 +1855,7 @@ impl Worker {
         use_transition_flags: bool,
         use_send_vfd_v2: bool,
         resource_bridge: Option<Tube>,
-        #[cfg(feature = "minigbm")] gralloc: RutabagaGralloc,
+        #[cfg(feature = "gbm")] gralloc: RutabagaGralloc,
         address_offset: Option<u64>,
     ) -> Worker {
         Worker {
@@ -1867,7 +1867,7 @@ impl Worker {
                 use_transition_flags,
                 use_send_vfd_v2,
                 resource_bridge,
-                #[cfg(feature = "minigbm")]
+                #[cfg(feature = "gbm")]
                 gralloc,
                 address_offset,
             ),
@@ -1951,7 +1951,7 @@ pub struct Wl {
     resource_bridge: Option<Tube>,
     base_features: u64,
     acked_features: u64,
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     gralloc: Option<RutabagaGralloc>,
     address_offset: Option<u64>,
 }
@@ -1969,7 +1969,7 @@ impl Wl {
             resource_bridge,
             base_features,
             acked_features: 0,
-            #[cfg(feature = "minigbm")]
+            #[cfg(feature = "gbm")]
             gralloc: None,
             address_offset: None,
         })
@@ -1991,7 +1991,7 @@ impl VirtioDevice for Wl {
         keep_rds
     }
 
-    #[cfg(feature = "minigbm")]
+    #[cfg(feature = "gbm")]
     fn on_device_sandboxed(&mut self) {
         // Gralloc initialization can cause some GPU drivers to create their own threads
         // and that must be done after sandboxing.
@@ -2043,7 +2043,7 @@ impl VirtioDevice for Wl {
         let use_send_vfd_v2 = self.acked_features & (1 << VIRTIO_WL_F_SEND_FENCES) != 0;
         let use_shmem = self.acked_features & (1 << VIRTIO_WL_F_USE_SHMEM) != 0;
         let resource_bridge = self.resource_bridge.take();
-        #[cfg(feature = "minigbm")]
+        #[cfg(feature = "gbm")]
         let gralloc = self
             .gralloc
             .take()
@@ -2063,7 +2063,7 @@ impl VirtioDevice for Wl {
                 use_transition_flags,
                 use_send_vfd_v2,
                 resource_bridge,
-                #[cfg(feature = "minigbm")]
+                #[cfg(feature = "gbm")]
                 gralloc,
                 address_offset,
             );

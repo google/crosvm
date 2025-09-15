@@ -87,7 +87,6 @@ members = [
     "proto_build_tools",
     "resources",
     "riscv64",
-    "rutabaga_gfx",
     "serde_keyvalue",
     "snapshot",
     "swap",
@@ -177,7 +176,6 @@ proto_build_tools = { path = "proto_build_tools" }
 protos = { path = "protos" }
 resources = { path = "resources" }
 riscv64 = { path = "riscv64" }
-rutabaga_gfx = { path = "rutabaga_gfx" }
 sandbox = { path = "sandbox" }
 serde_keyvalue = { path = "serde_keyvalue" }
 snapshot = { path = "snapshot" }
@@ -208,6 +206,7 @@ gdbstub_arch = "0.3.0"
 libc = "0.2.153"
 rand = "0.8.5"
 remain = "0.2"
+rutabaga_gfx = "0.1.71"
 serde = "1.0"
 serde_json = "1"
 thiserror = "1.0.23"
@@ -292,7 +291,7 @@ usb = ["devices/usb"]
 
 ## Enables the non-upstream virtio wayland protocol. This can be used in conjuction with the gpu
 ## feature to enable a zero-copy display pipeline.
-wl-dmabuf = ["devices/minigbm"]
+wl-dmabuf = ["devices/gbm"]
 
 ## Enables the usage of the X11 protocol for display on the host.
 x = ["devices/x"]
