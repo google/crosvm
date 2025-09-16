@@ -7,9 +7,6 @@
 [submodule "third_party/minijail"]
 	path = third_party/minijail
 	url = https://chromium.googlesource.com/chromiumos/platform/minijail
-[submodule "third_party/vmm_vhost"]
-	path = third_party/vmm_vhost
-	url = https://chromium.googlesource.com/chromiumos/third_party/rust-vmm/vhost/
 [submodule "third_party/depot_tools"]
 	path = third_party/depot_tools
 	url = https://chromium.googlesource.com/chromium/tools/depot_tools.git
