@@ -6,6 +6,7 @@ use std::io;
 use std::os::fd::AsRawFd;
 use std::sync::Arc;
 
+use base::handle_eintr_errno;
 use base::sys::fallocate;
 use base::sys::FallocateMode;
 use base::AsRawDescriptor;
@@ -107,24 +108,24 @@ impl<F: AsRawDescriptor> PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 // SAFETY:
                 // Safe because this will only modify `vec` and we check the return value.
-                unsafe {
+                handle_eintr_errno!(unsafe {
                     libc::pread64(
                         self.registered_source.duped_fd.as_raw_fd(),
                         vec.as_mut_ptr() as *mut libc::c_void,
                         vec.len(),
                         offset as libc::off64_t,
                     )
-                }
+                })
             } else {
                 // SAFETY:
                 // Safe because this will only modify `vec` and we check the return value.
-                unsafe {
+                handle_eintr_errno!(unsafe {
                     libc::read(
                         self.registered_source.duped_fd.as_raw_fd(),
                         vec.as_mut_ptr() as *mut libc::c_void,
                         vec.len(),
                     )
-                }
+                })
             };
 
             if res >= 0 {
@@ -162,26 +163,26 @@ impl<F: AsRawDescriptor> PollSource<F> {
                 // Safe because we trust the kernel not to write path the length given and the
                 // length is guaranteed to be valid from the pointer by
                 // io_slice_mut.
-                unsafe {
+                handle_eintr_errno!(unsafe {
                     libc::preadv64(
                         self.registered_source.duped_fd.as_raw_fd(),
                         iovecs.as_mut_ptr() as *mut _,
                         iovecs.len() as i32,
                         offset as libc::off64_t,
                     )
-                }
+                })
             } else {
                 // SAFETY:
                 // Safe because we trust the kernel not to write path the length given and the
                 // length is guaranteed to be valid from the pointer by
                 // io_slice_mut.
-                unsafe {
+                handle_eintr_errno!(unsafe {
                     libc::readv(
                         self.registered_source.duped_fd.as_raw_fd(),
                         iovecs.as_mut_ptr() as *mut _,
                         iovecs.len() as i32,
                     )
-                }
+                })
             };
 
             if res >= 0 {
@@ -221,24 +222,24 @@ impl<F: AsRawDescriptor> PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 // SAFETY:
                 // Safe because this will not modify any memory and we check the return value.
-                unsafe {
+                handle_eintr_errno!(unsafe {
                     libc::pwrite64(
                         self.registered_source.duped_fd.as_raw_fd(),
                         vec.as_ptr() as *const libc::c_void,
                         vec.len(),
                         offset as libc::off64_t,
                     )
-                }
+                })
             } else {
                 // SAFETY:
                 // Safe because this will not modify any memory and we check the return value.
-                unsafe {
+                handle_eintr_errno!(unsafe {
                     libc::write(
                         self.registered_source.duped_fd.as_raw_fd(),
                         vec.as_ptr() as *const libc::c_void,
                         vec.len(),
                     )
-                }
+                })
             };
 
             if res >= 0 {
@@ -277,26 +278,26 @@ impl<F: AsRawDescriptor> PollSource<F> {
                 // Safe because we trust the kernel not to write path the length given and the
                 // length is guaranteed to be valid from the pointer by
                 // io_slice_mut.
-                unsafe {
+                handle_eintr_errno!(unsafe {
                     libc::pwritev64(
                         self.registered_source.duped_fd.as_raw_fd(),
                         iovecs.as_ptr() as *mut _,
                         iovecs.len() as i32,
                         offset as libc::off64_t,
                     )
-                }
+                })
             } else {
                 // SAFETY:
                 // Safe because we trust the kernel not to write path the length given and the
                 // length is guaranteed to be valid from the pointer by
                 // io_slice_mut.
-                unsafe {
+                handle_eintr_errno!(unsafe {
                     libc::writev(
                         self.registered_source.duped_fd.as_raw_fd(),
                         iovecs.as_ptr() as *mut _,
                         iovecs.len() as i32,
                     )
-                }
+                })
             };
 
             if res >= 0 {
@@ -321,7 +322,9 @@ impl<F: AsRawDescriptor> PollSource<F> {
     /// Sync all completed write operations to the backing storage.
     pub async fn fsync(&self) -> AsyncResult<()> {
         // SAFETY: the duped_fd is valid and return value is checked.
-        let ret = unsafe { libc::fsync(self.registered_source.duped_fd.as_raw_fd()) };
+        let ret = handle_eintr_errno!(unsafe {
+            libc::fsync(self.registered_source.duped_fd.as_raw_fd())
+        });
         if ret == 0 {
             Ok(())
         } else {
@@ -355,7 +358,9 @@ impl<F: AsRawDescriptor> PollSource<F> {
     /// metadata.
     pub async fn fdatasync(&self) -> AsyncResult<()> {
         // SAFETY: the duped_fd is valid and return value is checked.
-        let ret = unsafe { libc::fdatasync(self.registered_source.duped_fd.as_raw_fd()) };
+        let ret = handle_eintr_errno!(unsafe {
+            libc::fdatasync(self.registered_source.duped_fd.as_raw_fd())
+        });
         if ret == 0 {
             Ok(())
         } else {
