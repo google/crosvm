@@ -17,6 +17,15 @@ pub struct MultikeyBTreeMap<K1, K2, V> {
     alt: BTreeMap<K2, K1>,
 }
 
+impl<K1, K2, V> Default for MultikeyBTreeMap<K1, K2, V> {
+    fn default() -> Self {
+        Self {
+            main: BTreeMap::new(),
+            alt: BTreeMap::new(),
+        }
+    }
+}
+
 impl<K1, K2, V> MultikeyBTreeMap<K1, K2, V>
 where
     K1: Clone + Ord,

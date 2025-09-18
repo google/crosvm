@@ -678,6 +678,15 @@ impl PermissionData {
 /// that wish to serve only a specific directory should set up the environment so that that
 /// directory ends up as the root of the file system process. One way to accomplish this is via a
 /// combination of mount namespaces and the pivot_root system call.
+///
+/// # Safety
+///
+/// The `Drop` implementation for this struct intentionally leaks all open file
+/// descriptors. It is **critical** that an instance of `PassthroughFs` is
+/// only dropped immediately prior to process termination. Failure to uphold
+/// this invariant **will** result in resource leaks. This is a deliberate
+/// performance optimization for abrupt shutdowns, where we let the OS
+/// handle resource cleanup.
 pub struct PassthroughFs {
     // Mutex that must be acquired before executing a process-wide operation such as fchdir.
     process_lock: Mutex<()>,
@@ -2137,6 +2146,23 @@ fn strip_xattr_prefix(buf: &mut Vec<u8>) {
         let newlen = name.len() - USER_VIRTIOFS_XATTR.len();
         buf.drain(pos..pos + USER_VIRTIOFS_XATTR.len());
         pos += newlen;
+    }
+}
+
+impl Drop for PassthroughFs {
+    fn drop(&mut self) {
+        // When PassthroughFs is dropped, its process is usually terminated.
+        // In that case, we don't need to close all file descriptors inside `inodes` and `handles`
+        // gracefully. Instead, we can just forget them and let the OS clean them up, which
+        // is much faster.
+        //
+        // Note that this optimization makes sense only when the guest stops unexpectedly, because
+        // during a graceful shutdown, the virtio-fs driver cleans up the file system with the
+        // `destroy` command so `inodes` and `handles` are empty here.
+        let mut inodes = self.inodes.lock();
+        std::mem::forget(std::mem::take(&mut *inodes));
+        let mut handles = self.handles.lock();
+        std::mem::forget(std::mem::take(&mut *handles));
     }
 }
 
