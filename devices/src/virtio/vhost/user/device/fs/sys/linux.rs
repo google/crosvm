@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Context;
+use base::error;
 use base::linux::max_open_files;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
@@ -159,27 +160,36 @@ pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
         is_pivot_root_required,
     )?;
 
-    // Parent, nothing to do but wait and then exit
-    if pid != 0 {
-        let mut status: i32 = 0;
-        // SAFETY: trivially safe
-        unsafe { libc::waitpid(pid, &mut status, 0) };
-
-        if libc::WIFSIGNALED(status) {
-            let signal = libc::WTERMSIG(status);
-            panic!("Child process {pid} was killed by signal {signal}");
+    match pid {
+        0 => {
+            // Child process runs the device and exits, not returns.
+            if let Err(e) = ex.run_until(conn.run_backend(fs_device, &ex)) {
+                error!("Error in vhost-user-fs device: {:#}", e);
+                std::process::exit(1);
+            }
+            std::process::exit(0);
         }
+        pid if pid < 0 => {
+            unreachable!("fork error must have been handled in jail_and_fork()");
+        }
+        _ => {
+            // Parent, nothing to do but wait and then exit
+            let mut status: i32 = 0;
+            // SAFETY: trivially safe
+            unsafe { libc::waitpid(pid, &mut status, 0) };
 
-        if libc::WIFEXITED(status) {
-            let exit_code = libc::WEXITSTATUS(status);
-            if exit_code != 0 {
-                bail!("Child process {pid} exited with code {exit_code}");
+            if libc::WIFSIGNALED(status) {
+                let signal = libc::WTERMSIG(status);
+                panic!("Child process {pid} was killed by signal {signal}");
+            }
+
+            if libc::WIFEXITED(status) {
+                let exit_code = libc::WEXITSTATUS(status);
+                if exit_code != 0 {
+                    bail!("Child process {pid} exited with code {exit_code}");
+                }
             }
         }
-
-        return Ok(());
-    }
-
-    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    ex.run_until(conn.run_backend(fs_device, &ex))?
+    };
+    Ok(())
 }
