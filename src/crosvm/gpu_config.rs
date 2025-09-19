@@ -6,19 +6,12 @@ use base::warn;
 use devices::virtio::gpu::VIRTIO_GPU_MAX_SCANOUTS;
 use devices::virtio::GpuDisplayMode;
 use devices::virtio::GpuDisplayParameters;
-#[cfg(feature = "gfxstream")]
-use devices::virtio::GpuMode;
 use devices::virtio::GpuParameters;
 use vm_control::gpu::DEFAULT_DPI;
 
 use crate::crosvm::cmdline::FixedGpuDisplayParameters;
 use crate::crosvm::cmdline::FixedGpuParameters;
 use crate::crosvm::config::Config;
-
-#[cfg(feature = "gfxstream")]
-fn default_use_vulkan() -> bool {
-    !cfg!(windows)
-}
 
 pub(crate) fn fixup_gpu_options(
     mut gpu_params: GpuParameters,
@@ -48,19 +41,6 @@ pub(crate) fn fixup_gpu_options(
         _ => {
             return Err("must include both 'width' and 'height' if either is supplied".to_string())
         }
-    }
-
-    #[cfg(feature = "gfxstream")]
-    if gpu_params.mode == GpuMode::ModeGfxstream {
-        if gpu_params.use_vulkan.is_none() {
-            gpu_params.use_vulkan = Some(default_use_vulkan());
-        }
-    } else {
-        #[cfg(windows)]
-        return Err(format!(
-            "backend type {:?} is deprecated, please use gfxstream",
-            gpu_params.mode
-        ));
     }
 
     Ok(FixedGpuParameters(gpu_params))
@@ -141,20 +121,17 @@ pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use argh::FromArgs;
-    #[cfg(feature = "gfxstream")]
     use devices::virtio::GpuWsi;
 
     use super::*;
     use crate::crosvm::config::from_key_values;
 
     const fn get_backend_name() -> &'static str {
-        if cfg!(feature = "gfxstream") {
-            "gfxstream"
-        } else if cfg!(feature = "virgl_renderer") {
-            "virglrenderer"
-        } else {
-            "2d"
+        if cfg!(windows) {
+            return "gfxstream";
         }
+
+        "2d"
     }
 
     /// Parses and fix up a `GpuParameters` from a command-line option string.
@@ -251,7 +228,6 @@ mod tests {
         let gpu_params = parse_gpu_options("backend=2D").unwrap();
         assert_eq!(gpu_params.mode, GpuMode::Mode2D);
 
-        #[cfg(feature = "virgl_renderer")]
         {
             let gpu_params = parse_gpu_options("backend=3d").unwrap();
             assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
@@ -263,7 +239,6 @@ mod tests {
             assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
         }
 
-        #[cfg(feature = "gfxstream")]
         {
             let gpu_params = parse_gpu_options("backend=gfxstream").unwrap();
             assert_eq!(gpu_params.mode, GpuMode::ModeGfxstream);
@@ -313,7 +288,6 @@ mod tests {
         assert!(parse_gpu_options("egl=false,gles=true,foomatic").is_err());
     }
 
-    #[cfg(feature = "gfxstream")]
     #[test]
     fn parse_gpu_options_gfxstream_with_wsi_specified() {
         {
@@ -337,16 +311,14 @@ mod tests {
         let gpu_params = parse_gpu_options("backend=2d").unwrap();
         assert_eq!(gpu_params.use_vulkan, None);
 
-        #[cfg(feature = "virgl_renderer")]
         {
             let gpu_params = parse_gpu_options("backend=virglrenderer").unwrap();
             assert_eq!(gpu_params.use_vulkan, None);
         }
 
-        #[cfg(feature = "gfxstream")]
         {
             let gpu_params = parse_gpu_options("backend=gfxstream").unwrap();
-            assert_eq!(gpu_params.use_vulkan, Some(default_use_vulkan()));
+            assert_eq!(gpu_params.use_vulkan, None);
         }
     }
 

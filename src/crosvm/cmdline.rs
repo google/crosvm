@@ -79,7 +79,7 @@ use super::config::PmemOption;
 use super::gpu_config::fixup_gpu_display_options;
 #[cfg(feature = "gpu")]
 use super::gpu_config::fixup_gpu_options;
-#[cfg(all(feature = "gpu", feature = "virgl_renderer"))]
+#[cfg(all(unix, feature = "gpu"))]
 use super::sys::GpuRenderServerParameters;
 use crate::crosvm::config::from_key_values;
 use crate::crosvm::config::parse_bus_id_addr;
@@ -1520,7 +1520,7 @@ pub struct RunCommand {
     /// for possible key values of GpuDisplayParameters.
     pub gpu_display: Vec<FixedGpuDisplayParameters>,
 
-    #[cfg(all(unix, feature = "gpu", feature = "virgl_renderer"))]
+    #[cfg(all(unix, feature = "gpu"))]
     #[argh(option)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -3555,7 +3555,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
             cfg.coiommu_param = cmd.coiommu;
 
-            #[cfg(all(feature = "gpu", feature = "virgl_renderer"))]
+            #[cfg(feature = "gpu")]
             {
                 cfg.gpu_render_server_parameters = cmd.gpu_render_server;
             }
