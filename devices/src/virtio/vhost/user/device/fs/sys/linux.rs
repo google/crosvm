@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -9,6 +10,7 @@ use anyhow::bail;
 use anyhow::Context;
 use base::error;
 use base::linux::max_open_files;
+use base::sys::wait_for_pid;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::RawDescriptor;
@@ -173,18 +175,12 @@ pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
             unreachable!("fork error must have been handled in jail_and_fork()");
         }
         _ => {
-            // Parent, nothing to do but wait and then exit
-            let mut status: i32 = 0;
-            // SAFETY: trivially safe
-            unsafe { libc::waitpid(pid, &mut status, 0) };
-
-            if libc::WIFSIGNALED(status) {
-                let signal = libc::WTERMSIG(status);
+            let (_child_pid, status) =
+                wait_for_pid(pid, 0).context("failed to wait for child process")?;
+            if let Some(signal) = status.signal() {
                 panic!("Child process {pid} was killed by signal {signal}");
             }
-
-            if libc::WIFEXITED(status) {
-                let exit_code = libc::WEXITSTATUS(status);
+            if let Some(exit_code) = status.code() {
                 if exit_code != 0 {
                     bail!("Child process {pid} exited with code {exit_code}");
                 }
