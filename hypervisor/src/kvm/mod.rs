@@ -464,7 +464,7 @@ impl KvmVm {
         // route entries.
         let irq_routes = unsafe { irq_routing[0].entries.as_mut_slice(routes.len()) };
         for (route, irq_route) in routes.iter().zip(irq_routes.iter_mut()) {
-            *irq_route = to_kvm_ireq_routing_entry(route, cap_msi_devid);
+            *irq_route = to_kvm_irq_routing_entry(route, cap_msi_devid);
         }
 
         // TODO(b/315998194): Add safety comment
@@ -1244,7 +1244,7 @@ impl TryFrom<HypervisorCap> for KvmCap {
     }
 }
 
-fn to_kvm_ireq_routing_entry(item: &IrqRoute, cap_msi_devid: bool) -> kvm_irq_routing_entry {
+fn to_kvm_irq_routing_entry(item: &IrqRoute, cap_msi_devid: bool) -> kvm_irq_routing_entry {
     match &item.source {
         IrqSource::Irqchip { chip, pin } => kvm_irq_routing_entry {
             gsi: item.gsi,
