@@ -339,6 +339,18 @@ impl<T: VhostUserDevice> DeviceRequestHandler<T> {
     }
 }
 
+impl<T: VhostUserDevice> Drop for DeviceRequestHandler<T> {
+    fn drop(&mut self) {
+        for (index, vring) in self.vrings.iter().enumerate() {
+            if vring.queue.ready() {
+                if let Err(e) = self.backend.stop_queue(index) {
+                    error!("Failed to stop queue {} during drop: {:#}", index, e);
+                }
+            }
+        }
+    }
+}
+
 impl<T: VhostUserDevice> AsRef<T> for DeviceRequestHandler<T> {
     fn as_ref(&self) -> &T {
         &self.backend

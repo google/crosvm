@@ -11,6 +11,7 @@ use std::sync::Arc;
 use anyhow::bail;
 use argh::FromArgs;
 use base::error;
+use base::info;
 use base::warn;
 use base::RawDescriptor;
 use base::Tube;
@@ -149,6 +150,8 @@ impl VhostUserDevice for FsBackend {
     }
 
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
+        // TODO(b/440937769): Remove debug logs once the issue is resolved.
+        info!("Stopping vhost-user fs queue [{idx}]");
         if let Some(worker) = self.workers.remove(&idx) {
             let queue = worker.stop();
             Ok(queue)
