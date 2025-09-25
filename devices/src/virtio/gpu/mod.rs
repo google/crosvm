@@ -1754,29 +1754,12 @@ impl Gpu {
         }
 
         let num_capsets = match self.capset_mask {
-            0 => {
-                match self.rutabaga_component {
-                    RutabagaComponentType::Rutabaga2D => 0,
-                    _ => {
-                        #[allow(unused_mut)]
-                        let mut num_capsets = 0;
-
-                        // Three capsets for virgl_renderer
-                        #[cfg(feature = "virgl_renderer")]
-                        {
-                            num_capsets += 3;
-                        }
-
-                        // One capset for gfxstream
-                        #[cfg(feature = "gfxstream")]
-                        {
-                            num_capsets += 1;
-                        }
-
-                        num_capsets
-                    }
-                }
-            }
+            0 => match self.rutabaga_component {
+                RutabagaComponentType::Rutabaga2D => 0,
+                RutabagaComponentType::VirglRenderer => 3,
+                RutabagaComponentType::Gfxstream => 1,
+                _ => unimplemented!(),
+            },
             _ => self.capset_mask.count_ones(),
         };
 
