@@ -118,9 +118,7 @@ impl Default for GpuParameters {
             capset_mask: 0,
             external_blob: false,
             system_blob: false,
-            // TODO(b/324649619): not yet fully compatible with other platforms (windows)
-            // TODO(b/246334944): only virglrenderer use cases work well with fixed_blob_mapping
-            fixed_blob_mapping: cfg!(target_os = "linux") && cfg!(feature = "virgl_renderer"),
+            fixed_blob_mapping: false,
             allow_implicit_render_server_exec: false,
             renderer_features: None,
             snapshot_scratch_path: None,
