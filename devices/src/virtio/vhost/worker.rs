@@ -263,25 +263,16 @@ impl<T: Vhost> Worker<T> {
         if self.response_tube.is_some() {
             if let Some(msix_config) = self.interrupt.get_msix_config() {
                 let msix_config = msix_config.lock();
-                let msix_masked = msix_config.masked();
-                if msix_masked {
-                    return Ok(());
-                }
-                if !msix_config.table_masked(vector) {
+                if !msix_config.masked() && !msix_config.table_masked(vector) {
                     if let Some(irqfd) = msix_config.get_irqfd(vector) {
                         self.vhost_handle
                             .set_vring_call(queue_index, irqfd)
                             .map_err(Error::VhostSetVringCall)?;
-                    } else {
-                        self.vhost_handle
-                            .set_vring_call(queue_index, &self.vhost_interrupts[&queue_index])
-                            .map_err(Error::VhostSetVringCall)?;
+                        return Ok(());
                     }
-                    return Ok(());
                 }
             }
         }
-
         self.vhost_handle
             .set_vring_call(queue_index, &self.vhost_interrupts[&queue_index])
             .map_err(Error::VhostSetVringCall)?;
@@ -289,34 +280,8 @@ impl<T: Vhost> Worker<T> {
     }
 
     fn set_vring_calls(&self) -> Result<()> {
-        if let Some(msix_config) = self.interrupt.get_msix_config() {
-            let msix_config = msix_config.lock();
-            if msix_config.masked() {
-                for (&queue_index, _) in self.queues.iter() {
-                    self.vhost_handle
-                        .set_vring_call(queue_index, &self.vhost_interrupts[&queue_index])
-                        .map_err(Error::VhostSetVringCall)?;
-                }
-            } else {
-                for (&queue_index, queue) in self.queues.iter() {
-                    let vector = queue.vector() as usize;
-                    if !msix_config.table_masked(vector) {
-                        if let Some(irqfd) = msix_config.get_irqfd(vector) {
-                            self.vhost_handle
-                                .set_vring_call(queue_index, irqfd)
-                                .map_err(Error::VhostSetVringCall)?;
-                        } else {
-                            self.vhost_handle
-                                .set_vring_call(queue_index, &self.vhost_interrupts[&queue_index])
-                                .map_err(Error::VhostSetVringCall)?;
-                        }
-                    } else {
-                        self.vhost_handle
-                            .set_vring_call(queue_index, &self.vhost_interrupts[&queue_index])
-                            .map_err(Error::VhostSetVringCall)?;
-                    }
-                }
-            }
+        for (&queue_index, queue) in self.queues.iter() {
+            self.set_vring_call_for_entry(queue_index, queue.vector() as usize)?;
         }
         Ok(())
     }
