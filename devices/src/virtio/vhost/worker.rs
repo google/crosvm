@@ -41,7 +41,7 @@ pub struct Worker<T: Vhost> {
     vhost_interrupts: BTreeMap<usize, Event>,
     vhost_error_events: BTreeMap<usize, Event>,
     acked_features: u64,
-    pub response_tube: Option<Tube>,
+    pub server_tube: Tube,
 }
 
 impl<T: Vhost> Worker<T> {
@@ -51,7 +51,7 @@ impl<T: Vhost> Worker<T> {
         vhost_handle: T,
         interrupt: Interrupt,
         acked_features: u64,
-        response_tube: Option<Tube>,
+        server_tube: Tube,
         mem: GuestMemory,
         queue_vrings_base: Option<Vec<VringBase>>,
     ) -> anyhow::Result<Worker<T>> {
@@ -73,7 +73,7 @@ impl<T: Vhost> Worker<T> {
             vhost_interrupts,
             vhost_error_events,
             acked_features,
-            response_tube,
+            server_tube,
         };
 
         let avail_features = worker
@@ -175,11 +175,9 @@ impl<T: Vhost> Worker<T> {
                 .add(event, Token::VhostError { index })
                 .map_err(Error::CreateWaitContext)?;
         }
-        if let Some(socket) = &self.response_tube {
-            wait_ctx
-                .add(socket, Token::ControlNotify)
-                .map_err(Error::CreateWaitContext)?;
-        }
+        wait_ctx
+            .add(&self.server_tube, Token::ControlNotify)
+            .map_err(Error::CreateWaitContext)?;
 
         'wait: loop {
             let events = wait_ctx.wait().map_err(Error::WaitError)?;
@@ -203,53 +201,45 @@ impl<T: Vhost> Worker<T> {
                         let _ = kill_evt.wait();
                         break 'wait;
                     }
-                    Token::ControlNotify => {
-                        if let Some(socket) = &self.response_tube {
-                            match socket.recv() {
-                                Ok(VhostDevRequest::MsixEntryChanged(index)) => {
-                                    let mut qindex = 0;
-                                    for (&queue_index, queue) in self.queues.iter() {
-                                        if queue.vector() == index as u16 {
-                                            qindex = queue_index;
-                                            break;
-                                        }
-                                    }
-                                    let response =
-                                        match self.set_vring_call_for_entry(qindex, index) {
-                                            Ok(()) => VhostDevResponse::Ok,
-                                            Err(e) => {
-                                                error!(
-                                                "Set vring call failed for masked entry {}: {:?}",
-                                                index, e
-                                            );
-                                                VhostDevResponse::Err(SysError::new(EIO))
-                                            }
-                                        };
-                                    if let Err(e) = socket.send(&response) {
-                                        error!("Vhost failed to send VhostMsixEntryMasked Response for entry {}: {:?}", index, e);
-                                    }
-                                }
-                                Ok(VhostDevRequest::MsixChanged) => {
-                                    let response = match self.set_vring_calls() {
-                                        Ok(()) => VhostDevResponse::Ok,
-                                        Err(e) => {
-                                            error!("Set vring calls failed: {:?}", e);
-                                            VhostDevResponse::Err(SysError::new(EIO))
-                                        }
-                                    };
-                                    if let Err(e) = socket.send(&response) {
-                                        error!(
-                                            "Vhost failed to send VhostMsixMasked Response: {:?}",
-                                            e
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Vhost failed to receive Control request: {:?}", e);
+                    Token::ControlNotify => match self.server_tube.recv() {
+                        Ok(VhostDevRequest::MsixEntryChanged(index)) => {
+                            let mut qindex = 0;
+                            for (&queue_index, queue) in self.queues.iter() {
+                                if queue.vector() == index as u16 {
+                                    qindex = queue_index;
+                                    break;
                                 }
                             }
+                            let response = match self.set_vring_call_for_entry(qindex, index) {
+                                Ok(()) => VhostDevResponse::Ok,
+                                Err(e) => {
+                                    error!(
+                                        "Set vring call failed for masked entry {}: {:?}",
+                                        index, e
+                                    );
+                                    VhostDevResponse::Err(SysError::new(EIO))
+                                }
+                            };
+                            if let Err(e) = self.server_tube.send(&response) {
+                                error!("Vhost failed to send VhostMsixEntryMasked Response for entry {}: {:?}", index, e);
+                            }
                         }
-                    }
+                        Ok(VhostDevRequest::MsixChanged) => {
+                            let response = match self.set_vring_calls() {
+                                Ok(()) => VhostDevResponse::Ok,
+                                Err(e) => {
+                                    error!("Set vring calls failed: {:?}", e);
+                                    VhostDevResponse::Err(SysError::new(EIO))
+                                }
+                            };
+                            if let Err(e) = self.server_tube.send(&response) {
+                                error!("Vhost failed to send VhostMsixMasked Response: {:?}", e);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Vhost failed to receive Control request: {:?}", e);
+                        }
+                    },
                 }
             }
         }
@@ -257,19 +247,22 @@ impl<T: Vhost> Worker<T> {
     }
 
     fn set_vring_call_for_entry(&self, queue_index: usize, vector: usize) -> Result<()> {
-        // No response_socket means it doesn't have any control related
-        // with the msix. Due to this, cannot use the direct irq fd but
-        // should fall back to indirect irq fd.
-        if self.response_tube.is_some() {
-            if let Some(msix_config) = self.interrupt.get_msix_config() {
-                let msix_config = msix_config.lock();
-                if !msix_config.masked() && !msix_config.table_masked(vector) {
-                    if let Some(irqfd) = msix_config.get_irqfd(vector) {
-                        self.vhost_handle
-                            .set_vring_call(queue_index, irqfd)
-                            .map_err(Error::VhostSetVringCall)?;
-                        return Ok(());
-                    }
+        // If MSI-X is enabled and not masked for this queue, then give the irqfd directly to the
+        // vhost driver so that it can send interrupts without context switching into a crosvm
+        // userspace thread.
+        //
+        // Note that if the MSI-X config for the queue is masked or disabled, a config change
+        // notification will cause this function to be reinvoked and we will switch to the indirect
+        // interrupt handling if necessary. The config register write will block while this code is
+        // running.
+        if let Some(msix_config) = self.interrupt.get_msix_config() {
+            let msix_config = msix_config.lock();
+            if !msix_config.masked() && !msix_config.table_masked(vector) {
+                if let Some(irqfd) = msix_config.get_irqfd(vector) {
+                    self.vhost_handle
+                        .set_vring_call(queue_index, irqfd)
+                        .map_err(Error::VhostSetVringCall)?;
+                    return Ok(());
                 }
             }
         }

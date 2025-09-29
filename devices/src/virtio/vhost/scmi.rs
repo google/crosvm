@@ -129,11 +129,9 @@ impl VirtioDevice for Scmi {
             vhost_handle,
             interrupt,
             acked_features,
-            Some(
-                self.worker_server_tube
-                    .take()
-                    .expect("worker control tube missing"),
-            ),
+            self.worker_server_tube
+                .take()
+                .expect("worker control tube missing"),
             mem,
             None,
         )

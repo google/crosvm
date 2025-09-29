@@ -227,11 +227,9 @@ impl VirtioDevice for Vsock {
             vhost_handle,
             interrupt,
             acked_features,
-            Some(
-                self.worker_server_tube
-                    .take()
-                    .expect("worker control tube missing"),
-            ),
+            self.worker_server_tube
+                .take()
+                .expect("worker control tube missing"),
             mem,
             self.vrings_base.take(),
         )
@@ -272,7 +270,7 @@ impl VirtioDevice for Vsock {
             }
 
             self.vhost_handle = Some(worker.vhost_handle);
-            self.worker_server_tube = worker.response_tube;
+            self.worker_server_tube = Some(worker.server_tube);
         }
         self.acked_features = 0;
         self.vrings_base = None;
@@ -359,7 +357,7 @@ impl VirtioDevice for Vsock {
             }
             self.vrings_base = Some(vrings_base);
             self.vhost_handle = Some(worker.vhost_handle);
-            self.worker_server_tube = worker.response_tube;
+            self.worker_server_tube = Some(worker.server_tube);
             queues.insert(
                 2,
                 self.event_queue.take().expect("Vsock event queue missing"),

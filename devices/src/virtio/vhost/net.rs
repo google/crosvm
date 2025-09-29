@@ -46,8 +46,8 @@ pub struct Net<T: TapT + 'static, U: VhostNetT<T> + 'static> {
     vhost_net_handle: Option<U>,
     avail_features: u64,
     acked_features: u64,
-    request_tube: Tube,
-    response_tube: Option<Tube>,
+    worker_client_tube: Tube,
+    worker_server_tube: Option<Tube>,
     pci_address: Option<PciAddress>,
 }
 
@@ -101,7 +101,7 @@ where
             avail_features |= 1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF;
         }
 
-        let (request_tube, response_tube) = Tube::pair().map_err(Error::CreateTube)?;
+        let (worker_client_tube, worker_server_tube) = Tube::pair().map_err(Error::CreateTube)?;
 
         Ok(Net {
             worker_thread: None,
@@ -110,8 +110,8 @@ where
             vhost_net_handle: Some(vhost_net_handle),
             avail_features,
             acked_features: 0u64,
-            request_tube,
-            response_tube: Some(response_tube),
+            worker_client_tube,
+            worker_server_tube: Some(worker_server_tube),
             pci_address,
         })
     }
@@ -133,10 +133,10 @@ where
             keep_rds.push(vhost_net_handle.as_raw_descriptor());
         }
 
-        keep_rds.push(self.request_tube.as_raw_descriptor());
+        keep_rds.push(self.worker_client_tube.as_raw_descriptor());
 
-        if let Some(response_tube) = &self.response_tube {
-            keep_rds.push(response_tube.as_raw_descriptor());
+        if let Some(worker_server_tube) = &self.worker_server_tube {
+            keep_rds.push(worker_server_tube.as_raw_descriptor());
         }
 
         keep_rds
@@ -195,18 +195,15 @@ where
             .context("missing vhost_net_handle")?;
         let tap = self.tap.take().context("missing tap")?;
         let acked_features = self.acked_features;
-        let socket = if self.response_tube.is_some() {
-            self.response_tube.take()
-        } else {
-            None
-        };
         let mut worker = Worker::new(
             "vhost-net",
             queues,
             vhost_net_handle,
             interrupt,
             acked_features,
-            socket,
+            self.worker_server_tube
+                .take()
+                .expect("worker control tube missing"),
             mem,
             None,
         )
@@ -256,7 +253,7 @@ where
         match behavior {
             MsixStatus::EntryChanged(index) => {
                 if let Err(e) = self
-                    .request_tube
+                    .worker_client_tube
                     .send(&VhostDevRequest::MsixEntryChanged(index))
                 {
                     error!(
@@ -267,7 +264,7 @@ where
                     );
                     return;
                 }
-                if let Err(e) = self.request_tube.recv::<VhostDevResponse>() {
+                if let Err(e) = self.worker_client_tube.recv::<VhostDevResponse>() {
                     error!(
                         "{} failed to receive VhostMsixEntryChanged response for entry {}: {:?}",
                         self.debug_label(),
@@ -277,7 +274,7 @@ where
                 }
             }
             MsixStatus::Changed => {
-                if let Err(e) = self.request_tube.send(&VhostDevRequest::MsixChanged) {
+                if let Err(e) = self.worker_client_tube.send(&VhostDevRequest::MsixChanged) {
                     error!(
                         "{} failed to send VhostMsixChanged request: {:?}",
                         self.debug_label(),
@@ -285,7 +282,7 @@ where
                     );
                     return;
                 }
-                if let Err(e) = self.request_tube.recv::<VhostDevResponse>() {
+                if let Err(e) = self.worker_client_tube.recv::<VhostDevResponse>() {
                     error!(
                         "{} failed to receive VhostMsixChanged response {:?}",
                         self.debug_label(),
@@ -302,7 +299,7 @@ where
             let (worker, tap) = worker_thread.stop();
             self.vhost_net_handle = Some(worker.vhost_handle);
             self.tap = Some(tap);
-            self.response_tube = worker.response_tube;
+            self.worker_server_tube = Some(worker.server_tube);
         }
         Ok(())
     }
