@@ -11,14 +11,18 @@ use base::error;
 use base::warn;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
+use base::Tube;
 use base::WorkerThread;
 use vhost::Scmi as VhostScmiHandle;
 use vhost::Vhost;
 use vm_memory::GuestMemory;
 
+use super::control_socket::VhostDevRequest;
+use super::control_socket::VhostDevResponse;
 use super::worker::Worker;
 use super::Error;
 use super::Result;
+use crate::pci::MsixStatus;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -32,6 +36,8 @@ const VIRTIO_SCMI_F_P2A_CHANNELS: u32 = 0;
 
 pub struct Scmi {
     worker_thread: Option<WorkerThread<()>>,
+    worker_client_tube: Tube,
+    worker_server_tube: Option<Tube>,
     vhost_handle: Option<VhostScmiHandle>,
     avail_features: u64,
     acked_features: u64,
@@ -44,8 +50,12 @@ impl Scmi {
 
         let avail_features = base_features | 1 << VIRTIO_SCMI_F_P2A_CHANNELS;
 
+        let (worker_client_tube, worker_server_tube) = Tube::pair().map_err(Error::CreateTube)?;
+
         Ok(Scmi {
             worker_thread: None,
+            worker_client_tube,
+            worker_server_tube: Some(worker_server_tube),
             vhost_handle: Some(handle),
             avail_features,
             acked_features: 0,
@@ -63,6 +73,10 @@ impl VirtioDevice for Scmi {
 
         if let Some(handle) = &self.vhost_handle {
             keep_rds.push(handle.as_raw_descriptor());
+        }
+        keep_rds.push(self.worker_client_tube.as_raw_descriptor());
+        if let Some(worker_server_tube) = &self.worker_server_tube {
+            keep_rds.push(worker_server_tube.as_raw_descriptor());
         }
 
         keep_rds
@@ -115,7 +129,11 @@ impl VirtioDevice for Scmi {
             vhost_handle,
             interrupt,
             acked_features,
-            None,
+            Some(
+                self.worker_server_tube
+                    .take()
+                    .expect("worker control tube missing"),
+            ),
             mem,
             None,
         )
@@ -139,6 +157,54 @@ impl VirtioDevice for Scmi {
                 Ok(_) => {}
                 Err(e) => error!("{}: failed to set owner: {:?}", self.debug_label(), e),
             }
+        }
+    }
+
+    fn control_notify(&self, behavior: MsixStatus) {
+        if self.worker_thread.is_none() {
+            return;
+        }
+        match behavior {
+            MsixStatus::EntryChanged(index) => {
+                if let Err(e) = self
+                    .worker_client_tube
+                    .send(&VhostDevRequest::MsixEntryChanged(index))
+                {
+                    error!(
+                        "{} failed to send VhostMsixEntryChanged request for entry {}: {:?}",
+                        self.debug_label(),
+                        index,
+                        e
+                    );
+                    return;
+                }
+                if let Err(e) = self.worker_client_tube.recv::<VhostDevResponse>() {
+                    error!(
+                        "{} failed to receive VhostMsixEntryChanged response for entry {}: {:?}",
+                        self.debug_label(),
+                        index,
+                        e
+                    );
+                }
+            }
+            MsixStatus::Changed => {
+                if let Err(e) = self.worker_client_tube.send(&VhostDevRequest::MsixChanged) {
+                    error!(
+                        "{} failed to send VhostMsixChanged request: {:?}",
+                        self.debug_label(),
+                        e
+                    );
+                    return;
+                }
+                if let Err(e) = self.worker_client_tube.recv::<VhostDevResponse>() {
+                    error!(
+                        "{} failed to receive VhostMsixChanged response {:?}",
+                        self.debug_label(),
+                        e
+                    );
+                }
+            }
+            _ => {}
         }
     }
 }
