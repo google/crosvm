@@ -97,21 +97,21 @@ use devices::virtio::snd::common_backend::VirtioSnd;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::product::GpuBackendConfig as GpuBackendConfigProduct;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventSplitConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::run_gpu_device_worker;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventVmmConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::GpuVmmConfig;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::gpu::sys::windows::product::GpuBackendConfig as GpuBackendConfigProduct;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventSplitConfig;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::gpu::sys::windows::run_gpu_device_worker;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventVmmConfig;
 #[cfg(feature = "audio")]
-use devices::virtio::vhost::user::snd::sys::windows::product::SndBackendConfig as SndBackendConfigProduct;
+use devices::virtio::vhost_user_backend::snd::sys::windows::product::SndBackendConfig as SndBackendConfigProduct;
 #[cfg(feature = "audio")]
-use devices::virtio::vhost::user::snd::sys::windows::run_snd_device_worker;
+use devices::virtio::vhost_user_backend::snd::sys::windows::run_snd_device_worker;
 #[cfg(feature = "audio")]
-use devices::virtio::vhost::user::snd::sys::windows::SndSplitConfig;
+use devices::virtio::vhost_user_backend::snd::sys::windows::SndSplitConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
 use devices::virtio::Console;

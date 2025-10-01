@@ -13,10 +13,10 @@ use base::syslog;
 use base::syslog::LogArgs;
 use base::syslog::LogConfig;
 use base::warn;
-use devices::virtio::vhost::user::device::run_console_device;
-use devices::virtio::vhost::user::device::run_fs_device;
-use devices::virtio::vhost::user::device::run_vsock_device;
-use devices::virtio::vhost::user::device::run_wl_device;
+use devices::virtio::vhost_user_backend::run_console_device;
+use devices::virtio::vhost_user_backend::run_fs_device;
+use devices::virtio::vhost_user_backend::run_vsock_device;
+use devices::virtio::vhost_user_backend::run_wl_device;
 
 use crate::crosvm::sys::cmdline::Commands;
 use crate::crosvm::sys::cmdline::DeviceSubcommand;

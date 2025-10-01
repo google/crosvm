@@ -37,15 +37,15 @@ use devices::virtio::scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 #[cfg(all(windows, feature = "gpu"))]
-use devices::virtio::vhost::user::device::gpu::sys::windows::GpuBackendConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::GpuBackendConfig;
 #[cfg(all(windows, feature = "gpu"))]
-use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::GpuVmmConfig;
 #[cfg(all(windows, feature = "gpu"))]
-use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventSplitConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventSplitConfig;
 #[cfg(all(windows, feature = "gpu"))]
-use devices::virtio::vhost::user::device::gpu::sys::windows::WindowProcedureThreadSplitConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::WindowProcedureThreadSplitConfig;
 #[cfg(all(windows, feature = "audio"))]
-use devices::virtio::vhost::user::device::snd::sys::windows::SndSplitConfig;
+use devices::virtio::vhost_user_backend::snd::sys::windows::SndSplitConfig;
 use devices::virtio::vsock::VsockConfig;
 use devices::virtio::DeviceType;
 #[cfg(feature = "net")]

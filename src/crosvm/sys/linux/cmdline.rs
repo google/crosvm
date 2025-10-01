@@ -8,8 +8,8 @@ use argh::FromArgValue;
 use argh::FromArgs;
 use cros_async::ExecutorKind;
 use devices::virtio::block::DiskOption;
-use devices::virtio::vhost::user::device;
-use devices::virtio::vhost::user::VhostUserParams;
+use devices::virtio::vhost_user_backend;
+use devices::virtio::vhost_user_backend::params::VhostUserParams;
 use devices::virtio::vsock::VsockConfig;
 #[cfg(feature = "net")]
 use devices::virtio::NetParameters;
@@ -22,10 +22,10 @@ use crate::crosvm::config::validate_serial_parameters;
 #[argh(subcommand)]
 /// Unix Devices
 pub enum DeviceSubcommand {
-    Console(device::ConsoleOptions),
-    Fs(device::FsOptions),
-    Vsock(device::VsockOptions),
-    Wl(device::WlOptions),
+    Console(vhost_user_backend::ConsoleOptions),
+    Fs(vhost_user_backend::FsOptions),
+    Vsock(vhost_user_backend::VsockOptions),
+    Wl(vhost_user_backend::WlOptions),
 }
 
 fn parse_vu_serial_options(s: &str) -> Result<VhostUserParams<SerialParameters>, String> {

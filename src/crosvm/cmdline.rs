@@ -5,7 +5,7 @@
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
         use base::RawDescriptor;
-        use devices::virtio::vhost::user::device::parse_wayland_sock;
+        use devices::virtio::vhost_user_backend::parse_wayland_sock;
 
         use crate::crosvm::sys::config::parse_pmem_ext2_option;
         use crate::crosvm::sys::config::VfioOption;
@@ -42,7 +42,7 @@ use devices::virtio::device_constants::video::VideoDeviceConfig;
 use devices::virtio::scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
-use devices::virtio::vhost::user::device;
+use devices::virtio::vhost_user_backend;
 use devices::virtio::vsock::VsockConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuDisplayParameters;
@@ -579,13 +579,13 @@ pub struct DeviceCommand {
 #[argh(subcommand)]
 /// Cross-platform Devices
 pub enum CrossPlatformDevicesCommands {
-    Block(device::BlockOptions),
+    Block(vhost_user_backend::BlockOptions),
     #[cfg(feature = "gpu")]
-    Gpu(device::GpuOptions),
+    Gpu(vhost_user_backend::GpuOptions),
     #[cfg(feature = "net")]
-    Net(device::NetOptions),
+    Net(vhost_user_backend::NetOptions),
     #[cfg(feature = "audio")]
-    Snd(device::SndOptions),
+    Snd(vhost_user_backend::SndOptions),
 }
 
 #[derive(argh_helpers::FlattenSubcommand)]

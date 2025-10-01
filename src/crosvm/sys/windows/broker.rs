@@ -70,27 +70,27 @@ use devices::virtio::gpu::AudioDeviceMode;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::gpu::sys::windows::GpuBackendConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::GpuBackendConfig;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::GpuVmmConfig;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventBackendConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventBackendConfig;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventSplitConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventSplitConfig;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventVmmConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventVmmConfig;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::gpu::sys::windows::WindowProcedureThreadSplitConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::WindowProcedureThreadSplitConfig;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::gpu::sys::windows::WindowProcedureThreadVmmConfig;
+use devices::virtio::vhost_user_backend::gpu::sys::windows::WindowProcedureThreadVmmConfig;
 #[cfg(feature = "audio")]
-use devices::virtio::vhost::user::device::snd::sys::windows::SndBackendConfig;
+use devices::virtio::vhost_user_backend::snd::sys::windows::SndBackendConfig;
 #[cfg(feature = "audio")]
-use devices::virtio::vhost::user::device::snd::sys::windows::SndSplitConfig;
+use devices::virtio::vhost_user_backend::snd::sys::windows::SndSplitConfig;
 #[cfg(feature = "audio")]
-use devices::virtio::vhost::user::device::snd::sys::windows::SndVmmConfig;
+use devices::virtio::vhost_user_backend::snd::sys::windows::SndVmmConfig;
 #[cfg(feature = "net")]
-use devices::virtio::vhost::user::device::NetBackendConfig;
+use devices::virtio::vhost_user_backend::NetBackendConfig;
 use devices::virtio::DeviceType;
 #[cfg(feature = "gpu")]
 use gpu_display::EventDevice;

@@ -34,8 +34,8 @@ Here is a (non-comprehensive) list of emulated devices provided by crosvm.
 - [`vsock`] - Enables use of virtual sockets for the guest.
 - [`vhost-user`] - VirtIO devices which offloads the device implementation to another process
   through the [vhost-user protocol]:
-  - [vmm side]: Shares its virtqueues.
-  - [device side]: Consumes virtqueues.
+  - [frontend side]: Shares its virtqueues.
+  - [backend side]: Consumes virtqueues.
 
 ## Device hotplug (experimental)
 
@@ -62,10 +62,10 @@ crosvm run \
 
 Currently, only network devices are supported.
 
-[device side]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/vhost/user/device/
+[backend side]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/vhost_user_backend/
+[frontend side]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/vhost_user_frontend/
 [usb]: usb.md
 [vhost-user protocol]: https://qemu.readthedocs.io/en/latest/interop/vhost-user.html
-[vmm side]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/vhost/user/vmm/
 [`balloon`]: balloon.md
 [`block`]: block.md
 [`cmos/rtc`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/cmos.rs

@@ -46,9 +46,9 @@ use devices::virtio::scsi::ScsiOption;
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vfio_wrapper::VfioWrapper;
 #[cfg(feature = "net")]
-use devices::virtio::vhost::user::NetBackend;
-use devices::virtio::vhost::user::VhostUserDeviceBuilder;
-use devices::virtio::vhost::user::VhostUserVsockDevice;
+use devices::virtio::vhost_user_backend::NetBackend;
+use devices::virtio::vhost_user_backend::VhostUserDeviceBuilder;
+use devices::virtio::vhost_user_backend::VhostUserVsockDevice;
 use devices::virtio::vsock::VsockConfig;
 use devices::virtio::Console;
 use devices::virtio::MemSlotConfig;
@@ -1566,9 +1566,9 @@ impl VirtioDeviceBuilder for &SerialParameters {
         self,
         keep_rds: &mut Vec<RawDescriptor>,
     ) -> anyhow::Result<Box<dyn VhostUserDeviceBuilder>> {
-        Ok(Box::new(virtio::vhost::user::create_vu_console_device(
-            self, keep_rds,
-        )?))
+        Ok(Box::new(
+            virtio::vhost_user_backend::create_vu_console_device(self, keep_rds)?,
+        ))
     }
 
     fn create_jail(

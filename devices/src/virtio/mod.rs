@@ -39,6 +39,7 @@ pub mod scsi;
 #[cfg(feature = "audio")]
 pub mod snd;
 pub mod vhost;
+pub mod vhost_user_backend;
 pub mod vhost_user_frontend;
 pub mod vsock;
 

@@ -30,13 +30,13 @@ use crosvm::cmdline;
 #[cfg(feature = "plugin")]
 use crosvm::config::executable_is_plugin;
 use crosvm::config::Config;
-use devices::virtio::vhost::user::device::run_block_device;
+use devices::virtio::vhost_user_backend::run_block_device;
 #[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::run_gpu_device;
+use devices::virtio::vhost_user_backend::run_gpu_device;
 #[cfg(feature = "net")]
-use devices::virtio::vhost::user::device::run_net_device;
+use devices::virtio::vhost_user_backend::run_net_device;
 #[cfg(feature = "audio")]
-use devices::virtio::vhost::user::device::run_snd_device;
+use devices::virtio::vhost_user_backend::run_snd_device;
 #[cfg(feature = "composite-disk")]
 use disk::create_composite_disk;
 #[cfg(feature = "composite-disk")]

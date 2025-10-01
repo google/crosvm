@@ -93,8 +93,8 @@ use devices::virtio::gpu::EventDevice;
 #[cfg(target_arch = "x86_64")]
 use devices::virtio::memory_mapper::MemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
-use devices::virtio::vhost::user::VhostUserConnectionTrait;
-use devices::virtio::vhost::user::VhostUserListener;
+use devices::virtio::vhost_user_backend::VhostUserConnectionTrait;
+use devices::virtio::vhost_user_backend::VhostUserListener;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
 #[cfg(feature = "pci-hotplug")]

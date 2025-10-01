@@ -13,7 +13,6 @@ use thiserror::Error;
 use vhost::Error as VhostError;
 
 mod control_socket;
-pub mod user;
 
 pub use self::control_socket::*;
 
