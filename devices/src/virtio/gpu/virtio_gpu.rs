@@ -24,6 +24,7 @@ use base::VolatileSlice;
 use gpu_display::*;
 use hypervisor::MemCacheType;
 use libc::c_void;
+use rutabaga_gfx::Resource3DInfo;
 use rutabaga_gfx::ResourceCreate3D;
 use rutabaga_gfx::ResourceCreateBlob;
 use rutabaga_gfx::Rutabaga;
@@ -438,23 +439,27 @@ impl VirtioGpuScanout {
         }
 
         let dmabuf = to_safe_descriptor(rutabaga.export_blob(resource.resource_id).ok()?.os_handle);
-        let query = rutabaga.resource3d_info(resource.resource_id).ok()?;
 
-        let (width, height, format, stride, offset) = match resource.scanout_data {
+        let (width, height, format, stride, offset, modifier) = match resource.scanout_data {
             Some(data) => (
                 data.width,
                 data.height,
                 data.drm_format.into(),
                 data.strides[0],
                 data.offsets[0],
+                0,
             ),
-            None => (
-                resource.width,
-                resource.height,
-                query.drm_fourcc,
-                query.strides[0],
-                query.offsets[0],
-            ),
+            None => {
+                let query = rutabaga.resource3d_info(resource.resource_id).ok()?;
+                (
+                    resource.width,
+                    resource.height,
+                    query.drm_fourcc,
+                    query.strides[0],
+                    query.offsets[0],
+                    query.modifier,
+                )
+            }
         };
 
         let import_id = display
@@ -465,7 +470,7 @@ impl VirtioGpuScanout {
                     descriptor: &dmabuf,
                     offset,
                     stride,
-                    modifiers: query.modifier,
+                    modifiers: modifier,
                     width,
                     height,
                     fourcc: format,
@@ -1352,6 +1357,17 @@ impl VirtioGpu {
                 scanout.create_surface(&self.display, None, scanout_rect)?;
             }
         }
+
+        let info = scanout_data.map(|scanout_data| Resource3DInfo {
+            width: scanout_data.width,
+            height: scanout_data.height,
+            drm_fourcc: scanout_data.drm_format.into(),
+            strides: scanout_data.strides,
+            offsets: scanout_data.offsets,
+            modifier: 0,
+        });
+
+        let _ = self.rutabaga.set_scanout(scanout_id, resource_id, info);
 
         resource.scanout_data = scanout_data;
 
