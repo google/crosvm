@@ -100,23 +100,15 @@ use crate::PciAddress;
 // there to be fewer of.
 const QUEUE_SIZES: &[u16] = &[512, 16];
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GpuMode {
+    #[default]
     #[serde(rename = "2d", alias = "2D")]
     Mode2D,
     #[serde(rename = "virglrenderer", alias = "3d", alias = "3D")]
     ModeVirglRenderer,
     #[serde(rename = "gfxstream")]
     ModeGfxstream,
-}
-
-impl Default for GpuMode {
-    fn default() -> Self {
-        if cfg!(windows) {
-            return GpuMode::ModeGfxstream;
-        }
-        GpuMode::Mode2D
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
