@@ -4,9 +4,9 @@
 
 use std::ops::ControlFlow;
 use std::ops::Deref;
-#[cfg(feature = "gfxstream")]
+#[cfg(feature = "gfxstream_display")]
 use std::os::raw::c_int;
-#[cfg(feature = "gfxstream")]
+#[cfg(feature = "gfxstream_display")]
 use std::os::raw::c_void;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -41,7 +41,7 @@ use super::keyboard_input_manager::KeyboardInputManager;
 use super::math_util::Size2DCheckedCast;
 use super::mouse_input_manager::MouseInputManager;
 use super::virtual_display_manager::NoopVirtualDisplayManager as VirtualDisplayManager;
-#[cfg(feature = "gfxstream")]
+#[cfg(feature = "gfxstream_display")]
 use super::window::BasicWindow;
 use super::window::GuiWindow;
 use super::window_manager::NoopWindowManager as WindowManager;
@@ -55,7 +55,7 @@ use super::HostWindowSpace;
 use super::MouseMode;
 use crate::EventDeviceKind;
 
-#[cfg(feature = "gfxstream")]
+#[cfg(feature = "gfxstream_display")]
 #[link(name = "gfxstream_backend")]
 extern "C" {
     fn gfxstream_backend_setup_window(
@@ -83,12 +83,12 @@ fn update_virtual_display_projection(
         {
             error!("{:?}", err);
         }
-        #[cfg(feature = "gfxstream")]
+        #[cfg(feature = "gfxstream_display")]
         return;
     }
 
     // Safe because `Window` object won't outlive the HWND.
-    #[cfg(feature = "gfxstream")]
+    #[cfg(feature = "gfxstream_display")]
     unsafe {
         gfxstream_backend_setup_window(
             window.handle() as *const c_void,
