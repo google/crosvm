@@ -342,22 +342,22 @@ def main(
         # Start VM ahead of time but don't wait for it to boot.
         testvm.up(get_vm_arch(triple))
 
+    riscv_exclude_args = []
+    if triple == Triple.from_shorthand("riscv64"):
+        riscv_exclude_args = ["--exclude=" + s for s in DO_NOT_BUILD_RISCV64]
+
     nextest_args = [
         f"--profile={profile}" if profile else None,
         "--verbose" if verbose() else None,
-    ]
-
-    console.print()
-    console.rule("Building tests")
-
-    if triple == Triple.from_shorthand("riscv64"):
-        nextest_args += ["--exclude=" + s for s in DO_NOT_BUILD_RISCV64]
+    ] + riscv_exclude_args
 
     nextest_run = configure_cargo(
         cmd("cargo nextest run"), triple, features, no_default_features
     ).with_args(*nextest_args)
 
-    with record_time("Build"):
+    console.print()
+    console.rule("Building tests")
+    with record_time("Build tests"):
         returncode = nextest_run.with_args("--no-run").fg(
             style=Styles.live_truncated(), check=False
         )
@@ -384,6 +384,31 @@ def main(
                     sys.exit(returncode)
 
     if dut:
+        console.print()
+        console.rule("Building crosvm binary for e2e tests")
+        with record_time("Build crosvm binary"):
+            cargo_build = configure_cargo(
+                cmd("cargo build -p crosvm"), triple, features, no_default_features
+            ).with_args(*riscv_exclude_args)
+            returncode = cargo_build.fg(style=Styles.live_truncated(), check=False)
+            if returncode != 0:
+                sys.exit(returncode)
+
+        # Getting crosvm binary's path
+        cargo_metadata = (
+            cmd("cargo metadata --format-version=1 --no-deps")
+            .with_args(
+                "--no-default-features" if no_default_features else None,
+                f"--features={features}" if features else None,
+            )
+            .with_color_flag()
+            .with_envs(triple.get_cargo_env())
+        )
+        json_result = cargo_metadata.json()
+        if not json_result:
+            raise Exception(f"Failed to get cargo metadata")
+        crosvm_bin_path = f"{json_result['target_directory']}/{triple}/debug/crosvm"
+
         package_dir = triple.target_dir / PACKAGE_NAME
         package_archive = package_dir.with_suffix(".tar.zst")
         nextest_package = configure_cargo(
@@ -406,6 +431,7 @@ def main(
         with record_time("Packing"):
             nextest_package(
                 "--test *",
+                f"--bin {crosvm_bin_path}",
                 f"-d {package_dir}",
                 f"-o {package_archive}" if dut != "host" else None,
                 "--no-strip" if no_strip else None,

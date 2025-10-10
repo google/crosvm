@@ -54,6 +54,12 @@ def collect_rust_libs():
         yield (lib_file, Path("debug/deps") / lib_file.name)
 
 
+def copy_specified_binaries(binaries: List[Path]):
+    "Collect specified binary files"
+    for binary in binaries:
+        yield (binary, Path("bin") / binary.name)
+
+
 def collect_test_binaries(metadata: Any, strip: bool):
     "Collect all test binaries that are needed to run the tests."
     target_dir = Path(metadata["rust-build-meta"]["target-directory"])
@@ -97,9 +103,12 @@ def collect_test_data_files():
                 break
 
 
-def collect_files(metadata: Any, output_directory: Path, strip_binaries: bool):
+def collect_files(
+    metadata: Any, output_directory: Path, binaries: List[Path], strip_binaries: bool
+):
     # List all files we need as (source path, path in output_directory) tuples
     manifest: List[Tuple[Path, Path]] = [
+        *copy_specified_binaries(binaries),
         *collect_test_binaries(metadata, strip=strip_binaries),
         *collect_rust_libs(),
         *collect_test_data_files(),
@@ -196,6 +205,7 @@ def main():
     parser.add_argument("--output-archive", "-o")
     parser.add_argument("--clean", action="store_true")
     parser.add_argument("--timing-info", action="store_true")
+    parser.add_argument("--bin", "-b", nargs="+")
     (args, nextest_list_args) = parser.parse_known_args()
     chdir(CROSVM_ROOT)
 
@@ -207,6 +217,8 @@ def main():
     if not output_directory:
         print("Must specify either --output-directory or --output-archive")
         return
+
+    binaries = [Path(b) for b in args.bin] if args.bin else []
 
     if args.clean and output_directory.exists():
         shutil.rmtree(output_directory)
@@ -223,7 +235,7 @@ def main():
         ).json()
 
     with record_time("Collecting files"):
-        collect_files(metadata, output_directory, strip_binaries=not args.no_strip)
+        collect_files(metadata, output_directory, binaries, strip_binaries=not args.no_strip)
         generate_run_script(metadata, output_directory)
 
     if output_archive:

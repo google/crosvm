@@ -31,23 +31,34 @@ pub const DEFAULT_BLOCK_SIZE: u64 = 1024 * 1024;
 
 /// Returns the path to the crosvm binary to be tested.
 ///
-/// The crosvm binary is expected to be alongside to the integration tests
-/// binary. Alternatively in the parent directory (cargo will put the
-/// test binary in target/debug/deps/ but the crosvm binary in target/debug)
+/// It checks multiple paths so that it supports multiple ways of executing tests.
 pub fn find_crosvm_binary() -> PathBuf {
     let binary_name = binary_name();
+    // When e2e tests are run via tools/run_tests, the crosvm binary is copied to `bin` directory
+    // under `CARGO_MANIFEST_DIR`.
+    let cargo_manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let bin_crosvm = PathBuf::from(cargo_manifest_dir)
+        .parent()
+        .unwrap()
+        .join("bin")
+        .join(binary_name);
+    if bin_crosvm.exists() {
+        return bin_crosvm;
+    }
+
+    // When `cargo test -p e2e_tests` is called directly, the crosvm binary is in target/debug while
+    // the test binary is in target/debug/deps/.
     let exe_dir = env::current_exe().unwrap().parent().unwrap().to_path_buf();
-    let first = exe_dir.join(binary_name);
-    if first.exists() {
-        return first;
+    let parent_dir_crosvm = exe_dir.parent().unwrap().join(binary_name);
+    if parent_dir_crosvm.exists() {
+        return parent_dir_crosvm;
     }
-    let second = exe_dir.parent().unwrap().join(binary_name);
-    if second.exists() {
-        return second;
-    }
+
     panic!(
-        "Cannot find {} in ./ or ../ alongside test binary.",
-        binary_name
+        "Cannot find {} either in {} or {}.",
+        binary_name,
+        bin_crosvm.display(),
+        parent_dir_crosvm.display()
     );
 }
 
