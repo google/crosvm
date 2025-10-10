@@ -51,8 +51,14 @@ impl EdidBytes {
         populate_size(&mut edid, info);
         populate_standard_timings(&mut edid)?;
 
-        let display_name_block = &mut edid[54..72];
-        populate_display_name(display_name_block);
+        // Bytes 54 through 125	are divided into four descriptors. Each of the four descriptors
+        // are 18 bytes in length. These 18 byte descriptors shall contain either detailed timing
+        // data as described in Section 3.10.2 or other types of data as described in Section
+        // 3.10.3.
+        let descriptor1 = &mut edid[54..72];
+        populate_detailed_timing_descriptor(descriptor1, info);
+        let descriptor2 = &mut edid[72..90];
+        populate_display_name(descriptor2);
 
         // We add one extension edid.
         edid[126] = 1;
@@ -181,6 +187,100 @@ fn populate_display_name(edid_block: &mut [u8]) {
     // Display Product Name String Descriptor Tag
     edid_block[0..5].clone_from_slice(&[0x00, 0x00, 0x00, 0xFC, 0x00]);
     edid_block[5..].clone_from_slice("CrosvmDisplay".as_bytes());
+}
+
+fn populate_detailed_timing_descriptor(edid_block: &mut [u8], info: &DisplayInfo) {
+    assert_eq!(edid_block.len(), 18);
+
+    // https://en.wikipedia.org/wiki/Extended_Display_Identification_Data#Detailed_Timing_Descriptor
+
+    // The pixel clock is what controls the refresh timing information.
+    //
+    // The formula for getting refresh rate out of this value is:
+    //   refresh_rate = clk * 10000 / (htotal * vtotal)
+    // Solving for clk:
+    //   clk = (refresh_rate * htotal * votal) / 10000
+    //
+    // where:
+    //   clk - The setting here
+    //   vtotal - Total lines
+    //   htotal - Total pixels per line
+    //
+    // Value here is pixel clock + 10,000, in 10khz steps.
+    //
+    // Pseudocode of kernel logic for vrefresh:
+    //    vtotal := mode->vtotal;
+    //    calc_val := (clock * 1000) / htotal
+    //    refresh := (calc_val + vtotal / 2) / vtotal
+    //    if flags & INTERLACE: refresh *= 2
+    //    if flags & DBLSCAN: refresh /= 2
+    //    if vscan > 1: refresh /= vscan
+    //
+    let htotal = info.width() + (info.horizontal_blanking as u32);
+    let vtotal = info.height() + (info.vertical_blanking as u32);
+    let mut clock: u16 = ((info.refresh_rate * htotal * vtotal) / 10000) as u16;
+    // Round to nearest 10khz.
+    clock = ((clock + 5) / 10) * 10;
+    edid_block[0..2].copy_from_slice(&clock.to_le_bytes());
+
+    let width_lsb: u8 = (info.width() & 0b11111111) as u8; // least sig 8 bits
+    let width_msb: u8 = ((info.width() >> 8) & 0b00001111) as u8; // most sig 4 bits
+
+    let horizontal_blanking_lsb: u8 = (info.horizontal_blanking & 0b11111111) as u8; // least sig 8 bits
+    let horizontal_blanking_msb: u8 = ((info.horizontal_blanking >> 8) & 0b00001111) as u8; // most sig 4 bits
+
+    let vertical_blanking_lsb: u8 = (info.vertical_blanking & 0b11111111) as u8; // least sig 8 bits
+    let vertical_blanking_msb: u8 = ((info.vertical_blanking >> 8) & 0b00001111) as u8; // most sig 4 bits
+
+    // Horizointal Addressable Video in pixels.
+    edid_block[2] = width_lsb;
+    // Horizontal blanking in pixels.
+    edid_block[3] = horizontal_blanking_lsb;
+    // Upper bits of the two above vals.
+    edid_block[4] = horizontal_blanking_msb | (width_msb << 4);
+
+    let vertical_active: u32 = info.height();
+    let vertical_active_lsb: u8 = (vertical_active & 0xFF) as u8;
+    let vertical_active_msb: u8 = ((vertical_active >> 8) & 0x0F) as u8;
+
+    // Vertical addressable video in *lines*
+    edid_block[5] = vertical_active_lsb;
+    // Vertical blanking in lines
+    edid_block[6] = vertical_blanking_lsb;
+    // Sigbits of the above.
+    edid_block[7] = vertical_blanking_msb | (vertical_active_msb << 4);
+
+    let horizontal_front_lsb: u8 = (info.horizontal_front & 0b11111111) as u8; // least sig 8 bits
+    let horizontal_front_msb: u8 = ((info.horizontal_front >> 8) & 0b00000011) as u8; // most sig 2 bits
+    let horizontal_sync_lsb: u8 = (info.horizontal_sync & 0b11111111) as u8; // least sig 8 bits
+    let horizontal_sync_msb: u8 = ((info.horizontal_sync >> 8) & 0b00000011) as u8; // most sig 2 bits
+
+    let vertical_front_lsb: u8 = (info.vertical_front & 0b00001111) as u8; // least sig 4 bits
+    let vertical_front_msb: u8 = ((info.vertical_front >> 4) & 0b00000011) as u8; // most sig 2 bits
+    let vertical_sync_lsb: u8 = (info.vertical_sync & 0b00001111) as u8; // least sig 4 bits
+    let vertical_sync_msb: u8 = ((info.vertical_sync >> 4) & 0b00000011) as u8; // most sig 2 bits
+
+    // Horizontal front porch in pixels.
+    edid_block[8] = horizontal_front_lsb;
+    // Horizontal sync pulse width in pixels.
+    edid_block[9] = horizontal_sync_lsb;
+    // LSB of vertical front porch and sync pulse
+    edid_block[10] = vertical_sync_lsb | (vertical_front_lsb << 4);
+    // Upper 2 bits of these values.
+    edid_block[11] = vertical_sync_msb
+        | (vertical_front_msb << 2)
+        | (horizontal_sync_msb << 4)
+        | (horizontal_front_msb << 6);
+
+    let width_millimeters_lsb: u8 = (info.width_millimeters & 0b11111111) as u8; // least sig 8 bits
+    let width_millimeters_msb: u8 = ((info.width_millimeters >> 8) & 0b00001111) as u8; // most sig 4 bits
+
+    let height_millimeters_lsb: u8 = (info.height_millimeters & 0b11111111) as u8; // least sig 8 bits
+    let height_millimeters_msb: u8 = ((info.height_millimeters >> 8) & 0b00001111) as u8; // most sig 4 bits
+
+    edid_block[12] = width_millimeters_lsb;
+    edid_block[13] = height_millimeters_lsb;
+    edid_block[14] = height_millimeters_msb | (width_millimeters_msb << 4);
 }
 
 fn populate_displayid_detailed_timings(block: &mut [u8], start_index: usize, info: &DisplayInfo) {
