@@ -1409,6 +1409,15 @@ pub struct RunCommand {
     /// doesn't require one.
     pub force_calibrated_tsc_leaf: Option<bool>,
 
+    #[argh(switch)]
+    #[serde(skip)]
+    #[merge(strategy = overwrite)]
+    /// force off use of readonly memslots
+    ///
+    /// Workaround for hypervisors that incorrectly advertise readonly memslot support (e.g. early
+    /// versions of pKVM). Currently only affects KVM.
+    pub force_disable_readonly_mem: bool,
+
     #[argh(option, arg_name = "name=NAME,(path=PATH|string=STRING)")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
@@ -3697,6 +3706,8 @@ impl TryFrom<RunCommand> for super::config::Config {
         {
             cfg.force_calibrated_tsc_leaf = cmd.force_calibrated_tsc_leaf.unwrap_or_default();
         }
+
+        cfg.force_disable_readonly_mem = cmd.force_disable_readonly_mem;
 
         cfg.stub_pci_devices = cmd.stub_pci_device;
 

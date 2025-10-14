@@ -276,6 +276,7 @@ pub struct KvmVm {
     /// A min heap of MemSlot numbers that were used and then removed and can now be re-used
     mem_slot_gaps: Arc<Mutex<BinaryHeap<Reverse<MemSlot>>>>,
     caps: KvmVmCaps,
+    force_disable_readonly_mem: bool,
 }
 
 impl KvmVm {
@@ -304,6 +305,7 @@ impl KvmVm {
             mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
             mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
             caps: Default::default(),
+            force_disable_readonly_mem: cfg.force_disable_readonly_mem,
         };
         vm.caps.kvmclock_ctrl = vm.check_raw_capability(KvmCap::KvmclockCtrl);
         vm.caps.user_noncoherent_dma = vm.check_raw_capability(KvmCap::MemNoncoherentDma);
@@ -612,6 +614,7 @@ impl Vm for KvmVm {
             mem_regions: self.mem_regions.clone(),
             mem_slot_gaps: self.mem_slot_gaps.clone(),
             caps: self.caps.clone(),
+            force_disable_readonly_mem: self.force_disable_readonly_mem,
         })
     }
 
@@ -636,7 +639,9 @@ impl Vm for KvmVm {
             VmCap::EarlyInitCpuid => false,
             #[cfg(target_arch = "x86_64")]
             VmCap::BusLockDetect => self.check_raw_capability(KvmCap::BusLockDetect),
-            VmCap::ReadOnlyMemoryRegion => self.check_raw_capability(KvmCap::ReadonlyMem),
+            VmCap::ReadOnlyMemoryRegion => {
+                !self.force_disable_readonly_mem && self.check_raw_capability(KvmCap::ReadonlyMem)
+            }
             VmCap::MemNoncoherentDma => {
                 cfg!(feature = "noncoherent-dma")
                     && self.check_raw_capability(KvmCap::MemNoncoherentDma)

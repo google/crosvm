@@ -651,6 +651,7 @@ pub struct Config {
     pub file_backed_mappings_mmio: Vec<FileBackedMappingParameters>,
     pub file_backed_mappings_ram: Vec<FileBackedMappingParameters>,
     pub force_calibrated_tsc_leaf: bool,
+    pub force_disable_readonly_mem: bool,
     pub force_s2idle: bool,
     pub fw_cfg_parameters: Vec<FwCfgParameters>,
     #[cfg(feature = "gdb")]
@@ -887,6 +888,7 @@ impl Default for Config {
             file_backed_mappings_mmio: Vec::new(),
             file_backed_mappings_ram: Vec::new(),
             force_calibrated_tsc_leaf: false,
+            force_disable_readonly_mem: false,
             force_s2idle: false,
             fw_cfg_parameters: Vec::new(),
             #[cfg(feature = "gdb")]

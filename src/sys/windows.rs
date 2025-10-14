@@ -2120,6 +2120,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         hugepages: cfg.hugepages,
         hv_cfg: hypervisor::Config {
             protection_type: cfg.protection_type,
+            force_disable_readonly_mem: cfg.force_disable_readonly_mem,
         },
         vm_image,
         android_fstab: cfg

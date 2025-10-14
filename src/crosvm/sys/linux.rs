@@ -1511,6 +1511,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             protection_type: cfg.protection_type,
             #[cfg(all(target_os = "android", target_arch = "aarch64"))]
             ffa: cfg.ffa.map(|g| g.auto).unwrap_or(false),
+            force_disable_readonly_mem: cfg.force_disable_readonly_mem,
         },
         vm_image,
         android_fstab: cfg

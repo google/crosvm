@@ -647,6 +647,7 @@ pub struct Config {
     pub protection_type: ProtectionType,
     #[cfg(all(target_os = "android", target_arch = "aarch64"))]
     pub ffa: bool,
+    pub force_disable_readonly_mem: bool,
 }
 
 impl Default for Config {
@@ -657,6 +658,7 @@ impl Default for Config {
             protection_type: ProtectionType::Unprotected,
             #[cfg(all(target_os = "android", target_arch = "aarch64"))]
             ffa: false,
+            force_disable_readonly_mem: false,
         }
     }
 }
