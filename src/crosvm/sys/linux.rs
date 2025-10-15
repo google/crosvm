@@ -1685,10 +1685,12 @@ fn create_guest_memory(
         mem_policy |= MemoryPolicy::USE_HUGEPAGES;
     }
 
-    if cfg.lock_guest_memory || cfg.lock_guest_memory_punchhole {
+    if cfg.lock_guest_memory {
         mem_policy |= MemoryPolicy::LOCK_GUEST_MEMORY;
     }
-    if cfg.lock_guest_memory_punchhole {
+    // When sandboxing is enabled, we can MADV_REMOVE from the balloon process, otherwise, fallback
+    // to using FALLOC_FL_PUNCH_HOLE.
+    if cfg.jail_config.is_none() {
         mem_policy |= MemoryPolicy::USE_PUNCHHOLE_LOCKED;
     }
     guest_mem.set_memory_policy(mem_policy);
