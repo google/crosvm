@@ -2938,9 +2938,18 @@ mod tests {
             serde_json::to_vec(&source_error).expect("should serialize to json successfully");
         let target_error = serde_json::from_slice::<VmMemoryResponseError>(&serialized_bytes)
             .expect("should deserialize from json successfully");
+        assert_eq!(source_error.0.to_string(), target_error.0.to_string());
         assert_eq!(
-            format!("{:?}", source_error.0),
-            format!("{:?}", target_error.0)
+            source_error
+                .0
+                .chain()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            target_error
+                .0
+                .chain()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
         );
     }
 
