@@ -116,6 +116,14 @@ where
         self.alt.clear();
         self.main.clear()
     }
+
+    /// Calls a closure on each value in the map.
+    pub fn apply<F>(&self, f: F)
+    where
+        F: Fn(&V),
+    {
+        self.main.values().for_each(|(_k2, v)| f(v))
+    }
 }
 
 #[cfg(test)]
