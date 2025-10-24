@@ -148,7 +148,6 @@ luci.notifier(
     on_status_change = True,
     notify_emails = [
         "crosvm-uprev@grotations.appspotmail.com",
-        "crosvm-uprev-apac@grotations.appspotmail.com",
     ],
 )
 luci.notifier(
@@ -156,8 +155,8 @@ luci.notifier(
     on_status_change = True,
     notify_emails = [
         "crosvm-uprev@grotations.appspotmail.com",
-        "crosvm-uprev-apac@grotations.appspotmail.com",
         "keiichiw@google.com",
+        "zihanchen@google.com"
     ],
 )
 
