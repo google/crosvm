@@ -192,7 +192,8 @@ def create_pgo_profile():
         rename_files_to_random(tmpdirname)
     mkdir("profiles").fg()
     dev_container(
-        f"cargo profdata -- merge -o /workspace/profiles/benchmarks.profdata /workspace/{tmpdirname}"
+        f"$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-profdata merge \
+        -o /workspace/profiles/benchmarks.profdata /workspace/{tmpdirname}"
     ).fg()
     dev_container("xz -f -9e -T 0 /workspace/profiles/benchmarks.profdata").fg()
 
