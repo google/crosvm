@@ -182,9 +182,6 @@ impl ExecuteError {
 
     fn log_level(&self) -> LogLevel {
         match self {
-            // Since there is no feature bit for the guest to detect support for
-            // VIRTIO_BLK_T_GET_ID, the driver has to try executing the request to see if it works.
-            ExecuteError::Unsupported(VIRTIO_BLK_T_GET_ID) => LogLevel::Debug,
             // Log disk I/O errors at debug level to avoid flooding the logs.
             ExecuteError::ReadIo { .. }
             | ExecuteError::WriteIo { .. }
@@ -220,7 +217,7 @@ struct DiskState {
     disk_image: Box<dyn AsyncDisk>,
     read_only: bool,
     sparse: bool,
-    id: Option<BlockId>,
+    id: BlockId,
     /// A DiskState is owned by each worker's executor and cannot be shared by workers, thus
     /// `worker_shared_state` holds the state shared by workers in Arc.
     worker_shared_state: Arc<AsyncRwLock<WorkerSharedState>>,
@@ -615,7 +612,7 @@ pub struct BlockAsync {
     sparse: bool,
     seg_max: u32,
     block_size: u32,
-    id: Option<BlockId>,
+    id: BlockId,
     control_tube: Option<Tube>,
     queue_sizes: Vec<u16>,
     pub(super) executor_kind: ExecutorKind,
@@ -653,7 +650,7 @@ impl BlockAsync {
         let sparse = disk_option.sparse;
         let block_size = disk_option.block_size;
         let packed_queue = disk_option.packed_queue;
-        let id = disk_option.id;
+        let id = disk_option.id.unwrap_or_default();
         let mut worker_per_queue = disk_option.multiple_workers;
         // Automatically disable multiple workers if the disk image can't be cloned.
         if worker_per_queue && disk_image.try_clone().is_err() {
@@ -931,11 +928,9 @@ impl BlockAsync {
                 }
             }
             VIRTIO_BLK_T_GET_ID => {
-                if let Some(id) = disk_state.id {
-                    writer.write_all(&id).map_err(ExecuteError::CopyId)?;
-                } else {
-                    return Err(ExecuteError::Unsupported(req_type));
-                }
+                writer
+                    .write_all(&disk_state.id)
+                    .map_err(ExecuteError::CopyId)?;
             }
             t => return Err(ExecuteError::Unsupported(t)),
         };
@@ -1390,7 +1385,7 @@ mod tests {
             disk_image: Box::new(af),
             read_only: false,
             sparse: true,
-            id: None,
+            id: Default::default(),
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
             })),
@@ -1458,7 +1453,7 @@ mod tests {
             disk_image: Box::new(af),
             read_only: false,
             sparse: true,
-            id: None,
+            id: Default::default(),
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
             })),
@@ -1528,7 +1523,7 @@ mod tests {
             disk_image: Box::new(af),
             read_only: false,
             sparse: true,
-            id: Some(*id),
+            id: *id,
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
             })),
@@ -1667,7 +1662,7 @@ mod tests {
             b.worker_threads.len(),
             if enables_multiple_workers { 2 } else { 1 }
         );
-        assert_eq!(b.id, Some(*b"Block serial number\0"));
+        assert_eq!(b.id, *b"Block serial number\0");
 
         // re-activate should succeed
         let interrupt = Interrupt::new_for_test();
