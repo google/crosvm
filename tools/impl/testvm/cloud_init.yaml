@@ -23,6 +23,7 @@ preserve_hostname: true
 # Runtime dependencies of crosvm binaries.
 # Note: Keep in sync with ./install-[aarch64-]deps.sh
 packages:
+    - binutils
     - e2fsprogs
     - gcc
     - libavcodec61
@@ -51,11 +52,11 @@ runcmd:
 
     # Install cargo-nextest using prebuilt binaries and validate checksum.
 {% if v1.machine == 'aarch64' %}
-    - curl -LsSf https://get.nexte.st/0.9.43/linux-arm | tar zxf - -C /usr/bin
-    - echo "59374b208807b5002f96c815a04f6bcc80d16707c2e8046471bb41043324363e /usr/bin/cargo-nextest" | sha256sum -c -
+    - curl -LsSf https://get.nexte.st/0.9.96/linux-arm | tar zxf - -C /usr/bin
+    - echo "dcf773f27abaa13d8aba20c0e448c3ab6e09785ca26e1c8ce7ebdb224d10f79d /usr/bin/cargo-nextest" | sha256sum -c -
 {% else %}
-    - curl -LsSf https://get.nexte.st/0.9.43/linux | tar zxf - -C /usr/bin
-    - echo "0b100bd45bbae6e7a4fa05f8f2cee0ca231997875ec43f984cd5ffaa2e6e9a98 /usr/bin/cargo-nextest" | sha256sum -c -
+    - curl -LsSf https://get.nexte.st/0.9.96/linux | tar zxf - -C /usr/bin
+    - echo "4d9d511e911b41dd71e87367bc5edb209199a46795fb1a8706be25803411cf39 /usr/bin/cargo-nextest" | sha256sum -c -
 {% endif %}
 
     # Enable core dumps for debugging crashes

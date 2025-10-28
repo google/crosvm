@@ -25,6 +25,12 @@ fn main() {
             libs.push(GLIB_FILENAME);
         }
         prebuilts::download_prebuilts("libslirp", version, &libs).unwrap();
+        for path in prebuilts::download_prebuilts("libslirp", version, &libs).unwrap() {
+            println!(
+                "cargo::rustc-link-search={}",
+                path.parent().unwrap().display()
+            );
+        }
     }
 
     // For unix, libslirp-sys's build script will make the appropriate linking calls to pkg_config.

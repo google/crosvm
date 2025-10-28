@@ -699,7 +699,7 @@ pub fn create_virtio_media_v4l2_proxy_device<P: AsRef<Path>>(
         card: Default::default(),
     };
     let card = &device.caps().card;
-    let name_slice = &card.as_bytes()[0..std::cmp::min(card.as_bytes().len(), config.card.len())];
+    let name_slice = &card.as_bytes()[0..std::cmp::min(card.len(), config.card.len())];
     config.card.as_mut_slice()[0..name_slice.len()].copy_from_slice(name_slice);
     let device_path = PathBuf::from(device_path.as_ref());
 

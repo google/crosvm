@@ -347,7 +347,7 @@ impl GuestMemory {
                 if last
                     .guest_base
                     .checked_add(last.mapping.size() as u64)
-                    .map_or(true, |a| a > range.0)
+                    .is_none_or(|a| a > range.0)
                 {
                     return Err(Error::MemoryRegionOverlap);
                 }
@@ -866,11 +866,7 @@ impl GuestMemory {
         // Assume no overlap among regions
         let (mapping, offset, _) = self.find_region(guest_addr)?;
 
-        if mapping
-            .size()
-            .checked_sub(offset)
-            .map_or(true, |v| v < size)
-        {
+        if mapping.size().checked_sub(offset).is_none_or(|v| v < size) {
             return Err(Error::InvalidGuestAddress(guest_addr));
         }
 

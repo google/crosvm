@@ -49,7 +49,7 @@ cargo binstall --no-confirm mdbook --version "0.4.25"
 cargo binstall --no-confirm mdbook-linkcheck --version "0.7.7"
 
 # Nextest is an improved test runner for cargo
-cargo binstall --no-confirm cargo-nextest --version "0.9.49"
+cargo binstall --no-confirm cargo-nextest --version "0.9.96"
 
 Red='\033[0;31m'
 Reset='\033[0m'

@@ -9,7 +9,7 @@ param (
     [Parameter(
         Position = 0
     )]
-    [string]$BASE_DIR = $Env:TEMP  ## 
+    [string]$BASE_DIR = $Env:TEMP  ##
 )
 
 $BASE_DIR = $BASE_DIR + "\"
@@ -73,5 +73,6 @@ $BINSTALL_DEST=((Get-Command cargo) | Get-Item).DirectoryName
 Expand-Archive -Path $BINSTALL_ZIP -DestinationPath $BINSTALL_DEST
 
 # Nextest is an improved test runner for cargo
-cargo binstall --no-confirm cargo-nextest --version "0.9.49"
+cargo binstall --no-confirm cargo-nextest --version "0.9.96"
+
 

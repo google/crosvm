@@ -58,7 +58,7 @@ fn memory_offset(mem: &GuestMemory, guest_addr: GuestAddress, len: u64) -> Udmab
     let map_offset = map_offset as u64;
     if map_offset
         .checked_add(len)
-        .map_or(true, |a| a > mapping.size() as u64)
+        .is_none_or(|a| a > mapping.size() as u64)
     {
         return Err(UdmabufError::InvalidOffset(
             GuestMemoryError::InvalidGuestAddress(guest_addr),
