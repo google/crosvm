@@ -168,17 +168,28 @@ impl FromIterator<usize> for CpuSet {
     }
 }
 
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+fn sve_auto_default() -> bool {
+    true
+}
+
 /// The SVE config for Vcpus.
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct SveConfig {
-    /// Use SVE
-    #[serde(default)]
-    pub enable: bool,
     /// Detect if SVE is available and enable accordingly. `enable` is ignored if auto is true
-    #[serde(default)]
+    #[serde(default = "sve_auto_default")]
     pub auto: bool,
+}
+
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+impl Default for SveConfig {
+    fn default() -> Self {
+        SveConfig {
+            auto: sve_auto_default(),
+        }
+    }
 }
 
 /// FFA config

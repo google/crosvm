@@ -23,7 +23,6 @@ use arch::FdtPosition;
 use arch::GetSerialCmdlineError;
 use arch::MemoryRegionConfig;
 use arch::RunnableLinuxVm;
-use arch::SveConfig;
 use arch::VcpuAffinity;
 use arch::VmComponents;
 use arch::VmImage;
@@ -679,14 +678,15 @@ impl arch::LinuxArch for AArch64 {
             vcpu_init.push(per_vcpu_init);
         }
 
-        if components.sve_config.auto {
-            components.sve_config.enable = vm.check_capability(VmCap::Sve);
-        }
+        let enable_sve = if components.sve_config.auto {
+            vm.check_capability(VmCap::Sve)
+        } else {
+            false
+        };
 
         // Initialize Vcpus after all Vcpu objects have been created.
         for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
-            let features =
-                &Self::vcpu_features(vcpu_id, use_pmu, components.boot_cpu, components.sve_config);
+            let features = &Self::vcpu_features(vcpu_id, use_pmu, components.boot_cpu, enable_sve);
             vcpu.init(features).map_err(Error::VcpuInit)?;
         }
 
@@ -1397,7 +1397,7 @@ impl AArch64 {
         vcpu_id: usize,
         use_pmu: bool,
         boot_cpu: usize,
-        sve: SveConfig,
+        enable_sve: bool,
     ) -> Vec<VcpuFeature> {
         let mut features = vec![VcpuFeature::PsciV0_2];
         if use_pmu {
@@ -1407,7 +1407,7 @@ impl AArch64 {
         if vcpu_id != boot_cpu {
             features.push(VcpuFeature::PowerOff);
         }
-        if sve.enable {
+        if enable_sve {
             features.push(VcpuFeature::Sve);
         }
 
