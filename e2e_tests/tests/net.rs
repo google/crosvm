@@ -282,7 +282,7 @@ fn guest_to_host_ncat_test(vm: &mut TestVm, host_ip: String, port: String) -> an
     let listen_args = vec!["-l", &listen_port];
     //Create a recv file in host, then ncat listen a port and re-direct to this file
     let recv_file = File::create("/tmp/host_recv.txt")?;
-    Command::new("ncat")
+    let mut ncat_process = Command::new("ncat")
         .args(listen_args)
         .stdout(Stdio::from(recv_file))
         .spawn()
@@ -306,6 +306,8 @@ fn guest_to_host_ncat_test(vm: &mut TestVm, host_ip: String, port: String) -> an
     ))
     .expect("fail to send file");
 
+    ncat_process.wait().expect("failed to wait");
+
     let res = Command::new("md5sum")
         .stdout(Stdio::piped())
         .args(["/tmp/host_recv.txt"])
@@ -318,6 +320,7 @@ fn guest_to_host_ncat_test(vm: &mut TestVm, host_ip: String, port: String) -> an
         .to_string();
 
     assert_eq!(md5_guest.trim_end(), md5_host);
+
     Ok(())
 }
 

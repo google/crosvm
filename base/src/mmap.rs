@@ -4,9 +4,9 @@
 
 use std::cmp::min;
 use std::fs::File;
-use std::intrinsics::copy_nonoverlapping;
 use std::io;
 use std::mem::size_of;
+use std::ptr::copy_nonoverlapping;
 use std::ptr::read_unaligned;
 use std::ptr::read_volatile;
 use std::ptr::write_unaligned;
@@ -370,21 +370,21 @@ impl MemoryMapping {
     ///
     /// * Cached memory which the guest may be reading through an uncached mapping:
     ///
-    ///     Guest reads via an uncached mapping can bypass the cache and directly access main
-    ///     memory. This is outside the memory model of Rust, which means that even with proper
-    ///     synchronization, guest reads via an uncached mapping might not see updates from the
-    ///     host. As such, it is necessary to perform architectural cache maintainance to flush the
-    ///     host writes to main memory.
+    ///   Guest reads via an uncached mapping can bypass the cache and directly access main
+    ///   memory. This is outside the memory model of Rust, which means that even with proper
+    ///   synchronization, guest reads via an uncached mapping might not see updates from the
+    ///   host. As such, it is necessary to perform architectural cache maintainance to flush the
+    ///   host writes to main memory.
     ///
-    ///     Note that this does not support writable uncached guest mappings, as doing so
-    ///     requires invalidating the cache, not flushing the cache.
+    ///   Note that this does not support writable uncached guest mappings, as doing so
+    ///   requires invalidating the cache, not flushing the cache.
     ///
     /// * Uncached memory which the guest may be writing through a cached mapping:
     ///
-    ///     Guest writes via a cached mapping of a host's uncached memory may never make it to
-    ///     system/device memory prior to being read. In such cases, explicit flushing of the cached
-    ///     writes is necessary, since other managers of the host's uncached mapping (e.g. DRM) see
-    ///     no need to flush, as they believe all writes would explicitly bypass the caches.
+    ///   Guest writes via a cached mapping of a host's uncached memory may never make it to
+    ///   system/device memory prior to being read. In such cases, explicit flushing of the cached
+    ///   writes is necessary, since other managers of the host's uncached mapping (e.g. DRM) see
+    ///   no need to flush, as they believe all writes would explicitly bypass the caches.
     ///
     /// Currently only supported on x86_64 and aarch64. Cannot be supported on 32-bit arm.
     pub fn flush_region(&self, offset: usize, len: usize) -> Result<()> {

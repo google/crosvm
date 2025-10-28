@@ -321,8 +321,8 @@ fn parse_ctrl_group_name_and_id(
 ///
 /// * `nl_attr_area`
 ///
-///     Nested attributes area (CTRL_ATTR_MCAST_GROUPS data), where nl_attr's corresponding to
-///     specific groups are embed
+///   Nested attributes area (CTRL_ATTR_MCAST_GROUPS data), where nl_attr's corresponding to
+///   specific groups are embed
 ///
 /// * `group_name`
 ///
