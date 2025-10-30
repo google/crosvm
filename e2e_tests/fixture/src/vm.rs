@@ -436,12 +436,6 @@ impl TestVm {
         TestVm::new_generic(TestVmSys::append_config_args, cfg, true)
     }
 
-    /// Instanciate a new crosvm instance using a configuration file. The first call will trigger
-    /// the download of prebuilt files if necessary.
-    pub fn new_with_config_file(cfg: Config) -> Result<TestVm> {
-        TestVm::new_generic(TestVmSys::append_config_file_arg, cfg, false)
-    }
-
     /// Executes the provided command in the guest.
     /// Returns command output as Ok(ProgramExit), or an Error if the program did not exit with 0.
     pub fn exec_in_guest(&mut self, command: &str) -> Result<ProgramExit> {

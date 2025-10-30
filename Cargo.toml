@@ -211,7 +211,7 @@ windows = { version = "=0.61.1" }
 
 [features]
 ## Default features of crosvm. This selection is somewhat arbitrary for historical reasons.
-default = ["audio", "balloon", "config-file", "document-features", "gpu", "qcow", "usb", "libvda-stub", "net", "slirp"]
+default = ["audio", "balloon", "document-features", "gpu", "qcow", "usb", "libvda-stub", "net", "slirp"]
 
 ## Enables support for the Android [sparse image format](https://android.googlesource.com/platform/system/core/+/HEAD/libsparse/sparse_format.h)
 ## in the block device.
@@ -238,11 +238,6 @@ zstd-disk = ["disk/zstd-disk"]
 ## Enables virtiofs uid-gid mapping from the host side through command line when user-namespace
 ## isn't available for non-root users. This format is supported only for vhost-user-fs.
 fs_runtime_ugid_map = ["devices/fs_runtime_ugid_map"]
-
-## Enables support for JSON configuration files that can be specified using `--cfg`. See
-## [Configuration Files](https://crosvm.dev/book/running_crosvm/options.html#configuration-files)
-## for more information.
-config-file = []
 
 ## Enables using gdb to debug the guest kernel. See
 ## [GDB Support](https://crosvm.dev/book/running_crosvm/advanced_usage.html#gdb-support) for more
@@ -559,7 +554,6 @@ all-android = [
     "audio_aaudio",
     "balloon",
     "composite-disk",
-    "config-file",
     "fs_runtime_ugid_map",
     "gdb",
     "gdbstub",
@@ -604,7 +598,6 @@ libc = { workspace = true }
 libcras = "*"
 # Compile out trace statements in release builds
 log = { version = "0", features = ["release_max_level_debug"]}
-merge = "0.1.0"
 metrics = { workspace = true }
 metrics_events = { workspace = true }
 net_util = { workspace = true }

@@ -51,13 +51,6 @@ fn boot_test_vm_odirect() {
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().stdout.trim(), "42");
 }
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
-#[test]
-fn boot_test_vm_config_file() {
-    let mut vm = TestVm::new_with_config_file(Config::new()).unwrap();
-    assert_eq!(vm.exec_in_guest("echo 42").unwrap().stdout.trim(), "42");
-}
-
 /*
  * VCPU-level suspend/resume tests (which does NOT suspend the devices)
  */
@@ -205,13 +198,6 @@ fn boot_test_vm_disable_sandbox() {
 #[test]
 fn boot_test_vm_disable_sandbox_odirect() {
     let mut vm = TestVm::new(Config::new().disable_sandbox().o_direct()).unwrap();
-    assert_eq!(vm.exec_in_guest("echo 42").unwrap().stdout.trim(), "42");
-}
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-#[test]
-fn boot_test_vm_disable_sandbox_config_file() {
-    let mut vm = TestVm::new_with_config_file(Config::new().disable_sandbox()).unwrap();
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().stdout.trim(), "42");
 }
 
