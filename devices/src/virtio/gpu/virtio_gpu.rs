@@ -118,6 +118,7 @@ struct VirtioGpuResourceSnapshot {
 
     backing_iovecs: Option<Vec<(GuestAddress, usize)>>,
     shmem_offset: Option<u64>,
+    scanout_data: Option<VirtioScanoutBlobData>,
 }
 
 impl VirtioGpuResource {
@@ -139,7 +140,6 @@ impl VirtioGpuResource {
 
     fn snapshot(&self) -> VirtioGpuResourceSnapshot {
         // Only the 2D backend is fully supported and it doesn't use these fields. 3D is WIP.
-        assert!(self.scanout_data.is_none());
         assert!(self.display_import.is_none());
 
         VirtioGpuResourceSnapshot {
@@ -149,12 +149,14 @@ impl VirtioGpuResource {
             size: self.size,
             backing_iovecs: self.backing_iovecs.clone(),
             shmem_offset: self.shmem_offset,
+            scanout_data: self.scanout_data,
         }
     }
 
     fn restore(s: VirtioGpuResourceSnapshot) -> Self {
         let mut resource = VirtioGpuResource::new(s.resource_id, s.width, s.height, s.size);
         resource.backing_iovecs = s.backing_iovecs;
+        resource.scanout_data = s.scanout_data;
         resource
     }
 }
@@ -444,7 +446,7 @@ impl VirtioGpuScanout {
             Some(data) => (
                 data.width,
                 data.height,
-                data.drm_format.into(),
+                data.drm_format,
                 data.strides[0],
                 data.offsets[0],
                 0,
@@ -1361,7 +1363,7 @@ impl VirtioGpu {
         let info = scanout_data.map(|scanout_data| Resource3DInfo {
             width: scanout_data.width,
             height: scanout_data.height,
-            drm_fourcc: scanout_data.drm_format.into(),
+            drm_fourcc: scanout_data.drm_format,
             strides: scanout_data.strides,
             offsets: scanout_data.offsets,
             modifier: 0,

@@ -118,11 +118,11 @@ pub enum GpuWsi {
     Vulkan,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct VirtioScanoutBlobData {
     pub width: u32,
     pub height: u32,
-    pub drm_format: DrmFormat,
+    pub drm_format: u32,
     pub strides: [u32; 4],
     pub offsets: [u32; 4],
 }
@@ -666,7 +666,7 @@ impl Frontend {
                 let scanout = VirtioScanoutBlobData {
                     width,
                     height,
-                    drm_format,
+                    drm_format: drm_format.into(),
                     strides,
                     offsets,
                 };
