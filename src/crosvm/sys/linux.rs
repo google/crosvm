@@ -3180,6 +3180,7 @@ struct ControlLoopState<'a, V: VmArch, Vcpu: VcpuArch> {
     vfio_container_manager: &'a mut VfioContainerManager,
     suspended_pvclock_state: &'a mut Option<hypervisor::ClockState>,
     vcpus_pid_tid: &'a BTreeMap<usize, (u32, u32)>,
+    vm_memory_control_client: &'a VmMemoryClient,
 }
 
 struct VmRequestResult {
@@ -3331,6 +3332,53 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 VcpuControl::Throttle(cycles),
             );
             return Ok(VmRequestResult::new(None, false));
+        }
+        VmRequest::RegisterMemory {
+            fd,
+            offset,
+            range_start,
+            range_end,
+            cache_coherent,
+        } => {
+            if range_start >= range_end {
+                error!("range_start >= range_end");
+                return Ok(VmRequestResult::new(
+                    Some(VmResponse::Err(base::Error::new(libc::EINVAL))),
+                    false,
+                ));
+            }
+            let source = VmMemorySource::Descriptor {
+                descriptor: fd,
+                offset,
+                size: range_end - range_start,
+            };
+            let dest = VmMemoryDestination::GuestPhysicalAddress(range_start);
+            let cache_type = if cache_coherent {
+                MemCacheType::CacheCoherent
+            } else {
+                MemCacheType::CacheNonCoherent
+            };
+            match state.vm_memory_control_client.register_memory(
+                source,
+                dest,
+                Protection::read_write(),
+                cache_type,
+            ) {
+                Ok(region_id) => VmResponse::RegisterMemory2 {
+                    region_id: region_id.0 .0,
+                },
+                Err(e) => VmResponse::ErrString(format!("register memory failed: {:?}", e)),
+            }
+        }
+        VmRequest::UnregisterMemory { region_id } => {
+            let mem_region_id = VmMemoryRegionId(GuestAddress(region_id));
+            match state
+                .vm_memory_control_client
+                .unregister_memory(mem_region_id)
+            {
+                Ok(_) => VmResponse::Ok,
+                Err(e) => VmResponse::ErrString(format!("unregister memory failed: {:?}", e)),
+            }
         }
         _ => {
             if !state.cfg.force_s2idle {
@@ -4026,6 +4074,12 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         })
         .unwrap();
 
+    let (vm_memory_control_tube1, vm_memory_control_tube_2) = Tube::pair()?;
+    vm_memory_control_tubes.push(VmMemoryTube {
+        tube: vm_memory_control_tube1,
+        expose_with_viommu: false,
+    });
+    let vm_memory_control_client = VmMemoryClient::new(vm_memory_control_tube_2);
     let (vm_memory_handler_control, vm_memory_handler_control_for_thread) = Tube::pair()?;
     let vm_memory_handler_thread = std::thread::Builder::new()
         .name("vm_memory_handler_thread".into())
@@ -4340,6 +4394,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             vfio_container_manager: &mut vfio_container_manager,
                             suspended_pvclock_state: &mut suspended_pvclock_state,
                             vcpus_pid_tid: &vcpus_pid_tid,
+                            vm_memory_control_client: &vm_memory_control_client,
                         };
                         let (exit_requested, mut ids_to_remove, add_tubes) =
                             process_vm_control_event(&mut state, id, socket)?;

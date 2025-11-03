@@ -31,8 +31,11 @@ use balloon_control::BalloonStats;
 use balloon_control::BalloonWS;
 use balloon_control::WSBucket;
 use base::descriptor::IntoRawDescriptor;
+use base::FromRawDescriptor;
+use base::SafeDescriptor;
 use libc::c_char;
 use libc::c_int;
+use libc::c_void;
 use libc::ssize_t;
 pub use swap::SwapStatus;
 use vm_control::client::do_modify_battery;
@@ -1380,6 +1383,116 @@ pub unsafe extern "C" fn crosvm_get_vm_descriptor(
         } else {
             false
         }
+    })
+    .unwrap_or(false)
+}
+
+/// Platform agnostic wrapper over a file descriptor.
+#[repr(C)]
+pub union FdWrapper {
+    /// File descriptor on linux systems.
+    pub linux_fd: c_int,
+    /// File descriptor on windows systems.
+    pub windows_fd: *mut c_void,
+}
+
+/// Arguments structure for crosvm_add_memory.
+#[repr(C)]
+pub struct AddMemoryArgs {
+    /// File descriptor representing memory (e.g. memfd or dma_buf_fd) shared with the VM.
+    pub fd: FdWrapper,
+    /// Offset.
+    pub offset: u64,
+    /// Start of the memory range in the guest VM that this memory will be mapped to.
+    pub range_start: u64,
+    /// End of the memory range in the guest VM that this memory will be mapped to.
+    pub range_end: u64,
+    /// Whether this memory is cache coherent or not.
+    pub cache_coherent: bool,
+    /// Padding for the future extensions.
+    // TODO(ioffe): is one u64 enough?
+    pub _reserved: u64,
+}
+
+/// Registers memory represented by `memory_args` to the guest VM.
+///
+/// The function returns true on success or false if an error occurred. On success the
+/// `out_region_id` will contain the unique id representing the registered memory in guest.
+///
+/// # Safety
+///
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a C
+/// string that is valid for reads and not modified for the duration of the call. `memory_args`
+/// should be a pointer to `AddMemoryArgs` struct valid for read and not modified for the duration
+/// of this call. `out_region_id` should be a pointer to a `u64` valid for writes that is not
+/// externally modified for the duration of this call.
+/// This function takes the ownership of the `memory_args.fd` file descriptor.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_register_memory(
+    socket_path: *const c_char,
+    memory_args: *const AddMemoryArgs,
+    out_region_id: *mut u64,
+) -> bool {
+    catch_unwind(|| {
+        // SAFETY: `memory_args.fd` is valid during the duration of this function.
+        let fd = unsafe {
+            #[cfg(not(target_os = "windows"))]
+            {
+                SafeDescriptor::from_raw_descriptor((*memory_args).fd.linux_fd)
+            }
+            #[cfg(target_os = "windows")]
+            {
+                SafeDescriptor::from_raw_descriptor((*memory_args).fd.windows_fd)
+            }
+        };
+
+        let Some(socket_path) = validate_socket_path(socket_path) else {
+            return false;
+        };
+
+        if out_region_id.is_null() {
+            return false;
+        }
+
+        let req = VmRequest::RegisterMemory {
+            fd,
+            offset: (*memory_args).offset,
+            range_start: (*memory_args).range_start,
+            range_end: (*memory_args).range_end,
+            cache_coherent: (*memory_args).cache_coherent,
+        };
+        let resp = handle_request(&req, socket_path);
+        if let Ok(VmResponse::RegisterMemory2 { region_id }) = resp {
+            *out_region_id = region_id;
+            true
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// Unregisters memory represented by the `region_id` from the guest IPA space.
+///
+/// The function returns true on success or false if an error occurred.
+///
+/// # Safety
+///
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a C
+/// string that is valid for reads and not modified for the duration of the call.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_unregister_memory(
+    socket_path: *const c_char,
+    region_id: u64,
+) -> bool {
+    catch_unwind(|| {
+        let Some(socket_path) = validate_socket_path(socket_path) else {
+            return false;
+        };
+
+        let req = VmRequest::UnregisterMemory { region_id };
+        let resp = handle_request(&req, socket_path);
+        matches!(resp, Ok(VmResponse::Ok))
     })
     .unwrap_or(false)
 }

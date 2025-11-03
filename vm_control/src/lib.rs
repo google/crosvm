@@ -1070,7 +1070,7 @@ impl VmMemoryRequest {
 #[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq, Eq, Ord, Clone, Copy)]
 /// Identifer for registered memory regions. Globally unique.
 // The current implementation uses guest physical address as the unique identifier.
-pub struct VmMemoryRegionId(GuestAddress);
+pub struct VmMemoryRegionId(pub GuestAddress);
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum VmMemoryResponse {
@@ -1639,6 +1639,16 @@ pub enum VmRequest {
     Throttle(usize, u32),
     /// Returns unique descriptor of this VM.
     GetVmDescriptor,
+    /// Registers memory in guest.
+    RegisterMemory {
+        fd: SafeDescriptor,
+        offset: u64,
+        range_start: u64,
+        range_end: u64,
+        cache_coherent: bool,
+    },
+    /// Unregisters memory in guest.
+    UnregisterMemory { region_id: u64 },
 }
 
 /// NOTE: when making any changes to this enum please also update
@@ -2384,6 +2394,8 @@ impl VmRequest {
                     vm_fd,
                 }
             }
+            VmRequest::RegisterMemory { .. } => unreachable!(),
+            VmRequest::UnregisterMemory { .. } => unreachable!(),
         }
     }
 }
@@ -2689,6 +2701,8 @@ pub enum VmResponse {
     ErrString(String),
     /// The memory was registered into guest address space in memory slot number `slot`.
     RegisterMemory { slot: u32 },
+    /// Variant of the register memory but with region_id.
+    RegisterMemory2 { region_id: u64 },
     /// Results of balloon control commands.
     #[cfg(feature = "balloon")]
     BalloonStats {
@@ -2734,6 +2748,9 @@ impl Display for VmResponse {
             Err(e) => write!(f, "error: {}", e),
             ErrString(e) => write!(f, "error: {}", e),
             RegisterMemory { slot } => write!(f, "memory registered in slot {}", slot),
+            RegisterMemory2 { region_id } => {
+                write!(f, "memory registered in region id {}", region_id)
+            }
             #[cfg(feature = "balloon")]
             VmResponse::BalloonStats {
                 stats,
