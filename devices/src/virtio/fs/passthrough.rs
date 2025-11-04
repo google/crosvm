@@ -257,10 +257,36 @@ impl From<libc::mode_t> for FileType {
 }
 
 #[derive(Debug)]
+struct OpenedFile {
+    file: File,
+    open_flags: libc::c_int,
+}
+
+impl AsRawDescriptor for OpenedFile {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.file.as_raw_descriptor()
+    }
+}
+
+impl OpenedFile {
+    fn new(file: File, open_flags: libc::c_int) -> Self {
+        OpenedFile { file, open_flags }
+    }
+
+    fn file(&self) -> &File {
+        &self.file
+    }
+
+    fn file_mut(&mut self) -> &mut File {
+        &mut self.file
+    }
+}
+
+#[derive(Debug)]
 struct InodeData {
     inode: Inode,
     // (File, open_flags)
-    file: Mutex<(File, libc::c_int)>,
+    file: Mutex<OpenedFile>,
     refcount: AtomicU64,
     filetype: FileType,
     path: String,
@@ -268,7 +294,7 @@ struct InodeData {
 
 impl AsRawDescriptor for InodeData {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.file.lock().0.as_raw_descriptor()
+        self.file.lock().as_raw_descriptor()
     }
 }
 
@@ -1007,7 +1033,7 @@ impl PassthroughFs {
                 altkey,
                 Arc::new(InodeData {
                     inode,
-                    file: Mutex::new((f, open_flags)),
+                    file: Mutex::new(OpenedFile::new(f, open_flags)),
                     refcount: AtomicU64::new(1),
                     filetype: st.st_mode.into(),
                     path,
@@ -1318,12 +1344,12 @@ impl PassthroughFs {
 
     fn do_getxattr(&self, inode: &InodeData, name: &CStr, value: &mut [u8]) -> io::Result<usize> {
         let file = inode.file.lock();
-        let o_path_file = (file.1 & libc::O_PATH) != 0;
+        let o_path_file = (file.open_flags & libc::O_PATH) != 0;
         let res = if o_path_file {
             // For FDs opened with `O_PATH`, we cannot call `fgetxattr` normally. Instead we
             // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
             //  and then setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", file.0.as_raw_descriptor()))
+            let path = CString::new(format!("self/fd/{}", file.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             // SAFETY: this will only modify `value` and we check the return value.
@@ -1340,7 +1366,7 @@ impl PassthroughFs {
             // SAFETY: this will only write to `value` and we check the return value.
             unsafe {
                 libc::fgetxattr(
-                    file.0.as_raw_descriptor(),
+                    file.as_raw_descriptor(),
                     name.as_ptr(),
                     value.as_mut_ptr() as *mut libc::c_void,
                     value.len() as libc::size_t,
@@ -1593,15 +1619,15 @@ impl PassthroughFs {
         {
             // We cannot enable verity while holding a writable fd so get a new one, if necessary.
             let mut file = inode_data.file.lock();
-            let mut flags = file.1;
+            let mut flags = file.open_flags;
             match flags & libc::O_ACCMODE {
                 libc::O_WRONLY | libc::O_RDWR => {
                     flags &= !libc::O_ACCMODE;
                     flags |= libc::O_RDONLY;
 
                     // We need to get a read-only handle for this file.
-                    let newfile = self.open_fd(file.0.as_raw_descriptor(), libc::O_RDONLY)?;
-                    *file = (newfile, flags);
+                    let newfile = self.open_fd(file.as_raw_descriptor(), libc::O_RDONLY)?;
+                    *file = OpenedFile::new(newfile, flags);
                 }
                 libc::O_RDONLY => {}
                 _ => panic!("Unexpected flags: {:#x}", flags),
@@ -2203,7 +2229,7 @@ impl FileSystem for PassthroughFs {
             },
             Arc::new(InodeData {
                 inode: ROOT_ID,
-                file: Mutex::new((f, flags)),
+                file: Mutex::new(OpenedFile::new(f, flags)),
                 refcount: AtomicU64::new(2),
                 filetype: st.st_mode.into(),
                 path: "".to_string(),
@@ -2626,21 +2652,21 @@ impl FileSystem for PassthroughFs {
             let data = self.find_inode(inode)?;
 
             let mut file = data.file.lock();
-            let mut flags = file.1;
+            let mut flags = file.open_flags;
             match flags & libc::O_ACCMODE {
                 libc::O_WRONLY => {
                     flags &= !libc::O_WRONLY;
                     flags |= libc::O_RDWR;
 
                     // We need to get a readable handle for this file.
-                    let newfile = self.open_fd(file.0.as_raw_descriptor(), libc::O_RDWR)?;
-                    *file = (newfile, flags);
+                    let newfile = self.open_fd(file.as_raw_descriptor(), libc::O_RDWR)?;
+                    *file = OpenedFile::new(newfile, flags);
                 }
                 libc::O_RDONLY | libc::O_RDWR => {}
                 _ => panic!("Unexpected flags: {:#x}", flags),
             }
 
-            w.write_from(&mut file.0, size as usize, offset)
+            w.write_from(file.file_mut(), size as usize, offset)
         } else {
             let _trace = fs_trace!(self.tag, "read", inode, handle, size, offset);
             let data = self.find_handle(handle, inode)?;
@@ -2683,21 +2709,21 @@ impl FileSystem for PassthroughFs {
             let data = self.find_inode(inode)?;
 
             let mut file = data.file.lock();
-            let mut flags = file.1;
+            let mut flags = file.open_flags;
             match flags & libc::O_ACCMODE {
                 libc::O_RDONLY => {
                     flags &= !libc::O_RDONLY;
                     flags |= libc::O_RDWR;
 
                     // We need to get a writable handle for this file.
-                    let newfile = self.open_fd(file.0.as_raw_descriptor(), libc::O_RDWR)?;
-                    *file = (newfile, flags);
+                    let newfile = self.open_fd(file.as_raw_descriptor(), libc::O_RDWR)?;
+                    *file = OpenedFile::new(newfile, flags);
                 }
                 libc::O_WRONLY | libc::O_RDWR => {}
                 _ => panic!("Unexpected flags: {:#x}", flags),
             }
 
-            r.read_to(&mut file.0, size as usize, offset)
+            r.read_to(file.file_mut(), size as usize, offset)
         } else {
             let _trace = fs_trace!(self.tag, "write", inode, handle, size, offset);
 
@@ -3179,12 +3205,12 @@ impl FileSystem for PassthroughFs {
         }
 
         let file = data.file.lock();
-        let o_path_file = (file.1 & libc::O_PATH) != 0;
+        let o_path_file = (file.open_flags & libc::O_PATH) != 0;
         if o_path_file {
             // For FDs opened with `O_PATH`, we cannot call `fsetxattr` normally. Instead we emulate
             // an _at syscall by changing the CWD to /proc, running the path based syscall, and then
             // setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", file.0.as_raw_descriptor()))
+            let path = CString::new(format!("self/fd/{}", file.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             syscall!(self.with_proc_chdir(|| {
@@ -3205,7 +3231,7 @@ impl FileSystem for PassthroughFs {
                 // SAFETY: this doesn't modify any memory and we check the return value.
                 unsafe {
                     libc::fsetxattr(
-                        file.0.as_raw_descriptor(),
+                        file.as_raw_descriptor(),
                         name.as_ptr(),
                         value.as_ptr() as *const libc::c_void,
                         value.len() as libc::size_t,
@@ -3257,12 +3283,12 @@ impl FileSystem for PassthroughFs {
         let mut buf = vec![0u8; size as usize];
 
         let file = data.file.lock();
-        let o_path_file = (file.1 & libc::O_PATH) != 0;
+        let o_path_file = (file.open_flags & libc::O_PATH) != 0;
         let res = if o_path_file {
             // For FDs opened with `O_PATH`, we cannot call `flistxattr` normally. Instead we
             // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
             // and then setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", file.0.as_raw_descriptor()))
+            let path = CString::new(format!("self/fd/{}", file.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             // SAFETY: this will only modify `buf` and we check the return value.
@@ -3278,7 +3304,7 @@ impl FileSystem for PassthroughFs {
             // SAFETY: this will only write to `buf` and we check the return value.
             syscall!(unsafe {
                 libc::flistxattr(
-                    file.0.as_raw_descriptor(),
+                    file.as_raw_descriptor(),
                     buf.as_mut_ptr() as *mut libc::c_char,
                     buf.len() as libc::size_t,
                 )
@@ -3309,12 +3335,12 @@ impl FileSystem for PassthroughFs {
         let name = self.rewrite_xattr_name(name);
 
         let file = data.file.lock();
-        let o_path_file = (file.1 & libc::O_PATH) != 0;
+        let o_path_file = (file.open_flags & libc::O_PATH) != 0;
         if o_path_file {
             // For files opened with `O_PATH`, we cannot call `fremovexattr` normally. Instead we
             // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
             // and then setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", file.0.as_raw_descriptor()))
+            let path = CString::new(format!("self/fd/{}", file.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             syscall!(self.with_proc_chdir(||
@@ -3324,7 +3350,7 @@ impl FileSystem for PassthroughFs {
             // For regular files and directories, we can just use fremovexattr.
             syscall!(
                 // SAFETY: this doesn't modify any memory and we check the return value.
-                unsafe { libc::fremovexattr(file.0.as_raw_descriptor(), name.as_ptr()) }
+                unsafe { libc::fremovexattr(file.as_raw_descriptor(), name.as_ptr()) }
             )?;
         }
 
@@ -3348,15 +3374,15 @@ impl FileSystem for PassthroughFs {
             {
                 // fallocate needs a writable fd
                 let mut file = data.file.lock();
-                let mut flags = file.1;
+                let mut flags = file.open_flags;
                 match flags & libc::O_ACCMODE {
                     libc::O_RDONLY => {
                         flags &= !libc::O_RDONLY;
                         flags |= libc::O_RDWR;
 
                         // We need to get a writable handle for this file.
-                        let newfile = self.open_fd(file.0.as_raw_descriptor(), libc::O_RDWR)?;
-                        *file = (newfile, flags);
+                        let newfile = self.open_fd(file.as_raw_descriptor(), libc::O_RDWR)?;
+                        *file = OpenedFile::new(newfile, flags);
                     }
                     libc::O_WRONLY | libc::O_RDWR => {}
                     _ => panic!("Unexpected flags: {:#x}", flags),
@@ -3560,7 +3586,7 @@ impl FileSystem for PassthroughFs {
 
         if self.zero_message_open.load(Ordering::Relaxed) {
             let mut file = data.file.lock();
-            let mut open_flags = file.1;
+            let mut open_flags = file.open_flags;
             match (mmap_flags, open_flags & libc::O_ACCMODE) {
                 (libc::O_RDONLY, libc::O_WRONLY)
                 | (libc::O_RDWR, libc::O_RDONLY)
@@ -3569,8 +3595,8 @@ impl FileSystem for PassthroughFs {
                     open_flags &= !libc::O_ACCMODE;
                     open_flags |= libc::O_RDWR;
 
-                    let newfile = self.open_fd(file.0.as_raw_descriptor(), libc::O_RDWR)?;
-                    *file = (newfile, open_flags);
+                    let newfile = self.open_fd(file.as_raw_descriptor(), libc::O_RDWR)?;
+                    *file = OpenedFile::new(newfile, open_flags);
                 }
                 (libc::O_RDONLY, libc::O_RDONLY)
                 | (libc::O_RDONLY, libc::O_RDWR)
@@ -3580,7 +3606,7 @@ impl FileSystem for PassthroughFs {
                     m, o
                 ),
             }
-            mapper.map(mem_offset, size, &file.0, file_offset, prot)
+            mapper.map(mem_offset, size, file.file(), file_offset, prot)
         } else {
             let file = self.open_inode(&data, mmap_flags | libc::O_NONBLOCK)?;
             mapper.map(mem_offset, size, &file, file_offset, prot)
@@ -4913,7 +4939,7 @@ mod tests {
 
         let inodes = fs.inodes.lock();
         let data = inodes.get(&entry.inode).unwrap();
-        let flags = data.file.lock().1;
+        let flags = data.file.lock().open_flags;
         if writeback {
             // When writeback is enabled, O_APPEND must be handled by the guest kernel.
             // So, it must be cleared.
