@@ -103,6 +103,51 @@ If it cannot be avoided at all, please follow this process:
 1. Use Cq-Depend on the ChromeOS changes and submit it via the CQ.
 1. After the changes landed in ChromeOS, land them upstream as well.
 
+## rutabaga chromeos releases
+
+Upstream crosvm and ChromeOS crosvm will use different versions of rutabaga_gfx crate to guarantee
+ChromeOS crosvm stability.
+
+The versions will be API-compatible. This creates two possible scenarios that downstream integrators
+should be prepared for.
+
+### upstream rutabaga_gfx update from U.V.W to version X.Y.Z and updating version in ChromeOS downstream
+
+This most commonly happens when upstream crosvm starts using new rutabaga_gfx APIs.
+
+In this case, upstream crosvm will use
+[rutabaga_gfx-X.Y.Z](https://crates.io/crates/rutabaga_gfx/0.1.75), while downstream will use
+[rutabaga_gfx-X.Y.Z-chromeos](https://crates.io/crates/rutabaga_gfx/0.1.75-chromeos).
+
+The downstream integrator would need to:
+
+1. Uprev to [rutabaga-X.Y.Z in upstream crosvm](https://crrev.com/c/7051742). This will cause a
+   merge conflict for downstream.
+1. Perform a [downstream merge](https://crrev.com/c/7083089). As part of the merge conflict
+   resolution, change rutabaga-U.V.W-chromeos to rutabaga_gfx-X.Y.Z-chromeos. Make another change to
+   [CrOS Rust registry](https://crrev.com/c/7085045) to use rutabaga-X.Y.Z-chromeos. Use the
+   Cq-Depend mechanism so both the merge commit and CrOS Rust registry change go in at the same
+   time.
+
+It is recommended for the upstream update to occur even without downstream CQ testing for ChromeOS.
+The reason is rutabaga_gfx-X.Y.Z-chromeos is functionally frozen on a known good version, with _just
+enough_ stub API additions to maintain compatibility. The likelihood of breakage under this model is
+very small.
+
+### upstream rutabaga_gfx update from U.V.W to version X.Y.Z while keeping the old version in ChromeOS downstream
+
+This most commonly happens when upstream crosvm starts using a new rutabaga_gfx version for
+bug-fixes or features, but those bug-fixes/features don't require new APIs.
+
+In this case, a rutabaga_gfx-X.Y-Z-chromeos release will not be available on crates.io.
+
+The downstream integrator would need to:
+
+1. Uprev to rutabaga-X.Y.Z in upstream crosvm. This will cause a merge conflict for downstream.
+1. Perform a downstream merge. As part of the merge conflict resolution, keep
+   rutabaga-U.V.W-chromeos as the desired version (since it is API compatible with
+   rutabaga_gfx-X.Y.Z).
+
 ## Cherry-picking
 
 ### Cherry-picking without the usual merge process
