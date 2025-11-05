@@ -301,7 +301,7 @@ impl AsRawDescriptor for InodeData {
 #[derive(Debug)]
 struct HandleData {
     inode: Inode,
-    file: Mutex<File>,
+    file: Mutex<OpenedFile>,
 }
 
 impl AsRawDescriptor for HandleData {
@@ -1211,10 +1211,13 @@ impl PassthroughFs {
     fn do_open(&self, inode: Inode, flags: u32) -> io::Result<(Option<Handle>, OpenOptions)> {
         let inode_data = self.find_inode(inode)?;
 
-        let file = Mutex::new(self.open_inode(&inode_data, flags as i32)?);
+        let file = self.open_inode(&inode_data, flags as i32)?;
 
         let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
-        let data = HandleData { inode, file };
+        let data = HandleData {
+            inode,
+            file: Mutex::new(OpenedFile::new(file, flags as i32)),
+        };
 
         self.handles.lock().insert(handle, Arc::new(data));
 
@@ -1248,7 +1251,7 @@ impl PassthroughFs {
         let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
         let data = HandleData {
             inode,
-            file: Mutex::new(file_open),
+            file: Mutex::new(OpenedFile::new(file_open, open_flags)),
         };
 
         self.handles.lock().insert(handle, Arc::new(data));
@@ -1649,7 +1652,10 @@ impl PassthroughFs {
                 match flags {
                     FileFlags::ReadWrite | FileFlags::Write => {
                         // We need to get a read-only handle for this file.
-                        *file = self.open_fd(file.as_raw_descriptor(), libc::O_RDONLY)?;
+                        *file = OpenedFile::new(
+                            self.open_fd(file.as_raw_descriptor(), libc::O_RDONLY)?,
+                            libc::O_RDONLY,
+                        );
                     }
                     FileFlags::Read => {}
                 }
@@ -2672,7 +2678,7 @@ impl FileSystem for PassthroughFs {
             let data = self.find_handle(handle, inode)?;
 
             let mut f = data.file.lock();
-            w.write_from(&mut f, size as usize, offset)
+            w.write_from(f.file_mut(), size as usize, offset)
         }
     }
 
@@ -2730,7 +2736,7 @@ impl FileSystem for PassthroughFs {
             let data = self.find_handle(handle, inode)?;
 
             let mut f = data.file.lock();
-            r.read_to(&mut f, size as usize, offset)
+            r.read_to(f.file_mut(), size as usize, offset)
         }
     }
 
@@ -2758,7 +2764,7 @@ impl FileSystem for PassthroughFs {
         let inode_data = self.find_inode(inode)?;
 
         enum Data<'a> {
-            Handle(MutexGuard<'a, File>),
+            Handle(MutexGuard<'a, OpenedFile>),
             ProcPath(CString),
         }
 
