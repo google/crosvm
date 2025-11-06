@@ -46,6 +46,7 @@ struct FsBackend {
     avail_features: u64,
     workers: BTreeMap<usize, WorkerThread<Queue>>,
     keep_rds: Vec<RawDescriptor>,
+    unmap_guest_memory_on_fork: bool,
 }
 
 impl FsBackend {
@@ -67,9 +68,16 @@ impl FsBackend {
         let avail_features = virtio::base_features(ProtectionType::Unprotected)
             | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
 
+        let cfg = cfg.unwrap_or_default();
+
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        let unmap_guest_memory_on_fork = cfg.unmap_guest_memory_on_fork;
+        #[cfg(not(any(target_os = "android", target_os = "linux")))]
+        let unmap_guest_memory_on_fork = false;
+
         // Use default passthroughfs config
         #[allow(unused_mut)]
-        let mut fs = PassthroughFs::new(tag, cfg.unwrap_or_default())?;
+        let mut fs = PassthroughFs::new(tag, cfg)?;
         #[cfg(feature = "fs_runtime_ugid_map")]
         if skip_pivot_root {
             fs.set_root_dir(shared_dir.to_string())?;
@@ -86,6 +94,7 @@ impl FsBackend {
             avail_features,
             workers: Default::default(),
             keep_rds,
+            unmap_guest_memory_on_fork,
         })
     }
 }
@@ -158,6 +167,10 @@ impl VhostUserDevice for FsBackend {
         } else {
             Err(anyhow::Error::new(DeviceError::WorkerNotFound))
         }
+    }
+
+    fn unmap_guest_memory_on_fork(&self) -> bool {
+        self.unmap_guest_memory_on_fork
     }
 
     fn enter_suspended_state(&mut self) -> anyhow::Result<()> {

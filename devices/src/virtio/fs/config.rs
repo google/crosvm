@@ -344,6 +344,17 @@ pub struct Config {
     #[cfg(feature = "fs_runtime_ugid_map")]
     #[serde(default, deserialize_with = "deserialize_ugid_map")]
     pub ugid_map: Vec<PermissionData>,
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[serde(default)]
+    /// set MADV_DONTFORK on guest memory
+    ///
+    /// Intended for use in combination with protected VMs, where the guest memory can be dangerous
+    /// to access. Some systems, e.g. Android, have tools that fork processes and examine their
+    /// memory. This flag effectively hides the guest memory from those tools.
+    ///
+    /// Not compatible with sandboxing.
+    pub unmap_guest_memory_on_fork: bool,
 }
 
 impl Default for Config {
@@ -364,6 +375,8 @@ impl Default for Config {
             security_ctx: config_default_security_ctx(),
             #[cfg(feature = "fs_runtime_ugid_map")]
             ugid_map: Vec::new(),
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            unmap_guest_memory_on_fork: false,
         }
     }
 }

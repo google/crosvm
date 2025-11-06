@@ -201,6 +201,17 @@ pub trait VhostUserDevice {
 
     /// Restore device state from a snapshot.
     fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()>;
+
+    /// Whether guest memory should be unmapped in forked processes.
+    ///
+    /// This is intended for use in combination with --protected-vm, where the guest memory can be
+    /// dangerous to access. Some systems, e.g. Android, have tools that fork processes and examine
+    /// their memory. This flag effectively hides the guest memory from those tools.
+    ///
+    /// Not compatible with sandboxing.
+    fn unmap_guest_memory_on_fork(&self) -> bool {
+        false
+    }
 }
 
 /// A virtio ring entry.
@@ -443,6 +454,14 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
         files: Vec<File>,
     ) -> VhostResult<()> {
         let (guest_mem, vmm_maps) = VhostUserRegularOps::set_mem_table(contexts, files)?;
+        if self.backend.unmap_guest_memory_on_fork() {
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            if let Err(e) = guest_mem.use_dontfork() {
+                error!("failed to set MADV_DONTFORK on guest memory: {e:#}");
+            }
+            #[cfg(not(any(target_os = "android", target_os = "linux")))]
+            error!("unmap_guest_memory_on_fork unsupported; skipping");
+        }
         self.mem = Some(guest_mem);
         self.vmm_maps = Some(vmm_maps);
         Ok(())

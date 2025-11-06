@@ -127,6 +127,10 @@ pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
             bail!("uid_gid_map can only be set with disable sandbox and skip_pivot_root option");
         }
 
+        if cfg.unmap_guest_memory_on_fork && !opts.disable_sandbox {
+            bail!("unmap_guest_memory_on_fork requires --disable-sandbox");
+        }
+
         if opts.skip_pivot_root {
             is_pivot_root_required = false;
         }
