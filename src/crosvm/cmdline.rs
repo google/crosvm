@@ -61,6 +61,7 @@ use devices::StubPciParameters;
 use hypervisor::CpuHybridType;
 use hypervisor::ProtectionType;
 use resources::AddressRange;
+#[cfg(feature = "gpu")]
 use serde::Deserialize;
 #[cfg(feature = "gpu")]
 use serde_keyvalue::FromKeyValues;
