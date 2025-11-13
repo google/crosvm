@@ -688,7 +688,7 @@ impl Fdt {
             .get(..FdtHeader::SIZE)
             .ok_or_else(|| Error::FdtParseError("cannot extract header, input too small".into()))?;
         let header = FdtHeader::from_blob(header)?;
-        if header.total_size as usize != input.len() {
+        if header.total_size as usize > input.len() {
             return Err(Error::FdtParseError("input size doesn't match".into()));
         }
 
