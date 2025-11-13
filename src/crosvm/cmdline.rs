@@ -69,8 +69,6 @@ use vm_memory::FileBackedMappingParameters;
 
 use super::config::PmemOption;
 #[cfg(feature = "gpu")]
-use super::gpu_config::fixup_gpu_display_options;
-#[cfg(feature = "gpu")]
 use super::gpu_config::fixup_gpu_options;
 #[cfg(all(unix, feature = "gpu"))]
 use super::sys::GpuRenderServerParameters;
@@ -794,24 +792,6 @@ impl TryFrom<GpuParameters> for FixedGpuParameters {
     }
 }
 
-/// Container for `GpuDisplayParameters` that have been fixed after parsing using serde.
-///
-/// This deserializes as a regular `GpuDisplayParameters` and applies validation.
-/// TODO(b/260101753): Remove this once the old syntax for specifying DPI is deprecated.
-#[cfg(feature = "gpu")]
-#[derive(Debug, Deserialize, FromKeyValues)]
-#[serde(try_from = "GpuDisplayParameters")]
-pub struct FixedGpuDisplayParameters(pub GpuDisplayParameters);
-
-#[cfg(feature = "gpu")]
-impl TryFrom<GpuDisplayParameters> for FixedGpuDisplayParameters {
-    type Error = String;
-
-    fn try_from(gpu_display_params: GpuDisplayParameters) -> Result<Self, Self::Error> {
-        fixup_gpu_display_options(gpu_display_params)
-    }
-}
-
 /// User-specified configuration for the `crosvm run` command.
 #[remain::sorted]
 #[argh_helpers::pad_description_for_argh]
@@ -1285,7 +1265,7 @@ pub struct RunCommand {
     /// (EXPERIMENTAL) Comma separated key=value pairs for setting
     /// up a display on the virtio-gpu device. See comments for `gpu`
     /// for possible key values of GpuDisplayParameters.
-    pub gpu_display: Vec<FixedGpuDisplayParameters>,
+    pub gpu_display: Vec<GpuDisplayParameters>,
 
     #[cfg(all(unix, feature = "gpu"))]
     #[argh(option)]
@@ -2835,7 +2815,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                 cfg.gpu_parameters
                     .get_or_insert_with(Default::default)
                     .display_params
-                    .extend(cmd.gpu_display.into_iter().map(|p| p.0));
+                    .extend(cmd.gpu_display);
             }
 
             #[cfg(feature = "android_display")]
