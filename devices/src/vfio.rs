@@ -103,11 +103,11 @@ pub enum VfioError {
     UnknownDeviceType(u32),
     #[error("failed to call vfio device's ACPI _DSM: {0}")]
     VfioAcpiDsm(Error),
-    #[error("failed to disable vfio deviece's acpi notification: {0}")]
+    #[error("failed to disable vfio device's acpi notification: {0}")]
     VfioAcpiNotificationDisable(Error),
-    #[error("failed to enable vfio deviece's acpi notification: {0}")]
+    #[error("failed to enable vfio device's acpi notification: {0}")]
     VfioAcpiNotificationEnable(Error),
-    #[error("failed to test vfio deviece's acpi notification: {0}")]
+    #[error("failed to test vfio device's acpi notification: {0}")]
     VfioAcpiNotificationTest(Error),
     #[error(
         "vfio API version doesn't match with VFIO_API_VERSION defined in vfio_sys/src/vfio.rs"
@@ -119,17 +119,17 @@ pub enum VfioError {
     VfioDeviceGetRegionInfo(Error),
     #[error("container doesn't support IOMMU driver type {0:?}")]
     VfioIommuSupport(IommuType),
-    #[error("failed to disable vfio deviece's irq: {0}")]
+    #[error("failed to disable vfio device's irq: {0}")]
     VfioIrqDisable(Error),
-    #[error("failed to enable vfio deviece's irq: {0}")]
+    #[error("failed to enable vfio device's irq: {0}")]
     VfioIrqEnable(Error),
-    #[error("failed to mask vfio deviece's irq: {0}")]
+    #[error("failed to mask vfio device's irq: {0}")]
     VfioIrqMask(Error),
-    #[error("failed to unmask vfio deviece's irq: {0}")]
+    #[error("failed to unmask vfio device's irq: {0}")]
     VfioIrqUnmask(Error),
-    #[error("failed to enter vfio deviece's low power state: {0}")]
+    #[error("failed to enter vfio device's low power state: {0}")]
     VfioPmLowPowerEnter(Error),
-    #[error("failed to exit vfio deviece's low power state: {0}")]
+    #[error("failed to exit vfio device's low power state: {0}")]
     VfioPmLowPowerExit(Error),
 }
 
