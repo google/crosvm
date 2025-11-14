@@ -569,10 +569,7 @@ fn get_high_mmio_base_size(mem_size: u64, guest_phys_addr_bits: u8) -> (u64, u64
     let size = guest_phys_end
         .checked_sub(high_mmio_base)
         .unwrap_or_else(|| {
-            panic!(
-                "guest_phys_end {:#x} < high_mmio_base {:#x}",
-                guest_phys_end, high_mmio_base,
-            );
+            panic!("guest_phys_end {guest_phys_end:#x} < high_mmio_base {high_mmio_base:#x}",);
         });
     (high_mmio_base, size)
 }

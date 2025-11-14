@@ -41,7 +41,7 @@ fn create_cpu_nodes(fdt: &mut Fdt, num_cpus: u32, timebase_frequency: u32) -> Re
     cpus_node.set_prop("timebase-frequency", timebase_frequency)?;
 
     for cpu_id in 0..num_cpus {
-        let cpu_name = format!("cpu@{:x}", cpu_id);
+        let cpu_name = format!("cpu@{cpu_id:x}");
         let cpu_node = cpus_node.subnode_mut(&cpu_name)?;
         cpu_node.set_prop("device_type", "cpu")?;
         cpu_node.set_prop("compatible", "riscv")?;
@@ -97,7 +97,7 @@ fn create_aia_node(
     num_ids: usize,
     num_sources: usize,
 ) -> Result<()> {
-    let name = format!("imsics@{:#08x}", AIA_IMSIC_BASE);
+    let name = format!("imsics@{AIA_IMSIC_BASE:#08x}");
     let imsic_node = fdt.root_mut().subnode_mut(&name)?;
     imsic_node.set_prop("compatible", "riscv,imsics")?;
 
