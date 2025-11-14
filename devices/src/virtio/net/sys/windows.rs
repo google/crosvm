@@ -124,7 +124,7 @@ pub fn process_rx<T: TapT>(
                         break;
                     }
                     Err(e) => {
-                        panic!("read_overlapped failed: {}", e);
+                        panic!("read_overlapped failed: {e}");
                     }
                     _ => {}
                 }
@@ -148,7 +148,7 @@ pub fn process_rx<T: TapT>(
                             break;
                         }
                         Err(e) => {
-                            panic!("read_overlapped failed: {}", e);
+                            panic!("read_overlapped failed: {e}");
                         }
                         _ => {}
                     }

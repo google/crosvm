@@ -250,7 +250,7 @@ impl CompositeDiskFile {
             if let Some(disk) = disks.get_mut(i) {
                 disk.length = length;
             } else {
-                let text = format!("Unable to set disk length {}", length);
+                let text = format!("Unable to set disk length {length}");
                 return Err(Error::InvalidSpecification(text));
             }
         }
@@ -286,7 +286,7 @@ impl CompositeDiskFile {
             .ok_or_else(|| {
                 io::Error::new(
                     ErrorKind::InvalidData,
-                    format!("no disk at offset {}", offset),
+                    format!("no disk at offset {offset}"),
                 )
             })
     }
@@ -300,7 +300,7 @@ impl DiskGetLen for CompositeDiskFile {
 
 impl FileSetLen for CompositeDiskFile {
     fn set_len(&self, _len: u64) -> io::Result<()> {
-        Err(io::Error::new(ErrorKind::Other, "unsupported operation"))
+        Err(io::Error::other("unsupported operation"))
     }
 }
 
@@ -376,7 +376,7 @@ impl DiskGetLen for AsyncCompositeDiskFile {
 
 impl FileSetLen for AsyncCompositeDiskFile {
     fn set_len(&self, _len: u64) -> io::Result<()> {
-        Err(io::Error::new(ErrorKind::Other, "unsupported operation"))
+        Err(io::Error::other("unsupported operation"))
     }
 }
 
@@ -445,7 +445,7 @@ impl AsyncCompositeDiskFile {
             .ok_or_else(|| {
                 io::Error::new(
                     ErrorKind::InvalidData,
-                    format!("no disk at offset {}", offset),
+                    format!("no disk at offset {offset}"),
                 )
             })
     }

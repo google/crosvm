@@ -278,7 +278,7 @@ impl BusDevice for VirtCpufreqV2 {
                 {
                     use std::io::Write;
                     let val = util as f32 * 100.0 / SCHED_CAPACITY_SCALE as f32;
-                    let val_formatted = format!("{:4}", val).into_bytes();
+                    let val_formatted = format!("{val:4}").into_bytes();
 
                     if self.vcpu_fmax != self.pcpu_fmax {
                         if let Err(e) = domain_uclamp_max.write(&val_formatted) {

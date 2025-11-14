@@ -31,14 +31,14 @@ fn scan_path<P: AsRef<Path>, O: AsRef<OsStr>>(path: P, name: O) -> Option<PathBu
 
 // Searches for the given protocol in both the system wide and bundles protocols path.
 fn find_protocol(name: &str) -> PathBuf {
-    let protocol_file_name = PathBuf::from(format!("{}.xml", name));
+    let protocol_file_name = PathBuf::from(format!("{name}.xml"));
     // Prioritize the systems wayland protocols before using the bundled ones.
     if let Ok(protocols_path) = pkg_config::get_variable("wayland-protocols", "pkgdatadir") {
         if let Some(found) = scan_path(protocols_path, &protocol_file_name) {
             return found;
         }
     }
-    let protocols_path = format!("/usr/share/wayland-protocols/stable/{}", name);
+    let protocols_path = format!("/usr/share/wayland-protocols/stable/{name}");
     if let Some(found) = scan_path(protocols_path, &protocol_file_name) {
         return found;
     }
@@ -46,8 +46,7 @@ fn find_protocol(name: &str) -> PathBuf {
     let protocol_path = Path::new("protocol").join(protocol_file_name);
     assert!(
         protocol_path.is_file(),
-        "unable to locate wayland protocol specification for `{}`",
-        name
+        "unable to locate wayland protocol specification for `{name}`"
     );
     protocol_path
 }
@@ -55,9 +54,9 @@ fn find_protocol(name: &str) -> PathBuf {
 fn compile_protocol<P: AsRef<Path>>(name: &str, out: P) -> PathBuf {
     let in_protocol = find_protocol(name);
     println!("cargo:rerun-if-changed={}", in_protocol.display());
-    let out_code = out.as_ref().join(format!("{}.c", name));
-    let out_header = out.as_ref().join(format!("{}.h", name));
-    eprintln!("building protocol: {}", name);
+    let out_code = out.as_ref().join(format!("{name}.c"));
+    let out_header = out.as_ref().join(format!("{name}.h"));
+    eprintln!("building protocol: {name}");
 
     let wayland_scanner = which::which("wayland-scanner")
         .expect("missing wayland-scanner - please install libwayland-dev");

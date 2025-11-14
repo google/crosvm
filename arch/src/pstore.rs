@@ -76,7 +76,7 @@ pub fn add_ramoops_kernel_cmdline(
         ("mem_size", ramoops_region.size as u64),
     ];
     for (name, val) in &ramoops_opts {
-        cmdline.insert_str(format!("ramoops.{}={:#x}", name, val))?;
+        cmdline.insert_str(format!("ramoops.{name}={val:#x}"))?;
     }
     Ok(())
 }

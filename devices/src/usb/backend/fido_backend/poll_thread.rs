@@ -152,7 +152,7 @@ pub fn poll_for_pending_packets(
 
                     // If we still have pending transfers waiting, we keep polling, otherwise we
                     // stop.
-                    if transfers_lock.len() > 0 {
+                    if !transfers_lock.is_empty() {
                         device.lock().transfer_timer.arm()?;
                     } else {
                         device.lock().transfer_timer.clear()?;

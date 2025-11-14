@@ -857,14 +857,12 @@ impl<V: VcpuX86_64 + 'static> Suspendable for UserspaceIrqChip<V> {
                     vcpus: self.vcpus.clone(),
                     waiter: self.waiters[i].clone(),
                 };
-                let worker_thread = WorkerThread::start(
-                    format!("UserspaceIrqChip timer worker {}", i),
-                    move |evt| {
+                let worker_thread =
+                    WorkerThread::start(format!("UserspaceIrqChip timer worker {i}"), move |evt| {
                         if let Err(e) = worker.run(evt) {
                             error!("UserspaceIrqChip worker failed: {e:#}");
                         }
-                    },
-                );
+                    });
                 dropper.workers.push(worker_thread);
             }
         }
@@ -1033,8 +1031,8 @@ impl Display for TimerWorkerError {
         use self::TimerWorkerError::*;
 
         match self {
-            CreateWaitContext(e) => write!(f, "failed to create event context: {}", e),
-            WaitError(e) => write!(f, "failed to wait for events: {}", e),
+            CreateWaitContext(e) => write!(f, "failed to create event context: {e}"),
+            WaitError(e) => write!(f, "failed to wait for events: {e}"),
         }
     }
 }

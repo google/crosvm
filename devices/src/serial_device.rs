@@ -109,7 +109,7 @@ impl Display for SerialType {
             SerialType::UnixStream => "UnixStream".to_string(),
         };
 
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -142,7 +142,7 @@ impl Display for SerialHardware {
             SerialHardware::Debugcon => "debugcon".to_string(),
         };
 
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

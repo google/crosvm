@@ -223,7 +223,7 @@ pub(in crate::virtio::iommu) async fn handle_translate_request(
         };
         let resp: IommuResponse = match resp {
             Ok(resp) => resp,
-            Err(e) => IommuResponse::Err(format!("{:?}", e)),
+            Err(e) => IommuResponse::Err(format!("{e:?}")),
         };
         response_tubes
             .get(&req.get_endpoint_id())

@@ -140,7 +140,7 @@ impl TestVmSys {
     pub fn check_rootfs_file(rootfs_path: &Path) {
         // Check if the test file system is a known compatible one.
         if let Err(e) = OpenOptions::new().write(false).read(true).open(rootfs_path) {
-            panic!("File open expected to work but did not: {}", e);
+            panic!("File open expected to work but did not: {e}");
         }
     }
 
@@ -225,7 +225,7 @@ impl TestVmSys {
         command.args(get_hypervisor_args());
         command.args(cfg.extra_args);
 
-        println!("Running command: {:?}", command);
+        println!("Running command: {command:?}");
 
         let process = Some(command.spawn().unwrap());
 

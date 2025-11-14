@@ -1052,15 +1052,15 @@ mod tests {
         // Just test that the error is wrapper properly. The bindings test module already checks
         // that the error bindings correspond to the right ffmpeg errors.
         let averror = AvError(AVERROR_EOF);
-        let msg = format!("{}", averror);
+        let msg = format!("{averror}");
         assert_eq!(msg, "End of file");
 
         let averror = AvError(0);
-        let msg = format!("{}", averror);
+        let msg = format!("{averror}");
         assert_eq!(msg, "Success");
 
         let averror = AvError(10);
-        let msg = format!("{}", averror);
+        let msg = format!("{averror}");
         assert_eq!(msg, "Unknown avcodec error 10");
     }
 

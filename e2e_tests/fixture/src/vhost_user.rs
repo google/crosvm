@@ -84,7 +84,7 @@ impl VhostUserBackend {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
-        println!("$ {:?}", cmd);
+        println!("$ {cmd:?}");
 
         let process = Some(cmd.spawn()?);
         // TODO(b/269174700): Wait for the VU socket to be available instead.

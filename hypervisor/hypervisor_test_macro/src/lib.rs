@@ -186,17 +186,14 @@ fn global_asm_data_impl(
         let rand_id = rand::thread_rng().gen::<u64>();
         let static_counter_id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let prefix = "crosvm_hypervisor_test_macro_global_asm_data";
-        format!(
-            "{}_{}_{}_{}_{}_{}",
-            prefix, mod_name, content_id, location_id, static_counter_id, rand_id
-        )
+        format!("{prefix}_{mod_name}_{content_id}_{location_id}_{static_counter_id}_{rand_id}")
     };
-    let start_tag = format!("{}_start", tag_base_name);
-    let end_tag = format!("{}_end", tag_base_name);
+    let start_tag = format!("{tag_base_name}_start");
+    let end_tag = format!("{tag_base_name}_end");
 
-    let global_directive = LitStr::new(&format!(".global {}, {}", start_tag, end_tag), span);
-    let start_tag_asm = LitStr::new(&format!("{}:", start_tag), span);
-    let end_tag_asm = LitStr::new(&format!("{}:", end_tag), span);
+    let global_directive = LitStr::new(&format!(".global {start_tag}, {end_tag}"), span);
+    let start_tag_asm = LitStr::new(&format!("{start_tag}:"), span);
+    let end_tag_asm = LitStr::new(&format!("{end_tag}:"), span);
     let start_tag_ident = Ident::new(&start_tag, span);
     let end_tag_ident = Ident::new(&end_tag, span);
 

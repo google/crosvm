@@ -407,7 +407,7 @@ impl Worker {
             if total_systime > 0 {
                 process_cpu = format!("{}%", (100 * total_processtime / total_systime));
             }
-            let _ = writeln!(buf, "Process cpu usage is: {}", process_cpu);
+            let _ = writeln!(buf, "Process cpu usage is: {process_cpu}");
 
             #[cfg(debug_assertions)]
             {

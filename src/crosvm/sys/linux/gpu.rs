@@ -281,7 +281,7 @@ fn get_gpu_render_server_environment(
         );
     }
 
-    Ok(env.iter().map(|(k, v)| format!("{}={}", k, v)).collect())
+    Ok(env.iter().map(|(k, v)| format!("{k}={v}")).collect())
 }
 
 pub fn start_gpu_render_server(

@@ -739,7 +739,7 @@ mod tests {
         let sleep_res = serial.sleep();
         match sleep_res {
             Ok(_res) => (),
-            Err(e) => println!("{}", e),
+            Err(e) => println!("{e}"),
         }
         let snap_res = serial.snapshot();
         match snap_res {
@@ -747,15 +747,15 @@ mod tests {
                 let restore_res = serial.restore(snap);
                 match restore_res {
                     Ok(_rest) => (),
-                    Err(e) => println!("{}", e),
+                    Err(e) => println!("{e}"),
                 }
             }
-            Err(e) => println!("{}", e),
+            Err(e) => println!("{e}"),
         }
         let wake_res = serial.wake();
         match wake_res {
             Ok(_res) => (),
-            Err(e) => println!("{}", e),
+            Err(e) => println!("{e}"),
         }
         serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], b'b');
@@ -794,7 +794,7 @@ mod tests {
         let restore_res = serial.restore(snap);
         match restore_res {
             Ok(()) => (),
-            Err(e) => println!("Error: {}", e),
+            Err(e) => println!("Error: {e}"),
         }
         serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], b'b');
@@ -839,7 +839,7 @@ mod tests {
         let restore_res = serial.restore(snap);
         match restore_res {
             Ok(()) => (),
-            Err(e) => println!("Error: {}", e),
+            Err(e) => println!("Error: {e}"),
         }
         serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], b'b');
@@ -876,7 +876,7 @@ mod tests {
         let sleep_res = serial.sleep();
         match sleep_res {
             Ok(_res) => (),
-            Err(e) => println!("{}", e),
+            Err(e) => println!("{e}"),
         }
         // Test should panic when trying to read after sleep.
         serial.read(serial_bus_address(DATA), &mut data[..]);
@@ -903,7 +903,7 @@ mod tests {
         let sleep_res = serial.sleep();
         match sleep_res {
             Ok(_res) => (),
-            Err(e) => println!("{}", e),
+            Err(e) => println!("{e}"),
         }
         // Test should panic when trying to read after sleep.
         serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
@@ -936,12 +936,12 @@ mod tests {
         let sleep_res = serial.sleep();
         match sleep_res {
             Ok(_res) => (),
-            Err(e) => println!("{}", e),
+            Err(e) => println!("{e}"),
         }
         let wake_res = serial.wake();
         match wake_res {
             Ok(_res) => (),
-            Err(e) => println!("{}", e),
+            Err(e) => println!("{e}"),
         }
         serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], b'c');

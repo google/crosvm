@@ -96,9 +96,9 @@ impl Syslog for PlatformSyslog {
                 getpid()
             )?;
             if let Some(path) = record.file() {
-                write!(buf, " [{}", path)?;
+                write!(buf, " [{path}")?;
                 if let Some(line) = record.line() {
-                    write!(buf, ":{}", line)?;
+                    write!(buf, ":{line}")?;
                 }
                 write!(buf, "] ")?;
             }

@@ -152,7 +152,7 @@ pub fn pad_description_for_argh(
                         }) = &a.meta
                         {
                             let doc = s.value().lines().fold(String::new(), |mut output, s| {
-                                let _ = write!(output, "{: <61}", s);
+                                let _ = write!(output, "{s: <61}");
                                 output
                             });
                             *a = syn::parse_quote! { #[doc= #doc] };

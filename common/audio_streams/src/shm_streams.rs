@@ -589,14 +589,12 @@ pub mod tests {
         let elapsed = start.elapsed();
         assert!(
             elapsed > interval,
-            "wait_for_next_action_with_timeout didn't block long enough: {:?}",
-            elapsed
+            "wait_for_next_action_with_timeout didn't block long enough: {elapsed:?}"
         );
 
         assert!(
             elapsed < timeout,
-            "wait_for_next_action_with_timeout blocked for too long: {:?}",
-            elapsed
+            "wait_for_next_action_with_timeout blocked for too long: {elapsed:?}"
         );
     }
 }

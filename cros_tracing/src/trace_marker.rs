@@ -252,7 +252,7 @@ pub fn trace_simple_print_internal(message: String) {
         // We ignore the error here in case write!() fails, because the trace
         // marker file would be normally closed by the system unless we are
         // actively tracing the runtime. It is not an error.
-        let _ = write!(file, "{}", message);
+        let _ = write!(file, "{message}");
     };
 }
 

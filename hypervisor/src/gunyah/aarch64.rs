@@ -38,7 +38,7 @@ fn fdt_create_shm_device(
     index: u32,
     guest_addr: GuestAddress,
 ) -> cros_fdt::Result<()> {
-    let shm_name = format!("shm-{:x}", index);
+    let shm_name = format!("shm-{index:x}");
     let shm_node = parent.subnode_mut(&shm_name)?;
     shm_node.set_prop("vdevice-type", "shm")?;
     shm_node.set_prop("peer-default", ())?;
@@ -110,10 +110,7 @@ impl VmAArch64 for GunyahVm {
             }
         }
         if size > MAX_VM_SIZE {
-            panic!(
-                "Total memory size {} exceeds maximum allowed size {}",
-                size, MAX_VM_SIZE
-            );
+            panic!("Total memory size {size} exceeds maximum allowed size {MAX_VM_SIZE}");
         }
 
         let interrupts_node = top_node.subnode_mut("interrupts")?;

@@ -155,13 +155,13 @@ impl ControlServer {
                     Ok(msg) => {
                         control_send.send(&msg).map_err(|e| {
                             error!("unexpected error in control server recv loop: {}", e);
-                            io::Error::new(io::ErrorKind::Other, e)
+                            io::Error::other(e)
                         })?;
                     }
                     Err(TubeError::Disconnected) => break,
                     Err(e) => {
                         error!("unexpected error in control server recv loop: {}", e);
-                        return Err(io::Error::new(io::ErrorKind::Other, e));
+                        return Err(io::Error::other(e));
                     }
                 };
             }
@@ -346,7 +346,7 @@ mod tests {
         // There are several threads, so run many iterations to exercise any possible race
         // conditions.
         for i in 0..100 {
-            println!("starting iteration {}", i);
+            println!("starting iteration {i}");
             let pipe_name = generate_pipe_name();
 
             let mut control_server = ControlServer::new(&pipe_name).unwrap();
@@ -405,7 +405,7 @@ mod tests {
 
             let control_server = fake_control_loop.try_join(Duration::from_secs(2)).unwrap();
             control_server.shutdown().unwrap();
-            println!("completed iteration {}", i);
+            println!("completed iteration {i}");
         }
     }
 }

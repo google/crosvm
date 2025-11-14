@@ -350,6 +350,6 @@ fn main() {
 
     match &args.output {
         Some(file_name) => fs::write(file_name, serialized_output).unwrap(),
-        None => println!("{}", serialized_output),
+        None => println!("{serialized_output}"),
     }
 }

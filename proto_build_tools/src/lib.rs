@@ -89,8 +89,8 @@ fn create_gen_file(out_dir: &PathBuf, proto_files: &[PathBuf]) {
             .to_str()
             .expect("path must be UTF-8")
             .replace('\\', "/");
-        writeln!(&out, "#[path = \"{}/{}.rs\"]", out_dir, file_stem)
+        writeln!(&out, "#[path = \"{out_dir}/{file_stem}.rs\"]")
             .expect("failed to write to generated.");
-        writeln!(&out, "pub mod {};", file_stem).expect("failed to write to generated.");
+        writeln!(&out, "pub mod {file_stem};").expect("failed to write to generated.");
     }
 }

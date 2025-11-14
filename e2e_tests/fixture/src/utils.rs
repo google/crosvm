@@ -148,7 +148,7 @@ impl CommandExt for Command {
     }
 
     fn log(&mut self) -> &mut Self {
-        println!("$ {:?}", self);
+        println!("$ {self:?}");
         self
     }
 }

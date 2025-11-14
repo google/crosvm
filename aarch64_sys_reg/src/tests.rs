@@ -75,7 +75,7 @@ fn sysreg_encoding_cntv_cval_el0() {
 #[test]
 fn sysreg_debug() {
     assert_eq!(
-        format!("{:?}", MPIDR_EL1),
+        format!("{MPIDR_EL1:?}"),
         "AArch64SysRegId { Op0: 3, Op1: 0, CRn: 0, CRm: 0, Op2: 5 }"
     );
 }

@@ -547,7 +547,7 @@ where
     V: VcpuArch + 'static,
 {
     thread::Builder::new()
-        .name(format!("crosvm_vcpu{}", cpu_id))
+        .name(format!("crosvm_vcpu{cpu_id}"))
         .spawn(move || {
             // Having a closure returning ExitState guarentees that we
             // send a VmEventType on all code paths after the closure

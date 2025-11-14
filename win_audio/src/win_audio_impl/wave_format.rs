@@ -316,10 +316,10 @@ impl Debug for WaveAudioFormat {
                     subformat.Data4,
                 );
 
-                format!("{}{}", audio_engine_format, audio_engine_extensible_format)
+                format!("{audio_engine_format}{audio_engine_extensible_format}")
             }
         };
-        write!(f, "{}", res)
+        write!(f, "{res}")
     }
 }
 

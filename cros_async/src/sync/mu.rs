@@ -1126,7 +1126,7 @@ mod test {
 
         for _ in 0..TASKS {
             if let Err(e) = rx.recv_timeout(Duration::from_secs(10)) {
-                panic!("Error while waiting for threads to complete: {}", e);
+                panic!("Error while waiting for threads to complete: {e}");
             }
         }
 
@@ -1893,7 +1893,7 @@ mod test {
                 res = timer.fuse() => {
                     match res {
                         Ok(()) => {},
-                        Err(e) => panic!("Timer unexpectedly canceled: {}", e),
+                        Err(e) => panic!("Timer unexpectedly canceled: {e}"),
                     }
                 }
                 _ = mu.lock().fuse() => panic!("Successfuly acquired lock"),

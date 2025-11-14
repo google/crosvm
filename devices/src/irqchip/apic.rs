@@ -1191,8 +1191,7 @@ mod tests {
         // When TPR[7:4] == ISRV[7:4], the manual allows either 0 or TPR[3:0] for PPR[3:0].
         assert!(
             prio == 0 || prio == 0xF,
-            "Expected priority 0 or 0xF, got {}",
-            prio
+            "Expected priority 0 or 0xF, got {prio}"
         );
         a.set_reg(Reg::TPR, 0x10);
         assert_eq!(a.get_processor_priority(), 0x10);
@@ -1220,8 +1219,7 @@ mod tests {
         let prio = a.get_processor_priority();
         assert!(
             prio == 0x10 || prio == 0x19,
-            "Expected priority 0x10 or 0x19, got {}",
-            prio
+            "Expected priority 0x10 or 0x19, got {prio}"
         );
     }
 

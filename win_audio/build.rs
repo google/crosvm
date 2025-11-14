@@ -34,7 +34,7 @@ fn main() {
             .to_str()
             .unwrap();
         println!("cargo:rustc-link-lib=r8Brain");
-        println!(r#"cargo:rustc-link-search={}"#, lib_dir);
+        println!(r#"cargo:rustc-link-search={lib_dir}"#);
         println!(
             r#"cargo:rustc-env=PATH={};{}"#,
             lib_dir,

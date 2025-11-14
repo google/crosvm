@@ -510,7 +510,7 @@ unsafe fn set_user_memory_region(
 /// * `size` - Number of bytes in the memory region being queried.
 pub fn dirty_log_bitmap_size(size: usize) -> usize {
     let page_size = pagesize();
-    (((size + page_size - 1) / page_size) + 7) / 8
+    size.div_ceil(page_size).div_ceil(8)
 }
 
 pub struct Geniezone {
@@ -927,7 +927,7 @@ impl Vm for GeniezoneVm {
         // GZVM require to set the user memory region with page size aligned size. Safe to extend
         // the mem.size() to be page size aligned because the mmap will round up the size to be
         // page size aligned if it is not.
-        let size = (mem.size() as u64 + pgsz - 1) / pgsz * pgsz;
+        let size = (mem.size() as u64).div_ceil(pgsz) * pgsz;
         let end_addr = guest_addr
             .checked_add(size)
             .ok_or_else(|| Error::new(EOVERFLOW))?;
@@ -1219,7 +1219,7 @@ impl Vcpu for GeniezoneVcpu {
             GZVM_EXIT_INTERNAL_ERROR => Ok(VcpuExit::InternalError),
             GZVM_EXIT_SHUTDOWN => Ok(VcpuExit::Shutdown(Ok(()))),
             GZVM_EXIT_UNKNOWN => panic!("unknown gzvm exit reason\n"),
-            r => panic!("unknown gzvm exit reason: {}", r),
+            r => panic!("unknown gzvm exit reason: {r}"),
         }
     }
 

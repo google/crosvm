@@ -50,8 +50,7 @@ pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
             || gpu_parameters.max_num_displays > VIRTIO_GPU_MAX_SCANOUTS as u32
         {
             return Err(format!(
-                "`max_num_displays` must be in range [1, {}]",
-                VIRTIO_GPU_MAX_SCANOUTS
+                "`max_num_displays` must be in range [1, {VIRTIO_GPU_MAX_SCANOUTS}]"
             ));
         }
         if gpu_parameters.display_params.len() as u32 > gpu_parameters.max_num_displays {
@@ -290,12 +289,12 @@ mod tests {
         }
         {
             let gpu_params =
-                parse_gpu_options(format!("backend={},vulkan=true", BACKEND).as_str()).unwrap();
+                parse_gpu_options(format!("backend={BACKEND},vulkan=true").as_str()).unwrap();
             assert_eq!(gpu_params.use_vulkan, Some(true));
         }
         {
             let gpu_params =
-                parse_gpu_options(format!("vulkan=true,backend={}", BACKEND).as_str()).unwrap();
+                parse_gpu_options(format!("vulkan=true,backend={BACKEND}").as_str()).unwrap();
             assert_eq!(gpu_params.use_vulkan, Some(true));
         }
         {
@@ -304,25 +303,25 @@ mod tests {
         }
         {
             let gpu_params =
-                parse_gpu_options(format!("backend={},vulkan=false", BACKEND).as_str()).unwrap();
+                parse_gpu_options(format!("backend={BACKEND},vulkan=false").as_str()).unwrap();
             assert_eq!(gpu_params.use_vulkan, Some(false));
         }
         {
             let gpu_params =
-                parse_gpu_options(format!("vulkan=false,backend={}", BACKEND).as_str()).unwrap();
+                parse_gpu_options(format!("vulkan=false,backend={BACKEND}").as_str()).unwrap();
             assert_eq!(gpu_params.use_vulkan, Some(false));
         }
         {
-            assert!(parse_gpu_options(
-                format!("backend={},vulkan=invalid_value", BACKEND).as_str()
-            )
-            .is_err());
+            assert!(
+                parse_gpu_options(format!("backend={BACKEND},vulkan=invalid_value").as_str())
+                    .is_err()
+            );
         }
         {
-            assert!(parse_gpu_options(
-                format!("vulkan=invalid_value,backend={}", BACKEND).as_str()
-            )
-            .is_err());
+            assert!(
+                parse_gpu_options(format!("vulkan=invalid_value,backend={BACKEND}").as_str())
+                    .is_err()
+            );
         }
     }
 
@@ -362,7 +361,7 @@ mod tests {
         const WIDTH: u32 = 1720;
         const HEIGHT: u32 = 1800;
 
-        let display_params = parse_gpu_options(format!("width={},height=720", WIDTH).as_str())
+        let display_params = parse_gpu_options(format!("width={WIDTH},height=720").as_str())
             .unwrap()
             .display_params;
         assert_eq!(display_params.len(), 1);
@@ -370,7 +369,7 @@ mod tests {
             matches!(display_params[0].mode, GpuDisplayMode::Windowed(width, _) if width == WIDTH)
         );
 
-        let display_params = parse_gpu_options(format!("width=1280,height={}", HEIGHT).as_str())
+        let display_params = parse_gpu_options(format!("width=1280,height={HEIGHT}").as_str())
             .unwrap()
             .display_params;
         assert_eq!(display_params.len(), 1);
@@ -430,14 +429,14 @@ mod tests {
         const HEIGHT: u32 = 1800;
 
         let display_params =
-            parse_gpu_display_options(format!("mode=windowed[{},720]", WIDTH).as_str()).unwrap();
+            parse_gpu_display_options(format!("mode=windowed[{WIDTH},720]").as_str()).unwrap();
         assert!(matches!(
             display_params.mode,
             GpuDisplayMode::Windowed(width, _) if width == WIDTH
         ));
 
         let display_params =
-            parse_gpu_display_options(format!("mode=windowed[1280,{}]", HEIGHT).as_str()).unwrap();
+            parse_gpu_display_options(format!("mode=windowed[1280,{HEIGHT}]").as_str()).unwrap();
         assert!(matches!(
             display_params.mode,
             GpuDisplayMode::Windowed(_, height) if height == HEIGHT
@@ -469,7 +468,7 @@ mod tests {
         const REFRESH_RATE: u32 = 30;
 
         let display_params =
-            parse_gpu_display_options(format!("refresh-rate={}", REFRESH_RATE).as_str()).unwrap();
+            parse_gpu_display_options(format!("refresh-rate={REFRESH_RATE}").as_str()).unwrap();
         assert_eq!(display_params.refresh_rate, REFRESH_RATE);
     }
 
@@ -487,7 +486,7 @@ mod tests {
             &[],
             &[
                 "--gpu-display",
-                format!("dpi=[{},{}]", HORIZONTAL_DPI, VERTICAL_DPI).as_str(),
+                format!("dpi=[{HORIZONTAL_DPI},{VERTICAL_DPI}]").as_str(),
                 "/dev/null",
             ],
         )
@@ -605,7 +604,7 @@ mod tests {
             &[],
             &[
                 "--gpu",
-                format!("backend={},width=500,height=600", BACKEND,).as_str(),
+                format!("backend={BACKEND},width=500,height=600",).as_str(),
                 "/dev/null",
             ],
         )
@@ -625,7 +624,7 @@ mod tests {
             &[],
             &[
                 "--gpu",
-                format!("backend={}", BACKEND,).as_str(),
+                format!("backend={BACKEND}",).as_str(),
                 "--gpu-display",
                 "mode=windowed[700,800]",
                 "/dev/null",

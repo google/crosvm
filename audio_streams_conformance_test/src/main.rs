@@ -77,11 +77,11 @@ fn main() -> Result<()> {
             if args.json {
                 println!("{}", serde_json::to_string(&report)?);
             } else {
-                print!("{}", report);
+                print!("{report}");
             }
         }
-        Ok(Err(e)) => eprintln!("{}", e),
-        Err(e) => eprintln!("Error happened in executor: {}", e),
+        Ok(Err(e)) => eprintln!("{e}"),
+        Err(e) => eprintln!("Error happened in executor: {e}"),
     }
     Ok(())
 }

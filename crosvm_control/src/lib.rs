@@ -236,7 +236,7 @@ pub unsafe extern "C" fn crosvm_client_balloon_vms_wait_with_timeout(
             if matches!(resp, Ok(VmResponse::Ok)) {
                 return true;
             }
-            println!("adjust failure: {:?}", resp);
+            println!("adjust failure: {resp:?}");
         }
         false
     })

@@ -344,7 +344,7 @@ impl BusDevice for Cmos {
                     self.set_alarm();
                 }
             }
-            o => panic!("bad write offset on CMOS device: {}", o),
+            o => panic!("bad write offset on CMOS device: {o}"),
         }
     }
 
@@ -395,7 +395,7 @@ impl BusDevice for Cmos {
                     }
                 }
             }
-            o => panic!("bad read offset on CMOS device: {}", o),
+            o => panic!("bad read offset on CMOS device: {o}"),
         }
     }
 }

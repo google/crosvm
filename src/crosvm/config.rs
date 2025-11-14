@@ -352,7 +352,7 @@ fn parse_hex_or_decimal(maybe_hex_string: &str) -> Result<u64, String> {
     } else {
         u64::from_str(maybe_hex_string)
     }
-    .map_err(|e| format!("invalid numeric value {}: {}", maybe_hex_string, e))
+    .map_err(|e| format!("invalid numeric value {maybe_hex_string}: {e}"))
 }
 
 pub fn parse_mmio_address_range(s: &str) -> Result<Vec<AddressRange>, String> {
@@ -415,7 +415,7 @@ pub fn parse_serial_options(s: &str) -> Result<SerialParameters, String> {
 pub fn parse_bus_id_addr(v: &str) -> Result<(u8, u8, u16, u16), String> {
     debug!("parse_bus_id_addr: {}", v);
     let mut ids = v.split(':');
-    let errorre = move |item| move |e| format!("{}: {}", item, e);
+    let errorre = move |item| move |e| format!("{item}: {e}");
     match (ids.next(), ids.next(), ids.next(), ids.next()) {
         (Some(bus_id), Some(addr), Some(vid), Some(pid)) => {
             let bus_id = bus_id.parse::<u8>().map_err(errorre("bus_id"))?;
@@ -1062,9 +1062,8 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         if let Some(vcpu_count) = cfg.vcpu_count {
             if pcpu_count != vcpu_count {
                 return Err(format!(
-                    "`host-cpu-topology` requires the count of vCPUs({}) to equal the \
-                            count of CPUs({}) on host.",
-                    vcpu_count, pcpu_count
+                    "`host-cpu-topology` requires the count of vCPUs({vcpu_count}) to equal the \
+                            count of CPUs({pcpu_count}) on host."
                 ));
             }
         } else {
@@ -1141,7 +1140,7 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
             return Err("`core-types` cannot be set with `host-cpu-topology`.".to_string());
         }
         check_host_hybrid_support(&CpuIdCall::new(__cpuid_count, __cpuid))
-            .map_err(|e| format!("the cpu doesn't support `core-types`: {}", e))?;
+            .map_err(|e| format!("the cpu doesn't support `core-types`: {e}"))?;
         if cfg.vcpu_hybrid_type.len() != cfg.vcpu_count.unwrap_or(1) {
             return Err("`core-types` must be set for all virtual CPUs".to_string());
         }
@@ -1922,7 +1921,7 @@ mod tests {
     #[test]
     fn parse_vhost_user_option_all_device_types() {
         fn test_device_type(type_string: &str, type_: DeviceType) {
-            let vhost_user_arg = format!("{},socket=sock", type_string);
+            let vhost_user_arg = format!("{type_string},socket=sock");
 
             let cfg = TryInto::<Config>::try_into(
                 crate::crosvm::cmdline::RunCommand::from_args(

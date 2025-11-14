@@ -75,8 +75,8 @@ impl From<Error> for io::Error {
             IoWriteZeroesError(e) => e,
             HandleDuplicationFailed(e) => e,
             HandleWaitFailed(e) => e,
-            BackingMemoryVolatileSliceFetchFailed(e) => io::Error::new(io::ErrorKind::Other, e),
-            NoHandleSource => io::Error::new(io::ErrorKind::Other, NoHandleSource),
+            BackingMemoryVolatileSliceFetchFailed(e) => io::Error::other(e),
+            NoHandleSource => io::Error::other(NoHandleSource),
             OperationCancelled => io::Error::new(io::ErrorKind::Interrupted, OperationCancelled),
             OperationAborted => io::Error::new(io::ErrorKind::Interrupted, OperationAborted),
         }

@@ -287,10 +287,10 @@ impl State {
                     ((**m).type_id(), m.id())
                 };
                 if mapper_id == other_id {
-                    if !self
+                    if self
                         .endpoint_map
                         .get(other_endpoint)
-                        .map_or(true, |d| d == &domain)
+                        .is_some_and(|d| d != &domain)
                     {
                         tail.status = VIRTIO_IOMMU_S_UNSUPP;
                         return Ok((0, None));

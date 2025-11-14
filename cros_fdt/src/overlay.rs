@@ -75,7 +75,7 @@ fn collect_all_references_by_path(
     for node_name in path.iter() {
         tree_node = tree_node
             .subnode(node_name)
-            .ok_or_else(|| Error::InvalidPath(format!("cannot find subnode {}", node_name)))?;
+            .ok_or_else(|| Error::InvalidPath(format!("cannot find subnode {node_name}")))?;
         if let Some(n) = fixup_node.subnode(node_name) {
             fixup_node = n
         } else {

@@ -174,7 +174,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         .map(|p| {
             UnixSeqpacketListener::bind(&p)
                 .map(UnlinkUnixSeqpacketListener)
-                .with_context(|| format!("failed to bind socket at path {}", p))
+                .with_context(|| format!("failed to bind socket at path {p}"))
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
 

@@ -246,11 +246,11 @@ impl PciRoot {
                 Some(format!(
                     "_SB_.{}.{}",
                     path.iter()
-                        .map(|x| format!("PC{:02X}", x))
+                        .map(|x| format!("PC{x:02X}"))
                         .collect::<Vec<String>>()
                         .join("."),
                     match device.lock().is_bridge() {
-                        Some(bus_no) => format!("PC{:02X}", bus_no),
+                        Some(bus_no) => format!("PC{bus_no:02X}"),
                         None => format!("PE{:02X}", address.devfn()),
                     }
                 ))
@@ -508,7 +508,7 @@ impl PciRootMmioState {
         let (shmem, new_entry) = match self.mappings.entry(mmio_mapping_num) {
             BTreeMapEntry::Vacant(e) => {
                 let shmem = SharedMemory::new(
-                    format!("{:04x}_pci_cfg_mapping", mmio_mapping_num),
+                    format!("{mmio_mapping_num:04x}_pci_cfg_mapping"),
                     pagesize as u64,
                 )
                 .context("failed to create shmem")?;

@@ -224,7 +224,7 @@ impl Display for DiskControlCommand {
         use self::DiskControlCommand::*;
 
         match self {
-            Resize { new_size } => write!(f, "disk_resize {}", new_size),
+            Resize { new_size } => write!(f, "disk_resize {new_size}"),
         }
     }
 }
@@ -290,8 +290,8 @@ impl Display for PciControlResult {
         use self::PciControlResult::*;
 
         match self {
-            AddOk { bus } => write!(f, "add_ok {}", bus),
-            ErrString(e) => write!(f, "error: {}", e),
+            AddOk { bus } => write!(f, "add_ok {bus}"),
+            ErrString(e) => write!(f, "error: {e}"),
             RemoveOk => write!(f, "remove_ok"),
         }
     }
@@ -313,7 +313,7 @@ impl Display for UsbControlResult {
         use self::UsbControlResult::*;
 
         match self {
-            UsbControlResult::Ok { port } => write!(f, "ok {}", port),
+            UsbControlResult::Ok { port } => write!(f, "ok {port}"),
             NoAvailablePort => write!(f, "no_available_port"),
             NoSuchDevice => write!(f, "no_such_device"),
             NoSuchPort => write!(f, "no_such_port"),
@@ -500,9 +500,8 @@ impl VmMemorySource {
                     )
                     .with_context(|| {
                         format!(
-                            "gralloc failed to import and map, handle type: {}, memory index {}, \
-                             size: {}",
-                            handle_type, memory_idx, size
+                            "gralloc failed to import and map, handle type: {handle_type}, memory index {memory_idx}, \
+                             size: {size}"
                         )
                     })?;
                 let mapped_region: Box<dyn MappedRegion> =
@@ -1892,12 +1891,12 @@ impl Drop for DeviceSleepGuard<'_> {
                 .device_control_tube
                 .send(&DeviceControlCommand::WakeDevices)
             {
-                panic!("failed to request device wake after snapshot: {}", e);
+                panic!("failed to request device wake after snapshot: {e}");
             }
             match self.device_control_tube.recv() {
                 Ok(VmResponse::Ok) => (),
-                Ok(resp) => panic!("unexpected response to device wake request: {}", resp),
-                Err(e) => panic!("failed to get reply for device wake request: {}", e),
+                Ok(resp) => panic!("unexpected response to device wake request: {resp}"),
+                Err(e) => panic!("failed to get reply for device wake request: {e}"),
             }
         }
     }
@@ -2745,11 +2744,11 @@ impl Display for VmResponse {
 
         match self {
             Ok => write!(f, "ok"),
-            Err(e) => write!(f, "error: {}", e),
-            ErrString(e) => write!(f, "error: {}", e),
-            RegisterMemory { slot } => write!(f, "memory registered in slot {}", slot),
+            Err(e) => write!(f, "error: {e}"),
+            ErrString(e) => write!(f, "error: {e}"),
+            RegisterMemory { slot } => write!(f, "memory registered in slot {slot}"),
             RegisterMemory2 { region_id } => {
-                write!(f, "memory registered in region id {}", region_id)
+                write!(f, "memory registered in region id {region_id}")
             }
             #[cfg(feature = "balloon")]
             VmResponse::BalloonStats {
@@ -2774,12 +2773,12 @@ impl Display for VmResponse {
                     balloon_actual,
                 )
             }
-            UsbResponse(result) => write!(f, "usb control request get result {:?}", result),
+            UsbResponse(result) => write!(f, "usb control request get result {result:?}"),
             #[cfg(feature = "pci-hotplug")]
-            PciHotPlugResponse { bus } => write!(f, "pci hotplug bus {:?}", bus),
+            PciHotPlugResponse { bus } => write!(f, "pci hotplug bus {bus:?}"),
             #[cfg(feature = "gpu")]
-            GpuResponse(result) => write!(f, "gpu control request result {:?}", result),
-            BatResponse(result) => write!(f, "{}", result),
+            GpuResponse(result) => write!(f, "gpu control request result {result:?}"),
+            BatResponse(result) => write!(f, "{result}"),
             SwapStatus(status) => {
                 write!(
                     f,
@@ -2788,10 +2787,10 @@ impl Display for VmResponse {
                         .unwrap_or_else(|_| "invalid_response".to_string()),
                 )
             }
-            DevicesState(status) => write!(f, "devices status: {:?}", status),
-            VcpuPidTidResponse { pid_tid_map } => write!(f, "vcpu pid tid map: {:?}", pid_tid_map),
+            DevicesState(status) => write!(f, "devices status: {status:?}"),
+            VcpuPidTidResponse { pid_tid_map } => write!(f, "vcpu pid tid map: {pid_tid_map:?}"),
             VmDescriptor { hypervisor, vm_fd } => {
-                write!(f, "hypervisor: {:?}, vm_fd: {:?}", hypervisor, vm_fd)
+                write!(f, "hypervisor: {hypervisor:?}, vm_fd: {vm_fd:?}")
             }
         }
     }
@@ -2895,11 +2894,10 @@ impl Display for VirtioIOMMUResponse {
         use self::VirtioIOMMUResponse::*;
         match self {
             Ok => write!(f, "ok"),
-            Err(e) => write!(f, "error: {}", e),
+            Err(e) => write!(f, "error: {e}"),
             VfioResponse(result) => write!(
                 f,
-                "The vfio-related virtio-iommu request got result: {:?}",
-                result
+                "The vfio-related virtio-iommu request got result: {result:?}"
             ),
         }
     }

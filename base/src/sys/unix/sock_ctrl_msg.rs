@@ -91,7 +91,7 @@ fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut cmsghdr) -> *mu
 const CMSG_BUFFER_INLINE_CAPACITY: usize = CMSG_SPACE(size_of::<RawFd>() * 32);
 
 enum CmsgBuffer {
-    Inline([u64; (CMSG_BUFFER_INLINE_CAPACITY + 7) / 8]),
+    Inline([u64; CMSG_BUFFER_INLINE_CAPACITY.div_ceil(8)]),
     Heap(Box<[cmsghdr]>),
 }
 
@@ -100,7 +100,7 @@ impl CmsgBuffer {
         let cap_in_cmsghdr_units =
             (capacity.checked_add(size_of::<cmsghdr>()).unwrap() - 1) / size_of::<cmsghdr>();
         if capacity <= CMSG_BUFFER_INLINE_CAPACITY {
-            CmsgBuffer::Inline([0u64; (CMSG_BUFFER_INLINE_CAPACITY + 7) / 8])
+            CmsgBuffer::Inline([0u64; CMSG_BUFFER_INLINE_CAPACITY.div_ceil(8)])
         } else {
             CmsgBuffer::Heap(
                 vec![

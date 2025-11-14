@@ -153,8 +153,7 @@ fn parse_chunk<T: Read + Seek>(input: &mut T, blk_sz: u64) -> Result<Option<Chun
         CHUNK_TYPE_CRC32 => return Ok(None), // TODO(schuffelen): Validate crc32s in input
         unknown_type => {
             return Err(Error::InvalidSpecification(format!(
-                "Chunk had invalid type, was {:x}",
-                unknown_type
+                "Chunk had invalid type, was {unknown_type:x}"
             )))
         }
     };
@@ -213,8 +212,7 @@ impl AndroidSparse {
                 .is_some()
             {
                 return Err(Error::InvalidSpecification(format!(
-                    "Two chunks were at {}",
-                    expanded_location
+                    "Two chunks were at {expanded_location}"
                 )));
             }
             expanded_location += size;
@@ -227,8 +225,7 @@ impl AndroidSparse {
         let calculated_len: u64 = image.chunks.iter().map(|x| x.1.expanded_size).sum();
         if calculated_len != size {
             return Err(Error::InvalidSpecification(format!(
-                "Header promised size {}, chunks added up to {}",
-                size, calculated_len
+                "Header promised size {size}, chunks added up to {calculated_len}"
             )));
         }
         Ok(image)
@@ -269,7 +266,7 @@ impl FileReadWriteAtVolatile for AndroidSparse {
         ) = found_chunk.ok_or_else(|| {
             io::Error::new(
                 ErrorKind::UnexpectedEof,
-                format!("no chunk for offset {}", offset),
+                format!("no chunk for offset {offset}"),
             )
         })?;
         let chunk_offset = offset - chunk_start;
@@ -277,7 +274,7 @@ impl FileReadWriteAtVolatile for AndroidSparse {
         let subslice = if chunk_offset + (slice.size() as u64) > chunk_size {
             slice
                 .sub_slice(0, (chunk_size - chunk_offset) as usize)
-                .map_err(|e| io::Error::new(ErrorKind::InvalidData, format!("{:?}", e)))?
+                .map_err(|e| io::Error::new(ErrorKind::InvalidData, format!("{e:?}")))?
         } else {
             slice
         };
@@ -389,7 +386,7 @@ impl AsyncDisk for AsyncAndroidSparse {
             },
         ) = found_chunk.ok_or(DiskError::ReadingData(io::Error::new(
             ErrorKind::UnexpectedEof,
-            format!("no chunk for offset {}", file_offset),
+            format!("no chunk for offset {file_offset}"),
         )))?;
         let chunk_offset = file_offset - chunk_start;
         let chunk_size = *expanded_size;

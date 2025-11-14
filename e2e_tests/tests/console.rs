@@ -53,10 +53,10 @@ fn run_vhost_user_console_multiport_test_portname(config: VmConfig) -> anyhow::R
     portlist.remove(0);
     for (i, port) in portlist.into_iter().enumerate() {
         let portname = vm
-            .exec_in_guest(format!("cat /sys/class/virtio-ports/{}/name", port).as_str())
+            .exec_in_guest(format!("cat /sys/class/virtio-ports/{port}/name").as_str())
             .expect("Failed to read portname")
             .stdout;
-        assert_eq!(portname.trim_end(), format!("port{}", i).as_str());
+        assert_eq!(portname.trim_end(), format!("port{i}").as_str());
     }
     Ok(())
 }
@@ -99,12 +99,12 @@ fn run_vhost_user_console_multiport_test_output(config: VmConfig) -> anyhow::Res
 
     // Test output flow.
     for (i, port) in portlist.into_iter().enumerate() {
-        vm.exec_in_guest(format!("echo \"hello {}\" > /dev/{}", port, port).as_str())
+        vm.exec_in_guest(format!("echo \"hello {port}\" > /dev/{port}").as_str())
             .expect("Failed to echo data to port");
 
         let data = read_to_string(&file_path[i].0).expect("vu-console: read output failed");
 
-        assert_eq!(data.trim(), format!("hello {}", port).as_str());
+        assert_eq!(data.trim(), format!("hello {port}").as_str());
     }
     Ok(())
 }
@@ -137,7 +137,7 @@ fn generate_workthread_to_monitor_fifo(
         libc::mkfifo(cpath_in.as_ptr(), 0o777);
         libc::mkfifo(cpath_out.as_ptr(), 0o777);
     }
-    WorkerThread::start(format!("monitor_vconsole{}", idx), move |kill_event| {
+    WorkerThread::start(format!("monitor_vconsole{idx}"), move |kill_event| {
         let mut tx = OpenOptions::new().write(true).open(outfile).unwrap();
         let mut rx = OpenOptions::new().read(true).open(infile).unwrap();
         let mut msg = vec![0; 256];
@@ -191,8 +191,8 @@ fn run_vhost_user_console_multiport_test_input(config: VmConfig) -> anyhow::Resu
     // Prepare 2 virtio-console with both input and output
     let mut file_path = vec![];
     for idx in 0..2 {
-        let fifo_name_out = format!("vconsole{}.out", idx);
-        let fifo_name_in = format!("vconsole{}.in", idx);
+        let fifo_name_out = format!("vconsole{idx}.out");
+        let fifo_name_in = format!("vconsole{idx}.in");
         file_path.push((
             temp_dir.path().join(fifo_name_out),
             temp_dir.path().join(fifo_name_in),
@@ -234,20 +234,19 @@ fn run_vhost_user_console_multiport_test_input(config: VmConfig) -> anyhow::Resu
         let result = vm
             .exec_in_guest(
                 format!(
-                    "exec {}<>/dev/{} && echo \"hello {}\" >&{} && head -1 <&{}",
-                    file_fd, port, port, file_fd, file_fd
+                    "exec {file_fd}<>/dev/{port} && echo \"hello {port}\" >&{file_fd} && head -1 <&{file_fd}"
                 )
                 .as_str(),
             )
             .expect("Failed to echo data to port")
             .stdout;
         // Close this fd
-        vm.exec_in_guest(format!("exec {}>&-", file_fd).as_str())
+        vm.exec_in_guest(format!("exec {file_fd}>&-").as_str())
             .expect("Failed to close device fd");
         // In monitor thread, tx message will change to uppercase
         assert_eq!(
             result.trim_end(),
-            format!("hello {}", port).to_uppercase().as_str()
+            format!("hello {port}").to_uppercase().as_str()
         );
     }
     for handler in thread_vec.into_iter() {

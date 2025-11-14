@@ -1100,7 +1100,7 @@ impl Vcpu for KvmVcpu {
                     }
                 }
             }
-            r => panic!("unknown kvm exit reason: {}", r),
+            r => panic!("unknown kvm exit reason: {r}"),
         }
     }
 

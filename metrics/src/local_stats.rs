@@ -688,7 +688,7 @@ mod tests {
             simple_stats.add(v);
         }
         assert_eq!(
-            format!("{:#?}", histogram),
+            format!("{histogram:#?}"),
             r#"DetailedHistogram {
     simple_stats: SimpleStat {
         count: 3,

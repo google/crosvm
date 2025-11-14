@@ -204,11 +204,11 @@ pub fn do_modify_battery<T: AsRef<Path> + std::fmt::Debug>(
 
     match response {
         Ok(response) => {
-            println!("{}", response);
+            println!("{response}");
             Ok(())
         }
         Err(e) => {
-            println!("error {}", e);
+            println!("error {e}");
             Err(())
         }
     }
@@ -225,7 +225,7 @@ pub fn do_snd_mute_all<T: AsRef<Path> + std::fmt::Debug>(
     match response {
         VmResponse::Ok => Ok(()),
         e => {
-            println!("Unexpected response: {:#}", e);
+            println!("Unexpected response: {e:#}");
             Err(())
         }
     }
@@ -245,7 +245,7 @@ pub fn do_swap_status<T: AsRef<Path> + std::fmt::Debug>(socket_path: T) -> VmsRe
     let response = handle_request(&VmRequest::Swap(SwapCommand::Status), socket_path)?;
     match &response {
         VmResponse::SwapStatus(_) => {
-            println!("{}", response);
+            println!("{response}");
             Ok(())
         }
         r => {

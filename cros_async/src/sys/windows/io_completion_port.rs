@@ -234,7 +234,7 @@ impl IoCompletionPort {
                     inner: port.as_raw_descriptor(),
                 }));
                 threads.push(WorkerThread::start(
-                    format!("overlapped_io_{}", i),
+                    format!("overlapped_io_{i}"),
                     move |kill_evt| {
                         iocp_waiter_thread(port_desc, kill_evt, completed_clone).unwrap();
                         Ok(())

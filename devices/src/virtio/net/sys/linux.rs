@@ -51,8 +51,7 @@ pub fn validate_and_configure_tap<T: TapT>(tap: &T, vq_pairs: u16) -> Result<(),
 
     if !missing_flags.is_empty() {
         return Err(NetError::TapValidate(format!(
-            "Missing flags: {:?}",
-            missing_flags
+            "Missing flags: {missing_flags:?}"
         )));
     }
 

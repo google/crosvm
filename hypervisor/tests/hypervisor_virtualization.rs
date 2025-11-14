@@ -205,7 +205,7 @@ pub fn run_configurable_test<H: HypervisorTestSetup>(
     regs_matcher: impl Fn(HypervisorType, &Regs, &Sregs),
     mut exit_matcher: impl FnMut(HypervisorType, &VcpuExit, &mut dyn VcpuX86_64, &mut dyn Vm) -> bool,
 ) {
-    println!("Running test on hypervisor: {}", hypervisor_type);
+    println!("Running test on hypervisor: {hypervisor_type}");
 
     let guest_mem =
         GuestMemory::new(&[(GuestAddress(0), setup.mem_size)]).expect("failed to create guest mem");
@@ -258,12 +258,9 @@ pub fn run_configurable_test<H: HypervisorTestSetup>(
             },
             Err(e) => {
                 if setup.expect_run_success {
-                    panic!(
-                        "Expected vcpu.run() to succeed, but it failed with error: {:?}",
-                        e
-                    );
+                    panic!("Expected vcpu.run() to succeed, but it failed with error: {e:?}");
                 } else {
-                    println!("Expected failure occurred: {:?}", e);
+                    println!("Expected failure occurred: {e:?}");
                     break;
                 }
             }
@@ -910,7 +907,7 @@ fn test_io_exit_handler() {
             VcpuExit::Hlt => {
                 true // Break VM runloop
             }
-            r => panic!("unexpected exit reason: {:?}", r),
+            r => panic!("unexpected exit reason: {r:?}"),
         };
     run_tests!(setup, regs_matcher, &exit_matcher);
 }
@@ -994,7 +991,7 @@ fn test_io_rep_string() {
 
                 true // Break VM runloop
             }
-            r => panic!("unexpected exit reason: {:?}", r),
+            r => panic!("unexpected exit reason: {r:?}"),
         };
     run_tests!(setup, regs_matcher, &exit_matcher);
 }
@@ -1075,7 +1072,7 @@ fn test_mmio_exit_cross_page() {
         VcpuExit::Hlt => {
             true // Break VM runloop
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -1165,7 +1162,7 @@ fn test_mmio_exit_readonly_memory() {
         VcpuExit::Hlt => {
             true // Break VM runloop
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(
@@ -1212,16 +1209,16 @@ fn test_cpuid_exit_handler() {
             match hypervisor_type {
                 HypervisorType::Whpx => match exit {
                     VcpuExit::Cpuid { entry } => {
-                        println!("Got Cpuid {:?}", entry);
+                        println!("Got Cpuid {entry:?}");
                         true // Break runloop
                     }
-                    r => panic!("unexpected exit reason: {:?}", r),
+                    r => panic!("unexpected exit reason: {r:?}"),
                 },
                 _ => match exit {
                     VcpuExit::Hlt => {
                         true // Break VM runloop
                     }
-                    r => panic!("unexpected exit reason: {:?}", r),
+                    r => panic!("unexpected exit reason: {r:?}"),
                 },
             }
         };
@@ -1271,7 +1268,7 @@ fn test_control_register_access_invalid() {
                         VcpuExit::Shutdown(_) => {
                             true // Break VM runloop
                         }
-                        r => panic!("unexpected exit reason: {:?}", r),
+                        r => panic!("unexpected exit reason: {r:?}"),
                     }
                 }
                 _ => {
@@ -1279,7 +1276,7 @@ fn test_control_register_access_invalid() {
                         VcpuExit::UnrecoverableException => {
                             true // Break VM runloop
                         }
-                        r => panic!("unexpected exit reason: {:?}", r),
+                        r => panic!("unexpected exit reason: {r:?}"),
                     }
                 }
             }
@@ -1324,7 +1321,7 @@ fn test_control_register_access_valid() {
             VcpuExit::Hlt => {
                 true // Break VM runloop
             }
-            r => panic!("unexpected exit reason: {:?}", r),
+            r => panic!("unexpected exit reason: {r:?}"),
         };
     run_tests!(setup, regs_matcher, exit_matcher);
 }
@@ -1363,7 +1360,7 @@ fn test_debug_register_access() {
         VcpuExit::Hlt => {
             true // Break VM runloop
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -1398,7 +1395,7 @@ fn test_msr_access_invalid() {
         VcpuExit::Shutdown(..) => {
             true // Break VM runloop
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(
@@ -1444,7 +1441,7 @@ fn test_msr_access_valid() {
         VcpuExit::Hlt => {
             true // Break VM runloop
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
     run_tests!(setup, regs_matcher, exit_matcher);
 }
@@ -1491,7 +1488,7 @@ fn test_getsec_instruction() {
                         VcpuExit::UnrecoverableException => {
                             true // Break VM runloop
                         }
-                        r => panic!("unexpected exit reason: {:?}", r),
+                        r => panic!("unexpected exit reason: {r:?}"),
                     }
                 }
                 _ => {
@@ -1499,7 +1496,7 @@ fn test_getsec_instruction() {
                         VcpuExit::Shutdown(_) => {
                             true // Break VM runloop
                         }
-                        r => panic!("unexpected exit reason: {:?}", r),
+                        r => panic!("unexpected exit reason: {r:?}"),
                     }
                 }
             }
@@ -1544,7 +1541,7 @@ fn test_invd_instruction() {
                         VcpuExit::Shutdown(_) => {
                             true // Break VM runloop
                         }
-                        r => panic!("unexpected exit reason: {:?}", r),
+                        r => panic!("unexpected exit reason: {r:?}"),
                     }
                 }
                 _ => {
@@ -1552,7 +1549,7 @@ fn test_invd_instruction() {
                         VcpuExit::Hlt => {
                             true // Break VM runloop
                         }
-                        r => panic!("unexpected exit reason: {:?}", r),
+                        r => panic!("unexpected exit reason: {r:?}"),
                     }
                 }
             }
@@ -1607,7 +1604,7 @@ fn test_xsetbv_instruction() {
             VcpuExit::Mmio => {
                 true // Break VM runloop
             }
-            r => panic!("unexpected exit reason: {:?}", r),
+            r => panic!("unexpected exit reason: {r:?}"),
         }
     };
 
@@ -1656,7 +1653,7 @@ fn test_invept_instruction() {
                         VcpuExit::UnrecoverableException => {
                             true // Break VM runloop
                         }
-                        r => panic!("unexpected exit reason: {:?}", r),
+                        r => panic!("unexpected exit reason: {r:?}"),
                     }
                 }
                 _ => {
@@ -1664,7 +1661,7 @@ fn test_invept_instruction() {
                         VcpuExit::Shutdown(_) => {
                             true // Break VM runloop
                         }
-                        r => panic!("unexpected exit reason: {:?}", r),
+                        r => panic!("unexpected exit reason: {r:?}"),
                     }
                 }
             }
@@ -1709,7 +1706,7 @@ fn test_invvpid_instruction() {
             VcpuExit::Mmio | VcpuExit::Shutdown(_) | VcpuExit::InternalError => {
                 true // Break VM runloop
             }
-            r => panic!("unexpected exit reason: {:?}", r),
+            r => panic!("unexpected exit reason: {r:?}"),
         };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -1751,8 +1748,7 @@ fn test_vm_instruction_set() {
                 _ => {
                     assert_eq!(
                         regs.rip, expected_rip,
-                        "{}; expected RIP at {}",
-                        name, expected_rip
+                        "{name}; expected RIP at {expected_rip}"
                     );
                 }
             };
@@ -1765,7 +1761,7 @@ fn test_vm_instruction_set() {
                             VcpuExit::Mmio => {
                                 true // Break VM runloop
                             }
-                            r => panic!("unexpected exit reason: {:?}", r),
+                            r => panic!("unexpected exit reason: {r:?}"),
                         }
                     }
                     HypervisorType::Kvm => {
@@ -1776,7 +1772,7 @@ fn test_vm_instruction_set() {
                             VcpuExit::Shutdown(_) => {
                                 true // Break VM runloop
                             }
-                            r => panic!("unexpected exit reason: {:?}", r),
+                            r => panic!("unexpected exit reason: {r:?}"),
                         }
                     }
                 }
@@ -1818,8 +1814,7 @@ fn test_software_interrupt() {
                         .expect("the code length should within the range of u64");
                 assert_eq!(
                     regs.rip, expect_rip_addr,
-                    "Expected RIP at {:#x}",
-                    expect_rip_addr
+                    "Expected RIP at {expect_rip_addr:#x}"
                 );
             }
         };
@@ -1832,7 +1827,7 @@ fn test_software_interrupt() {
                         VcpuExit::Mmio => {
                             true // Break VM runloop
                         }
-                        r => panic!("unexpected exit reason: {:?}", r),
+                        r => panic!("unexpected exit reason: {r:?}"),
                     }
                 }
                 _ => {
@@ -1840,7 +1835,7 @@ fn test_software_interrupt() {
                         VcpuExit::Shutdown(_) => {
                             true // Break VM runloop
                         }
-                        r => panic!("unexpected exit reason: {:?}", r),
+                        r => panic!("unexpected exit reason: {r:?}"),
                     }
                 }
             }
@@ -2047,8 +2042,7 @@ fn test_vmm_set_segs() {
                     .expect("the code length should within the range of u64");
             assert_eq!(
                 regs.rip, expect_rip_addr,
-                "Expected RIP at {:#x}",
-                expect_rip_addr
+                "Expected RIP at {expect_rip_addr:#x}"
             );
         },
         |_, exit, _, _: &mut dyn Vm| matches!(exit, VcpuExit::Hlt)
@@ -2252,7 +2246,7 @@ fn test_minimal_interrupt_injection() {
                         .expect("should be able to inject an interrupt");
                     false
                 }
-                r => panic!("unexpected VMEXIT reason: {:?}", r),
+                r => panic!("unexpected VMEXIT reason: {r:?}"),
             }
         }
     );
@@ -2426,7 +2420,7 @@ fn test_multiple_interrupt_injection() {
                         .expect("should be able to inject an interrupt");
                     false
                 }
-                r => panic!("unexpected VMEXIT reason: {:?}", r),
+                r => panic!("unexpected VMEXIT reason: {r:?}"),
             }
         }
     );
@@ -2456,7 +2450,7 @@ mod test_interrupt_ready_when_not_interruptible_code {
                 0x50 => Instrumentation::AfterSti,
                 0x60 => Instrumentation::AfterAfterSti,
                 0xf0 => Instrumentation::InIsr,
-                _ => panic!("Unknown instrumentation IO port: {}", value),
+                _ => panic!("Unknown instrumentation IO port: {value}"),
             }
         }
     }
@@ -2632,7 +2626,7 @@ fn test_interrupt_ready_when_normally_not_interruptible() {
                     false
                 }
                 VcpuExit::Hlt => true,
-                r => panic!("unexpected VMEXIT reason: {:?}", r),
+                r => panic!("unexpected VMEXIT reason: {r:?}"),
             }
         }
     );
@@ -2694,12 +2688,12 @@ fn test_interrupt_ready_when_interrupt_enable_flag_not_set() {
                             assert_eq!(regs.rflags & FLAGS_IF_BIT, FLAGS_IF_BIT);
                             assert!(vcpu.ready_for_interrupt());
                         }
-                        _ => panic!("unexpected addr: {}", addr),
+                        _ => panic!("unexpected addr: {addr}"),
                     }
                     false
                 }
                 VcpuExit::Hlt => true,
-                r => panic!("unexpected VMEXIT reason: {:?}", r),
+                r => panic!("unexpected VMEXIT reason: {r:?}"),
             }
         }
     );
@@ -2755,7 +2749,7 @@ fn test_enter_long_mode_direct() {
         VcpuExit::Hlt => {
             true // Break VM runloop
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -2857,7 +2851,7 @@ fn test_enter_long_mode_asm() {
         VcpuExit::Hlt => {
             true // Break VM runloop
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -2941,7 +2935,7 @@ fn test_request_interrupt_window() {
                         assert!(irq_window_received);
                         true
                     }
-                    r => panic!("unexpected VMEXIT: {:?}", r),
+                    r => panic!("unexpected VMEXIT: {r:?}"),
                 }
             }
         }
@@ -3004,7 +2998,7 @@ fn test_fsgsbase() {
         VcpuExit::Hlt => {
             true // Break VM runloop
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -3117,7 +3111,7 @@ fn test_mmx_state_is_preserved_by_hypervisor() {
             );
             false
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -3257,7 +3251,7 @@ fn test_avx_state_is_preserved_by_hypervisor() {
             );
             false
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -3355,7 +3349,7 @@ fn test_xsave() {
             false
         }
         VcpuExit::MsrAccess => false, // MsrAccess handled by hypervisor impl
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -3551,7 +3545,7 @@ fn test_xsaves_is_disabled_on_haxm() {
             false
         }
         VcpuExit::MsrAccess => false, // MsrAccess handled by hypervisor impl
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -3664,7 +3658,7 @@ fn test_slat_on_region_removal_is_mmio() {
                             Ok(())
                         }
                         IoOperation::Write(_) => {
-                            panic!("got unexpected IO operation {:?}", operation);
+                            panic!("got unexpected IO operation {operation:?}");
                         }
                     }
                 })
@@ -3674,7 +3668,7 @@ fn test_slat_on_region_removal_is_mmio() {
             VcpuExit::Hlt => {
                 panic!("VM should not reach the hlt instruction (MMIO should've ended the VM)");
             }
-            r => panic!("unexpected exit reason: {:?}", r),
+            r => panic!("unexpected exit reason: {r:?}"),
         };
 
     // We want to catch if the hypervisor doesn't clear the VM's TLB. If we hop between CPUs, then
@@ -3870,7 +3864,7 @@ fn test_interrupt_injection_when_not_ready() {
                     let _ = vcpu.interrupt(32);
                     false
                 }
-                r => panic!("unexpected VMEXIT reason: {:?}", r),
+                r => panic!("unexpected VMEXIT reason: {r:?}"),
             }
         }
     );
@@ -3942,11 +3936,11 @@ fn test_ready_for_interrupt_for_intercepted_instructions() {
                                 assert!(ready_for_interrupt);
                             }
                         }
-                        _ => panic!("unexpected port {}", io_port),
+                        _ => panic!("unexpected port {io_port}"),
                     }
                     false
                 }
-                r => panic!("unexpected exit reason: {:?}", r),
+                r => panic!("unexpected exit reason: {r:?}"),
             }
         }
     );
@@ -3987,7 +3981,7 @@ fn test_cpuid_mwait_not_supported() {
         VcpuExit::Hlt => {
             true // Break VM runloop
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -4088,7 +4082,7 @@ fn test_hardware_breakpoint_with_isr() {
         VcpuExit::Hlt => {
             true // Break VM runloop
         }
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);
@@ -4160,7 +4154,7 @@ fn test_debug_register_persistence() {
                 hlt_count += 1;
                 hlt_count > 1 // Halt execution after the second HLT
             }
-            r => panic!("unexpected exit reason: {:?}", r),
+            r => panic!("unexpected exit reason: {r:?}"),
         }
     );
 }

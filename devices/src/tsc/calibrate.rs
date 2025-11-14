@@ -278,7 +278,7 @@ fn calibrate_tsc_state_inner(rdtsc: fn() -> u64, cores: Vec<usize>) -> Result<Ts
         // Copy the value of core to a moveable variable now.
         let moved_core = *core;
         let handle = std::thread::Builder::new()
-            .name(format!("tsc_calibration_core_{}", core).to_string())
+            .name(format!("tsc_calibration_core_{core}").to_string())
             .spawn(move || {
                 calibrate_tsc_frequency(
                     rdtsc,
@@ -343,7 +343,7 @@ fn calibrate_tsc_state_inner(rdtsc: fn() -> u64, cores: Vec<usize>) -> Result<Ts
     for core in cores {
         let thread_reference_moments = reference_moments.clone();
         let handle = std::thread::Builder::new()
-            .name(format!("measure_tsc_offset_core_{}", core).to_string())
+            .name(format!("measure_tsc_offset_core_{core}").to_string())
             .spawn(move || {
                 measure_tsc_offset(
                     core,

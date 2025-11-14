@@ -4,7 +4,6 @@
 
 use std::collections::VecDeque;
 use std::io::Error as IOError;
-use std::io::ErrorKind;
 use std::io::Read;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -121,10 +120,9 @@ impl FidoPassthroughDevice {
             Ok(n) => {
                 // We read too much, the device is misbehaving
                 if n != constants::U2FHID_PACKET_SIZE {
-                    return Err(Error::ReadHidrawDevice(IOError::new(
-                        ErrorKind::Other,
-                        format!("Read too many bytes ({n}), the hidraw device is misbehaving."),
-                    )));
+                    return Err(Error::ReadHidrawDevice(IOError::other(format!(
+                        "Read too many bytes ({n}), the hidraw device is misbehaving."
+                    ))));
                 }
                 // This is safe because we just checked the size of n is exactly U2FHID_PACKET_SIZE
                 device

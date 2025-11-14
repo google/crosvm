@@ -136,7 +136,7 @@ impl BusDevice for Pl030 {
             RTCCR => {
                 self.counter_delta_time = get_epoch_time();
             }
-            o => panic!("pl030: bad write {}", o),
+            o => panic!("pl030: bad write {o}"),
         }
     }
 
@@ -161,7 +161,7 @@ impl BusDevice for Pl030 {
             AMBA_ID_OFFSET => PL030_AMBA_ID,
             AMBA_MASK_OFFSET => PL030_AMBA_MASK,
 
-            o => panic!("pl030: bad read {}", o),
+            o => panic!("pl030: bad read {o}"),
         };
         *data_array = reg_content.to_ne_bytes();
     }

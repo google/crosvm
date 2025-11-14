@@ -66,5 +66,5 @@ pub fn poll_assert_impl(msg: &'static str, tries: usize, poll_fn: impl Fn() -> b
             return;
         }
     }
-    panic!("Still failing after {} tries: {}", tries, msg);
+    panic!("Still failing after {tries} tries: {msg}");
 }

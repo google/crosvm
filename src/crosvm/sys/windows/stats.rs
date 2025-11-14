@@ -142,8 +142,8 @@ const MAX_EXIT_INT: usize = 13;
 /// Map Vm Exits to exit indexes, which are integers for storage in our counter Vecs.
 fn exit_to_index(exit: &base::Result<VcpuExit>) -> usize {
     match exit {
-        Ok(VcpuExit::Io { .. }) => 0,
-        Ok(VcpuExit::Mmio { .. }) => 1,
+        Ok(VcpuExit::Io) => 0,
+        Ok(VcpuExit::Mmio) => 1,
         Ok(VcpuExit::IoapicEoi { .. }) => 2,
         Ok(VcpuExit::IrqWindowOpen) => 3,
         Ok(VcpuExit::Hlt) => 4,
@@ -238,10 +238,10 @@ impl std::fmt::Display for StatisticsCollector {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let (pio, mmio, exits) = self.merged();
         writeln!(f, "Port IO:")?;
-        writeln!(f, "{}", pio)?;
+        writeln!(f, "{pio}")?;
         writeln!(f, "MMIO:")?;
-        writeln!(f, "{}", mmio)?;
+        writeln!(f, "{mmio}")?;
         writeln!(f, "Vm Exits:")?;
-        writeln!(f, "{}", exits)
+        writeln!(f, "{exits}")
     }
 }

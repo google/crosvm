@@ -75,16 +75,15 @@ fn unix_seqpacket_path_listener_accept_with_timeout() {
 
     for d in [Duration::from_millis(10), Duration::ZERO] {
         let _ = listener.accept_with_timeout(d).expect_err(&format!(
-            "UnixSeqpacket::accept_with_timeout {:?} connected",
-            d
+            "UnixSeqpacket::accept_with_timeout {d:?} connected"
         ));
 
         let s1 = UnixSeqpacket::connect(socket_path.as_path())
-            .unwrap_or_else(|_| panic!("UnixSeqpacket::connect {:?} failed", d));
+            .unwrap_or_else(|_| panic!("UnixSeqpacket::connect {d:?} failed"));
 
         let s2 = listener
             .accept_with_timeout(d)
-            .unwrap_or_else(|_| panic!("UnixSeqpacket::accept {:?} failed", d));
+            .unwrap_or_else(|_| panic!("UnixSeqpacket::accept {d:?} failed"));
 
         let data1 = &[0, 1, 2, 3, 4];
         let data2 = &[10, 11, 12, 13, 14];

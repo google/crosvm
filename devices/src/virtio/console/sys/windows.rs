@@ -109,7 +109,7 @@ pub(in crate::virtio::console) fn spawn_input_thread(
 
         match rx.wait_for_client_connection_overlapped_blocking(&kill_evt) {
             Err(e) if e.kind() == io::ErrorKind::Interrupted => return rx,
-            Err(e) => panic!("failed to wait for client: {}", e),
+            Err(e) => panic!("failed to wait for client: {e}"),
             Ok(()) => (),
         }
 

@@ -501,10 +501,7 @@ impl arch::LinuxArch for AArch64 {
         let high_mmio_size = guest_phys_end
             .checked_sub(high_mmio_base)
             .unwrap_or_else(|| {
-                panic!(
-                    "guest_phys_end {:#x} < high_mmio_base {:#x}",
-                    guest_phys_end, high_mmio_base,
-                );
+                panic!("guest_phys_end {guest_phys_end:#x} < high_mmio_base {high_mmio_base:#x}",);
             });
         SystemAllocatorConfig {
             io: None,

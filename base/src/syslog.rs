@@ -90,7 +90,7 @@ impl Display for Priority {
             Debug => "DEBUG",
         };
 
-        write!(f, "{}", string)
+        write!(f, "{string}")
     }
 }
 
@@ -316,7 +316,7 @@ impl State {
                     // The default log configuration used in early_init() enables syslog, so we
                     // don't want to terminate the program if syslog can't be initialized. Warn the
                     // user but continue running.
-                    eprintln!("syslog init failed: {}", e);
+                    eprintln!("syslog init failed: {e}");
                 }
             }
         }

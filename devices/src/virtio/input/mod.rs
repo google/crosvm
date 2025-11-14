@@ -943,7 +943,7 @@ fn parse_input_config_file(config_path: &PathBuf, device_idx: u32) -> Result<Cus
 
     // Parse the string into a JSON object
     let config_file: InputConfigFile = serde_json::from_str(contents.as_str()).map_err(|e| {
-        InputError::ParseEventConfigError(format!("Failed to parse json string: {}", e))
+        InputError::ParseEventConfigError(format!("Failed to parse json string: {e}"))
     })?;
     // Parse the supported events
     for event in config_file.events {
@@ -973,7 +973,7 @@ fn parse_input_config_file(config_path: &PathBuf, device_idx: u32) -> Result<Cus
     }
 
     let properties = bitmap_from_map(&config_file.properties).map_err(|e| {
-        InputError::ParseEventConfigError(format!("Unable to parse device properties: {:?}", e))
+        InputError::ParseEventConfigError(format!("Unable to parse device properties: {e:?}"))
     })?;
 
     let axis_info: BTreeMap<u16, virtio_input_absinfo> = config_file
@@ -1008,8 +1008,7 @@ fn bitmap_from_map(map: &BTreeMap<String, u16>) -> Result<virtio_input_bitmap> {
     for (key, &value) in map {
         if value >= 1024 {
             return Err(InputError::ParseEventConfigError(format!(
-                "Value exceeds bitmap bounds: {} ({})",
-                value, key
+                "Value exceeds bitmap bounds: {value} ({key})"
             )));
         }
         bitmap_idx.push(value);

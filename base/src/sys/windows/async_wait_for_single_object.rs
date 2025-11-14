@@ -5,7 +5,6 @@
 use std::ffi::c_void;
 use std::future::Future;
 use std::io::Error;
-use std::io::ErrorKind;
 use std::io::Result;
 use std::marker::PhantomData;
 use std::marker::PhantomPinned;
@@ -147,9 +146,7 @@ where
 
                 Poll::Ready(Ok(()))
             }
-            WaitState::Aborted => {
-                Poll::Ready(Err(Error::new(ErrorKind::Other, "operation aborted")))
-            }
+            WaitState::Aborted => Poll::Ready(Err(Error::other("operation aborted"))),
             WaitState::Finished => panic!("polled an already completed WaitForHandle future."),
             WaitState::Failed => {
                 panic!("WaitForHandle future's waiter callback hit unexpected behavior.")

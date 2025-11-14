@@ -156,7 +156,7 @@ pub(crate) fn init_log(log_config: LogConfig, cfg: &Config) -> Result<()> {
                 .append(true)
                 .open(log_file_path)
                 .with_exit_context(Exit::LogFile, || {
-                    format!("failed to open log file {}", log_file_path)
+                    format!("failed to open log file {log_file_path}")
                 })?;
             Some(Box::new(file))
         } else {
@@ -164,7 +164,7 @@ pub(crate) fn init_log(log_config: LogConfig, cfg: &Config) -> Result<()> {
         },
         ..log_config
     }) {
-        eprintln!("failed to initialize syslog: {}", e);
+        eprintln!("failed to initialize syslog: {e}");
         return Err(anyhow!("failed to initialize syslog: {}", e));
     }
     Ok(())

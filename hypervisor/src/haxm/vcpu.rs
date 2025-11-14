@@ -313,7 +313,7 @@ impl Vcpu for HaxmVcpu {
             HAX_EXIT_PAGEFAULT => Ok(VcpuExit::Exception),
             HAX_EXIT_DEBUG => Ok(VcpuExit::Debug),
             HAX_EXIT_PAUSED => Ok(VcpuExit::Exception),
-            r => panic!("unknown exit reason: {}", r),
+            r => panic!("unknown exit reason: {r}"),
         }
     }
 }

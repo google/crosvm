@@ -317,8 +317,7 @@ impl<T: WindowEventLoop<HostState>> HostDisplayImpl<T> {
         } = vk::ImageCreateFlags::from_raw(image_create_flags).into();
         assert!(
             !(sparse_binding || sparse_residency || sparse_aliased),
-            "unsupported image create flags {:#x}",
-            image_create_flags
+            "unsupported image create flags {image_create_flags:#x}"
         );
         let image_type = vk::ImageType::from_raw(metadata.image_type);
         let image_extent = metadata.extent;

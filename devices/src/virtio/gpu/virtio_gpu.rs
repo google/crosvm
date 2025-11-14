@@ -1109,7 +1109,7 @@ impl VirtioGpu {
         let resource = self
             .resources
             .get_mut(&resource_id)
-            .with_context(|| format!("can't find the resource with id {}", resource_id))
+            .with_context(|| format!("can't find the resource with id {resource_id}"))
             .context(ErrInvalidResourceId)?;
 
         let map_info = self

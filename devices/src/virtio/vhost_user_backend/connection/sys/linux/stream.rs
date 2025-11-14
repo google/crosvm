@@ -41,7 +41,7 @@ impl VhostUserStream {
     /// - The provided file descriptor is not a socket.
     /// - An error occurs while creating the underlying `SocketListener`.
     pub fn new_socket_from_fd(socket_fd: RawDescriptor) -> anyhow::Result<Self> {
-        let path = PathBuf::from(format!("/proc/self/fd/{}", socket_fd));
+        let path = PathBuf::from(format!("/proc/self/fd/{socket_fd}"));
         if !path_is_socket(&path) {
             return Err(anyhow!("fd {} is not a socket", socket_fd));
         }

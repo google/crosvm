@@ -365,7 +365,7 @@ impl QcowHeader {
         write_u32_to_file(file, 0)?; // header extension type: end of header extension area
         write_u32_to_file(file, 0)?; // length of header extension data: 0
         if let Some(backing_file_path) = self.backing_file_path.as_ref() {
-            write!(file, "{}", backing_file_path).map_err(Error::WritingHeader)?;
+            write!(file, "{backing_file_path}").map_err(Error::WritingHeader)?;
         }
 
         // Set the file length by seeking and writing a zero to the last byte. This avoids needing
@@ -503,7 +503,7 @@ impl QcowFile {
         if refcount_bits != 16 {
             return Err(Error::UnsupportedRefcountOrder);
         }
-        let refcount_bytes = (refcount_bits + 7) / 8;
+        let refcount_bytes = refcount_bits.div_ceil(8);
 
         // Need at least one refcount cluster
         if header.refcount_table_clusters == 0 {
@@ -1593,8 +1593,7 @@ impl FileSync for QcowFile {
 
 impl FileSetLen for QcowFile {
     fn set_len(&self, _len: u64) -> std::io::Result<()> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(std::io::Error::other(
             "set_len() not supported for QcowFile",
         ))
     }

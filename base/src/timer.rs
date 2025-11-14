@@ -233,7 +233,7 @@ mod tests {
         tfd.reset_oneshot(dur).expect("failed to arm timer");
         tfd.wait().expect("unable to wait for timer");
         let elapsed = now.elapsed();
-        assert!(elapsed >= dur, "expected {:?} >= {:?}", elapsed, dur);
+        assert!(elapsed >= dur, "expected {elapsed:?} >= {dur:?}");
     }
 
     /// Similar to one_shot, except this one waits for a clone of the timer.
@@ -248,7 +248,7 @@ mod tests {
         tfd.reset_oneshot(dur).expect("failed to arm timer");
         cloned_tfd.wait().expect("unable to wait for timer");
         let elapsed = now.elapsed();
-        assert!(elapsed >= dur, "expected {:?} >= {:?}", elapsed, dur);
+        assert!(elapsed >= dur, "expected {elapsed:?} >= {dur:?}");
     }
 
     #[test]

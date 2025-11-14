@@ -58,17 +58,14 @@ fn wait_until_swap_state_change(
 fn create_tmpfs_file_in_guest(vm: &mut TestVm, size: usize) {
     vm.exec_in_guest("mount -t tmpfs -o size=64m /dev/shm /tmp")
         .unwrap();
-    vm.exec_in_guest(&format!(
-        "head -c {} /dev/urandom > {}",
-        size, SWAP_FILE_PATH
-    ))
-    .unwrap();
+    vm.exec_in_guest(&format!("head -c {size} /dev/urandom > {SWAP_FILE_PATH}"))
+        .unwrap();
 }
 
 fn load_checksum_tmpfs_file(vm: &mut TestVm) -> String {
     // Use checksum to validate that the RAM on the guest is not broken. Sending the whole content
     // does not work due to the protocol of the connection between host and guest.
-    vm.exec_in_guest(&format!("cat {} | sha256sum", SWAP_FILE_PATH))
+    vm.exec_in_guest(&format!("cat {SWAP_FILE_PATH} | sha256sum"))
         .unwrap()
         .stdout
 }

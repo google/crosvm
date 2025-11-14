@@ -82,7 +82,7 @@ pub struct ParseError {
 impl Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
-            ErrorKind::SerdeError(s) => write!(f, "{}", s),
+            ErrorKind::SerdeError(s) => write!(f, "{s}"),
             _ => write!(f, "{} at position {}", self.kind, self.pos),
         }
     }
@@ -966,7 +966,7 @@ mod tests {
 
         // Value too big for a signed?
         let val = i32::MAX as u32 + 1;
-        let res = from_key_values::<SingleStruct<i32>>(&format!("m={}", val)).unwrap_err();
+        let res = from_key_values::<SingleStruct<i32>>(&format!("m={val}")).unwrap_err();
         assert_eq!(
             res,
             ParseError {

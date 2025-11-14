@@ -186,7 +186,7 @@ impl Waiter {
             0 => WaitingFor::None,
             1 => WaitingFor::Mutex,
             2 => WaitingFor::Condvar,
-            v => panic!("Unknown value for `WaitingFor`: {}", v),
+            v => panic!("Unknown value for `WaitingFor`: {v}"),
         }
     }
 

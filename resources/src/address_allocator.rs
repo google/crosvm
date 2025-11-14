@@ -728,7 +728,7 @@ mod tests {
             String::from("bar8"),
         ) {
             Err(Error::ExistingAlloc(Alloc::Anon(0) | Alloc::Anon(3))) => {}
-            x => panic!("unexpected result {:?}", x),
+            x => panic!("unexpected result {x:?}"),
         }
     }
 

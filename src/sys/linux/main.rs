@@ -83,7 +83,7 @@ pub(crate) fn run_command(command: Commands, _log_args: LogArgs) -> anyhow::Resu
 
 pub(crate) fn init_log(log_config: LogConfig, _cfg: &Config) -> anyhow::Result<()> {
     if let Err(e) = syslog::init_with(log_config) {
-        eprintln!("failed to initialize syslog: {}", e);
+        eprintln!("failed to initialize syslog: {e}");
         return Err(anyhow!("failed to initialize syslog: {}", e));
     }
     Ok(())

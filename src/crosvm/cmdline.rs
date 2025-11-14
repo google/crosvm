@@ -2289,7 +2289,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                         .insert(cpu, CpuHybridType::Atom)
                         .is_some()
                     {
-                        return Err(format!("vCPU index must be unique {}", cpu));
+                        return Err(format!("vCPU index must be unique {cpu}"));
                     }
                 }
                 for cpu in cpu_types.core {
@@ -2298,7 +2298,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                         .insert(cpu, CpuHybridType::Core)
                         .is_some()
                     {
-                        return Err(format!("vCPU index must be unique {}", cpu));
+                        return Err(format!("vCPU index must be unique {cpu}"));
                     }
                 }
             }
@@ -2521,7 +2521,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             .iter()
             .enumerate()
             .filter(|(_, p)| p.root)
-            .map(|(i, p)| (format!("/dev/pmem{}", i), p.ro));
+            .map(|(i, p)| (format!("/dev/pmem{i}"), p.ro));
 
         let mut root_devs = virtio_blk_root_devs
             .chain(virtio_scsi_root_devs)
@@ -2587,7 +2587,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(any(target_os = "android", target_os = "linux"))]
         for (name, params) in cmd.wayland_sock {
             if cfg.wayland_socket_paths.contains_key(&name) {
-                return Err(format!("wayland socket name already used: '{}'", name));
+                return Err(format!("wayland socket name already used: '{name}'"));
             }
             cfg.wayland_socket_paths.insert(name, params);
         }
@@ -2632,7 +2632,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                         )
                     }
                     (Some(path), None) => Some(path),
-                    (None, Some(fd)) => Some(PathBuf::from(format!("/proc/self/fd/{}", fd))),
+                    (None, Some(fd)) => Some(PathBuf::from(format!("/proc/self/fd/{fd}"))),
                     (None, None) => None,
                 },
             );
@@ -2832,8 +2832,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                 let num_displays = gpu_parameters.display_params.len();
                 if num_displays > 1 {
                     return Err(format!(
-                        "Only one display is supported (supplied {})",
-                        num_displays
+                        "Only one display is supported (supplied {num_displays})"
                     ));
                 }
             }
@@ -2875,7 +2874,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                 false => "",
             };
             let vq_pairs_msg = match cmd.net_vq_pairs {
-                Some(n) => format!(",vq-pairs={}", n),
+                Some(n) => format!(",vq-pairs={n}"),
                 None => "".to_string(),
             };
 

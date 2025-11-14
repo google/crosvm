@@ -336,7 +336,7 @@ fn fallocate_fsync() {
                 // skip on kernels that don't support fallocate.
                 return;
             }
-            panic!("Unexpected fallocate error: {}", e);
+            panic!("Unexpected fallocate error: {e}");
         }
         Ok(val) => assert_eq!(val, 0_u32),
     }
@@ -603,7 +603,7 @@ fn submit_from_any_thread() {
                             wait_for_completion_thread(&in_flight, &cv);
                             continue;
                         }
-                        Err(e) => panic!("Failed to add nop: {}", e),
+                        Err(e) => panic!("Failed to add nop: {e}"),
                     }
 
                     // We don't need to wait for the completion queue if the submit fails with
@@ -612,7 +612,7 @@ fn submit_from_any_thread() {
                     match uring.submit() {
                         Ok(()) => break,
                         Err(Error::RingEnter(libc::EBUSY)) => break,
-                        Err(e) => panic!("Failed to submit ops: {}", e),
+                        Err(e) => panic!("Failed to submit ops: {e}"),
                     }
                 }
             }
@@ -684,7 +684,7 @@ fn multi_thread_submit_and_complete() {
                             wait_for_completion_thread(&in_flight, &cv);
                             continue;
                         }
-                        Err(e) => panic!("Failed to add nop: {}", e),
+                        Err(e) => panic!("Failed to add nop: {e}"),
                     }
 
                     // We don't need to wait for the completion queue if the submit fails with
@@ -693,7 +693,7 @@ fn multi_thread_submit_and_complete() {
                     match uring.submit() {
                         Ok(()) => break,
                         Err(Error::RingEnter(libc::EBUSY)) => break,
-                        Err(e) => panic!("Failed to submit ops: {}", e),
+                        Err(e) => panic!("Failed to submit ops: {e}"),
                     }
                 }
             }

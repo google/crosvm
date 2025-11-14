@@ -136,81 +136,81 @@ impl Trb {
             TrbType::Reserved => Ok(write!(f, "reserved trb type")),
             TrbType::Normal => {
                 let t = self.cast::<NormalTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::SetupStage => {
                 let t = self.cast::<SetupStageTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::DataStage => {
                 let t = self.cast::<DataStageTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::StatusStage => {
                 let t = self.cast::<StatusStageTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::Isoch => {
                 let t = self.cast::<IsochTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::Link => {
                 let t = self.cast::<LinkTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::EventData => {
                 let t = self.cast::<EventDataTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::Noop => {
                 let t = self.cast::<NoopTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
-            TrbType::EnableSlotCommand => Ok(write!(f, "trb: enable slot command {:?}", self)),
+            TrbType::EnableSlotCommand => Ok(write!(f, "trb: enable slot command {self:?}")),
             TrbType::DisableSlotCommand => {
                 let t = self.cast::<DisableSlotCommandTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::AddressDeviceCommand => {
                 let t = self.cast::<AddressDeviceCommandTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::ConfigureEndpointCommand => {
                 let t = self.cast::<ConfigureEndpointCommandTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::EvaluateContextCommand => {
                 let t = self.cast::<EvaluateContextCommandTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::ResetEndpointCommand => {
                 let t = self.cast::<ResetEndpointCommandTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::StopEndpointCommand => {
                 let t = self.cast::<StopEndpointCommandTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::SetTRDequeuePointerCommand => {
                 let t = self.cast::<SetTRDequeuePointerCommandTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::ResetDeviceCommand => {
                 let t = self.cast::<ResetDeviceCommandTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
-            TrbType::NoopCommand => Ok(write!(f, "trb: noop command {:?}", self)),
+            TrbType::NoopCommand => Ok(write!(f, "trb: noop command {self:?}")),
             TrbType::TransferEvent => {
                 let t = self.cast::<TransferEventTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::CommandCompletionEvent => {
                 let t = self.cast::<CommandCompletionEventTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
             TrbType::PortStatusChangeEvent => {
                 let t = self.cast::<PortStatusChangeEventTrb>()?;
-                Ok(write!(f, "trb: {:?}", t))
+                Ok(write!(f, "trb: {t:?}"))
             }
         }
     }
@@ -220,7 +220,7 @@ impl Display for Trb {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.fmt_helper(f) {
             Ok(f) => f,
-            Err(e) => write!(f, "fail to format trb {}", e),
+            Err(e) => write!(f, "fail to format trb {e}"),
         }
     }
 }

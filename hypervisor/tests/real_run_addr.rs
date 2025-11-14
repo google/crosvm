@@ -123,7 +123,7 @@ where
             // Continue on external interrupt or signal
             VcpuExit::Intr => continue,
             VcpuExit::Hlt => break,
-            r => panic!("unexpected exit reason: {:?}", r),
+            r => panic!("unexpected exit reason: {r:?}"),
         }
     }
 

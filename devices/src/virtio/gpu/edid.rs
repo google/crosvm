@@ -463,7 +463,7 @@ fn populate_standard_timings(edid: &mut [u8]) -> VirtioGpuResult {
             (4, 3) => 0x1,
             (5, 4) => 0x2,
             (16, 9) => 0x3,
-            (x, y) => return Err(ErrEdid(format!("Unsupported aspect ratio: {} {}", x, y))),
+            (x, y) => return Err(ErrEdid(format!("Unsupported aspect ratio: {x} {y}"))),
         };
         edid[0x27 + (index * 2)] = ar_bits;
     }

@@ -55,7 +55,7 @@ use vm_memory::GuestMemory;
 use x86_64::X8664arch as CrosvmArch;
 
 pub fn gdb_thread(mut gdbstub: GdbStub, port: u32) {
-    let addr = format!("0.0.0.0:{}", port);
+    let addr = format!("0.0.0.0:{port}");
     let listener = match TcpListener::bind(addr.clone()) {
         Ok(s) => s,
         Err(e) => {

@@ -71,7 +71,7 @@ impl From<Error> for io::Error {
         match e {
             RingEnter(errno) => io::Error::from_raw_os_error(errno),
             Setup(errno) => io::Error::from_raw_os_error(errno),
-            e => io::Error::new(io::ErrorKind::Other, e),
+            e => io::Error::other(e),
         }
     }
 }

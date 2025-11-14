@@ -86,7 +86,7 @@ impl TransferRingController {
         stream_id: Option<u16>,
     ) -> Result<Arc<TransferRingController>, TransferRingControllerError> {
         RingBufferController::new_with_handler(
-            format!("transfer ring slot_{} ep_{}", slot_id, endpoint_id),
+            format!("transfer ring slot_{slot_id} ep_{endpoint_id}"),
             mem.clone(),
             event_loop,
             TransferRingTrbHandler {

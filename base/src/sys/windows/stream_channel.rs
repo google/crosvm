@@ -224,10 +224,7 @@ impl StreamChannel {
                 // It's always safe to set the read notifier here because we know there is data in
                 // the pipe, and no one else could read it out from under us.
                 self.read_notify.signal().map_err(|e| {
-                    io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("failed to write to read notifier: {:?}", e),
-                    )
+                    io::Error::other(format!("failed to write to read notifier: {e:?}"))
                 })?;
 
                 // Notifier state has been safely synced.
@@ -257,18 +254,12 @@ impl StreamChannel {
                 if byte_count > 0 {
                     // Safe because no one else can be reading from the pipe.
                     self.read_notify.signal().map_err(|e| {
-                        io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("failed to write to read notifier: {:?}", e),
-                        )
+                        io::Error::other(format!("failed to write to read notifier: {e:?}"))
                     })?;
                 } else {
                     // Safe because no other writes can be happening (_lock is held).
                     self.read_notify.reset().map_err(|e| {
-                        io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("failed to reset read notifier: {:?}", e),
-                        )
+                        io::Error::other(format!("failed to reset read notifier: {e:?}"))
                     })?;
                 }
 
@@ -284,14 +275,11 @@ impl StreamChannel {
         if self.pipe_conn.get_framing_mode() == named_pipes::FramingMode::Message
             && buf.len() > self.send_buffer_size
         {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "StreamChannel forbids message mode writes larger than the \
+            return Err(io::Error::other(format!(
+                "StreamChannel forbids message mode writes larger than the \
                      default buffer size of {}.",
-                    self.send_buffer_size,
-                ),
-            ));
+                self.send_buffer_size,
+            )));
         }
 
         let _lock = self.local_write_lock.lock();
@@ -306,10 +294,7 @@ impl StreamChannel {
         //         already correct, and the read's resync won't change that.
         if res.is_ok() {
             self.write_notify.signal().map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("failed to write to read notifier: {:?}", e),
-                )
+                io::Error::other(format!("failed to write to read notifier: {e:?}"))
             })?;
         }
 

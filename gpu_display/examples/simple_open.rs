@@ -46,7 +46,7 @@ fn run() -> Result<()> {
 
 fn main() {
     if let Err(e) = run() {
-        eprintln!("error: {:#}", e);
+        eprintln!("error: {e:#}");
         exit(1);
     }
 }

@@ -371,31 +371,33 @@ impl VhostUserDevice for SndBackend {
         let rx_send_clone = self.rx_send.clone();
 
         let card_index = self.card_index;
-        let restore_task = self.ex.spawn_local(async move {
-            if let Some(stream_infos) = &deser.stream_infos {
-                for (stream, stream_info) in streams_rc.lock().await.iter().zip(stream_infos.iter())
-                {
-                    stream.lock().await.restore(stream_info);
-                    if stream_info.state == VIRTIO_SND_R_PCM_START
-                        || stream_info.state == VIRTIO_SND_R_PCM_PREPARE
+        let restore_task =
+            self.ex.spawn_local(async move {
+                if let Some(stream_infos) = &deser.stream_infos {
+                    for (stream, stream_info) in
+                        streams_rc.lock().await.iter().zip(stream_infos.iter())
                     {
-                        stream
-                            .lock()
-                            .await
-                            .prepare(&ex_clone, &tx_send_clone, &rx_send_clone)
-                            .await
-                            .unwrap_or_else(|_| {
-                                panic!("[Card {}] failed to prepare PCM", card_index)
+                        stream.lock().await.restore(stream_info);
+                        if stream_info.state == VIRTIO_SND_R_PCM_START
+                            || stream_info.state == VIRTIO_SND_R_PCM_PREPARE
+                        {
+                            stream
+                                .lock()
+                                .await
+                                .prepare(&ex_clone, &tx_send_clone, &rx_send_clone)
+                                .await
+                                .unwrap_or_else(|_| {
+                                    panic!("[Card {card_index}] failed to prepare PCM")
+                                });
+                        }
+                        if stream_info.state == VIRTIO_SND_R_PCM_START {
+                            stream.lock().await.start().await.unwrap_or_else(|_| {
+                                panic!("[Card {card_index}] failed to start PCM")
                             });
-                    }
-                    if stream_info.state == VIRTIO_SND_R_PCM_START {
-                        stream.lock().await.start().await.unwrap_or_else(|_| {
-                            panic!("[Card {}] failed to start PCM", card_index)
-                        });
+                        }
                     }
                 }
-            }
-        });
+            });
         self.ex
             .run_until(restore_task)
             .unwrap_or_else(|_| panic!("[Card {}] failed to restore streams", self.card_index));

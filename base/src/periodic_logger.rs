@@ -134,10 +134,10 @@ impl PeriodicLogger {
                             .read()
                             .map_err(|e| PeriodicLoggerError::ReadLockError(e.to_string()))?;
 
-                        let mut logged_string = format!("{} {:?}:", name_copy, interval_copy);
+                        let mut logged_string = format!("{name_copy} {interval_copy:?}:");
                         for (counter_name, counter_value) in counter_map.iter() {
                             let value = counter_value.swap(0, Ordering::Relaxed);
-                            let _ = write!(logged_string, "\n    {}: {}", counter_name, value);
+                            let _ = write!(logged_string, "\n    {counter_name}: {value}");
                         }
 
                         // Log all counters

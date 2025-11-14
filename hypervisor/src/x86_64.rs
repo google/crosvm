@@ -1093,7 +1093,7 @@ impl Xsave {
     /// * `len` size in bytes.
     pub fn new(len: usize) -> Self {
         Xsave {
-            data: vec![0; (len + 3) / 4],
+            data: vec![0; len.div_ceil(4)],
             len,
         }
     }

@@ -539,7 +539,7 @@ impl PciHotPlugWorker {
         Ok(*self
             .port_state_map
             .get(&pci_address)
-            .with_context(|| format!("Cannot find port state on {}", pci_address))?)
+            .with_context(|| format!("Cannot find port state on {pci_address}"))?)
     }
 
     fn set_port_state(&mut self, pci_address: PciAddress, port_state: PortState) -> Result<()> {

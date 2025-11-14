@@ -91,19 +91,13 @@ pub(super) enum TaggedControlTube {
 
 impl ReadNotifier for TaggedControlTube {
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
-        panic!(
-            "get_read_notifier called on generic tagged control: {:?}",
-            self
-        )
+        panic!("get_read_notifier called on generic tagged control: {self:?}")
     }
 }
 
 impl CloseNotifier for TaggedControlTube {
     fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
-        panic!(
-            "get_read_notifier called on generic tagged control: {:?}",
-            self
-        )
+        panic!("get_read_notifier called on generic tagged control: {self:?}")
     }
 }
 
@@ -117,10 +111,7 @@ pub(super) enum Token {
 }
 
 pub(super) fn handle_hungup_event(token: &Token) {
-    panic!(
-        "Unable to handle hungup on a shared token in product specific handler: {:?}",
-        token
-    )
+    panic!("Unable to handle hungup on a shared token in product specific handler: {token:?}")
 }
 
 pub(super) fn setup_common_metric_invariants(cfg: &Config) {}
@@ -206,10 +197,7 @@ pub(super) fn handle_received_token<'a, V: VmArch + 'static, Vcpu: VcpuArch + 's
 where
     F: FnMut(VmRequest, &'a mut RunnableLinuxVm<V, Vcpu>) -> (VmResponse, Option<VmRunMode>),
 {
-    panic!(
-        "Received an unrecognized shared token to product specific handler: {:?}",
-        token
-    )
+    panic!("Received an unrecognized shared token to product specific handler: {token:?}")
 }
 
 pub(super) fn spawn_anti_tamper_thread(wait_ctx: &WaitContext<Token>) -> Option<ProtoTube> {

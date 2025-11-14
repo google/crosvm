@@ -30,15 +30,15 @@ pub enum MountOption<'a> {
 impl fmt::Display for MountOption<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
-            MountOption::FD(fd) => write!(f, "fd={}", fd),
-            MountOption::RootMode(mode) => write!(f, "rootmode={:o}", mode),
-            MountOption::UserId(uid) => write!(f, "user_id={}", uid),
-            MountOption::GroupId(gid) => write!(f, "group_id={}", gid),
+            MountOption::FD(fd) => write!(f, "fd={fd}"),
+            MountOption::RootMode(mode) => write!(f, "rootmode={mode:o}"),
+            MountOption::UserId(uid) => write!(f, "user_id={uid}"),
+            MountOption::GroupId(gid) => write!(f, "group_id={gid}"),
             MountOption::DefaultPermissions => write!(f, "default_permissions"),
             MountOption::AllowOther => write!(f, "allow_other"),
-            MountOption::MaxRead(size) => write!(f, "max_read={}", size),
-            MountOption::BlockSize(size) => write!(f, "blksize={}", size),
-            MountOption::Extra(text) => write!(f, "{}", text),
+            MountOption::MaxRead(size) => write!(f, "max_read={size}"),
+            MountOption::BlockSize(size) => write!(f, "blksize={size}"),
+            MountOption::Extra(text) => write!(f, "{text}"),
         }
     }
 }

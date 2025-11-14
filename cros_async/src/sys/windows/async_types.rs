@@ -28,7 +28,7 @@ impl AsyncTube {
     pub fn new(ex: &Executor, tube: Tube) -> io::Result<AsyncTube> {
         let read_notifier =
             EventAsync::new_without_reset(tube.get_read_notifier_event().try_clone()?, ex)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                .map_err(io::Error::other)?;
         let inner = Arc::new(Mutex::new(tube));
         Ok(AsyncTube {
             inner,
@@ -43,7 +43,7 @@ impl AsyncTube {
         self.read_notifier
             .next_val()
             .await
-            .map_err(|e| TubeError::Recv(io::Error::new(io::ErrorKind::Other, e)))?;
+            .map_err(|e| TubeError::Recv(io::Error::other(e)))?;
         let tube = Arc::clone(&self.inner);
         let handles = HandleWrapper::new(Descriptor(tube.lock().unwrap().as_raw_descriptor()));
         unblock(

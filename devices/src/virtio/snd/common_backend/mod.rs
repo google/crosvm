@@ -987,24 +987,21 @@ mod tests {
             assert_eq!(
                 pcm_info.hdr.hda_fn_nid.to_native(),
                 expected_hda_fn_nid[i],
-                "pcm_info index {} incorrect hda_fn_nid",
-                i
+                "pcm_info index {i} incorrect hda_fn_nid"
             );
         }
         // First 9 devices must be OUTPUT
         for i in 0..9 {
             assert_eq!(
                 res.snd_data.pcm_info[i].direction, VIRTIO_SND_D_OUTPUT,
-                "pcm_info index {} incorrect direction",
-                i
+                "pcm_info index {i} incorrect direction"
             );
         }
         // Next 4 devices must be INPUT
         for i in 9..13 {
             assert_eq!(
                 res.snd_data.pcm_info[i].direction, VIRTIO_SND_D_INPUT,
-                "pcm_info index {} incorrect direction",
-                i
+                "pcm_info index {i} incorrect direction"
             );
         }
 
@@ -1016,8 +1013,7 @@ mod tests {
             assert_eq!(
                 chmap_info.hdr.hda_fn_nid.to_native(),
                 expected_hda_fn_nid[i],
-                "chmap_info index {} incorrect hda_fn_nid",
-                i
+                "chmap_info index {i} incorrect hda_fn_nid"
             );
         }
     }

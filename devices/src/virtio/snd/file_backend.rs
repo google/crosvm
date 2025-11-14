@@ -41,7 +41,7 @@ fn allocate_space(mut file: &File, size: usize) -> Result<(), Error> {
 }
 
 fn open_playback_file(dir_path: &String, stream_id: usize) -> Result<File, Error> {
-    let file_name = format!("stream-{}.out", stream_id);
+    let file_name = format!("stream-{stream_id}.out");
     let file_path = Path::new(dir_path).join(file_name);
     let file = open_file_or_duplicate(
         file_path,

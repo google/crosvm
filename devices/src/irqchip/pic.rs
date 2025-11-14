@@ -174,7 +174,7 @@ impl Pic {
     }
 
     pub fn service_irq(&mut self, irq: u8, level: bool) -> bool {
-        assert!(irq <= 15, "Unexpectedly high value irq: {} vs 15", irq);
+        assert!(irq <= 15, "Unexpectedly high value irq: {irq} vs 15");
 
         let pic = if irq <= PRIMARY_PIC_MAX_IRQ {
             PicSelect::Primary
@@ -370,7 +370,7 @@ impl Pic {
     fn clear_isr(&mut self, pic_type: PicSelect, irq: u8) {
         let pic = &mut self.pics[pic_type as usize];
 
-        assert!(irq <= 7, "Unexpectedly high value for irq: {} vs 7", irq);
+        assert!(irq <= 7, "Unexpectedly high value for irq: {irq} vs 7");
         pic.isr &= !(1 << irq);
         Pic::set_irq_internal(pic, irq, false);
         let irq = if pic_type == PicSelect::Primary {
@@ -412,7 +412,7 @@ impl Pic {
 
     /// Set Irq level. If edge is detected, then IRR is set to 1.
     fn set_irq_internal(pic: &mut PicState, irq: u8, level: bool) {
-        assert!(irq <= 7, "Unexpectedly high value for irq: {} vs 7", irq);
+        assert!(irq <= 7, "Unexpectedly high value for irq: {irq} vs 7");
         let irq_bitmap = 1 << irq;
         if (pic.elcr & irq_bitmap) != 0 {
             // Level-triggered.
@@ -460,7 +460,7 @@ impl Pic {
     fn interrupt_ack(&mut self, pic_type: PicSelect, irq: u8) {
         let pic = &mut self.pics[pic_type as usize];
 
-        assert!(irq <= 7, "Unexpectedly high value for irq: {} vs 7", irq);
+        assert!(irq <= 7, "Unexpectedly high value for irq: {irq} vs 7");
 
         let irq_bitmap = 1 << irq;
         pic.isr |= irq_bitmap;
@@ -587,7 +587,7 @@ mod tests {
         } else if (PIC_PRIMARY_ELCR..PIC_PRIMARY_ELCR + 0x2).contains(&address) {
             PIC_PRIMARY_ELCR
         } else {
-            panic!("invalid PIC address: {:#x}", address);
+            panic!("invalid PIC address: {address:#x}");
         };
         BusAccessInfo {
             offset: address - base_address,

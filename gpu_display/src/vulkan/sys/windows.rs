@@ -312,8 +312,7 @@ unsafe extern "system" fn wnd_proc<AppState: ApplicationState>(
             let error = unsafe { GetLastError() };
             assert_eq!(
                 error, ERROR_SUCCESS,
-                "Failed to set GWLP_USERDATA when initializing the window (Error code {}).",
-                error
+                "Failed to set GWLP_USERDATA when initializing the window (Error code {error})."
             );
         }
         create_struct.lpCreateParams
@@ -327,8 +326,7 @@ unsafe extern "system" fn wnd_proc<AppState: ApplicationState>(
             let error = unsafe { GetLastError() };
             assert_eq!(
                 error, ERROR_SUCCESS,
-                "Failed to get GWLP_USERDATA when handling the message {} (Error code {}).",
-                msg, error
+                "Failed to get GWLP_USERDATA when handling the message {msg} (Error code {error})."
             );
         }
         userdata_ptr as *mut _
@@ -735,10 +733,10 @@ mod tests {
             // SAFETY: safe because 0 for parent hwnd means this is a toplevel window so there is
             // no parent window that needs to outlive this object.
             unsafe { WindowsWindowEventLoop::create(0 as HWND, &size2(640, 480), StateBuilder) }
-                .unwrap_or_else(|e| panic!("Failed to create the window event loop: {:?}", e));
+                .unwrap_or_else(|e| panic!("Failed to create the window event loop: {e:?}"));
         event_loop
             .send_event(UserEvent)
-            .unwrap_or_else(|e| panic!("Failed to send the user event: {:?}", e));
+            .unwrap_or_else(|e| panic!("Failed to send the user event: {e:?}"));
 
         let max_timeout = Duration::from_secs(5);
         let poll_interval = Duration::from_millis(100);

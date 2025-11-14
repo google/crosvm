@@ -177,7 +177,7 @@ where
                 })
                 .expect("failed to set the data");
             }
-            r => panic!("unexpected exit reason: {:?}", r),
+            r => panic!("unexpected exit reason: {r:?}"),
         }
     }
 

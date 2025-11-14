@@ -979,8 +979,7 @@ impl Supervisor {
             // it reproduced consistently. So since we're panicking, we'll be careful.
             self.children.clear();
             panic!(
-                "Broker must supervise exactly one main process. Got {} main process(es).",
-                main_processes,
+                "Broker must supervise exactly one main process. Got {main_processes} main process(es).",
             )
         }
     }
@@ -1223,7 +1222,7 @@ fn start_up_block_backends(
 
         let startup_args = CommonChildStartupArgs::new(
             log_args,
-            get_log_path(cfg, &format!("disk_{}_syslog.log", index)),
+            get_log_path(cfg, &format!("disk_{index}_syslog.log")),
             #[cfg(feature = "crash-report")]
             create_crash_report_attrs(cfg, &format!("{}_{}", product_type::DISK, index)),
             #[cfg(feature = "process-invariants")]
@@ -1261,8 +1260,8 @@ fn spawn_block_backend(
     let block_child = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
         ["device", "block"],
-        get_log_path(cfg, &format!("disk_{}_stdout.log", log_index)),
-        get_log_path(cfg, &format!("disk_{}_stderr.log", log_index)),
+        get_log_path(cfg, &format!("disk_{log_index}_stdout.log")),
+        get_log_path(cfg, &format!("disk_{log_index}_stderr.log")),
         ProcessType::Block,
         children,
         wait_ctx,

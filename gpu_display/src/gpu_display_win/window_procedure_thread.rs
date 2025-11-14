@@ -727,9 +727,7 @@ mod tests {
         let name = WindowProcedureThread::get_window_class_name::<TestWindow>().unwrap();
         assert!(
             name.starts_with(PREFIX),
-            "The class name {} should start with {}.",
-            name,
-            PREFIX
+            "The class name {name} should start with {PREFIX}."
         );
     }
 

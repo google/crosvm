@@ -166,7 +166,7 @@ impl ExecuteError {
             ExecuteError::DiscardWriteZeroes { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::MissingStatus => VIRTIO_BLK_S_IOERR,
-            ExecuteError::OutOfRange { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::OutOfRange => VIRTIO_BLK_S_IOERR,
             ExecuteError::Read(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::ReadIo { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::ReadOnly { .. } => VIRTIO_BLK_S_IOERR,
@@ -997,7 +997,7 @@ impl BlockAsync {
 
             let async_image = match disk_image.to_async_disk(&ex) {
                 Ok(d) => d,
-                Err(e) => panic!("Failed to create async disk {:#}", e),
+                Err(e) => panic!("Failed to create async disk {e:#}"),
             };
 
             let disk_state = Rc::new(AsyncRwLock::new(DiskState {
@@ -1174,7 +1174,7 @@ impl VirtioDevice for BlockAsync {
 
     fn bootorder_fw_cfg(&self, pci_slot: u8) -> Option<(Vec<u8>, usize)> {
         self.boot_index
-            .map(|s| (format!("scsi@{}/disk@0,0", pci_slot).as_bytes().to_vec(), s))
+            .map(|s| (format!("scsi@{pci_slot}/disk@0,0").as_bytes().to_vec(), s))
     }
 }
 

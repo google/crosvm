@@ -388,7 +388,7 @@ impl StreamProxy {
             }
             match th.join() {
                 Ok(state) => Some(state),
-                Err(e) => panic!("virtio-snd: Panic detected on stream thread: {:?}", e),
+                Err(e) => panic!("virtio-snd: Panic detected on stream thread: {e:?}"),
             }
         } else {
             None

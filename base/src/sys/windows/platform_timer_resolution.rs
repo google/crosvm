@@ -174,8 +174,7 @@ mod tests {
     fn assert_res_within_bound(actual_res: Duration) {
         assert!(
             actual_res <= Duration::from_millis(2),
-            "actual_res was {:?}, expected <= 2ms",
-            actual_res
+            "actual_res was {actual_res:?}, expected <= 2ms"
         );
     }
 

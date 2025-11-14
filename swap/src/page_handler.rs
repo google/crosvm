@@ -154,7 +154,7 @@ impl Task for MoveToStaging {
             )
         };
         if let Err(e) = result {
-            panic!("failed to remove memory: {:?}", e);
+            panic!("failed to remove memory: {e:?}");
         }
     }
 }
@@ -736,7 +736,7 @@ impl Drop for SwapInContext<'_> {
     fn drop(&mut self) {
         let mut ctx = self.ctx.lock();
         if let Err(e) = ctx.file.clear_mlock() {
-            panic!("failed to clear mlock: {:?}", e);
+            panic!("failed to clear mlock: {e:?}");
         }
         ctx.mlock_budget_pages = bytes_to_pages(MLOCK_BUDGET);
     }

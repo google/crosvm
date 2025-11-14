@@ -99,8 +99,7 @@ pub fn nt_query_timer_resolution() -> Result<(Duration, Duration)> {
     );
 
     if ret != STATUS_SUCCESS {
-        Err(Error::from(io::Error::new(
-            io::ErrorKind::Other,
+        Err(Error::from(io::Error::other(
             "NtQueryTimerResolution failed",
         )))
     } else {
@@ -123,10 +122,7 @@ pub fn nt_set_timer_resolution(resolution: Duration) -> Result<()> {
     );
 
     if ret != STATUS_SUCCESS {
-        Err(Error::from(io::Error::new(
-            io::ErrorKind::Other,
-            "NtSetTimerResolution failed",
-        )))
+        Err(Error::from(io::Error::other("NtSetTimerResolution failed")))
     } else {
         Ok(())
     }
@@ -150,8 +146,7 @@ pub fn measure_timer_resolution() -> Duration {
 pub fn set_time_period(res: Duration, begin: bool) -> Result<()> {
     if res.as_millis() < 1 {
         panic!(
-            "time(Begin|End)Period does not support values below 1ms, but {:?} was requested.",
-            res
+            "time(Begin|End)Period does not support values below 1ms, but {res:?} was requested."
         );
     }
     if res.as_millis() > u32::MAX as u128 {
@@ -207,8 +202,7 @@ mod tests {
     fn assert_res_within_bound(actual_res: Duration) {
         assert!(
             actual_res <= Duration::from_millis(2),
-            "actual_res was {:?}, expected <= 2ms",
-            actual_res
+            "actual_res was {actual_res:?}, expected <= 2ms"
         );
     }
 }

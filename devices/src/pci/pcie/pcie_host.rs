@@ -267,7 +267,7 @@ impl HotplugWorker {
                 // lack of power management capability).
                 if !child.path.join("driver/unbind").exists() {
                     write("/sys/bus/pci/drivers/vfio-pci/new_id", &new_id).with_context(|| {
-                        format!("failed to write {} into vfio-pci/new_id", new_id)
+                        format!("failed to write {new_id} into vfio-pci/new_id")
                     })?;
                 }
             }
@@ -279,10 +279,10 @@ impl HotplugWorker {
             let vm_socket = vm_socket.lock();
             vm_socket
                 .send(&request)
-                .with_context(|| format!("failed to send hotplug request for {:?}", child))?;
+                .with_context(|| format!("failed to send hotplug request for {child:?}"))?;
             let response = vm_socket
                 .recv::<VmResponse>()
-                .with_context(|| format!("failed to receive hotplug response for {:?}", child))?;
+                .with_context(|| format!("failed to receive hotplug response for {child:?}"))?;
             match response {
                 VmResponse::Ok => {}
                 _ => bail!("unexpected hotplug response: {response}"),

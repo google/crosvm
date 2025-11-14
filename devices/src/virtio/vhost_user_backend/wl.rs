@@ -301,11 +301,11 @@ pub fn parse_wayland_sock(value: &str) -> Result<(String, PathBuf), String> {
         let mut kv = c.splitn(2, '=');
         let (kind, value) = match (kv.next(), kv.next()) {
             (Some(kind), Some(value)) => (kind, value),
-            _ => return Err(format!("option must be of the form `kind=value`: {}", c)),
+            _ => return Err(format!("option must be of the form `kind=value`: {c}")),
         };
         match kind {
             "name" => name = value,
-            _ => return Err(format!("unrecognized option: {}", kind)),
+            _ => return Err(format!("unrecognized option: {kind}")),
         }
     }
 

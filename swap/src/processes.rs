@@ -94,7 +94,7 @@ impl Drop for ProcessesGuard {
 /// Loads Pids of crosvm descendant processes except the monitor procesess.
 fn load_descendants(current_pid: Pid, monitor_pid: Pid) -> Result<Vec<Pid>> {
     // children of the current process.
-    let children = read_to_string(format!("/proc/{0}/task/{0}/children", current_pid))
+    let children = read_to_string(format!("/proc/{current_pid}/task/{current_pid}/children"))
         .context("read children")?;
     let children = children.trim();
     // str::split() to empty string results a iterator just returning 1 empty string.
@@ -162,7 +162,7 @@ fn wait_for_task_stopped(task_path: &Path) -> Result<()> {
 }
 
 fn wait_process_stopped(pid: Pid) -> Result<()> {
-    let all_tasks = std::fs::read_dir(format!("/proc/{}/task", pid)).context("read tasks")?;
+    let all_tasks = std::fs::read_dir(format!("/proc/{pid}/task")).context("read tasks")?;
     for task in all_tasks {
         wait_for_task_stopped(&task.context("read task entry")?.path()).context("wait for task")?;
     }

@@ -732,7 +732,7 @@ struct VfioGroup {
 
 impl VfioGroup {
     fn new(container: &VfioContainer, id: u32) -> Result<Self> {
-        let group_path = format!("/dev/vfio/{}", id);
+        let group_path = format!("/dev/vfio/{id}");
         let group_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -1797,23 +1797,19 @@ impl VfioDevice {
         let stub: &VfioRegion = self
             .regions
             .get(index)
-            .unwrap_or_else(|| panic!("tried to read VFIO with an invalid index: {}", index));
+            .unwrap_or_else(|| panic!("tried to read VFIO with an invalid index: {index}"));
 
         let size = buf.len() as u64;
         if size > stub.size || addr + size > stub.size {
             panic!(
-                "tried to read VFIO region with invalid arguments: index={}, addr=0x{:x}, size=0x{:x}",
-                index, addr, size
+                "tried to read VFIO region with invalid arguments: index={index}, addr=0x{addr:x}, size=0x{size:x}"
             );
         }
 
         self.dev
             .read_exact_at(buf, stub.offset + addr)
             .unwrap_or_else(|e| {
-                panic!(
-                    "failed to read region: index={}, addr=0x{:x}, error={}",
-                    index, addr, e
-                )
+                panic!("failed to read region: index={index}, addr=0x{addr:x}, error={e}")
             });
     }
 
@@ -1838,7 +1834,7 @@ impl VfioDevice {
         let stub: &VfioRegion = self
             .regions
             .get(index)
-            .unwrap_or_else(|| panic!("tried to write VFIO with an invalid index: {}", index));
+            .unwrap_or_else(|| panic!("tried to write VFIO with an invalid index: {index}"));
 
         let size = buf.len() as u64;
         if size > stub.size
@@ -1846,18 +1842,14 @@ impl VfioDevice {
             || (stub.flags & VFIO_REGION_INFO_FLAG_WRITE) == 0
         {
             panic!(
-                "tried to write VFIO region with invalid arguments: index={}, addr=0x{:x}, size=0x{:x}",
-                index, addr, size
+                "tried to write VFIO region with invalid arguments: index={index}, addr=0x{addr:x}, size=0x{size:x}"
             );
         }
 
         self.dev
             .write_all_at(buf, stub.offset + addr)
             .unwrap_or_else(|e| {
-                panic!(
-                    "failed to write region: index={}, addr=0x{:x}, error={}",
-                    index, addr, e
-                )
+                panic!("failed to write region: index={index}, addr=0x{addr:x}, error={e}")
             });
     }
 

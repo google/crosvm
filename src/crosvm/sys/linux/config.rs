@@ -324,25 +324,25 @@ pub fn parse_pmem_ext2_option(param: &str) -> Result<PmemExt2Option, String> {
 
         if !ugid_cfg
             .parse_ugid_config(kind, value)
-            .map_err(|e| format!("failed to parse ugid config for pmem-ext2: {:#}", e))?
+            .map_err(|e| format!("failed to parse ugid config for pmem-ext2: {e:#}"))?
         {
             match kind {
                 "blocks_per_group" => {
                     opt.blocks_per_group = value.parse().map_err(|e| {
-                        format!("failed to parse blocks_per_groups '{value}': {:#}", e)
+                        format!("failed to parse blocks_per_groups '{value}': {e:#}")
                     })?
                 }
                 "inodes_per_group" => {
                     opt.inodes_per_group = value.parse().map_err(|e| {
-                        format!("failed to parse inodes_per_groups '{value}': {:#}", e)
+                        format!("failed to parse inodes_per_groups '{value}': {e:#}")
                     })?
                 }
                 "size" => {
                     opt.size = value
                         .parse()
-                        .map_err(|e| format!("failed to parse memory size '{value}': {:#}", e))?
+                        .map_err(|e| format!("failed to parse memory size '{value}': {e:#}"))?
                 }
-                _ => return Err(format!("invalid `pmem-ext2` option: {}", kind)),
+                _ => return Err(format!("invalid `pmem-ext2` option: {kind}")),
             }
         }
     }

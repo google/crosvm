@@ -254,10 +254,7 @@ impl CallbackHandler for Handler {
             }
             Ok(len) => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!(
-                    "Too few bytes ({}) read from the guest's virtio-net frontend.",
-                    len
-                ),
+                format!("Too few bytes ({len}) read from the guest's virtio-net frontend."),
             )),
             Err(e) => Err(e),
         }

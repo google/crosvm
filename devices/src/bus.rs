@@ -52,7 +52,7 @@ pub struct BusAccessInfo {
 // Implement `Display` for `MinMax`.
 impl std::fmt::Display for BusAccessInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -411,8 +411,8 @@ impl Bus {
         let mut seen_ptrs = BTreeSet::new();
         self.devices
             .lock()
-            .iter()
-            .map(|(_, bus_entry)| bus_entry.device.clone())
+            .values()
+            .map(|bus_entry| bus_entry.device.clone())
             .filter(|dev| match dev {
                 BusDeviceEntry::OuterSync(dev) => seen_ptrs.insert(Arc::as_ptr(dev) as *const u8),
                 BusDeviceEntry::InnerSync(dev) => seen_ptrs.insert(Arc::as_ptr(dev) as *const u8),
@@ -432,7 +432,7 @@ impl Bus {
         let mut choose_key = |debug_label: String| -> String {
             let label = debug_label.replace(char::is_whitespace, "-");
             let id = next_ids.entry(label.clone()).or_default();
-            let key = format!("{}-{}", label, id);
+            let key = format!("{label}-{id}");
             *id += 1;
             key
         };

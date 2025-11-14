@@ -1402,7 +1402,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
                             }
                             cpu_frequencies.insert(cpu_id, freq_domain.clone());
                         } else {
-                            panic!("No frequency domain for cpu:{}", cpu_id);
+                            panic!("No frequency domain for cpu:{cpu_id}");
                         }
                     }
                 }
@@ -1454,7 +1454,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
 
                 for (freq_domain_idx, cpus) in cfg.cpu_freq_domains.iter().enumerate() {
                     let vcpu_domain_path =
-                        cgroup_path.join(format!("vcpu-domain{}", freq_domain_idx));
+                        cgroup_path.join(format!("vcpu-domain{freq_domain_idx}"));
                     // Create subtree for domain
                     create_dir_all(&vcpu_domain_path)?;
 
@@ -2835,7 +2835,7 @@ fn handle_hotplug_net_add<V: VmArch, Vcpu: VcpuArch>(
 
     match ret {
         Ok(pci_bus) => VmResponse::PciHotPlugResponse { bus: pci_bus },
-        Err(e) => VmResponse::ErrString(format!("{:?}", e)),
+        Err(e) => VmResponse::ErrString(format!("{e:?}")),
     }
 }
 
@@ -2848,7 +2848,7 @@ fn handle_hotplug_net_remove<V: VmArch, Vcpu: VcpuArch>(
 ) -> VmResponse {
     match hotplug_manager.remove_hotplug_device(bus, linux, sys_allocator) {
         Ok(_) => VmResponse::Ok,
-        Err(e) => VmResponse::ErrString(format!("{:?}", e)),
+        Err(e) => VmResponse::ErrString(format!("{e:?}")),
     }
 }
 
@@ -3056,7 +3056,7 @@ enum PvClockAction {
 #[cfg(feature = "pvclock")]
 fn send_pvclock_cmd(tube: &Tube, command: PvClockCommand) -> Result<Option<PvClockAction>> {
     tube.send(&command)
-        .with_context(|| format!("failed to send pvclock command {:?}", command))?;
+        .with_context(|| format!("failed to send pvclock command {command:?}"))?;
     let resp = tube
         .recv::<PvClockCommandResponse>()
         .context("failed to receive pvclock command response")?;
@@ -3356,7 +3356,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 Ok(region_id) => VmResponse::RegisterMemory2 {
                     region_id: region_id.0 .0,
                 },
-                Err(e) => VmResponse::ErrString(format!("register memory failed: {:?}", e)),
+                Err(e) => VmResponse::ErrString(format!("register memory failed: {e:?}")),
             }
         }
         VmRequest::UnregisterMemory { region_id } => {
@@ -3366,7 +3366,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 .unregister_memory(mem_region_id)
             {
                 Ok(_) => VmResponse::Ok,
-                Err(e) => VmResponse::ErrString(format!("unregister memory failed: {:?}", e)),
+                Err(e) => VmResponse::ErrString(format!("unregister memory failed: {e:?}")),
             }
         }
         _ => {
@@ -3638,9 +3638,8 @@ fn make_addr_tube_from_maybe_existing(
             socket_addr: addr,
         })
     } else {
-        let sock = UnixSeqpacket::connect(addr.clone()).with_context(|| {
-            format!("failed to connect to registered listening socket {}", addr)
-        })?;
+        let sock = UnixSeqpacket::connect(addr.clone())
+            .with_context(|| format!("failed to connect to registered listening socket {addr}"))?;
         let tube = ProtoTube::from(Tube::try_from(sock)?);
         Ok(AddressedProtoTube {
             tube: Rc::new(tube),
@@ -4265,8 +4264,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     {
                         let pid = siginfo.ssi_pid;
                         let pid_label = match linux.pid_debug_label_map.get(&pid) {
-                            Some(label) => format!("{} (pid {})", label, pid),
-                            None => format!("pid {}", pid),
+                            Some(label) => format!("{label} (pid {pid})"),
+                            None => format!("pid {pid}"),
                         };
 
                         // TODO(kawasin): this is a temporary exception until device suspension.
@@ -4989,10 +4988,10 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
     // return `None` so fall back to an empty (i.e. non-constrained) Minijail.
     let jail = params
         .create_jail(jail_config, jail_type)
-        .with_context(|| format!("failed to create jail for {}", name))?
+        .with_context(|| format!("failed to create jail for {name}"))?
         .ok_or(())
         .or_else(|_| Minijail::new())
-        .with_context(|| format!("failed to create empty jail for {}", name))?;
+        .with_context(|| format!("failed to create empty jail for {name}"))?;
 
     // Create the device in the parent process, so the child does not need any privileges necessary
     // to do it (only runtime capabilities are required).
@@ -5222,7 +5221,7 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
     // Now wait for all device processes to return.
     while !devices_jails.is_empty() {
         match base::linux::wait_for_pid(-1, 0) {
-            Err(e) => panic!("error waiting for child process to complete: {:#}", e),
+            Err(e) => panic!("error waiting for child process to complete: {e:#}"),
             Ok((Some(pid), wait_status)) => match devices_jails.remove_entry(&pid) {
                 Some((_, info)) => {
                     if let Some(status) = wait_status.code() {

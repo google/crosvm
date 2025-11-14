@@ -257,7 +257,7 @@ impl PostResource {
                 },
             )
         }
-        .unwrap_or_else(|e| panic!("Failed to begin recording the command buffer: {:?}", e));
+        .unwrap_or_else(|e| panic!("Failed to begin recording the command buffer: {e:?}"));
         let post_image_old_layout = last_layout_transition.0;
         // SAFETY: Safe because the image in image_access (which is eventually converted back to
         // post_image where it still lives) outlives the command buffer.
@@ -472,15 +472,15 @@ impl PostResource {
         };
         let command_buffer = command_buffer_builder
             .build()
-            .unwrap_or_else(|e| panic!("Failed to end the command buffer recording: {:#}", e));
+            .unwrap_or_else(|e| panic!("Failed to end the command buffer recording: {e:#}"));
 
         assert!(self
             .command_complete_fence
             .is_signaled()
-            .unwrap_or_else(|e| panic!("Failed to query the status of the fence: {:?}", e)));
-        self.command_complete_fence.reset().unwrap_or_else(|e| {
-            panic!("Failed to reset the fence for the post resources: {:?}", e)
-        });
+            .unwrap_or_else(|e| panic!("Failed to query the status of the fence: {e:?}")));
+        self.command_complete_fence
+            .reset()
+            .unwrap_or_else(|e| panic!("Failed to reset the fence for the post resources: {e:?}"));
         {
             // The first values are not used, because they are not binary semaphores.
             let mut wait_semaphore_values = vec![0];
@@ -521,7 +521,7 @@ impl PostResource {
                     self.command_complete_fence.internal_object(),
                 )
             }
-            .unwrap_or_else(|e| panic!("Failed to submit the command: {:?}", e));
+            .unwrap_or_else(|e| panic!("Failed to submit the command: {e:?}"));
         }
         post_image
     }
@@ -633,10 +633,7 @@ impl VulkanPostWorker {
             let supported = physical_device
                 .surface_support(queue_family_index, surface.borrow())
                 .with_context(|| {
-                    format!(
-                        "query if queue family index {} supports the present",
-                        queue_family_index
-                    )
+                    format!("query if queue family index {queue_family_index} supports the present")
                 })?;
             if supported {
                 present_queue_family_index = Some(queue_family_index);
@@ -837,7 +834,7 @@ impl VulkanPostWorker {
                 self.post_resources[*i]
                     .command_complete_fence
                     .is_signaled()
-                    .unwrap_or_else(|e| panic!("Failed to retrieve the fence status: {}", e))
+                    .unwrap_or_else(|e| panic!("Failed to retrieve the fence status: {e}"))
             });
             let post_resource = match post_resource_index {
                 Some(i) => &mut self.post_resources[i],
@@ -851,7 +848,7 @@ impl VulkanPostWorker {
                         .command_complete_fence
                         .wait(Some(Duration::from_secs(5)))
                         .unwrap_or_else(|e| {
-                            panic!("Failed to wait for one recource to be available: {:?}.", e)
+                            panic!("Failed to wait for one recource to be available: {e:?}.")
                         });
                     post_resource
                 }
@@ -931,7 +928,7 @@ impl VulkanPostWorker {
             },
             image,
         )
-        .unwrap_or_else(|err| panic!("Failed when posting a frame: {:?}", err))
+        .unwrap_or_else(|err| panic!("Failed when posting a frame: {err:?}"))
     }
 
     pub fn device(&self) -> Arc<Device> {

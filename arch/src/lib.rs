@@ -206,12 +206,8 @@ pub struct FfaConfig {
 
 fn parse_cpu_range(s: &str, cpuset: &mut Vec<usize>) -> Result<(), String> {
     fn parse_cpu(s: &str) -> Result<usize, String> {
-        s.parse().map_err(|_| {
-            format!(
-                "invalid CPU index {} - index must be a non-negative integer",
-                s
-            )
-        })
+        s.parse()
+            .map_err(|_| format!("invalid CPU index {s} - index must be a non-negative integer"))
     }
 
     let (first_cpu, last_cpu) = match s.split_once('-') {
@@ -221,8 +217,7 @@ fn parse_cpu_range(s: &str, cpuset: &mut Vec<usize>) -> Result<(), String> {
 
             if last_cpu < first_cpu {
                 return Err(format!(
-                    "invalid CPU range {} - ranges must be from low to high",
-                    s
+                    "invalid CPU range {s} - ranges must be from low to high"
                 ));
             }
             (first_cpu, last_cpu)
@@ -326,7 +321,7 @@ impl Serialize for CpuSet {
             if start == end {
                 seq.serialize_element(&start)?;
             } else {
-                seq.serialize_element(&format!("{}-{}", start, end))?;
+                seq.serialize_element(&format!("{start}-{end}"))?;
             }
 
             Ok(())
@@ -1220,7 +1215,7 @@ pub fn generate_pci_root(
                 GpeScope {}.cast_to_aml_bytes(
                     &mut gpe_aml,
                     gpe_nr,
-                    format!("\\{}", acpi_path).as_str(),
+                    format!("\\{acpi_path}").as_str(),
                 );
                 if !gpe_aml.is_empty() {
                     gpe_scope_amls.insert(address, gpe_aml);

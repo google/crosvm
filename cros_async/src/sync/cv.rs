@@ -743,7 +743,7 @@ mod test {
 
         for _ in 0..TASKS + OBSERVERS + 2 {
             if let Err(e) = rx.recv_timeout(Duration::from_secs(20)) {
-                panic!("Error while waiting for threads to complete: {}", e);
+                panic!("Error while waiting for threads to complete: {e}");
             }
         }
 
@@ -818,7 +818,7 @@ mod test {
 
         for _ in 0..TASKS + 2 {
             if let Err(e) = rx.recv_timeout(Duration::from_secs(10)) {
-                panic!("Error while waiting for threads to complete: {}", e);
+                panic!("Error while waiting for threads to complete: {e}");
             }
         }
 
@@ -1154,7 +1154,7 @@ mod test {
                     select! {
                         res = rx => {
                             if let Err(e) = res {
-                                panic!("Error while receiving timeout notification: {}", e);
+                                panic!("Error while receiving timeout notification: {e}");
                             }
 
                             return;

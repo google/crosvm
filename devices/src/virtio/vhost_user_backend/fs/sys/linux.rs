@@ -26,13 +26,13 @@ use crate::virtio::vhost_user_backend::BackendConnection;
 fn default_uidmap() -> String {
     // SAFETY: trivially safe
     let euid = unsafe { libc::geteuid() };
-    format!("{} {} 1", euid, euid)
+    format!("{euid} {euid} 1")
 }
 
 fn default_gidmap() -> String {
     // SAFETY: trivially safe
     let egid = unsafe { libc::getegid() };
-    format!("{} {} 1", egid, egid)
+    format!("{egid} {egid} 1")
 }
 
 #[allow(clippy::unnecessary_cast)]

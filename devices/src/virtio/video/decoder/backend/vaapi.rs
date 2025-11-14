@@ -237,7 +237,7 @@ impl VaapiDecoder {
         for fourcc in fourccs {
             let fourcc = match fourcc {
                 libva::GenericValue::Integer(i) => i as u32,
-                other => panic!("Unexpected VAGenericValue {:?}", other),
+                other => panic!("Unexpected VAGenericValue {other:?}"),
             };
 
             let min_width = config.query_surface_attributes_by_type(
@@ -246,7 +246,7 @@ impl VaapiDecoder {
 
             let min_width = match min_width.first() {
                 Some(libva::GenericValue::Integer(i)) => *i as u32,
-                Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
+                Some(other) => panic!("Unexpected VAGenericValue {other:?}"),
                 None => 1,
             };
 
@@ -255,7 +255,7 @@ impl VaapiDecoder {
             )?;
             let min_height = match min_height.first() {
                 Some(libva::GenericValue::Integer(i)) => *i as u32,
-                Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
+                Some(other) => panic!("Unexpected VAGenericValue {other:?}"),
                 None => 1,
             };
 
@@ -264,7 +264,7 @@ impl VaapiDecoder {
             )?;
             let max_width = match max_width.first() {
                 Some(libva::GenericValue::Integer(i)) => *i as u32,
-                Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
+                Some(other) => panic!("Unexpected VAGenericValue {other:?}"),
                 None => coded_cap.max_width,
             };
 
@@ -273,7 +273,7 @@ impl VaapiDecoder {
             )?;
             let max_height = match max_height.first() {
                 Some(libva::GenericValue::Integer(i)) => *i as u32,
-                Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
+                Some(other) => panic!("Unexpected VAGenericValue {other:?}"),
                 None => coded_cap.max_height,
             };
 
@@ -308,10 +308,7 @@ impl VaapiDecoder {
             let mut profiles = Vec::new();
 
             let entrypoints = display.query_config_entrypoints(va_profile)?;
-            if !entrypoints
-                .iter()
-                .any(|e| *e == libva::VAEntrypoint::VAEntrypointVLD)
-            {
+            if !entrypoints.contains(&libva::VAEntrypoint::VAEntrypointVLD) {
                 // All formats we are aiming to support require
                 // VAEntrypointVLD.
                 continue;

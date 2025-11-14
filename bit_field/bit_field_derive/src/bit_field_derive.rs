@@ -533,7 +533,7 @@ fn get_debug_fmt_impl(name: &Ident, fields: &[FieldSpec]) -> TokenStream {
         });
     }
 
-    let name_str = format!("{}", name);
+    let name_str = format!("{name}");
     quote! {
         impl std::fmt::Debug for #name {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -622,8 +622,8 @@ pub fn define_bit_field_specifiers(_input: proc_macro::TokenStream) -> proc_macr
 
     for width in 0u8..=64 {
         let span = Span::call_site();
-        let long_name = Ident::new(&format!("BitField{}", width), span);
-        let short_name = Ident::new(&format!("B{}", width), span);
+        let long_name = Ident::new(&format!("BitField{width}"), span);
+        let short_name = Ident::new(&format!("B{width}"), span);
 
         let default_field_type = if width <= 8 {
             quote!(u8)

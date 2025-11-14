@@ -827,7 +827,7 @@ impl fmt::Debug for WlVfd {
             write!(f, " socket: {}", s.as_raw_descriptor())?;
         }
         if let Some((offset, _)) = &self.slot {
-            write!(f, " offset: {}", offset)?;
+            write!(f, " offset: {offset}")?;
         }
         if let Some(s) = &self.remote_pipe {
             write!(f, " remote: {}", s.as_raw_descriptor())?;

@@ -102,7 +102,7 @@ fn create_cpu_nodes(
             cpu_mpidr_generator(cpu_id.try_into().unwrap()).ok_or(Error::PropertyValueInvalid)?,
         )
         .map_err(|_| Error::PropertyValueTooLarge)?;
-        let cpu_name = format!("cpu@{:x}", reg);
+        let cpu_name = format!("cpu@{reg:x}");
         let cpu_node = cpus_node.subnode_mut(&cpu_name)?;
         cpu_node.set_prop("device_type", "cpu")?;
         cpu_node.set_prop("compatible", "arm,armv8")?;
@@ -121,12 +121,12 @@ fn create_cpu_nodes(
         // Placed inside cpu nodes for ease of parsing for some secure firmwares(PvmFw).
         if let Some(frequencies) = cpu_frequencies.get(&(cpu_id as usize)) {
             cpu_node.set_prop("operating-points-v2", PHANDLE_OPP_DOMAIN_BASE + cpu_id)?;
-            let opp_table_node = cpu_node.subnode_mut(&format!("opp_table{}", cpu_id))?;
+            let opp_table_node = cpu_node.subnode_mut(&format!("opp_table{cpu_id}"))?;
             opp_table_node.set_prop("phandle", PHANDLE_OPP_DOMAIN_BASE + cpu_id)?;
             opp_table_node.set_prop("compatible", "operating-points-v2")?;
             for freq in frequencies.iter() {
                 let opp_hz = (*freq) as u64 * 1000;
-                let opp_node = opp_table_node.subnode_mut(&format!("opp{}", opp_hz))?;
+                let opp_node = opp_table_node.subnode_mut(&format!("opp{opp_hz}"))?;
                 opp_node.set_prop("opp-hz", opp_hz)?;
             }
         }
@@ -135,9 +135,9 @@ fn create_cpu_nodes(
     if !cpu_clusters.is_empty() {
         let cpu_map_node = cpus_node.subnode_mut("cpu-map")?;
         for (cluster_idx, cpus) in cpu_clusters.iter().enumerate() {
-            let cluster_node = cpu_map_node.subnode_mut(&format!("cluster{}", cluster_idx))?;
+            let cluster_node = cpu_map_node.subnode_mut(&format!("cluster{cluster_idx}"))?;
             for (core_idx, cpu_id) in cpus.iter().enumerate() {
-                let core_node = cluster_node.subnode_mut(&format!("core{}", core_idx))?;
+                let core_node = cluster_node.subnode_mut(&format!("core{core_idx}"))?;
                 core_node.set_prop("cpu", PHANDLE_CPU0 + *cpu_id as u32)?;
             }
         }
@@ -240,9 +240,7 @@ fn create_serial_node(fdt: &mut Fdt, addr: u64, size: u64, irq: u32) -> Result<(
     let serial_reg_prop = [addr, size];
     let irq = [GIC_FDT_IRQ_TYPE_SPI, irq, IRQ_TYPE_EDGE_RISING];
 
-    let serial_node = fdt
-        .root_mut()
-        .subnode_mut(&format!("U6_16550A@{:x}", addr))?;
+    let serial_node = fdt.root_mut().subnode_mut(&format!("U6_16550A@{addr:x}"))?;
     serial_node.set_prop("compatible", "ns16550a")?;
     serial_node.set_prop("reg", &serial_reg_prop)?;
     serial_node.set_prop("clock-frequency", AARCH64_SERIAL_SPEED)?;
@@ -522,7 +520,7 @@ fn create_rtc_node(fdt: &mut Fdt) -> Result<()> {
     clock_node.set_prop("clock-frequency", 3141592u32)?;
     clock_node.set_prop("phandle", CLK_PHANDLE)?;
 
-    let rtc_name = format!("rtc@{:x}", AARCH64_RTC_ADDR);
+    let rtc_name = format!("rtc@{AARCH64_RTC_ADDR:x}");
     let reg = [AARCH64_RTC_ADDR, AARCH64_RTC_SIZE];
     let irq = [GIC_FDT_IRQ_TYPE_SPI, AARCH64_RTC_IRQ, IRQ_TYPE_LEVEL_HIGH];
 

@@ -149,7 +149,7 @@ fn run_vm(cmd: RunCommand, log_config: LogConfig) -> Result<CommandStatus> {
     let cfg = match TryInto::<Config>::try_into(cmd) {
         Ok(cfg) => cfg,
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             return Err(anyhow!("{}", e));
         }
     };
@@ -250,7 +250,7 @@ fn balloon_stats(cmd: cmdline::BalloonStatsCommand) -> std::result::Result<(), (
     let request = &VmRequest::BalloonCommand(command);
     let response = handle_request(request, cmd.socket_path)?;
     match serde_json::to_string_pretty(&response) {
-        Ok(response_json) => println!("{}", response_json),
+        Ok(response_json) => println!("{response_json}"),
         Err(e) => {
             error!("Failed to serialize into JSON: {}", e);
             return Err(());
@@ -390,9 +390,9 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
     use std::path::PathBuf;
 
     let composite_image_path = &cmd.path;
-    let zero_filler_path = format!("{}.filler", composite_image_path);
-    let header_path = format!("{}.header", composite_image_path);
-    let footer_path = format!("{}.footer", composite_image_path);
+    let zero_filler_path = format!("{composite_image_path}.filler");
+    let header_path = format!("{composite_image_path}.header");
+    let footer_path = format!("{composite_image_path}.footer");
 
     let mut composite_image_file = OpenOptions::new()
         .create(true)
@@ -612,11 +612,11 @@ fn modify_gpu(cmd: cmdline::GpuCommand) -> std::result::Result<(), ()> {
     };
     match result {
         Ok(response) => {
-            println!("{}", response);
+            println!("{response}");
             Ok(())
         }
         Err(e) => {
-            println!("error {}", e);
+            println!("error {e}");
             Err(())
         }
     }
@@ -658,11 +658,11 @@ fn modify_usb(cmd: cmdline::UsbCommand) -> std::result::Result<(), ()> {
     };
     match result {
         Ok(response) => {
-            println!("{}", response);
+            println!("{response}");
             Ok(())
         }
         Err(e) => {
-            println!("error {}", e);
+            println!("error {e}");
             Err(())
         }
     }
@@ -691,7 +691,7 @@ fn pkg_version() -> std::result::Result<(), ()> {
 
     print!("crosvm {}", VERSION.unwrap_or("UNKNOWN"));
     match PKG_VERSION {
-        Some(v) => println!("-{}", v),
+        Some(v) => println!("-{v}"),
         None => println!(),
     }
     Ok(())

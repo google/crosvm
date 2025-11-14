@@ -43,7 +43,7 @@ mod platform {
 
 fn main() {
     if let Err(e) = platform::run() {
-        eprintln!("error: {:#}", e);
+        eprintln!("error: {e:#}");
         exit(1);
     }
 }

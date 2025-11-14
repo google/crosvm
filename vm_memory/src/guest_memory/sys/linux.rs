@@ -78,7 +78,7 @@ impl GuestMemory {
                 let ret = region.mapping.use_hugepages();
 
                 if let Err(err) = ret {
-                    println!("Failed to enable HUGEPAGE for mapping {}", err);
+                    println!("Failed to enable HUGEPAGE for mapping {err}");
                 }
             }
 
@@ -93,7 +93,7 @@ impl GuestMemory {
                 let ret = region.mapping.lock_all();
 
                 if let Err(err) = ret {
-                    println!("Failed to lock memory for mapping {}", err);
+                    println!("Failed to lock memory for mapping {err}");
                 }
             }
 

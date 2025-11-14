@@ -139,7 +139,7 @@ impl From<Error> for io::Error {
         match e {
             Discard(e) => e.into(),
             DuplicatingFd(e) => e.into(),
-            ExecutorGone => io::Error::new(io::ErrorKind::Other, ExecutorGone),
+            ExecutorGone => io::Error::other(ExecutorGone),
             InvalidOffset => io::Error::new(io::ErrorKind::InvalidInput, InvalidOffset),
             InvalidSource => io::Error::new(io::ErrorKind::InvalidData, InvalidSource),
             Io(e) => e,
@@ -1077,7 +1077,7 @@ mod tests {
             let err = op.await.expect_err("Op completed successfully");
             match err {
                 Error::ExecutorGone => {}
-                e => panic!("Unexpected error from op: {}", e),
+                e => panic!("Unexpected error from op: {e}"),
             }
         }
 
@@ -1208,7 +1208,7 @@ mod tests {
 
         match block_on(op).expect_err("Pending operation completed after executor was dropped") {
             Error::ExecutorGone => {}
-            e => panic!("Unexpected error after dropping executor: {}", e),
+            e => panic!("Unexpected error after dropping executor: {e}"),
         }
     }
 }

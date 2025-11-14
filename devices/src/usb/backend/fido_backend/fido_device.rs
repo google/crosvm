@@ -4,7 +4,6 @@
 
 use std::fs::File;
 use std::io::Error as IOError;
-use std::io::ErrorKind;
 use std::io::Write;
 use std::sync::Arc;
 
@@ -301,8 +300,7 @@ impl FidoDevice {
             .map_err(Error::WriteHidrawDevice)?;
 
         if written != host_packet.len() {
-            return Err(Error::WriteHidrawDevice(IOError::new(
-                ErrorKind::Other,
+            return Err(Error::WriteHidrawDevice(IOError::other(
                 "Wrote too few bytes to hidraw device.",
             )));
         }

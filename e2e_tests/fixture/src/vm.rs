@@ -301,7 +301,7 @@ impl TestVm {
     /// Downloads prebuilts if needed.
     fn initialize_once() {
         if let Err(e) = syslog::init() {
-            panic!("failed to initiailize syslog: {}", e);
+            panic!("failed to initiailize syslog: {e}");
         }
 
         // It's possible the prebuilts downloaded by crosvm-9999.ebuild differ
@@ -324,14 +324,14 @@ impl TestVm {
         if !kernel_path.exists() && cfg.kernel_url.scheme() != "file" {
             download_file(cfg.kernel_url.as_str(), &kernel_path).unwrap();
         }
-        assert!(kernel_path.exists(), "{:?} does not exist", kernel_path);
+        assert!(kernel_path.exists(), "{kernel_path:?} does not exist");
 
         if let Some(initrd_url) = &cfg.initrd_url {
             let initrd_path = local_path_from_url(initrd_url);
             if !initrd_path.exists() && initrd_url.scheme() != "file" {
                 download_file(initrd_url.as_str(), &initrd_path).unwrap();
             }
-            assert!(initrd_path.exists(), "{:?} does not exist", initrd_path);
+            assert!(initrd_path.exists(), "{initrd_path:?} does not exist");
         }
 
         if let Some(rootfs_url) = &cfg.rootfs_url {
@@ -341,8 +341,7 @@ impl TestVm {
             }
             assert!(
                 rootfs_download_path.exists(),
-                "{:?} does not exist",
-                rootfs_download_path
+                "{rootfs_download_path:?} does not exist"
             );
 
             if cfg.rootfs_compressed {
@@ -460,7 +459,7 @@ impl TestVm {
             },
             COMMUNICATION_TIMEOUT,
         )
-        .with_context(|| format!("Command `{}`: Failed to write to guest pipe", command))?;
+        .with_context(|| format!("Command `{command}`: Failed to write to guest pipe"))?;
 
         Ok(GuestProcess {
             command: command.to_owned(),
@@ -637,7 +636,7 @@ impl Drop for TestVm {
         self.stop().unwrap();
         let status = self.sys.process.take().unwrap().wait().unwrap();
         if !status.success() {
-            panic!("VM exited illegally: {}", status);
+            panic!("VM exited illegally: {status}");
         }
     }
 }

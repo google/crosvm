@@ -82,7 +82,7 @@ impl fmt::Display for VsockCid {
             VsockCid::Hypervisor => write!(fmt, "Hypervisor"),
             VsockCid::Local => write!(fmt, "Local"),
             VsockCid::Host => write!(fmt, "Host"),
-            VsockCid::Cid(c) => write!(fmt, "'{}'", c),
+            VsockCid::Cid(c) => write!(fmt, "'{c}'"),
         }
     }
 }

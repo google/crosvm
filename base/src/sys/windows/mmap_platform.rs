@@ -256,7 +256,7 @@ mod tests {
                 Some(winerror::ERROR_INVALID_HANDLE as i32)
             );
         } else {
-            panic!("unexpected error: {}", res);
+            panic!("unexpected error: {res}");
         }
     }
 
@@ -270,7 +270,7 @@ mod tests {
             .unwrap_err();
         match res {
             Error::InvalidOffset => {}
-            e => panic!("unexpected error: {}", e),
+            e => panic!("unexpected error: {e}"),
         }
     }
 
@@ -289,7 +289,7 @@ mod tests {
         let res = <dyn MappedRegion>::msync(&m, ps, size).unwrap_err();
         match res {
             Error::InvalidAddress => {}
-            e => panic!("unexpected error: {}", e),
+            e => panic!("unexpected error: {e}"),
         }
     }
 }

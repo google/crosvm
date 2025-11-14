@@ -68,8 +68,8 @@ pub enum ResourceBridgeError {
 impl fmt::Display for ResourceRequest {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ResourceRequest::GetBuffer { id } => write!(f, "Buffer-{}", id),
-            ResourceRequest::GetFence { seqno } => write!(f, "Fence-{}", seqno),
+            ResourceRequest::GetBuffer { id } => write!(f, "Buffer-{id}"),
+            ResourceRequest::GetFence { seqno } => write!(f, "Fence-{seqno}"),
         }
     }
 }

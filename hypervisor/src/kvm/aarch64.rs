@@ -495,7 +495,7 @@ impl KvmVcpuRegister {
             KVM_REG_SIZE_U1024 => 128,
             KVM_REG_SIZE_U2048 => 256,
             // `From<KvmVcpuRegister> for u64` should always include a valid size.
-            _ => panic!("invalid size field {}", size_field),
+            _ => panic!("invalid size field {size_field}"),
         }
     }
 }

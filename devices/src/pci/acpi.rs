@@ -540,13 +540,13 @@ impl GpeScope {
         aml::Scope::new(
             "_GPE".into(),
             vec![&aml::Method::new(
-                format!("_E{:02X}", gpe_nr).as_str().into(),
+                format!("_E{gpe_nr:02X}").as_str().into(),
                 0,
                 false,
                 vec![
                     &aml::Store::new(
                         &aml::Local(0),
-                        &aml::Path::new(format!("{}.NOTY", notification_path).as_str()),
+                        &aml::Path::new(format!("{notification_path}.NOTY").as_str()),
                     ),
                     &aml::Notify::new(&aml::Path::new(notification_path), &aml::Local(0)),
                 ],

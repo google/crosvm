@@ -207,14 +207,14 @@ mod tests {
             assert_eq!(
                 mitigations
                     .get_vcpu_tsc_offset(i)
-                    .unwrap_or_else(|| panic!("core {} should have an offset of {}", i, expect)),
+                    .unwrap_or_else(|| panic!("core {i} should have an offset of {expect}")),
                 *expect
             );
 
             assert_eq!(
                 mitigations
                     .get_vcpu_affinity(i)
-                    .unwrap_or_else(|| panic!("core {} should have an affinity of [{}]", i, i)),
+                    .unwrap_or_else(|| panic!("core {i} should have an affinity of [{i}]")),
                 vec![i]
             );
         }
@@ -296,8 +296,7 @@ mod tests {
         for i in 0..num_vcpus {
             assert_eq!(
                 mitigations.get_vcpu_affinity(i).unwrap_or_else(|| panic!(
-                    "core {} should have an affinity of {:?}",
-                    i, expected_affinity
+                    "core {i} should have an affinity of {expected_affinity:?}"
                 )),
                 expected_affinity
             );

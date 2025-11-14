@@ -57,7 +57,7 @@ impl From<Error> for io::Error {
     fn from(e: Error) -> Self {
         use Error::*;
         match e {
-            BackingMemoryVolatileSliceFetchFailed(e) => io::Error::new(io::ErrorKind::Other, e),
+            BackingMemoryVolatileSliceFetchFailed(e) => io::Error::other(e),
             IoSeekError(e) => e,
             IoReadError(e) => e.into(),
             IoWriteError(e) => e.into(),

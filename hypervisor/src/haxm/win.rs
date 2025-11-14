@@ -47,9 +47,9 @@ pub(super) fn open_haxm_device(use_ghaxm: bool) -> Result<SafeDescriptor> {
 
 pub(super) fn open_haxm_vm_device(use_ghaxm: bool, vm_id: u32) -> Result<SafeDescriptor> {
     let name = if use_ghaxm {
-        format!("\\\\.\\ghax_vm{:02}", vm_id)
+        format!("\\\\.\\ghax_vm{vm_id:02}")
     } else {
-        format!("\\\\.\\hax_vm{:02}", vm_id)
+        format!("\\\\.\\hax_vm{vm_id:02}")
     };
     // SAFETY:
     // Open calls are safe because we give a constant nul-terminated string and verify the
@@ -80,9 +80,9 @@ pub(super) fn open_haxm_vcpu_device(
     vcpu_id: u32,
 ) -> Result<SafeDescriptor> {
     let name = if use_ghaxm {
-        format!("\\\\.\\ghax_vm{:02}_vcpu{:02}", vm_id, vcpu_id)
+        format!("\\\\.\\ghax_vm{vm_id:02}_vcpu{vcpu_id:02}")
     } else {
-        format!("\\\\.\\hax_vm{:02}_vcpu{:02}", vm_id, vcpu_id)
+        format!("\\\\.\\hax_vm{vm_id:02}_vcpu{vcpu_id:02}")
     };
     // SAFETY:
     // Open calls are safe because we give a constant nul-terminated string and verify the

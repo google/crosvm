@@ -20,7 +20,7 @@ impl serde::Serialize for ExecutorKindSys {
             ExecutorKindSys::Overlapped { concurrency: None } => "overlapped".to_string(),
             ExecutorKindSys::Overlapped {
                 concurrency: Some(n),
-            } => format!("overlapped,concurrency={}", n),
+            } => format!("overlapped,concurrency={n}"),
         })
     }
 }

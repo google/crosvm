@@ -195,13 +195,13 @@ pub trait VcpuAArch64: Vcpu {
         for (n, xn) in snap.x.iter_mut().enumerate() {
             *xn = self
                 .get_one_reg(VcpuRegAArch64::X(n as u8))
-                .with_context(|| format!("Failed to get X{}", n))?;
+                .with_context(|| format!("Failed to get X{n}"))?;
         }
 
         for (n, vn) in snap.v.iter_mut().enumerate() {
             *vn = self
                 .get_vector_reg(n as u8)
-                .with_context(|| format!("Failed to get V{}", n))?;
+                .with_context(|| format!("Failed to get V{n}"))?;
         }
 
         Ok(snap)
@@ -218,15 +218,15 @@ pub trait VcpuAArch64: Vcpu {
 
         for (n, xn) in snapshot.x.iter().enumerate() {
             self.set_one_reg(VcpuRegAArch64::X(n as u8), *xn)
-                .with_context(|| format!("Failed to restore X{}", n))?;
+                .with_context(|| format!("Failed to restore X{n}"))?;
         }
         for (n, vn) in snapshot.v.iter().enumerate() {
             self.set_vector_reg(n as u8, *vn)
-                .with_context(|| format!("Failed to restore V{}", n))?;
+                .with_context(|| format!("Failed to restore V{n}"))?;
         }
         for (id, val) in &snapshot.sys {
             self.set_one_reg(VcpuRegAArch64::System(*id), *val)
-                .with_context(|| format!("Failed to restore system register {:?}", id))?;
+                .with_context(|| format!("Failed to restore system register {id:?}"))?;
         }
         self.set_cache_info(snapshot.cache_arch_info.clone())
             .context("Failed to restore cache info")?;

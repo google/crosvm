@@ -120,14 +120,11 @@ impl StreamChannel {
                 }? as usize;
 
                 if receive_len > buf.len() {
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!(
-                            "packet size {:?} encountered, but buffer was only of size {:?}",
-                            receive_len,
-                            buf.len()
-                        ),
-                    ))
+                    Err(std::io::Error::other(format!(
+                        "packet size {:?} encountered, but buffer was only of size {:?}",
+                        receive_len,
+                        buf.len()
+                    )))
                 } else {
                     Ok(receive_len)
                 }

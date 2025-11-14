@@ -86,10 +86,7 @@ fn playback_and_check(config: Config, temp_dir: TempDir) {
 }
 
 fn get_virtio_snd_args(output_file_path_str: &str) -> String {
-    format!(
-        "backend=file,playback_path={},playback_size=400000",
-        output_file_path_str
-    )
+    format!("backend=file,playback_path={output_file_path_str},playback_size=400000")
 }
 
 fn get_test_vm_config(temp_dir_path_str: &str, snd_args: Vec<String>) -> Config {

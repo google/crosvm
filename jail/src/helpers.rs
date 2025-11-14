@@ -212,9 +212,9 @@ pub fn create_sandbox_minijail(
             // Add the current user as root in the jail.
             let crosvm_uid = geteuid();
             let crosvm_gid = getegid();
-            jail.uidmap(&format!("0 {} 1", crosvm_uid))
+            jail.uidmap(&format!("0 {crosvm_uid} 1"))
                 .context("error setting UID map")?;
-            jail.gidmap(&format!("0 {} 1", crosvm_gid))
+            jail.gidmap(&format!("0 {crosvm_gid} 1"))
                 .context("error setting GID map")?;
         }
         RunAsUser::Specified(uid, gid) => {
@@ -507,9 +507,9 @@ fn add_current_user_to_jail(jail: &mut Minijail) -> Result<()> {
     let crosvm_uid = geteuid();
     let crosvm_gid = getegid();
 
-    jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
+    jail.uidmap(&format!("{crosvm_uid} {crosvm_uid} 1"))
         .context("error setting UID map")?;
-    jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
+    jail.gidmap(&format!("{crosvm_gid} {crosvm_gid} 1"))
         .context("error setting GID map")?;
 
     if crosvm_uid != 0 {
@@ -524,16 +524,10 @@ fn add_current_user_to_jail(jail: &mut Minijail) -> Result<()> {
 /// Set the seccomp policy for a jail from embedded bpfs
 pub fn set_embedded_bpf_program(jail: &mut Minijail, seccomp_policy_name: &str) -> Result<()> {
     let bpf_program = EMBEDDED_BPFS.get(seccomp_policy_name).with_context(|| {
-        format!(
-            "failed to find embedded seccomp policy: {}",
-            seccomp_policy_name
-        )
+        format!("failed to find embedded seccomp policy: {seccomp_policy_name}")
     })?;
     jail.parse_seccomp_bytes(bpf_program).with_context(|| {
-        format!(
-            "failed to parse embedded seccomp policy: {}",
-            seccomp_policy_name
-        )
+        format!("failed to parse embedded seccomp policy: {seccomp_policy_name}")
     })?;
     Ok(())
 }

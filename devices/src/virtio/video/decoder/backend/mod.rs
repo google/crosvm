@@ -371,7 +371,7 @@ mod tests {
         let output_buffers = (0..NUM_OUTPUT_BUFFERS)
             .map(|i| {
                 SharedMemory::new(
-                    format!("video-output-buffer-{}", i),
+                    format!("video-output-buffer-{i}"),
                     OUTPUT_BUFFER_SIZE as u64,
                 )
                 .unwrap()
@@ -402,7 +402,7 @@ mod tests {
             hasher.update(&frame_data);
             let frame_crc = hasher.finalize();
             assert_eq!(
-                format!("{:08x}", frame_crc),
+                format!("{frame_crc:08x}"),
                 expected_frames_crcs
                     .next()
                     .expect("No CRC for decoded frame")
@@ -511,7 +511,7 @@ mod tests {
                     DecoderEvent::PictureReady {
                         picture_buffer_id, ..
                     } => on_frame_decoded(&mut session, picture_buffer_id),
-                    e => panic!("Unexpected event: {:?}", e),
+                    e => panic!("Unexpected event: {e:?}"),
                 }
             }
         }
@@ -529,7 +529,7 @@ mod tests {
                     received_flush_completed = true;
                     break;
                 }
-                e => panic!("Unexpected event: {:?}", e),
+                e => panic!("Unexpected event: {e:?}"),
             }
         }
 

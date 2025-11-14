@@ -175,8 +175,8 @@ impl PlaneFormat {
     pub fn get_plane_layout(format: Format, width: u32, height: u32) -> Option<Vec<PlaneFormat>> {
         // Halved size for UV sampling, but rounded up to cover all samples in case of odd input
         // resolution.
-        let half_width = (width + 1) / 2;
-        let half_height = (height + 1) / 2;
+        let half_width = width.div_ceil(2);
+        let half_height = height.div_ceil(2);
         match format {
             Format::NV12 => Some(vec![
                 // Y plane, 1 sample per pixel.

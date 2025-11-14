@@ -1213,7 +1213,7 @@ mod tests {
     fn recv_allocate_msi(t: &Tube) -> u32 {
         match t.recv::<VmIrqRequest>().unwrap() {
             VmIrqRequest::AllocateOneMsiAtGsi { gsi, .. } => gsi,
-            msg => panic!("unexpected irqchip message: {:?}", msg),
+            msg => panic!("unexpected irqchip message: {msg:?}"),
         }
     }
 
@@ -1235,7 +1235,7 @@ mod tests {
                 msi_address,
                 msi_data,
             },
-            msg => panic!("unexpected irqchip message: {:?}", msg),
+            msg => panic!("unexpected irqchip message: {msg:?}"),
         }
     }
 
@@ -1243,7 +1243,7 @@ mod tests {
     fn recv_release_one_irq(t: &Tube) -> u32 {
         match t.recv::<VmIrqRequest>().unwrap() {
             VmIrqRequest::ReleaseOneIrq { gsi, irqfd: _ } => gsi,
-            msg => panic!("unexpected irqchip message: {:?}", msg),
+            msg => panic!("unexpected irqchip message: {msg:?}"),
         }
     }
 

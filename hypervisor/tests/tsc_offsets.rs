@@ -193,7 +193,7 @@ fn test_tsc_offset_run(
             }
             // Continue on external interrupt or signal
             VcpuExit::Intr => continue,
-            r => panic!("unexpected exit reason: {:?}", r),
+            r => panic!("unexpected exit reason: {r:?}"),
         }
     }
 

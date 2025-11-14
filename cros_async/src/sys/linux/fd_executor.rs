@@ -79,12 +79,12 @@ impl From<Error> for io::Error {
             CloneEvent(e) => e.into(),
             CreateEvent(e) => e.into(),
             DuplicatingFd(e) => e,
-            ExecutorError(e) => io::Error::new(io::ErrorKind::Other, e),
-            ExecutorGone => io::Error::new(io::ErrorKind::Other, e),
+            ExecutorError(e) => io::Error::other(e),
+            ExecutorGone => io::Error::other(e),
             CreatingContext(e) => e.into(),
             SettingNonBlocking(e) => e.into(),
             SubmittingWaker(e) => e.into(),
-            UnknownWaker => io::Error::new(io::ErrorKind::Other, e),
+            UnknownWaker => io::Error::other(e),
             WaitContextError(e) => e.into(),
         }
     }
@@ -451,7 +451,7 @@ mod test {
             let err = op.await.expect_err("Task completed successfully");
             match err {
                 Error::ExecutorGone => {}
-                e => panic!("Unexpected error from task: {}", e),
+                e => panic!("Unexpected error from task: {e}"),
             }
         }
 

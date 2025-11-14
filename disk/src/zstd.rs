@@ -210,7 +210,7 @@ fn compresed_frame_read_instruction(
 ) -> anyhow::Result<CompressedReadInstruction> {
     let frame_index = seek_table
         .find_frame_index(offset)
-        .with_context(|| format!("no frame for offset {}", offset))?;
+        .with_context(|| format!("no frame for offset {offset}"))?;
     let compressed_offset = seek_table.cumulative_compressed_sizes[frame_index];
     let next_compressed_offset = seek_table
         .cumulative_compressed_sizes
@@ -228,7 +228,7 @@ fn copy_to_volatile_slice(src: &[u8], dst: VolatileSlice) -> io::Result<usize> {
     let read_len = min(dst.size(), src.len());
     let data_to_copy = &src[..read_len];
     dst.sub_slice(0, read_len)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+        .map_err(io::Error::other)?
         .copy_from(data_to_copy);
     Ok(data_to_copy.len())
 }
@@ -257,7 +257,7 @@ impl FileReadWriteAtVolatile for ZstdDisk {
 
         self.file
             .read_at_volatile(compressed_frame_slice, read_instruction.read_offset)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(io::Error::other)?;
 
         let mut decompressor: zstd::bulk::Decompressor<'_> = zstd::bulk::Decompressor::new()?;
         let mut decompressed_data = Vec::with_capacity(ZSTD_DEFAULT_FRAME_SIZE);
@@ -360,7 +360,7 @@ fn copy_to_mem(
         if to_copy > 0 {
             dst_slice
                 .sub_slice(0, to_copy)
-                .map_err(|e| DiskError::ReadingData(io::Error::new(ErrorKind::Other, e)))?
+                .map_err(|e| DiskError::ReadingData(io::Error::other(e)))?
                 .copy_from(&src_slice[..to_copy]);
 
             total_copied += to_copy;
@@ -425,7 +425,7 @@ impl AsyncDisk for AsyncZstdDisk {
             .inner
             .read_to_vec(Some(read_instruction.read_offset), compressed_data)
             .await
-            .map_err(|e| DiskError::ReadingData(io::Error::new(ErrorKind::Other, e)))?;
+            .map_err(|e| DiskError::ReadingData(io::Error::other(e)))?;
 
         if compressed_read_size != read_instruction.read_size as usize {
             return Err(DiskError::ReadingData(io::Error::new(

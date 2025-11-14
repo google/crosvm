@@ -134,7 +134,7 @@ impl Inner {
                 let inner = self.clone();
                 entry.insert(
                     thread::Builder::new()
-                        .name(format!("blockingPool{}", idx))
+                        .name(format!("blockingPool{idx}"))
                         .spawn(move || run_blocking_thread(idx, inner, exit))
                         .unwrap(),
                 );

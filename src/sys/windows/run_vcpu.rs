@@ -1028,7 +1028,7 @@ mod tests {
         let _ = monitor
             .run(&exit_evt)?
             .join()
-            .unwrap_or_else(|e| panic!("Thread join failed: {:?}", e));
+            .unwrap_or_else(|e| panic!("Thread join failed: {e:?}"));
         Ok(())
     }
 }

@@ -44,7 +44,7 @@ fn syslog_file() {
     state.log(
         &log::RecordBuilder::new()
             .level(Level::Error)
-            .args(format_args!("{}", TEST_STR))
+            .args(format_args!("{TEST_STR}"))
             .build(),
     );
 

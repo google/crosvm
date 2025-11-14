@@ -1332,7 +1332,7 @@ mod tests {
         // Verify recv_header fails with `ClientExit` after the client has disconnected.
         match req_handler.recv_header() {
             Err(VhostError::ClientExit) => (),
-            r => panic!("expected Err(ClientExit) but got {:?}", r),
+            r => panic!("expected Err(ClientExit) but got {r:?}"),
         }
     }
 

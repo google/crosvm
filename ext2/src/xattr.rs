@@ -228,7 +228,7 @@ const XATTR_HEADER_MAGIC: u32 = 0xEA020000;
 impl InlineXattrs {
     // Creates `InlineXattrs` for the given path.
     pub fn from_path(path: &Path) -> Result<Self> {
-        let v = dump_xattrs(path).with_context(|| format!("failed to get xattr for {:?}", path))?;
+        let v = dump_xattrs(path).with_context(|| format!("failed to get xattr for {path:?}"))?;
 
         // Assume all the data are in inode record.
         let mut entry_table = vec![];

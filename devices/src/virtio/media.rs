@@ -586,7 +586,6 @@ where
         let shm_mapper = self
             .shm_mapper
             .clone()
-            .take()
             .context("shared memory mapper was not specified")?;
 
         let wait_ctx = WaitContext::new()?;
@@ -740,7 +739,7 @@ pub fn create_virtio_media_decoder_adapter_device(
     use crate::virtio::video::decoder::DecoderBackend;
 
     let mut card = [0u8; 32];
-    let card_name = format!("{:?} decoder adapter", backend).to_lowercase();
+    let card_name = format!("{backend:?} decoder adapter").to_lowercase();
     card[0..card_name.len()].copy_from_slice(card_name.as_bytes());
     let config = VirtioMediaDeviceConfig {
         device_caps: (Capabilities::VIDEO_M2M_MPLANE | Capabilities::STREAMING).bits(),

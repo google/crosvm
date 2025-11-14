@@ -242,11 +242,8 @@ impl VirtioDevice for Fs {
                 .expect("failed to send allocation message");
             slot = match socket.recv() {
                 Ok(VmResponse::RegisterMemory { slot }) => slot,
-                Ok(VmResponse::Err(e)) => panic!("failed to allocate shared memory region: {}", e),
-                r => panic!(
-                    "unexpected response to allocate shared memory region: {:?}",
-                    r
-                ),
+                Ok(VmResponse::Err(e)) => panic!("failed to allocate shared memory region: {e}"),
+                r => panic!("unexpected response to allocate shared memory region: {r:?}"),
             };
         }
 

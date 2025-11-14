@@ -253,7 +253,7 @@ impl SwapController {
                         // terminates itself.
                         error!("page_fault_handler_thread exited with tube error: {:#}", e);
                     } else {
-                        panic!("page_fault_handler_thread exited with error: {:#}", e);
+                        panic!("page_fault_handler_thread exited with error: {e:#}");
                     }
                 }
             })
@@ -590,7 +590,7 @@ fn monitor_process(
                 Token::UffdEvents(id_uffd) => {
                     let uffd = uffd_list
                         .get(id_uffd)
-                        .with_context(|| format!("uffd is not found for idx: {}", id_uffd))?;
+                        .with_context(|| format!("uffd is not found for idx: {id_uffd}"))?;
                     // Userfaultfd does not work as level triggered but as edge triggered. We need
                     // to read all the events in the userfaultfd here.
                     while let Some(event) = uffd.read_event().context("read userfaultfd event")? {
@@ -963,7 +963,7 @@ fn handle_vmm_swap<'scope, 'env>(
                 Token::UffdEvents(id_uffd) => {
                     let uffd = uffd_list
                         .get(id_uffd)
-                        .with_context(|| format!("uffd is not found for idx: {}", id_uffd))?;
+                        .with_context(|| format!("uffd is not found for idx: {id_uffd}"))?;
                     // Userfaultfd does not work as level triggered but as edge triggered. We need
                     // to read all the events in the userfaultfd here.
                     // TODO(kawasin): Use [userfaultfd::Uffd::read_events()] for performance.

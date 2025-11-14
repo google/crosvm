@@ -54,10 +54,10 @@ impl From<Error> for io::Error {
     fn from(e: Error) -> Self {
         use Error::*;
         match e {
-            FailedToReadFutureFromWakerChannel(e) => io::Error::new(io::ErrorKind::Other, e),
-            IocpOperationFailed(e) => io::Error::new(io::ErrorKind::Other, e),
-            ExecutorGone => io::Error::new(io::ErrorKind::Other, e),
-            RemoveNonExistentOperation => io::Error::new(io::ErrorKind::Other, e),
+            FailedToReadFutureFromWakerChannel(e) => io::Error::other(e),
+            IocpOperationFailed(e) => io::Error::other(e),
+            ExecutorGone => io::Error::other(e),
+            RemoveNonExistentOperation => io::Error::other(e),
         }
     }
 }

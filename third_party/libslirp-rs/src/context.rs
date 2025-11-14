@@ -264,7 +264,7 @@ impl fmt::Debug for PollEvents {
                 if one {
                     write!(fmt, " | ")?
                 }
-                write!(fmt, "{}", msg)?;
+                write!(fmt, "{msg}")?;
 
                 one = true
             }

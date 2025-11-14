@@ -336,7 +336,7 @@ impl MouseInputManager {
         pos: Point2D<i32, HostWindowSpace>,
         left_down: bool,
     ) {
-        if let MouseMode::Touchscreen { .. } = self.mouse_mode {
+        if let MouseMode::Touchscreen = self.mouse_mode {
             if left_down {
                 self.handle_multi_touch_finger(window, pos, left_down, PRIMARY_FINGER_ID);
             }
@@ -372,7 +372,7 @@ impl MouseInputManager {
     ) {
         self.adjust_capture_on_mouse_button(down, window);
         match self.mouse_mode {
-            MouseMode::Touchscreen { .. } => {
+            MouseMode::Touchscreen => {
                 self.handle_multi_touch_finger(window, pos, down, PRIMARY_FINGER_ID);
             }
             MouseMode::Relative => {

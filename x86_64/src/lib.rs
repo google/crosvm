@@ -1713,8 +1713,7 @@ impl X8664arch {
             return Err(Error::LoadBios(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!(
-                    "bios was {} bytes, expected less than {}",
-                    bios_image_length, FIRST_ADDR_PAST_32BITS,
+                    "bios was {bios_image_length} bytes, expected less than {FIRST_ADDR_PAST_32BITS}",
                 ),
             )));
         }

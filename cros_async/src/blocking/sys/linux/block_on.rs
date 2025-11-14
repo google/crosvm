@@ -91,7 +91,7 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
                     let e = std::io::Error::last_os_error();
                     match e.raw_os_error() {
                         Some(libc::EAGAIN) | Some(libc::EINTR) => {}
-                        _ => panic!("unexpected error from FUTEX_WAIT_PRIVATE: {}", e),
+                        _ => panic!("unexpected error from FUTEX_WAIT_PRIVATE: {e}"),
                     }
                 }
 

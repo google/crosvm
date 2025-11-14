@@ -86,10 +86,7 @@ impl TestVmSys {
             .read(true)
             .open(rootfs_path)
         {
-            panic!(
-                "File open with O_DIRECT expected to work but did not: {}",
-                e
-            );
+            panic!("File open with O_DIRECT expected to work but did not: {e}");
         }
     }
 
@@ -102,7 +99,7 @@ impl TestVmSys {
         from_guest_pipe: &Path,
         to_guest_pipe: &Path,
     ) {
-        let stdout_serial_option = format!("type=stdout,hardware={},console", stdout_hardware_type);
+        let stdout_serial_option = format!("type=stdout,hardware={stdout_hardware_type},console");
         command.args(["--serial", &stdout_serial_option]);
 
         // Setup channel for communication with the delegate.
@@ -183,7 +180,7 @@ impl TestVmSys {
 
         command.args(&cfg.extra_args);
 
-        println!("$ {:?}", command);
+        println!("$ {command:?}");
         let mut process = command.spawn()?;
 
         // Open pipes. Apply timeout to `to_guest` and `from_guest` since it will block until crosvm
@@ -197,7 +194,7 @@ impl TestVmSys {
                     return false;
                 }
                 if let Some(wait_result) = process.try_wait().unwrap() {
-                    println!("crosvm unexpectedly exited: {:?}", wait_result);
+                    println!("crosvm unexpectedly exited: {wait_result:?}");
                     false
                 } else {
                     true
@@ -214,7 +211,7 @@ impl TestVmSys {
                 // Kill the crosvm process if we cannot connect in time.
                 process.kill().unwrap();
                 process.wait().unwrap();
-                panic!("Cannot connect to VM: {}", error);
+                panic!("Cannot connect to VM: {error}");
             }
         };
 

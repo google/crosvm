@@ -306,7 +306,7 @@ impl HallaVcpuRegister {
             HVM_REG_SIZE_U1024 => 128,
             HVM_REG_SIZE_U2048 => 256,
             // `From<HallaVcpuRegister> for u64` should always include a valid size.
-            _ => panic!("invalid size field {}", size_field),
+            _ => panic!("invalid size field {size_field}"),
         }
     }
 }
@@ -534,7 +534,7 @@ unsafe fn set_user_memory_region(
 /// * `size` - Number of bytes in the memory region being queried.
 pub fn dirty_log_bitmap_size(size: usize) -> usize {
     let page_size = pagesize();
-    (((size + page_size - 1) / page_size) + 7) / 8
+    size.div_ceil(page_size).div_ceil(8)
 }
 
 pub struct Halla {
@@ -938,7 +938,7 @@ impl Vm for HallaVm {
         // HVM require to set the user memory region with page size aligned size. Safe to extend
         // the mem.size() to be page size aligned because the mmap will round up the size to be
         // page size aligned if it is not.
-        let size = (mem.size() as u64 + pgsz - 1) / pgsz * pgsz;
+        let size = (mem.size() as u64).div_ceil(pgsz) * pgsz;
         let end_addr = guest_addr
             .checked_add(size)
             .ok_or_else(|| Error::new(EOVERFLOW))?;
@@ -1213,7 +1213,7 @@ impl Vcpu for HallaVcpu {
             }
             HVM_EXIT_INTERNAL_ERROR => Ok(VcpuExit::InternalError),
             HVM_EXIT_SHUTDOWN => Ok(VcpuExit::Shutdown(Ok(()))),
-            r => panic!("unknown hvm exit reason: {}", r),
+            r => panic!("unknown hvm exit reason: {r}"),
         }
     }
 

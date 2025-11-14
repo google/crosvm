@@ -289,7 +289,7 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
                 let mpidr_data = deser
                     .cpu_specific
                     .get(&mpidr)
-                    .with_context(|| format!("CPU with MPIDR {} does not exist", mpidr))?;
+                    .with_context(|| format!("CPU with MPIDR {mpidr} does not exist"))?;
                 set_cpu_vgic_regs(&self.vgic, mpidr, &mpidr_data.cpu_sys_regs)?;
                 set_redist_regs(&self.vgic, mpidr, &mpidr_data.redist_regs)?;
                 vcpu.set_mp_state(&kvm_mp_state::from(&mpidr_data.mp_state))?;

@@ -161,16 +161,15 @@ impl Display for GpuControlResult {
                 });
                 let json_pretty =
                     serde_json::to_string_pretty(&json).map_err(|_| std::fmt::Error)?;
-                write!(f, "{}", json_pretty)
+                write!(f, "{json_pretty}")
             }
             TooManyDisplays { allowed, requested } => write!(
                 f,
-                "too_many_displays: allowed {}, requested {}",
-                allowed, requested
+                "too_many_displays: allowed {allowed}, requested {requested}"
             ),
-            NoSuchDisplay { display_id } => write!(f, "no_such_display {}", display_id),
+            NoSuchDisplay { display_id } => write!(f, "no_such_display {display_id}"),
             DisplayMouseModeSet => write!(f, "display_mouse_mode_set"),
-            ErrString(reason) => write!(f, "err_string {}", reason),
+            ErrString(reason) => write!(f, "err_string {reason}"),
         }
     }
 }
@@ -188,9 +187,9 @@ impl fmt::Display for ModifyGpuError {
 
         match self {
             SocketFailed => write!(f, "socket failed"),
-            UnexpectedResponse(r) => write!(f, "unexpected response: {}", r),
-            UnknownCommand(c) => write!(f, "unknown display command: `{}`", c),
-            GpuControl(e) => write!(f, "{}", e),
+            UnexpectedResponse(r) => write!(f, "unexpected response: {r}"),
+            UnknownCommand(c) => write!(f, "unknown display command: `{c}`"),
+            GpuControl(e) => write!(f, "{e}"),
         }
     }
 }
