@@ -1334,8 +1334,8 @@ impl TryFrom<&HypervisorKind> for HypervisorFfi {
 pub union HypervisorSpecificVmDescriptorFfi {
     // We use c_int instead of RawFd here because the std::os::fd crate is only available on unix
     // platforms.
-    vm_fd: c_int,
-    _reserved: u64,
+    pub vm_fd: c_int,
+    pub _reserved: u64,
 }
 
 /// A unique identifier of a VM.
