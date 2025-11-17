@@ -55,7 +55,8 @@
       "@@@STEP_LOG_LINE@json.output@  },@@@",
       "@@@STEP_LOG_LINE@json.output@  \"patch_root\": null,@@@",
       "@@@STEP_LOG_LINE@json.output@  \"properties\": {@@@",
-      "@@@STEP_LOG_LINE@json.output@    \"got_revision\": \"2a35890fbbc35729fd9e1c6b98fc9968654d8902\"@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"got_revision\": \"2a35890fbbc35729fd9e1c6b98fc9968654d8902\",@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"got_revision_cp\": \"refs/heads/main@{#151567}\"@@@",
       "@@@STEP_LOG_LINE@json.output@  },@@@",
       "@@@STEP_LOG_LINE@json.output@  \"root\": \"platform2\",@@@",
       "@@@STEP_LOG_LINE@json.output@  \"source_manifest\": {@@@",
@@ -72,7 +73,8 @@
       "@@@STEP_LOG_LINE@json.output@  \"step_text\": \"Some step text\"@@@",
       "@@@STEP_LOG_LINE@json.output@}@@@",
       "@@@STEP_LOG_END@json.output@@@",
-      "@@@SET_BUILD_PROPERTY@got_revision@\"2a35890fbbc35729fd9e1c6b98fc9968654d8902\"@@@"
+      "@@@SET_BUILD_PROPERTY@got_revision@\"2a35890fbbc35729fd9e1c6b98fc9968654d8902\"@@@",
+      "@@@SET_BUILD_PROPERTY@got_revision_cp@\"refs/heads/main@{#151567}\"@@@"
     ]
   },
   {
