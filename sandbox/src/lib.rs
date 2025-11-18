@@ -8,6 +8,7 @@ use std::ffi::CStr;
 use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Once;
+use std::sync::OnceLock;
 
 use base::named_pipes;
 use base::AsRawDescriptor;
@@ -128,11 +129,29 @@ pub struct BrokerServices {
     broker: *mut bindings::BrokerServices,
 }
 
+// SAFETY:
+// BrokerServices is initialized only once and then shared across threads.
+// The raw pointer is never modified after initialization.
+unsafe impl Send for BrokerServices {}
+// SAFETY:
+// BrokerServices is initialized only once and then shared across threads.
+// The raw pointer is never modified after initialization.
+unsafe impl Sync for BrokerServices {}
+
 /// Encapsulates target-related functionality for the sandbox.
 #[derive(Debug, PartialEq, Clone)]
 pub struct TargetServices {
     target: *mut bindings::TargetServices,
 }
+
+// SAFETY:
+// TargetServices is initialized only once and then shared across threads.
+// The raw pointer is never modified after initialization.
+unsafe impl Send for TargetServices {}
+// SAFETY:
+// TargetServices is initialized only once and then shared across threads.
+// The raw pointer is never modified after initialization.
+unsafe impl Sync for TargetServices {}
 
 /// Defines sandbox policies for target processes.
 pub struct TargetPolicy<'a> {
@@ -184,29 +203,27 @@ impl BrokerServices {
     /// Returns an initialized broker API interface if the process is the broker.
     pub fn get() -> Result<Option<BrokerServices>> {
         static INIT: Once = Once::new();
-        static mut RESULT: Result<()> = Ok(());
-        static mut BROKER: Option<BrokerServices> = None;
+        static RESULT: OnceLock<Result<()>> = OnceLock::new();
+        static BROKER: OnceLock<BrokerServices> = OnceLock::new();
 
         // Initialize broker services. Should be called once before use.
-        // Safe because RESULT is only written once, and call_once will cause
-        // other readers to block until execution of the block is complete.
-        // Also checks for and eliminates any null pointers.
-        unsafe {
-            INIT.call_once(|| {
-                let broker = bindings::get_broker_services();
-                if broker.is_null() {
-                    return;
-                }
-                BROKER = Some(BrokerServices { broker });
-                RESULT = BROKER.as_mut().unwrap().init();
-            });
-            if BROKER.is_none() {
-                return Ok(None);
+        INIT.call_once(|| {
+            // SAFETY:
+            // We check the returned pointer bellow.
+            let broker_ptr = unsafe { bindings::get_broker_services() };
+            if broker_ptr.is_null() {
+                return;
             }
-            match RESULT {
-                Err(e) => Err(e),
-                Ok(_) => Ok(Some(BROKER.as_mut().unwrap().clone())),
-            }
+            let mut bs = BrokerServices { broker: broker_ptr };
+            RESULT.set(bs.init()).unwrap();
+            BROKER.set(bs).unwrap();
+        });
+        if BROKER.get().is_none() {
+            return Ok(None);
+        }
+        match RESULT.get().unwrap() {
+            Err(e) => Err(*e),
+            Ok(_) => Ok(Some(BROKER.get().unwrap().clone())),
         }
     }
 
@@ -318,31 +335,30 @@ impl TargetServices {
     /// Returns an initialized target API interface if the process is the target.
     pub fn get() -> Result<Option<TargetServices>> {
         static INIT: Once = Once::new();
-        static mut RESULT: Result<()> = Ok(());
-        static mut TARGET: Option<TargetServices> = None;
+        static RESULT: OnceLock<Result<()>> = OnceLock::new();
+        static TARGET: OnceLock<TargetServices> = OnceLock::new();
 
         // Initialize target services. Should be called once before use.
         // Safe because RESULT is only written once, and call_once will cause
         // other readers to block until execution of the block is complete.
         // Also checks for and eliminates any null pointers.
-        unsafe {
-            INIT.call_once(|| {
-                let target = bindings::get_target_services();
-                if target.is_null() {
-                    return;
-                }
-                TARGET = Some(TargetServices { target });
-                RESULT = TARGET.as_mut().unwrap().init()
-            });
-            if TARGET.is_none() {
-                return Ok(None);
+        INIT.call_once(|| {
+            // SAFETY:
+            // We check the returned pointer bellow.
+            let target = unsafe { bindings::get_target_services() };
+            if target.is_null() {
+                return;
             }
-            // Initialize target services. If TargetServices is already initialized,
-            // this is a no-op.
-            match RESULT {
-                Err(e) => Err(e),
-                Ok(_) => Ok(Some(TARGET.as_mut().unwrap().clone())),
-            }
+            let mut new_target = TargetServices { target };
+            RESULT.set(new_target.init()).unwrap();
+            TARGET.set(new_target).unwrap();
+        });
+        if TARGET.get().is_none() {
+            return Ok(None);
+        }
+        match RESULT.get().unwrap() {
+            Err(e) => Err(*e),
+            Ok(_) => Ok(Some(TARGET.get().unwrap().clone())),
         }
     }
 
