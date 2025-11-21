@@ -463,7 +463,7 @@ pub fn create_vhost_user_frontend(
     })
 }
 
-pub fn create_rng_device(
+pub fn create_virtio_rng_device(
     protection_type: ProtectionType,
     jail_config: Option<&JailConfig>,
 ) -> DeviceResult {

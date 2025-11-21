@@ -451,7 +451,7 @@ fn create_virtio_devices(
     }
 
     if cfg.rng {
-        devs.push(create_rng_device(
+        devs.push(create_virtio_rng_device(
             cfg.protection_type,
             cfg.jail_config.as_ref(),
         )?);
