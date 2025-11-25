@@ -216,7 +216,7 @@ const GENIEZONE_PATH: &str = "/dev/gzvm";
 static GUNYAH_PATH: &str = "/dev/gunyah";
 #[cfg(target_arch = "aarch64")]
 #[cfg(feature = "halla")]
-const HALLA_PATH: &str = "/dev/hvm";
+const HALLA_PATH: &str = "/dev/halla";
 
 fn create_virtio_devices(
     cfg: &Config,

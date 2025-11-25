@@ -563,9 +563,9 @@ impl Halla {
         })
     }
 
-    /// Opens `/dev/hvm/` and returns a hvm object on success.
+    /// Opens `/dev/halla/` and returns a hvm object on success.
     pub fn new() -> Result<Halla> {
-        Halla::new_with_path(&PathBuf::from("/dev/hvm"))
+        Halla::new_with_path(&PathBuf::from("/dev/halla"))
     }
 
     /// Gets the size of the mmap required to use vcpu's `hvm_vcpu_run` structure.
