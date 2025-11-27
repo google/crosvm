@@ -96,6 +96,7 @@ tempfile = "3"
 thiserror = { workspace = true }
 cros_tracing = { workspace = true }
 swap = { workspace = true }
+uuid = { version = "1", features = ["v8", "serde"] }
 vmm_vhost = { workspace = true }
 virtio_sys = { workspace = true }
 virtio-media = { version = "0.0.7", optional = true }

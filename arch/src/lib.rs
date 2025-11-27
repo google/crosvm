@@ -430,6 +430,7 @@ pub struct VmComponents {
     pub rt_cpus: CpuSet,
     #[cfg(target_arch = "x86_64")]
     pub smbios: SmbiosOptions,
+    pub smccc_trng: bool,
     #[cfg(target_arch = "aarch64")]
     pub sve_config: SveConfig,
     pub swiotlb: Option<u64>,

@@ -1550,6 +1550,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         boot_cpu: cfg.boot_cpu,
         #[cfg(target_arch = "aarch64")]
         virt_cpufreq_v2: cfg.virt_cpufreq_v2,
+        smccc_trng: cfg.smccc_trng,
         #[cfg(target_arch = "aarch64")]
         sve_config: cfg.sve.unwrap_or_default(),
     })

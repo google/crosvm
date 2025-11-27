@@ -1950,6 +1950,15 @@ pub struct RunCommand {
     ///     oem-strings=[...] - Free-form OEM strings (SMBIOS type 11).
     pub smbios: Option<SmbiosOptions>,
 
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "android", target_os = "linux")
+    ))]
+    #[argh(switch)]
+    /// expose and emulate support for SMCCC TRNG
+    /// (EXPERIMENTAL) entropy generated might not meet ARM DEN0098 nor NIST 800-90B requirements
+    pub smccc_trng: Option<bool>,
+
     #[argh(option, short = 's', arg_name = "PATH")]
     /// path to put the control socket. If PATH is a directory, a name will be generated
     pub socket: Option<PathBuf>,
@@ -2323,6 +2332,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             any(target_os = "android", target_os = "linux")
         ))]
         {
+            cfg.smccc_trng = cmd.smccc_trng.unwrap_or_default();
             cfg.virt_cpufreq = cmd.virt_cpufreq.unwrap_or_default();
             cfg.virt_cpufreq_v2 = cmd.virt_cpufreq_upstream.unwrap_or_default();
             if cfg.virt_cpufreq && cfg.virt_cpufreq_v2 {

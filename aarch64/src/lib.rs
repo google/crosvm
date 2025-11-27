@@ -45,6 +45,7 @@ use devices::PciConfigMmio;
 use devices::PciDevice;
 use devices::PciRootCommand;
 use devices::Serial;
+use devices::SmcccTrng;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use devices::VirtCpufreq;
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -776,6 +777,19 @@ impl arch::LinuxArch for AArch64 {
             )
             .map_err(Error::CreatePlatformBus)?;
         pid_debug_label_map.append(&mut platform_pid_debug_label_map);
+
+        if components.smccc_trng {
+            let arced_trng = Arc::new(SmcccTrng::new());
+            for fid_range in [SmcccTrng::HVC32_FID_RANGE, SmcccTrng::HVC64_FID_RANGE] {
+                let base = fid_range.start.into();
+                let count = fid_range.len();
+                hypercall_bus
+                    .insert_sync(arced_trng.clone(), base, count.try_into().unwrap())
+                    .map_err(|e| Error::RegisterHypercalls(base, count, e))?;
+                vm.enable_hypercalls(base, count)
+                    .map_err(|e| Error::EnableHypercalls(base, count, e))?;
+            }
+        }
 
         let (vmwdt_host_tube, vmwdt_control_tube) = Tube::pair().map_err(Error::CreateTube)?;
         Self::add_arch_devs(

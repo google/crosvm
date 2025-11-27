@@ -741,6 +741,7 @@ pub struct Config {
     pub slirp_capture_file: Option<String>,
     #[cfg(target_arch = "x86_64")]
     pub smbios: SmbiosOptions,
+    pub smccc_trng: bool,
     #[cfg(all(windows, feature = "audio"))]
     pub snd_split_configs: Vec<SndSplitConfig>,
     pub socket_path: Option<PathBuf>,
@@ -974,6 +975,7 @@ impl Default for Config {
             slirp_capture_file: None,
             #[cfg(target_arch = "x86_64")]
             smbios: SmbiosOptions::default(),
+            smccc_trng: false,
             #[cfg(all(windows, feature = "audio"))]
             snd_split_configs: Vec::new(),
             socket_path: None,
