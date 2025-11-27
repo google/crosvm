@@ -172,6 +172,8 @@ impl TryFrom<u16> for CrosvmDeviceId {
             19 => Ok(CrosvmDeviceId::VirtioMmio),
             20 => Ok(CrosvmDeviceId::AcAdapter),
             21 => Ok(CrosvmDeviceId::VirtualPmc),
+            22 => Ok(CrosvmDeviceId::VirtCpufreq),
+            23 => Ok(CrosvmDeviceId::FwCfg),
             _ => Err(base::Error::new(EINVAL)),
         }
     }
