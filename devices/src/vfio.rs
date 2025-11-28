@@ -1048,7 +1048,7 @@ impl VfioDevice {
 
             let vsids_len = KvmVfioPviommu::get_sid_count(vm, &dev)?.try_into().unwrap();
             let max_vsid = u32::MAX.try_into().unwrap();
-            let random_vsids = sample(&mut rand::thread_rng(), max_vsid, vsids_len).into_iter();
+            let random_vsids = sample(&mut rand::rng(), max_vsid, vsids_len).into_iter();
             let vsids = Vec::from_iter(random_vsids.map(|v| u32::try_from(v).unwrap()));
             for (i, vsid) in vsids.iter().enumerate() {
                 pviommu.attach(&dev, i.try_into().unwrap(), *vsid)?;

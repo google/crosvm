@@ -130,8 +130,6 @@ use mptable::MPTABLE_RANGE;
 use multiboot_spec::MultibootInfo;
 use multiboot_spec::MultibootMmapEntry;
 use multiboot_spec::MULTIBOOT_BOOTLOADER_MAGIC;
-use rand::rngs::OsRng;
-use rand::RngCore;
 use remain::sorted;
 use resources::AddressRange;
 use resources::SystemAllocator;
@@ -820,10 +818,9 @@ fn find_setup_data(
 
 /// Generate a SETUP_RNG_SEED SetupData with random seed data.
 fn setup_data_rng_seed() -> SetupData {
-    let mut data = vec![0u8; 256];
-    OsRng.fill_bytes(&mut data);
+    let data: [u8; 256] = rand::random();
     SetupData {
-        data,
+        data: data.to_vec(),
         type_: SetupDataType::RngSeed,
     }
 }

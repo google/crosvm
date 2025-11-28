@@ -19,8 +19,6 @@ use devices::irqchip::AIA_APLIC_SIZE;
 use devices::irqchip::AIA_IMSIC_BASE;
 use devices::PciAddress;
 use devices::PciInterruptPin;
-use rand::rngs::OsRng;
-use rand::RngCore;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
@@ -73,8 +71,7 @@ fn create_chosen_node(
     let kaslr_seed: u64 = rand::random();
     chosen_node.set_prop("kaslr-seed", kaslr_seed)?;
 
-    let mut rng_seed_bytes = [0u8; 256];
-    OsRng.fill_bytes(&mut rng_seed_bytes);
+    let rng_seed_bytes: [u8; 256] = rand::random();
     chosen_node.set_prop("rng-seed", &rng_seed_bytes)?;
 
     if let Some((initrd_addr, initrd_size)) = initrd {

@@ -5,9 +5,7 @@
 use std::cmp::min;
 use std::fmt;
 use std::mem::size_of;
-use std::result::Result;
 
-use rand_core::Error;
 use rand_core::RngCore;
 
 /// A random number generator that uses fuzzer input as the source of its
@@ -59,15 +57,6 @@ impl RngCore for FuzzRng<'_> {
             for b in &mut dest[amt..] {
                 *b = 0;
             }
-        }
-    }
-
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
-        if self.buf.len() >= dest.len() {
-            self.fill_bytes(dest);
-            Ok(())
-        } else {
-            Err(Error::new("not enough data in fuzzer input"))
         }
     }
 }
@@ -146,66 +135,5 @@ mod tests {
 
         let zero_buf = vec![0; dest.len()];
         assert_eq!(zero_buf, dest);
-    }
-
-    #[test]
-    fn try_fill_bytes() {
-        let buf = &[
-            0xdb, 0x35, 0xad, 0x4e, 0x9d, 0xf5, 0x2d, 0xf6, 0x0d, 0xc5, 0xd2, 0xfc, 0x9f, 0x4c,
-            0xb5, 0x12, 0xe3, 0x78, 0x40, 0x8d, 0x8b, 0xa1, 0x5c, 0xfe, 0x66, 0x49, 0xa9, 0xc0,
-            0x43, 0xa0, 0x95, 0xae, 0x31, 0x99, 0xd2, 0xaa, 0xbc, 0x85, 0x9e, 0x4b, 0x08, 0xca,
-            0x59, 0x21, 0x2b, 0x66, 0x37, 0x6a, 0xb9, 0xb2, 0xd8, 0x71, 0x84, 0xdd, 0xf6, 0x47,
-            0xa5, 0xb9, 0x87, 0x9f, 0x24, 0x97, 0x01, 0x65, 0x15, 0x38, 0x01, 0xd6, 0xb6, 0xf2,
-            0x80,
-        ];
-        let mut rng = FuzzRng::new(&buf[..]);
-        let mut dest = Vec::with_capacity(buf.len());
-        for chunk in buf.chunks(13) {
-            dest.resize(chunk.len(), 0);
-            rng.try_fill_bytes(&mut dest)
-                .expect("failed to fill bytes while data is remaining");
-
-            assert_eq!(chunk, &*dest);
-        }
-
-        dest.resize(buf.len(), 0);
-        rng.try_fill_bytes(&mut dest)
-            .expect_err("successfully filled bytes when no data is remaining");
-    }
-
-    #[test]
-    fn try_fill_bytes_partial() {
-        let buf = &[
-            0x8b, 0xe3, 0x20, 0x8d, 0xe0, 0x0b, 0xbe, 0x51, 0xa6, 0xec, 0x8a, 0xb5, 0xd6, 0x17,
-            0x04, 0x3f, 0x87, 0xae, 0xc8, 0xe8, 0xf8, 0xe7, 0xd4, 0xbd, 0xf3, 0x4e, 0x74, 0xcf,
-            0xbf, 0x0e, 0x9d, 0xe5, 0x78, 0xc3, 0xe6, 0x44, 0xb8, 0xd1, 0x40, 0xda, 0x63, 0x9f,
-            0x48, 0xf4, 0x09, 0x9c, 0x5c, 0x5f, 0x36, 0x0b, 0x0d, 0x2b, 0xe3, 0xc7, 0xcc, 0x3e,
-            0x9a, 0xb9, 0x0a, 0xca, 0x6d, 0x90, 0x77, 0x3b, 0x7a, 0x50, 0x16, 0x13, 0x5d, 0x20,
-            0x70, 0xc0, 0x88, 0x04, 0x9c, 0xac, 0x2b, 0xd6, 0x61, 0xa0, 0xbe, 0xa4, 0xff, 0xbd,
-            0xac, 0x9c, 0xa1, 0xb2, 0x95, 0x26, 0xeb, 0x99, 0x46, 0x67, 0xe4, 0xcd, 0x88, 0x7b,
-            0x20, 0x4d, 0xb2, 0x92, 0x40, 0x9f, 0x1c, 0xbd, 0xba, 0x22, 0xff, 0xca, 0x89, 0x3c,
-            0x3b,
-        ];
-
-        let mut rng = FuzzRng::new(&buf[..]);
-        let mut dest = Vec::with_capacity(buf.len());
-        dest.resize((buf.len() / 2) + 1, 0);
-
-        // The first time should be successful because there is enough data left
-        // in the buffer.
-        rng.try_fill_bytes(&mut dest).expect("failed to fill bytes");
-        assert_eq!(&buf[..dest.len()], &*dest);
-
-        // The second time should fail because while there is data in the buffer it
-        // is not enough to fill `dest`.
-        rng.try_fill_bytes(&mut dest)
-            .expect_err("filled bytes with insufficient data in buffer");
-
-        // This should succeed because `dest` is exactly big enough to hold all the remaining
-        // data in the buffer.
-        dest.resize(buf.len() - dest.len(), 0);
-        rng.try_fill_bytes(&mut dest)
-            .expect("failed to fill bytes with exact-sized buffer");
-        assert_eq!(&buf[buf.len() - dest.len()..], &*dest);
     }
 }

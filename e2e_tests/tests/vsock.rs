@@ -21,7 +21,6 @@ use fixture::vhost_user::Config as VuConfig;
 use fixture::vhost_user::VhostUserBackend;
 use fixture::vm::Config;
 use fixture::vm::TestVm;
-use rand::Rng;
 use tempfile::tempdir;
 use tempfile::NamedTempFile;
 
@@ -38,11 +37,11 @@ const MESSAGE_TO_GUEST: &str = "Connection from the guest is successfully establ
 // generate a random CID to avoid conflicts with other VMs run on different processes
 fn generate_guest_cid() -> u32 {
     // avoid special CIDs and negative values
-    rand::thread_rng().gen_range(3..0x8000_0000)
+    rand::random_range(3..0x8000_0000)
 }
 
 fn generate_vhost_port() -> u32 {
-    rand::thread_rng().gen_range(10000..99999)
+    rand::random_range(10000..99999)
 }
 
 #[test]

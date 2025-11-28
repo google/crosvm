@@ -14,8 +14,6 @@ use base::EventToken;
 use base::RawDescriptor;
 use base::WaitContext;
 use base::WorkerThread;
-use rand::rngs::OsRng;
-use rand::RngCore;
 use snapshot::AnySnapshot;
 use vm_memory::GuestMemory;
 
@@ -36,15 +34,14 @@ struct Worker {
 
 impl Worker {
     fn process_queue(&mut self) {
-        let mut rand_bytes = [0u8; CHUNK_SIZE];
         let mut needs_interrupt = false;
 
         while let Some(mut avail_desc) = self.queue.pop() {
             let writer = &mut avail_desc.writer;
             while writer.available_bytes() > 0 {
                 let chunk_size = writer.available_bytes().min(CHUNK_SIZE);
-                let chunk = &mut rand_bytes[..chunk_size];
-                OsRng.fill_bytes(chunk);
+                let rand_bytes: [u8; CHUNK_SIZE] = rand::random();
+                let chunk = &rand_bytes[..chunk_size];
                 if let Err(e) = writer.write_all(chunk) {
                     warn!("Failed to write random data to the guest: {}", e);
                     break;

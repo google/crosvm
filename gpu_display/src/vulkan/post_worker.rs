@@ -767,7 +767,7 @@ impl VulkanPostWorker {
             present_queue,
             post_resources,
             _command_pool: command_pool,
-            rng: rand::thread_rng(),
+            rng: rand::rng(),
             _marker: Default::default(),
         })
     }

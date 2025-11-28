@@ -16,7 +16,6 @@ use devices::virtio::Interrupt;
 use devices::virtio::QueueConfig;
 use devices::IrqLevelEvent;
 use rand::Rng;
-use rand::RngCore;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
@@ -70,17 +69,17 @@ fuzz_target!(|data: &[u8]| {
 
     let mut q = QueueConfig::new(MAX_QUEUE_SIZE, 0);
     let mut rng = FuzzRng::new(data);
-    q.set_size(rng.gen());
+    q.set_size(rng.random());
 
     // For each of {desc_table,avail_ring,used_ring} generate a random address that includes enough
     // space to hold the relevant struct with the largest possible queue size.
     let max_table_size = MAX_QUEUE_SIZE as u64 * size_of::<virtq_desc>() as u64;
-    q.set_desc_table(GuestAddress(rng.gen_range(0..MEM_SIZE - max_table_size)));
+    q.set_desc_table(GuestAddress(rng.random_range(0..MEM_SIZE - max_table_size)));
     q.set_avail_ring(GuestAddress(
-        rng.gen_range(0..MEM_SIZE - size_of::<virtq_avail>() as u64),
+        rng.random_range(0..MEM_SIZE - size_of::<virtq_avail>() as u64),
     ));
     q.set_used_ring(GuestAddress(
-        rng.gen_range(0..MEM_SIZE - size_of::<virtq_used>() as u64),
+        rng.random_range(0..MEM_SIZE - size_of::<virtq_used>() as u64),
     ));
     q.set_ready(true);
 
@@ -101,21 +100,21 @@ fuzz_target!(|data: &[u8]| {
         let queue_size = q.size() as usize;
         let mut buf = vec![0u8; queue_size * size_of::<virtq_desc>()];
 
-        rng.fill_bytes(&mut buf[..]);
+        rng.fill(&mut buf[..]);
         mem.write_all_at_addr(&buf[..], q.desc_table()).unwrap();
 
         // Fill in the available ring. See the definition of virtq_avail above for the source of
         // these numbers.
         let avail_size = 4 + (queue_size * 2) + 2;
         buf.resize(avail_size, 0);
-        rng.fill_bytes(&mut buf[..]);
+        rng.fill(&mut buf[..]);
         mem.write_all_at_addr(&buf[..], q.avail_ring()).unwrap();
 
         // Fill in the used ring. See the definition of virtq_used above for the source of
         // these numbers.
         let used_size = 4 + (queue_size * size_of::<virtq_used_elem>()) + 2;
         buf.resize(used_size, 0);
-        rng.fill_bytes(&mut buf[..]);
+        rng.fill(&mut buf[..]);
         mem.write_all_at_addr(&buf[..], q.used_ring()).unwrap();
 
         while let Some(mut avail_desc) = q.pop() {

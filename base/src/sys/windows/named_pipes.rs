@@ -1531,9 +1531,7 @@ mod tests {
             let mut overlapped_wrapper = OverlappedWrapper::new(/* include_event= */ true).unwrap();
             let exit_event = Event::new().unwrap();
             for _i in 0..msg_count {
-                let message = *messages
-                    .get(rand::random::<usize>() % messages.len())
-                    .unwrap();
+                let message = messages[rand::random_range(..messages.len())];
                 pipe.write_overlapped_blocking_message(
                     &message.len().to_be_bytes(),
                     message.as_bytes(),
