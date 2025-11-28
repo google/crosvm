@@ -235,9 +235,8 @@ mod tests {
         use base::named_pipes;
         use base::named_pipes::BlockingMode;
         use base::named_pipes::FramingMode;
-        use rand::Rng;
 
-        let path_str = format!(r"\\.\pipe\crosvm_test_{}", rand::thread_rng().gen::<u64>());
+        let path_str = format!(r"\\.\pipe\crosvm_test_{}", rand::random::<u64>());
 
         let pipe_in = named_pipes::create_server_pipe(
             &path_str,

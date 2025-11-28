@@ -306,15 +306,11 @@ mod tests {
     use std::time::Duration;
 
     use base::PipeTube;
-    use rand::Rng;
 
     use super::*;
 
     fn generate_pipe_name() -> String {
-        format!(
-            r"\\.\pipe\test-ipc-pipe-name.rand{}",
-            rand::thread_rng().gen::<u64>(),
-        )
+        format!(r"\\.\pipe\test-ipc-pipe-name.rand{}", rand::random::<u64>())
     }
 
     #[track_caller]

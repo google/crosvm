@@ -20,7 +20,6 @@ use anyhow::Result;
 use base::named_pipes;
 use base::PipeConnection;
 use delegate::wire_format::DelegateMessage;
-use rand::Rng;
 use serde_json::StreamDeserializer;
 
 use crate::utils::find_crosvm_binary;
@@ -50,10 +49,7 @@ pub fn binary_name() -> &'static str {
 
 // Generates random pipe name in device folder.
 fn generate_pipe_name() -> String {
-    format!(
-        r"\\.\pipe\test-ipc-pipe-name.rand{}",
-        rand::thread_rng().gen::<u64>(),
-    )
+    format!(r"\\.\pipe\test-ipc-pipe-name.rand{}", rand::random::<u64>())
 }
 
 // Gets custom hypervisor from `CROSVM_TEST_HYPERVISOR` environment variable or

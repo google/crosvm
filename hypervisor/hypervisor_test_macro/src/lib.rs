@@ -16,7 +16,6 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use rand::Rng;
 use syn::parse::Parse;
 use syn::parse_macro_input;
 use syn::Error;
@@ -183,7 +182,7 @@ fn global_asm_data_impl(
             span.end().line,
             span.end().column
         );
-        let rand_id = rand::thread_rng().gen::<u64>();
+        let rand_id: u64 = rand::random();
         let static_counter_id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let prefix = "crosvm_hypervisor_test_macro_global_asm_data";
         format!("{prefix}_{mod_name}_{content_id}_{location_id}_{static_counter_id}_{rand_id}")

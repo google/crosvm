@@ -15,7 +15,6 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -332,7 +331,7 @@ pub fn pair_with_buffer_size(
         r"\\.\pipe\crosvm_ipc.pid{}.{}.rand{}",
         process::id(),
         NEXT_PIPE_INDEX.fetch_add(1, Ordering::SeqCst),
-        rand::thread_rng().gen::<u32>(),
+        rand::random::<u32>(),
     );
 
     let server_end = create_server_pipe(
@@ -1523,10 +1522,7 @@ mod tests {
     }
 
     fn generate_pipe_name() -> String {
-        format!(
-            r"\\.\pipe\test-ipc-pipe-name.rand{}",
-            rand::thread_rng().gen::<u64>(),
-        )
+        format!(r"\\.\pipe\test-ipc-pipe-name.rand{}", rand::random::<u64>())
     }
 
     fn send_receive_msgs(pipe: MultiPartMessagePipe, msg_count: u32) -> JoinHandle<()> {
@@ -1536,7 +1532,7 @@ mod tests {
             let exit_event = Event::new().unwrap();
             for _i in 0..msg_count {
                 let message = *messages
-                    .get(rand::thread_rng().gen::<usize>() % messages.len())
+                    .get(rand::random::<usize>() % messages.len())
                     .unwrap();
                 pipe.write_overlapped_blocking_message(
                     &message.len().to_be_bytes(),

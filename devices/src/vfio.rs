@@ -37,7 +37,6 @@ use data_model::vec_with_array_field;
 use hypervisor::DeviceKind;
 use hypervisor::Vm;
 use rand::seq::index::sample;
-use rand::thread_rng;
 use remain::sorted;
 use resources::address_allocator::AddressAllocator;
 use resources::AddressRange;
@@ -1044,7 +1043,7 @@ impl VfioDevice {
 
             let vsids_len = KvmVfioPviommu::get_sid_count(vm, &dev)?.try_into().unwrap();
             let max_vsid = u32::MAX.try_into().unwrap();
-            let random_vsids = sample(&mut thread_rng(), max_vsid, vsids_len).into_iter();
+            let random_vsids = sample(&mut rand::thread_rng(), max_vsid, vsids_len).into_iter();
             let vsids = Vec::from_iter(random_vsids.map(|v| u32::try_from(v).unwrap()));
             for (i, vsid) in vsids.iter().enumerate() {
                 pviommu.attach(&dev, i.try_into().unwrap(), *vsid)?;
