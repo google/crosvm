@@ -65,10 +65,9 @@ Change-Id: I47651060c2ce3a7e9f850b7ed9af8bd035f82de6
 - `TEST` lines are used to describe how you tested your commit in a free form. You can have multiple
   `TEST` lines.
 - `Change-Id` is used to identify your change on Gerrit. It's inserted by the gerrit commit message
-  hook as explained in
-  [the previous section](https://crosvm.dev/book/contributing/index.html#gerrit-account). If a new
-  commit is uploaded with the same `Change-Id` as an existing CL's `Change-Id`, gerrit will
-  recognize the new commit as a new patchset of the existing CL.
+  hook as explained in [the previous section](#gerrit-account). If a new commit is uploaded with the
+  same `Change-Id` as an existing CL's `Change-Id`, gerrit will recognize the new commit as a new
+  patchset of the existing CL.
 
 ### Uploading changes
 
