@@ -587,10 +587,12 @@ impl Bus {
                 BusRange { base, len },
                 BusEntry {
                     #[cfg(feature = "stats")]
-                    index: self
-                        .stats
-                        .lock()
-                        .next_device_index(name, device_id.into(), base, len),
+                    index: self.stats.lock().next_device_index(
+                        name,
+                        device_id.metrics_id(),
+                        base,
+                        len,
+                    ),
                     device: BusDeviceEntry::OuterSync(device),
                 },
             )
@@ -642,7 +644,7 @@ impl Bus {
                     #[cfg(feature = "stats")]
                     index: self.stats.lock().next_device_index(
                         device.debug_label(),
-                        device.device_id().into(),
+                        device.device_id().metrics_id(),
                         base,
                         len,
                     ),

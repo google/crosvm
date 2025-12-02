@@ -83,9 +83,9 @@ impl From<CrosvmDeviceId> for DeviceId {
     }
 }
 
-impl From<DeviceId> for u32 {
-    fn from(id: DeviceId) -> Self {
-        match id {
+impl DeviceId {
+    pub fn metrics_id(self) -> u32 {
+        match self {
             DeviceId::PciDeviceId(pci_id) => pci_id.into(),
             DeviceId::PlatformDeviceId(id) => 0xFFFF0000 | id as u32,
         }
