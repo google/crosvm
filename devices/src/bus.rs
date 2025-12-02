@@ -269,7 +269,7 @@ pub trait BusDeviceObj {
 }
 
 #[sorted]
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum Error {
     #[error("Bus Range not found")]
     Empty,
@@ -877,42 +877,154 @@ mod tests {
     #[test]
     fn bus_insert() {
         let bus = Bus::new(BusType::Io);
-        let dummy = Arc::new(Mutex::new(DummyDevice));
-        assert!(bus.insert(dummy.clone(), 0x10, 0).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x0f, 0x10).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x15).is_err());
-        assert!(bus.insert(dummy.clone(), 0x12, 0x15).is_err());
-        assert!(bus.insert(dummy.clone(), 0x12, 0x01).is_err());
-        assert!(bus.insert(dummy.clone(), 0x0, 0x20).is_err());
-        assert!(bus.insert(dummy.clone(), 0x20, 0x05).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x25, 0x05).is_ok());
-        assert!(bus.insert(dummy, 0x0, 0x10).is_ok());
+        let dev = Arc::new(Mutex::new(DummyDevice));
+        assert_eq!(
+            bus.insert(dev.clone(), 0x10, 0),
+            Err(Error::Overlap {
+                base: 0x10,
+                len: 0,
+                other_base: 0,
+                other_len: 0
+            })
+        );
+        assert_eq!(bus.insert(dev.clone(), 0x10, 0x10), Ok(()));
+        assert_eq!(
+            bus.insert(dev.clone(), 0x0f, 0x10),
+            Err(Error::Overlap {
+                base: 0x0f,
+                len: 0x10,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(
+            bus.insert(dev.clone(), 0x10, 0x10),
+            Err(Error::Overlap {
+                base: 0x10,
+                len: 0x10,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(
+            bus.insert(dev.clone(), 0x10, 0x15),
+            Err(Error::Overlap {
+                base: 0x10,
+                len: 0x15,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(
+            bus.insert(dev.clone(), 0x12, 0x15),
+            Err(Error::Overlap {
+                base: 0x12,
+                len: 0x15,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(
+            bus.insert(dev.clone(), 0x12, 0x01),
+            Err(Error::Overlap {
+                base: 0x12,
+                len: 0x01,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(
+            bus.insert(dev.clone(), 0x0, 0x20),
+            Err(Error::Overlap {
+                base: 0x0,
+                len: 0x20,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(bus.insert(dev.clone(), 0x20, 0x05), Ok(()));
+        assert_eq!(bus.insert(dev.clone(), 0x25, 0x05), Ok(()));
+        assert_eq!(bus.insert(dev, 0x0, 0x10), Ok(()));
     }
 
     #[test]
     fn bus_insert_full_addr() {
         let bus = Bus::new(BusType::Io);
-        let dummy = Arc::new(Mutex::new(DummyDevice));
-        assert!(bus.insert(dummy.clone(), 0x10, 0).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x0f, 0x10).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x15).is_err());
-        assert!(bus.insert(dummy.clone(), 0x12, 0x15).is_err());
-        assert!(bus.insert(dummy.clone(), 0x12, 0x01).is_err());
-        assert!(bus.insert(dummy.clone(), 0x0, 0x20).is_err());
-        assert!(bus.insert(dummy.clone(), 0x20, 0x05).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x25, 0x05).is_ok());
-        assert!(bus.insert(dummy, 0x0, 0x10).is_ok());
+        let dev = Arc::new(Mutex::new(DummyDevice));
+        assert_eq!(
+            bus.insert(dev.clone(), 0x10, 0),
+            Err(Error::Overlap {
+                base: 0x10,
+                len: 0,
+                other_base: 0,
+                other_len: 0
+            })
+        );
+        assert_eq!(bus.insert(dev.clone(), 0x10, 0x10), Ok(()));
+        assert_eq!(
+            bus.insert(dev.clone(), 0x0f, 0x10),
+            Err(Error::Overlap {
+                base: 0x0f,
+                len: 0x10,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(
+            bus.insert(dev.clone(), 0x10, 0x10),
+            Err(Error::Overlap {
+                base: 0x10,
+                len: 0x10,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(
+            bus.insert(dev.clone(), 0x10, 0x15),
+            Err(Error::Overlap {
+                base: 0x10,
+                len: 0x15,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(
+            bus.insert(dev.clone(), 0x12, 0x15),
+            Err(Error::Overlap {
+                base: 0x12,
+                len: 0x15,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(
+            bus.insert(dev.clone(), 0x12, 0x01),
+            Err(Error::Overlap {
+                base: 0x12,
+                len: 0x01,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(
+            bus.insert(dev.clone(), 0x0, 0x20),
+            Err(Error::Overlap {
+                base: 0x0,
+                len: 0x20,
+                other_base: 0x10,
+                other_len: 0x10
+            })
+        );
+        assert_eq!(bus.insert(dev.clone(), 0x20, 0x05), Ok(()));
+        assert_eq!(bus.insert(dev.clone(), 0x25, 0x05), Ok(()));
+        assert_eq!(bus.insert(dev, 0x0, 0x10), Ok(()));
     }
 
     #[test]
     fn bus_read_write() {
         let bus = Bus::new(BusType::Io);
-        let dummy = Arc::new(Mutex::new(DummyDevice));
-        assert!(bus.insert(dummy, 0x10, 0x10).is_ok());
+        let dev = Arc::new(Mutex::new(DummyDevice));
+        assert_eq!(bus.insert(dev, 0x10, 0x10), Ok(()));
         assert!(bus.read(0x10, &mut [0, 0, 0, 0]));
         assert!(bus.write(0x10, &[0, 0, 0, 0]));
         assert!(bus.read(0x11, &mut [0, 0, 0, 0]));
@@ -928,10 +1040,10 @@ mod tests {
     #[test]
     fn bus_read_write_values() {
         let bus = Bus::new(BusType::Io);
-        let dummy = Arc::new(Mutex::new(ConstantDevice {
+        let dev = Arc::new(Mutex::new(ConstantDevice {
             uses_full_addr: false,
         }));
-        assert!(bus.insert(dummy, 0x10, 0x10).is_ok());
+        assert_eq!(bus.insert(dev, 0x10, 0x10), Ok(()));
 
         let mut values = [0, 1, 2, 3];
         assert!(bus.read(0x10, &mut values));
@@ -945,10 +1057,10 @@ mod tests {
     #[test]
     fn bus_read_write_full_addr_values() {
         let bus = Bus::new(BusType::Io);
-        let dummy = Arc::new(Mutex::new(ConstantDevice {
+        let dev = Arc::new(Mutex::new(ConstantDevice {
             uses_full_addr: true,
         }));
-        assert!(bus.insert(dummy, 0x10, 0x10).is_ok());
+        assert_eq!(bus.insert(dev, 0x10, 0x10), Ok(()));
 
         let mut values = [0u8; 4];
         assert!(bus.read(0x10, &mut values));
