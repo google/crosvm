@@ -929,6 +929,7 @@ mod tests {
     use serde::Serialize;
     use snapshot::AnySnapshot;
     use vm_control::DeviceId;
+    use vm_control::PlatformDeviceId;
 
     use super::*;
 
@@ -986,7 +987,7 @@ mod tests {
 
     impl BusDevice for MockDevice {
         fn device_id(&self) -> DeviceId {
-            vm_control::PciId::from(0xdead_beef).into()
+            PlatformDeviceId::Mock.into()
         }
         fn debug_label(&self) -> String {
             "mock device".to_owned()

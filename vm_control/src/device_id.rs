@@ -29,6 +29,7 @@ pub enum PlatformDeviceId {
     VirtualPmc = 21,
     VirtCpufreq = 22,
     FwCfg = 23,
+    Mock = 0xff,
 }
 
 /// A wrapper structure for pci device and vendor id.
