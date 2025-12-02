@@ -91,7 +91,6 @@ pub use self::irq_event::IrqEdgeEvent;
 pub use self::irq_event::IrqLevelEvent;
 pub use self::irqchip::*;
 pub use self::pci::BarRange;
-pub use self::pci::CrosvmDeviceId;
 pub use self::pci::GpeScope;
 #[cfg(feature = "pci-hotplug")]
 pub use self::pci::HotPluggable;

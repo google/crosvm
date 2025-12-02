@@ -8,8 +8,6 @@ use base::EventWaitResult;
 use base::Tube;
 use devices::Bus;
 use devices::BusType;
-use devices::CrosvmDeviceId;
-use devices::DeviceId;
 use devices::IrqChip;
 use devices::IrqChipX86_64;
 use devices::IrqEdgeEvent;
@@ -31,6 +29,8 @@ use hypervisor::VmX86_64;
 use resources::AddressRange;
 use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 use vm_memory::GuestMemory;
 
 use crate::x86_64::test_get_ioapic;

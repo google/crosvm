@@ -15,10 +15,11 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 use thiserror::Error as ThisError;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
 use crate::BusAccessInfo;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::Suspendable;
 
 pub const FW_CFG_BASE_PORT: u64 = 0x510;
@@ -285,7 +286,7 @@ impl FwCfgDevice {
 // We implement two 8-bit registers: a Selector(Control) Register and a Data Register
 impl BusDevice for FwCfgDevice {
     fn device_id(&self) -> DeviceId {
-        super::CrosvmDeviceId::FwCfg.into()
+        CrosvmDeviceId::FwCfg.into()
     }
 
     fn debug_label(&self) -> String {

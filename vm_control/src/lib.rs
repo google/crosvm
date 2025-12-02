@@ -11,6 +11,12 @@
 //! if the request type expects one.
 
 pub mod api;
+
+mod device_id;
+pub use device_id::CrosvmDeviceId;
+pub use device_id::DeviceId;
+pub use device_id::PciId;
+
 #[cfg(feature = "gdb")]
 pub mod gdb;
 #[cfg(feature = "gpu")]
@@ -89,7 +95,6 @@ use protos::registered_events;
 use remain::sorted;
 use resources::Alloc;
 use resources::SystemAllocator;
-use rutabaga_gfx::DeviceId;
 use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaFromRawDescriptor;
 use rutabaga_gfx::RutabagaGralloc;
@@ -482,7 +487,7 @@ impl VmMemorySource {
                 driver_uuid,
                 size,
             } => {
-                let device_id = DeviceId {
+                let device_id = rutabaga_gfx::DeviceId {
                     device_uuid,
                     driver_uuid,
                 };

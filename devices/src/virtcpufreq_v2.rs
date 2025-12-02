@@ -23,11 +23,11 @@ use base::Tube;
 use base::WaitContext;
 use base::WorkerThread;
 use sync::Mutex;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
-use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::Suspendable;
 
 const CPUFREQ_GOV_SCALE_FACTOR_DEFAULT: u32 = 100;

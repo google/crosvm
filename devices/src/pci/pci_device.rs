@@ -22,8 +22,9 @@ use snapshot::AnySnapshot;
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::api::VmMemoryClient;
+use vm_control::DeviceId;
+use vm_control::PciId;
 
-use super::PciId;
 use crate::bus::BusDeviceObj;
 use crate::bus::BusRange;
 use crate::bus::BusType;
@@ -42,7 +43,6 @@ use crate::pci::PciInterruptPin;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::BusAccessInfo;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::IrqLevelEvent;
 use crate::Suspendable;
 use crate::VirtioPciDevice;

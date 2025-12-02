@@ -14,13 +14,13 @@ use base::RawDescriptor;
 use base::Result;
 use hypervisor::ProtectionType;
 use snapshot::AnySnapshot;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
-use crate::pci::CrosvmDeviceId;
 use crate::serial_device::SerialInput;
 use crate::serial_device::SerialOptions;
 use crate::BusAccessInfo;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::SerialDevice;
 use crate::Suspendable;
 

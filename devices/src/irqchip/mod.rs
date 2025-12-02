@@ -13,9 +13,8 @@ use hypervisor::Vcpu;
 use resources::SystemAllocator;
 use serde::Deserialize;
 use serde::Serialize;
+use vm_control::DeviceId;
 
-use crate::pci::CrosvmDeviceId;
-use crate::pci::PciId;
 use crate::Bus;
 use crate::BusDevice;
 use crate::IrqEdgeEvent;
@@ -87,51 +86,6 @@ struct IrqEvent {
     gsi: u32,
     resample_event: Option<Event>,
     source: IrqEventSource,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DeviceId {
-    /// PCI Device, use its PciId directly.
-    PciDeviceId(PciId),
-    /// Platform device, use a unique Id.
-    PlatformDeviceId(CrosvmDeviceId),
-}
-
-impl From<PciId> for DeviceId {
-    fn from(v: PciId) -> Self {
-        Self::PciDeviceId(v)
-    }
-}
-
-impl From<CrosvmDeviceId> for DeviceId {
-    fn from(v: CrosvmDeviceId) -> Self {
-        Self::PlatformDeviceId(v)
-    }
-}
-
-impl TryFrom<u32> for DeviceId {
-    type Error = base::Error;
-
-    fn try_from(value: u32) -> std::result::Result<Self, Self::Error> {
-        let device_id = (value & 0xFFFF) as u16;
-        let vendor_id = ((value & 0xFFFF_0000) >> 16) as u16;
-        if vendor_id == 0xFFFF {
-            Ok(DeviceId::PlatformDeviceId(CrosvmDeviceId::try_from(
-                device_id,
-            )?))
-        } else {
-            Ok(DeviceId::PciDeviceId(PciId::new(vendor_id, device_id)))
-        }
-    }
-}
-
-impl From<DeviceId> for u32 {
-    fn from(id: DeviceId) -> Self {
-        match id {
-            DeviceId::PciDeviceId(pci_id) => pci_id.into(),
-            DeviceId::PlatformDeviceId(id) => 0xFFFF0000 | id as u32,
-        }
-    }
 }
 
 /// Identification information about the source of an IrqEvent

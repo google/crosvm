@@ -26,12 +26,12 @@ use serde::Serialize;
 use snapshot::AnySnapshot;
 use sync::Mutex;
 use thiserror::Error;
+use vm_control::DeviceId;
 
 #[cfg(feature = "stats")]
 use crate::bus_stats::BusOperation;
 #[cfg(feature = "stats")]
 use crate::BusStatistics;
-use crate::DeviceId;
 use crate::PciAddress;
 use crate::PciDevice;
 use crate::Suspendable;
@@ -778,9 +778,9 @@ impl Default for Bus {
 #[cfg(test)]
 mod tests {
     use anyhow::Result as AnyhowResult;
+    use vm_control::CrosvmDeviceId;
 
     use super::*;
-    use crate::pci::CrosvmDeviceId;
     use crate::suspendable::Suspendable;
     use crate::suspendable_tests;
 

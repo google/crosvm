@@ -25,6 +25,8 @@ use hypervisor::PitState;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
 cfg_if::cfg_if! {
     if #[cfg(test)] {
@@ -40,9 +42,7 @@ use base::WorkerThread;
 use snapshot::AnySnapshot;
 
 use crate::bus::BusAccessInfo;
-use crate::pci::CrosvmDeviceId;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::IrqEdgeEvent;
 use crate::Suspendable;
 

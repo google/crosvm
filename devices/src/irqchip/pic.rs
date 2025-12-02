@@ -19,11 +19,11 @@ use hypervisor::PicInitState;
 use hypervisor::PicSelect;
 use hypervisor::PicState;
 use snapshot::AnySnapshot;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
 use crate::bus::BusAccessInfo;
-use crate::pci::CrosvmDeviceId;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::Suspendable;
 
 pub struct Pic {

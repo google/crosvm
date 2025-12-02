@@ -18,9 +18,7 @@ use devices::Bus;
 use devices::BusAccessInfo;
 use devices::BusDeviceSync;
 use devices::BusType;
-use devices::CrosvmDeviceId;
 use devices::DestinationShorthand;
-use devices::DeviceId;
 use devices::Interrupt;
 use devices::InterruptData;
 use devices::InterruptDestination;
@@ -59,6 +57,8 @@ use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
 use snapshot::AnySnapshot;
 use sync::Mutex;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 use vm_memory::GuestAddress;
 
 use crate::x86_64::test_get_ioapic;

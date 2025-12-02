@@ -32,15 +32,15 @@ use serde::Serialize;
 use snapshot::AnySnapshot;
 use tempfile::tempfile;
 use thiserror::Error;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
 use crate::bus::ConfigWriteResult;
-use crate::pci::CrosvmDeviceId;
 use crate::pci::PciAddress;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::BusRange;
 use crate::BusType;
-use crate::DeviceId;
 use crate::Suspendable;
 
 /// Errors for proxy devices.
@@ -662,8 +662,9 @@ impl Drop for ProxyDevice {
 /// the process.
 #[cfg(test)]
 mod tests {
+    use vm_control::PciId;
+
     use super::*;
-    use crate::pci::PciId;
 
     /// A simple test echo device that outputs the same u8 that was written to it.
     struct EchoDevice {

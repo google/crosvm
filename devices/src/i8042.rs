@@ -6,11 +6,11 @@ use base::error;
 use base::SendTube;
 use base::VmEventType;
 use snapshot::AnySnapshot;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
-use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::Suspendable;
 
 /// A i8042 PS/2 controller that emulates just enough to shutdown the machine.

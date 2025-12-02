@@ -9,11 +9,11 @@ use acpi_tables::aml::Aml;
 use base::warn;
 use sync::Condvar;
 use sync::Mutex;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
-use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::Suspendable;
 
 /// PMC Virt MMIO offset

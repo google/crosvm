@@ -26,6 +26,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
 use sync::Mutex;
+use vm_control::DeviceId;
+use vm_control::PciId;
 use vm_memory::GuestAddress;
 
 use crate::pci::pci_configuration::PciBarConfiguration;
@@ -41,13 +43,11 @@ use crate::pci::pci_device::PciBus;
 use crate::pci::pci_device::PciDevice;
 use crate::pci::PciAddress;
 use crate::pci::PciBarIndex;
-use crate::pci::PciId;
 use crate::pci::PCI_VENDOR_ID_INTEL;
 use crate::Bus;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::BusType;
-use crate::DeviceId;
 use crate::Suspendable;
 
 // A PciDevice that holds the root hub's configuration.

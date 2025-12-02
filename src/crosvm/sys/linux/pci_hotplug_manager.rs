@@ -924,11 +924,11 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use devices::DeviceId;
     use devices::Suspendable;
     use serde::Deserialize;
     use serde::Serialize;
     use snapshot::AnySnapshot;
+    use vm_control::DeviceId;
 
     use super::*;
 

@@ -30,11 +30,11 @@ use disk::DiskFile;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
-use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::Suspendable;
 
 const COMMAND_WRITE_BYTE: u8 = 0x10;

@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::pci::CrosvmDeviceId;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
+
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::Suspendable;
 
 pub struct VirtCpufreq {}

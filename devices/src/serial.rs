@@ -26,14 +26,14 @@ use base::WorkerThread;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
 use crate::bus::BusAccessInfo;
-use crate::pci::CrosvmDeviceId;
 use crate::serial_device::SerialInput;
 use crate::suspendable::DeviceState;
 use crate::suspendable::Suspendable;
 use crate::BusDevice;
-use crate::DeviceId;
 
 const LOOP_SIZE: usize = 0x40;
 

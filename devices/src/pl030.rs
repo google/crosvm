@@ -11,11 +11,11 @@ use base::warn;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
-use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::IrqEdgeEvent;
 use crate::Suspendable;
 

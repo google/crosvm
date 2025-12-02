@@ -25,14 +25,14 @@ use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FAILED;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FEATURES_OK;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_NEEDS_RESET;
 use virtio_sys::virtio_mmio::*;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 use vm_memory::GuestMemory;
 
 use super::*;
-use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::BusDeviceObj;
-use crate::DeviceId;
 use crate::IrqEdgeEvent;
 use crate::Suspendable;
 

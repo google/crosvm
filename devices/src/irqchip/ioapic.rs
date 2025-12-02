@@ -25,14 +25,14 @@ use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
 use thiserror::Error;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 use vm_control::VmIrqRequest;
 use vm_control::VmIrqResponse;
 
 use super::IrqEvent;
 use crate::bus::BusAccessInfo;
-use crate::pci::CrosvmDeviceId;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::IrqEventSource;
 use crate::Suspendable;
 

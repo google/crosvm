@@ -13,11 +13,11 @@ use acpi_tables::aml;
 use acpi_tables::aml::Aml;
 use anyhow::Context;
 use base::warn;
+use vm_control::CrosvmDeviceId;
+use vm_control::DeviceId;
 
-use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
-use crate::DeviceId;
 use crate::Suspendable;
 
 pub const ACDC_VIRT_MMIO_SIZE: u64 = 0x10;
