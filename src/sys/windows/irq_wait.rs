@@ -329,27 +329,14 @@ impl IrqWaitWorker {
                         let rate = locked_irq_frequencies[**idx] / intr_stat_duration.as_secs();
                         // As the descriptor, use a 64bit int containing two 32bit ids.
                         // low bits: queue_id, high bits: device_id
-                        let descriptor_bytes: [u8; 8] = {
-                            let mut bytes: [u8; 8] = [0; 8];
-                            for (i, byte) in
-                                (source.queue_id as u32).to_le_bytes().iter().enumerate()
-                            {
-                                bytes[i] = *byte
-                            }
-                            for (i, byte) in source
-                                .device_id
-                                .metrics_id()
-                                .to_le_bytes()
-                                .iter()
-                                .enumerate()
-                            {
-                                bytes[i + 4] = *byte
-                            }
-                            bytes
+                        let descriptor = {
+                            let device_id = source.device_id.metrics_id().to_le() as u64;
+                            let queue_id = (source.queue_id as u32).to_le() as u64;
+                            (queue_id | (device_id << u32::BITS)).to_le() as i64
                         };
                         log_high_frequency_descriptor_event(
                             MetricEventType::Interrupts,
-                            i64::from_le_bytes(descriptor_bytes),
+                            descriptor,
                             rate as i64,
                         );
                         format!("{}({})->{}/s", source.device_name, source.queue_id, rate,)
