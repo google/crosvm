@@ -19,6 +19,7 @@ mod fw_cfg;
 mod i8042;
 mod irq_event;
 pub mod irqchip;
+mod mock;
 mod pci;
 mod pflash;
 pub mod pl030;
@@ -90,6 +91,7 @@ pub use self::i8042::I8042Device;
 pub use self::irq_event::IrqEdgeEvent;
 pub use self::irq_event::IrqLevelEvent;
 pub use self::irqchip::*;
+pub use self::mock::MockDevice;
 pub use self::pci::BarRange;
 pub use self::pci::GpeScope;
 #[cfg(feature = "pci-hotplug")]

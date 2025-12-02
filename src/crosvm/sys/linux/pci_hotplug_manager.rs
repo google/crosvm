@@ -924,12 +924,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use devices::Suspendable;
-    use serde::Deserialize;
-    use serde::Serialize;
-    use snapshot::AnySnapshot;
-    use vm_control::DeviceId;
-    use vm_control::PlatformDeviceId;
+    use devices::MockDevice;
 
     use super::*;
 
@@ -960,37 +955,6 @@ mod tests {
                 event.reset().unwrap();
                 event.signal().unwrap();
             }
-        }
-    }
-
-    #[derive(Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
-    struct MockDevice;
-
-    impl Suspendable for MockDevice {
-        fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
-            AnySnapshot::to_any(self).context("error serializing")
-        }
-
-        fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
-            *self = AnySnapshot::from_any(data).context("error deserializing")?;
-            Ok(())
-        }
-
-        fn sleep(&mut self) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        fn wake(&mut self) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl BusDevice for MockDevice {
-        fn device_id(&self) -> DeviceId {
-            PlatformDeviceId::Mock.into()
-        }
-        fn debug_label(&self) -> String {
-            "mock device".to_owned()
         }
     }
 
