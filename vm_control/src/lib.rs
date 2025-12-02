@@ -1159,7 +1159,7 @@ pub enum VmIrqRequest {
     /// Allocate one gsi, and associate gsi to irqfd with register_irqfd()
     AllocateOneMsi {
         irqfd: Event,
-        device_id: u32,
+        device_id: DeviceId,
         queue_id: usize,
         device_name: String,
     },
@@ -1170,7 +1170,7 @@ pub enum VmIrqRequest {
     AllocateOneMsiAtGsi {
         irqfd: Event,
         gsi: u32,
-        device_id: u32,
+        device_id: DeviceId,
         queue_id: usize,
         device_name: String,
     },
@@ -1193,7 +1193,7 @@ pub enum VmIrqRequest {
 /// VmIrqRequest::execute can't take an `IrqChip` argument, because of a dependency cycle between
 /// devices and vm_control, so it takes a Fn that processes an `IrqSetup`.
 pub enum IrqSetup<'a> {
-    Event(u32, &'a Event, u32, usize, String),
+    Event(u32, &'a Event, DeviceId, usize, String),
     Route(IrqRoute),
     UnRegister(u32, &'a Event),
 }

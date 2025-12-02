@@ -226,7 +226,7 @@ impl IrqWaitWorker {
                                                             .expect("Failed to clone irq event."),
                                                     );
                                                     let source = IrqEventSource {
-                                                        device_id: device_id.try_into()?,
+                                                        device_id,
                                                         queue_id,
                                                         device_name,
                                                     };

@@ -4741,7 +4741,7 @@ fn handle_irq_tube_request(
                         IrqSetup::Event(irq, ev, device_id, queue_id, device_name) => {
                             let irq_evt = devices::IrqEdgeEvent::from_event(ev.try_clone()?);
                             let source = IrqEventSource {
-                                device_id: device_id.try_into().expect("Invalid device_id"),
+                                device_id,
                                 queue_id,
                                 device_name,
                             };

@@ -19,6 +19,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
 use thiserror::Error;
+use vm_control::PciId;
 use vm_control::VmIrqRequest;
 use vm_control::VmIrqResponse;
 use zerocopy::FromBytes;
@@ -310,7 +311,7 @@ impl MsixConfig {
         let request = VmIrqRequest::AllocateOneMsiAtGsi {
             irqfd,
             gsi,
-            device_id: self.pci_id,
+            device_id: PciId::from(self.pci_id).into(),
             queue_id: index,
             device_name: self.device_name.clone(),
         };
@@ -419,7 +420,7 @@ impl MsixConfig {
         let irqfd = Event::new().map_err(MsixError::AllocateOneMsi)?;
         let request = VmIrqRequest::AllocateOneMsi {
             irqfd,
-            device_id: self.pci_id,
+            device_id: vm_control::PciId::from(self.pci_id).into(),
             queue_id: index,
             device_name: self.device_name.clone(),
         };

@@ -10,6 +10,7 @@ use base::Event;
 use base::RawDescriptor;
 use base::Tube;
 use bit_field::*;
+use vm_control::PciId;
 use vm_control::VmIrqRequest;
 use vm_control::VmIrqResponse;
 use zerocopy::FromBytes;
@@ -222,7 +223,7 @@ impl MsiConfig {
 
         let request = VmIrqRequest::AllocateOneMsi {
             irqfd,
-            device_id: self.device_id,
+            device_id: PciId::from(self.device_id).into(),
             queue_id: 0,
             device_name: self.device_name.clone(),
         };

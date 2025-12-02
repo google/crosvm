@@ -986,7 +986,7 @@ mod tests {
 
     impl BusDevice for MockDevice {
         fn device_id(&self) -> DeviceId {
-            DeviceId::try_from(0xdead_beef).unwrap()
+            vm_control::PciId::from(0xdead_beef).into()
         }
         fn debug_label(&self) -> String {
             "mock device".to_owned()

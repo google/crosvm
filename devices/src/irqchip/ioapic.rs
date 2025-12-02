@@ -453,7 +453,7 @@ impl Ioapic {
             let event = Event::new().map_err(IoapicError::CreateEvent)?;
             let request = VmIrqRequest::AllocateOneMsi {
                 irqfd: event,
-                device_id: self.device_id().into(),
+                device_id: self.device_id(),
                 queue_id: index, // Use out_events index as queue_id for outgoing ioapic MSIs
                 device_name: name.clone(),
             };
@@ -539,7 +539,7 @@ impl Ioapic {
         let request = VmIrqRequest::AllocateOneMsiAtGsi {
             irqfd: event,
             gsi,
-            device_id: self.device_id().into(),
+            device_id: self.device_id(),
             queue_id: index, // Use out_events index as queue_id for outgoing ioapic MSIs
             device_name: name.clone(),
         };
