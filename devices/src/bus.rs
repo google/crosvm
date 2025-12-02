@@ -84,19 +84,16 @@ pub enum BusType {
 }
 
 /// Trait for devices that respond to reads or writes in an arbitrary address space.
-///
-/// The device does not care where it exists in address space as each method is only given an offset
-/// into its allocated portion of address space.
 #[allow(unused_variables)]
 pub trait BusDevice: Send + Suspendable {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String;
     /// Returns a unique id per device type suitable for metrics gathering.
     fn device_id(&self) -> DeviceId;
-    /// Reads at `offset` from this device
-    fn read(&mut self, offset: BusAccessInfo, data: &mut [u8]) {}
-    /// Writes at `offset` into this device
-    fn write(&mut self, offset: BusAccessInfo, data: &[u8]) {}
+    /// Performs a read access to this device, based on `info`.
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {}
+    /// Performs a write access to this device, based on `info`.
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {}
     /// Sets a register in the configuration space. Only used by PCI.
     /// * `reg_idx` - The index of the config register to modify.
     /// * `offset` - Offset in to the register.
