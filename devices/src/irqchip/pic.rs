@@ -19,8 +19,8 @@ use hypervisor::PicInitState;
 use hypervisor::PicSelect;
 use hypervisor::PicState;
 use snapshot::AnySnapshot;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::bus::BusAccessInfo;
 use crate::BusDevice;
@@ -94,7 +94,7 @@ const OCW3_SPECIAL_MASK_VALUE: u8 = 0x20;
 
 impl BusDevice for Pic {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::Pic.into()
+        PlatformDeviceId::Pic.into()
     }
 
     fn debug_label(&self) -> String {

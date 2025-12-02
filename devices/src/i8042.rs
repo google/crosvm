@@ -6,8 +6,8 @@ use base::error;
 use base::SendTube;
 use base::VmEventType;
 use snapshot::AnySnapshot;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -29,7 +29,7 @@ impl I8042Device {
 // registers: port 0x61 (I8042_PORT_B_REG), and port 0x64 (I8042_COMMAND_REG).
 impl BusDevice for I8042Device {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::I8042.into()
+        PlatformDeviceId::I8042.into()
     }
 
     fn debug_label(&self) -> String {

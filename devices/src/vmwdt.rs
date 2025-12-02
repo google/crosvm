@@ -33,8 +33,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
 use sync::Mutex;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 use vm_control::VmResponse;
 
 use crate::BusAccessInfo;
@@ -333,7 +333,7 @@ impl BusDevice for Vmwdt {
     }
 
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::VmWatchdog.into()
+        PlatformDeviceId::VmWatchdog.into()
     }
 
     fn read(&mut self, _offset: BusAccessInfo, _data: &mut [u8]) {}

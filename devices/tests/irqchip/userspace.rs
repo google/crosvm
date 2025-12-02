@@ -57,8 +57,8 @@ use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
 use snapshot::AnySnapshot;
 use sync::Mutex;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 use vm_memory::GuestAddress;
 
 use crate::x86_64::test_get_ioapic;
@@ -178,7 +178,7 @@ fn irq_event_tokens() {
     // register another irq event
     let evt = IrqEdgeEvent::new().expect("failed to create eventfd");
     let source = IrqEventSource {
-        device_id: CrosvmDeviceId::Cmos.into(),
+        device_id: PlatformDeviceId::Cmos.into(),
         queue_id: 0,
         device_name: "test".to_owned(),
     };
@@ -194,7 +194,7 @@ fn irq_event_tokens() {
     assert_eq!(tokens[0].1.device_name, "userspace PIT");
     assert_eq!(
         tokens[1].1.device_id,
-        DeviceId::PlatformDeviceId(CrosvmDeviceId::Cmos)
+        DeviceId::PlatformDeviceId(PlatformDeviceId::Cmos)
     );
     assert_eq!(tokens[1].2, evt.get_trigger().try_clone().unwrap());
 }
@@ -232,7 +232,7 @@ fn finalize_devices() {
     let evt = IrqLevelEvent::new().expect("failed to create event");
 
     let source = IrqEventSource {
-        device_id: CrosvmDeviceId::Cmos.into(),
+        device_id: PlatformDeviceId::Cmos.into(),
         device_name: "test".to_owned(),
         queue_id: 0,
     };
@@ -349,7 +349,7 @@ fn inject_msi() {
 
     let evt = IrqEdgeEvent::new().unwrap();
     let source = IrqEventSource {
-        device_id: CrosvmDeviceId::Cmos.into(),
+        device_id: PlatformDeviceId::Cmos.into(),
         device_name: "test".to_owned(),
         queue_id: 0,
     };
@@ -488,7 +488,7 @@ fn broadcast_eoi() {
     let evt = IrqLevelEvent::new().expect("failed to create event");
 
     let source = IrqEventSource {
-        device_id: CrosvmDeviceId::Cmos.into(),
+        device_id: PlatformDeviceId::Cmos.into(),
         device_name: "test".to_owned(),
         queue_id: 0,
     };

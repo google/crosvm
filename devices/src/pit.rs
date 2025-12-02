@@ -25,8 +25,8 @@ use hypervisor::PitState;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 cfg_if::cfg_if! {
     if #[cfg(test)] {
@@ -212,7 +212,7 @@ impl BusDevice for Pit {
     }
 
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::Pit.into()
+        PlatformDeviceId::Pit.into()
     }
 
     fn write(&mut self, info: BusAccessInfo, data: &[u8]) {

@@ -28,9 +28,9 @@ use serde::Serialize;
 use snapshot::AnySnapshot;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
 use vm_control::GpeNotify;
+use vm_control::PlatformDeviceId;
 use vm_control::PmResource;
 use vm_control::PmeNotify;
 use vm_control::VmRequest;
@@ -525,7 +525,7 @@ const GPE0_ENABLE_LAST: u16 = GPE0_ENABLE + (ACPIPM_RESOURCE_GPE0_BLK_LEN as u16
 
 impl BusDevice for ACPIPMResource {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::ACPIPMResource.into()
+        PlatformDeviceId::ACPIPMResource.into()
     }
 
     fn debug_label(&self) -> String {

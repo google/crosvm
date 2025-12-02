@@ -31,8 +31,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
 use sync::Mutex;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 use vm_control::VmResponse;
 
 use crate::BusAccessInfo;
@@ -301,7 +301,7 @@ fn alarm_from_registers(year: i32, data: &[u8; DATA_LEN]) -> Option<DateTime<Utc
 
 impl BusDevice for Cmos {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::Cmos.into()
+        PlatformDeviceId::Cmos.into()
     }
 
     fn debug_label(&self) -> String {

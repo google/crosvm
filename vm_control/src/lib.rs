@@ -13,9 +13,9 @@
 pub mod api;
 
 mod device_id;
-pub use device_id::CrosvmDeviceId;
 pub use device_id::DeviceId;
 pub use device_id::PciId;
+pub use device_id::PlatformDeviceId;
 
 #[cfg(feature = "gdb")]
 pub mod gdb;

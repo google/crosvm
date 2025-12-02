@@ -23,8 +23,8 @@ use base::Tube;
 use base::WaitContext;
 use base::WorkerThread;
 use sync::Mutex;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -196,7 +196,7 @@ impl VirtCpufreqV2 {
 
 impl BusDevice for VirtCpufreqV2 {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::VirtCpufreq.into()
+        PlatformDeviceId::VirtCpufreq.into()
     }
 
     fn debug_label(&self) -> String {

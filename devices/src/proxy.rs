@@ -32,8 +32,8 @@ use serde::Serialize;
 use snapshot::AnySnapshot;
 use tempfile::tempfile;
 use thiserror::Error;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::bus::ConfigWriteResult;
 use crate::pci::PciAddress;
@@ -492,7 +492,7 @@ impl ProxyDevice {
 
 impl BusDevice for ProxyDevice {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::ProxyDevice.into()
+        PlatformDeviceId::ProxyDevice.into()
     }
 
     fn debug_label(&self) -> String {

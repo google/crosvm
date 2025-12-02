@@ -46,8 +46,8 @@ use resources::SystemAllocator;
 use snapshot::AnySnapshot;
 use sync::Condvar;
 use sync::Mutex;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::bus::BusDeviceSync;
 use crate::irqchip::Apic;
@@ -835,7 +835,7 @@ impl<V: VcpuX86_64 + 'static> BusDevice for UserspaceIrqChip<V> {
         "UserspaceIrqChip APIC".to_string()
     }
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::UserspaceIrqChip.into()
+        PlatformDeviceId::UserspaceIrqChip.into()
     }
 }
 

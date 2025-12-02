@@ -30,8 +30,8 @@ use disk::DiskFile;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -101,7 +101,7 @@ impl Pflash {
 
 impl BusDevice for Pflash {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::Pflash.into()
+        PlatformDeviceId::Pflash.into()
     }
 
     fn debug_label(&self) -> String {

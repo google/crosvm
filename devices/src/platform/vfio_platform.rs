@@ -23,8 +23,8 @@ use hypervisor::Vm;
 use resources::SystemAllocator;
 use vfio_sys::*;
 use vm_control::api::VmMemoryClient;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 use vm_control::VmMemoryDestination;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
@@ -58,7 +58,7 @@ pub struct VfioPlatformDevice {
 
 impl BusDevice for VfioPlatformDevice {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::VfioPlatformDevice.into()
+        PlatformDeviceId::VfioPlatformDevice.into()
     }
 
     fn debug_label(&self) -> String {

@@ -25,8 +25,8 @@ use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FAILED;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FEATURES_OK;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_NEEDS_RESET;
 use virtio_sys::virtio_mmio::*;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 use vm_memory::GuestMemory;
 
 use super::*;
@@ -428,7 +428,7 @@ impl BusDevice for VirtioMmioDevice {
     }
 
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::VirtioMmio.into()
+        PlatformDeviceId::VirtioMmio.into()
     }
 
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {

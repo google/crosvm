@@ -15,8 +15,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 use thiserror::Error as ThisError;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -286,7 +286,7 @@ impl FwCfgDevice {
 // We implement two 8-bit registers: a Selector(Control) Register and a Data Register
 impl BusDevice for FwCfgDevice {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::FwCfg.into()
+        PlatformDeviceId::FwCfg.into()
     }
 
     fn debug_label(&self) -> String {

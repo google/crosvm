@@ -9,8 +9,8 @@ use acpi_tables::aml::Aml;
 use base::warn;
 use sync::Condvar;
 use sync::Mutex;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -50,7 +50,7 @@ fn handle_s2idle_request(guest_suspended_cvar: &Arc<(Mutex<bool>, Condvar)>) {
 
 impl BusDevice for VirtualPmc {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::VirtualPmc.into()
+        PlatformDeviceId::VirtualPmc.into()
     }
     fn debug_label(&self) -> String {
         "PmcVirt".to_owned()

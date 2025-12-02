@@ -13,8 +13,8 @@ use acpi_tables::aml;
 use acpi_tables::aml::Aml;
 use anyhow::Context;
 use base::warn;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -89,7 +89,7 @@ impl AcAdapter {
 
 impl BusDevice for AcAdapter {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::AcAdapter.into()
+        PlatformDeviceId::AcAdapter.into()
     }
     fn debug_label(&self) -> String {
         "AcAdapter".to_owned()

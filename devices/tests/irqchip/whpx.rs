@@ -8,12 +8,12 @@ use base::EventWaitResult;
 use base::Tube;
 use devices::Bus;
 use devices::BusType;
-use devices::CrosvmDeviceId;
 use devices::IrqChip;
 use devices::IrqChipX86_64;
 use devices::IrqEdgeEvent;
 use devices::IrqEventSource;
 use devices::IrqLevelEvent;
+use devices::PlatformDeviceId;
 use devices::WhpxSplitIrqChip;
 use devices::IOAPIC_BASE_ADDRESS;
 use hypervisor::whpx::Whpx;
@@ -167,7 +167,7 @@ fn irq_event_tokens() {
     // register another irq event
     let evt = IrqEdgeEvent::new().expect("failed to create event");
     let source = IrqEventSource {
-        device_id: CrosvmDeviceId::DebugConsole.into(),
+        device_id: PlatformDeviceId::DebugConsole.into(),
         queue_id: 0,
         device_name: "test".to_owned(),
     };
@@ -183,7 +183,7 @@ fn irq_event_tokens() {
     assert_eq!(tokens[0].1.device_name, "userspace PIT");
     assert_eq!(
         tokens[1].1.device_id,
-        DeviceId::PlatformDeviceId(CrosvmDeviceId::DebugConsole)
+        DeviceId::PlatformDeviceId(PlatformDeviceId::DebugConsole)
     );
     assert_eq!(tokens[1].2, evt.get_trigger().try_clone().unwrap());
 }
@@ -224,7 +224,7 @@ fn finalize_devices() {
     let evt = IrqLevelEvent::new().expect("failed to create event");
 
     let source = IrqEventSource {
-        device_id: CrosvmDeviceId::DebugConsole.into(),
+        device_id: PlatformDeviceId::DebugConsole.into(),
         device_name: "test".to_owned(),
         queue_id: 0,
     };
@@ -347,7 +347,7 @@ fn broadcast_eoi() {
     let evt = IrqLevelEvent::new().expect("failed to create event");
 
     let source = IrqEventSource {
-        device_id: CrosvmDeviceId::DebugConsole.into(),
+        device_id: PlatformDeviceId::DebugConsole.into(),
         device_name: "test".to_owned(),
         queue_id: 0,
     };

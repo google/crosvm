@@ -26,8 +26,8 @@ use base::WorkerThread;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::bus::BusAccessInfo;
 use crate::serial_device::SerialInput;
@@ -144,7 +144,7 @@ impl Serial {
 
     /// Returns a unique ID for the serial device.
     pub fn device_id() -> DeviceId {
-        CrosvmDeviceId::Serial.into()
+        PlatformDeviceId::Serial.into()
     }
 
     /// Returns a debug label for the serial device. Used when setting up `IrqEventSource`.
@@ -439,7 +439,7 @@ impl Serial {
 
 impl BusDevice for Serial {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::Serial.into()
+        PlatformDeviceId::Serial.into()
     }
 
     fn debug_label(&self) -> String {

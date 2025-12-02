@@ -32,8 +32,8 @@ use sync::Mutex;
 use thiserror::Error;
 use vm_control::BatControlCommand;
 use vm_control::BatControlResult;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -536,7 +536,7 @@ impl Drop for GoldfishBattery {
 
 impl BusDevice for GoldfishBattery {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::GoldfishBattery.into()
+        PlatformDeviceId::GoldfishBattery.into()
     }
 
     fn debug_label(&self) -> String {

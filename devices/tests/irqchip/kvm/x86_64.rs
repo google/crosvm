@@ -29,8 +29,8 @@ use hypervisor::VmX86_64;
 use resources::AddressRange;
 use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 use vm_memory::GuestMemory;
 
 use crate::x86_64::test_get_ioapic;
@@ -209,7 +209,7 @@ fn irq_event_tokens() {
     // register another irq event
     let evt = IrqEdgeEvent::new().expect("failed to create event");
     let source = IrqEventSource {
-        device_id: CrosvmDeviceId::Cmos.into(),
+        device_id: PlatformDeviceId::Cmos.into(),
         queue_id: 0,
         device_name: "test".into(),
     };
@@ -225,7 +225,7 @@ fn irq_event_tokens() {
     assert_eq!(tokens[0].1.device_name, "userspace PIT");
     assert_eq!(
         tokens[1].1.device_id,
-        DeviceId::PlatformDeviceId(CrosvmDeviceId::Cmos)
+        DeviceId::PlatformDeviceId(PlatformDeviceId::Cmos)
     );
     assert_eq!(tokens[1].2, *evt.get_trigger());
 }
@@ -262,7 +262,7 @@ fn finalize_devices() {
     let evt = IrqLevelEvent::new().expect("failed to create event");
 
     let source = IrqEventSource {
-        device_id: CrosvmDeviceId::Cmos.into(),
+        device_id: PlatformDeviceId::Cmos.into(),
         device_name: "test".into(),
         queue_id: 0,
     };
@@ -398,7 +398,7 @@ fn broadcast_eoi() {
     .expect("failed to create SystemAllocator");
 
     let source = IrqEventSource {
-        device_id: CrosvmDeviceId::Cmos.into(),
+        device_id: PlatformDeviceId::Cmos.into(),
         device_name: "test".into(),
         queue_id: 0,
     };

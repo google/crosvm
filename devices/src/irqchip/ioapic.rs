@@ -25,8 +25,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
 use thiserror::Error;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 use vm_control::VmIrqRequest;
 use vm_control::VmIrqResponse;
 
@@ -155,7 +155,7 @@ impl BusDevice for Ioapic {
     }
 
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::Ioapic.into()
+        PlatformDeviceId::Ioapic.into()
     }
 
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {

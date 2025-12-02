@@ -777,7 +777,7 @@ impl Default for Bus {
 #[cfg(test)]
 mod tests {
     use anyhow::Result as AnyhowResult;
-    use vm_control::CrosvmDeviceId;
+    use vm_control::PlatformDeviceId;
 
     use super::*;
     use crate::suspendable::Suspendable;
@@ -788,7 +788,7 @@ mod tests {
 
     impl BusDevice for DummyDevice {
         fn device_id(&self) -> DeviceId {
-            CrosvmDeviceId::Cmos.into()
+            PlatformDeviceId::Cmos.into()
         }
         fn debug_label(&self) -> String {
             "dummy device".to_owned()
@@ -821,7 +821,7 @@ mod tests {
 
     impl BusDevice for ConstantDevice {
         fn device_id(&self) -> DeviceId {
-            CrosvmDeviceId::Cmos.into()
+            PlatformDeviceId::Cmos.into()
         }
 
         fn debug_label(&self) -> String {

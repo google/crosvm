@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::BusDevice;
 use crate::Suspendable;
@@ -20,7 +20,7 @@ impl VirtCpufreq {
 
 impl BusDevice for VirtCpufreq {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::VirtCpufreq.into()
+        PlatformDeviceId::VirtCpufreq.into()
     }
 
     fn debug_label(&self) -> String {

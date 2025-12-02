@@ -11,8 +11,8 @@ use base::warn;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -90,7 +90,7 @@ impl Pl030 {
 
 impl BusDevice for Pl030 {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::Pl030.into()
+        PlatformDeviceId::Pl030.into()
     }
 
     fn debug_label(&self) -> String {

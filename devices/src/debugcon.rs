@@ -14,8 +14,8 @@ use base::RawDescriptor;
 use base::Result;
 use hypervisor::ProtectionType;
 use snapshot::AnySnapshot;
-use vm_control::CrosvmDeviceId;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 
 use crate::serial_device::SerialInput;
 use crate::serial_device::SerialOptions;
@@ -58,7 +58,7 @@ impl SerialDevice for Debugcon {
 
 impl BusDevice for Debugcon {
     fn device_id(&self) -> DeviceId {
-        CrosvmDeviceId::DebugConsole.into()
+        PlatformDeviceId::DebugConsole.into()
     }
 
     fn debug_label(&self) -> String {
