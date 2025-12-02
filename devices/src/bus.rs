@@ -839,37 +839,7 @@ mod tests {
     use super::*;
     use crate::suspendable::Suspendable;
     use crate::suspendable_tests;
-
-    #[derive(Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
-    struct DummyDevice;
-
-    impl BusDevice for DummyDevice {
-        fn device_id(&self) -> DeviceId {
-            PlatformDeviceId::Cmos.into()
-        }
-        fn debug_label(&self) -> String {
-            "dummy device".to_owned()
-        }
-    }
-
-    impl Suspendable for DummyDevice {
-        fn snapshot(&mut self) -> AnyhowResult<AnySnapshot> {
-            AnySnapshot::to_any(self).context("error serializing")
-        }
-
-        fn restore(&mut self, data: AnySnapshot) -> AnyhowResult<()> {
-            *self = AnySnapshot::from_any(data).context("error deserializing")?;
-            Ok(())
-        }
-
-        fn sleep(&mut self) -> AnyhowResult<()> {
-            Ok(())
-        }
-
-        fn wake(&mut self) -> AnyhowResult<()> {
-            Ok(())
-        }
-    }
+    use crate::MockDevice;
 
     #[derive(Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
     struct ConstantDevice {
@@ -934,7 +904,7 @@ mod tests {
     #[test]
     fn bus_insert() {
         let bus = Bus::new(BusType::Io);
-        let dev = Arc::new(Mutex::new(DummyDevice));
+        let dev = Arc::new(Mutex::new(MockDevice::new()));
         assert_eq!(
             bus.insert(dev.clone(), 0x10, 0),
             Err(Error::Overlap {
@@ -1007,7 +977,7 @@ mod tests {
     #[test]
     fn bus_insert_full_addr() {
         let bus = Bus::new(BusType::Io);
-        let dev = Arc::new(Mutex::new(DummyDevice));
+        let dev = Arc::new(Mutex::new(MockDevice::new()));
         assert_eq!(
             bus.insert(dev.clone(), 0x10, 0),
             Err(Error::Overlap {
@@ -1080,7 +1050,7 @@ mod tests {
     #[test]
     fn bus_read_write() {
         let bus = Bus::new(BusType::Io);
-        let dev = Arc::new(Mutex::new(DummyDevice));
+        let dev = Arc::new(Mutex::new(MockDevice::new()));
         assert_eq!(bus.insert(dev, 0x10, 0x10), Ok(()));
         assert!(bus.read(0x10, &mut [0, 0, 0, 0]));
         assert!(bus.write(0x10, &[0, 0, 0, 0]));
