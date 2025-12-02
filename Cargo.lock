@@ -3310,6 +3310,7 @@ dependencies = [
  "serde_json",
  "serde_keyvalue",
  "snapshot",
+ "static_assertions",
  "swap",
  "sync",
  "thiserror",

@@ -4,7 +4,6 @@
 
 //! Device ID types.
 
-#[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CrosvmDeviceId {
     Pit = 1,
@@ -87,7 +86,10 @@ impl DeviceId {
     pub fn metrics_id(self) -> u32 {
         match self {
             DeviceId::PciDeviceId(pci_id) => pci_id.into(),
-            DeviceId::PlatformDeviceId(id) => 0xFFFF0000 | id as u32,
+            DeviceId::PlatformDeviceId(id) => {
+                static_assertions::const_assert!(std::mem::size_of::<CrosvmDeviceId>() <= 2);
+                0xFFFF0000 | id as u32
+            }
         }
     }
 }

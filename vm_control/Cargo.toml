@@ -32,6 +32,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_keyvalue = { workspace = true, features = ["argh_derive"] }
 snapshot = { workspace = true }
+static_assertions = { workspace = true }
 swap = { workspace = true }
 sync = { workspace = true }
 thiserror = { workspace = true }
