@@ -60,7 +60,7 @@ pub trait Suspendable {
 /// from a snapshot taken before the function call.
 #[macro_export]
 macro_rules! suspendable_tests {
-    ($name:ident, $dev:expr, $modfun:ident) => {
+    ($name:ident, $dev:expr, $modfun:path) => {
         mod $name {
             use super::*;
 

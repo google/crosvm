@@ -1041,7 +1041,7 @@ mod tests {
         let device_a = GuestDeviceStub {
             pci_addr: downstream_addr_a,
             key: hotplug_key_a,
-            device: Arc::new(Mutex::new(MockDevice)),
+            device: Arc::new(Mutex::new(MockDevice::new())),
         };
         let hotplug_command_a =
             SignalHotPlugCommand::new(upstream_addr_a, [device_a].to_vec()).unwrap();
@@ -1064,7 +1064,7 @@ mod tests {
         let device_b = GuestDeviceStub {
             pci_addr: downstream_addr_b,
             key: hotplug_key_b,
-            device: Arc::new(Mutex::new(MockDevice)),
+            device: Arc::new(Mutex::new(MockDevice::new())),
         };
         let hotplug_command_b =
             SignalHotPlugCommand::new(upstream_addr_b, [device_b].to_vec()).unwrap();
@@ -1087,7 +1087,7 @@ mod tests {
         let device_c = GuestDeviceStub {
             pci_addr: downstream_addr_c,
             key: hotplug_key_c,
-            device: Arc::new(Mutex::new(MockDevice)),
+            device: Arc::new(Mutex::new(MockDevice::new())),
         };
         let hotplug_command_c =
             SignalHotPlugCommand::new(upstream_addr_c, [device_c].to_vec()).unwrap();
@@ -1234,7 +1234,7 @@ mod tests {
         let device = GuestDeviceStub {
             pci_addr: downstream_addr,
             key: hotplug_key,
-            device: Arc::new(Mutex::new(MockDevice)),
+            device: Arc::new(Mutex::new(MockDevice::new())),
         };
         let hotplug_command = SignalHotPlugCommand::new(upstream_addr, [device].to_vec()).unwrap();
         let port = new_port(bus);
@@ -1348,7 +1348,7 @@ mod tests {
         let device = GuestDeviceStub {
             pci_addr: downstream_addr,
             key: hotplug_key,
-            device: Arc::new(Mutex::new(MockDevice)),
+            device: Arc::new(Mutex::new(MockDevice::new())),
         };
         let hotplug_command = SignalHotPlugCommand::new(upstream_addr, [device].to_vec()).unwrap();
         let port = new_port(bus);
