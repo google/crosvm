@@ -188,6 +188,7 @@
     ],
     "cwd": "[CACHE]/builder",
     "env": {
+      "CHROME_HEADLESS": "1",
       "DEPOT_TOOLS_REPORT_BUILD": "crosvm/ci/builder/8945511751514863184",
       "GIT_BACKENDINFO": "1",
       "GIT_DAPPER_TRACE": "1",
