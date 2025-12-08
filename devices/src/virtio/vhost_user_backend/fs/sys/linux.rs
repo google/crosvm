@@ -179,6 +179,9 @@ pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
             unreachable!("fork error must have been handled in jail_and_fork()");
         }
         _ => {
+            // fs_device is not needed in the parent process.
+            drop(fs_device);
+
             let (_child_pid, status) =
                 wait_for_pid(pid, 0).context("failed to wait for child process")?;
             if let Some(signal) = status.signal() {
