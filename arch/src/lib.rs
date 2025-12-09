@@ -460,6 +460,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub delay_rt: bool,
     pub devices_thread: Option<std::thread::JoinHandle<()>>,
     pub hotplug_bus: BTreeMap<u8, Arc<Mutex<dyn HotPlugBus>>>,
+    pub hypercall_bus: Arc<Bus>,
     pub io_bus: Arc<Bus>,
     pub irq_chip: Box<dyn IrqChipArch>,
     pub mmio_bus: Arc<Bus>,

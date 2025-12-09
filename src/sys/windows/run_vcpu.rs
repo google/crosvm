@@ -263,6 +263,7 @@ impl VcpuRunThread {
         vcpu_create_barrier: Arc<Barrier>,
         mut io_bus: devices::Bus,
         mut mmio_bus: devices::Bus,
+        mut hypercall_bus: devices::Bus,
         vm_evt_wrtube: SendTube,
         run_mode_arc: Arc<VcpuRunMode>,
         #[cfg(feature = "stats")] stats: Option<Arc<Mutex<StatisticsCollector>>>,
@@ -346,6 +347,7 @@ impl VcpuRunThread {
 
                     mmio_bus.set_access_id(context.cpu_id);
                     io_bus.set_access_id(context.cpu_id);
+                    hypercall_bus.set_access_id(context.cpu_id);
 
                     vcpu_loop(
                         &context,
@@ -354,6 +356,7 @@ impl VcpuRunThread {
                         irq_chip,
                         io_bus,
                         mmio_bus,
+                        hypercall_bus,
                         run_mode_arc,
                         #[cfg(feature = "stats")]
                         stats,
@@ -620,6 +623,7 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             vcpu_create_barrier.clone(),
             (*guest_os.io_bus).clone(),
             (*guest_os.mmio_bus).clone(),
+            (*guest_os.hypercall_bus).clone(),
             vm_evt_wrtube
                 .try_clone()
                 .exit_context(Exit::CloneTube, "failed to clone tube")?,
@@ -655,6 +659,7 @@ fn vcpu_loop<V>(
     irq_chip: Box<dyn IrqChipArch + 'static>,
     io_bus: Bus,
     mmio_bus: Bus,
+    hypercall_bus: Bus,
     run_mode_arc: Arc<VcpuRunMode>,
     #[cfg(feature = "stats")] stats: Option<Arc<Mutex<StatisticsCollector>>>,
     #[cfg(target_arch = "x86_64")] cpuid_context: CpuIdContext,
@@ -670,6 +675,7 @@ where
     {
         mmio_bus.stats.lock().set_enabled(stats.is_some());
         io_bus.stats.lock().set_enabled(stats.is_some());
+        hypercall_bus.stats.lock().set_enabled(stats.is_some());
         exit_stats.set_enabled(stats.is_some());
     }
 
@@ -795,6 +801,10 @@ where
                         }
                     }).unwrap_or_else(|e| error!("failed to handle mmio: {}", e));
                 }
+                Ok(VcpuExit::Hypercall) => {
+                    vcpu.handle_hypercall(&mut |params| hypercall_bus.handle_hypercall(params))
+                        .unwrap_or_else(|e| error!("failed to handle hypercall: {}", e));
+                }
                 Ok(VcpuExit::IoapicEoi { vector }) => {
                     let _trace_event = trace_event!(crosvm, "VcpuExit::IoapicEoi");
                     irq_chip.broadcast_eoi(vector).unwrap_or_else(|e| {
@@ -911,6 +921,7 @@ where
                             let mut collector = stats.lock();
                             collector.pio_bus_stats.push(io_bus.stats);
                             collector.mmio_bus_stats.push(mmio_bus.stats);
+                            collector.hypercall_bus_stats.push(hypercall_bus.stats);
                             collector.vm_exit_stats.push(exit_stats);
                         }
                         return Ok(ExitState::Stop);

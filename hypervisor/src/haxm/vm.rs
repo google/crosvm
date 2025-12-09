@@ -394,6 +394,10 @@ impl Vm for HaxmVm {
         Ok(())
     }
 
+    fn enable_hypercalls(&mut self, _nr: u64, _count: usize) -> Result<()> {
+        Err(Error::new(ENOTSUP))
+    }
+
     fn get_pvclock(&self) -> Result<ClockState> {
         // Haxm does not support VmCap::PvClock
         Err(Error::new(libc::ENXIO))

@@ -1105,6 +1105,7 @@ impl arch::LinuxArch for X8664arch {
         let pcie_vcfg_range = Self::get_pcie_vcfg_mmio_range(&mem, &pcie_cfg_mmio_range);
         let mmio_bus = Arc::new(Bus::new(BusType::Mmio));
         let io_bus = Arc::new(Bus::new(BusType::Io));
+        let hypercall_bus = Arc::new(Bus::new(BusType::Hypercall));
 
         let (pci_devices, _devs): (Vec<_>, Vec<_>) = devs
             .into_iter()
@@ -1484,6 +1485,7 @@ impl arch::LinuxArch for X8664arch {
             vcpu_init,
             no_smt: components.no_smt,
             irq_chip: irq_chip.try_box_clone().map_err(Error::CloneIrqChip)?,
+            hypercall_bus,
             io_bus,
             mmio_bus,
             pid_debug_label_map,

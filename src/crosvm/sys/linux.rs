@@ -3986,6 +3986,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             vcpu_thread_barrier.clone(),
             (*linux.io_bus).clone(),
             (*linux.mmio_bus).clone(),
+            (*linux.hypercall_bus).clone(),
             vm_evt_wrtube
                 .try_clone()
                 .context("failed to clone vm event tube")?,

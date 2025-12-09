@@ -708,6 +708,10 @@ impl Vm for WhpxVm {
         Ok(())
     }
 
+    fn enable_hypercalls(&mut self, _nr: u64, _count: usize) -> Result<()> {
+        Err(Error::new(ENOTSUP))
+    }
+
     fn get_pvclock(&self) -> Result<ClockState> {
         Err(Error::new(ENODEV))
     }

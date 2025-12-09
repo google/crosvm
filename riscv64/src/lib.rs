@@ -243,6 +243,7 @@ impl arch::LinuxArch for Riscv64 {
 
         // Riscv doesn't really use the io bus like x86, so just create an empty bus.
         let io_bus = Arc::new(Bus::new(BusType::Io));
+        let hypercall_bus = Arc::new(Bus::new(BusType::Hypercall));
 
         let com_evt_1_3 = Event::new().map_err(Error::CreateEvent)?;
         let com_evt_2_4 = Event::new().map_err(Error::CreateEvent)?;
@@ -443,6 +444,7 @@ impl arch::LinuxArch for Riscv64 {
             vcpu_affinity: components.vcpu_affinity,
             no_smt: false,
             irq_chip: irq_chip.try_box_clone().map_err(Error::CloneIrqChip)?,
+            hypercall_bus,
             io_bus,
             mmio_bus,
             pid_debug_label_map,

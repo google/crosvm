@@ -227,6 +227,7 @@ fn vcpu_loop<V>(
     delay_rt: bool,
     io_bus: Bus,
     mmio_bus: Bus,
+    hypercall_bus: Bus,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     #[cfg(feature = "gdb")] to_gdb_tube: Option<mpsc::Sender<VcpuDebugStatusMessage>>,
     #[cfg(feature = "gdb")] guest_mem: GuestMemory,
@@ -414,6 +415,13 @@ where
                         error!("failed to handle mmio: {}", e);
                     }
                 }
+                Ok(VcpuExit::Hypercall) => {
+                    if let Err(e) =
+                        vcpu.handle_hypercall(&mut |params| hypercall_bus.handle_hypercall(params))
+                    {
+                        error!("failed to handle hypercall: {}", e);
+                    }
+                }
                 Ok(VcpuExit::IoapicEoi { vector }) => {
                     if let Err(e) = irq_chip.broadcast_eoi(vector) {
                         error!(
@@ -531,6 +539,7 @@ pub fn run_vcpu<V>(
     start_barrier: Arc<Barrier>,
     mut io_bus: Bus,
     mut mmio_bus: Bus,
+    mut hypercall_bus: Bus,
     vm_evt_wrtube: SendTube,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     #[cfg(feature = "gdb")] to_gdb_tube: Option<mpsc::Sender<VcpuDebugStatusMessage>>,
@@ -602,6 +611,7 @@ where
 
                 mmio_bus.set_access_id(cpu_id);
                 io_bus.set_access_id(cpu_id);
+                hypercall_bus.set_access_id(cpu_id);
 
                 let vcpu_exit_state = vcpu_loop(
                     run_mode,
@@ -612,6 +622,7 @@ where
                     delay_rt,
                     io_bus,
                     mmio_bus,
+                    hypercall_bus,
                     from_main_tube,
                     #[cfg(feature = "gdb")]
                     to_gdb_tube,

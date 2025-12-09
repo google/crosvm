@@ -188,6 +188,7 @@ fn exit_index_to_str(exit: usize) -> String {
 pub struct StatisticsCollector {
     pub pio_bus_stats: Vec<Arc<Mutex<BusStatistics>>>,
     pub mmio_bus_stats: Vec<Arc<Mutex<BusStatistics>>>,
+    pub hypercall_bus_stats: Vec<Arc<Mutex<BusStatistics>>>,
     pub vm_exit_stats: Vec<VmExitStatistics>,
 }
 
@@ -198,10 +199,18 @@ impl StatisticsCollector {
 
     /// Return a merged version of the pio bus statistics, mmio bus statistics, and the vm exit
     /// statistics for all vcpus.
-    fn merged(&self) -> (BusStatistics, BusStatistics, VmExitStatistics) {
+    fn merged(
+        &self,
+    ) -> (
+        BusStatistics,
+        BusStatistics,
+        BusStatistics,
+        VmExitStatistics,
+    ) {
         (
             BusStatistics::merged(&self.pio_bus_stats),
             BusStatistics::merged(&self.mmio_bus_stats),
+            BusStatistics::merged(&self.hypercall_bus_stats),
             VmExitStatistics::merged(&self.vm_exit_stats),
         )
     }
@@ -217,16 +226,18 @@ impl StatisticsCollector {
             vcpus_vec.push(serde_json::json!({
                 "io": self.pio_bus_stats[i].lock().json(),
                 "mmio": self.mmio_bus_stats[i].lock().json(),
+                "hypercall": self.hypercall_bus_stats[i].lock().json(),
                 "exits": self.vm_exit_stats[i].json(),
             }));
         }
 
-        let (pio, mmio, exits) = self.merged();
+        let (pio, mmio, hypercall, exits) = self.merged();
 
         serde_json::json!({
             "merged": {
                 "io": pio.json(),
                 "mmio": mmio.json(),
+                "hypercall": hypercall.json(),
                 "exits": exits.json(),
             },
             "vcpus": vcpus
@@ -236,11 +247,13 @@ impl StatisticsCollector {
 
 impl std::fmt::Display for StatisticsCollector {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let (pio, mmio, exits) = self.merged();
+        let (pio, mmio, hypercall, exits) = self.merged();
         writeln!(f, "Port IO:")?;
         writeln!(f, "{pio}")?;
         writeln!(f, "MMIO:")?;
         writeln!(f, "{mmio}")?;
+        writeln!(f, "hypercall:")?;
+        writeln!(f, "{hypercall}")?;
         writeln!(f, "Vm Exits:")?;
         writeln!(f, "{exits}")
     }

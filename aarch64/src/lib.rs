@@ -713,6 +713,8 @@ impl arch::LinuxArch for AArch64 {
 
         let mmio_bus = Arc::new(devices::Bus::new(BusType::Mmio));
 
+        let hypercall_bus = Arc::new(devices::Bus::new(BusType::Hypercall));
+
         // ARM doesn't really use the io bus like x86, so just create an empty bus.
         let io_bus = Arc::new(devices::Bus::new(BusType::Io));
 
@@ -1024,6 +1026,7 @@ impl arch::LinuxArch for AArch64 {
             irq_chip: irq_chip.try_box_clone().map_err(Error::CloneIrqChip)?,
             io_bus,
             mmio_bus,
+            hypercall_bus,
             pid_debug_label_map,
             suspend_tube: (suspend_tube_send, suspend_tube_recv),
             rt_cpus: components.rt_cpus,

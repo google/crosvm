@@ -20,6 +20,7 @@ use base::debug;
 use base::error;
 use base::Event;
 use base::SharedMemory;
+use hypervisor::HypercallAbi;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
@@ -81,6 +82,7 @@ pub struct ConfigWriteResult {
 pub enum BusType {
     Mmio,
     Io,
+    Hypercall,
 }
 
 /// Trait for devices that respond to reads or writes in an arbitrary address space.
@@ -151,6 +153,18 @@ pub trait BusDevice: Send + Suspendable {
     /// Returns the secondary bus number if this bus device is pci bridge
     fn is_bridge(&self) -> Option<u8> {
         None
+    }
+
+    /// Handles a hypercall. Only used by hypercall-based devices.
+    ///
+    /// # Returns
+    /// Ok(()) or Err(_) depending on whether an error occurred. Either way, the ABI-specific
+    /// result for the guest is stored in `abi`, even on failure.
+    fn handle_hypercall(&self, abi: &mut HypercallAbi) -> anyhow::Result<()> {
+        Err(anyhow!(
+            "handle_hypercall not implemented for {}",
+            std::any::type_name::<Self>()
+        ))
     }
 }
 
@@ -765,6 +779,22 @@ impl Bus {
                 .end_stat(BusOperation::Write, start, device_index);
         }
         device_index.is_some()
+    }
+
+    /// Handles a guest hypercall.
+    ///
+    /// # Returns
+    /// Ok(()) or Err(_) depending on whether an error occurred. Either way, the ABI-specific
+    /// result for the guest is stored in `abi`, even on failure.
+    pub fn handle_hypercall(&self, abi: &mut HypercallAbi) -> anyhow::Result<()> {
+        let id = abi.hypercall_id().try_into().unwrap();
+        let (_, _, entry) = self
+            .get_device(id)
+            .with_context(|| format!("Unknown hypercall {id:#x}"))?;
+        match &entry.device {
+            BusDeviceEntry::OuterSync(dev) => dev.lock().handle_hypercall(abi),
+            BusDeviceEntry::InnerSync(dev) => dev.handle_hypercall(abi),
+        }
     }
 }
 

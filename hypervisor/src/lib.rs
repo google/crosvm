@@ -281,6 +281,14 @@ pub trait Vm: Send {
 
     /// Events from virtio-balloon that affect the state for guest memory and host memory.
     fn handle_balloon_event(&mut self, event: BalloonEvent) -> Result<()>;
+
+    /// Registers with the hypervisor for CrosVM to handle any guest hypercall in the range.
+    fn enable_hypercalls(&mut self, nr: u64, count: usize) -> Result<()>;
+
+    /// Registers with the hypervisor for CrosVM to handle the guest hypercall.
+    fn enable_hypercall(&mut self, nr: u64) -> Result<()> {
+        self.enable_hypercalls(nr, 1)
+    }
 }
 
 /// Operation for Io and Mmio
@@ -300,6 +308,45 @@ pub enum IoOperation<'a> {
 pub struct IoParams<'a> {
     pub address: u64,
     pub operation: IoOperation<'a>,
+}
+
+/// Architecture-agnostic wrapper for any hypercall ABI between CrosVM and the guest.
+#[derive(Debug)]
+pub struct HypercallAbi {
+    hypercall_id: usize,
+    args: Vec<usize>,
+    res: Vec<usize>,
+}
+
+impl HypercallAbi {
+    /// Creates a new `HypercallAbi` instance, with the default error result.
+    pub fn new(hypercall_id: usize, args: &[usize], default_res: &[usize]) -> Self {
+        Self {
+            hypercall_id,
+            args: args.to_owned(),
+            res: default_res.to_owned(),
+        }
+    }
+
+    /// Returns the hypercall unique identifier, for routing.
+    pub fn hypercall_id(&self) -> usize {
+        self.hypercall_id
+    }
+
+    /// Returns the n-th guest-provided architecture-specific arguments.
+    pub fn get_argument(&self, n: usize) -> Option<&usize> {
+        self.args.get(n)
+    }
+
+    /// Returns the architecture-specific results for the guest, if set.
+    pub fn get_results(&self) -> &[usize] {
+        self.res.as_slice()
+    }
+
+    /// Sets the architecture-specific results for the guest.
+    pub fn set_results(&mut self, res: &[usize]) {
+        self.res = res.to_owned()
+    }
 }
 
 /// Handle to a virtual CPU that may be used to request a VM exit from within a signal handler.
@@ -376,6 +423,17 @@ pub trait Vcpu: downcast_rs::DowncastSync {
     /// call `handle_fn` with the respective IoParams to perform the input/output operation, and set
     /// the return data in the vcpu so that the vcpu can resume running.
     fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams)) -> Result<()>;
+
+    /// Handles an incoming hypercall from the guest.
+    fn handle_hypercall(
+        &self,
+        _handle_fn: &mut dyn FnMut(&mut HypercallAbi) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!(
+            "handle_hypercall not implemented for {}",
+            std::any::type_name::<Self>(),
+        )
+    }
 
     /// Signals to the hypervisor that this Vcpu is being paused by userspace.
     fn on_suspend(&self) -> Result<()>;

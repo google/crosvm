@@ -55,6 +55,7 @@ use libc::EIO;
 use libc::ENOENT;
 use libc::ENOSPC;
 use libc::ENOSYS;
+use libc::ENOTSUP;
 use libc::EOVERFLOW;
 use libc::O_CLOEXEC;
 use libc::O_RDWR;
@@ -724,6 +725,10 @@ impl Vm for KvmVm {
         }
         regions.insert(slot, mem);
         Ok(slot)
+    }
+
+    fn enable_hypercalls(&mut self, _nr: u64, _count: usize) -> Result<()> {
+        Err(Error::new(ENOTSUP))
     }
 
     fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
