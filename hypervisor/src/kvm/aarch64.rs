@@ -39,6 +39,7 @@ use super::KvmVcpu;
 use super::KvmVm;
 use crate::ClockState;
 use crate::DeviceKind;
+use crate::HypercallAbi;
 use crate::Hypervisor;
 use crate::IrqSourceChip;
 use crate::ProtectionType;
@@ -130,6 +131,29 @@ impl KvmVm {
                 flags: 0,
             }),
             _ => None,
+        }
+    }
+
+    pub(super) fn enable_smccc_forwarding(&mut self, base: u32, nr_functions: u32) -> Result<()> {
+        let smccc_filter = kvm_smccc_filter {
+            base,
+            nr_functions,
+            action: kvm_smccc_filter_action_KVM_SMCCC_FILTER_FWD_TO_USER as u8,
+            pad: [0; 15],
+        };
+        let dev_attr = kvm_device_attr {
+            group: KVM_ARM_VM_SMCCC_CTRL,
+            attr: KVM_ARM_VM_SMCCC_FILTER as u64,
+            addr: &smccc_filter as *const _ as u64,
+            flags: 0,
+        };
+
+        // SAFETY:
+        // Safe because we know that our file is a VM fd, we know the kernel will only read the
+        // correct amount of memory from our pointer, and we verify the return result.
+        match unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR, &dev_attr) } {
+            0 => Ok(()),
+            _ => errno_result(),
         }
     }
 
@@ -358,6 +382,33 @@ impl KvmVcpu {
         } else {
             errno_result()
         }
+    }
+
+    pub(super) fn handle_smccc_call(
+        &self,
+        handle_fn: &mut dyn FnMut(&mut HypercallAbi) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        const SMCCC_NOT_SUPPORTED: usize = u64::MAX as usize;
+        // SMCCC defines FID as the value in W0 with most significant bits ignored.
+        let function_id = (self.get_one_reg(VcpuRegAArch64::X(0))? as u32)
+            .try_into()
+            .unwrap();
+        let args = &[
+            self.get_one_reg(VcpuRegAArch64::X(1))?.try_into().unwrap(),
+            self.get_one_reg(VcpuRegAArch64::X(2))?.try_into().unwrap(),
+            self.get_one_reg(VcpuRegAArch64::X(3))?.try_into().unwrap(),
+        ];
+        let default_res = &[SMCCC_NOT_SUPPORTED, 0, 0, 0];
+
+        let mut smccc_abi = HypercallAbi::new(function_id, args, default_res);
+
+        let err_or_ok = handle_fn(&mut smccc_abi);
+
+        for (i, value) in smccc_abi.get_results().iter().enumerate() {
+            self.set_one_reg(VcpuRegAArch64::X(i as _), (*value).try_into().unwrap())?;
+        }
+
+        err_or_ok
     }
 
     #[inline]

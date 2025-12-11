@@ -286,6 +286,8 @@ pub enum Error {
     CustomPvmFwLoadFailure(arch::LoadImageError),
     #[error("vm created wrong kind of vcpu")]
     DowncastVcpu,
+    #[error("error enabling hypercalls base={0:#x}, count={1}: {2}")]
+    EnableHypercalls(u64, usize, base::Error),
     #[error("failed to enable singlestep execution: {0}")]
     EnableSinglestep(base::Error),
     #[error("failed to finalize IRQ chip: {0}")]
@@ -318,6 +320,8 @@ pub enum Error {
     ReadReg(base::Error),
     #[error("error reading CPU registers: {0}")]
     ReadRegs(base::Error),
+    #[error("error registering hypercalls base={0:#x}, count={1}: {2}")]
+    RegisterHypercalls(u64, usize, BusError),
     #[error("failed to register irq fd: {0}")]
     RegisterIrqfd(base::Error),
     #[error("error registering PCI bus: {0}")]

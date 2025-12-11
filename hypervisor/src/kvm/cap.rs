@@ -131,4 +131,5 @@ pub enum KvmCap {
     #[cfg(target_arch = "aarch64")]
     Sve = KVM_CAP_ARM_SVE,
     MsiDevid = KVM_CAP_MSI_DEVID,
+    ExitHypercall = KVM_CAP_EXIT_HYPERCALL,
 }

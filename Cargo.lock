@@ -1558,6 +1558,7 @@ dependencies = [
  "base",
  "bit_field",
  "bitflags 2.4.0",
+ "cfg-if",
  "cros_fdt",
  "data_model",
  "downcast-rs",

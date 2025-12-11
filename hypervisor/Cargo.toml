@@ -18,6 +18,7 @@ noncoherent-dma = []
 anyhow = { workspace = true }
 bit_field = { workspace = true }
 bitflags = "2.2.1"
+cfg-if = { workspace = true }
 cros_fdt = { workspace = true }
 data_model = { workspace = true }
 downcast-rs = "1.2.0"

@@ -46,6 +46,7 @@ use base::RawDescriptor;
 use base::Result;
 use base::SafeDescriptor;
 pub use cap::KvmCap;
+use cfg_if::cfg_if;
 use data_model::vec_with_array_field;
 use kvm_sys::*;
 use libc::open64;
@@ -55,6 +56,7 @@ use libc::EIO;
 use libc::ENOENT;
 use libc::ENOSPC;
 use libc::ENOSYS;
+#[cfg(not(target_arch = "aarch64"))]
 use libc::ENOTSUP;
 use libc::EOVERFLOW;
 use libc::O_CLOEXEC;
@@ -72,6 +74,7 @@ use crate::ClockState;
 use crate::Config;
 use crate::Datamatch;
 use crate::DeviceKind;
+use crate::HypercallAbi;
 use crate::Hypervisor;
 use crate::HypervisorCap;
 use crate::HypervisorKind;
@@ -727,8 +730,18 @@ impl Vm for KvmVm {
         Ok(slot)
     }
 
-    fn enable_hypercalls(&mut self, _nr: u64, _count: usize) -> Result<()> {
-        Err(Error::new(ENOTSUP))
+    fn enable_hypercalls(&mut self, nr: u64, count: usize) -> Result<()> {
+        cfg_if! {
+            if #[cfg(target_arch = "aarch64")] {
+                let base = u32::try_from(nr).unwrap();
+                let nr_functions = u32::try_from(count).unwrap();
+                self.enable_smccc_forwarding(base, nr_functions)
+            } else {
+                let _ = nr;
+                let _ = count;
+                Err(Error::new(ENOTSUP))
+            }
+        }
     }
 
     fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
@@ -1182,6 +1195,21 @@ impl Vcpu for KvmVcpu {
         }
 
         Ok(())
+    }
+
+    fn handle_hypercall(
+        &self,
+        handle_fn: &mut dyn FnMut(&mut HypercallAbi) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        cfg_if! {
+            if #[cfg(target_arch = "aarch64")] {
+                // Assume that all handled HVC/SMC calls follow the SMCCC.
+                self.handle_smccc_call(handle_fn)
+            } else {
+                let _ = handle_fn;
+                unimplemented!("KvmVcpu::handle_hypercall() not supported");
+            }
+        }
     }
 }
 
