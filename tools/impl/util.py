@@ -153,7 +153,10 @@ def find_scripts(path: Path, shebang: str):
 
 def confirm(message: str, default: bool = False):
     print(message, "[y/N]" if default == False else "[Y/n]", end=" ", flush=True)
-    response = sys.stdin.readline().strip()
+    try:
+        response = sys.stdin.readline().strip()
+    except KeyboardInterrupt:
+        sys.exit(1)
     if response in ("y", "Y"):
         return True
     if response in ("n", "N"):
