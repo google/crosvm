@@ -217,9 +217,10 @@ def rebase():
     git(f"cherry-pick {branch_name}@{{u}}..{branch_name}").fg()
 
 
+@arg("-r", "--reviewer", action="append", help="(can be repeated)")
 def upload(
     dry_run: bool = False,
-    reviewer: Optional[str] = None,
+    reviewer: Optional[list[str]] = None,
     auto_submit: bool = False,
     submit: bool = False,
     try_: bool = False,
@@ -259,7 +260,8 @@ def upload(
     if submit:
         extra_args.append(f"l=Commit-Queue+2")
     if reviewer:
-        extra_args.append(f"r={reviewer}")
+        for r in reviewer:
+            extra_args.append(f"r={r}")
 
     git(f"push origin HEAD:refs/for/main%{','.join(extra_args)}").fg(dry_run=dry_run)
 
