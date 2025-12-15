@@ -134,20 +134,11 @@ impl VhostUserFrontend {
             allow_features & backend_client.get_features().map_err(Error::GetFeatures)?;
         let mut acked_features = 0;
 
-        let mut allow_protocol_features = VhostUserProtocolFeatures::CONFIG
+        let allow_protocol_features = VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::MQ
             | VhostUserProtocolFeatures::BACKEND_REQ
-            | VhostUserProtocolFeatures::DEVICE_STATE;
-
-        // HACK: the crosvm vhost-user GPU backend supports the non-standard
-        // VHOST_USER_PROTOCOL_FEATURE_SHARED_MEMORY_REGIONS. This should either be standardized
-        // (and enabled for all device types) or removed.
-        let expose_shmem_descriptors_with_viommu = if device_type == DeviceType::Gpu {
-            allow_protocol_features |= VhostUserProtocolFeatures::SHMEM_MAP;
-            true
-        } else {
-            false
-        };
+            | VhostUserProtocolFeatures::DEVICE_STATE
+            | VhostUserProtocolFeatures::SHMEM_MAP;
 
         let mut protocol_features = VhostUserProtocolFeatures::empty();
         if avail_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
@@ -226,7 +217,7 @@ impl VhostUserFrontend {
             backend_req_handler,
             shmem_region: RefCell::new(None),
             queue_sizes,
-            expose_shmem_descriptors_with_viommu,
+            expose_shmem_descriptors_with_viommu: device_type == DeviceType::Gpu,
             pci_address,
             vm_evt_wrtube,
             sent_queues: None,
