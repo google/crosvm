@@ -657,7 +657,7 @@ pub fn create_virtio_media_simple_capture_device(features: u64) -> Box<dyn Virti
     let device = CrosvmVirtioMediaDevice::new(
         features,
         VirtioMediaDeviceConfig {
-            device_caps: (Capabilities::VIDEO_CAPTURE | Capabilities::STREAMING).bits(),
+            device_caps: (Capabilities::VIDEO_CAPTURE_MPLANE | Capabilities::STREAMING).bits(),
             // VFL_TYPE_VIDEO
             device_type: 0,
             card,
